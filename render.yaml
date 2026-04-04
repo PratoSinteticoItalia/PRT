@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: vertex-ops-pose-system
+    runtime: node
+    plan: starter
+    rootDir: .
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATA_DIR
+        value: /var/data/vertex-ops
+    disk:
+      name: vertex-ops-data
+      mountPath: /var/data
+      sizeGB: 1

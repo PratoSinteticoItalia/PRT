@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vertex Ops - Gestione Pose</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section id="auth-screen" class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <div class="brand-mark">V</div>
+          <div>
+            <p class="eyebrow auth-eyebrow" data-i18n="brandEyebrow">Vertex Ops</p>
+            <h1 data-i18n="brandTitle">Gestione Pose</h1>
+            <p class="auth-subtitle" data-i18n="authSubtitle">Accedi al pannello operativo per ufficio, magazzino e squadre.</p>
+          </div>
+        </div>
+
+        <div class="auth-demo">
+          <div>
+            <span class="auth-demo-label" data-i18n="demoAccess">Accessi demo</span>
+            <p><strong>Ufficio</strong> office@vertex.local / office123</p>
+            <p><strong>Magazzino</strong> warehouse@vertex.local / warehouse123</p>
+            <p><strong>Squadra</strong> crew@vertex.local / crew123</p>
+          </div>
+        </div>
+
+        <form id="auth-form" class="auth-form">
+          <label class="field">
+            <span data-i18n="authEmail">Email</span>
+            <input class="text-input" name="email" type="email" placeholder="office@vertex.local" required />
+          </label>
+          <label class="field">
+            <span data-i18n="authPassword">Password</span>
+            <input class="text-input" name="password" type="password" placeholder="••••••••" required />
+          </label>
+          <div id="auth-error" class="auth-error hidden"></div>
+          <button class="primary-button auth-submit" type="submit" data-i18n="authLogin">Accedi</button>
+        </form>
+      </div>
+    </section>
+
+    <div id="app-shell" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">V</div>
+          <div>
+            <p class="eyebrow" data-i18n="brandEyebrow">Vertex Ops</p>
+            <h1 data-i18n="brandTitle">Gestione Pose</h1>
+          </div>
+        </div>
+
+        <div class="user-card">
+          <span class="card-label" data-i18n="loggedAs">Utente attivo</span>
+          <strong id="current-user-name">-</strong>
+          <p id="current-user-role">-</p>
+        </div>
+
+        <nav class="nav">
+          <button class="nav-link is-active" data-view="dashboard" data-i18n="navDashboard">Dashboard Ufficio</button>
+          <button class="nav-link" data-view="orders" data-i18n="navOrders">Ordini Shopify</button>
+          <button class="nav-link" data-view="calendar" data-i18n="navCalendar">Calendario Pose</button>
+          <button class="nav-link" data-view="job" data-i18n="navJob">Scheda Commessa</button>
+          <button class="nav-link" data-view="warehouse" data-i18n="navWarehouse">Vista Magazzino</button>
+          <button class="nav-link" data-view="crew" data-i18n="navCrew">Vista Squadra</button>
+          <button class="nav-link" data-view="accounting" data-i18n="navAccounting">Contabilità</button>
+          <button class="nav-link" data-view="settings" data-i18n="navSettings">Impostazioni</button>
+        </nav>
+
+        <div class="sidebar-card">
+          <p class="card-label" data-i18n="sidebarFocus">Focus operativo</p>
+          <h3 data-i18n="sidebarFlowTitle">Un solo flusso</h3>
+          <p data-i18n="sidebarFlowText">
+            Ogni commessa vive in un unico sistema e aggiorna ufficio, magazzino e squadra senza doppio lavoro.
+          </p>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow topbar-eyebrow" data-i18n="topbarEyebrow">MVP operativo locale</p>
+            <h2 id="view-title" data-i18n="navDashboard">Dashboard Ufficio</h2>
+          </div>
+
+          <div class="topbar-actions">
+            <div class="lang-switch" aria-label="Language switcher">
+              <button class="lang-btn is-active" data-lang="it">IT</button>
+              <button class="lang-btn" data-lang="en">EN</button>
+            </div>
+            <div class="topbar-user">
+              <span id="topbar-user-name">-</span>
+              <small id="topbar-user-role">-</small>
+            </div>
+            <button id="new-job-button" class="ghost-button" data-i18n="newJob">Nuova commessa</button>
+            <button id="seed-button" class="primary-button" data-i18n="seedData">Carica dati demo</button>
+            <button id="logout-button" class="ghost-button" data-i18n="logout">Esci</button>
+          </div>
+        </header>
+
+        <section class="ops-strip" data-ops-strip>
+          <article class="ops-card">
+            <span class="ops-label" data-i18n="opsOfficeLabel">Ufficio</span>
+            <strong id="ops-office-value">0</strong>
+            <p id="ops-office-text" data-i18n="opsOfficeText">Commesse da completare e assegnare.</p>
+          </article>
+          <article class="ops-card">
+            <span class="ops-label" data-i18n="opsWarehouseLabel">Magazzino</span>
+            <strong id="ops-warehouse-value">0</strong>
+            <p id="ops-warehouse-text" data-i18n="opsWarehouseText">Ordini da preparare o sbloccare.</p>
+          </article>
+          <article class="ops-card">
+            <span class="ops-label" data-i18n="opsCrewLabel">Squadre</span>
+            <strong id="ops-crew-value">0</strong>
+            <p id="ops-crew-text" data-i18n="opsCrewText">Pose confermate e lavori in corso.</p>
+          </article>
+        </section>
+
+        <section class="view is-active" id="dashboard">
+          <div class="stats-grid" id="stats-grid"></div>
+
+          <div class="dashboard-grid">
+            <section class="panel panel-large">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow" data-i18n="controlRoom">Cabina di regia</p>
+                  <h3 data-i18n="jobsToHandle">Commesse da gestire</h3>
+                </div>
+                <button class="ghost-button small" id="dashboard-refresh" data-i18n="refresh">Aggiorna</button>
+              </div>
+
+              <div class="toolbar-row">
+                <input id="dashboard-search" class="text-input toolbar-input" type="text" />
+                <div class="toolbar-tags">
+                  <button class="tag filter-tag is-active" data-dashboard-filter="all" data-i18n="filterAll">Tutti</button>
+                  <button class="tag filter-tag" data-dashboard-filter="urgent" data-i18n="filterUrgent">Urgenti</button>
+                  <button class="tag filter-tag" data-dashboard-filter="blocked" data-i18n="filterMissing">Manca materiale</button>
+                </div>
+              </div>
+
+              <div class="priority-stack">
+                <div class="priority-stack-head">
+                  <div>
+                    <p class="panel-eyebrow" data-i18n="priorityNowEyebrow">Priorità automatica</p>
+                    <h4 data-i18n="priorityNowTitle">Le tue 3 azioni adesso</h4>
+                  </div>
+                  <span class="search-pill compact-pill" data-i18n="priorityNowHint">Il sistema ordina le prossime azioni in base a blocchi, materiale e pianificazione.</span>
+                </div>
+                <div id="priority-action-list" class="priority-action-list"></div>
+              </div>
+
+              <div id="dashboard-job-list" class="job-list"></div>
+            </section>
+
+            <section class="side-stack">
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow" data-i18n="today">Oggi</p>
+                    <h3 data-i18n="quickAlerts">Alert rapidi</h3>
+                  </div>
+                </div>
+                <div id="alert-stack" class="alert-stack"></div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow" data-i18n="instantActions">Azioni immediate</p>
+                    <h3 data-i18n="fastLane">Fast lane</h3>
+                  </div>
+                </div>
+                <div class="action-grid">
+                  <button class="action-button" id="quick-new-job" data-i18n="newJob">Nuova commessa</button>
+                  <button class="action-button" id="quick-open-orders" data-i18n="navOrders">Ordini Shopify</button>
+                  <button class="action-button" id="quick-open-calendar" data-i18n="navCalendar">Calendario Pose</button>
+                  <button class="action-button" id="quick-open-warehouse" data-i18n="navWarehouse">Vista Magazzino</button>
+                </div>
+              </section>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="orders">
+          <div class="dashboard-grid">
+            <section class="panel panel-large">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow" data-i18n="shopifyIntake">Intake ordini</p>
+                  <h3 data-i18n="navOrders">Ordini Shopify</h3>
+                </div>
+                <div class="row-actions">
+                  <button class="ghost-button small" id="load-demo-orders" data-i18n="loadDemoOrders">Carica ordini demo</button>
+                  <button class="ghost-button small" id="sync-shopify-orders" data-i18n="syncShopifyOrders">Sincronizza Shopify</button>
+                  <button class="ghost-button small" id="clear-non-shopify-orders" data-i18n="clearNonShopify">Pulisci ordini manuali</button>
+                  <button class="primary-button small-button" id="import-orders-button" data-i18n="importOrders">Importa ordini</button>
+                </div>
+              </div>
+
+              <div class="orders-summary" id="orders-summary"></div>
+
+              <div class="field field-full">
+                <span data-i18n="shopifyJsonLabel">JSON ordini Shopify</span>
+                <textarea id="order-import-text" class="text-input order-import-text" rows="7" placeholder='{"orders":[...]}'></textarea>
+              </div>
+
+              <div id="orders-error" class="panel-note hidden"></div>
+              <div id="orders-list" class="orders-list"></div>
+            </section>
+
+            <section class="side-stack">
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow" data-i18n="shopifyBridge">Bridge</p>
+                    <h3 data-i18n="orderToJobTitle">Ordine → Commessa</h3>
+                  </div>
+                </div>
+                <div class="info-stack">
+                  <div class="info-card">
+                    <strong data-i18n="orderAutoDraftLead">Ogni ordine diventa automaticamente una bozza commessa operativa.</strong>
+                    <p data-i18n="orderAutoDraftText">L’ufficio interviene solo per completare i dati mancanti, pianificare e sbloccare il flusso.</p>
+                  </div>
+                  <div class="info-card">
+                    <strong data-i18n="shopifyStatusTitle">Stato integrazione</strong>
+                    <p data-i18n="shopifyStatusText">La connessione live richiederà dominio Shopify, token Admin API e webhook ordini. Intanto puoi importare JSON reali o demo.</p>
+                  </div>
+                </div>
+              </section>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="calendar">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow" data-i18n="activeWeek">Settimana attiva</p>
+                <h3 data-i18n="installationCalendar">Calendario pose</h3>
+              </div>
+              <div id="calendar-week-chip" class="calendar-chip"></div>
+            </div>
+
+            <div class="toolbar-row">
+              <div class="toolbar-tags">
+                <button class="tag crew-filter-tag is-active" data-crew-filter="all" data-i18n="allTeams">Tutte le squadre</button>
+                <button class="tag crew-filter-tag" data-crew-filter="Alpha">Alpha</button>
+                <button class="tag crew-filter-tag" data-crew-filter="Beta">Beta</button>
+                <button class="tag crew-filter-tag" data-crew-filter="Delta">Delta</button>
+              </div>
+              <div class="row-actions">
+                <div class="search-pill" data-i18n="calendarHint">Vista rapida per saturazione squadre e materiali mancanti</div>
+                <button id="calendar-route-button" class="ghost-button small" data-i18n="openCrewRoute">Itinerario squadra</button>
+              </div>
+            </div>
+
+            <div id="calendar-load-strip" class="load-strip"></div>
+            <div id="calendar-grid" class="calendar-grid"></div>
+          </div>
+        </section>
+
+        <section class="view" id="job">
+          <div class="job-layout">
+            <section class="panel panel-large">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow" data-i18n="fullSheet">Scheda completa</p>
+                  <h3 id="job-title"></h3>
+                </div>
+                <span id="job-main-status" class="tag tag-green"></span>
+              </div>
+
+              <div id="job-stepper" class="stepper"></div>
+              <div class="workflow-strip">
+                <section class="workflow-card">
+                  <p class="panel-eyebrow" data-i18n="nextStepEyebrow">Next step</p>
+                  <h4 id="job-next-action-title"></h4>
+                  <p id="job-next-action-text" class="workflow-copy"></p>
+                  <div id="job-next-action-buttons" class="job-quick-actions"></div>
+                </section>
+                <section class="workflow-card">
+                  <p class="panel-eyebrow" data-i18n="blockingReasons">Blocchi rilevati</p>
+                  <ul id="job-blocker-list" class="blocker-list"></ul>
+                </section>
+              </div>
+              <div class="job-browser-shell">
+                <div class="job-browser-nav">
+                  <button id="job-prev-button" class="ghost-button small">Precedente</button>
+                  <button id="job-next-button" class="ghost-button small">Successiva</button>
+                </div>
+                <div id="job-browser-list" class="job-browser-list"></div>
+              </div>
+              <div id="job-detail-grid" class="detail-grid"></div>
+              <div id="job-quick-actions" class="job-quick-actions"></div>
+
+              <div class="notes-block">
+                <h4 data-i18n="opsNotes">Note operative</h4>
+                <p id="job-notes"></p>
+              </div>
+
+              <div class="notes-block attachment-block">
+                <div class="attachment-head">
+                  <h4 data-i18n="jobAttachments">Foto e allegati</h4>
+                  <button id="job-upload-button" class="ghost-button small" data-i18n="uploadPhoto">Carica foto</button>
+                </div>
+                <p class="attachment-copy" data-i18n="jobAttachmentsHint">Qui raccogli foto prima/dopo e allegati utili alla commessa.</p>
+                <div id="job-attachments" class="attachment-grid"></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow" data-i18n="preparation">Preparazione</p>
+                  <h3 data-i18n="plannedMaterials">Materiali previsti</h3>
+                </div>
+              </div>
+              <ul id="job-material-list" class="material-list"></ul>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="warehouse">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow" data-i18n="operations">Operatività</p>
+                <h3 data-i18n="warehouseOrders">Ordini magazzino</h3>
+              </div>
+            </div>
+
+            <div class="toolbar-row">
+              <div class="toolbar-tags">
+                <button class="tag warehouse-filter-tag is-active" data-warehouse-filter="all" data-i18n="filterAll">Tutti</button>
+                <button class="tag warehouse-filter-tag" data-warehouse-filter="preparing" data-i18n="filterPreparing">In preparazione</button>
+                <button class="tag warehouse-filter-tag" data-warehouse-filter="blocked" data-i18n="filterMissing">Manca materiale</button>
+                <button class="tag warehouse-filter-tag" data-warehouse-filter="ready" data-i18n="statusReady">Pronto</button>
+              </div>
+              <div class="search-pill" data-i18n="warehouseHint">Filtra per stato, priorità o data posa</div>
+            </div>
+
+            <div class="warehouse-table" id="warehouse-table"></div>
+          </div>
+        </section>
+
+        <section class="view" id="crew">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow" data-i18n="mobileFirst">Mobile first</p>
+                <h3 data-i18n="crewView">Vista squadra</h3>
+              </div>
+              <span id="crew-chip" class="calendar-chip"></span>
+            </div>
+
+            <div class="toolbar-row">
+              <div class="toolbar-tags">
+                <button class="tag crew-board-tag is-active" data-board-crew="all" data-i18n="allTeams">Tutte le squadre</button>
+                <button class="tag crew-board-tag" data-board-crew="Alpha">Alpha</button>
+                <button class="tag crew-board-tag" data-board-crew="Beta">Beta</button>
+                <button class="tag crew-board-tag" data-board-crew="Delta">Delta</button>
+              </div>
+              <div class="row-actions">
+                <div class="search-pill" data-i18n="crewHint">Azioni rapide per lavoro completato, problema o foto di cantiere</div>
+                <button id="crew-route-button" class="ghost-button small" data-i18n="openCrewRoute">Itinerario squadra</button>
+              </div>
+            </div>
+
+            <div id="crew-cards" class="crew-cards"></div>
+          </div>
+        </section>
+
+        <section class="view" id="accounting">
+          <div class="dashboard-grid">
+            <section class="panel panel-large">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow" data-i18n="accountingEyebrow">Controllo economico</p>
+                  <h3 data-i18n="navAccounting">Contabilità</h3>
+                </div>
+                <button class="ghost-button small" id="accounting-refresh" data-i18n="refresh">Aggiorna</button>
+              </div>
+
+              <div class="toolbar-row">
+                <input id="accounting-search" class="text-input toolbar-input" type="text" />
+                <div class="toolbar-tags">
+                  <button class="tag accounting-filter-tag is-active" data-accounting-filter="all" data-i18n="filterAll">Tutti</button>
+                  <button class="tag accounting-filter-tag" data-accounting-filter="pending" data-i18n="accountingPending">Saldo aperto</button>
+                  <button class="tag accounting-filter-tag" data-accounting-filter="invoice" data-i18n="accountingInvoiceNeeded">Da fatturare</button>
+                </div>
+              </div>
+
+              <div id="accounting-summary" class="orders-summary"></div>
+              <div id="accounting-list" class="accounting-list"></div>
+            </section>
+
+            <section class="side-stack">
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow" data-i18n="accountingEyebrow">Controllo economico</p>
+                    <h3 data-i18n="accountingChecklistTitle">Checklist amministrativa</h3>
+                  </div>
+                </div>
+                <div class="info-stack">
+                  <div class="info-card">
+                    <strong data-i18n="accountingChecklistLead">Ogni ordine raccoglie metodo di pagamento, acconti, saldo e stato fattura.</strong>
+                    <p data-i18n="accountingChecklistText">Così l'ufficio vede subito cosa è stato incassato, cosa manca e cosa deve ancora essere fatturato.</p>
+                  </div>
+                </div>
+              </section>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="settings">
+          <div class="dashboard-grid">
+            <section class="panel panel-large">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow" data-i18n="settingsEyebrow">Configurazione</p>
+                  <h3 data-i18n="navSettings">Impostazioni</h3>
+                </div>
+              </div>
+
+              <form id="shopify-settings-form" class="modal-form">
+                <div class="form-grid">
+                  <label class="field">
+                    <span data-i18n="shopDomain">Dominio Shopify</span>
+                    <input class="text-input" name="storeDomain" placeholder="nome-store.myshopify.com" />
+                  </label>
+                  <label class="field">
+                    <span data-i18n="shopClientId">Client ID</span>
+                    <input class="text-input" name="clientId" placeholder="42e7de..." />
+                  </label>
+                  <label class="field">
+                    <span data-i18n="shopClientSecret">Client secret</span>
+                    <input class="text-input" name="clientSecret" placeholder="••••••••" />
+                  </label>
+                  <label class="field">
+                    <span data-i18n="shopLocation">Location / deposito</span>
+                    <input class="text-input" name="locationName" placeholder="Marcianise" />
+                  </label>
+                  <label class="field">
+                    <span data-i18n="shopWebhook">URL pubblico webhook</span>
+                    <input class="text-input" name="webhookBaseUrl" placeholder="https://ops.tuodominio.it" />
+                  </label>
+                </div>
+
+                <div class="modal-actions">
+                  <div id="shopify-settings-status" class="panel-note" data-i18n="settingsHint">
+                    Salva qui i parametri del ponte Shopify. La sincronizzazione live sarà il passo successivo.
+                  </div>
+                  <div class="row-actions">
+                    <button type="button" id="register-webhook-button" class="ghost-button" data-i18n="registerWebhook">Registra webhook</button>
+                    <button type="submit" class="primary-button" data-i18n="saveSettings">Salva impostazioni</button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <section class="side-stack">
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow" data-i18n="nextStepEyebrow">Next step</p>
+                    <h3 data-i18n="shopifyLiveTitle">Integrazione live Shopify</h3>
+                  </div>
+                </div>
+                <div class="info-stack">
+                  <div class="info-card">
+                    <strong data-i18n="shopifyLiveItem1Title">1. Custom app Shopify</strong>
+                    <p data-i18n="shopifyLiveItem1Text">Creiamo una custom app con permessi lettura ordini, clienti e indirizzi.</p>
+                  </div>
+                  <div class="info-card">
+                    <strong data-i18n="shopifyLiveItem2Title">2. Webhook ordine</strong>
+                    <p data-i18n="shopifyLiveItem2Text">Ogni nuovo ordine entra qui come inbox operativa senza copia-incolla.</p>
+                  </div>
+                  <div class="info-card">
+                    <strong data-i18n="shopifyLiveItem3Title">3. Mapping tecnico</strong>
+                    <p data-i18n="shopifyLiveItem3Text">L’ufficio completa superficie, squadra, data posa e materiali prima di inviare al magazzino.</p>
+                  </div>
+                </div>
+              </section>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="job-modal" class="modal hidden">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div>
+            <p class="panel-eyebrow" data-i18n="jobFormEyebrow">Inserimento operativo</p>
+            <h3 id="modal-title" data-i18n="newJob">Nuova commessa</h3>
+          </div>
+          <button class="ghost-button small" data-close-modal data-i18n="close">Chiudi</button>
+        </div>
+
+        <form id="job-form" class="modal-form">
+          <input type="hidden" name="id" />
+
+          <div class="form-grid">
+            <label class="field">
+              <span data-i18n="fieldFirstName">Nome</span>
+              <input class="text-input" name="firstName" required />
+            </label>
+            <label class="field">
+              <span data-i18n="fieldLastName">Cognome</span>
+              <input class="text-input" name="lastName" required />
+            </label>
+            <label class="field">
+              <span data-i18n="fieldCity">Città</span>
+              <input class="text-input" name="city" required />
+            </label>
+            <label class="field">
+              <span data-i18n="fieldPhone">Telefono</span>
+              <input class="text-input" name="phone" />
+            </label>
+            <label class="field">
+              <span data-i18n="fieldEmail">Email</span>
+              <input class="text-input" name="email" />
+            </label>
+            <label class="field">
+              <span data-i18n="fieldAddress">Indirizzo</span>
+              <input class="text-input" name="address" />
+            </label>
+            <label class="field">
+              <span data-i18n="fieldType">Tipo lavoro</span>
+              <select class="text-input" name="jobType">
+                <option value="fornitura" data-i18n="typeSupply">Fornitura</option>
+                <option value="fornitura-posa" data-i18n="typeSupplyInstall">Fornitura + posa</option>
+              </select>
+            </label>
+            <label class="field">
+              <span data-i18n="fieldSurface">Superficie</span>
+              <select class="text-input" name="surface">
+                <option value="terra" data-i18n="surfaceGround">Terra</option>
+                <option value="pavimentazione" data-i18n="surfacePaving">Pavimentazione</option>
+              </select>
+            </label>
+            <label class="field">
+              <span data-i18n="fieldProduct">Prodotto</span>
+              <input class="text-input" name="product" required />
+            </label>
+            <label class="field">
+              <span data-i18n="fieldSqm">Metri quadri</span>
+              <input class="text-input" name="sqm" type="number" min="0" step="1" required />
+            </label>
+            <label class="field">
+              <span data-i18n="fieldInstallDate">Data posa</span>
+              <input class="text-input" name="installDate" type="date" />
+            </label>
+            <label class="field">
+              <span data-i18n="fieldInstallTime">Ora</span>
+              <input class="text-input" name="installTime" type="time" />
+            </label>
+            <label class="field">
+              <span data-i18n="fieldCrew">Squadra</span>
+              <select class="text-input" name="crew">
+                <option value="Alpha">Alpha</option>
+                <option value="Beta">Beta</option>
+                <option value="Delta">Delta</option>
+              </select>
+            </label>
+            <label class="field">
+              <span data-i18n="fieldPriority">Priorità</span>
+              <select class="text-input" name="priority">
+                <option value="alta" data-i18n="priorityHigh">Alta</option>
+                <option value="media" data-i18n="priorityMedium">Media</option>
+                <option value="bassa" data-i18n="priorityLow">Bassa</option>
+              </select>
+            </label>
+            <label class="field">
+              <span data-i18n="fieldWarehouse">Stato magazzino</span>
+              <select class="text-input" name="warehouseStatus">
+                <option value="da-preparare" data-i18n="warehouseToPrepare">Da preparare</option>
+                <option value="in-preparazione" data-i18n="statusPreparing">In preparazione</option>
+                <option value="pronto" data-i18n="statusReady">Pronto</option>
+                <option value="manca-materiale" data-i18n="statusMissingMaterial">Manca materiale</option>
+              </select>
+            </label>
+            <label class="field">
+              <span data-i18n="fieldInstallStatus">Stato posa</span>
+              <select class="text-input" name="installStatus">
+                <option value="da-pianificare" data-i18n="installToPlan">Da pianificare</option>
+                <option value="programmata" data-i18n="statusScheduled">In agenda</option>
+                <option value="in-corso" data-i18n="statusInProgress">In corso</option>
+                <option value="completata" data-i18n="crewComplete">Lavoro completato</option>
+                <option value="problema" data-i18n="crewProblem">Problema in cantiere</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="field field-full">
+            <span data-i18n="fieldMaterials">Materiali</span>
+            <textarea class="text-input" name="materials" rows="4" placeholder="Prato 85 mq&#10;Telo 85 mq&#10;Colla 2 secchi"></textarea>
+          </label>
+
+          <label class="field field-full">
+            <span data-i18n="fieldNotes">Note operative</span>
+            <textarea class="text-input" name="notes" rows="4" placeholder="Accesso cantiere, cliente, extra, criticità..."></textarea>
+          </label>
+
+          <div class="modal-actions">
+            <button type="button" class="ghost-button" id="delete-job-button" data-i18n="deleteJob">Elimina</button>
+            <button type="submit" class="primary-button" data-i18n="saveJob">Salva commessa</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <input id="attachment-input" type="file" accept="image/*" multiple class="hidden" />
+
+    <script src="./app.js"></script>
+  </body>
+</html>
