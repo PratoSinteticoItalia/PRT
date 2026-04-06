@@ -857,6 +857,19 @@
               <div id="security-status" class="panel-note hidden"></div>
             </section>
 
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow">Security Center</p>
+                  <h3>Recupero e audit</h3>
+                </div>
+              </div>
+              <div id="security-policy-note" class="info-card">
+                Le password devono rispettare la policy di sicurezza del portale.
+              </div>
+              <div id="security-events" class="detail-stack" style="margin-top: 16px;"></div>
+            </section>
+
             <section class="panel panel-large">
               <div class="panel-head">
                 <div>
@@ -882,9 +895,20 @@
                     <option value="crew">Squadra</option>
                   </select>
                 </label>
+                <label class="field">
+                  <span>Stato account</span>
+                  <select class="text-input" name="status">
+                    <option value="active">Attivo</option>
+                    <option value="suspended">Sospeso</option>
+                  </select>
+                </label>
                 <label class="field field-full">
                   <span>Password iniziale</span>
                   <input class="text-input" name="password" type="password" placeholder="Almeno 12 caratteri" />
+                </label>
+                <label class="checkline field-full">
+                  <input type="checkbox" name="mustChangePassword" />
+                  <span>Richiedi cambio password al primo accesso</span>
                 </label>
                 <div class="inline-actions field-full">
                   <button type="submit" class="primary-button small-button">Crea account</button>

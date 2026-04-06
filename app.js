@@ -470,6 +470,8 @@ const state = {
   orders: [],
   inventory: [],
   users: [],
+  securityEvents: [],
+  securityPolicy: {},
   settings: {},
   currentView: "dashboard",
   selectedOrderId: null,
@@ -589,6 +591,8 @@ const ui = {
   connectShopifyButton: document.getElementById("connect-shopify-button"),
   securityForm: document.getElementById("security-form"),
   securityStatus: document.getElementById("security-status"),
+  securityPolicyNote: document.getElementById("security-policy-note"),
+  securityEvents: document.getElementById("security-events"),
   accountsList: document.getElementById("accounts-list"),
   accountCreateForm: document.getElementById("account-create-form"),
   accountsStatus: document.getElementById("accounts-status"),
@@ -3254,7 +3258,35 @@ function renderSettings() {
   if (ui.securityForm) {
     ui.securityForm.reset();
   }
+  renderSecurityCenter();
   renderAccountsManager();
+}
+
+function renderSecurityCenter() {
+  if (ui.securityPolicyNote) {
+    const minLength = Number(state.securityPolicy?.passwordMinLength || 12);
+    const recoveryActive = Boolean(state.securityPolicy?.bootstrapRecoveryActive);
+    ui.securityPolicyNote.innerHTML = `
+      <strong>Policy password</strong>
+      <p>Usa almeno ${minLength} caratteri, con maiuscole, minuscole e numeri. ${state.currentUser?.mustChangePassword ? "Per questo account e richiesto il cambio password al prossimo accesso." : "Password account allineata."} ${recoveryActive ? "Recupero admin temporaneo attivo via Render: rimuovilo appena rientri." : "Recupero bootstrap non attivo."}</p>
+    `;
+  }
+  if (!ui.securityEvents) return;
+  if (state.currentUser?.role !== "office") {
+    ui.securityEvents.innerHTML = `<div class="info-card">Solo l'ufficio puo vedere gli eventi di sicurezza.</div>`;
+    return;
+  }
+  if (!state.securityEvents.length) {
+    ui.securityEvents.innerHTML = `<div class="info-card">Nessun evento di sicurezza registrato.</div>`;
+    return;
+  }
+  ui.securityEvents.innerHTML = state.securityEvents.slice(0, 8).map((event) => `
+    <article class="detail-box">
+      <span class="panel-eyebrow">${escapeHtml(String(event.type || "security").replaceAll("_", " "))}</span>
+      <strong>${escapeHtml(event.message || "Evento sicurezza")}</strong>
+      <p>${escapeHtml(event.actor || "system")} · ${formatDate(event.createdAt)}</p>
+    </article>
+  `).join("");
 }
 
 function renderAccountsManager() {
@@ -3289,8 +3321,19 @@ function renderAccountsManager() {
           </select>
         </label>
         <label class="field">
+          <span>Stato account</span>
+          <select class="text-input" name="status">
+            <option value="active" ${user.status !== "suspended" ? "selected" : ""}>Attivo</option>
+            <option value="suspended" ${user.status === "suspended" ? "selected" : ""}>Sospeso</option>
+          </select>
+        </label>
+        <label class="field">
           <span>Nuova password</span>
           <input class="text-input" name="password" type="password" placeholder="Lascia vuoto per non cambiarla" />
+        </label>
+        <label class="checkline field-full">
+          <input type="checkbox" name="mustChangePassword" ${user.mustChangePassword ? "checked" : ""} />
+          <span>Richiedi cambio password al prossimo accesso</span>
         </label>
         <div class="inline-actions field-full">
           <button type="submit" class="ghost-button small-button">Salva account</button>
@@ -3360,6 +3403,9 @@ async function loadSession() {
   state.inventory = session.inventory || [];
   state.settings = session.shopifySettings || {};
   state.users = session.users || [];
+  state.securityEvents = session.securityEvents || [];
+  state.securityPolicy = session.securityPolicy || {};
+  if (state.currentUser?.mustChangePassword) state.currentView = "settings";
   ensureSelectedOrder();
   showApp();
 }
@@ -4017,16 +4063,23 @@ async function createManagedAccount(event) {
         name: form.get("name"),
         email: form.get("email"),
         role: form.get("role"),
+        status: form.get("status"),
+        mustChangePassword: form.get("mustChangePassword") === "on",
         password: form.get("password"),
       }),
     });
     state.users = [...state.users, created].sort((a, b) => a.name.localeCompare(b.name, "it"));
     ui.accountCreateForm.reset();
+    await reloadAll();
     renderAccountsManager();
     setStatus(ui.accountsStatus, "success", "Account creato correttamente.");
   } catch (error) {
     const message = error.message === "email_already_exists"
       ? "Esiste gia un account con questa email."
+      : error.message === "weak_password_case"
+        ? "La password deve contenere maiuscole e minuscole."
+        : error.message === "weak_password_number"
+          ? "La password deve contenere almeno un numero."
       : error.message === "invalid_account_payload"
         ? "Compila tutti i campi e usa una password di almeno 12 caratteri."
         : "Creazione account fallita.";
@@ -4047,17 +4100,24 @@ async function updateManagedAccount(event) {
         name: data.get("name"),
         email: data.get("email"),
         role: data.get("role"),
+        status: data.get("status"),
+        mustChangePassword: data.get("mustChangePassword") === "on",
         password: data.get("password"),
       }),
     });
     state.users = state.users.map((item) => (item.id === saved.id ? saved : item)).sort((a, b) => a.name.localeCompare(b.name, "it"));
+    await reloadAll();
     renderAccountsManager();
     setStatus(ui.accountsStatus, "success", "Account aggiornato.");
   } catch (error) {
     const message = error.message === "email_already_exists"
       ? "Questa email e gia usata da un altro account."
-      : error.message === "weak_password"
+      : error.message === "weak_password" || error.message === "weak_password_length"
         ? "La nuova password deve avere almeno 12 caratteri."
+        : error.message === "weak_password_case"
+          ? "La password deve contenere maiuscole e minuscole."
+          : error.message === "weak_password_number"
+            ? "La password deve contenere almeno un numero."
         : error.message === "invalid_account_payload"
           ? "Controlla nome, email e ruolo."
           : "Aggiornamento account fallito.";
@@ -4077,6 +4137,14 @@ async function updatePassword(event) {
     setStatus(ui.securityStatus, "error", "La nuova password deve avere almeno 12 caratteri.");
     return;
   }
+  if (!/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword)) {
+    setStatus(ui.securityStatus, "error", "Usa almeno una lettera maiuscola e una minuscola.");
+    return;
+  }
+  if (!/\d/.test(newPassword)) {
+    setStatus(ui.securityStatus, "error", "Aggiungi almeno un numero alla nuova password.");
+    return;
+  }
   if (newPassword !== confirmPassword) {
     setStatus(ui.securityStatus, "error", "La conferma password non coincide.");
     return;
@@ -4086,13 +4154,18 @@ async function updatePassword(event) {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
     });
+    await reloadAll();
     ui.securityForm.reset();
     setStatus(ui.securityStatus, "success", "Password aggiornata correttamente.");
   } catch (error) {
     const message = error.message === "invalid_current_password"
       ? "La password attuale non e corretta."
-      : error.message === "weak_password"
+      : error.message === "weak_password" || error.message === "weak_password_length"
         ? "La nuova password e troppo debole."
+        : error.message === "weak_password_case"
+          ? "La nuova password deve contenere maiuscole e minuscole."
+          : error.message === "weak_password_number"
+            ? "La nuova password deve contenere almeno un numero."
         : "Aggiornamento password fallito.";
     setStatus(ui.securityStatus, "error", message);
   }
@@ -4181,6 +4254,8 @@ async function reloadAll() {
   state.inventory = session.inventory || [];
   state.settings = session.shopifySettings || {};
   state.users = session.users || [];
+  state.securityEvents = session.securityEvents || [];
+  state.securityPolicy = session.securityPolicy || {};
   ensureSelectedOrder();
   render();
 }
@@ -4296,12 +4371,17 @@ ui.authForm.addEventListener("submit", async (event) => {
     state.inventory = session.inventory || [];
     state.settings = session.shopifySettings || {};
     state.users = session.users || [];
+    state.securityEvents = session.securityEvents || [];
+    state.securityPolicy = session.securityPolicy || {};
+    if (state.currentUser?.mustChangePassword) state.currentView = "settings";
     ensureSelectedOrder();
     ui.authError.classList.add("hidden");
     showApp();
   } catch (error) {
     ui.authError.textContent = error.message === "invalid_credentials"
       ? "Credenziali non valide."
+      : error.message === "account_suspended"
+        ? "Questo account e sospeso. Accedi con un account office per riattivarlo."
       : error.message === "too_many_attempts"
         ? "Troppi tentativi di accesso. Attendi 2 minuti e riprova."
         : "Errore server o sessione non salvata. Riprova tra qualche secondo.";

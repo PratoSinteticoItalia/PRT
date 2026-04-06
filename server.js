@@ -38,7 +38,18 @@ const LOGIN_WINDOW_MS = 1000 * 60 * 2;
 const LOGIN_MAX_ATTEMPTS = 20;
 const IS_PUBLIC_DEPLOY = Boolean(process.env.RENDER || process.env.NODE_ENV === "production");
 const ALLOW_DEMO_FALLBACK = process.env.ALLOW_DEMO_FALLBACK === "true" || !IS_PUBLIC_DEPLOY;
+const PASSWORD_MIN_LENGTH = 12;
+const BOOTSTRAP_OFFICE_EMAIL = String(process.env.BOOTSTRAP_OFFICE_EMAIL || "office@vertex.local").trim().toLowerCase();
+const BOOTSTRAP_OFFICE_PASSWORD = String(process.env.BOOTSTRAP_OFFICE_PASSWORD || "");
 const loginAttempts = new Map();
+
+function validatePasswordStrength(password = "") {
+  const value = String(password || "");
+  if (value.length < PASSWORD_MIN_LENGTH) return "weak_password_length";
+  if (!/[a-z]/.test(value) || !/[A-Z]/.test(value)) return "weak_password_case";
+  if (!/\d/.test(value)) return "weak_password_number";
+  return "";
+}
 
 function hashPassword(password, salt = randomBytes(16).toString("hex")) {
   return {
@@ -66,6 +77,10 @@ function sanitizePasswordUser(user = {}) {
     nextUser.passwordHash = hash;
     nextUser.passwordSalt = salt;
   }
+  nextUser.status = nextUser.status === "suspended" ? "suspended" : "active";
+  nextUser.mustChangePassword = Boolean(nextUser.mustChangePassword);
+  nextUser.sessionVersion = Math.max(1, Number(nextUser.sessionVersion || 1));
+  nextUser.lastPasswordChangeAt = String(nextUser.lastPasswordChangeAt || "");
   delete nextUser.password;
   return nextUser;
 }
@@ -170,6 +185,7 @@ function buildDefaultStore() {
     jobs: [],
     orders: [],
     inventory: [],
+    securityEvents: [],
     shopifySettings: {
       storeDomain: "",
       clientId: "",
@@ -202,11 +218,31 @@ function getDemoUsers() {
 
 function sanitizeUser(user) {
   if (!user) return null;
-  return { id: user.id, name: user.name, email: user.email, role: user.role };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    status: user.status === "suspended" ? "suspended" : "active",
+    mustChangePassword: Boolean(user.mustChangePassword),
+  };
 }
 
 function isValidRole(role = "") {
   return ["office", "warehouse", "crew"].includes(String(role || "").trim());
+}
+
+function pushSecurityEvent(store, type, actor, message, meta = {}) {
+  store.securityEvents = Array.isArray(store.securityEvents) ? store.securityEvents : [];
+  store.securityEvents.unshift({
+    id: randomUUID(),
+    type,
+    actor: actor || "system",
+    message,
+    meta,
+    createdAt: new Date().toISOString(),
+  });
+  store.securityEvents = store.securityEvents.slice(0, 150);
 }
 
 function serializeShopifySettings(settings = {}) {
@@ -539,6 +575,7 @@ function reconcileStoreData(store) {
 
   store.jobs = Array.isArray(store.jobs) ? store.jobs : [];
   store.orders = Array.isArray(store.orders) ? store.orders : [];
+  store.securityEvents = Array.isArray(store.securityEvents) ? store.securityEvents : [];
   store.shopifySettings = {
     ...defaults.shopifySettings,
     ...(store.shopifySettings || {}),
@@ -597,6 +634,40 @@ function reconcileStoreData(store) {
     const existingJob = store.jobs.find((job) => job.sourceOrderId === order.id);
     order.convertedJobId = existingJob?.id || null;
   });
+
+  if (BOOTSTRAP_OFFICE_PASSWORD) {
+    const bootstrapError = validatePasswordStrength(BOOTSTRAP_OFFICE_PASSWORD);
+    if (!bootstrapError) {
+      const officeIndex = store.users.findIndex((user) => String(user.email || "").trim().toLowerCase() === BOOTSTRAP_OFFICE_EMAIL)
+        >= 0
+        ? store.users.findIndex((user) => String(user.email || "").trim().toLowerCase() === BOOTSTRAP_OFFICE_EMAIL)
+        : store.users.findIndex((user) => user.role === "office");
+      if (officeIndex >= 0) {
+        const officeUser = store.users[officeIndex];
+        if (!verifyPasswordRecord(officeUser, BOOTSTRAP_OFFICE_PASSWORD)) {
+          const { hash, salt } = hashPassword(BOOTSTRAP_OFFICE_PASSWORD);
+          store.users[officeIndex] = {
+            ...officeUser,
+            email: BOOTSTRAP_OFFICE_EMAIL || officeUser.email,
+            passwordHash: hash,
+            passwordSalt: salt,
+            status: "active",
+            mustChangePassword: true,
+            sessionVersion: Math.max(1, Number(officeUser.sessionVersion || 1)) + 1,
+            lastPasswordChangeAt: new Date().toISOString(),
+          };
+          pushSecurityEvent(
+            store,
+            "bootstrap_password_reset",
+            "system",
+            `Bootstrap password applicata per ${store.users[officeIndex].email}.`,
+            { email: store.users[officeIndex].email },
+          );
+          changed = true;
+        }
+      }
+    }
+  }
 
   return changed;
 }
@@ -906,6 +977,7 @@ async function getSessionUser(req, store) {
   const session = await readJson(SESSION_PATH, {});
   const entry = session[cookies.vertex_session];
   const userId = typeof entry === "string" ? entry : entry?.userId;
+  const version = typeof entry === "object" && entry?.version ? Number(entry.version) : 1;
   const expiresAt = typeof entry === "object" && entry?.expiresAt ? Number(entry.expiresAt) : 0;
   if (expiresAt && expiresAt < Date.now()) {
     delete session[cookies.vertex_session];
@@ -913,7 +985,14 @@ async function getSessionUser(req, store) {
     return null;
   }
   if (!userId) return null;
-  return store.users.find((user) => user.id === userId) || null;
+  const user = store.users.find((item) => item.id === userId) || null;
+  if (!user) return null;
+  if (Number(user.sessionVersion || 1) !== version || user.status === "suspended") {
+    delete session[cookies.vertex_session];
+    await writeJson(SESSION_PATH, session);
+    return null;
+  }
+  return user;
 }
 
 async function handleApi(req, res, url) {
@@ -932,6 +1011,13 @@ async function handleApi(req, res, url) {
       orders: currentUser ? store.orders : [],
       inventory: currentUser ? store.inventory : [],
       shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
+      securityEvents: currentUser?.role === "office" ? store.securityEvents : [],
+      securityPolicy: currentUser?.role === "office"
+        ? {
+            passwordMinLength: PASSWORD_MIN_LENGTH,
+            bootstrapRecoveryActive: Boolean(BOOTSTRAP_OFFICE_PASSWORD),
+          }
+        : {},
     });
   }
 
@@ -962,14 +1048,23 @@ async function handleApi(req, res, url) {
 
     if (!user) {
       recordFailedLogin(req, email);
+      pushSecurityEvent(store, "login_failed", email || "unknown", "Tentativo login fallito.", { ip: getClientIp(req) });
+      await writeJson(STORE_PATH, store);
       return sendJson(res, 401, { error: "invalid_credentials" });
+    }
+    if (user.status === "suspended") {
+      pushSecurityEvent(store, "login_blocked", user.email, "Login rifiutato: account sospeso.", { ip: getClientIp(req) });
+      await writeJson(STORE_PATH, store);
+      return sendJson(res, 403, { error: "account_suspended" });
     }
     clearFailedLogin(req, email);
 
     const sessionId = randomUUID();
     const sessions = await readJson(SESSION_PATH, {});
-    sessions[sessionId] = { userId: user.id, expiresAt: Date.now() + SESSION_TTL_MS };
+    sessions[sessionId] = { userId: user.id, version: Number(user.sessionVersion || 1), expiresAt: Date.now() + SESSION_TTL_MS };
     await writeJson(SESSION_PATH, sessions);
+    pushSecurityEvent(store, "login_success", user.email, "Login effettuato.", { ip: getClientIp(req) });
+    await writeJson(STORE_PATH, store);
 
     return sendJson(
       res,
@@ -981,6 +1076,13 @@ async function handleApi(req, res, url) {
         inventory: store.inventory,
         shopifySettings: serializeShopifySettings(store.shopifySettings),
         users: user.role === "office" ? store.users.map(sanitizeUser) : [],
+        securityEvents: user.role === "office" ? store.securityEvents : [],
+        securityPolicy: user.role === "office"
+          ? {
+              passwordMinLength: PASSWORD_MIN_LENGTH,
+              bootstrapRecoveryActive: Boolean(BOOTSTRAP_OFFICE_PASSWORD),
+            }
+          : {},
       },
       {
         "Set-Cookie": `vertex_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
@@ -1008,8 +1110,9 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const currentPassword = String(body.currentPassword || "");
     const nextPassword = String(body.newPassword || "");
-    if (nextPassword.length < 12) {
-      return sendJson(res, 400, { error: "weak_password" });
+    const passwordError = validatePasswordStrength(nextPassword);
+    if (passwordError) {
+      return sendJson(res, 400, { error: passwordError });
     }
     const userIndex = store.users.findIndex((item) => item.id === currentUser.id);
     if (userIndex < 0) return sendJson(res, 404, { error: "user_not_found" });
@@ -1018,14 +1121,30 @@ async function handleApi(req, res, url) {
       return sendJson(res, 400, { error: "invalid_current_password" });
     }
     const { hash, salt } = hashPassword(nextPassword);
+    const sessions = await readJson(SESSION_PATH, {});
+    const currentCookie = parseCookies(req.headers.cookie).vertex_session;
     store.users[userIndex] = {
       ...storedUser,
       passwordHash: hash,
       passwordSalt: salt,
+      mustChangePassword: false,
+      sessionVersion: Math.max(1, Number(storedUser.sessionVersion || 1)) + 1,
+      lastPasswordChangeAt: new Date().toISOString(),
     };
     delete store.users[userIndex].password;
+    const sessionId = randomUUID();
+    sessions[sessionId] = {
+      userId: storedUser.id,
+      version: store.users[userIndex].sessionVersion,
+      expiresAt: Date.now() + SESSION_TTL_MS,
+    };
+    if (currentCookie) delete sessions[currentCookie];
+    await writeJson(SESSION_PATH, sessions);
+    pushSecurityEvent(store, "password_changed", currentUser.email, "Password aggiornata dall'utente.", {});
     await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, { ok: true });
+    return sendJson(res, 200, { ok: true }, {
+      "Set-Cookie": `vertex_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
+    });
   }
 
   if (url.pathname === "/api/webhooks/shopify/orders" && req.method === "POST") {
@@ -1148,7 +1267,19 @@ async function handleApi(req, res, url) {
       inventory: store.inventory,
       shopifySettings: serializeShopifySettings(store.shopifySettings),
       users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
+      securityEvents: currentUser?.role === "office" ? store.securityEvents : [],
+      securityPolicy: currentUser?.role === "office"
+        ? {
+            passwordMinLength: PASSWORD_MIN_LENGTH,
+            bootstrapRecoveryActive: Boolean(BOOTSTRAP_OFFICE_PASSWORD),
+          }
+        : {},
     });
+  }
+
+  if (url.pathname === "/api/security/events" && req.method === "GET") {
+    if (requireOffice(res, currentUser)) return;
+    return sendJson(res, 200, store.securityEvents);
   }
 
   if (url.pathname === "/api/accounts" && req.method === "GET") {
@@ -1163,8 +1294,14 @@ async function handleApi(req, res, url) {
     const email = String(body.email || "").trim().toLowerCase();
     const role = String(body.role || "").trim();
     const password = String(body.password || "");
-    if (!name || !email || !isValidRole(role) || password.length < 12) {
+    const status = String(body.status || "active").trim() === "suspended" ? "suspended" : "active";
+    const mustChangePassword = Boolean(body.mustChangePassword);
+    if (!name || !email || !isValidRole(role)) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
+    }
+    const passwordError = validatePasswordStrength(password);
+    if (passwordError) {
+      return sendJson(res, 400, { error: passwordError });
     }
     if (store.users.some((item) => item.email.toLowerCase() === email)) {
       return sendJson(res, 400, { error: "email_already_exists" });
@@ -1175,10 +1312,15 @@ async function handleApi(req, res, url) {
       name,
       email,
       role,
+      status,
+      mustChangePassword,
+      sessionVersion: 1,
+      lastPasswordChangeAt: new Date().toISOString(),
       passwordHash: hash,
       passwordSalt: salt,
     };
     store.users.push(created);
+    pushSecurityEvent(store, "account_created", currentUser.email, `Creato account ${email}.`, { email, role, status });
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, sanitizeUser(created));
   }
@@ -1193,6 +1335,8 @@ async function handleApi(req, res, url) {
     const nextEmail = String(body.email || current.email || "").trim().toLowerCase();
     const nextName = String(body.name || current.name || "").trim();
     const nextRole = String(body.role || current.role || "").trim();
+    const nextStatus = String(body.status || current.status || "active").trim() === "suspended" ? "suspended" : "active";
+    const mustChangePassword = body.mustChangePassword === true || body.mustChangePassword === "true";
     const newPassword = String(body.password || "");
     if (!nextName || !nextEmail || !isValidRole(nextRole)) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
@@ -1205,17 +1349,31 @@ async function handleApi(req, res, url) {
       name: nextName,
       email: nextEmail,
       role: nextRole,
+      status: nextStatus,
+      mustChangePassword: mustChangePassword || current.mustChangePassword,
     };
     if (newPassword) {
-      if (newPassword.length < 12) {
-        return sendJson(res, 400, { error: "weak_password" });
+      const passwordError = validatePasswordStrength(newPassword);
+      if (passwordError) {
+        return sendJson(res, 400, { error: passwordError });
       }
       const { hash, salt } = hashPassword(newPassword);
       updated.passwordHash = hash;
       updated.passwordSalt = salt;
+      updated.mustChangePassword = mustChangePassword || false;
+      updated.sessionVersion = Math.max(1, Number(current.sessionVersion || 1)) + 1;
+      updated.lastPasswordChangeAt = new Date().toISOString();
       delete updated.password;
+    } else if (mustChangePassword !== current.mustChangePassword || nextStatus !== current.status) {
+      updated.sessionVersion = Math.max(1, Number(current.sessionVersion || 1)) + 1;
     }
     store.users[userIndex] = updated;
+    pushSecurityEvent(store, "account_updated", currentUser.email, `Aggiornato account ${nextEmail}.`, {
+      email: nextEmail,
+      role: nextRole,
+      status: nextStatus,
+      mustChangePassword: updated.mustChangePassword,
+    });
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, sanitizeUser(updated));
   }
