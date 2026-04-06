@@ -3354,7 +3354,7 @@ async function syncShopifyOrders() {
       "error",
       error.message === "missing_shopify_credentials"
         ? "Sync Shopify fallito. Compila dominio store e Admin API access token nelle impostazioni."
-        : "Sync Shopify fallito. Verifica dominio store, Admin API access token e permessi dell'app.",
+        : `Sync Shopify fallito. ${error.message}`,
     );
   }
 }

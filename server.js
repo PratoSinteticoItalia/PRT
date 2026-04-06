@@ -693,10 +693,14 @@ async function syncOrdersFromShopify(store) {
   });
 
   if (!response.ok) {
-    throw new Error("shopify_sync_failed");
+    const responseText = await response.text().catch(() => "");
+    throw new Error(responseText ? `shopify_sync_failed: ${response.status} ${responseText}` : `shopify_sync_failed: ${response.status}`);
   }
 
   const payload = await response.json();
+  if (Array.isArray(payload?.errors) && payload.errors.length) {
+    throw new Error(`shopify_sync_failed: ${payload.errors.map((item) => item.message || item).join(" | ")}`);
+  }
   const edges = payload?.data?.orders?.edges || [];
   const normalized = edges.map((edge, index) => normalizeGraphqlOrder(edge.node, index));
   const existingIds = new Set(store.orders.map((order) => order.id));
@@ -739,12 +743,13 @@ async function getShopifyAccessToken(store) {
   });
 
   if (!tokenResponse.ok) {
-    throw new Error("shopify_sync_failed");
+    const responseText = await tokenResponse.text().catch(() => "");
+    throw new Error(responseText ? `shopify_token_failed: ${tokenResponse.status} ${responseText}` : `shopify_token_failed: ${tokenResponse.status}`);
   }
 
   const tokenPayload = await tokenResponse.json();
   if (!tokenPayload?.access_token) {
-    throw new Error("shopify_sync_failed");
+    throw new Error("shopify_token_failed: token_missing");
   }
 
   return tokenPayload.access_token;
