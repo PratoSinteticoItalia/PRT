@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, dirname, join, resolve } from "node:path";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -8,9 +8,10 @@ import { fileURLToPath } from "node:url";
 const PORT = Number(process.env.PORT || 4178);
 const HOST = process.env.HOST || "0.0.0.0";
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = resolve(process.env.DATA_DIR || join(ROOT, "data"));
-const STORE_PATH = join(DATA_DIR, "store.json");
-const SESSION_PATH = join(DATA_DIR, "session.json");
+const FALLBACK_DATA_DIR = resolve(join(ROOT, "data"));
+let DATA_DIR = resolve(process.env.DATA_DIR || FALLBACK_DATA_DIR);
+let STORE_PATH = join(DATA_DIR, "store.json");
+let SESSION_PATH = join(DATA_DIR, "session.json");
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -22,6 +23,28 @@ const MIME_TYPES = {
   ".jpeg": "image/jpeg",
   ".svg": "image/svg+xml",
 };
+
+function setDataDir(nextDir) {
+  DATA_DIR = resolve(nextDir);
+  STORE_PATH = join(DATA_DIR, "store.json");
+  SESSION_PATH = join(DATA_DIR, "session.json");
+}
+
+function ensureWritableDataDir() {
+  try {
+    mkdirSync(DATA_DIR, { recursive: true });
+    const probePath = join(DATA_DIR, ".write-test");
+    writeFileSync(probePath, "ok", "utf8");
+    unlinkSync(probePath);
+  } catch {
+    if (DATA_DIR !== FALLBACK_DATA_DIR) {
+      setDataDir(FALLBACK_DATA_DIR);
+      mkdirSync(DATA_DIR, { recursive: true });
+    }
+  }
+}
+
+ensureWritableDataDir();
 
 async function readJson(path, fallback) {
   try {
@@ -537,9 +560,7 @@ function jobFromOrder(order) {
 }
 
 async function ensureStore() {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
+  ensureWritableDataDir();
   if (!existsSync(STORE_PATH)) {
     await writeJson(STORE_PATH, buildDefaultStore());
   }

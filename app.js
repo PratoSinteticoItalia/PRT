@@ -4084,8 +4084,10 @@ ui.authForm.addEventListener("submit", async (event) => {
     ensureSelectedOrder();
     ui.authError.classList.add("hidden");
     showApp();
-  } catch {
-    ui.authError.textContent = "Credenziali non valide.";
+  } catch (error) {
+    ui.authError.textContent = error.message === "invalid_credentials"
+      ? "Credenziali non valide."
+      : "Errore server o sessione non salvata. Riprova tra qualche secondo.";
     ui.authError.classList.remove("hidden");
   }
 });
