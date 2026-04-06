@@ -1128,7 +1128,12 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true });
   }
 
-  if (url.pathname.match(/^\/api\/orders\/[^/]+$/) && req.method === "POST") {
+  if (
+    url.pathname.match(/^\/api\/orders\/[^/]+$/)
+    && req.method === "POST"
+    && url.pathname !== "/api/orders/sync-shopify"
+    && url.pathname !== "/api/orders/import"
+  ) {
     const orderId = decodeURIComponent(url.pathname.split("/")[3]);
     const body = await readBody(req);
     const orderIndex = store.orders.findIndex((item) => item.id === orderId);
