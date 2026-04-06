@@ -3226,8 +3226,8 @@ function renderShipping() {
 function renderSettings() {
   ui.settingsForm.storeDomain.value = state.settings.storeDomain || "";
   ui.settingsForm.clientId.value = state.settings.clientId || "";
-  ui.settingsForm.clientSecret.value = state.settings.clientSecret || "";
-  ui.settingsForm.adminAccessToken.value = state.settings.adminAccessToken || "";
+  ui.settingsForm.clientSecret.value = "";
+  ui.settingsForm.adminAccessToken.value = "";
   ui.settingsForm.locationName.value = state.settings.locationName || "";
   ui.settingsForm.carrierName.value = state.settings.carrierName || "";
   ui.settingsForm.shippingRateMode.value = state.settings.shippingRateMode || "oneexpress-auto";
@@ -3240,7 +3240,7 @@ function renderSettings() {
   ui.settingsForm.rate1000.value = state.settings.rate1000 || "";
   ui.settingsForm.extraKgRate.value = state.settings.extraKgRate || "";
   if (ui.connectShopifyButton) {
-    ui.connectShopifyButton.textContent = state.settings.adminAccessToken
+    ui.connectShopifyButton.textContent = state.settings.hasAdminAccessToken
       ? "Ricollega Shopify"
       : "Connect Shopify";
   }

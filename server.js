@@ -131,6 +131,23 @@ function sanitizeUser(user) {
   return { id: user.id, name: user.name, email: user.email, role: user.role };
 }
 
+function serializeShopifySettings(settings = {}) {
+  return {
+    ...settings,
+    clientSecret: "",
+    adminAccessToken: "",
+    hasClientSecret: Boolean(String(settings.clientSecret || "").trim()),
+    hasAdminAccessToken: Boolean(String(settings.adminAccessToken || "").trim()),
+  };
+}
+
+function requireOffice(res, currentUser) {
+  if (!currentUser) return false;
+  if (currentUser?.role === "office") return false;
+  sendJson(res, 403, { error: "forbidden" });
+  return true;
+}
+
 function parseCookies(cookieHeader = "") {
   return cookieHeader.split(";").reduce((acc, part) => {
     const [key, ...rest] = part.trim().split("=");
@@ -806,7 +823,7 @@ async function handleApi(req, res, url) {
       jobs: currentUser ? store.jobs : [],
       orders: currentUser ? store.orders : [],
       inventory: currentUser ? store.inventory : [],
-      shopifySettings: currentUser ? store.shopifySettings : {},
+      shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
     });
   }
 
@@ -844,10 +861,10 @@ async function handleApi(req, res, url) {
         jobs: store.jobs,
         orders: store.orders,
         inventory: store.inventory,
-        shopifySettings: store.shopifySettings,
+        shopifySettings: serializeShopifySettings(store.shopifySettings),
       },
       {
-        "Set-Cookie": `vertex_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax`,
+        "Set-Cookie": `vertex_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
       },
     );
   }
@@ -863,7 +880,7 @@ async function handleApi(req, res, url) {
       res,
       200,
       { ok: true },
-      { "Set-Cookie": "vertex_session=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax" },
+      { "Set-Cookie": "vertex_session=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax; Secure" },
     );
   }
 
@@ -883,6 +900,7 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === "/api/shopify/oauth/start" && req.method === "GET") {
+    if (requireOffice(res, currentUser)) return;
     if (!currentUser) {
       return sendRedirect(res, "/index.html?shopify=error&message=Effettua%20prima%20il%20login");
     }
@@ -912,6 +930,7 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === "/api/shopify/oauth/callback" && req.method === "GET") {
+    if (requireOffice(res, currentUser)) return;
     const cookies = parseCookies(req.headers.cookie);
     const state = String(url.searchParams.get("state") || "");
     const shop = String(url.searchParams.get("shop") || "").trim().toLowerCase();
@@ -983,7 +1002,7 @@ async function handleApi(req, res, url) {
       jobs: store.jobs,
       orders: store.orders,
       inventory: store.inventory,
-      shopifySettings: store.shopifySettings,
+      shopifySettings: serializeShopifySettings(store.shopifySettings),
     });
   }
 
@@ -1391,16 +1410,18 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === "/api/settings/shopify" && req.method === "GET") {
-    return sendJson(res, 200, store.shopifySettings);
+    if (requireOffice(res, currentUser)) return;
+    return sendJson(res, 200, serializeShopifySettings(store.shopifySettings));
   }
 
   if (url.pathname === "/api/settings/shopify" && req.method === "POST") {
+    if (requireOffice(res, currentUser)) return;
     const body = await readBody(req);
     store.shopifySettings = {
       storeDomain: body.storeDomain || "",
       clientId: body.clientId || "",
-      clientSecret: body.clientSecret || "",
-      adminAccessToken: body.adminAccessToken || "",
+      clientSecret: body.clientSecret || store.shopifySettings?.clientSecret || "",
+      adminAccessToken: body.adminAccessToken || store.shopifySettings?.adminAccessToken || "",
       installedShop: store.shopifySettings?.installedShop || "",
       tokenScope: store.shopifySettings?.tokenScope || "",
       tokenUpdatedAt: store.shopifySettings?.tokenUpdatedAt || "",
@@ -1420,7 +1441,7 @@ async function handleApi(req, res, url) {
       webhookSubscriptionId: store.shopifySettings?.webhookSubscriptionId || "",
     };
     await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, store.shopifySettings);
+    return sendJson(res, 200, serializeShopifySettings(store.shopifySettings));
   }
 
   if (url.pathname === "/api/reset-demo" && req.method === "POST") {
