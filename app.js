@@ -1963,7 +1963,8 @@ function applyStaticTranslations() {
   setFieldLabel(ui.shippingForm, "destinationPostalCode", state.lang === "it" ? "CAP destinazione" : "Destination ZIP");
   setFieldLabel(ui.settingsForm, "storeDomain", state.lang === "it" ? "Dominio Shopify" : "Shopify domain");
   setFieldLabel(ui.settingsForm, "clientId", "Client ID");
-  setFieldLabel(ui.settingsForm, "clientSecret", state.lang === "it" ? "Client secret" : "Client secret");
+  setFieldLabel(ui.settingsForm, "clientSecret", state.lang === "it" ? "Client secret app" : "App client secret");
+  setFieldLabel(ui.settingsForm, "adminAccessToken", state.lang === "it" ? "Admin API access token" : "Admin API access token");
   setFieldLabel(ui.settingsForm, "locationName", state.lang === "it" ? "Deposito / location" : "Warehouse / location");
   setFieldLabel(ui.settingsForm, "carrierName", state.lang === "it" ? "Vettore di riferimento" : "Reference carrier");
   setFieldLabel(ui.settingsForm, "shippingRateMode", state.lang === "it" ? "Modalità tariffa spedizione" : "Shipping pricing mode");
@@ -3225,6 +3226,7 @@ function renderSettings() {
   ui.settingsForm.storeDomain.value = state.settings.storeDomain || "";
   ui.settingsForm.clientId.value = state.settings.clientId || "";
   ui.settingsForm.clientSecret.value = state.settings.clientSecret || "";
+  ui.settingsForm.adminAccessToken.value = state.settings.adminAccessToken || "";
   ui.settingsForm.locationName.value = state.settings.locationName || "";
   ui.settingsForm.carrierName.value = state.settings.carrierName || "";
   ui.settingsForm.shippingRateMode.value = state.settings.shippingRateMode || "oneexpress-auto";
@@ -3341,7 +3343,13 @@ async function syncShopifyOrders() {
     setStatus(ui.ordersStatus, "success", "Ordini Shopify sincronizzati.");
     render();
   } catch (error) {
-    setStatus(ui.ordersStatus, "error", "Sync Shopify fallito. Verifica dominio, credenziali e connessione.");
+    setStatus(
+      ui.ordersStatus,
+      "error",
+      error.message === "missing_shopify_credentials"
+        ? "Sync Shopify fallito. Compila dominio store e Admin API access token nelle impostazioni."
+        : "Sync Shopify fallito. Verifica dominio store, Admin API access token e permessi dell'app.",
+    );
   }
 }
 
@@ -3886,6 +3894,7 @@ async function saveSettings(event) {
       storeDomain: form.get("storeDomain"),
       clientId: form.get("clientId"),
       clientSecret: form.get("clientSecret"),
+      adminAccessToken: form.get("adminAccessToken"),
       locationName: form.get("locationName"),
       carrierName: form.get("carrierName"),
       shippingRateMode: form.get("shippingRateMode") === "manual-weight" ? "manual-weight" : "oneexpress-auto",

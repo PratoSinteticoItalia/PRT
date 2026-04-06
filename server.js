@@ -91,6 +91,7 @@ function buildDefaultStore() {
       storeDomain: "",
       clientId: "",
       clientSecret: "",
+      adminAccessToken: "",
       locationName: "",
       carrierName: "",
       shippingRateMode: "oneexpress-auto",
@@ -659,8 +660,17 @@ async function syncOrdersFromShopify(store) {
 }
 
 async function getShopifyAccessToken(store) {
-  const { storeDomain, clientId, clientSecret } = store.shopifySettings || {};
-  if (!storeDomain || !clientId || !clientSecret) {
+  const { storeDomain, clientId, clientSecret, adminAccessToken } = store.shopifySettings || {};
+  if (!storeDomain) {
+    throw new Error("missing_shopify_credentials");
+  }
+
+  const directToken = String(adminAccessToken || "").trim();
+  if (directToken) {
+    return directToken;
+  }
+
+  if (!clientId || !clientSecret) {
     throw new Error("missing_shopify_credentials");
   }
 
@@ -1237,6 +1247,7 @@ async function handleApi(req, res, url) {
       storeDomain: body.storeDomain || "",
       clientId: body.clientId || "",
       clientSecret: body.clientSecret || "",
+      adminAccessToken: body.adminAccessToken || "",
       locationName: body.locationName || "",
       carrierName: body.carrierName || "",
       shippingRateMode: body.shippingRateMode === "manual-weight" ? "manual-weight" : "oneexpress-auto",
