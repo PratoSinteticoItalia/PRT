@@ -4650,3 +4650,485 @@ select:focus {
     grid-template-columns: 188px 1fr;
   }
 }
+
+/* Responsive hardening and layout bugfixes */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.app-shell,
+.main-content,
+.view,
+.page-header,
+.page-header-bar,
+.panel,
+.section,
+.detail-panel,
+.order-detail-panel,
+.install-detail-panel,
+.kpi-card,
+.action-card,
+.info-card,
+.detail-box,
+.warehouse-card,
+.installation-card,
+.accounting-card {
+  min-width: 0;
+}
+
+.page-header,
+.page-header-bar {
+  overflow: visible;
+}
+
+.page-header h1,
+.page-header-bar h2,
+.section-title,
+.detail-title,
+.kpi-value,
+.action-title,
+.accounting-analysis-card strong,
+.warehouse-card-head strong,
+.installation-card-head strong,
+.order-card-head strong,
+.accounting-card-head strong {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.page-header h1,
+.page-header-bar h2 {
+  padding-left: 2px;
+  letter-spacing: -0.02em;
+}
+
+.page-header::after {
+  opacity: 0.55;
+}
+
+.page-header > div:last-child,
+.page-header-bar > div:last-child,
+.panel-head > div:last-child,
+.subsection-head > div:last-child,
+.detail-actions,
+.inline-actions,
+.filter-bar {
+  flex-wrap: wrap;
+}
+
+.detail-actions,
+.inline-actions,
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.detail-actions > *,
+.inline-actions > *,
+.filter-bar > * {
+  flex-shrink: 0;
+}
+
+.btn,
+.primary-button,
+.ghost-button,
+.small-button,
+.topbar-btn,
+.filter-btn {
+  min-height: 38px;
+}
+
+.topbar {
+  gap: 12px;
+}
+
+.topbar-left {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.topbar-logo {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.topbar-logo-copy {
+  min-width: 0;
+}
+
+.topbar-logo-copy span {
+  white-space: nowrap;
+}
+
+.topbar-search {
+  flex: 1 1 240px;
+  min-width: 180px;
+}
+
+.topbar-search input,
+.topbar-search input:focus {
+  width: 100%;
+  max-width: 100%;
+}
+
+.topbar-right {
+  min-width: 0;
+}
+
+.topbar-user-copy span {
+  white-space: nowrap;
+}
+
+.nav {
+  min-width: 0;
+}
+
+.nav-link {
+  position: relative;
+  justify-content: flex-start;
+}
+
+.kpi-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.dashboard-grid,
+.dashboard-grid-double,
+.two-col,
+.order-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.92fr);
+}
+
+.detail-panel,
+.order-detail-panel,
+.install-detail-panel {
+  position: sticky;
+  top: 82px;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+.view-toolbar {
+  align-items: start;
+}
+
+.view-search-field {
+  min-width: 0;
+}
+
+.view-search-input {
+  width: 100%;
+}
+
+.order-list-pro,
+.action-list,
+.feed,
+.detail-stack,
+.info-stack {
+  min-width: 0;
+}
+
+.order-row,
+.inbox-row,
+.shipping-row,
+.accounting-row,
+.warehouse-action-card,
+.section-header,
+.detail-header,
+.subsection-head {
+  min-width: 0;
+}
+
+.order-row > *,
+.inbox-row > *,
+.shipping-row > *,
+.accounting-row > *,
+.warehouse-action-card > *,
+.section-header > *,
+.detail-header > *,
+.subsection-head > * {
+  min-width: 0;
+}
+
+.material-list li,
+.prep-list,
+.detail-row,
+.detail-row-value,
+.detail-id,
+.action-sub,
+.kpi-sub,
+.panel-note,
+.subsection-copy {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (max-width: 1320px) {
+  .app-shell {
+    grid-template-columns: 178px 1fr;
+  }
+
+  .topbar-logo-copy small {
+    display: none;
+  }
+
+  .topbar-right {
+    gap: 8px;
+  }
+
+  .topbar-btn {
+    padding-inline: 12px;
+    font-size: 12px;
+  }
+
+  .dashboard-grid,
+  .dashboard-grid-double,
+  .two-col,
+  .order-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-panel,
+  .order-detail-panel,
+  .install-detail-panel {
+    position: static;
+    top: auto;
+    max-height: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "topbar"
+      "sidebar"
+      "main";
+  }
+
+  .topbar {
+    padding: 12px;
+    align-items: stretch;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .topbar-right {
+    justify-content: flex-start;
+  }
+
+  .topbar-search {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .sidebar {
+    padding: 10px 12px;
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .sidebar-brand-block,
+  .user-card,
+  .sidebar-card,
+  .sidebar-section-label,
+  .sidebar-divider-line {
+    display: none;
+  }
+
+  .nav {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(132px, 1fr);
+    gap: 8px;
+    min-width: max-content;
+  }
+
+  .nav-link {
+    justify-content: center;
+    min-height: 42px;
+  }
+
+  .main-content {
+    padding: 14px;
+  }
+
+  .page-header,
+  .page-header-bar,
+  .panel-head,
+  .subsection-head,
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-header h1 {
+    font-size: 28px;
+    line-height: 1.08;
+  }
+
+  .page-header-sub {
+    font-size: 13px;
+  }
+
+  .kpi-grid,
+  .accounting-analysis,
+  .shipping-overview-grid,
+  .wh-stats,
+  .detail-grid,
+  .inline-form-grid,
+  .form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar-logo-copy span {
+    font-size: 14px;
+  }
+
+  .topbar-user-copy {
+    display: none;
+  }
+
+  .topbar-btn,
+  .btn,
+  .primary-button,
+  .ghost-button,
+  .filter-btn {
+    min-height: 40px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .detail-actions,
+  .inline-actions,
+  .filter-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .detail-actions > *,
+  .inline-actions > *,
+  .filter-bar > * {
+    width: 100%;
+  }
+
+  .kpi-grid,
+  .accounting-analysis,
+  .shipping-overview-grid,
+  .wh-stats,
+  .detail-grid,
+  .inline-form-grid,
+  .form-grid,
+  .cal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-header,
+  .page-header-bar {
+    margin-bottom: 14px;
+  }
+
+  .page-header h1 {
+    font-size: 24px;
+  }
+
+  .section-title {
+    font-size: 24px;
+  }
+
+  .kpi-value {
+    font-size: 34px;
+  }
+
+  .main-content {
+    padding: 12px;
+  }
+
+  .panel,
+  .section,
+  .kpi-card,
+  .order-card,
+  .warehouse-card,
+  .installation-card,
+  .accounting-card,
+  .detail-panel,
+  .order-detail-panel,
+  .install-detail-panel {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .detail-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .detail-row-value {
+    text-align: left;
+  }
+
+  .inbox-row,
+  .shipping-row,
+  .accounting-row,
+  .warehouse-action-card,
+  .action-card {
+    grid-template-columns: 1fr;
+  }
+
+  .inbox-row > :nth-child(3),
+  .shipping-row > :nth-child(3),
+  .accounting-row > :nth-child(2),
+  .warehouse-action-card .action-tail {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar {
+    padding: 10px;
+  }
+
+  .topbar-left {
+    gap: 10px;
+  }
+
+  .topbar-logo-mark,
+  .topbar-avatar,
+  .topbar-notif {
+    width: 30px;
+    height: 30px;
+  }
+
+  .lang-switch {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .nav {
+    grid-auto-columns: minmax(118px, 1fr);
+  }
+
+  .page-header h1 {
+    font-size: 22px;
+  }
+
+  .kpi-value {
+    font-size: 30px;
+  }
+}
