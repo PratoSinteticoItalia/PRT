@@ -34,8 +34,8 @@ const SHOPIFY_OAUTH_SCOPES = [
 ].join(",");
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
-const LOGIN_WINDOW_MS = 1000 * 60 * 15;
-const LOGIN_MAX_ATTEMPTS = 8;
+const LOGIN_WINDOW_MS = 1000 * 60 * 2;
+const LOGIN_MAX_ATTEMPTS = 20;
 const IS_PUBLIC_DEPLOY = Boolean(process.env.RENDER || process.env.NODE_ENV === "production");
 const ALLOW_DEMO_FALLBACK = process.env.ALLOW_DEMO_FALLBACK === "true" || !IS_PUBLIC_DEPLOY;
 const loginAttempts = new Map();

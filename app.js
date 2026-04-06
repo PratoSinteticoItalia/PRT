@@ -4302,7 +4302,9 @@ ui.authForm.addEventListener("submit", async (event) => {
   } catch (error) {
     ui.authError.textContent = error.message === "invalid_credentials"
       ? "Credenziali non valide."
-      : "Errore server o sessione non salvata. Riprova tra qualche secondo.";
+      : error.message === "too_many_attempts"
+        ? "Troppi tentativi di accesso. Attendi 2 minuti e riprova."
+        : "Errore server o sessione non salvata. Riprova tra qualche secondo.";
     ui.authError.classList.remove("hidden");
   }
 });
