@@ -473,6 +473,15 @@
             <section class="detail-panel">
               <div class="panel-subsection">
                 <div class="subsection-head">
+                  <h4>Materiale e preparazione ordine</h4>
+                </div>
+                <h3 id="shipping-detail-title" class="section-inline-title">Seleziona un ordine</h3>
+                <div id="shipping-detail-fields" class="detail-grid"></div>
+                <div id="shipping-material-preview" class="detail-stack"></div>
+              </div>
+
+              <div class="panel-subsection shipping-ddt-panel">
+                <div class="subsection-head">
                   <h4>DDT ordine selezionato</h4>
                   <button id="create-ddt-button" class="primary-button small-button">Crea PDF DDT</button>
                 </div>
@@ -504,10 +513,8 @@
 
               <div class="panel-subsection">
                 <div class="subsection-head">
-                  <h4>Dettaglio spedizione</h4>
+                  <h4>Vettore, tracking e costo spedizione</h4>
                 </div>
-                <h3 id="shipping-detail-title" class="section-inline-title">Seleziona un ordine</h3>
-                <div id="shipping-detail-fields" class="detail-grid"></div>
                 <form id="shipping-form" class="inline-form-grid">
                   <label class="field">
                     <span>Stato</span>
@@ -558,7 +565,7 @@
                     <button type="submit" class="primary-button small-button">Salva spedizione</button>
                   </div>
                 </form>
-                <div class="panel-subsection">
+                <div class="panel-subsection shipping-estimate-panel">
                   <div class="subsection-head">
                     <h4>Calcolatore costo spedizione</h4>
                   </div>

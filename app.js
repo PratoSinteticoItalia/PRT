@@ -584,6 +584,7 @@ const ui = {
   shippingList: document.getElementById("shipping-list"),
   shippingDetailTitle: document.getElementById("shipping-detail-title"),
   shippingDetailFields: document.getElementById("shipping-detail-fields"),
+  shippingMaterialPreview: document.getElementById("shipping-material-preview"),
   shippingEstimate: document.getElementById("shipping-estimate"),
   shippingForm: document.getElementById("shipping-form"),
   settingsForm: document.getElementById("shopify-settings-form"),
@@ -2812,6 +2813,46 @@ function renderDdtPreview(order) {
   `;
 }
 
+function renderShippingMaterialPreview(order) {
+  if (!ui.shippingMaterialPreview) return;
+  if (!order) {
+    ui.shippingMaterialPreview.innerHTML = `<div class="info-card">Seleziona un ordine per vedere subito cosa deve partire, in che formato e con quale priorità di preparazione.</div>`;
+    return;
+  }
+  const preparedLines = getWarehousePreparedLines(order);
+  const physicalLines = preparedLines.filter((item) => !isServiceLine(item.title));
+  const routeLabel = getShippingTargetLabel(order);
+  const urgencyTone = order.operations?.warehouse?.readyToShip ? "is-ready" : "is-pending";
+  const materialSummary = physicalLines.length
+    ? physicalLines.map((item) => `
+      <li class="shipping-material-line">
+        <div>
+          <span>${escapeHtml(item.title)}</span>
+          <small>${escapeHtml(inferCatalogEntry(item.title)?.formatLabel || inferCatalogEntry(item.title)?.typeLabel || getShippingSummary(order))}</small>
+        </div>
+        <strong>x${escapeHtml(item.quantity)}</strong>
+      </li>
+    `).join("")
+    : `<li class="shipping-material-line is-empty"><div><span>${state.lang === "it" ? "Nessuna riga materiale pronta" : "No prepared material lines"}</span><small>${state.lang === "it" ? "Compila la preparazione ufficio prima di creare il bancale." : "Complete office prep before building the pallet."}</small></div><strong>—</strong></li>`;
+
+  ui.shippingMaterialPreview.innerHTML = `
+    <div class="shipping-material-hero ${urgencyTone}">
+      <div>
+        <span class="panel-eyebrow">${state.lang === "it" ? "Merce da preparare" : "Goods to prepare"}</span>
+        <strong>${physicalLines.length} ${state.lang === "it" ? "righe materiali" : "material lines"}</strong>
+        <p>${routeLabel} · ${getShippingSummary(order)}</p>
+      </div>
+      <div class="shipping-material-badges">
+        <span class="search-pill compact-pill">${order.operations?.product || "Da definire"}</span>
+        <span class="search-pill compact-pill">${order.operations?.sqm || 0} mq</span>
+      </div>
+    </div>
+    <ul class="material-list compact-list shipping-material-list">
+      ${materialSummary}
+    </ul>
+  `;
+}
+
 function refreshShippingDraftPreview() {
   if (state.currentView !== "shipping") return;
   const order = getSelectedOrder();
@@ -3156,6 +3197,7 @@ function renderShipping() {
   if (!order) {
     if (ui.shippingDetailTitle) ui.shippingDetailTitle.textContent = t("noSelection");
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
+    if (ui.shippingMaterialPreview) renderShippingMaterialPreview(null);
     if (ui.shippingEstimate) ui.shippingEstimate.innerHTML = "";
     if (ui.ddtItemsPreview) renderDdtPreview(null);
     return;
@@ -3207,6 +3249,7 @@ function renderShipping() {
       },
     ].map(renderDetailBox).join("");
   }
+  renderShippingMaterialPreview(order);
   if (ui.shippingForm) {
     ui.shippingForm.status.value = order.operations?.warehouse?.status || "da-preparare";
     ui.shippingForm.fulfillmentMode.value = order.operations?.warehouse?.fulfillmentMode || "da-definire";
@@ -3357,7 +3400,7 @@ function escapeHtml(value) {
 
 function renderDetailBox(item) {
   return `
-    <article class="detail-box">
+    <article class="detail-box shipping-detail-box">
       <span class="panel-eyebrow">${item.label}</span>
       <strong>${item.value}</strong>
       <p>${item.meta || "—"}</p>

@@ -342,7 +342,31 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed }) {
    ═══════════════════════════════════════════ */
 function Header() {
   return (
-    <div style={{ background: "linear-gradient(135deg, #0f2a18 0%, #163a22 100%)", padding: "14px 24px", display: "flex", alignItems: "center", gap: 14 }}>
+    <div style={{ background: "linear-gradient(135deg, #0f2a18 0%, #163a22 100%)", padding: "14px 24px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+      <button
+        type="button"
+        onClick={() => {
+          if (window.history.length > 1) window.history.back();
+          else window.location.href = "./index.html";
+        }}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "9px 14px",
+          borderRadius: 999,
+          border: "1px solid rgba(255,255,255,0.16)",
+          background: "rgba(255,255,255,0.08)",
+          color: "#fff",
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: "pointer",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1)",
+        }}
+      >
+        <span aria-hidden="true">←</span>
+        <span>Torna al portale</span>
+      </button>
       <div style={{ width: 40, height: 40, borderRadius: 10, background: B.primary, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: 18, border: "2px solid rgba(255,255,255,0.2)" }}>PS</div>
       <div>
         <div style={{ color: "#fff", fontWeight: 700, fontSize: 17, letterSpacing: "-0.3px" }}>Garden Planner</div>
