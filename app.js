@@ -4046,8 +4046,15 @@ async function connectShopify() {
       return;
     }
     window.location.href = `/api/shopify/oauth/start?shop=${encodeURIComponent(shop)}`;
-  } catch {
-    setStatus(ui.settingsStatus, "error", "Impossibile avviare il collegamento Shopify. Controlla le impostazioni.");
+  } catch (error) {
+    const message = error.message === "unauthorized"
+      ? "Sessione scaduta. Ricarica la pagina ed effettua di nuovo il login."
+      : error.message === "forbidden"
+        ? "Solo l'account office puo collegare Shopify."
+        : error.message === "server_error"
+          ? "Errore server durante il salvataggio impostazioni Shopify."
+          : `Impossibile avviare il collegamento Shopify. ${error.message || "Controlla le impostazioni."}`;
+    setStatus(ui.settingsStatus, "error", message);
   }
 }
 

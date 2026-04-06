@@ -1011,6 +1011,7 @@ async function handleApi(req, res, url) {
       orders: currentUser ? store.orders : [],
       inventory: currentUser ? store.inventory : [],
       shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
+      users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
       securityEvents: currentUser?.role === "office" ? store.securityEvents : [],
       securityPolicy: currentUser?.role === "office"
         ? {
