@@ -585,6 +585,7 @@ const ui = {
   shippingForm: document.getElementById("shipping-form"),
   settingsForm: document.getElementById("shopify-settings-form"),
   settingsStatus: document.getElementById("settings-status"),
+  connectShopifyButton: document.getElementById("connect-shopify-button"),
   orderModal: document.getElementById("order-modal"),
   orderModalTitle: document.getElementById("order-modal-title"),
   orderForm: document.getElementById("order-form"),
@@ -3238,6 +3239,11 @@ function renderSettings() {
   ui.settingsForm.rate500.value = state.settings.rate500 || "";
   ui.settingsForm.rate1000.value = state.settings.rate1000 || "";
   ui.settingsForm.extraKgRate.value = state.settings.extraKgRate || "";
+  if (ui.connectShopifyButton) {
+    ui.connectShopifyButton.textContent = state.settings.adminAccessToken
+      ? "Ricollega Shopify"
+      : "Connect Shopify";
+  }
 }
 
 function renderDetailBox(item) {
@@ -3887,8 +3893,14 @@ async function saveAccounting(event) {
 
 async function saveSettings(event) {
   event.preventDefault();
+  state.settings = await persistSettingsForm();
+  setStatus(ui.settingsStatus, "success", "Impostazioni Shopify salvate.");
+  renderSettings();
+}
+
+async function persistSettingsForm() {
   const form = new FormData(ui.settingsForm);
-  state.settings = await apiFetch("/api/settings/shopify", {
+  return apiFetch("/api/settings/shopify", {
     method: "POST",
     body: JSON.stringify({
       storeDomain: form.get("storeDomain"),
@@ -3909,8 +3921,40 @@ async function saveSettings(event) {
       webhookBaseUrl: "",
     }),
   });
-  setStatus(ui.settingsStatus, "success", "Impostazioni Shopify salvate.");
-  renderSettings();
+}
+
+async function connectShopify() {
+  try {
+    clearStatus(ui.settingsStatus);
+    state.settings = await persistSettingsForm();
+    const shop = String(state.settings.storeDomain || "").trim();
+    if (!shop) {
+      setStatus(ui.settingsStatus, "error", "Inserisci prima il dominio Shopify dello store.");
+      return;
+    }
+    window.location.href = `/api/shopify/oauth/start?shop=${encodeURIComponent(shop)}`;
+  } catch {
+    setStatus(ui.settingsStatus, "error", "Impossibile avviare il collegamento Shopify. Controlla le impostazioni.");
+  }
+}
+
+function handleShopifyOauthFeedback() {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get("shopify");
+  const message = params.get("message");
+  if (!status) return;
+
+  if (status === "connected") {
+    setStatus(ui.settingsStatus, "success", "Shopify collegato correttamente. Ora puoi sincronizzare gli ordini.");
+  } else {
+    setStatus(ui.settingsStatus, "error", message || "Collegamento Shopify non completato.");
+  }
+
+  params.delete("shopify");
+  params.delete("message");
+  const nextQuery = params.toString();
+  const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash || ""}`;
+  window.history.replaceState({}, "", nextUrl);
 }
 
 function openMaps(order) {
@@ -4228,6 +4272,8 @@ bindEvent(ui.installationMapsButton, "click", () => {
 bindEvent(ui.installationAttachmentButton, "click", () => openAttachmentPicker("installation"));
 bindEvent(ui.accountingForm, "submit", saveAccounting);
 bindEvent(ui.settingsForm, "submit", saveSettings);
+bindEvent(ui.connectShopifyButton, "click", connectShopify);
+handleShopifyOauthFeedback();
 bindEvent(ui.orderForm, "submit", saveOrder);
 bindEvent(ui.deleteOrderButton, "click", deleteSelectedOrder);
 ui.closeModalTriggers.forEach((item) => item.addEventListener("click", closeOrderModal));

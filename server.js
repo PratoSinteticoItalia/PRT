@@ -24,6 +24,15 @@ const MIME_TYPES = {
   ".svg": "image/svg+xml",
 };
 
+const SHOPIFY_OAUTH_SCOPES = [
+  "read_orders",
+  "read_all_orders",
+  "read_customers",
+  "read_products",
+  "read_inventory",
+  "read_fulfillments",
+].join(",");
+
 function setDataDir(nextDir) {
   DATA_DIR = resolve(nextDir);
   STORE_PATH = join(DATA_DIR, "store.json");
@@ -92,6 +101,9 @@ function buildDefaultStore() {
       clientId: "",
       clientSecret: "",
       adminAccessToken: "",
+      installedShop: "",
+      tokenScope: "",
+      tokenUpdatedAt: "",
       locationName: "",
       carrierName: "",
       shippingRateMode: "oneexpress-auto",
@@ -134,6 +146,46 @@ function sendJson(res, status, payload, headers = {}) {
     ...headers,
   });
   res.end(JSON.stringify(payload));
+}
+
+function sendRedirect(res, location, headers = {}) {
+  res.writeHead(302, {
+    Location: location,
+    ...headers,
+  });
+  res.end();
+}
+
+function isValidShopDomain(shop = "") {
+  return /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(String(shop || "").trim());
+}
+
+function buildShopifyAuthQuery(searchParams) {
+  return [...searchParams.entries()]
+    .filter(([key]) => key !== "hmac" && key !== "signature")
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("&");
+}
+
+function verifyShopifyOauthHmac(searchParams, secret) {
+  const hmac = String(searchParams.get("hmac") || "");
+  if (!hmac || !secret) return false;
+  const payload = buildShopifyAuthQuery(searchParams);
+  const digest = createHmac("sha256", secret).update(payload).digest("hex");
+  const left = Buffer.from(digest, "utf8");
+  const right = Buffer.from(hmac, "utf8");
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+function getRequestBaseUrl(req) {
+  const proto = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim() || "https";
+  return `${proto}://${req.headers.host}`;
+}
+
+function getShopifyRedirectUri(req) {
+  return `${getRequestBaseUrl(req)}/api/shopify/oauth/callback`;
 }
 
 async function readBody(req) {
@@ -825,6 +877,97 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true, orderId: result.order.id, jobId: result.job?.id || null });
   }
 
+  if (url.pathname === "/api/shopify/oauth/start" && req.method === "GET") {
+    if (!currentUser) {
+      return sendRedirect(res, "/index.html?shopify=error&message=Effettua%20prima%20il%20login");
+    }
+
+    const shop = String(url.searchParams.get("shop") || store.shopifySettings?.storeDomain || "").trim().toLowerCase();
+    const clientId = String(store.shopifySettings?.clientId || "").trim();
+    const clientSecret = String(store.shopifySettings?.clientSecret || "").trim();
+    if (!isValidShopDomain(shop) || !clientId || !clientSecret) {
+      return sendRedirect(res, "/index.html?shopify=error&message=Completa%20dominio,%20client%20id%20e%20client%20secret");
+    }
+
+    const state = randomUUID();
+    const redirectUri = getShopifyRedirectUri(req);
+    const authorizeUrl = new URL(`https://${shop}/admin/oauth/authorize`);
+    authorizeUrl.searchParams.set("client_id", clientId);
+    authorizeUrl.searchParams.set("scope", SHOPIFY_OAUTH_SCOPES);
+    authorizeUrl.searchParams.set("redirect_uri", redirectUri);
+    authorizeUrl.searchParams.set("state", state);
+
+    return sendRedirect(
+      res,
+      authorizeUrl.toString(),
+      {
+        "Set-Cookie": `shopify_oauth_state=${encodeURIComponent(state)}; Path=/; HttpOnly; SameSite=Lax`,
+      },
+    );
+  }
+
+  if (url.pathname === "/api/shopify/oauth/callback" && req.method === "GET") {
+    const cookies = parseCookies(req.headers.cookie);
+    const state = String(url.searchParams.get("state") || "");
+    const shop = String(url.searchParams.get("shop") || "").trim().toLowerCase();
+    const code = String(url.searchParams.get("code") || "");
+    const clientId = String(store.shopifySettings?.clientId || "").trim();
+    const clientSecret = String(store.shopifySettings?.clientSecret || "").trim();
+
+    if (!isValidShopDomain(shop) || !code || !state || state !== String(cookies.shopify_oauth_state || "")) {
+      return sendRedirect(res, "/index.html?shopify=error&message=Callback%20Shopify%20non%20valida");
+    }
+    if (!verifyShopifyOauthHmac(url.searchParams, clientSecret)) {
+      return sendRedirect(res, "/index.html?shopify=error&message=Verifica%20Shopify%20fallita");
+    }
+    if (!clientId || !clientSecret) {
+      return sendRedirect(res, "/index.html?shopify=error&message=Mancano%20le%20credenziali%20app");
+    }
+
+    try {
+      const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        return sendRedirect(res, "/index.html?shopify=error&message=Scambio%20token%20Shopify%20fallito");
+      }
+
+      const tokenPayload = await tokenResponse.json();
+      if (!tokenPayload?.access_token) {
+        return sendRedirect(res, "/index.html?shopify=error&message=Token%20Shopify%20non%20ricevuto");
+      }
+
+      store.shopifySettings = {
+        ...store.shopifySettings,
+        storeDomain: shop,
+        installedShop: shop,
+        adminAccessToken: tokenPayload.access_token,
+        tokenScope: String(tokenPayload.scope || ""),
+        tokenUpdatedAt: new Date().toISOString(),
+      };
+      await writeJson(STORE_PATH, store);
+
+      return sendRedirect(
+        res,
+        "/index.html?shopify=connected",
+        {
+          "Set-Cookie": "shopify_oauth_state=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax",
+        },
+      );
+    } catch {
+      return sendRedirect(res, "/index.html?shopify=error&message=OAuth%20Shopify%20non%20completato");
+    }
+  }
+
   if (!currentUser) {
     return sendJson(res, 401, { error: "unauthorized" });
   }
@@ -1248,6 +1391,9 @@ async function handleApi(req, res, url) {
       clientId: body.clientId || "",
       clientSecret: body.clientSecret || "",
       adminAccessToken: body.adminAccessToken || "",
+      installedShop: store.shopifySettings?.installedShop || "",
+      tokenScope: store.shopifySettings?.tokenScope || "",
+      tokenUpdatedAt: store.shopifySettings?.tokenUpdatedAt || "",
       locationName: body.locationName || "",
       carrierName: body.carrierName || "",
       shippingRateMode: body.shippingRateMode === "manual-weight" ? "manual-weight" : "oneexpress-auto",
