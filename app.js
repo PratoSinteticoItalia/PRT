@@ -469,6 +469,7 @@ const state = {
   currentUser: null,
   orders: [],
   inventory: [],
+  users: [],
   settings: {},
   currentView: "dashboard",
   selectedOrderId: null,
@@ -588,6 +589,9 @@ const ui = {
   connectShopifyButton: document.getElementById("connect-shopify-button"),
   securityForm: document.getElementById("security-form"),
   securityStatus: document.getElementById("security-status"),
+  accountsList: document.getElementById("accounts-list"),
+  accountCreateForm: document.getElementById("account-create-form"),
+  accountsStatus: document.getElementById("accounts-status"),
   authDemo: document.getElementById("auth-demo"),
   orderModal: document.getElementById("order-modal"),
   orderModalTitle: document.getElementById("order-modal-title"),
@@ -3250,6 +3254,62 @@ function renderSettings() {
   if (ui.securityForm) {
     ui.securityForm.reset();
   }
+  renderAccountsManager();
+}
+
+function renderAccountsManager() {
+  if (!ui.accountsList) return;
+  if (state.currentUser?.role !== "office") {
+    ui.accountsList.innerHTML = `<div class="info-card">Solo l'ufficio puo gestire gli account.</div>`;
+    if (ui.accountCreateForm) ui.accountCreateForm.classList.add("hidden");
+    return;
+  }
+  if (ui.accountCreateForm) ui.accountCreateForm.classList.remove("hidden");
+  if (!state.users.length) {
+    ui.accountsList.innerHTML = `<div class="info-card">Nessun account presente.</div>`;
+    return;
+  }
+  ui.accountsList.innerHTML = state.users.map((user) => `
+    <form class="detail-box account-edit-form" data-account-id="${user.id}">
+      <div class="inline-form-grid">
+        <label class="field">
+          <span>Nome</span>
+          <input class="text-input" name="name" value="${escapeHtml(user.name || "")}" />
+        </label>
+        <label class="field">
+          <span>Email</span>
+          <input class="text-input" name="email" type="email" value="${escapeHtml(user.email || "")}" />
+        </label>
+        <label class="field">
+          <span>Ruolo</span>
+          <select class="text-input" name="role">
+            <option value="office" ${user.role === "office" ? "selected" : ""}>Office</option>
+            <option value="warehouse" ${user.role === "warehouse" ? "selected" : ""}>Magazzino</option>
+            <option value="crew" ${user.role === "crew" ? "selected" : ""}>Squadra</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Nuova password</span>
+          <input class="text-input" name="password" type="password" placeholder="Lascia vuoto per non cambiarla" />
+        </label>
+        <div class="inline-actions field-full">
+          <button type="submit" class="ghost-button small-button">Salva account</button>
+        </div>
+      </div>
+    </form>
+  `).join("");
+  ui.accountsList.querySelectorAll(".account-edit-form").forEach((form) => {
+    form.addEventListener("submit", updateManagedAccount);
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function renderDetailBox(item) {
@@ -3299,6 +3359,7 @@ async function loadSession() {
   state.orders = session.orders || [];
   state.inventory = session.inventory || [];
   state.settings = session.shopifySettings || {};
+  state.users = session.users || [];
   ensureSelectedOrder();
   showApp();
 }
@@ -3944,6 +4005,66 @@ async function connectShopify() {
   }
 }
 
+async function createManagedAccount(event) {
+  event.preventDefault();
+  if (!ui.accountCreateForm) return;
+  clearStatus(ui.accountsStatus);
+  const form = new FormData(ui.accountCreateForm);
+  try {
+    const created = await apiFetch("/api/accounts", {
+      method: "POST",
+      body: JSON.stringify({
+        name: form.get("name"),
+        email: form.get("email"),
+        role: form.get("role"),
+        password: form.get("password"),
+      }),
+    });
+    state.users = [...state.users, created].sort((a, b) => a.name.localeCompare(b.name, "it"));
+    ui.accountCreateForm.reset();
+    renderAccountsManager();
+    setStatus(ui.accountsStatus, "success", "Account creato correttamente.");
+  } catch (error) {
+    const message = error.message === "email_already_exists"
+      ? "Esiste gia un account con questa email."
+      : error.message === "invalid_account_payload"
+        ? "Compila tutti i campi e usa una password di almeno 12 caratteri."
+        : "Creazione account fallita.";
+    setStatus(ui.accountsStatus, "error", message);
+  }
+}
+
+async function updateManagedAccount(event) {
+  event.preventDefault();
+  clearStatus(ui.accountsStatus);
+  const form = event.currentTarget;
+  const accountId = form.dataset.accountId;
+  const data = new FormData(form);
+  try {
+    const saved = await apiFetch(`/api/accounts/${encodeURIComponent(accountId)}`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: data.get("name"),
+        email: data.get("email"),
+        role: data.get("role"),
+        password: data.get("password"),
+      }),
+    });
+    state.users = state.users.map((item) => (item.id === saved.id ? saved : item)).sort((a, b) => a.name.localeCompare(b.name, "it"));
+    renderAccountsManager();
+    setStatus(ui.accountsStatus, "success", "Account aggiornato.");
+  } catch (error) {
+    const message = error.message === "email_already_exists"
+      ? "Questa email e gia usata da un altro account."
+      : error.message === "weak_password"
+        ? "La nuova password deve avere almeno 12 caratteri."
+        : error.message === "invalid_account_payload"
+          ? "Controlla nome, email e ruolo."
+          : "Aggiornamento account fallito.";
+    setStatus(ui.accountsStatus, "error", message);
+  }
+}
+
 async function updatePassword(event) {
   event.preventDefault();
   if (!ui.securityForm) return;
@@ -4059,6 +4180,7 @@ async function reloadAll() {
   state.orders = session.orders || [];
   state.inventory = session.inventory || [];
   state.settings = session.shopifySettings || {};
+  state.users = session.users || [];
   ensureSelectedOrder();
   render();
 }
@@ -4173,6 +4295,7 @@ ui.authForm.addEventListener("submit", async (event) => {
     state.orders = session.orders || [];
     state.inventory = session.inventory || [];
     state.settings = session.shopifySettings || {};
+    state.users = session.users || [];
     ensureSelectedOrder();
     ui.authError.classList.add("hidden");
     showApp();
@@ -4313,6 +4436,7 @@ bindEvent(ui.accountingForm, "submit", saveAccounting);
 bindEvent(ui.settingsForm, "submit", saveSettings);
 bindEvent(ui.connectShopifyButton, "click", connectShopify);
 bindEvent(ui.securityForm, "submit", updatePassword);
+bindEvent(ui.accountCreateForm, "submit", createManagedAccount);
 handleShopifyOauthFeedback();
 
 if (ui.authDemo && !/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {

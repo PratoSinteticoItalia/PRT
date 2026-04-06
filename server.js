@@ -205,6 +205,10 @@ function sanitizeUser(user) {
   return { id: user.id, name: user.name, email: user.email, role: user.role };
 }
 
+function isValidRole(role = "") {
+  return ["office", "warehouse", "crew"].includes(String(role || "").trim());
+}
+
 function serializeShopifySettings(settings = {}) {
   return {
     ...settings,
@@ -976,6 +980,7 @@ async function handleApi(req, res, url) {
         orders: store.orders,
         inventory: store.inventory,
         shopifySettings: serializeShopifySettings(store.shopifySettings),
+        users: user.role === "office" ? store.users.map(sanitizeUser) : [],
       },
       {
         "Set-Cookie": `vertex_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
@@ -1142,7 +1147,77 @@ async function handleApi(req, res, url) {
       orders: store.orders,
       inventory: store.inventory,
       shopifySettings: serializeShopifySettings(store.shopifySettings),
+      users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
     });
+  }
+
+  if (url.pathname === "/api/accounts" && req.method === "GET") {
+    if (requireOffice(res, currentUser)) return;
+    return sendJson(res, 200, store.users.map(sanitizeUser));
+  }
+
+  if (url.pathname === "/api/accounts" && req.method === "POST") {
+    if (requireOffice(res, currentUser)) return;
+    const body = await readBody(req);
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const role = String(body.role || "").trim();
+    const password = String(body.password || "");
+    if (!name || !email || !isValidRole(role) || password.length < 12) {
+      return sendJson(res, 400, { error: "invalid_account_payload" });
+    }
+    if (store.users.some((item) => item.email.toLowerCase() === email)) {
+      return sendJson(res, 400, { error: "email_already_exists" });
+    }
+    const { hash, salt } = hashPassword(password);
+    const created = {
+      id: randomUUID(),
+      name,
+      email,
+      role,
+      passwordHash: hash,
+      passwordSalt: salt,
+    };
+    store.users.push(created);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, sanitizeUser(created));
+  }
+
+  if (url.pathname.match(/^\/api\/accounts\/[^/]+$/) && req.method === "POST") {
+    if (requireOffice(res, currentUser)) return;
+    const userId = decodeURIComponent(url.pathname.split("/")[3]);
+    const body = await readBody(req);
+    const userIndex = store.users.findIndex((item) => item.id === userId);
+    if (userIndex < 0) return sendJson(res, 404, { error: "user_not_found" });
+    const current = store.users[userIndex];
+    const nextEmail = String(body.email || current.email || "").trim().toLowerCase();
+    const nextName = String(body.name || current.name || "").trim();
+    const nextRole = String(body.role || current.role || "").trim();
+    const newPassword = String(body.password || "");
+    if (!nextName || !nextEmail || !isValidRole(nextRole)) {
+      return sendJson(res, 400, { error: "invalid_account_payload" });
+    }
+    if (store.users.some((item) => item.id !== userId && item.email.toLowerCase() === nextEmail)) {
+      return sendJson(res, 400, { error: "email_already_exists" });
+    }
+    const updated = {
+      ...current,
+      name: nextName,
+      email: nextEmail,
+      role: nextRole,
+    };
+    if (newPassword) {
+      if (newPassword.length < 12) {
+        return sendJson(res, 400, { error: "weak_password" });
+      }
+      const { hash, salt } = hashPassword(newPassword);
+      updated.passwordHash = hash;
+      updated.passwordSalt = salt;
+      delete updated.password;
+    }
+    store.users[userIndex] = updated;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, sanitizeUser(updated));
   }
 
   if (url.pathname === "/api/inventory" && req.method === "GET") {

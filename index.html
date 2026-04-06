@@ -857,6 +857,42 @@
               <div id="security-status" class="panel-note hidden"></div>
             </section>
 
+            <section class="panel panel-large">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow">Utenti</p>
+                  <h3>Gestione account</h3>
+                </div>
+              </div>
+              <div id="accounts-list" class="detail-stack"></div>
+              <form id="account-create-form" class="inline-form-grid" style="margin-top: 16px;">
+                <label class="field">
+                  <span>Nome utente</span>
+                  <input class="text-input" name="name" placeholder="Mario Rossi" />
+                </label>
+                <label class="field">
+                  <span>Email accesso</span>
+                  <input class="text-input" name="email" type="email" placeholder="mario@azienda.it" />
+                </label>
+                <label class="field">
+                  <span>Ruolo</span>
+                  <select class="text-input" name="role">
+                    <option value="office">Office</option>
+                    <option value="warehouse">Magazzino</option>
+                    <option value="crew">Squadra</option>
+                  </select>
+                </label>
+                <label class="field field-full">
+                  <span>Password iniziale</span>
+                  <input class="text-input" name="password" type="password" placeholder="Almeno 12 caratteri" />
+                </label>
+                <div class="inline-actions field-full">
+                  <button type="submit" class="primary-button small-button">Crea account</button>
+                </div>
+              </form>
+              <div id="accounts-status" class="panel-note hidden"></div>
+            </section>
+
             <section class="panel">
               <div class="panel-head">
                 <div>
