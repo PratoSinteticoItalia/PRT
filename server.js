@@ -109,6 +109,10 @@ function buildDefaultStore() {
   };
 }
 
+function getDemoUsers() {
+  return buildDefaultStore().users.map((user) => ({ ...user }));
+}
+
 function sanitizeUser(user) {
   if (!user) return null;
   return { id: user.id, name: user.name, email: user.email, role: user.role };
@@ -743,7 +747,21 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "").trim();
-    const user = store.users.find((item) => item.email.toLowerCase() === email && item.password === password);
+    const demoUsers = getDemoUsers();
+    let user = store.users.find((item) => item.email.toLowerCase() === email && item.password === password);
+    const demoUser = demoUsers.find((item) => item.email.toLowerCase() === email && item.password === password) || null;
+
+    if (!user && demoUser) {
+      const existingIndex = store.users.findIndex((item) => item.email.toLowerCase() === email);
+      if (existingIndex >= 0) {
+        store.users[existingIndex] = { ...store.users[existingIndex], ...demoUser };
+      } else {
+        store.users.push(demoUser);
+      }
+      user = demoUser;
+      await writeJson(STORE_PATH, store);
+    }
+
     if (!user) return sendJson(res, 401, { error: "invalid_credentials" });
 
     const sessionId = randomUUID();
