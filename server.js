@@ -1,12 +1,13 @@
 import { createServer } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, mkdirSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import { extname, dirname, join, resolve } from "node:path";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT || 4178);
 const HOST = process.env.HOST || "0.0.0.0";
-const ROOT = resolve(".");
+const ROOT = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = resolve(process.env.DATA_DIR || join(ROOT, "data"));
 const STORE_PATH = join(DATA_DIR, "store.json");
 const SESSION_PATH = join(DATA_DIR, "session.json");
@@ -62,11 +63,22 @@ function buildDefaultStore() {
     ],
     jobs: [],
     orders: [],
+    inventory: [],
     shopifySettings: {
       storeDomain: "",
       clientId: "",
       clientSecret: "",
       locationName: "",
+      carrierName: "",
+      shippingRateMode: "oneexpress-auto",
+      shippingTariffProfile: "silver",
+      volumetricDivisor: "5000",
+      rate80: "",
+      rate150: "",
+      rate300: "",
+      rate500: "",
+      rate1000: "",
+      extraKgRate: "",
       webhookBaseUrl: "",
       webhookEndpoint: "",
       webhookSubscriptionId: "",
@@ -194,7 +206,132 @@ function deriveOrderData(order) {
   };
 }
 
+function buildDefaultOperations(order, linkedJob = null) {
+  const derived = deriveOrderData(order);
+  return {
+    officeStatus: linkedJob ? "operativo" : "bozza",
+    product: linkedJob?.product || derived.mainProduct || "Da definire",
+    sqm: Number(linkedJob?.sqm || derived.sqm || 0),
+    surface: linkedJob?.surface || derived.surface || "terra",
+    officeNote: linkedJob?.notes || "",
+    materials: Array.isArray(linkedJob?.materials) && linkedJob.materials.length
+      ? linkedJob.materials
+      : Array.isArray(derived.materials)
+        ? derived.materials
+        : [],
+    warehouse: {
+      selected: false,
+      status: linkedJob?.warehouseStatus || "da-preparare",
+      fulfillmentMode: "da-definire",
+      carrier: "",
+      trackingNumber: "",
+      carrierPassed: false,
+      readyToShip: false,
+      shipped: false,
+      pickupLabel: "",
+      vanLoadLabel: "",
+      warehouseNote: "",
+      destination: {
+        provinceCode: order.provinceCode || "",
+        province: order.province || "",
+        postalCode: order.postalCode || "",
+        countryCode: order.countryCode || "IT",
+      },
+      ddt: {
+        number: "",
+        palletLength: "",
+        palletWidth: "",
+        palletHeight: "",
+        palletWeight: "",
+        createdAt: "",
+      },
+    },
+    installation: {
+      required: (linkedJob?.jobType || derived.jobType) === "fornitura-posa",
+      selected: false,
+      crew: linkedJob?.crew || "",
+      installDate: linkedJob?.installDate || "",
+      installTime: linkedJob?.installTime || "",
+      clientConfirmed: false,
+      status: linkedJob?.installStatus || "da-pianificare",
+      reportNote: "",
+    },
+  };
+}
+
+function normalizeOperations(order, linkedJob = null) {
+  const defaults = buildDefaultOperations(order, linkedJob);
+  const current = order.operations || {};
+  return {
+    officeStatus: current.officeStatus || defaults.officeStatus,
+    product: current.product || defaults.product,
+    sqm: Number(current.sqm || defaults.sqm || 0),
+    surface: current.surface || defaults.surface,
+    officeNote: current.officeNote || defaults.officeNote || "",
+    materials: Array.isArray(current.materials) && current.materials.length ? current.materials : defaults.materials,
+    warehouse: {
+      selected: Boolean(current.warehouse?.selected ?? defaults.warehouse.selected),
+      status: current.warehouse?.status || defaults.warehouse.status,
+      fulfillmentMode: current.warehouse?.fulfillmentMode || defaults.warehouse.fulfillmentMode,
+      carrier: current.warehouse?.carrier || defaults.warehouse.carrier,
+      trackingNumber: current.warehouse?.trackingNumber || defaults.warehouse.trackingNumber,
+      carrierPassed: Boolean(current.warehouse?.carrierPassed ?? defaults.warehouse.carrierPassed),
+      readyToShip: Boolean(current.warehouse?.readyToShip ?? defaults.warehouse.readyToShip),
+      shipped: Boolean(current.warehouse?.shipped ?? defaults.warehouse.shipped),
+      pickupLabel: current.warehouse?.pickupLabel || defaults.warehouse.pickupLabel,
+      vanLoadLabel: current.warehouse?.vanLoadLabel || defaults.warehouse.vanLoadLabel,
+      warehouseNote: current.warehouse?.warehouseNote || defaults.warehouse.warehouseNote,
+      destination: {
+        provinceCode: String(current.warehouse?.destination?.provinceCode || defaults.warehouse.destination.provinceCode || "").trim().toUpperCase(),
+        province: String(current.warehouse?.destination?.province || defaults.warehouse.destination.province || "").trim(),
+        postalCode: String(current.warehouse?.destination?.postalCode || defaults.warehouse.destination.postalCode || "").trim(),
+        countryCode: String(current.warehouse?.destination?.countryCode || defaults.warehouse.destination.countryCode || "IT").trim().toUpperCase(),
+      },
+      prepItems: Array.isArray(current.warehouse?.prepItems)
+        ? current.warehouse.prepItems.map((item) => ({
+            title: String(item?.title || "").trim(),
+            quantity: Number(item?.quantity || 1),
+            included: item?.included !== false,
+            note: String(item?.note || "").trim(),
+          })).filter((item) => item.title)
+        : [],
+      ddt: {
+        number: current.warehouse?.ddt?.number || defaults.warehouse.ddt.number,
+        palletLength: current.warehouse?.ddt?.palletLength || defaults.warehouse.ddt.palletLength,
+        palletWidth: current.warehouse?.ddt?.palletWidth || defaults.warehouse.ddt.palletWidth,
+        palletHeight: current.warehouse?.ddt?.palletHeight || defaults.warehouse.ddt.palletHeight,
+        palletWeight: current.warehouse?.ddt?.palletWeight || defaults.warehouse.ddt.palletWeight,
+        createdAt: current.warehouse?.ddt?.createdAt || defaults.warehouse.ddt.createdAt,
+      },
+    },
+    installation: {
+      required: Boolean(current.installation?.required ?? defaults.installation.required),
+      selected: Boolean(current.installation?.selected ?? defaults.installation.selected),
+      crew: current.installation?.crew || defaults.installation.crew,
+      installDate: current.installation?.installDate || defaults.installation.installDate,
+      installTime: current.installation?.installTime || defaults.installation.installTime,
+      clientConfirmed: Boolean(current.installation?.clientConfirmed ?? defaults.installation.clientConfirmed),
+      status: current.installation?.status || defaults.installation.status,
+      reportNote: current.installation?.reportNote || defaults.installation.reportNote,
+    },
+  };
+}
+
 function reconcileStoreData(store) {
+  store.inventory = Array.isArray(store.inventory)
+    ? store.inventory.map((item) => ({
+        id: item.id || randomUUID(),
+        product: String(item.product || "").trim(),
+        width: toNumber(item.width || 0),
+        length: toNumber(item.length || 0),
+        sqm: toNumber(item.sqm || (toNumber(item.width || 0) * toNumber(item.length || 0))),
+        variant: String(item.variant || ""),
+        status: item.status === "residuo" ? "residuo" : "intero",
+        note: String(item.note || ""),
+        createdAt: item.createdAt || new Date().toISOString(),
+      }))
+    : [];
+
   store.orders = (store.orders || []).map((order) => {
     const nextOrder = { ...order };
     if (!Array.isArray(nextOrder.lineDetails) || !nextOrder.lineDetails.length) {
@@ -204,6 +341,10 @@ function reconcileStoreData(store) {
       nextOrder.lineItems = nextOrder.lineDetails.map((item) => item.title);
     }
     nextOrder.paymentMethod = nextOrder.paymentMethod || nextOrder.accounting?.paymentMethod || "";
+    nextOrder.provinceCode = String(nextOrder.provinceCode || "").trim().toUpperCase();
+    nextOrder.province = String(nextOrder.province || "").trim();
+    nextOrder.postalCode = String(nextOrder.postalCode || "").trim();
+    nextOrder.countryCode = String(nextOrder.countryCode || "IT").trim().toUpperCase();
     nextOrder.accounting = {
       paymentMethod: nextOrder.accounting?.paymentMethod || nextOrder.paymentMethod || "",
       depositPaid: toNumber(nextOrder.accounting?.depositPaid || 0),
@@ -213,6 +354,8 @@ function reconcileStoreData(store) {
       accountingNote: nextOrder.accounting?.accountingNote || "",
     };
     nextOrder.attachments = Array.isArray(nextOrder.attachments) ? nextOrder.attachments : [];
+    const linkedJob = (store.jobs || []).find((job) => job.sourceOrderId === nextOrder.id) || null;
+    nextOrder.operations = normalizeOperations(nextOrder, linkedJob);
     return nextOrder;
   });
 
@@ -240,13 +383,7 @@ function reconcileStoreData(store) {
 
   store.orders.forEach((order) => {
     const existingJob = store.jobs.find((job) => job.sourceOrderId === order.id);
-    if (existingJob) {
-      order.convertedJobId = existingJob.id;
-      return;
-    }
-    const draftJob = jobFromOrder(order);
-    order.convertedJobId = draftJob.id;
-    store.jobs.unshift(draftJob);
+    order.convertedJobId = existingJob?.id || null;
   });
 }
 
@@ -277,6 +414,10 @@ function normalizeOrderPayload(order, index) {
     phone: shipping.phone || customer.phone || order.phone || "",
     city: shipping.city || order.city || "",
     address: [shipping.address1, shipping.address2].filter(Boolean).join(" ") || order.address || "",
+    provinceCode: String(shipping.province_code || shipping.provinceCode || order.provinceCode || "").trim().toUpperCase(),
+    province: String(shipping.province || order.province || "").trim(),
+    postalCode: String(shipping.zip || shipping.postalCode || order.postalCode || "").trim(),
+    countryCode: String(shipping.country_code || shipping.countryCode || order.countryCode || "IT").trim().toUpperCase(),
     total: String(order.current_total_price || order.total_price || order.total || "—"),
     financialStatus: String(order.financial_status || order.financialStatus || "pending"),
     fulfillmentStatus: String(order.fulfillment_status || order.fulfillmentStatus || "unfulfilled"),
@@ -318,6 +459,10 @@ function normalizeGraphqlOrder(node, index) {
     phone: shipping.phone || customer.phone || "",
     city: shipping.city || "",
     address: [shipping.address1, shipping.address2].filter(Boolean).join(" "),
+    provinceCode: String(shipping.provinceCode || "").trim().toUpperCase(),
+    province: String(shipping.province || "").trim(),
+    postalCode: String(shipping.zip || "").trim(),
+    countryCode: String(shipping.countryCodeV2 || "IT").trim().toUpperCase(),
     total: String(node.currentTotalPriceSet?.shopMoney?.amount || "—"),
     financialStatus: String(node.displayFinancialStatus || "pending"),
     fulfillmentStatus: String(node.displayFulfillmentStatus || "unfulfilled"),
@@ -420,6 +565,10 @@ async function syncOrdersFromShopify(store) {
               lastName
               phone
               city
+              province
+              provinceCode
+              zip
+              countryCodeV2
               address1
               address2
             }
@@ -495,28 +644,25 @@ async function getShopifyAccessToken(store) {
   return tokenPayload.access_token;
 }
 
-function upsertOrderAndMaybeJob(store, order) {
+function upsertOrderRecord(store, order) {
   const existingOrderIndex = store.orders.findIndex((item) => item.id === order.id);
   const existingOrder = existingOrderIndex >= 0 ? store.orders[existingOrderIndex] : null;
 
   if (existingOrder) {
-    const merged = { ...existingOrder, ...order, convertedJobId: existingOrder.convertedJobId || order.convertedJobId || null };
+    const merged = {
+      ...existingOrder,
+      ...order,
+      convertedJobId: existingOrder.convertedJobId || order.convertedJobId || null,
+    };
+    merged.operations = normalizeOperations(merged, store.jobs.find((job) => job.sourceOrderId === merged.id) || null);
     store.orders[existingOrderIndex] = merged;
-    if (merged.convertedJobId) {
-      return { order: merged, job: store.jobs.find((job) => job.id === merged.convertedJobId) || null };
-    }
-    const job = jobFromOrder(merged);
-    merged.convertedJobId = job.id;
-    store.jobs.unshift(job);
-    return { order: merged, job };
+    return { order: merged, job: merged.convertedJobId ? store.jobs.find((job) => job.id === merged.convertedJobId) || null : null };
   }
 
   const created = { ...order, convertedJobId: null };
-  const job = jobFromOrder(created);
-  created.convertedJobId = job.id;
+  created.operations = normalizeOperations(created, null);
   store.orders.unshift(created);
-  store.jobs.unshift(job);
-  return { order: created, job };
+  return { order: created, job: null };
 }
 
 function verifyShopifyWebhook(rawBody, hmacHeader, secret) {
@@ -548,6 +694,7 @@ async function handleApi(req, res, url) {
       user: sanitizeUser(currentUser),
       jobs: currentUser ? store.jobs : [],
       orders: currentUser ? store.orders : [],
+      inventory: currentUser ? store.inventory : [],
       shopifySettings: currentUser ? store.shopifySettings : {},
     });
   }
@@ -571,6 +718,7 @@ async function handleApi(req, res, url) {
         user: sanitizeUser(user),
         jobs: store.jobs,
         orders: store.orders,
+        inventory: store.inventory,
         shopifySettings: store.shopifySettings,
       },
       {
@@ -604,7 +752,7 @@ async function handleApi(req, res, url) {
 
     const payload = JSON.parse(rawBody.toString("utf8") || "{}");
     const normalized = normalizeOrderPayload(payload, 0);
-    const result = upsertOrderAndMaybeJob(store, normalized);
+    const result = upsertOrderRecord(store, normalized);
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, { ok: true, orderId: result.order.id, jobId: result.job?.id || null });
   }
@@ -618,8 +766,47 @@ async function handleApi(req, res, url) {
       user: sanitizeUser(currentUser),
       jobs: store.jobs,
       orders: store.orders,
+      inventory: store.inventory,
       shopifySettings: store.shopifySettings,
     });
+  }
+
+  if (url.pathname === "/api/inventory" && req.method === "GET") {
+    return sendJson(res, 200, store.inventory);
+  }
+
+  if (url.pathname === "/api/inventory/items" && req.method === "POST") {
+    const body = await readBody(req);
+    const quantity = Math.max(1, Math.round(toNumber(body.quantity || 1)));
+    const product = String(body.product || "").trim();
+    const width = toNumber(body.width || 0);
+    const length = toNumber(body.length || 0);
+    const note = String(body.note || "");
+    const status = body.status === "residuo" ? "residuo" : "intero";
+    if (!product) {
+      return sendJson(res, 400, { error: "invalid_inventory_payload" });
+    }
+    const created = Array.from({ length: quantity }, () => ({
+      id: randomUUID(),
+      product,
+      width,
+      length,
+      sqm: width && length ? Number((width * length).toFixed(2)) : 0,
+      variant: String(body.variant || ""),
+      status,
+      note,
+      createdAt: new Date().toISOString(),
+    }));
+    store.inventory.unshift(...created);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, store.inventory);
+  }
+
+  if (url.pathname.match(/^\/api\/inventory\/items\/[^/]+$/) && req.method === "DELETE") {
+    const itemId = decodeURIComponent(url.pathname.split("/")[4]);
+    store.inventory = store.inventory.filter((item) => item.id !== itemId);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, store.inventory);
   }
 
   if (url.pathname === "/api/jobs" && req.method === "GET") {
@@ -660,6 +847,51 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, store.orders);
   }
 
+  if (url.pathname === "/api/orders" && req.method === "POST") {
+    const body = await readBody(req);
+    const manualOrder = {
+      id: randomUUID(),
+      orderNumber: String(body.orderNumber || `MAN-${Date.now()}`),
+      firstName: String(body.firstName || "").trim(),
+      lastName: String(body.lastName || "").trim(),
+      email: String(body.email || "").trim(),
+      phone: String(body.phone || "").trim(),
+      city: String(body.city || "").trim(),
+      provinceCode: String(body.provinceCode || "").trim().toUpperCase(),
+      province: "",
+      postalCode: String(body.postalCode || "").trim(),
+      countryCode: "IT",
+      address: String(body.address || "").trim(),
+      total: String(body.total || "0"),
+      financialStatus: String(body.financialStatus || "pending"),
+      fulfillmentStatus: String(body.fulfillmentStatus || "unfulfilled"),
+      paymentMethod: String(body.paymentMethod || ""),
+      source: "manual",
+      note: String(body.note || ""),
+      lineItems: Array.isArray(body.lineItems) ? body.lineItems : [],
+      lineDetails: Array.isArray(body.lineDetails)
+        ? body.lineDetails.map((item) => ({
+            title: String(item.title || ""),
+            quantity: Number(item.quantity || 1),
+          }))
+        : [],
+      accounting: {
+        paymentMethod: String(body.paymentMethod || ""),
+        depositPaid: 0,
+        balancePaid: 0,
+        invoiceRequired: false,
+        invoiceIssued: false,
+        accountingNote: "",
+      },
+      attachments: [],
+      convertedJobId: null,
+    };
+    manualOrder.operations = normalizeOperations(manualOrder, null);
+    store.orders.unshift(manualOrder);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, manualOrder);
+  }
+
   if (url.pathname === "/api/orders/non-shopify" && req.method === "DELETE") {
     const removableOrderIds = new Set(store.orders.filter((order) => order.source !== "shopify-live").map((order) => order.id));
     store.orders = store.orders.filter((order) => order.source === "shopify-live");
@@ -680,6 +912,58 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true });
   }
 
+  if (url.pathname.match(/^\/api\/orders\/[^/]+$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const body = await readBody(req);
+    const orderIndex = store.orders.findIndex((item) => item.id === orderId);
+    if (orderIndex < 0) return sendJson(res, 404, { error: "order_not_found" });
+    const current = store.orders[orderIndex];
+    const nextOrder = {
+      ...current,
+      orderNumber: String(body.orderNumber || current.orderNumber || ""),
+      firstName: String(body.firstName || current.firstName || ""),
+      lastName: String(body.lastName || current.lastName || ""),
+      email: String(body.email || current.email || ""),
+      phone: String(body.phone || current.phone || ""),
+      city: String(body.city || current.city || ""),
+      provinceCode: String(body.provinceCode || current.provinceCode || "").trim().toUpperCase(),
+      province: String(current.province || ""),
+      postalCode: String(body.postalCode || current.postalCode || "").trim(),
+      countryCode: String(current.countryCode || "IT").trim().toUpperCase(),
+      address: String(body.address || current.address || ""),
+      total: String(body.total || current.total || "0"),
+      note: String(body.note || current.note || ""),
+      lineItems: Array.isArray(body.lineItems) ? body.lineItems : current.lineItems || [],
+      lineDetails: Array.isArray(body.lineDetails)
+        ? body.lineDetails.map((item) => ({
+            title: String(item.title || ""),
+            quantity: Number(item.quantity || 1),
+          }))
+        : current.lineDetails || [],
+    };
+    nextOrder.operations = normalizeOperations(
+      {
+        ...nextOrder,
+        operations: {
+          ...(current.operations || {}),
+          product: body.product || current.operations?.product || "",
+          sqm: body.sqm || current.operations?.sqm || 0,
+          surface: body.surface || current.operations?.surface || "terra",
+          officeNote: body.officeNote || current.operations?.officeNote || "",
+          materials: Array.isArray(body.materials) ? body.materials : current.operations?.materials || [],
+          installation: {
+            ...(current.operations?.installation || {}),
+            required: body.installRequired != null ? Boolean(body.installRequired) : current.operations?.installation?.required,
+          },
+        },
+      },
+      store.jobs.find((job) => job.sourceOrderId === current.id) || null,
+    );
+    store.orders[orderIndex] = nextOrder;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, nextOrder);
+  }
+
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/attachments$/) && req.method === "POST") {
     const orderId = decodeURIComponent(url.pathname.split("/")[3]);
     const body = await readBody(req);
@@ -689,6 +973,78 @@ async function handleApi(req, res, url) {
     store.orders[orderIndex] = {
       ...current,
       attachments: [...(current.attachments || []), ...(Array.isArray(body.attachments) ? body.attachments : [])],
+    };
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, store.orders[orderIndex]);
+  }
+
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/operations$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const body = await readBody(req);
+    const orderIndex = store.orders.findIndex((item) => item.id === orderId);
+    if (orderIndex < 0) return sendJson(res, 404, { error: "order_not_found" });
+    const current = store.orders[orderIndex];
+    store.orders[orderIndex] = {
+      ...current,
+      operations: normalizeOperations(
+        {
+          ...current,
+          operations: {
+            ...current.operations,
+            ...body,
+            warehouse: {
+              ...(current.operations?.warehouse || {}),
+              ...(body.warehouse || {}),
+              ddt: {
+                ...(current.operations?.warehouse?.ddt || {}),
+                ...(body.warehouse?.ddt || {}),
+              },
+            },
+            installation: {
+              ...(current.operations?.installation || {}),
+              ...(body.installation || {}),
+            },
+          },
+        },
+        store.jobs.find((job) => job.sourceOrderId === current.id) || null,
+      ),
+    };
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, store.orders[orderIndex]);
+  }
+
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/create-ddt$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const body = await readBody(req);
+    const orderIndex = store.orders.findIndex((item) => item.id === orderId);
+    if (orderIndex < 0) return sendJson(res, 404, { error: "order_not_found" });
+    const current = store.orders[orderIndex];
+    const currentDdt = current.operations?.warehouse?.ddt || {};
+    const createdAt = new Date().toISOString();
+    const number = body.number || currentDdt.number || `DDT-${String(current.orderNumber || orderId).replace(/[^\w-]/g, "")}`;
+    store.orders[orderIndex] = {
+      ...current,
+      operations: normalizeOperations(
+        {
+          ...current,
+          operations: {
+            ...(current.operations || {}),
+            warehouse: {
+              ...(current.operations?.warehouse || {}),
+              ddt: {
+                ...currentDdt,
+                number,
+                palletLength: body.palletLength || currentDdt.palletLength || "",
+                palletWidth: body.palletWidth || currentDdt.palletWidth || "",
+                palletHeight: body.palletHeight || currentDdt.palletHeight || "",
+                palletWeight: body.palletWeight || currentDdt.palletWeight || "",
+                createdAt,
+              },
+            },
+          },
+        },
+        store.jobs.find((job) => job.sourceOrderId === current.id) || null,
+      ),
     };
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.orders[orderIndex]);
@@ -723,7 +1079,7 @@ async function handleApi(req, res, url) {
 
     const normalized = orders.map(normalizeOrderPayload);
     normalized.forEach((order) => {
-      upsertOrderAndMaybeJob(store, order);
+      upsertOrderRecord(store, order);
     });
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.orders);
@@ -733,7 +1089,7 @@ async function handleApi(req, res, url) {
     try {
       const orders = await syncOrdersFromShopify(store);
       orders.forEach((order) => {
-        upsertOrderAndMaybeJob(store, order);
+        upsertOrderRecord(store, order);
       });
       await writeJson(STORE_PATH, store);
       return sendJson(res, 200, store.orders);
@@ -808,16 +1164,9 @@ async function handleApi(req, res, url) {
     const orderId = decodeURIComponent(url.pathname.split("/")[3]);
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
-    if (order.convertedJobId) {
-      const existing = store.jobs.find((job) => job.id === order.convertedJobId);
-      return sendJson(res, 200, { job: existing, order });
-    }
-
-    const job = jobFromOrder(order);
-    order.convertedJobId = job.id;
-    store.jobs.unshift(job);
+    const existing = order.convertedJobId ? store.jobs.find((job) => job.id === order.convertedJobId) : null;
     await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, { job, order });
+    return sendJson(res, 200, { job: existing, order });
   }
 
   if (url.pathname === "/api/settings/shopify" && req.method === "GET") {
@@ -831,6 +1180,16 @@ async function handleApi(req, res, url) {
       clientId: body.clientId || "",
       clientSecret: body.clientSecret || "",
       locationName: body.locationName || "",
+      carrierName: body.carrierName || "",
+      shippingRateMode: body.shippingRateMode === "manual-weight" ? "manual-weight" : "oneexpress-auto",
+      shippingTariffProfile: body.shippingTariffProfile === "gold" ? "gold" : "silver",
+      volumetricDivisor: body.volumetricDivisor || "5000",
+      rate80: body.rate80 || "",
+      rate150: body.rate150 || "",
+      rate300: body.rate300 || "",
+      rate500: body.rate500 || "",
+      rate1000: body.rate1000 || "",
+      extraKgRate: body.extraKgRate || "",
       webhookBaseUrl: body.webhookBaseUrl || "",
       webhookEndpoint: store.shopifySettings?.webhookEndpoint || "",
       webhookSubscriptionId: store.shopifySettings?.webhookSubscriptionId || "",

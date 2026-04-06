@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vertex Ops - Gestione Pose</title>
+    <title>Prato Sintetico Italia - Portale Operativo</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
@@ -16,17 +16,21 @@
     <section id="auth-screen" class="auth-screen">
       <div class="auth-card">
         <div class="auth-brand">
-          <div class="brand-mark">V</div>
+          <div class="brand-mark brand-mark-logo">
+            <img src="./logo-prato.png" alt="Prato Sintetico Italia" class="brand-logo" />
+          </div>
           <div>
-            <p class="eyebrow auth-eyebrow" data-i18n="brandEyebrow">Vertex Ops</p>
-            <h1 data-i18n="brandTitle">Gestione Pose</h1>
-            <p class="auth-subtitle" data-i18n="authSubtitle">Accedi al pannello operativo per ufficio, magazzino e squadre.</p>
+            <p class="eyebrow auth-eyebrow">Prato Sintetico Italia</p>
+            <h1>Portale Operativo</h1>
+            <p class="auth-subtitle">
+              Ordini Shopify, magazzino, squadre di posa e contabilità in un unico pannello.
+            </p>
           </div>
         </div>
 
         <div class="auth-demo">
           <div>
-            <span class="auth-demo-label" data-i18n="demoAccess">Accessi demo</span>
+            <span class="auth-demo-label">Accessi demo</span>
             <p><strong>Ufficio</strong> office@vertex.local / office123</p>
             <p><strong>Magazzino</strong> warehouse@vertex.local / warehouse123</p>
             <p><strong>Squadra</strong> crew@vertex.local / crew123</p>
@@ -35,388 +39,708 @@
 
         <form id="auth-form" class="auth-form">
           <label class="field">
-            <span data-i18n="authEmail">Email</span>
+            <span>Email</span>
             <input class="text-input" name="email" type="email" placeholder="office@vertex.local" required />
           </label>
           <label class="field">
-            <span data-i18n="authPassword">Password</span>
+            <span>Password</span>
             <input class="text-input" name="password" type="password" placeholder="••••••••" required />
           </label>
           <div id="auth-error" class="auth-error hidden"></div>
-          <button class="primary-button auth-submit" type="submit" data-i18n="authLogin">Accedi</button>
+          <button class="primary-button auth-submit" type="submit">Accedi</button>
         </form>
+        <div style="margin-top: 16px;">
+          <a
+            href="./garden-planner.html"
+            class="ghost-button"
+            style="display: inline-flex; text-decoration: none; align-items: center; justify-content: center;"
+          >
+            Apri Garden Planner
+          </a>
+        </div>
       </div>
     </section>
 
     <div id="app-shell" class="app-shell hidden">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="topbar-logo">
+            <div class="topbar-logo-mark">
+              <img src="./logo-prato.png" alt="Prato Sintetico Italia" class="brand-logo topbar-brand-logo" />
+            </div>
+            <div class="topbar-logo-copy">
+              <span>Prato Sintetico Italia</span>
+              <small>Portale operativo</small>
+            </div>
+          </div>
+          <label class="topbar-search">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input type="text" placeholder="Cerca ordini, clienti, prodotti..." />
+          </label>
+        </div>
+
+        <div class="topbar-right">
+          <button id="reload-button" class="topbar-btn primary">Ricarica dati</button>
+          <button id="new-order-button" class="topbar-btn">Nuovo ordine</button>
+          <a href="./garden-planner.html" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
+          <button class="topbar-notif" type="button" aria-label="Notifiche operative">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <span id="topbar-alert-count" class="badge">0</span>
+          </button>
+          <div class="lang-switch" aria-label="Language switcher">
+            <button class="lang-btn is-active" data-lang="it">IT</button>
+            <button class="lang-btn" data-lang="en">EN</button>
+          </div>
+          <div class="topbar-user">
+            <div class="topbar-avatar">PT</div>
+            <div class="topbar-user-copy">
+              <span id="topbar-user-name">-</span>
+              <small id="topbar-user-role">-</small>
+            </div>
+          </div>
+          <button id="logout-button" class="topbar-btn">Esci</button>
+        </div>
+      </header>
+
       <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">V</div>
-          <div>
-            <p class="eyebrow" data-i18n="brandEyebrow">Vertex Ops</p>
-            <h1 data-i18n="brandTitle">Gestione Pose</h1>
+        <div class="sidebar-brand-block">
+          <div class="sidebar-brand-line">
+            <div class="brand-mark brand-mark-logo sidebar-brand-mark">
+              <img src="./logo-prato.png" alt="Prato Sintetico Italia" class="brand-logo" />
+            </div>
+            <div>
+              <p class="eyebrow">Prato Sintetico Italia</p>
+              <strong class="sidebar-brand-title">Portale operativo</strong>
+            </div>
           </div>
         </div>
 
         <div class="user-card">
-          <span class="card-label" data-i18n="loggedAs">Utente attivo</span>
+          <span class="card-label">Utente attivo</span>
           <strong id="current-user-name">-</strong>
           <p id="current-user-role">-</p>
         </div>
 
+        <div class="sidebar-section-label">Operativo</div>
         <nav class="nav">
-          <button class="nav-link is-active" data-view="dashboard" data-i18n="navDashboard">Dashboard Ufficio</button>
-          <button class="nav-link" data-view="orders" data-i18n="navOrders">Ordini Shopify</button>
-          <button class="nav-link" data-view="calendar" data-i18n="navCalendar">Calendario Pose</button>
-          <button class="nav-link" data-view="job" data-i18n="navJob">Scheda Commessa</button>
-          <button class="nav-link" data-view="warehouse" data-i18n="navWarehouse">Vista Magazzino</button>
-          <button class="nav-link" data-view="crew" data-i18n="navCrew">Vista Squadra</button>
-          <button class="nav-link" data-view="accounting" data-i18n="navAccounting">Contabilità</button>
-          <button class="nav-link" data-view="settings" data-i18n="navSettings">Impostazioni</button>
+          <button class="nav-link is-active" data-view="dashboard">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg></span>
+            <span class="nav-label">Dashboard</span>
+          </button>
+          <button class="nav-link" data-view="orders">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3H10l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg></span>
+            <span class="nav-label">Inbox Ordini</span>
+          </button>
+          <button class="nav-link" data-view="warehouse">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg></span>
+            <span class="nav-label">Magazzino</span>
+          </button>
+          <button class="nav-link" data-view="installations">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></span>
+            <span class="nav-label">Pose</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-divider-line"></div>
+
+        <div class="sidebar-section-label">Amministrazione</div>
+        <nav class="nav nav-secondary">
+          <button class="nav-link" data-view="accounting">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></span>
+            <span class="nav-label">Contabilità</span>
+          </button>
+          <button class="nav-link" data-view="shipping">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg></span>
+            <span class="nav-label">Spedizioni</span>
+          </button>
+          <button class="nav-link" data-view="settings">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span>
+            <span class="nav-label">Impostazioni</span>
+          </button>
         </nav>
 
         <div class="sidebar-card">
-          <p class="card-label" data-i18n="sidebarFocus">Focus operativo</p>
-          <h3 data-i18n="sidebarFlowTitle">Un solo flusso</h3>
-          <p data-i18n="sidebarFlowText">
-            Ogni commessa vive in un unico sistema e aggiorna ufficio, magazzino e squadra senza doppio lavoro.
+          <p class="card-label">Focus operativo</p>
+          <h3>Ordine unico</h3>
+          <p>
+            Inbox, magazzino, squadra, contabilità e spedizioni lavorano sullo stesso ordine senza doppi inserimenti.
           </p>
         </div>
       </aside>
 
       <main class="main-content">
-        <header class="topbar">
+        <header class="page-header-bar hidden">
           <div>
-            <p class="eyebrow topbar-eyebrow" data-i18n="topbarEyebrow">MVP operativo locale</p>
-            <h2 id="view-title" data-i18n="navDashboard">Dashboard Ufficio</h2>
-          </div>
-
-          <div class="topbar-actions">
-            <div class="lang-switch" aria-label="Language switcher">
-              <button class="lang-btn is-active" data-lang="it">IT</button>
-              <button class="lang-btn" data-lang="en">EN</button>
-            </div>
-            <div class="topbar-user">
-              <span id="topbar-user-name">-</span>
-              <small id="topbar-user-role">-</small>
-            </div>
-            <button id="new-job-button" class="ghost-button" data-i18n="newJob">Nuova commessa</button>
-            <button id="seed-button" class="primary-button" data-i18n="seedData">Carica dati demo</button>
-            <button id="logout-button" class="ghost-button" data-i18n="logout">Esci</button>
+            <p class="eyebrow topbar-eyebrow">Prato Sintetico Italia</p>
+            <h2 id="view-title">Dashboard</h2>
           </div>
         </header>
 
-        <section class="ops-strip" data-ops-strip>
-          <article class="ops-card">
-            <span class="ops-label" data-i18n="opsOfficeLabel">Ufficio</span>
-            <strong id="ops-office-value">0</strong>
-            <p id="ops-office-text" data-i18n="opsOfficeText">Commesse da completare e assegnare.</p>
-          </article>
-          <article class="ops-card">
-            <span class="ops-label" data-i18n="opsWarehouseLabel">Magazzino</span>
-            <strong id="ops-warehouse-value">0</strong>
-            <p id="ops-warehouse-text" data-i18n="opsWarehouseText">Ordini da preparare o sbloccare.</p>
-          </article>
-          <article class="ops-card">
-            <span class="ops-label" data-i18n="opsCrewLabel">Squadre</span>
-            <strong id="ops-crew-value">0</strong>
-            <p id="ops-crew-text" data-i18n="opsCrewText">Pose confermate e lavori in corso.</p>
-          </article>
-        </section>
-
         <section class="view is-active" id="dashboard">
-          <div class="stats-grid" id="stats-grid"></div>
+          <div class="page-header">
+            <div>
+              <h1>Dashboard</h1>
+              <div class="page-header-sub" id="dashboard-subtitle">Ordini, magazzino, pose e contabilità in un unico colpo d'occhio</div>
+            </div>
+          </div>
 
-          <div class="dashboard-grid">
-            <section class="panel panel-large">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow" data-i18n="controlRoom">Cabina di regia</p>
-                  <h3 data-i18n="jobsToHandle">Commesse da gestire</h3>
+          <div class="kpi-grid">
+            <article class="kpi-card">
+              <div class="kpi-label">Ordini</div>
+              <div id="ops-orders-value" class="kpi-value">0</div>
+              <div id="ops-orders-text" class="kpi-sub">Ordini totali e bozze operative.</div>
+            </article>
+            <article class="kpi-card">
+              <div class="kpi-label">Magazzino</div>
+              <div id="ops-warehouse-value" class="kpi-value">0</div>
+              <div id="ops-warehouse-text" class="kpi-sub">Ordini da preparare, spedire o caricare.</div>
+            </article>
+            <article class="kpi-card">
+              <div class="kpi-label">Pose</div>
+              <div id="ops-installations-value" class="kpi-value">0</div>
+              <div id="ops-installations-text" class="kpi-sub">Installazioni da pianificare o in corso.</div>
+            </article>
+            <article class="kpi-card">
+              <div class="kpi-label">Da incassare</div>
+              <div id="ops-accounting-value" class="kpi-value">0</div>
+              <div id="ops-accounting-text" class="kpi-sub">Ordini da verificare, saldare o fatturare.</div>
+            </article>
+            <article class="kpi-card">
+              <div class="kpi-label">Spedizioni</div>
+              <div id="ops-shipping-value" class="kpi-value">0</div>
+              <div id="ops-shipping-text" class="kpi-sub">Corrieri, ritiri, furgoni e bancali.</div>
+            </article>
+          </div>
+
+          <div class="two-col">
+            <div>
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Le tue azioni adesso</div>
+                  <div id="dashboard-actions-badge" class="section-badge">0 azioni</div>
                 </div>
-                <button class="ghost-button small" id="dashboard-refresh" data-i18n="refresh">Aggiorna</button>
+                <div id="dashboard-actions" class="action-list"></div>
               </div>
-
-              <div class="toolbar-row">
-                <input id="dashboard-search" class="text-input toolbar-input" type="text" />
-                <div class="toolbar-tags">
-                  <button class="tag filter-tag is-active" data-dashboard-filter="all" data-i18n="filterAll">Tutti</button>
-                  <button class="tag filter-tag" data-dashboard-filter="urgent" data-i18n="filterUrgent">Urgenti</button>
-                  <button class="tag filter-tag" data-dashboard-filter="blocked" data-i18n="filterMissing">Manca materiale</button>
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Attività recente</div>
                 </div>
+                <div id="dashboard-activity" class="feed"></div>
               </div>
-
-              <div class="priority-stack">
-                <div class="priority-stack-head">
-                  <div>
-                    <p class="panel-eyebrow" data-i18n="priorityNowEyebrow">Priorità automatica</p>
-                    <h4 data-i18n="priorityNowTitle">Le tue 3 azioni adesso</h4>
-                  </div>
-                  <span class="search-pill compact-pill" data-i18n="priorityNowHint">Il sistema ordina le prossime azioni in base a blocchi, materiale e pianificazione.</span>
+            </div>
+            <div>
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Pose questa settimana</div>
                 </div>
-                <div id="priority-action-list" class="priority-action-list"></div>
+                <div id="dashboard-week-summary"></div>
               </div>
-
-              <div id="dashboard-job-list" class="job-list"></div>
-            </section>
-
-            <section class="side-stack">
-              <section class="panel">
-                <div class="panel-head">
-                  <div>
-                    <p class="panel-eyebrow" data-i18n="today">Oggi</p>
-                    <h3 data-i18n="quickAlerts">Alert rapidi</h3>
-                  </div>
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Magazzino — alert</div>
                 </div>
-                <div id="alert-stack" class="alert-stack"></div>
-              </section>
-
-              <section class="panel">
-                <div class="panel-head">
-                  <div>
-                    <p class="panel-eyebrow" data-i18n="instantActions">Azioni immediate</p>
-                    <h3 data-i18n="fastLane">Fast lane</h3>
-                  </div>
-                </div>
-                <div class="action-grid">
-                  <button class="action-button" id="quick-new-job" data-i18n="newJob">Nuova commessa</button>
-                  <button class="action-button" id="quick-open-orders" data-i18n="navOrders">Ordini Shopify</button>
-                  <button class="action-button" id="quick-open-calendar" data-i18n="navCalendar">Calendario Pose</button>
-                  <button class="action-button" id="quick-open-warehouse" data-i18n="navWarehouse">Vista Magazzino</button>
-                </div>
-              </section>
-            </section>
+                <div id="dashboard-alerts" class="action-list"></div>
+              </div>
+            </div>
           </div>
         </section>
 
         <section class="view" id="orders">
-          <div class="dashboard-grid">
-            <section class="panel panel-large">
-              <div class="panel-head">
+          <div class="page-header">
+            <div>
+              <h1>Inbox Ordini</h1>
+              <div class="page-header-sub">Ordini Shopify sincronizzati e in lavorazione</div>
+            </div>
+            <div class="detail-actions">
+              <button id="orders-sync-button" class="btn primary">Sincronizza Shopify</button>
+              <button id="orders-import-button" class="btn">Importa JSON</button>
+              <button id="orders-clear-manual-button" class="btn">Pulisci manuali</button>
+            </div>
+          </div>
+
+          <div class="view-toolbar">
+            <label class="field toolbar-input view-search-field">
+              <span class="hidden">Cerca ordini</span>
+              <input id="orders-search" class="text-input view-search-input" placeholder="Cerca cliente, ordine, città o prodotto" />
+            </label>
+            <div class="filter-bar">
+              <button class="filter-btn order-filter-tag is-active" data-order-filter="all">Tutti</button>
+              <button class="filter-btn order-filter-tag" data-order-filter="attention">Da valutare</button>
+              <button class="filter-btn order-filter-tag" data-order-filter="warehouse">Magazzino</button>
+              <button class="filter-btn order-filter-tag" data-order-filter="installation">Posa</button>
+              <button class="filter-btn order-filter-tag" data-order-filter="shipping">Spedizione</button>
+            </div>
+          </div>
+
+          <div class="order-grid">
+            <div>
+              <div class="field field-full collapsible-field order-import-panel hidden" id="order-import-wrap">
+                <span>JSON ordini Shopify</span>
+                <textarea id="order-import-text" class="text-input order-import-text" rows="5" placeholder='{"orders":[...]}'></textarea>
+                <div class="inline-actions order-import-actions">
+                  <button id="confirm-order-import-button" type="button" class="primary-button small-button">Importa adesso</button>
+                  <button id="clear-order-import-button" type="button" class="ghost-button small-button">Svuota</button>
+                </div>
+              </div>
+              <div id="orders-status" class="panel-note hidden"></div>
+              <div id="orders-list" class="order-list order-list-pro"></div>
+              <div id="orders-route-board" class="route-board compact-route-board"></div>
+            </div>
+
+            <section class="detail-panel order-detail-panel">
+              <div class="detail-header">
                 <div>
-                  <p class="panel-eyebrow" data-i18n="shopifyIntake">Intake ordini</p>
-                  <h3 data-i18n="navOrders">Ordini Shopify</h3>
+                  <div class="detail-title" id="order-detail-title">Seleziona un ordine</div>
+                  <div class="detail-id">Shopify live · ordine in lavorazione</div>
                 </div>
-                <div class="row-actions">
-                  <button class="ghost-button small" id="load-demo-orders" data-i18n="loadDemoOrders">Carica ordini demo</button>
-                  <button class="ghost-button small" id="sync-shopify-orders" data-i18n="syncShopifyOrders">Sincronizza Shopify</button>
-                  <button class="ghost-button small" id="clear-non-shopify-orders" data-i18n="clearNonShopify">Pulisci ordini manuali</button>
-                  <button class="primary-button small-button" id="import-orders-button" data-i18n="importOrders">Importa ordini</button>
-                </div>
+                <span id="order-detail-badge" class="action-badge badge-info">—</span>
               </div>
 
-              <div class="orders-summary" id="orders-summary"></div>
+              <div id="order-detail-summary" class="detail-grid"></div>
 
-              <div class="field field-full">
-                <span data-i18n="shopifyJsonLabel">JSON ordini Shopify</span>
-                <textarea id="order-import-text" class="text-input order-import-text" rows="7" placeholder='{"orders":[...]}'></textarea>
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Operatività ufficio</h4>
+                  <button id="open-order-modal-button" class="ghost-button small">Modifica</button>
+                </div>
+                <div id="order-office-summary" class="detail-stack"></div>
               </div>
 
-              <div id="orders-error" class="panel-note hidden"></div>
-              <div id="orders-list" class="orders-list"></div>
-            </section>
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Articoli ordine</h4>
+                </div>
+                <ul id="order-line-list" class="material-list compact-list"></ul>
+              </div>
 
-            <section class="side-stack">
-              <section class="panel">
-                <div class="panel-head">
+              <div class="panel-subsection">
+                <div class="subsection-head">
                   <div>
-                    <p class="panel-eyebrow" data-i18n="shopifyBridge">Bridge</p>
-                    <h3 data-i18n="orderToJobTitle">Ordine → Commessa</h3>
+                    <h4>Preparazione ufficio</h4>
+                    <p class="subsection-copy">Seleziona cosa il magazzino deve davvero preparare per questo ordine.</p>
                   </div>
+                  <button id="save-prep-list-button" class="primary-button small-button">Salva preparazione</button>
                 </div>
-                <div class="info-stack">
-                  <div class="info-card">
-                    <strong data-i18n="orderAutoDraftLead">Ogni ordine diventa automaticamente una bozza commessa operativa.</strong>
-                    <p data-i18n="orderAutoDraftText">L’ufficio interviene solo per completare i dati mancanti, pianificare e sbloccare il flusso.</p>
-                  </div>
-                  <div class="info-card">
-                    <strong data-i18n="shopifyStatusTitle">Stato integrazione</strong>
-                    <p data-i18n="shopifyStatusText">La connessione live richiederà dominio Shopify, token Admin API e webhook ordini. Intanto puoi importare JSON reali o demo.</p>
-                  </div>
+                <div class="inline-actions">
+                  <button id="route-to-warehouse-button" class="ghost-button small">Invia a magazzino</button>
+                  <button id="route-to-installation-button" class="ghost-button small">Invia a posa</button>
+                  <button id="clear-routing-button" class="ghost-button small">Rimuovi dal flusso</button>
                 </div>
-              </section>
-            </section>
-          </div>
-        </section>
-
-        <section class="view" id="calendar">
-          <div class="panel">
-            <div class="panel-head">
-              <div>
-                <p class="panel-eyebrow" data-i18n="activeWeek">Settimana attiva</p>
-                <h3 data-i18n="installationCalendar">Calendario pose</h3>
+                <div id="order-routing-status" class="detail-stack"></div>
+                <div id="order-prep-list" class="prep-list"></div>
               </div>
-              <div id="calendar-week-chip" class="calendar-chip"></div>
-            </div>
 
-            <div class="toolbar-row">
-              <div class="toolbar-tags">
-                <button class="tag crew-filter-tag is-active" data-crew-filter="all" data-i18n="allTeams">Tutte le squadre</button>
-                <button class="tag crew-filter-tag" data-crew-filter="Alpha">Alpha</button>
-                <button class="tag crew-filter-tag" data-crew-filter="Beta">Beta</button>
-                <button class="tag crew-filter-tag" data-crew-filter="Delta">Delta</button>
-              </div>
-              <div class="row-actions">
-                <div class="search-pill" data-i18n="calendarHint">Vista rapida per saturazione squadre e materiali mancanti</div>
-                <button id="calendar-route-button" class="ghost-button small" data-i18n="openCrewRoute">Itinerario squadra</button>
-              </div>
-            </div>
-
-            <div id="calendar-load-strip" class="load-strip"></div>
-            <div id="calendar-grid" class="calendar-grid"></div>
-          </div>
-        </section>
-
-        <section class="view" id="job">
-          <div class="job-layout">
-            <section class="panel panel-large">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow" data-i18n="fullSheet">Scheda completa</p>
-                  <h3 id="job-title"></h3>
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Allegati ordine</h4>
+                  <button id="order-attachment-button" class="ghost-button small">Carica allegato</button>
                 </div>
-                <span id="job-main-status" class="tag tag-green"></span>
+                <div id="order-attachments" class="attachment-grid"></div>
               </div>
-
-              <div id="job-stepper" class="stepper"></div>
-              <div class="workflow-strip">
-                <section class="workflow-card">
-                  <p class="panel-eyebrow" data-i18n="nextStepEyebrow">Next step</p>
-                  <h4 id="job-next-action-title"></h4>
-                  <p id="job-next-action-text" class="workflow-copy"></p>
-                  <div id="job-next-action-buttons" class="job-quick-actions"></div>
-                </section>
-                <section class="workflow-card">
-                  <p class="panel-eyebrow" data-i18n="blockingReasons">Blocchi rilevati</p>
-                  <ul id="job-blocker-list" class="blocker-list"></ul>
-                </section>
-              </div>
-              <div class="job-browser-shell">
-                <div class="job-browser-nav">
-                  <button id="job-prev-button" class="ghost-button small">Precedente</button>
-                  <button id="job-next-button" class="ghost-button small">Successiva</button>
-                </div>
-                <div id="job-browser-list" class="job-browser-list"></div>
-              </div>
-              <div id="job-detail-grid" class="detail-grid"></div>
-              <div id="job-quick-actions" class="job-quick-actions"></div>
-
-              <div class="notes-block">
-                <h4 data-i18n="opsNotes">Note operative</h4>
-                <p id="job-notes"></p>
-              </div>
-
-              <div class="notes-block attachment-block">
-                <div class="attachment-head">
-                  <h4 data-i18n="jobAttachments">Foto e allegati</h4>
-                  <button id="job-upload-button" class="ghost-button small" data-i18n="uploadPhoto">Carica foto</button>
-                </div>
-                <p class="attachment-copy" data-i18n="jobAttachmentsHint">Qui raccogli foto prima/dopo e allegati utili alla commessa.</p>
-                <div id="job-attachments" class="attachment-grid"></div>
-              </div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow" data-i18n="preparation">Preparazione</p>
-                  <h3 data-i18n="plannedMaterials">Materiali previsti</h3>
-                </div>
-              </div>
-              <ul id="job-material-list" class="material-list"></ul>
             </section>
           </div>
         </section>
 
         <section class="view" id="warehouse">
-          <div class="panel">
-            <div class="panel-head">
-              <div>
-                <p class="panel-eyebrow" data-i18n="operations">Operatività</p>
-                <h3 data-i18n="warehouseOrders">Ordini magazzino</h3>
-              </div>
+          <div class="page-header">
+            <div>
+              <h1>Magazzino</h1>
+              <div class="page-header-sub">Inventario fisico · Giacenze, residui e fabbisogni</div>
             </div>
+            <button class="btn primary" type="button">+ Carica giacenza</button>
+          </div>
 
-            <div class="toolbar-row">
-              <div class="toolbar-tags">
-                <button class="tag warehouse-filter-tag is-active" data-warehouse-filter="all" data-i18n="filterAll">Tutti</button>
-                <button class="tag warehouse-filter-tag" data-warehouse-filter="preparing" data-i18n="filterPreparing">In preparazione</button>
-                <button class="tag warehouse-filter-tag" data-warehouse-filter="blocked" data-i18n="filterMissing">Manca materiale</button>
-                <button class="tag warehouse-filter-tag" data-warehouse-filter="ready" data-i18n="statusReady">Pronto</button>
-              </div>
-              <div class="search-pill" data-i18n="warehouseHint">Filtra per stato, priorità o data posa</div>
+          <div class="view-toolbar">
+            <label class="field toolbar-input view-search-field">
+              <span class="hidden">Cerca giacenze</span>
+              <input id="warehouse-search" class="text-input view-search-input" placeholder="Cerca prodotto, misura o residuo" />
+            </label>
+            <div class="filter-bar">
+              <button class="filter-btn warehouse-filter-tag is-active" data-warehouse-filter="all">Tutti</button>
+              <button class="filter-btn warehouse-filter-tag" data-warehouse-filter="full">Interi</button>
+              <button class="filter-btn warehouse-filter-tag" data-warehouse-filter="residual">Residui</button>
+              <button class="filter-btn warehouse-filter-tag" data-warehouse-filter="demand">Sotto scorta</button>
             </div>
+          </div>
 
-            <div class="warehouse-table" id="warehouse-table"></div>
+          <div class="two-col">
+            <section>
+
+              <div class="info-card inventory-guide-card">
+                <strong>Come caricare le giacenze iniziali</strong>
+                <p>Seleziona un modello o un articolo, inserisci quanti pezzi fisici hai in magazzino e, per i prati, indica larghezza e lunghezza del rotolo o del residuo. Gli ordini Shopify scaleranno il fabbisogno aperto per aiutarti a capire cosa manca.</p>
+              </div>
+
+              <div id="inventory-summary" class="inventory-catalog"></div>
+            </section>
+
+            <section class="detail-panel">
+              <div class="detail-header">
+                <div>
+                  <div class="detail-title" id="warehouse-detail-title">Ordini da preparare</div>
+                  <div class="detail-id">Seleziona un ordine per vedere il dettaglio e caricare la giacenza.</div>
+                </div>
+              </div>
+
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Ordini da preparare</h4>
+                </div>
+                <div id="warehouse-list" class="warehouse-list"></div>
+              </div>
+
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Ordine selezionato</h4>
+                </div>
+                <div id="warehouse-detail-fields" class="detail-grid"></div>
+              </div>
+
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Aggiungi giacenza</h4>
+                </div>
+                <form id="inventory-form" class="inline-form-grid">
+                  <label class="field">
+                    <span>Prodotto</span>
+                    <input class="text-input" name="product" list="inventory-product-options" placeholder="Betulla 30 mm, Telo isolante..." />
+                  </label>
+                  <label class="field">
+                    <span>Quanti pezzi</span>
+                    <input class="text-input" name="quantity" placeholder="1" />
+                  </label>
+                  <label class="field" hidden>
+                    <span>Formato</span>
+                    <select class="text-input" name="variant">
+                      <option value="">Standard</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Larghezza</span>
+                    <input class="text-input" name="width" placeholder="2" />
+                  </label>
+                  <label class="field">
+                    <span>Lunghezza</span>
+                    <input class="text-input" name="length" placeholder="25" />
+                  </label>
+                  <label class="field">
+                    <span>Tipo pezzo</span>
+                    <select class="text-input" name="status">
+                      <option value="intero">Intero</option>
+                      <option value="residuo">Residuo</option>
+                    </select>
+                  </label>
+                  <label class="field field-full">
+                    <span>Note pezzo</span>
+                    <textarea class="text-input" name="note" rows="3" placeholder="Rotolo nuovo, residuo da ordine #2791, taglio utile..."></textarea>
+                  </label>
+                  <div class="inline-actions field-full">
+                    <button type="submit" class="primary-button small-button">Aggiungi a magazzino</button>
+                  </div>
+                </form>
+              </div>
+            </section>
           </div>
         </section>
 
-        <section class="view" id="crew">
-          <div class="panel">
-            <div class="panel-head">
-              <div>
-                <p class="panel-eyebrow" data-i18n="mobileFirst">Mobile first</p>
-                <h3 data-i18n="crewView">Vista squadra</h3>
-              </div>
-              <span id="crew-chip" class="calendar-chip"></span>
+        <section class="view" id="shipping">
+          <div class="page-header">
+            <div>
+              <h1>Spedizioni e DDT</h1>
+              <div class="page-header-sub">Gestione corrieri, ritiri, furgoni e bancali</div>
             </div>
-
-            <div class="toolbar-row">
-              <div class="toolbar-tags">
-                <button class="tag crew-board-tag is-active" data-board-crew="all" data-i18n="allTeams">Tutte le squadre</button>
-                <button class="tag crew-board-tag" data-board-crew="Alpha">Alpha</button>
-                <button class="tag crew-board-tag" data-board-crew="Beta">Beta</button>
-                <button class="tag crew-board-tag" data-board-crew="Delta">Delta</button>
-              </div>
-              <div class="row-actions">
-                <div class="search-pill" data-i18n="crewHint">Azioni rapide per lavoro completato, problema o foto di cantiere</div>
-                <button id="crew-route-button" class="ghost-button small" data-i18n="openCrewRoute">Itinerario squadra</button>
-              </div>
-            </div>
-
-            <div id="crew-cards" class="crew-cards"></div>
           </div>
+
+          <div class="view-toolbar">
+            <label class="field toolbar-input view-search-field">
+              <span class="hidden">Cerca spedizioni</span>
+              <input id="shipping-search" class="text-input view-search-input" placeholder="Cerca ordine, cliente, vettore o tipo spedizione" />
+            </label>
+            <div class="filter-bar">
+              <button class="filter-btn shipping-filter-tag is-active" data-shipping-filter="all">Tutti</button>
+              <button class="filter-btn shipping-filter-tag" data-shipping-filter="courier">Corriere</button>
+              <button class="filter-btn shipping-filter-tag" data-shipping-filter="pickup">Ritiro</button>
+              <button class="filter-btn shipping-filter-tag" data-shipping-filter="van">Furgone</button>
+            </div>
+          </div>
+
+          <div class="order-grid">
+            <div id="shipping-list" class="order-list shipping-order-list"></div>
+
+            <section class="detail-panel">
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>DDT ordine selezionato</h4>
+                  <button id="create-ddt-button" class="primary-button small-button">Crea PDF DDT</button>
+                </div>
+                <form id="ddt-form" class="inline-form-grid">
+                  <label class="field">
+                    <span>N. DDT</span>
+                    <input class="text-input" name="number" placeholder="DDT-1001" />
+                  </label>
+                  <label class="field">
+                    <span>Lunghezza bancale</span>
+                    <input class="text-input" name="palletLength" placeholder="120 cm" />
+                  </label>
+                  <label class="field">
+                    <span>Larghezza bancale</span>
+                    <input class="text-input" name="palletWidth" placeholder="80 cm" />
+                  </label>
+                  <label class="field">
+                    <span>Altezza bancale</span>
+                    <input class="text-input" name="palletHeight" placeholder="95 cm" />
+                  </label>
+                  <label class="field">
+                    <span>Peso bancale</span>
+                    <input class="text-input" name="palletWeight" placeholder="180 kg" />
+                  </label>
+                </form>
+                <div id="ddt-items-preview" class="detail-stack"></div>
+                <div id="warehouse-ddt-status" class="search-pill compact-pill">Il DDT riporta solo la merce fisica che viaggia su bancale, mai servizi o posa.</div>
+              </div>
+
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Dettaglio spedizione</h4>
+                </div>
+                <h3 id="shipping-detail-title" class="section-inline-title">Seleziona un ordine</h3>
+                <div id="shipping-detail-fields" class="detail-grid"></div>
+                <form id="shipping-form" class="inline-form-grid">
+                  <label class="field">
+                    <span>Stato</span>
+                    <select class="text-input" name="status">
+                      <option value="da-preparare">Da preparare</option>
+                      <option value="in-preparazione">In preparazione</option>
+                      <option value="pronto">Pronto</option>
+                      <option value="bloccato">Bloccato</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Gestione ordine</span>
+                    <select class="text-input" name="fulfillmentMode">
+                      <option value="da-definire">Da definire</option>
+                      <option value="corriere">Corriere</option>
+                      <option value="ritiro">Ritiro</option>
+                      <option value="furgone">Furgone</option>
+                    </select>
+                  </label>
+                <label class="field">
+                  <span>Vettore</span>
+                  <input class="text-input" name="carrier" placeholder="BRT, GLS, SDA..." />
+                </label>
+                <label class="field">
+                    <span>Ritiro / furgone</span>
+                    <input class="text-input" name="pickupLabel" placeholder="Ritiro sede o nome furgone" />
+                  </label>
+                <label class="field">
+                  <span>Tracking</span>
+                  <input class="text-input" name="trackingNumber" placeholder="Tracking corriere" />
+                </label>
+                <label class="field">
+                  <span>Provincia destinazione</span>
+                  <input class="text-input" name="destinationProvinceCode" maxlength="3" placeholder="CE" />
+                </label>
+                <label class="field">
+                  <span>CAP destinazione</span>
+                  <input class="text-input" name="destinationPostalCode" placeholder="81025" />
+                </label>
+                <label class="field field-full">
+                  <span>Note magazzino</span>
+                  <textarea class="text-input" name="warehouseNote" rows="3" placeholder="Mancano colli, ritiro oggi, bancale pronto..."></textarea>
+                </label>
+                  <label class="checkline"><input type="checkbox" name="readyToShip" /> <span>Merce pronta da evadere</span></label>
+                  <label class="checkline"><input type="checkbox" name="carrierPassed" /> <span>Corriere passato / merce ritirata</span></label>
+                  <label class="checkline"><input type="checkbox" name="shipped" /> <span>Ordine evaso</span></label>
+                  <div class="inline-actions field-full">
+                    <button type="submit" class="primary-button small-button">Salva spedizione</button>
+                  </div>
+                </form>
+                <div class="panel-subsection">
+                  <div class="subsection-head">
+                    <h4>Calcolatore costo spedizione</h4>
+                  </div>
+                  <div id="shipping-estimate" class="info-stack"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="installations">
+          <div class="page-header">
+            <div>
+              <h1>Calendario Pose</h1>
+              <div class="page-header-sub">Settimana operativa squadre</div>
+            </div>
+            <div class="detail-actions">
+              <button class="btn" id="installation-prev-week-button">← Sett. prec.</button>
+              <button class="btn" id="installation-next-week-button">Sett. succ. →</button>
+            </div>
+          </div>
+
+          <div class="filter-bar">
+            <button class="filter-btn installation-filter-tag is-active" data-installation-filter="all">Tutte le squadre</button>
+            <button class="filter-btn installation-filter-tag" data-installation-filter="Alpha">Alpha</button>
+            <button class="filter-btn installation-filter-tag" data-installation-filter="Beta">Beta</button>
+            <button class="filter-btn installation-filter-tag" data-installation-filter="Delta">Delta</button>
+          </div>
+
+          <div id="installation-calendar" class="cal-grid"></div>
+
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Da pianificare (backlog)</div>
+            </div>
+            <div id="installation-list" class="installation-board"></div>
+          </div>
+
+          <section class="detail-panel install-detail-panel">
+            <div class="detail-header">
+              <div>
+                <div class="detail-title" id="installation-detail-title">Seleziona un ordine</div>
+                <div class="detail-id">Dettaglio pianificazione ordine</div>
+              </div>
+            </div>
+
+              <div id="installation-detail-summary" class="detail-grid"></div>
+
+              <form id="installation-form" class="inline-form-grid">
+                <label class="field">
+                  <span>Richiede posa</span>
+                  <select class="text-input" name="required">
+                    <option value="yes">Sì</option>
+                    <option value="no">No</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Squadra</span>
+                  <select class="text-input" name="crew">
+                    <option value="">Da assegnare</option>
+                    <option value="Alpha">Alpha</option>
+                    <option value="Beta">Beta</option>
+                    <option value="Delta">Delta</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Data posa</span>
+                  <input class="text-input" type="date" name="installDate" />
+                </label>
+                <label class="field">
+                  <span>Ora</span>
+                  <input class="text-input" type="time" name="installTime" />
+                </label>
+                <label class="field">
+                  <span>Cliente confermato</span>
+                  <select class="text-input" name="clientConfirmed">
+                    <option value="yes">Sì</option>
+                    <option value="no">No</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Stato posa</span>
+                  <select class="text-input" name="status">
+                    <option value="da-pianificare">Da pianificare</option>
+                    <option value="programmata">Programmato</option>
+                    <option value="in-corso">In corso</option>
+                    <option value="completata">Completato</option>
+                    <option value="problema">Problema</option>
+                  </select>
+                </label>
+                <label class="field field-full">
+                  <span>Report squadra / note</span>
+                  <textarea class="text-input" name="reportNote" rows="4" placeholder="Accesso, arrivo previsto, note posa, report cantiere..."></textarea>
+                </label>
+                <div class="inline-actions field-full">
+                  <button type="submit" class="primary-button small-button">Salva posa</button>
+                  <button type="button" id="installation-maps-button" class="ghost-button small">Apri Maps</button>
+                  <button type="button" id="installation-attachment-button" class="ghost-button small">Carica foto</button>
+                </div>
+              </form>
+
+              <div id="installation-attachments" class="attachment-grid"></div>
+          </section>
         </section>
 
         <section class="view" id="accounting">
-          <div class="dashboard-grid">
-            <section class="panel panel-large">
-              <div class="panel-head">
+          <div class="page-header">
+            <div>
+              <h1>Contabilità</h1>
+              <div class="page-header-sub">Pagamenti, tranche, fatturazione</div>
+            </div>
+            <div class="detail-actions">
+              <button id="export-csv-button" class="btn" type="button">Export CSV</button>
+              <button id="export-pdf-button" class="btn" type="button">Export PDF</button>
+            </div>
+          </div>
+
+          <div id="accounting-models-overview" class="acc-kpi"></div>
+          <div id="accounting-analysis" class="accounting-analysis"></div>
+
+          <div class="view-toolbar">
+            <label class="field toolbar-input view-search-field">
+              <span class="hidden">Cerca contabilità</span>
+              <input id="accounting-search" class="text-input view-search-input" placeholder="Cerca cliente, ordine o pagamento" />
+            </label>
+            <div class="filter-bar">
+              <button class="filter-btn accounting-filter-tag is-active" data-accounting-filter="all">Tutti</button>
+              <button class="filter-btn accounting-filter-tag" data-accounting-filter="open">Saldo aperto</button>
+              <button class="filter-btn accounting-filter-tag" data-accounting-filter="invoice">Da fatturare</button>
+              <button class="filter-btn accounting-filter-tag" data-accounting-filter="thisMonth">Questo mese</button>
+              <button class="filter-btn accounting-filter-tag" data-accounting-filter="lastMonth">Mese scorso</button>
+            </div>
+          </div>
+
+          <div class="order-grid">
+            <div id="accounting-list" class="order-list accounting-list"></div>
+
+            <section class="detail-panel">
+              <div class="detail-header">
                 <div>
-                  <p class="panel-eyebrow" data-i18n="accountingEyebrow">Controllo economico</p>
-                  <h3 data-i18n="navAccounting">Contabilità</h3>
-                </div>
-                <button class="ghost-button small" id="accounting-refresh" data-i18n="refresh">Aggiorna</button>
-              </div>
-
-              <div class="toolbar-row">
-                <input id="accounting-search" class="text-input toolbar-input" type="text" />
-                <div class="toolbar-tags">
-                  <button class="tag accounting-filter-tag is-active" data-accounting-filter="all" data-i18n="filterAll">Tutti</button>
-                  <button class="tag accounting-filter-tag" data-accounting-filter="pending" data-i18n="accountingPending">Saldo aperto</button>
-                  <button class="tag accounting-filter-tag" data-accounting-filter="invoice" data-i18n="accountingInvoiceNeeded">Da fatturare</button>
+                  <div class="detail-title" id="accounting-detail-title">Seleziona un ordine</div>
+                  <div class="detail-id">Pagamenti, residui e fatturazione</div>
                 </div>
               </div>
 
-              <div id="accounting-summary" class="orders-summary"></div>
-              <div id="accounting-list" class="accounting-list"></div>
-            </section>
-
-            <section class="side-stack">
-              <section class="panel">
-                <div class="panel-head">
-                  <div>
-                    <p class="panel-eyebrow" data-i18n="accountingEyebrow">Controllo economico</p>
-                    <h3 data-i18n="accountingChecklistTitle">Checklist amministrativa</h3>
-                  </div>
+              <form id="accounting-form" class="inline-form-grid">
+                <label class="field">
+                  <span>Metodo utilizzato</span>
+                  <input class="text-input" name="paymentMethod" placeholder="Carta, bonifico, PayPal..." />
+                </label>
+                <label class="field">
+                  <span>Acconto registrato</span>
+                  <input class="text-input" name="depositPaid" placeholder="0,00" />
+                </label>
+                <label class="field">
+                  <span>Saldo registrato</span>
+                  <input class="text-input" name="balancePaid" placeholder="0,00" />
+                </label>
+                <label class="field">
+                  <span>Fattura richiesta</span>
+                  <select class="text-input" name="invoiceRequired">
+                    <option value="no">No</option>
+                    <option value="yes">Sì</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Fattura emessa</span>
+                  <select class="text-input" name="invoiceIssued">
+                    <option value="no">No</option>
+                    <option value="yes">Sì</option>
+                  </select>
+                </label>
+                <label class="field field-full">
+                  <span>Nota amministrativa</span>
+                  <textarea class="text-input" name="accountingNote" rows="4" placeholder="Saldo da richiamare, fattura inviata, pagamento in attesa..."></textarea>
+                </label>
+                <div class="inline-actions field-full">
+                  <button type="button" id="import-shopify-payment-button" class="ghost-button small-button">Importa pagamento Shopify</button>
+                  <button type="submit" class="primary-button small-button">Salva contabilità</button>
                 </div>
-                <div class="info-stack">
-                  <div class="info-card">
-                    <strong data-i18n="accountingChecklistLead">Ogni ordine raccoglie metodo di pagamento, acconti, saldo e stato fattura.</strong>
-                    <p data-i18n="accountingChecklistText">Così l'ufficio vede subito cosa è stato incassato, cosa manca e cosa deve ancora essere fatturato.</p>
-                  </div>
-                </div>
-              </section>
+              </form>
+              <div id="accounting-meta" class="detail-stack"></div>
             </section>
           </div>
         </section>
@@ -426,202 +750,196 @@
             <section class="panel panel-large">
               <div class="panel-head">
                 <div>
-                  <p class="panel-eyebrow" data-i18n="settingsEyebrow">Configurazione</p>
-                  <h3 data-i18n="navSettings">Impostazioni</h3>
+                  <p class="panel-eyebrow">Collegamenti</p>
+                  <h3>Impostazioni Shopify</h3>
                 </div>
               </div>
 
-              <form id="shopify-settings-form" class="modal-form">
-                <div class="form-grid">
-                  <label class="field">
-                    <span data-i18n="shopDomain">Dominio Shopify</span>
-                    <input class="text-input" name="storeDomain" placeholder="nome-store.myshopify.com" />
-                  </label>
-                  <label class="field">
-                    <span data-i18n="shopClientId">Client ID</span>
-                    <input class="text-input" name="clientId" placeholder="42e7de..." />
-                  </label>
-                  <label class="field">
-                    <span data-i18n="shopClientSecret">Client secret</span>
-                    <input class="text-input" name="clientSecret" placeholder="••••••••" />
-                  </label>
-                  <label class="field">
-                    <span data-i18n="shopLocation">Location / deposito</span>
-                    <input class="text-input" name="locationName" placeholder="Marcianise" />
-                  </label>
-                  <label class="field">
-                    <span data-i18n="shopWebhook">URL pubblico webhook</span>
-                    <input class="text-input" name="webhookBaseUrl" placeholder="https://ops.tuodominio.it" />
-                  </label>
-                </div>
-
-                <div class="modal-actions">
-                  <div id="shopify-settings-status" class="panel-note" data-i18n="settingsHint">
-                    Salva qui i parametri del ponte Shopify. La sincronizzazione live sarà il passo successivo.
-                  </div>
-                  <div class="row-actions">
-                    <button type="button" id="register-webhook-button" class="ghost-button" data-i18n="registerWebhook">Registra webhook</button>
-                    <button type="submit" class="primary-button" data-i18n="saveSettings">Salva impostazioni</button>
-                  </div>
+              <form id="shopify-settings-form" class="inline-form-grid">
+                <label class="field">
+                  <span>Dominio Shopify</span>
+                  <input class="text-input" name="storeDomain" placeholder="nome-store.myshopify.com" />
+                </label>
+                <label class="field">
+                  <span>Client ID</span>
+                  <input class="text-input" name="clientId" placeholder="42e7de..." />
+                </label>
+                <label class="field">
+                  <span>Client secret</span>
+                  <input class="text-input" name="clientSecret" placeholder="••••••••" />
+                </label>
+                <label class="field">
+                  <span>Deposito / location</span>
+                  <input class="text-input" name="locationName" placeholder="Marcianise" />
+                </label>
+                <label class="field">
+                  <span>Vettore di riferimento</span>
+                  <input class="text-input" name="carrierName" placeholder="SDA, BRT, GLS..." />
+                </label>
+                <label class="field">
+                  <span>Modalità tariffa spedizione</span>
+                  <select class="text-input" name="shippingRateMode">
+                    <option value="oneexpress-auto">One Express automatico</option>
+                    <option value="manual-weight">Manuale per fasce peso</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Profilo tariffario</span>
+                  <select class="text-input" name="shippingTariffProfile">
+                    <option value="silver">Silver</option>
+                    <option value="gold">Gold</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Divisore peso volumetrico</span>
+                  <input class="text-input" name="volumetricDivisor" placeholder="5000" />
+                </label>
+                <label class="field">
+                  <span>Nolo fino a 80 kg</span>
+                  <input class="text-input" name="rate80" placeholder="0,00" />
+                </label>
+                <label class="field">
+                  <span>Nolo fino a 150 kg</span>
+                  <input class="text-input" name="rate150" placeholder="0,00" />
+                </label>
+                <label class="field">
+                  <span>Nolo fino a 300 kg</span>
+                  <input class="text-input" name="rate300" placeholder="0,00" />
+                </label>
+                <label class="field">
+                  <span>Nolo fino a 500 kg</span>
+                  <input class="text-input" name="rate500" placeholder="0,00" />
+                </label>
+                <label class="field">
+                  <span>Nolo fino a 1000 kg</span>
+                  <input class="text-input" name="rate1000" placeholder="0,00" />
+                </label>
+                <label class="field">
+                  <span>Extra €/kg oltre 1000 kg</span>
+                  <input class="text-input" name="extraKgRate" placeholder="0,00" />
+                </label>
+                <div class="inline-actions field-full">
+                  <button type="submit" class="primary-button small-button">Salva impostazioni</button>
                 </div>
               </form>
+              <div id="settings-status" class="panel-note hidden"></div>
             </section>
 
-            <section class="side-stack">
-              <section class="panel">
-                <div class="panel-head">
-                  <div>
-                    <p class="panel-eyebrow" data-i18n="nextStepEyebrow">Next step</p>
-                    <h3 data-i18n="shopifyLiveTitle">Integrazione live Shopify</h3>
-                  </div>
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow">Direzione scelta</p>
+                  <h3>Sync manuale Shopify</h3>
                 </div>
-                <div class="info-stack">
-                  <div class="info-card">
-                    <strong data-i18n="shopifyLiveItem1Title">1. Custom app Shopify</strong>
-                    <p data-i18n="shopifyLiveItem1Text">Creiamo una custom app con permessi lettura ordini, clienti e indirizzi.</p>
-                  </div>
-                  <div class="info-card">
-                    <strong data-i18n="shopifyLiveItem2Title">2. Webhook ordine</strong>
-                    <p data-i18n="shopifyLiveItem2Text">Ogni nuovo ordine entra qui come inbox operativa senza copia-incolla.</p>
-                  </div>
-                  <div class="info-card">
-                    <strong data-i18n="shopifyLiveItem3Title">3. Mapping tecnico</strong>
-                    <p data-i18n="shopifyLiveItem3Text">L’ufficio completa superficie, squadra, data posa e materiali prima di inviare al magazzino.</p>
-                  </div>
+              </div>
+              <div class="info-stack">
+                <div class="info-card">
+                  <strong>Niente webhook per ora.</strong>
+                  <p>Gli ordini entrano cliccando “Sincronizza Shopify”, così restiamo semplici, senza hosting pubblico e senza perdere il collegamento col negozio.</p>
                 </div>
-              </section>
+                <div class="info-card">
+                  <strong>Ordine come centro.</strong>
+                  <p>Non esiste più una commessa separata: lo stesso ordine evolve in operatività ufficio, magazzino, posa e contabilità.</p>
+                </div>
+              </div>
             </section>
           </div>
         </section>
       </main>
     </div>
 
-    <div id="job-modal" class="modal hidden">
+    <div id="order-modal" class="modal hidden">
       <div class="modal-backdrop" data-close-modal></div>
-      <div class="modal-dialog">
+      <div class="modal-dialog wide-dialog">
         <div class="modal-header">
           <div>
-            <p class="panel-eyebrow" data-i18n="jobFormEyebrow">Inserimento operativo</p>
-            <h3 id="modal-title" data-i18n="newJob">Nuova commessa</h3>
+            <p class="panel-eyebrow">Ordine operativo</p>
+            <h3 id="order-modal-title">Nuovo ordine</h3>
           </div>
-          <button class="ghost-button small" data-close-modal data-i18n="close">Chiudi</button>
+          <button class="ghost-button small" data-close-modal>Chiudi</button>
         </div>
 
-        <form id="job-form" class="modal-form">
+        <form id="order-form" class="modal-form">
           <input type="hidden" name="id" />
-
           <div class="form-grid">
             <label class="field">
-              <span data-i18n="fieldFirstName">Nome</span>
+              <span>Numero ordine</span>
+              <input class="text-input" name="orderNumber" required />
+            </label>
+            <label class="field">
+              <span>Nome</span>
               <input class="text-input" name="firstName" required />
             </label>
             <label class="field">
-              <span data-i18n="fieldLastName">Cognome</span>
+              <span>Cognome</span>
               <input class="text-input" name="lastName" required />
             </label>
             <label class="field">
-              <span data-i18n="fieldCity">Città</span>
-              <input class="text-input" name="city" required />
+              <span>Città</span>
+              <input class="text-input" name="city" />
             </label>
             <label class="field">
-              <span data-i18n="fieldPhone">Telefono</span>
+              <span>Provincia</span>
+              <input class="text-input" name="provinceCode" maxlength="3" placeholder="CE" />
+            </label>
+            <label class="field">
+              <span>CAP</span>
+              <input class="text-input" name="postalCode" placeholder="81025" />
+            </label>
+            <label class="field">
+              <span>Telefono</span>
               <input class="text-input" name="phone" />
             </label>
             <label class="field">
-              <span data-i18n="fieldEmail">Email</span>
+              <span>Email</span>
               <input class="text-input" name="email" />
             </label>
-            <label class="field">
-              <span data-i18n="fieldAddress">Indirizzo</span>
+            <label class="field field-full">
+              <span>Indirizzo</span>
               <input class="text-input" name="address" />
             </label>
             <label class="field">
-              <span data-i18n="fieldType">Tipo lavoro</span>
-              <select class="text-input" name="jobType">
-                <option value="fornitura" data-i18n="typeSupply">Fornitura</option>
-                <option value="fornitura-posa" data-i18n="typeSupplyInstall">Fornitura + posa</option>
-              </select>
+              <span>Prodotto</span>
+              <input class="text-input" name="product" />
             </label>
             <label class="field">
-              <span data-i18n="fieldSurface">Superficie</span>
+              <span>Metri quadri</span>
+              <input class="text-input" name="sqm" />
+            </label>
+            <label class="field">
+              <span>Superficie</span>
               <select class="text-input" name="surface">
-                <option value="terra" data-i18n="surfaceGround">Terra</option>
-                <option value="pavimentazione" data-i18n="surfacePaving">Pavimentazione</option>
+                <option value="terra">Terra</option>
+                <option value="pavimentazione">Pavimentazione</option>
               </select>
             </label>
             <label class="field">
-              <span data-i18n="fieldProduct">Prodotto</span>
-              <input class="text-input" name="product" required />
-            </label>
-            <label class="field">
-              <span data-i18n="fieldSqm">Metri quadri</span>
-              <input class="text-input" name="sqm" type="number" min="0" step="1" required />
-            </label>
-            <label class="field">
-              <span data-i18n="fieldInstallDate">Data posa</span>
-              <input class="text-input" name="installDate" type="date" />
-            </label>
-            <label class="field">
-              <span data-i18n="fieldInstallTime">Ora</span>
-              <input class="text-input" name="installTime" type="time" />
-            </label>
-            <label class="field">
-              <span data-i18n="fieldCrew">Squadra</span>
-              <select class="text-input" name="crew">
-                <option value="Alpha">Alpha</option>
-                <option value="Beta">Beta</option>
-                <option value="Delta">Delta</option>
+              <span>Richiede posa</span>
+              <select class="text-input" name="installRequired">
+                <option value="yes">Sì</option>
+                <option value="no">No</option>
               </select>
             </label>
-            <label class="field">
-              <span data-i18n="fieldPriority">Priorità</span>
-              <select class="text-input" name="priority">
-                <option value="alta" data-i18n="priorityHigh">Alta</option>
-                <option value="media" data-i18n="priorityMedium">Media</option>
-                <option value="bassa" data-i18n="priorityLow">Bassa</option>
-              </select>
+            <label class="field field-full">
+              <span>Materiali</span>
+              <textarea class="text-input" name="materials" rows="4" placeholder="Una riga per materiale"></textarea>
             </label>
-            <label class="field">
-              <span data-i18n="fieldWarehouse">Stato magazzino</span>
-              <select class="text-input" name="warehouseStatus">
-                <option value="da-preparare" data-i18n="warehouseToPrepare">Da preparare</option>
-                <option value="in-preparazione" data-i18n="statusPreparing">In preparazione</option>
-                <option value="pronto" data-i18n="statusReady">Pronto</option>
-                <option value="manca-materiale" data-i18n="statusMissingMaterial">Manca materiale</option>
-              </select>
-            </label>
-            <label class="field">
-              <span data-i18n="fieldInstallStatus">Stato posa</span>
-              <select class="text-input" name="installStatus">
-                <option value="da-pianificare" data-i18n="installToPlan">Da pianificare</option>
-                <option value="programmata" data-i18n="statusScheduled">In agenda</option>
-                <option value="in-corso" data-i18n="statusInProgress">In corso</option>
-                <option value="completata" data-i18n="crewComplete">Lavoro completato</option>
-                <option value="problema" data-i18n="crewProblem">Problema in cantiere</option>
-              </select>
+            <label class="field field-full">
+              <span>Note ufficio</span>
+              <textarea class="text-input" name="officeNote" rows="4"></textarea>
             </label>
           </div>
-
-          <label class="field field-full">
-            <span data-i18n="fieldMaterials">Materiali</span>
-            <textarea class="text-input" name="materials" rows="4" placeholder="Prato 85 mq&#10;Telo 85 mq&#10;Colla 2 secchi"></textarea>
-          </label>
-
-          <label class="field field-full">
-            <span data-i18n="fieldNotes">Note operative</span>
-            <textarea class="text-input" name="notes" rows="4" placeholder="Accesso cantiere, cliente, extra, criticità..."></textarea>
-          </label>
-
           <div class="modal-actions">
-            <button type="button" class="ghost-button" id="delete-job-button" data-i18n="deleteJob">Elimina</button>
-            <button type="submit" class="primary-button" data-i18n="saveJob">Salva commessa</button>
+            <button type="button" id="delete-order-button" class="ghost-button danger-button">Elimina ordine</button>
+            <button type="submit" class="primary-button">Salva ordine</button>
           </div>
         </form>
       </div>
     </div>
 
-    <input id="attachment-input" type="file" accept="image/*" multiple class="hidden" />
-
-    <script src="./app.js"></script>
+    <input id="attachment-input" type="file" accept="image/*" class="hidden" />
+    <datalist id="inventory-product-options"></datalist>
+    <script src="./shipping-tariffs.js"></script>
+    <script src="./app.js" type="module"></script>
   </body>
 </html>
