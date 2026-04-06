@@ -318,6 +318,18 @@ function normalizeOperations(order, linkedJob = null) {
 }
 
 function reconcileStoreData(store) {
+  const defaults = buildDefaultStore();
+
+  store.users = Array.isArray(store.users) && store.users.length
+    ? store.users.map((user, index) => ({
+        id: user.id || defaults.users[index]?.id || randomUUID(),
+        name: String(user.name || defaults.users[index]?.name || "").trim(),
+        email: String(user.email || defaults.users[index]?.email || "").trim().toLowerCase(),
+        password: String(user.password || defaults.users[index]?.password || ""),
+        role: String(user.role || defaults.users[index]?.role || "office").trim(),
+      }))
+    : defaults.users.map((user) => ({ ...user }));
+
   store.inventory = Array.isArray(store.inventory)
     ? store.inventory.map((item) => ({
         id: item.id || randomUUID(),
@@ -332,7 +344,14 @@ function reconcileStoreData(store) {
       }))
     : [];
 
-  store.orders = (store.orders || []).map((order) => {
+  store.jobs = Array.isArray(store.jobs) ? store.jobs : [];
+  store.orders = Array.isArray(store.orders) ? store.orders : [];
+  store.shopifySettings = {
+    ...defaults.shopifySettings,
+    ...(store.shopifySettings || {}),
+  };
+
+  store.orders = store.orders.map((order) => {
     const nextOrder = { ...order };
     if (!Array.isArray(nextOrder.lineDetails) || !nextOrder.lineDetails.length) {
       nextOrder.lineDetails = normalizeStringLineDetails(nextOrder.lineItems || []);
@@ -354,12 +373,12 @@ function reconcileStoreData(store) {
       accountingNote: nextOrder.accounting?.accountingNote || "",
     };
     nextOrder.attachments = Array.isArray(nextOrder.attachments) ? nextOrder.attachments : [];
-    const linkedJob = (store.jobs || []).find((job) => job.sourceOrderId === nextOrder.id) || null;
+    const linkedJob = store.jobs.find((job) => job.sourceOrderId === nextOrder.id) || null;
     nextOrder.operations = normalizeOperations(nextOrder, linkedJob);
     return nextOrder;
   });
 
-  store.jobs = (store.jobs || []).map((job) => {
+  store.jobs = store.jobs.map((job) => {
     if (!job.sourceOrderId) return job;
     const sourceOrder = store.orders.find((order) => order.id === job.sourceOrderId);
     if (!sourceOrder) return job;
