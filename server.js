@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, dirname, join, resolve } from "node:path";
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT || 4178);
@@ -32,6 +32,80 @@ const SHOPIFY_OAUTH_SCOPES = [
   "read_inventory",
   "read_fulfillments",
 ].join(",");
+
+const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const LOGIN_WINDOW_MS = 1000 * 60 * 15;
+const LOGIN_MAX_ATTEMPTS = 8;
+const IS_PUBLIC_DEPLOY = Boolean(process.env.RENDER || process.env.NODE_ENV === "production");
+const ALLOW_DEMO_FALLBACK = process.env.ALLOW_DEMO_FALLBACK === "true" || !IS_PUBLIC_DEPLOY;
+const loginAttempts = new Map();
+
+function hashPassword(password, salt = randomBytes(16).toString("hex")) {
+  return {
+    salt,
+    hash: scryptSync(String(password || ""), salt, 64).toString("hex"),
+  };
+}
+
+function verifyPasswordRecord(user, password) {
+  const candidate = String(password || "");
+  if (user?.passwordHash && user?.passwordSalt) {
+    const derived = scryptSync(candidate, user.passwordSalt, 64).toString("hex");
+    const left = Buffer.from(derived, "utf8");
+    const right = Buffer.from(String(user.passwordHash), "utf8");
+    return left.length === right.length && timingSafeEqual(left, right);
+  }
+  return String(user?.password || "") === candidate;
+}
+
+function sanitizePasswordUser(user = {}) {
+  const nextUser = { ...user };
+  const plainPassword = String(nextUser.password || "");
+  if ((!nextUser.passwordHash || !nextUser.passwordSalt) && plainPassword) {
+    const { hash, salt } = hashPassword(plainPassword);
+    nextUser.passwordHash = hash;
+    nextUser.passwordSalt = salt;
+  }
+  delete nextUser.password;
+  return nextUser;
+}
+
+function getClientIp(req) {
+  return String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown")
+    .split(",")[0]
+    .trim();
+}
+
+function getLoginAttemptKey(req, email) {
+  return `${getClientIp(req)}::${String(email || "").trim().toLowerCase()}`;
+}
+
+function pruneLoginAttempts(now = Date.now()) {
+  for (const [key, entry] of loginAttempts.entries()) {
+    if (!entry || entry.resetAt <= now) loginAttempts.delete(key);
+  }
+}
+
+function recordFailedLogin(req, email) {
+  pruneLoginAttempts();
+  const key = getLoginAttemptKey(req, email);
+  const current = loginAttempts.get(key);
+  if (!current || current.resetAt <= Date.now()) {
+    loginAttempts.set(key, { count: 1, resetAt: Date.now() + LOGIN_WINDOW_MS });
+    return;
+  }
+  current.count += 1;
+}
+
+function clearFailedLogin(req, email) {
+  loginAttempts.delete(getLoginAttemptKey(req, email));
+}
+
+function isLoginBlocked(req, email) {
+  pruneLoginAttempts();
+  const entry = loginAttempts.get(getLoginAttemptKey(req, email));
+  return Boolean(entry && entry.count >= LOGIN_MAX_ATTEMPTS && entry.resetAt > Date.now());
+}
 
 function setDataDir(nextDir) {
   DATA_DIR = resolve(nextDir);
@@ -160,6 +234,12 @@ function parseCookies(cookieHeader = "") {
 function sendJson(res, status, payload, headers = {}) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Content-Security-Policy": "default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self' https://*.myshopify.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     ...headers,
   });
   res.end(JSON.stringify(payload));
@@ -416,16 +496,28 @@ function normalizeOperations(order, linkedJob = null) {
 
 function reconcileStoreData(store) {
   const defaults = buildDefaultStore();
+  let changed = false;
 
   store.users = Array.isArray(store.users) && store.users.length
-    ? store.users.map((user, index) => ({
-        id: user.id || defaults.users[index]?.id || randomUUID(),
-        name: String(user.name || defaults.users[index]?.name || "").trim(),
-        email: String(user.email || defaults.users[index]?.email || "").trim().toLowerCase(),
-        password: String(user.password || defaults.users[index]?.password || ""),
-        role: String(user.role || defaults.users[index]?.role || "office").trim(),
-      }))
-    : defaults.users.map((user) => ({ ...user }));
+    ? store.users.map((user, index) => {
+        const normalized = sanitizePasswordUser({
+          id: user.id || defaults.users[index]?.id || randomUUID(),
+          name: String(user.name || defaults.users[index]?.name || "").trim(),
+          email: String(user.email || defaults.users[index]?.email || "").trim().toLowerCase(),
+          password: String(user.password || defaults.users[index]?.password || ""),
+          passwordHash: String(user.passwordHash || ""),
+          passwordSalt: String(user.passwordSalt || ""),
+          role: String(user.role || defaults.users[index]?.role || "office").trim(),
+        });
+        if (normalized.passwordHash !== user.passwordHash || normalized.passwordSalt !== user.passwordSalt || "password" in user) {
+          changed = true;
+        }
+        return normalized;
+      })
+    : defaults.users.map((user) => {
+        changed = true;
+        return sanitizePasswordUser({ ...user });
+      });
 
   store.inventory = Array.isArray(store.inventory)
     ? store.inventory.map((item) => ({
@@ -501,6 +593,8 @@ function reconcileStoreData(store) {
     const existingJob = store.jobs.find((job) => job.sourceOrderId === order.id);
     order.convertedJobId = existingJob?.id || null;
   });
+
+  return changed;
 }
 
 function normalizeOrderPayload(order, index) {
@@ -806,7 +900,14 @@ async function getSessionUser(req, store) {
   const cookies = parseCookies(req.headers.cookie);
   if (!cookies.vertex_session) return null;
   const session = await readJson(SESSION_PATH, {});
-  const userId = session[cookies.vertex_session];
+  const entry = session[cookies.vertex_session];
+  const userId = typeof entry === "string" ? entry : entry?.userId;
+  const expiresAt = typeof entry === "object" && entry?.expiresAt ? Number(entry.expiresAt) : 0;
+  if (expiresAt && expiresAt < Date.now()) {
+    delete session[cookies.vertex_session];
+    await writeJson(SESSION_PATH, session);
+    return null;
+  }
   if (!userId) return null;
   return store.users.find((user) => user.id === userId) || null;
 }
@@ -814,7 +915,10 @@ async function getSessionUser(req, store) {
 async function handleApi(req, res, url) {
   await ensureStore();
   const store = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
-  reconcileStoreData(store);
+  const storeChanged = reconcileStoreData(store);
+  if (storeChanged) {
+    await writeJson(STORE_PATH, store);
+  }
   const currentUser = await getSessionUser(req, store);
 
   if (url.pathname === "/api/session" && req.method === "GET") {
@@ -831,26 +935,36 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "").trim();
+    if (isLoginBlocked(req, email)) {
+      return sendJson(res, 429, { error: "too_many_attempts" });
+    }
     const demoUsers = getDemoUsers();
-    let user = store.users.find((item) => item.email.toLowerCase() === email && item.password === password);
-    const demoUser = demoUsers.find((item) => item.email.toLowerCase() === email && item.password === password) || null;
+    let user = store.users.find((item) => item.email.toLowerCase() === email && verifyPasswordRecord(item, password));
+    const demoUser = ALLOW_DEMO_FALLBACK
+      ? demoUsers.find((item) => item.email.toLowerCase() === email && item.password === password) || null
+      : null;
 
     if (!user && demoUser) {
       const existingIndex = store.users.findIndex((item) => item.email.toLowerCase() === email);
+      const securedDemoUser = sanitizePasswordUser(demoUser);
       if (existingIndex >= 0) {
-        store.users[existingIndex] = { ...store.users[existingIndex], ...demoUser };
+        store.users[existingIndex] = { ...store.users[existingIndex], ...securedDemoUser };
       } else {
-        store.users.push(demoUser);
+        store.users.push(securedDemoUser);
       }
-      user = demoUser;
+      user = securedDemoUser;
       await writeJson(STORE_PATH, store);
     }
 
-    if (!user) return sendJson(res, 401, { error: "invalid_credentials" });
+    if (!user) {
+      recordFailedLogin(req, email);
+      return sendJson(res, 401, { error: "invalid_credentials" });
+    }
+    clearFailedLogin(req, email);
 
     const sessionId = randomUUID();
     const sessions = await readJson(SESSION_PATH, {});
-    sessions[sessionId] = user.id;
+    sessions[sessionId] = { userId: user.id, expiresAt: Date.now() + SESSION_TTL_MS };
     await writeJson(SESSION_PATH, sessions);
 
     return sendJson(
@@ -882,6 +996,31 @@ async function handleApi(req, res, url) {
       { ok: true },
       { "Set-Cookie": "vertex_session=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax; Secure" },
     );
+  }
+
+  if (url.pathname === "/api/account/password" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const body = await readBody(req);
+    const currentPassword = String(body.currentPassword || "");
+    const nextPassword = String(body.newPassword || "");
+    if (nextPassword.length < 12) {
+      return sendJson(res, 400, { error: "weak_password" });
+    }
+    const userIndex = store.users.findIndex((item) => item.id === currentUser.id);
+    if (userIndex < 0) return sendJson(res, 404, { error: "user_not_found" });
+    const storedUser = store.users[userIndex];
+    if (!verifyPasswordRecord(storedUser, currentPassword)) {
+      return sendJson(res, 400, { error: "invalid_current_password" });
+    }
+    const { hash, salt } = hashPassword(nextPassword);
+    store.users[userIndex] = {
+      ...storedUser,
+      passwordHash: hash,
+      passwordSalt: salt,
+    };
+    delete store.users[userIndex].password;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true });
   }
 
   if (url.pathname === "/api/webhooks/shopify/orders" && req.method === "POST") {

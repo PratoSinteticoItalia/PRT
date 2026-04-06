@@ -28,7 +28,7 @@
           </div>
         </div>
 
-        <div class="auth-demo">
+        <div id="auth-demo" class="auth-demo">
           <div>
             <span class="auth-demo-label">Accessi demo</span>
             <p><strong>Ufficio</strong> office@vertex.local / office123</p>
@@ -828,6 +828,33 @@
                 </div>
               </form>
               <div id="settings-status" class="panel-note hidden"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow">Sicurezza</p>
+                  <h3>Password accesso</h3>
+                </div>
+              </div>
+              <form id="security-form" class="inline-form-grid">
+                <label class="field">
+                  <span>Password attuale</span>
+                  <input class="text-input" name="currentPassword" type="password" placeholder="••••••••••••" />
+                </label>
+                <label class="field">
+                  <span>Nuova password</span>
+                  <input class="text-input" name="newPassword" type="password" placeholder="Almeno 12 caratteri" />
+                </label>
+                <label class="field">
+                  <span>Conferma nuova password</span>
+                  <input class="text-input" name="confirmPassword" type="password" placeholder="Ripeti la nuova password" />
+                </label>
+                <div class="inline-actions field-full">
+                  <button type="submit" class="primary-button small-button">Aggiorna password</button>
+                </div>
+              </form>
+              <div id="security-status" class="panel-note hidden"></div>
             </section>
 
             <section class="panel">

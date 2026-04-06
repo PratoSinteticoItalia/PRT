@@ -586,6 +586,9 @@ const ui = {
   settingsForm: document.getElementById("shopify-settings-form"),
   settingsStatus: document.getElementById("settings-status"),
   connectShopifyButton: document.getElementById("connect-shopify-button"),
+  securityForm: document.getElementById("security-form"),
+  securityStatus: document.getElementById("security-status"),
+  authDemo: document.getElementById("auth-demo"),
   orderModal: document.getElementById("order-modal"),
   orderModalTitle: document.getElementById("order-modal-title"),
   orderForm: document.getElementById("order-form"),
@@ -3244,6 +3247,9 @@ function renderSettings() {
       ? "Ricollega Shopify"
       : "Connect Shopify";
   }
+  if (ui.securityForm) {
+    ui.securityForm.reset();
+  }
 }
 
 function renderDetailBox(item) {
@@ -3938,6 +3944,39 @@ async function connectShopify() {
   }
 }
 
+async function updatePassword(event) {
+  event.preventDefault();
+  if (!ui.securityForm) return;
+  clearStatus(ui.securityStatus);
+  const form = new FormData(ui.securityForm);
+  const currentPassword = String(form.get("currentPassword") || "");
+  const newPassword = String(form.get("newPassword") || "");
+  const confirmPassword = String(form.get("confirmPassword") || "");
+  if (newPassword.length < 12) {
+    setStatus(ui.securityStatus, "error", "La nuova password deve avere almeno 12 caratteri.");
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    setStatus(ui.securityStatus, "error", "La conferma password non coincide.");
+    return;
+  }
+  try {
+    await apiFetch("/api/account/password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    ui.securityForm.reset();
+    setStatus(ui.securityStatus, "success", "Password aggiornata correttamente.");
+  } catch (error) {
+    const message = error.message === "invalid_current_password"
+      ? "La password attuale non e corretta."
+      : error.message === "weak_password"
+        ? "La nuova password e troppo debole."
+        : "Aggiornamento password fallito.";
+    setStatus(ui.securityStatus, "error", message);
+  }
+}
+
 function handleShopifyOauthFeedback() {
   const params = new URLSearchParams(window.location.search);
   const status = params.get("shopify");
@@ -4273,7 +4312,12 @@ bindEvent(ui.installationAttachmentButton, "click", () => openAttachmentPicker("
 bindEvent(ui.accountingForm, "submit", saveAccounting);
 bindEvent(ui.settingsForm, "submit", saveSettings);
 bindEvent(ui.connectShopifyButton, "click", connectShopify);
+bindEvent(ui.securityForm, "submit", updatePassword);
 handleShopifyOauthFeedback();
+
+if (ui.authDemo && !/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
+  ui.authDemo.classList.add("hidden");
+}
 bindEvent(ui.orderForm, "submit", saveOrder);
 bindEvent(ui.deleteOrderButton, "click", deleteSelectedOrder);
 ui.closeModalTriggers.forEach((item) => item.addEventListener("click", closeOrderModal));
