@@ -2404,6 +2404,9 @@ function renderOrders() {
   `;
   const checklist = getOrderChecklist(order);
   const selectedPrepCount = getWarehousePreparedLines(order).length;
+  const orderNoteMarkup = order.note
+    ? `<div class="detail-note-chip">${escapeHtml(order.note)}</div>`
+    : "";
   ui.orderOfficeSummary.innerHTML = `
     <article class="guidance-card order-next-step-card">
       <span class="panel-eyebrow">${t("orderRadar")}</span>
@@ -2422,16 +2425,15 @@ function renderOrders() {
     <div class="detail-grid detail-grid-tight">
       ${renderInfoLine(t("officeStatus"), order.operations?.officeStatus || (state.lang === "it" ? "bozza" : "draft"))}
       ${renderInfoLine(t("jobType"), order.operations?.installation?.required ? t("supplyInstall") : t("supply"))}
-      ${renderInfoLine(t("prepIncluded"), `${selectedPrepCount} ${state.lang === "it" ? "righe" : "lines"}`)}
       ${renderInfoLine(t("paymentMethod"), getEffectivePaymentMethod(order))}
       ${renderInfoLine(t("attachmentsCount"), `${(order.attachments || []).length} ${state.lang === "it" ? "file" : "files"}`)}
-      ${renderInfoLine(t("orderNotes"), order.note || t("noOrderNotes"))}
     </div>
-    <article class="guidance-card">
+    ${orderNoteMarkup}
+    <article class="guidance-card order-snapshot-card">
       <span class="panel-eyebrow">${state.lang === "it" ? "Snapshot ordine" : "Order snapshot"}</span>
       <div class="detail-grid detail-grid-tight">
         ${renderInfoLine(state.lang === "it" ? "Articoli Shopify" : "Shopify lines", `${(order.lineDetails || []).length}`)}
-        ${renderInfoLine(state.lang === "it" ? "Righe da preparare" : "Prep lines", `${prepItems.length}`)}
+        ${renderInfoLine(state.lang === "it" ? "Righe da preparare" : "Prep lines", `${selectedPrepCount}`)}
         ${renderInfoLine(state.lang === "it" ? "Flusso magazzino" : "Warehouse flow", isRoutedToWarehouse(order) ? t("routeWarehouseStatusOn") : t("routeWarehouseStatusOff"))}
         ${renderInfoLine(state.lang === "it" ? "Flusso posa" : "Install flow", isRoutedToInstallation(order) ? t("routeInstallStatusOn") : t("routeInstallStatusOff"))}
       </div>
@@ -2828,7 +2830,7 @@ function renderShippingMaterialPreview(order) {
       <li class="shipping-material-line">
         <div>
           <span>${escapeHtml(item.title)}</span>
-          <small>${escapeHtml(inferCatalogEntry(item.title)?.formatLabel || inferCatalogEntry(item.title)?.typeLabel || getShippingSummary(order))}</small>
+          <small>${escapeHtml(item.note || inferCatalogEntry(item.title)?.formatLabel || inferCatalogEntry(item.title)?.unitLabel || (state.lang === "it" ? "Riga materiale selezionata" : "Selected material line"))}</small>
         </div>
         <strong>x${escapeHtml(item.quantity)}</strong>
       </li>

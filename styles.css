@@ -5530,3 +5530,262 @@ body {
     font-size: 26px;
   }
 }
+
+/* Density cleanup and spacing alignment */
+.detail-grid {
+  gap: 14px;
+}
+
+.detail-grid-tight {
+  gap: 8px;
+}
+
+.detail-box {
+  padding: 12px 14px;
+  border-radius: 16px;
+}
+
+.detail-box strong {
+  font-size: 19px;
+  line-height: 1.12;
+  margin-bottom: 4px;
+}
+
+.detail-box p {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.guidance-card,
+.checklist-card {
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.guidance-card strong {
+  font-size: 18px;
+  line-height: 1.18;
+  margin-bottom: 6px;
+}
+
+.guidance-card p,
+.checklist-note {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.order-next-step-card,
+.order-snapshot-card {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-note-chip {
+  margin: 10px 0 2px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(32, 49, 35, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.detail-section {
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.detail-row {
+  padding: 4px 0;
+}
+
+.detail-pieces {
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.piece-tag {
+  min-width: 66px;
+  padding: 6px 9px;
+}
+
+.panel,
+.detail-panel,
+.order-detail-panel,
+.install-detail-panel {
+  padding: 16px;
+}
+
+.order-grid,
+.two-col,
+.dashboard-grid,
+.dashboard-grid-double {
+  gap: 16px;
+}
+
+.order-row,
+.warehouse-action-card,
+.shipping-row,
+.accounting-row {
+  padding: 14px 16px;
+  border-radius: 18px;
+}
+
+.route-board {
+  gap: 10px;
+}
+
+.route-column {
+  padding: 12px;
+  min-height: 150px;
+}
+
+.view-toolbar {
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.filter-bar {
+  gap: 8px;
+}
+
+.page-header,
+.page-header-bar {
+  margin-bottom: 14px;
+  padding: 18px 22px;
+}
+
+.page-header h1,
+.page-header-bar h2 {
+  font-size: clamp(26px, 2.15vw, 36px);
+}
+
+.page-header-sub {
+  margin-top: 4px;
+}
+
+.topbar {
+  padding: 10px 14px;
+}
+
+.topbar-right {
+  gap: 8px;
+}
+
+.topbar-btn,
+.topbar-user,
+.lang-switch {
+  min-height: 40px;
+}
+
+.shipping-material-hero {
+  padding: 16px;
+  gap: 12px;
+}
+
+.shipping-material-hero strong {
+  font-size: 24px;
+}
+
+.shipping-material-list {
+  gap: 8px;
+}
+
+.shipping-material-line {
+  padding: 12px 14px;
+  gap: 10px;
+}
+
+.shipping-material-line small {
+  margin-top: 2px;
+}
+
+@media (max-width: 980px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .order-grid,
+  .two-col,
+  .dashboard-grid,
+  .dashboard-grid-double {
+    gap: 14px;
+  }
+
+  .page-header,
+  .page-header-bar {
+    padding: 16px 18px;
+  }
+
+  .page-header h1,
+  .page-header-bar h2 {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 720px) {
+  .main-content {
+    padding: 10px;
+  }
+
+  .panel,
+  .detail-panel,
+  .order-detail-panel,
+  .install-detail-panel {
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .page-header,
+  .page-header-bar {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .page-header h1,
+  .page-header-bar h2 {
+    font-size: 24px;
+  }
+
+  .guidance-card,
+  .checklist-card,
+  .detail-box {
+    padding: 12px;
+  }
+
+  .order-row,
+  .warehouse-action-card,
+  .shipping-row,
+  .accounting-row {
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .topbar-right {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .topbar-user {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar-right {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topbar-user {
+    grid-column: 1 / -1;
+  }
+
+  .page-header h1,
+  .page-header-bar h2 {
+    font-size: 22px;
+  }
+
+  .shipping-material-hero strong {
+    font-size: 21px;
+  }
+}
