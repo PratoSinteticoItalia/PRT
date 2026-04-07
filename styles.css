@@ -946,6 +946,16 @@ button {
   flex-wrap: wrap;
 }
 
+.order-flow-card {
+  gap: 12px;
+}
+
+.order-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .guidance-card p,
 .checklist-note {
   margin: 0;
@@ -4233,6 +4243,10 @@ body {
 }
 
 @media (max-width: 720px) {
+  .order-flow-grid {
+    grid-template-columns: 1fr;
+  }
+
   .accounting-analysis {
     grid-template-columns: 1fr;
   }

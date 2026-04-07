@@ -721,6 +721,8 @@ function normalizeOrderPayload(order, index) {
     },
     attachments: Array.isArray(order.attachments) ? order.attachments : [],
     convertedJobId: null,
+    createdAt: order.created_at || order.createdAt || order.processed_at || order.processedAt || new Date().toISOString(),
+    updatedAt: order.updated_at || order.updatedAt || order.created_at || order.createdAt || order.processed_at || order.processedAt || new Date().toISOString(),
   };
 }
 
@@ -766,7 +768,17 @@ function normalizeGraphqlOrder(node, index) {
     },
     attachments: Array.isArray(node.attachments) ? node.attachments : [],
     convertedJobId: null,
+    createdAt: node.createdAt || node.processedAt || new Date().toISOString(),
+    updatedAt: node.updatedAt || node.processedAt || node.createdAt || new Date().toISOString(),
   };
+}
+
+function sortOrdersByRecency(items = []) {
+  return [...items].sort((left, right) => {
+    const leftTime = new Date(left.updatedAt || left.createdAt || 0).getTime();
+    const rightTime = new Date(right.updatedAt || right.createdAt || 0).getTime();
+    return rightTime - leftTime;
+  });
 }
 
 function jobFromOrder(order) {
@@ -888,6 +900,9 @@ async function syncOrdersFromShopify(store) {
       orders(first: 50, sortKey: PROCESSED_AT, reverse: true) {
         edges {
           node {
+            createdAt
+            updatedAt
+            processedAt
             ${orderFields}
           }
         }
@@ -905,6 +920,9 @@ async function syncOrdersFromShopify(store) {
       ) {
         edges {
           node {
+            createdAt
+            updatedAt
+            processedAt
             ${orderFields}
           }
         }
@@ -928,6 +946,7 @@ async function syncOrdersFromShopify(store) {
       store.orders.unshift(order);
     }
   });
+  store.orders = sortOrdersByRecency(store.orders);
   return store.orders;
 }
 

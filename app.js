@@ -1918,7 +1918,42 @@ function filterOrdersForView(kind) {
       return true;
     }
     return true;
-  });
+  }).sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0));
+}
+
+function renderInboxFlowControls(order) {
+  const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
+  const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
+  return `
+    <article class="guidance-card order-flow-card">
+      <span class="panel-eyebrow">${state.lang === "it" ? "Gestione rapida ufficio" : "Quick office handling"}</span>
+      <div class="order-flow-grid">
+        <label class="field">
+          <span>${state.lang === "it" ? "Stato preparazione" : "Preparation status"}</span>
+          <select class="text-input" data-order-flow-status="${order.id}">
+            <option value="da-preparare" ${warehouseStatus === "da-preparare" ? "selected" : ""}>${state.lang === "it" ? "Da preparare" : "To prepare"}</option>
+            <option value="in-preparazione" ${warehouseStatus === "in-preparazione" ? "selected" : ""}>${state.lang === "it" ? "In preparazione" : "Preparing"}</option>
+            <option value="pronto" ${warehouseStatus === "pronto" ? "selected" : ""}>${state.lang === "it" ? "Pronto" : "Ready"}</option>
+            <option value="bloccato" ${warehouseStatus === "bloccato" ? "selected" : ""}>${state.lang === "it" ? "Bloccato" : "Blocked"}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Evasione / ritiro" : "Dispatch mode"}</span>
+          <select class="text-input" data-order-flow-mode="${order.id}">
+            <option value="da-definire" ${fulfillmentMode === "da-definire" ? "selected" : ""}>${state.lang === "it" ? "Da definire" : "To define"}</option>
+            <option value="corriere" ${fulfillmentMode === "corriere" ? "selected" : ""}>${state.lang === "it" ? "Corriere" : "Courier"}</option>
+            <option value="ritiro" ${fulfillmentMode === "ritiro" ? "selected" : ""}>${state.lang === "it" ? "Ritiro" : "Pickup"}</option>
+            <option value="furgone" ${fulfillmentMode === "furgone" ? "selected" : ""}>${state.lang === "it" ? "Furgone" : "Van"}</option>
+          </select>
+        </label>
+      </div>
+      <div class="order-office-actions">
+        <button class="mini-action primary-mini" data-action="save-inbox-flow" data-id="${order.id}">${state.lang === "it" ? "Salva stato ordine" : "Save order state"}</button>
+        <button class="mini-action" data-action="preset-pickup-flow" data-id="${order.id}">${state.lang === "it" ? "Preparare e ritirare" : "Prepare and pickup"}</button>
+        <button class="mini-action" data-action="preset-prepare-only" data-id="${order.id}">${state.lang === "it" ? "Preparare senza affidare" : "Prepare only"}</button>
+      </div>
+    </article>
+  `;
 }
 
 function filterInstallations() {
@@ -2424,6 +2459,7 @@ function renderOrders() {
         <button class="mini-action" data-action="route-installation" data-id="${order.id}">${t("routeInstallShort")}</button>
       </div>
     </article>
+    ${renderInboxFlowControls(order)}
     <div class="detail-grid detail-grid-tight">
       ${renderInfoLine(t("officeStatus"), order.operations?.officeStatus || (state.lang === "it" ? "bozza" : "draft"))}
       ${renderInfoLine(t("jobType"), order.operations?.installation?.required ? t("supplyInstall") : t("supply"))}
@@ -3727,6 +3763,25 @@ async function updateOrderRoutingById(orderId, patch) {
   return saved;
 }
 
+async function saveInboxOrderFlow(orderId, patch = null) {
+  const statusInput = document.querySelector(`[data-order-flow-status="${orderId}"]`);
+  const modeInput = document.querySelector(`[data-order-flow-mode="${orderId}"]`);
+  const payload = patch || {
+    warehouse: {
+      selected: true,
+      status: statusInput?.value || "da-preparare",
+      fulfillmentMode: modeInput?.value || "da-definire",
+    },
+  };
+  const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  state.selectedOrderId = saved.id;
+  render();
+}
+
 async function saveShipping(event) {
   event.preventDefault();
   const order = getSelectedOrder();
@@ -4334,6 +4389,30 @@ function handleGlobalClick(event) {
   }
   if (action === "route-warehouse") {
     updateOrderRoutingById(id, { warehouse: { selected: true }, installation: { selected: false } });
+    return;
+  }
+  if (action === "save-inbox-flow") {
+    saveInboxOrderFlow(id);
+    return;
+  }
+  if (action === "preset-pickup-flow") {
+    saveInboxOrderFlow(id, {
+      warehouse: {
+        selected: true,
+        status: "da-preparare",
+        fulfillmentMode: "ritiro",
+      },
+    });
+    return;
+  }
+  if (action === "preset-prepare-only") {
+    saveInboxOrderFlow(id, {
+      warehouse: {
+        selected: true,
+        status: "da-preparare",
+        fulfillmentMode: "da-definire",
+      },
+    });
     return;
   }
   if (action === "route-installation") {
