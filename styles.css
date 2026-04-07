@@ -5250,6 +5250,14 @@ body {
 .shipping-material-line strong {
   font-size: 20px;
   color: var(--brand);
+  justify-self: end;
+  align-self: center;
+  min-width: 56px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(234, 245, 236, 0.92);
+  border: 1px solid rgba(41, 84, 60, 0.12);
+  text-align: center;
 }
 
 .shipping-material-line.is-empty strong {
@@ -5493,6 +5501,7 @@ body {
 
   .shipping-material-line strong {
     justify-self: start;
+    margin-top: 2px;
   }
 
   #shipping .section-inline-title {
