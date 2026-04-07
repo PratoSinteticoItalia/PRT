@@ -820,75 +820,105 @@ async function syncOrdersFromShopify(store) {
   const accessToken = await getShopifyAccessToken(store);
 
   const endpoint = `https://${storeDomain}/admin/api/2026-01/graphql.json`;
-  const query = `
-    query VertexOpsOrders {
-      orders(first: 25, sortKey: PROCESSED_AT, reverse: true) {
+  const orderFields = `
+    id
+    name
+    email
+    note
+    displayFinancialStatus
+    displayFulfillmentStatus
+    paymentGatewayNames
+    currentTotalPriceSet {
+      shopMoney {
+        amount
+      }
+    }
+    customer {
+      firstName
+      lastName
+      email
+      phone
+    }
+    shippingAddress {
+      firstName
+      lastName
+      phone
+      city
+      province
+      provinceCode
+      zip
+      countryCodeV2
+      address1
+      address2
+    }
+    lineItems(first: 20) {
+      edges {
+        node {
+          name
+          currentQuantity
+        }
+      }
+    }
+  `;
+
+  async function fetchOrderBatch(batchQuery, batchLabel) {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": accessToken,
+      },
+      body: JSON.stringify({ query: batchQuery }),
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text().catch(() => "");
+      throw new Error(responseText ? `shopify_sync_failed: ${batchLabel} ${response.status} ${responseText}` : `shopify_sync_failed: ${batchLabel} ${response.status}`);
+    }
+
+    const payload = await response.json();
+    if (Array.isArray(payload?.errors) && payload.errors.length) {
+      throw new Error(`shopify_sync_failed: ${batchLabel} ${payload.errors.map((item) => item.message || item).join(" | ")}`);
+    }
+    return payload?.data?.orders?.edges || [];
+  }
+
+  const recentQuery = `
+    query VertexOpsRecentOrders {
+      orders(first: 50, sortKey: PROCESSED_AT, reverse: true) {
         edges {
           node {
-            id
-            name
-            email
-            note
-            displayFinancialStatus
-            displayFulfillmentStatus
-            paymentGatewayNames
-            currentTotalPriceSet {
-              shopMoney {
-                amount
-              }
-            }
-            customer {
-              firstName
-              lastName
-              email
-              phone
-            }
-            shippingAddress {
-              firstName
-              lastName
-              phone
-              city
-              province
-              provinceCode
-              zip
-              countryCodeV2
-              address1
-              address2
-            }
-            lineItems(first: 20) {
-              edges {
-                node {
-                  name
-                  currentQuantity
-                }
-              }
-            }
+            ${orderFields}
           }
         }
       }
     }
   `;
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": accessToken,
-    },
-    body: JSON.stringify({ query }),
+  const openOrdersQuery = `
+    query VertexOpsOpenOrders {
+      orders(
+        first: 100,
+        sortKey: UPDATED_AT,
+        reverse: true,
+        query: "status:open OR fulfillment_status:unfulfilled OR fulfillment_status:partial OR financial_status:pending OR financial_status:authorized"
+      ) {
+        edges {
+          node {
+            ${orderFields}
+          }
+        }
+      }
+    }
+  `;
+
+  const recentEdges = await fetchOrderBatch(recentQuery, "recent_orders");
+  const openEdges = await fetchOrderBatch(openOrdersQuery, "open_orders");
+  const uniqueNodes = new Map();
+  [...recentEdges, ...openEdges].forEach((edge) => {
+    if (edge?.node?.id) uniqueNodes.set(edge.node.id, edge.node);
   });
-
-  if (!response.ok) {
-    const responseText = await response.text().catch(() => "");
-    throw new Error(responseText ? `shopify_sync_failed: ${response.status} ${responseText}` : `shopify_sync_failed: ${response.status}`);
-  }
-
-  const payload = await response.json();
-  if (Array.isArray(payload?.errors) && payload.errors.length) {
-    throw new Error(`shopify_sync_failed: ${payload.errors.map((item) => item.message || item).join(" | ")}`);
-  }
-  const edges = payload?.data?.orders?.edges || [];
-  const normalized = edges.map((edge, index) => normalizeGraphqlOrder(edge.node, index));
+  const normalized = [...uniqueNodes.values()].map((node, index) => normalizeGraphqlOrder(node, index));
   const existingIds = new Set(store.orders.map((order) => order.id));
   normalized.forEach((order) => {
     const existingIndex = store.orders.findIndex((item) => item.id === order.id);
