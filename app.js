@@ -72,13 +72,13 @@ const translations = {
   it: {
     dashboard: "Dashboard",
     orders: "Inbox Ordini",
-    warehouse: "Magazzino",
+    warehouse: "Inventario",
     installations: "Pose",
     accounting: "Contabilità",
-    shipping: "Spedizioni",
+    shipping: "Logistica",
     settings: "Impostazioni",
     office: "Ufficio",
-    warehouseRole: "Magazzino",
+    warehouseRole: "Inventario",
     crewRole: "Squadra",
     paid: "Pagato",
     pending: "In attesa",
@@ -108,20 +108,20 @@ const translations = {
     logout: "Esci",
     focusOperational: "Focus operativo",
     singleOrder: "Ordine unico",
-    focusCopy: "Inbox, magazzino, squadra, contabilità e spedizioni lavorano sullo stesso ordine senza doppi inserimenti.",
+    focusCopy: "Inbox, inventario, squadra, contabilità e logistica lavorano sullo stesso ordine senza doppi inserimenti.",
     actionsNow: "Le tue 3 azioni adesso",
     quickAlerts: "Alert rapidi",
     priorityOrders: "Ordini prioritari",
     immediateActions: "Azioni immediate",
     openOrders: "Apri ordini",
-    openWarehouse: "Apri magazzino",
+    openWarehouse: "Apri inventario",
     openInstallations: "Apri pose",
     openAccounting: "Apri contabilità",
     shopifyOffice: "Shopify + ufficio",
     routeOffice: "Instradamento ufficio",
     routeOfficeCopy: "Trascina gli ordini nelle colonne giuste oppure usa i pulsanti rapidi sulle card.",
     newFlow: "Da valutare",
-    warehouseFlow: "Magazzino",
+    warehouseFlow: "Inventario",
     installationFlow: "Posa confermata",
     dragOrdersHere: "Trascina qui gli ordini da inviare a questo flusso.",
     noOrdersHere: "Nessun ordine in questa colonna.",
@@ -129,7 +129,7 @@ const translations = {
     sendToWarehouse: "Invia a magazzino",
     sendToInstall: "Invia a posa",
     removeFromFlow: "Rimuovi dal flusso",
-    routeWarehouseShort: "Magazzino",
+    routeWarehouseShort: "Inventario",
     routeInstallShort: "Posa",
     routeClearShort: "Togli",
     allCrews: "Tutte le squadre",
@@ -234,7 +234,7 @@ const translations = {
     shipmentState: "Stato spedizione",
     goodsReady: "Merce pronta",
     shipped: "Evaso",
-    carrierPassed: "Corriere passato",
+    carrierPassed: "Ritiro / affidamento completato",
     trackingNumber: "Tracking",
     saveShipping: "Salva spedizione",
     trackingHint: "Inserisci il tracking generato dal portale del corriere",
@@ -250,7 +250,7 @@ const translations = {
     stockFlowTitle: "Giacenze, residui e fabbisogni",
     warehouseGuideTitle: "Come caricare le giacenze iniziali",
     warehouseGuideCopy: "Seleziona un modello o un articolo, inserisci quanti pezzi fisici hai in magazzino e, per i prati, indica larghezza e lunghezza del rotolo o del residuo. Gli ordini Shopify scaleranno il fabbisogno aperto per aiutarti a capire cosa manca.",
-    shippingTitle: "DDT, vettori e ritiri",
+    shippingTitle: "Logistica, DDT e bancali",
     shippingSearch: "Cerca ordine, cliente, vettore o tipo spedizione",
     orderRadar: "Radar ordine",
     customerData: "Dati cliente",
@@ -269,13 +269,13 @@ const translations = {
   en: {
     dashboard: "Dashboard",
     orders: "Order Inbox",
-    warehouse: "Warehouse",
+    warehouse: "Inventory",
     installations: "Installations",
     accounting: "Accounting",
     shipping: "Shipping",
     settings: "Settings",
     office: "Office",
-    warehouseRole: "Warehouse",
+    warehouseRole: "Inventory",
     crewRole: "Crew",
     paid: "Paid",
     pending: "Pending",
@@ -431,7 +431,7 @@ const translations = {
     shipmentState: "Shipping state",
     goodsReady: "Goods ready",
     shipped: "Shipped",
-    carrierPassed: "Carrier collected",
+    carrierPassed: "Pickup / handoff completed",
     trackingNumber: "Tracking",
     saveShipping: "Save shipping",
     trackingHint: "Enter the tracking generated in the carrier portal",
@@ -447,7 +447,7 @@ const translations = {
     stockFlowTitle: "Stock, offcuts and demand",
     warehouseGuideTitle: "How to load starting stock",
     warehouseGuideCopy: "Select a model or item, enter how many physical pieces are in stock and, for turf, specify roll or offcut width and length. Shopify orders will subtract open demand so you can understand what is missing.",
-    shippingTitle: "DDT, carriers and pickups",
+    shippingTitle: "Logistics, DDT and pallets",
     shippingSearch: "Search order, customer, carrier or shipment type",
     orderRadar: "Order radar",
     customerData: "Customer details",
@@ -556,6 +556,7 @@ const ui = {
   warehouseDetailFields: document.getElementById("warehouse-detail-fields"),
   inventorySummary: document.getElementById("inventory-summary"),
   inventoryForm: document.getElementById("inventory-form"),
+  inventoryJumpButton: document.getElementById("inventory-jump-button"),
   inventoryProductOptions: document.getElementById("inventory-product-options"),
   ddtForm: document.getElementById("ddt-form"),
   ddtItemsPreview: document.getElementById("ddt-items-preview"),
@@ -1489,6 +1490,10 @@ function getShipmentStateLabel(order) {
 }
 
 function getShippingTargetDate(order) {
+  const explicitPreparationDate = order.operations?.warehouse?.preparationDate;
+  if (explicitPreparationDate) {
+    return explicitPreparationDate;
+  }
   const installationDate = order.operations?.installation?.installDate;
   if (installationDate) {
     const date = new Date(`${installationDate}T00:00:00`);
@@ -1878,7 +1883,7 @@ function filterOrdersForView(kind) {
       getOrderNumber(order),
       order.city,
       order.operations?.product,
-      order.operations?.warehouse?.carrier,
+      getShippingModeLabel(order),
       order.operations?.installation?.crew,
     ].join(" ").toLowerCase();
     if (search && !haystack.includes(search.toLowerCase())) return false;
@@ -1924,6 +1929,7 @@ function filterOrdersForView(kind) {
 function renderInboxFlowControls(order) {
   const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
+  const preparationDate = getShippingTargetDate(order);
   return `
     <article class="guidance-card order-flow-card">
       <span class="panel-eyebrow">${state.lang === "it" ? "Gestione rapida ufficio" : "Quick office handling"}</span>
@@ -1938,13 +1944,17 @@ function renderInboxFlowControls(order) {
           </select>
         </label>
         <label class="field">
-          <span>${state.lang === "it" ? "Evasione / ritiro" : "Dispatch mode"}</span>
+          <span>${state.lang === "it" ? "Gestione logistica" : "Logistics mode"}</span>
           <select class="text-input" data-order-flow-mode="${order.id}">
             <option value="da-definire" ${fulfillmentMode === "da-definire" ? "selected" : ""}>${state.lang === "it" ? "Da definire" : "To define"}</option>
             <option value="corriere" ${fulfillmentMode === "corriere" ? "selected" : ""}>${state.lang === "it" ? "Corriere" : "Courier"}</option>
             <option value="ritiro" ${fulfillmentMode === "ritiro" ? "selected" : ""}>${state.lang === "it" ? "Ritiro" : "Pickup"}</option>
             <option value="furgone" ${fulfillmentMode === "furgone" ? "selected" : ""}>${state.lang === "it" ? "Furgone" : "Van"}</option>
           </select>
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Data preparazione merce" : "Goods preparation date"}</span>
+          <input class="text-input" type="date" data-order-flow-date="${order.id}" value="${preparationDate || ""}" />
         </label>
       </div>
       <div class="order-office-actions">
@@ -2391,11 +2401,11 @@ function renderOrders() {
   const pieceTags = (order.lineDetails || [])
     .map((item) => {
       const dims = extractDimensions(item.title);
-      if (!dims) return "";
-      const sqm = Math.round(dims.sqm * Number(item.quantity || 1));
-      return `<div class="piece-tag intero"><strong>${dims.width} x ${dims.length}</strong><br>${sqm} mq</div>`;
+      const meta = dims
+        ? `${dims.width} x ${dims.length} · ${Math.round(dims.sqm * Number(item.quantity || 1))} mq`
+        : `${item.quantity || 1} ${state.lang === "it" ? "pz" : "pcs"}`;
+      return `<div class="piece-tag intero"><strong>${escapeHtml(item.title)}</strong><br>${meta}</div>`;
     })
-    .filter(Boolean)
     .join("");
   const accessoryRows = getPhysicalOrderLines(order)
     .filter((item) => inferCatalogEntry(item.title)?.type === "material" || inferCatalogEntry(item.title)?.type === "decorative")
@@ -2728,16 +2738,18 @@ function updateInventoryFormUI() {
     }
   }
 
+  const shouldShowVariant = Boolean(config.variantOptions.length || config.preset);
+
   if (config.isMeasured) {
     if (widthField) widthField.hidden = false;
     if (lengthField) lengthField.hidden = false;
     if (statusField) statusField.hidden = false;
-    if (variantField) variantField.hidden = true;
+    if (variantField) variantField.hidden = !shouldShowVariant;
   } else {
     if (widthField) widthField.hidden = true;
     if (lengthField) lengthField.hidden = true;
     if (statusField) statusField.hidden = true;
-    if (variantField) variantField.hidden = false;
+    if (variantField) variantField.hidden = !shouldShowVariant;
     if (ui.inventoryForm.status) ui.inventoryForm.status.value = "intero";
     if (config.preset) {
       if (ui.inventoryForm.width) ui.inventoryForm.width.value = String(config.preset.width || "");
@@ -2842,7 +2854,9 @@ function renderDdtPreview(order) {
       ${renderDetailBox({
         label: t("ddtReady"),
         value: physicalLines.length ? `${physicalLines.length} ${state.lang === "it" ? "righe merce" : "goods rows"}` : "0",
-        meta: physicalLines.length ? getShippingSummary(order) : (state.lang === "it" ? "Nessuna merce fisica selezionata" : "No physical goods selected"),
+        meta: physicalLines.length
+          ? (state.lang === "it" ? "Righe fisiche selezionate per preparazione e DDT." : "Physical lines selected for prep and DDT.")
+          : (state.lang === "it" ? "Nessuna merce fisica selezionata" : "No physical goods selected"),
       })}
     </div>
     ${physicalLines.length ? `
@@ -2868,7 +2882,6 @@ function renderShippingMaterialPreview(order) {
       <li class="shipping-material-line">
         <div>
           <span>${escapeHtml(item.title)}</span>
-          <small>${escapeHtml(item.note || inferCatalogEntry(item.title)?.formatLabel || inferCatalogEntry(item.title)?.unitLabel || (state.lang === "it" ? "Riga materiale selezionata" : "Selected material line"))}</small>
         </div>
         <strong>x${escapeHtml(item.quantity)}</strong>
       </li>
@@ -2880,7 +2893,7 @@ function renderShippingMaterialPreview(order) {
       <div>
         <span class="panel-eyebrow">${state.lang === "it" ? "Merce da preparare" : "Goods to prepare"}</span>
         <strong>${physicalLines.length} ${state.lang === "it" ? "righe materiali" : "material lines"}</strong>
-        <p>${routeLabel} · ${getShippingSummary(order)}</p>
+        <p>${routeLabel}</p>
       </div>
       <div class="shipping-material-badges">
         <span class="search-pill compact-pill">${order.operations?.product || "Da definire"}</span>
@@ -3114,11 +3127,7 @@ async function importShopifyPayment() {
 function buildShippingEstimate(order) {
   const ddt = getCurrentDdtDraft(order);
   const dimensions = formatPalletDimensions(ddt);
-  const carrier = order.operations?.warehouse?.carrier
-    || order.operations?.warehouse?.pickupLabel
-    || order.operations?.warehouse?.vanLoadLabel
-    || getShippingPricing().carrierName
-    || "Da definire";
+  const carrier = getShippingModeLabel(order);
   const estimate = calculateShippingEstimate(order, ddt);
 
   if (estimate.mode === "oneexpress-auto") {
@@ -3217,7 +3226,7 @@ function renderShipping() {
         ${orders.map((order) => {
           const selected = order.id === state.selectedOrderId ? "selected" : "";
           const mode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
-          const carrier = order.operations?.warehouse?.carrier || order.operations?.warehouse?.pickupLabel || order.operations?.warehouse?.vanLoadLabel || "Da definire";
+          const flowLabel = getShippingModeLabel(order);
           const destination = getShippingDestination(order);
           return `
             <article class="order-row shipping-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="shipping">
@@ -3227,7 +3236,7 @@ function renderShipping() {
               </div>
               <div class="order-type-badge ${mode === "corriere" ? "type-spedizione" : mode === "ritiro" ? "type-ritiro" : "type-posa"}">${getShipmentStateLabel(order)}</div>
               <div class="order-amount">${getShippingTargetLabel(order)}</div>
-              <div class="action-badge ${order.operations?.warehouse?.shipped ? "badge-success" : order.operations?.warehouse?.readyToShip ? "badge-info" : "badge-warning"}">${carrier}</div>
+              <div class="action-badge ${order.operations?.warehouse?.shipped ? "badge-success" : order.operations?.warehouse?.readyToShip ? "badge-info" : "badge-warning"}">${flowLabel}</div>
             </article>
           `;
         }).join("")}
@@ -3260,12 +3269,16 @@ function renderShipping() {
       {
         label: "Gestione",
         value: getShippingModeLabel(order),
-        meta: order.operations?.warehouse?.carrier || order.operations?.warehouse?.pickupLabel || order.operations?.warehouse?.vanLoadLabel || "Da definire",
+        meta: getShipmentStateLabel(order),
       },
       {
         label: "Preparazione",
         value: getShippingTargetLabel(order),
-        meta: getShippingSummary(order),
+        meta: order.operations?.warehouse?.preparationDate
+          ? (state.lang === "it"
+              ? `Calendario preparazione fissato per ${formatDate(order.operations?.warehouse?.preparationDate)}`
+              : `Prep calendar set for ${formatDate(order.operations?.warehouse?.preparationDate)}`)
+          : (state.lang === "it" ? "Calendario preparazione ancora da definire." : "Prep calendar not set yet."),
       },
       {
         label: "DDT",
@@ -3293,10 +3306,6 @@ function renderShipping() {
   }
   renderShippingMaterialPreview(order);
   if (ui.shippingForm) {
-    ui.shippingForm.status.value = order.operations?.warehouse?.status || "da-preparare";
-    ui.shippingForm.fulfillmentMode.value = order.operations?.warehouse?.fulfillmentMode || "da-definire";
-    ui.shippingForm.carrier.value = order.operations?.warehouse?.carrier || "";
-    ui.shippingForm.pickupLabel.value = order.operations?.warehouse?.pickupLabel || order.operations?.warehouse?.vanLoadLabel || "";
     ui.shippingForm.trackingNumber.value = order.operations?.warehouse?.trackingNumber || "";
     ui.shippingForm.destinationProvinceCode.value = destination.provinceCode || "";
     ui.shippingForm.destinationPostalCode.value = destination.postalCode || "";
@@ -3711,7 +3720,7 @@ async function saveInventory(event) {
       width: config.isMeasured ? form.get("width") : (config.preset?.width || ""),
       length: config.isMeasured ? form.get("length") : (config.preset?.length || ""),
       status: config.isMeasured ? form.get("status") : "intero",
-      variant: config.isMeasured ? "" : variantLabel,
+      variant: variantLabel,
       note: form.get("note"),
     }),
   });
@@ -3766,11 +3775,13 @@ async function updateOrderRoutingById(orderId, patch) {
 async function saveInboxOrderFlow(orderId, patch = null) {
   const statusInput = document.querySelector(`[data-order-flow-status="${orderId}"]`);
   const modeInput = document.querySelector(`[data-order-flow-mode="${orderId}"]`);
+  const dateInput = document.querySelector(`[data-order-flow-date="${orderId}"]`);
   const payload = patch || {
     warehouse: {
       selected: true,
       status: statusInput?.value || "da-preparare",
       fulfillmentMode: modeInput?.value || "da-definire",
+      preparationDate: dateInput?.value || "",
     },
   };
   const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
@@ -3787,16 +3798,10 @@ async function saveShipping(event) {
   const order = getSelectedOrder();
   if (!order || !ui.shippingForm) return;
   const form = new FormData(ui.shippingForm);
-  const fulfillmentMode = String(form.get("fulfillmentMode") || "da-definire");
   const destinationProvinceCode = normalizeProvinceCode(form.get("destinationProvinceCode"));
   const destinationProvinceRecord = getProvinceRecord(destinationProvinceCode);
   const payload = {
     warehouse: {
-      status: form.get("status"),
-      fulfillmentMode,
-      carrier: form.get("carrier"),
-      pickupLabel: fulfillmentMode === "ritiro" ? form.get("pickupLabel") : "",
-      vanLoadLabel: fulfillmentMode === "furgone" ? form.get("pickupLabel") : "",
       trackingNumber: String(form.get("trackingNumber") || "").trim(),
       readyToShip: form.get("readyToShip") === "on",
       carrierPassed: form.get("carrierPassed") === "on",
@@ -3972,7 +3977,8 @@ async function downloadDdtPdf(order) {
   pushText(392, 790, 9, "Vertex Srls · Via Ottorino Respighi 57");
   pushText(392, 777, 9, "81025 Marcianise (CE) · www.pratosinteticoitalia.com");
   pushRect(40, 690, 515, 44);
-  pushText(52, 716, 19, `D.D.T. ${ddt.number || getOrderNumber(order)}`);
+  const printableDdtNumber = String(ddt.number || getOrderNumber(order)).replace(/^D\.?D\.?T\.?\s*[-:]?\s*/i, "");
+  pushText(52, 716, 19, `DDT ${printableDdtNumber}`);
   pushText(404, 716, 10, `Data ${formatDate(ddt.createdAt || new Date().toISOString())}`);
   pushText(52, 698, 9, `Ordine ${getOrderNumber(order)} · ${composeClientName(order)}`);
   pushRect(40, 564, 335, 112);
@@ -4634,6 +4640,10 @@ if (ui.inventoryForm) {
   ui.inventoryForm.product?.addEventListener("input", updateInventoryFormUI);
   ui.inventoryForm.variant?.addEventListener("change", updateInventoryFormUI);
 }
+bindEvent(ui.inventoryJumpButton, "click", () => {
+  ui.inventoryForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  requestAnimationFrame(() => ui.inventoryForm?.product?.focus());
+});
 if (ui.shippingForm) {
   ui.shippingForm.addEventListener("submit", saveShipping);
 }

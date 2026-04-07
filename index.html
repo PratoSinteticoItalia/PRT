@@ -32,7 +32,7 @@
           <div>
             <span class="auth-demo-label">Accessi demo</span>
             <p><strong>Ufficio</strong> office@vertex.local / office123</p>
-            <p><strong>Magazzino</strong> warehouse@vertex.local / warehouse123</p>
+            <p><strong>Inventario</strong> warehouse@vertex.local / warehouse123</p>
             <p><strong>Squadra</strong> crew@vertex.local / crew123</p>
           </div>
         </div>
@@ -136,7 +136,7 @@
           </button>
           <button class="nav-link" data-view="warehouse">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg></span>
-            <span class="nav-label">Magazzino</span>
+            <span class="nav-label">Inventario</span>
           </button>
           <button class="nav-link" data-view="installations">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></span>
@@ -154,7 +154,7 @@
           </button>
           <button class="nav-link" data-view="shipping">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg></span>
-            <span class="nav-label">Spedizioni</span>
+            <span class="nav-label">Logistica</span>
           </button>
           <button class="nav-link" data-view="settings">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span>
@@ -194,7 +194,7 @@
               <div id="ops-orders-text" class="kpi-sub">Ordini totali e bozze operative.</div>
             </article>
             <article class="kpi-card">
-              <div class="kpi-label">Magazzino</div>
+              <div class="kpi-label">Inventario</div>
               <div id="ops-warehouse-value" class="kpi-value">0</div>
               <div id="ops-warehouse-text" class="kpi-sub">Ordini da preparare, spedire o caricare.</div>
             </article>
@@ -209,7 +209,7 @@
               <div id="ops-accounting-text" class="kpi-sub">Ordini da verificare, saldare o fatturare.</div>
             </article>
             <article class="kpi-card">
-              <div class="kpi-label">Spedizioni</div>
+              <div class="kpi-label">Logistica</div>
               <div id="ops-shipping-value" class="kpi-value">0</div>
               <div id="ops-shipping-text" class="kpi-sub">Corrieri, ritiri, furgoni e bancali.</div>
             </article>
@@ -240,7 +240,7 @@
               </div>
               <div class="section">
                 <div class="section-header">
-                  <div class="section-title">Magazzino — alert</div>
+                  <div class="section-title">Inventario — alert</div>
                 </div>
                 <div id="dashboard-alerts" class="action-list"></div>
               </div>
@@ -269,7 +269,7 @@
             <div class="filter-bar">
               <button class="filter-btn order-filter-tag is-active" data-order-filter="all">Tutti</button>
               <button class="filter-btn order-filter-tag" data-order-filter="attention">Da valutare</button>
-              <button class="filter-btn order-filter-tag" data-order-filter="warehouse">Magazzino</button>
+              <button class="filter-btn order-filter-tag" data-order-filter="warehouse">Inventario</button>
               <button class="filter-btn order-filter-tag" data-order-filter="installation">Posa</button>
               <button class="filter-btn order-filter-tag" data-order-filter="shipping">Spedizione</button>
             </div>
@@ -347,10 +347,10 @@
         <section class="view" id="warehouse">
           <div class="page-header">
             <div>
-              <h1>Magazzino</h1>
+              <h1>Inventario</h1>
               <div class="page-header-sub">Inventario fisico · Giacenze, residui e fabbisogni</div>
             </div>
-            <button class="btn primary" type="button">+ Carica giacenza</button>
+            <button class="btn primary" id="inventory-jump-button" type="button">+ Carica giacenza</button>
           </div>
 
           <div class="view-toolbar">
@@ -449,7 +449,7 @@
         <section class="view" id="shipping">
           <div class="page-header">
             <div>
-              <h1>Spedizioni e DDT</h1>
+              <h1>Logistica</h1>
               <div class="page-header-sub">Gestione corrieri, ritiri, furgoni e bancali</div>
             </div>
           </div>
@@ -516,32 +516,6 @@
                   <h4>Vettore, tracking e costo spedizione</h4>
                 </div>
                 <form id="shipping-form" class="inline-form-grid">
-                  <label class="field">
-                    <span>Stato</span>
-                    <select class="text-input" name="status">
-                      <option value="da-preparare">Da preparare</option>
-                      <option value="in-preparazione">In preparazione</option>
-                      <option value="pronto">Pronto</option>
-                      <option value="bloccato">Bloccato</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>Gestione ordine</span>
-                    <select class="text-input" name="fulfillmentMode">
-                      <option value="da-definire">Da definire</option>
-                      <option value="corriere">Corriere</option>
-                      <option value="ritiro">Ritiro</option>
-                      <option value="furgone">Furgone</option>
-                    </select>
-                  </label>
-                <label class="field">
-                  <span>Vettore</span>
-                  <input class="text-input" name="carrier" placeholder="BRT, GLS, SDA..." />
-                </label>
-                <label class="field">
-                    <span>Ritiro / furgone</span>
-                    <input class="text-input" name="pickupLabel" placeholder="Ritiro sede o nome furgone" />
-                  </label>
                 <label class="field">
                   <span>Tracking</span>
                   <input class="text-input" name="trackingNumber" placeholder="Tracking corriere" />
@@ -559,7 +533,7 @@
                   <textarea class="text-input" name="warehouseNote" rows="3" placeholder="Mancano colli, ritiro oggi, bancale pronto..."></textarea>
                 </label>
                   <label class="checkline"><input type="checkbox" name="readyToShip" /> <span>Merce pronta da evadere</span></label>
-                  <label class="checkline"><input type="checkbox" name="carrierPassed" /> <span>Corriere passato / merce ritirata</span></label>
+                  <label class="checkline"><input type="checkbox" name="carrierPassed" /> <span>Ritiro / affidamento completato</span></label>
                   <label class="checkline"><input type="checkbox" name="shipped" /> <span>Ordine evaso</span></label>
                   <div class="inline-actions field-full">
                     <button type="submit" class="primary-button small-button">Salva spedizione</button>
@@ -898,7 +872,7 @@
                   <span>Ruolo</span>
                   <select class="text-input" name="role">
                     <option value="office">Office</option>
-                    <option value="warehouse">Magazzino</option>
+                    <option value="warehouse">Inventario</option>
                     <option value="crew">Squadra</option>
                   </select>
                 </label>

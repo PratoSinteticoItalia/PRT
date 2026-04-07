@@ -174,6 +174,7 @@ button {
   font: inherit;
   border: 0;
   cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
 }
 
 .primary-button,
@@ -207,8 +208,25 @@ button {
 .action-button:hover,
 .mini-action:hover,
 .lang-btn:hover,
-.tag:hover {
+.tag:hover,
+.btn:hover,
+.topbar-btn:hover,
+.filter-btn:hover {
   transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(31, 44, 32, 0.08);
+}
+
+.primary-button:active,
+.ghost-button:active,
+.action-button:active,
+.mini-action:active,
+.lang-btn:active,
+.tag:active,
+.btn:active,
+.topbar-btn:active,
+.filter-btn:active {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: none;
 }
 
 .small,
@@ -952,7 +970,7 @@ button {
 
 .order-flow-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -5990,4 +6008,244 @@ body {
 .order-detail-panel > .panel-subsection:first-child h3,
 .install-detail-panel > .panel-subsection:first-child h3 {
   padding-top: 6px;
+}
+
+/* Final operations polish */
+#orders .route-board {
+  margin-top: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+#orders .route-column {
+  min-height: 212px;
+}
+
+#orders .route-column .wh-empty,
+#orders .route-column .info-card {
+  margin-top: 8px;
+}
+
+#warehouse .page-header,
+#shipping .page-header,
+#orders .page-header,
+#accounting .page-header,
+#installations .page-header {
+  padding-block: 26px 22px;
+}
+
+#warehouse .page-header h1,
+#shipping .page-header h1,
+#orders .page-header h1,
+#accounting .page-header h1,
+#installations .page-header h1 {
+  line-height: 1.05;
+}
+
+#warehouse .page-header .btn.primary,
+#warehouse .page-header .primary-button,
+#warehouse #inventory-jump-button {
+  flex: 0 0 auto;
+  min-width: 170px;
+}
+
+#warehouse .two-col {
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  gap: 18px;
+}
+
+#orders .order-grid,
+#shipping .order-grid,
+#accounting .order-grid {
+  gap: 18px;
+}
+
+#orders .detail-panel,
+#shipping .detail-panel,
+#accounting .detail-panel,
+#warehouse .detail-panel,
+#installations .detail-panel {
+  padding: 26px 22px 22px;
+}
+
+#orders .detail-header,
+#shipping .detail-header,
+#accounting .detail-header,
+#warehouse .detail-header,
+#installations .detail-header {
+  margin-bottom: 18px;
+}
+
+#orders .detail-title,
+#shipping .detail-title,
+#accounting .detail-title,
+#warehouse .detail-title,
+#installations .detail-title {
+  line-height: 1.12;
+  padding-top: 4px;
+}
+
+#orders .panel-subsection,
+#shipping .panel-subsection,
+#accounting .panel-subsection,
+#warehouse .panel-subsection,
+#installations .panel-subsection {
+  margin-top: 16px;
+  padding-top: 18px;
+}
+
+#shipping .detail-grid,
+#orders .detail-grid {
+  gap: 14px;
+}
+
+.shipping-detail-box {
+  padding: 16px;
+  border-radius: 20px;
+}
+
+.shipping-detail-box strong {
+  font-size: 18px;
+  line-height: 1.22;
+}
+
+.shipping-detail-box p {
+  margin-top: 6px;
+  min-height: 40px;
+}
+
+.detail-pieces {
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  gap: 10px;
+}
+
+.piece-tag {
+  min-height: 86px;
+  padding: 10px 10px 11px;
+  border-radius: 16px;
+}
+
+.piece-tag strong {
+  line-height: 1.15;
+}
+
+.shipping-material-hero {
+  padding: 18px 18px 16px;
+}
+
+.shipping-material-hero p {
+  margin-top: 6px;
+}
+
+.shipping-material-line {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+}
+
+.shipping-material-line > div {
+  min-width: 0;
+}
+
+.shipping-material-line strong {
+  min-width: 74px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 106, 79, 0.16);
+  background: rgba(216, 243, 220, 0.58);
+  text-align: center;
+  justify-self: end;
+}
+
+@media (max-width: 980px) {
+  #orders .route-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #warehouse .two-col,
+  #orders .order-grid,
+  #shipping .order-grid,
+  #accounting .order-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  #orders .route-board {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  #orders .detail-panel,
+  #shipping .detail-panel,
+  #accounting .detail-panel,
+  #warehouse .detail-panel,
+  #installations .detail-panel {
+    padding: 20px 16px 18px;
+  }
+
+  .shipping-material-line {
+    padding: 12px 14px;
+  }
+
+  .shipping-material-line strong {
+    min-width: 66px;
+    padding: 7px 10px;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 10px 12px 8px;
+    gap: 10px;
+  }
+
+  .topbar-left {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .topbar-logo {
+    min-width: 0;
+    gap: 10px;
+  }
+
+  .topbar-logo-copy {
+    min-width: 0;
+  }
+
+  .topbar-logo-copy small {
+    display: none;
+  }
+
+  .topbar-logo-copy span {
+    font-size: 13px;
+    line-height: 1.1;
+  }
+
+  .topbar-search {
+    grid-column: 1 / -1;
+    margin-top: 4px;
+  }
+
+  .topbar-search input,
+  .topbar-search input:focus {
+    height: 36px;
+    padding-inline: 12px;
+  }
+
+  .topbar-right {
+    width: 100%;
+    padding-top: 0;
+    gap: 6px;
+  }
+
+  .topbar-btn {
+    min-height: 34px;
+    padding-inline: 11px;
+  }
 }
