@@ -1774,7 +1774,17 @@ function renderRouteBoard() {
 }
 
 function isRoutedToWarehouse(order) {
-  return Boolean(order.operations?.warehouse?.selected);
+  const warehouse = order.operations?.warehouse || {};
+  return Boolean(
+    warehouse.selected
+    || (warehouse.fulfillmentMode && warehouse.fulfillmentMode !== "da-definire")
+    || (warehouse.preparationDate && String(warehouse.preparationDate).trim())
+    || (warehouse.status && warehouse.status !== "da-preparare")
+    || warehouse.readyToShip
+    || warehouse.carrierPassed
+    || warehouse.shipped
+    || (warehouse.trackingNumber && String(warehouse.trackingNumber).trim()),
+  );
 }
 
 function isRoutedToInstallation(order) {
@@ -3759,18 +3769,27 @@ async function updateOrderRoutingById(orderId, patch) {
   return saved;
 }
 
-async function saveInboxOrderFlow(orderId, patch = null) {
+async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   const statusInput = document.querySelector(`[data-order-flow-status="${orderId}"]`);
   const modeInput = document.querySelector(`[data-order-flow-mode="${orderId}"]`);
   const dateInput = document.querySelector(`[data-order-flow-date="${orderId}"]`);
   const warehouseInput = document.querySelector(`[data-order-flow-warehouse="${orderId}"]`);
   const installationInput = document.querySelector(`[data-order-flow-installation="${orderId}"]`);
+  const nextStatus = statusInput?.value || "da-preparare";
+  const nextMode = modeInput?.value || "da-definire";
+  const nextDate = dateInput?.value || "";
+  const shouldRouteWarehouse = Boolean(
+    warehouseInput?.checked
+    || nextMode !== "da-definire"
+    || nextStatus !== "da-preparare"
+    || nextDate,
+  );
   const payload = patch || {
     warehouse: {
-      selected: Boolean(warehouseInput?.checked),
-      status: statusInput?.value || "da-preparare",
-      fulfillmentMode: modeInput?.value || "da-definire",
-      preparationDate: dateInput?.value || "",
+      selected: shouldRouteWarehouse,
+      status: nextStatus,
+      fulfillmentMode: nextMode,
+      preparationDate: nextDate,
     },
     installation: {
       selected: Boolean(installationInput?.checked),
@@ -3784,6 +3803,7 @@ async function saveInboxOrderFlow(orderId, patch = null) {
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.selectedOrderId = saved.id;
   render();
+  flashButtonFeedback(triggerButton);
 }
 
 async function saveShipping(event) {
@@ -4391,7 +4411,7 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "save-inbox-flow") {
-    saveInboxOrderFlow(id);
+    saveInboxOrderFlow(id, null, button);
     return;
   }
   if (action === "route-installation") {
