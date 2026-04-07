@@ -1350,7 +1350,7 @@ button {
 
 .route-board {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 12px;
 }
 
@@ -4063,12 +4063,12 @@ body {
 }
 
 #orders .order-grid {
-  grid-template-columns: minmax(0, 1.12fr) minmax(360px, 0.88fr);
+  grid-template-columns: minmax(0, 1.18fr) minmax(300px, 0.82fr);
 }
 
 #shipping .order-grid,
 #accounting .order-grid {
-  grid-template-columns: minmax(0, 1.02fr) minmax(390px, 0.98fr);
+  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
 }
 
 #warehouse .two-col {
@@ -5701,6 +5701,10 @@ body {
   margin-top: 2px;
 }
 
+.order-grid.is-empty {
+  grid-template-columns: 1fr !important;
+}
+
 @media (max-width: 980px) {
   .detail-grid {
     grid-template-columns: 1fr;
@@ -5721,6 +5725,17 @@ body {
   .page-header h1,
   .page-header-bar h2 {
     font-size: 28px;
+  }
+}
+
+@media (max-width: 1220px) {
+  .route-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #orders .order-grid,
+  #shipping .order-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -5768,6 +5783,10 @@ body {
 
   .topbar-user {
     grid-column: 1 / -1;
+  }
+
+  .route-board {
+    grid-template-columns: 1fr;
   }
 }
 

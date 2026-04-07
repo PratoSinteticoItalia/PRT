@@ -2329,6 +2329,8 @@ function renderOrderCard(order) {
 
 function renderOrders() {
   const orders = filterOrdersForView("order");
+  const ordersGrid = ui.ordersList?.closest(".order-grid");
+  if (ordersGrid) ordersGrid.classList.toggle("is-empty", orders.length === 0);
   updateOrderImportPanel();
   renderRouteBoard();
   ui.ordersList.innerHTML = orders.length ? orders.map((order) => renderOrderRow(order, "orders")).join("") : `<div class="info-card">${t("noOrdersAvailable")}</div>`;
@@ -3171,6 +3173,8 @@ function buildShippingEstimate(order) {
 
 function renderShipping() {
   const orders = filterOrdersForView("shipping");
+  const shippingGrid = ui.shippingList?.closest(".order-grid");
+  if (shippingGrid) shippingGrid.classList.toggle("is-empty", orders.length === 0);
   if (ui.shippingList) {
     ui.shippingList.innerHTML = orders.length
       ? `
