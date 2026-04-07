@@ -542,10 +542,6 @@ const ui = {
   orderPrepList: document.getElementById("order-prep-list"),
   ordersRouteBoard: document.getElementById("orders-route-board"),
   savePrepListButton: document.getElementById("save-prep-list-button"),
-  routeToWarehouseButton: document.getElementById("route-to-warehouse-button"),
-  routeToInstallationButton: document.getElementById("route-to-installation-button"),
-  clearRoutingButton: document.getElementById("clear-routing-button"),
-  orderRoutingStatus: document.getElementById("order-routing-status"),
   orderAttachmentButton: document.getElementById("order-attachment-button"),
   orderAttachments: document.getElementById("order-attachments"),
   openOrderModalButton: document.getElementById("open-order-modal-button"),
@@ -657,9 +653,6 @@ function staticLabels() {
     ["#open-order-modal-button", t("edit") || (state.lang === "it" ? "Modifica" : "Edit")],
     ["#orders .panel-subsection h4", t("officeOperations")],
     ["#save-prep-list-button", t("savePreparation")],
-    ["#route-to-warehouse-button", t("sendToWarehouse")],
-    ["#route-to-installation-button", t("sendToInstall")],
-    ["#clear-routing-button", t("removeFromFlow")],
     ["#order-attachment-button", t("uploadAttachment")],
     ["#installations .toolbar-row .search-pill", t("crewViewCopy")],
     ["[data-installation-filter='all']", t("allCrews")],
@@ -1483,10 +1476,16 @@ function getShippingModeLabel(order) {
 
 function getShipmentStateLabel(order) {
   const warehouse = order.operations?.warehouse || {};
-  if (warehouse.shipped) return t("shipped");
+  const status = String(warehouse.status || "").trim();
+  if (warehouse.shipped || status === "ritirato") return state.lang === "it" ? "Ritirato" : "Collected";
   if (warehouse.carrierPassed) return t("carrierPassed");
-  if (warehouse.readyToShip) return t("goodsReady");
-  return warehouse.status || t("toPrepare");
+  if (warehouse.readyToShip && !status) return t("goodsReady");
+  if (status === "in-attesa-di-ritiro") return state.lang === "it" ? "In attesa di ritiro" : "Waiting for pickup";
+  if (status === "da-ritirare") return state.lang === "it" ? "Da ritirare" : "Ready for pickup";
+  if (status === "in-preparazione") return state.lang === "it" ? "In preparazione" : "Preparing";
+  if (status === "pronto") return state.lang === "it" ? "Pronto" : "Ready";
+  if (status === "da-preparare") return t("toPrepare");
+  return status || t("toPrepare");
 }
 
 function getShippingTargetDate(order) {
@@ -1560,11 +1559,18 @@ function getOrderProgress(order) {
   const warehouse = order.operations?.warehouse || {};
   const accounting = order.accounting || {};
   const openBalance = getOpenBalance(order);
+  const warehouseReady = [
+    "in-preparazione",
+    "pronto",
+    "in-attesa-di-ritiro",
+    "da-ritirare",
+    "ritirato",
+  ].includes(warehouse.status);
   return [
     Boolean(order.address && order.city),
-    warehouse.status === "in-preparazione" || warehouse.status === "pronto" || warehouse.status === "completato",
+    warehouseReady,
     install.required ? Boolean(install.crew && install.installDate) : true,
-    install.required ? install.status === "completata" : warehouse.status === "pronto" || String(order.fulfillmentStatus || "").toLowerCase().includes("fulfill"),
+    install.required ? install.status === "completata" : ["pronto", "da-ritirare", "ritirato"].includes(warehouse.status) || String(order.fulfillmentStatus || "").toLowerCase().includes("fulfill"),
     openBalance <= 0 && (!accounting.invoiceRequired || accounting.invoiceIssued),
   ];
 }
@@ -1930,17 +1936,29 @@ function renderInboxFlowControls(order) {
   const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
   const preparationDate = getShippingTargetDate(order);
+  const routeWarehouse = Boolean(order.operations?.warehouse?.selected);
+  const routeInstallation = Boolean(order.operations?.installation?.selected || order.operations?.installation?.required);
   return `
     <article class="guidance-card order-flow-card">
-      <span class="panel-eyebrow">${state.lang === "it" ? "Gestione rapida ufficio" : "Quick office handling"}</span>
+      <span class="panel-eyebrow">${state.lang === "it" ? "Gestione ufficio" : "Office handling"}</span>
       <div class="order-flow-grid">
+        <label class="checkline">
+          <input type="checkbox" data-order-flow-warehouse="${order.id}" ${routeWarehouse ? "checked" : ""} />
+          <span>${state.lang === "it" ? "Invia a inventario" : "Route to inventory"}</span>
+        </label>
+        <label class="checkline">
+          <input type="checkbox" data-order-flow-installation="${order.id}" ${routeInstallation ? "checked" : ""} />
+          <span>${state.lang === "it" ? "Invia a posa" : "Route to installation"}</span>
+        </label>
         <label class="field">
           <span>${state.lang === "it" ? "Stato preparazione" : "Preparation status"}</span>
           <select class="text-input" data-order-flow-status="${order.id}">
             <option value="da-preparare" ${warehouseStatus === "da-preparare" ? "selected" : ""}>${state.lang === "it" ? "Da preparare" : "To prepare"}</option>
             <option value="in-preparazione" ${warehouseStatus === "in-preparazione" ? "selected" : ""}>${state.lang === "it" ? "In preparazione" : "Preparing"}</option>
             <option value="pronto" ${warehouseStatus === "pronto" ? "selected" : ""}>${state.lang === "it" ? "Pronto" : "Ready"}</option>
-            <option value="bloccato" ${warehouseStatus === "bloccato" ? "selected" : ""}>${state.lang === "it" ? "Bloccato" : "Blocked"}</option>
+            <option value="in-attesa-di-ritiro" ${warehouseStatus === "in-attesa-di-ritiro" ? "selected" : ""}>${state.lang === "it" ? "In attesa di ritiro" : "Waiting for pickup"}</option>
+            <option value="da-ritirare" ${warehouseStatus === "da-ritirare" ? "selected" : ""}>${state.lang === "it" ? "Da ritirare" : "Ready for pickup"}</option>
+            <option value="ritirato" ${warehouseStatus === "ritirato" ? "selected" : ""}>${state.lang === "it" ? "Ritirato" : "Collected"}</option>
           </select>
         </label>
         <label class="field">
@@ -1959,8 +1977,6 @@ function renderInboxFlowControls(order) {
       </div>
       <div class="order-office-actions">
         <button class="mini-action primary-mini" data-action="save-inbox-flow" data-id="${order.id}">${state.lang === "it" ? "Salva stato ordine" : "Save order state"}</button>
-        <button class="mini-action" data-action="preset-pickup-flow" data-id="${order.id}">${state.lang === "it" ? "Preparare e ritirare" : "Prepare and pickup"}</button>
-        <button class="mini-action" data-action="preset-prepare-only" data-id="${order.id}">${state.lang === "it" ? "Preparare senza affidare" : "Prepare only"}</button>
       </div>
     </article>
   `;
@@ -2340,7 +2356,6 @@ function renderOrderCard(order) {
   const [label, tone] = buildOrderTone(order);
   const type = getOrderType(order);
   const selected = order.id === state.selectedOrderId ? "is-selected" : "";
-  const showRouting = state.currentUser?.role === "office" && (state.currentView === "orders" || state.currentView === "dashboard");
   return `
     <article class="order-card ${selected}" draggable="true" data-order-draggable="true" data-action="select-order" data-id="${order.id}" data-view="orders">
       <div class="order-card-head">
@@ -2357,13 +2372,6 @@ function renderOrderCard(order) {
       <div class="order-card-meta">
         ${getPaymentLabel(order.financialStatus)} · ${getFulfillmentLabel(order.fulfillmentStatus)} · ${order.source}
       </div>
-      ${showRouting ? `
-        <div class="order-card-routing">
-          <button class="route-button is-primary" data-action="route-warehouse" data-id="${order.id}">${t("routeWarehouseShort")}</button>
-          <button class="route-button is-install" data-action="route-installation" data-id="${order.id}">${t("routeInstallShort")}</button>
-          <button class="route-button is-clear" data-action="clear-routing-order" data-id="${order.id}">${t("routeClearShort")}</button>
-        </div>
-      ` : ""}
       <div class="order-card-actions">
         <button class="mini-action primary-mini" data-action="select-order" data-id="${order.id}" data-view="orders">${state.lang === "it" ? "Apri ordine" : "Open order"}</button>
         <button class="mini-action" data-action="open-modal" data-id="${order.id}">${t("edit")}</button>
@@ -2401,10 +2409,23 @@ function renderOrders() {
   const pieceTags = (order.lineDetails || [])
     .map((item) => {
       const dims = extractDimensions(item.title);
+      const catalog = inferCatalogEntry(item.title);
+      const title = dims && catalog?.type === "turf"
+        ? getCatalogLabel(item.title)
+        : String(item.title || "");
+      const quantityLabel = `${item.quantity || 1} ${state.lang === "it" ? "pz" : "pcs"}`;
+      const formatMeasure = (value) => String(value ?? "").replace(".", ",");
       const meta = dims
-        ? `${dims.width} x ${dims.length} · ${Math.round(dims.sqm * Number(item.quantity || 1))} mq`
-        : `${item.quantity || 1} ${state.lang === "it" ? "pz" : "pcs"}`;
-      return `<div class="piece-tag intero"><strong>${escapeHtml(item.title)}</strong><br>${meta}</div>`;
+        ? `${formatMeasure(dims.width)} x ${formatMeasure(dims.length)}`
+        : quantityLabel;
+      const subMeta = dims ? quantityLabel : "";
+      return `
+        <div class="piece-tag intero">
+          <strong>${escapeHtml(title)}</strong>
+          <span>${meta}</span>
+          ${subMeta ? `<small>${subMeta}</small>` : ""}
+        </div>
+      `;
     })
     .join("");
   const accessoryRows = getPhysicalOrderLines(order)
@@ -2443,32 +2464,15 @@ function renderOrders() {
       <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Residuo" : "Residual"}</span><span class="detail-row-value" style="color:${getOpenBalance(order) > 0 ? "#dc2626" : "#16a34a"};font-weight:800">${formatCurrency(getOpenBalance(order))}</span></div>
     </div>
     <div class="detail-actions detail-actions-primary">
-      ${!isRoutedToWarehouse(order) ? `<button class="btn primary" data-action="route-warehouse" data-id="${order.id}">${state.lang === "it" ? "Invia a magazzino" : "Send to warehouse"}</button>` : ""}
-      ${order.operations?.installation?.required && !order.operations?.installation?.crew ? `<button class="btn primary" data-action="route-installation" data-id="${order.id}">${state.lang === "it" ? "Pianifica posa" : "Plan install"}</button>` : ""}
-      ${composeAddress(order) ? `<button class="btn" onclick="window.open('https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(composeAddress(order))}','_blank')">${state.lang === "it" ? "Apri Maps" : "Open Maps"}</button>` : ""}
-      ${order.phone ? `<button class="btn" onclick="window.open('tel:${order.phone}')">${state.lang === "it" ? "Chiama cliente" : "Call customer"}</button>` : ""}
+      ${composeAddress(order) ? `<button class="btn" data-action="open-maps" data-id="${order.id}">${state.lang === "it" ? "Apri Maps" : "Open Maps"}</button>` : ""}
+      ${order.phone ? `<button class="btn" data-action="call-client" data-id="${order.id}">${state.lang === "it" ? "Chiama cliente" : "Call customer"}</button>` : ""}
     </div>
   `;
   const checklist = getOrderChecklist(order);
-  const selectedPrepCount = getWarehousePreparedLines(order).length;
   const orderNoteMarkup = order.note
     ? `<div class="detail-note-chip">${escapeHtml(order.note)}</div>`
     : "";
   ui.orderOfficeSummary.innerHTML = `
-    <article class="guidance-card order-next-step-card">
-      <span class="panel-eyebrow">${t("orderRadar")}</span>
-      <strong>${nextAction}</strong>
-      <p>${t("officeActionsCopy")}</p>
-      <div class="order-card-badges">
-        ${statusChip(orderType.label, orderType.tone.replace("status-", ""))}
-        ${statusChip(label, tone)}
-      </div>
-      <div class="order-office-actions">
-        <button class="mini-action primary-mini" data-action="open-modal" data-id="${order.id}">${t("edit")}</button>
-        <button class="mini-action" data-action="route-warehouse" data-id="${order.id}">${t("routeWarehouseShort")}</button>
-        <button class="mini-action" data-action="route-installation" data-id="${order.id}">${t("routeInstallShort")}</button>
-      </div>
-    </article>
     ${renderInboxFlowControls(order)}
     <div class="detail-grid detail-grid-tight">
       ${renderInfoLine(t("officeStatus"), order.operations?.officeStatus || (state.lang === "it" ? "bozza" : "draft"))}
@@ -2477,15 +2481,6 @@ function renderOrders() {
       ${renderInfoLine(t("attachmentsCount"), `${(order.attachments || []).length} ${state.lang === "it" ? "file" : "files"}`)}
     </div>
     ${orderNoteMarkup}
-    <article class="guidance-card order-snapshot-card">
-      <span class="panel-eyebrow">${state.lang === "it" ? "Snapshot ordine" : "Order snapshot"}</span>
-      <div class="detail-grid detail-grid-tight">
-        ${renderInfoLine(state.lang === "it" ? "Articoli Shopify" : "Shopify lines", `${(order.lineDetails || []).length}`)}
-        ${renderInfoLine(state.lang === "it" ? "Righe da preparare" : "Prep lines", `${selectedPrepCount}`)}
-        ${renderInfoLine(state.lang === "it" ? "Flusso magazzino" : "Warehouse flow", isRoutedToWarehouse(order) ? t("routeWarehouseStatusOn") : t("routeWarehouseStatusOff"))}
-        ${renderInfoLine(state.lang === "it" ? "Flusso posa" : "Install flow", isRoutedToInstallation(order) ? t("routeInstallStatusOn") : t("routeInstallStatusOff"))}
-      </div>
-    </article>
     <article class="checklist-card">
       <span class="panel-eyebrow">${t("officeChecklist")}</span>
       <div class="checklist-grid">
@@ -2499,18 +2494,10 @@ function renderOrders() {
       <div class="checklist-note">${order.operations?.officeNote || "—"}</div>
     </article>
     <div class="detail-actions">
-      <button class="btn primary" data-action="route-warehouse" data-id="${order.id}">${t("routeWarehouseShort")}</button>
-      <button class="btn" data-action="route-installation" data-id="${order.id}">${t("routeInstallShort")}</button>
       <button class="btn" data-action="open-maps" data-id="${order.id}">${state.lang === "it" ? "Apri Maps" : "Open Maps"}</button>
       <button class="btn danger" data-action="open-modal" data-id="${order.id}">${t("edit")}</button>
     </div>
   `;
-  if (ui.orderRoutingStatus) {
-    ui.orderRoutingStatus.innerHTML = [
-      renderInfoLine(t("shippingFlow"), isRoutedToWarehouse(order) ? t("routeWarehouseStatusOn") : t("routeWarehouseStatusOff")),
-      renderInfoLine(t("installFlow"), isRoutedToInstallation(order) ? t("routeInstallStatusOn") : t("routeInstallStatusOff")),
-    ].join("");
-  }
   ui.orderLineList.innerHTML = (order.lineDetails || []).length
     ? order.lineDetails.map((item) => {
       const dims = extractDimensions(item.title);
@@ -3776,12 +3763,18 @@ async function saveInboxOrderFlow(orderId, patch = null) {
   const statusInput = document.querySelector(`[data-order-flow-status="${orderId}"]`);
   const modeInput = document.querySelector(`[data-order-flow-mode="${orderId}"]`);
   const dateInput = document.querySelector(`[data-order-flow-date="${orderId}"]`);
+  const warehouseInput = document.querySelector(`[data-order-flow-warehouse="${orderId}"]`);
+  const installationInput = document.querySelector(`[data-order-flow-installation="${orderId}"]`);
   const payload = patch || {
     warehouse: {
-      selected: true,
+      selected: Boolean(warehouseInput?.checked),
       status: statusInput?.value || "da-preparare",
       fulfillmentMode: modeInput?.value || "da-definire",
       preparationDate: dateInput?.value || "",
+    },
+    installation: {
+      selected: Boolean(installationInput?.checked),
+      required: Boolean(installationInput?.checked),
     },
   };
   const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
@@ -4401,28 +4394,9 @@ function handleGlobalClick(event) {
     saveInboxOrderFlow(id);
     return;
   }
-  if (action === "preset-pickup-flow") {
-    saveInboxOrderFlow(id, {
-      warehouse: {
-        selected: true,
-        status: "da-preparare",
-        fulfillmentMode: "ritiro",
-      },
-    });
-    return;
-  }
-  if (action === "preset-prepare-only") {
-    saveInboxOrderFlow(id, {
-      warehouse: {
-        selected: true,
-        status: "da-preparare",
-        fulfillmentMode: "da-definire",
-      },
-    });
-    return;
-  }
   if (action === "route-installation") {
     updateOrderRoutingById(id, { warehouse: { selected: true }, installation: { selected: true, required: true } });
+    setView("installations");
     return;
   }
   if (action === "clear-routing-order") {
@@ -4448,6 +4422,10 @@ function handleGlobalClick(event) {
   }
   if (action === "open-maps") {
     openMaps(order);
+    return;
+  }
+  if (action === "call-client") {
+    if (order.phone) window.open(`tel:${order.phone}`);
     return;
   }
 }
@@ -4496,6 +4474,12 @@ document.addEventListener("drop", (event) => {
   updateOrderRoutingById(orderId, { warehouse: { selected: false }, installation: { selected: false } });
 });
 
+document.addEventListener("click", (event) => {
+  const control = event.target.closest("button, .btn, .topbar-btn, .filter-btn, .primary-button, .mini-action, a.topbar-btn");
+  if (!control) return;
+  flashButtonFeedback(control);
+});
+
 ui.authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
@@ -4532,6 +4516,15 @@ ui.authForm.addEventListener("submit", async (event) => {
 
 function bindEvent(node, eventName, handler) {
   if (node) node.addEventListener(eventName, handler);
+}
+
+function flashButtonFeedback(node) {
+  if (!node) return;
+  node.classList.remove("is-feedback");
+  requestAnimationFrame(() => {
+    node.classList.add("is-feedback");
+    window.setTimeout(() => node.classList.remove("is-feedback"), 520);
+  });
 }
 
 ui.navLinks.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
@@ -4617,23 +4610,6 @@ bindEvent(ui.openOrderModalButton, "click", () => {
 bindEvent(ui.orderAttachmentButton, "click", () => openAttachmentPicker("order"));
 if (ui.savePrepListButton) {
   ui.savePrepListButton.addEventListener("click", savePrepList);
-}
-if (ui.routeToWarehouseButton) {
-  ui.routeToWarehouseButton.addEventListener("click", () => updateOrderRouting({
-    warehouse: { selected: true },
-  }));
-}
-if (ui.routeToInstallationButton) {
-  ui.routeToInstallationButton.addEventListener("click", () => updateOrderRouting({
-    warehouse: { selected: true },
-    installation: { selected: true, required: true },
-  }));
-}
-if (ui.clearRoutingButton) {
-  ui.clearRoutingButton.addEventListener("click", () => updateOrderRouting({
-    warehouse: { selected: false },
-    installation: { selected: false },
-  }));
 }
 bindEvent(ui.inventoryForm, "submit", saveInventory);
 if (ui.inventoryForm) {
