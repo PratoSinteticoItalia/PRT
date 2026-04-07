@@ -2678,7 +2678,7 @@ function renderWarehouse() {
   }
 
   const order = getSelectedOrder();
-  ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Ordini da preparare" : "Orders to prepare";
+  ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Inventario operativo" : "Inventory operations";
   ui.warehouseDetailFields.innerHTML = order
     ? [
         { label: "Ordine selezionato", value: `${composeClientName(order)} · ${getOrderNumber(order)}`, meta: composeAddress(order) || "Indirizzo da completare" },

@@ -6085,6 +6085,15 @@ body {
   overscroll-behavior: contain;
 }
 
+#warehouse .detail-header {
+  margin-bottom: 12px;
+}
+
+#warehouse .detail-header .detail-id {
+  max-width: 44ch;
+  line-height: 1.45;
+}
+
 #orders .order-grid,
 #shipping .order-grid,
 #accounting .order-grid {
@@ -6218,6 +6227,34 @@ body {
   width: 100%;
 }
 
+#warehouse .inventory-section-head {
+  align-items: center;
+  gap: 12px;
+}
+
+#warehouse #inventory-form.inline-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+
+#warehouse #inventory-form .field-full {
+  grid-column: 1 / -1;
+}
+
+#warehouse #inventory-form .text-input,
+#warehouse #inventory-form textarea.text-input,
+#warehouse #inventory-form select.text-input {
+  min-height: 46px;
+}
+
+#warehouse #inventory-form textarea.text-input {
+  min-height: 88px;
+}
+
+#warehouse #inventory-form .field[hidden] {
+  display: none !important;
+}
+
 #orders .detail-row,
 #shipping .detail-row,
 #accounting .detail-row,
@@ -6279,6 +6316,10 @@ button:active,
   #warehouse .detail-panel {
     max-height: none;
     overflow: visible;
+  }
+
+  #warehouse #inventory-form.inline-form-grid {
+    grid-template-columns: 1fr;
   }
 }
 

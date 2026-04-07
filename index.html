@@ -380,25 +380,12 @@
               </div>
 
               <div class="panel-subsection">
-                <div class="subsection-head">
-                  <h4>Ordini da preparare</h4>
-                </div>
-                <div id="warehouse-list" class="warehouse-list"></div>
-              </div>
-
-              <div class="panel-subsection">
-                <div class="subsection-head">
-                  <h4>Ordine selezionato</h4>
-                </div>
-                <div id="warehouse-detail-fields" class="detail-grid"></div>
-              </div>
-
-              <div class="panel-subsection">
-                <div class="subsection-head">
+                <div class="subsection-head inventory-section-head">
                   <h4>Aggiungi giacenza</h4>
+                  <button type="submit" form="inventory-form" class="primary-button small-button">Aggiungi a magazzino</button>
                 </div>
                 <form id="inventory-form" class="inline-form-grid">
-                  <label class="field">
+                  <label class="field field-full">
                     <span>Prodotto</span>
                     <input class="text-input" name="product" list="inventory-product-options" placeholder="Betulla 30 mm, Telo isolante..." />
                   </label>
@@ -429,12 +416,23 @@
                   </label>
                   <label class="field field-full">
                     <span>Note pezzo</span>
-                    <textarea class="text-input" name="note" rows="3" placeholder="Rotolo nuovo, residuo da ordine #2791, taglio utile..."></textarea>
+                    <textarea class="text-input" name="note" rows="2" placeholder="Rotolo nuovo, residuo da ordine #2791, taglio utile..."></textarea>
                   </label>
-                  <div class="inline-actions field-full">
-                    <button type="submit" class="primary-button small-button">Aggiungi a magazzino</button>
-                  </div>
                 </form>
+              </div>
+
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Ordini da preparare</h4>
+                </div>
+                <div id="warehouse-list" class="warehouse-list"></div>
+              </div>
+
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Ordine selezionato</h4>
+                </div>
+                <div id="warehouse-detail-fields" class="detail-grid"></div>
               </div>
             </section>
           </div>
