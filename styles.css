@@ -5808,3 +5808,30 @@ body {
     font-size: 21px;
   }
 }
+
+/* Micro-fixes for empty states and right-column headings */
+#orders .order-list + .route-board,
+#orders .info-card + .route-board {
+  margin-top: 14px;
+}
+
+.detail-panel,
+.order-detail-panel,
+.install-detail-panel {
+  padding-top: 22px;
+}
+
+.detail-panel > .panel-subsection:first-child,
+.order-detail-panel > .panel-subsection:first-child,
+.install-detail-panel > .panel-subsection:first-child {
+  margin-top: 2px;
+}
+
+.detail-panel > .panel-subsection:first-child .section-inline-title,
+.order-detail-panel > .panel-subsection:first-child .section-inline-title,
+.install-detail-panel > .panel-subsection:first-child .section-inline-title,
+.detail-panel > .panel-subsection:first-child h3,
+.order-detail-panel > .panel-subsection:first-child h3,
+.install-detail-panel > .panel-subsection:first-child h3 {
+  padding-top: 6px;
+}
