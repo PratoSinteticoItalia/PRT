@@ -5807,6 +5807,60 @@ body {
   .shipping-material-hero strong {
     font-size: 21px;
   }
+
+  .detail-header {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .detail-section {
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .detail-row {
+    flex-direction: column;
+    gap: 4px;
+    align-items: stretch;
+    padding: 6px 0;
+  }
+
+  .detail-row-label {
+    font-size: 11px;
+  }
+
+  .detail-row-value {
+    text-align: left;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .stepper {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    column-gap: 6px;
+  }
+
+  .stepper-line {
+    width: 14px;
+    margin: 0 2px;
+  }
+
+  .detail-pieces {
+    gap: 6px;
+  }
+
+  .piece-tag {
+    min-width: 58px;
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+
+  .order-detail-panel .detail-actions,
+  .detail-panel .detail-actions,
+  .install-detail-panel .detail-actions {
+    gap: 10px;
+  }
 }
 
 /* Micro-fixes for empty states and right-column headings */
