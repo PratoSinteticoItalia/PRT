@@ -545,6 +545,96 @@
             </div>
           </div>
 
+          <section class="coverage-panel">
+            <div class="coverage-shell">
+              <aside class="coverage-sidebar">
+                <div class="coverage-card">
+                  <p class="coverage-eyebrow">Territorio squadre</p>
+                  <h3>Radar copertura</h3>
+                  <p class="coverage-copy">
+                    Seleziona una squadra, definisci le regioni presidiate e disegna le aree reali. I cantieri
+                    programmati compaiono direttamente sulla cartina con indicatori dedicati.
+                  </p>
+                </div>
+
+                <div class="coverage-card">
+                  <div class="coverage-card-head">
+                    <h4>Squadre operative</h4>
+                    <button id="coverage-add-team-button" class="btn" type="button">Nuova squadra</button>
+                  </div>
+                  <div id="coverage-team-list" class="coverage-team-list"></div>
+                </div>
+
+                <div class="coverage-card">
+                  <div class="coverage-card-head">
+                    <h4>Regioni presidiate</h4>
+                    <span id="coverage-region-count" class="coverage-count">0</span>
+                  </div>
+                  <div id="coverage-region-grid" class="coverage-region-grid"></div>
+                </div>
+
+                <div class="coverage-card">
+                  <div class="coverage-card-head">
+                    <h4>Impostazioni squadra</h4>
+                  </div>
+                  <form id="coverage-team-form" class="inline-form-grid">
+                    <label class="field">
+                      <span>Nome squadra</span>
+                      <input class="text-input" type="text" name="teamName" placeholder="Squadra Roma" />
+                    </label>
+                    <label class="field">
+                      <span>Base operativa</span>
+                      <input class="text-input" type="text" name="teamBase" placeholder="Roma" />
+                    </label>
+                    <label class="field">
+                      <span>Colore</span>
+                      <input class="text-input coverage-color-input" type="color" name="teamColor" value="#2d6a4f" />
+                    </label>
+                    <label class="field field-full">
+                      <span>Note operative</span>
+                      <textarea class="text-input" name="teamNote" rows="3" placeholder="Zona attiva da lun a ven, trasferte solo sopra 80 mq..."></textarea>
+                    </label>
+                    <div class="inline-actions field-full">
+                      <button type="submit" class="primary-button small-button">Salva squadra</button>
+                    </div>
+                  </form>
+                </div>
+              </aside>
+
+              <div class="coverage-main">
+                <div class="coverage-toolbar">
+                  <div>
+                    <p class="coverage-eyebrow">Vista attiva</p>
+                    <h3 id="coverage-active-title">Nessuna squadra selezionata</h3>
+                    <p id="coverage-active-subtitle" class="coverage-copy">Seleziona una squadra per vedere copertura e cantieri assegnati.</p>
+                  </div>
+                  <div class="detail-actions">
+                    <button id="coverage-draw-button" class="btn" type="button">Disegna area</button>
+                    <button id="coverage-undo-point-button" class="btn" type="button">Togli ultimo punto</button>
+                    <button id="coverage-close-polygon-button" class="btn" type="button">Conferma area</button>
+                    <button id="coverage-clear-polygons-button" class="btn" type="button">Cancella aree</button>
+                  </div>
+                </div>
+
+                <div class="coverage-map-card">
+                  <div class="coverage-map-frame">
+                    <div id="coverage-map-stage" class="coverage-map-stage">
+                      <img src="./coverage-map-base.png" alt="Cartina operativa Italia" class="coverage-map-image" draggable="false" />
+                      <svg id="coverage-map-overlay" class="coverage-map-overlay is-idle" viewBox="0 0 1558 1420" preserveAspectRatio="none"></svg>
+                    </div>
+                  </div>
+                  <div class="coverage-hud">
+                    <div class="coverage-card-head">
+                      <h4>Cantieri squadra</h4>
+                      <span id="coverage-job-count" class="coverage-count">0</span>
+                    </div>
+                    <div id="coverage-jobs-list" class="coverage-jobs-list"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <div id="installation-calendar" class="cal-grid"></div>
 
           <div class="section">
@@ -572,6 +662,10 @@
                 <label class="field">
                   <span>Ora</span>
                   <input class="text-input" type="time" name="installTime" />
+                </label>
+                <label class="field">
+                  <span>Squadra</span>
+                  <select class="text-input" name="crew"></select>
                 </label>
                 <label class="field field-full">
                   <span>Note squadra / cantiere</span>

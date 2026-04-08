@@ -293,6 +293,15 @@ function sendRedirect(res, location, headers = {}) {
   res.end();
 }
 
+function getStaticHeaders(contentType) {
+  return {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+  };
+}
+
 function isValidShopDomain(shop = "") {
   return /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(String(shop || "").trim());
 }
@@ -1888,7 +1897,7 @@ const server = createServer(async (req, res) => {
     const filePath = join(ROOT, requestedPath);
     const content = await readFile(filePath);
     const ext = extname(filePath);
-    res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" });
+    res.writeHead(200, getStaticHeaders(MIME_TYPES[ext] || "application/octet-stream"));
     res.end(content);
   } catch (error) {
     if (url.pathname.startsWith("/api/")) {
@@ -1897,7 +1906,7 @@ const server = createServer(async (req, res) => {
 
     try {
       const content = await readFile(join(ROOT, "index.html"));
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.writeHead(200, getStaticHeaders("text/html; charset=utf-8"));
       res.end(content);
     } catch {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });

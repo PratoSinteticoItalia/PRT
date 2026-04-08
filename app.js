@@ -1,4 +1,105 @@
 const crews = ["Alpha", "Beta", "Delta"];
+const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
+const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
+const COVERAGE_BOUNDS = { minLon: 2.3, maxLon: 26.3, minLat: 34.2, maxLat: 47.8 };
+const COVERAGE_DEFAULT_COLORS = ["#2d6a4f", "#c26c2d", "#3e74d8", "#a74b4b", "#7c5cc4", "#1f7a8c"];
+const COVERAGE_REGIONS = [
+  "Abruzzo",
+  "Basilicata",
+  "Calabria",
+  "Campania",
+  "Emilia-Romagna",
+  "Friuli-Venezia Giulia",
+  "Lazio",
+  "Liguria",
+  "Lombardia",
+  "Marche",
+  "Molise",
+  "Piemonte",
+  "Puglia",
+  "Sardegna",
+  "Sicilia",
+  "Toscana",
+  "Trentino-Alto Adige",
+  "Umbria",
+  "Valle d'Aosta",
+  "Veneto",
+];
+const COVERAGE_CITY_COORDINATES = {
+  alessandria: { lat: 44.912, lng: 8.615 },
+  ancona: { lat: 43.6158, lng: 13.5189 },
+  arezzo: { lat: 43.4633, lng: 11.8796 },
+  asti: { lat: 44.9008, lng: 8.2064 },
+  aosta: { lat: 45.737, lng: 7.3201 },
+  avellino: { lat: 40.9149, lng: 14.7924 },
+  bari: { lat: 41.1171, lng: 16.8719 },
+  benevento: { lat: 41.1298, lng: 14.7826 },
+  bergamo: { lat: 45.6983, lng: 9.6773 },
+  bologna: { lat: 44.4949, lng: 11.3426 },
+  bolzano: { lat: 46.4983, lng: 11.3548 },
+  brindisi: { lat: 40.6327, lng: 17.9418 },
+  cagliari: { lat: 39.2238, lng: 9.1217 },
+  campobasso: { lat: 41.5595, lng: 14.6688 },
+  caserta: { lat: 41.0732, lng: 14.3348 },
+  catania: { lat: 37.5079, lng: 15.083 },
+  catanzaro: { lat: 38.9098, lng: 16.5877 },
+  chiavari: { lat: 44.3173, lng: 9.3224 },
+  cosenza: { lat: 39.2983, lng: 16.2537 },
+  cuneo: { lat: 44.3845, lng: 7.5427 },
+  firenze: { lat: 43.7696, lng: 11.2558 },
+  foggia: { lat: 41.4622, lng: 15.5446 },
+  forlì: { lat: 44.2226, lng: 12.0408 },
+  forli: { lat: 44.2226, lng: 12.0408 },
+  frosinone: { lat: 41.6396, lng: 13.3512 },
+  genova: { lat: 44.4056, lng: 8.9463 },
+  imperia: { lat: 43.889, lng: 8.0393 },
+  "la spezia": { lat: 44.1025, lng: 9.8241 },
+  "l'aquila": { lat: 42.3498, lng: 13.3995 },
+  laquila: { lat: 42.3498, lng: 13.3995 },
+  latina: { lat: 41.4676, lng: 12.9037 },
+  lecce: { lat: 40.3515, lng: 18.175 },
+  livorno: { lat: 43.5485, lng: 10.3106 },
+  lucca: { lat: 43.8429, lng: 10.5027 },
+  matera: { lat: 40.6663, lng: 16.6043 },
+  messina: { lat: 38.1938, lng: 15.554 },
+  milano: { lat: 45.4642, lng: 9.19 },
+  modena: { lat: 44.6471, lng: 10.9252 },
+  monza: { lat: 45.5845, lng: 9.2744 },
+  napoli: { lat: 40.8518, lng: 14.2681 },
+  novara: { lat: 45.446, lng: 8.621 },
+  "novi ligure": { lat: 44.7604, lng: 8.7876 },
+  olbia: { lat: 40.9235, lng: 9.4964 },
+  padova: { lat: 45.4064, lng: 11.8768 },
+  palermo: { lat: 38.1157, lng: 13.3615 },
+  parma: { lat: 44.8015, lng: 10.3279 },
+  perugia: { lat: 43.1107, lng: 12.3908 },
+  pescara: { lat: 42.4618, lng: 14.2161 },
+  piacenza: { lat: 45.0526, lng: 9.693 },
+  pisa: { lat: 43.7228, lng: 10.4017 },
+  potenza: { lat: 40.6401, lng: 15.8051 },
+  ragusa: { lat: 36.9269, lng: 14.7255 },
+  ravenna: { lat: 44.4184, lng: 12.2035 },
+  "reggio calabria": { lat: 38.1113, lng: 15.6473 },
+  "reggio emilia": { lat: 44.6983, lng: 10.6312 },
+  rimini: { lat: 44.0678, lng: 12.5695 },
+  roma: { lat: 41.9028, lng: 12.4964 },
+  salerno: { lat: 40.6824, lng: 14.7681 },
+  sassari: { lat: 40.7259, lng: 8.5557 },
+  savona: { lat: 44.3089, lng: 8.4772 },
+  siena: { lat: 43.3188, lng: 11.3308 },
+  siracusa: { lat: 37.0755, lng: 15.2866 },
+  taranto: { lat: 40.4644, lng: 17.247 },
+  tortona: { lat: 44.8976, lng: 8.8637 },
+  trapani: { lat: 38.0176, lng: 12.5365 },
+  trento: { lat: 46.0748, lng: 11.1217 },
+  trieste: { lat: 45.6495, lng: 13.7768 },
+  torino: { lat: 45.0703, lng: 7.6869 },
+  udine: { lat: 46.0711, lng: 13.2346 },
+  varese: { lat: 45.82, lng: 8.8251 },
+  venezia: { lat: 45.4408, lng: 12.3155 },
+  verona: { lat: 45.4384, lng: 10.9916 },
+  vicenza: { lat: 45.5455, lng: 11.5354 },
+};
 const INVENTORY_CATALOG = [
   { key: "tasso", label: "Tasso", type: "turf" },
   { key: "bonsai", label: "Bonsai", type: "turf" },
@@ -492,6 +593,9 @@ const state = {
   pendingAttachmentTarget: null,
   showOrderImport: false,
   installationWeekOffset: 0,
+  selectedInstallationCrew: "",
+  coveragePlanner: loadCoveragePlannerState(),
+  coverageDrawing: { active: false, points: [] },
 };
 
 const ui = {
@@ -560,6 +664,21 @@ const ui = {
   createDdtButton: document.getElementById("create-ddt-button"),
   warehouseDdtStatus: document.getElementById("warehouse-ddt-status"),
   installationFilterTags: Array.from(document.querySelectorAll(".installation-filter-tag")),
+  coverageTeamList: document.getElementById("coverage-team-list"),
+  coverageRegionGrid: document.getElementById("coverage-region-grid"),
+  coverageRegionCount: document.getElementById("coverage-region-count"),
+  coverageTeamForm: document.getElementById("coverage-team-form"),
+  coverageAddTeamButton: document.getElementById("coverage-add-team-button"),
+  coverageActiveTitle: document.getElementById("coverage-active-title"),
+  coverageActiveSubtitle: document.getElementById("coverage-active-subtitle"),
+  coverageDrawButton: document.getElementById("coverage-draw-button"),
+  coverageUndoPointButton: document.getElementById("coverage-undo-point-button"),
+  coverageClosePolygonButton: document.getElementById("coverage-close-polygon-button"),
+  coverageClearPolygonsButton: document.getElementById("coverage-clear-polygons-button"),
+  coverageMapStage: document.getElementById("coverage-map-stage"),
+  coverageMapOverlay: document.getElementById("coverage-map-overlay"),
+  coverageJobsList: document.getElementById("coverage-jobs-list"),
+  coverageJobCount: document.getElementById("coverage-job-count"),
   installationCalendar: document.getElementById("installation-calendar"),
   installationList: document.getElementById("installation-list"),
   installationPrevWeekButton: document.getElementById("installation-prev-week-button"),
@@ -567,6 +686,7 @@ const ui = {
   installationDetailTitle: document.getElementById("installation-detail-title"),
   installationDetailSummary: document.getElementById("installation-detail-summary"),
   installationForm: document.getElementById("installation-form"),
+  installationCrew: document.querySelector("#installation-form [name='crew']"),
   installationStatus: document.getElementById("installation-status"),
   installationMapsButton: document.getElementById("installation-maps-button"),
   installationRouteButton: document.getElementById("installation-route-button"),
@@ -898,6 +1018,418 @@ function updateOrderImportPanel() {
 
 function composeAddress(order) {
   return [order.address, order.city].filter(Boolean).join(", ");
+}
+
+function loadCoveragePlannerState() {
+  try {
+    const raw = window.localStorage.getItem(COVERAGE_STORAGE_KEY);
+    const parsed = JSON.parse(raw || "null");
+    if (!parsed || typeof parsed !== "object") return { teams: {} };
+    return {
+      teams: parsed.teams && typeof parsed.teams === "object" ? parsed.teams : {},
+    };
+  } catch {
+    return { teams: {} };
+  }
+}
+
+function saveCoveragePlannerState() {
+  try {
+    window.localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(state.coveragePlanner || { teams: {} }));
+  } catch {}
+}
+
+function getInstallationCrewNames() {
+  const orderCrews = state.orders
+    .map((order) => String(order.operations?.installation?.crew || "").trim())
+    .filter(Boolean);
+  const storedCrews = Object.keys(state.coveragePlanner?.teams || {});
+  return Array.from(new Set([...crews, ...orderCrews, ...storedCrews]))
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right, "it"));
+}
+
+function getCoverageDefaultColor(index = 0) {
+  return COVERAGE_DEFAULT_COLORS[index % COVERAGE_DEFAULT_COLORS.length];
+}
+
+function ensureCoverageTeam(teamName) {
+  const key = String(teamName || "").trim();
+  if (!key) return null;
+  if (!state.coveragePlanner?.teams) state.coveragePlanner = { teams: {} };
+  if (!state.coveragePlanner.teams[key]) {
+    const index = getInstallationCrewNames().indexOf(key);
+    state.coveragePlanner.teams[key] = {
+      color: getCoverageDefaultColor(index >= 0 ? index : Object.keys(state.coveragePlanner.teams).length),
+      base: "",
+      note: "",
+      regions: [],
+      polygons: [],
+    };
+  }
+  return state.coveragePlanner.teams[key];
+}
+
+function getSelectedInstallationCrew() {
+  const crewsAvailable = getInstallationCrewNames();
+  if (!crewsAvailable.length) return "";
+  if (crewsAvailable.includes(state.selectedInstallationCrew)) return state.selectedInstallationCrew;
+  state.selectedInstallationCrew = crewsAvailable[0];
+  return state.selectedInstallationCrew;
+}
+
+function selectInstallationCrew(teamName) {
+  if (!teamName) return;
+  state.selectedInstallationCrew = teamName;
+  ensureCoverageTeam(teamName);
+  state.coverageDrawing = { active: false, points: [] };
+  saveCoveragePlannerState();
+  renderInstallations();
+}
+
+function buildInstallationCrewOptions(selectedCrew = "") {
+  const crewNames = getInstallationCrewNames();
+  const selectedValue = selectedCrew || getSelectedInstallationCrew();
+  return [`<option value="">${state.lang === "it" ? "Seleziona squadra" : "Select crew"}</option>`]
+    .concat(
+      crewNames.map((crewName) => `<option value="${escapeHtml(crewName)}" ${crewName === selectedValue ? "selected" : ""}>${escapeHtml(crewName)}</option>`)
+    )
+    .join("");
+}
+
+function updateCoverageTeamForm() {
+  if (!ui.coverageTeamForm) return;
+  const selectedCrew = getSelectedInstallationCrew();
+  const team = selectedCrew ? ensureCoverageTeam(selectedCrew) : null;
+  ui.coverageTeamForm.teamName.value = selectedCrew || "";
+  ui.coverageTeamForm.teamBase.value = team?.base || "";
+  ui.coverageTeamForm.teamColor.value = team?.color || getCoverageDefaultColor(0);
+  ui.coverageTeamForm.teamNote.value = team?.note || "";
+}
+
+function saveCoverageTeamFromForm(event) {
+  event.preventDefault();
+  if (!ui.coverageTeamForm) return;
+  const form = new FormData(ui.coverageTeamForm);
+  const teamName = String(form.get("teamName") || "").trim();
+  if (!teamName) {
+    setStatus(ui.installationStatus, "error", state.lang === "it" ? "Inserisci il nome della squadra." : "Enter a crew name.");
+    return;
+  }
+  const previousCrew = getSelectedInstallationCrew();
+  const currentConfig = previousCrew && previousCrew !== teamName ? ensureCoverageTeam(previousCrew) : null;
+  const existing = ensureCoverageTeam(teamName);
+  if (currentConfig && !state.coveragePlanner.teams[teamName]?.base && !state.coveragePlanner.teams[teamName]?.regions?.length && !state.coveragePlanner.teams[teamName]?.polygons?.length) {
+    state.coveragePlanner.teams[teamName] = {
+      ...currentConfig,
+      ...existing,
+    };
+  }
+  state.coveragePlanner.teams[teamName] = {
+    ...(state.coveragePlanner.teams[teamName] || {}),
+    base: String(form.get("teamBase") || "").trim(),
+    color: String(form.get("teamColor") || getCoverageDefaultColor(0)),
+    note: String(form.get("teamNote") || "").trim(),
+    regions: state.coveragePlanner.teams[teamName]?.regions || [],
+    polygons: state.coveragePlanner.teams[teamName]?.polygons || [],
+  };
+  state.selectedInstallationCrew = teamName;
+  saveCoveragePlannerState();
+  renderInstallations();
+  setStatus(ui.installationStatus, "success", state.lang === "it" ? "Squadra aggiornata sulla cartina." : "Crew updated on the map.");
+}
+
+function addCoverageTeam() {
+  let attempt = 1;
+  let candidate = state.lang === "it" ? "Nuova squadra" : "New crew";
+  const names = getInstallationCrewNames();
+  while (names.includes(candidate)) {
+    attempt += 1;
+    candidate = `${state.lang === "it" ? "Nuova squadra" : "New crew"} ${attempt}`;
+  }
+  ensureCoverageTeam(candidate);
+  state.selectedInstallationCrew = candidate;
+  saveCoveragePlannerState();
+  renderInstallations();
+  requestAnimationFrame(() => {
+    ui.coverageTeamForm?.teamName?.focus();
+    ui.coverageTeamForm?.teamName?.select();
+  });
+}
+
+function getInstallationOrdersForCrew(teamName) {
+  const normalizedCrew = normalizeLooseString(teamName);
+  return filterInstallations().filter((order) => normalizeLooseString(order.operations?.installation?.crew || "") === normalizedCrew);
+}
+
+function projectCoverageLatLng(lat, lng) {
+  const x = clampNumber((lng - COVERAGE_BOUNDS.minLon) / (COVERAGE_BOUNDS.maxLon - COVERAGE_BOUNDS.minLon), 0, 1);
+  const y = clampNumber((COVERAGE_BOUNDS.maxLat - lat) / (COVERAGE_BOUNDS.maxLat - COVERAGE_BOUNDS.minLat), 0, 1);
+  return { x, y };
+}
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getCoveragePointFromText(value) {
+  const normalized = normalizeLooseString(value);
+  if (!normalized) return null;
+  if (COVERAGE_CITY_COORDINATES[normalized]) {
+    const point = COVERAGE_CITY_COORDINATES[normalized];
+    return projectCoverageLatLng(point.lat, point.lng);
+  }
+  for (const [cityName, point] of Object.entries(COVERAGE_CITY_COORDINATES)) {
+    if (normalized.includes(cityName)) return projectCoverageLatLng(point.lat, point.lng);
+  }
+  return null;
+}
+
+function getCoveragePointForOrder(order) {
+  return getCoveragePointFromText(order.city) || getCoveragePointFromText(composeAddress(order)) || null;
+}
+
+function polygonToSvgPoints(polygon) {
+  return polygon
+    .map((point) => `${Math.round(point.x * COVERAGE_MAP_SIZE.width)},${Math.round(point.y * COVERAGE_MAP_SIZE.height)}`)
+    .join(" ");
+}
+
+function polygonCenter(polygon = []) {
+  if (!polygon.length) return null;
+  const total = polygon.reduce((acc, point) => {
+    acc.x += point.x;
+    acc.y += point.y;
+    return acc;
+  }, { x: 0, y: 0 });
+  return {
+    x: total.x / polygon.length,
+    y: total.y / polygon.length,
+  };
+}
+
+function getCoverageDrawingPointFromEvent(event) {
+  const rect = ui.coverageMapOverlay?.getBoundingClientRect();
+  if (!rect) return null;
+  const x = clampNumber((event.clientX - rect.left) / rect.width, 0, 1);
+  const y = clampNumber((event.clientY - rect.top) / rect.height, 0, 1);
+  return { x, y };
+}
+
+function toggleCoverageDrawing() {
+  const selectedCrew = getSelectedInstallationCrew();
+  if (!selectedCrew) return;
+  ensureCoverageTeam(selectedCrew);
+  state.coverageDrawing = state.coverageDrawing?.active
+    ? { active: false, points: [] }
+    : { active: true, points: [] };
+  renderInstallations();
+}
+
+function undoCoveragePoint() {
+  if (!state.coverageDrawing?.active) return;
+  state.coverageDrawing.points.pop();
+  renderInstallationsCoverage();
+}
+
+function cancelCoverageDrawing() {
+  state.coverageDrawing = { active: false, points: [] };
+  renderInstallationsCoverage();
+}
+
+function closeCoveragePolygon() {
+  const selectedCrew = getSelectedInstallationCrew();
+  const team = ensureCoverageTeam(selectedCrew);
+  const points = state.coverageDrawing?.points || [];
+  if (!team || points.length < 3) return;
+  team.polygons = team.polygons || [];
+  team.polygons.push(points.map((point) => ({
+    x: floorTo(point.x, 4),
+    y: floorTo(point.y, 4),
+  })));
+  saveCoveragePlannerState();
+  state.coverageDrawing = { active: false, points: [] };
+  renderInstallations();
+}
+
+function clearCoveragePolygons() {
+  const selectedCrew = getSelectedInstallationCrew();
+  const team = ensureCoverageTeam(selectedCrew);
+  if (!team?.polygons?.length) return;
+  const confirmed = window.confirm(state.lang === "it" ? `Cancellare tutte le aree di ${selectedCrew}?` : `Delete all areas for ${selectedCrew}?`);
+  if (!confirmed) return;
+  team.polygons = [];
+  saveCoveragePlannerState();
+  cancelCoverageDrawing();
+}
+
+function toggleCoverageRegion(regionName) {
+  const selectedCrew = getSelectedInstallationCrew();
+  const team = ensureCoverageTeam(selectedCrew);
+  if (!team) return;
+  team.regions = Array.isArray(team.regions) ? team.regions : [];
+  if (team.regions.includes(regionName)) {
+    team.regions = team.regions.filter((item) => item !== regionName);
+  } else {
+    team.regions.push(regionName);
+  }
+  saveCoveragePlannerState();
+  renderInstallationsCoverage();
+}
+
+function handleCoverageMapClick(event) {
+  if (!state.coverageDrawing?.active) return;
+  const point = getCoverageDrawingPointFromEvent(event);
+  if (!point) return;
+  state.coverageDrawing.points.push(point);
+  renderInstallationsCoverage();
+}
+
+function renderInstallationsCoverage() {
+  const crewNames = getInstallationCrewNames();
+  if (ui.coverageTeamList) {
+    ui.coverageTeamList.innerHTML = crewNames.length
+      ? crewNames.map((crewName) => {
+          const team = ensureCoverageTeam(crewName);
+          const jobs = getInstallationOrdersForCrew(crewName);
+          return `
+            <article class="coverage-team-card ${crewName === getSelectedInstallationCrew() ? "is-active" : ""}" data-coverage-team="${escapeHtml(crewName)}">
+              <div class="coverage-team-title">
+                <div class="coverage-team-name">
+                  <span class="coverage-swatch" style="background:${escapeHtml(team.color || getCoverageDefaultColor(0))}"></span>
+                  <span>${escapeHtml(crewName)}</span>
+                </div>
+                <span class="coverage-count">${jobs.length} cantieri</span>
+              </div>
+              <div class="coverage-meta">
+                ${team.base ? `<span class="coverage-tag">Base ${escapeHtml(team.base)}</span>` : ""}
+                <span class="coverage-tag">${(team.regions || []).length} regioni</span>
+                <span class="coverage-tag">${(team.polygons || []).length} aree</span>
+              </div>
+            </article>
+          `;
+        }).join("")
+      : `<div class="coverage-empty">${state.lang === "it" ? "Nessuna squadra disponibile." : "No crews available."}</div>`;
+  }
+
+  const selectedCrew = getSelectedInstallationCrew();
+  const team = selectedCrew ? ensureCoverageTeam(selectedCrew) : null;
+  const jobs = selectedCrew ? getInstallationOrdersForCrew(selectedCrew) : [];
+  if (ui.coverageRegionGrid) {
+    ui.coverageRegionGrid.innerHTML = COVERAGE_REGIONS.map((regionName) => `
+      <button class="coverage-region-chip ${(team?.regions || []).includes(regionName) ? "is-selected" : ""}" type="button" data-coverage-region="${escapeHtml(regionName)}">${escapeHtml(regionName)}</button>
+    `).join("");
+  }
+  if (ui.coverageRegionCount) ui.coverageRegionCount.textContent = String((team?.regions || []).length);
+  if (ui.coverageJobCount) ui.coverageJobCount.textContent = String(jobs.length);
+  if (ui.coverageActiveTitle) ui.coverageActiveTitle.textContent = selectedCrew || (state.lang === "it" ? "Nessuna squadra selezionata" : "No crew selected");
+  if (ui.coverageActiveSubtitle) {
+    const summary = selectedCrew
+      ? [
+          team?.base ? `Base ${team.base}` : (state.lang === "it" ? "Base non indicata" : "Base missing"),
+          (team?.regions || []).length ? `Regioni: ${(team.regions || []).join(", ")}` : (state.lang === "it" ? "Nessuna regione associata" : "No linked regions"),
+          jobs.length ? `${jobs.length} cantieri assegnati` : (state.lang === "it" ? "Nessun cantiere assegnato" : "No assigned jobs"),
+        ].join(" • ")
+      : (state.lang === "it" ? "Seleziona una squadra per vedere copertura e cantieri assegnati." : "Select a crew to view coverage and assigned jobs.");
+    ui.coverageActiveSubtitle.textContent = summary;
+  }
+
+  if (ui.coverageJobsList) {
+    ui.coverageJobsList.innerHTML = jobs.length
+      ? jobs.map((order, index) => `
+          <article class="coverage-job-card" data-coverage-order="${escapeHtml(order.id)}">
+            <div class="coverage-job-head">
+              <div class="coverage-job-title">
+                <span class="coverage-count">${index + 1}</span>
+                <span>${escapeHtml(composeClientName(order))}</span>
+              </div>
+              <span class="coverage-tag">${order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : t("toPlan")}</span>
+            </div>
+            <div class="coverage-job-meta">${escapeHtml(composeAddress(order) || order.city || (state.lang === "it" ? "Indirizzo da completare" : "Address missing"))}</div>
+            <div class="coverage-meta">
+              <span class="coverage-tag">${escapeHtml(getOrderNumber(order))}</span>
+              <span class="coverage-tag">${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
+              <span class="coverage-tag">${escapeHtml(order.operations?.product || t("undefined"))}</span>
+            </div>
+          </article>
+        `).join("")
+      : `<div class="coverage-empty">${state.lang === "it" ? "Nessun cantiere assegnato a questa squadra nella vista posa." : "No jobs assigned to this crew in the install view."}</div>`;
+  }
+
+  renderCoverageOverlay(selectedCrew, team, jobs);
+  updateCoverageTeamForm();
+  updateCoverageControls();
+}
+
+function renderCoverageOverlay(selectedCrew, team, jobs) {
+  if (!ui.coverageMapOverlay) return;
+  const fragments = [
+    `<defs>
+      <marker id="coverage-arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+        <path d="M0,0 L12,6 L0,12 z" fill="${escapeHtml(team?.color || "#2d6a4f")}"></path>
+      </marker>
+    </defs>`,
+  ];
+
+  Object.entries(state.coveragePlanner?.teams || {}).forEach(([crewName, config]) => {
+    const color = config?.color || getCoverageDefaultColor(0);
+    (config?.polygons || []).forEach((polygon) => {
+      const center = polygonCenter(polygon);
+      fragments.push(`
+        <polygon points="${polygonToSvgPoints(polygon)}" fill="${escapeHtml(color)}" fill-opacity="${crewName === selectedCrew ? 0.24 : 0.1}" stroke="${escapeHtml(color)}" stroke-width="${crewName === selectedCrew ? 4 : 2}"></polygon>
+        ${crewName === selectedCrew && center ? `<text class="coverage-area-label" x="${Math.round(center.x * COVERAGE_MAP_SIZE.width)}" y="${Math.round(center.y * COVERAGE_MAP_SIZE.height)}" text-anchor="middle" fill="${escapeHtml(color)}">${escapeHtml(crewName)}</text>` : ""}
+      `);
+    });
+  });
+
+  const basePoint = team?.base ? getCoveragePointFromText(team.base) : null;
+  if (basePoint) {
+    fragments.push(`
+      <circle cx="${Math.round(basePoint.x * COVERAGE_MAP_SIZE.width)}" cy="${Math.round(basePoint.y * COVERAGE_MAP_SIZE.height)}" r="13" fill="${escapeHtml(team.color)}" stroke="#fff" stroke-width="4"></circle>
+      <text class="coverage-pin-label" x="${Math.round(basePoint.x * COVERAGE_MAP_SIZE.width)}" y="${Math.round(basePoint.y * COVERAGE_MAP_SIZE.height - 18)}" text-anchor="middle" fill="${escapeHtml(team.color)}">${escapeHtml(team.base)}</text>
+    `);
+  }
+
+  jobs.forEach((order, index) => {
+    const point = getCoveragePointForOrder(order);
+    if (!point) return;
+    const x = Math.round(point.x * COVERAGE_MAP_SIZE.width);
+    const y = Math.round(point.y * COVERAGE_MAP_SIZE.height);
+    if (basePoint) {
+      fragments.push(`<line class="coverage-arrow-line" x1="${Math.round(basePoint.x * COVERAGE_MAP_SIZE.width)}" y1="${Math.round(basePoint.y * COVERAGE_MAP_SIZE.height)}" x2="${x}" y2="${y}" stroke="${escapeHtml(team.color)}" marker-end="url(#coverage-arrowhead)"></line>`);
+    }
+    fragments.push(`
+      <circle cx="${x}" cy="${y}" r="12" fill="${escapeHtml(team.color)}" stroke="#fff" stroke-width="4"></circle>
+      <text class="coverage-pin-label" x="${x}" y="${y + 7}" text-anchor="middle" fill="#ffffff">${index + 1}</text>
+    `);
+  });
+
+  const draftPoints = state.coverageDrawing?.points || [];
+  if (draftPoints.length) {
+    const points = polygonToSvgPoints(draftPoints);
+    if (draftPoints.length >= 3) {
+      fragments.push(`<polygon points="${points}" fill="#111827" fill-opacity="0.12" stroke="#111827" stroke-width="2"></polygon>`);
+    }
+    fragments.push(`<polyline points="${points}" fill="none" stroke="#111827" stroke-width="3" stroke-dasharray="8 8"></polyline>`);
+    draftPoints.forEach((point) => {
+      fragments.push(`<circle cx="${Math.round(point.x * COVERAGE_MAP_SIZE.width)}" cy="${Math.round(point.y * COVERAGE_MAP_SIZE.height)}" r="6" fill="#111827" stroke="#ffffff" stroke-width="2"></circle>`);
+    });
+  }
+
+  ui.coverageMapOverlay.innerHTML = fragments.join("");
+  ui.coverageMapOverlay.classList.toggle("is-idle", !state.coverageDrawing?.active);
+}
+
+function updateCoverageControls() {
+  if (ui.coverageDrawButton) {
+    ui.coverageDrawButton.classList.toggle("is-feedback", Boolean(state.coverageDrawing?.active));
+    ui.coverageDrawButton.textContent = state.coverageDrawing?.active
+      ? (state.lang === "it" ? "Disegno attivo" : "Drawing active")
+      : (state.lang === "it" ? "Disegna area" : "Draw area");
+  }
+  if (ui.coverageUndoPointButton) ui.coverageUndoPointButton.disabled = !state.coverageDrawing?.active || !(state.coverageDrawing?.points || []).length;
+  if (ui.coverageClosePolygonButton) ui.coverageClosePolygonButton.disabled = !state.coverageDrawing?.active || (state.coverageDrawing?.points || []).length < 3;
+  if (ui.coverageClearPolygonsButton) ui.coverageClearPolygonsButton.disabled = !(ensureCoverageTeam(getSelectedInstallationCrew())?.polygons || []).length;
 }
 
 function getOrderNumber(order) {
@@ -2050,6 +2582,7 @@ function applyStaticTranslations() {
   setSubheading("#installations .panel-head h3", t("installations"));
   setFieldLabel(ui.installationForm, "installDate", state.lang === "it" ? "Data posa" : "Installation date");
   setFieldLabel(ui.installationForm, "installTime", state.lang === "it" ? "Ora" : "Time");
+  setFieldLabel(ui.installationForm, "crew", state.lang === "it" ? "Squadra" : "Crew");
   setFieldLabel(ui.installationForm, "reportNote", state.lang === "it" ? "Note squadra / cantiere" : "Crew / site notes");
   setFieldLabel(ui.accountingForm, "paymentMethod", state.lang === "it" ? "Metodo utilizzato" : "Method used");
   setFieldLabel(ui.accountingForm, "depositPaid", state.lang === "it" ? "Acconto registrato" : "Deposit recorded");
@@ -2410,7 +2943,7 @@ function renderOrders() {
   renderRouteBoard();
   ui.ordersList.innerHTML = orders.length ? orders.map((order) => renderOrderRow(order, "orders")).join("") : `<div class="info-card">${t("noOrdersAvailable")}</div>`;
   const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
-  if (state.currentView === "shipping" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
+  if (state.currentView === "orders" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     ui.orderDetailTitle.textContent = t("noSelection");
     ui.orderDetailBadge.innerHTML = "";
@@ -2685,7 +3218,8 @@ function renderWarehouse() {
       : `<div class="info-card">${state.lang === "it" ? "Nessuna giacenza caricata. Inserisci i primi rotoli o residui dal pannello a destra." : "No stock loaded yet. Add the first rolls or offcuts from the right panel."}</div>`;
   }
 
-  const order = getSelectedOrder();
+  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
+  if (state.currentView === "warehouse" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Inventario operativo" : "Inventory operations";
   ui.warehouseDetailFields.innerHTML = order
     ? [
@@ -2967,6 +3501,8 @@ function renderInstallations() {
   const orders = filterInstallations();
   const weekOrders = orders.filter(isInstallationInCurrentWeek);
   const backlogOrders = orders.filter((order) => !isInstallationInCurrentWeek(order));
+  getSelectedInstallationCrew();
+  renderInstallationsCoverage();
   if (ui.installationCalendar) {
     ui.installationCalendar.innerHTML = buildInstallationCalendar(orders);
   }
@@ -2999,7 +3535,7 @@ function renderInstallations() {
     : `<div class="info-card">${state.lang === "it" ? "Nessuna posa in backlog per la settimana selezionata." : "No backlog installs for the selected week."}</div>`;
 
   const order = orders.find((item) => item.id === state.selectedOrderId) || weekOrders[0] || backlogOrders[0] || null;
-  if (state.currentView === "orders" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
+  if (state.currentView === "installations" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     ui.installationDetailTitle.textContent = t("noSelection");
     if (ui.installationDetailSummary) ui.installationDetailSummary.innerHTML = "";
@@ -3007,6 +3543,10 @@ function renderInstallations() {
     clearStatus(ui.installationStatus);
     return;
   }
+  if (order.operations?.installation?.crew) {
+    state.selectedInstallationCrew = order.operations.installation.crew;
+  }
+  renderInstallationsCoverage();
   ui.installationDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
   if (ui.installationDetailSummary) {
     ui.installationDetailSummary.innerHTML = [
@@ -3018,6 +3558,10 @@ function renderInstallations() {
   }
   ui.installationForm.installDate.value = order.operations?.installation?.installDate || "";
   ui.installationForm.installTime.value = order.operations?.installation?.installTime || "";
+  if (ui.installationCrew) {
+    ui.installationCrew.innerHTML = buildInstallationCrewOptions(order.operations?.installation?.crew || "");
+    ui.installationCrew.value = order.operations?.installation?.crew || "";
+  }
   ui.installationForm.reportNote.value = order.operations?.installation?.reportNote || "";
   ui.installationAttachments.innerHTML = renderAttachmentGrid(order.attachments || []);
   clearStatus(ui.installationStatus);
@@ -3046,7 +3590,8 @@ function renderAccounting() {
       }).join("")
     : `<div class="info-card">${state.lang === "it" ? "Nessun ordine in contabilità con questo filtro." : "No accounting orders for this filter."}</div>`;
 
-  const order = getSelectedOrder();
+  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
+  if (state.currentView === "accounting" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     ui.accountingDetailTitle.textContent = t("noSelection");
     ui.accountingMeta.innerHTML = "";
@@ -3123,8 +3668,7 @@ function renderAccounting() {
 }
 
 async function importShopifyPayment() {
-  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
-  if (state.currentView === "warehouse" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
+  const order = getSelectedOrder();
   if (!order) return;
   const shopifyPaid = getShopifyPaidAmount(order);
   if (shopifyPaid <= 0) {
@@ -3376,7 +3920,7 @@ function renderShipping() {
   }
 
   const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
-  if (state.currentView === "installations" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
+  if (state.currentView === "shipping" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     if (ui.shippingDetailTitle) ui.shippingDetailTitle.textContent = t("noSelection");
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
@@ -3804,8 +4348,7 @@ async function saveOrder(event) {
 }
 
 async function deleteSelectedOrder() {
-  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
-  if (state.currentView === "accounting" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
+  const order = getSelectedOrder();
   if (!order) return;
   await apiFetch(`/api/orders/${encodeURIComponent(order.id)}`, { method: "DELETE" });
   state.orders = state.orders.filter((item) => item.id !== order.id);
@@ -4236,11 +4779,17 @@ async function saveInstallation(event) {
       installation: {
         installDate: form.get("installDate"),
         installTime: form.get("installTime"),
+        crew: form.get("crew"),
         reportNote: form.get("reportNote"),
       },
     }),
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  if (saved.operations?.installation?.crew) {
+    state.selectedInstallationCrew = saved.operations.installation.crew;
+    ensureCoverageTeam(saved.operations.installation.crew);
+    saveCoveragePlannerState();
+  }
   render();
   setStatus(
     ui.installationStatus,
@@ -4798,6 +5347,38 @@ if (ui.ddtForm) {
   });
 }
 bindEvent(ui.installationForm, "submit", saveInstallation);
+bindEvent(ui.coverageTeamForm, "submit", saveCoverageTeamFromForm);
+bindEvent(ui.coverageAddTeamButton, "click", addCoverageTeam);
+bindEvent(ui.coverageDrawButton, "click", toggleCoverageDrawing);
+bindEvent(ui.coverageUndoPointButton, "click", undoCoveragePoint);
+bindEvent(ui.coverageClosePolygonButton, "click", closeCoveragePolygon);
+bindEvent(ui.coverageClearPolygonsButton, "click", clearCoveragePolygons);
+if (ui.coverageMapOverlay) {
+  ui.coverageMapOverlay.addEventListener("click", handleCoverageMapClick);
+}
+if (ui.coverageTeamList) {
+  ui.coverageTeamList.addEventListener("click", (event) => {
+    const card = event.target.closest("[data-coverage-team]");
+    if (!card) return;
+    selectInstallationCrew(card.dataset.coverageTeam);
+  });
+}
+if (ui.coverageRegionGrid) {
+  ui.coverageRegionGrid.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-coverage-region]");
+    if (!button) return;
+    toggleCoverageRegion(button.dataset.coverageRegion);
+  });
+}
+if (ui.coverageJobsList) {
+  ui.coverageJobsList.addEventListener("click", (event) => {
+    const card = event.target.closest("[data-coverage-order]");
+    if (!card) return;
+    state.selectedOrderId = card.dataset.coverageOrder;
+    renderInstallations();
+    ui.installationDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
 bindEvent(ui.installationPrevWeekButton, "click", () => {
   state.installationWeekOffset -= 1;
   renderInstallations();

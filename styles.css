@@ -6652,8 +6652,262 @@ button:active,
     gap: 6px;
   }
 
-  .topbar-btn {
-    min-height: 34px;
-    padding-inline: 11px;
+.topbar-btn {
+  min-height: 34px;
+  padding-inline: 11px;
+}
+}
+
+.coverage-panel {
+  margin-bottom: 24px;
+}
+
+.coverage-shell {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.coverage-sidebar,
+.coverage-main {
+  display: grid;
+  gap: 16px;
+}
+
+.coverage-card,
+.coverage-map-card {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+.coverage-card {
+  padding: 18px;
+}
+
+.coverage-card-head,
+.coverage-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.coverage-toolbar {
+  padding: 18px 20px;
+}
+
+.coverage-eyebrow {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.coverage-copy {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.coverage-team-list,
+.coverage-jobs-list {
+  display: grid;
+  gap: 10px;
+}
+
+.coverage-team-card,
+.coverage-job-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  padding: 14px;
+}
+
+.coverage-team-card {
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.coverage-team-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(31, 44, 32, 0.08);
+}
+
+.coverage-team-card.is-active {
+  border-color: rgba(45, 106, 79, 0.32);
+  box-shadow: 0 0 0 4px rgba(45, 106, 79, 0.1);
+}
+
+.coverage-team-title,
+.coverage-job-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.coverage-team-name,
+.coverage-job-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.coverage-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.94);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.coverage-meta,
+.coverage-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.coverage-tag,
+.coverage-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.coverage-region-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coverage-region-chip {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.coverage-region-chip.is-selected {
+  background: var(--brand-soft);
+  border-color: rgba(45, 106, 79, 0.28);
+  color: var(--brand-strong);
+}
+
+.coverage-color-input {
+  min-height: 48px;
+  padding: 6px;
+}
+
+.coverage-map-card {
+  padding: 16px;
+}
+
+.coverage-map-frame {
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #dbe5e9;
+}
+
+.coverage-map-stage {
+  position: relative;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  aspect-ratio: 1558 / 1420;
+  user-select: none;
+}
+
+.coverage-map-image,
+.coverage-map-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.coverage-map-overlay {
+  cursor: crosshair;
+}
+
+.coverage-map-overlay.is-idle {
+  cursor: default;
+}
+
+.coverage-hud {
+  margin-top: 14px;
+}
+
+.coverage-job-card {
+  display: grid;
+  gap: 8px;
+}
+
+.coverage-job-meta {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.coverage-empty {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.coverage-arrow-line {
+  stroke-width: 4;
+  fill: none;
+  opacity: 0.74;
+}
+
+.coverage-area-label {
+  font-size: 22px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+
+.coverage-pin-label {
+  font-size: 22px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.94);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 1220px) {
+  .coverage-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .coverage-toolbar,
+  .coverage-card-head,
+  .coverage-team-title,
+  .coverage-job-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .coverage-map-card {
+    padding: 12px;
   }
 }
