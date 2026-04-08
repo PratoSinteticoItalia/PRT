@@ -671,6 +671,7 @@ const ui = {
   coverageRegionCount: document.getElementById("coverage-region-count"),
   coverageTeamForm: document.getElementById("coverage-team-form"),
   coverageAddTeamButton: document.getElementById("coverage-add-team-button"),
+  coverageRemoveTeamButton: document.getElementById("coverage-remove-team-button"),
   coverageActiveTitle: document.getElementById("coverage-active-title"),
   coverageActiveSubtitle: document.getElementById("coverage-active-subtitle"),
   coverageDrawButton: document.getElementById("coverage-draw-button"),
@@ -781,7 +782,7 @@ function staticLabels() {
     ["[data-order-filter='attention']", t("complete")],
     ["[data-order-filter='warehouse']", t("warehouse")],
     ["[data-order-filter='installation']", t("installationShort")],
-    ["[data-order-filter='fulfilled']", state.lang === "it" ? "Evasi" : "Completed"],
+    ["[data-order-filter='fulfilled']", state.lang === "it" ? "Evasi / chiusi" : "Completed / closed"],
     ["#orders .route-subsection h4", t("routeOffice")],
     ["#orders .route-subsection .subsection-copy", t("routeOfficeCopy")],
     ["#open-order-modal-button", t("edit") || (state.lang === "it" ? "Modifica" : "Edit")],
@@ -797,6 +798,11 @@ function staticLabels() {
     ["#warehouse .info-card p", t("warehouseGuideCopy")],
     ["#shipping .panel-head .panel-eyebrow", state.lang === "it" ? "Spedizioni e trasporto" : "Shipping and transport"],
     ["#shipping-search", null, t("shippingSearch")],
+    ["[data-shipping-filter='all']", t("all")],
+    ["[data-shipping-filter='courier']", state.lang === "it" ? "Corriere" : "Courier"],
+    ["[data-shipping-filter='pickup']", state.lang === "it" ? "Ritiro" : "Pickup"],
+    ["[data-shipping-filter='van']", state.lang === "it" ? "Furgone" : "Van"],
+    ["[data-shipping-filter='completed']", state.lang === "it" ? "Evasi / chiusi" : "Completed / closed"],
     ["#accounting .panel-head .panel-eyebrow", state.lang === "it" ? "Controllo economico" : "Financial control"],
     ["#accounting-search", null, t("searchOrderPayment")],
     ["#import-shopify-payment-button", t("importShopifyPayment")],
@@ -1146,6 +1152,22 @@ function saveCoverageTeamFromForm(event) {
     regions: state.coveragePlanner.teams[teamName]?.regions || [],
     polygons: state.coveragePlanner.teams[teamName]?.polygons || [],
   };
+  if (currentConfig && previousCrew && previousCrew !== teamName) {
+    delete state.coveragePlanner.teams[previousCrew];
+    state.orders = state.orders.map((order) => {
+      if (normalizeLooseString(order.operations?.installation?.crew || "") !== normalizeLooseString(previousCrew)) return order;
+      return {
+        ...order,
+        operations: {
+          ...(order.operations || {}),
+          installation: {
+            ...(order.operations?.installation || {}),
+            crew: teamName,
+          },
+        },
+      };
+    });
+  }
   state.selectedInstallationCrew = teamName;
   saveCoveragePlannerState();
   renderInstallations();
@@ -1168,6 +1190,40 @@ function addCoverageTeam() {
     ui.coverageTeamForm?.teamName?.focus();
     ui.coverageTeamForm?.teamName?.select();
   });
+}
+
+function removeCoverageTeam() {
+  const selectedCrew = getSelectedInstallationCrew();
+  if (!selectedCrew || !state.coveragePlanner?.teams?.[selectedCrew]) return;
+  const assignedOrders = state.orders.filter((order) => normalizeLooseString(order.operations?.installation?.crew || "") === normalizeLooseString(selectedCrew));
+  const confirmed = window.confirm(
+    state.lang === "it"
+      ? `Rimuovere ${selectedCrew} dal radar e scollegarla da ${assignedOrders.length} ordini assegnati?`
+      : `Remove ${selectedCrew} from coverage and detach it from ${assignedOrders.length} assigned orders?`
+  );
+  if (!confirmed) return;
+  delete state.coveragePlanner.teams[selectedCrew];
+  if (assignedOrders.length) {
+    state.orders = state.orders.map((order) => {
+      if (normalizeLooseString(order.operations?.installation?.crew || "") !== normalizeLooseString(selectedCrew)) return order;
+      return {
+        ...order,
+        operations: {
+          ...(order.operations || {}),
+          installation: {
+            ...(order.operations?.installation || {}),
+            crew: "",
+          },
+        },
+      };
+    });
+  }
+  const remainingCrews = getInstallationCrewNames().filter((crewName) => normalizeLooseString(crewName) !== normalizeLooseString(selectedCrew));
+  state.selectedInstallationCrew = remainingCrews[0] || "";
+  state.coverageDrawing = { active: false, points: [] };
+  saveCoveragePlannerState();
+  renderInstallations();
+  setStatus(ui.installationStatus, "success", state.lang === "it" ? "Squadra rimossa dal radar." : "Crew removed from coverage.");
 }
 
 function getInstallationOrdersForCrew(teamName) {
@@ -1443,6 +1499,7 @@ function updateCoverageControls() {
   if (ui.coverageUndoPointButton) ui.coverageUndoPointButton.disabled = !state.coverageDrawing?.active || !(state.coverageDrawing?.points || []).length;
   if (ui.coverageClosePolygonButton) ui.coverageClosePolygonButton.disabled = !state.coverageDrawing?.active || (state.coverageDrawing?.points || []).length < 3;
   if (ui.coverageClearPolygonsButton) ui.coverageClearPolygonsButton.disabled = !(ensureCoverageTeam(getSelectedInstallationCrew())?.polygons || []).length;
+  if (ui.coverageRemoveTeamButton) ui.coverageRemoveTeamButton.disabled = !getSelectedInstallationCrew();
 }
 
 function getOrderNumber(order) {
@@ -2616,6 +2673,7 @@ function filterOrdersForView(kind) {
       return true;
     }
     if (kind === "shipping") {
+      if (filter === "completed") return isLogisticsOrderCompleted(order);
       if (isLogisticsOrderCompleted(order)) return false;
       const mode = order.operations?.warehouse?.fulfillmentMode;
       if (filter === "courier") return mode === "corriere";
@@ -5668,6 +5726,7 @@ if (ui.ddtForm) {
 bindEvent(ui.installationForm, "submit", saveInstallation);
 bindEvent(ui.coverageTeamForm, "submit", saveCoverageTeamFromForm);
 bindEvent(ui.coverageAddTeamButton, "click", addCoverageTeam);
+bindEvent(ui.coverageRemoveTeamButton, "click", removeCoverageTeam);
 bindEvent(ui.coverageDrawButton, "click", toggleCoverageDrawing);
 bindEvent(ui.coverageUndoPointButton, "click", undoCoveragePoint);
 bindEvent(ui.coverageClosePolygonButton, "click", closeCoveragePolygon);

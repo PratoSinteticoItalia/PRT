@@ -1003,6 +1003,7 @@ button.is-feedback,
 #orders .subsection-head {
   align-items: center;
   gap: 14px;
+  flex-wrap: wrap;
 }
 
 #orders .subsection-head .ghost-button,
@@ -1013,13 +1014,16 @@ button.is-feedback,
   align-self: flex-start;
   min-height: 40px;
   padding: 10px 16px;
+  max-width: 100%;
 }
 
 #orders .order-office-actions .mini-action {
   min-height: 42px;
   padding: 11px 18px;
   margin-left: auto;
-  width: 100%;
+  width: auto;
+  min-width: 240px;
+  max-width: 100%;
 }
 
 #installations .inline-actions {
@@ -1076,10 +1080,22 @@ button.is-feedback,
   line-height: 1.5;
 }
 
+.route-visibility-grid > *,
+.order-flow-grid .field {
+  min-width: 0;
+}
+
 .order-flow-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
+}
+
+.order-flow-grid .text-input,
+.order-flow-grid input[type="date"],
+.order-flow-grid select {
+  width: 100%;
+  min-width: 0;
 }
 
 .order-flow-grid .checkline {
@@ -5626,10 +5642,16 @@ body {
   box-shadow: 0 10px 24px rgba(31, 44, 32, 0.05);
 }
 
+.shipping-material-line > div {
+  min-width: 0;
+  padding-right: 10px;
+}
+
 .shipping-material-line span {
   display: block;
   font-weight: 700;
   color: var(--text);
+  line-height: 1.45;
 }
 
 .shipping-material-line small {
@@ -6767,7 +6789,8 @@ button:active,
 }
 
 .coverage-panel {
-  margin-bottom: 24px;
+  margin-top: 28px;
+  margin-bottom: 8px;
 }
 
 .coverage-shell {
@@ -6803,6 +6826,11 @@ button:active,
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+}
+
+.coverage-team-actions {
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .coverage-toolbar {
