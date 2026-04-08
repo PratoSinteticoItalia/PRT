@@ -64,6 +64,9 @@
     <div id="app-shell" class="app-shell hidden shell-pending">
       <header class="topbar">
         <div class="topbar-left">
+          <button id="mobile-menu-button" class="topbar-btn mobile-menu-btn" type="button" aria-label="Apri menu">
+            ☰
+          </button>
           <div class="topbar-logo">
             <div class="topbar-logo-mark">
               <img src="./logo-prato.png" alt="Prato Sintetico Italia" class="brand-logo topbar-brand-logo" />
@@ -98,7 +101,12 @@
         </div>
       </header>
 
+      <div id="mobile-sidebar-backdrop" class="mobile-sidebar-backdrop"></div>
       <aside class="sidebar">
+        <div class="sidebar-mobile-head">
+          <strong>Menu operativo</strong>
+          <button id="mobile-menu-close" class="topbar-btn mobile-menu-close" type="button">Chiudi</button>
+        </div>
         <div class="sidebar-brand-block">
           <div class="sidebar-brand-line">
             <div class="brand-mark brand-mark-logo sidebar-brand-mark">

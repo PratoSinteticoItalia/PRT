@@ -47,6 +47,12 @@ body.shell-loading::before {
 
 .hidden { display: none !important; }
 
+.mobile-menu-btn,
+.sidebar-mobile-head,
+.mobile-sidebar-backdrop {
+  display: none;
+}
+
 .shell-pending {
   opacity: 0;
   pointer-events: none;
@@ -5311,10 +5317,9 @@ body {
 @media (max-width: 980px) {
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto 1fr;
     grid-template-areas:
       "topbar"
-      "sidebar"
       "main";
   }
 
@@ -5339,10 +5344,46 @@ body {
   }
 
   .sidebar {
-    padding: 10px 12px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1100;
+    width: min(320px, 86vw);
+    padding: 18px 16px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    white-space: normal;
+    background: rgba(247, 247, 242, 0.98);
+    box-shadow: 20px 0 44px rgba(15, 31, 22, 0.18);
+    transform: translateX(-104%);
+    transition: transform 0.22s ease;
+  }
+
+  body.mobile-menu-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .mobile-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1090;
+    background: rgba(15, 23, 18, 0.34);
+    backdrop-filter: blur(2px);
+  }
+
+  .mobile-sidebar-backdrop.is-visible {
     display: block;
-    overflow-x: auto;
-    white-space: nowrap;
+  }
+
+  .sidebar-mobile-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 4px;
   }
 
   .sidebar-brand-block,
@@ -5350,15 +5391,15 @@ body {
   .sidebar-card,
   .sidebar-section-label,
   .sidebar-divider-line {
-    display: none;
+    display: block;
   }
 
   .nav {
     display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(158px, 1fr);
+    grid-auto-flow: row;
+    grid-auto-columns: 1fr;
     gap: 8px;
-    min-width: max-content;
+    min-width: 0;
   }
 
   .nav-link {
@@ -5384,6 +5425,15 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .mobile-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    padding-inline: 0;
+    font-size: 18px;
   }
 
   .main-content {
@@ -5506,6 +5556,11 @@ body {
   .topbar-user {
     grid-column: 1 / -1;
     justify-content: center;
+  }
+
+  .sidebar-mobile-head .topbar-btn {
+    width: auto;
+    min-width: 88px;
   }
 
   .panel,
@@ -6420,10 +6475,6 @@ body {
     gap: 8px;
   }
 
-  .nav {
-    grid-auto-columns: minmax(168px, 1fr);
-  }
-
   .nav-link {
     min-height: 48px;
     padding: 12px 14px;
@@ -6459,27 +6510,20 @@ body {
   }
 
   .topbar-right {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 6px;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    padding-bottom: 2px;
-    scrollbar-width: none;
-  }
-
-  .topbar-right::-webkit-scrollbar {
-    display: none;
+    overflow: visible;
+    padding-bottom: 0;
   }
 
   .topbar-btn,
   .topbar-user,
   .lang-switch,
   .topbar-notif {
-    width: auto;
+    width: 100%;
     min-height: 36px;
-    flex: 0 0 auto;
+    flex: initial;
   }
 
   .topbar-btn {
@@ -6494,8 +6538,10 @@ body {
   }
 
   .topbar-user {
+    grid-column: 1 / -1;
     gap: 8px;
     padding: 0 10px;
+    justify-content: center;
   }
 
   .page-header h1,

@@ -595,6 +595,7 @@ const state = {
   shellPending: true,
   syncInProgress: false,
   orderPage: 1,
+  mobileMenuOpen: false,
   installationWeekOffset: 0,
   selectedInstallationCrew: "",
   coveragePlanner: loadCoveragePlannerState(),
@@ -614,6 +615,9 @@ const ui = {
   topbarUserName: document.getElementById("topbar-user-name"),
   topbarUserRole: document.getElementById("topbar-user-role"),
   topbarAvatar: document.querySelector(".topbar-avatar"),
+  mobileMenuButton: document.getElementById("mobile-menu-button"),
+  mobileMenuClose: document.getElementById("mobile-menu-close"),
+  mobileSidebarBackdrop: document.getElementById("mobile-sidebar-backdrop"),
   topbarAlertCount: document.getElementById("topbar-alert-count"),
   langButtons: Array.from(document.querySelectorAll(".lang-btn")),
   logoutButton: document.getElementById("logout-button"),
@@ -846,6 +850,12 @@ function setShellPending(active) {
   document.body.classList.toggle("shell-loading", active);
   ui.authScreen?.classList.toggle("shell-pending", active);
   ui.appShell?.classList.toggle("shell-pending", active);
+}
+
+function updateMobileMenu() {
+  const open = Boolean(state.mobileMenuOpen && window.innerWidth <= 980);
+  document.body.classList.toggle("mobile-menu-open", open);
+  if (ui.mobileSidebarBackdrop) ui.mobileSidebarBackdrop.classList.toggle("is-visible", open);
 }
 
 function toNumber(value) {
@@ -2904,6 +2914,7 @@ function updateShell() {
     ui.ordersSyncButton.disabled = state.syncInProgress;
     ui.ordersSyncButton.textContent = state.syncInProgress ? "Sincronizzo Shopify..." : "Sincronizza Shopify";
   }
+  updateMobileMenu();
 }
 
 function getSoldSqmEstimate() {
@@ -5672,12 +5683,16 @@ function handleGlobalClick(event) {
   const id = button.dataset.id;
   if (action === "orders-prev-page") {
     state.orderPage = Math.max(1, (state.orderPage || 1) - 1);
+    state.selectedOrderId = null;
     renderOrders();
+    ui.ordersList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
   if (action === "orders-next-page") {
     state.orderPage = (state.orderPage || 1) + 1;
+    state.selectedOrderId = null;
     renderOrders();
+    ui.ordersList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
   if (action === "delete-inventory-piece") {
@@ -5703,6 +5718,10 @@ function handleGlobalClick(event) {
   if (!order) return;
   if (action === "select-order") {
     state.selectedOrderId = id;
+    if (window.innerWidth <= 980) {
+      state.mobileMenuOpen = false;
+      updateMobileMenu();
+    }
     if (button.dataset.view) {
       setView(button.dataset.view);
     } else {
@@ -5831,7 +5850,11 @@ function flashButtonFeedback(node) {
   });
 }
 
-ui.navLinks.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
+ui.navLinks.forEach((button) => button.addEventListener("click", () => {
+  state.mobileMenuOpen = false;
+  updateMobileMenu();
+  setView(button.dataset.view);
+}));
 ui.langButtons.forEach((button) => button.addEventListener("click", () => {
   state.lang = button.dataset.lang;
   ui.langButtons.forEach((item) => item.classList.toggle("is-active", item === button));
@@ -5845,6 +5868,18 @@ bindEvent(ui.logoutButton, "click", async () => {
 });
 bindEvent(ui.reloadButton, "click", reloadAll);
 bindEvent(ui.newOrderButton, "click", () => openOrderModal(null));
+bindEvent(ui.mobileMenuButton, "click", () => {
+  state.mobileMenuOpen = !state.mobileMenuOpen;
+  updateMobileMenu();
+});
+bindEvent(ui.mobileMenuClose, "click", () => {
+  state.mobileMenuOpen = false;
+  updateMobileMenu();
+});
+bindEvent(ui.mobileSidebarBackdrop, "click", () => {
+  state.mobileMenuOpen = false;
+  updateMobileMenu();
+});
 bindEvent(ui.dashboardSyncButton, "click", syncShopifyOrders);
 bindEvent(ui.ordersSyncButton, "click", syncShopifyOrders);
 bindEvent(ui.ordersImportButton, "click", () => {
@@ -6003,6 +6038,12 @@ bindEvent(ui.connectShopifyButton, "click", connectShopify);
 bindEvent(ui.securityForm, "submit", updatePassword);
 bindEvent(ui.accountCreateForm, "submit", createManagedAccount);
 handleShopifyOauthFeedback();
+window.addEventListener("resize", () => {
+  if (window.innerWidth > 980 && state.mobileMenuOpen) {
+    state.mobileMenuOpen = false;
+    updateMobileMenu();
+  }
+});
 
 if (ui.authDemo && !/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
   ui.authDemo.classList.add("hidden");
