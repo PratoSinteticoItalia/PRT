@@ -685,9 +685,11 @@ const ui = {
   installationPrevWeekButton: document.getElementById("installation-prev-week-button"),
   installationNextWeekButton: document.getElementById("installation-next-week-button"),
   installationDetailTitle: document.getElementById("installation-detail-title"),
+  installationDetailMeta: document.querySelector("#installations .detail-header .detail-id"),
   installationDetailSummary: document.getElementById("installation-detail-summary"),
   installationForm: document.getElementById("installation-form"),
   installationCrew: document.querySelector("#installation-form [name='crew']"),
+  installationCrewField: document.querySelector("#installation-form [name='crew']")?.closest("label"),
   installationStatus: document.getElementById("installation-status"),
   installationMapsButton: document.getElementById("installation-maps-button"),
   installationRouteButton: document.getElementById("installation-route-button"),
@@ -3522,6 +3524,9 @@ function renderInstallations() {
   const orders = filterInstallations();
   const weekOrders = orders.filter(isInstallationInCurrentWeek);
   const backlogOrders = orders.filter((order) => !isInstallationInCurrentWeek(order));
+  const isCrewView = state.currentUser?.role === "crew";
+  if (ui.installationCrewField) ui.installationCrewField.classList.toggle("hidden", isCrewView);
+  if (ui.installationEmailButton) ui.installationEmailButton.classList.toggle("hidden", isCrewView);
   getSelectedInstallationCrew();
   renderInstallationsCoverage();
   if (ui.installationCalendar) {
@@ -3559,6 +3564,11 @@ function renderInstallations() {
   if (state.currentView === "installations" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     ui.installationDetailTitle.textContent = t("noSelection");
+    if (ui.installationDetailMeta) {
+      ui.installationDetailMeta.textContent = isCrewView
+        ? (state.lang === "it" ? "Dettaglio operativo cantiere" : "Site operations detail")
+        : "Dettaglio pianificazione ordine";
+    }
     if (ui.installationDetailSummary) ui.installationDetailSummary.innerHTML = "";
     ui.installationAttachments.innerHTML = "";
     clearStatus(ui.installationStatus);
@@ -3569,13 +3579,26 @@ function renderInstallations() {
   }
   renderInstallationsCoverage();
   ui.installationDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
+  if (ui.installationDetailMeta) {
+    ui.installationDetailMeta.textContent = isCrewView
+      ? `${order.operations?.product || "Da definire"} · ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")}`
+      : "Dettaglio pianificazione ordine";
+  }
   if (ui.installationDetailSummary) {
-    ui.installationDetailSummary.innerHTML = [
-      { label: "Prodotto", value: order.operations?.product || "Da definire", meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || "terra"}` },
-      { label: "Cliente", value: composeClientName(order), meta: composeAddress(order) || "Indirizzo da completare" },
-      { label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
-      { label: state.lang === "it" ? "Gestione logistica" : "Logistics handling", value: getShippingModeLabel(order), meta: order.operations?.installation?.installDate ? `${formatDate(order.operations.installation.installDate)} · ${order.operations?.installation?.installTime || "Ora da definire"}` : "Data da definire" },
-    ].map(renderDetailBox).join("");
+    const summaryCards = isCrewView
+      ? [
+          { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || "Da definire", meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || "terra"}` },
+          { label: state.lang === "it" ? "Cantiere" : "Site", value: composeAddress(order) || "Indirizzo da completare", meta: composeClientName(order) },
+          { label: state.lang === "it" ? "Programmazione" : "Schedule", value: order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : "Data da definire", meta: order.operations?.installation?.installTime || "Ora da definire" },
+          { label: state.lang === "it" ? "Materiale in uscita" : "Outbound goods", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
+        ]
+      : [
+          { label: "Prodotto", value: order.operations?.product || "Da definire", meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || "terra"}` },
+          { label: "Cliente", value: composeClientName(order), meta: composeAddress(order) || "Indirizzo da completare" },
+          { label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
+          { label: state.lang === "it" ? "Gestione logistica" : "Logistics handling", value: getShippingModeLabel(order), meta: order.operations?.installation?.installDate ? `${formatDate(order.operations.installation.installDate)} · ${order.operations?.installation?.installTime || "Ora da definire"}` : "Data da definire" },
+        ];
+    ui.installationDetailSummary.innerHTML = summaryCards.map(renderDetailBox).join("");
   }
   ui.installationForm.installDate.value = order.operations?.installation?.installDate || "";
   ui.installationForm.installTime.value = order.operations?.installation?.installTime || "";
