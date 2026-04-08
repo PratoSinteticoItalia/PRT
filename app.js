@@ -1899,7 +1899,7 @@ function filterOrdersForView(kind) {
       if (filter === "attention") return !order.address || !order.city || order.operations?.officeStatus === "bozza";
       if (filter === "warehouse") return order.operations?.warehouse?.status !== "pronto";
       if (filter === "installation") return isRoutedToInstallation(order);
-      if (filter === "shipping") return !isRoutedToInstallation(order) && isRoutedToWarehouse(order);
+      if (filter === "shipping") return isRoutedToWarehouse(order);
       return true;
     }
     if (kind === "warehouse") {
@@ -3377,7 +3377,8 @@ function renderShipping() {
       : `<div class="info-card">${state.lang === "it" ? "Nessuna spedizione o ritiro con questo filtro." : "No shipments or pickups for this filter."}</div>`;
   }
 
-  const order = getSelectedOrder();
+  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
+  if (order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     if (ui.shippingDetailTitle) ui.shippingDetailTitle.textContent = t("noSelection");
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
