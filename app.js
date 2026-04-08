@@ -594,6 +594,7 @@ const state = {
   showOrderImport: false,
   shellPending: true,
   syncInProgress: false,
+  orderPage: 1,
   installationWeekOffset: 0,
   selectedInstallationCrew: "",
   coveragePlanner: loadCoveragePlannerState(),
@@ -644,6 +645,7 @@ const ui = {
   ordersSyncButton: document.getElementById("orders-sync-button"),
   ordersClearManualButton: document.getElementById("orders-clear-manual-button"),
   ordersList: document.getElementById("orders-list"),
+  ordersPagination: document.getElementById("orders-pagination"),
   ordersStatus: document.getElementById("orders-status"),
   orderDetailTitle: document.getElementById("order-detail-title"),
   orderDetailBadge: document.getElementById("order-detail-badge"),
@@ -1556,6 +1558,26 @@ function ensureSelectedOrder() {
   if (!state.selectedOrderId || !state.orders.some((order) => order.id === state.selectedOrderId)) {
     state.selectedOrderId = state.orders[0].id;
   }
+}
+
+function getOrdersPageSize() {
+  if (window.innerWidth <= 520) return 6;
+  if (window.innerWidth <= 720) return 7;
+  if (window.innerWidth <= 980) return 9;
+  return 12;
+}
+
+function paginateOrders(items) {
+  const pageSize = getOrdersPageSize();
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  state.orderPage = Math.min(Math.max(1, state.orderPage || 1), totalPages);
+  const start = (state.orderPage - 1) * pageSize;
+  return {
+    pageItems: items.slice(start, start + pageSize),
+    pageSize,
+    totalPages,
+    totalItems: items.length,
+  };
 }
 
 function getOpenBalance(order) {
@@ -3318,12 +3340,27 @@ function renderOrderCard(order) {
 
 function renderOrders() {
   const orders = filterOrdersForView("order");
+  const { pageItems, totalPages, totalItems } = paginateOrders(orders);
   const ordersGrid = ui.ordersList?.closest(".order-grid");
   if (ordersGrid) ordersGrid.classList.toggle("is-empty", orders.length === 0);
   updateOrderImportPanel();
   renderRouteBoard();
-  ui.ordersList.innerHTML = orders.length ? orders.map((order) => renderOrderRow(order, "orders")).join("") : `<div class="info-card">${t("noOrdersAvailable")}</div>`;
-  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
+  ui.ordersList.innerHTML = pageItems.length ? pageItems.map((order) => renderOrderRow(order, "orders")).join("") : `<div class="info-card">${t("noOrdersAvailable")}</div>`;
+  if (ui.ordersPagination) {
+    ui.ordersPagination.innerHTML = totalItems > getOrdersPageSize()
+      ? `
+        <div class="list-pagination-copy">${state.lang === "it" ? `Pagina ${state.orderPage} di ${totalPages} · ${totalItems} ordini` : `Page ${state.orderPage} of ${totalPages} · ${totalItems} orders`}</div>
+        <div class="list-pagination-actions">
+          <button class="btn" data-action="orders-prev-page" ${state.orderPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prec." : "Prev"}</button>
+          <button class="btn" data-action="orders-next-page" ${state.orderPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Succ." : "Next"}</button>
+        </div>
+      `
+      : "";
+  }
+  let order = orders.find((item) => item.id === state.selectedOrderId) || pageItems[0] || orders[0] || null;
+  if (order && !pageItems.some((item) => item.id === order.id) && pageItems.length) {
+    order = pageItems[0];
+  }
   if (state.currentView === "orders" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     ui.orderDetailTitle.textContent = t("noSelection");
@@ -5633,6 +5670,16 @@ function handleGlobalClick(event) {
   if (!button) return;
   const action = button.dataset.action;
   const id = button.dataset.id;
+  if (action === "orders-prev-page") {
+    state.orderPage = Math.max(1, (state.orderPage || 1) - 1);
+    renderOrders();
+    return;
+  }
+  if (action === "orders-next-page") {
+    state.orderPage = (state.orderPage || 1) + 1;
+    renderOrders();
+    return;
+  }
   if (action === "delete-inventory-piece") {
     apiFetch(`/api/inventory/items/${encodeURIComponent(id)}`, { method: "DELETE" }).then((inventory) => {
       state.inventory = inventory;
@@ -5815,7 +5862,11 @@ bindEvent(ui.orderImportClearButton, "click", () => {
   ui.orderImportText?.focus();
 });
 bindEvent(ui.ordersClearManualButton, "click", clearManualOrders);
-bindEvent(ui.ordersSearch, "input", (event) => { state.search.orders = event.target.value; renderOrders(); });
+bindEvent(ui.ordersSearch, "input", (event) => {
+  state.search.orders = event.target.value;
+  state.orderPage = 1;
+  renderOrders();
+});
 bindEvent(ui.warehouseSearch, "input", (event) => { state.search.warehouse = event.target.value; renderWarehouse(); });
 bindEvent(ui.accountingSearch, "input", (event) => { state.search.accounting = event.target.value; renderAccounting(); });
 if (ui.importShopifyPaymentButton) {
@@ -5836,6 +5887,7 @@ if (ui.shippingSearch) {
 ui.orderFilterTags.forEach((button) => button.addEventListener("click", () => {
   state.filters.order = button.dataset.orderFilter;
   ui.orderFilterTags.forEach((item) => item.classList.toggle("is-active", item === button));
+  state.orderPage = 1;
   renderOrders();
 }));
 ui.warehouseFilterTags.forEach((button) => button.addEventListener("click", () => {

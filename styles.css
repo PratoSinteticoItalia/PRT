@@ -3588,6 +3588,31 @@ body {
   color: var(--brand);
 }
 
+.list-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.84);
+}
+
+.list-pagination-copy {
+  font-size: 12px;
+  color: var(--text3);
+  font-weight: 600;
+}
+
+.list-pagination-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .sidebar-card {
   margin-top: auto;
   padding: 12px;
@@ -5331,14 +5356,34 @@ body {
   .nav {
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: minmax(132px, 1fr);
+    grid-auto-columns: minmax(158px, 1fr);
     gap: 8px;
     min-width: max-content;
   }
 
   .nav-link {
-    justify-content: center;
-    min-height: 42px;
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    align-items: center;
+    justify-content: start;
+    gap: 10px;
+    min-height: 46px;
+    padding: 11px 14px;
+  }
+
+  .nav-link[data-count]:not([data-count=""])::after {
+    position: static;
+    top: auto;
+    right: auto;
+    transform: none;
+    margin-left: 0;
+    min-width: 24px;
+  }
+
+  .nav-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .main-content {
@@ -6331,6 +6376,25 @@ body {
   .route-board {
     grid-template-columns: 1fr;
   }
+
+  #orders .order-summary-grid,
+  #orders .order-office-grid,
+  #orders .route-visibility-grid,
+  #orders .order-flow-grid,
+  #orders .detail-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .list-pagination {
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .list-pagination-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 520px) {
@@ -6354,6 +6418,19 @@ body {
   .topbar-logo {
     min-width: 0;
     gap: 8px;
+  }
+
+  .nav {
+    grid-auto-columns: minmax(168px, 1fr);
+  }
+
+  .nav-link {
+    min-height: 48px;
+    padding: 12px 14px;
+  }
+
+  .nav-label {
+    font-size: 13px;
   }
 
   .topbar-logo-mark {
