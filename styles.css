@@ -7034,6 +7034,39 @@ button:active,
   stroke-linejoin: round;
 }
 
+/* Final stability fixes */
+#orders .order-flow-card .flow-helper-note {
+  margin-top: 10px;
+}
+
+#orders .order-flow-card .order-office-actions {
+  margin-top: 8px;
+}
+
+#installations .install-detail-panel {
+  position: static;
+  top: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+#orders .detail-panel,
+#shipping .detail-panel,
+#accounting .detail-panel,
+#warehouse .detail-panel {
+  max-height: calc(100vh - 132px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 42px;
+}
+
+#orders .order-detail-panel,
+#shipping .detail-panel,
+#accounting .detail-panel,
+#warehouse .detail-panel {
+  scrollbar-gutter: stable both-edges;
+}
+
 @media (max-width: 1220px) {
   .coverage-shell {
     grid-template-columns: 1fr;
