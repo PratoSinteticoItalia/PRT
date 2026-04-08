@@ -1651,6 +1651,25 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/attachments\/\d+$/) && req.method === "DELETE") {
+    const [, , resource, rawOrderId, , rawIndex] = url.pathname.split("/");
+    if (resource !== "orders") return sendJson(res, 404, { error: "not_found" });
+    const orderId = decodeURIComponent(rawOrderId);
+    const attachmentIndex = Number(rawIndex);
+    const orderIndex = store.orders.findIndex((item) => item.id === orderId);
+    if (orderIndex < 0) return sendJson(res, 404, { error: "order_not_found" });
+    const current = store.orders[orderIndex];
+    const attachments = Array.isArray(current.attachments) ? [...current.attachments] : [];
+    if (attachmentIndex < 0 || attachmentIndex >= attachments.length) return sendJson(res, 404, { error: "attachment_not_found" });
+    attachments.splice(attachmentIndex, 1);
+    store.orders[orderIndex] = {
+      ...current,
+      attachments,
+    };
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, store.orders[orderIndex]);
+  }
+
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/operations$/) && req.method === "POST") {
     const orderId = decodeURIComponent(url.pathname.split("/")[3]);
     const body = await readBody(req);

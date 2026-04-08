@@ -626,6 +626,7 @@ const ui = {
   dashboardOrderList: document.getElementById("dashboard-order-list"),
   dashboardActivity: document.getElementById("dashboard-activity"),
   dashboardWeekSummary: document.getElementById("dashboard-week-summary"),
+  dashboardAccountingSnapshot: document.getElementById("dashboard-accounting-snapshot"),
   dashboardSyncButton: document.getElementById("dashboard-sync-button"),
   quickViewButtons: Array.from(document.querySelectorAll("[data-quick-view]")),
   ordersSearch: document.getElementById("orders-search"),
@@ -2869,6 +2870,7 @@ function renderOps() {
   const installations = state.orders.filter((order) => isRoutedToInstallation(order) && !["completata"].includes(String(order.operations?.installation?.status || "").trim())).length;
   const accounting = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
   const shipping = state.orders.filter((order) => ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode) && !isLogisticsOrderCompleted(order)).length;
+  const closed = state.orders.filter((order) => isOrderClosed(order)).length;
   const criticalAlerts = state.orders.filter((order) => order.operations?.warehouse?.status === "bloccato" || order.operations?.installation?.status === "problema").length;
   const topbarAlerts = Math.min(9, criticalAlerts + accounting);
   ui.opsOrdersValue.textContent = String(orders);
@@ -2876,6 +2878,8 @@ function renderOps() {
   ui.opsInstallationsValue.textContent = String(installations);
   ui.opsAccountingValue.textContent = String(accounting);
   if (ui.opsShippingValue) ui.opsShippingValue.textContent = String(shipping);
+  const opsClosedValue = document.getElementById("ops-closed-value");
+  if (opsClosedValue) opsClosedValue.textContent = String(closed);
   setNavCount("dashboard", "");
   setNavCount("orders", orders);
   setNavCount("warehouse", warehouse);
@@ -2894,6 +2898,7 @@ function renderOps() {
         installations: "Installazioni da pianificare o in corso.",
         accounting: "Ordini da verificare, saldare o fatturare.",
         shipping: "Corrieri, ritiri, furgoni e bancali.",
+        closed: "Ordini completati e senza azioni aperte.",
       }
     : {
         orders: "Total orders and operational drafts.",
@@ -2901,6 +2906,7 @@ function renderOps() {
         installations: "Installations to plan or in progress.",
         accounting: "Orders to verify, settle or invoice.",
         shipping: "Couriers, pickups, vans and pallets.",
+        closed: "Completed orders with no open actions.",
       };
   const setText = (id, value) => {
     const node = document.getElementById(id);
@@ -2911,6 +2917,7 @@ function renderOps() {
   setText("ops-installations-text", opsTexts.installations);
   setText("ops-accounting-text", opsTexts.accounting);
   setText("ops-shipping-text", opsTexts.shipping);
+  setText("ops-closed-text", opsTexts.closed);
 }
 
 function renderDashboard() {
@@ -3002,7 +3009,7 @@ function renderDashboard() {
     const warehouseAlerts = buildWarehouseAlerts();
     const orderAlerts = state.orders
       .filter((order) => order.operations?.warehouse?.status === "bloccato" || order.operations?.installation?.status === "problema")
-      .slice(0, 3);
+      .slice(0, 8);
 
     let alertHTML = "";
     if (warehouseAlerts.length) {
@@ -3031,6 +3038,47 @@ function renderDashboard() {
     }
     ui.dashboardAlerts.innerHTML = alertHTML;
   }
+
+  if (ui.dashboardAccountingSnapshot) {
+    const totalOpenBalance = state.orders.reduce((sum, order) => sum + getOpenBalance(order), 0);
+    const invoicePending = state.orders.filter((order) => order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued).length;
+    const paidOnShopify = state.orders.filter((order) => getShopifyPaidAmount(order) > 0).length;
+    const internalPending = state.orders.filter((order) => !isShopifyPaid(order) && getOpenBalance(order) > 0).length;
+    ui.dashboardAccountingSnapshot.innerHTML = [
+      {
+        label: state.lang === "it" ? "Residuo totale" : "Total open balance",
+        value: formatCurrency(totalOpenBalance),
+        meta: state.lang === "it" ? `${accountingOpenOrdersLabel()} da presidiare` : `${accountingOpenOrdersLabel()} to follow up`,
+        accent: true,
+      },
+      {
+        label: state.lang === "it" ? "Fatture da emettere" : "Invoices pending",
+        value: String(invoicePending),
+        meta: state.lang === "it" ? "Ordini con fattura richiesta e non ancora emessa." : "Orders requiring an invoice not issued yet.",
+      },
+      {
+        label: state.lang === "it" ? "Incassi Shopify" : "Shopify collections",
+        value: String(paidOnShopify),
+        meta: state.lang === "it" ? "Ordini con pagamento online già acquisito." : "Orders already captured online.",
+      },
+      {
+        label: state.lang === "it" ? "Da registrare internamente" : "Internal follow-up",
+        value: String(internalPending),
+        meta: state.lang === "it" ? "Ordini con saldo o registrazione ancora da completare." : "Orders still waiting for manual accounting follow-up.",
+      },
+    ].map((item) => `
+      <article class="accounting-analysis-card ${item.accent ? "accent" : ""}">
+        <span class="panel-eyebrow">${item.label}</span>
+        <strong>${item.value}</strong>
+        <p>${item.meta}</p>
+      </article>
+    `).join("");
+  }
+}
+
+function accountingOpenOrdersLabel() {
+  const count = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
+  return `${count} ${state.lang === "it" ? "ordini" : "orders"}`;
 }
 
 function buildActivityFeed() {
@@ -3319,7 +3367,7 @@ function renderOrders() {
       `).join("")
       : `<div class="info-card">${t("noPhysicalPrep")}</div>`;
   }
-  ui.orderAttachments.innerHTML = renderAttachmentGrid(order.attachments || []);
+  ui.orderAttachments.innerHTML = renderAttachmentGrid(order.attachments || [], order.id);
 }
 
 function renderInventoryCard(group) {
@@ -3868,7 +3916,7 @@ function renderInstallations() {
       ? (state.lang === "it" ? "Accesso, arrivo squadra, avanzamento, problemi, fine lavori..." : "Access, crew arrival, progress, issues, completion...")
       : (state.lang === "it" ? "Accesso, riprogrammazione, note posa, report cantiere..." : "Access, rescheduling, install notes, site report...");
   }
-  ui.installationAttachments.innerHTML = renderAttachmentGrid(order.attachments || []);
+  ui.installationAttachments.innerHTML = renderAttachmentGrid(order.attachments || [], order.id);
   clearStatus(ui.installationStatus);
 }
 
@@ -4496,10 +4544,11 @@ function renderInfoLine(label, value) {
   `;
 }
 
-function renderAttachmentGrid(items) {
+function renderAttachmentGrid(items, orderId = "") {
   if (!items?.length) return `<div class="info-card">Nessun allegato caricato.</div>`;
-  return items.map((item) => `
+  return items.map((item, index) => `
     <article class="attachment-item">
+      ${orderId ? `<button class="attachment-remove" type="button" data-action="remove-attachment" data-id="${orderId}" data-index="${index}" aria-label="${state.lang === "it" ? "Rimuovi allegato" : "Remove attachment"}">×</button>` : ""}
       ${item.dataUrl ? `<img src="${item.dataUrl}" alt="${item.name || "Allegato"}" />` : ""}
       <strong>${item.name || "Allegato"}</strong>
       <div>${item.createdAt ? formatDate(item.createdAt) : "—"}</div>
@@ -5448,6 +5497,14 @@ async function handleAttachmentChange(event) {
   render();
 }
 
+async function removeAttachment(orderId, attachmentIndex) {
+  const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/attachments/${attachmentIndex}`, {
+    method: "DELETE",
+  });
+  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  render();
+}
+
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -5483,6 +5540,10 @@ function handleGlobalClick(event) {
   }
   if (action === "prefill-inventory") {
     prefillInventoryForm(button.dataset.product || "");
+    return;
+  }
+  if (action === "remove-attachment") {
+    removeAttachment(id, Number(button.dataset.index || -1));
     return;
   }
   if (action === "save-inbox-flow") {

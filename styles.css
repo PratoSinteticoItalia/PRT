@@ -159,8 +159,15 @@ select {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.96);
   color: var(--text);
-  padding: 13px 14px;
+  padding: 13px 18px;
+  line-height: 1.45;
   outline: none;
+}
+
+.text-input::placeholder,
+textarea::placeholder,
+select::placeholder {
+  color: var(--text3);
 }
 
 .text-input:focus,
@@ -1717,6 +1724,11 @@ button.is-feedback,
   gap: 10px;
 }
 
+#installations .attachment-grid,
+#orders .attachment-grid {
+  margin-top: 12px;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1930,6 +1942,7 @@ button.is-feedback,
 }
 
 .attachment-item {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 12px;
@@ -1944,6 +1957,29 @@ button.is-feedback,
   object-fit: cover;
   border-radius: 12px;
   margin-bottom: 8px;
+}
+
+.attachment-remove {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(32, 49, 35, 0.12);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  box-shadow: 0 6px 18px rgba(18, 38, 26, 0.1);
+}
+
+.attachment-remove:hover {
+  background: #fff6f6;
+  color: #b42318;
 }
 
 .inline-form-grid,
@@ -3726,6 +3762,11 @@ body {
   max-height: 300px;
   overflow-y: auto;
   gap: 0;
+}
+
+.feed-alerts {
+  max-height: 420px;
+  padding-right: 6px;
 }
 
 .feed-item {
