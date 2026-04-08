@@ -690,6 +690,8 @@ const ui = {
   installationForm: document.getElementById("installation-form"),
   installationCrew: document.querySelector("#installation-form [name='crew']"),
   installationCrewField: document.querySelector("#installation-form [name='crew']")?.closest("label"),
+  installationStatusField: document.querySelector("#installation-form [name='status']")?.closest("label"),
+  installationSubmitButton: document.querySelector("#installation-form button[type='submit']"),
   installationStatus: document.getElementById("installation-status"),
   installationMapsButton: document.getElementById("installation-maps-button"),
   installationRouteButton: document.getElementById("installation-route-button"),
@@ -2361,8 +2363,14 @@ function getNextOrderAction(order) {
   if (!order.address || !order.city) {
     return t("needsAddress");
   }
+  if (isOrderClosed(order)) {
+    return state.lang === "it" ? "Ordine chiuso: nessuna azione operativa aperta" : "Order closed: no open operational actions";
+  }
   if (!isRoutedToWarehouse(order) && !isRoutedToInstallation(order)) {
     return state.lang === "it" ? "Instrada l'ordine verso magazzino o posa" : "Route the order to warehouse or installation";
+  }
+  if (isLogisticsOrderCompleted(order) && !order.operations?.installation?.required) {
+    return state.lang === "it" ? "Verifica solo chiusura amministrativa e archiviazione" : "Only admin closure and archiving remain";
   }
   if (isRoutedToWarehouse(order) && getWarehousePreparedLines(order).length === 0) {
     return t("needsPrepSelection");
@@ -2371,6 +2379,34 @@ function getNextOrderAction(order) {
     return state.lang === "it" ? "Definisci la data posa" : "Set the installation date";
   }
   return t("noActionRequired");
+}
+
+function getInboxRouteLabel(order) {
+  const installSelected = isRoutedToInstallation(order);
+  const mode = String(order.operations?.warehouse?.fulfillmentMode || "").trim();
+  if (installSelected) {
+    return state.lang === "it" ? "Ufficio -> Magazzino/Logistica -> Posa" : "Office -> Warehouse/Logistics -> Installation";
+  }
+  if (mode === "corriere") {
+    return state.lang === "it" ? "Ufficio -> Magazzino -> Corriere" : "Office -> Warehouse -> Courier";
+  }
+  if (mode === "ritiro") {
+    return state.lang === "it" ? "Ufficio -> Magazzino -> Ritiro cliente" : "Office -> Warehouse -> Customer pickup";
+  }
+  if (mode === "furgone") {
+    return state.lang === "it" ? "Ufficio -> Magazzino -> Furgone" : "Office -> Warehouse -> Van";
+  }
+  if (isRoutedToWarehouse(order)) {
+    return state.lang === "it" ? "Ufficio -> Magazzino" : "Office -> Warehouse";
+  }
+  return state.lang === "it" ? "Da instradare" : "To route";
+}
+
+function getInboxVisibilityLabel(order) {
+  const targets = [];
+  if (isRoutedToWarehouse(order)) targets.push(state.lang === "it" ? "Logistica" : "Logistics");
+  if (isRoutedToInstallation(order)) targets.push(state.lang === "it" ? "Posa" : "Installation");
+  return targets.length ? targets.join(" + ") : (state.lang === "it" ? "Solo ufficio" : "Office only");
 }
 
 function buildRouteColumns() {
@@ -2549,9 +2585,10 @@ function filterOrdersForView(kind) {
     ].join(" ").toLowerCase();
     if (search && !haystack.includes(search.toLowerCase())) return false;
     if (kind === "order") {
+      const stage = getUnifiedOrderStage(order);
       if (filter === "attention") return !order.address || !order.city || order.operations?.officeStatus === "bozza";
-      if (filter === "warehouse") return order.operations?.warehouse?.status !== "pronto";
-      if (filter === "installation") return isRoutedToInstallation(order);
+      if (filter === "warehouse") return ["warehouse-work", "warehouse-ready"].includes(stage.key);
+      if (filter === "installation") return ["install-planned", "install-progress", "install-completed"].includes(stage.key) || isRoutedToInstallation(order);
       if (filter === "shipping") return isRoutedToWarehouse(order) || isRoutedToInstallation(order);
       return true;
     }
@@ -2594,6 +2631,8 @@ function renderInboxFlowControls(order) {
   const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
   const preparationDate = getShippingTargetDate(order);
+  const stage = getUnifiedOrderStage(order);
+  const nextAction = getNextOrderAction(order);
   const routeSummary = installSelected
     ? (state.lang === "it" ? "Ordine in carico a ufficio, logistica e squadra posa." : "Order active for office, logistics and installation crew.")
     : warehouseSelected
@@ -2602,6 +2641,12 @@ function renderInboxFlowControls(order) {
   return `
     <article class="guidance-card order-flow-card">
       <span class="panel-eyebrow">${state.lang === "it" ? "Processo operativo" : "Operational flow"}</span>
+      <div class="detail-grid detail-grid-tight">
+        ${renderInfoLine(state.lang === "it" ? "Fase attuale" : "Current stage", stage.label)}
+        ${renderInfoLine(state.lang === "it" ? "Prossimo passo" : "Next step", nextAction)}
+        ${renderInfoLine(state.lang === "it" ? "Percorso ordine" : "Order route", getInboxRouteLabel(order))}
+        ${renderInfoLine(state.lang === "it" ? "Visibilità moduli" : "Module visibility", getInboxVisibilityLabel(order))}
+      </div>
       <p>${routeSummary}</p>
       <div class="route-visibility-grid">
         <label class="route-toggle-card ${warehouseSelected ? "is-active" : ""}">
@@ -2707,6 +2752,7 @@ function applyStaticTranslations() {
   setSubheading("#installations .panel-head h3", t("installations"));
   setFieldLabel(ui.installationForm, "installDate", state.lang === "it" ? "Data posa" : "Installation date");
   setFieldLabel(ui.installationForm, "installTime", state.lang === "it" ? "Ora" : "Time");
+  setFieldLabel(ui.installationForm, "status", state.lang === "it" ? "Stato cantiere" : "Site status");
   setFieldLabel(ui.installationForm, "crew", state.lang === "it" ? "Squadra" : "Crew");
   setFieldLabel(ui.installationForm, "reportNote", state.lang === "it" ? "Note squadra / cantiere" : "Crew / site notes");
   setFieldLabel(ui.accountingForm, "paymentMethod", state.lang === "it" ? "Metodo utilizzato" : "Method used");
@@ -3017,21 +3063,23 @@ function renderOrderStepper(order) {
 function renderOrderRow(order, view = "orders") {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const orderType = getOrderType(order);
-  const paymentChipTone = getShopifyPaidAmount(order) > 0 ? "badge-success" : getOpenBalance(order) > 0 ? "badge-warning" : "badge-info";
-  const paymentChipText = getShopifyPaidAmount(order) > 0
-    ? (state.lang === "it" ? "Pagato" : "Paid")
-    : getOpenBalance(order) > 0
-      ? (state.lang === "it" ? "In attesa" : "Pending")
-      : (state.lang === "it" ? "Operativo" : "Operational");
+  const stage = getUnifiedOrderStage(order);
+  const stageChipTone = stage.tone === "green"
+    ? "badge-success"
+    : stage.tone === "red"
+      ? "badge-urgent"
+      : stage.tone === "blue"
+        ? "badge-info"
+        : "badge-warning";
   return `
     <article class="order-row inbox-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="${view}">
       <div>
         <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-        <div class="order-meta">${order.operations?.product || "Da definire"} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")}</div>
+        <div class="order-meta">${order.operations?.product || "Da definire"} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")} &middot; ${getNextOrderAction(order)}</div>
       </div>
       <div class="order-type-badge ${orderType.tone === "status-amber" ? "type-posa" : orderType.tone === "status-blue" ? "type-spedizione" : "type-ritiro"}">${orderType.label}</div>
       <div class="order-amount">${formatCurrency(order.total)}</div>
-      <div class="action-badge ${paymentChipTone}">${paymentChipText}</div>
+      <div class="action-badge ${stageChipTone}">${stage.label}</div>
     </article>
   `;
 }
@@ -3087,6 +3135,7 @@ function renderOrders() {
   const [label, tone] = buildOrderTone(order);
   const orderType = getOrderType(order);
   const nextAction = getNextOrderAction(order);
+  const stage = getUnifiedOrderStage(order);
   const prepItems = getWarehousePrepItems(order);
   ui.orderDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
   ui.orderDetailBadge.innerHTML = statusChip(label, tone);
@@ -3159,8 +3208,10 @@ function renderOrders() {
   ui.orderOfficeSummary.innerHTML = `
     ${renderInboxFlowControls(order)}
     <div class="detail-grid detail-grid-tight">
-      ${renderInfoLine(t("officeStatus"), order.operations?.officeStatus || (state.lang === "it" ? "bozza" : "draft"))}
+      ${renderInfoLine(t("officeStatus"), stage.label)}
+      ${renderInfoLine(state.lang === "it" ? "Prossima azione" : "Next action", nextAction)}
       ${renderInfoLine(t("jobType"), order.operations?.installation?.required ? t("supplyInstall") : t("supply"))}
+      ${renderInfoLine(state.lang === "it" ? "Uscita merce" : "Goods dispatch", getShippingModeLabel(order))}
       ${renderInfoLine(t("paymentMethod"), getEffectivePaymentMethod(order))}
       ${renderInfoLine(t("attachmentsCount"), `${(order.attachments || []).length} ${state.lang === "it" ? "file" : "files"}`)}
     </div>
@@ -3242,6 +3293,12 @@ function renderInventoryCard(group) {
   const demandActionAttrs = firstDemandOrderId
     ? `data-action="open-modal" data-id="${firstDemandOrderId}" role="button" tabindex="0" title="${state.lang === "it" ? "Apri ordine collegato" : "Open linked order"}"`
     : "";
+  const linkedDemandOrders = group.demandOrders
+    .map((orderId) => state.orders.find((order) => order.id === orderId))
+    .filter(Boolean)
+    .slice(0, 3);
+  const remainingDemandCount = Math.max(0, group.demandOrders.length - linkedDemandOrders.length);
+  const committedLabel = group.isModel ? `${Math.round(group.demandSqm)} mq` : `${group.demandUnits} u`;
 
   const deficitAlert = hasDeficit || (!hasStock && hasDemand)
     ? `<div class="wh-deficit-alert">
@@ -3266,6 +3323,24 @@ function renderInventoryCard(group) {
         </div>
       </div>
       ${deficitAlert}
+      ${linkedDemandOrders.length ? `
+        <div class="wh-demand-orders">
+          <div class="wh-demand-orders-head">
+            <strong>${state.lang === "it" ? "Ordini che impegnano questa giacenza" : "Orders reserving this stock"}</strong>
+            <span>${group.demandOrders.length} ${state.lang === "it" ? "ordini" : "orders"}</span>
+          </div>
+          <div class="wh-demand-order-list">
+            ${linkedDemandOrders.map((order) => `
+              <button class="wh-demand-order" data-action="open-modal" data-id="${order.id}">
+                <strong>${composeClientName(order)} <small>${getOrderNumber(order)}</small></strong>
+                <span>${order.operations?.product || "Da definire"} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
+                <small>${getUnifiedOrderStage(order).label} · ${getShippingTargetLabel(order)}</small>
+              </button>
+            `).join("")}
+            ${remainingDemandCount > 0 ? `<div class="wh-demand-more">+${remainingDemandCount} ${state.lang === "it" ? "ordini collegati" : "linked orders"}</div>` : ""}
+          </div>
+        </div>
+      ` : ""}
       <div class="wh-pieces">
         ${group.pieces.length ? group.pieces.map((item) => `
           <button class="wh-piece ${item.status === "residuo" ? "residuo" : "intero"}" data-action="delete-inventory-piece" data-id="${item.id}" title="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}">
@@ -3277,17 +3352,17 @@ function renderInventoryCard(group) {
       </div>
       <div class="wh-stats">
         <div class="wh-stat soft">
-          <div class="wh-stat-label">${state.lang === "it" ? "Giacenza" : "Stock"}</div>
+          <div class="wh-stat-label">${state.lang === "it" ? "Giacenza reale" : "Physical stock"}</div>
           <div class="wh-stat-value">${stockLabel}</div>
-          <div class="wh-stat-sub">${group.isModel ? `${totalPieces} ${state.lang === "it" ? "pezzi caricati" : "pieces loaded"}` : `${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "caricati" : "loaded"}`}</div>
+          <div class="wh-stat-sub">${group.isModel ? `${totalPieces} ${state.lang === "it" ? "pezzi fisici caricati" : "physical pieces loaded"}` : `${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "fisicamente caricati" : "physically loaded"}`}</div>
         </div>
         <div class="wh-stat ${hasDemand ? "danger" : "soft"}" ${demandActionAttrs}>
-          <div class="wh-stat-label">${state.lang === "it" ? "Fabbisogno ordini" : "Order demand"}</div>
-          <div class="wh-stat-value" ${hasDemand && hasDeficit ? 'style="color:#dc2626"' : ""}>${demandLabel}</div>
-          <div class="wh-stat-sub">${group.demandOrders.length} ${state.lang === "it" ? "ordini da preparare" : "orders to prepare"}${firstDemandOrderId ? ` · ${state.lang === "it" ? "clicca per aprire" : "click to open"}` : ""}</div>
+          <div class="wh-stat-label">${state.lang === "it" ? "Impegnato su ordini" : "Committed to orders"}</div>
+          <div class="wh-stat-value" ${hasDemand && hasDeficit ? 'style="color:#dc2626"' : ""}>${committedLabel}</div>
+          <div class="wh-stat-sub">${group.demandOrders.length} ${state.lang === "it" ? "ordini aperti" : "open orders"}${firstDemandOrderId ? ` · ${state.lang === "it" ? "clicca per aprire" : "click to open"}` : ""}</div>
         </div>
         <div class="wh-stat ${hasDeficit ? "danger" : "neutral"}">
-          <div class="wh-stat-label">${state.lang === "it" ? "Disponibile netto" : "Net available"}</div>
+          <div class="wh-stat-label">${state.lang === "it" ? "Disponibile per nuovi ordini" : "Available for new orders"}</div>
           <div class="wh-stat-value" ${hasDeficit ? 'style="color:#dc2626"' : netValue > 0 ? 'style="color:#16a34a"' : ""}>${hasDeficit ? (group.isModel ? (state.lang === "it" ? `Mancano ${Math.round(Math.abs(netValue))} mq` : `Missing ${Math.round(Math.abs(netValue))} sq`) : (state.lang === "it" ? `Mancano ${Math.abs(netValue)} u` : `Missing ${Math.abs(netValue)} u`)) : netLabel}</div>
           <div class="wh-stat-sub">${group.isModel ? `${group.fullCount} ${state.lang === "it" ? "interi" : "full"} · ${group.residualCount} ${state.lang === "it" ? "residui" : "residual"}` : `${group.totalUnits} ${unitDetailLabel}`}</div>
         </div>
@@ -3637,6 +3712,9 @@ function renderInstallations() {
   const isCrewView = state.currentUser?.role === "crew";
   if (ui.installationCrewField) ui.installationCrewField.classList.toggle("hidden", isCrewView);
   if (ui.installationEmailButton) ui.installationEmailButton.classList.toggle("hidden", isCrewView);
+  if (ui.installationSubmitButton) ui.installationSubmitButton.textContent = isCrewView
+    ? (state.lang === "it" ? "Salva aggiornamento cantiere" : "Save site update")
+    : (state.lang === "it" ? "Salva posa" : "Save installation");
   getSelectedInstallationCrew();
   renderInstallationsCoverage();
   if (ui.installationCalendar) {
@@ -3700,6 +3778,7 @@ function renderInstallations() {
           { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || "Da definire", meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || "terra"}` },
           { label: state.lang === "it" ? "Cantiere" : "Site", value: composeAddress(order) || "Indirizzo da completare", meta: composeClientName(order) },
           { label: state.lang === "it" ? "Programmazione" : "Schedule", value: order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : "Data da definire", meta: order.operations?.installation?.installTime || "Ora da definire" },
+          { label: state.lang === "it" ? "Stato cantiere" : "Site status", value: getUnifiedOrderStage(order).label, meta: String(order.operations?.installation?.status || "").trim() || (state.lang === "it" ? "Da aggiornare" : "To update") },
           { label: state.lang === "it" ? "Materiale in uscita" : "Outbound goods", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
         ]
       : [
@@ -3712,12 +3791,20 @@ function renderInstallations() {
   }
   ui.installationForm.installDate.value = order.operations?.installation?.installDate || "";
   ui.installationForm.installTime.value = order.operations?.installation?.installTime || "";
+  if (ui.installationForm.status) {
+    ui.installationForm.status.value = order.operations?.installation?.status || (order.operations?.installation?.installDate ? "programmata" : "da-pianificare");
+  }
   if (ui.installationCrew) {
     ui.installationCrew.innerHTML = buildInstallationCrewOptions(order.operations?.installation?.crew || "");
     ui.installationCrew.value = getCrewForCurrentUser() || order.operations?.installation?.crew || "";
     ui.installationCrew.disabled = state.currentUser?.role === "crew";
   }
   ui.installationForm.reportNote.value = order.operations?.installation?.reportNote || "";
+  if (ui.installationForm.reportNote) {
+    ui.installationForm.reportNote.placeholder = isCrewView
+      ? (state.lang === "it" ? "Accesso, arrivo squadra, avanzamento, problemi, fine lavori..." : "Access, crew arrival, progress, issues, completion...")
+      : (state.lang === "it" ? "Accesso, riprogrammazione, note posa, report cantiere..." : "Access, rescheduling, install notes, site report...");
+  }
   ui.installationAttachments.innerHTML = renderAttachmentGrid(order.attachments || []);
   clearStatus(ui.installationStatus);
 }
@@ -3974,6 +4061,34 @@ function getShippingQueueGroupMeta(mode) {
   };
 }
 
+function getShippingNextAction(order) {
+  if (isLogisticsOrderCompleted(order)) {
+    return state.lang === "it" ? "Uscita completata: resta solo verifica finale" : "Dispatch completed: only final verification remains";
+  }
+  if (getWarehousePreparedLines(order).length === 0) {
+    return state.lang === "it" ? "Completa le righe da preparare" : "Complete the preparation lines";
+  }
+  if (!order.operations?.warehouse?.preparationDate) {
+    return state.lang === "it" ? "Definisci la data preparazione merce" : "Set the goods preparation date";
+  }
+  if (!order.operations?.warehouse?.ddt?.number && order.operations?.warehouse?.fulfillmentMode === "corriere") {
+    return state.lang === "it" ? "Genera il DDT del bancale" : "Generate the pallet DDT";
+  }
+  if (!order.operations?.warehouse?.readyToShip) {
+    return state.lang === "it" ? "Conferma merce pronta in uscita" : "Confirm goods ready to dispatch";
+  }
+  if (order.operations?.warehouse?.fulfillmentMode === "corriere" && !order.operations?.warehouse?.carrierPassed) {
+    return state.lang === "it" ? "Affida il bancale al vettore" : "Hand the pallet to the carrier";
+  }
+  if (order.operations?.warehouse?.fulfillmentMode === "ritiro" && String(order.operations?.warehouse?.status || "").trim() !== "ritirato") {
+    return state.lang === "it" ? "Consegna al cliente e chiudi il ritiro" : "Hand over to the customer and close pickup";
+  }
+  if (order.operations?.warehouse?.fulfillmentMode === "furgone" && String(order.operations?.warehouse?.status || "").trim() !== "ritirato") {
+    return state.lang === "it" ? "Carica il furgone e marca uscita squadra" : "Load the van and mark crew departure";
+  }
+  return state.lang === "it" ? "Verifica chiusura logistica" : "Verify logistics closure";
+}
+
 function renderShippingQueueCard(order) {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const mode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
@@ -3986,14 +4101,18 @@ function renderShippingQueueCard(order) {
     ? `${prepSummary} · +${hiddenCount} ${state.lang === "it" ? "righe" : "lines"}`
     : prepSummary;
   const shipmentState = getShipmentStateLabel(order);
+  const stage = getUnifiedOrderStage(order);
+  const nextAction = getShippingNextAction(order);
   const routeLabel = getShippingModeLabel(order);
   const targetLabel = getShippingTargetLabel(order);
   const destination = composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete");
-  const badgeTone = order.operations?.warehouse?.shipped
+  const badgeTone = stage.tone === "green"
     ? "badge-success"
-    : order.operations?.warehouse?.readyToShip
-      ? "badge-info"
-      : "badge-warning";
+    : stage.tone === "red"
+      ? "badge-urgent"
+      : stage.tone === "blue"
+        ? "badge-info"
+        : "badge-warning";
   return `
     <article class="shipping-queue-card ${selected}" data-action="select-order" data-id="${order.id}" data-view="shipping">
       <div class="shipping-queue-head">
@@ -4003,12 +4122,20 @@ function renderShippingQueueCard(order) {
         </div>
         <div class="shipping-queue-badges">
           <div class="order-type-badge ${mode === "corriere" ? "type-spedizione" : mode === "ritiro" ? "type-ritiro" : "type-posa"}">${routeLabel}</div>
-          <div class="action-badge ${badgeTone}">${shipmentState}</div>
+          <div class="action-badge ${badgeTone}">${stage.label}</div>
         </div>
       </div>
       <div class="shipping-queue-body">
         <div class="shipping-queue-line">
-          <span>${state.lang === "it" ? "Da preparare" : "To prepare"}</span>
+          <span>${state.lang === "it" ? "Prossimo passo" : "Next step"}</span>
+          <strong>${nextAction}</strong>
+        </div>
+        <div class="shipping-queue-line">
+          <span>${state.lang === "it" ? "Stato uscita" : "Dispatch state"}</span>
+          <strong>${shipmentState}</strong>
+        </div>
+        <div class="shipping-queue-line">
+          <span>${state.lang === "it" ? "Righe da preparare" : "Lines to prepare"}</span>
           <strong>${preparedLines.length} ${state.lang === "it" ? "righe" : "lines"}</strong>
         </div>
         <div class="shipping-queue-copy">${prepMeta}</div>
@@ -4090,12 +4217,19 @@ function renderShipping() {
   }
   const destination = getShippingDestination(order);
   const estimate = calculateShippingEstimate(order, getCurrentDdtDraft(order));
+  const stage = getUnifiedOrderStage(order);
+  const nextAction = getShippingNextAction(order);
   if (ui.shippingDetailFields) {
     ui.shippingDetailFields.innerHTML = [
       {
         label: "Prodotto",
         value: order.operations?.product || "Da definire",
         meta: `${order.operations?.sqm || 0} mq · ${composeAddress(order) || "Indirizzo da completare"}`,
+      },
+      {
+        label: state.lang === "it" ? "Fase logistica" : "Logistics stage",
+        value: stage.label,
+        meta: nextAction,
       },
       {
         label: "Gestione",
@@ -4649,14 +4783,30 @@ async function saveShipping(event) {
   const order = getSelectedOrder();
   if (!order || !ui.shippingForm) return;
   const form = new FormData(ui.shippingForm);
+  const currentWarehouse = order.operations?.warehouse || {};
+  const currentStatus = String(currentWarehouse.status || "").trim();
+  const fulfillmentMode = String(currentWarehouse.fulfillmentMode || "").trim();
+  let nextReadyToShip = form.get("readyToShip") === "on";
+  let nextCarrierPassed = form.get("carrierPassed") === "on";
+  let nextShipped = form.get("shipped") === "on";
+  const statusImpliesCompleted = currentStatus === "ritirato";
+  if (statusImpliesCompleted) {
+    nextReadyToShip = true;
+    nextShipped = true;
+    if (fulfillmentMode === "corriere") nextCarrierPassed = true;
+  }
+  if (nextShipped) {
+    nextReadyToShip = true;
+    if (fulfillmentMode === "corriere") nextCarrierPassed = true;
+  }
   const destinationProvinceCode = normalizeProvinceCode(form.get("destinationProvinceCode"));
   const destinationProvinceRecord = getProvinceRecord(destinationProvinceCode);
   const payload = {
     warehouse: {
       trackingNumber: String(form.get("trackingNumber") || "").trim(),
-      readyToShip: form.get("readyToShip") === "on",
-      carrierPassed: form.get("carrierPassed") === "on",
-      shipped: form.get("shipped") === "on",
+      readyToShip: nextReadyToShip,
+      carrierPassed: nextCarrierPassed,
+      shipped: nextShipped,
       destination: {
         provinceCode: destinationProvinceCode,
         province: destinationProvinceRecord?.province || String(order.province || ""),
@@ -4934,6 +5084,7 @@ async function saveInstallation(event) {
       installation: {
         installDate: form.get("installDate"),
         installTime: form.get("installTime"),
+        status: form.get("status"),
         crew: getCrewForCurrentUser() || form.get("crew"),
         reportNote: form.get("reportNote"),
       },
