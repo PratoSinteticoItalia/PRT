@@ -1001,6 +1001,47 @@ button.is-feedback,
   gap: 12px;
 }
 
+.route-visibility-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.route-toggle-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(32, 49, 35, 0.08);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.82);
+  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.route-toggle-card.is-active {
+  border-color: rgba(45, 106, 79, 0.34);
+  background: rgba(236, 245, 239, 0.92);
+  box-shadow: 0 10px 26px rgba(45, 106, 79, 0.08);
+}
+
+.route-toggle-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.route-toggle-head input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.route-toggle-copy {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .order-flow-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1020,6 +1061,23 @@ button.is-feedback,
   margin: 0;
   color: var(--muted);
   line-height: 1.55;
+}
+
+.flow-helper-note {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px dashed rgba(45, 106, 79, 0.2);
+  background: rgba(247, 250, 246, 0.92);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+@media (max-width: 980px) {
+  .route-visibility-grid,
+  .order-flow-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .checklist-grid {

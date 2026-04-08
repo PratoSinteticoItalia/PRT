@@ -1772,7 +1772,16 @@ function isRoutedToWarehouse(order) {
 }
 
 function isRoutedToInstallation(order) {
-  return Boolean(order.operations?.installation?.required);
+  const installation = order.operations?.installation || {};
+  return Boolean(
+    installation.selected
+    || (installation.installDate && String(installation.installDate).trim())
+    || (installation.installTime && String(installation.installTime).trim())
+    || (installation.crew && String(installation.crew).trim())
+    || installation.clientConfirmed
+    || (installation.reportNote && String(installation.reportNote).trim())
+    || (installation.status && !["", "da-pianificare"].includes(String(installation.status).trim())),
+  );
 }
 
 function getCrewForCurrentUser() {
@@ -1889,8 +1898,8 @@ function filterOrdersForView(kind) {
     if (kind === "order") {
       if (filter === "attention") return !order.address || !order.city || order.operations?.officeStatus === "bozza";
       if (filter === "warehouse") return order.operations?.warehouse?.status !== "pronto";
-      if (filter === "installation") return Boolean(order.operations?.installation?.required);
-      if (filter === "shipping") return !order.operations?.installation?.required && isRoutedToWarehouse(order);
+      if (filter === "installation") return isRoutedToInstallation(order);
+      if (filter === "shipping") return !isRoutedToInstallation(order) && isRoutedToWarehouse(order);
       return true;
     }
     if (kind === "warehouse") {
@@ -1926,12 +1935,45 @@ function filterOrdersForView(kind) {
 }
 
 function renderInboxFlowControls(order) {
+  const warehouseSelected = isRoutedToWarehouse(order);
+  const installSelected = isRoutedToInstallation(order);
   const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
   const preparationDate = getShippingTargetDate(order);
+  const jobNeedsInstall = Boolean(order.operations?.installation?.required);
+  const routeSummary = installSelected
+    ? (state.lang === "it" ? "Ordine in carico a ufficio, logistica e squadra posa." : "Order active for office, logistics and installation crew.")
+    : warehouseSelected
+      ? (state.lang === "it" ? "Ordine in carico a ufficio e logistica / magazzino." : "Order active for office and logistics / warehouse.")
+      : (state.lang === "it" ? "Ordine ancora da instradare nei flussi operativi." : "Order not routed yet into the operational flows.");
   return `
     <article class="guidance-card order-flow-card">
-      <span class="panel-eyebrow">${state.lang === "it" ? "Gestione ufficio" : "Office handling"}</span>
+      <span class="panel-eyebrow">${state.lang === "it" ? "Processo operativo" : "Operational flow"}</span>
+      <p>${routeSummary}</p>
+      <div class="route-visibility-grid">
+        <label class="route-toggle-card ${warehouseSelected ? "is-active" : ""}">
+          <div class="route-toggle-head">
+            <input type="checkbox" data-order-flow-warehouse="${order.id}" ${warehouseSelected ? "checked" : ""} />
+            <span>${state.lang === "it" ? "Visibile in logistica" : "Visible in logistics"}</span>
+          </div>
+          <small class="route-toggle-copy">
+            ${state.lang === "it"
+              ? "Ordine da preparare in sede, spedire, ritirare oppure caricare sul furgone."
+              : "Order to prepare at HQ, ship, pick up, or load onto the van."}
+          </small>
+        </label>
+        <label class="route-toggle-card ${installSelected ? "is-active" : ""}">
+          <div class="route-toggle-head">
+            <input type="checkbox" data-order-flow-installation="${order.id}" ${installSelected ? "checked" : ""} />
+            <span>${state.lang === "it" ? "Visibile in posa" : "Visible in installation"}</span>
+          </div>
+          <small class="route-toggle-copy">
+            ${jobNeedsInstall
+              ? (state.lang === "it" ? "Da comunicare alla squadra con data, orario e uscita materiale dalla sede centrale." : "To be shared with the crew with date, time, and material departure from HQ.")
+              : (state.lang === "it" ? "Attivalo solo se questo ordine deve entrare davvero nel planning della squadra." : "Enable only if this order must enter the crew planning board.")}
+          </small>
+        </label>
+      </div>
       <div class="order-flow-grid">
         <label class="field">
           <span>${state.lang === "it" ? "Stato preparazione" : "Preparation status"}</span>
@@ -1945,7 +1987,7 @@ function renderInboxFlowControls(order) {
           </select>
         </label>
         <label class="field">
-          <span>${state.lang === "it" ? "Gestione logistica" : "Logistics mode"}</span>
+          <span>${state.lang === "it" ? "Uscita merce" : "Goods exit mode"}</span>
           <select class="text-input" data-order-flow-mode="${order.id}">
             <option value="da-definire" ${fulfillmentMode === "da-definire" ? "selected" : ""}>${state.lang === "it" ? "Da definire" : "To define"}</option>
             <option value="corriere" ${fulfillmentMode === "corriere" ? "selected" : ""}>${state.lang === "it" ? "Corriere" : "Courier"}</option>
@@ -1958,8 +2000,13 @@ function renderInboxFlowControls(order) {
           <input class="text-input" type="date" data-order-flow-date="${order.id}" value="${preparationDate || ""}" />
         </label>
       </div>
+      <div class="flow-helper-note">
+        ${state.lang === "it"
+          ? "Sede centrale Orta di Atella: la merce da spedire parte su pallet per corrieri o ritiro cliente, la merce da posare viene preparata e caricata sul furgone."
+          : "HQ in Orta di Atella: shipment-only goods leave on pallets for couriers or pickup, installation goods are prepared and loaded onto the van."}
+      </div>
       <div class="order-office-actions">
-        <button class="mini-action primary-mini" data-action="save-inbox-flow" data-id="${order.id}">${state.lang === "it" ? "Salva stato ordine" : "Save order state"}</button>
+        <button class="mini-action primary-mini" data-action="save-inbox-flow" data-id="${order.id}">${state.lang === "it" ? "Salva processo ordine" : "Save order flow"}</button>
       </div>
     </article>
   `;
@@ -2051,7 +2098,7 @@ function updateShell() {
 function renderOps() {
   const orders = state.orders.length;
   const warehouse = state.orders.filter((order) => ["da-preparare", "in-preparazione", "bloccato"].includes(order.operations?.warehouse?.status)).length;
-  const installations = state.orders.filter((order) => order.operations?.installation?.required).length;
+  const installations = state.orders.filter((order) => isRoutedToInstallation(order)).length;
   const accounting = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
   const shipping = state.orders.filter((order) => ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode)).length;
   const criticalAlerts = state.orders.filter((order) => order.operations?.warehouse?.status === "bloccato" || order.operations?.installation?.status === "problema").length;
@@ -3758,16 +3805,23 @@ async function updateOrderRoutingById(orderId, patch) {
 }
 
 async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
+  const currentOrder = state.orders.find((item) => item.id === orderId) || null;
   const statusInput = document.querySelector(`[data-order-flow-status="${orderId}"]`);
   const modeInput = document.querySelector(`[data-order-flow-mode="${orderId}"]`);
   const dateInput = document.querySelector(`[data-order-flow-date="${orderId}"]`);
+  const warehouseToggle = document.querySelector(`[data-order-flow-warehouse="${orderId}"]`);
+  const installToggle = document.querySelector(`[data-order-flow-installation="${orderId}"]`);
   const nextStatus = statusInput?.value || "da-preparare";
-  const nextMode = modeInput?.value || "da-definire";
+  const installSelected = Boolean(installToggle?.checked);
+  const warehouseSelected = Boolean(warehouseToggle?.checked) || installSelected;
+  const nextModeRaw = modeInput?.value || "da-definire";
+  const nextMode = installSelected && nextModeRaw === "da-definire" ? "furgone" : nextModeRaw;
   const nextDate = dateInput?.value || "";
   const shouldRouteWarehouse = Boolean(
-    nextMode !== "da-definire"
+    warehouseSelected
+    || nextMode !== "da-definire"
     || nextStatus !== "da-preparare"
-    || nextDate,
+    || nextDate
   );
   const payload = patch || {
     warehouse: {
@@ -3775,6 +3829,10 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
       status: nextStatus,
       fulfillmentMode: nextMode,
       preparationDate: nextDate,
+    },
+    installation: {
+      selected: installSelected,
+      required: installSelected || Boolean(currentOrder?.operations?.installation?.required),
     },
   };
   const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
