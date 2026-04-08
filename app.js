@@ -1466,12 +1466,8 @@ function statusChip(label, tone) {
 function buildOrderTone(order) {
   const ops = order.operations || {};
   if (ops.warehouse?.status === "bloccato" || ops.installation?.status === "problema") return [state.lang === "it" ? "Blocco" : "Blocked", "red"];
-  if (ops.installation?.status === "completata") return [t("completed"), "green"];
-  if (ops.installation?.status === "in-corso") return [t("inProgress"), "blue"];
-  if (ops.warehouse?.status === "pronto") return [t("ready"), "green"];
-  if (ops.warehouse?.status === "in-preparazione") return [t("preparing"), "amber"];
-  if (ops.officeStatus === "bozza") return [state.lang === "it" ? "Bozza" : "Draft", "blue"];
-  return [state.lang === "it" ? "Operativo" : "Operational", "amber"];
+  const stage = getUnifiedOrderStage(order);
+  return [stage.label, stage.tone];
 }
 
 function getSelectedOrder() {
@@ -1629,11 +1625,12 @@ function buildDashboardActions() {
     .map((order) => {
       const ops = order.operations || {};
       const missingAddress = !order.address || !order.city;
-      const missingWarehouse = !ops.warehouse || ops.warehouse.status === "da-preparare" || ops.warehouse.status === "bloccato";
+      const stage = getUnifiedOrderStage(order);
+      const missingWarehouse = stage.key === "warehouse-work" && ["da-preparare", "bloccato", ""].includes(String(ops.warehouse?.status || "").trim());
       const needsDate = ops.installation?.required && !ops.installation?.installDate;
       const openBalance = getOpenBalance(order);
       const needsAccounting = openBalance > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
-      const isCompleted = ops.installation?.status === "completata";
+      const isCompleted = stage.key === "install-completed" || stage.key === "closed";
       const materialMissing = ops.warehouse?.status === "bloccato";
       let title = "Verifica ordine";
       let reason = "Ordine operativo da completare";
@@ -2028,12 +2025,16 @@ function getShipmentStateLabel(order) {
   if (warehouse.shipped || status === "ritirato") return state.lang === "it" ? "Ritirato" : "Collected";
   if (warehouse.carrierPassed) return t("carrierPassed");
   if (warehouse.readyToShip && !status) return t("goodsReady");
-  if (status === "in-attesa-di-ritiro") return state.lang === "it" ? "In attesa di ritiro" : "Waiting for pickup";
-  if (status === "da-ritirare") return state.lang === "it" ? "Da ritirare" : "Ready for pickup";
-  if (status === "in-preparazione") return state.lang === "it" ? "In preparazione" : "Preparing";
-  if (status === "pronto") return state.lang === "it" ? "Pronto" : "Ready";
-  if (status === "da-preparare") return t("toPrepare");
-  return status || t("toPrepare");
+  const stage = getUnifiedOrderStage(order);
+  if (stage.key === "warehouse-ready") return stage.label;
+  if (stage.key === "warehouse-work") {
+    if (status === "in-attesa-di-ritiro") return state.lang === "it" ? "In attesa di ritiro" : "Waiting for pickup";
+    if (status === "da-ritirare") return state.lang === "it" ? "Da ritirare" : "Ready for pickup";
+    if (status === "in-preparazione") return state.lang === "it" ? "In preparazione" : "Preparing";
+    if (status === "pronto") return state.lang === "it" ? "Pronto" : "Ready";
+    if (status === "da-preparare") return t("toPrepare");
+  }
+  return stage.label || status || t("toPrepare");
 }
 
 function getShippingTargetDate(order) {
@@ -2107,6 +2108,8 @@ function getOrderProgress(order) {
   const warehouse = order.operations?.warehouse || {};
   const accounting = order.accounting || {};
   const openBalance = getOpenBalance(order);
+  const logisticsCompleted = isLogisticsOrderCompleted(order);
+  const closed = isOrderClosed(order);
   const warehouseReady = [
     "in-preparazione",
     "pronto",
@@ -2118,8 +2121,8 @@ function getOrderProgress(order) {
     Boolean(order.address && order.city),
     warehouseReady,
     install.required ? Boolean(install.installDate) : true,
-    install.required ? install.status === "completata" : ["pronto", "da-ritirare", "ritirato"].includes(warehouse.status) || String(order.fulfillmentStatus || "").toLowerCase().includes("fulfill"),
-    openBalance <= 0 && (!accounting.invoiceRequired || accounting.invoiceIssued),
+    install.required ? install.status === "completata" : logisticsCompleted,
+    closed || (openBalance <= 0 && (!accounting.invoiceRequired || accounting.invoiceIssued)),
   ];
 }
 
@@ -2159,6 +2162,96 @@ function isLogisticsOrderCompleted(order) {
     || status === "ritirato"
     || (mode === "corriere" && warehouse.carrierPassed),
   );
+}
+
+function isOrderClosed(order) {
+  const installRequired = Boolean(order.operations?.installation?.required);
+  const installCompleted = String(order.operations?.installation?.status || "").trim() === "completata";
+  const logisticsCompleted = isLogisticsOrderCompleted(order);
+  const financiallyClosed = getOpenBalance(order) <= 0 && (!order.accounting?.invoiceRequired || order.accounting?.invoiceIssued);
+  const operationallyClosed = installRequired ? installCompleted : logisticsCompleted;
+  return Boolean(operationallyClosed && financiallyClosed);
+}
+
+function getUnifiedOrderStage(order) {
+  const ops = order.operations || {};
+  const officeStatus = String(ops.officeStatus || "").trim();
+  const warehouse = ops.warehouse || {};
+  const install = ops.installation || {};
+  const warehouseStatus = String(warehouse.status || "").trim();
+  const fulfillmentMode = String(warehouse.fulfillmentMode || "").trim();
+  const installStatus = String(install.status || "").trim();
+  const installRequired = Boolean(install.required);
+  const logisticsCompleted = isLogisticsOrderCompleted(order);
+
+  if (isOrderClosed(order)) {
+    return {
+      key: "closed",
+      label: state.lang === "it" ? "Chiuso" : "Closed",
+      tone: "green",
+    };
+  }
+  if (installStatus === "completata") {
+    return {
+      key: "install-completed",
+      label: state.lang === "it" ? "Posa completata" : "Install completed",
+      tone: "green",
+    };
+  }
+  if (installStatus === "in-corso") {
+    return {
+      key: "install-progress",
+      label: state.lang === "it" ? "Posa in corso" : "Install in progress",
+      tone: "blue",
+    };
+  }
+  if (installRequired && install.installDate) {
+    return {
+      key: "install-planned",
+      label: state.lang === "it" ? "Posa pianificata" : "Install planned",
+      tone: "amber",
+    };
+  }
+  if (fulfillmentMode === "furgone" && logisticsCompleted) {
+    return {
+      key: "van-loaded",
+      label: state.lang === "it" ? "Caricato su furgone" : "Loaded on van",
+      tone: "green",
+    };
+  }
+  if (logisticsCompleted) {
+    return {
+      key: "goods-collected",
+      label: state.lang === "it" ? "Ritirato / evaso" : "Collected / shipped",
+      tone: "green",
+    };
+  }
+  if (warehouse.readyToShip || ["pronto", "da-ritirare", "in-attesa-di-ritiro"].includes(warehouseStatus)) {
+    return {
+      key: "warehouse-ready",
+      label: state.lang === "it" ? "Pronto per uscita" : "Ready to dispatch",
+      tone: "green",
+    };
+  }
+  if (["in-preparazione", "da-preparare", "bloccato"].includes(warehouseStatus) || isRoutedToWarehouse(order)) {
+    return {
+      key: "warehouse-work",
+      label: state.lang === "it" ? "Da preparare" : "To prepare",
+      tone: warehouseStatus === "bloccato" ? "red" : "amber",
+    };
+  }
+  if (officeStatus === "bozza" || !isRoutedToWarehouse(order)) {
+    return {
+      key: "office-review",
+      label: state.lang === "it" ? "Da verificare" : "To review",
+      tone: "blue",
+    };
+  }
+  return {
+    key: "operational",
+    label: state.lang === "it" ? "Operativo" : "Operational",
+    tone: "amber",
+  };
 }
 
 function getPreparedProductLines(order) {
@@ -2665,10 +2758,10 @@ function updateShell() {
 
 function renderOps() {
   const orders = state.orders.length;
-  const warehouse = state.orders.filter((order) => ["da-preparare", "in-preparazione", "bloccato"].includes(order.operations?.warehouse?.status)).length;
-  const installations = state.orders.filter((order) => isRoutedToInstallation(order)).length;
+  const warehouse = state.orders.filter((order) => orderNeedsWarehouseWork(order)).length;
+  const installations = state.orders.filter((order) => isRoutedToInstallation(order) && !["completata"].includes(String(order.operations?.installation?.status || "").trim())).length;
   const accounting = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
-  const shipping = state.orders.filter((order) => ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode)).length;
+  const shipping = state.orders.filter((order) => ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode) && !isLogisticsOrderCompleted(order)).length;
   const criticalAlerts = state.orders.filter((order) => order.operations?.warehouse?.status === "bloccato" || order.operations?.installation?.status === "problema").length;
   const topbarAlerts = Math.min(9, criticalAlerts + accounting);
   ui.opsOrdersValue.textContent = String(orders);
@@ -2904,8 +2997,10 @@ function buildWarehouseAlerts() {
 function renderOrderStepper(order) {
   const warehouseDone = isRoutedToWarehouse(order);
   const installNeeded = order.operations?.installation?.required;
-  const installDone = installNeeded ? Boolean(order.operations?.installation?.installDate) : warehouseDone;
-  const closed = getOpenBalance(order) <= 0 && (String(order.fulfillmentStatus || "").toLowerCase().includes("fulfill") || order.operations?.warehouse?.shipped);
+  const installDone = installNeeded
+    ? ["completata", "in-corso"].includes(String(order.operations?.installation?.status || "").trim()) || Boolean(order.operations?.installation?.installDate)
+    : isLogisticsOrderCompleted(order);
+  const closed = isOrderClosed(order);
   return `
     <div class="stepper">
       <div class="stepper-step done"><div class="stepper-dot">1</div>${state.lang === "it" ? "Ordine" : "Order"}</div>
