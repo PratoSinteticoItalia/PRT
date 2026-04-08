@@ -664,6 +664,7 @@ const ui = {
   createDdtButton: document.getElementById("create-ddt-button"),
   warehouseDdtStatus: document.getElementById("warehouse-ddt-status"),
   installationFilterTags: Array.from(document.querySelectorAll(".installation-filter-tag")),
+  coveragePanel: document.querySelector("#installations .coverage-panel"),
   coverageTeamList: document.getElementById("coverage-team-list"),
   coverageRegionGrid: document.getElementById("coverage-region-grid"),
   coverageRegionCount: document.getElementById("coverage-region-count"),
@@ -2613,6 +2614,7 @@ function applyStaticTranslations() {
 
 function updateShell() {
   const allowed = roleViews[state.currentUser?.role || "office"] || roleViews.office;
+  const showCoverageRadar = state.currentUser?.role === "office";
   ui.navLinks.forEach((button) => {
     const visible = allowed.includes(button.dataset.view);
     button.classList.toggle("hidden", !visible);
@@ -2626,6 +2628,7 @@ function updateShell() {
   ui.topbarUserName.textContent = state.currentUser?.name || "-";
   ui.topbarUserRole.textContent = roleLabel(state.currentUser?.role);
   if (ui.topbarAvatar) ui.topbarAvatar.textContent = getUserInitials(state.currentUser?.name);
+  if (ui.coveragePanel) ui.coveragePanel.classList.toggle("hidden", !showCoverageRadar);
   applyStaticTranslations();
 }
 
