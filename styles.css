@@ -236,7 +236,21 @@ button.is-feedback,
 .mini-action.is-feedback,
 .filter-btn.is-feedback {
   transform: translateY(-1px) scale(1.01);
-  box-shadow: 0 0 0 4px rgba(64, 145, 108, 0.16), 0 10px 20px rgba(21, 32, 24, 0.1);
+  box-shadow: 0 0 0 5px rgba(64, 145, 108, 0.18), 0 12px 24px rgba(21, 32, 24, 0.14);
+  filter: saturate(1.05);
+}
+
+.btn.is-feedback,
+.primary-button.is-feedback,
+.mini-action.is-feedback {
+  border-color: rgba(39, 92, 63, 0.7);
+  background: rgba(228, 244, 234, 0.92);
+}
+
+.btn.primary.is-feedback,
+.primary-button.is-feedback {
+  background: linear-gradient(135deg, #3f7f5b, #28513d);
+  color: #fff;
 }
 
 .small,
@@ -974,6 +988,15 @@ button.is-feedback,
   flex-wrap: wrap;
 }
 
+#installations .inline-actions {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+#installation-status {
+  margin-top: 4px;
+}
+
 .order-flow-card {
   gap: 12px;
 }
@@ -1398,6 +1421,10 @@ button.is-feedback,
   display: grid;
   grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 12px;
+}
+
+#orders .route-board:empty {
+  display: none;
 }
 
 .route-column {

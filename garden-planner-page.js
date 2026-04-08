@@ -32,18 +32,22 @@ const BORDER_TYPES = [
   { id: "nessuna", name: "Nessuna bordura", price: 0, unit: "m" },
 ];
 
+const INFILL_FO30 = {
+  name: "Sabbia silicea FO30",
+  kgPerSqm: 5,
+  bagKg: 25,
+  pricePerTon: 92,
+};
+
 const DECO_CATALOG = [
-  { id: "ciottoli_bianco", name: "Ciottoli bianchi di Carrara", unit: "sacchi", pricePerUnit: 7.0, defaultQty: 0, cat: "Ciottoli e ghiaia", note: "Sacco da 25 kg" },
-  { id: "ciottoli_nero", name: "Ciottoli neri lucidi", unit: "sacchi", pricePerUnit: 8.75, defaultQty: 0, cat: "Ciottoli e ghiaia", note: "Sacco da 25 kg" },
-  { id: "ciottoli_misto", name: "Ciottoli misto fiume", unit: "sacchi", pricePerUnit: 5.5, defaultQty: 0, cat: "Ciottoli e ghiaia", note: "Sacco da 25 kg" },
-  { id: "ghiaia_deco", name: "Ghiaietto decorativo 8-12mm", unit: "sacchi", pricePerUnit: 4.5, defaultQty: 0, cat: "Ciottoli e ghiaia", note: "Sacco da 25 kg" },
-  { id: "corteccia", name: "Corteccia decorativa", unit: "sacchi", pricePerUnit: 4.0, defaultQty: 0, cat: "Ciottoli e ghiaia", note: "Sacco da 50 L" },
-  { id: "lapillo", name: "Lapillo vulcanico rosso", unit: "sacchi", pricePerUnit: 6.25, defaultQty: 0, cat: "Ciottoli e ghiaia", note: "Sacco da 25 kg" },
-  { id: "faretto_incasso", name: "Faretto LED incasso calpestabile", unit: "pz", pricePerUnit: 28.0, defaultQty: 0, cat: "Illuminazione" },
-  { id: "striscia_led", name: "Striscia LED perimetrale", unit: "m", pricePerUnit: 12.0, defaultQty: 0, cat: "Illuminazione" },
-  { id: "lampioncino", name: "Lampioncino solare giardino", unit: "pz", pricePerUnit: 18.0, defaultQty: 0, cat: "Illuminazione" },
-  { id: "tnt_extra", name: "TNT antialga extra (sotto ciottoli)", unit: "m\u00B2", pricePerUnit: 1.5, defaultQty: 0, cat: "Accessori posa" },
-  { id: "picchetti_extra", name: "Picchetti metallici extra", unit: "pz", pricePerUnit: 0.45, defaultQty: 0, cat: "Accessori posa" },
+  { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
+  { id: "igienizzante_prato", name: "Igienizzante anti-odore prato sintetico", unit: "pz", pricePerUnit: 14.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone trattamento" },
+  { id: "scopa_ravvivante", name: "Scopa ravvivante manuale", unit: "pz", pricePerUnit: 24.9, defaultQty: 0, cat: "Cura del prato" },
+  { id: "spazzola_prof", name: "Spazzola ravvivante professionale", unit: "pz", pricePerUnit: 39.9, defaultQty: 0, cat: "Cura del prato" },
+  { id: "banda_extra", name: "Banda di giunzione - 25 mt", unit: "rotoli", pricePerUnit: 15.0, defaultQty: 0, cat: "Accessori posa" },
+  { id: "colla_extra", name: "Colla bi-componente (A+B) - 6 Kg", unit: "secchi", pricePerUnit: 72.0, defaultQty: 0, cat: "Accessori posa" },
+  { id: "picchetti_extra", name: "Picchetti a U", unit: "pz", pricePerUnit: 0.45, defaultQty: 0, cat: "Accessori posa" },
+  { id: "telo_extra", name: "Telo da pacciamatura", unit: "rotoli", pricePerUnit: 48.0, defaultQty: 0, cat: "Accessori posa" },
 ];
 
 const SHAPES = [
@@ -123,6 +127,43 @@ function calcJointLength(rolls) {
     const nextLength = Number(roll.length) || 0;
     return sum + Math.min(prevLength, nextLength);
   }, 0);
+}
+
+function getShapePolygon(shape, dims) {
+  const { a = 0, b = 0, c = 0, d = 0 } = sanitizeDims(shape, dims);
+  if (shape === "rect" && a > 0 && b > 0) {
+    return [{ x: 0, y: 0 }, { x: a, y: 0 }, { x: a, y: b }, { x: 0, y: b }];
+  }
+  if (shape === "lshape" && a > 0 && b > 0) {
+    return [{ x: 0, y: 0 }, { x: a, y: 0 }, { x: a, y: d }, { x: c, y: d }, { x: c, y: b }, { x: 0, y: b }];
+  }
+  if (shape === "ushape" && a > 0 && b > 0) {
+    return [{ x: 0, y: 0 }, { x: a, y: 0 }, { x: a, y: b }, { x: a - c, y: b }, { x: a - c, y: d }, { x: c, y: d }, { x: c, y: b }, { x: 0, y: b }];
+  }
+  return [];
+}
+
+function getEdgeLabel(shape, index, count) {
+  if (shape === "rect") {
+    return ["Lato superiore", "Lato destro", "Lato inferiore", "Lato sinistro"][index] || `Lato ${index + 1}`;
+  }
+  if (shape === "custom") {
+    return `Lato ${index + 1}`;
+  }
+  return count > 0 ? `Lato ${index + 1}` : "Lato";
+}
+
+function getShapeEdges(shape, dims, customPts, customClosed) {
+  const pts = shape === "custom" ? (customClosed ? customPts : []) : getShapePolygon(shape, dims);
+  if (!pts.length || pts.length < 2) return [];
+  return pts.map((point, index) => {
+    const next = pts[(index + 1) % pts.length];
+    return {
+      id: `${shape}-edge-${index}`,
+      label: getEdgeLabel(shape, index, pts.length),
+      length: Math.hypot(next.x - point.x, next.y - point.y),
+    };
+  });
 }
 
 function autoCalcRolls(area, shape, dims, customPts, customClosed) {
@@ -582,7 +623,7 @@ function DecoSection({ decoItems, setDecoItems }) {
       })}
       {activeCount > 0 && (
         <div style={{ marginTop: 8, padding: "8px 12px", background: B.infoBg, borderRadius: 8, border: "1px solid #bbdefb", fontSize: 12, color: B.info }}>
-          {activeCount} element{activeCount > 1 ? "i" : "o"} decorativ{activeCount > 1 ? "i" : "o"} selezionat{activeCount > 1 ? "i" : "o"} - Totale: {fmtE(
+          {activeCount} material{activeCount > 1 ? "i" : "e"} aggiuntiv{activeCount > 1 ? "i" : "o"} selezionat{activeCount > 1 ? "i" : "o"} - Totale: {fmtE(
             Object.entries(decoItems).reduce((sum, [id, qty]) => {
               const item = DECO_CATALOG.find(d => d.id === id);
               return sum + (item ? item.pricePerUnit * qty : 0);
@@ -594,7 +635,7 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, rolls, borderType, substrate, decoItems, projectInfo }) {
+function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, substrate, decoItems, projectInfo }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
   const rollDetails = rolls.map(r => { const prod = PRODUCTS.find(p => p.id === r.product) || PRODUCTS[0]; return { ...r, sqm: r.width * r.length, cost: r.width * r.length * prod.price, prodName: prod.name }; });
@@ -607,7 +648,10 @@ function MaterialsReport({ area, perimeter, rolls, borderType, substrate, decoIt
   const glue = area * 0.3, glueCost = glue * 12;
   const jLen = calcJointLength(rolls), tapeCost = jLen * 2.5;
   const pins = Math.ceil(area * 4), pinsCost = pins * 0.35;
-  const border = BORDER_TYPES.find(b => b.id === borderType), borderCost = perimeter * (border?.price || 0);
+  const border = BORDER_TYPES.find(b => b.id === borderType), borderCost = borderMeters * (border?.price || 0);
+  const infillKg = area * INFILL_FO30.kgPerSqm;
+  const infillBags = Math.ceil(infillKg / INFILL_FO30.bagKg);
+  const infillCost = (infillKg / 1000) * INFILL_FO30.pricePerTon;
 
   const decoLines = Object.entries(decoItems).filter(([, q]) => q > 0).map(([id, qty]) => {
     const item = DECO_CATALOG.find(d => d.id === id);
@@ -627,12 +671,15 @@ function MaterialsReport({ area, perimeter, rolls, borderType, substrate, decoIt
       { name: "Colla bicomponente", qty: fmt(glue) + " kg", cost: glueCost },
       jLen > 0 ? { name: "Nastro giunzione", qty: Math.round(jLen) + " m", cost: tapeCost } : null,
       { name: "Chiodi a U", qty: pins + " pz", cost: pinsCost },
-      borderType !== "nessuna" ? { name: border?.name || "Bordura", qty: fmt(perimeter) + " m", cost: borderCost } : null,
+      borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m", cost: borderCost } : null,
     ].filter(Boolean), sub: geoCost + glueCost + tapeCost + pinsCost + borderCost },
+    { cat: "INTASO", items: [
+      { name: INFILL_FO30.name, qty: `${Math.round(infillKg)} kg · ${infillBags} sacchi da ${INFILL_FO30.bagKg} kg`, cost: infillCost },
+    ], sub: infillCost },
   ];
-  if (decoLines.length > 0) sections.push({ cat: "ELEMENTI DECORATIVI", items: decoLines, sub: decoCost });
+  if (decoLines.length > 0) sections.push({ cat: "MATERIALI AGGIUNTIVI", items: decoLines, sub: decoCost });
 
-  const grandTotal = totalRollCost + scavoCost + drenateCost + sabbiaCost + geoCost + glueCost + tapeCost + pinsCost + borderCost + decoCost;
+  const grandTotal = totalRollCost + scavoCost + drenateCost + sabbiaCost + geoCost + glueCost + tapeCost + pinsCost + borderCost + infillCost + decoCost;
 
   return (
     <div>
@@ -695,6 +742,7 @@ function GardenPlanner() {
   const [customClosed, setCustomClosed] = useState(false);
   const [rolls, setRolls] = useState([]);
   const [borderType, setBorderType] = useState("pvc");
+  const [selectedBorderEdges, setSelectedBorderEdges] = useState([]);
   const [substrate, setSubstrate] = useState({ scavoCm: 10, drenateCm: 5, sabbiaCm: 3 });
   const [decoItems, setDecoItems] = useState({});
   const safeDims = useMemo(() => sanitizeDims(shape, dims), [shape, dims]);
@@ -702,6 +750,12 @@ function GardenPlanner() {
 
   const area = useMemo(() => shape === "custom" ? (customClosed ? polyArea(customPts) : 0) : calcShapeArea(shape, safeDims), [shape, safeDims, customPts, customClosed]);
   const perimeter = useMemo(() => shape === "custom" ? (customClosed ? polyPerimeter(customPts) : 0) : calcShapePerimeter(shape, safeDims), [shape, safeDims, customPts, customClosed]);
+  const borderEdges = useMemo(() => getShapeEdges(shape, safeDims, customPts, customClosed), [shape, safeDims, customPts, customClosed]);
+  const selectedBorderMeters = useMemo(() => (
+    borderEdges
+      .filter(edge => selectedBorderEdges.includes(edge.id))
+      .reduce((sum, edge) => sum + edge.length, 0)
+  ), [borderEdges, selectedBorderEdges]);
 
   const handleAutoCalc = useCallback(() => {
     setRolls(autoCalcRolls(area, shape, safeDims, customPts, customClosed));
@@ -710,6 +764,10 @@ function GardenPlanner() {
   useEffect(() => {
     setRolls(prev => (prev.length ? [] : prev));
   }, [layoutKey]);
+
+  useEffect(() => {
+    setSelectedBorderEdges(borderEdges.map(edge => edge.id));
+  }, [layoutKey, borderEdges]);
 
   return (
     <div style={{ fontFamily: "'Manrope', 'Segoe UI', sans-serif", minHeight: "100vh", background: B.cream }}>
@@ -731,10 +789,13 @@ function GardenPlanner() {
             <StepBadge n={1} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Definisci l'area</span>
           </div>
           <ShapeInput shape={shape} setShape={setShape} dims={safeDims} setDims={setDims} customPts={customPts} setCustomPts={setCustomPts} customClosed={customClosed} setCustomClosed={setCustomClosed} />
-          {area > 0 && shape !== "custom" && (
+          {area > 0 && (
             <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
               <MetricCard label="Superficie" value={fmt(area) + " m\u00B2"} accent />
               <MetricCard label="Perimetro" value={fmt(perimeter) + " m"} />
+              {shape === "custom" && customClosed
+                ? <MetricCard label="Vertici" value={`${customPts.length}`} sub="Punti del perimetro" />
+                : null}
               <MetricCard label="Rotoli stimati" value={"" + Math.ceil(area / (ROLL_WIDTH * 5))} sub={"(da 2m \u00D7 5m)"} />
             </div>
           )}
@@ -780,13 +841,45 @@ function GardenPlanner() {
               ))}
             </div>
           </div>
+          {borderType === "pvc" && borderEdges.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Seleziona i lati dove posare la bordura</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {borderEdges.map(edge => {
+                  const active = selectedBorderEdges.includes(edge.id);
+                  return (
+                    <button
+                      key={edge.id}
+                      type="button"
+                      onClick={() => setSelectedBorderEdges(prev => prev.includes(edge.id) ? prev.filter(id => id !== edge.id) : [...prev, edge.id])}
+                      style={{
+                        padding: "7px 12px",
+                        borderRadius: 999,
+                        border: active ? "2px solid " + B.primary : "1px solid " + B.border,
+                        background: active ? B.light : B.white,
+                        color: active ? B.primary : B.text,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {edge.label} · {fmt(edge.length)} m
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12, color: B.textMuted }}>
+                Bordura selezionata: <strong style={{ color: B.dark }}>{fmt(selectedBorderMeters)} m</strong>
+              </div>
+            </div>
+          )}
           <RollsTable rolls={rolls} setRolls={setRolls} area={area} />
         </div>
 
         {/* STEP 4: DECORATIVE */}
         <div style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <StepBadge n={4} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Elementi decorativi</span>
+            <StepBadge n={4} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Materiali aggiuntivi</span>
           </div>
           <DecoSection decoItems={decoItems} setDecoItems={setDecoItems} />
         </div>
@@ -798,7 +891,7 @@ function GardenPlanner() {
             <div style={{ flex: 1 }} />
             <button onClick={() => window.print()} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa report e disegno</button>
           </div>
-          <MaterialsReport area={area} perimeter={perimeter} rolls={rolls} borderType={borderType} substrate={substrate} decoItems={decoItems} projectInfo={projectInfo} />
+          <MaterialsReport area={area} perimeter={perimeter} borderMeters={selectedBorderMeters} rolls={rolls} borderType={borderType} substrate={substrate} decoItems={decoItems} projectInfo={projectInfo} />
         </div>
 
         <div style={{ textAlign: "center", padding: "8px 0 24px", fontSize: 11, color: B.textMuted }}>

@@ -287,7 +287,6 @@
               </div>
               <div id="orders-status" class="panel-note hidden"></div>
               <div id="orders-list" class="order-list order-list-pro"></div>
-              <div id="orders-route-board" class="route-board compact-route-board"></div>
             </div>
 
             <section class="detail-panel order-detail-panel">
@@ -554,13 +553,6 @@
             </div>
           </div>
 
-          <div class="filter-bar">
-            <button class="filter-btn installation-filter-tag is-active" data-installation-filter="all">Tutte le squadre</button>
-            <button class="filter-btn installation-filter-tag" data-installation-filter="Alpha">Alpha</button>
-            <button class="filter-btn installation-filter-tag" data-installation-filter="Beta">Beta</button>
-            <button class="filter-btn installation-filter-tag" data-installation-filter="Delta">Delta</button>
-          </div>
-
           <div id="installation-calendar" class="cal-grid"></div>
 
           <div class="section">
@@ -582,22 +574,6 @@
 
               <form id="installation-form" class="inline-form-grid">
                 <label class="field">
-                  <span>Richiede posa</span>
-                  <select class="text-input" name="required">
-                    <option value="yes">Sì</option>
-                    <option value="no">No</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Squadra</span>
-                  <select class="text-input" name="crew">
-                    <option value="">Da assegnare</option>
-                    <option value="Alpha">Alpha</option>
-                    <option value="Beta">Beta</option>
-                    <option value="Delta">Delta</option>
-                  </select>
-                </label>
-                <label class="field">
                   <span>Data posa</span>
                   <input class="text-input" type="date" name="installDate" />
                 </label>
@@ -605,30 +581,17 @@
                   <span>Ora</span>
                   <input class="text-input" type="time" name="installTime" />
                 </label>
-                <label class="field">
-                  <span>Cliente confermato</span>
-                  <select class="text-input" name="clientConfirmed">
-                    <option value="yes">Sì</option>
-                    <option value="no">No</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Stato posa</span>
-                  <select class="text-input" name="status">
-                    <option value="da-pianificare">Da pianificare</option>
-                    <option value="programmata">Programmato</option>
-                    <option value="in-corso">In corso</option>
-                    <option value="completata">Completato</option>
-                    <option value="problema">Problema</option>
-                  </select>
-                </label>
                 <label class="field field-full">
-                  <span>Report squadra / note</span>
-                  <textarea class="text-input" name="reportNote" rows="4" placeholder="Accesso, arrivo previsto, note posa, report cantiere..."></textarea>
+                  <span>Note squadra / cantiere</span>
+                  <textarea class="text-input" name="reportNote" rows="4" placeholder="Accesso, riprogrammazione, note posa, report cantiere..."></textarea>
                 </label>
+                <div id="installation-status" class="panel-note hidden field-full"></div>
                 <div class="inline-actions field-full">
                   <button type="submit" class="primary-button small-button">Salva posa</button>
                   <button type="button" id="installation-maps-button" class="ghost-button small">Apri Maps</button>
+                  <button type="button" id="installation-route-button" class="ghost-button small">Apri itinerario</button>
+                  <button type="button" id="installation-call-button" class="ghost-button small">Chiama cliente</button>
+                  <button type="button" id="installation-email-button" class="ghost-button small">Invia email</button>
                   <button type="button" id="installation-attachment-button" class="ghost-button small">Carica foto</button>
                 </div>
               </form>

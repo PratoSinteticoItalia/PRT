@@ -491,6 +491,7 @@ const state = {
   },
   pendingAttachmentTarget: null,
   showOrderImport: false,
+  installationWeekOffset: 0,
 };
 
 const ui = {
@@ -561,10 +562,16 @@ const ui = {
   installationFilterTags: Array.from(document.querySelectorAll(".installation-filter-tag")),
   installationCalendar: document.getElementById("installation-calendar"),
   installationList: document.getElementById("installation-list"),
+  installationPrevWeekButton: document.getElementById("installation-prev-week-button"),
+  installationNextWeekButton: document.getElementById("installation-next-week-button"),
   installationDetailTitle: document.getElementById("installation-detail-title"),
   installationDetailSummary: document.getElementById("installation-detail-summary"),
   installationForm: document.getElementById("installation-form"),
+  installationStatus: document.getElementById("installation-status"),
   installationMapsButton: document.getElementById("installation-maps-button"),
+  installationRouteButton: document.getElementById("installation-route-button"),
+  installationCallButton: document.getElementById("installation-call-button"),
+  installationEmailButton: document.getElementById("installation-email-button"),
   installationAttachmentButton: document.getElementById("installation-attachment-button"),
   installationAttachments: document.getElementById("installation-attachments"),
   accountingSearch: document.getElementById("accounting-search"),
@@ -991,16 +998,6 @@ function getOrderLineSummary(order) {
   };
 }
 
-function getOrderChecklist(order) {
-  return [
-    { label: t("shippingData"), done: Boolean(order.address && order.city) },
-    { label: t("officeRouting"), done: isRoutedToWarehouse(order) || isRoutedToInstallation(order) },
-    { label: t("selectedLines"), done: getWarehousePreparedLines(order).length > 0 },
-    { label: t("readyForWarehouse"), done: !isRoutedToWarehouse(order) || getWarehousePreparedLines(order).length > 0 },
-    { label: t("readyForInstall"), done: !isRoutedToInstallation(order) || Boolean(order.operations?.installation?.crew && order.operations?.installation?.installDate) },
-  ];
-}
-
 function normalizeKey(value) {
   return String(value || "")
     .toLowerCase()
@@ -1052,6 +1049,25 @@ function getPhysicalOrderLines(order) {
     }));
 }
 
+function getDisplayPieceCount(order, item) {
+  const rawQty = Math.max(1, Number(item?.quantity || 1));
+  const dims = extractDimensions(item?.title || "");
+  if (!dims || !isTurfModel(item?.title)) return rawQty;
+  const turfLines = (order?.lineDetails || []).filter((line) => {
+    const lineDims = extractDimensions(line?.title || "");
+    return Boolean(lineDims && isTurfModel(line?.title));
+  });
+  if (turfLines.length !== 1) return rawQty;
+  const totalSqm = toNumber(order?.operations?.sqm || 0);
+  if (totalSqm <= dims.sqm) return rawQty;
+  const derivedQty = totalSqm / dims.sqm;
+  const roundedQty = Math.round(derivedQty);
+  if (roundedQty > 1 && Math.abs(derivedQty - roundedQty) < 0.08) {
+    return roundedQty;
+  }
+  return rawQty;
+}
+
 function focusElement(node) {
   if (!node) return;
   requestAnimationFrame(() => {
@@ -1073,7 +1089,6 @@ function buildDashboardActions() {
       const ops = order.operations || {};
       const missingAddress = !order.address || !order.city;
       const missingWarehouse = !ops.warehouse || ops.warehouse.status === "da-preparare" || ops.warehouse.status === "bloccato";
-      const needsCrew = ops.installation?.required && !ops.installation?.crew;
       const needsDate = ops.installation?.required && !ops.installation?.installDate;
       const openBalance = getOpenBalance(order);
       const needsAccounting = openBalance > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
@@ -1116,14 +1131,6 @@ function buildDashboardActions() {
         score = 90;
         kind = "warehouse";
         urgency = "warning";
-      } else if (needsCrew) {
-        title = state.lang === "it" ? "Assegna squadra" : "Assign crew";
-        reason = state.lang === "it"
-          ? `${composeClientName(order)} · ${getOrderNumber(order)} ha posa richiesta ma nessuna squadra`
-          : `${composeClientName(order)} · ${getOrderNumber(order)} requires install but has no crew`;
-        score = 80;
-        kind = "installation";
-        urgency = "info";
       } else if (needsDate) {
         title = state.lang === "it" ? "Conferma data posa" : "Confirm install date";
         reason = state.lang === "it"
@@ -1569,7 +1576,7 @@ function getOrderProgress(order) {
   return [
     Boolean(order.address && order.city),
     warehouseReady,
-    install.required ? Boolean(install.crew && install.installDate) : true,
+    install.required ? Boolean(install.installDate) : true,
     install.required ? install.status === "completata" : ["pronto", "da-ritirare", "ritirato"].includes(warehouse.status) || String(order.fulfillmentStatus || "").toLowerCase().includes("fulfill"),
     openBalance <= 0 && (!accounting.invoiceRequired || accounting.invoiceIssued),
   ];
@@ -1681,14 +1688,14 @@ function getWarehousePrepItems(order) {
       .filter((item) => item?.title)
       .map((item) => ({
         title: String(item.title).trim(),
-        quantity: Number(item.quantity || 1),
+        quantity: getDisplayPieceCount(order, item),
         included: item.included !== false,
         note: String(item.note || "").trim(),
       }));
   }
   return getPhysicalOrderLines(order).map((line) => ({
     title: line.title,
-    quantity: Number(line.quantity || 1),
+    quantity: getDisplayPieceCount(order, line),
     included: true,
     note: "",
   }));
@@ -1715,11 +1722,8 @@ function getNextOrderAction(order) {
   if (isRoutedToWarehouse(order) && getWarehousePreparedLines(order).length === 0) {
     return t("needsPrepSelection");
   }
-  if (isRoutedToInstallation(order) && !order.operations?.installation?.crew) {
-    return t("needsCrewAndDate");
-  }
   if (isRoutedToInstallation(order) && !order.operations?.installation?.installDate) {
-    return t("needsCrewAndDate");
+    return state.lang === "it" ? "Definisci la data posa" : "Set the installation date";
   }
   return t("noActionRequired");
 }
@@ -1750,27 +1754,7 @@ function buildRouteColumns() {
 
 function renderRouteBoard() {
   if (!ui.ordersRouteBoard) return;
-  const columns = buildRouteColumns();
-  ui.ordersRouteBoard.innerHTML = columns.map((column) => `
-    <article class="route-column" data-route-dropzone="${column.route}">
-      <div class="route-column-head">
-        <div>
-          <strong>${column.title}</strong>
-          <p>${column.copy}</p>
-        </div>
-        <span class="route-count">${column.orders.length}</span>
-      </div>
-      <div class="route-stack">
-        ${column.orders.length ? column.orders.slice(0, 3).map((order) => `
-          <div class="route-mini-card">
-            <strong>${composeClientName(order)} · ${getOrderNumber(order)}</strong>
-            <span>${order.operations?.product || "—"} · ${order.operations?.sqm || 0} mq</span>
-          </div>
-        `).join("") : `<div class="info-card">${t("noOrdersHere")}</div>`}
-        ${column.orders.length > 3 ? `<div class="route-board-compact-footer">+${column.orders.length - 3} ${state.lang === "it" ? "ordini" : "orders"}</div>` : ""}
-      </div>
-    </article>
-  `).join("");
+  ui.ordersRouteBoard.innerHTML = "";
 }
 
 function isRoutedToWarehouse(order) {
@@ -1788,7 +1772,7 @@ function isRoutedToWarehouse(order) {
 }
 
 function isRoutedToInstallation(order) {
-  return Boolean(order.operations?.installation?.selected && order.operations?.installation?.required);
+  return Boolean(order.operations?.installation?.required);
 }
 
 function getCrewForCurrentUser() {
@@ -1900,7 +1884,6 @@ function filterOrdersForView(kind) {
       order.city,
       order.operations?.product,
       getShippingModeLabel(order),
-      order.operations?.installation?.crew,
     ].join(" ").toLowerCase();
     if (search && !haystack.includes(search.toLowerCase())) return false;
     if (kind === "order") {
@@ -1946,20 +1929,10 @@ function renderInboxFlowControls(order) {
   const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
   const preparationDate = getShippingTargetDate(order);
-  const routeWarehouse = Boolean(order.operations?.warehouse?.selected);
-  const routeInstallation = Boolean(order.operations?.installation?.selected || order.operations?.installation?.required);
   return `
     <article class="guidance-card order-flow-card">
       <span class="panel-eyebrow">${state.lang === "it" ? "Gestione ufficio" : "Office handling"}</span>
       <div class="order-flow-grid">
-        <label class="checkline">
-          <input type="checkbox" data-order-flow-warehouse="${order.id}" ${routeWarehouse ? "checked" : ""} />
-          <span>${state.lang === "it" ? "Invia a inventario" : "Route to inventory"}</span>
-        </label>
-        <label class="checkline">
-          <input type="checkbox" data-order-flow-installation="${order.id}" ${routeInstallation ? "checked" : ""} />
-          <span>${state.lang === "it" ? "Invia a posa" : "Route to installation"}</span>
-        </label>
         <label class="field">
           <span>${state.lang === "it" ? "Stato preparazione" : "Preparation status"}</span>
           <select class="text-input" data-order-flow-status="${order.id}">
@@ -1993,19 +1966,16 @@ function renderInboxFlowControls(order) {
 }
 
 function filterInstallations() {
-  const crew = state.filters.installation;
-  return state.orders.filter((order) => {
-    if (!order.operations?.installation?.required) return false;
-    if (!isRoutedToInstallation(order)) return false;
-    if (state.currentUser?.role === "crew") {
-      const currentCrew = getCrewForCurrentUser();
-      if (!currentCrew) return false;
-      return order.operations.installation.crew === currentCrew
-        && Boolean(order.operations.installation.clientConfirmed || order.operations.installation.installDate);
-    }
-    if (crew === "all") return true;
-    return order.operations.installation.crew === crew;
-  });
+  return state.orders
+    .filter((order) => isRoutedToInstallation(order))
+    .sort((left, right) => {
+      const leftDate = String(left.operations?.installation?.installDate || "");
+      const rightDate = String(right.operations?.installation?.installDate || "");
+      if (leftDate && rightDate && leftDate !== rightDate) return leftDate.localeCompare(rightDate);
+      if (!leftDate && rightDate) return -1;
+      if (leftDate && !rightDate) return 1;
+      return new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0);
+    });
 }
 
 function applyStaticTranslations() {
@@ -2030,13 +2000,9 @@ function applyStaticTranslations() {
   setSubheading("#warehouse .panel-head h3", t("stockFlowTitle"));
   setSubheading("#shipping .panel-head h3", t("shippingTitle"));
   setSubheading("#installations .panel-head h3", t("installations"));
-  setFieldLabel(ui.installationForm, "required", state.lang === "it" ? "Richiede posa" : "Requires installation");
-  setFieldLabel(ui.installationForm, "crew", state.lang === "it" ? "Squadra" : "Crew");
   setFieldLabel(ui.installationForm, "installDate", state.lang === "it" ? "Data posa" : "Installation date");
   setFieldLabel(ui.installationForm, "installTime", state.lang === "it" ? "Ora" : "Time");
-  setFieldLabel(ui.installationForm, "clientConfirmed", state.lang === "it" ? "Cliente confermato" : "Customer confirmed");
-  setFieldLabel(ui.installationForm, "status", state.lang === "it" ? "Stato posa" : "Install status");
-  setFieldLabel(ui.installationForm, "reportNote", state.lang === "it" ? "Report squadra / note" : "Crew report / notes");
+  setFieldLabel(ui.installationForm, "reportNote", state.lang === "it" ? "Note squadra / cantiere" : "Crew / site notes");
   setFieldLabel(ui.accountingForm, "paymentMethod", state.lang === "it" ? "Metodo utilizzato" : "Method used");
   setFieldLabel(ui.accountingForm, "depositPaid", state.lang === "it" ? "Acconto registrato" : "Deposit recorded");
   setFieldLabel(ui.accountingForm, "balancePaid", state.lang === "it" ? "Saldo registrato" : "Balance recorded");
@@ -2202,17 +2168,15 @@ function renderDashboard() {
       const pct = Math.min(100, Math.round((totalSqm / 120) * 100));
       const gaugeColor = pct >= 80 ? "gauge-high" : pct >= 50 ? "gauge-mid" : "gauge-low";
       const isToday = index === 0;
-      const crews = [...new Set(items.map(o => o.operations?.installation?.crew).filter(Boolean))];
-      const crewLabel = crews.length ? crews.join(", ") + ": " : "";
       return `
         <article class="week-card ${isToday ? "week-card-today" : ""}">
           <div class="week-card-head">
             <strong>${isToday ? (state.lang === "it" ? "Oggi" : "Today") + " — " : ""}${formatDate(key)}</strong>
-            <span class="week-cap">${crewLabel}${Math.round(totalSqm)}/120 mq</span>
+            <span class="week-cap">${Math.round(totalSqm)}/120 mq</span>
           </div>
           <div class="cal-gauge"><div class="cal-gauge-fill ${gaugeColor}" style="width:${pct}%"></div></div>
           ${items.length
-            ? items.slice(0, 2).map((order) => `<div class="week-item">${composeClientName(order)} · ${getOrderNumber(order)}<small>${order.operations?.product || "—"} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${order.operations?.installation?.crew || "—"}</small></div>`).join("")
+            ? items.slice(0, 2).map((order) => `<div class="week-item">${composeClientName(order)} · ${getOrderNumber(order)}<small>${order.operations?.product || "—"} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</small></div>`).join("")
             : `<div class="week-empty">${state.lang === "it" ? "Nessuna posa" : "No installs"}</div>`}
         </article>
       `;
@@ -2264,7 +2228,7 @@ function buildActivityFeed() {
     const time = formatDate(order.updatedAt || order.createdAt);
     const type = getOrderType(order);
     if (ops.installation?.status === "completata") {
-      items.push({ actor: ops.installation?.crew || "Squadra", text: `ha completato la posa ${num} (${name}, ${Math.round(toNumber(ops.sqm || 0))} mq)`, time, color: "green" });
+      items.push({ actor: state.lang === "it" ? "Posa" : "Installation", text: `ha completato la posa ${num} (${name}, ${Math.round(toNumber(ops.sqm || 0))} mq)`, time, color: "green" });
     } else if (ops.warehouse?.status === "pronto") {
       items.push({ actor: state.lang === "it" ? "Magazzino" : "Warehouse", text: `ha preparato l'ordine ${num} (${name}, ${ops.product || "—"})`, time, color: "blue" });
     } else if (order.source === "shopify-live") {
@@ -2325,7 +2289,7 @@ function buildWarehouseAlerts() {
 function renderOrderStepper(order) {
   const warehouseDone = isRoutedToWarehouse(order);
   const installNeeded = order.operations?.installation?.required;
-  const installDone = installNeeded ? Boolean(order.operations?.installation?.crew || order.operations?.installation?.installDate) : warehouseDone;
+  const installDone = installNeeded ? Boolean(order.operations?.installation?.installDate) : warehouseDone;
   const closed = getOpenBalance(order) <= 0 && (String(order.fulfillmentStatus || "").toLowerCase().includes("fulfill") || order.operations?.warehouse?.shipped);
   return `
     <div class="stepper">
@@ -2420,10 +2384,11 @@ function renderOrders() {
     .map((item) => {
       const dims = extractDimensions(item.title);
       const catalog = inferCatalogEntry(item.title);
+      const displayQty = getDisplayPieceCount(order, item);
       const title = dims && catalog?.type === "turf"
         ? getCatalogLabel(item.title)
         : String(item.title || "");
-      const quantityLabel = `${item.quantity || 1} ${state.lang === "it" ? "pz" : "pcs"}`;
+      const quantityLabel = `${displayQty} ${state.lang === "it" ? "pz" : "pcs"}`;
       const formatMeasure = (value) => String(value ?? "").replace(".", ",");
       const meta = dims
         ? `${formatMeasure(dims.width)} x ${formatMeasure(dims.length)}`
@@ -2478,7 +2443,6 @@ function renderOrders() {
       ${order.phone ? `<button class="btn" data-action="call-client" data-id="${order.id}">${state.lang === "it" ? "Chiama cliente" : "Call customer"}</button>` : ""}
     </div>
   `;
-  const checklist = getOrderChecklist(order);
   const orderNoteMarkup = order.note
     ? `<div class="detail-note-chip">${escapeHtml(order.note)}</div>`
     : "";
@@ -2491,18 +2455,6 @@ function renderOrders() {
       ${renderInfoLine(t("attachmentsCount"), `${(order.attachments || []).length} ${state.lang === "it" ? "file" : "files"}`)}
     </div>
     ${orderNoteMarkup}
-    <article class="checklist-card">
-      <span class="panel-eyebrow">${t("officeChecklist")}</span>
-      <div class="checklist-grid">
-        ${checklist.map((item) => `
-          <div class="checklist-row ${item.done ? "is-done" : ""}">
-            <span class="checklist-dot"></span>
-            <strong>${item.label}</strong>
-          </div>
-        `).join("")}
-      </div>
-      <div class="checklist-note">${order.operations?.officeNote || "—"}</div>
-    </article>
     <div class="detail-actions">
       <button class="btn" data-action="open-maps" data-id="${order.id}">${state.lang === "it" ? "Apri Maps" : "Open Maps"}</button>
       <button class="btn danger" data-action="open-modal" data-id="${order.id}">${t("edit")}</button>
@@ -2512,12 +2464,14 @@ function renderOrders() {
     ? order.lineDetails.map((item) => {
       const dims = extractDimensions(item.title);
       const lineType = inferCatalogEntry(item.title)?.type || (isServiceLine(item.title) ? "service" : "other");
+      const displayQty = getDisplayPieceCount(order, item);
+      const formatMeasure = (value) => String(value ?? "").replace(".", ",");
       const meta = dims
-        ? `${dims.width}x${dims.length} · ${Math.round(dims.sqm * (item.quantity || 1))} mq`
+        ? `${formatMeasure(dims.width)} x ${formatMeasure(dims.length)} · ${displayQty} ${state.lang === "it" ? "pz" : "pcs"}`
         : lineType === "service"
           ? (state.lang === "it" ? "Servizio / voce non fisica" : "Service / non-physical line")
           : (state.lang === "it" ? "Riga Shopify" : "Shopify line");
-      return `<li><span><strong>${item.title}</strong><small class="line-item-meta">${meta}</small></span><strong>x${item.quantity || 1}</strong></li>`;
+      return `<li><span><strong>${item.title}</strong><small class="line-item-meta">${meta}</small></span><strong>x${displayQty}</strong></li>`;
     }).join("")
     : `<li><span>${state.lang === "it" ? "Nessun articolo disponibile" : "No items available"}</span><strong>—</strong></li>`;
   if (ui.orderPrepList) {
@@ -2913,14 +2867,37 @@ function refreshShippingDraftPreview() {
   renderDdtPreview(order);
 }
 
-function buildInstallationCalendar(orders) {
+function getInstallationWeekStart() {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
+  const day = start.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  start.setDate(start.getDate() + mondayOffset + (state.installationWeekOffset * 7));
+  return start;
+}
+
+function getInstallationWeekKeys() {
+  const start = getInstallationWeekStart();
+  return Array.from({ length: 7 }).map((_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+function isInstallationInCurrentWeek(order) {
+  const installDate = String(order.operations?.installation?.installDate || "");
+  if (!installDate) return false;
+  return getInstallationWeekKeys().includes(installDate);
+}
+
+function buildInstallationCalendar(orders) {
+  const start = getInstallationWeekStart();
   return Array.from({ length: 7 }).map((_, index) => {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
     const key = date.toISOString().slice(0, 10);
-    const items = orders.filter((order) => order.operations?.installation?.installDate === key);
+    const items = orders.filter((order) => String(order.operations?.installation?.installDate || "") === key);
     const totalSqm = items.reduce((sum, order) => sum + toNumber(order.operations?.sqm || 0), 0);
     return `
       <article class="cal-day">
@@ -2944,11 +2921,23 @@ function buildInstallationCalendar(orders) {
 
 function renderInstallations() {
   const orders = filterInstallations();
+  const weekOrders = orders.filter(isInstallationInCurrentWeek);
+  const backlogOrders = orders.filter((order) => !isInstallationInCurrentWeek(order));
   if (ui.installationCalendar) {
     ui.installationCalendar.innerHTML = buildInstallationCalendar(orders);
   }
-  ui.installationList.innerHTML = orders.length
-    ? orders.map((order) => {
+  if (ui.installationPrevWeekButton) {
+    const start = getInstallationWeekStart();
+    ui.installationPrevWeekButton.dataset.weekStart = start.toISOString().slice(0, 10);
+  }
+  if (ui.installationNextWeekButton) {
+    const start = getInstallationWeekStart();
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    ui.installationNextWeekButton.dataset.weekEnd = end.toISOString().slice(0, 10);
+  }
+  ui.installationList.innerHTML = backlogOrders.length
+    ? backlogOrders.map((order) => {
         const selected = order.id === state.selectedOrderId ? "selected" : "";
         const install = order.operations?.installation || {};
         return `
@@ -2957,19 +2946,21 @@ function renderInstallations() {
               <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
               <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")}</div>
             </div>
-            <div class="order-type-badge type-posa">${install.crew || (state.lang === "it" ? "Da assegnare" : "Unassigned")}</div>
-            <div class="order-amount">${install.installDate ? formatDate(install.installDate) : (state.lang === "it" ? "Backlog" : "Backlog")}</div>
-            <div class="action-badge ${install.status === "completata" ? "badge-success" : install.status === "in-corso" ? "badge-info" : "badge-warning"}">${install.status || t("toPlan")}</div>
+            <div class="order-type-badge type-posa">${getShippingModeLabel(order)}</div>
+            <div class="order-amount">${install.installDate ? formatDate(install.installDate) : (state.lang === "it" ? "Da pianificare" : "To schedule")}</div>
+            <div class="action-badge ${install.installDate ? "badge-info" : "badge-warning"}">${install.installDate ? t("scheduled") : t("toPlan")}</div>
           </article>
         `;
       }).join("")
-    : `<div class="info-card">${state.lang === "it" ? "Nessuna posa disponibile per il filtro corrente." : "No installs available for the current filter."}</div>`;
+    : `<div class="info-card">${state.lang === "it" ? "Nessuna posa in backlog per la settimana selezionata." : "No backlog installs for the selected week."}</div>`;
 
-  const order = getSelectedOrder();
+  const order = orders.find((item) => item.id === state.selectedOrderId) || weekOrders[0] || backlogOrders[0] || null;
+  if (order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     ui.installationDetailTitle.textContent = t("noSelection");
     if (ui.installationDetailSummary) ui.installationDetailSummary.innerHTML = "";
     ui.installationAttachments.innerHTML = "";
+    clearStatus(ui.installationStatus);
     return;
   }
   ui.installationDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
@@ -2977,18 +2968,15 @@ function renderInstallations() {
     ui.installationDetailSummary.innerHTML = [
       { label: "Prodotto", value: order.operations?.product || "Da definire", meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || "terra"}` },
       { label: "Cliente", value: composeClientName(order), meta: composeAddress(order) || "Indirizzo da completare" },
-      { label: "Squadra", value: order.operations?.installation?.crew || "Da assegnare", meta: order.operations?.installation?.clientConfirmed ? "Cliente confermato" : "Conferma cliente mancante" },
-      { label: "Programmazione", value: order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : "Data da definire", meta: order.operations?.installation?.installTime || "Ora da definire" },
+      { label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
+      { label: state.lang === "it" ? "Gestione logistica" : "Logistics handling", value: getShippingModeLabel(order), meta: order.operations?.installation?.installDate ? `${formatDate(order.operations.installation.installDate)} · ${order.operations?.installation?.installTime || "Ora da definire"}` : "Data da definire" },
     ].map(renderDetailBox).join("");
   }
-  ui.installationForm.required.value = order.operations?.installation?.required ? "yes" : "no";
-  ui.installationForm.crew.value = order.operations?.installation?.crew || "";
   ui.installationForm.installDate.value = order.operations?.installation?.installDate || "";
   ui.installationForm.installTime.value = order.operations?.installation?.installTime || "";
-  ui.installationForm.clientConfirmed.value = order.operations?.installation?.clientConfirmed ? "yes" : "no";
-  ui.installationForm.status.value = order.operations?.installation?.status || "da-pianificare";
   ui.installationForm.reportNote.value = order.operations?.installation?.reportNote || "";
   ui.installationAttachments.innerHTML = renderAttachmentGrid(order.attachments || []);
+  clearStatus(ui.installationStatus);
 }
 
 function renderAccounting() {
@@ -3773,14 +3761,11 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   const statusInput = document.querySelector(`[data-order-flow-status="${orderId}"]`);
   const modeInput = document.querySelector(`[data-order-flow-mode="${orderId}"]`);
   const dateInput = document.querySelector(`[data-order-flow-date="${orderId}"]`);
-  const warehouseInput = document.querySelector(`[data-order-flow-warehouse="${orderId}"]`);
-  const installationInput = document.querySelector(`[data-order-flow-installation="${orderId}"]`);
   const nextStatus = statusInput?.value || "da-preparare";
   const nextMode = modeInput?.value || "da-definire";
   const nextDate = dateInput?.value || "";
   const shouldRouteWarehouse = Boolean(
-    warehouseInput?.checked
-    || nextMode !== "da-definire"
+    nextMode !== "da-definire"
     || nextStatus !== "da-preparare"
     || nextDate,
   );
@@ -3790,10 +3775,6 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
       status: nextStatus,
       fulfillmentMode: nextMode,
       preparationDate: nextDate,
-    },
-    installation: {
-      selected: Boolean(installationInput?.checked),
-      required: Boolean(installationInput?.checked),
     },
   };
   const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
@@ -4089,22 +4070,25 @@ async function saveInstallation(event) {
   const order = getSelectedOrder();
   if (!order) return;
   const form = new FormData(ui.installationForm);
+  clearStatus(ui.installationStatus);
   const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
     method: "POST",
     body: JSON.stringify({
       installation: {
-        required: form.get("required") === "yes",
-        crew: form.get("crew"),
         installDate: form.get("installDate"),
         installTime: form.get("installTime"),
-        clientConfirmed: form.get("clientConfirmed") === "yes",
-        status: form.get("status"),
         reportNote: form.get("reportNote"),
       },
     }),
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   render();
+  setStatus(
+    ui.installationStatus,
+    "success",
+    state.lang === "it" ? "Programmazione posa aggiornata." : "Installation plan updated.",
+  );
+  flashButtonFeedback(event.submitter);
 }
 
 async function saveAccounting(event) {
@@ -4329,6 +4313,24 @@ function openMaps(order) {
   window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank", "noopener,noreferrer");
 }
 
+function openRoute(order) {
+  const query = composeAddress(order) || order.city || composeClientName(order);
+  if (!query) {
+    window.alert("Manca un indirizzo o una città da aprire nel navigatore.");
+    return;
+  }
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`, "_blank", "noopener,noreferrer");
+}
+
+function sendOrderEmail(order) {
+  if (!order?.email) {
+    window.alert("Manca un indirizzo email per questo cliente.");
+    return;
+  }
+  const subject = encodeURIComponent(`Aggiornamento ordine ${getOrderNumber(order)}`);
+  window.location.href = `mailto:${order.email}?subject=${subject}`;
+}
+
 function prefillInventoryForm(product) {
   if (!ui.inventoryForm) return;
   ui.inventoryForm.product.value = product || "";
@@ -4406,21 +4408,8 @@ function handleGlobalClick(event) {
     prefillInventoryForm(button.dataset.product || "");
     return;
   }
-  if (action === "route-warehouse") {
-    updateOrderRoutingById(id, { warehouse: { selected: true }, installation: { selected: false } });
-    return;
-  }
   if (action === "save-inbox-flow") {
     saveInboxOrderFlow(id, null, button);
-    return;
-  }
-  if (action === "route-installation") {
-    updateOrderRoutingById(id, { warehouse: { selected: true }, installation: { selected: true, required: true } });
-    setView("installations");
-    return;
-  }
-  if (action === "clear-routing-order") {
-    updateOrderRoutingById(id, { warehouse: { selected: false }, installation: { selected: false } });
     return;
   }
   const order = state.orders.find((item) => item.id === id) || getSelectedOrder();
@@ -4650,9 +4639,29 @@ if (ui.ddtForm) {
   });
 }
 bindEvent(ui.installationForm, "submit", saveInstallation);
+bindEvent(ui.installationPrevWeekButton, "click", () => {
+  state.installationWeekOffset -= 1;
+  renderInstallations();
+});
+bindEvent(ui.installationNextWeekButton, "click", () => {
+  state.installationWeekOffset += 1;
+  renderInstallations();
+});
 bindEvent(ui.installationMapsButton, "click", () => {
   const order = getSelectedOrder();
   if (order) openMaps(order);
+});
+bindEvent(ui.installationRouteButton, "click", () => {
+  const order = getSelectedOrder();
+  if (order) openRoute(order);
+});
+bindEvent(ui.installationCallButton, "click", () => {
+  const order = getSelectedOrder();
+  if (order?.phone) window.open(`tel:${order.phone}`);
+});
+bindEvent(ui.installationEmailButton, "click", () => {
+  const order = getSelectedOrder();
+  if (order) sendOrderEmail(order);
 });
 bindEvent(ui.installationAttachmentButton, "click", () => openAttachmentPicker("installation"));
 bindEvent(ui.accountingForm, "submit", saveAccounting);
