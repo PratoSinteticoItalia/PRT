@@ -1072,6 +1072,11 @@ function ensureCoverageTeam(teamName) {
 }
 
 function getSelectedInstallationCrew() {
+  const forcedCrew = getCrewForCurrentUser();
+  if (forcedCrew) {
+    state.selectedInstallationCrew = forcedCrew;
+    return forcedCrew;
+  }
   const crewsAvailable = getInstallationCrewNames();
   if (!crewsAvailable.length) return "";
   if (crewsAvailable.includes(state.selectedInstallationCrew)) return state.selectedInstallationCrew;
@@ -1089,8 +1094,9 @@ function selectInstallationCrew(teamName) {
 }
 
 function buildInstallationCrewOptions(selectedCrew = "") {
-  const crewNames = getInstallationCrewNames();
-  const selectedValue = selectedCrew || getSelectedInstallationCrew();
+  const forcedCrew = getCrewForCurrentUser();
+  const crewNames = forcedCrew ? [forcedCrew] : getInstallationCrewNames();
+  const selectedValue = forcedCrew || selectedCrew || getSelectedInstallationCrew();
   return [`<option value="">${state.lang === "it" ? "Seleziona squadra" : "Select crew"}</option>`]
     .concat(
       crewNames.map((crewName) => `<option value="${escapeHtml(crewName)}" ${crewName === selectedValue ? "selected" : ""}>${escapeHtml(crewName)}</option>`)
@@ -2323,6 +2329,13 @@ function getCrewForCurrentUser() {
   if (/alpha/i.test(state.currentUser?.name || "")) return "Alpha";
   if (/beta/i.test(state.currentUser?.name || "")) return "Beta";
   if (/delta/i.test(state.currentUser?.name || "")) return "Delta";
+  const availableCrews = getInstallationCrewNames();
+  const normalizedUserName = normalizeLooseString(state.currentUser?.name || "");
+  const matchedCrew = availableCrews.find((crewName) => {
+    const normalizedCrew = normalizeLooseString(crewName);
+    return normalizedCrew && (normalizedCrew === normalizedUserName || normalizedUserName.includes(normalizedCrew));
+  });
+  if (matchedCrew) return matchedCrew;
   return "";
 }
 
@@ -2547,8 +2560,13 @@ function renderInboxFlowControls(order) {
 }
 
 function filterInstallations() {
+  const forcedCrew = getCrewForCurrentUser();
   return state.orders
     .filter((order) => isRoutedToInstallation(order))
+    .filter((order) => {
+      if (!forcedCrew) return true;
+      return normalizeLooseString(order.operations?.installation?.crew || "") === normalizeLooseString(forcedCrew);
+    })
     .sort((left, right) => {
       const leftDate = String(left.operations?.installation?.installDate || "");
       const rightDate = String(right.operations?.installation?.installDate || "");
@@ -3563,7 +3581,8 @@ function renderInstallations() {
   ui.installationForm.installTime.value = order.operations?.installation?.installTime || "";
   if (ui.installationCrew) {
     ui.installationCrew.innerHTML = buildInstallationCrewOptions(order.operations?.installation?.crew || "");
-    ui.installationCrew.value = order.operations?.installation?.crew || "";
+    ui.installationCrew.value = getCrewForCurrentUser() || order.operations?.installation?.crew || "";
+    ui.installationCrew.disabled = state.currentUser?.role === "crew";
   }
   ui.installationForm.reportNote.value = order.operations?.installation?.reportNote || "";
   ui.installationAttachments.innerHTML = renderAttachmentGrid(order.attachments || []);
@@ -4782,7 +4801,7 @@ async function saveInstallation(event) {
       installation: {
         installDate: form.get("installDate"),
         installTime: form.get("installTime"),
-        crew: form.get("crew"),
+        crew: getCrewForCurrentUser() || form.get("crew"),
         reportNote: form.get("reportNote"),
       },
     }),
