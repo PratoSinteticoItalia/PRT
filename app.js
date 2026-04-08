@@ -3067,6 +3067,7 @@ function renderOrderRow(order, view = "orders") {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const orderType = getOrderType(order);
   const stage = getUnifiedOrderStage(order);
+  const nextAction = getNextOrderAction(order);
   const stageChipTone = stage.tone === "green"
     ? "badge-success"
     : stage.tone === "red"
@@ -3076,9 +3077,13 @@ function renderOrderRow(order, view = "orders") {
         : "badge-warning";
   return `
     <article class="order-row inbox-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="${view}">
-      <div>
+      <div class="inbox-row-main">
         <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-        <div class="order-meta">${order.operations?.product || "Da definire"} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")} &middot; ${getNextOrderAction(order)}</div>
+        <div class="order-meta">${order.operations?.product || "Da definire"} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")}</div>
+        <div class="inbox-row-next-step">
+          <span class="panel-eyebrow">${state.lang === "it" ? "Prossimo passo" : "Next step"}</span>
+          <strong>${nextAction}</strong>
+        </div>
       </div>
       <div class="order-type-badge ${orderType.tone === "status-amber" ? "type-posa" : orderType.tone === "status-blue" ? "type-spedizione" : "type-ritiro"}">${orderType.label}</div>
       <div class="order-amount">${formatCurrency(order.total)}</div>
@@ -3142,35 +3147,21 @@ function renderOrders() {
   const nextAction = getNextOrderAction(order);
   const stage = getUnifiedOrderStage(order);
   const prepItems = getWarehousePrepItems(order);
+  const routeLabel = getInboxRouteLabel(order);
+  const visibilityLabel = getInboxVisibilityLabel(order);
+  const shippingModeLabel = getShippingModeLabel(order);
+  const prepSummary = prepItems.length
+    ? prepItems
+      .filter((item) => item.included !== false)
+      .slice(0, 3)
+      .map((item) => `${item.title} x${item.quantity}`)
+      .join(" · ")
+    : (state.lang === "it" ? "Nessuna riga selezionata" : "No prep lines selected");
+  const paymentSummary = getOpenBalance(order) > 0
+    ? (state.lang === "it" ? `Residuo ${formatCurrency(getOpenBalance(order))}` : `Open balance ${formatCurrency(getOpenBalance(order))}`)
+    : (state.lang === "it" ? "Saldo operativo allineato" : "Balance aligned");
   ui.orderDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
   ui.orderDetailBadge.innerHTML = statusChip(label, tone);
-  const pieceTags = (order.lineDetails || [])
-    .map((item) => {
-      const dims = extractDimensions(item.title);
-      const catalog = inferCatalogEntry(item.title);
-      const displayQty = getDisplayPieceCount(order, item);
-      const title = dims && catalog?.type === "turf"
-        ? getCatalogLabel(item.title)
-        : String(item.title || "");
-      const quantityLabel = `${displayQty} ${state.lang === "it" ? "pz" : "pcs"}`;
-      const formatMeasure = (value) => String(value ?? "").replace(".", ",");
-      const meta = dims
-        ? `${formatMeasure(dims.width)} x ${formatMeasure(dims.length)}`
-        : quantityLabel;
-      const subMeta = dims ? quantityLabel : "";
-      return `
-        <div class="piece-tag intero">
-          <strong>${escapeHtml(title)}</strong>
-          <span>${meta}</span>
-          ${subMeta ? `<small>${subMeta}</small>` : ""}
-        </div>
-      `;
-    })
-    .join("");
-  const accessoryRows = getPhysicalOrderLines(order)
-    .filter((item) => inferCatalogEntry(item.title)?.type === "material" || inferCatalogEntry(item.title)?.type === "decorative")
-    .map((item) => `<div class="detail-row"><span class="detail-row-label">${item.title}</span><span class="detail-row-value">x${item.quantity}</span></div>`)
-    .join("");
   ui.orderDetailSummary.innerHTML = `
     <div class="detail-header">
       <div>
@@ -3180,27 +3171,27 @@ function renderOrders() {
       ${statusChip(getPaymentLabel(order.financialStatus), tone)}
     </div>
     ${renderOrderStepper(order)}
-    <div class="detail-section">
-      <div class="detail-section-title">${state.lang === "it" ? "Cliente" : "Customer"}</div>
-      <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Telefono" : "Phone"}</span><span class="detail-row-value">${order.phone ? `<a href="tel:${order.phone}" class="detail-link detail-link-phone">${order.phone}</a>` : `<span class="detail-missing">—</span>`}</span></div>
-      <div class="detail-row"><span class="detail-row-label">Email</span><span class="detail-row-value">${order.email || "—"}</span></div>
-      <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Indirizzo" : "Address"}</span><span class="detail-row-value">${composeAddress(order) ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(composeAddress(order))}" target="_blank" rel="noopener" class="detail-link">${composeAddress(order)}</a>` : `<span class="detail-missing">${state.lang === "it" ? "Da completare" : "To complete"}</span>`}</span></div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">${state.lang === "it" ? "Prodotto e pezzi" : "Product and pieces"}</div>
-      <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Prodotto" : "Product"}</span><span class="detail-row-value">${order.operations?.product || t("undefined")}</span></div>
-      <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Totale" : "Total"}</span><span class="detail-row-value">${order.operations?.sqm || 0} mq &middot; ${order.operations?.installation?.required ? t("supplyInstall") : t("supply")} &middot; ${order.operations?.surface || "terra"}</span></div>
-      ${pieceTags ? `<div class="detail-pieces">${pieceTags}</div>` : ""}
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">${state.lang === "it" ? "Materiali accessori" : "Accessory materials"}</div>
-      ${accessoryRows || `<div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Nessun accessorio" : "No accessory items"}</span><span class="detail-row-value">—</span></div>`}
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">${state.lang === "it" ? "Pagamento" : "Payment"}</div>
-      <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Totale" : "Total"}</span><span class="detail-row-value detail-row-value-mono">${formatCurrency(order.total)}</span></div>
-      <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Incassato Shopify" : "Collected on Shopify"}</span><span class="detail-row-value" style="color:${getShopifyPaidAmount(order) > 0 ? "#16a34a" : "inherit"}">${formatCurrency(getShopifyPaidAmount(order))}</span></div>
-      <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Residuo" : "Residual"}</span><span class="detail-row-value" style="color:${getOpenBalance(order) > 0 ? "#dc2626" : "#16a34a"};font-weight:800">${formatCurrency(getOpenBalance(order))}</span></div>
+    <div class="detail-grid detail-grid-tight order-summary-grid">
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Situazione ordine" : "Order status",
+        value: stage.label,
+        meta: nextAction,
+      })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Cliente e cantiere" : "Customer and site",
+        value: composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete"),
+        meta: order.phone || order.email || (state.lang === "it" ? "Contatti da verificare" : "Contacts to verify"),
+      })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Materiale e percorso" : "Materials and route",
+        value: `${order.operations?.product || t("undefined")} · ${order.operations?.sqm || 0} mq`,
+        meta: `${routeLabel} · ${shippingModeLabel}`,
+      })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Pagamento" : "Payment",
+        value: formatCurrency(order.total),
+        meta: `${paymentSummary} · ${state.lang === "it" ? "Shopify incassato" : "Shopify paid"} ${formatCurrency(getShopifyPaidAmount(order))}`,
+      })}
     </div>
     <div class="detail-actions detail-actions-primary">
       ${composeAddress(order) ? `<button class="btn" data-action="open-maps" data-id="${order.id}">${state.lang === "it" ? "Apri Maps" : "Open Maps"}</button>` : ""}
@@ -3212,13 +3203,22 @@ function renderOrders() {
     : "";
   ui.orderOfficeSummary.innerHTML = `
     ${renderInboxFlowControls(order)}
-    <div class="detail-grid detail-grid-tight">
-      ${renderInfoLine(t("officeStatus"), stage.label)}
-      ${renderInfoLine(state.lang === "it" ? "Prossima azione" : "Next action", nextAction)}
-      ${renderInfoLine(t("jobType"), order.operations?.installation?.required ? t("supplyInstall") : t("supply"))}
-      ${renderInfoLine(state.lang === "it" ? "Uscita merce" : "Goods dispatch", getShippingModeLabel(order))}
-      ${renderInfoLine(t("paymentMethod"), getEffectivePaymentMethod(order))}
-      ${renderInfoLine(t("attachmentsCount"), `${(order.attachments || []).length} ${state.lang === "it" ? "file" : "files"}`)}
+    <div class="detail-grid detail-grid-tight order-office-grid">
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Decisione ufficio" : "Office decision",
+        value: visibilityLabel,
+        meta: `${routeLabel} · ${order.operations?.installation?.required ? t("supplyInstall") : t("supply")}`,
+      })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Preparazione reale" : "Actual preparation",
+        value: getShippingTargetLabel(order),
+        meta: prepSummary,
+      })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Presidio amministrativo" : "Administrative follow-up",
+        value: getEffectivePaymentMethod(order),
+        meta: `${(order.attachments || []).length} ${state.lang === "it" ? "allegati" : "attachments"} · ${paymentSummary}`,
+      })}
     </div>
     ${orderNoteMarkup}
   `;
