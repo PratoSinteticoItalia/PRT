@@ -617,6 +617,7 @@ const ui = {
   topbarAvatar: document.querySelector(".topbar-avatar"),
   mobileMenuButton: document.getElementById("mobile-menu-button"),
   mobileMenuClose: document.getElementById("mobile-menu-close"),
+  mobileLogoutButton: document.getElementById("mobile-logout-button"),
   mobileSidebarBackdrop: document.getElementById("mobile-sidebar-backdrop"),
   topbarAlertCount: document.getElementById("topbar-alert-count"),
   langButtons: Array.from(document.querySelectorAll(".lang-btn")),
@@ -2919,9 +2920,11 @@ function updateShell() {
 
 function getSoldSqmEstimate() {
   return state.orders.reduce((sum, order) => {
-    const sqm = toNumber(order.operations?.sqm || 0);
-    if (sqm <= 0) return sum;
     if (order.operations?.officeStatus === "bozza") return sum;
+    const turfLines = getPhysicalOrderLines(order).filter((line) => isTurfModel(line.title) && line.dimensions?.sqm);
+    const measuredSqm = turfLines.reduce((lineSum, line) => lineSum + (toNumber(line.dimensions?.sqm) * getDisplayPieceCount(order, line)), 0);
+    const sqm = measuredSqm > 0 ? measuredSqm : toNumber(order.operations?.sqm || 0);
+    if (sqm <= 0) return sum;
     return sum + sqm;
   }, 0);
 }
@@ -5863,6 +5866,12 @@ ui.langButtons.forEach((button) => button.addEventListener("click", () => {
 ui.quickViewButtons.forEach((button) => button.addEventListener("click", () => setView(button.dataset.quickView)));
 bindEvent(ui.logoutButton, "click", async () => {
   await apiFetch("/api/logout", { method: "POST" });
+  state.currentUser = null;
+  showAuth();
+});
+bindEvent(ui.mobileLogoutButton, "click", async () => {
+  await apiFetch("/api/logout", { method: "POST" });
+  state.mobileMenuOpen = false;
   state.currentUser = null;
   showAuth();
 });
