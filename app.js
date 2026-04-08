@@ -2410,7 +2410,7 @@ function renderOrders() {
   renderRouteBoard();
   ui.ordersList.innerHTML = orders.length ? orders.map((order) => renderOrderRow(order, "orders")).join("") : `<div class="info-card">${t("noOrdersAvailable")}</div>`;
   const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
-  if (order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
+  if (state.currentView === "shipping" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     ui.orderDetailTitle.textContent = t("noSelection");
     ui.orderDetailBadge.innerHTML = "";
@@ -2999,7 +2999,7 @@ function renderInstallations() {
     : `<div class="info-card">${state.lang === "it" ? "Nessuna posa in backlog per la settimana selezionata." : "No backlog installs for the selected week."}</div>`;
 
   const order = orders.find((item) => item.id === state.selectedOrderId) || weekOrders[0] || backlogOrders[0] || null;
-  if (order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
+  if (state.currentView === "orders" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     ui.installationDetailTitle.textContent = t("noSelection");
     if (ui.installationDetailSummary) ui.installationDetailSummary.innerHTML = "";
@@ -3123,7 +3123,8 @@ function renderAccounting() {
 }
 
 async function importShopifyPayment() {
-  const order = getSelectedOrder();
+  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
+  if (state.currentView === "warehouse" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) return;
   const shopifyPaid = getShopifyPaidAmount(order);
   if (shopifyPaid <= 0) {
@@ -3375,7 +3376,7 @@ function renderShipping() {
   }
 
   const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
-  if (order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
+  if (state.currentView === "installations" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     if (ui.shippingDetailTitle) ui.shippingDetailTitle.textContent = t("noSelection");
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
@@ -3803,7 +3804,8 @@ async function saveOrder(event) {
 }
 
 async function deleteSelectedOrder() {
-  const order = getSelectedOrder();
+  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
+  if (state.currentView === "accounting" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) return;
   await apiFetch(`/api/orders/${encodeURIComponent(order.id)}`, { method: "DELETE" });
   state.orders = state.orders.filter((item) => item.id !== order.id);
