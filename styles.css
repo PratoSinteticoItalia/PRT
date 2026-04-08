@@ -2600,6 +2600,16 @@ button.is-feedback,
   padding: 16px;
 }
 
+.wh-stat[data-action] {
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.wh-stat[data-action]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(31, 44, 32, 0.08);
+}
+
 .wh-stat.soft { background: #f5f4ed; }
 .wh-stat.danger { background: #fdf0ef; }
 .wh-stat.neutral { background: #eaf7f7; }

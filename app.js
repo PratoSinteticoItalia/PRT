@@ -2146,8 +2146,19 @@ function getPhysicalMaterialLines(order) {
 
 function orderNeedsWarehouseWork(order) {
   if (!isRoutedToWarehouse(order)) return false;
-  if (order.operations?.warehouse?.shipped) return false;
+  if (isLogisticsOrderCompleted(order)) return false;
   return true;
+}
+
+function isLogisticsOrderCompleted(order) {
+  const warehouse = order.operations?.warehouse || {};
+  const status = String(warehouse.status || "").trim();
+  const mode = String(warehouse.fulfillmentMode || "").trim();
+  return Boolean(
+    warehouse.shipped
+    || status === "ritirato"
+    || (mode === "corriere" && warehouse.carrierPassed),
+  );
 }
 
 function getPreparedProductLines(order) {
@@ -2452,7 +2463,7 @@ function filterOrdersForView(kind) {
       return true;
     }
     if (kind === "warehouse") {
-      return !order.operations?.warehouse?.shipped;
+      return !isLogisticsOrderCompleted(order);
     }
     if (kind === "accounting") {
       if (filter === "open") return getOpenBalance(order) > 0;
@@ -2472,7 +2483,7 @@ function filterOrdersForView(kind) {
       return true;
     }
     if (kind === "shipping") {
-      if (order.operations?.warehouse?.shipped && filter !== "all") return false;
+      if (isLogisticsOrderCompleted(order)) return false;
       const mode = order.operations?.warehouse?.fulfillmentMode;
       if (filter === "courier") return mode === "corriere";
       if (filter === "pickup") return mode === "ritiro";
@@ -3132,6 +3143,10 @@ function renderInventoryCard(group) {
   const netValue = group.isModel ? group.availableSqm : stockValue;
   const netLabel = group.isModel ? `${Math.round(Math.max(0, group.availableSqm))} mq` : `${Math.max(0, stockValue)} u`;
   const unitDetailLabel = inferCatalogEntry(group.product)?.unitLabel || (state.lang === "it" ? "unità" : "units");
+  const firstDemandOrderId = group.demandOrders[0] || "";
+  const demandActionAttrs = firstDemandOrderId
+    ? `data-action="open-modal" data-id="${firstDemandOrderId}" role="button" tabindex="0" title="${state.lang === "it" ? "Apri ordine collegato" : "Open linked order"}"`
+    : "";
 
   const deficitAlert = hasDeficit || (!hasStock && hasDemand)
     ? `<div class="wh-deficit-alert">
@@ -3171,10 +3186,10 @@ function renderInventoryCard(group) {
           <div class="wh-stat-value">${stockLabel}</div>
           <div class="wh-stat-sub">${group.isModel ? `${totalPieces} ${state.lang === "it" ? "pezzi caricati" : "pieces loaded"}` : `${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "caricati" : "loaded"}`}</div>
         </div>
-        <div class="wh-stat ${hasDemand ? "danger" : "soft"}">
+        <div class="wh-stat ${hasDemand ? "danger" : "soft"}" ${demandActionAttrs}>
           <div class="wh-stat-label">${state.lang === "it" ? "Fabbisogno ordini" : "Order demand"}</div>
           <div class="wh-stat-value" ${hasDemand && hasDeficit ? 'style="color:#dc2626"' : ""}>${demandLabel}</div>
-          <div class="wh-stat-sub">${group.demandOrders.length} ${state.lang === "it" ? "ordini da preparare" : "orders to prepare"}</div>
+          <div class="wh-stat-sub">${group.demandOrders.length} ${state.lang === "it" ? "ordini da preparare" : "orders to prepare"}${firstDemandOrderId ? ` · ${state.lang === "it" ? "clicca per aprire" : "click to open"}` : ""}</div>
         </div>
         <div class="wh-stat ${hasDeficit ? "danger" : "neutral"}">
           <div class="wh-stat-label">${state.lang === "it" ? "Disponibile netto" : "Net available"}</div>
@@ -5192,6 +5207,14 @@ function handleGlobalClick(event) {
   }
 }
 
+function handleGlobalActionKeydown(event) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const trigger = event.target.closest("[data-action][role='button']");
+  if (!trigger) return;
+  event.preventDefault();
+  trigger.click();
+}
+
 document.addEventListener("dragstart", (event) => {
   const card = event.target.closest("[data-order-draggable='true']");
   if (!card) return;
@@ -5464,6 +5487,7 @@ bindEvent(ui.deleteOrderButton, "click", deleteSelectedOrder);
 ui.closeModalTriggers.forEach((item) => item.addEventListener("click", closeOrderModal));
 bindEvent(ui.attachmentInput, "change", handleAttachmentChange);
 document.addEventListener("click", handleGlobalClick);
+document.addEventListener("keydown", handleGlobalActionKeydown);
 
 loadSession();
 
