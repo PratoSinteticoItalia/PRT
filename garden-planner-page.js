@@ -39,6 +39,20 @@ const INFILL_FO30 = {
   pricePerTon: 92,
 };
 
+const DEFAULT_TRAVEL_SETTINGS = {
+  departureBase: "Orta di Atella",
+  kmTotal: 0,
+  fuelPer100Km: 9.5,
+  fuelPrice: 1.73,
+  tollCost: 0,
+  driveMinutes: 0,
+  routeNote: "",
+  routeStatus: "",
+  routeLoading: false,
+};
+
+const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
+
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
   { id: "igienizzante_prato", name: "Igienizzante anti-odore prato sintetico", unit: "pz", pricePerUnit: 14.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone trattamento" },
@@ -65,6 +79,45 @@ const getLocalISODate = () => {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
+
+async function geocodeItalianAddress(query) {
+  const cleaned = String(query || "").trim();
+  if (!cleaned) throw new Error("missing_address");
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=it&q=${encodeURIComponent(cleaned)}`;
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+    },
+  });
+  if (!response.ok) throw new Error("geocoding_failed");
+  const data = await response.json();
+  const first = Array.isArray(data) ? data[0] : null;
+  if (!first) throw new Error("address_not_found");
+  return {
+    lat: Number(first.lat),
+    lon: Number(first.lon),
+    label: first.display_name || cleaned,
+  };
+}
+
+async function fetchDrivingRoute(origin, destination) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${origin.lon},${origin.lat};${destination.lon},${destination.lat}?overview=false&alternatives=false&steps=false`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("routing_failed");
+  const data = await response.json();
+  const route = data?.routes?.[0];
+  if (!route) throw new Error("route_not_found");
+  return {
+    distanceKm: route.distance / 1000,
+    durationMinutes: route.duration / 60,
+  };
+}
+
+function estimateItalianTolls(distanceKm) {
+  const km = Math.max(0, Number(distanceKm) || 0);
+  if (km < 20) return 0;
+  return km * ESTIMATED_TOLL_RATE_CLASS_B;
+}
 
 function sanitizeDims(shape, dims) {
   const safe = {
@@ -521,10 +574,25 @@ function TravelPlanner({ travel, setTravel }) {
         <DimInput label="Prezzo carburante" value={travel.fuelPrice} onChange={v => upd("fuelPrice", v)} unit="€/l" />
         <DimInput label="Caselli" value={travel.tollCost} onChange={v => upd("tollCost", v)} unit="€" />
       </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "10px 14px", borderRadius: 10, background: "#f7f7f2", border: "1px solid " + B.borderLight }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: B.dark }}>
+            {travel.routeLoading ? "Calcolo tragitto in corso..." : "Calcolo automatico stile navigatore"}
+          </div>
+          <div style={{ fontSize: 11, color: B.textMuted, marginTop: 3 }}>
+            {travel.routeStatus || "Inserisci sede di partenza e indirizzo cantiere: km, tempo, carburante e stima caselli si aggiornano in automatico."}
+          </div>
+        </div>
+        {travel.driveMinutes > 0 ? (
+          <div style={{ padding: "8px 12px", borderRadius: 999, background: B.infoBg, border: "1px solid #bbdefb", color: B.info, fontSize: 12, fontWeight: 700 }}>
+            Tempo stimato: {Math.round(travel.driveMinutes)} min
+          </div>
+        ) : null}
+      </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <MetricCard label="Litri stimati" value={`${fmt(liters, 1)} l`} accent />
         <MetricCard label="Costo carburante" value={fmtE(fuelCost)} />
-        <MetricCard label="Caselli" value={fmtE(tollCost)} />
+        <MetricCard label="Caselli" value={fmtE(tollCost)} sub="Stima modificabile" />
         <MetricCard label="Costo trasferta" value={fmtE(tripCost)} warning={tripCost > 0} sub={travel.departureBase ? `Partenza: ${travel.departureBase}` : "Compila la sede di partenza"} />
       </div>
     </div>
@@ -793,7 +861,7 @@ const fieldInp = { width: "100%", padding: "10px 14px", border: "1.5px solid " +
    ═══════════════════════════════════════════ */
 function GardenPlanner() {
   const [projectInfo, setProjectInfo] = useState({ client: "", address: "", date: getLocalISODate(), notes: "" });
-  const [travel, setTravel] = useState({ departureBase: "Orta di Atella", kmTotal: 0, fuelPer100Km: 9.5, fuelPrice: 1.82, tollCost: 0 });
+  const [travel, setTravel] = useState(DEFAULT_TRAVEL_SETTINGS);
   const [shape, setShape] = useState("rect");
   const [dims, setDims] = useState({ a: 10, b: 6, c: 3, d: 3 });
   const [customPts, setCustomPts] = useState([]);
@@ -826,6 +894,60 @@ function GardenPlanner() {
   useEffect(() => {
     setSelectedBorderEdges(borderEdges.map(edge => edge.id));
   }, [layoutKey, borderEdges]);
+
+  useEffect(() => {
+    const origin = String(travel.departureBase || "").trim();
+    const destination = String(projectInfo.address || "").trim();
+    if (!origin || !destination) {
+      setTravel(prev => ({
+        ...prev,
+        routeLoading: false,
+        routeStatus: "",
+        routeNote: "",
+        driveMinutes: 0,
+      }));
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      setTravel(prev => ({
+        ...prev,
+        routeLoading: true,
+        routeStatus: "Recupero distanza e tempi di viaggio...",
+      }));
+      try {
+        const [originPoint, destinationPoint] = await Promise.all([
+          geocodeItalianAddress(origin),
+          geocodeItalianAddress(destination),
+        ]);
+        const route = await fetchDrivingRoute(originPoint, destinationPoint);
+        const tollEstimate = estimateItalianTolls(route.distanceKm);
+        if (cancelled) return;
+        setTravel(prev => ({
+          ...prev,
+          kmTotal: Number(route.distanceKm.toFixed(1)),
+          driveMinutes: Number(route.durationMinutes.toFixed(0)),
+          tollCost: Number(tollEstimate.toFixed(2)),
+          routeLoading: false,
+          routeNote: `${originPoint.label} → ${destinationPoint.label}`,
+          routeStatus: `Percorso aggiornato automaticamente. Caselli stimati su tariffa media autostradale classe B.`,
+        }));
+      } catch (error) {
+        if (cancelled) return;
+        setTravel(prev => ({
+          ...prev,
+          routeLoading: false,
+          routeStatus: "Non riesco a calcolare il tragitto automatico con questi indirizzi. Puoi correggerli o lasciare i valori manuali.",
+        }));
+      }
+    }, 850);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [projectInfo.address, travel.departureBase]);
 
   return (
     <div style={{ fontFamily: "'Manrope', 'Segoe UI', sans-serif", minHeight: "100vh", background: B.cream }}>
