@@ -781,6 +781,7 @@ function staticLabels() {
     ["[data-order-filter='attention']", t("complete")],
     ["[data-order-filter='warehouse']", t("warehouse")],
     ["[data-order-filter='installation']", t("installationShort")],
+    ["[data-order-filter='fulfilled']", state.lang === "it" ? "Evasi" : "Completed"],
     ["#orders .route-subsection h4", t("routeOffice")],
     ["#orders .route-subsection .subsection-copy", t("routeOfficeCopy")],
     ["#open-order-modal-button", t("edit") || (state.lang === "it" ? "Modifica" : "Edit")],
@@ -2591,6 +2592,7 @@ function filterOrdersForView(kind) {
       if (filter === "warehouse") return ["warehouse-work", "warehouse-ready"].includes(stage.key);
       if (filter === "installation") return ["install-planned", "install-progress", "install-completed"].includes(stage.key) || isRoutedToInstallation(order);
       if (filter === "shipping") return isRoutedToWarehouse(order) || isRoutedToInstallation(order);
+      if (filter === "fulfilled") return isOrderClosed(order) || isLogisticsOrderCompleted(order) || stage.key === "install-completed";
       return true;
     }
     if (kind === "warehouse") {
