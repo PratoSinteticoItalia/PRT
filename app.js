@@ -3248,30 +3248,131 @@ function buildShippingEstimate(order) {
   `;
 }
 
+function getShippingQueueGroupMeta(mode) {
+  if (mode === "corriere") {
+    return {
+      key: "corriere",
+      title: state.lang === "it" ? "Ordini corriere" : "Courier orders",
+      copy: state.lang === "it" ? "Merce da bancalare e affidare al vettore." : "Goods to palletize and hand to the carrier.",
+    };
+  }
+  if (mode === "ritiro") {
+    return {
+      key: "ritiro",
+      title: state.lang === "it" ? "Ordini ritiro" : "Pickup orders",
+      copy: state.lang === "it" ? "Merce pronta in sede per ritiro cliente." : "Goods ready at HQ for customer pickup.",
+    };
+  }
+  if (mode === "furgone") {
+    return {
+      key: "furgone",
+      title: state.lang === "it" ? "Ordini furgone / posa" : "Van / installation orders",
+      copy: state.lang === "it" ? "Merce da caricare sul furgone per uscita squadra." : "Goods to load on the van for crew departure.",
+    };
+  }
+  return {
+    key: "altro",
+    title: state.lang === "it" ? "Ordini da definire" : "Orders to define",
+    copy: state.lang === "it" ? "Flusso logistico ancora da completare." : "Logistics flow still to be completed.",
+  };
+}
+
+function renderShippingQueueCard(order) {
+  const selected = order.id === state.selectedOrderId ? "selected" : "";
+  const mode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
+  const preparedLines = getWarehousePreparedLines(order);
+  const prepSummary = preparedLines.length
+    ? preparedLines.slice(0, 2).map((item) => `${item.title} x${item.quantity}`).join(" · ")
+    : (state.lang === "it" ? "Preparazione ufficio da completare" : "Office prep still incomplete");
+  const hiddenCount = Math.max(0, preparedLines.length - 2);
+  const prepMeta = hiddenCount > 0
+    ? `${prepSummary} · +${hiddenCount} ${state.lang === "it" ? "righe" : "lines"}`
+    : prepSummary;
+  const shipmentState = getShipmentStateLabel(order);
+  const routeLabel = getShippingModeLabel(order);
+  const targetLabel = getShippingTargetLabel(order);
+  const destination = composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete");
+  const badgeTone = order.operations?.warehouse?.shipped
+    ? "badge-success"
+    : order.operations?.warehouse?.readyToShip
+      ? "badge-info"
+      : "badge-warning";
+  return `
+    <article class="shipping-queue-card ${selected}" data-action="select-order" data-id="${order.id}" data-view="shipping">
+      <div class="shipping-queue-head">
+        <div>
+          <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
+          <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${destination}</div>
+        </div>
+        <div class="shipping-queue-badges">
+          <div class="order-type-badge ${mode === "corriere" ? "type-spedizione" : mode === "ritiro" ? "type-ritiro" : "type-posa"}">${routeLabel}</div>
+          <div class="action-badge ${badgeTone}">${shipmentState}</div>
+        </div>
+      </div>
+      <div class="shipping-queue-body">
+        <div class="shipping-queue-line">
+          <span>${state.lang === "it" ? "Da preparare" : "To prepare"}</span>
+          <strong>${preparedLines.length} ${state.lang === "it" ? "righe" : "lines"}</strong>
+        </div>
+        <div class="shipping-queue-copy">${prepMeta}</div>
+      </div>
+      <div class="shipping-queue-footer">
+        <span>${targetLabel}</span>
+        <strong>${order.operations?.warehouse?.ddt?.number || (state.lang === "it" ? "DDT da creare" : "DDT to create")}</strong>
+      </div>
+    </article>
+  `;
+}
+
 function renderShipping() {
   const orders = filterOrdersForView("shipping");
   const shippingGrid = ui.shippingList?.closest(".order-grid");
   if (shippingGrid) shippingGrid.classList.toggle("is-empty", orders.length === 0);
   if (ui.shippingList) {
+    const groupedOrders = [
+      getShippingQueueGroupMeta("corriere"),
+      getShippingQueueGroupMeta("ritiro"),
+      getShippingQueueGroupMeta("furgone"),
+      getShippingQueueGroupMeta("altro"),
+    ].map((group) => ({
+      ...group,
+      orders: orders.filter((order) => {
+        const mode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
+        if (group.key === "altro") return !["corriere", "ritiro", "furgone"].includes(mode);
+        return mode === group.key;
+      }),
+    })).filter((group) => group.orders.length);
+    const totalPreparedLines = orders.reduce((sum, order) => sum + getWarehousePreparedLines(order).length, 0);
     ui.shippingList.innerHTML = orders.length
       ? `
-        ${orders.map((order) => {
-          const selected = order.id === state.selectedOrderId ? "selected" : "";
-          const mode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
-          const flowLabel = getShippingModeLabel(order);
-          const destination = getShippingDestination(order);
-          return `
-            <article class="order-row shipping-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="shipping">
-              <div>
-                <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-                <div class="order-meta">${order.operations?.product || t("undefined")} · ${getShippingModeLabel(order)} · ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")} · ${destination.provinceCode || (state.lang === "it" ? "provincia?" : "province?")}</div>
+        <div class="shipping-queue-summary">
+          ${renderDetailBox({
+            label: state.lang === "it" ? "Ordini in coda" : "Queued orders",
+            value: String(orders.length),
+            meta: state.lang === "it" ? "Lista ordini da gestire in logistica." : "Order list to handle in logistics.",
+          })}
+          ${renderDetailBox({
+            label: state.lang === "it" ? "Righe da preparare" : "Lines to prepare",
+            value: String(totalPreparedLines),
+            meta: state.lang === "it" ? "Somma delle righe materiali pronte o da verificare." : "Combined material lines ready or to verify.",
+          })}
+        </div>
+        <div class="shipping-queue-groups">
+          ${groupedOrders.map((group) => `
+            <section class="shipping-queue-group">
+              <div class="shipping-queue-group-head">
+                <div>
+                  <h4>${group.title}</h4>
+                  <p>${group.copy}</p>
+                </div>
+                <span class="search-pill compact-pill">${group.orders.length}</span>
               </div>
-              <div class="order-type-badge ${mode === "corriere" ? "type-spedizione" : mode === "ritiro" ? "type-ritiro" : "type-posa"}">${getShipmentStateLabel(order)}</div>
-              <div class="order-amount">${getShippingTargetLabel(order)}</div>
-              <div class="action-badge ${order.operations?.warehouse?.shipped ? "badge-success" : order.operations?.warehouse?.readyToShip ? "badge-info" : "badge-warning"}">${flowLabel}</div>
-            </article>
-          `;
-        }).join("")}
+              <div class="shipping-queue-list">
+                ${group.orders.map(renderShippingQueueCard).join("")}
+              </div>
+            </section>
+          `).join("")}
+        </div>
       `
       : `<div class="info-card">${state.lang === "it" ? "Nessuna spedizione o ritiro con questo filtro." : "No shipments or pickups for this filter."}</div>`;
   }
