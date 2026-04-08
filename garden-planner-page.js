@@ -494,6 +494,43 @@ function ProjectHeader({ info, setInfo }) {
   );
 }
 
+function TravelPlanner({ travel, setTravel }) {
+  const upd = (key, value) => setTravel(prev => ({ ...prev, [key]: value }));
+  const km = Math.max(0, Number(travel.kmTotal) || 0);
+  const fuelRate = Math.max(0, Number(travel.fuelPer100Km) || 0);
+  const fuelPrice = Math.max(0, Number(travel.fuelPrice) || 0);
+  const tollCost = Math.max(0, Number(travel.tollCost) || 0);
+  const liters = (km / 100) * fuelRate;
+  const fuelCost = liters * fuelPrice;
+  const tripCost = fuelCost + tollCost;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <label style={lbl}>Sede di partenza</label>
+          <input
+            value={travel.departureBase}
+            onChange={e => upd("departureBase", e.target.value)}
+            placeholder="Es. Orta di Atella"
+            style={fieldInp}
+          />
+        </div>
+        <DimInput label="Km totali" value={travel.kmTotal} onChange={v => upd("kmTotal", v)} unit="km" />
+        <DimInput label="Consumo medio" value={travel.fuelPer100Km} onChange={v => upd("fuelPer100Km", v)} unit="l/100" />
+        <DimInput label="Prezzo carburante" value={travel.fuelPrice} onChange={v => upd("fuelPrice", v)} unit="€/l" />
+        <DimInput label="Caselli" value={travel.tollCost} onChange={v => upd("tollCost", v)} unit="€" />
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <MetricCard label="Litri stimati" value={`${fmt(liters, 1)} l`} accent />
+        <MetricCard label="Costo carburante" value={fmtE(fuelCost)} />
+        <MetricCard label="Caselli" value={fmtE(tollCost)} />
+        <MetricCard label="Costo trasferta" value={fmtE(tripCost)} warning={tripCost > 0} sub={travel.departureBase ? `Partenza: ${travel.departureBase}` : "Compila la sede di partenza"} />
+      </div>
+    </div>
+  );
+}
+
 function ShapeInput({ shape, setShape, dims, setDims, customPts, setCustomPts, customClosed, setCustomClosed }) {
   const updateDim = (key, val) => setDims(prev => sanitizeDims(shape, { ...prev, [key]: parseFloat(val) || 0 }));
   const handleShapeChange = nextShape => {
@@ -635,7 +672,7 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, substrate, decoItems, projectInfo }) {
+function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, substrate, decoItems, projectInfo, travel }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
   const rollDetails = rolls.map(r => { const prod = PRODUCTS.find(p => p.id === r.product) || PRODUCTS[0]; return { ...r, sqm: r.width * r.length, cost: r.width * r.length * prod.price, prodName: prod.name }; });
@@ -658,6 +695,13 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
     return item ? { name: item.name, qty: qty + " " + item.unit, cost: item.pricePerUnit * qty } : null;
   }).filter(Boolean);
   const decoCost = decoLines.reduce((s, l) => s + l.cost, 0);
+  const travelKm = Math.max(0, Number(travel?.kmTotal) || 0);
+  const travelFuelRate = Math.max(0, Number(travel?.fuelPer100Km) || 0);
+  const travelFuelPrice = Math.max(0, Number(travel?.fuelPrice) || 0);
+  const travelTollCost = Math.max(0, Number(travel?.tollCost) || 0);
+  const travelLiters = (travelKm / 100) * travelFuelRate;
+  const travelFuelCost = travelLiters * travelFuelPrice;
+  const travelCost = travelFuelCost + travelTollCost;
 
   const sections = [
     { cat: "PRATO SINTETICO", items: rollDetails.length > 0 ? rollDetails.map(r => ({ name: "Rotolo #" + r.rollNum + " " + r.prodName + " (" + r.width + "\u00D7" + r.length + "m)", qty: fmt(r.sqm) + " m\u00B2", cost: r.cost })) : [{ name: "Nessun rotolo inserito", qty: "\u2014", cost: 0 }], sub: totalRollCost },
@@ -678,8 +722,20 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
     ], sub: infillCost },
   ];
   if (decoLines.length > 0) sections.push({ cat: "MATERIALI AGGIUNTIVI", items: decoLines, sub: decoCost });
+  if (travelKm > 0 || travelTollCost > 0 || travel?.departureBase) {
+    sections.push({
+      cat: "TRASFERTA E LOGISTICA",
+      items: [
+        { name: "Sede di partenza", qty: travel?.departureBase || "Da definire", cost: 0 },
+        { name: "Percorrenza totale", qty: `${fmt(travelKm, 1)} km`, cost: 0 },
+        { name: "Carburante stimato", qty: `${fmt(travelLiters, 1)} l`, cost: travelFuelCost },
+        { name: "Caselli", qty: travelTollCost > 0 ? fmtE(travelTollCost) : "—", cost: travelTollCost },
+      ],
+      sub: travelCost,
+    });
+  }
 
-  const grandTotal = totalRollCost + scavoCost + drenateCost + sabbiaCost + geoCost + glueCost + tapeCost + pinsCost + borderCost + infillCost + decoCost;
+  const grandTotal = totalRollCost + scavoCost + drenateCost + sabbiaCost + geoCost + glueCost + tapeCost + pinsCost + borderCost + infillCost + decoCost + travelCost;
 
   return (
     <div>
@@ -690,6 +746,7 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
           {projectInfo.address && <span><strong>Cantiere:</strong> {projectInfo.address}</span>}
           {projectInfo.date && <span><strong>Data:</strong> {projectInfo.date}</span>}
           {projectInfo.notes && <span><strong>Note:</strong> {projectInfo.notes}</span>}
+          {travel?.departureBase && <span><strong>Partenza:</strong> {travel.departureBase}</span>}
         </div>
       )}
       <div style={{ border: "1px solid " + B.border, borderRadius: 10, overflow: "hidden" }}>
@@ -729,13 +786,14 @@ const cSel = { padding: "5px 4px", border: "1.5px solid " + B.borderLight, borde
 const btnPrim = { padding: "8px 16px", borderRadius: 8, border: "none", background: B.primary, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" };
 const cardStyle = { background: B.white, borderRadius: 12, padding: "20px 24px", border: "1px solid " + B.borderLight };
 const lbl = { display: "block", fontSize: 11, color: B.textMuted, marginBottom: 4, fontWeight: 500 };
-const fieldInp = { width: "100%", padding: "8px 10px", border: "1.5px solid " + B.border, borderRadius: 8, fontSize: 13, boxSizing: "border-box", outline: "none", color: B.dark };
+const fieldInp = { width: "100%", padding: "10px 14px", border: "1.5px solid " + B.border, borderRadius: 10, fontSize: 13, boxSizing: "border-box", outline: "none", color: B.dark };
 
 /* ═══════════════════════════════════════════
    MAIN APP
    ═══════════════════════════════════════════ */
 function GardenPlanner() {
   const [projectInfo, setProjectInfo] = useState({ client: "", address: "", date: getLocalISODate(), notes: "" });
+  const [travel, setTravel] = useState({ departureBase: "Orta di Atella", kmTotal: 0, fuelPer100Km: 9.5, fuelPrice: 1.82, tollCost: 0 });
   const [shape, setShape] = useState("rect");
   const [dims, setDims] = useState({ a: 10, b: 6, c: 3, d: 3 });
   const [customPts, setCustomPts] = useState([]);
@@ -781,6 +839,13 @@ function GardenPlanner() {
             <StepBadge n={0} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Dati progetto</span>
           </div>
           <ProjectHeader info={projectInfo} setInfo={setProjectInfo} />
+        </div>
+
+        <div style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <StepBadge n={"0B"} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Trasferta e costi viaggio</span>
+          </div>
+          <TravelPlanner travel={travel} setTravel={setTravel} />
         </div>
 
         {/* STEP 1: AREA */}
@@ -891,7 +956,7 @@ function GardenPlanner() {
             <div style={{ flex: 1 }} />
             <button onClick={() => window.print()} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa report e disegno</button>
           </div>
-          <MaterialsReport area={area} perimeter={perimeter} borderMeters={selectedBorderMeters} rolls={rolls} borderType={borderType} substrate={substrate} decoItems={decoItems} projectInfo={projectInfo} />
+          <MaterialsReport area={area} perimeter={perimeter} borderMeters={selectedBorderMeters} rolls={rolls} borderType={borderType} substrate={substrate} decoItems={decoItems} projectInfo={projectInfo} travel={travel} />
         </div>
 
         <div style={{ textAlign: "center", padding: "8px 0 24px", fontSize: 11, color: B.textMuted }}>

@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <section id="auth-screen" class="auth-screen">
+    <section id="auth-screen" class="auth-screen shell-pending">
       <div class="auth-card">
         <div class="auth-brand">
           <div class="brand-mark brand-mark-logo">
@@ -61,7 +61,7 @@
       </div>
     </section>
 
-    <div id="app-shell" class="app-shell hidden">
+    <div id="app-shell" class="app-shell hidden shell-pending">
       <header class="topbar">
         <div class="topbar-left">
           <div class="topbar-logo">
@@ -186,10 +186,20 @@
               <div id="ops-orders-value" class="kpi-value">0</div>
               <div id="ops-orders-text" class="kpi-sub">Ordini totali e bozze operative.</div>
             </article>
+            <article class="kpi-card kpi-card-accent">
+              <div class="kpi-label">Mq venduti</div>
+              <div id="ops-sold-sqm-value" class="kpi-value">0</div>
+              <div id="ops-sold-sqm-text" class="kpi-sub">Stima dei metri quadri confermati sugli ordini acquisiti.</div>
+            </article>
             <article class="kpi-card">
               <div class="kpi-label">Inventario</div>
               <div id="ops-warehouse-value" class="kpi-value">0</div>
               <div id="ops-warehouse-text" class="kpi-sub">Ordini da preparare, spedire o caricare.</div>
+            </article>
+            <article class="kpi-card kpi-card-soft">
+              <div class="kpi-label">Giacenza prato</div>
+              <div id="ops-stock-value" class="kpi-value">0</div>
+              <div id="ops-stock-text" class="kpi-sub">Disponibilità reale dei modelli prato caricati.</div>
             </article>
             <article class="kpi-card">
               <div class="kpi-label">Pose</div>
@@ -247,6 +257,12 @@
                   <div class="section-title">Contabilità rapida</div>
                 </div>
                 <div id="dashboard-accounting-snapshot" class="accounting-analysis"></div>
+              </div>
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Riepilogo giacenza</div>
+                </div>
+                <div id="dashboard-inventory-snapshot" class="accounting-analysis inventory-snapshot"></div>
               </div>
             </div>
           </div>

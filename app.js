@@ -592,6 +592,8 @@ const state = {
   },
   pendingAttachmentTarget: null,
   showOrderImport: false,
+  shellPending: true,
+  syncInProgress: false,
   installationWeekOffset: 0,
   selectedInstallationCrew: "",
   coveragePlanner: loadCoveragePlannerState(),
@@ -617,7 +619,9 @@ const ui = {
   reloadButton: document.getElementById("reload-button"),
   newOrderButton: document.getElementById("new-order-button"),
   opsOrdersValue: document.getElementById("ops-orders-value"),
+  opsSoldSqmValue: document.getElementById("ops-sold-sqm-value"),
   opsWarehouseValue: document.getElementById("ops-warehouse-value"),
+  opsStockValue: document.getElementById("ops-stock-value"),
   opsInstallationsValue: document.getElementById("ops-installations-value"),
   opsAccountingValue: document.getElementById("ops-accounting-value"),
   opsShippingValue: document.getElementById("ops-shipping-value"),
@@ -627,6 +631,7 @@ const ui = {
   dashboardActivity: document.getElementById("dashboard-activity"),
   dashboardWeekSummary: document.getElementById("dashboard-week-summary"),
   dashboardAccountingSnapshot: document.getElementById("dashboard-accounting-snapshot"),
+  dashboardInventorySnapshot: document.getElementById("dashboard-inventory-snapshot"),
   dashboardSyncButton: document.getElementById("dashboard-sync-button"),
   quickViewButtons: Array.from(document.querySelectorAll("[data-quick-view]")),
   ordersSearch: document.getElementById("orders-search"),
@@ -832,6 +837,13 @@ function apiFetch(path, options = {}) {
     if (!response.ok) throw new Error(data.error || data.message || "request_failed");
     return data;
   });
+}
+
+function setShellPending(active) {
+  state.shellPending = active;
+  document.body.classList.toggle("shell-loading", active);
+  ui.authScreen?.classList.toggle("shell-pending", active);
+  ui.appShell?.classList.toggle("shell-pending", active);
 }
 
 function toNumber(value) {
@@ -2862,11 +2874,48 @@ function updateShell() {
   if (ui.topbarAvatar) ui.topbarAvatar.textContent = getUserInitials(state.currentUser?.name);
   if (ui.coveragePanel) ui.coveragePanel.classList.toggle("hidden", !showCoverageRadar);
   applyStaticTranslations();
+  if (ui.reloadButton) {
+    ui.reloadButton.disabled = state.syncInProgress;
+    ui.reloadButton.textContent = state.syncInProgress ? "Sincronizzo..." : "Ricarica dati";
+  }
+  if (ui.ordersSyncButton) {
+    ui.ordersSyncButton.disabled = state.syncInProgress;
+    ui.ordersSyncButton.textContent = state.syncInProgress ? "Sincronizzo Shopify..." : "Sincronizza Shopify";
+  }
+}
+
+function getSoldSqmEstimate() {
+  return state.orders.reduce((sum, order) => {
+    const sqm = toNumber(order.operations?.sqm || 0);
+    if (sqm <= 0) return sum;
+    if (order.operations?.officeStatus === "bozza") return sum;
+    return sum + sqm;
+  }, 0);
+}
+
+function getDashboardInventorySnapshot() {
+  const groups = getInventorySummary();
+  const turfGroups = groups.filter((group) => group.isModel);
+  const materialGroups = groups.filter((group) => !group.isModel);
+  const totalStockSqm = turfGroups.reduce((sum, group) => sum + toNumber(group.totalSqm), 0);
+  const totalAvailableSqm = turfGroups.reduce((sum, group) => sum + Math.max(0, toNumber(group.availableSqm)), 0);
+  const totalCommittedSqm = turfGroups.reduce((sum, group) => sum + toNumber(group.demandSqm), 0);
+  const totalMaterialUnits = materialGroups.reduce((sum, group) => sum + toNumber(group.totalUnits), 0);
+  const uncovered = groups.filter((group) => (group.isModel ? toNumber(group.availableSqm) < 0 : toNumber(group.availableUnits) < 0)).length;
+  return {
+    totalStockSqm,
+    totalAvailableSqm,
+    totalCommittedSqm,
+    totalMaterialUnits,
+    uncovered,
+  };
 }
 
 function renderOps() {
   const orders = state.orders.length;
+  const soldSqm = getSoldSqmEstimate();
   const warehouse = state.orders.filter((order) => orderNeedsWarehouseWork(order)).length;
+  const inventorySnapshot = getDashboardInventorySnapshot();
   const installations = state.orders.filter((order) => isRoutedToInstallation(order) && !["completata"].includes(String(order.operations?.installation?.status || "").trim())).length;
   const accounting = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
   const shipping = state.orders.filter((order) => ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode) && !isLogisticsOrderCompleted(order)).length;
@@ -2874,7 +2923,9 @@ function renderOps() {
   const criticalAlerts = state.orders.filter((order) => order.operations?.warehouse?.status === "bloccato" || order.operations?.installation?.status === "problema").length;
   const topbarAlerts = Math.min(9, criticalAlerts + accounting);
   ui.opsOrdersValue.textContent = String(orders);
+  if (ui.opsSoldSqmValue) ui.opsSoldSqmValue.textContent = `${Math.round(soldSqm)} mq`;
   ui.opsWarehouseValue.textContent = String(warehouse);
+  if (ui.opsStockValue) ui.opsStockValue.textContent = `${Math.round(inventorySnapshot.totalStockSqm)} mq`;
   ui.opsInstallationsValue.textContent = String(installations);
   ui.opsAccountingValue.textContent = String(accounting);
   if (ui.opsShippingValue) ui.opsShippingValue.textContent = String(shipping);
@@ -2894,7 +2945,9 @@ function renderOps() {
   const opsTexts = state.lang === "it"
     ? {
         orders: "Ordini totali e bozze operative.",
+        soldSqm: "Stima dei metri quadri confermati sugli ordini acquisiti.",
         warehouse: "Ordini da preparare, spedire o caricare.",
+        stock: `Disponibili ${Math.round(inventorySnapshot.totalAvailableSqm)} mq netti su prato.`,
         installations: "Installazioni da pianificare o in corso.",
         accounting: "Ordini da verificare, saldare o fatturare.",
         shipping: "Corrieri, ritiri, furgoni e bancali.",
@@ -2902,7 +2955,9 @@ function renderOps() {
       }
     : {
         orders: "Total orders and operational drafts.",
+        soldSqm: "Estimated square meters confirmed across acquired orders.",
         warehouse: "Orders to prepare, ship or load.",
+        stock: `${Math.round(inventorySnapshot.totalAvailableSqm)} net sqm available across turf stock.`,
         installations: "Installations to plan or in progress.",
         accounting: "Orders to verify, settle or invoice.",
         shipping: "Couriers, pickups, vans and pallets.",
@@ -2913,7 +2968,9 @@ function renderOps() {
     if (node) node.textContent = value;
   };
   setText("ops-orders-text", opsTexts.orders);
+  setText("ops-sold-sqm-text", opsTexts.soldSqm);
   setText("ops-warehouse-text", opsTexts.warehouse);
+  setText("ops-stock-text", opsTexts.stock);
   setText("ops-installations-text", opsTexts.installations);
   setText("ops-accounting-text", opsTexts.accounting);
   setText("ops-shipping-text", opsTexts.shipping);
@@ -3065,6 +3122,39 @@ function renderDashboard() {
         label: state.lang === "it" ? "Da registrare internamente" : "Internal follow-up",
         value: String(internalPending),
         meta: state.lang === "it" ? "Ordini con saldo o registrazione ancora da completare." : "Orders still waiting for manual accounting follow-up.",
+      },
+    ].map((item) => `
+      <article class="accounting-analysis-card ${item.accent ? "accent" : ""}">
+        <span class="panel-eyebrow">${item.label}</span>
+        <strong>${item.value}</strong>
+        <p>${item.meta}</p>
+      </article>
+    `).join("");
+  }
+
+  if (ui.dashboardInventorySnapshot) {
+    const snapshot = getDashboardInventorySnapshot();
+    ui.dashboardInventorySnapshot.innerHTML = [
+      {
+        label: state.lang === "it" ? "Giacenza prato" : "Turf stock",
+        value: `${Math.round(snapshot.totalStockSqm)} mq`,
+        meta: state.lang === "it" ? `${Math.round(snapshot.totalAvailableSqm)} mq netti ancora disponibili` : `${Math.round(snapshot.totalAvailableSqm)} net sqm still available`,
+        accent: true,
+      },
+      {
+        label: state.lang === "it" ? "Impegnato ordini" : "Committed",
+        value: `${Math.round(snapshot.totalCommittedSqm)} mq`,
+        meta: state.lang === "it" ? "Metri quadri già assorbiti dagli ordini aperti." : "Square meters already reserved by open orders.",
+      },
+      {
+        label: state.lang === "it" ? "Materiali accessori" : "Accessory stock",
+        value: `${Math.round(snapshot.totalMaterialUnits)} u`,
+        meta: state.lang === "it" ? "Unità caricate a magazzino tra colla, banda, telo e accessori." : "Units loaded in stock across glue, tape, membrane and accessories.",
+      },
+      {
+        label: state.lang === "it" ? "Prodotti scoperti" : "Uncovered products",
+        value: String(snapshot.uncovered),
+        meta: state.lang === "it" ? "Referenze dove il fabbisogno supera la disponibilità reale." : "References where demand exceeds current availability.",
       },
     ].map((item) => `
       <article class="accounting-analysis-card ${item.accent ? "accent" : ""}">
@@ -4564,29 +4654,36 @@ function populateInventoryOptions() {
 }
 
 async function loadSession() {
-  const session = await apiFetch("/api/session");
-  if (!session.user) {
-    showAuth();
-    return;
+  setShellPending(true);
+  try {
+    const session = await apiFetch("/api/session");
+    if (!session.user) {
+      showAuth();
+      return;
+    }
+    state.currentUser = session.user;
+    state.orders = session.orders || [];
+    state.inventory = session.inventory || [];
+    state.settings = session.shopifySettings || {};
+    state.users = session.users || [];
+    state.securityEvents = session.securityEvents || [];
+    state.securityPolicy = session.securityPolicy || {};
+    if (state.currentUser?.mustChangePassword) state.currentView = "settings";
+    ensureSelectedOrder();
+    showApp();
+  } finally {
+    setShellPending(false);
   }
-  state.currentUser = session.user;
-  state.orders = session.orders || [];
-  state.inventory = session.inventory || [];
-  state.settings = session.shopifySettings || {};
-  state.users = session.users || [];
-  state.securityEvents = session.securityEvents || [];
-  state.securityPolicy = session.securityPolicy || {};
-  if (state.currentUser?.mustChangePassword) state.currentView = "settings";
-  ensureSelectedOrder();
-  showApp();
 }
 
 function showAuth() {
+  setShellPending(false);
   ui.authScreen.classList.remove("hidden");
   ui.appShell.classList.add("hidden");
 }
 
 function showApp() {
+  setShellPending(false);
   ui.authScreen.classList.add("hidden");
   ui.appShell.classList.remove("hidden");
   render();
@@ -4627,6 +4724,8 @@ function clearStatus(node) {
 
 async function syncShopifyOrders() {
   try {
+    state.syncInProgress = true;
+    updateShell();
     clearStatus(ui.ordersStatus);
     state.orders = await apiFetch("/api/orders/sync-shopify", { method: "POST" });
     ensureSelectedOrder();
@@ -4640,6 +4739,9 @@ async function syncShopifyOrders() {
         ? "Sync Shopify fallito. Compila dominio store e Admin API access token nelle impostazioni."
         : `Sync Shopify fallito. ${error.message}`,
     );
+  } finally {
+    state.syncInProgress = false;
+    updateShell();
   }
 }
 
