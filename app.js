@@ -1774,7 +1774,8 @@ function isRoutedToWarehouse(order) {
 function isRoutedToInstallation(order) {
   const installation = order.operations?.installation || {};
   return Boolean(
-    installation.selected
+    installation.required
+    || installation.selected
     || (installation.installDate && String(installation.installDate).trim())
     || (installation.installTime && String(installation.installTime).trim())
     || (installation.crew && String(installation.crew).trim())
@@ -1885,7 +1886,7 @@ function filterOrdersForView(kind) {
   const filter = state.filters[kind === "order" ? "order" : kind];
   return state.orders.filter((order) => {
     if (kind === "warehouse" && !isRoutedToWarehouse(order)) return false;
-    if (kind === "shipping" && !isRoutedToWarehouse(order)) return false;
+    if (kind === "shipping" && !(isRoutedToWarehouse(order) || isRoutedToInstallation(order))) return false;
     if (state.currentUser?.role === "warehouse" && kind === "order") return false;
     const haystack = [
       composeClientName(order),
@@ -1899,7 +1900,7 @@ function filterOrdersForView(kind) {
       if (filter === "attention") return !order.address || !order.city || order.operations?.officeStatus === "bozza";
       if (filter === "warehouse") return order.operations?.warehouse?.status !== "pronto";
       if (filter === "installation") return isRoutedToInstallation(order);
-      if (filter === "shipping") return isRoutedToWarehouse(order);
+      if (filter === "shipping") return isRoutedToWarehouse(order) || isRoutedToInstallation(order);
       return true;
     }
     if (kind === "warehouse") {
@@ -1935,12 +1936,12 @@ function filterOrdersForView(kind) {
 }
 
 function renderInboxFlowControls(order) {
-  const warehouseSelected = isRoutedToWarehouse(order);
-  const installSelected = isRoutedToInstallation(order);
+  const jobNeedsInstall = Boolean(order.operations?.installation?.required);
+  const warehouseSelected = isRoutedToWarehouse(order) || jobNeedsInstall;
+  const installSelected = isRoutedToInstallation(order) || jobNeedsInstall;
   const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
   const preparationDate = getShippingTargetDate(order);
-  const jobNeedsInstall = Boolean(order.operations?.installation?.required);
   const routeSummary = installSelected
     ? (state.lang === "it" ? "Ordine in carico a ufficio, logistica e squadra posa." : "Order active for office, logistics and installation crew.")
     : warehouseSelected
@@ -2502,10 +2503,6 @@ function renderOrders() {
       ${renderInfoLine(t("attachmentsCount"), `${(order.attachments || []).length} ${state.lang === "it" ? "file" : "files"}`)}
     </div>
     ${orderNoteMarkup}
-    <div class="detail-actions">
-      <button class="btn" data-action="open-maps" data-id="${order.id}">${state.lang === "it" ? "Apri Maps" : "Open Maps"}</button>
-      <button class="btn danger" data-action="open-modal" data-id="${order.id}">${t("edit")}</button>
-    </div>
   `;
   ui.orderLineList.innerHTML = (order.lineDetails || []).length
     ? order.lineDetails.map((item) => {

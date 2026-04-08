@@ -1019,6 +1019,7 @@ button.is-feedback,
   min-height: 42px;
   padding: 11px 18px;
   margin-left: auto;
+  width: 100%;
 }
 
 #installations .inline-actions {
@@ -5423,6 +5424,20 @@ body {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+}
+
+/* Re-apply primary small action styling after later generic button overrides */
+.mini-action.primary-mini,
+#orders .order-office-actions .mini-action.primary-mini {
+  background: linear-gradient(135deg, #35684c, #264e3a);
+  color: #fff;
+  border: 1px solid transparent;
+  box-shadow: 0 10px 24px rgba(41, 84, 60, 0.18);
+}
+
+.mini-action.primary-mini:hover,
+#orders .order-office-actions .mini-action.primary-mini:hover {
+  background: linear-gradient(135deg, #3d7557, #2c5a42);
 }
 
 #shipping .section-inline-title {
