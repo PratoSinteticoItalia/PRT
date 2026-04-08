@@ -642,6 +642,7 @@ const ui = {
   orderDetailTitle: document.getElementById("order-detail-title"),
   orderDetailBadge: document.getElementById("order-detail-badge"),
   orderDetailSummary: document.getElementById("order-detail-summary"),
+  orderDetailSections: Array.from(document.querySelectorAll("#orders .order-detail-panel > .panel-subsection")),
   orderOfficeSummary: document.getElementById("order-office-summary"),
   orderLineList: document.getElementById("order-line-list"),
   orderPrepList: document.getElementById("order-prep-list"),
@@ -3124,13 +3125,15 @@ function renderOrders() {
   if (!order) {
     ui.orderDetailTitle.textContent = t("noSelection");
     ui.orderDetailBadge.innerHTML = "";
-    ui.orderDetailSummary.innerHTML = "";
+    ui.orderDetailSummary.innerHTML = `<div class="info-card"><strong>${state.lang === "it" ? "Nessun ordine nel filtro corrente" : "No orders in the current filter"}</strong><p>${state.lang === "it" ? "Rimuovi il filtro o cambia ricerca per tornare alla lista operativa." : "Clear the filter or change the search to restore the operational list."}</p></div>`;
     ui.orderOfficeSummary.innerHTML = "";
     ui.orderLineList.innerHTML = "";
     if (ui.orderPrepList) ui.orderPrepList.innerHTML = "";
     ui.orderAttachments.innerHTML = "";
+    ui.orderDetailSections.forEach((section) => section.classList.add("hidden"));
     return;
   }
+  ui.orderDetailSections.forEach((section) => section.classList.remove("hidden"));
 
   const [label, tone] = buildOrderTone(order);
   const orderType = getOrderType(order);
