@@ -877,15 +877,19 @@ function updateMobileMenu() {
   const open = Boolean(state.mobileMenuOpen && window.innerWidth <= 980);
   document.body.classList.toggle("mobile-menu-open", open);
   if (ui.mobileSidebarBackdrop) ui.mobileSidebarBackdrop.classList.toggle("is-visible", open);
+  if (ui.mobileMenuButton) {
+    ui.mobileMenuButton.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  if (ui.mobileSidebarBackdrop) {
+    ui.mobileSidebarBackdrop.setAttribute("aria-hidden", open ? "false" : "true");
+  }
 }
 
 function applyMobileSafeMode() {
   const mobileSafe = window.innerWidth <= 980;
   document.body.classList.toggle("mobile-safe-mode", mobileSafe);
-  if (!mobileSafe) return;
-  state.mobileMenuOpen = false;
-  document.body.classList.remove("mobile-menu-open");
-  ui.mobileSidebarBackdrop?.classList.remove("is-visible");
+  if (!mobileSafe) state.mobileMenuOpen = false;
+  updateMobileMenu();
 }
 
 function toNumber(value) {
