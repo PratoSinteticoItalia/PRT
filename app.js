@@ -4886,12 +4886,16 @@ async function loadSession() {
 
 function showAuth() {
   setShellPending(false);
+  state.mobileMenuOpen = false;
+  updateMobileMenu();
   ui.authScreen.classList.remove("hidden");
   ui.appShell.classList.add("hidden");
 }
 
 function showApp() {
   setShellPending(false);
+  state.mobileMenuOpen = false;
+  updateMobileMenu();
   ui.authScreen.classList.add("hidden");
   ui.appShell.classList.remove("hidden");
   render();
@@ -5996,6 +6000,7 @@ document.addEventListener("click", (event) => {
 
 ui.authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  setShellPending(true);
   try {
     const form = new FormData(ui.authForm);
     const session = await apiFetch("/api/login", {
@@ -6025,6 +6030,8 @@ ui.authForm.addEventListener("submit", async (event) => {
         ? "Troppi tentativi di accesso. Attendi 2 minuti e riprova."
         : "Errore server o sessione non salvata. Riprova tra qualche secondo.";
     ui.authError.classList.remove("hidden");
+  } finally {
+    setShellPending(false);
   }
 });
 
