@@ -1408,7 +1408,7 @@ function renderInstallationsCoverage() {
           const team = ensureCoverageTeam(crewName);
           const jobs = getInstallationOrdersForCrew(crewName);
           return `
-            <article class="coverage-team-card ${crewName === getSelectedInstallationCrew() ? "is-active" : ""}" data-action="select-coverage-team" data-coverage-team="${escapeHtml(crewName)}" tabindex="0" role="button">
+            <button class="coverage-team-card ${crewName === getSelectedInstallationCrew() ? "is-active" : ""}" type="button" data-action="select-coverage-team" data-coverage-team="${escapeHtml(crewName)}">
               <div class="coverage-team-title">
                 <div class="coverage-team-name">
                   <span class="coverage-swatch" style="background:${escapeHtml(team.color || getCoverageDefaultColor(0))}"></span>
@@ -1421,7 +1421,7 @@ function renderInstallationsCoverage() {
                 <span class="coverage-tag">${(team.regions || []).length} regioni</span>
                 <span class="coverage-tag">${(team.polygons || []).length} aree</span>
               </div>
-            </article>
+            </button>
           `;
         }).join("")
       : `<div class="coverage-empty">${state.lang === "it" ? "Nessuna squadra disponibile." : "No crews available."}</div>`;
@@ -1452,7 +1452,7 @@ function renderInstallationsCoverage() {
   if (ui.coverageJobsList) {
     ui.coverageJobsList.innerHTML = jobs.length
       ? jobs.map((order, index) => `
-          <article class="coverage-job-card" data-action="select-coverage-order" data-coverage-order="${escapeHtml(order.id)}" tabindex="0" role="button">
+          <button class="coverage-job-card" type="button" data-action="select-coverage-order" data-coverage-order="${escapeHtml(order.id)}">
             <div class="coverage-job-head">
               <div class="coverage-job-title">
                 <span class="coverage-count">${index + 1}</span>
@@ -1466,7 +1466,7 @@ function renderInstallationsCoverage() {
               <span class="coverage-tag">${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
               <span class="coverage-tag">${escapeHtml(order.operations?.product || t("undefined"))}</span>
             </div>
-          </article>
+          </button>
         `).join("")
       : `<div class="coverage-empty">${state.lang === "it" ? "Nessun cantiere assegnato a questa squadra nella vista posa." : "No jobs assigned to this crew in the install view."}</div>`;
   }

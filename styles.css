@@ -7163,6 +7163,10 @@ button:active,
 
 .coverage-team-card,
 .coverage-job-card {
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: left;
+  width: 100%;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: #fff;
