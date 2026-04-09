@@ -5889,6 +5889,14 @@ function handleGlobalClick(event) {
     saveInboxOrderFlow(id, null, button);
     return;
   }
+  if (action === "open-sold-sqm") {
+    state.currentView = "orders";
+    state.filters.order = "all";
+    state.search.orders = "";
+    state.orderPage = 1;
+    setView("orders");
+    return;
+  }
   if (action === "toggle-crew-unavailable") {
     if (state.currentUser?.role !== "crew") return;
     const crewName = getCrewForCurrentUser();
