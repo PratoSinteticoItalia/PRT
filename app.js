@@ -4171,7 +4171,7 @@ function renderInstallations() {
     clearInstallationDetail();
     return;
   }
-  if (order.operations?.installation?.crew) {
+  if (!state.selectedInstallationCrew && order.operations?.installation?.crew) {
     state.selectedInstallationCrew = order.operations.installation.crew;
   }
   renderInstallationsCoverage();
