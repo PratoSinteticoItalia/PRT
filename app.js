@@ -4920,6 +4920,9 @@ function showApp() {
 }
 
 function render() {
+  if (state.currentUser && state.shellPending) {
+    setShellPending(false);
+  }
   ensureSelectedOrder();
   populateInventoryOptions();
   updateShell();
