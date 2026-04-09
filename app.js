@@ -1884,6 +1884,17 @@ function extractDimensions(label) {
   return { width, length, sqm: Number((width * length).toFixed(2)) };
 }
 
+function parseSquareMetersFromTitle(label, quantity = 1) {
+  const normalized = String(label || "").replace(/,/g, ".");
+  const slashMatch = normalized.match(/(\d+(?:\.\d+)?)\s*m\s*\/\s*(\d+(?:\.\d+)?)\s*m/i);
+  if (slashMatch) return toNumber(slashMatch[1]) * toNumber(slashMatch[2]) * quantity;
+  const xMatch = normalized.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*m/i);
+  if (xMatch) return toNumber(xMatch[1]) * toNumber(xMatch[2]) * quantity;
+  const mqMatch = normalized.match(/(\d+(?:\.\d+)?)\s*mq/i);
+  if (mqMatch) return toNumber(mqMatch[1]) * quantity;
+  return 0;
+}
+
 function normalizeProductName(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
@@ -3003,10 +3014,17 @@ function updateShell() {
 
 function getSoldSqmEstimate() {
   return state.orders.reduce((sum, order) => {
-    if (order.operations?.officeStatus === "bozza") return sum;
-    const turfLines = getPhysicalOrderLines(order).filter((line) => isTurfModel(line.title) && line.dimensions?.sqm);
-    const measuredSqm = turfLines.reduce((lineSum, line) => lineSum + (toNumber(line.dimensions?.sqm) * getDisplayPieceCount(order, line)), 0);
-    const sqm = measuredSqm > 0 ? measuredSqm : toNumber(order.operations?.sqm || 0);
+    if (order.operations?.officeStatus === "bozza" && order.source === "manual") return sum;
+    const physicalLines = getPhysicalOrderLines(order);
+    const turfLines = physicalLines.filter((line) => isTurfModel(line.title));
+    const measuredSqm = turfLines.reduce((lineSum, line) => {
+      const dimsSqm = toNumber(line.dimensions?.sqm || 0);
+      if (dimsSqm) return lineSum + (dimsSqm * getDisplayPieceCount(order, line));
+      return lineSum + parseSquareMetersFromTitle(line.title, getDisplayPieceCount(order, line));
+    }, 0);
+    const fallbackSqm = turfLines.reduce((lineSum, line) => lineSum + parseSquareMetersFromTitle(line.title, Number(line.quantity || 1)), 0);
+    const operationsSqm = toNumber(order.operations?.sqm || 0);
+    const sqm = measuredSqm > 0 ? measuredSqm : (operationsSqm > 0 ? operationsSqm : fallbackSqm);
     if (sqm <= 0) return sum;
     return sum + sqm;
   }, 0);
