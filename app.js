@@ -860,6 +860,15 @@ function updateMobileMenu() {
   if (ui.mobileSidebarBackdrop) ui.mobileSidebarBackdrop.classList.toggle("is-visible", open);
 }
 
+function applyMobileSafeMode() {
+  const mobileSafe = window.innerWidth <= 980;
+  document.body.classList.toggle("mobile-safe-mode", mobileSafe);
+  if (!mobileSafe) return;
+  state.mobileMenuOpen = false;
+  document.body.classList.remove("mobile-menu-open");
+  ui.mobileSidebarBackdrop?.classList.remove("is-visible");
+}
+
 function toNumber(value) {
   const parsed = Number(String(value || "").replace(",", ".").replace(/[^\d.-]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -2984,6 +2993,7 @@ function applyStaticTranslations() {
 }
 
 function updateShell() {
+  applyMobileSafeMode();
   const allowed = roleViews[state.currentUser?.role || "office"] || roleViews.office;
   const showCoverageRadar = state.currentUser?.role === "office";
   ui.navLinks.forEach((button) => {
@@ -6272,6 +6282,7 @@ bindEvent(ui.securityForm, "submit", updatePassword);
 bindEvent(ui.accountCreateForm, "submit", createManagedAccount);
 handleShopifyOauthFeedback();
 window.addEventListener("resize", () => {
+  applyMobileSafeMode();
   if (window.innerWidth > 980 && state.mobileMenuOpen) {
     state.mobileMenuOpen = false;
     updateMobileMenu();
