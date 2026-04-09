@@ -8359,3 +8359,242 @@ button:active,
     grid-template-columns: 1fr 1fr;
   }
 }
+
+@media (max-width: 980px) {
+  body.mobile-safe-mode .sidebar {
+    gap: 14px;
+    padding: 16px 14px 18px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.97) 0%, rgba(249, 248, 243, 0.98) 100%),
+      radial-gradient(circle at top left, rgba(216, 243, 220, 0.42), transparent 38%);
+  }
+
+  body.mobile-safe-mode .sidebar::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 112px;
+    background: linear-gradient(180deg, rgba(223, 241, 227, 0.24), transparent);
+    pointer-events: none;
+  }
+
+  body.mobile-safe-mode .sidebar > * {
+    position: relative;
+    width: 100%;
+  }
+
+  body.mobile-safe-mode .sidebar-mobile-head {
+    min-height: 54px;
+    margin-bottom: 2px;
+    padding: 4px 2px 10px;
+    border-bottom: 1px solid rgba(28, 54, 37, 0.08);
+    backdrop-filter: blur(10px);
+  }
+
+  body.mobile-safe-mode .sidebar-mobile-head strong {
+    display: block;
+    max-width: 150px;
+    font-size: 11px;
+    line-height: 1.4;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #6f7d72;
+  }
+
+  body.mobile-safe-mode .sidebar-mobile-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  body.mobile-safe-mode .sidebar-mobile-actions .topbar-btn {
+    min-height: 38px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    box-shadow: none;
+  }
+
+  body.mobile-safe-mode #mobile-menu-close {
+    background: linear-gradient(135deg, #1f4d32, #2d6a4f);
+    color: #fff;
+  }
+
+  body.mobile-safe-mode #mobile-logout-button {
+    background: rgba(255, 255, 255, 0.78);
+    color: #4f5c51;
+    border: 1px solid rgba(28, 54, 37, 0.08);
+  }
+
+  body.mobile-safe-mode .sidebar-brand-block {
+    margin-bottom: 2px;
+  }
+
+  body.mobile-safe-mode .sidebar-brand-line {
+    padding: 12px 14px;
+    border-radius: 20px;
+    border: 1px solid rgba(30, 59, 40, 0.1);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(246, 249, 244, 0.94) 100%),
+      linear-gradient(135deg, rgba(216, 243, 220, 0.16), transparent 52%);
+    box-shadow: 0 12px 28px rgba(19, 38, 24, 0.06);
+  }
+
+  body.mobile-safe-mode .sidebar-brand-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(223, 241, 227, 0.9), rgba(246, 250, 244, 0.96));
+    box-shadow: inset 0 0 0 1px rgba(33, 63, 43, 0.08);
+  }
+
+  body.mobile-safe-mode .sidebar-brand-mark .brand-logo {
+    width: 26px;
+    height: 26px;
+  }
+
+  body.mobile-safe-mode .sidebar .eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: #9aa79d;
+    margin-bottom: 2px;
+  }
+
+  body.mobile-safe-mode .sidebar-brand-title {
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #1d3524;
+  }
+
+  body.mobile-safe-mode .sidebar-section-label {
+    padding: 4px 6px 0;
+    margin-top: 2px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    color: #7a877c;
+  }
+
+  body.mobile-safe-mode .sidebar-divider-line {
+    margin: 2px 6px 0;
+    background: linear-gradient(90deg, transparent, rgba(30, 59, 40, 0.1), transparent);
+  }
+
+  body.mobile-safe-mode .nav,
+  body.mobile-safe-mode .nav.nav-secondary {
+    width: 100%;
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  body.mobile-safe-mode .nav-link {
+    width: 100% !important;
+    min-height: 54px;
+    padding: 0 14px;
+    border: 1px solid rgba(30, 59, 40, 0.08);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(246, 249, 244, 0.94) 100%);
+    box-shadow: 0 10px 22px rgba(20, 36, 24, 0.04);
+    color: #263a2b;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  body.mobile-safe-mode .nav-link:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(242, 248, 241, 0.98) 100%);
+    color: #1d3524;
+  }
+
+  body.mobile-safe-mode .nav-link.is-active {
+    background: linear-gradient(135deg, rgba(210, 236, 217, 0.98), rgba(240, 248, 242, 1));
+    border-color: rgba(45, 106, 79, 0.22);
+    box-shadow:
+      0 16px 28px rgba(36, 82, 56, 0.08),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.44);
+    color: #1d4029;
+  }
+
+  body.mobile-safe-mode .nav-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 10px;
+    background: rgba(232, 239, 232, 0.9);
+    color: #58705d;
+    opacity: 1;
+  }
+
+  body.mobile-safe-mode .nav-link.is-active .nav-icon {
+    background: rgba(255, 255, 255, 0.72);
+    color: #215033;
+    box-shadow: inset 0 0 0 1px rgba(45, 106, 79, 0.08);
+  }
+
+  body.mobile-safe-mode .nav-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  body.mobile-safe-mode .nav-label {
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  body.mobile-safe-mode .nav-link[data-count]:not([data-count=""])::after {
+    min-width: 28px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: rgba(235, 241, 234, 0.96);
+    color: #68806d;
+    font-size: 11px;
+    font-weight: 800;
+    box-shadow: inset 0 0 0 1px rgba(30, 59, 40, 0.05);
+  }
+
+  body.mobile-safe-mode .nav-link.is-active[data-count]:not([data-count=""])::after {
+    background: rgba(255, 255, 255, 0.72);
+    color: #215033;
+  }
+
+  body.mobile-safe-mode .sidebar-mobile-tools {
+    margin-top: 6px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(28, 54, 37, 0.08);
+  }
+
+  body.mobile-safe-mode .sidebar-quick-link {
+    min-height: 50px;
+    padding: 0 16px;
+    border-radius: 18px;
+    border-color: rgba(30, 59, 40, 0.1);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 248, 243, 0.94));
+    box-shadow: 0 12px 24px rgba(20, 36, 24, 0.05);
+    font-size: 13px;
+  }
+
+  body.mobile-safe-mode .sidebar-quick-link:hover {
+    transform: none;
+  }
+
+  body.mobile-safe-mode .sidebar-lang-switch {
+    padding: 5px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(236, 242, 235, 0.98), rgba(245, 248, 243, 0.96));
+  }
+
+  body.mobile-safe-mode .sidebar-lang-switch .lang-btn {
+    min-height: 40px;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  body.mobile-safe-mode #mobile-logout-inline-button {
+    background: linear-gradient(180deg, rgba(255, 247, 246, 0.96), rgba(255, 251, 250, 0.94));
+    border-color: rgba(167, 75, 75, 0.12);
+    color: #8a4949;
+  }
+}
