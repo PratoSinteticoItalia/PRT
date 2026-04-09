@@ -7468,8 +7468,7 @@ button:active,
   }
 
   .mobile-menu-btn,
-  .sidebar-mobile-head,
-  .mobile-sidebar-backdrop {
+  .sidebar-mobile-head {
     display: flex;
   }
 
@@ -7479,10 +7478,13 @@ button:active,
     z-index: 1090;
     background: rgba(15, 23, 18, 0.34);
     backdrop-filter: blur(2px);
+    display: none;
+    pointer-events: none;
   }
 
   .mobile-sidebar-backdrop.is-visible {
     display: block;
+    pointer-events: auto;
   }
 
   .nav {
