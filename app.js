@@ -929,6 +929,26 @@ function normalizeLooseString(value) {
     .toLowerCase();
 }
 
+function normalizeCrewAlias(value) {
+  return normalizeLooseString(value)
+    .replace(/\b(squadra|team|crew)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isSameCrewName(left, right) {
+  const normalizedLeft = normalizeCrewAlias(left);
+  const normalizedRight = normalizeCrewAlias(right);
+  if (!normalizedLeft || !normalizedRight) return false;
+  return normalizedLeft === normalizedRight
+    || normalizedLeft.includes(normalizedRight)
+    || normalizedRight.includes(normalizedLeft);
+}
+
+function orderBelongsToCrew(order, crewName) {
+  return isSameCrewName(order.operations?.installation?.crew || "", crewName);
+}
+
 function floorTo(value, decimals = 2) {
   const factor = 10 ** decimals;
   return Math.floor(value * factor) / factor;
@@ -1182,7 +1202,7 @@ function saveCoverageTeamFromForm(event) {
   if (currentConfig && previousCrew && previousCrew !== teamName) {
     delete state.coveragePlanner.teams[previousCrew];
     state.orders = state.orders.map((order) => {
-      if (normalizeLooseString(order.operations?.installation?.crew || "") !== normalizeLooseString(previousCrew)) return order;
+      if (!orderBelongsToCrew(order, previousCrew)) return order;
       return {
         ...order,
         operations: {
@@ -1222,7 +1242,7 @@ function addCoverageTeam() {
 function removeCoverageTeam() {
   const selectedCrew = getSelectedInstallationCrew();
   if (!selectedCrew || !state.coveragePlanner?.teams?.[selectedCrew]) return;
-  const assignedOrders = state.orders.filter((order) => normalizeLooseString(order.operations?.installation?.crew || "") === normalizeLooseString(selectedCrew));
+  const assignedOrders = state.orders.filter((order) => orderBelongsToCrew(order, selectedCrew));
   const confirmed = window.confirm(
     state.lang === "it"
       ? `Rimuovere ${selectedCrew} dal radar e scollegarla da ${assignedOrders.length} ordini assegnati?`
@@ -1232,7 +1252,7 @@ function removeCoverageTeam() {
   delete state.coveragePlanner.teams[selectedCrew];
   if (assignedOrders.length) {
     state.orders = state.orders.map((order) => {
-      if (normalizeLooseString(order.operations?.installation?.crew || "") !== normalizeLooseString(selectedCrew)) return order;
+      if (!orderBelongsToCrew(order, selectedCrew)) return order;
       return {
         ...order,
         operations: {
@@ -1254,8 +1274,7 @@ function removeCoverageTeam() {
 }
 
 function getInstallationOrdersForCrew(teamName) {
-  const normalizedCrew = normalizeLooseString(teamName);
-  return filterInstallations().filter((order) => normalizeLooseString(order.operations?.installation?.crew || "") === normalizedCrew);
+  return filterInstallations().filter((order) => orderBelongsToCrew(order, teamName));
 }
 
 function projectCoverageLatLng(lat, lng) {
@@ -2580,10 +2599,14 @@ function getCrewForCurrentUser() {
   if (/beta/i.test(state.currentUser?.name || "")) return "Beta";
   if (/delta/i.test(state.currentUser?.name || "")) return "Delta";
   const availableCrews = getInstallationCrewNames();
-  const normalizedUserName = normalizeLooseString(state.currentUser?.name || "");
+  const normalizedUserName = normalizeCrewAlias(state.currentUser?.name || "");
   const matchedCrew = availableCrews.find((crewName) => {
-    const normalizedCrew = normalizeLooseString(crewName);
-    return normalizedCrew && (normalizedCrew === normalizedUserName || normalizedUserName.includes(normalizedCrew));
+    const normalizedCrew = normalizeCrewAlias(crewName);
+    return normalizedCrew && (
+      normalizedCrew === normalizedUserName
+      || normalizedUserName.includes(normalizedCrew)
+      || normalizedCrew.includes(normalizedUserName)
+    );
   });
   if (matchedCrew) return matchedCrew;
   return "";
@@ -2848,7 +2871,7 @@ function filterInstallations() {
     .filter((order) => isRoutedToInstallation(order))
     .filter((order) => {
       if (!forcedCrew) return true;
-      return normalizeLooseString(order.operations?.installation?.crew || "") === normalizeLooseString(forcedCrew);
+      return orderBelongsToCrew(order, forcedCrew);
     })
     .sort((left, right) => {
       const leftDate = String(left.operations?.installation?.installDate || "");
