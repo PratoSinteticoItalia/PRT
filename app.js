@@ -1408,7 +1408,7 @@ function renderInstallationsCoverage() {
           const team = ensureCoverageTeam(crewName);
           const jobs = getInstallationOrdersForCrew(crewName);
           return `
-            <article class="coverage-team-card ${crewName === getSelectedInstallationCrew() ? "is-active" : ""}" data-coverage-team="${escapeHtml(crewName)}">
+            <article class="coverage-team-card ${crewName === getSelectedInstallationCrew() ? "is-active" : ""}" data-action="select-coverage-team" data-coverage-team="${escapeHtml(crewName)}" tabindex="0" role="button">
               <div class="coverage-team-title">
                 <div class="coverage-team-name">
                   <span class="coverage-swatch" style="background:${escapeHtml(team.color || getCoverageDefaultColor(0))}"></span>
@@ -1452,7 +1452,7 @@ function renderInstallationsCoverage() {
   if (ui.coverageJobsList) {
     ui.coverageJobsList.innerHTML = jobs.length
       ? jobs.map((order, index) => `
-          <article class="coverage-job-card" data-coverage-order="${escapeHtml(order.id)}">
+          <article class="coverage-job-card" data-action="select-coverage-order" data-coverage-order="${escapeHtml(order.id)}" tabindex="0" role="button">
             <div class="coverage-job-head">
               <div class="coverage-job-title">
                 <span class="coverage-count">${index + 1}</span>
@@ -2182,7 +2182,10 @@ function getShippingTargetDate(order) {
 
 function getShippingTargetLabel(order) {
   const target = getShippingTargetDate(order);
-  return target ? `${t("prepareBy")} ${formatDate(target)}` : (state.lang === "it" ? "Data preparazione da definire" : "Preparation date to define");
+  if (!target) return state.lang === "it" ? "Data preparazione da definire" : "Preparation date to define";
+  const todayKey = new Date().toISOString().slice(0, 10);
+  if (target === todayKey) return state.lang === "it" ? "Preparare oggi" : "Prepare today";
+  return `${t("prepareBy")} ${formatDate(target)}`;
 }
 
 function getShippingSummary(order) {
@@ -3774,12 +3777,13 @@ function updateInventoryFormUI() {
   if (noteField) noteField.placeholder = config.notePlaceholder;
 
   if (ui.inventoryForm.variant) {
+    const currentVariant = ui.inventoryForm.variant.value;
     ui.inventoryForm.variant.innerHTML = config.variantOptions.length
       ? config.variantOptions.map((option) => `<option value="${option.value}">${option.label}</option>`).join("")
       : '<option value="">Standard</option>';
-    if (!ui.inventoryForm.variant.value || !config.variantOptions.some((option) => option.value === ui.inventoryForm.variant.value)) {
-      ui.inventoryForm.variant.value = config.defaultVariant || "";
-    }
+    ui.inventoryForm.variant.value = config.variantOptions.some((option) => option.value === currentVariant)
+      ? currentVariant
+      : (config.defaultVariant || "");
   }
 
   const shouldShowVariant = Boolean(config.variantOptions.length || config.preset);
@@ -4508,7 +4512,7 @@ function renderShippingQueueCard(order) {
         <div class="shipping-queue-copy">${prepMeta}</div>
       </div>
       <div class="shipping-queue-footer">
-        <span>${targetLabel}</span>
+        <span class="shipping-prep-date ${String(getShippingTargetDate(order) || "") === new Date().toISOString().slice(0, 10) ? "is-today" : ""}">${targetLabel}</span>
         <strong>${order.operations?.warehouse?.ddt?.number || (state.lang === "it" ? "DDT da creare" : "DDT to create")}</strong>
       </div>
     </article>
@@ -5056,7 +5060,9 @@ async function saveInventory(event) {
   const config = getInventoryProductConfig(form.get("product"));
   const variantOptions = config.variantOptions || [];
   const variantValue = String(form.get("variant") || config.defaultVariant || "").trim();
-  const variantLabel = variantOptions.find((option) => option.value === variantValue)?.label || "";
+  const variantLabel = variantOptions.find((option) => option.value === variantValue)?.label
+    || ui.inventoryForm.variant?.selectedOptions?.[0]?.textContent?.trim()
+    || "";
   state.inventory = await apiFetch("/api/inventory/items", {
     method: "POST",
     body: JSON.stringify({
@@ -5839,6 +5845,19 @@ function handleGlobalClick(event) {
   }
   if (action === "save-inbox-flow") {
     saveInboxOrderFlow(id, null, button);
+    return;
+  }
+  if (action === "select-coverage-team") {
+    const teamName = button.dataset.coverageTeam || "";
+    if (teamName) selectInstallationCrew(teamName);
+    return;
+  }
+  if (action === "select-coverage-order") {
+    const orderId = button.dataset.coverageOrder || "";
+    if (!orderId) return;
+    state.selectedOrderId = orderId;
+    renderInstallations();
+    ui.installationDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
   const order = state.orders.find((item) => item.id === id) || getSelectedOrder();

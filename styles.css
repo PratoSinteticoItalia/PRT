@@ -5797,6 +5797,16 @@ body {
   line-height: 1.5;
 }
 
+.shipping-prep-date {
+  font-size: 14px;
+  font-weight: 700;
+  color: #415246;
+}
+
+.shipping-prep-date.is-today {
+  color: #245c32;
+}
+
 /* Re-apply primary small action styling after later generic button overrides */
 .mini-action.primary-mini,
 #orders .order-office-actions .mini-action.primary-mini {
@@ -7161,6 +7171,8 @@ button:active,
 
 .coverage-team-card {
   cursor: pointer;
+  position: relative;
+  z-index: 1;
   transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
 
