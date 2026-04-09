@@ -1992,6 +1992,7 @@ button.is-feedback,
   position: absolute;
   top: 10px;
   right: 10px;
+  z-index: 3;
   width: 28px;
   height: 28px;
   display: inline-flex;
@@ -2003,6 +2004,8 @@ button.is-feedback,
   color: var(--text);
   font-size: 18px;
   line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
   box-shadow: 0 6px 18px rgba(18, 38, 26, 0.1);
 }
 

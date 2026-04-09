@@ -3984,6 +3984,42 @@ function isInstallationInCurrentWeek(order) {
   return getInstallationWeekKeys().includes(installDate);
 }
 
+function getInstallationWeekOffsetForDate(dateValue) {
+  if (!dateValue) return 0;
+  const installDate = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(installDate.getTime())) return 0;
+  installDate.setHours(0, 0, 0, 0);
+  const base = new Date();
+  base.setHours(0, 0, 0, 0);
+  const day = base.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  base.setDate(base.getDate() + mondayOffset);
+  const diffMs = installDate.getTime() - base.getTime();
+  return Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+}
+
+function getPreferredCrewInstallationOrder(orders = []) {
+  const scheduled = orders
+    .filter((order) => String(order.operations?.installation?.installDate || "").trim())
+    .sort((left, right) => String(left.operations?.installation?.installDate || "").localeCompare(String(right.operations?.installation?.installDate || "")));
+  const todayKey = new Date().toISOString().slice(0, 10);
+  return scheduled.find((order) => String(order.operations?.installation?.installDate || "") >= todayKey)
+    || scheduled[0]
+    || orders[0]
+    || null;
+}
+
+function clearInstallationDetail() {
+  if (ui.installationDetailSummary) ui.installationDetailSummary.innerHTML = "";
+  if (ui.installationForm?.installDate) ui.installationForm.installDate.value = "";
+  if (ui.installationForm?.installTime) ui.installationForm.installTime.value = "";
+  if (ui.installationForm?.status) ui.installationForm.status.value = "da-pianificare";
+  if (ui.installationCrew) ui.installationCrew.innerHTML = buildInstallationCrewOptions("");
+  if (ui.installationForm?.reportNote) ui.installationForm.reportNote.value = "";
+  if (ui.installationAttachments) ui.installationAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato caricato." : "No attachments uploaded."}</div>`;
+  clearStatus(ui.installationStatus);
+}
+
 function buildInstallationCalendar(orders) {
   const start = getInstallationWeekStart();
   return Array.from({ length: 7 }).map((_, index) => {
@@ -4013,15 +4049,32 @@ function buildInstallationCalendar(orders) {
 }
 
 function renderInstallations() {
-  const orders = filterInstallations();
+  const isCrewView = state.currentUser?.role === "crew";
+  let orders = filterInstallations();
+  if (isCrewView && orders.length) {
+    const currentWeekMatches = orders.filter(isInstallationInCurrentWeek);
+    if (!currentWeekMatches.length) {
+      const preferredOrder = getPreferredCrewInstallationOrder(orders);
+      const preferredDate = preferredOrder?.operations?.installation?.installDate || "";
+      if (preferredDate) {
+        state.installationWeekOffset = getInstallationWeekOffsetForDate(preferredDate);
+      }
+    }
+  }
   const weekOrders = orders.filter(isInstallationInCurrentWeek);
   const backlogOrders = orders.filter((order) => !isInstallationInCurrentWeek(order));
-  const isCrewView = state.currentUser?.role === "crew";
+  const listOrders = isCrewView ? orders : backlogOrders;
   if (ui.installationCrewField) ui.installationCrewField.classList.toggle("hidden", isCrewView);
   if (ui.installationEmailButton) ui.installationEmailButton.classList.toggle("hidden", isCrewView);
   if (ui.installationSubmitButton) ui.installationSubmitButton.textContent = isCrewView
     ? (state.lang === "it" ? "Salva aggiornamento cantiere" : "Save site update")
     : (state.lang === "it" ? "Salva posa" : "Save installation");
+  const sectionTitle = document.querySelector("#installations .section-title");
+  if (sectionTitle) {
+    sectionTitle.textContent = isCrewView
+      ? (state.lang === "it" ? "Le tue pose" : "Your installs")
+      : (state.lang === "it" ? "Da pianificare (backlog)" : "To schedule (backlog)");
+  }
   getSelectedInstallationCrew();
   renderInstallationsCoverage();
   if (ui.installationCalendar) {
@@ -4037,10 +4090,16 @@ function renderInstallations() {
     end.setDate(start.getDate() + 6);
     ui.installationNextWeekButton.dataset.weekEnd = end.toISOString().slice(0, 10);
   }
-  ui.installationList.innerHTML = backlogOrders.length
-    ? backlogOrders.map((order) => {
+  ui.installationList.innerHTML = listOrders.length
+    ? listOrders.map((order) => {
         const selected = order.id === state.selectedOrderId ? "selected" : "";
         const install = order.operations?.installation || {};
+        const detailLabel = install.installDate
+          ? `${formatDate(install.installDate)}${install.installTime ? ` · ${install.installTime}` : ""}`
+          : (state.lang === "it" ? "Da pianificare" : "To schedule");
+        const badgeLabel = install.installDate
+          ? (state.lang === "it" ? "Programmato" : "Scheduled")
+          : t("toPlan");
         return `
           <article class="order-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="installations">
             <div>
@@ -4048,25 +4107,26 @@ function renderInstallations() {
               <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")}</div>
             </div>
             <div class="order-type-badge type-posa">${getShippingModeLabel(order)}</div>
-            <div class="order-amount">${install.installDate ? formatDate(install.installDate) : (state.lang === "it" ? "Da pianificare" : "To schedule")}</div>
-            <div class="action-badge ${install.installDate ? "badge-info" : "badge-warning"}">${install.installDate ? t("scheduled") : t("toPlan")}</div>
+            <div class="order-amount">${detailLabel}</div>
+            <div class="action-badge ${install.installDate ? "badge-info" : "badge-warning"}">${badgeLabel}</div>
           </article>
         `;
       }).join("")
-    : `<div class="info-card">${state.lang === "it" ? "Nessuna posa in backlog per la settimana selezionata." : "No backlog installs for the selected week."}</div>`;
+    : `<div class="info-card">${isCrewView
+      ? (state.lang === "it" ? "Nessuna posa assegnata a questa squadra." : "No installs assigned to this crew.")
+      : (state.lang === "it" ? "Nessuna posa in backlog per la settimana selezionata." : "No backlog installs for the selected week.")}</div>`;
 
-  const order = orders.find((item) => item.id === state.selectedOrderId) || weekOrders[0] || backlogOrders[0] || null;
+  const order = orders.find((item) => item.id === state.selectedOrderId) || weekOrders[0] || listOrders[0] || null;
   if (state.currentView === "installations" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
+    state.selectedOrderId = null;
     ui.installationDetailTitle.textContent = t("noSelection");
     if (ui.installationDetailMeta) {
       ui.installationDetailMeta.textContent = isCrewView
         ? (state.lang === "it" ? "Dettaglio operativo cantiere" : "Site operations detail")
         : "Dettaglio pianificazione ordine";
     }
-    if (ui.installationDetailSummary) ui.installationDetailSummary.innerHTML = "";
-    ui.installationAttachments.innerHTML = "";
-    clearStatus(ui.installationStatus);
+    clearInstallationDetail();
     return;
   }
   if (order.operations?.installation?.crew) {
@@ -5766,7 +5826,15 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "remove-attachment") {
-    removeAttachment(id, Number(button.dataset.index || -1));
+    event.preventDefault();
+    event.stopPropagation();
+    removeAttachment(id, Number(button.dataset.index || -1)).catch((error) => {
+      const message = error?.message === "attachment_not_found"
+        ? (state.lang === "it" ? "Allegato gia rimosso o non trovato." : "Attachment already removed or not found.")
+        : (state.lang === "it" ? "Impossibile rimuovere l'allegato." : "Unable to remove attachment.");
+      const targetStatus = state.currentView === "installations" ? ui.installationStatus : ui.orderStatus;
+      if (targetStatus) setStatus(targetStatus, "error", message);
+    });
     return;
   }
   if (action === "save-inbox-flow") {
