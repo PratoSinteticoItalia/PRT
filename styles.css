@@ -45,6 +45,12 @@ body.shell-loading::before {
   pointer-events: none;
 }
 
+@media (max-width: 980px) {
+  body.shell-loading::before {
+    display: none;
+  }
+}
+
 .hidden { display: none !important; }
 
 .mobile-menu-btn,
