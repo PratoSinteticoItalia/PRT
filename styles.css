@@ -7520,3 +7520,10 @@ button:active,
     display: block;
   }
 }
+
+/* Mobile: hide coverage radar to keep Pose usable */
+@media (max-width: 760px) {
+  .coverage-panel {
+    display: none;
+  }
+}
