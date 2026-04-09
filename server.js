@@ -1451,20 +1451,35 @@ async function handleApi(req, res, url) {
     const length = toNumber(body.length || 0);
     const note = String(body.note || "");
     const status = body.status === "residuo" ? "residuo" : "intero";
+    const measured = body.measured !== false && body.measured !== "false";
     if (!product) {
       return sendJson(res, 400, { error: "invalid_inventory_payload" });
     }
-    const created = Array.from({ length: quantity }, () => ({
-      id: randomUUID(),
-      product,
-      width,
-      length,
-      sqm: width && length ? Number((width * length).toFixed(2)) : 0,
-      variant: String(body.variant || ""),
-      status,
-      note,
-      createdAt: new Date().toISOString(),
-    }));
+    const created = measured
+      ? Array.from({ length: quantity }, () => ({
+        id: randomUUID(),
+        product,
+        width,
+        length,
+        sqm: width && length ? Number((width * length).toFixed(2)) : 0,
+        variant: String(body.variant || ""),
+        status,
+        note,
+        units: 1,
+        createdAt: new Date().toISOString(),
+      }))
+      : [{
+        id: randomUUID(),
+        product,
+        width,
+        length,
+        sqm: 0,
+        variant: String(body.variant || ""),
+        status,
+        note,
+        units: quantity,
+        createdAt: new Date().toISOString(),
+      }];
     store.inventory.unshift(...created);
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.inventory);

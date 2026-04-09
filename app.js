@@ -2608,9 +2608,10 @@ function buildInventoryGroups() {
     };
     existing.pieces.push(item);
     existing.totalSqm += toNumber(item.sqm);
-    existing.totalUnits += 1;
-    if (item.status === "residuo") existing.residualCount += 1;
-    else existing.fullCount += 1;
+    const units = Math.max(1, Number(item.units || 1));
+    existing.totalUnits += units;
+    if (item.status === "residuo") existing.residualCount += units;
+    else existing.fullCount += units;
     groups.set(key, existing);
   });
 
@@ -2667,6 +2668,27 @@ function buildInventoryGroups() {
       if (a.isModel !== b.isModel) return a.isModel ? -1 : 1;
       return INVENTORY_CATALOG.findIndex((item) => item.label === a.product) - INVENTORY_CATALOG.findIndex((item) => item.label === b.product);
     });
+}
+
+function buildMaterialInventorySlots(group) {
+  const slots = new Map();
+  group.pieces.forEach((item) => {
+    const slotKey = [
+      item.status || "intero",
+      item.variant || "",
+      item.note || "",
+    ].join("|");
+    const existing = slots.get(slotKey) || {
+      id: item.id,
+      status: item.status || "intero",
+      variant: item.variant || "",
+      note: item.note || "",
+      units: 0,
+    };
+    existing.units += Math.max(1, Number(item.units || 1));
+    slots.set(slotKey, existing);
+  });
+  return [...slots.values()].sort((a, b) => b.units - a.units);
 }
 
 function getInventorySummary() {
@@ -3551,6 +3573,7 @@ function renderInventoryCard(group) {
     .slice(0, 3);
   const remainingDemandCount = Math.max(0, group.demandOrders.length - linkedDemandOrders.length);
   const committedLabel = group.isModel ? `${Math.round(group.demandSqm)} mq` : `${group.demandUnits} u`;
+  const materialSlots = group.isModel ? [] : buildMaterialInventorySlots(group);
 
   const deficitAlert = hasDeficit || (!hasStock && hasDemand)
     ? `<div class="wh-deficit-alert">
@@ -3594,11 +3617,17 @@ function renderInventoryCard(group) {
         </div>
       ` : ""}
       <div class="wh-pieces">
-        ${group.pieces.length ? group.pieces.map((item) => `
+        ${group.isModel && group.pieces.length ? group.pieces.map((item) => `
           <button class="wh-piece ${item.status === "residuo" ? "residuo" : "intero"}" data-action="delete-inventory-piece" data-id="${item.id}" title="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}">
             <strong>${formatPieceLabel(item)}</strong>
             <span>${group.isModel ? `${Math.round(item.sqm)} mq` : (item.note || unitDetailLabel)}</span>
             <small>${group.isModel ? (item.status === "residuo" ? "RESIDUO" : "INTERO") : unitDetailLabel.toUpperCase()}</small>
+          </button>
+        `).join("") : !group.isModel && materialSlots.length ? materialSlots.map((slot) => `
+          <button class="wh-piece material-slot ${slot.status === "residuo" ? "residuo" : "intero"}" data-action="delete-inventory-piece" data-id="${slot.id}" title="${state.lang === "it" ? "Rimuovi lotto" : "Remove slot"}">
+            <strong>${slot.variant || (state.lang === "it" ? "Slot magazzino" : "Warehouse slot")}</strong>
+            <span>${slot.note || (state.lang === "it" ? "Quantita aggregata a magazzino" : "Aggregated stock quantity")}</span>
+            <small>${slot.units} ${unitDetailLabel}</small>
           </button>
         `).join("") : `<div class="wh-empty">${state.lang === "it" ? "Nessun pezzo caricato." : "No pieces loaded."}</div>`}
       </div>
@@ -3606,7 +3635,7 @@ function renderInventoryCard(group) {
         <div class="wh-stat soft">
           <div class="wh-stat-label">${state.lang === "it" ? "Giacenza reale" : "Physical stock"}</div>
           <div class="wh-stat-value">${stockLabel}</div>
-          <div class="wh-stat-sub">${group.isModel ? `${totalPieces} ${state.lang === "it" ? "pezzi fisici caricati" : "physical pieces loaded"}` : `${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "fisicamente caricati" : "physically loaded"}`}</div>
+          <div class="wh-stat-sub">${group.isModel ? `${totalPieces} ${state.lang === "it" ? "pezzi fisici caricati" : "physical pieces loaded"}` : `${materialSlots.length} ${state.lang === "it" ? "slot" : "slots"} · ${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "fisicamente caricati" : "physically loaded"}`}</div>
         </div>
         <div class="wh-stat ${hasDemand ? "danger" : "soft"}" ${demandActionAttrs}>
           <div class="wh-stat-label">${state.lang === "it" ? "Impegnato su ordini" : "Committed to orders"}</div>
@@ -4947,6 +4976,7 @@ async function saveInventory(event) {
     body: JSON.stringify({
       product: form.get("product"),
       quantity: form.get("quantity"),
+      measured: config.isMeasured,
       width: config.isMeasured ? form.get("width") : (config.preset?.width || ""),
       length: config.isMeasured ? form.get("length") : (config.preset?.length || ""),
       status: config.isMeasured ? form.get("status") : "intero",
