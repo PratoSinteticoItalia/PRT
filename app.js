@@ -1162,15 +1162,23 @@ function getSelectedInstallationCrew() {
   }
   const crewsAvailable = getInstallationCrewNames();
   if (!crewsAvailable.length) return "";
-  if (crewsAvailable.includes(state.selectedInstallationCrew)) return state.selectedInstallationCrew;
+  if (state.selectedInstallationCrew) {
+    const matched = crewsAvailable.find((crewName) => isSameCrewName(crewName, state.selectedInstallationCrew));
+    if (matched) {
+      state.selectedInstallationCrew = matched;
+      return matched;
+    }
+  }
   state.selectedInstallationCrew = crewsAvailable[0];
   return state.selectedInstallationCrew;
 }
 
 function selectInstallationCrew(teamName) {
   if (!teamName) return;
-  state.selectedInstallationCrew = teamName;
-  ensureCoverageTeam(teamName);
+  const crewsAvailable = getInstallationCrewNames();
+  const resolved = crewsAvailable.find((crewName) => isSameCrewName(crewName, teamName)) || teamName;
+  state.selectedInstallationCrew = resolved;
+  ensureCoverageTeam(resolved);
   state.coverageDrawing = { active: false, points: [] };
   saveCoveragePlannerState();
   renderInstallations();
