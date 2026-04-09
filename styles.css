@@ -1786,6 +1786,34 @@ button.is-feedback,
   font-size: 15px;
 }
 
+.cal-day.is-unavailable {
+  border-color: rgba(190, 80, 80, 0.25);
+  background: rgba(255, 248, 248, 0.96);
+}
+
+.cal-day.is-unavailable .cal-gauge-fill {
+  background: #e07a7a;
+}
+
+.cal-unavailable-btn {
+  width: 100%;
+  border-radius: 999px;
+  border: 1px solid rgba(49, 67, 56, 0.18);
+  background: #f6f7f4;
+  color: #3a4b40;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  margin: 10px 0;
+  cursor: pointer;
+}
+
+.cal-unavailable-btn.is-active {
+  background: #fce8e8;
+  border-color: rgba(182, 64, 64, 0.5);
+  color: #b43c3c;
+}
+
 .calendar-stack {
   display: grid;
   gap: 8px;

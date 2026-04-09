@@ -1117,6 +1117,7 @@ function ensureCoverageTeam(teamName) {
   const key = String(teamName || "").trim();
   if (!key) return null;
   if (!state.coveragePlanner?.teams) state.coveragePlanner = { teams: {} };
+  if (!state.coveragePlanner.availability) state.coveragePlanner.availability = {};
   if (!state.coveragePlanner.teams[key]) {
     const index = getInstallationCrewNames().indexOf(key);
     state.coveragePlanner.teams[key] = {
@@ -1128,6 +1129,29 @@ function ensureCoverageTeam(teamName) {
     };
   }
   return state.coveragePlanner.teams[key];
+}
+
+function ensureCrewAvailability(crewName) {
+  if (!crewName) return {};
+  if (!state.coveragePlanner) state.coveragePlanner = { teams: {} };
+  if (!state.coveragePlanner.availability) state.coveragePlanner.availability = {};
+  if (!state.coveragePlanner.availability[crewName]) state.coveragePlanner.availability[crewName] = {};
+  return state.coveragePlanner.availability[crewName];
+}
+
+function isCrewUnavailable(crewName, dateKey) {
+  if (!crewName || !dateKey) return false;
+  const availability = ensureCrewAvailability(crewName);
+  return Boolean(availability[dateKey]);
+}
+
+function toggleCrewUnavailable(crewName, dateKey) {
+  if (!crewName || !dateKey) return;
+  const availability = ensureCrewAvailability(crewName);
+  if (availability[dateKey]) delete availability[dateKey];
+  else availability[dateKey] = true;
+  saveCoveragePlannerState();
+  renderInstallations();
 }
 
 function getSelectedInstallationCrew() {
@@ -4024,7 +4048,7 @@ function clearInstallationDetail() {
   clearStatus(ui.installationStatus);
 }
 
-function buildInstallationCalendar(orders) {
+function buildInstallationCalendar(orders, crewName = "") {
   const start = getInstallationWeekStart();
   return Array.from({ length: 7 }).map((_, index) => {
     const date = new Date(start);
@@ -4032,13 +4056,18 @@ function buildInstallationCalendar(orders) {
     const key = date.toISOString().slice(0, 10);
     const items = orders.filter((order) => String(order.operations?.installation?.installDate || "") === key);
     const totalSqm = items.reduce((sum, order) => sum + toNumber(order.operations?.sqm || 0), 0);
+    const unavailable = Boolean(crewName && isCrewUnavailable(crewName, key));
     return `
-      <article class="cal-day">
+      <article class="cal-day ${unavailable ? "is-unavailable" : ""}" data-date="${key}">
         <div class="cal-day-header">
           <div class="cal-day-date">${formatDate(key)}</div>
           <div class="cal-day-capacity">${Math.round(totalSqm)}/120 mq</div>
         </div>
         <div class="cal-gauge"><div class="cal-gauge-fill" style="width:${Math.min(100, Math.round((totalSqm / 120) * 100))}%"></div></div>
+        ${crewName ? `
+          <button class="cal-unavailable-btn ${unavailable ? "is-active" : ""}" type="button" data-action="toggle-crew-unavailable" data-date="${key}">
+            ${unavailable ? (state.lang === "it" ? "Non disponibile" : "Unavailable") : (state.lang === "it" ? "Segna indisponibile" : "Mark unavailable")}
+          </button>` : ""}
         ${items.length
           ? items.map((order) => `
             <button class="cal-item" data-action="select-order" data-id="${order.id}" data-view="installations">
@@ -4054,6 +4083,7 @@ function buildInstallationCalendar(orders) {
 
 function renderInstallations() {
   const isCrewView = state.currentUser?.role === "crew";
+  const crewName = isCrewView ? getCrewForCurrentUser() : "";
   let orders = filterInstallations();
   if (isCrewView && orders.length) {
     const currentWeekMatches = orders.filter(isInstallationInCurrentWeek);
@@ -4082,7 +4112,7 @@ function renderInstallations() {
   getSelectedInstallationCrew();
   renderInstallationsCoverage();
   if (ui.installationCalendar) {
-    ui.installationCalendar.innerHTML = buildInstallationCalendar(orders);
+    ui.installationCalendar.innerHTML = buildInstallationCalendar(orders, crewName);
   }
   if (ui.installationPrevWeekButton) {
     const start = getInstallationWeekStart();
@@ -5845,6 +5875,13 @@ function handleGlobalClick(event) {
   }
   if (action === "save-inbox-flow") {
     saveInboxOrderFlow(id, null, button);
+    return;
+  }
+  if (action === "toggle-crew-unavailable") {
+    if (state.currentUser?.role !== "crew") return;
+    const crewName = getCrewForCurrentUser();
+    const dateKey = button.dataset.date || "";
+    toggleCrewUnavailable(crewName, dateKey);
     return;
   }
   if (action === "select-coverage-team") {
