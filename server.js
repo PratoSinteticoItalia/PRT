@@ -39,6 +39,7 @@ const LOGIN_MAX_ATTEMPTS = 20;
 const IS_PUBLIC_DEPLOY = Boolean(process.env.RENDER || process.env.NODE_ENV === "production");
 const ALLOW_DEMO_FALLBACK = process.env.ALLOW_DEMO_FALLBACK === "true" || !IS_PUBLIC_DEPLOY;
 const PASSWORD_MIN_LENGTH = 12;
+const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const BOOTSTRAP_OFFICE_EMAIL = String(process.env.BOOTSTRAP_OFFICE_EMAIL || "office@vertex.local").trim().toLowerCase();
 const BOOTSTRAP_OFFICE_PASSWORD = String(process.env.BOOTSTRAP_OFFICE_PASSWORD || "");
 const loginAttempts = new Map();
@@ -81,6 +82,11 @@ function sanitizePasswordUser(user = {}) {
   nextUser.mustChangePassword = Boolean(nextUser.mustChangePassword);
   nextUser.sessionVersion = Math.max(1, Number(nextUser.sessionVersion || 1));
   nextUser.lastPasswordChangeAt = String(nextUser.lastPasswordChangeAt || "");
+  nextUser.crewName = String(nextUser.crewName || (nextUser.role === "crew" ? nextUser.name : "") || "").trim();
+  const parsedCapacity = Number(String(nextUser.dailyCapacity ?? (nextUser.role === "crew" ? DEFAULT_CREW_DAILY_CAPACITY : 0)).replace(",", ".").replace(/[^\d.-]/g, ""));
+  nextUser.dailyCapacity = Number.isFinite(parsedCapacity)
+    ? Math.max(0, parsedCapacity)
+    : (nextUser.role === "crew" ? DEFAULT_CREW_DAILY_CAPACITY : 0);
   delete nextUser.password;
   return nextUser;
 }
@@ -180,6 +186,8 @@ function buildDefaultStore() {
         email: "crew@vertex.local",
         password: "crew123",
         role: "crew",
+        crewName: "Alpha",
+        dailyCapacity: DEFAULT_CREW_DAILY_CAPACITY,
       },
     ],
     jobs: [],
@@ -223,6 +231,8 @@ function sanitizeUser(user) {
     name: user.name,
     email: user.email,
     role: user.role,
+    crewName: String(user.crewName || ""),
+    dailyCapacity: Math.max(0, Number(user.dailyCapacity || 0)),
     status: user.status === "suspended" ? "suspended" : "active",
     mustChangePassword: Boolean(user.mustChangePassword),
   };
@@ -230,6 +240,14 @@ function sanitizeUser(user) {
 
 function isValidRole(role = "") {
   return ["office", "warehouse", "crew"].includes(String(role || "").trim());
+}
+
+function normalizeCrewName(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\b(squadra|team|crew)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function pushSecurityEvent(store, type, actor, message, meta = {}) {
@@ -432,6 +450,27 @@ function deriveOrderData(order) {
   };
 }
 
+function normalizeTravelExpenses(items = [], fallbackCrew = "") {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => {
+      const rawCategory = String(item?.category || "").trim().toLowerCase();
+      const category = ["hotel", "fuel", "meal", "toll"].includes(rawCategory) ? rawCategory : "other";
+      const amount = Number(toNumber(item?.amount || 0).toFixed(2));
+      return {
+        id: String(item?.id || randomUUID()),
+        category,
+        amount,
+        date: String(item?.date || "").slice(0, 10),
+        note: String(item?.note || "").trim(),
+        crew: String(item?.crew || fallbackCrew || "").trim(),
+        createdAt: String(item?.createdAt || new Date().toISOString()),
+        createdBy: String(item?.createdBy || "").trim(),
+      };
+    })
+    .filter((item) => item.amount > 0 && item.date);
+}
+
 function buildDefaultOperations(order, linkedJob = null) {
   const derived = deriveOrderData(order);
   return {
@@ -482,6 +521,7 @@ function buildDefaultOperations(order, linkedJob = null) {
       clientConfirmed: false,
       status: linkedJob?.installStatus || "da-pianificare",
       reportNote: "",
+      travelExpenses: [],
     },
   };
 }
@@ -541,6 +581,10 @@ function normalizeOperations(order, linkedJob = null) {
       clientConfirmed: Boolean(current.installation?.clientConfirmed ?? defaults.installation.clientConfirmed),
       status: current.installation?.status || defaults.installation.status,
       reportNote: current.installation?.reportNote || defaults.installation.reportNote,
+      travelExpenses: normalizeTravelExpenses(
+        current.installation?.travelExpenses,
+        current.installation?.crew || defaults.installation.crew,
+      ),
     },
   };
 }
@@ -559,6 +603,8 @@ function reconcileStoreData(store) {
           passwordHash: String(user.passwordHash || ""),
           passwordSalt: String(user.passwordSalt || ""),
           role: String(user.role || defaults.users[index]?.role || "office").trim(),
+          crewName: String(user.crewName || defaults.users[index]?.crewName || ""),
+          dailyCapacity: user.dailyCapacity ?? defaults.users[index]?.dailyCapacity ?? 0,
         });
         if (normalized.passwordHash !== user.passwordHash || normalized.passwordSalt !== user.passwordSalt || "password" in user) {
           changed = true;
@@ -1357,7 +1403,16 @@ async function handleApi(req, res, url) {
     const password = String(body.password || "");
     const status = String(body.status || "active").trim() === "suspended" ? "suspended" : "active";
     const mustChangePassword = Boolean(body.mustChangePassword);
+    const crewName = role === "crew"
+      ? String(body.crewName || name || "").trim()
+      : "";
+    const dailyCapacity = role === "crew"
+      ? Math.max(0, toNumber(body.dailyCapacity || DEFAULT_CREW_DAILY_CAPACITY))
+      : 0;
     if (!name || !email || !isValidRole(role)) {
+      return sendJson(res, 400, { error: "invalid_account_payload" });
+    }
+    if (role === "crew" && !crewName) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
     }
     const passwordError = validatePasswordStrength(password);
@@ -1367,12 +1422,20 @@ async function handleApi(req, res, url) {
     if (store.users.some((item) => item.email.toLowerCase() === email)) {
       return sendJson(res, 400, { error: "email_already_exists" });
     }
+    if (
+      role === "crew"
+      && store.users.some((item) => item.role === "crew" && normalizeCrewName(item.crewName || item.name) === normalizeCrewName(crewName))
+    ) {
+      return sendJson(res, 400, { error: "crew_name_exists" });
+    }
     const { hash, salt } = hashPassword(password);
     const created = {
       id: randomUUID(),
       name,
       email,
       role,
+      crewName,
+      dailyCapacity,
       status,
       mustChangePassword,
       sessionVersion: 1,
@@ -1381,7 +1444,13 @@ async function handleApi(req, res, url) {
       passwordSalt: salt,
     };
     store.users.push(created);
-    pushSecurityEvent(store, "account_created", currentUser.email, `Creato account ${email}.`, { email, role, status });
+    pushSecurityEvent(store, "account_created", currentUser.email, `Creato account ${email}.`, {
+      email,
+      role,
+      status,
+      crewName,
+      dailyCapacity,
+    });
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, sanitizeUser(created));
   }
@@ -1399,17 +1468,35 @@ async function handleApi(req, res, url) {
     const nextStatus = String(body.status || current.status || "active").trim() === "suspended" ? "suspended" : "active";
     const mustChangePassword = body.mustChangePassword === true || body.mustChangePassword === "true";
     const newPassword = String(body.password || "");
+    const nextCrewName = nextRole === "crew"
+      ? String(body.crewName || current.crewName || nextName || "").trim()
+      : "";
+    const nextDailyCapacity = nextRole === "crew"
+      ? Math.max(0, toNumber(body.dailyCapacity || current.dailyCapacity || DEFAULT_CREW_DAILY_CAPACITY))
+      : 0;
     if (!nextName || !nextEmail || !isValidRole(nextRole)) {
+      return sendJson(res, 400, { error: "invalid_account_payload" });
+    }
+    if (nextRole === "crew" && !nextCrewName) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
     }
     if (store.users.some((item) => item.id !== userId && item.email.toLowerCase() === nextEmail)) {
       return sendJson(res, 400, { error: "email_already_exists" });
     }
+    if (
+      nextRole === "crew"
+      && store.users.some((item) => item.id !== userId && item.role === "crew" && normalizeCrewName(item.crewName || item.name) === normalizeCrewName(nextCrewName))
+    ) {
+      return sendJson(res, 400, { error: "crew_name_exists" });
+    }
+    const previousCrewName = current.role === "crew" ? String(current.crewName || current.name || "").trim() : "";
     const updated = {
       ...current,
       name: nextName,
       email: nextEmail,
       role: nextRole,
+      crewName: nextCrewName,
+      dailyCapacity: nextDailyCapacity,
       status: nextStatus,
       mustChangePassword: mustChangePassword || current.mustChangePassword,
     };
@@ -1429,9 +1516,39 @@ async function handleApi(req, res, url) {
       updated.sessionVersion = Math.max(1, Number(current.sessionVersion || 1)) + 1;
     }
     store.users[userIndex] = updated;
+    if (
+      current.role === "crew"
+      && nextRole === "crew"
+      && previousCrewName
+      && nextCrewName
+      && normalizeCrewName(previousCrewName) !== normalizeCrewName(nextCrewName)
+    ) {
+      store.orders = store.orders.map((order) => {
+        const assignedCrew = String(order.operations?.installation?.crew || "").trim();
+        if (!assignedCrew || normalizeCrewName(assignedCrew) !== normalizeCrewName(previousCrewName)) return order;
+        return {
+          ...order,
+          operations: normalizeOperations(
+            {
+              ...order,
+              operations: {
+                ...(order.operations || {}),
+                installation: {
+                  ...(order.operations?.installation || {}),
+                  crew: nextCrewName,
+                },
+              },
+            },
+            store.jobs.find((job) => job.sourceOrderId === order.id) || null,
+          ),
+        };
+      });
+    }
     pushSecurityEvent(store, "account_updated", currentUser.email, `Aggiornato account ${nextEmail}.`, {
       email: nextEmail,
       role: nextRole,
+      crewName: nextCrewName,
+      dailyCapacity: nextDailyCapacity,
       status: nextStatus,
       mustChangePassword: updated.mustChangePassword,
     });

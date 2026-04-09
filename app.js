@@ -1,4 +1,5 @@
 const crews = ["Alpha", "Beta", "Delta"];
+const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
 const COVERAGE_BOUNDS = { minLon: 2.3, maxLon: 26.3, minLat: 34.2, maxLat: 47.8 };
@@ -164,6 +165,13 @@ const ONE_EXPRESS_TARIFFS = window.ONE_EXPRESS_TARIFFS || {
   absoluteLimits: { maxShortSide: 160, maxLongSide: 240, maxHeight: 240, maxWeightKg: 1800 },
 };
 const PALLET_CLASS_ORDER = ["P150", "P300", "P550", "PS550", "P1000"];
+const TRAVEL_EXPENSE_TYPES = {
+  hotel: { it: "Albergo", en: "Hotel" },
+  fuel: { it: "Carburante", en: "Fuel" },
+  meal: { it: "Pasto", en: "Meal" },
+  toll: { it: "Pedaggio", en: "Toll" },
+  other: { it: "Altro", en: "Other" },
+};
 const roleViews = {
   office: ["dashboard", "orders", "warehouse", "installations", "accounting", "shipping", "settings"],
   warehouse: ["warehouse", "shipping"],
@@ -619,6 +627,8 @@ const ui = {
   mobileMenuButton: document.getElementById("mobile-menu-button"),
   mobileMenuClose: document.getElementById("mobile-menu-close"),
   mobileLogoutButton: document.getElementById("mobile-logout-button"),
+  mobileLogoutInlineButton: document.getElementById("mobile-logout-inline-button"),
+  mobileReloadButton: document.getElementById("mobile-reload-button"),
   mobileSidebarBackdrop: document.getElementById("mobile-sidebar-backdrop"),
   topbarAlertCount: document.getElementById("topbar-alert-count"),
   langButtons: Array.from(document.querySelectorAll(".lang-btn")),
@@ -697,6 +707,8 @@ const ui = {
   coverageJobsList: document.getElementById("coverage-jobs-list"),
   coverageJobCount: document.getElementById("coverage-job-count"),
   installationCalendar: document.getElementById("installation-calendar"),
+  installationCrewFilters: document.getElementById("installation-crew-filters"),
+  installationCapacityHint: document.getElementById("installation-capacity-hint"),
   installationList: document.getElementById("installation-list"),
   installationPrevWeekButton: document.getElementById("installation-prev-week-button"),
   installationNextWeekButton: document.getElementById("installation-next-week-button"),
@@ -715,6 +727,10 @@ const ui = {
   installationEmailButton: document.getElementById("installation-email-button"),
   installationAttachmentButton: document.getElementById("installation-attachment-button"),
   installationAttachments: document.getElementById("installation-attachments"),
+  installationExpenseForm: document.getElementById("installation-expense-form"),
+  installationExpenseStatus: document.getElementById("installation-expense-status"),
+  installationExpenseSummary: document.getElementById("installation-expense-summary"),
+  installationExpenseList: document.getElementById("installation-expense-list"),
   accountingSearch: document.getElementById("accounting-search"),
   accountingFilterTags: Array.from(document.querySelectorAll(".accounting-filter-tag")),
   accountingList: document.getElementById("accounting-list"),
@@ -742,6 +758,7 @@ const ui = {
   accountsList: document.getElementById("accounts-list"),
   accountCreateForm: document.getElementById("account-create-form"),
   accountsStatus: document.getElementById("accounts-status"),
+  crewExpenseMonthlyReport: document.getElementById("crew-expense-monthly-report"),
   authDemo: document.getElementById("auth-demo"),
   orderModal: document.getElementById("order-modal"),
   orderModalTitle: document.getElementById("order-modal-title"),
@@ -775,6 +792,8 @@ function staticLabels() {
     ["#new-order-button", t("newOrder")],
     ["#reload-button", t("reloadData")],
     ["#logout-button", t("logout")],
+    ["#mobile-reload-button", t("reloadData")],
+    ["#mobile-logout-inline-button", t("logout")],
     [".sidebar-card .card-label", t("focusOperational")],
     [".sidebar-card h3", t("singleOrder")],
     [".sidebar-card p", t("focusCopy")],
@@ -891,6 +910,17 @@ function formatDate(value) {
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+function formatMonthKey(monthKey) {
+  if (!monthKey) return "—";
+  const date = new Date(`${monthKey}-01T12:00:00`);
+  if (Number.isNaN(date.getTime())) return monthKey;
+  const label = new Intl.DateTimeFormat(state.lang === "it" ? "it-IT" : "en-GB", {
+    month: "long",
+    year: "numeric",
+  }).format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function composeClientName(order) {
@@ -1109,13 +1139,62 @@ function saveCoveragePlannerState() {
 }
 
 function getInstallationCrewNames() {
+  const accountCrews = getCrewAccounts()
+    .map((user) => getCrewLabelForUser(user))
+    .filter(Boolean);
   const orderCrews = state.orders
     .map((order) => String(order.operations?.installation?.crew || "").trim())
     .filter(Boolean);
   const storedCrews = Object.keys(state.coveragePlanner?.teams || {});
-  return Array.from(new Set([...crews, ...orderCrews, ...storedCrews]))
+  return Array.from(new Set([...crews, ...accountCrews, ...orderCrews, ...storedCrews]))
     .filter(Boolean)
     .sort((left, right) => left.localeCompare(right, "it"));
+}
+
+function getCrewLabelForUser(user = {}) {
+  return String(user?.crewName || user?.name || "").trim();
+}
+
+function getCrewAccounts() {
+  const crewUsers = Array.isArray(state.users)
+    ? state.users.filter((user) => user.role === "crew")
+    : [];
+  if (state.currentUser?.role === "crew") {
+    const currentCrewName = getCrewLabelForUser(state.currentUser);
+    const existing = crewUsers.some((user) => user.id === state.currentUser.id || isSameCrewName(getCrewLabelForUser(user), currentCrewName));
+    if (!existing) crewUsers.push(state.currentUser);
+  }
+  return crewUsers;
+}
+
+function getCrewProfile(crewName = "") {
+  if (!crewName) return null;
+  return getCrewAccounts().find((user) => isSameCrewName(getCrewLabelForUser(user), crewName)) || null;
+}
+
+function getCrewDailyCapacity(crewName = "") {
+  const profile = crewName ? getCrewProfile(crewName) : null;
+  const capacity = Number(profile?.dailyCapacity || 0);
+  return capacity > 0 ? capacity : DEFAULT_CREW_DAILY_CAPACITY;
+}
+
+function getInstallationCapacityForScope(crewName = "") {
+  if (crewName) return getCrewDailyCapacity(crewName);
+  const crewNames = getInstallationCrewNames();
+  if (!crewNames.length) return DEFAULT_CREW_DAILY_CAPACITY;
+  const scopedCapacity = crewNames.reduce((sum, name) => sum + getCrewDailyCapacity(name), 0);
+  return scopedCapacity || DEFAULT_CREW_DAILY_CAPACITY;
+}
+
+function getTravelExpensesForOrder(order) {
+  return Array.isArray(order?.operations?.installation?.travelExpenses)
+    ? order.operations.installation.travelExpenses
+    : [];
+}
+
+function getTravelExpenseLabel(category = "") {
+  const key = TRAVEL_EXPENSE_TYPES[category] ? category : "other";
+  return TRAVEL_EXPENSE_TYPES[key][state.lang === "it" ? "it" : "en"];
 }
 
 function getCoverageDefaultColor(index = 0) {
@@ -1196,7 +1275,7 @@ function selectInstallationCrew(teamName) {
 function buildInstallationCrewOptions(selectedCrew = "") {
   const forcedCrew = getCrewForCurrentUser();
   const crewNames = forcedCrew ? [forcedCrew] : getInstallationCrewNames();
-  const selectedValue = forcedCrew || selectedCrew || getSelectedInstallationCrew();
+  const selectedValue = forcedCrew || selectedCrew || activeCrewLabelFromFilter() || getSelectedInstallationCrew();
   return [`<option value="">${state.lang === "it" ? "Seleziona squadra" : "Select crew"}</option>`]
     .concat(
       crewNames.map((crewName) => `<option value="${escapeHtml(crewName)}" ${crewName === selectedValue ? "selected" : ""}>${escapeHtml(crewName)}</option>`)
@@ -2650,6 +2729,7 @@ function isRoutedToInstallation(order) {
 
 function getCrewForCurrentUser() {
   if (state.currentUser?.role !== "crew") return "";
+  if (state.currentUser?.crewName) return String(state.currentUser.crewName).trim();
   if (/alpha/i.test(state.currentUser?.name || "")) return "Alpha";
   if (/beta/i.test(state.currentUser?.name || "")) return "Beta";
   if (/delta/i.test(state.currentUser?.name || "")) return "Delta";
@@ -2920,13 +3000,21 @@ function renderInboxFlowControls(order) {
   `;
 }
 
-function filterInstallations() {
+function getActiveInstallationCrewFilter() {
   const forcedCrew = getCrewForCurrentUser();
+  if (forcedCrew) return forcedCrew;
+  return state.filters.installation && state.filters.installation !== "all"
+    ? String(state.filters.installation)
+    : "";
+}
+
+function filterInstallations() {
+  const activeCrewFilter = getActiveInstallationCrewFilter();
   return state.orders
     .filter((order) => isRoutedToInstallation(order))
     .filter((order) => {
-      if (!forcedCrew) return true;
-      return orderBelongsToCrew(order, forcedCrew);
+      if (!activeCrewFilter) return true;
+      return orderBelongsToCrew(order, activeCrewFilter);
     })
     .sort((left, right) => {
       const leftDate = String(left.operations?.installation?.installDate || "");
@@ -4081,25 +4169,247 @@ function clearInstallationDetail() {
   if (ui.installationCrew) ui.installationCrew.innerHTML = buildInstallationCrewOptions("");
   if (ui.installationForm?.reportNote) ui.installationForm.reportNote.value = "";
   if (ui.installationAttachments) ui.installationAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato caricato." : "No attachments uploaded."}</div>`;
+  if (ui.installationExpenseForm) {
+    ui.installationExpenseForm.reset();
+    if (ui.installationExpenseForm.date) ui.installationExpenseForm.date.value = new Date().toISOString().slice(0, 10);
+  }
+  if (ui.installationExpenseSummary) ui.installationExpenseSummary.innerHTML = "";
+  if (ui.installationExpenseList) ui.installationExpenseList.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessuna spesa registrata su questo ordine." : "No crew expenses registered for this order."}</div>`;
+  clearStatus(ui.installationExpenseStatus);
   clearStatus(ui.installationStatus);
+}
+
+function getInstallationSaturationTone(ratio = 0) {
+  if (ratio >= 0.9) return "gauge-high";
+  if (ratio >= 0.65) return "gauge-mid";
+  return "gauge-low";
+}
+
+function getInstallationCapacityBadgeCopy(ratio = 0) {
+  if (ratio >= 0.9) return state.lang === "it" ? "Rosso" : "Red";
+  if (ratio >= 0.65) return state.lang === "it" ? "Giallo" : "Yellow";
+  return state.lang === "it" ? "Verde" : "Green";
+}
+
+function buildInstallationCrewFilterButtons() {
+  const forcedCrew = getCrewForCurrentUser();
+  const crewNames = getInstallationCrewNames();
+  const filters = forcedCrew ? [forcedCrew] : ["all", ...crewNames];
+  const active = forcedCrew || state.filters.installation || "all";
+  return filters.map((filterValue) => {
+    const isAll = filterValue === "all";
+    const label = isAll ? t("allCrews") : filterValue;
+    const activeClass = active === filterValue ? "is-active" : "";
+    return `<button class="filter-btn ${activeClass}" type="button" data-action="set-installation-crew-filter" data-installation-filter="${escapeHtml(filterValue)}">${escapeHtml(label)}</button>`;
+  }).join("");
+}
+
+function getInstallationExpensesForMonth(monthKey = new Date().toISOString().slice(0, 7)) {
+  return state.orders.flatMap((order) => getTravelExpensesForOrder(order)
+    .filter((expense) => String(expense.date || "").slice(0, 7) === monthKey)
+    .map((expense) => ({ ...expense, order })));
+}
+
+function renderInstallationExpenseSection(order) {
+  const expenses = getTravelExpensesForOrder(order).slice().sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
+  const total = expenses.reduce((sum, item) => sum + toNumber(item.amount || 0), 0);
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const monthTotal = expenses
+    .filter((item) => String(item.date || "").slice(0, 7) === monthKey)
+    .reduce((sum, item) => sum + toNumber(item.amount || 0), 0);
+  const byCategory = Object.keys(TRAVEL_EXPENSE_TYPES).map((key) => ({
+    key,
+    amount: expenses
+      .filter((item) => item.category === key)
+      .reduce((sum, item) => sum + toNumber(item.amount || 0), 0),
+  })).filter((item) => item.amount > 0);
+  if (ui.installationExpenseForm?.date && !ui.installationExpenseForm.date.value) {
+    ui.installationExpenseForm.date.value = new Date().toISOString().slice(0, 10);
+  }
+  if (ui.installationExpenseSummary) {
+    ui.installationExpenseSummary.innerHTML = [
+      {
+        label: state.lang === "it" ? "Totale commessa" : "Job total",
+        value: formatCurrency(total),
+        meta: `${expenses.length} ${state.lang === "it" ? "spese registrate" : "logged expenses"}`,
+      },
+      {
+        label: state.lang === "it" ? "Totale mese corrente" : "Current month",
+        value: formatCurrency(monthTotal),
+        meta: monthKey,
+      },
+      {
+        label: state.lang === "it" ? "Categorie attive" : "Active categories",
+        value: String(byCategory.length || 0),
+        meta: byCategory.map((item) => `${getTravelExpenseLabel(item.key)} ${formatCurrency(item.amount)}`).join(" · ") || "—",
+      },
+    ].map(renderDetailBox).join("");
+  }
+  if (ui.installationExpenseList) {
+    ui.installationExpenseList.innerHTML = expenses.length
+      ? expenses.map((expense) => `
+        <article class="detail-box crew-expense-card">
+          <div class="crew-expense-head">
+            <strong>${escapeHtml(getTravelExpenseLabel(expense.category))}</strong>
+            <span>${formatCurrency(expense.amount)}</span>
+          </div>
+          <p>${escapeHtml(expense.note || (state.lang === "it" ? "Nessuna nota" : "No note"))}</p>
+          <div class="crew-expense-meta">
+            <span>${escapeHtml(expense.crew || order.operations?.installation?.crew || (state.lang === "it" ? "Squadra non assegnata" : "Crew not assigned"))}</span>
+            <span>${escapeHtml(formatDate(expense.date))}</span>
+            ${expense.createdBy ? `<span>${escapeHtml(expense.createdBy)}</span>` : ""}
+          </div>
+          <button class="ghost-button small-button" type="button" data-action="remove-installation-expense" data-id="${escapeHtml(order.id)}" data-expense-id="${escapeHtml(expense.id)}">
+            ${state.lang === "it" ? "Rimuovi spesa" : "Remove expense"}
+          </button>
+        </article>
+      `).join("")
+      : `<div class="info-card">${state.lang === "it" ? "Nessuna spesa registrata su questo ordine." : "No crew expenses registered for this order."}</div>`;
+  }
+}
+
+function renderCrewExpenseMonthlyReport() {
+  if (!ui.crewExpenseMonthlyReport) return;
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const monthLabel = formatMonthKey(monthKey);
+  const items = getInstallationExpensesForMonth(monthKey);
+  if (!items.length) {
+    ui.crewExpenseMonthlyReport.innerHTML = `<div class="info-card">${state.lang === "it" ? `Nessuna spesa squadra registrata in ${monthLabel}.` : `No crew expenses recorded in ${monthLabel}.`}</div>`;
+    return;
+  }
+  const crewMap = new Map();
+  const orderMap = new Map();
+  const categoryMap = new Map();
+  items.forEach((item) => {
+    const crewLabel = item.crew || item.order.operations?.installation?.crew || (state.lang === "it" ? "Senza squadra" : "Unassigned");
+    const existing = crewMap.get(crewLabel) || { total: 0, orders: new Map() };
+    existing.total += toNumber(item.amount || 0);
+    const orderKey = item.order.id;
+    const orderEntry = existing.orders.get(orderKey) || {
+      label: `${composeClientName(item.order)} · ${getOrderNumber(item.order)}`,
+      total: 0,
+    };
+    orderEntry.total += toNumber(item.amount || 0);
+    existing.orders.set(orderKey, orderEntry);
+    crewMap.set(crewLabel, existing);
+
+    const orderSummary = orderMap.get(orderKey) || {
+      label: `${composeClientName(item.order)} · ${getOrderNumber(item.order)}`,
+      total: 0,
+      crews: new Set(),
+      count: 0,
+    };
+    orderSummary.total += toNumber(item.amount || 0);
+    orderSummary.count += 1;
+    orderSummary.crews.add(crewLabel);
+    orderMap.set(orderKey, orderSummary);
+
+    const categoryKey = item.category || "other";
+    categoryMap.set(categoryKey, (categoryMap.get(categoryKey) || 0) + toNumber(item.amount || 0));
+  });
+  const total = items.reduce((sum, item) => sum + toNumber(item.amount || 0), 0);
+  const categoryCopy = [...categoryMap.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .map(([key, amount]) => `${getTravelExpenseLabel(key)} ${formatCurrency(amount)}`)
+    .join(" · ");
+
+  const crewCards = [...crewMap.entries()]
+    .sort((left, right) => right[1].total - left[1].total)
+    .map(([crewLabel, summary]) => `
+      <article class="detail-box crew-expense-report-card">
+        <div class="crew-expense-head">
+          <strong>${escapeHtml(crewLabel)}</strong>
+          <span>${formatCurrency(summary.total)}</span>
+        </div>
+        <p>${summary.orders.size} ${state.lang === "it" ? "commesse con spese" : "jobs with expenses"} · ${monthLabel}</p>
+        <div class="crew-expense-order-list">
+          ${[...summary.orders.values()]
+            .sort((left, right) => right.total - left.total)
+            .map((entry) => `<div class="crew-expense-order-line"><span>${escapeHtml(entry.label)}</span><strong>${formatCurrency(entry.total)}</strong></div>`)
+            .join("")}
+        </div>
+      </article>
+    `).join("");
+
+  const orderCards = [...orderMap.values()]
+    .sort((left, right) => right.total - left.total)
+    .map((entry) => `
+      <article class="detail-box crew-expense-report-card">
+        <div class="crew-expense-head">
+          <strong>${escapeHtml(entry.label)}</strong>
+          <span>${formatCurrency(entry.total)}</span>
+        </div>
+        <p>${entry.crews.size} ${state.lang === "it" ? "squadre coinvolte" : "crews involved"} · ${entry.count} ${state.lang === "it" ? "spese" : "expenses"}</p>
+        <div class="crew-expense-meta">
+          ${[...entry.crews].map((crewLabel) => `<span>${escapeHtml(crewLabel)}</span>`).join("")}
+        </div>
+      </article>
+    `).join("");
+
+  ui.crewExpenseMonthlyReport.innerHTML = `
+    <div class="crew-expense-summary-grid">
+      ${[
+        {
+          label: state.lang === "it" ? "Mese attivo" : "Active month",
+          value: monthLabel,
+          meta: `${items.length} ${state.lang === "it" ? "spese registrate" : "recorded expenses"}`,
+        },
+        {
+          label: state.lang === "it" ? "Totale trasferte" : "Travel total",
+          value: formatCurrency(total),
+          meta: `${crewMap.size} ${state.lang === "it" ? "squadre" : "crews"} · ${orderMap.size} ${state.lang === "it" ? "commesse" : "jobs"}`,
+        },
+        {
+          label: state.lang === "it" ? "Categorie" : "Categories",
+          value: String(categoryMap.size),
+          meta: categoryCopy || "—",
+        },
+      ].map(renderDetailBox).join("")}
+    </div>
+    <div class="crew-expense-report-grid">
+      <section class="crew-expense-panel">
+        <div class="crew-expense-panel-head">
+          <p class="panel-eyebrow">${state.lang === "it" ? "Per squadra" : "By crew"}</p>
+          <h4>${state.lang === "it" ? "Totali team" : "Team totals"}</h4>
+        </div>
+        <div class="detail-stack">
+          ${crewCards}
+        </div>
+      </section>
+      <section class="crew-expense-panel">
+        <div class="crew-expense-panel-head">
+          <p class="panel-eyebrow">${state.lang === "it" ? "Per commessa" : "By job"}</p>
+          <h4>${state.lang === "it" ? "Ordini del mese" : "Monthly jobs"}</h4>
+        </div>
+        <div class="detail-stack">
+          ${orderCards}
+        </div>
+      </section>
+    </div>
+  `;
 }
 
 function buildInstallationCalendar(orders, crewName = "") {
   const start = getInstallationWeekStart();
+  const dailyCapacity = getInstallationCapacityForScope(crewName);
   return Array.from({ length: 7 }).map((_, index) => {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
     const key = date.toISOString().slice(0, 10);
     const items = orders.filter((order) => String(order.operations?.installation?.installDate || "") === key);
     const totalSqm = items.reduce((sum, order) => sum + toNumber(order.operations?.sqm || 0), 0);
+    const fillRatio = dailyCapacity > 0 ? totalSqm / dailyCapacity : 0;
+    const fillPct = Math.min(100, Math.round(fillRatio * 100));
+    const gaugeTone = getInstallationSaturationTone(fillRatio);
     const unavailable = Boolean(crewName && isCrewUnavailable(crewName, key));
     return `
-      <article class="cal-day ${unavailable ? "is-unavailable" : ""}" data-date="${key}">
+      <article class="cal-day ${unavailable ? "is-unavailable" : ""}" data-date="${key}" data-drop-date="${key}">
         <div class="cal-day-header">
           <div class="cal-day-date">${formatDate(key)}</div>
-          <div class="cal-day-capacity">${Math.round(totalSqm)}/120 mq</div>
+          <div class="cal-day-capacity">${Math.round(totalSqm)}/${Math.round(dailyCapacity)} mq</div>
+          <div class="cal-capacity-pill ${gaugeTone}">${getInstallationCapacityBadgeCopy(fillRatio)}</div>
         </div>
-        <div class="cal-gauge"><div class="cal-gauge-fill" style="width:${Math.min(100, Math.round((totalSqm / 120) * 100))}%"></div></div>
+        <div class="cal-gauge"><div class="cal-gauge-fill ${gaugeTone}" style="width:${fillPct}%"></div></div>
         ${crewName ? `
           <button class="cal-unavailable-btn ${unavailable ? "is-active" : ""}" type="button" data-action="toggle-crew-unavailable" data-date="${key}">
             ${unavailable ? (state.lang === "it" ? "Non disponibile" : "Unavailable") : (state.lang === "it" ? "Segna indisponibile" : "Mark unavailable")}
@@ -4120,7 +4430,12 @@ function buildInstallationCalendar(orders, crewName = "") {
 function renderInstallations() {
   const isCrewView = state.currentUser?.role === "crew";
   const crewName = isCrewView ? getCrewForCurrentUser() : "";
+  const activeCrewFilter = getActiveInstallationCrewFilter();
+  const calendarCrewScope = activeCrewFilter || crewName;
   let orders = filterInstallations();
+  if (!isCrewView && activeCrewFilter) {
+    state.selectedInstallationCrew = activeCrewFilter;
+  }
   if (isCrewView && orders.length) {
     const currentWeekMatches = orders.filter(isInstallationInCurrentWeek);
     if (!currentWeekMatches.length) {
@@ -4139,6 +4454,17 @@ function renderInstallations() {
   if (ui.installationSubmitButton) ui.installationSubmitButton.textContent = isCrewView
     ? (state.lang === "it" ? "Salva aggiornamento cantiere" : "Save site update")
     : (state.lang === "it" ? "Salva posa" : "Save installation");
+  if (ui.installationCrewFilters) {
+    ui.installationCrewFilters.innerHTML = buildInstallationCrewFilterButtons();
+    ui.installationCrewFilters.classList.toggle("hidden", isCrewView);
+  }
+  if (ui.installationCapacityHint) {
+    const capacityValue = Math.round(getInstallationCapacityForScope(calendarCrewScope));
+    const crewCount = getInstallationCrewNames().length;
+    ui.installationCapacityHint.textContent = calendarCrewScope
+      ? `${calendarCrewScope} · ${capacityValue} mq/${state.lang === "it" ? "giorno" : "day"}`
+      : `${crewCount} ${state.lang === "it" ? "squadre attive" : "active crews"} · ${capacityValue} mq/${state.lang === "it" ? "giorno complessivi" : "day total"}`;
+  }
   const sectionTitle = document.querySelector("#installations .section-title");
   if (sectionTitle) {
     sectionTitle.textContent = isCrewView
@@ -4148,7 +4474,7 @@ function renderInstallations() {
   getSelectedInstallationCrew();
   renderInstallationsCoverage();
   if (ui.installationCalendar) {
-    ui.installationCalendar.innerHTML = buildInstallationCalendar(orders, crewName);
+    ui.installationCalendar.innerHTML = buildInstallationCalendar(orders, calendarCrewScope);
   }
   if (ui.installationPrevWeekButton) {
     const start = getInstallationWeekStart();
@@ -4170,13 +4496,14 @@ function renderInstallations() {
         const badgeLabel = install.installDate
           ? (state.lang === "it" ? "Programmato" : "Scheduled")
           : t("toPlan");
+        const crewBadge = install.crew || (state.lang === "it" ? "Squadra da assegnare" : "Crew to assign");
         return `
-          <article class="order-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="installations">
+          <article class="order-row installation-row ${selected} ${!isCrewView ? "is-draggable" : ""}" data-action="select-order" data-id="${order.id}" data-view="installations" ${!isCrewView ? `draggable="true" data-installation-drag-id="${order.id}"` : ""}>
             <div>
               <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
               <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")}</div>
             </div>
-            <div class="order-type-badge type-posa">${getShippingModeLabel(order)}</div>
+            <div class="order-type-badge type-posa">${escapeHtml(crewBadge)}</div>
             <div class="order-amount">${detailLabel}</div>
             <div class="action-badge ${install.installDate ? "badge-info" : "badge-warning"}">${badgeLabel}</div>
           </article>
@@ -4243,6 +4570,7 @@ function renderInstallations() {
       : (state.lang === "it" ? "Accesso, riprogrammazione, note posa, report cantiere..." : "Access, rescheduling, install notes, site report...");
   }
   ui.installationAttachments.innerHTML = renderAttachmentGrid(order.attachments || [], order.id);
+  renderInstallationExpenseSection(order);
   clearStatus(ui.installationStatus);
 }
 
@@ -4756,6 +5084,7 @@ function renderSettings() {
   }
   renderSecurityCenter();
   renderAccountsManager();
+  renderCrewExpenseMonthlyReport();
 }
 
 function renderSecurityCenter() {
@@ -4785,6 +5114,47 @@ function renderSecurityCenter() {
   `).join("");
 }
 
+function updateAccountCrewFieldVisibility(form) {
+  if (!form) return;
+  const roleInput = form.querySelector("[name='role']");
+  const crewOnlyFields = form.querySelectorAll("[data-crew-field]");
+  const visible = roleInput?.value === "crew";
+  crewOnlyFields.forEach((field) => field.classList.toggle("hidden", !visible));
+}
+
+function bindAccountCrewFields(form) {
+  if (!form) return;
+  updateAccountCrewFieldVisibility(form);
+  const roleInput = form.querySelector("[name='role']");
+  if (roleInput) {
+    roleInput.addEventListener("change", () => updateAccountCrewFieldVisibility(form));
+  }
+}
+
+function syncCoveragePlannerCrewRename(previousCrewName = "", nextCrewName = "") {
+  if (!previousCrewName || !nextCrewName || isSameCrewName(previousCrewName, nextCrewName)) return;
+  if (!state.coveragePlanner?.teams) state.coveragePlanner = { teams: {} };
+  if (!state.coveragePlanner.availability) state.coveragePlanner.availability = {};
+  const matchedTeamKey = Object.keys(state.coveragePlanner.teams).find((key) => isSameCrewName(key, previousCrewName));
+  if (matchedTeamKey && matchedTeamKey !== nextCrewName) {
+    state.coveragePlanner.teams[nextCrewName] = {
+      ...(state.coveragePlanner.teams[matchedTeamKey] || {}),
+    };
+    delete state.coveragePlanner.teams[matchedTeamKey];
+  }
+  const matchedAvailabilityKey = Object.keys(state.coveragePlanner.availability).find((key) => isSameCrewName(key, previousCrewName));
+  if (matchedAvailabilityKey && matchedAvailabilityKey !== nextCrewName) {
+    state.coveragePlanner.availability[nextCrewName] = {
+      ...(state.coveragePlanner.availability[matchedAvailabilityKey] || {}),
+    };
+    delete state.coveragePlanner.availability[matchedAvailabilityKey];
+  }
+  if (isSameCrewName(state.selectedInstallationCrew, previousCrewName)) {
+    state.selectedInstallationCrew = nextCrewName;
+  }
+  saveCoveragePlannerState();
+}
+
 function renderAccountsManager() {
   if (!ui.accountsList) return;
   if (state.currentUser?.role !== "office") {
@@ -4797,7 +5167,15 @@ function renderAccountsManager() {
     ui.accountsList.innerHTML = `<div class="info-card">Nessun account presente.</div>`;
     return;
   }
-  ui.accountsList.innerHTML = state.users.map((user) => `
+  ui.accountsList.innerHTML = state.users
+    .slice()
+    .sort((left, right) => {
+      if (left.role === right.role) return left.name.localeCompare(right.name, "it");
+      if (left.role === "crew") return -1;
+      if (right.role === "crew") return 1;
+      return left.name.localeCompare(right.name, "it");
+    })
+    .map((user) => `
     <form class="detail-box account-edit-form" data-account-id="${user.id}">
       <div class="inline-form-grid">
         <label class="field">
@@ -4827,6 +5205,14 @@ function renderAccountsManager() {
           <span>Nuova password</span>
           <input class="text-input" name="password" type="password" placeholder="Lascia vuoto per non cambiarla" />
         </label>
+        <label class="field field-full crew-account-field ${user.role === "crew" ? "" : "hidden"}" data-crew-field>
+          <span>Nome squadra</span>
+          <input class="text-input" name="crewName" value="${escapeHtml(user.crewName || user.name || "")}" placeholder="Alpha" />
+        </label>
+        <label class="field crew-account-field ${user.role === "crew" ? "" : "hidden"}" data-crew-field>
+          <span>Capacita giornaliera (mq)</span>
+          <input class="text-input" name="dailyCapacity" value="${escapeHtml(String(user.dailyCapacity || DEFAULT_CREW_DAILY_CAPACITY))}" placeholder="120" />
+        </label>
         <label class="checkline field-full">
           <input type="checkbox" name="mustChangePassword" ${user.mustChangePassword ? "checked" : ""} />
           <span>Richiedi cambio password al prossimo accesso</span>
@@ -4838,8 +5224,10 @@ function renderAccountsManager() {
     </form>
   `).join("");
   ui.accountsList.querySelectorAll(".account-edit-form").forEach((form) => {
+    bindAccountCrewFields(form);
     form.addEventListener("submit", updateManagedAccount);
   });
+  bindAccountCrewFields(ui.accountCreateForm);
 }
 
 function escapeHtml(value) {
@@ -5545,7 +5933,7 @@ async function saveInstallation(event) {
         installDate: form.get("installDate"),
         installTime: form.get("installTime"),
         status: form.get("status"),
-        crew: getCrewForCurrentUser() || form.get("crew"),
+        crew: getCrewForCurrentUser() || form.get("crew") || activeCrewLabelFromFilter(),
         reportNote: form.get("reportNote"),
       },
     }),
@@ -5563,6 +5951,95 @@ async function saveInstallation(event) {
     state.lang === "it" ? "Programmazione posa aggiornata." : "Installation plan updated.",
   );
   flashButtonFeedback(event.submitter);
+}
+
+async function saveInstallationExpense(event) {
+  event.preventDefault();
+  const order = getSelectedOrder();
+  if (!order || !ui.installationExpenseForm) return;
+  clearStatus(ui.installationExpenseStatus);
+  const form = new FormData(ui.installationExpenseForm);
+  const amount = toNumber(form.get("amount"));
+  const date = String(form.get("date") || "").trim();
+  if (!amount || !date) {
+    setStatus(
+      ui.installationExpenseStatus,
+      "error",
+      state.lang === "it" ? "Inserisci importo e data della spesa." : "Enter amount and expense date.",
+    );
+    return;
+  }
+  const nextExpenses = [
+    ...getTravelExpensesForOrder(order),
+    {
+      id: `exp-${Date.now()}`,
+      category: String(form.get("category") || "other"),
+      amount,
+      date,
+      note: String(form.get("note") || "").trim(),
+      crew: getCrewForCurrentUser() || order.operations?.installation?.crew || activeCrewLabelFromFilter(),
+      createdAt: new Date().toISOString(),
+      createdBy: state.currentUser?.name || state.currentUser?.email || "",
+    },
+  ];
+  const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
+    method: "POST",
+    body: JSON.stringify({
+      installation: {
+        travelExpenses: nextExpenses,
+      },
+    }),
+  });
+  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  if (ui.installationExpenseForm) {
+    ui.installationExpenseForm.reset();
+    if (ui.installationExpenseForm.date) ui.installationExpenseForm.date.value = new Date().toISOString().slice(0, 10);
+  }
+  render();
+  setStatus(
+    ui.installationExpenseStatus,
+    "success",
+    state.lang === "it" ? "Spesa trasferta registrata." : "Travel expense recorded.",
+  );
+}
+
+function activeCrewLabelFromFilter() {
+  return getActiveInstallationCrewFilter() || state.selectedInstallationCrew || "";
+}
+
+async function removeInstallationExpense(orderId, expenseId) {
+  const order = state.orders.find((item) => item.id === orderId);
+  if (!order) return;
+  const nextExpenses = getTravelExpensesForOrder(order).filter((expense) => expense.id !== expenseId);
+  const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
+    method: "POST",
+    body: JSON.stringify({
+      installation: {
+        travelExpenses: nextExpenses,
+      },
+    }),
+  });
+  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  render();
+}
+
+async function assignInstallationOrderToDate(orderId, dateKey) {
+  const order = state.orders.find((item) => item.id === orderId);
+  if (!order || !dateKey) return;
+  const suggestedCrew = getActiveInstallationCrewFilter() || order.operations?.installation?.crew || "";
+  const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
+    method: "POST",
+    body: JSON.stringify({
+      installation: {
+        installDate: dateKey,
+        status: order.operations?.installation?.status === "da-pianificare" ? "programmata" : order.operations?.installation?.status,
+        crew: suggestedCrew,
+      },
+    }),
+  });
+  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  state.selectedOrderId = saved.id;
+  render();
 }
 
 async function saveAccounting(event) {
@@ -5644,29 +6121,41 @@ async function createManagedAccount(event) {
   if (!ui.accountCreateForm) return;
   clearStatus(ui.accountsStatus);
   const form = new FormData(ui.accountCreateForm);
+  const role = String(form.get("role") || "");
+  const crewName = String(form.get("crewName") || form.get("name") || "").trim();
+  const dailyCapacity = toNumber(form.get("dailyCapacity") || DEFAULT_CREW_DAILY_CAPACITY);
   try {
     const created = await apiFetch("/api/accounts", {
       method: "POST",
       body: JSON.stringify({
         name: form.get("name"),
         email: form.get("email"),
-        role: form.get("role"),
+        role,
         status: form.get("status"),
         mustChangePassword: form.get("mustChangePassword") === "on",
         password: form.get("password"),
+        crewName: role === "crew" ? crewName : "",
+        dailyCapacity: role === "crew" ? dailyCapacity : 0,
       }),
     });
     state.users = [...state.users, created].sort((a, b) => a.name.localeCompare(b.name, "it"));
     ui.accountCreateForm.reset();
+    updateAccountCrewFieldVisibility(ui.accountCreateForm);
+    if (created.role === "crew" && created.crewName) {
+      ensureCoverageTeam(created.crewName);
+      saveCoveragePlannerState();
+    }
     await reloadAll();
     renderAccountsManager();
     setStatus(ui.accountsStatus, "success", "Account creato correttamente.");
   } catch (error) {
     const message = error.message === "email_already_exists"
       ? "Esiste gia un account con questa email."
+      : error.message === "crew_name_exists"
+        ? "Esiste gia una squadra con questo nome."
       : error.message === "weak_password_case"
         ? "La password deve contenere maiuscole e minuscole."
-        : error.message === "weak_password_number"
+      : error.message === "weak_password_number"
           ? "La password deve contenere almeno un numero."
       : error.message === "invalid_account_payload"
         ? "Compila tutti i campi e usa una password di almeno 12 caratteri."
@@ -5681,18 +6170,27 @@ async function updateManagedAccount(event) {
   const form = event.currentTarget;
   const accountId = form.dataset.accountId;
   const data = new FormData(form);
+  const previousAccount = state.users.find((item) => item.id === accountId) || null;
+  const nextRole = String(data.get("role") || previousAccount?.role || "");
+  const nextCrewName = String(data.get("crewName") || previousAccount?.crewName || data.get("name") || "").trim();
+  const nextDailyCapacity = toNumber(data.get("dailyCapacity") || previousAccount?.dailyCapacity || DEFAULT_CREW_DAILY_CAPACITY);
   try {
     const saved = await apiFetch(`/api/accounts/${encodeURIComponent(accountId)}`, {
       method: "POST",
       body: JSON.stringify({
         name: data.get("name"),
         email: data.get("email"),
-        role: data.get("role"),
+        role: nextRole,
         status: data.get("status"),
         mustChangePassword: data.get("mustChangePassword") === "on",
         password: data.get("password"),
+        crewName: nextRole === "crew" ? nextCrewName : "",
+        dailyCapacity: nextRole === "crew" ? nextDailyCapacity : 0,
       }),
     });
+    if (previousAccount?.role === "crew" && previousAccount?.crewName && saved.role === "crew" && saved.crewName) {
+      syncCoveragePlannerCrewRename(previousAccount.crewName, saved.crewName);
+    }
     state.users = state.users.map((item) => (item.id === saved.id ? saved : item)).sort((a, b) => a.name.localeCompare(b.name, "it"));
     await reloadAll();
     renderAccountsManager();
@@ -5700,6 +6198,8 @@ async function updateManagedAccount(event) {
   } catch (error) {
     const message = error.message === "email_already_exists"
       ? "Questa email e gia usata da un altro account."
+      : error.message === "crew_name_exists"
+        ? "Esiste gia una squadra con questo nome."
       : error.message === "weak_password" || error.message === "weak_password_length"
         ? "La nuova password deve avere almeno 12 caratteri."
         : error.message === "weak_password_case"
@@ -5874,6 +6374,46 @@ async function reloadAll() {
   render();
 }
 
+function handleInstallationBacklogDragStart(event) {
+  const card = event.target.closest("[data-installation-drag-id]");
+  if (!card || !event.dataTransfer) return;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", card.dataset.installationDragId || "");
+  card.classList.add("is-dragging");
+}
+
+function handleInstallationBacklogDragEnd(event) {
+  const card = event.target.closest("[data-installation-drag-id]");
+  if (card) card.classList.remove("is-dragging");
+  document.querySelectorAll(".cal-day.is-drop-target").forEach((node) => node.classList.remove("is-drop-target"));
+}
+
+function handleInstallationCalendarDragOver(event) {
+  const day = event.target.closest("[data-drop-date]");
+  if (!day) return;
+  event.preventDefault();
+  document.querySelectorAll(".cal-day.is-drop-target").forEach((node) => {
+    if (node !== day) node.classList.remove("is-drop-target");
+  });
+  day.classList.add("is-drop-target");
+}
+
+function handleInstallationCalendarDragLeave(event) {
+  const day = event.target.closest("[data-drop-date]");
+  if (!day) return;
+  day.classList.remove("is-drop-target");
+}
+
+function handleInstallationCalendarDrop(event) {
+  const day = event.target.closest("[data-drop-date]");
+  if (!day) return;
+  event.preventDefault();
+  const orderId = event.dataTransfer?.getData("text/plain") || "";
+  day.classList.remove("is-drop-target");
+  if (!orderId) return;
+  assignInstallationOrderToDate(orderId, day.dataset.dropDate || "");
+}
+
 function handleGlobalClick(event) {
   const button = event.target.closest("[data-action]");
   if (!button) return;
@@ -5946,6 +6486,21 @@ function handleGlobalClick(event) {
     state.selectedOrderId = orderId;
     renderInstallations();
     ui.installationDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "set-installation-crew-filter") {
+    const nextFilter = button.dataset.installationFilter || "all";
+    state.filters.installation = nextFilter;
+    if (nextFilter !== "all") {
+      state.selectedInstallationCrew = nextFilter;
+    }
+    renderInstallations();
+    return;
+  }
+  if (action === "remove-installation-expense") {
+    const expenseId = button.dataset.expenseId || "";
+    if (!id || !expenseId) return;
+    removeInstallationExpense(id, expenseId);
     return;
   }
   const order = state.orders.find((item) => item.id === id) || getSelectedOrder();
@@ -6094,7 +6649,7 @@ ui.navLinks.forEach((button) => button.addEventListener("click", () => {
 }));
 ui.langButtons.forEach((button) => button.addEventListener("click", () => {
   state.lang = button.dataset.lang;
-  ui.langButtons.forEach((item) => item.classList.toggle("is-active", item === button));
+  ui.langButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.lang === state.lang));
   render();
 }));
 ui.quickViewButtons.forEach((button) => button.addEventListener("click", () => setView(button.dataset.quickView)));
@@ -6109,7 +6664,14 @@ bindEvent(ui.mobileLogoutButton, "click", async () => {
   state.currentUser = null;
   showAuth();
 });
+bindEvent(ui.mobileLogoutInlineButton, "click", async () => {
+  await apiFetch("/api/logout", { method: "POST" });
+  state.mobileMenuOpen = false;
+  state.currentUser = null;
+  showAuth();
+});
 bindEvent(ui.reloadButton, "click", reloadAll);
+bindEvent(ui.mobileReloadButton, "click", reloadAll);
 bindEvent(ui.newOrderButton, "click", () => openOrderModal(null));
 bindEvent(ui.mobileMenuButton, "click", () => {
   state.mobileMenuOpen = !state.mobileMenuOpen;
@@ -6217,6 +6779,12 @@ if (ui.ddtForm) {
   });
 }
 bindEvent(ui.installationForm, "submit", saveInstallation);
+bindEvent(ui.installationExpenseForm, "submit", saveInstallationExpense);
+bindEvent(ui.installationList, "dragstart", handleInstallationBacklogDragStart);
+bindEvent(ui.installationList, "dragend", handleInstallationBacklogDragEnd);
+bindEvent(ui.installationCalendar, "dragover", handleInstallationCalendarDragOver);
+bindEvent(ui.installationCalendar, "dragleave", handleInstallationCalendarDragLeave);
+bindEvent(ui.installationCalendar, "drop", handleInstallationCalendarDrop);
 bindEvent(ui.coverageTeamForm, "submit", saveCoverageTeamFromForm);
 bindEvent(ui.coverageAddTeamButton, "click", addCoverageTeam);
 bindEvent(ui.coverageRemoveTeamButton, "click", removeCoverageTeam);
@@ -6280,6 +6848,7 @@ bindEvent(ui.settingsForm, "submit", saveSettings);
 bindEvent(ui.connectShopifyButton, "click", connectShopify);
 bindEvent(ui.securityForm, "submit", updatePassword);
 bindEvent(ui.accountCreateForm, "submit", createManagedAccount);
+bindAccountCrewFields(ui.accountCreateForm);
 handleShopifyOauthFeedback();
 window.addEventListener("resize", () => {
   applyMobileSafeMode();
