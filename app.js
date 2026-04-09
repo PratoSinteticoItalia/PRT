@@ -111,7 +111,8 @@ const INVENTORY_CATALOG = [
   { key: "palma", label: "Palma", type: "turf" },
   { key: "cipresso", label: "Cipresso", type: "turf" },
   { key: "abete", label: "Abete", type: "turf" },
-  { key: "ginepro", label: "Ginepro", type: "turf" },
+  { key: "ginepro-35", label: "Ginepro 35 mm", type: "turf" },
+  { key: "ginepro-45", label: "Ginepro 45 mm", type: "turf" },
   { key: "mogano", label: "Mogano", type: "turf" },
   {
     key: "banda",
@@ -1661,7 +1662,9 @@ function inferCatalogEntry(value) {
   if (label.includes("palma")) return INVENTORY_CATALOG.find((item) => item.key === "palma");
   if (label.includes("cipresso")) return INVENTORY_CATALOG.find((item) => item.key === "cipresso");
   if (label.includes("abete")) return INVENTORY_CATALOG.find((item) => item.key === "abete");
-  if (label.includes("ginepro")) return INVENTORY_CATALOG.find((item) => item.key === "ginepro");
+  if (label.includes("ginepro") && label.includes("45")) return INVENTORY_CATALOG.find((item) => item.key === "ginepro-45");
+  if (label.includes("ginepro") && label.includes("35")) return INVENTORY_CATALOG.find((item) => item.key === "ginepro-35");
+  if (label.includes("ginepro")) return INVENTORY_CATALOG.find((item) => item.key === "ginepro-35");
   if (label.includes("mogano")) return INVENTORY_CATALOG.find((item) => item.key === "mogano");
   if (label.includes("banda")) return INVENTORY_CATALOG.find((item) => item.key === "banda");
   if (label.includes("colla")) return INVENTORY_CATALOG.find((item) => item.key === "colla");
@@ -3627,7 +3630,7 @@ function renderInventoryCard(group) {
           <button class="wh-piece material-slot ${slot.status === "residuo" ? "residuo" : "intero"}" data-action="delete-inventory-piece" data-id="${slot.id}" title="${state.lang === "it" ? "Rimuovi lotto" : "Remove slot"}">
             <strong>${slot.variant || (state.lang === "it" ? "Slot magazzino" : "Warehouse slot")}</strong>
             <span>${slot.note || (state.lang === "it" ? "Quantita aggregata a magazzino" : "Aggregated stock quantity")}</span>
-            <small>${slot.units} ${unitDetailLabel}</small>
+            <small class="material-slot-qty">${slot.units} ${unitDetailLabel}</small>
           </button>
         `).join("") : `<div class="wh-empty">${state.lang === "it" ? "Nessun pezzo caricato." : "No pieces loaded."}</div>`}
       </div>

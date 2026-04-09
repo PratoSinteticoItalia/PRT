@@ -2739,6 +2739,31 @@ button.is-feedback,
   font-size: 12px;
 }
 
+.wh-piece.material-slot {
+  min-width: 168px;
+  max-width: 220px;
+  padding: 14px 16px 12px;
+  text-align: left;
+}
+
+.wh-piece.material-slot strong {
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.wh-piece.material-slot span {
+  margin-top: 4px;
+  min-height: 34px;
+  line-height: 1.35;
+}
+
+.wh-piece .material-slot-qty {
+  margin-top: 10px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--brand);
+}
+
 .wh-empty {
   width: 100%;
   padding: 16px;
