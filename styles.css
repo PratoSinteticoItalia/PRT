@@ -8598,3 +8598,13 @@ button:active,
     color: #8a4949;
   }
 }
+
+.app-shell > .main-content {
+  padding-top: 22px;
+}
+
+@media (max-width: 980px) {
+  body.mobile-safe-mode .main-content {
+    padding: 14px 12px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+}

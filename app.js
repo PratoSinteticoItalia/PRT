@@ -375,6 +375,40 @@ const translations = {
     accountingDetailSubtitle: "Qui controlli incassi, fattura e residuo reale senza perdere il collegamento con Shopify.",
     orderNotes: "Note ordine",
     noOrderNotes: "Nessuna nota cliente o interna.",
+    portalSubtitle: "Portale operativo",
+    mobileMenuTitle: "Menu operativo",
+    operationsSection: "Operativo",
+    adminSection: "Amministrazione",
+    topbarSearch: "Cerca ordini, clienti, prodotti...",
+    ordersSubtitle: "Ordini Shopify sincronizzati e in lavorazione",
+    installationsCalendarTitle: "Calendario Pose",
+    installationsWeekSubtitle: "Settimana operativa squadre",
+    previousWeek: "← Sett. prec.",
+    nextWeek: "Sett. succ. →",
+    travelExpensesTitle: "Costi trasferta squadra",
+    travelExpensesCopy: "Registra spese vive di cantiere collegate a questo ordine.",
+    expenseCategory: "Categoria",
+    expenseAmount: "Importo",
+    expenseDate: "Data spesa",
+    expenseNote: "Nota spesa",
+    addExpense: "Aggiungi spesa",
+    syncing: "Sincronizzo...",
+    syncingShopify: "Sincronizzo Shopify...",
+    shopifySynced: "Ordini Shopify sincronizzati.",
+    addressIncomplete: "Indirizzo da completare",
+    provinceIncomplete: "Provincia da completare",
+    phoneIncomplete: "Telefono da completare",
+    phoneNotice: "Preavviso telefonico",
+    selectedOrder: "Ordine selezionato",
+    primaryProduct: "Prodotto principale",
+    gettingStarted: "Come partire",
+    loadStartingStock: "Carica le giacenze iniziali",
+    startingStockExample: "Esempio: Betulla 30 mm · 4 pezzi da 2x25 oppure 12 colli di colla",
+    installationPlanningDetail: "Dettaglio pianificazione ordine",
+    installationDatePending: "Data da definire",
+    timePending: "Ora da definire",
+    updateNeeded: "Da aggiornare",
+    palletLabel: "Bancale",
   },
   en: {
     dashboard: "Dashboard",
@@ -572,6 +606,40 @@ const translations = {
     accountingDetailSubtitle: "Control collections, invoice and real balance without losing the Shopify link.",
     orderNotes: "Order notes",
     noOrderNotes: "No customer or internal note.",
+    portalSubtitle: "Operations portal",
+    mobileMenuTitle: "Operations menu",
+    operationsSection: "Operations",
+    adminSection: "Administration",
+    topbarSearch: "Search orders, customers, products...",
+    ordersSubtitle: "Shopify orders synced and in progress",
+    installationsCalendarTitle: "Installation calendar",
+    installationsWeekSubtitle: "Crew operating week",
+    previousWeek: "← Prev. week",
+    nextWeek: "Next week →",
+    travelExpensesTitle: "Crew travel expenses",
+    travelExpensesCopy: "Log travel costs associated with this order.",
+    expenseCategory: "Category",
+    expenseAmount: "Amount",
+    expenseDate: "Expense date",
+    expenseNote: "Expense note",
+    addExpense: "Add expense",
+    syncing: "Syncing...",
+    syncingShopify: "Syncing Shopify...",
+    shopifySynced: "Shopify orders synced.",
+    addressIncomplete: "Address to complete",
+    provinceIncomplete: "Province missing",
+    phoneIncomplete: "Phone missing",
+    phoneNotice: "Phone notice",
+    selectedOrder: "Selected order",
+    primaryProduct: "Main product",
+    gettingStarted: "How to start",
+    loadStartingStock: "Load starting stock",
+    startingStockExample: "Example: Betulla 30 mm · 4 pieces 2x25 or 12 glue buckets",
+    installationPlanningDetail: "Installation planning detail",
+    installationDatePending: "Date to define",
+    timePending: "Time to define",
+    updateNeeded: "To update",
+    palletLabel: "Pallet",
   },
 };
 
@@ -773,6 +841,34 @@ function t(key) {
   return translations[state.lang]?.[key] || translations.it[key] || key;
 }
 
+function undefinedText() {
+  return t("undefined");
+}
+
+function addressIncompleteText() {
+  return t("addressIncomplete");
+}
+
+function provinceIncompleteText() {
+  return t("provinceIncomplete");
+}
+
+function phoneIncompleteText() {
+  return t("phoneIncomplete");
+}
+
+function phoneNoticeText() {
+  return t("phoneNotice");
+}
+
+function customerPendingText() {
+  return state.lang === "it" ? "Cliente da definire" : "Customer to define";
+}
+
+function noPhysicalGoodsText() {
+  return state.lang === "it" ? "Nessuna merce fisica" : "No physical goods";
+}
+
 function roleLabel(role) {
   if (role === "warehouse") return t("warehouseRole");
   if (role === "crew") return t("crewRole");
@@ -789,6 +885,10 @@ function staticLabels() {
     ["#auth-form button[type='submit']", t("login")],
     [".user-card .card-label", t("activeUser")],
     [".topbar-eyebrow", t("localPortal")],
+    [".topbar-logo-copy small", t("portalSubtitle")],
+    [".sidebar-brand-title", t("portalSubtitle")],
+    [".sidebar-mobile-head strong", t("mobileMenuTitle")],
+    [".topbar-search input", null, t("topbarSearch")],
     ["#new-order-button", t("newOrder")],
     ["#reload-button", t("reloadData")],
     ["#logout-button", t("logout")],
@@ -796,7 +896,7 @@ function staticLabels() {
     ["#mobile-logout-inline-button", t("logout")],
     [".sidebar-card .card-label", t("focusOperational")],
     [".sidebar-card h3", t("singleOrder")],
-    [".sidebar-card p", t("focusCopy")],
+    [".sidebar-card > p:not(.card-label)", t("focusCopy")],
     ["#dashboard .panel-large .panel-head h3", t("actionsNow")],
     ["#dashboard .panel .panel-head h3", t("quickAlerts")],
     ["#dashboard .dashboard-grid + .dashboard-grid .panel-large .panel-head h3", t("priorityOrders")],
@@ -807,6 +907,7 @@ function staticLabels() {
     ["[data-quick-view='accounting']", t("openAccounting")],
     ["#orders .panel-head .panel-eyebrow", t("shopifyOffice")],
     ["#orders .panel-head h3", t("orders")],
+    ["#orders .page-header .page-header-sub", t("ordersSubtitle")],
     ["#orders-sync-button", t("syncShopify")],
     ["#orders-import-button", t("importJson")],
     ["#orders-clear-manual-button", t("clearManual")],
@@ -823,6 +924,13 @@ function staticLabels() {
     ["#save-prep-list-button", t("savePreparation")],
     ["#order-attachment-button", t("uploadAttachment")],
     ["#installations .toolbar-row .search-pill", t("crewViewCopy")],
+    ["#installations .page-header h1", t("installationsCalendarTitle")],
+    ["#installations .page-header .page-header-sub", t("installationsWeekSubtitle")],
+    ["#installation-prev-week-button", t("previousWeek")],
+    ["#installation-next-week-button", t("nextWeek")],
+    ["#installations .installation-expenses-section h4", t("travelExpensesTitle")],
+    ["#installations .installation-expenses-section .section-copy", t("travelExpensesCopy")],
+    ["#installation-expense-form button[type='submit']", t("addExpense")],
     ["[data-installation-filter='all']", t("allCrews")],
     ["#installation-attachment-button", t("uploadPhoto")],
     ["#warehouse .panel-head .panel-eyebrow", t("physicalStock")],
@@ -928,7 +1036,7 @@ function formatMonthKey(monthKey) {
 }
 
 function composeClientName(order) {
-  return `${order.firstName || ""} ${order.lastName || ""}`.trim() || "Cliente da definire";
+  return `${order.firstName || ""} ${order.lastName || ""}`.trim() || customerPendingText();
 }
 
 function getUserInitials(name) {
@@ -1538,12 +1646,12 @@ function renderInstallationsCoverage() {
                   <span class="coverage-swatch" style="background:${escapeHtml(team.color || getCoverageDefaultColor(0))}"></span>
                   <span>${escapeHtml(crewName)}</span>
                 </div>
-                <span class="coverage-count">${jobs.length} cantieri</span>
+                <span class="coverage-count">${jobs.length} ${state.lang === "it" ? "cantieri" : "jobs"}</span>
               </div>
               <div class="coverage-meta">
                 ${team.base ? `<span class="coverage-tag">Base ${escapeHtml(team.base)}</span>` : ""}
-                <span class="coverage-tag">${(team.regions || []).length} regioni</span>
-                <span class="coverage-tag">${(team.polygons || []).length} aree</span>
+                <span class="coverage-tag">${(team.regions || []).length} ${state.lang === "it" ? "regioni" : "regions"}</span>
+                <span class="coverage-tag">${(team.polygons || []).length} ${state.lang === "it" ? "aree" : "areas"}</span>
               </div>
             </button>
           `;
@@ -1566,8 +1674,8 @@ function renderInstallationsCoverage() {
     const summary = selectedCrew
       ? [
           team?.base ? `Base ${team.base}` : (state.lang === "it" ? "Base non indicata" : "Base missing"),
-          (team?.regions || []).length ? `Regioni: ${(team.regions || []).join(", ")}` : (state.lang === "it" ? "Nessuna regione associata" : "No linked regions"),
-          jobs.length ? `${jobs.length} cantieri assegnati` : (state.lang === "it" ? "Nessun cantiere assegnato" : "No assigned jobs"),
+          (team?.regions || []).length ? `${state.lang === "it" ? "Regioni" : "Regions"}: ${(team.regions || []).join(", ")}` : (state.lang === "it" ? "Nessuna regione associata" : "No linked regions"),
+          jobs.length ? `${jobs.length} ${state.lang === "it" ? "cantieri assegnati" : "assigned jobs"}` : (state.lang === "it" ? "Nessun cantiere assegnato" : "No assigned jobs"),
         ].join(" • ")
       : (state.lang === "it" ? "Seleziona una squadra per vedere copertura e cantieri assegnati." : "Select a crew to view coverage and assigned jobs.");
     ui.coverageActiveSubtitle.textContent = summary;
@@ -1584,7 +1692,7 @@ function renderInstallationsCoverage() {
               </div>
               <span class="coverage-tag">${order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : t("toPlan")}</span>
             </div>
-            <div class="coverage-job-meta">${escapeHtml(composeAddress(order) || order.city || (state.lang === "it" ? "Indirizzo da completare" : "Address missing"))}</div>
+            <div class="coverage-job-meta">${escapeHtml(composeAddress(order) || order.city || addressIncompleteText())}</div>
             <div class="coverage-meta">
               <span class="coverage-tag">${escapeHtml(getOrderNumber(order))}</span>
               <span class="coverage-tag">${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
@@ -1822,7 +1930,7 @@ function isTurfModel(value) {
 }
 
 function getCatalogLabel(value) {
-  return inferCatalogEntry(value)?.label || String(value || "").trim() || "Prodotto";
+  return inferCatalogEntry(value)?.label || String(value || "").trim() || t("product");
 }
 
 function isServiceLine(title = "") {
@@ -2007,7 +2115,7 @@ function formatPalletDimensions(ddt = {}) {
   const parts = [ddt.palletWidth, ddt.palletLength, ddt.palletHeight]
     .map((item) => String(item || "").replace(/\s*cm$/i, "").trim())
     .filter(Boolean);
-  return parts.length ? parts.join("x") : "Da definire";
+  return parts.length ? parts.join("x") : undefinedText();
 }
 
 function getDefaultShippingPricing() {
@@ -2325,7 +2433,7 @@ function getShippingTargetLabel(order) {
 
 function getShippingSummary(order) {
   const physicalLines = getWarehousePreparedLines(order);
-  if (!physicalLines.length) return "Nessuna merce fisica";
+  if (!physicalLines.length) return noPhysicalGoodsText();
   return physicalLines
     .map((item) => `${item.title}${item.quantity > 1 ? ` x${item.quantity}` : ""}`)
     .join(" · ");
@@ -2803,7 +2911,7 @@ function buildInventoryGroups() {
     if (!groups.has(key)) {
       groups.set(key, {
         key,
-        product: value.product || "Prodotto",
+        product: value.product || t("product"),
         type: value.type || "material",
         pieces: [],
         totalSqm: 0,
@@ -3031,18 +3139,25 @@ function filterInstallations() {
 }
 
 function applyStaticTranslations() {
+  document.documentElement.lang = state.lang;
+  document.title = `${t("localPortal")} - ${t("portalSubtitle")}`;
   staticLabels().forEach(([selector, text, placeholder]) => {
-    const node = document.querySelector(selector);
-    if (!node) return;
-    if (placeholder != null) {
-      node.setAttribute("placeholder", placeholder);
-      return;
-    }
-    node.textContent = text;
+    const nodes = Array.from(document.querySelectorAll(selector));
+    if (!nodes.length) return;
+    nodes.forEach((node) => {
+      if (placeholder != null) {
+        node.setAttribute("placeholder", placeholder);
+        return;
+      }
+      node.textContent = text;
+    });
   });
   ui.navLinks.forEach((button) => {
     button.textContent = t(button.dataset.view);
   });
+  const sidebarSectionLabels = Array.from(document.querySelectorAll(".sidebar-section-label"));
+  if (sidebarSectionLabels[0]) sidebarSectionLabels[0].textContent = t("operationsSection");
+  if (sidebarSectionLabels[1]) sidebarSectionLabels[1].textContent = t("adminSection");
   setSubheading("#orders .panel-subsection:nth-of-type(1) h4", t("officeOperations"));
   setSubheading("#orders .panel-subsection:nth-of-type(2) h4", t("orderItems"));
   setSubheading("#orders .panel-subsection:nth-of-type(3) h4", t("officePreparation"));
@@ -3057,6 +3172,10 @@ function applyStaticTranslations() {
   setFieldLabel(ui.installationForm, "status", state.lang === "it" ? "Stato cantiere" : "Site status");
   setFieldLabel(ui.installationForm, "crew", state.lang === "it" ? "Squadra" : "Crew");
   setFieldLabel(ui.installationForm, "reportNote", state.lang === "it" ? "Note squadra / cantiere" : "Crew / site notes");
+  setFieldLabel(ui.installationExpenseForm, "category", t("expenseCategory"));
+  setFieldLabel(ui.installationExpenseForm, "amount", t("expenseAmount"));
+  setFieldLabel(ui.installationExpenseForm, "date", t("expenseDate"));
+  setFieldLabel(ui.installationExpenseForm, "note", t("expenseNote"));
   setFieldLabel(ui.accountingForm, "paymentMethod", state.lang === "it" ? "Metodo utilizzato" : "Method used");
   setFieldLabel(ui.accountingForm, "depositPaid", state.lang === "it" ? "Acconto registrato" : "Deposit recorded");
   setFieldLabel(ui.accountingForm, "balancePaid", state.lang === "it" ? "Saldo registrato" : "Balance recorded");
@@ -3082,6 +3201,23 @@ function applyStaticTranslations() {
   setFieldLabel(ui.settingsForm, "extraKgRate", state.lang === "it" ? "Extra €/kg oltre 1000 kg" : "Extra €/kg over 1000 kg");
   setFieldLabel(ui.orderForm, "provinceCode", state.lang === "it" ? "Provincia" : "Province");
   setFieldLabel(ui.orderForm, "postalCode", state.lang === "it" ? "CAP" : "ZIP");
+  if (ui.installationForm?.status) {
+    const statusLabels = {
+      "da-pianificare": t("toPlan"),
+      programmata: t("scheduled"),
+      "in-corso": t("inProgress"),
+      completata: t("completed"),
+      problema: t("issue"),
+    };
+    Array.from(ui.installationForm.status.options).forEach((option) => {
+      option.textContent = statusLabels[option.value] || option.textContent;
+    });
+  }
+  if (ui.installationExpenseForm?.category) {
+    Array.from(ui.installationExpenseForm.category.options).forEach((option) => {
+      option.textContent = getTravelExpenseLabel(option.value);
+    });
+  }
 }
 
 function updateShell() {
@@ -3105,11 +3241,11 @@ function updateShell() {
   applyStaticTranslations();
   if (ui.reloadButton) {
     ui.reloadButton.disabled = state.syncInProgress;
-    ui.reloadButton.textContent = state.syncInProgress ? "Sincronizzo..." : "Ricarica dati";
+    ui.reloadButton.textContent = state.syncInProgress ? t("syncing") : t("reloadData");
   }
   if (ui.ordersSyncButton) {
     ui.ordersSyncButton.disabled = state.syncInProgress;
-    ui.ordersSyncButton.textContent = state.syncInProgress ? "Sincronizzo Shopify..." : "Sincronizza Shopify";
+    ui.ordersSyncButton.textContent = state.syncInProgress ? t("syncingShopify") : t("syncShopify");
   }
   updateMobileMenu();
 }
@@ -3514,7 +3650,7 @@ function renderOrderRow(order, view = "orders") {
     <article class="order-row inbox-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="${view}">
       <div class="inbox-row-main">
         <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-        <div class="order-meta">${order.operations?.product || "Da definire"} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")}</div>
+        <div class="order-meta">${order.operations?.product || undefinedText()} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || addressIncompleteText()}</div>
         <div class="inbox-row-next-step">
           <span class="panel-eyebrow">${state.lang === "it" ? "Prossimo passo" : "Next step"}</span>
           <strong>${nextAction}</strong>
@@ -3536,7 +3672,7 @@ function renderOrderCard(order) {
       <div class="order-card-head">
         <div>
           <strong>${composeClientName(order)} · ${getOrderNumber(order)}</strong>
-          <div class="order-card-meta">${composeAddress(order) || "Indirizzo da completare"} · ${order.operations?.sqm || 0} mq · ${order.operations?.product || "Da definire"}</div>
+          <div class="order-card-meta">${composeAddress(order) || addressIncompleteText()} · ${order.operations?.sqm || 0} mq · ${order.operations?.product || undefinedText()}</div>
         </div>
         ${statusChip(label, tone)}
       </div>
@@ -3629,7 +3765,7 @@ function renderOrders() {
       })}
       ${renderDetailBox({
         label: state.lang === "it" ? "Cliente e cantiere" : "Customer and site",
-        value: composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete"),
+        value: composeAddress(order) || addressIncompleteText(),
         meta: order.phone || order.email || (state.lang === "it" ? "Contatti da verificare" : "Contacts to verify"),
       })}
       ${renderDetailBox({
@@ -3789,7 +3925,7 @@ function renderInventoryCard(group) {
             ${linkedDemandOrders.map((order) => `
               <button class="wh-demand-order" data-action="open-modal" data-id="${order.id}">
                 <strong>${composeClientName(order)} <small>${getOrderNumber(order)}</small></strong>
-                <span>${order.operations?.product || "Da definire"} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
+                <span>${order.operations?.product || undefinedText()} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
                 <small>${getUnifiedOrderStage(order).label} · ${getShippingTargetLabel(order)}</small>
               </button>
             `).join("")}
@@ -3868,7 +4004,7 @@ function renderWarehouse() {
           <article class="action-card warehouse-action-card ${selected}" style="border-left:3px solid ${borderTone}" data-action="select-order" data-id="${order.id}" data-view="warehouse">
             <div class="action-content">
               <div class="action-title">${composeClientName(order)} ${getOrderNumber(order)}</div>
-              <div class="action-sub">${order.operations?.product || "Da definire"} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || "Da definire"}</div>
+              <div class="action-sub">${order.operations?.product || undefinedText()} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
               <div class="action-sub">${prepSummary || (state.lang === "it" ? "Nessuna riga selezionata" : "No prepared lines")} · ${preparedLines.length} ${state.lang === "it" ? "righe da preparare" : "lines to prepare"}</div>
               <div class="action-sub">${getShippingTargetLabel(order)} · ${order.operations?.warehouse?.fulfillmentMode === "furgone" ? (state.lang === "it" ? "Caricare su furgone" : "Load on van") : getShippingModeLabel(order)}</div>
             </div>
@@ -3893,14 +4029,22 @@ function renderWarehouse() {
   ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Inventario operativo" : "Inventory operations";
   ui.warehouseDetailFields.innerHTML = order
     ? [
-        { label: "Ordine selezionato", value: `${composeClientName(order)} · ${getOrderNumber(order)}`, meta: composeAddress(order) || "Indirizzo da completare" },
-        { label: "Prodotto principale", value: order.operations?.product || "Da definire", meta: `${order.operations?.sqm || 0} mq · ${order.phone || "Telefono non disponibile"}` },
-        { label: "Preparazione ufficio", value: `${getWarehousePreparedLines(order).length} righe da preparare`, meta: getWarehousePreparedLines(order).map((item) => `${item.title} x${item.quantity}`).join(" · ") || "Nessuna riga inclusa" },
-        { label: "Residuo inventario", value: groups.find((group) => normalizeProductName(group.product) === normalizeProductName(getCatalogLabel(order.operations?.product)))?.isModel ? `${Math.round(groups.find((group) => normalizeProductName(group.product) === normalizeProductName(getCatalogLabel(order.operations?.product)))?.availableSqm || 0)} mq` : "—", meta: "Calcolato sui pezzi caricati a magazzino" },
+        { label: t("selectedOrder"), value: `${composeClientName(order)} · ${getOrderNumber(order)}`, meta: composeAddress(order) || addressIncompleteText() },
+        { label: t("primaryProduct"), value: order.operations?.product || undefinedText(), meta: `${order.operations?.sqm || 0} mq · ${order.phone || (state.lang === "it" ? "Telefono non disponibile" : "Phone unavailable")}` },
+        {
+          label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation",
+          value: `${getWarehousePreparedLines(order).length} ${state.lang === "it" ? "righe da preparare" : "lines to prepare"}`,
+          meta: getWarehousePreparedLines(order).map((item) => `${item.title} x${item.quantity}`).join(" · ") || (state.lang === "it" ? "Nessuna riga inclusa" : "No included lines"),
+        },
+        {
+          label: state.lang === "it" ? "Residuo inventario" : "Inventory residual",
+          value: groups.find((group) => normalizeProductName(group.product) === normalizeProductName(getCatalogLabel(order.operations?.product)))?.isModel ? `${Math.round(groups.find((group) => normalizeProductName(group.product) === normalizeProductName(getCatalogLabel(order.operations?.product)))?.availableSqm || 0)} mq` : "—",
+          meta: state.lang === "it" ? "Calcolato sui pezzi caricati a magazzino" : "Calculated from loaded warehouse pieces",
+        },
       ].map(renderDetailBox).join("")
     : [
-        { label: "Ordine selezionato", value: state.lang === "it" ? "Nessun ordine selezionato" : "No order selected", meta: state.lang === "it" ? "Scegli un ordine dalla lista di preparazione." : "Pick an order from the preparation list." },
-        { label: "Come partire", value: "Carica le giacenze iniziali", meta: "Esempio: Betulla 30 mm · 4 pezzi da 2x25 oppure 12 colli di colla" },
+        { label: t("selectedOrder"), value: state.lang === "it" ? "Nessun ordine selezionato" : "No order selected", meta: state.lang === "it" ? "Scegli un ordine dalla lista di preparazione." : "Pick an order from the preparation list." },
+        { label: t("gettingStarted"), value: t("loadStartingStock"), meta: t("startingStockExample") },
       ].map(renderDetailBox).join("");
 
   if (ui.inventoryForm && document.activeElement !== ui.inventoryForm.product) {
@@ -4025,7 +4169,7 @@ function renderAccountingAnalysis(orders) {
 function renderDdtPreview(order) {
   if (!ui.ddtItemsPreview) return;
   if (!order) {
-    ui.ddtItemsPreview.innerHTML = `<div class="info-card">Seleziona un ordine in Spedizioni per preparare il DDT con gli articoli fisici del bancale.</div>`;
+    ui.ddtItemsPreview.innerHTML = `<div class="info-card">${state.lang === "it" ? "Seleziona un ordine in Spedizioni per preparare il DDT con gli articoli fisici del bancale." : "Select an order in Shipping to prepare the DDT with the pallet's physical items."}</div>`;
     return;
   }
   const ddt = getCurrentDdtDraft(order);
@@ -4037,10 +4181,10 @@ function renderDdtPreview(order) {
       ${renderDetailBox({
         label: t("shippingAddress"),
         value: composeClientName(order),
-        meta: `${composeAddress(order) || "Indirizzo da completare"} · ${destination.provinceCode || (state.lang === "it" ? "Provincia da completare" : "Province missing")} · ${order.phone ? `${order.phone} · PREAVVISO TELEFONICO` : "Telefono da completare"}`,
+        meta: `${composeAddress(order) || addressIncompleteText()} · ${destination.provinceCode || provinceIncompleteText()} · ${order.phone ? `${order.phone} · ${phoneNoticeText().toUpperCase()}` : phoneIncompleteText()}`,
       })}
       ${renderDetailBox({
-        label: "Bancale",
+        label: t("palletLabel"),
         value: formatPalletDimensions(ddt),
         meta: `${state.lang === "it" ? "Peso" : "Weight"} ${ddt.palletWeight || "—"} · ${getShippingTargetLabel(order)}`,
       })}
@@ -4063,14 +4207,14 @@ function renderDdtPreview(order) {
       <ul class="material-list compact-list">
         ${physicalLines.map((item) => `<li><span>${item.title}</span><strong>x${item.quantity}</strong></li>`).join("")}
       </ul>
-    ` : `<div class="info-card">Questo ordine non ha articoli fisici da riportare nel DDT.</div>`}
+    ` : `<div class="info-card">${state.lang === "it" ? "Questo ordine non ha articoli fisici da riportare nel DDT." : "This order has no physical items to include in the DDT."}</div>`}
   `;
 }
 
 function renderShippingMaterialPreview(order) {
   if (!ui.shippingMaterialPreview) return;
   if (!order) {
-    ui.shippingMaterialPreview.innerHTML = `<div class="info-card">Seleziona un ordine per vedere subito cosa deve partire, in che formato e con quale priorità di preparazione.</div>`;
+    ui.shippingMaterialPreview.innerHTML = `<div class="info-card">${state.lang === "it" ? "Seleziona un ordine per vedere subito cosa deve partire, in che formato e con quale priorità di preparazione." : "Select an order to immediately see what has to leave, in which format, and with what prep priority."}</div>`;
     return;
   }
   const preparedLines = getWarehousePreparedLines(order);
@@ -4096,7 +4240,7 @@ function renderShippingMaterialPreview(order) {
         <p>${routeLabel}</p>
       </div>
       <div class="shipping-material-badges">
-        <span class="search-pill compact-pill">${order.operations?.product || "Da definire"}</span>
+        <span class="search-pill compact-pill">${order.operations?.product || undefinedText()}</span>
         <span class="search-pill compact-pill">${order.operations?.sqm || 0} mq</span>
       </div>
     </div>
@@ -4505,7 +4649,7 @@ function renderInstallations() {
           <article class="order-row installation-row ${selected} ${!isCrewView ? "is-draggable" : ""}" data-action="select-order" data-id="${order.id}" data-view="installations" ${!isCrewView ? `draggable="true" data-installation-drag-id="${order.id}"` : ""}>
             <div>
               <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-              <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")}</div>
+              <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
             </div>
             <div class="order-type-badge type-posa">${escapeHtml(crewBadge)}</div>
             <div class="order-amount">${detailLabel}</div>
@@ -4525,7 +4669,7 @@ function renderInstallations() {
     if (ui.installationDetailMeta) {
       ui.installationDetailMeta.textContent = isCrewView
         ? (state.lang === "it" ? "Dettaglio operativo cantiere" : "Site operations detail")
-        : "Dettaglio pianificazione ordine";
+        : t("installationPlanningDetail");
     }
     clearInstallationDetail();
     return;
@@ -4537,23 +4681,23 @@ function renderInstallations() {
   ui.installationDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
   if (ui.installationDetailMeta) {
     ui.installationDetailMeta.textContent = isCrewView
-      ? `${order.operations?.product || "Da definire"} · ${composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete")}`
-      : "Dettaglio pianificazione ordine";
+      ? `${order.operations?.product || undefinedText()} · ${composeAddress(order) || addressIncompleteText()}`
+      : t("installationPlanningDetail");
   }
   if (ui.installationDetailSummary) {
     const summaryCards = isCrewView
       ? [
-          { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || "Da definire", meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || "terra"}` },
-          { label: state.lang === "it" ? "Cantiere" : "Site", value: composeAddress(order) || "Indirizzo da completare", meta: composeClientName(order) },
-          { label: state.lang === "it" ? "Programmazione" : "Schedule", value: order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : "Data da definire", meta: order.operations?.installation?.installTime || "Ora da definire" },
-          { label: state.lang === "it" ? "Stato cantiere" : "Site status", value: getUnifiedOrderStage(order).label, meta: String(order.operations?.installation?.status || "").trim() || (state.lang === "it" ? "Da aggiornare" : "To update") },
+          { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || undefinedText(), meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || (state.lang === "it" ? "terra" : "ground")}` },
+          { label: state.lang === "it" ? "Cantiere" : "Site", value: composeAddress(order) || addressIncompleteText(), meta: composeClientName(order) },
+          { label: state.lang === "it" ? "Programmazione" : "Schedule", value: order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : t("installationDatePending"), meta: order.operations?.installation?.installTime || t("timePending") },
+          { label: state.lang === "it" ? "Stato cantiere" : "Site status", value: getUnifiedOrderStage(order).label, meta: String(order.operations?.installation?.status || "").trim() || t("updateNeeded") },
           { label: state.lang === "it" ? "Materiale in uscita" : "Outbound goods", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
         ]
       : [
-          { label: "Prodotto", value: order.operations?.product || "Da definire", meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || "terra"}` },
-          { label: "Cliente", value: composeClientName(order), meta: composeAddress(order) || "Indirizzo da completare" },
+          { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || undefinedText(), meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || (state.lang === "it" ? "terra" : "ground")}` },
+          { label: state.lang === "it" ? "Cliente" : "Customer", value: composeClientName(order), meta: composeAddress(order) || addressIncompleteText() },
           { label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
-          { label: state.lang === "it" ? "Gestione logistica" : "Logistics handling", value: getShippingModeLabel(order), meta: order.operations?.installation?.installDate ? `${formatDate(order.operations.installation.installDate)} · ${order.operations?.installation?.installTime || "Ora da definire"}` : "Data da definire" },
+          { label: state.lang === "it" ? "Gestione logistica" : "Logistics handling", value: getShippingModeLabel(order), meta: order.operations?.installation?.installDate ? `${formatDate(order.operations.installation.installDate)} · ${order.operations?.installation?.installTime || t("timePending")}` : t("installationDatePending") },
         ];
     ui.installationDetailSummary.innerHTML = summaryCards.map(renderDetailBox).join("");
   }
@@ -4874,7 +5018,7 @@ function renderShippingQueueCard(order) {
   const nextAction = getShippingNextAction(order);
   const routeLabel = getShippingModeLabel(order);
   const targetLabel = getShippingTargetLabel(order);
-  const destination = composeAddress(order) || (state.lang === "it" ? "Indirizzo da completare" : "Address to complete");
+  const destination = composeAddress(order) || addressIncompleteText();
   const badgeTone = stage.tone === "green"
     ? "badge-success"
     : stage.tone === "red"
@@ -4991,9 +5135,9 @@ function renderShipping() {
   if (ui.shippingDetailFields) {
     ui.shippingDetailFields.innerHTML = [
       {
-        label: "Prodotto",
-        value: order.operations?.product || "Da definire",
-        meta: `${order.operations?.sqm || 0} mq · ${composeAddress(order) || "Indirizzo da completare"}`,
+        label: state.lang === "it" ? "Prodotto" : "Product",
+        value: order.operations?.product || undefinedText(),
+        meta: `${order.operations?.sqm || 0} mq · ${composeAddress(order) || addressIncompleteText()}`,
       },
       {
         label: state.lang === "it" ? "Fase logistica" : "Logistics stage",
@@ -5364,15 +5508,19 @@ async function syncShopifyOrders() {
     clearStatus(ui.ordersStatus);
     state.orders = await apiFetch("/api/orders/sync-shopify", { method: "POST" });
     ensureSelectedOrder();
-    setStatus(ui.ordersStatus, "success", "Ordini Shopify sincronizzati.");
+    setStatus(ui.ordersStatus, "success", t("shopifySynced"));
     render();
   } catch (error) {
     setStatus(
       ui.ordersStatus,
       "error",
       error.message === "missing_shopify_credentials"
-        ? "Sync Shopify fallito. Compila dominio store e Admin API access token nelle impostazioni."
-        : `Sync Shopify fallito. ${error.message}`,
+        ? (state.lang === "it"
+          ? "Sync Shopify fallito. Compila dominio store e Admin API access token nelle impostazioni."
+          : "Shopify sync failed. Fill in store domain and Admin API access token in settings.")
+        : (state.lang === "it"
+          ? `Sync Shopify fallito. ${error.message}`
+          : `Shopify sync failed. ${error.message}`),
     );
   } finally {
     state.syncInProgress = false;
@@ -5395,11 +5543,11 @@ async function importOrdersJson() {
     ui.orderImportText.value = "";
     state.showOrderImport = false;
     ensureSelectedOrder();
-    setStatus(ui.ordersStatus, "success", "Ordini importati correttamente.");
+    setStatus(ui.ordersStatus, "success", state.lang === "it" ? "Ordini importati correttamente." : "Orders imported successfully.");
     updateOrderImportPanel();
     render();
   } catch {
-    setStatus(ui.ordersStatus, "error", "JSON non valido. Incolla un payload Shopify corretto.");
+    setStatus(ui.ordersStatus, "error", state.lang === "it" ? "JSON non valido. Incolla un payload Shopify corretto." : "Invalid JSON. Paste a valid Shopify payload.");
   }
 }
 
@@ -5799,9 +5947,9 @@ async function downloadDdtPdf(order) {
   const estimate = calculateShippingEstimate(order, ddt);
   const recipient = [
     composeClientName(order),
-    order.address || "Indirizzo da completare",
+    composeAddress(order) || addressIncompleteText(),
     order.city || "",
-    order.phone ? `Tel: ${order.phone} · PREAVVISO TELEFONICO` : "Tel: non disponibile · PREAVVISO TELEFONICO",
+    order.phone ? `Tel: ${order.phone} · ${phoneNoticeText().toUpperCase()}` : `Tel: ${phoneIncompleteText()} · ${phoneNoticeText().toUpperCase()}`,
     order.email ? `Email: ${order.email}` : "",
   ].filter(Boolean);
   const lines = [];
@@ -5832,26 +5980,26 @@ async function downloadDdtPdf(order) {
   pushRect(40, 690, 515, 44);
   const printableDdtNumber = String(ddt.number || getOrderNumber(order)).replace(/^D\.?D\.?T\.?\s*[-:]?\s*/i, "");
   pushText(52, 716, 19, `DDT ${printableDdtNumber}`);
-  pushText(404, 716, 10, `Data ${formatDate(ddt.createdAt || new Date().toISOString())}`);
-  pushText(52, 698, 9, `Ordine ${getOrderNumber(order)} · ${composeClientName(order)}`);
+  pushText(404, 716, 10, `${state.lang === "it" ? "Data" : "Date"} ${formatDate(ddt.createdAt || new Date().toISOString())}`);
+  pushText(52, 698, 9, `${state.lang === "it" ? "Ordine" : "Order"} ${getOrderNumber(order)} · ${composeClientName(order)}`);
   pushRect(40, 564, 335, 112);
-  pushText(52, 658, 9, "DESTINATARIO / SPEDIZIONE");
+  pushText(52, 658, 9, state.lang === "it" ? "DESTINATARIO / SPEDIZIONE" : "RECIPIENT / SHIPMENT");
   recipient.forEach((row, index) => pushText(52, 638 - (index * 14), 10, row));
   pushRect(392, 564, 163, 112);
-  pushText(404, 658, 9, "BANCALE");
+  pushText(404, 658, 9, String(t("palletLabel")).toUpperCase());
   pushText(404, 638, 14, formatPalletDimensions(ddt));
-  pushText(404, 616, 9, "PESO REALE");
+  pushText(404, 616, 9, state.lang === "it" ? "PESO REALE" : "REAL WEIGHT");
   pushText(404, 600, 11, ddt.palletWeight || "—");
   pushText(404, 584, 9, String(t("estimatedCost")).toUpperCase());
   pushText(404, 568, 11, estimate.configured && estimate.billableWeight > 0 ? formatCurrency(estimate.estimatedCost) : "—");
   pushRect(40, 156, 515, 392);
-  pushText(52, 530, 9, "ARTICOLI TRASPORTATI");
-  pushText(454, 530, 9, "QTA");
-  pushText(500, 530, 9, "NOTE");
+  pushText(52, 530, 9, state.lang === "it" ? "ARTICOLI TRASPORTATI" : "TRANSPORTED ITEMS");
+  pushText(454, 530, 9, state.lang === "it" ? "QTA" : "QTY");
+  pushText(500, 530, 9, state.lang === "it" ? "NOTE" : "NOTES");
   pushRule(48, 518, 545, 518);
   let rowY = 496;
   physicalLines.forEach((item) => {
-    const title = String(item.title || "Prodotto");
+    const title = String(item.title || t("product"));
     const lineTitle = title.length > 56 ? `${title.slice(0, 56)}…` : title;
     const lineNote = String(item.note || "").slice(0, 16);
     pushText(52, rowY, 10, lineTitle);
@@ -5860,7 +6008,7 @@ async function downloadDdtPdf(order) {
     rowY -= 18;
   });
   if (!physicalLines.length) {
-    pushText(40, rowY, 10, "Nessuna merce fisica da trasportare");
+    pushText(40, rowY, 10, state.lang === "it" ? "Nessuna merce fisica da trasportare" : "No physical goods to transport");
   }
   pushRule(40, 122, 555, 122);
   pushText(40, 102, 9, "FIRMA MITTENTE");
@@ -6069,7 +6217,7 @@ async function saveAccounting(event) {
 async function saveSettings(event) {
   event.preventDefault();
   state.settings = await persistSettingsForm();
-  setStatus(ui.settingsStatus, "success", "Impostazioni Shopify salvate.");
+  setStatus(ui.settingsStatus, "success", state.lang === "it" ? "Impostazioni Shopify salvate." : "Shopify settings saved.");
   renderSettings();
 }
 
@@ -6104,18 +6252,20 @@ async function connectShopify() {
     state.settings = await persistSettingsForm();
     const shop = String(state.settings.storeDomain || "").trim();
     if (!shop) {
-      setStatus(ui.settingsStatus, "error", "Inserisci prima il dominio Shopify dello store.");
+      setStatus(ui.settingsStatus, "error", state.lang === "it" ? "Inserisci prima il dominio Shopify dello store." : "Enter the Shopify store domain first.");
       return;
     }
     window.location.href = `/api/shopify/oauth/start?shop=${encodeURIComponent(shop)}`;
   } catch (error) {
     const message = error.message === "unauthorized"
-      ? "Sessione scaduta. Ricarica la pagina ed effettua di nuovo il login."
+      ? (state.lang === "it" ? "Sessione scaduta. Ricarica la pagina ed effettua di nuovo il login." : "Session expired. Reload the page and log in again.")
       : error.message === "forbidden"
-        ? "Solo l'account office puo collegare Shopify."
+        ? (state.lang === "it" ? "Solo l'account office puo collegare Shopify." : "Only the office account can connect Shopify.")
         : error.message === "server_error"
-          ? "Errore server durante il salvataggio impostazioni Shopify."
-          : `Impossibile avviare il collegamento Shopify. ${error.message || "Controlla le impostazioni."}`;
+          ? (state.lang === "it" ? "Errore server durante il salvataggio impostazioni Shopify." : "Server error while saving Shopify settings.")
+          : state.lang === "it"
+            ? `Impossibile avviare il collegamento Shopify. ${error.message || "Controlla le impostazioni."}`
+            : `Unable to start the Shopify connection. ${error.message || "Check the settings."}`;
     setStatus(ui.settingsStatus, "error", message);
   }
 }
@@ -6151,19 +6301,19 @@ async function createManagedAccount(event) {
     }
     await reloadAll();
     renderAccountsManager();
-    setStatus(ui.accountsStatus, "success", "Account creato correttamente.");
+    setStatus(ui.accountsStatus, "success", state.lang === "it" ? "Account creato correttamente." : "Account created successfully.");
   } catch (error) {
     const message = error.message === "email_already_exists"
-      ? "Esiste gia un account con questa email."
+      ? (state.lang === "it" ? "Esiste gia un account con questa email." : "An account with this email already exists.")
       : error.message === "crew_name_exists"
-        ? "Esiste gia una squadra con questo nome."
+        ? (state.lang === "it" ? "Esiste gia una squadra con questo nome." : "A crew with this name already exists.")
       : error.message === "weak_password_case"
-        ? "La password deve contenere maiuscole e minuscole."
+        ? (state.lang === "it" ? "La password deve contenere maiuscole e minuscole." : "The password must contain uppercase and lowercase letters.")
       : error.message === "weak_password_number"
-          ? "La password deve contenere almeno un numero."
+          ? (state.lang === "it" ? "La password deve contenere almeno un numero." : "The password must contain at least one number.")
       : error.message === "invalid_account_payload"
-        ? "Compila tutti i campi e usa una password di almeno 12 caratteri."
-        : "Creazione account fallita.";
+        ? (state.lang === "it" ? "Compila tutti i campi e usa una password di almeno 12 caratteri." : "Fill in all fields and use a password with at least 12 characters.")
+        : (state.lang === "it" ? "Creazione account fallita." : "Account creation failed.");
     setStatus(ui.accountsStatus, "error", message);
   }
 }
@@ -6198,21 +6348,21 @@ async function updateManagedAccount(event) {
     state.users = state.users.map((item) => (item.id === saved.id ? saved : item)).sort((a, b) => a.name.localeCompare(b.name, "it"));
     await reloadAll();
     renderAccountsManager();
-    setStatus(ui.accountsStatus, "success", "Account aggiornato.");
+    setStatus(ui.accountsStatus, "success", state.lang === "it" ? "Account aggiornato." : "Account updated.");
   } catch (error) {
     const message = error.message === "email_already_exists"
-      ? "Questa email e gia usata da un altro account."
+      ? (state.lang === "it" ? "Questa email e gia usata da un altro account." : "This email is already used by another account.")
       : error.message === "crew_name_exists"
-        ? "Esiste gia una squadra con questo nome."
+        ? (state.lang === "it" ? "Esiste gia una squadra con questo nome." : "A crew with this name already exists.")
       : error.message === "weak_password" || error.message === "weak_password_length"
-        ? "La nuova password deve avere almeno 12 caratteri."
+        ? (state.lang === "it" ? "La nuova password deve avere almeno 12 caratteri." : "The new password must be at least 12 characters long.")
         : error.message === "weak_password_case"
-          ? "La password deve contenere maiuscole e minuscole."
+          ? (state.lang === "it" ? "La password deve contenere maiuscole e minuscole." : "The password must contain uppercase and lowercase letters.")
           : error.message === "weak_password_number"
-            ? "La password deve contenere almeno un numero."
+            ? (state.lang === "it" ? "La password deve contenere almeno un numero." : "The password must contain at least one number.")
         : error.message === "invalid_account_payload"
-          ? "Controlla nome, email e ruolo."
-          : "Aggiornamento account fallito.";
+          ? (state.lang === "it" ? "Controlla nome, email e ruolo." : "Check name, email, and role.")
+          : (state.lang === "it" ? "Aggiornamento account fallito." : "Account update failed.");
     setStatus(ui.accountsStatus, "error", message);
   }
 }
@@ -6226,19 +6376,19 @@ async function updatePassword(event) {
   const newPassword = String(form.get("newPassword") || "");
   const confirmPassword = String(form.get("confirmPassword") || "");
   if (newPassword.length < 12) {
-    setStatus(ui.securityStatus, "error", "La nuova password deve avere almeno 12 caratteri.");
+    setStatus(ui.securityStatus, "error", state.lang === "it" ? "La nuova password deve avere almeno 12 caratteri." : "The new password must be at least 12 characters long.");
     return;
   }
   if (!/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword)) {
-    setStatus(ui.securityStatus, "error", "Usa almeno una lettera maiuscola e una minuscola.");
+    setStatus(ui.securityStatus, "error", state.lang === "it" ? "Usa almeno una lettera maiuscola e una minuscola." : "Use at least one uppercase and one lowercase letter.");
     return;
   }
   if (!/\d/.test(newPassword)) {
-    setStatus(ui.securityStatus, "error", "Aggiungi almeno un numero alla nuova password.");
+    setStatus(ui.securityStatus, "error", state.lang === "it" ? "Aggiungi almeno un numero alla nuova password." : "Add at least one number to the new password.");
     return;
   }
   if (newPassword !== confirmPassword) {
-    setStatus(ui.securityStatus, "error", "La conferma password non coincide.");
+    setStatus(ui.securityStatus, "error", state.lang === "it" ? "La conferma password non coincide." : "Password confirmation does not match.");
     return;
   }
   try {
@@ -6248,17 +6398,17 @@ async function updatePassword(event) {
     });
     await reloadAll();
     ui.securityForm.reset();
-    setStatus(ui.securityStatus, "success", "Password aggiornata correttamente.");
+    setStatus(ui.securityStatus, "success", state.lang === "it" ? "Password aggiornata correttamente." : "Password updated successfully.");
   } catch (error) {
     const message = error.message === "invalid_current_password"
-      ? "La password attuale non e corretta."
+      ? (state.lang === "it" ? "La password attuale non e corretta." : "The current password is incorrect.")
       : error.message === "weak_password" || error.message === "weak_password_length"
-        ? "La nuova password e troppo debole."
+        ? (state.lang === "it" ? "La nuova password e troppo debole." : "The new password is too weak.")
         : error.message === "weak_password_case"
-          ? "La nuova password deve contenere maiuscole e minuscole."
+          ? (state.lang === "it" ? "La nuova password deve contenere maiuscole e minuscole." : "The new password must contain uppercase and lowercase letters.")
           : error.message === "weak_password_number"
-            ? "La nuova password deve contenere almeno un numero."
-        : "Aggiornamento password fallito.";
+            ? (state.lang === "it" ? "La nuova password deve contenere almeno un numero." : "The new password must contain at least one number.")
+        : (state.lang === "it" ? "Aggiornamento password fallito." : "Password update failed.");
     setStatus(ui.securityStatus, "error", message);
   }
 }
@@ -6270,9 +6420,9 @@ function handleShopifyOauthFeedback() {
   if (!status) return;
 
   if (status === "connected") {
-    setStatus(ui.settingsStatus, "success", "Shopify collegato correttamente. Ora puoi sincronizzare gli ordini.");
+    setStatus(ui.settingsStatus, "success", state.lang === "it" ? "Shopify collegato correttamente. Ora puoi sincronizzare gli ordini." : "Shopify connected successfully. You can now sync orders.");
   } else {
-    setStatus(ui.settingsStatus, "error", message || "Collegamento Shopify non completato.");
+    setStatus(ui.settingsStatus, "error", message || (state.lang === "it" ? "Collegamento Shopify non completato." : "Shopify connection not completed."));
   }
 
   params.delete("shopify");
@@ -6877,7 +7027,20 @@ loadSession();
 // === EXPORT CSV ===
 function exportAccountingCSV() {
   const orders = filterOrdersForView("accounting");
-  const rows = [["Ordine", "Cliente", "Prodotto", "Totale", "Shopify", "Acconto", "Saldo", "Residuo", "Metodo", "Fattura richiesta", "Fattura emessa", "Data"]];
+  const rows = [[
+    state.lang === "it" ? "Ordine" : "Order",
+    state.lang === "it" ? "Cliente" : "Customer",
+    state.lang === "it" ? "Prodotto" : "Product",
+    state.lang === "it" ? "Totale" : "Total",
+    "Shopify",
+    state.lang === "it" ? "Acconto" : "Deposit",
+    state.lang === "it" ? "Saldo" : "Balance",
+    state.lang === "it" ? "Residuo" : "Open balance",
+    state.lang === "it" ? "Metodo" : "Method",
+    state.lang === "it" ? "Fattura richiesta" : "Invoice requested",
+    state.lang === "it" ? "Fattura emessa" : "Invoice issued",
+    state.lang === "it" ? "Data" : "Date",
+  ]];
   for (const order of orders) {
     rows.push([
       getOrderNumber(order),
@@ -6889,8 +7052,8 @@ function exportAccountingCSV() {
       String(order.accounting?.balancePaid || 0),
       String(getOpenBalance(order)),
       getEffectivePaymentMethod(order),
-      order.accounting?.invoiceRequired ? "Sì" : "No",
-      order.accounting?.invoiceIssued ? "Sì" : "No",
+      order.accounting?.invoiceRequired ? (state.lang === "it" ? "Sì" : "Yes") : "No",
+      order.accounting?.invoiceIssued ? (state.lang === "it" ? "Sì" : "Yes") : "No",
       formatDate(order.createdAt),
     ]);
   }
@@ -6898,7 +7061,7 @@ function exportAccountingCSV() {
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `contabilita_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `${state.lang === "it" ? "contabilita" : "accounting"}_${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -6906,11 +7069,11 @@ function exportAccountingCSV() {
 function exportAccountingPDF() {
   const orders = filterOrdersForView("accounting");
   let html = `<html><head><style>body{font-family:Arial,sans-serif;padding:20px}h1{font-size:18px;color:#1B4332}table{width:100%;border-collapse:collapse;font-size:11px;margin-top:12px}th{background:#1B4332;color:#fff;padding:6px 8px;text-align:left}td{padding:5px 8px;border-bottom:1px solid #ddd}.total{font-weight:bold}.red{color:#dc2626}.green{color:#16a34a}</style></head><body>`;
-  html += `<h1>Contabilità — Vertex Ops</h1><p>Esportato il ${new Date().toLocaleDateString("it-IT")} · ${orders.length} ordini</p>`;
-  html += `<table><tr><th>Ordine</th><th>Cliente</th><th>Prodotto</th><th>Totale</th><th>Incassato</th><th>Residuo</th><th>Metodo</th><th>Fattura</th></tr>`;
+  html += `<h1>${state.lang === "it" ? "Contabilità" : "Accounting"} — Vertex Ops</h1><p>${state.lang === "it" ? "Esportato il" : "Exported on"} ${new Date().toLocaleDateString(state.lang === "it" ? "it-IT" : "en-GB")} · ${orders.length} ${state.lang === "it" ? "ordini" : "orders"}</p>`;
+  html += `<table><tr><th>${state.lang === "it" ? "Ordine" : "Order"}</th><th>${state.lang === "it" ? "Cliente" : "Customer"}</th><th>${state.lang === "it" ? "Prodotto" : "Product"}</th><th>${state.lang === "it" ? "Totale" : "Total"}</th><th>${state.lang === "it" ? "Incassato" : "Collected"}</th><th>${state.lang === "it" ? "Residuo" : "Open balance"}</th><th>${state.lang === "it" ? "Metodo" : "Method"}</th><th>${state.lang === "it" ? "Fattura" : "Invoice"}</th></tr>`;
   for (const order of orders) {
     const open = getOpenBalance(order);
-    html += `<tr><td>${getOrderNumber(order)}</td><td>${composeClientName(order)}</td><td>${order.operations?.product || "—"}</td><td class="total">${formatCurrency(order.total)}</td><td class="green">${formatCurrency(getShopifyPaidAmount(order) + getInternalPaidAmount(order))}</td><td class="${open > 0 ? "red" : "green"}">${formatCurrency(open)}</td><td>${getEffectivePaymentMethod(order)}</td><td>${order.accounting?.invoiceRequired ? (order.accounting?.invoiceIssued ? "Emessa" : "Da emettere") : "No"}</td></tr>`;
+    html += `<tr><td>${getOrderNumber(order)}</td><td>${composeClientName(order)}</td><td>${order.operations?.product || "—"}</td><td class="total">${formatCurrency(order.total)}</td><td class="green">${formatCurrency(getShopifyPaidAmount(order) + getInternalPaidAmount(order))}</td><td class="${open > 0 ? "red" : "green"}">${formatCurrency(open)}</td><td>${getEffectivePaymentMethod(order)}</td><td>${order.accounting?.invoiceRequired ? (order.accounting?.invoiceIssued ? (state.lang === "it" ? "Emessa" : "Issued") : (state.lang === "it" ? "Da emettere" : "To issue")) : "No"}</td></tr>`;
   }
   html += `</table></body></html>`;
   const w = window.open("", "_blank");
