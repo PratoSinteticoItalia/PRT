@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, dirname, join, resolve } from "node:path";
 import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ const FALLBACK_DATA_DIR = resolve(join(ROOT, "data"));
 let DATA_DIR = resolve(process.env.DATA_DIR || FALLBACK_DATA_DIR);
 let STORE_PATH = join(DATA_DIR, "store.json");
 let SESSION_PATH = join(DATA_DIR, "session.json");
+let BACKUP_DIR = join(DATA_DIR, "backups");
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -33,7 +34,8 @@ const SHOPIFY_OAUTH_SCOPES = [
   "read_fulfillments",
 ].join(",");
 
-const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const SESSION_REFRESH_BUFFER_MS = 1000 * 60 * 60 * 24 * 7;
 const LOGIN_WINDOW_MS = 1000 * 60 * 2;
 const LOGIN_MAX_ATTEMPTS = 20;
 const IS_PUBLIC_DEPLOY = Boolean(process.env.RENDER || process.env.NODE_ENV === "production");
@@ -132,6 +134,17 @@ function setDataDir(nextDir) {
   DATA_DIR = resolve(nextDir);
   STORE_PATH = join(DATA_DIR, "store.json");
   SESSION_PATH = join(DATA_DIR, "session.json");
+  BACKUP_DIR = join(DATA_DIR, "backups");
+}
+
+function buildSessionCookie(sessionId, maxAgeSeconds = Math.floor(SESSION_TTL_MS / 1000)) {
+  const secureFlag = IS_PUBLIC_DEPLOY ? "; Secure" : "";
+  return `vertex_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.max(0, Number(maxAgeSeconds) || 0)}${secureFlag}`;
+}
+
+function buildExpiredSessionCookie() {
+  const secureFlag = IS_PUBLIC_DEPLOY ? "; Secure" : "";
+  return `vertex_session=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax${secureFlag}`;
 }
 
 function ensureWritableDataDir() {
@@ -160,7 +173,27 @@ async function readJson(path, fallback) {
 }
 
 async function writeJson(path, value) {
-  await writeFile(path, JSON.stringify(value, null, 2), "utf8");
+  const serialized = JSON.stringify(value, null, 2);
+  await writeFile(path, serialized, "utf8");
+  if (resolve(path) === resolve(STORE_PATH)) {
+    try {
+      mkdirSync(BACKUP_DIR, { recursive: true });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      writeFileSync(join(BACKUP_DIR, "store-latest.json"), serialized, "utf8");
+      writeFileSync(join(BACKUP_DIR, `store-${timestamp}.json`), serialized, "utf8");
+      const snapshots = readdirSync(BACKUP_DIR)
+        .filter((file) => /^store-\d{4}-\d{2}-\d{2}T/.test(file))
+        .sort()
+        .reverse();
+      snapshots.slice(30).forEach((file) => {
+        try {
+          unlinkSync(join(BACKUP_DIR, file));
+        } catch {}
+      });
+    } catch (error) {
+      console.error("store_backup_failed", error);
+    }
+  }
 }
 
 function buildDefaultStore() {
@@ -1077,28 +1110,39 @@ function verifyShopifyWebhook(rawBody, hmacHeader, secret) {
   return timingSafeEqual(left, right);
 }
 
-async function getSessionUser(req, store) {
+async function getSessionContext(req, store) {
   const cookies = parseCookies(req.headers.cookie);
-  if (!cookies.vertex_session) return null;
+  if (!cookies.vertex_session) return { user: null, sessionId: "", refreshed: false };
+  const sessionId = String(cookies.vertex_session || "");
   const session = await readJson(SESSION_PATH, {});
-  const entry = session[cookies.vertex_session];
+  const entry = session[sessionId];
   const userId = typeof entry === "string" ? entry : entry?.userId;
   const version = typeof entry === "object" && entry?.version ? Number(entry.version) : 1;
   const expiresAt = typeof entry === "object" && entry?.expiresAt ? Number(entry.expiresAt) : 0;
   if (expiresAt && expiresAt < Date.now()) {
-    delete session[cookies.vertex_session];
+    delete session[sessionId];
     await writeJson(SESSION_PATH, session);
-    return null;
+    return { user: null, sessionId: "", refreshed: false };
   }
-  if (!userId) return null;
+  if (!userId) return { user: null, sessionId: "", refreshed: false };
   const user = store.users.find((item) => item.id === userId) || null;
-  if (!user) return null;
+  if (!user) return { user: null, sessionId: "", refreshed: false };
   if (Number(user.sessionVersion || 1) !== version || user.status === "suspended") {
-    delete session[cookies.vertex_session];
+    delete session[sessionId];
     await writeJson(SESSION_PATH, session);
-    return null;
+    return { user: null, sessionId: "", refreshed: false };
   }
-  return user;
+  let refreshed = false;
+  if (!expiresAt || expiresAt - Date.now() <= SESSION_REFRESH_BUFFER_MS) {
+    session[sessionId] = {
+      userId,
+      version,
+      expiresAt: Date.now() + SESSION_TTL_MS,
+    };
+    await writeJson(SESSION_PATH, session);
+    refreshed = true;
+  }
+  return { user, sessionId, refreshed };
 }
 
 async function handleApi(req, res, url) {
@@ -1108,7 +1152,8 @@ async function handleApi(req, res, url) {
   if (storeChanged) {
     await writeJson(STORE_PATH, store);
   }
-  const currentUser = await getSessionUser(req, store);
+  const sessionContext = await getSessionContext(req, store);
+  const currentUser = sessionContext.user;
 
   if (url.pathname === "/api/session" && req.method === "GET") {
     return sendJson(res, 200, {
@@ -1125,7 +1170,9 @@ async function handleApi(req, res, url) {
             bootstrapRecoveryActive: Boolean(BOOTSTRAP_OFFICE_PASSWORD),
           }
         : {},
-    });
+    }, currentUser && sessionContext.sessionId ? {
+      "Set-Cookie": buildSessionCookie(sessionContext.sessionId),
+    } : {});
   }
 
   if (url.pathname === "/api/login" && req.method === "POST") {
@@ -1192,7 +1239,7 @@ async function handleApi(req, res, url) {
           : {},
       },
       {
-        "Set-Cookie": `vertex_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
+        "Set-Cookie": buildSessionCookie(sessionId),
       },
     );
   }
@@ -1208,7 +1255,7 @@ async function handleApi(req, res, url) {
       res,
       200,
       { ok: true },
-      { "Set-Cookie": "vertex_session=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax; Secure" },
+      { "Set-Cookie": buildExpiredSessionCookie() },
     );
   }
 
@@ -1250,7 +1297,7 @@ async function handleApi(req, res, url) {
     pushSecurityEvent(store, "password_changed", currentUser.email, "Password aggiornata dall'utente.", {});
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, { ok: true }, {
-      "Set-Cookie": `vertex_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
+      "Set-Cookie": buildSessionCookie(sessionId),
     });
   }
 
@@ -1693,23 +1740,11 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === "/api/orders/non-shopify" && req.method === "DELETE") {
-    const removableOrderIds = new Set(store.orders.filter((order) => order.source !== "shopify-live").map((order) => order.id));
-    store.orders = store.orders.filter((order) => order.source === "shopify-live");
-    store.jobs = store.jobs.filter((job) => !removableOrderIds.has(job.sourceOrderId));
-    await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, store.orders);
+    return sendJson(res, 403, { error: "manual_order_cleanup_disabled" });
   }
 
   if (url.pathname.startsWith("/api/orders/") && req.method === "DELETE" && !url.pathname.endsWith("/create-job") && !url.pathname.endsWith("/accounting") && !url.pathname.endsWith("/attachments")) {
-    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
-    const order = store.orders.find((item) => item.id === orderId);
-    if (!order) return sendJson(res, 404, { error: "order_not_found" });
-    store.orders = store.orders.filter((item) => item.id !== orderId);
-    if (order.convertedJobId) {
-      store.jobs = store.jobs.filter((job) => job.id !== order.convertedJobId);
-    }
-    await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, { ok: true });
+    return sendJson(res, 403, { error: "order_deletion_disabled" });
   }
 
   if (

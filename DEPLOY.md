@@ -60,6 +60,8 @@ Dopo il deploy verifica:
 
 ## 7. Note produzione
 
-- Il persistent disk evita di perdere dati tra restart.
-- Per un uso aziendale serio, più avanti conviene passare da file JSON a database.
+- Il persistent disk evita di perdere dati tra restart ed e obbligatorio se vuoi mantenere ordini, impostazioni e sessioni nel tempo.
+- Gli ordini non vanno piu rimossi dal gestionale: la cancellazione e la pulizia massiva sono disattivate.
+- Ad ogni salvataggio di `store.json` il server crea anche backup automatici rotanti in `DATA_DIR/backups`.
+- Per un uso aziendale serio, più avanti conviene comunque passare da file JSON a database.
 - Se vuoi usare un dominio tuo tipo `ops.pratosinteticoitalia.com`, puoi collegarlo dopo direttamente su Render.

@@ -1,6 +1,7 @@
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
+const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 60 * 10;
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
 const COVERAGE_BOUNDS = { minLon: 2.3, maxLon: 26.3, minLat: 34.2, maxLat: 47.8 };
 const COVERAGE_DEFAULT_COLORS = ["#2d6a4f", "#c26c2d", "#3e74d8", "#a74b4b", "#7c5cc4", "#1f7a8c"];
@@ -678,6 +679,9 @@ const state = {
   coveragePlanner: loadCoveragePlannerState(),
   coverageDrawing: { active: false, points: [] },
 };
+
+let sessionKeepaliveTimer = 0;
+let sessionKeepaliveInFlight = false;
 
 const ui = {
   authScreen: document.getElementById("auth-screen"),
@@ -5437,21 +5441,66 @@ function populateInventoryOptions() {
     .join("");
 }
 
+function applySessionPayload(session = {}) {
+  state.currentUser = session.user || null;
+  state.orders = session.orders || [];
+  state.inventory = session.inventory || [];
+  state.settings = session.shopifySettings || {};
+  state.users = session.users || [];
+  state.securityEvents = session.securityEvents || [];
+  state.securityPolicy = session.securityPolicy || {};
+}
+
+function stopSessionKeepalive() {
+  if (sessionKeepaliveTimer) {
+    window.clearInterval(sessionKeepaliveTimer);
+    sessionKeepaliveTimer = 0;
+  }
+  sessionKeepaliveInFlight = false;
+}
+
+async function keepSessionAlive({ silent = true } = {}) {
+  if (!state.currentUser || sessionKeepaliveInFlight) return Boolean(state.currentUser);
+  sessionKeepaliveInFlight = true;
+  if (!silent) setShellPending(true);
+  try {
+    const session = await apiFetch("/api/session");
+    if (!session.user) {
+      applySessionPayload({});
+      stopSessionKeepalive();
+      showAuth();
+      return false;
+    }
+    applySessionPayload(session);
+    return true;
+  } catch (error) {
+    if (!silent) throw error;
+    return false;
+  } finally {
+    sessionKeepaliveInFlight = false;
+    if (!silent) setShellPending(false);
+  }
+}
+
+function startSessionKeepalive() {
+  stopSessionKeepalive();
+  if (!state.currentUser) return;
+  sessionKeepaliveTimer = window.setInterval(() => {
+    if (!state.currentUser || document.hidden) return;
+    void keepSessionAlive({ silent: true });
+  }, SESSION_KEEPALIVE_INTERVAL_MS);
+}
+
 async function loadSession() {
   setShellPending(true);
   try {
     const session = await apiFetch("/api/session");
     if (!session.user) {
+      applySessionPayload({});
       showAuth();
       return;
     }
-    state.currentUser = session.user;
-    state.orders = session.orders || [];
-    state.inventory = session.inventory || [];
-    state.settings = session.shopifySettings || {};
-    state.users = session.users || [];
-    state.securityEvents = session.securityEvents || [];
-    state.securityPolicy = session.securityPolicy || {};
+    applySessionPayload(session);
     if (state.currentUser?.mustChangePassword) state.currentView = "settings";
     ensureSelectedOrder();
     showApp();
@@ -5461,6 +5510,7 @@ async function loadSession() {
 }
 
 function showAuth() {
+  stopSessionKeepalive();
   setShellPending(false);
   state.mobileMenuOpen = false;
   updateMobileMenu();
@@ -5469,6 +5519,7 @@ function showAuth() {
 }
 
 function showApp() {
+  startSessionKeepalive();
   setShellPending(false);
   state.mobileMenuOpen = false;
   updateMobileMenu();
@@ -5564,15 +5615,19 @@ async function importOrdersJson() {
 }
 
 async function clearManualOrders() {
-  state.orders = await apiFetch("/api/orders/non-shopify", { method: "DELETE" });
-  ensureSelectedOrder();
-  render();
+  setStatus(
+    ui.ordersStatus,
+    "error",
+    state.lang === "it"
+      ? "La rimozione degli ordini e disattivata: gli ordini restano sempre salvati nel gestionale."
+      : "Order removal is disabled: orders always remain saved in the management app.",
+  );
 }
 
 function openOrderModal(order = null) {
   ui.orderModal.classList.remove("hidden");
   ui.orderModalTitle.textContent = order ? `Modifica ordine ${getOrderNumber(order)}` : "Nuovo ordine";
-  ui.deleteOrderButton.classList.toggle("hidden", !order);
+  ui.deleteOrderButton.classList.add("hidden");
   ui.orderForm.id.value = order?.id || "";
   ui.orderForm.orderNumber.value = order?.orderNumber || "";
   ui.orderForm.firstName.value = order?.firstName || "";
@@ -5646,13 +5701,13 @@ async function saveOrder(event) {
 }
 
 async function deleteSelectedOrder() {
-  const order = getSelectedOrder();
-  if (!order) return;
-  await apiFetch(`/api/orders/${encodeURIComponent(order.id)}`, { method: "DELETE" });
-  state.orders = state.orders.filter((item) => item.id !== order.id);
-  ensureSelectedOrder();
-  closeOrderModal();
-  render();
+  setStatus(
+    ui.ordersStatus,
+    "error",
+    state.lang === "it"
+      ? "La cancellazione ordini e disattivata: gli ordini restano sempre nello storico."
+      : "Order deletion is disabled: orders always remain in history.",
+  );
 }
 
 async function saveWarehouse(event) {
@@ -6530,12 +6585,12 @@ function readFileAsDataUrl(file) {
 
 async function reloadAll() {
   const session = await apiFetch("/api/session");
-  state.orders = session.orders || [];
-  state.inventory = session.inventory || [];
-  state.settings = session.shopifySettings || {};
-  state.users = session.users || [];
-  state.securityEvents = session.securityEvents || [];
-  state.securityPolicy = session.securityPolicy || {};
+  if (!session.user) {
+    applySessionPayload({});
+    showAuth();
+    return;
+  }
+  applySessionPayload(session);
   ensureSelectedOrder();
   render();
 }
@@ -6821,19 +6876,19 @@ ui.langButtons.forEach((button) => button.addEventListener("click", () => {
 ui.quickViewButtons.forEach((button) => button.addEventListener("click", () => setView(button.dataset.quickView)));
 bindEvent(ui.logoutButton, "click", async () => {
   await apiFetch("/api/logout", { method: "POST" });
-  state.currentUser = null;
+  applySessionPayload({});
   showAuth();
 });
 bindEvent(ui.mobileLogoutButton, "click", async () => {
   await apiFetch("/api/logout", { method: "POST" });
   state.mobileMenuOpen = false;
-  state.currentUser = null;
+  applySessionPayload({});
   showAuth();
 });
 bindEvent(ui.mobileLogoutInlineButton, "click", async () => {
   await apiFetch("/api/logout", { method: "POST" });
   state.mobileMenuOpen = false;
-  state.currentUser = null;
+  applySessionPayload({});
   showAuth();
 });
 bindEvent(ui.reloadButton, "click", reloadAll);
@@ -7023,9 +7078,17 @@ window.addEventListener("resize", () => {
     updateMobileMenu();
   }
 });
+document.addEventListener("visibilitychange", () => {
+  if (!state.currentUser || document.hidden) return;
+  void keepSessionAlive({ silent: true });
+});
+window.addEventListener("beforeunload", stopSessionKeepalive);
 
 if (ui.authDemo && !/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
   ui.authDemo.classList.add("hidden");
+}
+if (ui.ordersClearManualButton) {
+  ui.ordersClearManualButton.classList.add("hidden");
 }
 bindEvent(ui.orderForm, "submit", saveOrder);
 bindEvent(ui.deleteOrderButton, "click", deleteSelectedOrder);
