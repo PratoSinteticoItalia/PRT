@@ -2539,9 +2539,19 @@ function isLogisticsOrderCompleted(order) {
   );
 }
 
+function isInstallationOrderCompleted(order) {
+  return String(order.operations?.installation?.status || "").trim() === "completata";
+}
+
+function isOrderFulfilledOrClosed(order) {
+  const installRequired = Boolean(order.operations?.installation?.required);
+  if (installRequired) return isInstallationOrderCompleted(order) || isOrderClosed(order);
+  return isLogisticsOrderCompleted(order) || isOrderClosed(order);
+}
+
 function isOrderClosed(order) {
   const installRequired = Boolean(order.operations?.installation?.required);
-  const installCompleted = String(order.operations?.installation?.status || "").trim() === "completata";
+  const installCompleted = isInstallationOrderCompleted(order);
   const logisticsCompleted = isLogisticsOrderCompleted(order);
   const financiallyClosed = getOpenBalance(order) <= 0 && (!order.accounting?.invoiceRequired || order.accounting?.invoiceIssued);
   const operationallyClosed = installRequired ? installCompleted : logisticsCompleted;
@@ -2986,12 +2996,13 @@ function filterOrdersForView(kind) {
     if (search && !haystack.includes(search.toLowerCase())) return false;
     if (kind === "order") {
       const stage = getUnifiedOrderStage(order);
-      if (filter === "attention") return !order.address || !order.city || order.operations?.officeStatus === "bozza";
-      if (filter === "warehouse") return ["warehouse-work", "warehouse-ready"].includes(stage.key);
-      if (filter === "installation") return ["install-planned", "install-progress", "install-completed"].includes(stage.key) || isRoutedToInstallation(order);
-      if (filter === "shipping") return isRoutedToWarehouse(order) || isRoutedToInstallation(order);
-      if (filter === "fulfilled") return isOrderClosed(order) || isLogisticsOrderCompleted(order) || stage.key === "install-completed";
-      return true;
+      const fulfilledOrClosed = isOrderFulfilledOrClosed(order);
+      if (filter === "attention") return !fulfilledOrClosed && (!order.address || !order.city || order.operations?.officeStatus === "bozza");
+      if (filter === "warehouse") return !fulfilledOrClosed && ["warehouse-work", "warehouse-ready"].includes(stage.key);
+      if (filter === "installation") return !fulfilledOrClosed && (["install-planned", "install-progress"].includes(stage.key) || isRoutedToInstallation(order));
+      if (filter === "shipping") return !fulfilledOrClosed && (isRoutedToWarehouse(order) || isRoutedToInstallation(order));
+      if (filter === "fulfilled") return fulfilledOrClosed;
+      return !fulfilledOrClosed;
     }
     if (kind === "warehouse") {
       return !isLogisticsOrderCompleted(order);
@@ -3288,6 +3299,7 @@ function getDashboardInventorySnapshot() {
 
 function renderOps() {
   const orders = state.orders.length;
+  const inboxOrders = state.orders.filter((order) => !isOrderFulfilledOrClosed(order)).length;
   const soldSqm = getSoldSqmEstimate();
   const warehouse = state.orders.filter((order) => orderNeedsWarehouseWork(order)).length;
   const inventorySnapshot = getDashboardInventorySnapshot();
@@ -3307,7 +3319,7 @@ function renderOps() {
   const opsClosedValue = document.getElementById("ops-closed-value");
   if (opsClosedValue) opsClosedValue.textContent = String(closed);
   setNavCount("dashboard", "");
-  setNavCount("orders", orders);
+  setNavCount("orders", inboxOrders);
   setNavCount("warehouse", warehouse);
   setNavCount("installations", installations);
   setNavCount("accounting", accounting);
