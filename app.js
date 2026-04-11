@@ -1,7 +1,8 @@
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
-const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 60 * 10;
+const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 60 * 2;
+const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
 const COVERAGE_BOUNDS = { minLon: 2.3, maxLon: 26.3, minLat: 34.2, maxLat: 47.8 };
@@ -683,6 +684,8 @@ const state = {
 
 let sessionKeepaliveTimer = 0;
 let sessionKeepaliveInFlight = false;
+let shopifyAutoSyncTimer = 0;
+let shopifyAutoSyncInFlight = false;
 let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
 
@@ -5286,7 +5289,7 @@ function renderSettings() {
   ui.settingsForm.extraKgRate.value = state.settings.extraKgRate || "";
   if (ui.connectShopifyButton) {
     ui.connectShopifyButton.textContent = state.settings.hasAdminAccessToken
-      ? "Ricollega Shopify"
+      ? (state.lang === "it" ? "Verifica Shopify" : "Verify Shopify")
       : "Connect Shopify";
   }
   if (ui.securityForm) {
@@ -5511,6 +5514,14 @@ function stopSessionKeepalive() {
   sessionKeepaliveInFlight = false;
 }
 
+function stopShopifyAutoSync() {
+  if (shopifyAutoSyncTimer) {
+    window.clearInterval(shopifyAutoSyncTimer);
+    shopifyAutoSyncTimer = 0;
+  }
+  shopifyAutoSyncInFlight = false;
+}
+
 async function keepSessionAlive({ silent = true } = {}) {
   if (!state.currentUser || sessionKeepaliveInFlight) return Boolean(state.currentUser);
   sessionKeepaliveInFlight = true;
@@ -5520,10 +5531,13 @@ async function keepSessionAlive({ silent = true } = {}) {
     if (!session.user) {
       applySessionPayload({});
       stopSessionKeepalive();
+      stopShopifyAutoSync();
       showAuth();
       return false;
     }
     applySessionPayload(session);
+    ensureSelectedOrder();
+    render();
     return true;
   } catch (error) {
     if (!silent) throw error;
@@ -5541,6 +5555,26 @@ function startSessionKeepalive() {
     if (!state.currentUser || document.hidden) return;
     void keepSessionAlive({ silent: true });
   }, SESSION_KEEPALIVE_INTERVAL_MS);
+}
+
+function canAutoSyncShopify() {
+  return Boolean(
+    state.currentUser
+    && state.currentUser.role === "office"
+    && state.settings?.storeDomain
+    && state.settings?.hasAdminAccessToken
+    && !document.hidden
+    && navigator.onLine !== false,
+  );
+}
+
+function startShopifyAutoSync() {
+  stopShopifyAutoSync();
+  if (!state.currentUser) return;
+  shopifyAutoSyncTimer = window.setInterval(() => {
+    if (!canAutoSyncShopify()) return;
+    void runShopifySync({ silent: true });
+  }, SHOPIFY_AUTO_SYNC_INTERVAL_MS);
 }
 
 async function loadSession() {
@@ -5563,6 +5597,7 @@ async function loadSession() {
 
 function showAuth() {
   stopSessionKeepalive();
+  stopShopifyAutoSync();
   setShellPending(false);
   state.mobileMenuOpen = false;
   updateMobileMenu();
@@ -5572,6 +5607,7 @@ function showAuth() {
 
 function showApp() {
   startSessionKeepalive();
+  startShopifyAutoSync();
   setShellPending(false);
   state.mobileMenuOpen = false;
   updateMobileMenu();
@@ -5616,31 +5652,54 @@ function clearStatus(node) {
   node.textContent = "";
 }
 
-async function syncShopifyOrders() {
+function formatShopifySyncError(rawMessage = "") {
+  const message = String(rawMessage || "");
+  if (message === "missing_shopify_credentials" || message === "missing_shopify_token") {
+    return state.lang === "it"
+      ? "Sync Shopify fallito. Compila dominio store e collega un Admin API access token valido nelle impostazioni."
+      : "Shopify sync failed. Fill in the store domain and a valid Admin API access token in settings.";
+  }
+  if (message.startsWith("shopify_sync_failed:")) {
+    return state.lang === "it"
+      ? `Sync Shopify fallito. ${message.replace("shopify_sync_failed:", "").trim()}`
+      : `Shopify sync failed. ${message.replace("shopify_sync_failed:", "").trim()}`;
+  }
+  return state.lang === "it"
+    ? `Sync Shopify fallito. ${message || "Controlla la connessione Shopify."}`
+    : `Shopify sync failed. ${message || "Check the Shopify connection."}`;
+}
+
+async function runShopifySync({ silent = false } = {}) {
+  if (state.syncInProgress || shopifyAutoSyncInFlight) return false;
+  shopifyAutoSyncInFlight = true;
   try {
     state.syncInProgress = true;
     updateShell();
-    clearStatus(ui.ordersStatus);
+    if (!silent) clearStatus(ui.ordersStatus);
     state.orders = await apiFetch("/api/orders/sync-shopify", { method: "POST" });
     ensureSelectedOrder();
-    setStatus(ui.ordersStatus, "success", t("shopifySynced"));
-    render();
+    await keepSessionAlive({ silent: true });
+    if (!silent) {
+      setStatus(ui.ordersStatus, "success", t("shopifySynced"));
+    }
+    return true;
   } catch (error) {
-    setStatus(
-      ui.ordersStatus,
-      "error",
-      error.message === "missing_shopify_credentials"
-        ? (state.lang === "it"
-          ? "Sync Shopify fallito. Compila dominio store e Admin API access token nelle impostazioni."
-          : "Shopify sync failed. Fill in store domain and Admin API access token in settings.")
-        : (state.lang === "it"
-          ? `Sync Shopify fallito. ${error.message}`
-          : `Shopify sync failed. ${error.message}`),
-    );
+    const message = formatShopifySyncError(error.message || "");
+    if (!silent) {
+      setStatus(ui.ordersStatus, "error", message);
+    } else {
+      console.warn("shopify_auto_sync_failed", error);
+    }
+    return false;
   } finally {
     state.syncInProgress = false;
+    shopifyAutoSyncInFlight = false;
     updateShell();
   }
+}
+
+async function syncShopifyOrders() {
+  await runShopifySync({ silent: false });
 }
 
 async function importOrdersJson() {
@@ -6360,31 +6419,80 @@ async function persistSettingsForm() {
       rate500: form.get("rate500"),
       rate1000: form.get("rate1000"),
       extraKgRate: form.get("extraKgRate"),
-      webhookBaseUrl: "",
+      webhookBaseUrl: window.location.origin,
     }),
   });
+}
+
+async function enableShopifyAutomation() {
+  let webhookRegistered = false;
+  try {
+    const webhook = await apiFetch("/api/webhooks/register-shopify", {
+      method: "POST",
+    });
+    state.settings = {
+      ...state.settings,
+      webhookEndpoint: webhook.endpoint || state.settings.webhookEndpoint || "",
+      webhookSubscriptionId: webhook.subscriptionId || state.settings.webhookSubscriptionId || "",
+    };
+    webhookRegistered = Boolean(webhook.endpoint || webhook.subscriptionId);
+  } catch (error) {
+    console.warn("shopify_webhook_register_failed", error);
+  }
+  await runShopifySync({ silent: true });
+  await keepSessionAlive({ silent: true });
+  return { webhookRegistered };
 }
 
 async function connectShopify() {
   try {
     clearStatus(ui.settingsStatus);
+    const form = new FormData(ui.settingsForm);
+    const manualToken = String(form.get("adminAccessToken") || "").trim();
+    const hadExistingToken = Boolean(state.settings?.hasAdminAccessToken);
     state.settings = await persistSettingsForm();
     const shop = String(state.settings.storeDomain || "").trim();
     if (!shop) {
       setStatus(ui.settingsStatus, "error", state.lang === "it" ? "Inserisci prima il dominio Shopify dello store." : "Enter the Shopify store domain first.");
       return;
     }
+    if (manualToken || hadExistingToken || state.settings.hasAdminAccessToken) {
+      const validation = await apiFetch("/api/settings/shopify/validate", {
+        method: "POST",
+      });
+      state.settings = validation.settings || state.settings;
+      const automation = await enableShopifyAutomation();
+      const label = validation.shopName || validation.shopDomain || shop;
+      setStatus(
+        ui.settingsStatus,
+        "success",
+        state.lang === "it"
+          ? `Shopify collegato correttamente a ${label}. ${automation.webhookRegistered ? "Import automatico attivo." : "Import iniziale completato."}`
+          : `Shopify connected successfully to ${label}. ${automation.webhookRegistered ? "Automatic import is active." : "Initial import completed."}`,
+      );
+      renderSettings();
+      return;
+    }
     window.location.href = `/api/shopify/oauth/start?shop=${encodeURIComponent(shop)}`;
   } catch (error) {
-    const message = error.message === "unauthorized"
+    const rawMessage = String(error.message || "");
+    const message = rawMessage === "unauthorized"
       ? (state.lang === "it" ? "Sessione scaduta. Ricarica la pagina ed effettua di nuovo il login." : "Session expired. Reload the page and log in again.")
-      : error.message === "forbidden"
+      : rawMessage === "forbidden"
         ? (state.lang === "it" ? "Solo l'account office puo collegare Shopify." : "Only the office account can connect Shopify.")
-        : error.message === "server_error"
+        : rawMessage === "server_error"
           ? (state.lang === "it" ? "Errore server durante il salvataggio impostazioni Shopify." : "Server error while saving Shopify settings.")
+          : rawMessage === "missing_shopify_token"
+            ? (state.lang === "it"
+              ? "Manca un Admin API access token valido. Inseriscilo nelle impostazioni oppure completa l'OAuth."
+              : "A valid Admin API access token is missing. Enter it in settings or complete OAuth.")
+            : rawMessage.startsWith("shopify_validation_failed:")
+              ? (state.lang === "it"
+                ? `Verifica Shopify fallita. ${rawMessage.replace("shopify_validation_failed:", "").trim()}`
+                : `Shopify validation failed. ${rawMessage.replace("shopify_validation_failed:", "").trim()}`)
           : state.lang === "it"
-            ? `Impossibile avviare il collegamento Shopify. ${error.message || "Controlla le impostazioni."}`
-            : `Unable to start the Shopify connection. ${error.message || "Check the settings."}`;
+            ? `Impossibile avviare il collegamento Shopify. ${rawMessage || "Controlla le impostazioni."}`
+            : `Unable to start the Shopify connection. ${rawMessage || "Check the settings."}`;
     setStatus(ui.settingsStatus, "error", message);
   }
 }
@@ -6532,14 +6640,37 @@ async function updatePassword(event) {
   }
 }
 
-function handleShopifyOauthFeedback() {
+async function handleShopifyOauthFeedback() {
   const params = new URLSearchParams(window.location.search);
   const status = params.get("shopify");
   const message = params.get("message");
   if (!status) return;
 
   if (status === "connected") {
-    setStatus(ui.settingsStatus, "success", state.lang === "it" ? "Shopify collegato correttamente. Ora puoi sincronizzare gli ordini." : "Shopify connected successfully. You can now sync orders.");
+    try {
+      const validation = await apiFetch("/api/settings/shopify/validate", {
+        method: "POST",
+      });
+      state.settings = validation.settings || state.settings;
+      const automation = await enableShopifyAutomation();
+      const label = validation.shopName || validation.shopDomain || state.settings.storeDomain || "Shopify";
+      setStatus(
+        ui.settingsStatus,
+        "success",
+        state.lang === "it"
+          ? `Shopify collegato correttamente a ${label}. ${automation.webhookRegistered ? "Import automatico attivo." : "Import iniziale completato."}`
+          : `Shopify connected successfully to ${label}. ${automation.webhookRegistered ? "Automatic import is active." : "Initial import completed."}`,
+      );
+      renderSettings();
+    } catch (error) {
+      setStatus(
+        ui.settingsStatus,
+        "error",
+        state.lang === "it"
+          ? `Collegamento Shopify completato, ma la verifica finale e fallita. ${String(error.message || "").trim()}`
+          : `Shopify connection completed, but final validation failed. ${String(error.message || "").trim()}`,
+      );
+    }
   } else {
     setStatus(ui.settingsStatus, "error", message || (state.lang === "it" ? "Collegamento Shopify non completato." : "Shopify connection not completed."));
   }
@@ -7133,8 +7264,28 @@ window.addEventListener("resize", () => {
 document.addEventListener("visibilitychange", () => {
   if (!state.currentUser || document.hidden) return;
   void keepSessionAlive({ silent: true });
+  if (canAutoSyncShopify()) {
+    void runShopifySync({ silent: true });
+  }
 });
-window.addEventListener("beforeunload", stopSessionKeepalive);
+window.addEventListener("focus", () => {
+  if (!state.currentUser) return;
+  void keepSessionAlive({ silent: true });
+  if (canAutoSyncShopify()) {
+    void runShopifySync({ silent: true });
+  }
+});
+window.addEventListener("online", () => {
+  if (!state.currentUser) return;
+  void keepSessionAlive({ silent: true });
+  if (canAutoSyncShopify()) {
+    void runShopifySync({ silent: true });
+  }
+});
+window.addEventListener("beforeunload", () => {
+  stopSessionKeepalive();
+  stopShopifyAutoSync();
+});
 
 if (ui.authDemo && !/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
   ui.authDemo.classList.add("hidden");

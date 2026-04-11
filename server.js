@@ -49,6 +49,8 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const SESSION_REFRESH_BUFFER_MS = 1000 * 60 * 60 * 24 * 7;
 const LOGIN_WINDOW_MS = 1000 * 60 * 2;
 const LOGIN_MAX_ATTEMPTS = 20;
+const SHOPIFY_FETCH_TIMEOUT_MS = 15_000;
+const SHOPIFY_MAX_RETRIES = 2;
 const IS_PUBLIC_DEPLOY = Boolean(process.env.RENDER || process.env.NODE_ENV === "production");
 const ALLOW_DEMO_FALLBACK = process.env.ALLOW_DEMO_FALLBACK === "true" || !IS_PUBLIC_DEPLOY;
 const PASSWORD_MIN_LENGTH = 12;
@@ -379,6 +381,9 @@ function buildDefaultStore() {
       installedShop: "",
       tokenScope: "",
       tokenUpdatedAt: "",
+      lastSyncAt: "",
+      lastSyncStatus: "",
+      lastSyncMessage: "",
       locationName: "",
       carrierName: "",
       shippingRateMode: "oneexpress-auto",
@@ -523,6 +528,37 @@ function verifyShopifyOauthHmac(searchParams, secret) {
 function getRequestBaseUrl(req) {
   const proto = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim() || "https";
   return `${proto}://${req.headers.host}`;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = SHOPIFY_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isRetryableShopifyStatus(status) {
+  return Number(status) === 429 || Number(status) >= 500;
+}
+
+async function parseShopifyResponse(response) {
+  const text = await response.text().catch(() => "");
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { rawText: text };
+  }
 }
 
 function getShopifyRedirectUri(req) {
@@ -1282,25 +1318,50 @@ async function syncOrdersFromShopify(store) {
   `;
 
   async function fetchOrderBatch(batchQuery, batchLabel) {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": accessToken,
-      },
-      body: JSON.stringify({ query: batchQuery }),
-    });
+    let lastError = null;
+    for (let attempt = 0; attempt <= SHOPIFY_MAX_RETRIES; attempt += 1) {
+      try {
+        const response = await fetchWithTimeout(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": accessToken,
+          },
+          body: JSON.stringify({ query: batchQuery }),
+        });
 
-    if (!response.ok) {
-      const responseText = await response.text().catch(() => "");
-      throw new Error(responseText ? `shopify_sync_failed: ${batchLabel} ${response.status} ${responseText}` : `shopify_sync_failed: ${batchLabel} ${response.status}`);
-    }
+        if (!response.ok) {
+          const payload = await parseShopifyResponse(response);
+          const responseText = payload?.rawText || payload?.errors?.map((item) => item.message || item).join(" | ") || "";
+          if (attempt < SHOPIFY_MAX_RETRIES && isRetryableShopifyStatus(response.status)) {
+            await wait(500 * (attempt + 1));
+            continue;
+          }
+          throw new Error(responseText ? `shopify_sync_failed: ${batchLabel} ${response.status} ${responseText}` : `shopify_sync_failed: ${batchLabel} ${response.status}`);
+        }
 
-    const payload = await response.json();
-    if (Array.isArray(payload?.errors) && payload.errors.length) {
-      throw new Error(`shopify_sync_failed: ${batchLabel} ${payload.errors.map((item) => item.message || item).join(" | ")}`);
+        const payload = await response.json();
+        if (Array.isArray(payload?.errors) && payload.errors.length) {
+          const errorMessage = payload.errors.map((item) => item.message || item).join(" | ");
+          const retryable = /throttled|timeout|temporar/i.test(errorMessage);
+          if (attempt < SHOPIFY_MAX_RETRIES && retryable) {
+            await wait(500 * (attempt + 1));
+            continue;
+          }
+          throw new Error(`shopify_sync_failed: ${batchLabel} ${errorMessage}`);
+        }
+        return payload?.data?.orders?.edges || [];
+      } catch (error) {
+        lastError = error;
+        const retryable = String(error?.name || "") === "AbortError" || /ECONNRESET|ETIMEDOUT|timeout/i.test(String(error?.message || ""));
+        if (attempt < SHOPIFY_MAX_RETRIES && retryable) {
+          await wait(500 * (attempt + 1));
+          continue;
+        }
+        throw error;
+      }
     }
-    return payload?.data?.orders?.edges || [];
+    throw lastError || new Error(`shopify_sync_failed: ${batchLabel}`);
   }
 
   const recentQuery = `
@@ -1355,6 +1416,9 @@ async function syncOrdersFromShopify(store) {
     }
   });
   store.orders = sortOrdersByRecency(store.orders);
+  store.shopifySettings.lastSyncAt = new Date().toISOString();
+  store.shopifySettings.lastSyncStatus = "ok";
+  store.shopifySettings.lastSyncMessage = "";
   return store.orders;
 }
 
@@ -1372,30 +1436,83 @@ async function getShopifyAccessToken(store) {
   if (!clientId || !clientSecret) {
     throw new Error("missing_shopify_credentials");
   }
+  throw new Error("missing_shopify_token");
+}
 
-  const tokenResponse = await fetch(`https://${storeDomain}/admin/oauth/access_token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
-  });
-
-  if (!tokenResponse.ok) {
-    const responseText = await tokenResponse.text().catch(() => "");
-    throw new Error(responseText ? `shopify_token_failed: ${tokenResponse.status} ${responseText}` : `shopify_token_failed: ${tokenResponse.status}`);
+async function queryShopifyAdmin(store, accessToken, query, variables = {}, label = "shopify_query") {
+  const endpoint = `https://${store.shopifySettings.storeDomain}/admin/api/2026-01/graphql.json`;
+  let lastError = null;
+  for (let attempt = 0; attempt <= SHOPIFY_MAX_RETRIES; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": accessToken,
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+      const payload = await parseShopifyResponse(response);
+      if (!response.ok) {
+        const message = payload?.rawText || payload?.errors?.map((item) => item.message || item).join(" | ") || "";
+        if (attempt < SHOPIFY_MAX_RETRIES && isRetryableShopifyStatus(response.status)) {
+          await wait(500 * (attempt + 1));
+          continue;
+        }
+        throw new Error(message ? `${label}: ${response.status} ${message}` : `${label}: ${response.status}`);
+      }
+      if (Array.isArray(payload?.errors) && payload.errors.length) {
+        const message = payload.errors.map((item) => item.message || item).join(" | ");
+        const retryable = /throttled|timeout|temporar/i.test(message);
+        if (attempt < SHOPIFY_MAX_RETRIES && retryable) {
+          await wait(500 * (attempt + 1));
+          continue;
+        }
+        throw new Error(`${label}: ${message}`);
+      }
+      return payload?.data || {};
+    } catch (error) {
+      lastError = error;
+      const retryable = String(error?.name || "") === "AbortError" || /ECONNRESET|ETIMEDOUT|timeout/i.test(String(error?.message || ""));
+      if (attempt < SHOPIFY_MAX_RETRIES && retryable) {
+        await wait(500 * (attempt + 1));
+        continue;
+      }
+      throw error;
+    }
   }
+  throw lastError || new Error(label);
+}
 
-  const tokenPayload = await tokenResponse.json();
-  if (!tokenPayload?.access_token) {
-    throw new Error("shopify_token_failed: token_missing");
-  }
+async function validateShopifyConnection(store) {
+  const accessToken = await getShopifyAccessToken(store);
+  const data = await queryShopifyAdmin(
+    store,
+    accessToken,
+    `
+      query VertexOpsShopValidation {
+        shop {
+          name
+          myshopifyDomain
+        }
+        currentAppInstallation {
+          accessScopes {
+            handle
+          }
+        }
+      }
+    `,
+    {},
+    "shopify_validation_failed",
+  );
 
-  return tokenPayload.access_token;
+  return {
+    shopName: String(data?.shop?.name || "").trim(),
+    shopDomain: String(data?.shop?.myshopifyDomain || store.shopifySettings?.storeDomain || "").trim(),
+    scopes: Array.isArray(data?.currentAppInstallation?.accessScopes)
+      ? data.currentAppInstallation.accessScopes.map((item) => item?.handle).filter(Boolean)
+      : [],
+  };
 }
 
 function upsertOrderRecord(store, order) {
@@ -2307,6 +2424,10 @@ async function handleApi(req, res, url) {
       await writeJson(STORE_PATH, store);
       return sendJson(res, 200, store.orders);
     } catch (error) {
+      store.shopifySettings.lastSyncAt = new Date().toISOString();
+      store.shopifySettings.lastSyncStatus = "error";
+      store.shopifySettings.lastSyncMessage = String(error.message || "shopify_sync_failed").slice(0, 500);
+      await writeJson(STORE_PATH, store);
       return sendJson(res, 400, { error: error.message || "shopify_sync_failed" });
     }
   }
@@ -2390,6 +2511,7 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/settings/shopify" && req.method === "POST") {
     if (requireOffice(res, currentUser)) return;
     const body = await readBody(req);
+    const baseUrl = getRequestBaseUrl(req);
     store.shopifySettings = {
       storeDomain: body.storeDomain || "",
       clientId: body.clientId || "",
@@ -2398,6 +2520,9 @@ async function handleApi(req, res, url) {
       installedShop: store.shopifySettings?.installedShop || "",
       tokenScope: store.shopifySettings?.tokenScope || "",
       tokenUpdatedAt: store.shopifySettings?.tokenUpdatedAt || "",
+      lastSyncAt: store.shopifySettings?.lastSyncAt || "",
+      lastSyncStatus: store.shopifySettings?.lastSyncStatus || "",
+      lastSyncMessage: store.shopifySettings?.lastSyncMessage || "",
       locationName: body.locationName || "",
       carrierName: body.carrierName || "",
       shippingRateMode: body.shippingRateMode === "manual-weight" ? "manual-weight" : "oneexpress-auto",
@@ -2409,12 +2534,32 @@ async function handleApi(req, res, url) {
       rate500: body.rate500 || "",
       rate1000: body.rate1000 || "",
       extraKgRate: body.extraKgRate || "",
-      webhookBaseUrl: body.webhookBaseUrl || "",
+      webhookBaseUrl: body.webhookBaseUrl || store.shopifySettings?.webhookBaseUrl || baseUrl,
       webhookEndpoint: store.shopifySettings?.webhookEndpoint || "",
       webhookSubscriptionId: store.shopifySettings?.webhookSubscriptionId || "",
     };
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, serializeShopifySettings(store.shopifySettings));
+  }
+
+  if (url.pathname === "/api/settings/shopify/validate" && req.method === "POST") {
+    if (requireOffice(res, currentUser)) return;
+    try {
+      const validation = await validateShopifyConnection(store);
+      store.shopifySettings.installedShop = validation.shopDomain || store.shopifySettings.installedShop || "";
+      store.shopifySettings.tokenScope = validation.scopes.join(",");
+      store.shopifySettings.tokenUpdatedAt = new Date().toISOString();
+      await writeJson(STORE_PATH, store);
+      return sendJson(res, 200, {
+        ok: true,
+        shopName: validation.shopName,
+        shopDomain: validation.shopDomain,
+        scopes: validation.scopes,
+        settings: serializeShopifySettings(store.shopifySettings),
+      });
+    } catch (error) {
+      return sendJson(res, 400, { error: error.message || "shopify_validation_failed" });
+    }
   }
 
   if (url.pathname === "/api/reset-demo" && req.method === "POST") {
