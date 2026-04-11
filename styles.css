@@ -8611,3 +8611,9 @@ button:active,
     padding: 14px 12px calc(24px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Final visibility guard for auth/app shell */
+.auth-screen.hidden,
+.app-shell.hidden {
+  display: none !important;
+}
