@@ -2,6 +2,7 @@ const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
 const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 60 * 10;
+const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
 const COVERAGE_BOUNDS = { minLon: 2.3, maxLon: 26.3, minLat: 34.2, maxLat: 47.8 };
 const COVERAGE_DEFAULT_COLORS = ["#2d6a4f", "#c26c2d", "#3e74d8", "#a74b4b", "#7c5cc4", "#1f7a8c"];
@@ -682,6 +683,8 @@ const state = {
 
 let sessionKeepaliveTimer = 0;
 let sessionKeepaliveInFlight = false;
+let coverageSyncTimer = 0;
+let coverageSyncInFlight = false;
 
 const ui = {
   authScreen: document.getElementById("auth-screen"),
@@ -978,6 +981,15 @@ function apiFetch(path, options = {}) {
   });
 }
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch((error) => {
+      console.error("service_worker_register_failed", error);
+    });
+  });
+}
+
 function setShellPending(active) {
   state.shellPending = active;
   document.body.classList.toggle("shell-loading", active);
@@ -1235,23 +1247,57 @@ function composeAddress(order) {
   return [order.address, order.city].filter(Boolean).join(", ");
 }
 
+function normalizeCoveragePlannerState(payload) {
+  const teams = payload?.teams && typeof payload.teams === "object" ? payload.teams : {};
+  const availability = payload?.availability && typeof payload.availability === "object" ? payload.availability : {};
+  return { teams, availability };
+}
+
 function loadCoveragePlannerState() {
   try {
     const raw = window.localStorage.getItem(COVERAGE_STORAGE_KEY);
     const parsed = JSON.parse(raw || "null");
-    if (!parsed || typeof parsed !== "object") return { teams: {} };
-    return {
-      teams: parsed.teams && typeof parsed.teams === "object" ? parsed.teams : {},
-    };
+    if (!parsed || typeof parsed !== "object") return normalizeCoveragePlannerState();
+    return normalizeCoveragePlannerState(parsed);
   } catch {
-    return { teams: {} };
+    return normalizeCoveragePlannerState();
   }
 }
 
 function saveCoveragePlannerState() {
   try {
-    window.localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(state.coveragePlanner || { teams: {} }));
+    const normalized = normalizeCoveragePlannerState(state.coveragePlanner);
+    state.coveragePlanner = normalized;
+    window.localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(normalized));
   } catch {}
+  queueCoveragePlannerSync();
+}
+
+function queueCoveragePlannerSync() {
+  if (!state.currentUser) return;
+  window.clearTimeout(coverageSyncTimer);
+  coverageSyncTimer = window.setTimeout(() => {
+    void syncCoveragePlannerState();
+  }, COVERAGE_SYNC_DEBOUNCE_MS);
+}
+
+async function syncCoveragePlannerState() {
+  if (!state.currentUser || coverageSyncInFlight) return;
+  coverageSyncInFlight = true;
+  try {
+    const saved = await apiFetch("/api/coverage-planner", {
+      method: "POST",
+      body: JSON.stringify(normalizeCoveragePlannerState(state.coveragePlanner)),
+    });
+    state.coveragePlanner = normalizeCoveragePlannerState(saved);
+    try {
+      window.localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(state.coveragePlanner));
+    } catch {}
+  } catch (error) {
+    console.error("coverage_planner_sync_failed", error);
+  } finally {
+    coverageSyncInFlight = false;
+  }
 }
 
 function getInstallationCrewNames() {
@@ -5427,8 +5473,10 @@ function renderAttachmentGrid(items, orderId = "") {
   return items.map((item, index) => `
     <article class="attachment-item">
       ${orderId ? `<button class="attachment-remove" type="button" data-action="remove-attachment" data-id="${orderId}" data-index="${index}" aria-label="${state.lang === "it" ? "Rimuovi allegato" : "Remove attachment"}">×</button>` : ""}
-      ${item.dataUrl ? `<img src="${item.dataUrl}" alt="${item.name || "Allegato"}" />` : ""}
-      <strong>${item.name || "Allegato"}</strong>
+      ${(item.url || item.dataUrl) ? `<img src="${escapeHtml(item.url || item.dataUrl)}" alt="${escapeHtml(item.name || "Allegato")}" loading="lazy" />` : ""}
+      <strong>${item.url
+        ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.name || "Allegato")}</a>`
+        : escapeHtml(item.name || "Allegato")}</strong>
       <div>${item.createdAt ? formatDate(item.createdAt) : "—"}</div>
     </article>
   `).join("");
@@ -5445,10 +5493,14 @@ function applySessionPayload(session = {}) {
   state.currentUser = session.user || null;
   state.orders = session.orders || [];
   state.inventory = session.inventory || [];
+  state.coveragePlanner = normalizeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner);
   state.settings = session.shopifySettings || {};
   state.users = session.users || [];
   state.securityEvents = session.securityEvents || [];
   state.securityPolicy = session.securityPolicy || {};
+  try {
+    window.localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(state.coveragePlanner));
+  } catch {}
 }
 
 function stopSessionKeepalive() {
@@ -7097,6 +7149,7 @@ bindEvent(ui.attachmentInput, "change", handleAttachmentChange);
 document.addEventListener("click", handleGlobalClick);
 document.addEventListener("keydown", handleGlobalActionKeydown);
 
+registerServiceWorker();
 loadSession();
 
 // === EXPORT CSV ===

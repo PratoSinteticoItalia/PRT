@@ -13,12 +13,23 @@ let DATA_DIR = resolve(process.env.DATA_DIR || FALLBACK_DATA_DIR);
 let STORE_PATH = join(DATA_DIR, "store.json");
 let SESSION_PATH = join(DATA_DIR, "session.json");
 let BACKUP_DIR = join(DATA_DIR, "backups");
+const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
+const R2_ACCOUNT_ID = String(process.env.R2_ACCOUNT_ID || "").trim();
+const R2_ACCESS_KEY_ID = String(process.env.R2_ACCESS_KEY_ID || "").trim();
+const R2_SECRET_ACCESS_KEY = String(process.env.R2_SECRET_ACCESS_KEY || "").trim();
+const R2_BUCKET_NAME = String(process.env.R2_BUCKET_NAME || "").trim();
+const R2_REGION = String(process.env.R2_REGION || "auto").trim() || "auto";
+const STORE_DOC_KEY = "store";
+const SESSION_DOC_KEY = "sessions";
+const USE_POSTGRES = Boolean(DATABASE_URL);
+const USE_R2 = Boolean(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET_NAME);
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -45,6 +56,9 @@ const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const BOOTSTRAP_OFFICE_EMAIL = String(process.env.BOOTSTRAP_OFFICE_EMAIL || "office@vertex.local").trim().toLowerCase();
 const BOOTSTRAP_OFFICE_PASSWORD = String(process.env.BOOTSTRAP_OFFICE_PASSWORD || "");
 const loginAttempts = new Map();
+let dbBootstrapPromise = null;
+let pgPool = null;
+let r2ClientPromise = null;
 
 function validatePasswordStrength(password = "") {
   const value = String(password || "");
@@ -163,7 +177,7 @@ function ensureWritableDataDir() {
 
 ensureWritableDataDir();
 
-async function readJson(path, fallback) {
+async function readLocalJson(path, fallback) {
   try {
     const raw = await readFile(path, "utf8");
     return JSON.parse(raw);
@@ -172,7 +186,7 @@ async function readJson(path, fallback) {
   }
 }
 
-async function writeJson(path, value) {
+async function writeLocalJson(path, value) {
   const serialized = JSON.stringify(value, null, 2);
   await writeFile(path, serialized, "utf8");
   if (resolve(path) === resolve(STORE_PATH)) {
@@ -196,36 +210,166 @@ async function writeJson(path, value) {
   }
 }
 
+async function getPgPool() {
+  if (!USE_POSTGRES) return null;
+  if (pgPool) return pgPool;
+  const { Pool } = await import("pg");
+  pgPool = new Pool({
+    connectionString: DATABASE_URL,
+    max: 4,
+    idleTimeoutMillis: 30_000,
+  });
+  return pgPool;
+}
+
+async function ensureDatabaseStorage() {
+  if (!USE_POSTGRES) return;
+  if (dbBootstrapPromise) return dbBootstrapPromise;
+  dbBootstrapPromise = (async () => {
+    const pool = await getPgPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS app_documents (
+        key TEXT PRIMARY KEY,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    const storeResult = await pool.query("SELECT key FROM app_documents WHERE key = $1 LIMIT 1", [STORE_DOC_KEY]);
+    if (!storeResult.rowCount) {
+      const initialStore = existsSync(STORE_PATH)
+        ? await readLocalJson(STORE_PATH, buildDefaultStore())
+        : buildDefaultStore();
+      await pool.query(
+        `
+          INSERT INTO app_documents (key, payload, updated_at)
+          VALUES ($1, $2::jsonb, NOW())
+        `,
+        [STORE_DOC_KEY, JSON.stringify(initialStore)],
+      );
+    }
+
+    const sessionResult = await pool.query("SELECT key FROM app_documents WHERE key = $1 LIMIT 1", [SESSION_DOC_KEY]);
+    if (!sessionResult.rowCount) {
+      const initialSessions = existsSync(SESSION_PATH)
+        ? await readLocalJson(SESSION_PATH, {})
+        : {};
+      await pool.query(
+        `
+          INSERT INTO app_documents (key, payload, updated_at)
+          VALUES ($1, $2::jsonb, NOW())
+        `,
+        [SESSION_DOC_KEY, JSON.stringify(initialSessions)],
+      );
+    }
+  })().catch((error) => {
+    dbBootstrapPromise = null;
+    throw error;
+  });
+  return dbBootstrapPromise;
+}
+
+async function readDatabaseDocument(key, fallback) {
+  await ensureDatabaseStorage();
+  const pool = await getPgPool();
+  const result = await pool.query("SELECT payload FROM app_documents WHERE key = $1 LIMIT 1", [key]);
+  if (!result.rowCount) return fallback;
+  return result.rows[0]?.payload ?? fallback;
+}
+
+async function writeDatabaseDocument(key, value) {
+  await ensureDatabaseStorage();
+  const pool = await getPgPool();
+  await pool.query(
+    `
+      INSERT INTO app_documents (key, payload, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+    `,
+    [key, JSON.stringify(value)],
+  );
+}
+
+async function readJson(path, fallback) {
+  const resolvedPath = resolve(path);
+  if (USE_POSTGRES && resolvedPath === resolve(STORE_PATH)) {
+    return readDatabaseDocument(STORE_DOC_KEY, fallback);
+  }
+  if (USE_POSTGRES && resolvedPath === resolve(SESSION_PATH)) {
+    return readDatabaseDocument(SESSION_DOC_KEY, fallback);
+  }
+  return readLocalJson(path, fallback);
+}
+
+async function writeJson(path, value) {
+  const resolvedPath = resolve(path);
+  if (USE_POSTGRES && resolvedPath === resolve(STORE_PATH)) {
+    await writeDatabaseDocument(STORE_DOC_KEY, value);
+    try {
+      await writeLocalJson(path, value);
+    } catch (error) {
+      console.error("store_mirror_write_failed", error);
+    }
+    return;
+  }
+  if (USE_POSTGRES && resolvedPath === resolve(SESSION_PATH)) {
+    await writeDatabaseDocument(SESSION_DOC_KEY, value);
+    return;
+  }
+  await writeLocalJson(path, value);
+}
+
 function buildDefaultStore() {
+  const bootstrapUsers = !IS_PUBLIC_DEPLOY || ALLOW_DEMO_FALLBACK
+    ? [
+        {
+          id: "u1",
+          name: "Gabriele Todaro",
+          email: "office@vertex.local",
+          password: "office123",
+          role: "office",
+        },
+        {
+          id: "u2",
+          name: "Ivan Magazzino",
+          email: "warehouse@vertex.local",
+          password: "warehouse123",
+          role: "warehouse",
+        },
+        {
+          id: "u3",
+          name: "Squadra Alpha",
+          email: "crew@vertex.local",
+          password: "crew123",
+          role: "crew",
+          crewName: "Alpha",
+          dailyCapacity: DEFAULT_CREW_DAILY_CAPACITY,
+        },
+      ]
+    : (
+        BOOTSTRAP_OFFICE_PASSWORD && !validatePasswordStrength(BOOTSTRAP_OFFICE_PASSWORD)
+          ? [
+              {
+                id: "u1",
+                name: "Office Admin",
+                email: BOOTSTRAP_OFFICE_EMAIL,
+                password: BOOTSTRAP_OFFICE_PASSWORD,
+                role: "office",
+              },
+            ]
+          : []
+      );
+
   return {
-    users: [
-      {
-        id: "u1",
-        name: "Gabriele Todaro",
-        email: "office@vertex.local",
-        password: "office123",
-        role: "office",
-      },
-      {
-        id: "u2",
-        name: "Ivan Magazzino",
-        email: "warehouse@vertex.local",
-        password: "warehouse123",
-        role: "warehouse",
-      },
-      {
-        id: "u3",
-        name: "Squadra Alpha",
-        email: "crew@vertex.local",
-        password: "crew123",
-        role: "crew",
-        crewName: "Alpha",
-        dailyCapacity: DEFAULT_CREW_DAILY_CAPACITY,
-      },
-    ],
+    users: bootstrapUsers,
     jobs: [],
     orders: [],
     inventory: [],
+    coveragePlanner: {
+      teams: {},
+      availability: {},
+    },
     securityEvents: [],
     shopifySettings: {
       storeDomain: "",
@@ -504,6 +648,171 @@ function normalizeTravelExpenses(items = [], fallbackCrew = "") {
     .filter((item) => item.amount > 0 && item.date);
 }
 
+function normalizeCoveragePlanner(payload = {}) {
+  const teams = payload?.teams && typeof payload.teams === "object" ? payload.teams : {};
+  const availability = payload?.availability && typeof payload.availability === "object" ? payload.availability : {};
+  return {
+    teams,
+    availability,
+  };
+}
+
+function buildAttachmentProxyPath(orderId, attachmentId) {
+  return `/api/orders/${encodeURIComponent(orderId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
+}
+
+function getMimeTypeExtension(contentType = "") {
+  const normalized = String(contentType || "").split(";")[0].trim().toLowerCase();
+  if (normalized === "image/jpeg") return ".jpg";
+  if (normalized === "image/png") return ".png";
+  if (normalized === "image/webp") return ".webp";
+  if (normalized === "application/pdf") return ".pdf";
+  if (normalized === "text/plain") return ".txt";
+  return "";
+}
+
+function sanitizeAttachmentName(name = "", fallbackExtension = "") {
+  const trimmed = String(name || "").trim() || `allegato${fallbackExtension}`;
+  return trimmed.replace(/[^\w.\- ]+/g, "_");
+}
+
+function parseDataUrl(value = "") {
+  const match = String(value || "").match(/^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,(.+)$/i);
+  if (!match) return null;
+  return {
+    contentType: String(match[1] || "application/octet-stream").trim().toLowerCase(),
+    buffer: Buffer.from(match[2], "base64"),
+  };
+}
+
+function normalizeAttachmentRecord(item = {}, orderId = "") {
+  const attachmentId = String(item.id || randomUUID());
+  const hasR2Object = String(item.storage || "").trim() === "r2" && String(item.objectKey || "").trim();
+  return {
+    id: attachmentId,
+    name: String(item.name || "Allegato").trim() || "Allegato",
+    type: String(item.type || "application/octet-stream").trim() || "application/octet-stream",
+    size: Math.max(0, Number(item.size || 0)),
+    createdAt: String(item.createdAt || new Date().toISOString()),
+    storage: hasR2Object ? "r2" : "inline",
+    objectKey: hasR2Object ? String(item.objectKey || "").trim() : "",
+    dataUrl: hasR2Object ? "" : String(item.dataUrl || ""),
+    url: hasR2Object ? buildAttachmentProxyPath(orderId, attachmentId) : String(item.url || ""),
+  };
+}
+
+async function getR2Sdk() {
+  if (!USE_R2) return null;
+  if (!r2ClientPromise) {
+    r2ClientPromise = import("@aws-sdk/client-s3");
+  }
+  return r2ClientPromise;
+}
+
+async function getR2Client() {
+  if (!USE_R2) return null;
+  const sdk = await getR2Sdk();
+  if (!getR2Client.client) {
+    getR2Client.client = new sdk.S3Client({
+      region: R2_REGION,
+      endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: R2_ACCESS_KEY_ID,
+        secretAccessKey: R2_SECRET_ACCESS_KEY,
+      },
+    });
+  }
+  return getR2Client.client;
+}
+
+async function storeAttachmentAsset(orderId, attachment = {}) {
+  const parsed = parseDataUrl(attachment.dataUrl || "");
+  const attachmentId = String(attachment.id || randomUUID());
+  if (!parsed || !USE_R2) {
+    return normalizeAttachmentRecord(
+      {
+        ...attachment,
+        id: attachmentId,
+        storage: "inline",
+      },
+      orderId,
+    );
+  }
+
+  const client = await getR2Client();
+  const sdk = await getR2Sdk();
+  const fallbackExtension = getMimeTypeExtension(attachment.type || parsed.contentType);
+  const safeName = sanitizeAttachmentName(attachment.name, fallbackExtension);
+  const objectKey = `orders/${String(orderId || "order").replace(/[^\w.-]+/g, "_")}/${attachmentId}-${safeName}`;
+
+  await client.send(new sdk.PutObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: objectKey,
+    Body: parsed.buffer,
+    ContentType: String(attachment.type || parsed.contentType || "application/octet-stream").trim(),
+    ContentLength: parsed.buffer.length,
+  }));
+
+  return normalizeAttachmentRecord(
+    {
+      ...attachment,
+      id: attachmentId,
+      name: safeName,
+      type: String(attachment.type || parsed.contentType || "application/octet-stream").trim(),
+      size: Number(attachment.size || parsed.buffer.length || 0),
+      storage: "r2",
+      objectKey,
+      dataUrl: "",
+    },
+    orderId,
+  );
+}
+
+async function removeAttachmentAsset(attachment = {}) {
+  if (!USE_R2) return;
+  if (String(attachment.storage || "").trim() !== "r2") return;
+  if (!String(attachment.objectKey || "").trim()) return;
+  const client = await getR2Client();
+  const sdk = await getR2Sdk();
+  await client.send(new sdk.DeleteObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: String(attachment.objectKey).trim(),
+  }));
+}
+
+async function streamAttachmentAsset(res, attachment = {}) {
+  if (String(attachment.storage || "").trim() !== "r2" || !String(attachment.objectKey || "").trim()) {
+    return sendJson(res, 404, { error: "attachment_not_found" });
+  }
+  const client = await getR2Client();
+  const sdk = await getR2Sdk();
+  const object = await client.send(new sdk.GetObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: String(attachment.objectKey).trim(),
+  }));
+
+  res.writeHead(200, {
+    "Content-Type": object.ContentType || attachment.type || "application/octet-stream",
+    "Cache-Control": "private, max-age=300",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+  });
+
+  const body = object.Body;
+  if (body?.pipe) {
+    body.pipe(res);
+    return;
+  }
+  if (body && typeof body[Symbol.asyncIterator] === "function") {
+    for await (const chunk of body) {
+      res.write(chunk);
+    }
+    res.end();
+    return;
+  }
+  res.end();
+}
+
 function buildDefaultOperations(order, linkedJob = null) {
   const derived = deriveOrderData(order);
   return {
@@ -665,6 +974,7 @@ function reconcileStoreData(store) {
 
   store.jobs = Array.isArray(store.jobs) ? store.jobs : [];
   store.orders = Array.isArray(store.orders) ? store.orders : [];
+  store.coveragePlanner = normalizeCoveragePlanner(store.coveragePlanner || defaults.coveragePlanner);
   store.securityEvents = Array.isArray(store.securityEvents) ? store.securityEvents : [];
   store.shopifySettings = {
     ...defaults.shopifySettings,
@@ -692,7 +1002,9 @@ function reconcileStoreData(store) {
       invoiceIssued: Boolean(nextOrder.accounting?.invoiceIssued),
       accountingNote: nextOrder.accounting?.accountingNote || "",
     };
-    nextOrder.attachments = Array.isArray(nextOrder.attachments) ? nextOrder.attachments : [];
+    nextOrder.attachments = Array.isArray(nextOrder.attachments)
+      ? nextOrder.attachments.map((item) => normalizeAttachmentRecord(item, nextOrder.id))
+      : [];
     const linkedJob = store.jobs.find((job) => job.sourceOrderId === nextOrder.id) || null;
     nextOrder.operations = normalizeOperations(nextOrder, linkedJob);
     return nextOrder;
@@ -716,7 +1028,9 @@ function reconcileStoreData(store) {
       product: derived.mainProduct || job.product,
       sqm: derived.sqm || job.sqm,
       materials: derived.materials.length ? derived.materials : job.materials,
-      attachments: Array.isArray(job.attachments) ? job.attachments : [],
+      attachments: Array.isArray(job.attachments)
+        ? job.attachments.map((item) => normalizeAttachmentRecord(item, job.sourceOrderId || job.id))
+        : [],
     };
   });
 
@@ -905,6 +1219,10 @@ function jobFromOrder(order) {
 }
 
 async function ensureStore() {
+  if (USE_POSTGRES) {
+    await ensureDatabaseStorage();
+    return;
+  }
   ensureWritableDataDir();
   if (!existsSync(STORE_PATH)) {
     await writeJson(STORE_PATH, buildDefaultStore());
@@ -1161,6 +1479,7 @@ async function handleApi(req, res, url) {
       jobs: currentUser ? store.jobs : [],
       orders: currentUser ? store.orders : [],
       inventory: currentUser ? store.inventory : [],
+      coveragePlanner: currentUser ? store.coveragePlanner : normalizeCoveragePlanner(),
       shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
       users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
       securityEvents: currentUser?.role === "office" ? store.securityEvents : [],
@@ -1228,6 +1547,7 @@ async function handleApi(req, res, url) {
         jobs: store.jobs,
         orders: store.orders,
         inventory: store.inventory,
+        coveragePlanner: store.coveragePlanner,
         shopifySettings: serializeShopifySettings(store.shopifySettings),
         users: user.role === "office" ? store.users.map(sanitizeUser) : [],
         securityEvents: user.role === "office" ? store.securityEvents : [],
@@ -1257,6 +1577,19 @@ async function handleApi(req, res, url) {
       { ok: true },
       { "Set-Cookie": buildExpiredSessionCookie() },
     );
+  }
+
+  if (url.pathname === "/api/coverage-planner" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    return sendJson(res, 200, normalizeCoveragePlanner(store.coveragePlanner));
+  }
+
+  if (url.pathname === "/api/coverage-planner" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const body = await readBody(req);
+    store.coveragePlanner = normalizeCoveragePlanner(body || {});
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, store.coveragePlanner);
   }
 
   if (url.pathname === "/api/account/password" && req.method === "POST") {
@@ -1810,12 +2143,30 @@ async function handleApi(req, res, url) {
     const orderIndex = store.orders.findIndex((item) => item.id === orderId);
     if (orderIndex < 0) return sendJson(res, 404, { error: "order_not_found" });
     const current = store.orders[orderIndex];
+    const incomingAttachments = Array.isArray(body.attachments) ? body.attachments : [];
+    const savedAttachments = [];
+    for (const item of incomingAttachments) {
+      savedAttachments.push(await storeAttachmentAsset(orderId, item));
+    }
     store.orders[orderIndex] = {
       ...current,
-      attachments: [...(current.attachments || []), ...(Array.isArray(body.attachments) ? body.attachments : [])],
+      attachments: [...(current.attachments || []), ...savedAttachments],
     };
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.orders[orderIndex]);
+  }
+
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/attachments\/[^/]+\/file$/) && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const [, , resource, rawOrderId, , rawAttachmentId] = url.pathname.split("/");
+    if (resource !== "orders") return sendJson(res, 404, { error: "not_found" });
+    const orderId = decodeURIComponent(rawOrderId);
+    const attachmentId = decodeURIComponent(rawAttachmentId);
+    const order = store.orders.find((item) => item.id === orderId);
+    if (!order) return sendJson(res, 404, { error: "order_not_found" });
+    const attachment = (order.attachments || []).find((item) => String(item.id || "") === attachmentId);
+    if (!attachment) return sendJson(res, 404, { error: "attachment_not_found" });
+    return streamAttachmentAsset(res, attachment);
   }
 
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/attachments\/\d+$/) && req.method === "DELETE") {
@@ -1828,7 +2179,10 @@ async function handleApi(req, res, url) {
     const current = store.orders[orderIndex];
     const attachments = Array.isArray(current.attachments) ? [...current.attachments] : [];
     if (attachmentIndex < 0 || attachmentIndex >= attachments.length) return sendJson(res, 404, { error: "attachment_not_found" });
-    attachments.splice(attachmentIndex, 1);
+    const [removedAttachment] = attachments.splice(attachmentIndex, 1);
+    await removeAttachmentAsset(removedAttachment).catch((error) => {
+      console.error("attachment_delete_failed", error);
+    });
     store.orders[orderIndex] = {
       ...current,
       attachments,
