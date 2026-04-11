@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260412-auto-update-12" />
+    <link rel="stylesheet" href="./styles.css?v=20260412-menu-visibility-13" />
   </head>
   <body>
     <section id="auth-screen" class="auth-screen shell-pending">
@@ -136,8 +136,8 @@
           <p id="current-user-role">-</p>
         </div>
 
-        <div class="sidebar-section-label">Operativo</div>
-        <nav class="nav">
+        <div id="sidebar-operational-label" class="sidebar-section-label">Operativo</div>
+        <nav id="sidebar-operational-nav" class="nav">
           <button class="nav-link is-active" data-view="dashboard">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg></span>
             <span class="nav-label">Dashboard</span>
@@ -156,10 +156,10 @@
           </button>
         </nav>
 
-        <div class="sidebar-divider-line"></div>
+        <div id="sidebar-admin-divider" class="sidebar-divider-line"></div>
 
-        <div class="sidebar-section-label">Amministrazione</div>
-        <nav class="nav nav-secondary">
+        <div id="sidebar-admin-label" class="sidebar-section-label">Amministrazione</div>
+        <nav id="sidebar-admin-nav" class="nav nav-secondary">
           <button class="nav-link" data-view="accounting">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></span>
             <span class="nav-label">Contabilità</span>
@@ -1191,6 +1191,6 @@
     <input id="attachment-input" type="file" accept="image/*" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260412-auto-update-12" type="module"></script>
+    <script src="./app.js?v=20260412-menu-visibility-13" type="module"></script>
   </body>
 </html>

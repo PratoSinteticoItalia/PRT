@@ -8612,6 +8612,52 @@ button:active,
   }
 }
 
+@media (max-width: 980px) {
+  body.mobile-safe-mode .sidebar {
+    height: 100svh !important;
+    height: 100dvh !important;
+    max-height: 100svh !important;
+    max-height: 100dvh !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.mobile-safe-mode #sidebar-operational-nav,
+  body.mobile-safe-mode #sidebar-admin-nav {
+    display: grid !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  body.mobile-safe-mode .nav-link {
+    min-width: 0;
+    grid-template-columns: 20px minmax(0, 1fr) auto !important;
+  }
+
+  body.mobile-safe-mode .nav-label {
+    display: block;
+    min-width: 0;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.24;
+    padding-right: 4px;
+  }
+
+  body.mobile-safe-mode .nav-link[data-count]:not([data-count=""])::after {
+    align-self: center;
+    flex-shrink: 0;
+  }
+
+  body.mobile-safe-mode .sidebar-mobile-head strong,
+  body.mobile-safe-mode .sidebar-section-label {
+    max-width: none;
+    overflow-wrap: anywhere;
+  }
+}
+
 /* Final visibility guard for auth/app shell */
 .auth-screen.hidden,
 .app-shell.hidden {

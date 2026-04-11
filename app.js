@@ -694,6 +694,11 @@ const ui = {
   authForm: document.getElementById("auth-form"),
   authError: document.getElementById("auth-error"),
   appShell: document.getElementById("app-shell"),
+  sidebarOperationalLabel: document.getElementById("sidebar-operational-label"),
+  sidebarOperationalNav: document.getElementById("sidebar-operational-nav"),
+  sidebarAdminDivider: document.getElementById("sidebar-admin-divider"),
+  sidebarAdminLabel: document.getElementById("sidebar-admin-label"),
+  sidebarAdminNav: document.getElementById("sidebar-admin-nav"),
   navLinks: Array.from(document.querySelectorAll(".nav-link")),
   views: Array.from(document.querySelectorAll(".view")),
   viewTitle: document.getElementById("view-title"),
@@ -3290,9 +3295,18 @@ function updateShell() {
   const showCoverageRadar = state.currentUser?.role === "office";
   ui.navLinks.forEach((button) => {
     const visible = allowed.includes(button.dataset.view);
+    button.hidden = !visible;
     button.classList.toggle("hidden", !visible);
     button.classList.toggle("is-active", state.currentView === button.dataset.view);
+    button.setAttribute("aria-hidden", visible ? "false" : "true");
   });
+  const adminVisible = Array.from(ui.sidebarAdminNav?.querySelectorAll(".nav-link") || []).some((button) => !button.hidden);
+  if (ui.sidebarAdminDivider) ui.sidebarAdminDivider.classList.toggle("hidden", !adminVisible);
+  if (ui.sidebarAdminLabel) ui.sidebarAdminLabel.classList.toggle("hidden", !adminVisible);
+  if (ui.sidebarAdminNav) ui.sidebarAdminNav.classList.toggle("hidden", !adminVisible);
+  const operationalVisible = Array.from(ui.sidebarOperationalNav?.querySelectorAll(".nav-link") || []).some((button) => !button.hidden);
+  if (ui.sidebarOperationalLabel) ui.sidebarOperationalLabel.classList.toggle("hidden", !operationalVisible);
+  if (ui.sidebarOperationalNav) ui.sidebarOperationalNav.classList.toggle("hidden", !operationalVisible);
   if (!allowed.includes(state.currentView)) state.currentView = allowed[0];
   ui.views.forEach((view) => view.classList.toggle("is-active", view.id === state.currentView));
   ui.viewTitle.textContent = t(state.currentView);
