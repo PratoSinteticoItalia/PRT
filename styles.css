@@ -1174,6 +1174,7 @@ button.is-feedback,
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  margin-top: 10px;
 }
 
 .route-toggle-card {
@@ -1236,7 +1237,12 @@ button.is-feedback,
 #orders .route-toggle-copy {
   display: block;
   padding-left: 30px;
-  line-height: 1.6;
+  padding-top: 4px;
+  line-height: 1.65;
+}
+
+#orders .order-flow-grid {
+  margin-top: 12px;
 }
 
 .route-visibility-grid > *,
@@ -3585,12 +3591,15 @@ body {
 }
 .payment-entry-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   align-items: end;
 }
 .payment-entry-remove {
   min-height: 42px;
+  grid-column: 1 / -1;
+  justify-self: end;
+  margin-top: 2px;
 }
 .payment-entry-empty {
   padding: 12px 14px;
@@ -9307,6 +9316,11 @@ body.mobile-safe-mode .nav-link.is-active {
   align-items: start;
 }
 
+.sales-generator-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 18px;
+}
+
 .sales-request-list,
 .sales-content-list {
   display: grid;
@@ -9405,7 +9419,7 @@ body.mobile-safe-mode .nav-link.is-active {
 .sales-generator-frame {
   display: block;
   width: 100%;
-  min-height: 1120px;
+  min-height: 1480px;
   border: 0;
   border-radius: 24px;
   background: #ffffff;
@@ -9481,7 +9495,7 @@ body.mobile-safe-mode .nav-link.is-active {
   }
 
   .sales-generator-frame {
-    min-height: 920px;
+    min-height: 1120px;
   }
 }
 
@@ -9511,7 +9525,7 @@ body.mobile-safe-mode .nav-link.is-active {
   }
 
   .sales-generator-frame {
-    min-height: 760px;
+    min-height: 920px;
     border-radius: 20px;
   }
 }

@@ -1,11 +1,11 @@
-const CACHE_NAME = "psi-ops-shell-20260412-sales-suite-20";
+const CACHE_NAME = "psi-ops-shell-20260412-sales-ux-21";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/garden-planner.html",
-  "/garden-planner-page.js?v=20260412-sales-suite-20",
-  "/styles.css?v=20260412-sales-suite-20",
-  "/app.js?v=20260412-sales-suite-20",
+  "/garden-planner-page.js?v=20260412-sales-ux-21",
+  "/styles.css?v=20260412-sales-ux-21",
+  "/app.js?v=20260412-sales-ux-21",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",

@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260412-sales-suite-20" />
+    <link rel="stylesheet" href="./styles.css?v=20260412-sales-ux-21" />
   </head>
   <body class="shell-loading">
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -427,6 +427,7 @@
               <p id="sales-requests-subtitle">Gestisci richieste commerciali e prepara il passaggio verso il generatore.</p>
             </div>
             <div class="action-list">
+              <button id="sales-request-import-button" class="ghost-button small-button" type="button">Importa richieste</button>
               <button id="sales-request-new-button" class="ghost-button small-button" type="button">Nuova richiesta</button>
             </div>
           </div>
@@ -442,6 +443,17 @@
                 <span id="sales-requests-search-label">Cerca</span>
                 <input id="sales-requests-search" type="search" placeholder="Nome, città, telefono, assegnazione..." />
               </label>
+              <div id="sales-request-import-wrap" class="field field-full collapsible-field order-import-panel hidden">
+                <p class="panel-eyebrow" style="margin-bottom: 8px;">Import richieste</p>
+                <p style="margin: 0 0 10px; color: var(--muted); font-size: 13px;">
+                  Incolla un JSON oppure un CSV con intestazioni tipo: `nome`, `cognome`, `città`, `telefono`, `email`, `mq`, `servizio`, `fondo`, `assegnazione`, `stato`, `note`.
+                </p>
+                <textarea id="sales-request-import-text" class="text-input order-import-text" rows="6" placeholder='[{"nome":"Mario","cognome":"Rossi","città":"Roma","telefono":"+39 ...","mq":35,"servizio":"posa"}]'></textarea>
+                <div class="inline-actions order-import-actions">
+                  <button id="confirm-sales-request-import-button" type="button" class="primary-button small-button">Importa adesso</button>
+                  <button id="clear-sales-request-import-button" type="button" class="ghost-button small-button">Svuota</button>
+                </div>
+              </div>
               <div id="sales-requests-status" class="panel-note hidden"></div>
               <div id="sales-requests-list" class="detail-stack sales-request-list"></div>
             </section>
@@ -1433,9 +1445,9 @@
       </div>
     </div>
 
-    <input id="attachment-input" type="file" accept="image/*" class="hidden" />
+    <input id="attachment-input" type="file" accept="image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260412-sales-suite-20" type="module"></script>
+    <script src="./app.js?v=20260412-sales-ux-21" type="module"></script>
   </body>
 </html>

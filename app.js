@@ -700,6 +700,7 @@ const state = {
   },
   pendingAttachmentTarget: null,
   showOrderImport: false,
+  showSalesRequestImport: false,
   shellPending: true,
   syncInProgress: false,
   orderPage: 1,
@@ -779,6 +780,11 @@ const ui = {
   ordersPagination: document.getElementById("orders-pagination"),
   ordersStatus: document.getElementById("orders-status"),
   salesRequestsSearch: document.getElementById("sales-requests-search"),
+  salesRequestImportButton: document.getElementById("sales-request-import-button"),
+  salesRequestImportWrap: document.getElementById("sales-request-import-wrap"),
+  salesRequestImportText: document.getElementById("sales-request-import-text"),
+  salesRequestImportConfirmButton: document.getElementById("confirm-sales-request-import-button"),
+  salesRequestImportClearButton: document.getElementById("clear-sales-request-import-button"),
   salesRequestsStatus: document.getElementById("sales-requests-status"),
   salesRequestsList: document.getElementById("sales-requests-list"),
   salesRequestForm: document.getElementById("sales-request-form"),
@@ -1440,6 +1446,157 @@ function updateOrderImportPanel() {
   }
   if (ui.orderImportClearButton) {
     ui.orderImportClearButton.textContent = state.lang === "it" ? "Svuota" : "Clear";
+  }
+}
+
+function normalizeImportHeader(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function splitImportedFullName(value = "") {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ");
+  if (!cleaned) return { name: "", surname: "" };
+  const parts = cleaned.split(" ");
+  if (parts.length === 1) return { name: cleaned, surname: "" };
+  return {
+    name: parts.slice(0, -1).join(" "),
+    surname: parts.slice(-1).join(" "),
+  };
+}
+
+function parseDelimitedImportLine(line, delimiter) {
+  const values = [];
+  let current = "";
+  let inQuotes = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      if (inQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === delimiter && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  values.push(current.trim());
+  return values.map((item) => item.replace(/^"(.*)"$/, "$1").trim());
+}
+
+function mapImportedSalesRequestField(target, header, rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value) return;
+  const normalizedHeader = normalizeImportHeader(header);
+  if (!normalizedHeader) return;
+
+  if (["nome", "name", "first name", "firstname"].includes(normalizedHeader)) {
+    target.name = value;
+    return;
+  }
+  if (["cognome", "surname", "last name", "lastname"].includes(normalizedHeader)) {
+    target.surname = value;
+    return;
+  }
+  if (["cliente", "customer", "full name", "nome completo"].includes(normalizedHeader)) {
+    const split = splitImportedFullName(value);
+    target.name = split.name;
+    target.surname = split.surname;
+    return;
+  }
+  if (["citta", "city", "comune"].includes(normalizedHeader)) {
+    target.city = value;
+    return;
+  }
+  if (["telefono", "phone", "tel", "mobile", "cellulare"].includes(normalizedHeader)) {
+    target.phone = value;
+    return;
+  }
+  if (["email", "mail"].includes(normalizedHeader)) {
+    target.email = value;
+    return;
+  }
+  if (["mq", "sqm", "metri quadri", "metriquadrati"].includes(normalizedHeader)) {
+    target.sqm = value;
+    return;
+  }
+  if (["servizio", "service", "tipologia"].includes(normalizedHeader)) {
+    target.service = value;
+    return;
+  }
+  if (["fondo", "surface", "superficie"].includes(normalizedHeader)) {
+    target.surface = value;
+    return;
+  }
+  if (["assegnazione", "assignment", "owner", "commerciale", "team"].includes(normalizedHeader)) {
+    target.assignment = value;
+    return;
+  }
+  if (["stato", "status"].includes(normalizedHeader)) {
+    target.status = value;
+    return;
+  }
+  if (["note", "nota", "notes"].includes(normalizedHeader)) {
+    target.note = value;
+  }
+}
+
+function parseSalesRequestImport(raw = "") {
+  const text = String(raw || "").trim();
+  if (!text) return [];
+
+  try {
+    const parsed = JSON.parse(text);
+    const items = Array.isArray(parsed) ? parsed : Array.isArray(parsed.requests) ? parsed.requests : [parsed];
+    return items
+      .map((item) => normalizeSalesRequestRecord({ ...item, source: item?.source || "import" }))
+      .filter((item) => item.name || item.surname || item.city || item.phone || item.email);
+  } catch {}
+
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+
+  const delimiter = [";", "\t", ","]
+    .map((candidate) => ({ candidate, count: (lines[0].match(new RegExp(`\\${candidate}`, "g")) || []).length }))
+    .sort((left, right) => right.count - left.count)[0]?.candidate || ";";
+
+  const headers = parseDelimitedImportLine(lines[0], delimiter);
+  return lines.slice(1)
+    .map((line) => {
+      const values = parseDelimitedImportLine(line, delimiter);
+      const draft = { source: "import" };
+      headers.forEach((header, index) => mapImportedSalesRequestField(draft, header, values[index] || ""));
+      return normalizeSalesRequestRecord(draft);
+    })
+    .filter((item) => item.name || item.surname || item.city || item.phone || item.email);
+}
+
+function updateSalesRequestImportPanel() {
+  if (ui.salesRequestImportWrap) {
+    ui.salesRequestImportWrap.classList.toggle("hidden", !state.showSalesRequestImport);
+  }
+  if (ui.salesRequestImportButton) {
+    ui.salesRequestImportButton.textContent = state.showSalesRequestImport
+      ? (state.lang === "it" ? "Nascondi import" : "Hide import")
+      : (state.lang === "it" ? "Importa richieste" : "Import requests");
+    ui.salesRequestImportButton.setAttribute("aria-expanded", String(state.showSalesRequestImport));
+  }
+  if (ui.salesRequestImportConfirmButton) {
+    ui.salesRequestImportConfirmButton.textContent = state.lang === "it" ? "Importa adesso" : "Import now";
+  }
+  if (ui.salesRequestImportClearButton) {
+    ui.salesRequestImportClearButton.textContent = state.lang === "it" ? "Svuota" : "Clear";
   }
 }
 
@@ -4596,6 +4753,7 @@ function getFilteredSalesContents() {
 function renderSalesRequests() {
   const selected = ensureSelectedSalesRequest();
   const filtered = getFilteredSalesRequests();
+  updateSalesRequestImportPanel();
   if (ui.salesRequestsList) {
     ui.salesRequestsList.innerHTML = filtered.length
       ? filtered.map((item) => `
@@ -4805,6 +4963,51 @@ async function deleteSalesRequest() {
     setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Richiesta eliminata." : "Request deleted.");
   } catch (error) {
     setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile eliminare la richiesta." : "Unable to delete the request.");
+  }
+}
+
+async function importSalesRequests() {
+  clearStatus(ui.salesRequestsStatus);
+  const raw = String(ui.salesRequestImportText?.value || "").trim();
+  if (!raw) {
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Incolla un JSON o CSV prima di importare." : "Paste JSON or CSV before importing.");
+    return;
+  }
+
+  const parsedItems = parseSalesRequestImport(raw);
+  if (!parsedItems.length) {
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Nessuna richiesta valida trovata nel contenuto incollato." : "No valid requests found in the pasted content.");
+    return;
+  }
+
+  try {
+    for (const item of parsedItems) {
+      const saved = await apiFetch("/api/sales/requests", {
+        method: "POST",
+        body: JSON.stringify({
+          name: item.name,
+          surname: item.surname,
+          city: item.city,
+          phone: item.phone,
+          email: item.email,
+          sqm: item.sqm,
+          service: item.service,
+          surface: item.surface,
+          assignment: item.assignment,
+          status: item.status,
+          note: item.note,
+          source: "import",
+        }),
+      });
+      upsertSalesRequest(saved);
+    }
+    if (ui.salesRequestImportText) ui.salesRequestImportText.value = "";
+    state.showSalesRequestImport = false;
+    renderSalesRequests();
+    renderSalesGenerator();
+    setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? `${parsedItems.length} richieste importate correttamente.` : `${parsedItems.length} requests imported successfully.`);
+  } catch (error) {
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile importare le richieste." : "Unable to import the requests.");
   }
 }
 
@@ -5855,7 +6058,7 @@ function renderAccounting() {
           `).join("")}
           ${trancheRows.length === 0 ? `<div class="info-card" style="padding:8px 12px;font-size:12px">${state.lang === "it" ? "Nessun pagamento registrato." : "No payments recorded."}</div>` : ""}
         </div>
-        <button class="btn add-payment-btn" type="button" onclick="(function(btn){ if (btn) btn.click(); })(document.getElementById('accounting-add-payment-button'))">${state.lang === "it" ? "+ Aggiungi pagamento" : "+ Add payment"}</button>
+        <button class="btn add-payment-btn" type="button" data-action="add-accounting-payment">${state.lang === "it" ? "+ Aggiungi pagamento" : "+ Add payment"}</button>
       </div>
     `,
     `
@@ -7828,6 +8031,11 @@ function prefillInventoryForm(product) {
 }
 
 function openAttachmentPicker(type) {
+  if (ui.attachmentInput) {
+    ui.attachmentInput.accept = type === "sales-content"
+      ? "image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+      : "image/*,.pdf";
+  }
   if (type === "sales-content") {
     const content = getSelectedSalesContent();
     if (!content) return;
@@ -8107,6 +8315,13 @@ function handleGlobalClick(event) {
     });
     return;
   }
+  if (action === "add-accounting-payment") {
+    addAccountingPaymentRow();
+    requestAnimationFrame(() => {
+      ui.accountingPaymentsEditor?.lastElementChild?.querySelector("[name='paymentAmount']")?.focus();
+    });
+    return;
+  }
   const order = state.orders.find((item) => item.id === id) || getSelectedOrder();
   if (!order) return;
   if (action === "select-order") {
@@ -8315,6 +8530,20 @@ bindEvent(ui.ordersSearch, "input", (event) => {
 bindEvent(ui.salesRequestsSearch, "input", (event) => {
   state.search.salesRequests = event.target.value;
   renderSalesRequests();
+});
+bindEvent(ui.salesRequestImportButton, "click", () => {
+  state.showSalesRequestImport = !state.showSalesRequestImport;
+  updateSalesRequestImportPanel();
+  if (state.showSalesRequestImport) {
+    clearStatus(ui.salesRequestsStatus);
+    ui.salesRequestImportText?.focus();
+  }
+});
+bindEvent(ui.salesRequestImportConfirmButton, "click", importSalesRequests);
+bindEvent(ui.salesRequestImportClearButton, "click", () => {
+  if (ui.salesRequestImportText) ui.salesRequestImportText.value = "";
+  clearStatus(ui.salesRequestsStatus);
+  ui.salesRequestImportText?.focus();
 });
 bindEvent(ui.salesRequestForm, "submit", saveSalesRequest);
 bindEvent(ui.salesRequestNewButton, "click", createNewSalesRequest);
