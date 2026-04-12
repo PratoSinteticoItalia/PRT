@@ -1970,6 +1970,49 @@ function hasReliableNetData(order) {
   return totals.netSubtotal != null && String(totals.netSubtotal).trim() !== "";
 }
 
+function canEstimateItalianVat(order) {
+  const billing = order?.billing || {};
+  const source = String(order?.source || "").toLowerCase();
+  const countryCode = String(billing.countryCode || order?.countryCode || "IT").trim().toUpperCase();
+  if (!source.startsWith("shopify")) return false;
+  if (countryCode !== "IT") return false;
+  if (billing.taxExempt) return false;
+  if (getOrderGrossTotal(order) <= 0) return false;
+  const lineDetails = Array.isArray(order?.lineDetails) ? order.lineDetails : [];
+  const hasExplicitUntaxedLine = lineDetails.some((item) => item?.taxable === false && (
+    (Array.isArray(item?.taxLines) && item.taxLines.length > 0)
+    || toNumber(item?.totalPrice || 0) > 0
+    || String(item?.sku || "").trim()
+    || String(item?.variant || "").trim()
+  ));
+  if (hasExplicitUntaxedLine) return false;
+  return true;
+}
+
+function getEstimatedItalianVatTotal(order) {
+  if (!canEstimateItalianVat(order)) return 0;
+  const grossTotal = getOrderGrossTotal(order);
+  return Number((grossTotal - (grossTotal / 1.22)).toFixed(2));
+}
+
+function isEstimatedVatDisplay(order) {
+  return !hasReliableTaxData(order) && canEstimateItalianVat(order);
+}
+
+function getDisplayedTaxTotal(order) {
+  return isEstimatedVatDisplay(order)
+    ? getEstimatedItalianVatTotal(order)
+    : getOrderTaxTotal(order);
+}
+
+function getDisplayedNetSubtotal(order) {
+  if (hasReliableNetData(order)) return getOrderNetSubtotal(order);
+  if (isEstimatedVatDisplay(order)) {
+    return Number((getOrderGrossTotal(order) - getEstimatedItalianVatTotal(order)).toFixed(2));
+  }
+  return getOrderNetSubtotal(order);
+}
+
 function getOrderNetSubtotal(order) {
   const explicitNet = order?.totals?.netSubtotal;
   if (explicitNet != null) return toNumber(explicitNet);
@@ -1977,14 +2020,14 @@ function getOrderNetSubtotal(order) {
 }
 
 function getOrderTaxDisplay(order) {
-  return hasReliableTaxData(order)
-    ? formatCurrency(getOrderTaxTotal(order))
+  return hasReliableTaxData(order) || isEstimatedVatDisplay(order)
+    ? formatCurrency(getDisplayedTaxTotal(order))
     : (state.lang === "it" ? "Da verificare" : "To verify");
 }
 
 function getOrderNetDisplay(order) {
-  return hasReliableNetData(order)
-    ? formatCurrency(getOrderNetSubtotal(order))
+  return hasReliableNetData(order) || isEstimatedVatDisplay(order)
+    ? formatCurrency(getDisplayedNetSubtotal(order))
     : (state.lang === "it" ? "Da verificare" : "To verify");
 }
 
@@ -5040,6 +5083,7 @@ function renderAccounting() {
   const billing = order.billing || {};
   const taxDisplay = getOrderTaxDisplay(order);
   const netDisplay = getOrderNetDisplay(order);
+  const estimatedVat = isEstimatedVatDisplay(order);
   const taxRows = Array.isArray(order.lineDetails) ? order.lineDetails : [];
 
   const trancheRows = [];
@@ -5065,11 +5109,12 @@ function renderAccounting() {
   ui.accountingMeta.innerHTML = [
     `
       <div class="detail-section">
-        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Imponibile ordine" : "Order net subtotal"}</span><span class="detail-row-value detail-row-value-mono" style="font-size:18px">${netDisplay}</span></div>
-        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "IVA totale" : "Total VAT"}</span><span class="detail-row-value detail-row-value-mono">${taxDisplay}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${estimatedVat ? (state.lang === "it" ? "Imponibile stimato" : "Estimated net subtotal") : (state.lang === "it" ? "Imponibile ordine" : "Order net subtotal")}</span><span class="detail-row-value detail-row-value-mono" style="font-size:18px">${netDisplay}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${estimatedVat ? (state.lang === "it" ? "IVA stimata 22%" : "Estimated VAT 22%") : (state.lang === "it" ? "IVA totale" : "Total VAT")}</span><span class="detail-row-value detail-row-value-mono">${taxDisplay}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Totale ivato" : "Gross total"}</span><span class="detail-row-value detail-row-value-mono" style="font-size:18px">${formatCurrency(grossTotal)}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Stato Shopify" : "Shopify status"}</span><span class="detail-row-value">${getPaymentLabel(order.financialStatus)} · ${getFulfillmentLabel(order.fulfillmentStatus)}</span></div>
         <div class="detail-row"><span class="detail-row-label">${t("realResidual")}</span><span class="detail-row-value" style="color:${openBalance > 0 ? "#dc2626" : "#16a34a"};font-weight:800;font-size:16px">${formatCurrency(openBalance)}</span></div>
+        ${estimatedVat ? `<div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Nota IVA" : "VAT note"}</span><span class="detail-row-value">${state.lang === "it" ? "Calcolata in fallback con aliquota standard 22% in attesa del dettaglio fiscale Shopify." : "Calculated with the standard 22% fallback while waiting for Shopify tax detail."}</span></div>` : ""}
       </div>
     `,
     `
