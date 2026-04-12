@@ -644,6 +644,134 @@ function normalizeTaxLines(lines = []) {
     .filter((item) => item.title || item.rate > 0 || item.amount > 0);
 }
 
+function normalizeLookupKey(value = "") {
+  return String(value || "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function normalizeBooleanFlag(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const normalized = normalizeLookupKey(value);
+  if (!normalized) return null;
+  if (["1", "si", "s", "yes", "true", "on", "richiesta", "requested"].includes(normalized)) return true;
+  if (["0", "no", "false", "off", "non richiesta", "not requested"].includes(normalized)) return false;
+  return null;
+}
+
+function cleanVatNumber(value = "") {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+}
+
+function cleanTaxCode(value = "") {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+}
+
+function cleanRecipientCode(value = "") {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+}
+
+function cleanEmail(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeAttributePairs(entries = []) {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const key = String(entry.key ?? entry.name ?? entry.label ?? "").trim();
+      const value = String(entry.value ?? entry.text ?? "").trim();
+      if (!key || !value) return null;
+      return { key, value };
+    })
+    .filter(Boolean);
+}
+
+const BILLING_METADATA_ALIASES = {
+  company: ["company", "company name", "business name", "ragione sociale", "azienda", "denominazione", "intestazione"],
+  vatNumber: ["partita iva", "partitaiva", "p iva", "piva", "vat", "vat number", "vatnumber", "vat id", "vatid", "tax registration id"],
+  taxCode: ["codice fiscale", "codicefiscale", "tax code", "taxcode", "fiscal code", "cf"],
+  sdiCode: ["sdi", "codice sdi", "codice destinatario", "codice univoco", "recipient code", "recipientcode", "destinatario"],
+  pecEmail: ["pec", "pec email", "posta elettronica certificata", "email pec"],
+  invoiceRequested: ["fattura richiesta", "richiesta fattura", "richiede fattura", "invoice requested", "invoice required", "need invoice", "fattura", "invoice"],
+};
+
+function getMetadataValueFromSource(source = {}, aliases = []) {
+  const aliasSet = new Set(aliases.map((item) => normalizeLookupKey(item)));
+  for (const [key, value] of Object.entries(source || {})) {
+    if (!aliasSet.has(normalizeLookupKey(key))) continue;
+    if (value == null) continue;
+    const text = typeof value === "string" ? value.trim() : String(value).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function getMetadataValueFromAttributes(entries = [], aliases = []) {
+  const aliasSet = new Set(aliases.map((item) => normalizeLookupKey(item)));
+  for (const entry of entries) {
+    if (!aliasSet.has(normalizeLookupKey(entry.key))) continue;
+    if (entry.value) return entry.value;
+  }
+  return "";
+}
+
+function extractBillingMetadata(...inputs) {
+  const sources = [];
+  const attributes = [];
+  for (const input of inputs) {
+    if (Array.isArray(input)) {
+      attributes.push(...normalizeAttributePairs(input));
+    } else if (input && typeof input === "object") {
+      sources.push(input);
+    }
+  }
+
+  const pickValue = (field) => {
+    const aliases = BILLING_METADATA_ALIASES[field] || [];
+    for (const source of sources) {
+      const found = getMetadataValueFromSource(source, aliases);
+      if (found) return found;
+    }
+    return getMetadataValueFromAttributes(attributes, aliases);
+  };
+
+  const company = String(pickValue("company") || "").trim();
+  const vatNumber = cleanVatNumber(pickValue("vatNumber"));
+  const taxCode = cleanTaxCode(pickValue("taxCode"));
+  const sdiCode = cleanRecipientCode(pickValue("sdiCode"));
+  const pecEmail = cleanEmail(pickValue("pecEmail"));
+  const invoiceRequestedRaw = pickValue("invoiceRequested");
+  let invoiceRequested = normalizeBooleanFlag(invoiceRequestedRaw);
+  if (invoiceRequested == null && (vatNumber || taxCode || sdiCode || pecEmail)) invoiceRequested = true;
+
+  return {
+    company,
+    vatNumber,
+    taxCode,
+    sdiCode,
+    pecEmail,
+    invoiceRequested: Boolean(invoiceRequested),
+  };
+}
+
+function inferInvoiceRequired(accounting = {}, billing = {}) {
+  return Boolean(
+    accounting?.invoiceRequired
+    || billing?.invoiceRequested
+    || billing?.vatNumber
+    || billing?.taxCode
+    || billing?.sdiCode
+    || billing?.pecEmail,
+  );
+}
+
 function normalizeLineDetailRecord(item = {}) {
   const taxLines = normalizeTaxLines(item.taxLines || item.tax_lines || []);
   const explicitTaxAmount = item.taxAmount != null ? toNumber(item.taxAmount) : null;
@@ -669,11 +797,16 @@ function normalizeLineDetailRecord(item = {}) {
   };
 }
 
-function normalizeBillingAddress(source = {}, fallbackOrder = {}) {
+function normalizeBillingAddress(source = {}, fallbackOrder = {}, metadata = {}) {
+  const invoiceRequested = metadata.invoiceRequested ?? normalizeBooleanFlag(
+    source.invoiceRequested
+    ?? source.invoice_requested
+    ?? fallbackOrder.invoiceRequested,
+  );
   return {
     firstName: String(source.first_name || source.firstName || fallbackOrder.firstName || "").trim(),
     lastName: String(source.last_name || source.lastName || fallbackOrder.lastName || "").trim(),
-    company: String(source.company || source.companyName || "").trim(),
+    company: String(metadata.company || source.company || source.companyName || "").trim(),
     email: String(source.email || fallbackOrder.email || "").trim(),
     phone: String(source.phone || fallbackOrder.phone || "").trim(),
     address: [source.address1, source.address2].filter(Boolean).join(" ").trim() || String(source.address || fallbackOrder.address || "").trim(),
@@ -682,22 +815,51 @@ function normalizeBillingAddress(source = {}, fallbackOrder = {}) {
     province: String(source.province || fallbackOrder.province || "").trim(),
     postalCode: String(source.zip || source.postalCode || fallbackOrder.postalCode || "").trim(),
     countryCode: String(source.country_code || source.countryCode || fallbackOrder.countryCode || "IT").trim().toUpperCase(),
+    vatNumber: cleanVatNumber(metadata.vatNumber || source.vatNumber || source.vat_number || source.vatId || fallbackOrder.vatNumber || ""),
+    taxCode: cleanTaxCode(metadata.taxCode || source.taxCode || source.tax_code || source.codiceFiscale || fallbackOrder.taxCode || ""),
+    sdiCode: cleanRecipientCode(metadata.sdiCode || source.sdiCode || source.sdi_code || source.destinationCode || fallbackOrder.sdiCode || ""),
+    pecEmail: cleanEmail(metadata.pecEmail || source.pecEmail || source.pec || fallbackOrder.pecEmail || ""),
+    invoiceRequested: invoiceRequested == null ? false : Boolean(invoiceRequested),
     taxExempt: Boolean(source.tax_exempt ?? source.taxExempt ?? false),
     taxesIncluded: Boolean(source.taxes_included ?? source.taxesIncluded ?? false),
   };
 }
 
 function normalizeOrderTotals(source = {}, fallbackGross = 0) {
+  const lineDetails = Array.isArray(source.lineDetails) ? source.lineDetails.map((item) => normalizeLineDetailRecord(item)) : [];
+  const lineNetSubtotal = Number(lineDetails.reduce((sum, item) => sum + toNumber(item.totalPrice || 0), 0).toFixed(2));
+  const lineTaxTotal = Number(lineDetails.reduce((sum, item) => sum + toNumber(item.taxAmount || 0), 0).toFixed(2));
+  const hasValue = (value) => value != null && String(value).trim() !== "";
   const grossTotal = Number(toNumber(source.grossTotal ?? source.total ?? source.currentTotalPrice ?? fallbackGross).toFixed(2));
-  const taxTotal = Number(toNumber(source.taxTotal ?? source.totalTax ?? source.currentTotalTax ?? 0).toFixed(2));
   const explicitNet = source.netSubtotal ?? source.subtotal ?? source.currentSubtotal;
-  const netSubtotal = explicitNet == null
-    ? Math.max(0, Number((grossTotal - taxTotal).toFixed(2)))
-    : Number(toNumber(explicitNet).toFixed(2));
+  const explicitTax = source.taxTotal ?? source.totalTax ?? source.currentTotalTax;
+  const explicitTaxKnown = typeof source.taxKnown === "boolean" ? source.taxKnown : null;
+  const explicitNetKnown = typeof source.netKnown === "boolean" ? source.netKnown : null;
+  const hasExplicitNet = hasValue(explicitNet);
+  const hasExplicitTax = hasValue(explicitTax);
+  const derivedTaxFromNet = hasExplicitNet ? Math.max(0, Number((grossTotal - toNumber(explicitNet)).toFixed(2))) : 0;
+  const taxTotal = hasExplicitTax
+    ? Number(toNumber(explicitTax).toFixed(2))
+    : lineTaxTotal > 0
+      ? lineTaxTotal
+      : derivedTaxFromNet;
+  const taxKnown = explicitTaxKnown == null
+    ? (hasExplicitTax || lineTaxTotal > 0 || hasExplicitNet)
+    : explicitTaxKnown;
+  const netSubtotal = hasExplicitNet
+    ? Number(toNumber(explicitNet).toFixed(2))
+    : lineNetSubtotal > 0
+      ? lineNetSubtotal
+      : Math.max(0, Number((grossTotal - taxTotal).toFixed(2)));
+  const netKnown = explicitNetKnown == null
+    ? (hasExplicitNet || lineNetSubtotal > 0 || taxKnown)
+    : explicitNetKnown;
   return {
     grossTotal,
     taxTotal,
     netSubtotal,
+    taxKnown,
+    netKnown,
     currency: String(source.currency || source.currencyCode || "EUR").trim().toUpperCase() || "EUR",
   };
 }
@@ -1147,18 +1309,27 @@ function reconcileStoreData(store) {
     nextOrder.countryCode = String(nextOrder.countryCode || "IT").trim().toUpperCase();
     nextOrder.shopifyNumericId = getNormalizedShopifyNumericId(nextOrder);
     nextOrder.shopifyGraphqlId = getNormalizedShopifyGraphqlId(nextOrder);
-    nextOrder.billing = normalizeBillingAddress(nextOrder.billing || {}, nextOrder);
+    const billingMetadata = extractBillingMetadata(
+      nextOrder.billing || {},
+      nextOrder,
+      nextOrder.note_attributes || nextOrder.noteAttributes || [],
+      nextOrder.customAttributes || [],
+    );
+    nextOrder.billing = normalizeBillingAddress(nextOrder.billing || {}, nextOrder, billingMetadata);
     nextOrder.totals = normalizeOrderTotals({
       grossTotal: nextOrder.totals?.grossTotal ?? nextOrder.total,
-      totalTax: nextOrder.totals?.taxTotal,
-      currentSubtotal: nextOrder.totals?.netSubtotal,
+      totalTax: nextOrder.totals?.taxKnown === true ? nextOrder.totals?.taxTotal : null,
+      currentSubtotal: nextOrder.totals?.netKnown === true ? nextOrder.totals?.netSubtotal : null,
       currency: nextOrder.totals?.currency || "EUR",
+      taxKnown: typeof nextOrder.totals?.taxKnown === "boolean" ? nextOrder.totals.taxKnown : null,
+      netKnown: typeof nextOrder.totals?.netKnown === "boolean" ? nextOrder.totals.netKnown : null,
+      lineDetails: nextOrder.lineDetails,
     }, nextOrder.total);
     nextOrder.accounting = {
       paymentMethod: nextOrder.accounting?.paymentMethod || nextOrder.paymentMethod || "",
       depositPaid: toNumber(nextOrder.accounting?.depositPaid || 0),
       balancePaid: toNumber(nextOrder.accounting?.balancePaid || 0),
-      invoiceRequired: Boolean(nextOrder.accounting?.invoiceRequired),
+      invoiceRequired: inferInvoiceRequired(nextOrder.accounting, nextOrder.billing),
       invoiceIssued: Boolean(nextOrder.accounting?.invoiceIssued),
       accountingNote: nextOrder.accounting?.accountingNote || "",
     };
@@ -1239,6 +1410,13 @@ function reconcileStoreData(store) {
 function normalizeOrderPayload(order, index) {
   const customer = order.customer || {};
   const shipping = order.shipping_address || order.default_address || {};
+  const billingMetadata = extractBillingMetadata(
+    order.billing_address || order.billing || {},
+    customer,
+    order,
+    order.note_attributes || order.noteAttributes || [],
+    order.customAttributes || [],
+  );
   const billing = normalizeBillingAddress(order.billing_address || order.billing || {}, {
     firstName: shipping.first_name || customer.first_name || order.firstName || "",
     lastName: shipping.last_name || customer.last_name || order.lastName || "",
@@ -1250,7 +1428,7 @@ function normalizeOrderPayload(order, index) {
     postalCode: shipping.zip || shipping.postalCode || order.postalCode || "",
     countryCode: shipping.country_code || shipping.countryCode || order.countryCode || "IT",
     address: [shipping.address1, shipping.address2].filter(Boolean).join(" ") || order.address || "",
-  });
+  }, billingMetadata);
   const lineDetails = Array.isArray(order.line_items)
     ? order.line_items.map((item) => normalizeLineDetailRecord({
         title: item.title || item.name || "Prodotto",
@@ -1275,9 +1453,11 @@ function normalizeOrderPayload(order, index) {
     currentSubtotal: order.current_subtotal_price || order.subtotal_price,
     taxesIncluded: order.taxes_included,
     currency: order.currency || order.presentment_currency || "EUR",
+    lineDetails,
   }, order.current_total_price || order.total_price || order.total || 0);
   const shopifyNumericId = String(order.id || order.order_id || "").trim();
   const shopifyGraphqlId = String(order.admin_graphql_api_id || order.shopifyGraphqlId || "").trim();
+  const invoiceRequired = inferInvoiceRequired(order.accounting, billing);
 
   return {
     id: shopifyNumericId || String(order.order_number || `import-${Date.now()}-${index}`),
@@ -1308,7 +1488,7 @@ function normalizeOrderPayload(order, index) {
       paymentMethod: Array.isArray(order.payment_gateway_names) ? order.payment_gateway_names.join(", ") : String(order.paymentMethod || ""),
       depositPaid: 0,
       balancePaid: 0,
-      invoiceRequired: false,
+      invoiceRequired,
       invoiceIssued: false,
       accountingNote: "",
     },
@@ -1322,6 +1502,12 @@ function normalizeOrderPayload(order, index) {
 function normalizeGraphqlOrder(node, index) {
   const shipping = node.shippingAddress || {};
   const customer = node.customer || {};
+  const billingMetadata = extractBillingMetadata(
+    node.billingAddress || {},
+    customer,
+    node,
+    node.customAttributes || [],
+  );
   const billing = normalizeBillingAddress(node.billingAddress || {}, {
     firstName: shipping.firstName || customer.firstName || "",
     lastName: shipping.lastName || customer.lastName || "",
@@ -1333,7 +1519,7 @@ function normalizeGraphqlOrder(node, index) {
     postalCode: shipping.zip || "",
     countryCode: shipping.countryCodeV2 || "IT",
     address: [shipping.address1, shipping.address2].filter(Boolean).join(" "),
-  });
+  }, billingMetadata);
   const lineDetails = Array.isArray(node.lineItems?.edges)
     ? node.lineItems.edges.map(({ node: item }) => normalizeLineDetailRecord({
         title: item.name || "Prodotto",
@@ -1354,9 +1540,11 @@ function normalizeGraphqlOrder(node, index) {
     currentSubtotal: node.currentSubtotalPriceSet?.shopMoney?.amount,
     taxesIncluded: node.taxesIncluded,
     currency: node.currentTotalPriceSet?.shopMoney?.currencyCode || "EUR",
+    lineDetails,
   }, node.currentTotalPriceSet?.shopMoney?.amount || 0);
   const shopifyNumericId = String(node.legacyResourceId || "").trim();
   const shopifyGraphqlId = String(node.id || "").trim();
+  const invoiceRequired = inferInvoiceRequired(node.accounting, billing);
 
   return {
     id: shopifyNumericId || String(node.id || `graphql-${Date.now()}-${index}`),
@@ -1387,7 +1575,7 @@ function normalizeGraphqlOrder(node, index) {
       paymentMethod: Array.isArray(node.paymentGatewayNames) ? node.paymentGatewayNames.join(", ") : "",
       depositPaid: 0,
       balancePaid: 0,
-      invoiceRequired: false,
+      invoiceRequired,
       invoiceIssued: false,
       accountingNote: "",
     },
@@ -1467,6 +1655,10 @@ async function syncOrdersFromShopify(store) {
     name
     email
     note
+    customAttributes {
+      key
+      value
+    }
     taxesIncluded
     displayFinancialStatus
     displayFulfillmentStatus
@@ -2571,6 +2763,19 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/orders" && req.method === "POST") {
     const body = await readBody(req);
+    const lineDetails = Array.isArray(body.lineDetails)
+      ? body.lineDetails.map((item) => normalizeLineDetailRecord(item))
+      : [];
+    const billing = normalizeBillingAddress(body.billing || {}, body, extractBillingMetadata(body.billing || {}, body));
+    const totals = normalizeOrderTotals({
+      grossTotal: body.total || 0,
+      totalTax: body.taxTotal || 0,
+      currentSubtotal: body.netSubtotal || body.total || 0,
+      currency: body.currency || "EUR",
+      taxKnown: body.taxTotal != null,
+      netKnown: body.netSubtotal != null || body.total != null,
+      lineDetails,
+    }, body.total || 0);
     const manualOrder = {
       id: randomUUID(),
       orderNumber: String(body.orderNumber || `MAN-${Date.now()}`),
@@ -2585,13 +2790,8 @@ async function handleApi(req, res, url) {
       countryCode: "IT",
       address: String(body.address || "").trim(),
       total: String(body.total || "0"),
-      totals: normalizeOrderTotals({
-        grossTotal: body.total || 0,
-        totalTax: body.taxTotal || 0,
-        currentSubtotal: body.netSubtotal || body.total || 0,
-        currency: body.currency || "EUR",
-      }, body.total || 0),
-      billing: normalizeBillingAddress(body.billing || {}, body),
+      totals,
+      billing,
       shopifyNumericId: "",
       shopifyGraphqlId: "",
       financialStatus: String(body.financialStatus || "pending"),
@@ -2600,14 +2800,12 @@ async function handleApi(req, res, url) {
       source: "manual",
       note: String(body.note || ""),
       lineItems: Array.isArray(body.lineItems) ? body.lineItems : [],
-      lineDetails: Array.isArray(body.lineDetails)
-        ? body.lineDetails.map((item) => normalizeLineDetailRecord(item))
-        : [],
+      lineDetails,
       accounting: {
         paymentMethod: String(body.paymentMethod || ""),
         depositPaid: 0,
         balancePaid: 0,
-        invoiceRequired: false,
+        invoiceRequired: inferInvoiceRequired({}, billing),
         invoiceIssued: false,
         accountingNote: "",
       },
@@ -2639,6 +2837,13 @@ async function handleApi(req, res, url) {
     const orderIndex = store.orders.findIndex((item) => item.id === orderId);
     if (orderIndex < 0) return sendJson(res, 404, { error: "order_not_found" });
     const current = store.orders[orderIndex];
+    const nextLineDetails = Array.isArray(body.lineDetails)
+      ? body.lineDetails.map((item) => normalizeLineDetailRecord(item))
+      : current.lineDetails || [];
+    const nextBilling = normalizeBillingAddress(body.billing || current.billing || {}, {
+      ...current,
+      ...body,
+    }, extractBillingMetadata(body.billing || current.billing || {}, body, current));
     const nextOrder = {
       ...current,
       orderNumber: String(body.orderNumber || current.orderNumber || ""),
@@ -2658,16 +2863,14 @@ async function handleApi(req, res, url) {
         totalTax: body.taxTotal ?? current.totals?.taxTotal ?? 0,
         currentSubtotal: body.netSubtotal ?? current.totals?.netSubtotal ?? (current.total || 0),
         currency: body.currency || current.totals?.currency || "EUR",
+        taxKnown: body.taxTotal != null ? true : current.totals?.taxKnown,
+        netKnown: body.netSubtotal != null ? true : current.totals?.netKnown,
+        lineDetails: nextLineDetails,
       }, body.total || current.total || 0),
-      billing: normalizeBillingAddress(body.billing || current.billing || {}, {
-        ...current,
-        ...body,
-      }),
+      billing: nextBilling,
       note: String(body.note || current.note || ""),
       lineItems: Array.isArray(body.lineItems) ? body.lineItems : current.lineItems || [],
-      lineDetails: Array.isArray(body.lineDetails)
-        ? body.lineDetails.map((item) => normalizeLineDetailRecord(item))
-        : current.lineDetails || [],
+      lineDetails: nextLineDetails,
     };
     nextOrder.operations = normalizeOperations(
       {

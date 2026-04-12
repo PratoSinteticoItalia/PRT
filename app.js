@@ -1958,10 +1958,34 @@ function getOrderTaxTotal(order) {
   return toNumber(order?.totals?.taxTotal ?? 0);
 }
 
+function hasReliableTaxData(order) {
+  const totals = order?.totals || {};
+  if (typeof totals.taxKnown === "boolean") return totals.taxKnown;
+  return totals.taxTotal != null && String(totals.taxTotal).trim() !== "";
+}
+
+function hasReliableNetData(order) {
+  const totals = order?.totals || {};
+  if (typeof totals.netKnown === "boolean") return totals.netKnown;
+  return totals.netSubtotal != null && String(totals.netSubtotal).trim() !== "";
+}
+
 function getOrderNetSubtotal(order) {
   const explicitNet = order?.totals?.netSubtotal;
   if (explicitNet != null) return toNumber(explicitNet);
   return Math.max(0, Number((getOrderGrossTotal(order) - getOrderTaxTotal(order)).toFixed(2)));
+}
+
+function getOrderTaxDisplay(order) {
+  return hasReliableTaxData(order)
+    ? formatCurrency(getOrderTaxTotal(order))
+    : (state.lang === "it" ? "Da verificare" : "To verify");
+}
+
+function getOrderNetDisplay(order) {
+  return hasReliableNetData(order)
+    ? formatCurrency(getOrderNetSubtotal(order))
+    : (state.lang === "it" ? "Da verificare" : "To verify");
 }
 
 function getBillingDisplayName(order) {
@@ -1983,23 +2007,72 @@ function getBillingAddressLine(order) {
 
 function getBillingCompleteness(order) {
   const billing = order?.billing || {};
+  const invoiceRequested = Boolean(order?.accounting?.invoiceRequired || billing.invoiceRequested);
+  const isItaly = String(billing.countryCode || order?.countryCode || "IT").trim().toUpperCase() === "IT";
+  const hasVatNumber = Boolean(String(billing.vatNumber || "").trim());
+  const hasTaxCode = Boolean(String(billing.taxCode || "").trim());
+  const hasSdiCode = Boolean(String(billing.sdiCode || "").trim());
+  const hasPecEmail = Boolean(String(billing.pecEmail || "").trim());
+  const hasBusinessSignals = Boolean(String(billing.company || "").trim() || hasVatNumber || hasSdiCode || hasPecEmail);
+  const hasFiscalIdentity = Boolean(hasVatNumber || hasTaxCode || hasSdiCode || hasPecEmail);
+  const fiscalProfile = hasBusinessSignals ? "business" : "person";
+  const collected = invoiceRequested || hasFiscalIdentity || hasBusinessSignals;
   const missing = [];
-  if (!getBillingDisplayName(order)) missing.push(state.lang === "it" ? "intestazione" : "billing name");
-  if (!String(billing.address || "").trim()) missing.push(state.lang === "it" ? "indirizzo" : "address");
-  if (!String(billing.city || "").trim()) missing.push(state.lang === "it" ? "citta" : "city");
-  if (!String(billing.postalCode || "").trim()) missing.push(state.lang === "it" ? "CAP" : "ZIP");
-  if (!String(billing.provinceCode || billing.province || "").trim()) missing.push(state.lang === "it" ? "provincia" : "province");
-  if (!String(billing.countryCode || "").trim()) missing.push(state.lang === "it" ? "nazione" : "country");
+  if (collected) {
+    if (!getBillingDisplayName(order)) missing.push(state.lang === "it" ? "intestazione" : "billing name");
+    if (!String(billing.address || "").trim()) missing.push(state.lang === "it" ? "indirizzo" : "address");
+    if (!String(billing.city || "").trim()) missing.push(state.lang === "it" ? "citta" : "city");
+    if (!String(billing.postalCode || "").trim()) missing.push(state.lang === "it" ? "CAP" : "ZIP");
+    if (!String(billing.provinceCode || billing.province || "").trim()) missing.push(state.lang === "it" ? "provincia" : "province");
+    if (!String(billing.countryCode || "").trim()) missing.push(state.lang === "it" ? "nazione" : "country");
+    if (isItaly && fiscalProfile === "business") {
+      if (!hasVatNumber) missing.push(state.lang === "it" ? "partita IVA" : "VAT number");
+      if (!hasSdiCode && !hasPecEmail) missing.push(state.lang === "it" ? "codice SDI o PEC" : "SDI code or PEC");
+    } else if (isItaly) {
+      if (!hasTaxCode) missing.push(state.lang === "it" ? "codice fiscale" : "tax code");
+    } else if (fiscalProfile === "business" && !hasVatNumber) {
+      missing.push(state.lang === "it" ? "VAT number" : "VAT number");
+    }
+  }
+
+  if (!collected) {
+    return {
+      complete: false,
+      collected: false,
+      invoiceRequested,
+      profile: fiscalProfile,
+      missing: state.lang === "it"
+        ? ["partita IVA o codice fiscale", "codice SDI o PEC se azienda"]
+        : ["VAT number or tax code", "SDI code or PEC for businesses"],
+      label: state.lang === "it" ? "Dati fiscali non raccolti" : "Fiscal data not collected",
+      rowLabel: state.lang === "it" ? "Dati fiscali assenti" : "Fiscal data missing",
+      tone: "badge-warning",
+      copy: state.lang === "it"
+        ? "Mancano gli identificativi fiscali minimi: per privato serve almeno il codice fiscale, per azienda partita IVA e SDI o PEC."
+        : "Missing minimum fiscal identifiers: private customers need a tax code, companies need VAT number and SDI or PEC.",
+    };
+  }
+
   const complete = missing.length === 0;
   return {
     complete,
+    collected: true,
+    invoiceRequested,
+    profile: fiscalProfile,
     missing,
     label: complete
       ? (state.lang === "it" ? "Dati fattura completi" : "Billing data complete")
       : (state.lang === "it" ? "Dati fattura da integrare" : "Billing data incomplete"),
+    rowLabel: complete
+      ? (state.lang === "it" ? "Fattura OK" : "Billing OK")
+      : (state.lang === "it" ? "Fattura da completare" : "Billing to complete"),
     tone: complete ? "badge-success" : "badge-warning",
     copy: complete
-      ? (state.lang === "it" ? "Anagrafica pronta per fatturazione." : "Ready for invoicing.")
+      ? (
+          state.lang === "it"
+            ? (fiscalProfile === "business" ? "Anagrafica aziendale pronta per fatturazione." : "Anagrafica cliente pronta per fatturazione.")
+            : (fiscalProfile === "business" ? "Business billing profile ready for invoicing." : "Customer billing profile ready for invoicing.")
+        )
       : `${state.lang === "it" ? "Mancano" : "Missing"}: ${missing.join(", ")}`,
   };
 }
@@ -4921,8 +4994,6 @@ function renderAccounting() {
     ? orders.map((order) => {
         const selected = order.id === state.selectedOrderId ? "selected" : "";
         const openBalance = getOpenBalance(order);
-        const netSubtotal = getOrderNetSubtotal(order);
-        const taxTotal = getOrderTaxTotal(order);
         const billingHealth = getBillingCompleteness(order);
         return `
           <article class="order-row accounting-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="accounting">
@@ -4930,9 +5001,9 @@ function renderAccounting() {
               <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
               <div class="order-meta">
                 ${getPaymentLabel(order.financialStatus)} &middot; ${getEffectivePaymentMethod(order)} &middot; ${isShopifyPaid(order) ? t("importedFromShopify") : t("internalAccountingPending")}
-                &middot; ${state.lang === "it" ? "Imponibile" : "Net"} ${formatCurrency(netSubtotal)}
-                &middot; ${state.lang === "it" ? "IVA" : "VAT"} ${formatCurrency(taxTotal)}
-                &middot; ${billingHealth.complete ? (state.lang === "it" ? "Fattura OK" : "Billing OK") : (state.lang === "it" ? "Fattura da completare" : "Billing to complete")}
+                &middot; ${state.lang === "it" ? "Imponibile" : "Net"} ${getOrderNetDisplay(order)}
+                &middot; ${state.lang === "it" ? "IVA" : "VAT"} ${getOrderTaxDisplay(order)}
+                &middot; ${billingHealth.rowLabel}
               </div>
             </div>
             <div class="order-amount" style="color:${openBalance > 0 ? "#dc2626" : "#16a34a"}">${formatCurrency(openBalance)}</div>
@@ -4962,12 +5033,13 @@ function renderAccounting() {
   const openBalance = getOpenBalance(order);
   const isInstall = order.operations?.installation?.required;
   const grossTotal = getOrderGrossTotal(order);
-  const taxTotal = getOrderTaxTotal(order);
-  const netSubtotal = getOrderNetSubtotal(order);
   const totalPaid = shopifyPaid + internalPaid;
   const billingHealth = getBillingCompleteness(order);
   const billingDisplayName = getBillingDisplayName(order);
   const billingAddress = getBillingAddressLine(order);
+  const billing = order.billing || {};
+  const taxDisplay = getOrderTaxDisplay(order);
+  const netDisplay = getOrderNetDisplay(order);
   const taxRows = Array.isArray(order.lineDetails) ? order.lineDetails : [];
 
   const trancheRows = [];
@@ -4993,8 +5065,8 @@ function renderAccounting() {
   ui.accountingMeta.innerHTML = [
     `
       <div class="detail-section">
-        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Imponibile ordine" : "Order net subtotal"}</span><span class="detail-row-value detail-row-value-mono" style="font-size:18px">${formatCurrency(netSubtotal)}</span></div>
-        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "IVA totale" : "Total VAT"}</span><span class="detail-row-value detail-row-value-mono">${formatCurrency(taxTotal)}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Imponibile ordine" : "Order net subtotal"}</span><span class="detail-row-value detail-row-value-mono" style="font-size:18px">${netDisplay}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "IVA totale" : "Total VAT"}</span><span class="detail-row-value detail-row-value-mono">${taxDisplay}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Totale ivato" : "Gross total"}</span><span class="detail-row-value detail-row-value-mono" style="font-size:18px">${formatCurrency(grossTotal)}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Stato Shopify" : "Shopify status"}</span><span class="detail-row-value">${getPaymentLabel(order.financialStatus)} · ${getFulfillmentLabel(order.fulfillmentStatus)}</span></div>
         <div class="detail-row"><span class="detail-row-label">${t("realResidual")}</span><span class="detail-row-value" style="color:${openBalance > 0 ? "#dc2626" : "#16a34a"};font-weight:800;font-size:16px">${formatCurrency(openBalance)}</span></div>
@@ -5021,8 +5093,13 @@ function renderAccounting() {
       <div class="detail-section">
         <div class="detail-section-title">${state.lang === "it" ? "Fatturazione" : "Invoicing"}</div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Verifica anagrafica" : "Billing profile check"}</span><span class="detail-row-value"><span class="action-badge ${billingHealth.tone}">${billingHealth.label}</span></span></div>
-        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Intestazione" : "Billing name"}</span><span class="detail-row-value">${billingDisplayName || "—"}</span></div>
-        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Indirizzo fattura" : "Billing address"}</span><span class="detail-row-value">${billingAddress || "—"}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Profilo fiscale" : "Fiscal profile"}</span><span class="detail-row-value">${billingHealth.profile === "business" ? (state.lang === "it" ? "Azienda / B2B" : "Business / B2B") : (state.lang === "it" ? "Privato / B2C" : "Private / B2C")}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Intestazione" : "Billing name"}</span><span class="detail-row-value">${escapeHtml(billingDisplayName || "—")}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Indirizzo fattura" : "Billing address"}</span><span class="detail-row-value">${escapeHtml(billingAddress || "—")}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Partita IVA" : "VAT number"}</span><span class="detail-row-value detail-row-value-mono">${escapeHtml(billing.vatNumber || "—")}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Codice fiscale" : "Tax code"}</span><span class="detail-row-value detail-row-value-mono">${escapeHtml(billing.taxCode || "—")}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Codice SDI" : "SDI code"}</span><span class="detail-row-value detail-row-value-mono">${escapeHtml(billing.sdiCode || "—")}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "PEC" : "PEC email"}</span><span class="detail-row-value">${escapeHtml(billing.pecEmail || "—")}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Fattura richiesta" : "Invoice requested"}</span><span class="detail-row-value">${order.accounting?.invoiceRequired ? t("invoiceRequested") : t("invoiceNotRequested")}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Fattura emessa" : "Invoice issued"}</span><span class="detail-row-value">${order.accounting?.invoiceIssued ? t("invoiceIssued") : (state.lang === "it" ? "No" : "No")}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Esito" : "Status"}</span><span class="detail-row-value">${billingHealth.copy}</span></div>
