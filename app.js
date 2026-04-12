@@ -690,6 +690,7 @@ let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
 const shopifyOrderRefreshInFlight = new Set();
 const shopifyOrderRefreshAttempted = new Set();
+const shopifyOrderRefreshErrors = new Map();
 
 const ui = {
   authScreen: document.getElementById("auth-screen"),
@@ -1960,14 +1961,37 @@ function getOrderTaxTotal(order) {
   return toNumber(order?.totals?.taxTotal ?? 0);
 }
 
+function isLikelyFlatShopifyVatFallback(order) {
+  if (!isShopifyBackedOrder(order)) return false;
+  const grossTotal = getOrderGrossTotal(order);
+  const taxTotal = toNumber(order?.totals?.taxTotal ?? 0);
+  const netSubtotal = toNumber(order?.totals?.netSubtotal ?? 0);
+  if (grossTotal <= 0 || taxTotal <= 0 || netSubtotal <= 0) return false;
+  const flatTax = Number((grossTotal - (grossTotal / 1.22)).toFixed(2));
+  const flatNet = Number((grossTotal / 1.22).toFixed(2));
+  return Math.abs(taxTotal - flatTax) <= 0.02 && Math.abs(netSubtotal - flatNet) <= 0.02;
+}
+
+function hasDerivedShopifyFinancials(order) {
+  if (!isShopifyBackedOrder(order)) return false;
+  const taxSource = String(order?.totals?.taxSource || "").trim().toLowerCase();
+  const netSource = String(order?.totals?.netSource || "").trim().toLowerCase();
+  if (taxSource === "legacy-fallback" || netSource === "legacy-fallback") return true;
+  if (taxSource === "derived" || netSource === "derived") return true;
+  if (!taxSource && !netSource && isLikelyFlatShopifyVatFallback(order)) return true;
+  return false;
+}
+
 function hasReliableTaxData(order) {
   const totals = order?.totals || {};
+  if (hasDerivedShopifyFinancials(order)) return false;
   if (typeof totals.taxKnown === "boolean") return totals.taxKnown;
   return totals.taxTotal != null && String(totals.taxTotal).trim() !== "";
 }
 
 function hasReliableNetData(order) {
   const totals = order?.totals || {};
+  if (hasDerivedShopifyFinancials(order)) return false;
   if (typeof totals.netKnown === "boolean") return totals.netKnown;
   return totals.netSubtotal != null && String(totals.netSubtotal).trim() !== "";
 }
@@ -1976,7 +2000,7 @@ function canEstimateItalianVat(order) {
   const billing = order?.billing || {};
   const source = String(order?.source || "").toLowerCase();
   const countryCode = String(billing.countryCode || order?.countryCode || "IT").trim().toUpperCase();
-  if (!source.startsWith("shopify")) return false;
+  if (source.startsWith("shopify")) return false;
   if (countryCode !== "IT") return false;
   if (billing.taxExempt) return false;
   if (getOrderGrossTotal(order) <= 0) return false;
@@ -2022,12 +2046,18 @@ function getOrderNetSubtotal(order) {
 }
 
 function getOrderTaxDisplay(order) {
+  if (isShopifyBackedOrder(order) && !hasReliableTaxData(order)) {
+    return state.lang === "it" ? "Da sincronizzare" : "Pending sync";
+  }
   return hasReliableTaxData(order) || isEstimatedVatDisplay(order)
     ? formatCurrency(getDisplayedTaxTotal(order))
     : (state.lang === "it" ? "Da verificare" : "To verify");
 }
 
 function getOrderNetDisplay(order) {
+  if (isShopifyBackedOrder(order) && !hasReliableNetData(order)) {
+    return state.lang === "it" ? "Da sincronizzare" : "Pending sync";
+  }
   return hasReliableNetData(order) || isEstimatedVatDisplay(order)
     ? formatCurrency(getDisplayedNetSubtotal(order))
     : (state.lang === "it" ? "Da verificare" : "To verify");
@@ -2038,24 +2068,26 @@ function isShopifyBackedOrder(order) {
 }
 
 function needsShopifyFinancialRefresh(order) {
-  return isShopifyBackedOrder(order) && isEstimatedVatDisplay(order);
+  return isShopifyBackedOrder(order) && (hasDerivedShopifyFinancials(order) || !hasReliableTaxData(order) || !hasReliableNetData(order));
 }
 
 async function refreshOrderFromShopify(orderId) {
   if (!orderId || shopifyOrderRefreshInFlight.has(orderId) || shopifyOrderRefreshAttempted.has(orderId)) return;
   shopifyOrderRefreshInFlight.add(orderId);
   shopifyOrderRefreshAttempted.add(orderId);
+  shopifyOrderRefreshErrors.delete(orderId);
   try {
     const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/refresh-shopify`, {
       method: "POST",
     });
     state.orders = state.orders.map((item) => (item.id === orderId || item.id === saved.id ? saved : item));
     if (state.selectedOrderId === orderId) state.selectedOrderId = saved.id;
-    render();
   } catch (error) {
+    shopifyOrderRefreshErrors.set(orderId, String(error?.message || "shopify_order_refresh_failed"));
     console.warn("shopify_order_refresh_failed", orderId, error);
   } finally {
     shopifyOrderRefreshInFlight.delete(orderId);
+    render();
   }
 }
 
@@ -5115,6 +5147,7 @@ function renderAccounting() {
   const taxDisplay = getOrderTaxDisplay(order);
   const netDisplay = getOrderNetDisplay(order);
   const estimatedVat = isEstimatedVatDisplay(order);
+  const refreshError = shopifyOrderRefreshErrors.get(order.id) || "";
   const taxRows = Array.isArray(order.lineDetails) ? order.lineDetails : [];
 
   const trancheRows = [];
@@ -5146,6 +5179,7 @@ function renderAccounting() {
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Stato Shopify" : "Shopify status"}</span><span class="detail-row-value">${getPaymentLabel(order.financialStatus)} · ${getFulfillmentLabel(order.fulfillmentStatus)}</span></div>
         <div class="detail-row"><span class="detail-row-label">${t("realResidual")}</span><span class="detail-row-value" style="color:${openBalance > 0 ? "#dc2626" : "#16a34a"};font-weight:800;font-size:16px">${formatCurrency(openBalance)}</span></div>
         ${shopifyOrderRefreshInFlight.has(order.id) ? `<div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Aggiornamento Shopify" : "Shopify refresh"}</span><span class="detail-row-value">${state.lang === "it" ? "Recupero importi reali dall'ordine Shopify..." : "Fetching exact totals from the Shopify order..."}</span></div>` : ""}
+        ${refreshError ? `<div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Errore Shopify" : "Shopify error"}</span><span class="detail-row-value">${escapeHtml(refreshError)}</span></div>` : ""}
         ${estimatedVat ? `<div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Nota IVA" : "VAT note"}</span><span class="detail-row-value">${state.lang === "it" ? "Calcolata in fallback con aliquota standard 22% in attesa del dettaglio fiscale Shopify." : "Calculated with the standard 22% fallback while waiting for Shopify tax detail."}</span></div>` : ""}
       </div>
     `,
@@ -6024,6 +6058,7 @@ async function runShopifySync({ silent = false } = {}) {
     state.orders = await apiFetch("/api/orders/sync-shopify", { method: "POST" });
     shopifyOrderRefreshAttempted.clear();
     shopifyOrderRefreshInFlight.clear();
+    shopifyOrderRefreshErrors.clear();
     ensureSelectedOrder();
     await keepSessionAlive({ silent: true });
     if (!silent) {

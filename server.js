@@ -840,6 +840,13 @@ function normalizeOrderTotals(source = {}, fallbackGross = 0) {
   const derivedTaxFromNet = hasExplicitNet ? Math.max(0, Number((grossTotal - toNumber(explicitNet)).toFixed(2))) : 0;
   const explicitTaxAmount = hasExplicitTax ? Number(toNumber(explicitTax).toFixed(2)) : 0;
   const ignoreZeroExplicitTax = hasExplicitTax && explicitTaxAmount === 0 && derivedTaxFromNet > 0;
+  const inferredTaxSource = hasExplicitTax && !ignoreZeroExplicitTax
+    ? "explicit"
+    : lineTaxTotal > 0
+      ? "lines"
+      : derivedTaxFromNet > 0
+        ? "derived"
+        : "none";
   const taxTotal = hasExplicitTax && !ignoreZeroExplicitTax
     ? explicitTaxAmount
     : lineTaxTotal > 0
@@ -853,6 +860,13 @@ function normalizeOrderTotals(source = {}, fallbackGross = 0) {
     : lineNetSubtotal > 0
       ? lineNetSubtotal
       : Math.max(0, Number((grossTotal - taxTotal).toFixed(2)));
+  const inferredNetSource = hasExplicitNet
+    ? "explicit"
+    : lineNetSubtotal > 0
+      ? "lines"
+      : grossTotal > 0 && taxTotal >= 0
+        ? "derived"
+        : "none";
   const netKnown = explicitNetKnown == null
     ? (hasExplicitNet || lineNetSubtotal > 0 || taxKnown)
     : explicitNetKnown;
@@ -862,6 +876,8 @@ function normalizeOrderTotals(source = {}, fallbackGross = 0) {
     netSubtotal,
     taxKnown,
     netKnown,
+    taxSource: String(source.taxSource || inferredTaxSource).trim() || inferredTaxSource,
+    netSource: String(source.netSource || inferredNetSource).trim() || inferredNetSource,
     currency: String(source.currency || source.currencyCode || "EUR").trim().toUpperCase() || "EUR",
   };
 }
@@ -1326,8 +1342,30 @@ function reconcileStoreData(store) {
       currency: persistedTotals.currency || "EUR",
       taxKnown: typeof persistedTotals.taxKnown === "boolean" ? persistedTotals.taxKnown : null,
       netKnown: typeof persistedTotals.netKnown === "boolean" ? persistedTotals.netKnown : null,
+      taxSource: persistedTotals.taxSource || "",
+      netSource: persistedTotals.netSource || "",
       lineDetails: nextOrder.lineDetails,
     }, nextOrder.total);
+    if (String(nextOrder.source || "").toLowerCase().startsWith("shopify")) {
+      const taxSourceMissing = !String(persistedTotals.taxSource || "").trim();
+      const netSourceMissing = !String(persistedTotals.netSource || "").trim();
+      const grossTotal = toNumber(nextOrder.totals.grossTotal || 0);
+      const taxTotal = toNumber(nextOrder.totals.taxTotal || 0);
+      const netSubtotal = toNumber(nextOrder.totals.netSubtotal || 0);
+      const flatTax = Number((grossTotal - (grossTotal / 1.22)).toFixed(2));
+      const flatNet = Number((grossTotal / 1.22).toFixed(2));
+      const looksLikeLegacyFlatVat = grossTotal > 0
+        && taxTotal > 0
+        && netSubtotal > 0
+        && Math.abs(taxTotal - flatTax) <= 0.02
+        && Math.abs(netSubtotal - flatNet) <= 0.02;
+      if (looksLikeLegacyFlatVat && (taxSourceMissing || netSourceMissing)) {
+        nextOrder.totals.taxKnown = false;
+        nextOrder.totals.netKnown = false;
+        if (taxSourceMissing) nextOrder.totals.taxSource = "legacy-fallback";
+        if (netSourceMissing) nextOrder.totals.netSource = "legacy-fallback";
+      }
+    }
     nextOrder.accounting = {
       paymentMethod: nextOrder.accounting?.paymentMethod || nextOrder.paymentMethod || "",
       depositPaid: toNumber(nextOrder.accounting?.depositPaid || 0),
@@ -1946,8 +1984,29 @@ function getShopifyOrderFields(lineLimit = 20) {
 async function refreshSingleShopifyOrder(store, order = {}) {
   const accessToken = await getShopifyAccessToken(store);
   const orderFields = getShopifyOrderFields(250);
+  const storeDomain = String(store.shopifySettings?.storeDomain || "").trim();
   const orderGraphqlId = getNormalizedShopifyGraphqlId(order);
+  const orderNumericId = extractShopifyLegacyId(getNormalizedShopifyNumericId(order) || order.id);
   let node = null;
+
+  if (storeDomain && orderNumericId) {
+    const response = await fetchWithTimeout(
+      `https://${storeDomain}/admin/api/2026-01/orders/${encodeURIComponent(orderNumericId)}.json?fields=id,admin_graphql_api_id,name,email,note,current_total_price,current_total_tax,current_subtotal_price,total_price,total_tax,subtotal_price,taxes_included,financial_status,fulfillment_status,payment_gateway_names,billing_address,customer,shipping_address,line_items,created_at,updated_at,processed_at,note_attributes,currency,presentment_currency`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": accessToken,
+        },
+      },
+    );
+    if (response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      if (payload?.order) {
+        return normalizeOrderPayload(payload.order, 0);
+      }
+    }
+  }
 
   if (orderGraphqlId) {
     const data = await queryShopifyAdmin(
