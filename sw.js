@@ -1,21 +1,29 @@
-const CACHE_NAME = "psi-ops-shell-20260412-accounting-payments-19";
+const CACHE_NAME = "psi-ops-shell-20260412-sales-suite-20";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/garden-planner.html",
-  "/garden-planner-page.js?v=20260412-accounting-payments-19",
-  "/styles.css?v=20260412-accounting-payments-19",
-  "/app.js?v=20260412-accounting-payments-19",
+  "/garden-planner-page.js?v=20260412-sales-suite-20",
+  "/styles.css?v=20260412-sales-suite-20",
+  "/app.js?v=20260412-sales-suite-20",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",
   "/apple-touch-icon.png",
   "/manifest.webmanifest",
+  "/sales-suite/generator.html",
+  "/sales-suite/generator-bridge.js",
+  "/sales-suite/favicon.svg",
+  "/sales-suite/icons.svg",
+  "/sales-suite/logo-prato.png",
+  "/sales-suite/assets/index-BSqK6a0l.css",
+  "/sales-suite/assets/index-CelZjrUy.js",
 ];
 const NETWORK_FIRST_PATHS = new Set([
   "/",
   "/index.html",
   "/garden-planner.html",
+  "/sales-suite/generator.html",
   "/garden-planner-page.js",
   "/styles.css",
   "/app.js",

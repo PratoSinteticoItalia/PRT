@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CRM PratoSinteticoItalia</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="stylesheet" href="./shell.css" />
+    <script defer src="./shell.js"></script>
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <img class="brand-logo" src="./logo-prato.png" alt="Prato Sintetico Italia" />
+          <div>
+            <p class="eyebrow">Prato Sintetico Italia</p>
+            <h1 class="brand-title">CRM</h1>
+            <p class="brand-copy">Richieste, preventivi e PDF nello stesso flusso.</p>
+          </div>
+        </div>
+
+        <nav class="nav-stack">
+          <button class="nav-button is-active" id="nav-requests" type="button">Richieste</button>
+          <button class="nav-button" id="nav-generator" type="button">Generatore</button>
+        </nav>
+
+        <div class="sidebar-card" id="connection-card">
+          <p class="sidebar-label">Connessione</p>
+          <div class="status-pill" id="connection-status">Da configurare</div>
+          <p class="sidebar-copy" id="connection-copy">Importa le credenziali del service account per leggere e modificare lo spreadsheet reale.</p>
+          <button class="secondary-button" id="open-sheet-button" type="button">Apri foglio Google</button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow" id="view-eyebrow">Dashboard</p>
+            <h2 class="workspace-title" id="view-title">Richieste</h2>
+            <p class="workspace-subtitle" id="view-subtitle">Gestisci lo stesso foglio Google che riceve le richieste dal web.</p>
+          </div>
+          <div class="workspace-actions">
+            <span class="refresh-note" id="refresh-note">Aggiornamento manuale</span>
+            <button class="secondary-button" id="refresh-button" type="button">Aggiorna</button>
+          </div>
+        </header>
+
+        <section class="view" id="requests-view">
+          <section class="panel config-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">Collegamento Google Sheets</p>
+                <h3 class="panel-title">Stesso file, lettura e modifica live</h3>
+              </div>
+              <div class="panel-head-actions">
+                <button class="secondary-button" id="import-service-account-button" type="button">Importa JSON</button>
+                <button class="ghost-button" id="clear-service-account-button" type="button">Rimuovi credenziali</button>
+              </div>
+            </div>
+
+            <div class="config-grid">
+              <label class="field">
+                <span class="field-label">Spreadsheet URL o ID</span>
+                <input id="spreadsheet-input" type="text" placeholder="https://docs.google.com/spreadsheets/d/.../edit" />
+              </label>
+
+              <label class="field">
+                <span class="field-label">Nome tab</span>
+                <input id="sheet-name-input" type="text" placeholder="Lascia vuoto per usare il primo foglio" />
+              </label>
+            </div>
+
+            <div class="service-account-summary" id="service-account-summary">
+              Nessuna credenziale caricata.
+            </div>
+
+            <div class="config-actions">
+              <button class="primary-button" id="save-config-button" type="button">Salva collegamento</button>
+            </div>
+
+            <div class="hint-box">
+              <p>Serve un service account Google con Sheets API attiva e lo spreadsheet condiviso a quell’indirizzo email. Una volta configurato, il foglio resta unico: Make continua a scriverci e questa pagina lo legge e aggiorna direttamente.</p>
+            </div>
+          </section>
+
+          <div class="requests-grid">
+            <section class="panel list-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow">Elenco richieste</p>
+                  <h3 class="panel-title" id="requests-count">0 richieste</h3>
+                </div>
+                <label class="search-field">
+                  <span>Cerca</span>
+                  <input id="search-input" type="search" placeholder="Nome, città, telefono..." />
+                </label>
+              </div>
+
+              <div class="message-box" id="requests-message">Collega il foglio per iniziare.</div>
+              <div class="table-wrap">
+                <table class="requests-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Richiesta</th>
+                      <th>Città</th>
+                      <th>Assegnazione</th>
+                      <th>Stato</th>
+                      <th>MQ</th>
+                      <th>Telefono</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="requests-body"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel detail-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow">Dettaglio riga</p>
+                  <h3 class="panel-title" id="detail-title">Nessuna richiesta selezionata</h3>
+                </div>
+                <div class="panel-head-actions">
+                  <button class="secondary-button" id="reset-row-button" type="button">Ripristina</button>
+                  <button class="secondary-button" id="save-row-button" type="button">Salva campi</button>
+                </div>
+              </div>
+
+              <div class="detail-meta" id="detail-meta">Seleziona una riga per modificare solo assegnazione e stato.</div>
+              <div class="detail-fields" id="detail-fields"></div>
+
+              <div class="detail-footer">
+                <button class="accent-button" id="use-in-generator-button" type="button">Usa nel generatore</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view is-hidden generator-view" id="generator-view">
+          <div class="generator-banner">
+            <div>
+              <p class="panel-eyebrow">Preventivi</p>
+              <h3 class="panel-title">Preventivo precompilato</h3>
+            </div>
+            <p class="generator-copy" id="generator-copy">La richiesta selezionata viene caricata qui sotto, pronta per il PDF.</p>
+          </div>
+          <iframe id="generator-frame" title="Generatore Preventivi" src="./generator.html?embedded=1"></iframe>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

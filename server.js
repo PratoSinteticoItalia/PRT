@@ -380,6 +380,8 @@ function buildDefaultStore() {
     jobs: [],
     orders: [],
     inventory: [],
+    salesRequests: [],
+    salesContents: [],
     coveragePlanner: {
       teams: {},
       availability: {},
@@ -1046,8 +1048,45 @@ function normalizeCoveragePlanner(payload = {}) {
   };
 }
 
-function buildAttachmentProxyPath(orderId, attachmentId) {
-  return `/api/orders/${encodeURIComponent(orderId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
+function normalizeSalesRequestService(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("posa")) return "posa";
+  if (normalized.includes("fornitura")) return "fornitura";
+  return "";
+}
+
+function normalizeSalesRequestSurface(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("terra")) return "terra";
+  if (normalized.includes("paviment")) return "pavimentazione";
+  return "";
+}
+
+function normalizeSalesRequestRecord(item = {}) {
+  return {
+    id: String(item.id || randomUUID()),
+    name: String(item.name || item.nome || "").trim(),
+    surname: String(item.surname || item.cognome || "").trim(),
+    city: String(item.city || item.citta || "").trim(),
+    phone: String(item.phone || item.telefono || "").trim(),
+    email: String(item.email || "").trim(),
+    sqm: Number(toNumber(item.sqm ?? item.mq ?? 0).toFixed(2)),
+    service: normalizeSalesRequestService(item.service || item.servizio || ""),
+    surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),
+    assignment: String(item.assignment || "").trim(),
+    status: String(item.status || "new").trim() || "new",
+    note: String(item.note || "").trim(),
+    source: String(item.source || "manual").trim() || "manual",
+    createdAt: String(item.createdAt || new Date().toISOString()),
+    updatedAt: String(item.updatedAt || new Date().toISOString()),
+  };
+}
+
+function buildAttachmentProxyPath(ownerId, attachmentId, resource = "orders") {
+  if (resource === "sales-content") {
+    return `/api/sales/content-items/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
+  }
+  return `/api/orders/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
 }
 
 function getMimeTypeExtension(contentType = "") {
@@ -1074,7 +1113,7 @@ function parseDataUrl(value = "") {
   };
 }
 
-function normalizeAttachmentRecord(item = {}, orderId = "") {
+function normalizeAttachmentRecord(item = {}, ownerId = "", resource = "orders") {
   const attachmentId = String(item.id || randomUUID());
   const hasR2Object = String(item.storage || "").trim() === "r2" && String(item.objectKey || "").trim();
   return {
@@ -1087,7 +1126,23 @@ function normalizeAttachmentRecord(item = {}, orderId = "") {
     objectKey: hasR2Object ? String(item.objectKey || "").trim() : "",
     dataUrl: hasR2Object ? "" : String(item.dataUrl || ""),
     context: String(item.context || "").trim(),
-    url: hasR2Object ? buildAttachmentProxyPath(orderId, attachmentId) : String(item.url || ""),
+    url: hasR2Object ? buildAttachmentProxyPath(ownerId, attachmentId, resource) : String(item.url || ""),
+  };
+}
+
+function normalizeSalesContentRecord(item = {}) {
+  const contentId = String(item.id || randomUUID());
+  return {
+    id: contentId,
+    title: String(item.title || "").trim() || "Contenuto",
+    category: String(item.category || "documentazione").trim() || "documentazione",
+    description: String(item.description || "").trim(),
+    link: String(item.link || "").trim(),
+    createdAt: String(item.createdAt || new Date().toISOString()),
+    updatedAt: String(item.updatedAt || new Date().toISOString()),
+    attachments: Array.isArray(item.attachments)
+      ? item.attachments.map((attachment) => normalizeAttachmentRecord(attachment, contentId, "sales-content"))
+      : [],
   };
 }
 
@@ -1115,7 +1170,7 @@ async function getR2Client() {
   return getR2Client.client;
 }
 
-async function storeAttachmentAsset(orderId, attachment = {}) {
+async function storeAttachmentAsset(ownerId, attachment = {}, resource = "orders") {
   const parsed = parseDataUrl(attachment.dataUrl || "");
   const attachmentId = String(attachment.id || randomUUID());
   if (!parsed || !USE_R2) {
@@ -1125,7 +1180,8 @@ async function storeAttachmentAsset(orderId, attachment = {}) {
         id: attachmentId,
         storage: "inline",
       },
-      orderId,
+      ownerId,
+      resource,
     );
   }
 
@@ -1133,7 +1189,8 @@ async function storeAttachmentAsset(orderId, attachment = {}) {
   const sdk = await getR2Sdk();
   const fallbackExtension = getMimeTypeExtension(attachment.type || parsed.contentType);
   const safeName = sanitizeAttachmentName(attachment.name, fallbackExtension);
-  const objectKey = `orders/${String(orderId || "order").replace(/[^\w.-]+/g, "_")}/${attachmentId}-${safeName}`;
+  const bucketPrefix = resource === "sales-content" ? "sales-content" : "orders";
+  const objectKey = `${bucketPrefix}/${String(ownerId || resource).replace(/[^\w.-]+/g, "_")}/${attachmentId}-${safeName}`;
 
   await client.send(new sdk.PutObjectCommand({
     Bucket: R2_BUCKET_NAME,
@@ -1154,7 +1211,8 @@ async function storeAttachmentAsset(orderId, attachment = {}) {
       objectKey,
       dataUrl: "",
     },
-    orderId,
+    ownerId,
+    resource,
   );
 }
 
@@ -1360,6 +1418,14 @@ function reconcileStoreData(store) {
         note: String(item.note || ""),
         createdAt: item.createdAt || new Date().toISOString(),
       }))
+    : [];
+
+  store.salesRequests = Array.isArray(store.salesRequests)
+    ? store.salesRequests.map((item) => normalizeSalesRequestRecord(item))
+    : [];
+
+  store.salesContents = Array.isArray(store.salesContents)
+    ? store.salesContents.map((item) => normalizeSalesContentRecord(item))
     : [];
 
   store.jobs = Array.isArray(store.jobs) ? store.jobs : [];
@@ -2395,6 +2461,8 @@ async function handleApi(req, res, url) {
       jobs: currentUser ? store.jobs : [],
       orders: currentUser ? store.orders : [],
       inventory: currentUser ? store.inventory : [],
+      salesRequests: currentUser?.role === "office" ? store.salesRequests : [],
+      salesContents: currentUser?.role === "office" ? store.salesContents : [],
       coveragePlanner: currentUser ? store.coveragePlanner : normalizeCoveragePlanner(),
       shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
       users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
@@ -2463,6 +2531,8 @@ async function handleApi(req, res, url) {
         jobs: store.jobs,
         orders: store.orders,
         inventory: store.inventory,
+        salesRequests: user.role === "office" ? store.salesRequests : [],
+        salesContents: user.role === "office" ? store.salesContents : [],
         coveragePlanner: store.coveragePlanner,
         shopifySettings: serializeShopifySettings(store.shopifySettings),
         users: user.role === "office" ? store.users.map(sanitizeUser) : [],
@@ -2506,6 +2576,134 @@ async function handleApi(req, res, url) {
     store.coveragePlanner = normalizeCoveragePlanner(body || {});
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.coveragePlanner);
+  }
+
+  if (url.pathname === "/api/sales/requests" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const now = new Date().toISOString();
+    const existingRequest = store.salesRequests.find((item) => item.id === String(body.id || "")) || null;
+    const requestRecord = normalizeSalesRequestRecord({
+      ...body,
+      createdAt: existingRequest?.createdAt || body.createdAt || now,
+      updatedAt: now,
+    });
+    const existingIndex = store.salesRequests.findIndex((item) => item.id === requestRecord.id);
+    if (existingIndex >= 0) {
+      store.salesRequests[existingIndex] = requestRecord;
+    } else {
+      store.salesRequests.unshift(requestRecord);
+    }
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, requestRecord);
+  }
+
+  if (url.pathname.match(/^\/api\/sales\/requests\/[^/]+$/) && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const requestId = decodeURIComponent(url.pathname.split("/")[4]);
+    const nextRequests = store.salesRequests.filter((item) => item.id !== requestId);
+    if (nextRequests.length === store.salesRequests.length) return sendJson(res, 404, { error: "request_not_found" });
+    store.salesRequests = nextRequests;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (url.pathname === "/api/sales/content-items" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const now = new Date().toISOString();
+    const existingContent = store.salesContents.find((item) => item.id === String(body.id || "")) || null;
+    const contentRecord = normalizeSalesContentRecord({
+      ...body,
+      attachments: existingContent?.attachments || body.attachments || [],
+      createdAt: existingContent?.createdAt || body.createdAt || now,
+      updatedAt: now,
+    });
+    const existingIndex = store.salesContents.findIndex((item) => item.id === contentRecord.id);
+    if (existingIndex >= 0) {
+      store.salesContents[existingIndex] = contentRecord;
+    } else {
+      store.salesContents.unshift(contentRecord);
+    }
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, contentRecord);
+  }
+
+  if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+$/) && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const contentId = decodeURIComponent(url.pathname.split("/")[4]);
+    const contentIndex = store.salesContents.findIndex((item) => item.id === contentId);
+    if (contentIndex < 0) return sendJson(res, 404, { error: "content_not_found" });
+    const [removedContent] = store.salesContents.splice(contentIndex, 1);
+    for (const attachment of removedContent.attachments || []) {
+      await removeAttachmentAsset(attachment).catch((error) => {
+        console.error("sales_content_attachment_delete_failed", error);
+      });
+    }
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+\/attachments$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const contentId = decodeURIComponent(url.pathname.split("/")[4]);
+    const body = await readBody(req);
+    const contentIndex = store.salesContents.findIndex((item) => item.id === contentId);
+    if (contentIndex < 0) return sendJson(res, 404, { error: "content_not_found" });
+    const current = store.salesContents[contentIndex];
+    const incomingAttachments = Array.isArray(body.attachments) ? body.attachments : [];
+    const savedAttachments = [];
+    for (const item of incomingAttachments) {
+      savedAttachments.push(await storeAttachmentAsset(contentId, item, "sales-content"));
+    }
+    store.salesContents[contentIndex] = normalizeSalesContentRecord({
+      ...current,
+      attachments: [...(current.attachments || []), ...savedAttachments],
+      updatedAt: new Date().toISOString(),
+    });
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, store.salesContents[contentIndex]);
+  }
+
+  if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+\/attachments\/[^/]+\/file$/) && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const parts = url.pathname.split("/");
+    const contentId = decodeURIComponent(parts[4]);
+    const attachmentId = decodeURIComponent(parts[6]);
+    const contentItem = store.salesContents.find((item) => item.id === contentId);
+    if (!contentItem) return sendJson(res, 404, { error: "content_not_found" });
+    const attachment = (contentItem.attachments || []).find((item) => String(item.id || "") === attachmentId);
+    if (!attachment) return sendJson(res, 404, { error: "attachment_not_found" });
+    return streamAttachmentAsset(res, attachment);
+  }
+
+  if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+\/attachments\/\d+$/) && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const parts = url.pathname.split("/");
+    const contentId = decodeURIComponent(parts[4]);
+    const attachmentIndex = Number(parts[6]);
+    const contentIndex = store.salesContents.findIndex((item) => item.id === contentId);
+    if (contentIndex < 0) return sendJson(res, 404, { error: "content_not_found" });
+    const current = store.salesContents[contentIndex];
+    const attachments = Array.isArray(current.attachments) ? [...current.attachments] : [];
+    if (attachmentIndex < 0 || attachmentIndex >= attachments.length) return sendJson(res, 404, { error: "attachment_not_found" });
+    const [removedAttachment] = attachments.splice(attachmentIndex, 1);
+    await removeAttachmentAsset(removedAttachment).catch((error) => {
+      console.error("sales_content_attachment_delete_failed", error);
+    });
+    store.salesContents[contentIndex] = normalizeSalesContentRecord({
+      ...current,
+      attachments,
+      updatedAt: new Date().toISOString(),
+    });
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, store.salesContents[contentIndex]);
   }
 
   if (url.pathname === "/api/account/password" && req.method === "POST") {

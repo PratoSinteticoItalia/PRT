@@ -4,6 +4,7 @@ const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
 const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 60 * 2;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
+const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
 const COVERAGE_BOUNDS = { minLon: 2.3, maxLon: 26.3, minLat: 34.2, maxLat: 47.8 };
 const COVERAGE_DEFAULT_COLORS = ["#2d6a4f", "#c26c2d", "#3e74d8", "#a74b4b", "#7c5cc4", "#1f7a8c"];
@@ -176,7 +177,7 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "accounting", "shipping", "settings"],
+  office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "shipping", "settings"],
   warehouse: ["warehouse", "shipping"],
   crew: ["installations"],
 };
@@ -365,6 +366,12 @@ const translations = {
     warehouseGuideCopy: "Seleziona un modello o un articolo, inserisci quanti pezzi fisici hai in magazzino e, per i prati, indica larghezza e lunghezza del rotolo o del residuo. Gli ordini Shopify scaleranno il fabbisogno aperto per aiutarti a capire cosa manca.",
     shippingTitle: "Logistica, DDT e bancali",
     shippingSearch: "Cerca ordine, cliente, vettore o tipo spedizione",
+    salesRequestsTitle: "Richieste Preventivo",
+    salesRequestsSubtitle: "Gestisci richieste commerciali e prepara il passaggio verso il generatore.",
+    salesGeneratorTitle: "Generatore Preventivi",
+    salesGeneratorSubtitle: "Usa il preventivatore integrato e precompila i dati partendo da una richiesta selezionata.",
+    salesContentTitle: "Contenuti e Documentazione",
+    salesContentSubtitle: "Raccogli materiali utili per vendita, preventivi e documentazione commerciale.",
     orderRadar: "Radar ordine",
     customerData: "Dati cliente",
     fulfillmentRoute: "Percorso ordine",
@@ -381,7 +388,11 @@ const translations = {
     portalSubtitle: "Portale operativo",
     mobileMenuTitle: "Menu operativo",
     operationsSection: "Operativo",
+    salesSection: "Vendite",
     adminSection: "Amministrazione",
+    "sales-requests": "Richieste",
+    "sales-generator": "Generatore",
+    "sales-content": "Contenuti",
     topbarSearch: "Cerca ordini, clienti, prodotti...",
     ordersSubtitle: "Ordini Shopify sincronizzati e in lavorazione",
     installationsCalendarTitle: "Calendario Pose",
@@ -596,6 +607,12 @@ const translations = {
     warehouseGuideCopy: "Select a model or item, enter how many physical pieces are in stock and, for turf, specify roll or offcut width and length. Shopify orders will subtract open demand so you can understand what is missing.",
     shippingTitle: "Logistics, DDT and pallets",
     shippingSearch: "Search order, customer, carrier or shipment type",
+    salesRequestsTitle: "Quote Requests",
+    salesRequestsSubtitle: "Manage sales requests and move them into the quote generator.",
+    salesGeneratorTitle: "Quote Generator",
+    salesGeneratorSubtitle: "Use the integrated quote tool and prefill it from a selected request.",
+    salesContentTitle: "Content and Documentation",
+    salesContentSubtitle: "Collect useful sales documents, resources, and shared material.",
     orderRadar: "Order radar",
     customerData: "Customer details",
     fulfillmentRoute: "Order route",
@@ -612,7 +629,11 @@ const translations = {
     portalSubtitle: "Operations portal",
     mobileMenuTitle: "Operations menu",
     operationsSection: "Operations",
+    salesSection: "Sales",
     adminSection: "Administration",
+    "sales-requests": "Requests",
+    "sales-generator": "Generator",
+    "sales-content": "Content",
     topbarSearch: "Search orders, customers, products...",
     ordersSubtitle: "Shopify orders synced and in progress",
     installationsCalendarTitle: "Installation calendar",
@@ -650,12 +671,17 @@ const state = {
   currentUser: null,
   orders: [],
   inventory: [],
+  salesRequests: [],
+  salesContents: [],
   users: [],
   securityEvents: [],
   securityPolicy: {},
   settings: {},
   currentView: "dashboard",
   selectedOrderId: null,
+  selectedSalesRequestId: "",
+  selectedSalesContentId: "",
+  lastSalesGeneratorSignature: "",
   lang: "it",
   filters: {
     order: "all",
@@ -669,6 +695,8 @@ const state = {
     warehouse: "",
     accounting: "",
     shipping: "",
+    salesRequests: "",
+    salesContent: "",
   },
   pendingAttachmentTarget: null,
   showOrderImport: false,
@@ -700,6 +728,9 @@ const ui = {
   mainContent: document.querySelector(".main-content"),
   sidebarOperationalLabel: document.getElementById("sidebar-operational-label"),
   sidebarOperationalNav: document.getElementById("sidebar-operational-nav"),
+  sidebarSalesDivider: document.getElementById("sidebar-sales-divider"),
+  sidebarSalesLabel: document.getElementById("sidebar-sales-label"),
+  sidebarSalesNav: document.getElementById("sidebar-sales-nav"),
   sidebarAdminDivider: document.getElementById("sidebar-admin-divider"),
   sidebarAdminLabel: document.getElementById("sidebar-admin-label"),
   sidebarAdminNav: document.getElementById("sidebar-admin-nav"),
@@ -747,6 +778,27 @@ const ui = {
   ordersList: document.getElementById("orders-list"),
   ordersPagination: document.getElementById("orders-pagination"),
   ordersStatus: document.getElementById("orders-status"),
+  salesRequestsSearch: document.getElementById("sales-requests-search"),
+  salesRequestsStatus: document.getElementById("sales-requests-status"),
+  salesRequestsList: document.getElementById("sales-requests-list"),
+  salesRequestForm: document.getElementById("sales-request-form"),
+  salesRequestNewButton: document.getElementById("sales-request-new-button"),
+  salesRequestDeleteButton: document.getElementById("sales-request-delete-button"),
+  salesRequestUseGeneratorButton: document.getElementById("sales-request-use-generator-button"),
+  salesRequestDetailTitle: document.getElementById("sales-request-detail-title"),
+  salesGeneratorFrame: document.getElementById("sales-generator-frame"),
+  salesGeneratorRequestCard: document.getElementById("sales-generator-request-card"),
+  salesGeneratorOpenRequestButton: document.getElementById("sales-generator-open-request-button"),
+  salesGeneratorPrefillButton: document.getElementById("sales-generator-prefill-button"),
+  salesContentSearch: document.getElementById("sales-content-search"),
+  salesContentStatus: document.getElementById("sales-content-status"),
+  salesContentList: document.getElementById("sales-content-list"),
+  salesContentForm: document.getElementById("sales-content-form"),
+  salesContentNewButton: document.getElementById("sales-content-new-button"),
+  salesContentDeleteButton: document.getElementById("sales-content-delete-button"),
+  salesContentAttachmentButton: document.getElementById("sales-content-attachment-button"),
+  salesContentDetailTitle: document.getElementById("sales-content-detail-title"),
+  salesContentAttachments: document.getElementById("sales-content-attachments"),
   orderDetailTitle: document.getElementById("order-detail-title"),
   orderDetailBadge: document.getElementById("order-detail-badge"),
   orderDetailSummary: document.getElementById("order-detail-summary"),
@@ -973,6 +1025,11 @@ function setFieldLabel(form, name, text) {
   if (label) label.textContent = text;
 }
 
+function setText(id, text) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = text;
+}
+
 function setSubheading(selector, text) {
   const node = document.querySelector(selector);
   if (node) node.textContent = text;
@@ -1080,6 +1137,138 @@ function setNavCount(view, count) {
   if (!node) return;
   const normalized = Number(count) > 0 ? String(count) : "";
   node.setAttribute("data-count", normalized);
+}
+
+function normalizeSalesRequestRecord(item = {}) {
+  return {
+    id: String(item.id || crypto.randomUUID()),
+    name: String(item.name || item.nome || "").trim(),
+    surname: String(item.surname || item.cognome || "").trim(),
+    city: String(item.city || item.citta || "").trim(),
+    phone: String(item.phone || item.telefono || "").trim(),
+    email: String(item.email || "").trim(),
+    sqm: Number(toNumber(item.sqm ?? item.mq ?? 0).toFixed(2)),
+    service: String(item.service || item.servizio || "").trim().toLowerCase(),
+    surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
+    assignment: String(item.assignment || "").trim(),
+    status: String(item.status || "new").trim().toLowerCase() || "new",
+    note: String(item.note || "").trim(),
+    source: String(item.source || "manual").trim() || "manual",
+    createdAt: String(item.createdAt || new Date().toISOString()),
+    updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
+  };
+}
+
+function normalizeSalesContentRecord(item = {}) {
+  return {
+    id: String(item.id || crypto.randomUUID()),
+    title: String(item.title || "").trim(),
+    category: String(item.category || "documentazione").trim().toLowerCase() || "documentazione",
+    description: String(item.description || "").trim(),
+    link: String(item.link || "").trim(),
+    attachments: Array.isArray(item.attachments) ? item.attachments : [],
+    createdAt: String(item.createdAt || new Date().toISOString()),
+    updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
+  };
+}
+
+function getSalesRequestDisplayName(item = {}) {
+  return `${item.name || ""} ${item.surname || ""}`.trim() || (state.lang === "it" ? "Richiesta senza nome" : "Unnamed request");
+}
+
+function getSalesRequestStatusLabel(status = "") {
+  const value = String(status || "").trim().toLowerCase();
+  if (value === "quoted") return state.lang === "it" ? "In preventivo" : "Quoted";
+  if (value === "followup") return state.lang === "it" ? "Follow-up" : "Follow-up";
+  if (value === "closed") return state.lang === "it" ? "Chiusa" : "Closed";
+  return state.lang === "it" ? "Nuova" : "New";
+}
+
+function getSalesRequestServiceLabel(service = "") {
+  const value = String(service || "").trim().toLowerCase();
+  if (value === "posa") return state.lang === "it" ? "Fornitura + posa" : "Supply + install";
+  if (value === "fornitura") return state.lang === "it" ? "Solo fornitura" : "Supply only";
+  return state.lang === "it" ? "Da definire" : "To define";
+}
+
+function getSalesRequestSurfaceLabel(surface = "") {
+  const value = String(surface || "").trim().toLowerCase();
+  if (value === "terra") return state.lang === "it" ? "Terra" : "Soil";
+  if (value === "pavimentazione") return state.lang === "it" ? "Pavimentazione" : "Paving";
+  return state.lang === "it" ? "Da definire" : "To define";
+}
+
+function getSalesContentCategoryLabel(category = "") {
+  const value = String(category || "").trim().toLowerCase();
+  if (value === "marketing") return state.lang === "it" ? "Marketing" : "Marketing";
+  if (value === "listino") return state.lang === "it" ? "Listino" : "Price list";
+  if (value === "template") return state.lang === "it" ? "Template" : "Template";
+  if (value === "altro") return state.lang === "it" ? "Altro" : "Other";
+  return state.lang === "it" ? "Documentazione" : "Documentation";
+}
+
+function getSelectedSalesRequest() {
+  return state.salesRequests.find((item) => item.id === state.selectedSalesRequestId) || null;
+}
+
+function getSelectedSalesContent() {
+  return state.salesContents.find((item) => item.id === state.selectedSalesContentId) || null;
+}
+
+function ensureSelectedSalesRequest() {
+  if (!state.salesRequests.length) {
+    state.selectedSalesRequestId = "";
+    return null;
+  }
+  if (!state.selectedSalesRequestId || !state.salesRequests.some((item) => item.id === state.selectedSalesRequestId)) {
+    state.selectedSalesRequestId = state.salesRequests[0].id;
+  }
+  return getSelectedSalesRequest();
+}
+
+function ensureSelectedSalesContent() {
+  if (!state.salesContents.length) {
+    state.selectedSalesContentId = "";
+    return null;
+  }
+  if (!state.selectedSalesContentId || !state.salesContents.some((item) => item.id === state.selectedSalesContentId)) {
+    state.selectedSalesContentId = state.salesContents[0].id;
+  }
+  return getSelectedSalesContent();
+}
+
+function buildSalesRequestPrefill(item = {}) {
+  return {
+    nome: item.name || "",
+    cognome: item.surname || "",
+    citta: item.city || "",
+    telefono: item.phone || "",
+    email: item.email || "",
+    mq: item.sqm || "",
+    servizio: item.service || "",
+    fondo: item.surface || "",
+  };
+}
+
+function pushSalesRequestToGenerator(force = false) {
+  const request = getSelectedSalesRequest();
+  if (!request) return;
+  const payload = buildSalesRequestPrefill(request);
+  const signature = JSON.stringify(payload);
+  if (!force && state.lastSalesGeneratorSignature === signature) return;
+  state.lastSalesGeneratorSignature = signature;
+  try {
+    window.localStorage.setItem(SALES_PREFILL_STORAGE_KEY, JSON.stringify({
+      runId: Date.now(),
+      payload,
+    }));
+  } catch {}
+  try {
+    ui.salesGeneratorFrame?.contentWindow?.postMessage({
+      type: "quote-generator:prefill-request",
+      payload,
+    }, "*");
+  } catch {}
 }
 
 function getDashboardSubtitle() {
@@ -2328,6 +2517,7 @@ function describeTaxStatus(line = {}) {
 function getStatusNodeForAttachmentTarget(targetType = "") {
   if (targetType === "installation") return ui.installationStatus;
   if (targetType === "shipping") return ui.shippingStatus;
+  if (targetType === "sales-content") return ui.salesContentStatus;
   return ui.ordersStatus;
 }
 
@@ -2338,6 +2528,7 @@ function isImageAttachment(item = {}) {
 function getAttachmentContextLabel(context = "") {
   if (context === "installation") return state.lang === "it" ? "Posa" : "Install";
   if (context === "shipping") return state.lang === "it" ? "Logistica" : "Shipping";
+  if (context === "sales-content") return state.lang === "it" ? "Contenuti" : "Content";
   return state.lang === "it" ? "Ordine" : "Order";
 }
 
@@ -2442,6 +2633,9 @@ function focusElement(node) {
 
 function focusViewTarget(view) {
   if (view === "orders") focusElement(document.querySelector("#orders .page-header h1"));
+  if (view === "sales-requests") focusElement(document.querySelector("#sales-requests .page-header h1"));
+  if (view === "sales-generator") focusElement(document.querySelector("#sales-generator .page-header h1"));
+  if (view === "sales-content") focusElement(document.querySelector("#sales-content .page-header h1"));
   if (view === "warehouse") focusElement(document.querySelector("#warehouse .page-header h1"));
   if (view === "installations") focusElement(document.querySelector("#installations .page-header h1"));
   if (view === "accounting") focusElement(document.querySelector("#accounting .page-header h1"));
@@ -3647,11 +3841,13 @@ function applyStaticTranslations() {
     });
   });
   ui.navLinks.forEach((button) => {
-    button.textContent = t(button.dataset.view);
+    const label = button.querySelector(".nav-label");
+    if (label) label.textContent = t(button.dataset.view);
+    else button.textContent = t(button.dataset.view);
   });
-  const sidebarSectionLabels = Array.from(document.querySelectorAll(".sidebar-section-label"));
-  if (sidebarSectionLabels[0]) sidebarSectionLabels[0].textContent = t("operationsSection");
-  if (sidebarSectionLabels[1]) sidebarSectionLabels[1].textContent = t("adminSection");
+  setText("sidebar-operational-label", t("operationsSection"));
+  setText("sidebar-sales-label", t("salesSection"));
+  setText("sidebar-admin-label", t("adminSection"));
   setSubheading("#orders .panel-subsection:nth-of-type(1) h4", t("officeOperations"));
   setSubheading("#orders .panel-subsection:nth-of-type(2) h4", t("orderItems"));
   setSubheading("#orders .panel-subsection:nth-of-type(3) h4", t("officePreparation"));
@@ -3661,6 +3857,12 @@ function applyStaticTranslations() {
   setSubheading("#warehouse .panel-head h3", t("stockFlowTitle"));
   setSubheading("#shipping .panel-head h3", t("shippingTitle"));
   setSubheading("#installations .panel-head h3", t("installations"));
+  setText("sales-requests-title", t("salesRequestsTitle"));
+  setText("sales-requests-subtitle", t("salesRequestsSubtitle"));
+  setText("sales-generator-title", t("salesGeneratorTitle"));
+  setText("sales-generator-subtitle", t("salesGeneratorSubtitle"));
+  setText("sales-content-title", t("salesContentTitle"));
+  setText("sales-content-subtitle", t("salesContentSubtitle"));
   setFieldLabel(ui.installationForm, "installDate", state.lang === "it" ? "Data posa" : "Installation date");
   setFieldLabel(ui.installationForm, "installTime", state.lang === "it" ? "Ora" : "Time");
   setFieldLabel(ui.installationForm, "status", state.lang === "it" ? "Stato cantiere" : "Site status");
@@ -3732,6 +3934,10 @@ function updateShell() {
   const operationalVisible = Array.from(ui.sidebarOperationalNav?.querySelectorAll(".nav-link") || []).some((button) => !button.hidden);
   if (ui.sidebarOperationalLabel) ui.sidebarOperationalLabel.classList.toggle("hidden", !operationalVisible);
   if (ui.sidebarOperationalNav) ui.sidebarOperationalNav.classList.toggle("hidden", !operationalVisible);
+  const salesVisible = Array.from(ui.sidebarSalesNav?.querySelectorAll(".nav-link") || []).some((button) => !button.hidden);
+  if (ui.sidebarSalesDivider) ui.sidebarSalesDivider.classList.toggle("hidden", !salesVisible);
+  if (ui.sidebarSalesLabel) ui.sidebarSalesLabel.classList.toggle("hidden", !salesVisible);
+  if (ui.sidebarSalesNav) ui.sidebarSalesNav.classList.toggle("hidden", !salesVisible);
   if (!allowed.includes(state.currentView)) state.currentView = allowed[0];
   ui.views.forEach((view) => view.classList.toggle("is-active", view.id === state.currentView));
   ui.viewTitle.textContent = t(state.currentView);
@@ -3799,6 +4005,8 @@ function renderOps() {
   const accounting = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
   const shipping = state.orders.filter((order) => ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode) && !isLogisticsOrderCompleted(order)).length;
   const closed = state.orders.filter((order) => isOrderClosed(order)).length;
+  const salesRequests = state.salesRequests.filter((item) => item.status !== "closed").length;
+  const salesContents = state.salesContents.length;
   ui.opsOrdersValue.textContent = String(orders);
   if (ui.opsSoldSqmValue) ui.opsSoldSqmValue.textContent = `${Math.round(soldSqm)} mq`;
   ui.opsWarehouseValue.textContent = String(warehouse);
@@ -3814,6 +4022,9 @@ function renderOps() {
   setNavCount("installations", installations);
   setNavCount("accounting", accounting);
   setNavCount("shipping", shipping);
+  setNavCount("sales-requests", salesRequests);
+  setNavCount("sales-generator", "");
+  setNavCount("sales-content", salesContents);
   setNavCount("settings", "");
   const opsTexts = state.lang === "it"
     ? {
@@ -4345,6 +4556,318 @@ function renderOrders() {
       : `<div class="info-card">${t("noPhysicalPrep")}</div>`;
   }
   ui.orderAttachments.innerHTML = renderAttachmentGrid(order.attachments || [], order.id);
+}
+
+function getFilteredSalesRequests() {
+  const query = String(state.search.salesRequests || "").trim().toLowerCase();
+  return [...state.salesRequests]
+    .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))
+    .filter((item) => {
+      if (!query) return true;
+      const haystack = [
+        getSalesRequestDisplayName(item),
+        item.city,
+        item.phone,
+        item.email,
+        item.assignment,
+        item.note,
+        getSalesRequestStatusLabel(item.status),
+      ].join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+}
+
+function getFilteredSalesContents() {
+  const query = String(state.search.salesContent || "").trim().toLowerCase();
+  return [...state.salesContents]
+    .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))
+    .filter((item) => {
+      if (!query) return true;
+      const haystack = [
+        item.title,
+        item.category,
+        item.description,
+        item.link,
+      ].join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+}
+
+function renderSalesRequests() {
+  const selected = ensureSelectedSalesRequest();
+  const filtered = getFilteredSalesRequests();
+  if (ui.salesRequestsList) {
+    ui.salesRequestsList.innerHTML = filtered.length
+      ? filtered.map((item) => `
+          <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""}" data-action="select-sales-request" data-id="${item.id}">
+            <div class="sales-request-card-head">
+              <div>
+                <strong>${escapeHtml(getSalesRequestDisplayName(item))}</strong>
+                <p>${escapeHtml(item.city || (state.lang === "it" ? "Città da definire" : "City pending"))}</p>
+              </div>
+              <span class="sales-status-pill">${escapeHtml(getSalesRequestStatusLabel(item.status))}</span>
+            </div>
+            <div class="sales-request-card-meta">
+              <span>${escapeHtml(getSalesRequestServiceLabel(item.service))}</span>
+              <span>${item.sqm > 0 ? `${Number(item.sqm)} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending")}</span>
+            </div>
+            <div class="sales-request-card-foot">
+              <span>${escapeHtml(item.assignment || (state.lang === "it" ? "Non assegnata" : "Unassigned"))}</span>
+              <span>${item.updatedAt ? formatDate(item.updatedAt) : "—"}</span>
+            </div>
+          </article>
+        `).join("")
+      : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta disponibile." : "No requests available."}</div>`;
+  }
+  if (!ui.salesRequestForm) return;
+  ui.salesRequestForm.id.value = selected?.id || "";
+  ui.salesRequestForm.name.value = selected?.name || "";
+  ui.salesRequestForm.surname.value = selected?.surname || "";
+  ui.salesRequestForm.city.value = selected?.city || "";
+  ui.salesRequestForm.phone.value = selected?.phone || "";
+  ui.salesRequestForm.email.value = selected?.email || "";
+  ui.salesRequestForm.sqm.value = selected?.sqm ? String(selected.sqm).replace(".", ",") : "";
+  ui.salesRequestForm.service.value = selected?.service || "";
+  ui.salesRequestForm.surface.value = selected?.surface || "";
+  ui.salesRequestForm.assignment.value = selected?.assignment || "";
+  ui.salesRequestForm.status.value = selected?.status || "new";
+  ui.salesRequestForm.note.value = selected?.note || "";
+  if (ui.salesRequestDetailTitle) {
+    ui.salesRequestDetailTitle.textContent = selected
+      ? getSalesRequestDisplayName(selected)
+      : (state.lang === "it" ? "Nuova richiesta" : "New request");
+  }
+  if (ui.salesRequestDeleteButton) ui.salesRequestDeleteButton.disabled = !selected;
+  if (ui.salesRequestUseGeneratorButton) ui.salesRequestUseGeneratorButton.disabled = !selected;
+}
+
+function renderSalesGenerator() {
+  const selected = ensureSelectedSalesRequest();
+  if (ui.salesGeneratorRequestCard) {
+    ui.salesGeneratorRequestCard.innerHTML = selected
+      ? `
+          <div class="sales-generator-card-head">
+            <strong>${escapeHtml(getSalesRequestDisplayName(selected))}</strong>
+            <span class="sales-status-pill">${escapeHtml(getSalesRequestStatusLabel(selected.status))}</span>
+          </div>
+          <div class="sales-generator-card-grid">
+            <span>${escapeHtml(selected.city || (state.lang === "it" ? "Città da definire" : "City pending"))}</span>
+            <span>${selected.sqm > 0 ? `${Number(selected.sqm)} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending")}</span>
+            <span>${escapeHtml(getSalesRequestServiceLabel(selected.service))}</span>
+            <span>${escapeHtml(getSalesRequestSurfaceLabel(selected.surface))}</span>
+          </div>
+          <p>${escapeHtml(selected.note || (state.lang === "it" ? "Nessuna nota commerciale." : "No sales note."))}</p>
+        `
+      : (state.lang === "it"
+          ? "Seleziona una richiesta per precompilare automaticamente il generatore."
+          : "Select a request to prefill the generator.");
+  }
+  if (ui.salesGeneratorOpenRequestButton) ui.salesGeneratorOpenRequestButton.disabled = !selected;
+  if (ui.salesGeneratorPrefillButton) ui.salesGeneratorPrefillButton.disabled = !selected;
+  if (state.currentView === "sales-generator" && selected) {
+    window.setTimeout(() => pushSalesRequestToGenerator(false), 40);
+  }
+}
+
+function renderSalesContentAttachments(items = [], contentId = "") {
+  if (!items.length) {
+    return `<div class="info-card">${state.lang === "it" ? "Nessun allegato caricato." : "No attachments uploaded."}</div>`;
+  }
+  return items.map((item, index) => `
+    <article class="attachment-item">
+      <button
+        class="attachment-remove"
+        type="button"
+        data-action="remove-sales-content-attachment"
+        data-id="${contentId}"
+        data-index="${Number(item._attachmentIndex ?? index)}"
+        aria-label="${state.lang === "it" ? "Rimuovi allegato" : "Remove attachment"}"
+      >×</button>
+      ${isImageAttachment(item) && (item.url || item.dataUrl)
+        ? `<img src="${escapeHtml(item.url || item.dataUrl)}" alt="${escapeHtml(item.name || "Attachment")}" loading="lazy" />`
+        : `<div class="attachment-file-badge">${escapeHtml(String(item.type || "file").split("/").pop()?.toUpperCase() || "FILE")}</div>`}
+      <strong>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.name || "Attachment")}</a>` : escapeHtml(item.name || "Attachment")}</strong>
+      <div class="attachment-copy">${escapeHtml(getAttachmentContextLabel("sales-content"))}</div>
+      <div>${item.createdAt ? formatDate(item.createdAt) : "—"}</div>
+    </article>
+  `).join("");
+}
+
+function renderSalesContent() {
+  const selected = ensureSelectedSalesContent();
+  const filtered = getFilteredSalesContents();
+  if (ui.salesContentList) {
+    ui.salesContentList.innerHTML = filtered.length
+      ? filtered.map((item) => `
+          <article class="sales-content-card ${item.id === selected?.id ? "is-active" : ""}" data-action="select-sales-content" data-id="${item.id}">
+            <div class="sales-content-card-head">
+              <strong>${escapeHtml(item.title || (state.lang === "it" ? "Contenuto senza titolo" : "Untitled content"))}</strong>
+              <span class="sales-category-pill">${escapeHtml(getSalesContentCategoryLabel(item.category))}</span>
+            </div>
+            <p>${escapeHtml(item.description || (state.lang === "it" ? "Nessuna descrizione." : "No description."))}</p>
+            <div class="sales-content-card-foot">
+              <span>${(item.attachments || []).length} ${state.lang === "it" ? "allegati" : "attachments"}</span>
+              <span>${item.updatedAt ? formatDate(item.updatedAt) : "—"}</span>
+            </div>
+          </article>
+        `).join("")
+      : `<div class="info-card">${state.lang === "it" ? "Nessun contenuto disponibile." : "No content available."}</div>`;
+  }
+  if (!ui.salesContentForm) return;
+  ui.salesContentForm.id.value = selected?.id || "";
+  ui.salesContentForm.title.value = selected?.title || "";
+  ui.salesContentForm.category.value = selected?.category || "documentazione";
+  ui.salesContentForm.link.value = selected?.link || "";
+  ui.salesContentForm.description.value = selected?.description || "";
+  if (ui.salesContentDetailTitle) {
+    ui.salesContentDetailTitle.textContent = selected?.title || (state.lang === "it" ? "Nuovo contenuto" : "New content");
+  }
+  if (ui.salesContentDeleteButton) ui.salesContentDeleteButton.disabled = !selected;
+  if (ui.salesContentAttachmentButton) ui.salesContentAttachmentButton.disabled = !selected;
+  if (ui.salesContentAttachments) {
+    const items = (selected?.attachments || []).map((item, index) => ({ ...item, _attachmentIndex: index }));
+    ui.salesContentAttachments.innerHTML = renderSalesContentAttachments(items, selected?.id || "");
+  }
+}
+
+function upsertSalesRequest(saved) {
+  const normalized = normalizeSalesRequestRecord(saved);
+  state.salesRequests = [
+    normalized,
+    ...state.salesRequests.filter((item) => item.id !== normalized.id),
+  ];
+  state.selectedSalesRequestId = normalized.id;
+  renderOps();
+}
+
+function upsertSalesContent(saved) {
+  const normalized = normalizeSalesContentRecord(saved);
+  state.salesContents = [
+    normalized,
+    ...state.salesContents.filter((item) => item.id !== normalized.id),
+  ];
+  state.selectedSalesContentId = normalized.id;
+  renderOps();
+}
+
+function createNewSalesRequest() {
+  state.selectedSalesRequestId = "";
+  renderSalesRequests();
+  clearStatus(ui.salesRequestsStatus);
+  requestAnimationFrame(() => ui.salesRequestForm?.name?.focus());
+}
+
+async function saveSalesRequest(event) {
+  event.preventDefault();
+  clearStatus(ui.salesRequestsStatus);
+  const form = new FormData(ui.salesRequestForm);
+  try {
+    const saved = await apiFetch("/api/sales/requests", {
+      method: "POST",
+      body: JSON.stringify({
+        id: String(form.get("id") || "").trim() || undefined,
+        name: form.get("name"),
+        surname: form.get("surname"),
+        city: form.get("city"),
+        phone: form.get("phone"),
+        email: form.get("email"),
+        sqm: form.get("sqm"),
+        service: form.get("service"),
+        surface: form.get("surface"),
+        assignment: form.get("assignment"),
+        status: form.get("status"),
+        note: form.get("note"),
+        source: "manual",
+      }),
+    });
+    upsertSalesRequest(saved);
+    renderSalesRequests();
+    renderSalesGenerator();
+    setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Richiesta salvata." : "Request saved.");
+  } catch (error) {
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta." : "Unable to save the request.");
+  }
+}
+
+async function deleteSalesRequest() {
+  const selected = getSelectedSalesRequest();
+  if (!selected) return;
+  const confirmed = window.confirm(state.lang === "it" ? "Vuoi eliminare questa richiesta?" : "Do you want to delete this request?");
+  if (!confirmed) return;
+  try {
+    await apiFetch(`/api/sales/requests/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
+    state.salesRequests = state.salesRequests.filter((item) => item.id !== selected.id);
+    state.selectedSalesRequestId = "";
+    state.lastSalesGeneratorSignature = "";
+    renderOps();
+    renderSalesRequests();
+    renderSalesGenerator();
+    setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Richiesta eliminata." : "Request deleted.");
+  } catch (error) {
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile eliminare la richiesta." : "Unable to delete the request.");
+  }
+}
+
+function useSelectedSalesRequestInGenerator() {
+  const selected = getSelectedSalesRequest();
+  if (!selected) return;
+  pushSalesRequestToGenerator(true);
+  setView("sales-generator");
+}
+
+function createNewSalesContent() {
+  state.selectedSalesContentId = "";
+  renderSalesContent();
+  clearStatus(ui.salesContentStatus);
+  requestAnimationFrame(() => ui.salesContentForm?.title?.focus());
+}
+
+async function saveSalesContent(event) {
+  event.preventDefault();
+  clearStatus(ui.salesContentStatus);
+  const form = new FormData(ui.salesContentForm);
+  try {
+    const saved = await apiFetch("/api/sales/content-items", {
+      method: "POST",
+      body: JSON.stringify({
+        id: String(form.get("id") || "").trim() || undefined,
+        title: form.get("title"),
+        category: form.get("category"),
+        link: form.get("link"),
+        description: form.get("description"),
+      }),
+    });
+    upsertSalesContent(saved);
+    renderSalesContent();
+    setStatus(ui.salesContentStatus, "success", state.lang === "it" ? "Contenuto salvato." : "Content saved.");
+  } catch (error) {
+    setStatus(ui.salesContentStatus, "error", state.lang === "it" ? "Impossibile salvare il contenuto." : "Unable to save the content.");
+  }
+}
+
+async function deleteSalesContent() {
+  const selected = getSelectedSalesContent();
+  if (!selected) return;
+  const confirmed = window.confirm(state.lang === "it" ? "Vuoi eliminare questo contenuto?" : "Do you want to delete this content?");
+  if (!confirmed) return;
+  try {
+    await apiFetch(`/api/sales/content-items/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
+    state.salesContents = state.salesContents.filter((item) => item.id !== selected.id);
+    state.selectedSalesContentId = "";
+    renderOps();
+    renderSalesContent();
+    setStatus(ui.salesContentStatus, "success", state.lang === "it" ? "Contenuto eliminato." : "Content deleted.");
+  } catch (error) {
+    setStatus(ui.salesContentStatus, "error", state.lang === "it" ? "Impossibile eliminare il contenuto." : "Unable to delete the content.");
+  }
+}
+
+async function removeSalesContentAttachment(contentId, attachmentIndex) {
+  const saved = await apiFetch(`/api/sales/content-items/${encodeURIComponent(contentId)}/attachments/${attachmentIndex}`, {
+    method: "DELETE",
+  });
+  upsertSalesContent(saved);
+  renderSalesContent();
 }
 
 function renderInventoryCard(group) {
@@ -6015,6 +6538,8 @@ function applySessionPayload(session = {}) {
   state.currentUser = session.user || null;
   state.orders = session.orders || [];
   state.inventory = session.inventory || [];
+  state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
+  state.salesContents = Array.isArray(session.salesContents) ? session.salesContents.map(normalizeSalesContentRecord) : [];
   state.coveragePlanner = normalizeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner);
   state.settings = session.shopifySettings || {};
   state.users = session.users || [];
@@ -6149,6 +6674,9 @@ function render() {
   renderOps();
   renderDashboard();
   renderOrders();
+  renderSalesRequests();
+  renderSalesGenerator();
+  renderSalesContent();
   renderWarehouse();
   renderInstallations();
   renderAccounting();
@@ -7300,6 +7828,14 @@ function prefillInventoryForm(product) {
 }
 
 function openAttachmentPicker(type) {
+  if (type === "sales-content") {
+    const content = getSelectedSalesContent();
+    if (!content) return;
+    state.pendingAttachmentTarget = { type, id: content.id };
+    ui.attachmentInput.value = "";
+    ui.attachmentInput.click();
+    return;
+  }
   const order = getSelectedOrder();
   if (!order) return;
   state.pendingAttachmentTarget = { type, id: order.id };
@@ -7314,31 +7850,66 @@ async function handleAttachmentChange(event) {
   const targetStatus = getStatusNodeForAttachmentTarget(target.type);
   clearStatus(targetStatus);
   const dataUrl = await readFileAsDataUrl(file);
-  const saved = await apiFetch(`/api/orders/${encodeURIComponent(target.id)}/attachments`, {
-    method: "POST",
-    body: JSON.stringify({
-      attachments: [{
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        dataUrl,
-        context: target.type,
-        createdAt: new Date().toISOString(),
-      }],
-    }),
-  });
-  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  state.pendingAttachmentTarget = null;
-  render();
-  setStatus(
-    targetStatus,
-    "success",
-    target.type === "shipping"
-      ? (state.lang === "it" ? "Foto logistica caricata correttamente." : "Shipping photo uploaded successfully.")
-      : target.type === "installation"
-        ? (state.lang === "it" ? "Foto cantiere caricata correttamente." : "Site photo uploaded successfully.")
-        : (state.lang === "it" ? "Allegato ordine caricato correttamente." : "Order attachment uploaded successfully."),
-  );
+  try {
+    if (target.type === "sales-content") {
+      const saved = await apiFetch(`/api/sales/content-items/${encodeURIComponent(target.id)}/attachments`, {
+        method: "POST",
+        body: JSON.stringify({
+          attachments: [{
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            dataUrl,
+            context: target.type,
+            createdAt: new Date().toISOString(),
+          }],
+        }),
+      });
+      upsertSalesContent(saved);
+      renderSalesContent();
+      setStatus(
+        targetStatus,
+        "success",
+        state.lang === "it" ? "Allegato contenuto caricato correttamente." : "Content attachment uploaded successfully.",
+      );
+      return;
+    }
+
+    const saved = await apiFetch(`/api/orders/${encodeURIComponent(target.id)}/attachments`, {
+      method: "POST",
+      body: JSON.stringify({
+        attachments: [{
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          dataUrl,
+          context: target.type,
+          createdAt: new Date().toISOString(),
+        }],
+      }),
+    });
+    state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+    render();
+    setStatus(
+      targetStatus,
+      "success",
+      target.type === "shipping"
+        ? (state.lang === "it" ? "Foto logistica caricata correttamente." : "Shipping photo uploaded successfully.")
+        : target.type === "installation"
+          ? (state.lang === "it" ? "Foto cantiere caricata correttamente." : "Site photo uploaded successfully.")
+          : (state.lang === "it" ? "Allegato ordine caricato correttamente." : "Order attachment uploaded successfully."),
+    );
+  } catch (error) {
+    setStatus(
+      targetStatus,
+      "error",
+      target.type === "sales-content"
+        ? (state.lang === "it" ? "Impossibile caricare l'allegato contenuto." : "Unable to upload the content attachment.")
+        : (state.lang === "it" ? "Impossibile caricare l'allegato." : "Unable to upload the attachment."),
+    );
+  } finally {
+    state.pendingAttachmentTarget = null;
+  }
 }
 
 async function removeAttachment(orderId, attachmentIndex) {
@@ -7506,6 +8077,36 @@ function handleGlobalClick(event) {
     removeInstallationExpense(id, expenseId);
     return;
   }
+  if (action === "select-sales-request") {
+    state.selectedSalesRequestId = id || "";
+    renderSalesRequests();
+    renderSalesGenerator();
+    if (window.innerWidth <= 980) {
+      requestAnimationFrame(() => ui.salesRequestDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+    return;
+  }
+  if (action === "select-sales-content") {
+    state.selectedSalesContentId = id || "";
+    renderSalesContent();
+    if (window.innerWidth <= 980) {
+      requestAnimationFrame(() => ui.salesContentDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+    return;
+  }
+  if (action === "remove-sales-content-attachment") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!id) return;
+    removeSalesContentAttachment(id, Number(button.dataset.index || -1)).catch(() => {
+      setStatus(
+        ui.salesContentStatus,
+        "error",
+        state.lang === "it" ? "Impossibile rimuovere l'allegato." : "Unable to remove the attachment.",
+      );
+    });
+    return;
+  }
   const order = state.orders.find((item) => item.id === id) || getSelectedOrder();
   if (!order) return;
   if (action === "select-order") {
@@ -7610,6 +8211,8 @@ ui.authForm.addEventListener("submit", async (event) => {
     state.currentUser = session.user;
     state.orders = session.orders || [];
     state.inventory = session.inventory || [];
+    state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
+    state.salesContents = Array.isArray(session.salesContents) ? session.salesContents.map(normalizeSalesContentRecord) : [];
     state.settings = session.shopifySettings || {};
     state.users = session.users || [];
     state.securityEvents = session.securityEvents || [];
@@ -7709,6 +8312,25 @@ bindEvent(ui.ordersSearch, "input", (event) => {
   state.orderPage = 1;
   renderOrders();
 });
+bindEvent(ui.salesRequestsSearch, "input", (event) => {
+  state.search.salesRequests = event.target.value;
+  renderSalesRequests();
+});
+bindEvent(ui.salesRequestForm, "submit", saveSalesRequest);
+bindEvent(ui.salesRequestNewButton, "click", createNewSalesRequest);
+bindEvent(ui.salesRequestDeleteButton, "click", deleteSalesRequest);
+bindEvent(ui.salesRequestUseGeneratorButton, "click", useSelectedSalesRequestInGenerator);
+bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
+bindEvent(ui.salesGeneratorPrefillButton, "click", () => pushSalesRequestToGenerator(true));
+bindEvent(ui.salesGeneratorFrame, "load", () => pushSalesRequestToGenerator(true));
+bindEvent(ui.salesContentSearch, "input", (event) => {
+  state.search.salesContent = event.target.value;
+  renderSalesContent();
+});
+bindEvent(ui.salesContentForm, "submit", saveSalesContent);
+bindEvent(ui.salesContentNewButton, "click", createNewSalesContent);
+bindEvent(ui.salesContentDeleteButton, "click", deleteSalesContent);
+bindEvent(ui.salesContentAttachmentButton, "click", () => openAttachmentPicker("sales-content"));
 bindEvent(ui.warehouseSearch, "input", (event) => { state.search.warehouse = event.target.value; renderWarehouse(); });
 bindEvent(ui.accountingSearch, "input", (event) => { state.search.accounting = event.target.value; renderAccounting(); });
 bindEvent(ui.accountingAddPaymentButton, "click", addAccountingPaymentRow);
