@@ -772,6 +772,67 @@ function inferInvoiceRequired(accounting = {}, billing = {}) {
   );
 }
 
+function normalizeAccountingPaymentRecord(item = {}, index = 0, fallbackMethod = "") {
+  const amount = Number(toNumber(item.amount ?? item.value ?? 0).toFixed(2));
+  if (amount <= 0) return null;
+  const type = ["deposit", "balance", "manual"].includes(String(item.type || "").trim())
+    ? String(item.type || "").trim()
+    : "manual";
+  return {
+    id: String(item.id || randomUUID()),
+    type,
+    amount,
+    method: String(item.method || fallbackMethod || "").trim(),
+    date: String(item.date || "").trim(),
+    note: String(item.note || "").trim(),
+    createdAt: String(item.createdAt || new Date().toISOString()),
+  };
+}
+
+function buildLegacyAccountingPayments(accounting = {}, fallbackMethod = "") {
+  const payments = [];
+  const depositPaid = Number(toNumber(accounting.depositPaid || 0).toFixed(2));
+  const balancePaid = Number(toNumber(accounting.balancePaid || 0).toFixed(2));
+  if (depositPaid > 0) {
+    payments.push(normalizeAccountingPaymentRecord({
+      id: `legacy-deposit-${randomUUID()}`,
+      type: "deposit",
+      amount: depositPaid,
+      method: fallbackMethod,
+    }, 0, fallbackMethod));
+  }
+  if (balancePaid > 0) {
+    payments.push(normalizeAccountingPaymentRecord({
+      id: `legacy-balance-${randomUUID()}`,
+      type: "balance",
+      amount: balancePaid,
+      method: fallbackMethod,
+    }, 1, fallbackMethod));
+  }
+  return payments.filter(Boolean);
+}
+
+function normalizeAccountingRecord(accounting = {}, fallbackMethod = "", billing = {}) {
+  const paymentMethod = String(accounting.paymentMethod || fallbackMethod || "").trim();
+  let payments = Array.isArray(accounting.payments)
+    ? accounting.payments.map((item, index) => normalizeAccountingPaymentRecord(item, index, paymentMethod)).filter(Boolean)
+    : [];
+  if (!payments.length) {
+    payments = buildLegacyAccountingPayments(accounting, paymentMethod);
+  }
+  const depositPaid = Number(payments.filter((item) => item.type === "deposit").reduce((sum, item) => sum + toNumber(item.amount || 0), 0).toFixed(2));
+  const balancePaid = Number(payments.filter((item) => item.type !== "deposit").reduce((sum, item) => sum + toNumber(item.amount || 0), 0).toFixed(2));
+  return {
+    paymentMethod,
+    depositPaid,
+    balancePaid,
+    payments,
+    invoiceRequired: inferInvoiceRequired(accounting, billing),
+    invoiceIssued: Boolean(accounting?.invoiceIssued),
+    accountingNote: String(accounting?.accountingNote || ""),
+  };
+}
+
 function normalizeLineDetailRecord(item = {}) {
   const taxLines = normalizeTaxLines(item.taxLines || item.tax_lines || []);
   const explicitTaxAmount = item.taxAmount != null ? toNumber(item.taxAmount) : null;
@@ -1366,14 +1427,7 @@ function reconcileStoreData(store) {
         if (netSourceMissing) nextOrder.totals.netSource = "legacy-fallback";
       }
     }
-    nextOrder.accounting = {
-      paymentMethod: nextOrder.accounting?.paymentMethod || nextOrder.paymentMethod || "",
-      depositPaid: toNumber(nextOrder.accounting?.depositPaid || 0),
-      balancePaid: toNumber(nextOrder.accounting?.balancePaid || 0),
-      invoiceRequired: inferInvoiceRequired(nextOrder.accounting, nextOrder.billing),
-      invoiceIssued: Boolean(nextOrder.accounting?.invoiceIssued),
-      accountingNote: nextOrder.accounting?.accountingNote || "",
-    };
+    nextOrder.accounting = normalizeAccountingRecord(nextOrder.accounting || {}, nextOrder.paymentMethod || "", nextOrder.billing);
     nextOrder.attachments = Array.isArray(nextOrder.attachments)
       ? nextOrder.attachments.map((item) => normalizeAttachmentRecord(item, nextOrder.id))
       : [];
@@ -1525,14 +1579,15 @@ function normalizeOrderPayload(order, index) {
     note: order.note || "",
     lineItems,
     lineDetails,
-    accounting: order.accounting || {
+    accounting: normalizeAccountingRecord(order.accounting || {
       paymentMethod: Array.isArray(order.payment_gateway_names) ? order.payment_gateway_names.join(", ") : String(order.paymentMethod || ""),
       depositPaid: 0,
       balancePaid: 0,
+      payments: [],
       invoiceRequired,
       invoiceIssued: false,
       accountingNote: "",
-    },
+    }, Array.isArray(order.payment_gateway_names) ? order.payment_gateway_names.join(", ") : String(order.paymentMethod || ""), billing),
     attachments: Array.isArray(order.attachments) ? order.attachments : [],
     convertedJobId: null,
     createdAt: order.created_at || order.createdAt || order.processed_at || order.processedAt || new Date().toISOString(),
@@ -1612,14 +1667,15 @@ function normalizeGraphqlOrder(node, index) {
     note: node.note || "",
     lineItems,
     lineDetails,
-    accounting: {
+    accounting: normalizeAccountingRecord({
       paymentMethod: Array.isArray(node.paymentGatewayNames) ? node.paymentGatewayNames.join(", ") : "",
       depositPaid: 0,
       balancePaid: 0,
+      payments: [],
       invoiceRequired,
       invoiceIssued: false,
       accountingNote: "",
-    },
+    }, Array.isArray(node.paymentGatewayNames) ? node.paymentGatewayNames.join(", ") : "", billing),
     attachments: Array.isArray(node.attachments) ? node.attachments : [],
     convertedJobId: null,
     createdAt: node.createdAt || node.processedAt || new Date().toISOString(),
@@ -2928,14 +2984,15 @@ async function handleApi(req, res, url) {
       note: String(body.note || ""),
       lineItems: Array.isArray(body.lineItems) ? body.lineItems : [],
       lineDetails,
-      accounting: {
+      accounting: normalizeAccountingRecord({
         paymentMethod: String(body.paymentMethod || ""),
         depositPaid: 0,
         balancePaid: 0,
+        payments: [],
         invoiceRequired: inferInvoiceRequired({}, billing),
         invoiceIssued: false,
         accountingNote: "",
-      },
+      }, String(body.paymentMethod || ""), billing),
       attachments: [],
       convertedJobId: null,
     };
@@ -3176,14 +3233,16 @@ async function handleApi(req, res, url) {
     store.orders[orderIndex] = {
       ...current,
       paymentMethod: body.paymentMethod || current.paymentMethod || "",
-      accounting: {
+      accounting: normalizeAccountingRecord({
+        ...(current.accounting || {}),
         paymentMethod: body.paymentMethod || current.accounting?.paymentMethod || current.paymentMethod || "",
-        depositPaid: toNumber(body.depositPaid || 0),
-        balancePaid: toNumber(body.balancePaid || 0),
+        depositPaid: body.depositPaid ?? current.accounting?.depositPaid ?? 0,
+        balancePaid: body.balancePaid ?? current.accounting?.balancePaid ?? 0,
+        payments: Array.isArray(body.payments) ? body.payments : (current.accounting?.payments || []),
         invoiceRequired: Boolean(body.invoiceRequired),
         invoiceIssued: Boolean(body.invoiceIssued),
-        accountingNote: String(body.accountingNote || current.accounting?.accountingNote || ""),
-      },
+        accountingNote: body.accountingNote ?? current.accounting?.accountingNote ?? "",
+      }, body.paymentMethod || current.accounting?.paymentMethod || current.paymentMethod || "", current.billing || {}),
     };
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.orders[orderIndex]);

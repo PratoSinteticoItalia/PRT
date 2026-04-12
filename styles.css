@@ -3558,6 +3558,47 @@ body {
   padding: 3px 8px;
   border-radius: 6px;
 }
+.order-amount-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.accounting-status-chip {
+  min-width: 96px;
+  justify-content: center;
+}
+.accounting-payments-field {
+  display: grid;
+  gap: 10px;
+}
+.payment-entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.payment-entry {
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(24, 43, 31, 0.08);
+  background: rgba(247, 249, 245, 0.92);
+}
+.payment-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+.payment-entry-remove {
+  min-height: 42px;
+}
+.payment-entry-empty {
+  padding: 12px 14px;
+  font-size: 13px;
+}
+.accounting-add-payment-button {
+  justify-self: start;
+}
 
 /* Reference alignment refresh */
 :root {
@@ -9290,6 +9331,19 @@ body.mobile-safe-mode .nav-link.is-active {
   .section,
   .detail-panel {
     border-radius: 22px;
+  }
+
+  .payment-entry-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .payment-entry-remove {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .order-amount-stack {
+    align-items: flex-start;
   }
 }
 

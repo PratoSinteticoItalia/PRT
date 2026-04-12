@@ -821,6 +821,8 @@ const ui = {
   accountingDetailTitle: document.getElementById("accounting-detail-title"),
   accountingForm: document.getElementById("accounting-form"),
   accountingMeta: document.getElementById("accounting-meta"),
+  accountingPaymentsEditor: document.getElementById("accounting-payments-editor"),
+  accountingAddPaymentButton: document.getElementById("accounting-add-payment-button"),
   importShopifyPaymentButton: document.getElementById("import-shopify-payment-button"),
   shippingSearch: document.getElementById("shipping-search"),
   shippingFilterTags: Array.from(document.querySelectorAll(".shipping-filter-tag")),
@@ -1902,13 +1904,142 @@ function paginateOrders(items) {
   };
 }
 
+function normalizeAccountingPaymentEntry(entry = {}, index = 0, fallbackMethod = "") {
+  const amount = Number(toNumber(entry.amount ?? entry.value ?? 0).toFixed(2));
+  if (amount <= 0) return null;
+  const type = ["deposit", "balance", "manual"].includes(String(entry.type || "").trim())
+    ? String(entry.type || "").trim()
+    : "manual";
+  return {
+    id: String(entry.id || `payment-${Date.now()}-${index}`),
+    type,
+    amount,
+    method: String(entry.method || fallbackMethod || "").trim(),
+    date: String(entry.date || "").trim(),
+    note: String(entry.note || "").trim(),
+  };
+}
+
+function getAccountingPayments(order) {
+  const accounting = order?.accounting || {};
+  const explicit = Array.isArray(accounting.payments)
+    ? accounting.payments.map((entry, index) => normalizeAccountingPaymentEntry(entry, index, accounting.paymentMethod || order?.paymentMethod || ""))
+      .filter(Boolean)
+    : [];
+  if (explicit.length) return explicit;
+
+  const legacy = [];
+  const paymentMethod = accounting.paymentMethod || order?.paymentMethod || "";
+  const depositPaid = Number(toNumber(accounting.depositPaid || 0).toFixed(2));
+  const balancePaid = Number(toNumber(accounting.balancePaid || 0).toFixed(2));
+  if (depositPaid > 0) {
+    legacy.push(normalizeAccountingPaymentEntry({
+      id: `legacy-deposit-${order?.id || "order"}`,
+      type: "deposit",
+      amount: depositPaid,
+      method: paymentMethod,
+    }, 0, paymentMethod));
+  }
+  if (balancePaid > 0) {
+    legacy.push(normalizeAccountingPaymentEntry({
+      id: `legacy-balance-${order?.id || "order"}`,
+      type: "balance",
+      amount: balancePaid,
+      method: paymentMethod,
+    }, 1, paymentMethod));
+  }
+  return legacy.filter(Boolean);
+}
+
+function getAccountingPaymentTypeLabel(type = "manual") {
+  if (type === "deposit") return state.lang === "it" ? "Acconto registrato" : "Recorded deposit";
+  if (type === "balance") return state.lang === "it" ? "Saldo registrato" : "Recorded balance";
+  return state.lang === "it" ? "Pagamento registrato" : "Recorded payment";
+}
+
+function createEmptyAccountingPayment(order = null) {
+  return {
+    id: `payment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type: "manual",
+    amount: 0,
+    method: getEffectivePaymentMethod(order || {}) || "",
+    date: "",
+    note: "",
+  };
+}
+
+function readAccountingPaymentDraft() {
+  if (!ui.accountingPaymentsEditor) return [];
+  return Array.from(ui.accountingPaymentsEditor.querySelectorAll(".payment-entry"))
+    .map((row, index) => normalizeAccountingPaymentEntry({
+      id: row.dataset.paymentId || `draft-${index}`,
+      type: row.querySelector("[name='paymentType']")?.value || "manual",
+      amount: row.querySelector("[name='paymentAmount']")?.value || 0,
+      method: row.querySelector("[name='paymentMethod']")?.value || "",
+      date: row.querySelector("[name='paymentDate']")?.value || "",
+    }, index))
+    .filter(Boolean);
+}
+
+function renderAccountingPaymentEditor(order, payments = null) {
+  if (!ui.accountingPaymentsEditor) return;
+  const entries = Array.isArray(payments) ? payments : getAccountingPayments(order);
+  if (!entries.length) {
+    ui.accountingPaymentsEditor.innerHTML = `
+      <div class="info-card payment-entry-empty">
+        ${state.lang === "it" ? "Nessun pagamento interno registrato. Usa il pulsante qui sotto per aggiungerne uno." : "No internal payments recorded yet. Use the button below to add one."}
+      </div>
+    `;
+    return;
+  }
+  ui.accountingPaymentsEditor.innerHTML = entries.map((payment) => `
+    <div class="payment-entry" data-payment-id="${escapeHtml(payment.id)}">
+      <div class="payment-entry-grid">
+        <label class="field">
+          <span>${state.lang === "it" ? "Tipo" : "Type"}</span>
+          <select class="text-input" name="paymentType">
+            <option value="deposit" ${payment.type === "deposit" ? "selected" : ""}>${state.lang === "it" ? "Acconto" : "Deposit"}</option>
+            <option value="balance" ${payment.type === "balance" ? "selected" : ""}>${state.lang === "it" ? "Saldo" : "Balance"}</option>
+            <option value="manual" ${payment.type === "manual" ? "selected" : ""}>${state.lang === "it" ? "Altro" : "Other"}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Importo" : "Amount"}</span>
+          <input class="text-input" name="paymentAmount" placeholder="0,00" value="${escapeHtml(payment.amount ? String(payment.amount).replace(".", ",") : "")}" />
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Metodo" : "Method"}</span>
+          <input class="text-input" name="paymentMethod" placeholder="${state.lang === "it" ? "Bonifico, contanti..." : "Wire, cash..."}" value="${escapeHtml(payment.method || "")}" />
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Data" : "Date"}</span>
+          <input class="text-input" type="date" name="paymentDate" value="${escapeHtml(payment.date || "")}" />
+        </label>
+        <button type="button" class="ghost-button small-button payment-entry-remove" data-remove-payment="${escapeHtml(payment.id)}">${state.lang === "it" ? "Rimuovi" : "Remove"}</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function addAccountingPaymentRow() {
+  const order = getSelectedOrder();
+  if (!order) return;
+  const draft = readAccountingPaymentDraft();
+  draft.push(createEmptyAccountingPayment(order));
+  renderAccountingPaymentEditor(order, draft);
+}
+
+function removeAccountingPaymentRow(paymentId) {
+  const order = getSelectedOrder();
+  if (!order || !paymentId) return;
+  const draft = readAccountingPaymentDraft().filter((entry) => entry.id !== paymentId);
+  renderAccountingPaymentEditor(order, draft);
+}
+
 function getOpenBalance(order) {
-  const accounting = order.accounting || {};
-  const total = toNumber(order.total);
-  const paidOnShopify = String(order.financialStatus || "").toLowerCase().includes("paid");
-  const internalPaid = toNumber(accounting.depositPaid) + toNumber(accounting.balancePaid);
-  if (paidOnShopify && !internalPaid) return 0;
-  const residual = Math.max(0, total - internalPaid);
+  const total = getOrderGrossTotal(order);
+  const effectivePaid = Math.max(getShopifyPaidAmount(order), getInternalPaidAmount(order));
+  const residual = Math.max(0, total - effectivePaid);
   return residual < 0.05 ? 0 : residual;
 }
 
@@ -1923,8 +2054,7 @@ function isShopifyPaid(order) {
 }
 
 function getInternalPaidAmount(order) {
-  const accounting = order.accounting || {};
-  return toNumber(accounting.depositPaid) + toNumber(accounting.balancePaid);
+  return Number(getAccountingPayments(order).reduce((sum, payment) => sum + toNumber(payment.amount || 0), 0).toFixed(2));
 }
 
 function getCollectedAmount(order) {
@@ -3541,11 +3671,11 @@ function applyStaticTranslations() {
   setFieldLabel(ui.installationExpenseForm, "date", t("expenseDate"));
   setFieldLabel(ui.installationExpenseForm, "note", t("expenseNote"));
   setFieldLabel(ui.accountingForm, "paymentMethod", state.lang === "it" ? "Metodo utilizzato" : "Method used");
-  setFieldLabel(ui.accountingForm, "depositPaid", state.lang === "it" ? "Acconto registrato" : "Deposit recorded");
-  setFieldLabel(ui.accountingForm, "balancePaid", state.lang === "it" ? "Saldo registrato" : "Balance recorded");
   setFieldLabel(ui.accountingForm, "invoiceRequired", state.lang === "it" ? "Fattura richiesta" : "Invoice required");
   setFieldLabel(ui.accountingForm, "invoiceIssued", state.lang === "it" ? "Fattura emessa" : "Invoice issued");
   setFieldLabel(ui.accountingForm, "accountingNote", state.lang === "it" ? "Nota amministrativa" : "Administrative note");
+  setText("accounting-payments-label", state.lang === "it" ? "Pagamenti registrati" : "Recorded payments");
+  setText("accounting-add-payment-button", state.lang === "it" ? "+ Aggiungi pagamento" : "+ Add payment");
   setFieldLabel(ui.shippingForm, "destinationProvinceCode", state.lang === "it" ? "Provincia destinazione" : "Destination province");
   setFieldLabel(ui.shippingForm, "destinationPostalCode", state.lang === "it" ? "CAP destinazione" : "Destination ZIP");
   setFieldLabel(ui.settingsForm, "storeDomain", state.lang === "it" ? "Dominio Shopify" : "Shopify domain");
@@ -5098,6 +5228,8 @@ function renderAccounting() {
         const selected = order.id === state.selectedOrderId ? "selected" : "";
         const openBalance = getOpenBalance(order);
         const billingHealth = getBillingCompleteness(order);
+        const collected = Math.max(getShopifyPaidAmount(order), getInternalPaidAmount(order));
+        const settled = openBalance <= 0 && collected > 0;
         return `
           <article class="order-row accounting-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="accounting">
             <div>
@@ -5109,8 +5241,11 @@ function renderAccounting() {
                 &middot; ${billingHealth.rowLabel}
               </div>
             </div>
-            <div class="order-amount" style="color:${openBalance > 0 ? "#dc2626" : "#16a34a"}">${formatCurrency(openBalance)}</div>
-            <div class="action-badge ${openBalance > 0 ? "badge-urgent" : "badge-success"}">${openBalance > 0 ? t("accountingOpen") : t("accountingOk")}</div>
+            <div class="order-amount-stack">
+              <div class="order-amount" style="color:${openBalance > 0 ? "#dc2626" : "#16a34a"}">${formatCurrency(openBalance)}</div>
+              <div class="action-badge accounting-status-chip ${settled ? "badge-success" : "badge-urgent"}">${settled ? (state.lang === "it" ? "Pagato" : "Paid") : (state.lang === "it" ? "Da incassare" : "To collect")}</div>
+            </div>
+            <div class="action-badge ${billingHealth.tone}">${billingHealth.label}</div>
           </article>
         `;
       }).join("")
@@ -5121,6 +5256,7 @@ function renderAccounting() {
   if (!order) {
     ui.accountingDetailTitle.textContent = t("noSelection");
     ui.accountingMeta.innerHTML = "";
+    if (ui.accountingPaymentsEditor) ui.accountingPaymentsEditor.innerHTML = "";
     return;
   }
   if (needsShopifyFinancialRefresh(order)) {
@@ -5128,11 +5264,10 @@ function renderAccounting() {
   }
   ui.accountingDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
   ui.accountingForm.paymentMethod.value = getEffectivePaymentMethod(order);
-  ui.accountingForm.depositPaid.value = order.accounting?.depositPaid || "";
-  ui.accountingForm.balancePaid.value = order.accounting?.balancePaid || "";
   ui.accountingForm.invoiceRequired.value = order.accounting?.invoiceRequired ? "yes" : "no";
   ui.accountingForm.invoiceIssued.value = order.accounting?.invoiceIssued ? "yes" : "no";
   ui.accountingForm.accountingNote.value = order.accounting?.accountingNote || "";
+  renderAccountingPaymentEditor(order);
 
   const shopifyPaid = getShopifyPaidAmount(order);
   const internalPaid = getInternalPaidAmount(order);
@@ -5149,21 +5284,21 @@ function renderAccounting() {
   const estimatedVat = isEstimatedVatDisplay(order);
   const refreshError = shopifyOrderRefreshErrors.get(order.id) || "";
   const taxRows = Array.isArray(order.lineDetails) ? order.lineDetails : [];
+  const manualPayments = getAccountingPayments(order);
 
   const trancheRows = [];
   if (shopifyPaid > 0) {
     trancheRows.push({ type: state.lang === "it" ? "Acconto fornitura" : "Supply deposit", method: getEffectivePaymentMethod(order), amount: shopifyPaid, status: "received", source: "Shopify" });
   }
-  if (internalPaid > 0) {
-    const depositAmt = toNumber(order.accounting?.depositPaid || 0);
-    const balanceAmt = toNumber(order.accounting?.balancePaid || 0);
-    if (depositAmt > 0) {
-      trancheRows.push({ type: state.lang === "it" ? "Acconto registrato" : "Recorded deposit", method: order.accounting?.paymentMethod || "—", amount: depositAmt, status: "received", source: state.lang === "it" ? "Interno" : "Internal" });
-    }
-    if (balanceAmt > 0) {
-      trancheRows.push({ type: state.lang === "it" ? "Saldo registrato" : "Recorded balance", method: order.accounting?.paymentMethod || "—", amount: balanceAmt, status: "received", source: state.lang === "it" ? "Interno" : "Internal" });
-    }
-  }
+  manualPayments.forEach((payment) => {
+    trancheRows.push({
+      type: getAccountingPaymentTypeLabel(payment.type),
+      method: payment.method || "—",
+      amount: payment.amount,
+      status: "received",
+      source: `${state.lang === "it" ? "Interno" : "Internal"}${payment.date ? ` · ${formatDate(payment.date)}` : ""}`,
+    });
+  });
   if (openBalance > 0 && isInstall) {
     trancheRows.push({ type: state.lang === "it" ? "Saldo posa in opera" : "Install balance", method: "—", amount: openBalance, status: "pending", source: state.lang === "it" ? "Da incassare" : "To collect" });
   } else if (openBalance > 0) {
@@ -5197,7 +5332,7 @@ function renderAccounting() {
           `).join("")}
           ${trancheRows.length === 0 ? `<div class="info-card" style="padding:8px 12px;font-size:12px">${state.lang === "it" ? "Nessun pagamento registrato." : "No payments recorded."}</div>` : ""}
         </div>
-        <button class="btn add-payment-btn" type="button" onclick="document.querySelector('#accounting-form [name=depositPaid]').focus()">${state.lang === "it" ? "+ Aggiungi pagamento" : "+ Add payment"}</button>
+        <button class="btn add-payment-btn" type="button" onclick="(function(btn){ if (btn) btn.click(); })(document.getElementById('accounting-add-payment-button'))">${state.lang === "it" ? "+ Aggiungi pagamento" : "+ Add payment"}</button>
       </div>
     `,
     `
@@ -5260,13 +5395,30 @@ async function importShopifyPayment() {
   const nextNote = currentNote.includes(importedNote)
     ? currentNote
     : [currentNote, importedNote].filter(Boolean).join(" · ");
+  const existingPayments = getAccountingPayments(order);
+  const alreadyImported = existingPayments.some((payment) => Math.abs(toNumber(payment.amount || 0) - shopifyPaid) <= 0.01);
+  const nextPayments = alreadyImported
+    ? existingPayments
+    : [
+        ...existingPayments,
+        normalizeAccountingPaymentEntry({
+          id: `shopify-import-${order.id}-${Date.now()}`,
+          type: existingPayments.length ? "manual" : "balance",
+          amount: shopifyPaid,
+          method: order.paymentMethod || getEffectivePaymentMethod(order),
+          date: new Date().toISOString().slice(0, 10),
+        }, existingPayments.length, order.paymentMethod || getEffectivePaymentMethod(order)),
+      ].filter(Boolean);
+  const depositPaid = Number(nextPayments.filter((entry) => entry.type === "deposit").reduce((sum, entry) => sum + toNumber(entry.amount || 0), 0).toFixed(2));
+  const balancePaid = Number(nextPayments.filter((entry) => entry.type !== "deposit").reduce((sum, entry) => sum + toNumber(entry.amount || 0), 0).toFixed(2));
 
   const updated = await apiFetch(`/api/orders/${order.id}/accounting`, {
     method: "POST",
     body: JSON.stringify({
       paymentMethod: order.paymentMethod || getEffectivePaymentMethod(order),
-      depositPaid: 0,
-      balancePaid: shopifyPaid,
+      depositPaid,
+      balancePaid,
+      payments: nextPayments,
       invoiceRequired: order.accounting?.invoiceRequired,
       invoiceIssued: order.accounting?.invoiceIssued,
       accountingNote: nextNote,
@@ -6801,12 +6953,16 @@ async function saveAccounting(event) {
   const order = getSelectedOrder();
   if (!order) return;
   const form = new FormData(ui.accountingForm);
+  const payments = readAccountingPaymentDraft();
+  const depositPaid = Number(payments.filter((entry) => entry.type === "deposit").reduce((sum, entry) => sum + toNumber(entry.amount || 0), 0).toFixed(2));
+  const balancePaid = Number(payments.filter((entry) => entry.type !== "deposit").reduce((sum, entry) => sum + toNumber(entry.amount || 0), 0).toFixed(2));
   const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/accounting`, {
     method: "POST",
     body: JSON.stringify({
       paymentMethod: form.get("paymentMethod"),
-      depositPaid: form.get("depositPaid"),
-      balancePaid: form.get("balancePaid"),
+      depositPaid,
+      balancePaid,
+      payments,
       invoiceRequired: form.get("invoiceRequired") === "yes",
       invoiceIssued: form.get("invoiceIssued") === "yes",
       accountingNote: form.get("accountingNote"),
@@ -7555,6 +7711,12 @@ bindEvent(ui.ordersSearch, "input", (event) => {
 });
 bindEvent(ui.warehouseSearch, "input", (event) => { state.search.warehouse = event.target.value; renderWarehouse(); });
 bindEvent(ui.accountingSearch, "input", (event) => { state.search.accounting = event.target.value; renderAccounting(); });
+bindEvent(ui.accountingAddPaymentButton, "click", addAccountingPaymentRow);
+bindEvent(ui.accountingPaymentsEditor, "click", (event) => {
+  const removeButton = event.target.closest("[data-remove-payment]");
+  if (!removeButton) return;
+  removeAccountingPaymentRow(removeButton.dataset.removePayment || "");
+});
 if (ui.importShopifyPaymentButton) {
   ui.importShopifyPaymentButton.addEventListener("click", importShopifyPayment);
 }

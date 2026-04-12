@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260412-shopify-no-fallback-18" />
+    <link rel="stylesheet" href="./styles.css?v=20260412-accounting-payments-19" />
   </head>
   <body class="shell-loading">
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -865,14 +865,11 @@
                   <span>Metodo utilizzato</span>
                   <input class="text-input" name="paymentMethod" placeholder="Carta, bonifico, PayPal..." />
                 </label>
-                <label class="field">
-                  <span>Acconto registrato</span>
-                  <input class="text-input" name="depositPaid" placeholder="0,00" />
-                </label>
-                <label class="field">
-                  <span>Saldo registrato</span>
-                  <input class="text-input" name="balancePaid" placeholder="0,00" />
-                </label>
+                <div class="field field-full accounting-payments-field">
+                  <span id="accounting-payments-label">Pagamenti registrati</span>
+                  <div id="accounting-payments-editor" class="payment-entry-list"></div>
+                  <button type="button" id="accounting-add-payment-button" class="ghost-button small-button accounting-add-payment-button">+ Aggiungi pagamento</button>
+                </div>
                 <label class="field">
                   <span>Fattura richiesta</span>
                   <select class="text-input" name="invoiceRequired">
@@ -1209,6 +1206,6 @@
     <input id="attachment-input" type="file" accept="image/*" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260412-shopify-no-fallback-18" type="module"></script>
+    <script src="./app.js?v=20260412-accounting-payments-19" type="module"></script>
   </body>
 </html>
