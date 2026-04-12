@@ -673,6 +673,7 @@ const state = {
   inventory: [],
   salesRequests: [],
   salesContents: [],
+  salesRequestSourceConfig: null,
   users: [],
   securityEvents: [],
   securityPolicy: {},
@@ -681,6 +682,11 @@ const state = {
   selectedOrderId: null,
   selectedSalesRequestId: "",
   selectedSalesContentId: "",
+  pendingSalesRequestServiceAccountJson: "",
+  pendingSalesRequestServiceAccountEmail: "",
+  creatingSalesRequest: false,
+  creatingSalesContent: false,
+  accountingMobilePane: "summary",
   lastSalesGeneratorSignature: "",
   lang: "it",
   filters: {
@@ -785,6 +791,15 @@ const ui = {
   salesRequestImportText: document.getElementById("sales-request-import-text"),
   salesRequestImportConfirmButton: document.getElementById("confirm-sales-request-import-button"),
   salesRequestImportClearButton: document.getElementById("clear-sales-request-import-button"),
+  salesRequestSpreadsheetInput: document.getElementById("sales-request-spreadsheet-input"),
+  salesRequestSheetNameInput: document.getElementById("sales-request-sheet-name-input"),
+  salesRequestSourceSummary: document.getElementById("sales-request-source-summary"),
+  salesRequestSourceStatus: document.getElementById("sales-request-source-status"),
+  salesRequestSourceSaveButton: document.getElementById("sales-request-source-save-button"),
+  salesRequestSourceSyncButton: document.getElementById("sales-request-source-sync-button"),
+  salesRequestServiceAccountButton: document.getElementById("sales-request-service-account-button"),
+  salesRequestClearServiceAccountButton: document.getElementById("sales-request-clear-service-account-button"),
+  salesRequestOpenSheetButton: document.getElementById("sales-request-open-sheet-button"),
   salesRequestsStatus: document.getElementById("sales-requests-status"),
   salesRequestsList: document.getElementById("sales-requests-list"),
   salesRequestForm: document.getElementById("sales-request-form"),
@@ -879,6 +894,7 @@ const ui = {
   accountingDetailTitle: document.getElementById("accounting-detail-title"),
   accountingForm: document.getElementById("accounting-form"),
   accountingMeta: document.getElementById("accounting-meta"),
+  accountingMobileTabs: Array.from(document.querySelectorAll("#accounting-mobile-tabs [data-action='set-accounting-pane']")),
   accountingPaymentsEditor: document.getElementById("accounting-payments-editor"),
   accountingAddPaymentButton: document.getElementById("accounting-add-payment-button"),
   importShopifyPaymentButton: document.getElementById("import-shopify-payment-button"),
@@ -911,6 +927,7 @@ const ui = {
   deleteOrderButton: document.getElementById("delete-order-button"),
   closeModalTriggers: Array.from(document.querySelectorAll("[data-close-modal]")),
   attachmentInput: document.getElementById("attachment-input"),
+  salesRequestServiceAccountInput: document.getElementById("sales-request-service-account-input"),
   dashboardSubtitle: document.getElementById("dashboard-subtitle"),
 };
 
@@ -1160,8 +1177,21 @@ function normalizeSalesRequestRecord(item = {}) {
     status: String(item.status || "new").trim().toLowerCase() || "new",
     note: String(item.note || "").trim(),
     source: String(item.source || "manual").trim() || "manual",
+    sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
+    sourceSheetName: String(item.sourceSheetName || "").trim(),
+    sourceRowNumber: Number(item.sourceRowNumber || 0),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
+  };
+}
+
+function normalizeSalesRequestSourceConfig(config = {}) {
+  return {
+    spreadsheetInput: String(config.spreadsheetInput || "").trim(),
+    sheetName: String(config.sheetName || "").trim(),
+    hasServiceAccount: Boolean(config.hasServiceAccount || (config.serviceAccountEmail && config.privateKey)),
+    serviceAccountEmail: String(config.serviceAccountEmail || "").trim(),
+    editUrl: String(config.editUrl || "").trim(),
   };
 }
 
@@ -1222,6 +1252,10 @@ function getSelectedSalesContent() {
 }
 
 function ensureSelectedSalesRequest() {
+  if (state.creatingSalesRequest) {
+    state.selectedSalesRequestId = "";
+    return null;
+  }
   if (!state.salesRequests.length) {
     state.selectedSalesRequestId = "";
     return null;
@@ -1233,6 +1267,10 @@ function ensureSelectedSalesRequest() {
 }
 
 function ensureSelectedSalesContent() {
+  if (state.creatingSalesContent) {
+    state.selectedSalesContentId = "";
+    return null;
+  }
   if (!state.salesContents.length) {
     state.selectedSalesContentId = "";
     return null;
@@ -1598,6 +1636,163 @@ function updateSalesRequestImportPanel() {
   if (ui.salesRequestImportClearButton) {
     ui.salesRequestImportClearButton.textContent = state.lang === "it" ? "Svuota" : "Clear";
   }
+}
+
+function buildSalesRequestSourceSummary() {
+  const saved = normalizeSalesRequestSourceConfig(state.salesRequestSourceConfig || {});
+  const pendingEmail = String(state.pendingSalesRequestServiceAccountEmail || "").trim();
+  const effectiveEmail = pendingEmail || saved.serviceAccountEmail || "";
+  const spreadsheetLabel = saved.spreadsheetInput || String(ui.salesRequestSpreadsheetInput?.value || "").trim();
+  const sheetLabel = saved.sheetName || String(ui.salesRequestSheetNameInput?.value || "").trim();
+
+  if (!spreadsheetLabel && !effectiveEmail) {
+    return state.lang === "it" ? "Nessuna credenziale caricata." : "No credentials uploaded.";
+  }
+  if (!spreadsheetLabel) {
+    return state.lang === "it"
+      ? `Service account pronto: ${effectiveEmail || "da confermare"}. Inserisci lo spreadsheet e salva il collegamento.`
+      : `Service account ready: ${effectiveEmail || "pending"}. Add the spreadsheet and save the connection.`;
+  }
+  return state.lang === "it"
+    ? `Foglio collegato${sheetLabel ? ` · Tab ${sheetLabel}` : ""}. ${effectiveEmail ? `Service account: ${effectiveEmail}${pendingEmail ? " (da salvare)" : ""}.` : "Credenziali mancanti."}`
+    : `Sheet connected${sheetLabel ? ` · Tab ${sheetLabel}` : ""}. ${effectiveEmail ? `Service account: ${effectiveEmail}${pendingEmail ? " (pending save)" : ""}.` : "Credentials missing."}`;
+}
+
+function updateSalesRequestSourcePanel() {
+  const config = normalizeSalesRequestSourceConfig(state.salesRequestSourceConfig || {});
+  if (ui.salesRequestSpreadsheetInput && document.activeElement !== ui.salesRequestSpreadsheetInput) {
+    ui.salesRequestSpreadsheetInput.value = config.spreadsheetInput || "";
+  }
+  if (ui.salesRequestSheetNameInput && document.activeElement !== ui.salesRequestSheetNameInput) {
+    ui.salesRequestSheetNameInput.value = config.sheetName || "";
+  }
+  if (ui.salesRequestSourceSummary) {
+    ui.salesRequestSourceSummary.textContent = buildSalesRequestSourceSummary();
+    ui.salesRequestSourceSummary.classList.toggle("is-ready", Boolean(config.hasServiceAccount || state.pendingSalesRequestServiceAccountEmail));
+  }
+  if (ui.salesRequestOpenSheetButton) {
+    ui.salesRequestOpenSheetButton.disabled = !config.editUrl;
+  }
+  if (ui.salesRequestClearServiceAccountButton) {
+    ui.salesRequestClearServiceAccountButton.disabled = !config.hasServiceAccount && !state.pendingSalesRequestServiceAccountJson;
+  }
+  if (ui.salesRequestSourceSyncButton) {
+    ui.salesRequestSourceSyncButton.disabled = !config.hasServiceAccount || !config.spreadsheetInput;
+  }
+}
+
+function readSalesRequestSourceDraft() {
+  return {
+    spreadsheetInput: String(ui.salesRequestSpreadsheetInput?.value || "").trim(),
+    sheetName: String(ui.salesRequestSheetNameInput?.value || "").trim(),
+  };
+}
+
+function parseServiceAccountEmail(raw = "") {
+  try {
+    return String(JSON.parse(raw)?.client_email || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+async function handleSalesRequestServiceAccountSelection(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const content = await file.text();
+    const email = parseServiceAccountEmail(content);
+    if (!email) {
+      setStatus(ui.salesRequestSourceStatus, "error", state.lang === "it" ? "JSON service account non valido." : "Invalid service account JSON.");
+      return;
+    }
+    state.pendingSalesRequestServiceAccountJson = content;
+    state.pendingSalesRequestServiceAccountEmail = email;
+    updateSalesRequestSourcePanel();
+    setStatus(
+      ui.salesRequestSourceStatus,
+      "success",
+      state.lang === "it" ? "Credenziali caricate. Salva il collegamento per attivarle." : "Credentials loaded. Save the connection to activate them.",
+    );
+  } catch {
+    setStatus(ui.salesRequestSourceStatus, "error", state.lang === "it" ? "Impossibile leggere il file JSON." : "Unable to read the JSON file.");
+  } finally {
+    if (ui.salesRequestServiceAccountInput) ui.salesRequestServiceAccountInput.value = "";
+  }
+}
+
+async function saveSalesRequestSourceConfig({ clearServiceAccount = false } = {}) {
+  clearStatus(ui.salesRequestSourceStatus);
+  const draft = readSalesRequestSourceDraft();
+  if (!draft.spreadsheetInput) {
+    setStatus(ui.salesRequestSourceStatus, "error", state.lang === "it" ? "Inserisci l'URL o ID dello spreadsheet." : "Enter the spreadsheet URL or ID.");
+    return;
+  }
+  try {
+    const saved = await apiFetch("/api/sales/request-source", {
+      method: "POST",
+      body: JSON.stringify({
+        spreadsheetInput: draft.spreadsheetInput,
+        sheetName: draft.sheetName,
+        serviceAccountJson: clearServiceAccount ? "" : state.pendingSalesRequestServiceAccountJson,
+        clearServiceAccount,
+      }),
+    });
+    state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(saved);
+    state.pendingSalesRequestServiceAccountJson = "";
+    state.pendingSalesRequestServiceAccountEmail = "";
+    updateSalesRequestSourcePanel();
+    setStatus(
+      ui.salesRequestSourceStatus,
+      "success",
+      clearServiceAccount
+        ? (state.lang === "it" ? "Credenziali rimosse." : "Credentials removed.")
+        : (state.lang === "it" ? "Collegamento Google Sheets salvato." : "Google Sheets connection saved."),
+    );
+  } catch (error) {
+    const message = error?.message === "invalid_spreadsheet"
+      ? (state.lang === "it" ? "Spreadsheet non valido." : "Invalid spreadsheet.")
+      : error?.message === "invalid_service_account_json"
+        ? (state.lang === "it" ? "JSON service account non valido." : "Invalid service account JSON.")
+        : (error?.message && !["sales_request_source_save_failed", "request_failed"].includes(error.message)
+            ? error.message
+            : (state.lang === "it" ? "Impossibile salvare il collegamento Google Sheets." : "Unable to save the Google Sheets connection."));
+    setStatus(ui.salesRequestSourceStatus, "error", message);
+  }
+}
+
+async function syncSalesRequestSource() {
+  clearStatus(ui.salesRequestSourceStatus);
+  try {
+    const payload = await apiFetch("/api/sales/request-source/sync", { method: "POST" });
+    state.salesRequests = Array.isArray(payload.requests) ? payload.requests.map(normalizeSalesRequestRecord) : [];
+    state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(payload.config || state.salesRequestSourceConfig || {});
+    state.creatingSalesRequest = false;
+    renderSalesRequests();
+    renderSalesGenerator();
+    setStatus(
+      ui.salesRequestSourceStatus,
+      "success",
+      state.lang === "it"
+        ? `${Number(payload.importedCount || 0)} richieste aggiornate da Google Sheets.`
+        : `${Number(payload.importedCount || 0)} requests updated from Google Sheets.`,
+    );
+  } catch (error) {
+    const message = error?.message === "missing_service_account"
+      ? (state.lang === "it" ? "Carica prima il service account Google." : "Upload the Google service account first.")
+      : error?.message === "missing_spreadsheet"
+        ? (state.lang === "it" ? "Inserisci prima lo spreadsheet." : "Add the spreadsheet first.")
+        : (error?.message && !["sales_request_source_sync_failed", "request_failed"].includes(error.message)
+            ? error.message
+            : (state.lang === "it" ? "Impossibile aggiornare le richieste dal foglio Google." : "Unable to update requests from Google Sheets."));
+    setStatus(ui.salesRequestSourceStatus, "error", message);
+  }
+}
+
+function openSalesRequestSourceSheet() {
+  const config = normalizeSalesRequestSourceConfig(state.salesRequestSourceConfig || {});
+  if (!config.editUrl) return;
+  window.open(config.editUrl, "_blank", "noopener,noreferrer");
 }
 
 function composeAddress(order) {
@@ -2361,6 +2556,8 @@ function renderAccountingPaymentEditor(order, payments = null) {
           <span>${state.lang === "it" ? "Data" : "Date"}</span>
           <input class="text-input" type="date" name="paymentDate" value="${escapeHtml(payment.date || "")}" />
         </label>
+      </div>
+      <div class="payment-entry-actions">
         <button type="button" class="ghost-button small-button payment-entry-remove" data-remove-payment="${escapeHtml(payment.id)}">${state.lang === "it" ? "Rimuovi" : "Remove"}</button>
       </div>
     </div>
@@ -2799,6 +2996,23 @@ function focusViewTarget(view) {
   if (view === "shipping") focusElement(document.querySelector("#shipping .page-header h1"));
 }
 
+function getMobileDetailTarget(view) {
+  if (view === "accounting") return ui.accountingDetailTitle?.closest(".detail-panel") || ui.accountingDetailTitle;
+  if (view === "shipping") return ui.shippingDetailTitle?.closest(".detail-panel") || ui.shippingDetailTitle;
+  if (view === "installations") return ui.installationDetailTitle?.closest(".detail-panel") || ui.installationDetailTitle;
+  return null;
+}
+
+function revealMobileDetailTarget(view) {
+  if (window.innerWidth > 980) return;
+  const target = getMobileDetailTarget(view);
+  if (!target) return;
+  window.setTimeout(() => {
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    focusElement(target);
+  }, 110);
+}
+
 function scrollCurrentViewToTop() {
   const activeView = document.getElementById(state.currentView);
   if (activeView) {
@@ -2818,6 +3032,23 @@ function scrollCurrentViewToTop() {
   }
   document.documentElement.scrollTop = 0;
   document.body.scrollTop = 0;
+}
+
+function updateAccountingPaneVisibility() {
+  const isMobile = window.innerWidth <= 980;
+  const pane = state.accountingMobilePane || "summary";
+  ui.accountingMobileTabs.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.pane === pane);
+  });
+  document.querySelectorAll("#accounting [data-accounting-pane]").forEach((node) => {
+    node.toggleAttribute("hidden", isMobile && node.dataset.accountingPane !== pane);
+  });
+}
+
+function setAccountingPane(pane = "summary") {
+  const allowed = new Set(["summary", "payments", "billing"]);
+  state.accountingMobilePane = allowed.has(pane) ? pane : "summary";
+  updateAccountingPaneVisibility();
 }
 
 function buildDashboardActions() {
@@ -4754,6 +4985,7 @@ function renderSalesRequests() {
   const selected = ensureSelectedSalesRequest();
   const filtered = getFilteredSalesRequests();
   updateSalesRequestImportPanel();
+  updateSalesRequestSourcePanel();
   if (ui.salesRequestsList) {
     ui.salesRequestsList.innerHTML = filtered.length
       ? filtered.map((item) => `
@@ -4895,6 +5127,7 @@ function upsertSalesRequest(saved) {
     ...state.salesRequests.filter((item) => item.id !== normalized.id),
   ];
   state.selectedSalesRequestId = normalized.id;
+  state.creatingSalesRequest = false;
   renderOps();
 }
 
@@ -4905,14 +5138,19 @@ function upsertSalesContent(saved) {
     ...state.salesContents.filter((item) => item.id !== normalized.id),
   ];
   state.selectedSalesContentId = normalized.id;
+  state.creatingSalesContent = false;
   renderOps();
 }
 
 function createNewSalesRequest() {
+  state.creatingSalesRequest = true;
   state.selectedSalesRequestId = "";
   renderSalesRequests();
   clearStatus(ui.salesRequestsStatus);
-  requestAnimationFrame(() => ui.salesRequestForm?.name?.focus());
+  requestAnimationFrame(() => {
+    ui.salesRequestDetailTitle?.scrollIntoView({ behavior: window.innerWidth <= 980 ? "smooth" : "auto", block: "start" });
+    ui.salesRequestForm?.name?.focus();
+  });
 }
 
 async function saveSalesRequest(event) {
@@ -4956,6 +5194,7 @@ async function deleteSalesRequest() {
     await apiFetch(`/api/sales/requests/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
     state.salesRequests = state.salesRequests.filter((item) => item.id !== selected.id);
     state.selectedSalesRequestId = "";
+    state.creatingSalesRequest = false;
     state.lastSalesGeneratorSignature = "";
     renderOps();
     renderSalesRequests();
@@ -5019,10 +5258,14 @@ function useSelectedSalesRequestInGenerator() {
 }
 
 function createNewSalesContent() {
+  state.creatingSalesContent = true;
   state.selectedSalesContentId = "";
   renderSalesContent();
   clearStatus(ui.salesContentStatus);
-  requestAnimationFrame(() => ui.salesContentForm?.title?.focus());
+  requestAnimationFrame(() => {
+    ui.salesContentDetailTitle?.scrollIntoView({ behavior: window.innerWidth <= 980 ? "smooth" : "auto", block: "start" });
+    ui.salesContentForm?.title?.focus();
+  });
 }
 
 async function saveSalesContent(event) {
@@ -5057,6 +5300,7 @@ async function deleteSalesContent() {
     await apiFetch(`/api/sales/content-items/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
     state.salesContents = state.salesContents.filter((item) => item.id !== selected.id);
     state.selectedSalesContentId = "";
+    state.creatingSalesContent = false;
     renderOps();
     renderSalesContent();
     setStatus(ui.salesContentStatus, "success", state.lang === "it" ? "Contenuto eliminato." : "Content deleted.");
@@ -5983,6 +6227,7 @@ function renderAccounting() {
     ui.accountingDetailTitle.textContent = t("noSelection");
     ui.accountingMeta.innerHTML = "";
     if (ui.accountingPaymentsEditor) ui.accountingPaymentsEditor.innerHTML = "";
+    updateAccountingPaneVisibility();
     return;
   }
   if (needsShopifyFinancialRefresh(order)) {
@@ -6105,6 +6350,7 @@ function renderAccounting() {
     `,
     order.accounting?.accountingNote ? `<div class="info-card"><strong>${t("accountingDetailSubtitle")}</strong><p>${order.accounting.accountingNote}</p></div>` : "",
   ].join("");
+  updateAccountingPaneVisibility();
 }
 
 async function importShopifyPayment() {
@@ -6743,6 +6989,12 @@ function applySessionPayload(session = {}) {
   state.inventory = session.inventory || [];
   state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
   state.salesContents = Array.isArray(session.salesContents) ? session.salesContents.map(normalizeSalesContentRecord) : [];
+  state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(session.salesRequestSource || {});
+  state.pendingSalesRequestServiceAccountJson = "";
+  state.pendingSalesRequestServiceAccountEmail = "";
+  state.creatingSalesRequest = false;
+  state.creatingSalesContent = false;
+  state.accountingMobilePane = "summary";
   state.coveragePlanner = normalizeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner);
   state.settings = session.shopifySettings || {};
   state.users = session.users || [];
@@ -8286,6 +8538,7 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "select-sales-request") {
+    state.creatingSalesRequest = false;
     state.selectedSalesRequestId = id || "";
     renderSalesRequests();
     renderSalesGenerator();
@@ -8295,6 +8548,7 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "select-sales-content") {
+    state.creatingSalesContent = false;
     state.selectedSalesContentId = id || "";
     renderSalesContent();
     if (window.innerWidth <= 980) {
@@ -8316,16 +8570,26 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "add-accounting-payment") {
+    state.accountingMobilePane = "payments";
     addAccountingPaymentRow();
+    updateAccountingPaneVisibility();
     requestAnimationFrame(() => {
       ui.accountingPaymentsEditor?.lastElementChild?.querySelector("[name='paymentAmount']")?.focus();
     });
+    return;
+  }
+  if (action === "set-accounting-pane") {
+    setAccountingPane(button.dataset.pane || "summary");
     return;
   }
   const order = state.orders.find((item) => item.id === id) || getSelectedOrder();
   if (!order) return;
   if (action === "select-order") {
     state.selectedOrderId = id;
+    const nextView = button.dataset.view || state.currentView;
+    if (nextView === "accounting") {
+      state.accountingMobilePane = "summary";
+    }
     if (window.innerWidth <= 980) {
       state.mobileMenuOpen = false;
       updateMobileMenu();
@@ -8336,6 +8600,7 @@ function handleGlobalClick(event) {
       render();
       focusViewTarget(state.currentView);
     }
+    revealMobileDetailTarget(nextView);
     return;
   }
   if (action === "open-modal") {
@@ -8423,15 +8688,7 @@ ui.authForm.addEventListener("submit", async (event) => {
         password: form.get("password"),
       }),
     });
-    state.currentUser = session.user;
-    state.orders = session.orders || [];
-    state.inventory = session.inventory || [];
-    state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
-    state.salesContents = Array.isArray(session.salesContents) ? session.salesContents.map(normalizeSalesContentRecord) : [];
-    state.settings = session.shopifySettings || {};
-    state.users = session.users || [];
-    state.securityEvents = session.securityEvents || [];
-    state.securityPolicy = session.securityPolicy || {};
+    applySessionPayload(session);
     if (state.currentUser?.mustChangePassword) state.currentView = "settings";
     ensureSelectedOrder();
     ui.authError.classList.add("hidden");
@@ -8549,6 +8806,12 @@ bindEvent(ui.salesRequestForm, "submit", saveSalesRequest);
 bindEvent(ui.salesRequestNewButton, "click", createNewSalesRequest);
 bindEvent(ui.salesRequestDeleteButton, "click", deleteSalesRequest);
 bindEvent(ui.salesRequestUseGeneratorButton, "click", useSelectedSalesRequestInGenerator);
+bindEvent(ui.salesRequestServiceAccountButton, "click", () => ui.salesRequestServiceAccountInput?.click());
+bindEvent(ui.salesRequestServiceAccountInput, "change", handleSalesRequestServiceAccountSelection);
+bindEvent(ui.salesRequestClearServiceAccountButton, "click", () => saveSalesRequestSourceConfig({ clearServiceAccount: true }));
+bindEvent(ui.salesRequestSourceSaveButton, "click", () => saveSalesRequestSourceConfig());
+bindEvent(ui.salesRequestSourceSyncButton, "click", syncSalesRequestSource);
+bindEvent(ui.salesRequestOpenSheetButton, "click", openSalesRequestSourceSheet);
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => pushSalesRequestToGenerator(true));
 bindEvent(ui.salesGeneratorFrame, "load", () => pushSalesRequestToGenerator(true));
@@ -8562,7 +8825,14 @@ bindEvent(ui.salesContentDeleteButton, "click", deleteSalesContent);
 bindEvent(ui.salesContentAttachmentButton, "click", () => openAttachmentPicker("sales-content"));
 bindEvent(ui.warehouseSearch, "input", (event) => { state.search.warehouse = event.target.value; renderWarehouse(); });
 bindEvent(ui.accountingSearch, "input", (event) => { state.search.accounting = event.target.value; renderAccounting(); });
-bindEvent(ui.accountingAddPaymentButton, "click", addAccountingPaymentRow);
+bindEvent(ui.accountingAddPaymentButton, "click", () => {
+  state.accountingMobilePane = "payments";
+  addAccountingPaymentRow();
+  updateAccountingPaneVisibility();
+  requestAnimationFrame(() => {
+    ui.accountingPaymentsEditor?.lastElementChild?.querySelector("[name='paymentAmount']")?.focus();
+  });
+});
 bindEvent(ui.accountingPaymentsEditor, "click", (event) => {
   const removeButton = event.target.closest("[data-remove-payment]");
   if (!removeButton) return;
@@ -8708,6 +8978,7 @@ bindAccountCrewFields(ui.accountCreateForm);
 handleShopifyOauthFeedback();
 window.addEventListener("resize", () => {
   applyMobileSafeMode();
+  updateAccountingPaneVisibility();
   if (window.innerWidth > 980 && state.mobileMenuOpen) {
     state.mobileMenuOpen = false;
     updateMobileMenu();

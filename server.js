@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, dirname, join, resolve, sep } from "node:path";
-import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT || 4178);
@@ -23,6 +23,9 @@ const STORE_DOC_KEY = "store";
 const SESSION_DOC_KEY = "sessions";
 const USE_POSTGRES = Boolean(DATABASE_URL);
 const USE_R2 = Boolean(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET_NAME);
+const DEFAULT_SALES_REQUEST_SPREADSHEET = "https://docs.google.com/spreadsheets/d/15n7HIxhiX0U2EX28R9euiZfCqBNZPZ0AE8Hmb-p0vHw/edit";
+const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -382,6 +385,12 @@ function buildDefaultStore() {
     inventory: [],
     salesRequests: [],
     salesContents: [],
+    salesRequestSource: {
+      spreadsheetInput: DEFAULT_SALES_REQUEST_SPREADSHEET,
+      sheetName: "",
+      serviceAccountEmail: "",
+      privateKey: "",
+    },
     coveragePlanner: {
       teams: {},
       availability: {},
@@ -1062,6 +1071,272 @@ function normalizeSalesRequestSurface(value = "") {
   return "";
 }
 
+function normalizeSalesRequestSourceConfig(config = {}) {
+  return {
+    spreadsheetInput: String(config.spreadsheetInput || DEFAULT_SALES_REQUEST_SPREADSHEET).trim(),
+    sheetName: String(config.sheetName || "").trim(),
+    serviceAccountEmail: String(config.serviceAccountEmail || "").trim(),
+    privateKey: String(config.privateKey || ""),
+  };
+}
+
+function resolveSpreadsheetId(input = "") {
+  const value = String(input || "").trim();
+  if (!value) throw new Error("missing_spreadsheet");
+  const urlMatch = value.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (urlMatch?.[1]) return urlMatch[1];
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(value)) return value;
+  throw new Error("invalid_spreadsheet");
+}
+
+function buildSpreadsheetEditUrl(input = "") {
+  try {
+    return `https://docs.google.com/spreadsheets/d/${resolveSpreadsheetId(input)}/edit`;
+  } catch {
+    return "";
+  }
+}
+
+function sanitizeSalesRequestSourceConfig(config = {}) {
+  const normalized = normalizeSalesRequestSourceConfig(config);
+  return {
+    spreadsheetInput: normalized.spreadsheetInput,
+    sheetName: normalized.sheetName,
+    hasServiceAccount: Boolean(normalized.serviceAccountEmail && normalized.privateKey),
+    serviceAccountEmail: normalized.serviceAccountEmail,
+    editUrl: buildSpreadsheetEditUrl(normalized.spreadsheetInput),
+  };
+}
+
+function normalizeSalesRequestImportHeader(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function splitImportedSalesRequestName(value = "") {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ");
+  if (!cleaned) return { name: "", surname: "" };
+  const parts = cleaned.split(" ");
+  if (parts.length === 1) return { name: cleaned, surname: "" };
+  return {
+    name: parts.slice(0, -1).join(" "),
+    surname: parts.slice(-1).join(" "),
+  };
+}
+
+function mapSheetSalesRequestField(target, header, rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value) return;
+  const normalizedHeader = normalizeSalesRequestImportHeader(header);
+  if (!normalizedHeader) return;
+
+  if (["nome", "name", "first name", "firstname"].includes(normalizedHeader)) {
+    target.name = value;
+    return;
+  }
+  if (["cognome", "surname", "last name", "lastname"].includes(normalizedHeader)) {
+    target.surname = value;
+    return;
+  }
+  if (["cliente", "customer", "full name", "nome completo", "richiesta", "lead"].includes(normalizedHeader)) {
+    const split = splitImportedSalesRequestName(value);
+    target.name = split.name;
+    target.surname = split.surname;
+    return;
+  }
+  if (["citta", "city", "comune"].includes(normalizedHeader)) {
+    target.city = value;
+    return;
+  }
+  if (["telefono", "phone", "tel", "mobile", "cellulare"].includes(normalizedHeader)) {
+    target.phone = value;
+    return;
+  }
+  if (["email", "mail"].includes(normalizedHeader)) {
+    target.email = value;
+    return;
+  }
+  if (["mq", "sqm", "metri quadri", "metriquadrati"].includes(normalizedHeader)) {
+    target.sqm = value;
+    return;
+  }
+  if (["servizio", "service", "tipologia"].includes(normalizedHeader)) {
+    target.service = value;
+    return;
+  }
+  if (["fondo", "surface", "superficie"].includes(normalizedHeader)) {
+    target.surface = value;
+    return;
+  }
+  if (["assegnazione", "assignment", "owner", "commerciale", "team", "assegnato a", "assegnato", "assegnazione preventivo"].includes(normalizedHeader)) {
+    target.assignment = value;
+    return;
+  }
+  if (["stato", "status", "stato preventivo"].includes(normalizedHeader)) {
+    target.status = value;
+    return;
+  }
+  if (["note", "nota", "notes"].includes(normalizedHeader)) {
+    target.note = value;
+  }
+}
+
+function normalizeSheetKey(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function normalizeSheetHeader(value = "", index = 0) {
+  const label = String(value || "").trim();
+  return label || `column_${index + 1}`;
+}
+
+function getResolvedSheetTitle(config = {}, metadata = {}) {
+  const preferred = normalizeSheetKey(config.sheetName);
+  const sheets = Array.isArray(metadata?.sheets) ? metadata.sheets : [];
+  if (preferred) {
+    const found = sheets.find((sheet) => normalizeSheetKey(sheet?.properties?.title || "") === preferred);
+    if (found?.properties?.title) return String(found.properties.title);
+  }
+  return String(sheets[0]?.properties?.title || "").trim();
+}
+
+function quoteSheetName(sheetName = "") {
+  return `'${String(sheetName || "").replace(/'/g, "''")}'`;
+}
+
+function base64UrlEncode(value) {
+  const source = Buffer.isBuffer(value) ? value : Buffer.from(String(value), "utf8");
+  return source.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function signJwt(payload, privateKey) {
+  const signer = createSign("RSA-SHA256");
+  signer.update(payload);
+  signer.end();
+  return signer.sign(privateKey, "base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function getGoogleAccessTokenForSheets(config) {
+  if (!config.serviceAccountEmail || !config.privateKey) {
+    throw new Error("missing_service_account");
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claims = base64UrlEncode(JSON.stringify({
+    iss: config.serviceAccountEmail,
+    scope: GOOGLE_SHEETS_SCOPE,
+    aud: GOOGLE_TOKEN_URL,
+    iat: now,
+    exp: now + 3600,
+  }));
+  const unsignedToken = `${header}.${claims}`;
+  const assertion = `${unsignedToken}.${signJwt(unsignedToken, config.privateKey)}`;
+  const response = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }).toString(),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) {
+    throw new Error(payload.error_description || payload.error || "google_token_failed");
+  }
+  return payload.access_token;
+}
+
+async function googleSheetsFetch(config, endpoint, options = {}) {
+  const token = await getGoogleAccessTokenForSheets(config);
+  const response = await fetch(`https://sheets.googleapis.com/v4${endpoint}`, {
+    method: options.method || "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    body: options.body,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || payload?.error_description || payload?.error || "google_sheets_failed");
+  }
+  return payload;
+}
+
+async function loadGoogleSheetSalesRequests(config = {}) {
+  const normalizedConfig = normalizeSalesRequestSourceConfig(config);
+  if (!normalizedConfig.spreadsheetInput) throw new Error("missing_spreadsheet");
+  if (!normalizedConfig.serviceAccountEmail || !normalizedConfig.privateKey) throw new Error("missing_service_account");
+
+  const spreadsheetId = resolveSpreadsheetId(normalizedConfig.spreadsheetInput);
+  const metadata = await googleSheetsFetch(
+    normalizedConfig,
+    `/spreadsheets/${spreadsheetId}?fields=properties.title,sheets.properties.title,sheets.properties.index,sheets.properties.sheetId`,
+  );
+  const sheetName = getResolvedSheetTitle(normalizedConfig, metadata);
+  if (!sheetName) {
+    return {
+      requests: [],
+      spreadsheetId,
+      spreadsheetTitle: String(metadata?.properties?.title || "").trim(),
+      sheetName: "",
+      editUrl: buildSpreadsheetEditUrl(normalizedConfig.spreadsheetInput),
+    };
+  }
+
+  const valuesPayload = await googleSheetsFetch(
+    normalizedConfig,
+    `/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(quoteSheetName(sheetName))}`,
+  );
+  const values = Array.isArray(valuesPayload?.values) ? valuesPayload.values : [];
+  const maxColumns = values.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0);
+  if (!maxColumns) {
+    return {
+      requests: [],
+      spreadsheetId,
+      spreadsheetTitle: String(metadata?.properties?.title || "").trim(),
+      sheetName,
+      editUrl: buildSpreadsheetEditUrl(normalizedConfig.spreadsheetInput),
+    };
+  }
+
+  const headers = Array.from({ length: maxColumns }, (_, index) => normalizeSheetHeader(values[0]?.[index], index));
+  const requests = values
+    .slice(1)
+    .map((row = [], index) => {
+      const rowNumber = index + 2;
+      const draft = {
+        id: `gs:${spreadsheetId}:${normalizeSheetKey(sheetName) || "sheet"}:${rowNumber}`,
+        source: "google-sheets",
+        sourceSpreadsheetId: spreadsheetId,
+        sourceSheetName: sheetName,
+        sourceRowNumber: rowNumber,
+      };
+      headers.forEach((header, columnIndex) => mapSheetSalesRequestField(draft, header, row[columnIndex] || ""));
+      return normalizeSalesRequestRecord(draft);
+    })
+    .filter((item) => item.name || item.surname || item.city || item.phone || item.email);
+
+  return {
+    requests,
+    spreadsheetId,
+    spreadsheetTitle: String(metadata?.properties?.title || "").trim(),
+    sheetName,
+    editUrl: buildSpreadsheetEditUrl(normalizedConfig.spreadsheetInput),
+  };
+}
+
 function normalizeSalesRequestRecord(item = {}) {
   return {
     id: String(item.id || randomUUID()),
@@ -1077,6 +1352,9 @@ function normalizeSalesRequestRecord(item = {}) {
     status: String(item.status || "new").trim() || "new",
     note: String(item.note || "").trim(),
     source: String(item.source || "manual").trim() || "manual",
+    sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
+    sourceSheetName: String(item.sourceSheetName || "").trim(),
+    sourceRowNumber: Number(item.sourceRowNumber || 0),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || new Date().toISOString()),
   };
@@ -1427,6 +1705,8 @@ function reconcileStoreData(store) {
   store.salesContents = Array.isArray(store.salesContents)
     ? store.salesContents.map((item) => normalizeSalesContentRecord(item))
     : [];
+
+  store.salesRequestSource = normalizeSalesRequestSourceConfig(store.salesRequestSource || defaults.salesRequestSource);
 
   store.jobs = Array.isArray(store.jobs) ? store.jobs : [];
   store.orders = Array.isArray(store.orders) ? store.orders : [];
@@ -2463,6 +2743,7 @@ async function handleApi(req, res, url) {
       inventory: currentUser ? store.inventory : [],
       salesRequests: currentUser?.role === "office" ? store.salesRequests : [],
       salesContents: currentUser?.role === "office" ? store.salesContents : [],
+      salesRequestSource: currentUser?.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
       coveragePlanner: currentUser ? store.coveragePlanner : normalizeCoveragePlanner(),
       shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
       users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
@@ -2533,6 +2814,7 @@ async function handleApi(req, res, url) {
         inventory: store.inventory,
         salesRequests: user.role === "office" ? store.salesRequests : [],
         salesContents: user.role === "office" ? store.salesContents : [],
+        salesRequestSource: user.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
         coveragePlanner: store.coveragePlanner,
         shopifySettings: serializeShopifySettings(store.shopifySettings),
         users: user.role === "office" ? store.users.map(sanitizeUser) : [],
@@ -2576,6 +2858,90 @@ async function handleApi(req, res, url) {
     store.coveragePlanner = normalizeCoveragePlanner(body || {});
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.coveragePlanner);
+  }
+
+  if (url.pathname === "/api/sales/request-source" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    try {
+      const currentConfig = normalizeSalesRequestSourceConfig(store.salesRequestSource || {});
+      const nextConfig = normalizeSalesRequestSourceConfig({
+        ...currentConfig,
+        spreadsheetInput: body.spreadsheetInput ?? currentConfig.spreadsheetInput,
+        sheetName: body.sheetName ?? currentConfig.sheetName,
+      });
+      if (body.clearServiceAccount) {
+        nextConfig.serviceAccountEmail = "";
+        nextConfig.privateKey = "";
+      }
+      const rawServiceAccountJson = String(body.serviceAccountJson || "").trim();
+      if (rawServiceAccountJson) {
+        const parsed = JSON.parse(rawServiceAccountJson);
+        const email = String(parsed.client_email || "").trim();
+        const privateKey = String(parsed.private_key || "");
+        if (!email || !privateKey) return sendJson(res, 400, { error: "invalid_service_account_json" });
+        nextConfig.serviceAccountEmail = email;
+        nextConfig.privateKey = privateKey;
+      }
+      resolveSpreadsheetId(nextConfig.spreadsheetInput);
+      store.salesRequestSource = nextConfig;
+      await writeJson(STORE_PATH, store);
+      return sendJson(res, 200, sanitizeSalesRequestSourceConfig(nextConfig));
+    } catch (error) {
+      if (error instanceof SyntaxError) return sendJson(res, 400, { error: "invalid_service_account_json" });
+      if (error?.message === "invalid_spreadsheet" || error?.message === "missing_spreadsheet") {
+        return sendJson(res, 400, { error: error.message });
+      }
+      return sendJson(res, 500, { error: String(error?.message || "sales_request_source_save_failed") });
+    }
+  }
+
+  if (url.pathname === "/api/sales/request-source/sync" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const sourcePayload = await loadGoogleSheetSalesRequests(store.salesRequestSource || {});
+      const now = new Date().toISOString();
+      const existingById = new Map(
+        (Array.isArray(store.salesRequests) ? store.salesRequests : [])
+          .filter((item) => String(item.source || "") === "google-sheets")
+          .map((item) => [item.id, item]),
+      );
+      const importedRequests = sourcePayload.requests.map((item) => {
+        const existing = existingById.get(item.id) || null;
+        return normalizeSalesRequestRecord({
+          ...item,
+          assignment: item.assignment || existing?.assignment || "",
+          status: item.status || existing?.status || "new",
+          note: item.note || existing?.note || "",
+          createdAt: existing?.createdAt || item.createdAt || now,
+          updatedAt: now,
+        });
+      });
+      const manualRequests = (Array.isArray(store.salesRequests) ? store.salesRequests : [])
+        .filter((item) => String(item.source || "") !== "google-sheets");
+      store.salesRequestSource = normalizeSalesRequestSourceConfig({
+        ...(store.salesRequestSource || {}),
+        spreadsheetInput: store.salesRequestSource?.spreadsheetInput || DEFAULT_SALES_REQUEST_SPREADSHEET,
+        sheetName: sourcePayload.sheetName || store.salesRequestSource?.sheetName || "",
+      });
+      store.salesRequests = [...importedRequests, ...manualRequests];
+      await writeJson(STORE_PATH, store);
+      return sendJson(res, 200, {
+        requests: store.salesRequests,
+        importedCount: importedRequests.length,
+        config: sanitizeSalesRequestSourceConfig(store.salesRequestSource),
+        sheetName: sourcePayload.sheetName,
+        spreadsheetTitle: sourcePayload.spreadsheetTitle,
+        editUrl: sourcePayload.editUrl,
+      });
+    } catch (error) {
+      if (["missing_service_account", "missing_spreadsheet", "invalid_spreadsheet"].includes(String(error?.message || ""))) {
+        return sendJson(res, 400, { error: error.message });
+      }
+      return sendJson(res, 500, { error: String(error?.message || "sales_request_source_sync_failed") });
+    }
   }
 
   if (url.pathname === "/api/sales/requests" && req.method === "POST") {
@@ -2867,6 +3233,9 @@ async function handleApi(req, res, url) {
       jobs: store.jobs,
       orders: store.orders,
       inventory: store.inventory,
+      salesRequests: currentUser?.role === "office" ? store.salesRequests : [],
+      salesContents: currentUser?.role === "office" ? store.salesContents : [],
+      salesRequestSource: currentUser?.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
       shopifySettings: serializeShopifySettings(store.shopifySettings),
       users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
       securityEvents: currentUser?.role === "office" ? store.securityEvents : [],

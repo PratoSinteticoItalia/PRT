@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260412-sales-ux-21" />
+    <link rel="stylesheet" href="./styles.css?v=20260413-sales-requests-22" />
   </head>
   <body class="shell-loading">
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -431,6 +431,42 @@
               <button id="sales-request-new-button" class="ghost-button small-button" type="button">Nuova richiesta</button>
             </div>
           </div>
+          <section class="panel sales-request-source-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">Collegamento Google Sheets</p>
+                <h3>Stesso file, lettura aggiornata delle richieste</h3>
+              </div>
+              <div class="panel-head-actions">
+                <button id="sales-request-service-account-button" class="ghost-button small-button" type="button">Importa JSON</button>
+                <button id="sales-request-clear-service-account-button" class="ghost-button small-button" type="button">Rimuovi credenziali</button>
+                <button id="sales-request-open-sheet-button" class="ghost-button small-button" type="button">Apri foglio Google</button>
+              </div>
+            </div>
+            <div class="sales-request-source-grid inline-form-grid">
+              <label class="field">
+                <span>Spreadsheet URL o ID</span>
+                <input id="sales-request-spreadsheet-input" class="text-input" type="text" placeholder="https://docs.google.com/spreadsheets/d/.../edit" />
+              </label>
+              <label class="field">
+                <span>Nome tab</span>
+                <input id="sales-request-sheet-name-input" class="text-input" type="text" placeholder="Lascia vuoto per usare il primo foglio" />
+              </label>
+              <div class="field field-full">
+                <div id="sales-request-source-summary" class="info-card sales-request-source-summary">
+                  Nessuna credenziale caricata.
+                </div>
+              </div>
+              <div id="sales-request-source-status" class="panel-note hidden field-full"></div>
+              <div class="inline-actions field-full">
+                <button id="sales-request-source-save-button" class="primary-button small-button" type="button">Salva collegamento</button>
+                <button id="sales-request-source-sync-button" class="ghost-button small-button" type="button">Aggiorna richieste</button>
+              </div>
+            </div>
+            <div class="hint-box sales-request-source-hint">
+              <p>Collega il service account Google e lo stesso spreadsheet usato dal vecchio CRM. Da qui puoi aggiornare le richieste reali senza reinserirle a mano.</p>
+            </div>
+          </section>
           <div class="dashboard-grid sales-dashboard-grid">
             <section class="panel">
               <div class="panel-head">
@@ -1101,41 +1137,50 @@
                   <div class="detail-id">Pagamenti, residui e fatturazione</div>
                 </div>
               </div>
+              <div id="accounting-mobile-tabs" class="detail-mobile-tabs">
+                <button type="button" class="detail-mobile-tab is-active" data-action="set-accounting-pane" data-pane="summary">Riepilogo</button>
+                <button type="button" class="detail-mobile-tab" data-action="set-accounting-pane" data-pane="payments">Incassi</button>
+                <button type="button" class="detail-mobile-tab" data-action="set-accounting-pane" data-pane="billing">Fattura</button>
+              </div>
 
               <form id="accounting-form" class="inline-form-grid">
-                <label class="field">
-                  <span>Metodo utilizzato</span>
-                  <input class="text-input" name="paymentMethod" placeholder="Carta, bonifico, PayPal..." />
-                </label>
-                <div class="field field-full accounting-payments-field">
-                  <span id="accounting-payments-label">Pagamenti registrati</span>
-                  <div id="accounting-payments-editor" class="payment-entry-list"></div>
-                  <button type="button" id="accounting-add-payment-button" class="ghost-button small-button accounting-add-payment-button">+ Aggiungi pagamento</button>
+                <div class="accounting-pane-group field-full" data-accounting-pane="payments">
+                  <label class="field">
+                    <span>Metodo utilizzato</span>
+                    <input class="text-input" name="paymentMethod" placeholder="Carta, bonifico, PayPal..." />
+                  </label>
+                  <div class="field field-full accounting-payments-field">
+                    <span id="accounting-payments-label">Pagamenti registrati</span>
+                    <div id="accounting-payments-editor" class="payment-entry-list"></div>
+                    <button type="button" id="accounting-add-payment-button" class="ghost-button small-button accounting-add-payment-button">+ Aggiungi pagamento</button>
+                  </div>
                 </div>
-                <label class="field">
-                  <span>Fattura richiesta</span>
-                  <select class="text-input" name="invoiceRequired">
-                    <option value="no">No</option>
-                    <option value="yes">Sì</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Fattura emessa</span>
-                  <select class="text-input" name="invoiceIssued">
-                    <option value="no">No</option>
-                    <option value="yes">Sì</option>
-                  </select>
-                </label>
-                <label class="field field-full">
-                  <span>Nota amministrativa</span>
-                  <textarea class="text-input" name="accountingNote" rows="4" placeholder="Saldo da richiamare, fattura inviata, pagamento in attesa..."></textarea>
-                </label>
-                <div class="inline-actions field-full">
-                  <button type="button" id="import-shopify-payment-button" class="ghost-button small-button">Importa pagamento Shopify</button>
-                  <button type="submit" class="primary-button small-button">Salva contabilità</button>
+                <div class="accounting-pane-group field-full" data-accounting-pane="billing">
+                  <label class="field">
+                    <span>Fattura richiesta</span>
+                    <select class="text-input" name="invoiceRequired">
+                      <option value="no">No</option>
+                      <option value="yes">Sì</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Fattura emessa</span>
+                    <select class="text-input" name="invoiceIssued">
+                      <option value="no">No</option>
+                      <option value="yes">Sì</option>
+                    </select>
+                  </label>
+                  <label class="field field-full">
+                    <span>Nota amministrativa</span>
+                    <textarea class="text-input" name="accountingNote" rows="4" placeholder="Saldo da richiamare, fattura inviata, pagamento in attesa..."></textarea>
+                  </label>
+                  <div class="inline-actions field-full">
+                    <button type="button" id="import-shopify-payment-button" class="ghost-button small-button">Importa pagamento Shopify</button>
+                    <button type="submit" class="primary-button small-button">Salva contabilità</button>
+                  </div>
                 </div>
               </form>
-              <div id="accounting-meta" class="detail-stack"></div>
+              <div id="accounting-meta" class="detail-stack accounting-pane-group" data-accounting-pane="summary"></div>
             </section>
           </div>
         </section>
@@ -1446,8 +1491,9 @@
     </div>
 
     <input id="attachment-input" type="file" accept="image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx" class="hidden" />
+    <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260412-sales-ux-21" type="module"></script>
+    <script src="./app.js?v=20260413-sales-requests-22" type="module"></script>
   </body>
 </html>
