@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="application-name" content="PSI Ops" />
-    <meta name="theme-color" content="#1f4d32" />
+    <meta name="theme-color" content="#18241f" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -18,9 +18,24 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260412-mobile-accounting-14" />
+    <link rel="stylesheet" href="./styles.css?v=20260412-apple-enterprise-15" />
   </head>
-  <body>
+  <body class="shell-loading">
+    <div id="shell-launch" class="shell-launch" aria-hidden="true">
+      <div class="shell-launch-card">
+        <div class="shell-launch-mark">
+          <img src="./logo-prato.png" alt="Prato Sintetico Italia" class="brand-logo" />
+        </div>
+        <div class="shell-launch-copy">
+          <p class="shell-launch-kicker">Prato Sintetico Italia</p>
+          <h2>Workspace operativo</h2>
+          <p>Stiamo riallineando ordini, logistica, pose e contabilità.</p>
+        </div>
+        <div class="shell-launch-progress">
+          <span></span>
+        </div>
+      </div>
+    </div>
     <section id="auth-screen" class="auth-screen shell-pending">
       <div class="auth-card">
         <div class="auth-brand">
@@ -1194,6 +1209,6 @@
     <input id="attachment-input" type="file" accept="image/*" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260412-mobile-accounting-14" type="module"></script>
+    <script src="./app.js?v=20260412-apple-enterprise-15" type="module"></script>
   </body>
 </html>

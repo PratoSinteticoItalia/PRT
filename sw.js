@@ -1,11 +1,11 @@
-const CACHE_NAME = "psi-ops-shell-20260412-mobile-accounting-14";
+const CACHE_NAME = "psi-ops-shell-20260412-apple-enterprise-15";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/garden-planner.html",
-  "/garden-planner-page.js?v=20260412-mobile-accounting-14",
-  "/styles.css?v=20260412-mobile-accounting-14",
-  "/app.js?v=20260412-mobile-accounting-14",
+  "/garden-planner-page.js?v=20260412-apple-enterprise-15",
+  "/styles.css?v=20260412-apple-enterprise-15",
+  "/app.js?v=20260412-apple-enterprise-15",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",
@@ -54,19 +54,26 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
 
-  if (request.mode === "navigate" || NETWORK_FIRST_PATHS.has(url.pathname)) {
+  const isShellRequest = request.mode === "navigate" || NETWORK_FIRST_PATHS.has(url.pathname);
+  if (isShellRequest) {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (!response || response.status !== 200 || response.type !== "basic") return response;
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          return cached || caches.match("/index.html");
-        }),
+      caches.match(request).then(async (cached) => {
+        const fallbackTarget = request.mode === "navigate" ? "/index.html" : request;
+        const networkPromise = fetch(request)
+          .then((response) => {
+            if (!response || response.status !== 200 || response.type !== "basic") return response;
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+            return response;
+          })
+          .catch(async () => cached || caches.match(fallbackTarget));
+
+        if (cached) {
+          event.waitUntil(networkPromise.then(() => undefined).catch(() => undefined));
+          return cached;
+        }
+        return networkPromise;
+      }),
     );
     return;
   }
