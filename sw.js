@@ -1,11 +1,11 @@
-const CACHE_NAME = "psi-ops-shell-20260412-shopify-vat-16";
+const CACHE_NAME = "psi-ops-shell-20260412-shopify-refresh-17";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/garden-planner.html",
-  "/garden-planner-page.js?v=20260412-shopify-vat-16",
-  "/styles.css?v=20260412-shopify-vat-16",
-  "/app.js?v=20260412-shopify-vat-16",
+  "/garden-planner-page.js?v=20260412-shopify-refresh-17",
+  "/styles.css?v=20260412-shopify-refresh-17",
+  "/app.js?v=20260412-shopify-refresh-17",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",

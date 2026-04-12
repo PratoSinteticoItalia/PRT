@@ -688,6 +688,8 @@ let shopifyAutoSyncTimer = 0;
 let shopifyAutoSyncInFlight = false;
 let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
+const shopifyOrderRefreshInFlight = new Set();
+const shopifyOrderRefreshAttempted = new Set();
 
 const ui = {
   authScreen: document.getElementById("auth-screen"),
@@ -2029,6 +2031,32 @@ function getOrderNetDisplay(order) {
   return hasReliableNetData(order) || isEstimatedVatDisplay(order)
     ? formatCurrency(getDisplayedNetSubtotal(order))
     : (state.lang === "it" ? "Da verificare" : "To verify");
+}
+
+function isShopifyBackedOrder(order) {
+  return String(order?.source || "").toLowerCase().startsWith("shopify");
+}
+
+function needsShopifyFinancialRefresh(order) {
+  return isShopifyBackedOrder(order) && isEstimatedVatDisplay(order);
+}
+
+async function refreshOrderFromShopify(orderId) {
+  if (!orderId || shopifyOrderRefreshInFlight.has(orderId) || shopifyOrderRefreshAttempted.has(orderId)) return;
+  shopifyOrderRefreshInFlight.add(orderId);
+  shopifyOrderRefreshAttempted.add(orderId);
+  try {
+    const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/refresh-shopify`, {
+      method: "POST",
+    });
+    state.orders = state.orders.map((item) => (item.id === orderId || item.id === saved.id ? saved : item));
+    if (state.selectedOrderId === orderId) state.selectedOrderId = saved.id;
+    render();
+  } catch (error) {
+    console.warn("shopify_order_refresh_failed", orderId, error);
+  } finally {
+    shopifyOrderRefreshInFlight.delete(orderId);
+  }
 }
 
 function getBillingDisplayName(order) {
@@ -5063,6 +5091,9 @@ function renderAccounting() {
     ui.accountingMeta.innerHTML = "";
     return;
   }
+  if (needsShopifyFinancialRefresh(order)) {
+    refreshOrderFromShopify(order.id);
+  }
   ui.accountingDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
   ui.accountingForm.paymentMethod.value = getEffectivePaymentMethod(order);
   ui.accountingForm.depositPaid.value = order.accounting?.depositPaid || "";
@@ -5114,6 +5145,7 @@ function renderAccounting() {
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Totale ivato" : "Gross total"}</span><span class="detail-row-value detail-row-value-mono" style="font-size:18px">${formatCurrency(grossTotal)}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Stato Shopify" : "Shopify status"}</span><span class="detail-row-value">${getPaymentLabel(order.financialStatus)} · ${getFulfillmentLabel(order.fulfillmentStatus)}</span></div>
         <div class="detail-row"><span class="detail-row-label">${t("realResidual")}</span><span class="detail-row-value" style="color:${openBalance > 0 ? "#dc2626" : "#16a34a"};font-weight:800;font-size:16px">${formatCurrency(openBalance)}</span></div>
+        ${shopifyOrderRefreshInFlight.has(order.id) ? `<div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Aggiornamento Shopify" : "Shopify refresh"}</span><span class="detail-row-value">${state.lang === "it" ? "Recupero importi reali dall'ordine Shopify..." : "Fetching exact totals from the Shopify order..."}</span></div>` : ""}
         ${estimatedVat ? `<div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Nota IVA" : "VAT note"}</span><span class="detail-row-value">${state.lang === "it" ? "Calcolata in fallback con aliquota standard 22% in attesa del dettaglio fiscale Shopify." : "Calculated with the standard 22% fallback while waiting for Shopify tax detail."}</span></div>` : ""}
       </div>
     `,
@@ -5990,6 +6022,8 @@ async function runShopifySync({ silent = false } = {}) {
     updateShell();
     if (!silent) clearStatus(ui.ordersStatus);
     state.orders = await apiFetch("/api/orders/sync-shopify", { method: "POST" });
+    shopifyOrderRefreshAttempted.clear();
+    shopifyOrderRefreshInFlight.clear();
     ensureSelectedOrder();
     await keepSessionAlive({ silent: true });
     if (!silent) {

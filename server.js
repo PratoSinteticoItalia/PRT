@@ -1652,104 +1652,7 @@ async function syncOrdersFromShopify(store) {
   const accessToken = await getShopifyAccessToken(store);
 
   const endpoint = `https://${storeDomain}/admin/api/2026-01/graphql.json`;
-  const orderFields = `
-    id
-    legacyResourceId
-    name
-    email
-    note
-    customAttributes {
-      key
-      value
-    }
-    taxesIncluded
-    displayFinancialStatus
-    displayFulfillmentStatus
-    paymentGatewayNames
-    currentSubtotalPriceSet {
-      shopMoney {
-        amount
-        currencyCode
-      }
-    }
-    currentTotalPriceSet {
-      shopMoney {
-        amount
-        currencyCode
-      }
-    }
-    currentTotalTaxSet {
-      shopMoney {
-        amount
-        currencyCode
-      }
-    }
-    billingAddress {
-      firstName
-      lastName
-      company
-      phone
-      city
-      province
-      provinceCode
-      zip
-      countryCodeV2
-      address1
-      address2
-    }
-    customer {
-      firstName
-      lastName
-      email
-      phone
-    }
-    shippingAddress {
-      firstName
-      lastName
-      phone
-      city
-      province
-      provinceCode
-      zip
-      countryCodeV2
-      address1
-      address2
-    }
-    lineItems(first: 20) {
-      edges {
-        node {
-          name
-          currentQuantity
-          sku
-          variantTitle
-          taxable
-          requiresShipping
-          discountedTotalSet {
-            shopMoney {
-              amount
-              currencyCode
-            }
-          }
-          totalTaxSet {
-            shopMoney {
-              amount
-              currencyCode
-            }
-          }
-          taxLines {
-            title
-            rate
-            priceSet {
-              shopMoney {
-                amount
-                currencyCode
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
+  const orderFields = getShopifyOrderFields(20);
 
   async function fetchOrderBatch(batchQuery, batchLabel) {
     let lastError = null;
@@ -1937,6 +1840,168 @@ async function validateShopifyConnection(store) {
       ? data.currentAppInstallation.accessScopes.map((item) => item?.handle).filter(Boolean)
       : [],
   };
+}
+
+function getShopifyOrderFields(lineLimit = 20) {
+  return `
+    id
+    legacyResourceId
+    name
+    email
+    note
+    customAttributes {
+      key
+      value
+    }
+    taxesIncluded
+    displayFinancialStatus
+    displayFulfillmentStatus
+    paymentGatewayNames
+    currentSubtotalPriceSet {
+      shopMoney {
+        amount
+        currencyCode
+      }
+    }
+    currentTotalPriceSet {
+      shopMoney {
+        amount
+        currencyCode
+      }
+    }
+    currentTotalTaxSet {
+      shopMoney {
+        amount
+        currencyCode
+      }
+    }
+    billingAddress {
+      firstName
+      lastName
+      company
+      phone
+      city
+      province
+      provinceCode
+      zip
+      countryCodeV2
+      address1
+      address2
+    }
+    customer {
+      firstName
+      lastName
+      email
+      phone
+    }
+    shippingAddress {
+      firstName
+      lastName
+      phone
+      city
+      province
+      provinceCode
+      zip
+      countryCodeV2
+      address1
+      address2
+    }
+    lineItems(first: ${Math.max(1, Number(lineLimit || 20))}) {
+      edges {
+        node {
+          name
+          currentQuantity
+          sku
+          variantTitle
+          taxable
+          requiresShipping
+          discountedTotalSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+          }
+          totalTaxSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+          }
+          taxLines {
+            title
+            rate
+            priceSet {
+              shopMoney {
+                amount
+                currencyCode
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+}
+
+async function refreshSingleShopifyOrder(store, order = {}) {
+  const accessToken = await getShopifyAccessToken(store);
+  const orderFields = getShopifyOrderFields(250);
+  const orderGraphqlId = getNormalizedShopifyGraphqlId(order);
+  let node = null;
+
+  if (orderGraphqlId) {
+    const data = await queryShopifyAdmin(
+      store,
+      accessToken,
+      `
+        query VertexOpsOrderById($id: ID!) {
+          node(id: $id) {
+            ... on Order {
+              ${orderFields}
+            }
+          }
+        }
+      `,
+      { id: orderGraphqlId },
+      "shopify_order_refresh_failed",
+    );
+    node = data?.node || null;
+  }
+
+  if (!node) {
+    const orderNumber = String(order.orderNumber || "").trim();
+    const rawNumber = orderNumber.replace(/^#/, "").trim();
+    const searchQueries = [orderNumber, rawNumber]
+      .filter(Boolean)
+      .map((value) => `name:${value}`);
+    for (const queryText of searchQueries) {
+      const data = await queryShopifyAdmin(
+        store,
+        accessToken,
+        `
+          query VertexOpsOrderByName($query: String!) {
+            orders(first: 1, query: $query, sortKey: PROCESSED_AT, reverse: true) {
+              edges {
+                node {
+                  ${orderFields}
+                }
+              }
+            }
+          }
+        `,
+        { query: queryText },
+        "shopify_order_refresh_failed",
+      );
+      node = data?.orders?.edges?.[0]?.node || null;
+      if (node) break;
+    }
+  }
+
+  if (!node) {
+    throw new Error("shopify_order_not_found");
+  }
+
+  return normalizeGraphqlOrder(node, 0);
 }
 
 function buildTrackingUrl(carrier = "", trackingNumber = "") {
@@ -2827,6 +2892,25 @@ async function handleApi(req, res, url) {
 
   if (url.pathname.startsWith("/api/orders/") && req.method === "DELETE" && !url.pathname.endsWith("/create-job") && !url.pathname.endsWith("/accounting") && !url.pathname.endsWith("/attachments")) {
     return sendJson(res, 403, { error: "order_deletion_disabled" });
+  }
+
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/refresh-shopify$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const orderIndex = store.orders.findIndex((item) => item.id === orderId);
+    if (orderIndex < 0) return sendJson(res, 404, { error: "order_not_found" });
+    const current = store.orders[orderIndex];
+    if (!String(current.source || "").toLowerCase().startsWith("shopify")) {
+      return sendJson(res, 400, { error: "shopify_order_required" });
+    }
+    try {
+      const refreshedOrder = await refreshSingleShopifyOrder(store, current);
+      const result = upsertOrderRecord(store, refreshedOrder);
+      store.orders = sortOrdersByRecency(store.orders);
+      await writeJson(STORE_PATH, store);
+      return sendJson(res, 200, result.order);
+    } catch (error) {
+      return sendJson(res, 400, { error: error.message || "shopify_order_refresh_failed" });
+    }
   }
 
   if (
