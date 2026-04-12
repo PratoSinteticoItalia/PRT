@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { extname, dirname, join, resolve } from "node:path";
+import { extname, dirname, join, resolve, sep } from "node:path";
 import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
@@ -43,6 +43,8 @@ const SHOPIFY_OAUTH_SCOPES = [
   "read_products",
   "read_inventory",
   "read_fulfillments",
+  "read_merchant_managed_fulfillment_orders",
+  "write_merchant_managed_fulfillment_orders",
 ].join(",");
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
@@ -161,6 +163,16 @@ function buildSessionCookie(sessionId, maxAgeSeconds = Math.floor(SESSION_TTL_MS
 function buildExpiredSessionCookie() {
   const secureFlag = IS_PUBLIC_DEPLOY ? "; Secure" : "";
   return `vertex_session=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax${secureFlag}`;
+}
+
+function buildShopifyOauthStateCookie(state) {
+  const secureFlag = IS_PUBLIC_DEPLOY ? "; Secure" : "";
+  return `shopify_oauth_state=${encodeURIComponent(state)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=900${secureFlag}`;
+}
+
+function buildExpiredShopifyOauthStateCookie() {
+  const secureFlag = IS_PUBLIC_DEPLOY ? "; Secure" : "";
+  return `shopify_oauth_state=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax${secureFlag}`;
 }
 
 function ensureWritableDataDir() {
@@ -614,11 +626,111 @@ function normalizeStringLineDetails(lineItems = []) {
   return lineItems.map((item) => {
     const raw = String(item || "");
     const qtyMatch = raw.match(/·\s*(\d+(?:[.,]\d+)?)\s*pz/i);
-    return {
+    return normalizeLineDetailRecord({
       title: raw.replace(/\s*·\s*\d+(?:[.,]\d+)?\s*pz/i, "").trim(),
       quantity: qtyMatch ? toNumber(qtyMatch[1]) : 1,
-    };
+    });
   });
+}
+
+function normalizeTaxLines(lines = []) {
+  if (!Array.isArray(lines)) return [];
+  return lines
+    .map((item) => ({
+      title: String(item?.title || item?.name || "").trim(),
+      rate: toNumber(item?.rate ?? 0),
+      amount: toNumber(item?.price ?? item?.amount ?? item?.priceSet?.shopMoney?.amount ?? 0),
+    }))
+    .filter((item) => item.title || item.rate > 0 || item.amount > 0);
+}
+
+function normalizeLineDetailRecord(item = {}) {
+  const taxLines = normalizeTaxLines(item.taxLines || item.tax_lines || []);
+  const explicitTaxAmount = item.taxAmount != null ? toNumber(item.taxAmount) : null;
+  const explicitTotalPrice = item.totalPrice != null
+    ? toNumber(item.totalPrice)
+    : item.line_price != null
+      ? toNumber(item.line_price)
+      : item.discountedTotalSet?.shopMoney?.amount != null
+        ? toNumber(item.discountedTotalSet.shopMoney.amount)
+        : 0;
+  return {
+    title: String(item.title || item.name || "").trim(),
+    quantity: Math.max(1, Number(item.quantity || item.currentQuantity || 1)),
+    sku: String(item.sku || "").trim(),
+    variant: String(item.variant || item.variantTitle || item.variant_title || "").trim(),
+    taxable: item.taxable == null ? taxLines.length > 0 : Boolean(item.taxable),
+    requiresShipping: item.requiresShipping == null ? true : Boolean(item.requiresShipping),
+    taxLines,
+    totalPrice: Number(explicitTotalPrice.toFixed(2)),
+    taxAmount: explicitTaxAmount != null
+      ? explicitTaxAmount
+      : Number(taxLines.reduce((sum, taxLine) => sum + toNumber(taxLine.amount || 0), 0).toFixed(2)),
+  };
+}
+
+function normalizeBillingAddress(source = {}, fallbackOrder = {}) {
+  return {
+    firstName: String(source.first_name || source.firstName || fallbackOrder.firstName || "").trim(),
+    lastName: String(source.last_name || source.lastName || fallbackOrder.lastName || "").trim(),
+    company: String(source.company || source.companyName || "").trim(),
+    email: String(source.email || fallbackOrder.email || "").trim(),
+    phone: String(source.phone || fallbackOrder.phone || "").trim(),
+    address: [source.address1, source.address2].filter(Boolean).join(" ").trim() || String(source.address || fallbackOrder.address || "").trim(),
+    city: String(source.city || fallbackOrder.city || "").trim(),
+    provinceCode: String(source.province_code || source.provinceCode || fallbackOrder.provinceCode || "").trim().toUpperCase(),
+    province: String(source.province || fallbackOrder.province || "").trim(),
+    postalCode: String(source.zip || source.postalCode || fallbackOrder.postalCode || "").trim(),
+    countryCode: String(source.country_code || source.countryCode || fallbackOrder.countryCode || "IT").trim().toUpperCase(),
+    taxExempt: Boolean(source.tax_exempt ?? source.taxExempt ?? false),
+    taxesIncluded: Boolean(source.taxes_included ?? source.taxesIncluded ?? false),
+  };
+}
+
+function normalizeOrderTotals(source = {}, fallbackGross = 0) {
+  const grossTotal = Number(toNumber(source.grossTotal ?? source.total ?? source.currentTotalPrice ?? fallbackGross).toFixed(2));
+  const taxTotal = Number(toNumber(source.taxTotal ?? source.totalTax ?? source.currentTotalTax ?? 0).toFixed(2));
+  const explicitNet = source.netSubtotal ?? source.subtotal ?? source.currentSubtotal;
+  const netSubtotal = explicitNet == null
+    ? Math.max(0, Number((grossTotal - taxTotal).toFixed(2)))
+    : Number(toNumber(explicitNet).toFixed(2));
+  return {
+    grossTotal,
+    taxTotal,
+    netSubtotal,
+    currency: String(source.currency || source.currencyCode || "EUR").trim().toUpperCase() || "EUR",
+  };
+}
+
+function extractShopifyLegacyId(value = "") {
+  const raw = String(value || "").trim();
+  const match = raw.match(/gid:\/\/shopify\/Order\/(\d+)/i);
+  return match ? match[1] : raw;
+}
+
+function getNormalizedShopifyNumericId(order = {}) {
+  const explicit = String(order.shopifyNumericId || order.legacyResourceId || "").trim();
+  if (explicit) return explicit;
+  if (String(order.source || "").toLowerCase().startsWith("shopify")) {
+    return extractShopifyLegacyId(order.id);
+  }
+  return "";
+}
+
+function getNormalizedShopifyGraphqlId(order = {}) {
+  const explicit = String(order.shopifyGraphqlId || order.adminGraphqlApiId || "").trim();
+  if (explicit.startsWith("gid://shopify/Order/")) return explicit;
+  const numericId = getNormalizedShopifyNumericId(order);
+  return numericId ? `gid://shopify/Order/${numericId}` : "";
+}
+
+function areSameShopifyOrder(left = {}, right = {}) {
+  const leftGraphqlId = getNormalizedShopifyGraphqlId(left);
+  const rightGraphqlId = getNormalizedShopifyGraphqlId(right);
+  if (leftGraphqlId && rightGraphqlId && leftGraphqlId === rightGraphqlId) return true;
+  const leftNumericId = getNormalizedShopifyNumericId(left);
+  const rightNumericId = getNormalizedShopifyNumericId(right);
+  return Boolean(leftNumericId && rightNumericId && leftNumericId === rightNumericId);
 }
 
 function deriveOrderData(order) {
@@ -733,6 +845,7 @@ function normalizeAttachmentRecord(item = {}, orderId = "") {
     storage: hasR2Object ? "r2" : "inline",
     objectKey: hasR2Object ? String(item.objectKey || "").trim() : "",
     dataUrl: hasR2Object ? "" : String(item.dataUrl || ""),
+    context: String(item.context || "").trim(),
     url: hasR2Object ? buildAttachmentProxyPath(orderId, attachmentId) : String(item.url || ""),
   };
 }
@@ -1021,6 +1134,8 @@ function reconcileStoreData(store) {
     const nextOrder = { ...order };
     if (!Array.isArray(nextOrder.lineDetails) || !nextOrder.lineDetails.length) {
       nextOrder.lineDetails = normalizeStringLineDetails(nextOrder.lineItems || []);
+    } else {
+      nextOrder.lineDetails = nextOrder.lineDetails.map((item) => normalizeLineDetailRecord(item));
     }
     if (!Array.isArray(nextOrder.lineItems) || !nextOrder.lineItems.length) {
       nextOrder.lineItems = nextOrder.lineDetails.map((item) => item.title);
@@ -1030,6 +1145,15 @@ function reconcileStoreData(store) {
     nextOrder.province = String(nextOrder.province || "").trim();
     nextOrder.postalCode = String(nextOrder.postalCode || "").trim();
     nextOrder.countryCode = String(nextOrder.countryCode || "IT").trim().toUpperCase();
+    nextOrder.shopifyNumericId = getNormalizedShopifyNumericId(nextOrder);
+    nextOrder.shopifyGraphqlId = getNormalizedShopifyGraphqlId(nextOrder);
+    nextOrder.billing = normalizeBillingAddress(nextOrder.billing || {}, nextOrder);
+    nextOrder.totals = normalizeOrderTotals({
+      grossTotal: nextOrder.totals?.grossTotal ?? nextOrder.total,
+      totalTax: nextOrder.totals?.taxTotal,
+      currentSubtotal: nextOrder.totals?.netSubtotal,
+      currency: nextOrder.totals?.currency || "EUR",
+    }, nextOrder.total);
     nextOrder.accounting = {
       paymentMethod: nextOrder.accounting?.paymentMethod || nextOrder.paymentMethod || "",
       depositPaid: toNumber(nextOrder.accounting?.depositPaid || 0),
@@ -1115,23 +1239,50 @@ function reconcileStoreData(store) {
 function normalizeOrderPayload(order, index) {
   const customer = order.customer || {};
   const shipping = order.shipping_address || order.default_address || {};
+  const billing = normalizeBillingAddress(order.billing_address || order.billing || {}, {
+    firstName: shipping.first_name || customer.first_name || order.firstName || "",
+    lastName: shipping.last_name || customer.last_name || order.lastName || "",
+    email: order.email || customer.email || "",
+    phone: shipping.phone || customer.phone || order.phone || "",
+    city: shipping.city || order.city || "",
+    provinceCode: shipping.province_code || shipping.provinceCode || order.provinceCode || "",
+    province: shipping.province || order.province || "",
+    postalCode: shipping.zip || shipping.postalCode || order.postalCode || "",
+    countryCode: shipping.country_code || shipping.countryCode || order.countryCode || "IT",
+    address: [shipping.address1, shipping.address2].filter(Boolean).join(" ") || order.address || "",
+  });
   const lineDetails = Array.isArray(order.line_items)
-    ? order.line_items.map((item) => ({
+    ? order.line_items.map((item) => normalizeLineDetailRecord({
         title: item.title || item.name || "Prodotto",
         quantity: Number(item.quantity || 1),
+        sku: item.sku,
+        variant_title: item.variant_title,
+        taxable: item.taxable,
+        tax_lines: item.tax_lines,
+        totalPrice: item.line_price != null
+          ? item.line_price
+          : toNumber(item.price || 0) * Number(item.quantity || 1),
       }))
     : Array.isArray(order.lineDetails)
-      ? order.lineDetails.map((item) => ({
-          title: String(item.title || item.name || ""),
-          quantity: Number(item.quantity || 1),
-        }))
+      ? order.lineDetails.map((item) => normalizeLineDetailRecord(item))
       : Array.isArray(order.lineItems)
-        ? order.lineItems.map((item) => ({ title: String(item), quantity: 1 }))
+        ? normalizeStringLineDetails(order.lineItems)
         : [];
   const lineItems = lineDetails.map((item) => item.title);
+  const totals = normalizeOrderTotals({
+    grossTotal: order.current_total_price || order.total_price || order.total,
+    totalTax: order.current_total_tax || order.total_tax,
+    currentSubtotal: order.current_subtotal_price || order.subtotal_price,
+    taxesIncluded: order.taxes_included,
+    currency: order.currency || order.presentment_currency || "EUR",
+  }, order.current_total_price || order.total_price || order.total || 0);
+  const shopifyNumericId = String(order.id || order.order_id || "").trim();
+  const shopifyGraphqlId = String(order.admin_graphql_api_id || order.shopifyGraphqlId || "").trim();
 
   return {
-    id: String(order.id || order.order_number || `import-${Date.now()}-${index}`),
+    id: shopifyNumericId || String(order.order_number || `import-${Date.now()}-${index}`),
+    shopifyNumericId,
+    shopifyGraphqlId,
     orderNumber: order.name || order.orderNumber || `#${order.order_number || index + 1}`,
     firstName: shipping.first_name || customer.first_name || order.firstName || "",
     lastName: shipping.last_name || customer.last_name || order.lastName || "",
@@ -1144,6 +1295,8 @@ function normalizeOrderPayload(order, index) {
     postalCode: String(shipping.zip || shipping.postalCode || order.postalCode || "").trim(),
     countryCode: String(shipping.country_code || shipping.countryCode || order.countryCode || "IT").trim().toUpperCase(),
     total: String(order.current_total_price || order.total_price || order.total || "—"),
+    totals,
+    billing,
     financialStatus: String(order.financial_status || order.financialStatus || "pending"),
     fulfillmentStatus: String(order.fulfillment_status || order.fulfillmentStatus || "unfulfilled"),
     paymentMethod: Array.isArray(order.payment_gateway_names) ? order.payment_gateway_names.join(", ") : String(order.paymentMethod || ""),
@@ -1169,16 +1322,46 @@ function normalizeOrderPayload(order, index) {
 function normalizeGraphqlOrder(node, index) {
   const shipping = node.shippingAddress || {};
   const customer = node.customer || {};
+  const billing = normalizeBillingAddress(node.billingAddress || {}, {
+    firstName: shipping.firstName || customer.firstName || "",
+    lastName: shipping.lastName || customer.lastName || "",
+    email: node.email || customer.email || "",
+    phone: shipping.phone || customer.phone || "",
+    city: shipping.city || "",
+    provinceCode: shipping.provinceCode || "",
+    province: shipping.province || "",
+    postalCode: shipping.zip || "",
+    countryCode: shipping.countryCodeV2 || "IT",
+    address: [shipping.address1, shipping.address2].filter(Boolean).join(" "),
+  });
   const lineDetails = Array.isArray(node.lineItems?.edges)
-    ? node.lineItems.edges.map(({ node: item }) => ({
+    ? node.lineItems.edges.map(({ node: item }) => normalizeLineDetailRecord({
         title: item.name || "Prodotto",
         quantity: Number(item.currentQuantity || 1),
+        sku: item.sku,
+        variantTitle: item.variantTitle,
+        taxable: item.taxable,
+        requiresShipping: item.requiresShipping,
+        taxLines: item.taxLines,
+        totalPrice: item.discountedTotalSet?.shopMoney?.amount,
+        taxAmount: item.totalTaxSet?.shopMoney?.amount,
       }))
     : [];
   const lineItems = lineDetails.map((item) => item.title);
+  const totals = normalizeOrderTotals({
+    grossTotal: node.currentTotalPriceSet?.shopMoney?.amount,
+    totalTax: node.currentTotalTaxSet?.shopMoney?.amount,
+    currentSubtotal: node.currentSubtotalPriceSet?.shopMoney?.amount,
+    taxesIncluded: node.taxesIncluded,
+    currency: node.currentTotalPriceSet?.shopMoney?.currencyCode || "EUR",
+  }, node.currentTotalPriceSet?.shopMoney?.amount || 0);
+  const shopifyNumericId = String(node.legacyResourceId || "").trim();
+  const shopifyGraphqlId = String(node.id || "").trim();
 
   return {
-    id: String(node.id || `graphql-${Date.now()}-${index}`),
+    id: shopifyNumericId || String(node.id || `graphql-${Date.now()}-${index}`),
+    shopifyNumericId,
+    shopifyGraphqlId,
     orderNumber: node.name || `#${index + 1}`,
     firstName: shipping.firstName || customer.firstName || "",
     lastName: shipping.lastName || customer.lastName || "",
@@ -1191,6 +1374,8 @@ function normalizeGraphqlOrder(node, index) {
     postalCode: String(shipping.zip || "").trim(),
     countryCode: String(shipping.countryCodeV2 || "IT").trim().toUpperCase(),
     total: String(node.currentTotalPriceSet?.shopMoney?.amount || "—"),
+    totals,
+    billing,
     financialStatus: String(node.displayFinancialStatus || "pending"),
     fulfillmentStatus: String(node.displayFulfillmentStatus || "unfulfilled"),
     paymentMethod: Array.isArray(node.paymentGatewayNames) ? node.paymentGatewayNames.join(", ") : "",
@@ -1278,16 +1463,44 @@ async function syncOrdersFromShopify(store) {
   const endpoint = `https://${storeDomain}/admin/api/2026-01/graphql.json`;
   const orderFields = `
     id
+    legacyResourceId
     name
     email
     note
+    taxesIncluded
     displayFinancialStatus
     displayFulfillmentStatus
     paymentGatewayNames
+    currentSubtotalPriceSet {
+      shopMoney {
+        amount
+        currencyCode
+      }
+    }
     currentTotalPriceSet {
       shopMoney {
         amount
+        currencyCode
       }
+    }
+    currentTotalTaxSet {
+      shopMoney {
+        amount
+        currencyCode
+      }
+    }
+    billingAddress {
+      firstName
+      lastName
+      company
+      phone
+      city
+      province
+      provinceCode
+      zip
+      countryCodeV2
+      address1
+      address2
     }
     customer {
       firstName
@@ -1312,6 +1525,32 @@ async function syncOrdersFromShopify(store) {
         node {
           name
           currentQuantity
+          sku
+          variantTitle
+          taxable
+          requiresShipping
+          discountedTotalSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+          }
+          totalTaxSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+          }
+          taxLines {
+            title
+            rate
+            priceSet {
+              shopMoney {
+                amount
+                currencyCode
+              }
+            }
+          }
         }
       }
     }
@@ -1406,20 +1645,10 @@ async function syncOrdersFromShopify(store) {
     if (edge?.node?.id) uniqueNodes.set(edge.node.id, edge.node);
   });
   const normalized = [...uniqueNodes.values()].map((node, index) => normalizeGraphqlOrder(node, index));
-  const existingIds = new Set(store.orders.map((order) => order.id));
-  normalized.forEach((order) => {
-    const existingIndex = store.orders.findIndex((item) => item.id === order.id);
-    if (existingIndex >= 0) {
-      store.orders[existingIndex] = { ...store.orders[existingIndex], ...order, convertedJobId: store.orders[existingIndex].convertedJobId || null };
-    } else if (!existingIds.has(order.id)) {
-      store.orders.unshift(order);
-    }
-  });
-  store.orders = sortOrdersByRecency(store.orders);
   store.shopifySettings.lastSyncAt = new Date().toISOString();
   store.shopifySettings.lastSyncStatus = "ok";
   store.shopifySettings.lastSyncMessage = "";
-  return store.orders;
+  return normalized;
 }
 
 async function getShopifyAccessToken(store) {
@@ -1515,17 +1744,212 @@ async function validateShopifyConnection(store) {
   };
 }
 
+function buildTrackingUrl(carrier = "", trackingNumber = "") {
+  const normalizedCarrier = String(carrier || "").trim().toLowerCase();
+  const normalizedTracking = String(trackingNumber || "").trim();
+  if (!normalizedTracking) return "";
+  if (normalizedCarrier.includes("gls")) return `https://www.gls-italy.com/track-and-trace?trackingnumber=${encodeURIComponent(normalizedTracking)}`;
+  if (normalizedCarrier.includes("brt")) return `https://www.brt.it/it/ricerca_spedizioni?ReferenceCode=${encodeURIComponent(normalizedTracking)}`;
+  if (normalizedCarrier.includes("sda")) return `https://www.sda.it/wps/portal/SDA_it/home/ricerca-spedizioni?reference=${encodeURIComponent(normalizedTracking)}`;
+  return "";
+}
+
+async function syncShopifyTrackingForOrder(store, order, { trackingNumber = "", carrier = "" } = {}) {
+  const trimmedTracking = String(trackingNumber || "").trim();
+  if (!trimmedTracking) {
+    throw new Error("missing_tracking_number");
+  }
+
+  const accessToken = await getShopifyAccessToken(store);
+  const orderGraphqlId = getNormalizedShopifyGraphqlId(order);
+  if (!orderGraphqlId) {
+    throw new Error("missing_shopify_order_reference");
+  }
+
+  const lookup = await queryShopifyAdmin(
+    store,
+    accessToken,
+    `
+      query VertexOpsFulfillmentLookup($id: ID!) {
+        order(id: $id) {
+          id
+          legacyResourceId
+          displayFulfillmentStatus
+          fulfillments(first: 10) {
+            id
+            status
+            trackingInfo {
+              company
+              number
+              url
+            }
+          }
+          fulfillmentOrders(first: 20) {
+            edges {
+              node {
+                id
+                status
+                requestStatus
+                lineItems(first: 50) {
+                  edges {
+                    node {
+                      id
+                      remainingQuantity
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `,
+    { id: orderGraphqlId },
+    "shopify_fulfillment_lookup_failed",
+  );
+
+  const fulfillmentOrders = lookup?.order?.fulfillmentOrders?.edges
+    ?.map((edge) => edge?.node)
+    .filter(Boolean) || [];
+  const existingFulfillments = Array.isArray(lookup?.order?.fulfillments)
+    ? lookup.order.fulfillments.filter(Boolean)
+    : [];
+  const fulfillableOrders = fulfillmentOrders
+    .map((item) => ({
+      ...item,
+      lineItems: item.lineItems?.edges
+        ?.map((edge) => edge?.node)
+        .filter((lineItem) => Number(lineItem?.remainingQuantity || 0) > 0) || [],
+    }))
+    .filter((item) => item.lineItems.length > 0);
+
+  if (!fulfillableOrders.length) {
+    const existingFulfillmentId = String(existingFulfillments[0]?.id || "").trim();
+    if (existingFulfillmentId) {
+      const updatedTracking = await queryShopifyAdmin(
+        store,
+        accessToken,
+        `
+          mutation VertexOpsTrackingUpdate($fulfillmentId: ID!, $trackingInfoInput: FulfillmentTrackingInput!, $notifyCustomer: Boolean) {
+            fulfillmentTrackingInfoUpdate(
+              fulfillmentId: $fulfillmentId,
+              trackingInfoInput: $trackingInfoInput,
+              notifyCustomer: $notifyCustomer
+            ) {
+              fulfillment {
+                id
+                status
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+        {
+          fulfillmentId: existingFulfillmentId,
+          trackingInfoInput: {
+            number: trimmedTracking,
+            company: String(carrier || "").trim() || undefined,
+            url: buildTrackingUrl(carrier, trimmedTracking) || undefined,
+          },
+          notifyCustomer: false,
+        },
+        "shopify_tracking_update_failed",
+      );
+      const updated = updatedTracking?.fulfillmentTrackingInfoUpdate;
+      if (updated?.userErrors?.length) {
+        throw new Error(updated.userErrors[0].message || "shopify_tracking_update_failed");
+      }
+      return {
+        alreadySynced: false,
+        fulfillmentId: String(updated?.fulfillment?.id || existingFulfillmentId).trim(),
+        fulfillmentStatus: String(updated?.fulfillment?.status || lookup?.order?.displayFulfillmentStatus || order.fulfillmentStatus || "fulfilled").trim() || "fulfilled",
+        legacyResourceId: String(lookup?.order?.legacyResourceId || getNormalizedShopifyNumericId(order) || "").trim(),
+        graphqlId: String(lookup?.order?.id || orderGraphqlId).trim(),
+      };
+    }
+    return {
+      alreadySynced: true,
+      fulfillmentStatus: String(lookup?.order?.displayFulfillmentStatus || order.fulfillmentStatus || "fulfilled").trim() || "fulfilled",
+      legacyResourceId: String(lookup?.order?.legacyResourceId || getNormalizedShopifyNumericId(order) || "").trim(),
+      graphqlId: String(lookup?.order?.id || orderGraphqlId).trim(),
+    };
+  }
+
+  const trackingUrl = buildTrackingUrl(carrier, trimmedTracking);
+  const fulfillmentInput = {
+    notifyCustomer: false,
+    lineItemsByFulfillmentOrder: fulfillableOrders.map((item) => ({
+      fulfillmentOrderId: item.id,
+      fulfillmentOrderLineItems: item.lineItems.map((lineItem) => ({
+        id: lineItem.id,
+        quantity: Number(lineItem.remainingQuantity || 0),
+      })),
+    })),
+    trackingInfo: {
+      number: trimmedTracking,
+      company: String(carrier || "").trim() || undefined,
+      url: trackingUrl || undefined,
+    },
+  };
+
+  const mutation = await queryShopifyAdmin(
+    store,
+    accessToken,
+    `
+      mutation VertexOpsFulfillmentCreate($fulfillment: FulfillmentInput!, $message: String) {
+        fulfillmentCreate(fulfillment: $fulfillment, message: $message) {
+          fulfillment {
+            id
+            status
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    {
+      fulfillment: fulfillmentInput,
+      message: "Tracking synced from Vertex Ops",
+    },
+    "shopify_fulfillment_create_failed",
+  );
+
+  const created = mutation?.fulfillmentCreate;
+  if (created?.userErrors?.length) {
+    throw new Error(created.userErrors[0].message || "shopify_fulfillment_create_failed");
+  }
+
+  return {
+    alreadySynced: false,
+    fulfillmentId: String(created?.fulfillment?.id || "").trim(),
+    fulfillmentStatus: String(created?.fulfillment?.status || "fulfilled").trim() || "fulfilled",
+    legacyResourceId: String(lookup?.order?.legacyResourceId || getNormalizedShopifyNumericId(order) || "").trim(),
+    graphqlId: String(lookup?.order?.id || orderGraphqlId).trim(),
+  };
+}
+
 function upsertOrderRecord(store, order) {
-  const existingOrderIndex = store.orders.findIndex((item) => item.id === order.id);
+  const existingOrderIndex = store.orders.findIndex((item) => item.id === order.id || areSameShopifyOrder(item, order));
   const existingOrder = existingOrderIndex >= 0 ? store.orders[existingOrderIndex] : null;
 
   if (existingOrder) {
+    const nextOrderId = getNormalizedShopifyNumericId(order) || existingOrder.id || order.id;
+    const linkedJob = store.jobs.find((job) => [existingOrder.id, order.id, nextOrderId].includes(job.sourceOrderId)) || null;
+    if (linkedJob && linkedJob.sourceOrderId !== nextOrderId) {
+      linkedJob.sourceOrderId = nextOrderId;
+    }
     const merged = {
       ...existingOrder,
       ...order,
+      id: nextOrderId,
       convertedJobId: existingOrder.convertedJobId || order.convertedJobId || null,
     };
-    merged.operations = normalizeOperations(merged, store.jobs.find((job) => job.sourceOrderId === merged.id) || null);
+    merged.operations = normalizeOperations(merged, linkedJob);
     store.orders[existingOrderIndex] = merged;
     return { order: merged, job: merged.convertedJobId ? store.jobs.find((job) => job.id === merged.convertedJobId) || null : null };
   }
@@ -1762,6 +2186,7 @@ async function handleApi(req, res, url) {
     const payload = JSON.parse(rawBody.toString("utf8") || "{}");
     const normalized = normalizeOrderPayload(payload, 0);
     const result = upsertOrderRecord(store, normalized);
+    store.orders = sortOrdersByRecency(store.orders);
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, { ok: true, orderId: result.order.id, jobId: result.job?.id || null });
   }
@@ -1791,7 +2216,7 @@ async function handleApi(req, res, url) {
       res,
       authorizeUrl.toString(),
       {
-        "Set-Cookie": `shopify_oauth_state=${encodeURIComponent(state)}; Path=/; HttpOnly; SameSite=Lax`,
+        "Set-Cookie": buildShopifyOauthStateCookie(state),
       },
     );
   }
@@ -1851,7 +2276,7 @@ async function handleApi(req, res, url) {
         res,
         "/index.html?shopify=connected",
         {
-          "Set-Cookie": "shopify_oauth_state=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax",
+          "Set-Cookie": buildExpiredShopifyOauthStateCookie(),
         },
       );
     } catch {
@@ -2160,6 +2585,15 @@ async function handleApi(req, res, url) {
       countryCode: "IT",
       address: String(body.address || "").trim(),
       total: String(body.total || "0"),
+      totals: normalizeOrderTotals({
+        grossTotal: body.total || 0,
+        totalTax: body.taxTotal || 0,
+        currentSubtotal: body.netSubtotal || body.total || 0,
+        currency: body.currency || "EUR",
+      }, body.total || 0),
+      billing: normalizeBillingAddress(body.billing || {}, body),
+      shopifyNumericId: "",
+      shopifyGraphqlId: "",
       financialStatus: String(body.financialStatus || "pending"),
       fulfillmentStatus: String(body.fulfillmentStatus || "unfulfilled"),
       paymentMethod: String(body.paymentMethod || ""),
@@ -2167,10 +2601,7 @@ async function handleApi(req, res, url) {
       note: String(body.note || ""),
       lineItems: Array.isArray(body.lineItems) ? body.lineItems : [],
       lineDetails: Array.isArray(body.lineDetails)
-        ? body.lineDetails.map((item) => ({
-            title: String(item.title || ""),
-            quantity: Number(item.quantity || 1),
-          }))
+        ? body.lineDetails.map((item) => normalizeLineDetailRecord(item))
         : [],
       accounting: {
         paymentMethod: String(body.paymentMethod || ""),
@@ -2222,13 +2653,20 @@ async function handleApi(req, res, url) {
       countryCode: String(current.countryCode || "IT").trim().toUpperCase(),
       address: String(body.address || current.address || ""),
       total: String(body.total || current.total || "0"),
+      totals: normalizeOrderTotals({
+        grossTotal: body.total || current.totals?.grossTotal || current.total || 0,
+        totalTax: body.taxTotal ?? current.totals?.taxTotal ?? 0,
+        currentSubtotal: body.netSubtotal ?? current.totals?.netSubtotal ?? (current.total || 0),
+        currency: body.currency || current.totals?.currency || "EUR",
+      }, body.total || current.total || 0),
+      billing: normalizeBillingAddress(body.billing || current.billing || {}, {
+        ...current,
+        ...body,
+      }),
       note: String(body.note || current.note || ""),
       lineItems: Array.isArray(body.lineItems) ? body.lineItems : current.lineItems || [],
       lineDetails: Array.isArray(body.lineDetails)
-        ? body.lineDetails.map((item) => ({
-            title: String(item.title || ""),
-            quantity: Number(item.quantity || 1),
-          }))
+        ? body.lineDetails.map((item) => normalizeLineDetailRecord(item))
         : current.lineDetails || [],
     };
     nextOrder.operations = normalizeOperations(
@@ -2402,6 +2840,59 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/sync-shopify-fulfillment$/) && req.method === "POST") {
+    if (requireOffice(res, currentUser)) return;
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const body = await readBody(req);
+    const orderIndex = store.orders.findIndex((item) => item.id === orderId);
+    if (orderIndex < 0) return sendJson(res, 404, { error: "order_not_found" });
+    const current = store.orders[orderIndex];
+    if (!String(current.source || "").toLowerCase().startsWith("shopify")) {
+      return sendJson(res, 400, { error: "order_not_synced_from_shopify" });
+    }
+    try {
+      const trackingNumber = String(body.trackingNumber || current.operations?.warehouse?.trackingNumber || "").trim();
+      const carrier = String(body.carrier || current.operations?.warehouse?.carrier || store.shopifySettings?.carrierName || "").trim();
+      const result = await syncShopifyTrackingForOrder(store, current, { trackingNumber, carrier });
+      const linkedJob = store.jobs.find((job) => job.sourceOrderId === current.id) || null;
+      store.orders[orderIndex] = {
+        ...current,
+        shopifyNumericId: result.legacyResourceId || getNormalizedShopifyNumericId(current),
+        shopifyGraphqlId: result.graphqlId || getNormalizedShopifyGraphqlId(current),
+        fulfillmentStatus: result.alreadySynced
+          ? current.fulfillmentStatus || "fulfilled"
+          : "fulfilled",
+        updatedAt: new Date().toISOString(),
+        operations: normalizeOperations(
+          {
+            ...current,
+            operations: {
+              ...(current.operations || {}),
+              warehouse: {
+                ...(current.operations?.warehouse || {}),
+                trackingNumber,
+                carrier,
+                readyToShip: true,
+                carrierPassed: true,
+                shipped: true,
+              },
+            },
+          },
+          linkedJob,
+        ),
+      };
+      await writeJson(STORE_PATH, store);
+      return sendJson(res, 200, {
+        ok: true,
+        alreadySynced: result.alreadySynced,
+        fulfillmentId: result.fulfillmentId || "",
+        order: store.orders[orderIndex],
+      });
+    } catch (error) {
+      return sendJson(res, 400, { error: error.message || "shopify_fulfillment_sync_failed" });
+    }
+  }
+
   if (url.pathname === "/api/orders/import" && req.method === "POST") {
     const body = await readBody(req);
     const orders = Array.isArray(body) ? body : Array.isArray(body.orders) ? body.orders : [];
@@ -2411,6 +2902,7 @@ async function handleApi(req, res, url) {
     normalized.forEach((order) => {
       upsertOrderRecord(store, order);
     });
+    store.orders = sortOrdersByRecency(store.orders);
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.orders);
   }
@@ -2421,6 +2913,7 @@ async function handleApi(req, res, url) {
       orders.forEach((order) => {
         upsertOrderRecord(store, order);
       });
+      store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
       return sendJson(res, 200, store.orders);
     } catch (error) {
@@ -2438,8 +2931,19 @@ async function handleApi(req, res, url) {
     if (!storeDomain) return sendJson(res, 400, { error: "missing_shopify_credentials" });
 
     try {
-      const accessToken = await getShopifyAccessToken(store);
       const endpoint = `${String(webhookBaseUrl).replace(/\/$/, "")}/api/webhooks/shopify/orders`;
+      if (
+        String(store.shopifySettings?.webhookEndpoint || "").trim() === endpoint
+        && String(store.shopifySettings?.webhookSubscriptionId || "").trim()
+      ) {
+        return sendJson(res, 200, {
+          endpoint,
+          subscriptionId: String(store.shopifySettings.webhookSubscriptionId || "").trim(),
+          reused: true,
+        });
+      }
+
+      const accessToken = await getShopifyAccessToken(store);
       const mutation = `
         mutation RegisterOrdersCreateWebhook($topic: WebhookSubscriptionTopic!, $subscription: WebhookSubscriptionInput!) {
           webhookSubscriptionCreate(topic: $topic, webhookSubscription: $subscription) {
@@ -2455,28 +2959,20 @@ async function handleApi(req, res, url) {
           }
         }
       `;
-
-      const response = await fetch(`https://${storeDomain}/admin/api/2026-01/graphql.json`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": accessToken,
-        },
-        body: JSON.stringify({
-          query: mutation,
-          variables: {
-            topic: "ORDERS_CREATE",
-            subscription: {
-              uri: endpoint,
-              format: "JSON",
-            },
+      const data = await queryShopifyAdmin(
+        store,
+        accessToken,
+        mutation,
+        {
+          topic: "ORDERS_CREATE",
+          subscription: {
+            uri: endpoint,
+            format: "JSON",
           },
-        }),
-      });
-
-      if (!response.ok) return sendJson(res, 400, { error: "webhook_register_failed" });
-      const payload = await response.json();
-      const created = payload?.data?.webhookSubscriptionCreate;
+        },
+        "webhook_register_failed",
+      );
+      const created = data?.webhookSubscriptionCreate;
       if (created?.userErrors?.length) {
         return sendJson(res, 400, { error: created.userErrors[0].message || "webhook_register_failed" });
       }
@@ -2571,6 +3067,7 @@ async function handleApi(req, res, url) {
 }
 
 const server = createServer(async (req, res) => {
+  const rawRequestPath = String(req.url || "/").split("?")[0] || "/";
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
 
   try {
@@ -2578,8 +3075,21 @@ const server = createServer(async (req, res) => {
       return await handleApi(req, res, url);
     }
 
-    const requestedPath = url.pathname === "/" ? "/index.html" : url.pathname;
-    const filePath = join(ROOT, requestedPath);
+    let requestedPath = rawRequestPath === "/" ? "/index.html" : rawRequestPath;
+    try {
+      requestedPath = decodeURIComponent(requestedPath);
+    } catch {
+      res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Bad request");
+      return;
+    }
+    const filePath = resolve(ROOT, `.${requestedPath}`);
+    const rootPrefix = ROOT.endsWith(sep) ? ROOT : `${ROOT}${sep}`;
+    if (filePath !== ROOT && !filePath.startsWith(rootPrefix)) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Not found");
+      return;
+    }
     const content = await readFile(filePath);
     const ext = extname(filePath);
     res.writeHead(200, getStaticHeaders(MIME_TYPES[ext] || "application/octet-stream"));

@@ -694,6 +694,7 @@ const ui = {
   authForm: document.getElementById("auth-form"),
   authError: document.getElementById("auth-error"),
   appShell: document.getElementById("app-shell"),
+  mainContent: document.querySelector(".main-content"),
   sidebarOperationalLabel: document.getElementById("sidebar-operational-label"),
   sidebarOperationalNav: document.getElementById("sidebar-operational-nav"),
   sidebarAdminDivider: document.getElementById("sidebar-admin-divider"),
@@ -713,7 +714,6 @@ const ui = {
   mobileLogoutInlineButton: document.getElementById("mobile-logout-inline-button"),
   mobileReloadButton: document.getElementById("mobile-reload-button"),
   mobileSidebarBackdrop: document.getElementById("mobile-sidebar-backdrop"),
-  topbarAlertCount: document.getElementById("topbar-alert-count"),
   langButtons: Array.from(document.querySelectorAll(".lang-btn")),
   logoutButton: document.getElementById("logout-button"),
   reloadButton: document.getElementById("reload-button"),
@@ -727,12 +727,10 @@ const ui = {
   opsShippingValue: document.getElementById("ops-shipping-value"),
   dashboardActions: document.getElementById("dashboard-actions"),
   dashboardAlerts: document.getElementById("dashboard-alerts"),
-  dashboardOrderList: document.getElementById("dashboard-order-list"),
   dashboardActivity: document.getElementById("dashboard-activity"),
   dashboardWeekSummary: document.getElementById("dashboard-week-summary"),
   dashboardAccountingSnapshot: document.getElementById("dashboard-accounting-snapshot"),
   dashboardInventorySnapshot: document.getElementById("dashboard-inventory-snapshot"),
-  dashboardSyncButton: document.getElementById("dashboard-sync-button"),
   quickViewButtons: Array.from(document.querySelectorAll("[data-quick-view]")),
   ordersSearch: document.getElementById("orders-search"),
   orderFilterTags: Array.from(document.querySelectorAll(".order-filter-tag")),
@@ -753,11 +751,9 @@ const ui = {
   orderOfficeSummary: document.getElementById("order-office-summary"),
   orderLineList: document.getElementById("order-line-list"),
   orderPrepList: document.getElementById("order-prep-list"),
-  ordersRouteBoard: document.getElementById("orders-route-board"),
   savePrepListButton: document.getElementById("save-prep-list-button"),
   orderAttachmentButton: document.getElementById("order-attachment-button"),
   orderAttachments: document.getElementById("order-attachments"),
-  openOrderModalButton: document.getElementById("open-order-modal-button"),
   warehouseSearch: document.getElementById("warehouse-search"),
   warehouseFilterTags: Array.from(document.querySelectorAll(".warehouse-filter-tag")),
   warehouseList: document.getElementById("warehouse-list"),
@@ -831,6 +827,9 @@ const ui = {
   shippingMaterialPreview: document.getElementById("shipping-material-preview"),
   shippingEstimate: document.getElementById("shipping-estimate"),
   shippingForm: document.getElementById("shipping-form"),
+  shippingStatus: document.getElementById("shipping-status"),
+  shippingAttachmentButton: document.getElementById("shipping-attachment-button"),
+  shippingAttachments: document.getElementById("shipping-attachments"),
   settingsForm: document.getElementById("shopify-settings-form"),
   settingsStatus: document.getElementById("settings-status"),
   connectShopifyButton: document.getElementById("connect-shopify-button"),
@@ -934,7 +933,6 @@ function staticLabels() {
     ["[data-order-filter='fulfilled']", state.lang === "it" ? "Evasi / chiusi" : "Completed / closed"],
     ["#orders .route-subsection h4", t("routeOffice")],
     ["#orders .route-subsection .subsection-copy", t("routeOfficeCopy")],
-    ["#open-order-modal-button", t("edit") || (state.lang === "it" ? "Modifica" : "Edit")],
     ["#orders .panel-subsection h4", t("officeOperations")],
     ["#save-prep-list-button", t("savePreparation")],
     ["#order-attachment-button", t("uploadAttachment")],
@@ -1952,6 +1950,102 @@ function getOrderLineSummary(order) {
   };
 }
 
+function getOrderGrossTotal(order) {
+  return toNumber(order?.totals?.grossTotal ?? order?.total ?? 0);
+}
+
+function getOrderTaxTotal(order) {
+  return toNumber(order?.totals?.taxTotal ?? 0);
+}
+
+function getOrderNetSubtotal(order) {
+  const explicitNet = order?.totals?.netSubtotal;
+  if (explicitNet != null) return toNumber(explicitNet);
+  return Math.max(0, Number((getOrderGrossTotal(order) - getOrderTaxTotal(order)).toFixed(2)));
+}
+
+function getBillingDisplayName(order) {
+  const billing = order?.billing || {};
+  return String(
+    billing.company
+    || [billing.firstName, billing.lastName].filter(Boolean).join(" ").trim()
+    || composeClientName(order)
+    || "",
+  ).trim();
+}
+
+function getBillingAddressLine(order) {
+  const billing = order?.billing || {};
+  const address = String(billing.address || "").trim();
+  const cityParts = [billing.postalCode, billing.city, billing.provinceCode || billing.province].filter(Boolean).join(" ");
+  return [address, cityParts, billing.countryCode].filter(Boolean).join(" · ");
+}
+
+function getBillingCompleteness(order) {
+  const billing = order?.billing || {};
+  const missing = [];
+  if (!getBillingDisplayName(order)) missing.push(state.lang === "it" ? "intestazione" : "billing name");
+  if (!String(billing.address || "").trim()) missing.push(state.lang === "it" ? "indirizzo" : "address");
+  if (!String(billing.city || "").trim()) missing.push(state.lang === "it" ? "citta" : "city");
+  if (!String(billing.postalCode || "").trim()) missing.push(state.lang === "it" ? "CAP" : "ZIP");
+  if (!String(billing.provinceCode || billing.province || "").trim()) missing.push(state.lang === "it" ? "provincia" : "province");
+  if (!String(billing.countryCode || "").trim()) missing.push(state.lang === "it" ? "nazione" : "country");
+  const complete = missing.length === 0;
+  return {
+    complete,
+    missing,
+    label: complete
+      ? (state.lang === "it" ? "Dati fattura completi" : "Billing data complete")
+      : (state.lang === "it" ? "Dati fattura da integrare" : "Billing data incomplete"),
+    tone: complete ? "badge-success" : "badge-warning",
+    copy: complete
+      ? (state.lang === "it" ? "Anagrafica pronta per fatturazione." : "Ready for invoicing.")
+      : `${state.lang === "it" ? "Mancano" : "Missing"}: ${missing.join(", ")}`,
+  };
+}
+
+function describeTaxStatus(line = {}) {
+  const taxLines = Array.isArray(line.taxLines) ? line.taxLines : [];
+  if (taxLines.length) {
+    return taxLines.map((entry) => {
+      const label = String(entry.title || "").trim() || (state.lang === "it" ? "Imposta" : "Tax");
+      const rate = Number(entry.rate || 0);
+      return rate > 0 ? `${label} ${Math.round(rate * 100)}%` : label;
+    }).join(" · ");
+  }
+  if (line.taxable) {
+    return state.lang === "it" ? "Imponibile da Shopify" : "Taxable in Shopify";
+  }
+  return state.lang === "it" ? "Nessuna imposta" : "No tax";
+}
+
+function getStatusNodeForAttachmentTarget(targetType = "") {
+  if (targetType === "installation") return ui.installationStatus;
+  if (targetType === "shipping") return ui.shippingStatus;
+  return ui.ordersStatus;
+}
+
+function isImageAttachment(item = {}) {
+  return /^image\//i.test(String(item.type || "").trim());
+}
+
+function getAttachmentContextLabel(context = "") {
+  if (context === "installation") return state.lang === "it" ? "Posa" : "Install";
+  if (context === "shipping") return state.lang === "it" ? "Logistica" : "Shipping";
+  return state.lang === "it" ? "Ordine" : "Order";
+}
+
+function mapAttachmentsForContext(order, context = "") {
+  const attachments = Array.isArray(order?.attachments) ? order.attachments : [];
+  return attachments
+    .map((item, index) => ({ ...item, _attachmentIndex: index }))
+    .filter((item) => {
+      if (!context) return true;
+      const itemContext = String(item.context || "").trim();
+      return !itemContext || itemContext === context;
+    });
+}
+
 function normalizeKey(value) {
   return String(value || "")
     .toLowerCase()
@@ -2027,16 +2121,46 @@ function getDisplayPieceCount(order, item) {
 function focusElement(node) {
   if (!node) return;
   requestAnimationFrame(() => {
-    node.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!node.hasAttribute("tabindex")) {
+      node.setAttribute("tabindex", "-1");
+    }
+    if (typeof node.focus === "function") {
+      try {
+        node.focus({ preventScroll: true });
+      } catch {
+        node.focus();
+      }
+    }
   });
 }
 
 function focusViewTarget(view) {
-  if (view === "orders") focusElement(ui.orderDetailTitle);
-  if (view === "warehouse") focusElement(ui.warehouseDetailTitle);
-  if (view === "installations") focusElement(ui.installationDetailTitle);
-  if (view === "accounting") focusElement(ui.accountingDetailTitle);
-  if (view === "shipping") focusElement(ui.shippingDetailTitle);
+  if (view === "orders") focusElement(document.querySelector("#orders .page-header h1"));
+  if (view === "warehouse") focusElement(document.querySelector("#warehouse .page-header h1"));
+  if (view === "installations") focusElement(document.querySelector("#installations .page-header h1"));
+  if (view === "accounting") focusElement(document.querySelector("#accounting .page-header h1"));
+  if (view === "shipping") focusElement(document.querySelector("#shipping .page-header h1"));
+}
+
+function scrollCurrentViewToTop() {
+  const activeView = document.getElementById(state.currentView);
+  if (activeView) {
+    activeView.scrollTop = 0;
+  }
+  if (ui.mainContent) {
+    ui.mainContent.scrollTop = 0;
+    if (typeof ui.mainContent.scrollTo === "function") {
+      ui.mainContent.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }
+  if (typeof window.scrollTo === "function") {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }
+  if (document.scrollingElement) {
+    document.scrollingElement.scrollTop = 0;
+  }
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
 }
 
 function buildDashboardActions() {
@@ -2874,11 +2998,6 @@ function buildRouteColumns() {
   ];
 }
 
-function renderRouteBoard() {
-  if (!ui.ordersRouteBoard) return;
-  ui.ordersRouteBoard.innerHTML = "";
-}
-
 function isRoutedToWarehouse(order) {
   const warehouse = order.operations?.warehouse || {};
   return Boolean(
@@ -3374,8 +3493,6 @@ function renderOps() {
   const accounting = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
   const shipping = state.orders.filter((order) => ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode) && !isLogisticsOrderCompleted(order)).length;
   const closed = state.orders.filter((order) => isOrderClosed(order)).length;
-  const criticalAlerts = state.orders.filter((order) => order.operations?.warehouse?.status === "bloccato" || order.operations?.installation?.status === "problema").length;
-  const topbarAlerts = Math.min(9, criticalAlerts + accounting);
   ui.opsOrdersValue.textContent = String(orders);
   if (ui.opsSoldSqmValue) ui.opsSoldSqmValue.textContent = `${Math.round(soldSqm)} mq`;
   ui.opsWarehouseValue.textContent = String(warehouse);
@@ -3392,10 +3509,6 @@ function renderOps() {
   setNavCount("accounting", accounting);
   setNavCount("shipping", shipping);
   setNavCount("settings", "");
-  if (ui.topbarAlertCount) {
-    ui.topbarAlertCount.textContent = String(topbarAlerts);
-    ui.topbarAlertCount.classList.toggle("hidden", topbarAlerts === 0);
-  }
   const opsTexts = state.lang === "it"
     ? {
         orders: "Ordini totali e bozze operative.",
@@ -3776,7 +3889,6 @@ function renderOrders() {
   const ordersGrid = ui.ordersList?.closest(".order-grid");
   if (ordersGrid) ordersGrid.classList.toggle("is-empty", orders.length === 0);
   updateOrderImportPanel();
-  renderRouteBoard();
   ui.ordersList.innerHTML = pageItems.length ? pageItems.map((order) => renderOrderRow(order, "orders")).join("") : `<div class="info-card">${t("noOrdersAvailable")}</div>`;
   if (ui.ordersPagination) {
     ui.ordersPagination.innerHTML = totalItems > getOrdersPageSize()
@@ -4796,7 +4908,7 @@ function renderInstallations() {
       ? (state.lang === "it" ? "Accesso, arrivo squadra, avanzamento, problemi, fine lavori..." : "Access, crew arrival, progress, issues, completion...")
       : (state.lang === "it" ? "Accesso, riprogrammazione, note posa, report cantiere..." : "Access, rescheduling, install notes, site report...");
   }
-  ui.installationAttachments.innerHTML = renderAttachmentGrid(order.attachments || [], order.id);
+  ui.installationAttachments.innerHTML = renderAttachmentGrid(mapAttachmentsForContext(order, "installation"), order.id);
   renderInstallationExpenseSection(order);
   clearStatus(ui.installationStatus);
 }
@@ -4808,14 +4920,20 @@ function renderAccounting() {
   ui.accountingList.innerHTML = orders.length
     ? orders.map((order) => {
         const selected = order.id === state.selectedOrderId ? "selected" : "";
-        const shopifyPaid = getShopifyPaidAmount(order);
-        const internalPaid = getInternalPaidAmount(order);
         const openBalance = getOpenBalance(order);
+        const netSubtotal = getOrderNetSubtotal(order);
+        const taxTotal = getOrderTaxTotal(order);
+        const billingHealth = getBillingCompleteness(order);
         return `
           <article class="order-row accounting-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="accounting">
             <div>
               <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-              <div class="order-meta">${getPaymentLabel(order.financialStatus)} &middot; ${getEffectivePaymentMethod(order)} &middot; ${isShopifyPaid(order) ? t("importedFromShopify") : t("internalAccountingPending")} &middot; ${state.lang === "it" ? "Totale" : "Total"} ${formatCurrency(order.total)}</div>
+              <div class="order-meta">
+                ${getPaymentLabel(order.financialStatus)} &middot; ${getEffectivePaymentMethod(order)} &middot; ${isShopifyPaid(order) ? t("importedFromShopify") : t("internalAccountingPending")}
+                &middot; ${state.lang === "it" ? "Imponibile" : "Net"} ${formatCurrency(netSubtotal)}
+                &middot; ${state.lang === "it" ? "IVA" : "VAT"} ${formatCurrency(taxTotal)}
+                &middot; ${billingHealth.complete ? (state.lang === "it" ? "Fattura OK" : "Billing OK") : (state.lang === "it" ? "Fattura da completare" : "Billing to complete")}
+              </div>
             </div>
             <div class="order-amount" style="color:${openBalance > 0 ? "#dc2626" : "#16a34a"}">${formatCurrency(openBalance)}</div>
             <div class="action-badge ${openBalance > 0 ? "badge-urgent" : "badge-success"}">${openBalance > 0 ? t("accountingOpen") : t("accountingOk")}</div>
@@ -4842,8 +4960,15 @@ function renderAccounting() {
   const shopifyPaid = getShopifyPaidAmount(order);
   const internalPaid = getInternalPaidAmount(order);
   const openBalance = getOpenBalance(order);
-  const totalPaid = shopifyPaid + internalPaid;
   const isInstall = order.operations?.installation?.required;
+  const grossTotal = getOrderGrossTotal(order);
+  const taxTotal = getOrderTaxTotal(order);
+  const netSubtotal = getOrderNetSubtotal(order);
+  const totalPaid = shopifyPaid + internalPaid;
+  const billingHealth = getBillingCompleteness(order);
+  const billingDisplayName = getBillingDisplayName(order);
+  const billingAddress = getBillingAddressLine(order);
+  const taxRows = Array.isArray(order.lineDetails) ? order.lineDetails : [];
 
   const trancheRows = [];
   if (shopifyPaid > 0) {
@@ -4868,7 +4993,9 @@ function renderAccounting() {
   ui.accountingMeta.innerHTML = [
     `
       <div class="detail-section">
-        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Totale ordine" : "Order total"}</span><span class="detail-row-value detail-row-value-mono" style="font-size:18px">${formatCurrency(order.total)}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Imponibile ordine" : "Order net subtotal"}</span><span class="detail-row-value detail-row-value-mono" style="font-size:18px">${formatCurrency(netSubtotal)}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "IVA totale" : "Total VAT"}</span><span class="detail-row-value detail-row-value-mono">${formatCurrency(taxTotal)}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Totale ivato" : "Gross total"}</span><span class="detail-row-value detail-row-value-mono" style="font-size:18px">${formatCurrency(grossTotal)}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Stato Shopify" : "Shopify status"}</span><span class="detail-row-value">${getPaymentLabel(order.financialStatus)} · ${getFulfillmentLabel(order.fulfillmentStatus)}</span></div>
         <div class="detail-row"><span class="detail-row-label">${t("realResidual")}</span><span class="detail-row-value" style="color:${openBalance > 0 ? "#dc2626" : "#16a34a"};font-weight:800;font-size:16px">${formatCurrency(openBalance)}</span></div>
       </div>
@@ -4893,8 +5020,38 @@ function renderAccounting() {
     `
       <div class="detail-section">
         <div class="detail-section-title">${state.lang === "it" ? "Fatturazione" : "Invoicing"}</div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Verifica anagrafica" : "Billing profile check"}</span><span class="detail-row-value"><span class="action-badge ${billingHealth.tone}">${billingHealth.label}</span></span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Intestazione" : "Billing name"}</span><span class="detail-row-value">${billingDisplayName || "—"}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Indirizzo fattura" : "Billing address"}</span><span class="detail-row-value">${billingAddress || "—"}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Fattura richiesta" : "Invoice requested"}</span><span class="detail-row-value">${order.accounting?.invoiceRequired ? t("invoiceRequested") : t("invoiceNotRequested")}</span></div>
         <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Fattura emessa" : "Invoice issued"}</span><span class="detail-row-value">${order.accounting?.invoiceIssued ? t("invoiceIssued") : (state.lang === "it" ? "No" : "No")}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Esito" : "Status"}</span><span class="detail-row-value">${billingHealth.copy}</span></div>
+      </div>
+    `,
+    `
+      <div class="detail-section">
+        <div class="detail-section-title">${state.lang === "it" ? "Imposte per articolo" : "Taxes by line item"}</div>
+        <div class="detail-stack tax-detail-stack">
+          ${taxRows.length
+            ? taxRows.map((item) => {
+                const lineTax = toNumber(item.taxAmount || 0);
+                const lineNet = toNumber(item.totalPrice || 0);
+                return `
+                  <article class="tax-line-card">
+                    <div class="tax-line-head">
+                      <strong>${escapeHtml(item.title || (state.lang === "it" ? "Articolo" : "Item"))}</strong>
+                      <span class="action-badge ${item.taxable ? "badge-info" : "badge-warning"}">${item.taxable ? (state.lang === "it" ? "Con imposta" : "Taxed") : (state.lang === "it" ? "Senza imposta" : "Untaxed")}</span>
+                    </div>
+                    <div class="tax-line-meta">${state.lang === "it" ? "Qta" : "Qty"} ${item.quantity || 1} · ${describeTaxStatus(item)}</div>
+                    <div class="tax-line-values">
+                      <span>${state.lang === "it" ? "Netto riga" : "Line net"} ${lineNet > 0 ? formatCurrency(lineNet) : "—"}</span>
+                      <strong>${state.lang === "it" ? "IVA riga" : "Line tax"} ${lineTax > 0 ? formatCurrency(lineTax) : formatCurrency(0)}</strong>
+                    </div>
+                  </article>
+                `;
+              }).join("")
+            : `<div class="info-card">${state.lang === "it" ? "Shopify non ha restituito il dettaglio imposte per questo ordine." : "Shopify did not return tax details for this order."}</div>`}
+        </div>
       </div>
     `,
     order.accounting?.accountingNote ? `<div class="info-card"><strong>${t("accountingDetailSubtitle")}</strong><p>${order.accounting.accountingNote}</p></div>` : "",
@@ -5200,6 +5357,8 @@ function renderShipping() {
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
     if (ui.shippingMaterialPreview) renderShippingMaterialPreview(null);
     if (ui.shippingEstimate) ui.shippingEstimate.innerHTML = "";
+    if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato logistico." : "No shipping attachments."}</div>`;
+    clearStatus(ui.shippingStatus);
     if (ui.ddtItemsPreview) renderDdtPreview(null);
     return;
   }
@@ -5270,6 +5429,9 @@ function renderShipping() {
     ui.shippingForm.readyToShip.checked = Boolean(order.operations?.warehouse?.readyToShip);
     ui.shippingForm.carrierPassed.checked = Boolean(order.operations?.warehouse?.carrierPassed);
     ui.shippingForm.shipped.checked = Boolean(order.operations?.warehouse?.shipped);
+  }
+  if (ui.shippingAttachments) {
+    ui.shippingAttachments.innerHTML = renderAttachmentGrid(mapAttachmentsForContext(order, "shipping"), order.id);
   }
   if (ui.shippingEstimate) {
     ui.shippingEstimate.innerHTML = buildShippingEstimate(order);
@@ -5486,14 +5648,17 @@ function renderInfoLine(label, value) {
 }
 
 function renderAttachmentGrid(items, orderId = "") {
-  if (!items?.length) return `<div class="info-card">Nessun allegato caricato.</div>`;
+  if (!items?.length) return `<div class="info-card">${state.lang === "it" ? "Nessun allegato caricato." : "No attachments uploaded."}</div>`;
   return items.map((item, index) => `
     <article class="attachment-item">
-      ${orderId ? `<button class="attachment-remove" type="button" data-action="remove-attachment" data-id="${orderId}" data-index="${index}" aria-label="${state.lang === "it" ? "Rimuovi allegato" : "Remove attachment"}">×</button>` : ""}
-      ${(item.url || item.dataUrl) ? `<img src="${escapeHtml(item.url || item.dataUrl)}" alt="${escapeHtml(item.name || "Allegato")}" loading="lazy" />` : ""}
+      ${orderId ? `<button class="attachment-remove" type="button" data-action="remove-attachment" data-id="${orderId}" data-index="${Number(item._attachmentIndex ?? index)}" aria-label="${state.lang === "it" ? "Rimuovi allegato" : "Remove attachment"}">×</button>` : ""}
+      ${isImageAttachment(item) && (item.url || item.dataUrl)
+        ? `<img src="${escapeHtml(item.url || item.dataUrl)}" alt="${escapeHtml(item.name || "Allegato")}" loading="lazy" />`
+        : `<div class="attachment-file-badge">${escapeHtml(String(item.type || "file").split("/").pop()?.toUpperCase() || "FILE")}</div>`}
       <strong>${item.url
         ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.name || "Allegato")}</a>`
         : escapeHtml(item.name || "Allegato")}</strong>
+      <div class="attachment-copy">${getAttachmentContextLabel(String(item.context || ""))}</div>
       <div>${item.createdAt ? formatDate(item.createdAt) : "—"}</div>
     </article>
   `).join("");
@@ -5628,6 +5793,10 @@ function showApp() {
   ui.authScreen.classList.add("hidden");
   ui.appShell.classList.remove("hidden");
   render();
+  requestAnimationFrame(() => {
+    scrollCurrentViewToTop();
+    focusViewTarget(state.currentView);
+  });
 }
 
 function render() {
@@ -5648,8 +5817,16 @@ function render() {
 }
 
 function setView(view) {
+  const previousView = state.currentView;
   state.currentView = view;
   render();
+  if (view !== previousView) {
+    requestAnimationFrame(() => {
+      scrollCurrentViewToTop();
+      focusViewTarget(view);
+    });
+    return;
+  }
   focusViewTarget(view);
 }
 
@@ -5974,6 +6151,7 @@ async function saveShipping(event) {
   event.preventDefault();
   const order = getSelectedOrder();
   if (!order || !ui.shippingForm) return;
+  clearStatus(ui.shippingStatus);
   const form = new FormData(ui.shippingForm);
   const currentWarehouse = order.operations?.warehouse || {};
   const currentStatus = String(currentWarehouse.status || "").trim();
@@ -6008,12 +6186,53 @@ async function saveShipping(event) {
       warehouseNote: form.get("warehouseNote"),
     },
   };
-  const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
+  let saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
+  let shopifyMessage = "";
+  const shouldSyncTrackingToShopify = Boolean(
+    nextShipped
+    && String(payload.warehouse.trackingNumber || "").trim()
+    && String(saved.source || order.source || "").toLowerCase().startsWith("shopify"),
+  );
+  if (shouldSyncTrackingToShopify) {
+    try {
+      const syncResult = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/sync-shopify-fulfillment`, {
+        method: "POST",
+        body: JSON.stringify({
+          trackingNumber: payload.warehouse.trackingNumber,
+          carrier: String(saved.operations?.warehouse?.carrier || state.settings?.carrierName || "").trim(),
+        }),
+      });
+      saved = syncResult.order || saved;
+      shopifyMessage = syncResult.alreadySynced
+        ? (state.lang === "it"
+          ? " Tracking Shopify gia allineato."
+          : " Shopify tracking was already aligned.")
+        : (state.lang === "it"
+          ? " Tracking inviato anche a Shopify."
+          : " Tracking was also sent to Shopify.");
+    } catch (error) {
+      state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+      render();
+      setStatus(
+        ui.shippingStatus,
+        "error",
+        state.lang === "it"
+          ? `Spedizione salvata, ma l'aggiornamento tracking su Shopify e fallito. ${String(error.message || "").trim()}`
+          : `Shipping saved, but the Shopify tracking update failed. ${String(error.message || "").trim()}`,
+      );
+      return;
+    }
+  }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   render();
+  setStatus(
+    ui.shippingStatus,
+    "success",
+    `${state.lang === "it" ? "Spedizione aggiornata correttamente." : "Shipping updated successfully."}${shopifyMessage}`,
+  );
 }
 
 async function createDdt() {
@@ -6745,6 +6964,8 @@ async function handleAttachmentChange(event) {
   const file = event.target.files?.[0];
   const target = state.pendingAttachmentTarget;
   if (!file || !target) return;
+  const targetStatus = getStatusNodeForAttachmentTarget(target.type);
+  clearStatus(targetStatus);
   const dataUrl = await readFileAsDataUrl(file);
   const saved = await apiFetch(`/api/orders/${encodeURIComponent(target.id)}/attachments`, {
     method: "POST",
@@ -6754,6 +6975,7 @@ async function handleAttachmentChange(event) {
         type: file.type,
         size: file.size,
         dataUrl,
+        context: target.type,
         createdAt: new Date().toISOString(),
       }],
     }),
@@ -6761,6 +6983,15 @@ async function handleAttachmentChange(event) {
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.pendingAttachmentTarget = null;
   render();
+  setStatus(
+    targetStatus,
+    "success",
+    target.type === "shipping"
+      ? (state.lang === "it" ? "Foto logistica caricata correttamente." : "Shipping photo uploaded successfully.")
+      : target.type === "installation"
+        ? (state.lang === "it" ? "Foto cantiere caricata correttamente." : "Site photo uploaded successfully.")
+        : (state.lang === "it" ? "Allegato ordine caricato correttamente." : "Order attachment uploaded successfully."),
+  );
 }
 
 async function removeAttachment(orderId, attachmentIndex) {
@@ -6869,7 +7100,11 @@ function handleGlobalClick(event) {
       const message = error?.message === "attachment_not_found"
         ? (state.lang === "it" ? "Allegato gia rimosso o non trovato." : "Attachment already removed or not found.")
         : (state.lang === "it" ? "Impossibile rimuovere l'allegato." : "Unable to remove attachment.");
-      const targetStatus = state.currentView === "installations" ? ui.installationStatus : ui.orderStatus;
+      const targetStatus = state.currentView === "installations"
+        ? ui.installationStatus
+        : state.currentView === "shipping"
+          ? ui.shippingStatus
+          : ui.ordersStatus;
       if (targetStatus) setStatus(targetStatus, "error", message);
     });
     return;
@@ -6903,7 +7138,10 @@ function handleGlobalClick(event) {
     if (!orderId) return;
     state.selectedOrderId = orderId;
     renderInstallations();
-    ui.installationDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" });
+    requestAnimationFrame(() => {
+      scrollCurrentViewToTop();
+      focusViewTarget("installations");
+    });
     return;
   }
   if (action === "set-installation-crew-filter") {
@@ -7103,7 +7341,6 @@ bindEvent(ui.mobileSidebarBackdrop, "click", () => {
   state.mobileMenuOpen = false;
   updateMobileMenu();
 });
-bindEvent(ui.dashboardSyncButton, "click", syncShopifyOrders);
 bindEvent(ui.ordersSyncButton, "click", syncShopifyOrders);
 bindEvent(ui.ordersImportButton, "click", () => {
   state.showOrderImport = !state.showOrderImport;
@@ -7170,11 +7407,8 @@ if (ui.shippingFilterTags?.length) {
     renderShipping();
   }));
 }
-bindEvent(ui.openOrderModalButton, "click", () => {
-  const order = getSelectedOrder();
-  if (order) openOrderModal(order);
-});
 bindEvent(ui.orderAttachmentButton, "click", () => openAttachmentPicker("order"));
+bindEvent(ui.shippingAttachmentButton, "click", () => openAttachmentPicker("shipping"));
 if (ui.savePrepListButton) {
   ui.savePrepListButton.addEventListener("click", savePrepList);
 }

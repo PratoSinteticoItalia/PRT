@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260412-menu-visibility-13" />
+    <link rel="stylesheet" href="./styles.css?v=20260412-mobile-accounting-14" />
   </head>
   <body>
     <section id="auth-screen" class="auth-screen shell-pending">
@@ -577,10 +577,13 @@
                   <label class="checkline"><input type="checkbox" name="readyToShip" /> <span>Merce pronta da evadere</span></label>
                   <label class="checkline"><input type="checkbox" name="carrierPassed" /> <span>Ritiro / affidamento completato</span></label>
                   <label class="checkline"><input type="checkbox" name="shipped" /> <span>Ordine evaso</span></label>
+                  <div id="shipping-status" class="panel-note hidden field-full"></div>
                   <div class="inline-actions field-full">
+                    <button type="button" id="shipping-attachment-button" class="ghost-button small-button">Carica foto partenza</button>
                     <button type="submit" class="primary-button small-button">Salva spedizione</button>
                   </div>
                 </form>
+                <div id="shipping-attachments" class="attachment-grid"></div>
                 <div class="panel-subsection shipping-estimate-panel">
                   <div class="subsection-head">
                     <h4>Calcolatore costo spedizione</h4>
@@ -1191,6 +1194,6 @@
     <input id="attachment-input" type="file" accept="image/*" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260412-menu-visibility-13" type="module"></script>
+    <script src="./app.js?v=20260412-mobile-accounting-14" type="module"></script>
   </body>
 </html>
