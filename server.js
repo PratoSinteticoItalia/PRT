@@ -838,13 +838,15 @@ function normalizeOrderTotals(source = {}, fallbackGross = 0) {
   const hasExplicitNet = hasValue(explicitNet);
   const hasExplicitTax = hasValue(explicitTax);
   const derivedTaxFromNet = hasExplicitNet ? Math.max(0, Number((grossTotal - toNumber(explicitNet)).toFixed(2))) : 0;
-  const taxTotal = hasExplicitTax
-    ? Number(toNumber(explicitTax).toFixed(2))
+  const explicitTaxAmount = hasExplicitTax ? Number(toNumber(explicitTax).toFixed(2)) : 0;
+  const ignoreZeroExplicitTax = hasExplicitTax && explicitTaxAmount === 0 && derivedTaxFromNet > 0;
+  const taxTotal = hasExplicitTax && !ignoreZeroExplicitTax
+    ? explicitTaxAmount
     : lineTaxTotal > 0
       ? lineTaxTotal
       : derivedTaxFromNet;
   const taxKnown = explicitTaxKnown == null
-    ? (hasExplicitTax || lineTaxTotal > 0 || hasExplicitNet)
+    ? ((hasExplicitTax && !ignoreZeroExplicitTax) || lineTaxTotal > 0 || derivedTaxFromNet > 0)
     : explicitTaxKnown;
   const netSubtotal = hasExplicitNet
     ? Number(toNumber(explicitNet).toFixed(2))
@@ -1309,6 +1311,7 @@ function reconcileStoreData(store) {
     nextOrder.countryCode = String(nextOrder.countryCode || "IT").trim().toUpperCase();
     nextOrder.shopifyNumericId = getNormalizedShopifyNumericId(nextOrder);
     nextOrder.shopifyGraphqlId = getNormalizedShopifyGraphqlId(nextOrder);
+    const persistedTotals = nextOrder.totals || {};
     const billingMetadata = extractBillingMetadata(
       nextOrder.billing || {},
       nextOrder,
@@ -1317,12 +1320,12 @@ function reconcileStoreData(store) {
     );
     nextOrder.billing = normalizeBillingAddress(nextOrder.billing || {}, nextOrder, billingMetadata);
     nextOrder.totals = normalizeOrderTotals({
-      grossTotal: nextOrder.totals?.grossTotal ?? nextOrder.total,
-      totalTax: nextOrder.totals?.taxKnown === true ? nextOrder.totals?.taxTotal : null,
-      currentSubtotal: nextOrder.totals?.netKnown === true ? nextOrder.totals?.netSubtotal : null,
-      currency: nextOrder.totals?.currency || "EUR",
-      taxKnown: typeof nextOrder.totals?.taxKnown === "boolean" ? nextOrder.totals.taxKnown : null,
-      netKnown: typeof nextOrder.totals?.netKnown === "boolean" ? nextOrder.totals.netKnown : null,
+      grossTotal: persistedTotals.grossTotal ?? nextOrder.total,
+      totalTax: persistedTotals.taxTotal ?? null,
+      currentSubtotal: persistedTotals.netSubtotal ?? null,
+      currency: persistedTotals.currency || "EUR",
+      taxKnown: typeof persistedTotals.taxKnown === "boolean" ? persistedTotals.taxKnown : null,
+      netKnown: typeof persistedTotals.netKnown === "boolean" ? persistedTotals.netKnown : null,
       lineDetails: nextOrder.lineDetails,
     }, nextOrder.total);
     nextOrder.accounting = {

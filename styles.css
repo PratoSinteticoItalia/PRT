@@ -1212,6 +1212,33 @@ button.is-feedback,
   line-height: 1.5;
 }
 
+#orders .route-toggle-card {
+  gap: 12px;
+  padding: 24px 18px;
+}
+
+#orders .route-toggle-head {
+  min-height: 34px;
+  align-items: flex-start;
+}
+
+#orders .route-toggle-head input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+#orders .route-toggle-head span {
+  line-height: 1.35;
+}
+
+#orders .route-toggle-copy {
+  display: block;
+  padding-left: 30px;
+  line-height: 1.6;
+}
+
 .route-visibility-grid > *,
 .order-flow-grid .field {
   min-width: 0;
