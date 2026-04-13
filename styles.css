@@ -8444,6 +8444,8 @@ button:active,
       "main" !important;
     min-height: 100svh;
     min-height: 100dvh;
+    max-width: 100vw !important;
+    overflow-x: clip !important;
   }
 
   body.mobile-safe-mode .topbar {
@@ -8519,14 +8521,17 @@ button:active,
     display: flex !important;
     flex-direction: column;
     gap: 10px;
+    overflow-x: hidden !important;
     overflow-y: auto !important;
     transform: translateX(-104%) !important;
     transition: transform 0.22s ease;
     box-shadow: 20px 0 44px rgba(15, 31, 22, 0.18);
     border-right: 1px solid rgba(26, 49, 35, 0.08);
     border-bottom: 0;
-    border-radius: 0 24px 24px 0;
+    border-radius: 0 28px 28px 0;
     background: rgba(252, 252, 249, 0.98);
+    isolation: isolate;
+    background-clip: padding-box;
   }
 
   body.mobile-safe-mode.mobile-menu-open .sidebar {
@@ -8607,7 +8612,8 @@ button:active,
 
   body.mobile-safe-mode .main-content {
     display: block;
-    overflow: visible !important;
+    overflow-x: clip !important;
+    overflow-y: visible !important;
     padding: 0 12px calc(24px + env(safe-area-inset-bottom, 0px));
   }
 }
@@ -8639,6 +8645,7 @@ button:active,
     height: 112px;
     background: linear-gradient(180deg, rgba(223, 241, 227, 0.24), transparent);
     pointer-events: none;
+    border-top-right-radius: 28px;
   }
 
   body.mobile-safe-mode .sidebar > * {
@@ -8703,6 +8710,8 @@ button:active,
       linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(246, 249, 244, 0.94) 100%),
       linear-gradient(135deg, rgba(216, 243, 220, 0.16), transparent 52%);
     box-shadow: 0 12px 28px rgba(19, 38, 24, 0.06);
+    overflow: hidden;
+    background-clip: padding-box;
   }
 
   body.mobile-safe-mode .sidebar-brand-mark {
@@ -8765,6 +8774,8 @@ button:active,
     color: #263a2b;
     font-size: 14px;
     font-weight: 700;
+    overflow: hidden;
+    background-clip: padding-box;
   }
 
   body.mobile-safe-mode .nav-link:hover {
@@ -8840,6 +8851,8 @@ button:active,
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 248, 243, 0.94));
     box-shadow: 0 12px 24px rgba(20, 36, 24, 0.05);
     font-size: 13px;
+    overflow: hidden;
+    background-clip: padding-box;
   }
 
   body.mobile-safe-mode .sidebar-quick-link:hover {
@@ -8850,6 +8863,8 @@ button:active,
     padding: 5px;
     border-radius: 18px;
     background: linear-gradient(180deg, rgba(236, 242, 235, 0.98), rgba(245, 248, 243, 0.96));
+    overflow: hidden;
+    background-clip: padding-box;
   }
 
   body.mobile-safe-mode .sidebar-lang-switch .lang-btn {
@@ -8876,6 +8891,29 @@ button:active,
 @media (max-width: 980px) {
   body.mobile-safe-mode .main-content {
     padding: 14px 12px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  body.mobile-safe-mode .main-content,
+  body.mobile-safe-mode .view,
+  body.mobile-safe-mode .page-header,
+  body.mobile-safe-mode .dashboard-grid,
+  body.mobile-safe-mode .sales-dashboard-grid,
+  body.mobile-safe-mode .sales-generator-grid,
+  body.mobile-safe-mode .section,
+  body.mobile-safe-mode .panel,
+  body.mobile-safe-mode .detail-panel,
+  body.mobile-safe-mode .sales-generator-frame-panel {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-x: clip;
+  }
+
+  body.mobile-safe-mode .dashboard-grid > *,
+  body.mobile-safe-mode .sales-dashboard-grid > *,
+  body.mobile-safe-mode .sales-generator-grid > *,
+  body.mobile-safe-mode .view > * {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 
@@ -9352,9 +9390,10 @@ body.mobile-safe-mode .nav-link.is-active {
   align-items: start;
 }
 
-#sales-requests .sales-dashboard-grid {
-  margin-top: 26px;
-  gap: 22px;
+#sales-requests .sales-dashboard-grid,
+#sales-content .sales-dashboard-grid {
+  margin-top: 30px;
+  gap: 24px;
 }
 
 .sales-request-source-panel {
@@ -9407,8 +9446,37 @@ body.mobile-safe-mode .nav-link.is-active {
 }
 
 .sales-request-list-panel,
-.sales-request-detail-panel {
+.sales-content-list-panel,
+.sales-request-detail-panel,
+.sales-content-detail-panel {
   min-height: 0;
+}
+
+.sales-request-list-panel,
+.sales-content-list-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+#sales-requests .sales-request-list-panel,
+#sales-content .sales-content-list-panel {
+  max-height: min(72vh, 980px);
+}
+
+#sales-requests .search-field,
+#sales-content .search-field {
+  margin-bottom: 12px;
+}
+
+#sales-requests .sales-request-list,
+#sales-content .sales-content-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-top: 10px;
+  padding-right: 6px;
 }
 
 .sales-request-card,
@@ -9434,10 +9502,10 @@ body.mobile-safe-mode .nav-link.is-active {
 
 .sales-request-card.is-active,
 .sales-content-card.is-active {
-  border-color: rgba(31, 70, 55, 0.34);
-  box-shadow: 0 0 0 2px rgba(31, 70, 55, 0.18), 0 20px 38px rgba(15, 23, 32, 0.11);
-  background: linear-gradient(180deg, rgba(244, 249, 246, 0.96), rgba(237, 245, 241, 0.92));
-  transform: translateY(-1px);
+  border-color: rgba(31, 70, 55, 0.4);
+  box-shadow: 0 0 0 3px rgba(31, 70, 55, 0.14), 0 22px 40px rgba(15, 23, 32, 0.12);
+  background: linear-gradient(180deg, rgba(240, 248, 243, 0.98), rgba(231, 243, 236, 0.94));
+  transform: translateY(-2px);
 }
 
 .sales-request-card.is-active::before,
@@ -9517,6 +9585,7 @@ body.mobile-safe-mode .nav-link.is-active {
 .sales-generator-frame {
   display: block;
   width: 100%;
+  max-width: 100%;
   min-height: 1760px;
   border: 0;
   border-radius: 24px;
@@ -9603,9 +9672,22 @@ body.mobile-safe-mode .nav-link.is-active {
     grid-template-columns: 1fr;
   }
 
-  #sales-requests .sales-dashboard-grid {
-    margin-top: 20px;
-    gap: 18px;
+  #sales-requests .sales-dashboard-grid,
+  #sales-content .sales-dashboard-grid {
+    margin-top: 22px;
+    gap: 20px;
+  }
+
+  #sales-requests .sales-request-list-panel,
+  #sales-content .sales-content-list-panel {
+    max-height: none;
+  }
+
+  #sales-requests .sales-request-list,
+  #sales-content .sales-content-list {
+    max-height: 50dvh;
+    padding-top: 12px;
+    padding-right: 2px;
   }
 
   .sales-generator-frame {

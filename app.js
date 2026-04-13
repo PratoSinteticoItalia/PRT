@@ -5067,7 +5067,18 @@ function renderOrders() {
 function getFilteredSalesRequests() {
   const query = String(state.search.salesRequests || "").trim().toLowerCase();
   return [...state.salesRequests]
-    .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))
+    .sort((left, right) => {
+      const rightUpdated = new Date(right.updatedAt || right.createdAt || 0).getTime();
+      const leftUpdated = new Date(left.updatedAt || left.createdAt || 0).getTime();
+      if (rightUpdated !== leftUpdated) return rightUpdated - leftUpdated;
+      const rightCreated = new Date(right.createdAt || 0).getTime();
+      const leftCreated = new Date(left.createdAt || 0).getTime();
+      if (rightCreated !== leftCreated) return rightCreated - leftCreated;
+      const rightRow = Number(right.sourceRowNumber || 0);
+      const leftRow = Number(left.sourceRowNumber || 0);
+      if (rightRow !== leftRow) return rightRow - leftRow;
+      return String(right.id || "").localeCompare(String(left.id || ""));
+    })
     .filter((item) => {
       if (!query) return true;
       const haystack = [
@@ -5100,14 +5111,13 @@ function getFilteredSalesContents() {
 }
 
 function renderSalesRequests() {
-  let selected = ensureSelectedSalesRequest();
   const filtered = getFilteredSalesRequests();
-  const { pageItems, totalItems, totalPages } = paginateSalesRequests(filtered);
-  if (selected && !pageItems.some((item) => item.id === selected.id) && pageItems.length) {
-    selected = pageItems[0];
+  let selected = ensureSelectedSalesRequest();
+  if (selected && !filtered.some((item) => item.id === selected.id) && filtered.length) {
+    selected = filtered[0];
   }
-  if (!selected && pageItems.length) {
-    selected = pageItems[0];
+  if (!selected && filtered.length) {
+    selected = filtered[0];
   }
   if ((selected?.id || "") !== state.selectedSalesRequestId) {
     state.selectedSalesRequestId = selected?.id || "";
@@ -5115,8 +5125,8 @@ function renderSalesRequests() {
   updateSalesRequestImportPanel();
   updateSalesRequestSourcePanel();
   if (ui.salesRequestsList) {
-    ui.salesRequestsList.innerHTML = pageItems.length
-      ? pageItems.map((item) => `
+    ui.salesRequestsList.innerHTML = filtered.length
+      ? filtered.map((item) => `
           <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""}" data-action="select-sales-request" data-id="${item.id}">
             <div class="sales-request-card-head">
               <div>
@@ -5138,15 +5148,7 @@ function renderSalesRequests() {
       : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta disponibile." : "No requests available."}</div>`;
   }
   if (ui.salesRequestsPagination) {
-    ui.salesRequestsPagination.innerHTML = totalItems > getSalesRequestsPageSize()
-      ? `
-        <div class="list-pagination-copy">${state.lang === "it" ? `Pagina ${state.salesRequestPage} di ${totalPages} · ${totalItems} richieste` : `Page ${state.salesRequestPage} of ${totalPages} · ${totalItems} requests`}</div>
-        <div class="list-pagination-actions">
-          <button class="btn" data-action="sales-requests-prev-page" ${state.salesRequestPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prec." : "Prev"}</button>
-          <button class="btn" data-action="sales-requests-next-page" ${state.salesRequestPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Succ." : "Next"}</button>
-        </div>
-      `
-      : "";
+    ui.salesRequestsPagination.innerHTML = "";
   }
   if (!ui.salesRequestForm) return;
   ui.salesRequestForm.id.value = selected?.id || "";
@@ -8696,11 +8698,6 @@ function handleGlobalClick(event) {
   if (action === "select-sales-request") {
     state.creatingSalesRequest = false;
     state.selectedSalesRequestId = id || "";
-    const filtered = getFilteredSalesRequests();
-    const selectedIndex = filtered.findIndex((item) => item.id === state.selectedSalesRequestId);
-    if (selectedIndex >= 0) {
-      state.salesRequestPage = Math.floor(selectedIndex / getSalesRequestsPageSize()) + 1;
-    }
     renderSalesRequests();
     renderSalesGenerator();
     if (window.innerWidth <= 980) {
