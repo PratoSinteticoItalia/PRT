@@ -1064,6 +1064,62 @@ function normalizeSalesRequestService(value = "") {
   return "";
 }
 
+function normalizeSalesRequestStatus(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "new";
+  const normalized = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (!normalized) return "new";
+  if ([
+    "new",
+    "nuova",
+    "nuovo",
+    "lead",
+    "richiesta nuova",
+    "nuova richiesta",
+  ].includes(normalized)) return "new";
+  if ([
+    "quoted",
+    "quote",
+    "preventivo",
+    "in preventivo",
+    "preventivo inviato",
+    "offerta",
+    "offerta inviata",
+    "quotato",
+  ].includes(normalized)) return "quoted";
+  if ([
+    "followup",
+    "follow up",
+    "follow-up",
+    "da richiamare",
+    "richiamare",
+    "richiamata",
+    "recall",
+    "attesa",
+    "in lavorazione",
+    "da seguire",
+  ].includes(normalized)) return "followup";
+  if ([
+    "closed",
+    "chiusa",
+    "chiuso",
+    "vinta",
+    "vinto",
+    "persa",
+    "perso",
+    "completata",
+    "completato",
+    "archiviata",
+    "archiviato",
+  ].includes(normalized)) return "closed";
+  return raw;
+}
+
 function normalizeSalesRequestSurface(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized.includes("terra")) return "terra";
@@ -1349,7 +1405,7 @@ function normalizeSalesRequestRecord(item = {}) {
     service: normalizeSalesRequestService(item.service || item.servizio || ""),
     surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),
     assignment: String(item.assignment || "").trim(),
-    status: String(item.status || "new").trim() || "new",
+    status: normalizeSalesRequestStatus(item.status || item.stato || ""),
     note: String(item.note || "").trim(),
     source: String(item.source || "manual").trim() || "manual",
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),

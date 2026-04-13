@@ -710,6 +710,7 @@ const state = {
   shellPending: true,
   syncInProgress: false,
   orderPage: 1,
+  salesRequestPage: 1,
   mobileMenuOpen: false,
   installationWeekOffset: 0,
   selectedInstallationCrew: "",
@@ -802,6 +803,7 @@ const ui = {
   salesRequestOpenSheetButton: document.getElementById("sales-request-open-sheet-button"),
   salesRequestsStatus: document.getElementById("sales-requests-status"),
   salesRequestsList: document.getElementById("sales-requests-list"),
+  salesRequestsPagination: document.getElementById("sales-requests-pagination"),
   salesRequestForm: document.getElementById("sales-request-form"),
   salesRequestNewButton: document.getElementById("sales-request-new-button"),
   salesRequestDeleteButton: document.getElementById("sales-request-delete-button"),
@@ -1162,7 +1164,70 @@ function setNavCount(view, count) {
   node.setAttribute("data-count", normalized);
 }
 
+function normalizeSalesRequestStatus(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "new";
+  const normalized = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (!normalized) return "new";
+  if ([
+    "new",
+    "nuova",
+    "nuovo",
+    "lead",
+    "richiesta nuova",
+    "nuova richiesta",
+  ].includes(normalized)) return "new";
+  if ([
+    "quoted",
+    "quote",
+    "preventivo",
+    "in preventivo",
+    "preventivo inviato",
+    "offerta",
+    "offerta inviata",
+    "quotato",
+  ].includes(normalized)) return "quoted";
+  if ([
+    "followup",
+    "follow up",
+    "follow-up",
+    "da richiamare",
+    "richiamare",
+    "richiamata",
+    "recall",
+    "attesa",
+    "in lavorazione",
+    "da seguire",
+  ].includes(normalized)) return "followup";
+  if ([
+    "closed",
+    "chiusa",
+    "chiuso",
+    "vinta",
+    "vinto",
+    "persa",
+    "perso",
+    "completata",
+    "completato",
+    "archiviata",
+    "archiviato",
+  ].includes(normalized)) return "closed";
+  return raw;
+}
+
+function getSalesRequestStatusCode(status = "") {
+  const normalized = normalizeSalesRequestStatus(status);
+  if (["new", "quoted", "followup", "closed"].includes(normalized)) return normalized;
+  return normalized ? "custom" : "new";
+}
+
 function normalizeSalesRequestRecord(item = {}) {
+  const status = normalizeSalesRequestStatus(item.status || item.stato || "");
   return {
     id: String(item.id || crypto.randomUUID()),
     name: String(item.name || item.nome || "").trim(),
@@ -1174,7 +1239,7 @@ function normalizeSalesRequestRecord(item = {}) {
     service: String(item.service || item.servizio || "").trim().toLowerCase(),
     surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
     assignment: String(item.assignment || "").trim(),
-    status: String(item.status || "new").trim().toLowerCase() || "new",
+    status,
     note: String(item.note || "").trim(),
     source: String(item.source || "manual").trim() || "manual",
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
@@ -1213,11 +1278,17 @@ function getSalesRequestDisplayName(item = {}) {
 }
 
 function getSalesRequestStatusLabel(status = "") {
-  const value = String(status || "").trim().toLowerCase();
-  if (value === "quoted") return state.lang === "it" ? "In preventivo" : "Quoted";
-  if (value === "followup") return state.lang === "it" ? "Follow-up" : "Follow-up";
-  if (value === "closed") return state.lang === "it" ? "Chiusa" : "Closed";
+  const normalized = normalizeSalesRequestStatus(status);
+  const code = getSalesRequestStatusCode(normalized);
+  if (code === "quoted") return state.lang === "it" ? "In preventivo" : "Quoted";
+  if (code === "followup") return state.lang === "it" ? "Follow-up" : "Follow-up";
+  if (code === "closed") return state.lang === "it" ? "Chiusa" : "Closed";
+  if (code === "custom") return String(status || "").trim() || (state.lang === "it" ? "Senza stato" : "No status");
   return state.lang === "it" ? "Nuova" : "New";
+}
+
+function isSalesRequestClosedStatus(status = "") {
+  return getSalesRequestStatusCode(status) === "closed";
 }
 
 function getSalesRequestServiceLabel(service = "") {
@@ -1264,6 +1335,39 @@ function ensureSelectedSalesRequest() {
     state.selectedSalesRequestId = state.salesRequests[0].id;
   }
   return getSelectedSalesRequest();
+}
+
+function syncSalesRequestStatusField(value = "") {
+  const field = ui.salesRequestForm?.status;
+  if (!field) return;
+  Array.from(field.querySelectorAll("[data-dynamic-status]")).forEach((node) => node.remove());
+  const nextValue = String(value || "").trim() || "new";
+  const hasOption = Array.from(field.options).some((option) => option.value === nextValue);
+  if (!hasOption) {
+    const option = document.createElement("option");
+    option.value = nextValue;
+    option.textContent = getSalesRequestStatusLabel(nextValue);
+    option.dataset.dynamicStatus = "true";
+    field.append(option);
+  }
+  field.value = nextValue;
+}
+
+function getSalesRequestsPageSize() {
+  return window.innerWidth <= 980 ? 12 : 18;
+}
+
+function paginateSalesRequests(items = []) {
+  const pageSize = getSalesRequestsPageSize();
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  state.salesRequestPage = Math.min(Math.max(1, Number(state.salesRequestPage || 1)), totalPages);
+  const start = (state.salesRequestPage - 1) * pageSize;
+  return {
+    pageItems: items.slice(start, start + pageSize),
+    totalItems,
+    totalPages,
+  };
 }
 
 function ensureSelectedSalesContent() {
@@ -1781,6 +1885,7 @@ async function syncSalesRequestSource() {
     state.salesRequests = Array.isArray(payload.requests) ? payload.requests.map(normalizeSalesRequestRecord) : [];
     state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(payload.config || state.salesRequestSourceConfig || {});
     state.creatingSalesRequest = false;
+    state.salesRequestPage = 1;
     renderSalesRequests();
     renderSalesGenerator();
     setStatus(
@@ -4406,7 +4511,7 @@ function renderOps() {
   const accounting = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
   const shipping = state.orders.filter((order) => ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode) && !isLogisticsOrderCompleted(order)).length;
   const closed = state.orders.filter((order) => isOrderClosed(order)).length;
-  const salesRequests = state.salesRequests.filter((item) => item.status !== "closed").length;
+  const salesRequests = state.salesRequests.filter((item) => !isSalesRequestClosedStatus(item.status)).length;
   const salesContents = state.salesContents.length;
   ui.opsOrdersValue.textContent = String(orders);
   if (ui.opsSoldSqmValue) ui.opsSoldSqmValue.textContent = `${Math.round(soldSqm)} mq`;
@@ -4995,13 +5100,23 @@ function getFilteredSalesContents() {
 }
 
 function renderSalesRequests() {
-  const selected = ensureSelectedSalesRequest();
+  let selected = ensureSelectedSalesRequest();
   const filtered = getFilteredSalesRequests();
+  const { pageItems, totalItems, totalPages } = paginateSalesRequests(filtered);
+  if (selected && !pageItems.some((item) => item.id === selected.id) && pageItems.length) {
+    selected = pageItems[0];
+  }
+  if (!selected && pageItems.length) {
+    selected = pageItems[0];
+  }
+  if ((selected?.id || "") !== state.selectedSalesRequestId) {
+    state.selectedSalesRequestId = selected?.id || "";
+  }
   updateSalesRequestImportPanel();
   updateSalesRequestSourcePanel();
   if (ui.salesRequestsList) {
-    ui.salesRequestsList.innerHTML = filtered.length
-      ? filtered.map((item) => `
+    ui.salesRequestsList.innerHTML = pageItems.length
+      ? pageItems.map((item) => `
           <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""}" data-action="select-sales-request" data-id="${item.id}">
             <div class="sales-request-card-head">
               <div>
@@ -5022,6 +5137,17 @@ function renderSalesRequests() {
         `).join("")
       : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta disponibile." : "No requests available."}</div>`;
   }
+  if (ui.salesRequestsPagination) {
+    ui.salesRequestsPagination.innerHTML = totalItems > getSalesRequestsPageSize()
+      ? `
+        <div class="list-pagination-copy">${state.lang === "it" ? `Pagina ${state.salesRequestPage} di ${totalPages} · ${totalItems} richieste` : `Page ${state.salesRequestPage} of ${totalPages} · ${totalItems} requests`}</div>
+        <div class="list-pagination-actions">
+          <button class="btn" data-action="sales-requests-prev-page" ${state.salesRequestPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prec." : "Prev"}</button>
+          <button class="btn" data-action="sales-requests-next-page" ${state.salesRequestPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Succ." : "Next"}</button>
+        </div>
+      `
+      : "";
+  }
   if (!ui.salesRequestForm) return;
   ui.salesRequestForm.id.value = selected?.id || "";
   ui.salesRequestForm.name.value = selected?.name || "";
@@ -5033,7 +5159,7 @@ function renderSalesRequests() {
   ui.salesRequestForm.service.value = selected?.service || "";
   ui.salesRequestForm.surface.value = selected?.surface || "";
   ui.salesRequestForm.assignment.value = selected?.assignment || "";
-  ui.salesRequestForm.status.value = selected?.status || "new";
+  syncSalesRequestStatusField(selected?.status || "new");
   ui.salesRequestForm.note.value = selected?.note || "";
   if (ui.salesRequestDetailTitle) {
     ui.salesRequestDetailTitle.textContent = selected
@@ -5140,6 +5266,7 @@ function upsertSalesRequest(saved) {
     ...state.salesRequests.filter((item) => item.id !== normalized.id),
   ];
   state.selectedSalesRequestId = normalized.id;
+  state.salesRequestPage = 1;
   state.creatingSalesRequest = false;
   renderOps();
 }
@@ -5158,6 +5285,7 @@ function upsertSalesContent(saved) {
 function createNewSalesRequest() {
   state.creatingSalesRequest = true;
   state.selectedSalesRequestId = "";
+  state.salesRequestPage = 1;
   renderSalesRequests();
   clearStatus(ui.salesRequestsStatus);
   requestAnimationFrame(() => {
@@ -5207,6 +5335,7 @@ async function deleteSalesRequest() {
     await apiFetch(`/api/sales/requests/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
     state.salesRequests = state.salesRequests.filter((item) => item.id !== selected.id);
     state.selectedSalesRequestId = "";
+    state.salesRequestPage = 1;
     state.creatingSalesRequest = false;
     state.lastSalesGeneratorSignature = "";
     renderOps();
@@ -5255,6 +5384,7 @@ async function importSalesRequests() {
     }
     if (ui.salesRequestImportText) ui.salesRequestImportText.value = "";
     state.showSalesRequestImport = false;
+    state.salesRequestPage = 1;
     renderSalesRequests();
     renderSalesGenerator();
     setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? `${parsedItems.length} richieste importate correttamente.` : `${parsedItems.length} requests imported successfully.`);
@@ -7008,6 +7138,7 @@ function applySessionPayload(session = {}) {
   state.creatingSalesRequest = false;
   state.creatingSalesContent = false;
   state.accountingMobilePane = "summary";
+  state.salesRequestPage = 1;
   state.coveragePlanner = normalizeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner);
   state.settings = session.shopifySettings || {};
   state.users = session.users || [];
@@ -8473,6 +8604,18 @@ function handleGlobalClick(event) {
     ui.ordersList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
+  if (action === "sales-requests-prev-page") {
+    state.salesRequestPage = Math.max(1, (state.salesRequestPage || 1) - 1);
+    renderSalesRequests();
+    ui.salesRequestsList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "sales-requests-next-page") {
+    state.salesRequestPage = (state.salesRequestPage || 1) + 1;
+    renderSalesRequests();
+    ui.salesRequestsList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   if (action === "delete-inventory-piece") {
     apiFetch(`/api/inventory/items/${encodeURIComponent(id)}`, { method: "DELETE" }).then((inventory) => {
       state.inventory = inventory;
@@ -8553,6 +8696,11 @@ function handleGlobalClick(event) {
   if (action === "select-sales-request") {
     state.creatingSalesRequest = false;
     state.selectedSalesRequestId = id || "";
+    const filtered = getFilteredSalesRequests();
+    const selectedIndex = filtered.findIndex((item) => item.id === state.selectedSalesRequestId);
+    if (selectedIndex >= 0) {
+      state.salesRequestPage = Math.floor(selectedIndex / getSalesRequestsPageSize()) + 1;
+    }
     renderSalesRequests();
     renderSalesGenerator();
     if (window.innerWidth <= 980) {
@@ -8799,6 +8947,7 @@ bindEvent(ui.ordersSearch, "input", (event) => {
 });
 bindEvent(ui.salesRequestsSearch, "input", (event) => {
   state.search.salesRequests = event.target.value;
+  state.salesRequestPage = 1;
   renderSalesRequests();
 });
 bindEvent(ui.salesRequestImportButton, "click", () => {
