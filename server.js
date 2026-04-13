@@ -2884,13 +2884,16 @@ async function handleApi(req, res, url) {
         nextConfig.serviceAccountEmail = email;
         nextConfig.privateKey = privateKey;
       }
+      if (!body.clearServiceAccount && !nextConfig.serviceAccountEmail && !nextConfig.privateKey) {
+        return sendJson(res, 400, { error: "missing_service_account" });
+      }
       resolveSpreadsheetId(nextConfig.spreadsheetInput);
       store.salesRequestSource = nextConfig;
       await writeJson(STORE_PATH, store);
       return sendJson(res, 200, sanitizeSalesRequestSourceConfig(nextConfig));
     } catch (error) {
       if (error instanceof SyntaxError) return sendJson(res, 400, { error: "invalid_service_account_json" });
-      if (error?.message === "invalid_spreadsheet" || error?.message === "missing_spreadsheet") {
+      if (["invalid_spreadsheet", "missing_spreadsheet", "missing_service_account"].includes(String(error?.message || ""))) {
         return sendJson(res, 400, { error: error.message });
       }
       return sendJson(res, 500, { error: String(error?.message || "sales_request_source_save_failed") });

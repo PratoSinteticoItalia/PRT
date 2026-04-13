@@ -1654,8 +1654,8 @@ function buildSalesRequestSourceSummary() {
       : `Service account ready: ${effectiveEmail || "pending"}. Add the spreadsheet and save the connection.`;
   }
   return state.lang === "it"
-    ? `Foglio collegato${sheetLabel ? ` · Tab ${sheetLabel}` : ""}. ${effectiveEmail ? `Service account: ${effectiveEmail}${pendingEmail ? " (da salvare)" : ""}.` : "Credenziali mancanti."}`
-    : `Sheet connected${sheetLabel ? ` · Tab ${sheetLabel}` : ""}. ${effectiveEmail ? `Service account: ${effectiveEmail}${pendingEmail ? " (pending save)" : ""}.` : "Credentials missing."}`;
+    ? `Foglio collegato${sheetLabel ? ` · Tab ${sheetLabel}` : ""}. ${effectiveEmail ? `Service account: ${effectiveEmail}${pendingEmail ? " (da salvare)" : ""}.` : "Manca il service account: importa il JSON Google e salva il collegamento."}`
+    : `Sheet connected${sheetLabel ? ` · Tab ${sheetLabel}` : ""}. ${effectiveEmail ? `Service account: ${effectiveEmail}${pendingEmail ? " (pending save)" : ""}.` : "Service account missing: upload the Google JSON and save the connection."}`;
 }
 
 function updateSalesRequestSourcePanel() {
@@ -1724,8 +1724,19 @@ async function handleSalesRequestServiceAccountSelection(event) {
 async function saveSalesRequestSourceConfig({ clearServiceAccount = false } = {}) {
   clearStatus(ui.salesRequestSourceStatus);
   const draft = readSalesRequestSourceDraft();
+  const currentConfig = normalizeSalesRequestSourceConfig(state.salesRequestSourceConfig || {});
   if (!draft.spreadsheetInput) {
     setStatus(ui.salesRequestSourceStatus, "error", state.lang === "it" ? "Inserisci l'URL o ID dello spreadsheet." : "Enter the spreadsheet URL or ID.");
+    return;
+  }
+  if (!clearServiceAccount && !state.pendingSalesRequestServiceAccountJson && !currentConfig.hasServiceAccount) {
+    setStatus(
+      ui.salesRequestSourceStatus,
+      "error",
+      state.lang === "it"
+        ? "Carica prima il JSON del service account Google, poi salva il collegamento."
+        : "Upload the Google service account JSON before saving the connection.",
+    );
     return;
   }
   try {
@@ -1752,6 +1763,8 @@ async function saveSalesRequestSourceConfig({ clearServiceAccount = false } = {}
   } catch (error) {
     const message = error?.message === "invalid_spreadsheet"
       ? (state.lang === "it" ? "Spreadsheet non valido." : "Invalid spreadsheet.")
+      : error?.message === "missing_service_account"
+        ? (state.lang === "it" ? "Carica prima il JSON del service account Google." : "Upload the Google service account JSON first.")
       : error?.message === "invalid_service_account_json"
         ? (state.lang === "it" ? "JSON service account non valido." : "Invalid service account JSON.")
         : (error?.message && !["sales_request_source_save_failed", "request_failed"].includes(error.message)
