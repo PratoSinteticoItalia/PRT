@@ -106,18 +106,18 @@ const COVERAGE_CITY_COORDINATES = {
   vicenza: { lat: 45.5455, lng: 11.5354 },
 };
 const INVENTORY_CATALOG = [
-  { key: "tasso", label: "Tasso", type: "turf" },
-  { key: "bonsai", label: "Bonsai", type: "turf" },
-  { key: "faggio", label: "Faggio", type: "turf" },
-  { key: "betulla", label: "Betulla", type: "turf" },
+  { key: "tasso", label: "Tasso", type: "turf", grossPricePerSqm: 2.321 },
+  { key: "bonsai", label: "Bonsai", type: "turf", grossPricePerSqm: 3.177 },
+  { key: "faggio", label: "Faggio", type: "turf", grossPricePerSqm: 4.113 },
+  { key: "betulla", label: "Betulla", type: "turf", grossPricePerSqm: 4.113 },
   { key: "acero", label: "Acero", type: "turf" },
-  { key: "cedro", label: "Cedro", type: "turf" },
-  { key: "rovere", label: "Rovere", type: "turf" },
-  { key: "palma", label: "Palma", type: "turf" },
-  { key: "cipresso", label: "Cipresso", type: "turf" },
+  { key: "cedro", label: "Cedro", type: "turf", grossPricePerSqm: 5.72 },
+  { key: "rovere", label: "Rovere", type: "turf", grossPricePerSqm: 5.628 },
+  { key: "palma", label: "Palma", type: "turf", grossPricePerSqm: 8.171 },
+  { key: "cipresso", label: "Cipresso", type: "turf", grossPricePerSqm: 7.815 },
   { key: "abete", label: "Abete", type: "turf" },
-  { key: "ginepro-35", label: "Ginepro 35 mm", type: "turf" },
-  { key: "ginepro-45", label: "Ginepro 45 mm", type: "turf" },
+  { key: "ginepro-35", label: "Ginepro 35 mm", type: "turf", grossPricePerSqm: 6.708 },
+  { key: "ginepro-45", label: "Ginepro 45 mm", type: "turf", grossPricePerSqm: 7.947 },
   { key: "mogano", label: "Mogano", type: "turf" },
   {
     key: "banda",
@@ -179,7 +179,7 @@ const TRAVEL_EXPENSE_TYPES = {
 const roleViews = {
   office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "shipping", "settings"],
   warehouse: ["warehouse", "shipping"],
-  crew: ["installations"],
+  crew: ["installations", "sales-generator"],
 };
 
 const translations = {
@@ -809,6 +809,7 @@ const ui = {
   salesRequestDeleteButton: document.getElementById("sales-request-delete-button"),
   salesRequestUseGeneratorButton: document.getElementById("sales-request-use-generator-button"),
   salesRequestDetailTitle: document.getElementById("sales-request-detail-title"),
+  salesGeneratorContextPanel: document.getElementById("sales-generator-context-panel"),
   salesGeneratorFrame: document.getElementById("sales-generator-frame"),
   salesGeneratorRequestCard: document.getElementById("sales-generator-request-card"),
   salesGeneratorOpenRequestButton: document.getElementById("sales-generator-open-request-button"),
@@ -3054,6 +3055,14 @@ function getCatalogLabel(value) {
   return inferCatalogEntry(value)?.label || String(value || "").trim() || t("product");
 }
 
+function getInventoryGrossPricePerSqm(value) {
+  const entry = typeof value === "string"
+    ? inferCatalogEntry(value)
+    : inferCatalogEntry(value?.product || value?.label || value?.key || "");
+  const price = toNumber(entry?.grossPricePerSqm || 0);
+  return price > 0 ? price : 0;
+}
+
 function isServiceLine(title = "") {
   return /(installazione|posa|sopralluogo|consulenza|servizio)/i.test(title);
 }
@@ -4119,17 +4128,30 @@ function buildInventoryGroups() {
   });
 
   return [...groups.values()]
-    .map((group) => ({
-      ...group,
-      availableSqm: Number((group.totalSqm - group.demandSqm).toFixed(2)),
-      availableUnits: group.totalUnits - group.demandUnits,
-      isModel: group.type === "turf",
-      pieces: [...group.pieces].sort((a, b) => {
+    .map((group) => {
+      const availableSqm = Number((group.totalSqm - group.demandSqm).toFixed(2));
+      const availableUnits = group.totalUnits - group.demandUnits;
+      const isModel = group.type === "turf";
+      const grossPricePerSqm = isModel ? getInventoryGrossPricePerSqm(group.product) : 0;
+      const grossPriceConfigured = isModel && grossPricePerSqm > 0;
+      const availableGrossValue = grossPriceConfigured
+        ? Number((Math.max(0, availableSqm) * grossPricePerSqm).toFixed(2))
+        : 0;
+      return {
+        ...group,
+        availableSqm,
+        availableUnits,
+        isModel,
+        grossPricePerSqm,
+        grossPriceConfigured,
+        availableGrossValue,
+        pieces: [...group.pieces].sort((a, b) => {
         if (a.status !== b.status) return a.status === "intero" ? -1 : 1;
         if (group.type === "turf") return (b.sqm || 0) - (a.sqm || 0);
         return String(a.variant || a.note || "").localeCompare(String(b.variant || b.note || ""), "it");
       }),
-    }))
+      };
+    })
     .sort((a, b) => {
       if (a.isModel !== b.isModel) return a.isModel ? -1 : 1;
       return INVENTORY_CATALOG.findIndex((item) => item.label === a.product) - INVENTORY_CATALOG.findIndex((item) => item.label === b.product);
@@ -4424,8 +4446,9 @@ function applyStaticTranslations() {
 
 function updateShell() {
   applyMobileSafeMode();
-  const allowed = roleViews[state.currentUser?.role || "office"] || roleViews.office;
-  const showCoverageRadar = state.currentUser?.role === "office";
+  const currentRole = state.currentUser?.role || "office";
+  const allowed = roleViews[currentRole] || roleViews.office;
+  const showCoverageRadar = currentRole === "office";
   ui.navLinks.forEach((button) => {
     const visible = allowed.includes(button.dataset.view);
     button.hidden = !visible;
@@ -4453,7 +4476,25 @@ function updateShell() {
   ui.topbarUserRole.textContent = roleLabel(state.currentUser?.role);
   if (ui.topbarAvatar) ui.topbarAvatar.textContent = getUserInitials(state.currentUser?.name);
   if (ui.coveragePanel) ui.coveragePanel.classList.toggle("hidden", !showCoverageRadar);
+  if (ui.newOrderButton) {
+    const allowCreateOrders = currentRole === "office";
+    ui.newOrderButton.hidden = !allowCreateOrders;
+    ui.newOrderButton.classList.toggle("hidden", !allowCreateOrders);
+  }
+  if (ui.salesGeneratorContextPanel) {
+    const hideGeneratorPrefill = currentRole === "crew";
+    ui.salesGeneratorContextPanel.hidden = hideGeneratorPrefill;
+    ui.salesGeneratorContextPanel.classList.toggle("hidden", hideGeneratorPrefill);
+  }
   applyStaticTranslations();
+  if (state.currentUser?.role === "crew") {
+    setText(
+      "sales-generator-subtitle",
+      state.lang === "it"
+        ? "Usa il preventivatore integrato per generare preventivi della squadra, senza accesso alle richieste commerciali."
+        : "Use the integrated quote tool for crew estimates, without access to sales requests.",
+    );
+  }
   if (ui.reloadButton) {
     ui.reloadButton.disabled = state.syncInProgress;
     ui.reloadButton.textContent = state.syncInProgress ? t("syncing") : t("reloadData");
@@ -4490,12 +4531,18 @@ function getDashboardInventorySnapshot() {
   const totalStockSqm = turfGroups.reduce((sum, group) => sum + toNumber(group.totalSqm), 0);
   const totalAvailableSqm = turfGroups.reduce((sum, group) => sum + Math.max(0, toNumber(group.availableSqm)), 0);
   const totalCommittedSqm = turfGroups.reduce((sum, group) => sum + toNumber(group.demandSqm), 0);
+  const totalImmobilizedGrossValue = turfGroups.reduce((sum, group) => sum + toNumber(group.availableGrossValue), 0);
+  const pricedAvailableSqm = turfGroups.reduce((sum, group) => sum + (group.grossPriceConfigured ? Math.max(0, toNumber(group.availableSqm)) : 0), 0);
+  const unpricedAvailableSqm = turfGroups.reduce((sum, group) => sum + (!group.grossPriceConfigured ? Math.max(0, toNumber(group.availableSqm)) : 0), 0);
   const totalMaterialUnits = materialGroups.reduce((sum, group) => sum + toNumber(group.totalUnits), 0);
   const uncovered = groups.filter((group) => (group.isModel ? toNumber(group.availableSqm) < 0 : toNumber(group.availableUnits) < 0)).length;
   return {
     totalStockSqm,
     totalAvailableSqm,
     totalCommittedSqm,
+    totalImmobilizedGrossValue,
+    pricedAvailableSqm,
+    unpricedAvailableSqm,
     totalMaterialUnits,
     uncovered,
   };
@@ -4735,6 +4782,13 @@ function renderDashboard() {
         label: state.lang === "it" ? "Impegnato ordini" : "Committed",
         value: `${Math.round(snapshot.totalCommittedSqm)} mq`,
         meta: state.lang === "it" ? "Metri quadri già assorbiti dagli ordini aperti." : "Square meters already reserved by open orders.",
+      },
+      {
+        label: state.lang === "it" ? "Valore immobilizzato" : "Immobilized value",
+        value: formatCurrency(snapshot.totalImmobilizedGrossValue),
+        meta: state.lang === "it"
+          ? `Calcolato sul listino ivato per ${Math.round(snapshot.pricedAvailableSqm)} mq disponibili${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} mq senza prezzo configurato` : ""}`
+          : `Calculated on gross price list for ${Math.round(snapshot.pricedAvailableSqm)} available sqm${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} sqm still missing a price` : ""}`,
       },
       {
         label: state.lang === "it" ? "Materiali accessori" : "Accessory stock",
@@ -5173,9 +5227,14 @@ function renderSalesRequests() {
 }
 
 function renderSalesGenerator() {
+  const generatorOnlyMode = state.currentUser?.role === "crew";
   const selected = ensureSelectedSalesRequest();
   if (ui.salesGeneratorRequestCard) {
-    ui.salesGeneratorRequestCard.innerHTML = selected
+    ui.salesGeneratorRequestCard.innerHTML = generatorOnlyMode
+      ? (state.lang === "it"
+          ? "Preventivatore attivo per la squadra. Le richieste commerciali restano riservate all'ufficio."
+          : "Crew quote mode is active. Sales requests remain visible only to the office.")
+      : selected
       ? `
           <div class="sales-generator-card-head">
             <strong>${escapeHtml(getSalesRequestDisplayName(selected))}</strong>
@@ -5193,9 +5252,9 @@ function renderSalesGenerator() {
           ? "Seleziona una richiesta per precompilare automaticamente il generatore."
           : "Select a request to prefill the generator.");
   }
-  if (ui.salesGeneratorOpenRequestButton) ui.salesGeneratorOpenRequestButton.disabled = !selected;
-  if (ui.salesGeneratorPrefillButton) ui.salesGeneratorPrefillButton.disabled = !selected;
-  if (state.currentView === "sales-generator" && selected) {
+  if (ui.salesGeneratorOpenRequestButton) ui.salesGeneratorOpenRequestButton.disabled = generatorOnlyMode || !selected;
+  if (ui.salesGeneratorPrefillButton) ui.salesGeneratorPrefillButton.disabled = generatorOnlyMode || !selected;
+  if (state.currentView === "sales-generator" && selected && !generatorOnlyMode) {
     window.setTimeout(() => pushSalesRequestToGenerator(false), 40);
   }
 }
@@ -5491,6 +5550,9 @@ function renderInventoryCard(group) {
   const demandLabel = group.isModel ? `${Math.round(group.demandSqm)} mq` : `${group.demandUnits} u`;
   const netValue = group.isModel ? group.availableSqm : stockValue;
   const netLabel = group.isModel ? `${Math.round(Math.max(0, group.availableSqm))} mq` : `${Math.max(0, stockValue)} u`;
+  const immobilizedValueLabel = group.isModel && group.grossPriceConfigured
+    ? formatCurrency(group.availableGrossValue)
+    : "—";
   const unitDetailLabel = inferCatalogEntry(group.product)?.unitLabel || (state.lang === "it" ? "unità" : "units");
   const firstDemandOrderId = group.demandOrders[0] || "";
   const demandActionAttrs = firstDemandOrderId
@@ -5519,7 +5581,9 @@ function renderInventoryCard(group) {
       <div class="wh-product-header">
         <div>
           <div class="wh-product-name">${group.product}</div>
-          <div class="wh-product-total">${group.isModel ? `${Math.round(group.totalSqm)} mq in ${totalPieces} pezzi · ${group.fullCount} interi, ${group.residualCount} residui` : `${group.totalUnits} unità caricate`}</div>
+          <div class="wh-product-total">${group.isModel
+            ? `${Math.round(group.totalSqm)} mq in ${totalPieces} pezzi · ${group.fullCount} interi, ${group.residualCount} residui${group.grossPriceConfigured ? ` · ${state.lang === "it" ? "immobilizzato" : "immobilized"} ${immobilizedValueLabel}` : ` · ${state.lang === "it" ? "listino ivato non configurato" : "gross price not configured"}`}`
+            : `${group.totalUnits} unità caricate`}</div>
         </div>
         <div class="wh-actions">
           <span class="action-badge ${badgeClass}">${stockState}</span>
@@ -5574,7 +5638,9 @@ function renderInventoryCard(group) {
         <div class="wh-stat ${hasDeficit ? "danger" : "neutral"}">
           <div class="wh-stat-label">${state.lang === "it" ? "Disponibile per nuovi ordini" : "Available for new orders"}</div>
           <div class="wh-stat-value" ${hasDeficit ? 'style="color:#dc2626"' : netValue > 0 ? 'style="color:#16a34a"' : ""}>${hasDeficit ? (group.isModel ? (state.lang === "it" ? `Mancano ${Math.round(Math.abs(netValue))} mq` : `Missing ${Math.round(Math.abs(netValue))} sq`) : (state.lang === "it" ? `Mancano ${Math.abs(netValue)} u` : `Missing ${Math.abs(netValue)} u`)) : netLabel}</div>
-          <div class="wh-stat-sub">${group.isModel ? `${group.fullCount} ${state.lang === "it" ? "interi" : "full"} · ${group.residualCount} ${state.lang === "it" ? "residui" : "residual"}` : `${group.totalUnits} ${unitDetailLabel}`}</div>
+          <div class="wh-stat-sub">${group.isModel
+            ? `${group.fullCount} ${state.lang === "it" ? "interi" : "full"} · ${group.residualCount} ${state.lang === "it" ? "residui" : "residual"}${group.grossPriceConfigured ? ` · ${immobilizedValueLabel}` : ` · ${state.lang === "it" ? "prezzo ivato mancante" : "gross price missing"}`}`
+            : `${group.totalUnits} ${unitDetailLabel}`}</div>
         </div>
       </div>
     </article>
