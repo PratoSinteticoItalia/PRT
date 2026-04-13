@@ -260,6 +260,13 @@ body.shell-loading .app-shell {
   gap: 8px;
 }
 
+.field-hint {
+  margin: -2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .field-full { grid-column: 1 / -1; }
 .checkline {
   display: flex;
@@ -271,6 +278,35 @@ body.shell-loading .app-shell {
 .checkline input {
   width: 18px;
   height: 18px;
+}
+
+.crew-logo-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(248, 251, 252, 0.96), rgba(239, 244, 246, 0.88));
+}
+
+.crew-logo-preview img {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(16, 24, 39, 0.08);
+  padding: 8px;
+}
+
+.crew-logo-preview span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.crew-logo-preview.is-empty {
+  justify-content: center;
 }
 
 .text-input,
@@ -9729,5 +9765,42 @@ body.mobile-safe-mode .nav-link.is-active {
 /* Final visibility guard for auth/app shell */
 .auth-screen.hidden,
 .app-shell.hidden {
+  display: none !important;
+}
+
+/* Final visibility guard for role-based mobile sidebar */
+body.mobile-safe-mode .nav-link.hidden,
+body.mobile-safe-mode .nav-link[hidden],
+body.mobile-safe-mode #sidebar-operational-nav.hidden,
+body.mobile-safe-mode #sidebar-operational-nav[hidden],
+body.mobile-safe-mode #sidebar-sales-nav.hidden,
+body.mobile-safe-mode #sidebar-sales-nav[hidden],
+body.mobile-safe-mode #sidebar-admin-nav.hidden,
+body.mobile-safe-mode #sidebar-admin-nav[hidden],
+body.mobile-safe-mode #sidebar-operational-label.hidden,
+body.mobile-safe-mode #sidebar-sales-label.hidden,
+body.mobile-safe-mode #sidebar-admin-label.hidden,
+body.mobile-safe-mode #sidebar-sales-divider.hidden,
+body.mobile-safe-mode #sidebar-admin-divider.hidden,
+body.mobile-safe-mode .sidebar-section-label.hidden,
+body.mobile-safe-mode .sidebar-divider-line.hidden {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Hard role clamp so crew devices never render office sections even with stale mobile styles */
+body[data-user-role="crew"] .nav-link[data-view="dashboard"],
+body[data-user-role="crew"] .nav-link[data-view="orders"],
+body[data-user-role="crew"] .nav-link[data-view="warehouse"],
+body[data-user-role="crew"] .nav-link[data-view="sales-requests"],
+body[data-user-role="crew"] .nav-link[data-view="sales-content"],
+body[data-user-role="crew"] .nav-link[data-view="accounting"],
+body[data-user-role="crew"] .nav-link[data-view="shipping"],
+body[data-user-role="crew"] .nav-link[data-view="settings"],
+body[data-user-role="crew"] #sidebar-admin-divider,
+body[data-user-role="crew"] #sidebar-admin-label,
+body[data-user-role="crew"] #sidebar-admin-nav,
+body[data-user-role="crew"] #new-order-button {
   display: none !important;
 }

@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260413-crew-generator-27" />
+    <link rel="stylesheet" href="./styles.css?v=20260413-crew-branding-29" />
   </head>
   <body class="shell-loading">
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1358,6 +1358,11 @@
                   <span>Capacita giornaliera (mq)</span>
                   <input class="text-input" name="dailyCapacity" placeholder="120" />
                 </label>
+                <label class="field field-full crew-account-field hidden" data-crew-field>
+                  <span>Logo squadra (opzionale)</span>
+                  <input class="text-input" name="crewLogoFile" type="file" accept="image/png,image/jpeg,image/webp" />
+                  <small class="field-hint">PNG, JPG o WebP. Comparira nel PDF del generatore squadra accanto al logo PSI.</small>
+                </label>
                 <label class="checkline field-full">
                   <input type="checkbox" name="mustChangePassword" />
                   <span>Richiedi cambio password al primo accesso</span>
@@ -1495,6 +1500,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260413-crew-generator-27" type="module"></script>
+    <script src="./app.js?v=20260413-crew-branding-29" type="module"></script>
   </body>
 </html>

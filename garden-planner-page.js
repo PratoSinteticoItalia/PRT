@@ -656,7 +656,7 @@ function RollsTable({ rolls, setRolls, area }) {
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
           <thead><tr style={{ background: B.gray }}>
-            {["#", "Prodotto", "Lungh.", "Larg.", "m\u00B2", "Costo", "Note", ""].map((h, i) => (
+            {["#", "Prodotto", "Lungh.", "Larg.", "m\u00B2", "Valore prato", "Note", ""].map((h, i) => (
               <th key={i} style={{ padding: "8px 6px", textAlign: i > 1 && i < 6 ? "center" : "left", fontSize: 10, fontWeight: 600, color: B.textMuted, textTransform: "uppercase", borderBottom: "1px solid " + B.border, whiteSpace: "nowrap" }}>{h}</th>
             ))}
           </tr></thead>
@@ -772,7 +772,7 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
   const travelCost = travelFuelCost + travelTollCost;
 
   const sections = [
-    { cat: "PRATO SINTETICO", items: rollDetails.length > 0 ? rollDetails.map(r => ({ name: "Rotolo #" + r.rollNum + " " + r.prodName + " (" + r.width + "\u00D7" + r.length + "m)", qty: fmt(r.sqm) + " m\u00B2", cost: r.cost })) : [{ name: "Nessun rotolo inserito", qty: "\u2014", cost: 0 }], sub: totalRollCost },
+    { cat: "PRATO SINTETICO · valore indicativo", items: rollDetails.length > 0 ? rollDetails.map(r => ({ name: "Rotolo #" + r.rollNum + " " + r.prodName + " (" + r.width + "\u00D7" + r.length + "m)", qty: fmt(r.sqm) + " m\u00B2", cost: r.cost })) : [{ name: "Nessun rotolo inserito", qty: "\u2014", cost: 0 }], sub: totalRollCost },
     { cat: "PREPARAZIONE FONDO", items: [
       substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + "kg", cost: scavoCost } : null,
       substrate.drenateCm > 0 ? { name: "Pietrisco drenante (" + substrate.drenateCm + "cm)", qty: fmt(drenateM3, 2) + " m\u00B3 \u2248 " + Math.round(drenateM3 * 1600) + "kg", cost: drenateCost } : null,
@@ -803,7 +803,7 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
     });
   }
 
-  const grandTotal = totalRollCost + scavoCost + drenateCost + sabbiaCost + geoCost + glueCost + tapeCost + pinsCost + borderCost + infillCost + decoCost + travelCost;
+  const grandTotal = scavoCost + drenateCost + sabbiaCost + geoCost + glueCost + tapeCost + pinsCost + borderCost + infillCost + decoCost + travelCost;
 
   return (
     <div>
@@ -834,7 +834,7 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
           </div>
         ))}
         <div style={{ display: "flex", justifyContent: "space-between", padding: "14px", background: B.dark, color: "#fff", fontWeight: 700, fontSize: 16 }}>
-          <span>TOTALE PROGETTO</span>
+          <span>TOTALE COSTI PROGETTO</span>
           <span style={{ color: B.accent, fontSize: 18 }}>{fmtE(grandTotal)}</span>
         </div>
       </div>

@@ -26,6 +26,7 @@ const USE_R2 = Boolean(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY
 const DEFAULT_SALES_REQUEST_SPREADSHEET = "https://docs.google.com/spreadsheets/d/15n7HIxhiX0U2EX28R9euiZfCqBNZPZ0AE8Hmb-p0vHw/edit";
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const MAX_CREW_LOGO_DATA_URL_LENGTH = 2_500_000;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -110,6 +111,9 @@ function sanitizePasswordUser(user = {}) {
   nextUser.dailyCapacity = Number.isFinite(parsedCapacity)
     ? Math.max(0, parsedCapacity)
     : (nextUser.role === "crew" ? DEFAULT_CREW_DAILY_CAPACITY : 0);
+  nextUser.crewLogoDataUrl = nextUser.role === "crew"
+    ? sanitizeCrewLogoDataUrl(nextUser.crewLogoDataUrl || "")
+    : "";
   delete nextUser.password;
   return nextUser;
 }
@@ -429,6 +433,13 @@ function getDemoUsers() {
   return buildDefaultStore().users.map((user) => ({ ...user }));
 }
 
+function sanitizeCrewLogoDataUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw || raw.length > MAX_CREW_LOGO_DATA_URL_LENGTH) return "";
+  if (!/^data:image\/(?:png|jpe?g|webp);base64,/i.test(raw)) return "";
+  return raw;
+}
+
 function sanitizeUser(user) {
   if (!user) return null;
   return {
@@ -438,6 +449,7 @@ function sanitizeUser(user) {
     role: user.role,
     crewName: String(user.crewName || ""),
     dailyCapacity: Math.max(0, Number(user.dailyCapacity || 0)),
+    crewLogoDataUrl: sanitizeCrewLogoDataUrl(user.crewLogoDataUrl || ""),
     status: user.status === "suspended" ? "suspended" : "active",
     mustChangePassword: Boolean(user.mustChangePassword),
   };
@@ -3332,6 +3344,9 @@ async function handleApi(req, res, url) {
     const dailyCapacity = role === "crew"
       ? Math.max(0, toNumber(body.dailyCapacity || DEFAULT_CREW_DAILY_CAPACITY))
       : 0;
+    const crewLogoDataUrl = role === "crew"
+      ? sanitizeCrewLogoDataUrl(body.crewLogoDataUrl || "")
+      : "";
     if (!name || !email || !isValidRole(role)) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
     }
@@ -3359,6 +3374,7 @@ async function handleApi(req, res, url) {
       role,
       crewName,
       dailyCapacity,
+      crewLogoDataUrl,
       status,
       mustChangePassword,
       sessionVersion: 1,
@@ -3373,6 +3389,7 @@ async function handleApi(req, res, url) {
       status,
       crewName,
       dailyCapacity,
+      hasCrewLogo: Boolean(crewLogoDataUrl),
     });
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, sanitizeUser(created));
@@ -3397,6 +3414,11 @@ async function handleApi(req, res, url) {
     const nextDailyCapacity = nextRole === "crew"
       ? Math.max(0, toNumber(body.dailyCapacity || current.dailyCapacity || DEFAULT_CREW_DAILY_CAPACITY))
       : 0;
+    const shouldRemoveCrewLogo = body.removeCrewLogo === true || body.removeCrewLogo === "true";
+    const submittedCrewLogoDataUrl = sanitizeCrewLogoDataUrl(body.crewLogoDataUrl || "");
+    const nextCrewLogoDataUrl = nextRole === "crew"
+      ? (shouldRemoveCrewLogo ? "" : (submittedCrewLogoDataUrl || sanitizeCrewLogoDataUrl(current.crewLogoDataUrl || "")))
+      : "";
     if (!nextName || !nextEmail || !isValidRole(nextRole)) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
     }
@@ -3420,6 +3442,7 @@ async function handleApi(req, res, url) {
       role: nextRole,
       crewName: nextCrewName,
       dailyCapacity: nextDailyCapacity,
+      crewLogoDataUrl: nextCrewLogoDataUrl,
       status: nextStatus,
       mustChangePassword: mustChangePassword || current.mustChangePassword,
     };
@@ -3472,6 +3495,7 @@ async function handleApi(req, res, url) {
       role: nextRole,
       crewName: nextCrewName,
       dailyCapacity: nextDailyCapacity,
+      hasCrewLogo: Boolean(nextCrewLogoDataUrl),
       status: nextStatus,
       mustChangePassword: updated.mustChangePassword,
     });

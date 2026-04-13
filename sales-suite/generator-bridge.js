@@ -1,8 +1,11 @@
 (function generatorBridge() {
   const PREFILL_STORAGE_KEY = "quote-generator-prefill";
+  const BRANDING_STORAGE_KEY = "quote-generator-branding";
   let lastUrlPrefill = "";
   let lastStoragePrefill = "";
   let scheduledPrefillRunId = 0;
+  let lastBrandingStorage = "";
+  let activeBrandingPayload = { crewName: "", crewLogoDataUrl: "" };
 
   function normalizeLabel(value) {
     return String(value || "")
@@ -56,6 +59,18 @@
       servizio: normalizeServiceStateValue(payload?.servizio || payload?.service || payload?.tipologia || ""),
       fondo: normalizeSurfaceValue(payload?.fondo || payload?.superficie || payload?.surface || ""),
     });
+  }
+
+  function normalizeBrandingPayload(payload) {
+    return {
+      crewName: String(payload?.crewName || "").trim(),
+      crewLogoDataUrl: String(payload?.crewLogoDataUrl || "").trim(),
+    };
+  }
+
+  function buildBrandingSignature(payload) {
+    const normalized = normalizeBrandingPayload(payload);
+    return JSON.stringify(normalized);
   }
 
   function findFieldByLabel(labelText) {
@@ -195,6 +210,19 @@
       return parsed?.payload || parsed;
     } catch (error) {
       console.warn("Prefill storage non valido:", error);
+      return null;
+    }
+  }
+
+  function readBrandingFromStorage() {
+    try {
+      const rawValue = window.localStorage.getItem(BRANDING_STORAGE_KEY);
+      if (!rawValue || rawValue === lastBrandingStorage) return null;
+      const parsed = JSON.parse(rawValue);
+      lastBrandingStorage = rawValue;
+      return normalizeBrandingPayload(parsed?.payload || parsed);
+    } catch (error) {
+      console.warn("Branding storage non valido:", error);
       return null;
     }
   }
@@ -372,6 +400,88 @@
     return true;
   }
 
+  function ensureBrandingStyles() {
+    if (document.getElementById("codex-crew-brand-style")) return;
+    const style = document.createElement("style");
+    style.id = "codex-crew-brand-style";
+    style.textContent = `
+      .codex-crew-branding {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        margin-left: 10px;
+        padding: 6px 8px;
+        border: 1px solid rgba(47, 70, 49, 0.14);
+        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(248,250,248,0.98), rgba(237,243,237,0.94));
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
+      }
+
+      .codex-crew-branding img {
+        width: 54px;
+        max-width: 54px;
+        max-height: 54px;
+        object-fit: contain;
+        display: block;
+      }
+
+      .codex-crew-branding span {
+        font-size: 8px;
+        font-weight: 700;
+        line-height: 1.1;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #567958;
+        text-align: center;
+        max-width: 72px;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function applyBrandingPayloadNow(payload) {
+    activeBrandingPayload = normalizeBrandingPayload(payload);
+    ensureBrandingStyles();
+
+    const logoElement = Array.from(document.querySelectorAll("img"))
+      .find((img) => img.closest(".pdf-root") && normalizeLabel(img.getAttribute("alt")) === "logo");
+    const host = logoElement?.parentElement;
+    if (!host) return false;
+
+    const existing = host.querySelector(".codex-crew-branding");
+    if (!activeBrandingPayload.crewLogoDataUrl) {
+      existing?.remove();
+      return false;
+    }
+
+    let brandingNode = existing;
+    if (!brandingNode) {
+      brandingNode = document.createElement("div");
+      brandingNode.className = "codex-crew-branding";
+      host.appendChild(brandingNode);
+    }
+
+    brandingNode.innerHTML = "";
+    const logo = document.createElement("img");
+    logo.src = activeBrandingPayload.crewLogoDataUrl;
+    logo.alt = activeBrandingPayload.crewName
+      ? `Logo squadra ${activeBrandingPayload.crewName}`
+      : "Logo squadra";
+    logo.decoding = "async";
+    logo.loading = "eager";
+
+    const label = document.createElement("span");
+    label.textContent = activeBrandingPayload.crewName
+      ? `Squadra ${activeBrandingPayload.crewName}`
+      : "Squadra posa";
+
+    brandingNode.appendChild(logo);
+    brandingNode.appendChild(label);
+    return true;
+  }
+
   function parsePriceValue(rawValue) {
     const normalized = String(rawValue ?? "")
       .trim()
@@ -537,6 +647,12 @@
         syncCustomAccessoryPriceEditors();
         const payload = readPrefillFromStorage() || readPrefillFromUrl();
         if (payload) scheduleRequestPayload(payload);
+        const brandingPayload = readBrandingFromStorage();
+        if (brandingPayload) {
+          applyBrandingPayloadNow(brandingPayload);
+        } else if (activeBrandingPayload.crewLogoDataUrl) {
+          applyBrandingPayloadNow(activeBrandingPayload);
+        }
       });
     };
 
@@ -554,8 +670,13 @@
   }
 
   window.addEventListener("message", (event) => {
-    if (event.data?.type !== "quote-generator:prefill-request") return;
-    scheduleRequestPayload(event.data.payload);
+    if (event.data?.type === "quote-generator:prefill-request") {
+      scheduleRequestPayload(event.data.payload);
+      return;
+    }
+    if (event.data?.type === "quote-generator:branding") {
+      applyBrandingPayloadNow(event.data.payload);
+    }
   });
 
   window.__applyQuoteGeneratorPrefill = (payload) => {
@@ -567,6 +688,10 @@
     const payload = readPrefillFromUrl() || readPrefillFromStorage();
     if (payload) {
       scheduleRequestPayload(payload);
+    }
+    const brandingPayload = readBrandingFromStorage();
+    if (brandingPayload) {
+      applyBrandingPayloadNow(brandingPayload);
     }
   }, { once: true });
 })();

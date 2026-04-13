@@ -5,6 +5,7 @@ const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 60 * 2;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
+const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
 const COVERAGE_BOUNDS = { minLon: 2.3, maxLon: 26.3, minLat: 34.2, maxLat: 47.8 };
 const COVERAGE_DEFAULT_COLORS = ["#2d6a4f", "#c26c2d", "#3e74d8", "#a74b4b", "#7c5cc4", "#1f7a8c"];
@@ -688,6 +689,7 @@ const state = {
   creatingSalesContent: false,
   accountingMobilePane: "summary",
   lastSalesGeneratorSignature: "",
+  lastSalesGeneratorBrandingSignature: "",
   lang: "it",
   filters: {
     order: "all",
@@ -1397,6 +1399,38 @@ function buildSalesRequestPrefill(item = {}) {
     servizio: item.service || "",
     fondo: item.surface || "",
   };
+}
+
+function buildSalesGeneratorBrandingPayload() {
+  const currentRole = String(state.currentUser?.role || "");
+  if (currentRole !== "crew") {
+    return { crewName: "", crewLogoDataUrl: "" };
+  }
+  const crewName = getCrewLabelForUser(state.currentUser) || getCrewForCurrentUser();
+  const crewProfile = crewName ? getCrewProfile(crewName) : null;
+  return {
+    crewName: crewName || "",
+    crewLogoDataUrl: String(state.currentUser?.crewLogoDataUrl || crewProfile?.crewLogoDataUrl || "").trim(),
+  };
+}
+
+function pushSalesGeneratorBranding(force = false) {
+  const payload = buildSalesGeneratorBrandingPayload();
+  const signature = JSON.stringify(payload);
+  if (!force && state.lastSalesGeneratorBrandingSignature === signature) return;
+  state.lastSalesGeneratorBrandingSignature = signature;
+  try {
+    window.localStorage.setItem(SALES_BRANDING_STORAGE_KEY, JSON.stringify({
+      runId: Date.now(),
+      payload,
+    }));
+  } catch {}
+  try {
+    ui.salesGeneratorFrame?.contentWindow?.postMessage({
+      type: "quote-generator:branding",
+      payload,
+    }, "*");
+  } catch {}
 }
 
 function pushSalesRequestToGenerator(force = false) {
@@ -4449,6 +4483,7 @@ function updateShell() {
   const currentRole = state.currentUser?.role || "office";
   const allowed = roleViews[currentRole] || roleViews.office;
   const showCoverageRadar = currentRole === "office";
+  document.body.dataset.userRole = currentRole;
   ui.navLinks.forEach((button) => {
     const visible = allowed.includes(button.dataset.view);
     button.hidden = !visible;
@@ -5254,6 +5289,9 @@ function renderSalesGenerator() {
   }
   if (ui.salesGeneratorOpenRequestButton) ui.salesGeneratorOpenRequestButton.disabled = generatorOnlyMode || !selected;
   if (ui.salesGeneratorPrefillButton) ui.salesGeneratorPrefillButton.disabled = generatorOnlyMode || !selected;
+  if (state.currentView === "sales-generator") {
+    window.setTimeout(() => pushSalesGeneratorBranding(false), 20);
+  }
   if (state.currentView === "sales-generator" && selected && !generatorOnlyMode) {
     window.setTimeout(() => pushSalesRequestToGenerator(false), 40);
   }
@@ -7125,6 +7163,20 @@ function renderAccountsManager() {
           <span>Capacita giornaliera (mq)</span>
           <input class="text-input" name="dailyCapacity" value="${escapeHtml(String(user.dailyCapacity || DEFAULT_CREW_DAILY_CAPACITY))}" placeholder="120" />
         </label>
+        <label class="field field-full crew-account-field ${user.role === "crew" ? "" : "hidden"}" data-crew-field>
+          <span>Logo squadra (opzionale)</span>
+          <div class="crew-logo-preview ${user.crewLogoDataUrl ? "" : "is-empty"}">
+            ${user.crewLogoDataUrl
+              ? `<img src="${escapeHtml(user.crewLogoDataUrl)}" alt="Logo squadra ${escapeHtml(user.crewName || user.name || "")}" />`
+              : `<span>Nessun logo squadra caricato.</span>`}
+          </div>
+          <input class="text-input" name="crewLogoFile" type="file" accept="image/png,image/jpeg,image/webp" />
+          <small class="field-hint">Lascia vuoto per mantenere il logo attuale.</small>
+        </label>
+        <label class="checkline field-full crew-account-field ${user.role === "crew" ? "" : "hidden"}" data-crew-field>
+          <input type="checkbox" name="removeCrewLogo" />
+          <span>Rimuovi logo squadra</span>
+        </label>
         <label class="checkline field-full">
           <input type="checkbox" name="mustChangePassword" ${user.mustChangePassword ? "checked" : ""} />
           <span>Richiedi cambio password al prossimo accesso</span>
@@ -7207,6 +7259,8 @@ function applySessionPayload(session = {}) {
   state.creatingSalesContent = false;
   state.accountingMobilePane = "summary";
   state.salesRequestPage = 1;
+  state.lastSalesGeneratorSignature = "";
+  state.lastSalesGeneratorBrandingSignature = "";
   state.coveragePlanner = normalizeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner);
   state.settings = session.shopifySettings || {};
   state.users = session.users || [];
@@ -8272,6 +8326,20 @@ async function connectShopify() {
   }
 }
 
+async function readCrewLogoDataUrlFromForm(form, existingLogo = "") {
+  if (!form) return String(existingLogo || "");
+  const file = form.querySelector('input[name="crewLogoFile"]')?.files?.[0];
+  const shouldRemove = Boolean(form.querySelector('input[name="removeCrewLogo"]')?.checked);
+  if (file) {
+    if (!String(file.type || "").startsWith("image/")) {
+      throw new Error("invalid_crew_logo_file");
+    }
+    return readFileAsDataUrl(file);
+  }
+  if (shouldRemove) return "";
+  return String(existingLogo || "");
+}
+
 async function createManagedAccount(event) {
   event.preventDefault();
   if (!ui.accountCreateForm) return;
@@ -8281,6 +8349,9 @@ async function createManagedAccount(event) {
   const crewName = String(form.get("crewName") || form.get("name") || "").trim();
   const dailyCapacity = toNumber(form.get("dailyCapacity") || DEFAULT_CREW_DAILY_CAPACITY);
   try {
+    const crewLogoDataUrl = role === "crew"
+      ? await readCrewLogoDataUrlFromForm(ui.accountCreateForm)
+      : "";
     const created = await apiFetch("/api/accounts", {
       method: "POST",
       body: JSON.stringify({
@@ -8292,6 +8363,7 @@ async function createManagedAccount(event) {
         password: form.get("password"),
         crewName: role === "crew" ? crewName : "",
         dailyCapacity: role === "crew" ? dailyCapacity : 0,
+        crewLogoDataUrl,
       }),
     });
     state.users = [...state.users, created].sort((a, b) => a.name.localeCompare(b.name, "it"));
@@ -8309,6 +8381,8 @@ async function createManagedAccount(event) {
       ? (state.lang === "it" ? "Esiste gia un account con questa email." : "An account with this email already exists.")
       : error.message === "crew_name_exists"
         ? (state.lang === "it" ? "Esiste gia una squadra con questo nome." : "A crew with this name already exists.")
+      : error.message === "invalid_crew_logo_file"
+        ? (state.lang === "it" ? "Carica un logo squadra in formato PNG, JPG o WebP." : "Upload a crew logo in PNG, JPG, or WebP format.")
       : error.message === "weak_password_case"
         ? (state.lang === "it" ? "La password deve contenere maiuscole e minuscole." : "The password must contain uppercase and lowercase letters.")
       : error.message === "weak_password_number"
@@ -8331,6 +8405,9 @@ async function updateManagedAccount(event) {
   const nextCrewName = String(data.get("crewName") || previousAccount?.crewName || data.get("name") || "").trim();
   const nextDailyCapacity = toNumber(data.get("dailyCapacity") || previousAccount?.dailyCapacity || DEFAULT_CREW_DAILY_CAPACITY);
   try {
+    const crewLogoDataUrl = nextRole === "crew"
+      ? await readCrewLogoDataUrlFromForm(form, previousAccount?.crewLogoDataUrl || "")
+      : "";
     const saved = await apiFetch(`/api/accounts/${encodeURIComponent(accountId)}`, {
       method: "POST",
       body: JSON.stringify({
@@ -8342,6 +8419,8 @@ async function updateManagedAccount(event) {
         password: data.get("password"),
         crewName: nextRole === "crew" ? nextCrewName : "",
         dailyCapacity: nextRole === "crew" ? nextDailyCapacity : 0,
+        removeCrewLogo: data.get("removeCrewLogo") === "on",
+        crewLogoDataUrl,
       }),
     });
     if (previousAccount?.role === "crew" && previousAccount?.crewName && saved.role === "crew" && saved.crewName) {
@@ -8356,6 +8435,8 @@ async function updateManagedAccount(event) {
       ? (state.lang === "it" ? "Questa email e gia usata da un altro account." : "This email is already used by another account.")
       : error.message === "crew_name_exists"
         ? (state.lang === "it" ? "Esiste gia una squadra con questo nome." : "A crew with this name already exists.")
+      : error.message === "invalid_crew_logo_file"
+        ? (state.lang === "it" ? "Carica un logo squadra in formato PNG, JPG o WebP." : "Upload a crew logo in PNG, JPG, or WebP format.")
       : error.message === "weak_password" || error.message === "weak_password_length"
         ? (state.lang === "it" ? "La nuova password deve avere almeno 12 caratteri." : "The new password must be at least 12 characters long.")
         : error.message === "weak_password_case"
@@ -9039,7 +9120,10 @@ bindEvent(ui.salesRequestSourceSyncButton, "click", syncSalesRequestSource);
 bindEvent(ui.salesRequestOpenSheetButton, "click", openSalesRequestSourceSheet);
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => pushSalesRequestToGenerator(true));
-bindEvent(ui.salesGeneratorFrame, "load", () => pushSalesRequestToGenerator(true));
+bindEvent(ui.salesGeneratorFrame, "load", () => {
+  pushSalesGeneratorBranding(true);
+  pushSalesRequestToGenerator(true);
+});
 bindEvent(ui.salesContentSearch, "input", (event) => {
   state.search.salesContent = event.target.value;
   renderSalesContent();
