@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260414-shell-reset-13" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260414-shell-reset-13" />
+    <link rel="preload" href="./styles.css?v=20260414-shell-reset-14" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260414-shell-reset-14" />
   </head>
   <body class="shell-loading">
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -124,6 +124,27 @@
           <button id="logout-button" class="topbar-btn">Esci</button>
         </div>
       </header>
+
+      <div id="mobile-pill-shell" class="mobile-pill-shell hidden" aria-hidden="true">
+        <nav id="mobile-pill-nav" class="mobile-pill-nav" aria-label="Navigazione mobile"></nav>
+        <div class="mobile-pill-tools">
+          <button id="mobile-pill-new-order-button" class="mobile-pill-tool" type="button">Nuovo ordine</button>
+          <a
+            id="mobile-pill-garden-planner-link"
+            href="./garden-planner.html?v=20260414-garden-materials-01&shell=20260414-garden-materials-01"
+            class="mobile-pill-tool"
+            style="text-decoration: none;"
+          >
+            Garden Planner
+          </a>
+          <button id="mobile-pill-reload-button" class="mobile-pill-tool" type="button">Ricarica dati</button>
+          <div class="lang-switch mobile-pill-lang-switch" aria-label="Language switcher">
+            <button class="lang-btn is-active" data-lang="it">IT</button>
+            <button class="lang-btn" data-lang="en">EN</button>
+          </div>
+          <button id="mobile-pill-logout-button" class="mobile-pill-tool is-danger" type="button">Esci</button>
+        </div>
+      </div>
 
       <div id="mobile-sidebar-backdrop" class="mobile-sidebar-backdrop"></div>
       <aside class="sidebar">
@@ -1516,6 +1537,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260414-shell-reset-13" type="module"></script>
+    <script src="./app.js?v=20260414-shell-reset-14" type="module"></script>
   </body>
 </html>

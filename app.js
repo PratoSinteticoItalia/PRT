@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-13";
+const APP_SHELL_VERSION = "20260414-shell-reset-14";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -733,6 +733,7 @@ let coverageSyncInFlight = false;
 const shopifyOrderRefreshInFlight = new Set();
 const shopifyOrderRefreshAttempted = new Set();
 const shopifyOrderRefreshErrors = new Map();
+const mobilePillLinkMap = new Map();
 
 const ui = {
   authScreen: document.getElementById("auth-screen"),
@@ -760,6 +761,12 @@ const ui = {
   topbarUserName: document.getElementById("topbar-user-name"),
   topbarUserRole: document.getElementById("topbar-user-role"),
   topbarAvatar: document.querySelector(".topbar-avatar"),
+  mobilePillShell: document.getElementById("mobile-pill-shell"),
+  mobilePillNav: document.getElementById("mobile-pill-nav"),
+  mobilePillNewOrderButton: document.getElementById("mobile-pill-new-order-button"),
+  mobilePillGardenPlannerLink: document.getElementById("mobile-pill-garden-planner-link"),
+  mobilePillReloadButton: document.getElementById("mobile-pill-reload-button"),
+  mobilePillLogoutButton: document.getElementById("mobile-pill-logout-button"),
   mobileMenuButton: document.getElementById("mobile-menu-button"),
   mobileMenuClose: document.getElementById("mobile-menu-close"),
   mobileLogoutButton: document.getElementById("mobile-logout-button"),
@@ -1025,6 +1032,9 @@ function staticLabels() {
     ["#logout-button", t("logout")],
     ["#mobile-reload-button", t("reloadData")],
     ["#mobile-logout-inline-button", t("logout")],
+    ["#mobile-pill-new-order-button", t("newOrder")],
+    ["#mobile-pill-reload-button", t("reloadData")],
+    ["#mobile-pill-logout-button", t("logout")],
     [".sidebar-card .card-label", t("focusOperational")],
     [".sidebar-card h3", t("singleOrder")],
     [".sidebar-card > p:not(.card-label)", t("focusCopy")],
@@ -1192,7 +1202,8 @@ function setShellPending(active) {
 }
 
 function updateMobileMenu() {
-  const open = Boolean(state.mobileMenuOpen && window.innerWidth <= 980);
+  state.mobileMenuOpen = false;
+  const open = false;
   document.body.classList.toggle("mobile-menu-open", open);
   if (ui.mobileSidebarBackdrop) ui.mobileSidebarBackdrop.classList.toggle("is-visible", open);
   if (ui.mobileMenuButton) {
@@ -1206,7 +1217,7 @@ function updateMobileMenu() {
 function applyMobileSafeMode() {
   const mobileSafe = window.innerWidth <= 980;
   document.body.classList.toggle("mobile-safe-mode", mobileSafe);
-  if (!mobileSafe) state.mobileMenuOpen = false;
+  state.mobileMenuOpen = false;
   updateMobileMenu();
 }
 
@@ -1225,6 +1236,70 @@ function forceMobileVisibility(node, visible, displayValue = "block") {
   node.style.removeProperty("display");
   node.style.removeProperty("visibility");
   node.style.removeProperty("opacity");
+}
+
+function buildMobilePillButton(sourceButton) {
+  const button = document.createElement("button");
+  const label = sourceButton.querySelector(".nav-label")?.textContent?.trim() || t(sourceButton.dataset.view);
+  const iconMarkup = sourceButton.querySelector(".nav-icon")?.innerHTML || "";
+  button.type = "button";
+  button.className = "mobile-pill-link";
+  button.dataset.view = sourceButton.dataset.view || "";
+  if (iconMarkup) {
+    const icon = document.createElement("span");
+    icon.className = "mobile-pill-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = iconMarkup;
+    button.appendChild(icon);
+  }
+  const copy = document.createElement("span");
+  copy.className = "mobile-pill-label";
+  copy.textContent = label;
+  button.appendChild(copy);
+  button.addEventListener("click", () => setView(button.dataset.view));
+  return button;
+}
+
+function ensureMobilePillNav() {
+  if (!ui.mobilePillNav || mobilePillLinkMap.size) return;
+  ui.navLinks.forEach((sourceButton) => {
+    const view = sourceButton.dataset.view;
+    if (!view) return;
+    const button = buildMobilePillButton(sourceButton);
+    ui.mobilePillNav.appendChild(button);
+    mobilePillLinkMap.set(view, button);
+  });
+}
+
+function getMobilePillButton(view = "") {
+  return mobilePillLinkMap.get(view) || null;
+}
+
+function syncMobilePillNav() {
+  ensureMobilePillNav();
+  const mobileSafe = window.innerWidth <= 980;
+  if (ui.mobilePillShell) {
+    ui.mobilePillShell.hidden = !mobileSafe;
+    ui.mobilePillShell.classList.toggle("hidden", !mobileSafe);
+    ui.mobilePillShell.setAttribute("aria-hidden", mobileSafe ? "false" : "true");
+  }
+  ui.navLinks.forEach((sourceButton) => {
+    const view = sourceButton.dataset.view;
+    const button = getMobilePillButton(view);
+    if (!button) return;
+    const label = sourceButton.querySelector(".nav-label")?.textContent?.trim() || t(view);
+    const copy = button.querySelector(".mobile-pill-label");
+    const visible = !sourceButton.hidden && !sourceButton.classList.contains("hidden");
+    const count = sourceButton.getAttribute("data-count") || "";
+    if (copy) copy.textContent = label;
+    button.hidden = !visible;
+    button.classList.toggle("hidden", !visible);
+    button.classList.toggle("is-active", state.currentView === view);
+    button.setAttribute("aria-hidden", visible ? "false" : "true");
+    button.toggleAttribute("aria-current", state.currentView === view);
+    button.setAttribute("data-count", count);
+    button.tabIndex = visible ? 0 : -1;
+  });
 }
 
 function syncSidebarLayout(role = state.currentUser?.role || "office") {
@@ -1354,6 +1429,8 @@ function setNavCount(view, count) {
   if (!node) return;
   const normalized = Number(count) > 0 ? String(count) : "";
   node.setAttribute("data-count", normalized);
+  const mobileNode = getMobilePillButton(view);
+  if (mobileNode) mobileNode.setAttribute("data-count", normalized);
 }
 
 function normalizeSalesRequestStatus(value = "") {
@@ -4772,6 +4849,7 @@ function updateShell() {
   const allowed = getAllowedViewsForRole(currentRole);
   const showCoverageRadar = currentRole === "office";
   const showGardenPlannerShortcut = currentRole === "office" || currentRole === "crew";
+  if (!allowed.includes(state.currentView)) state.currentView = allowed[0];
   document.body.dataset.userRole = currentRole;
   ui.navLinks.forEach((button) => {
     const visible = allowed.includes(button.dataset.view);
@@ -4816,7 +4894,6 @@ function updateShell() {
     ui.sidebarSalesNav.classList.toggle("hidden", !salesVisible);
     forceMobileVisibility(ui.sidebarSalesNav, salesVisible, "grid");
   }
-  if (!allowed.includes(state.currentView)) state.currentView = allowed[0];
   ui.views.forEach((view) => view.classList.toggle("is-active", view.id === state.currentView));
   ui.viewTitle.textContent = t(state.currentView);
   ui.currentUserName.textContent = state.currentUser?.name || "-";
@@ -4839,6 +4916,11 @@ function updateShell() {
     ui.newOrderButton.hidden = !allowCreateOrders;
     ui.newOrderButton.classList.toggle("hidden", !allowCreateOrders);
   }
+  if (ui.mobilePillNewOrderButton) {
+    const allowCreateOrders = currentRole === "office";
+    ui.mobilePillNewOrderButton.hidden = !allowCreateOrders;
+    ui.mobilePillNewOrderButton.classList.toggle("hidden", !allowCreateOrders);
+  }
   if (ui.topbarGardenPlannerLink) {
     ui.topbarGardenPlannerLink.hidden = !showGardenPlannerShortcut;
     ui.topbarGardenPlannerLink.classList.toggle("hidden", !showGardenPlannerShortcut);
@@ -4848,6 +4930,10 @@ function updateShell() {
     ui.mobileGardenPlannerLink.classList.toggle("hidden", !showGardenPlannerShortcut);
     forceMobileVisibility(ui.mobileGardenPlannerLink, showGardenPlannerShortcut, "flex");
   }
+  if (ui.mobilePillGardenPlannerLink) {
+    ui.mobilePillGardenPlannerLink.hidden = !showGardenPlannerShortcut;
+    ui.mobilePillGardenPlannerLink.classList.toggle("hidden", !showGardenPlannerShortcut);
+  }
   if (ui.sidebarMobileTools) {
     ui.sidebarMobileTools.hidden = false;
     ui.sidebarMobileTools.classList.remove("hidden", "is-office-mode", "is-crew-mode", "is-warehouse-mode");
@@ -4856,6 +4942,9 @@ function updateShell() {
     );
     forceMobileVisibility(ui.sidebarMobileTools, true, "grid");
   }
+  if (ui.mobilePillShell) {
+    ui.mobilePillShell.dataset.userRole = currentRole;
+  }
   syncSidebarLayout(currentRole);
   if (ui.salesGeneratorContextPanel) {
     const hideGeneratorPrefill = currentRole === "crew";
@@ -4863,6 +4952,7 @@ function updateShell() {
     ui.salesGeneratorContextPanel.classList.toggle("hidden", hideGeneratorPrefill);
   }
   applyStaticTranslations();
+  syncMobilePillNav();
   if (state.currentUser?.role === "crew") {
     setText(
       "sales-generator-subtitle",
@@ -4874,6 +4964,10 @@ function updateShell() {
   if (ui.reloadButton) {
     ui.reloadButton.disabled = state.syncInProgress;
     ui.reloadButton.textContent = state.syncInProgress ? t("syncing") : t("reloadData");
+  }
+  if (ui.mobilePillReloadButton) {
+    ui.mobilePillReloadButton.disabled = state.syncInProgress;
+    ui.mobilePillReloadButton.textContent = state.syncInProgress ? t("syncing") : t("reloadData");
   }
   if (ui.ordersSyncButton) {
     ui.ordersSyncButton.disabled = state.syncInProgress;
@@ -9577,7 +9671,9 @@ bindEvent(ui.mobileLogoutInlineButton, "click", async () => {
 });
 bindEvent(ui.reloadButton, "click", reloadAll);
 bindEvent(ui.mobileReloadButton, "click", reloadAll);
+bindEvent(ui.mobilePillReloadButton, "click", reloadAll);
 bindEvent(ui.newOrderButton, "click", () => openOrderModal(null));
+bindEvent(ui.mobilePillNewOrderButton, "click", () => openOrderModal(null));
 bindEvent(ui.mobileMenuButton, "click", () => {
   state.mobileMenuOpen = !state.mobileMenuOpen;
   updateMobileMenu();
@@ -9589,6 +9685,11 @@ bindEvent(ui.mobileMenuClose, "click", () => {
 bindEvent(ui.mobileSidebarBackdrop, "click", () => {
   state.mobileMenuOpen = false;
   updateMobileMenu();
+});
+bindEvent(ui.mobilePillLogoutButton, "click", async () => {
+  await apiFetch("/api/logout", { method: "POST" });
+  applySessionPayload({});
+  showAuth();
 });
 bindEvent(ui.ordersSyncButton, "click", syncShopifyOrders);
 bindEvent(ui.ordersImportButton, "click", () => {
