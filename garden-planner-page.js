@@ -39,6 +39,16 @@ const INFILL_FO30 = {
   pricePerTon: 92,
 };
 
+const MATERIAL_COSTS = {
+  scavoPerM3: 24,
+  drenantePerM3: 38,
+  sabbiaPerM3: 32,
+  geoPerSqm: 1.0,
+  glueBucket: 45,
+  tapeRoll: 30,
+  pinPerUnit: 0.3,
+};
+
 const GLUE_BUCKET_KG = 6;
 const TAPE_ROLL_M = 25;
 
@@ -738,7 +748,7 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, substrate, decoItems, projectInfo, travel }) {
+function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
   const rollDetails = rolls.map(r => {
@@ -759,11 +769,23 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
   const border = BORDER_TYPES.find(b => b.id === borderType);
   const infillKg = area * INFILL_FO30.kgPerSqm;
   const infillBags = Math.ceil(infillKg / INFILL_FO30.bagKg);
+  const canViewMaterialCosts = String(viewerRole || "").trim().toLowerCase() === "office";
+
+  const substrateCost = (scavoM3 * MATERIAL_COSTS.scavoPerM3)
+    + (drenateM3 * MATERIAL_COSTS.drenantePerM3)
+    + (sabbiaM3 * MATERIAL_COSTS.sabbiaPerM3);
+  const poseMaterialCost = (geo * MATERIAL_COSTS.geoPerSqm)
+    + (glueBuckets * MATERIAL_COSTS.glueBucket)
+    + (tapeRolls * MATERIAL_COSTS.tapeRoll)
+    + (pins * MATERIAL_COSTS.pinPerUnit)
+    + (borderType !== "nessuna" ? borderMeters * Number(border?.price || 0) : 0);
+  const infillCost = (infillKg / 1000) * INFILL_FO30.pricePerTon;
 
   const decoLines = Object.entries(decoItems).filter(([, q]) => q > 0).map(([id, qty]) => {
     const item = DECO_CATALOG.find(d => d.id === id);
-    return item ? { name: item.name, qty: qty + " " + item.unit } : null;
+    return item ? { name: item.name, qty: qty + " " + item.unit, cost: Number(qty) * Number(item.pricePerUnit || 0) } : null;
   }).filter(Boolean);
+  const decoCost = decoLines.reduce((sum, item) => sum + Number(item.cost || 0), 0);
   const travelKm = Math.max(0, Number(travel?.kmTotal) || 0);
   const travelFuelRate = Math.max(0, Number(travel?.fuelPer100Km) || 0);
   const travelFuelPrice = Math.max(0, Number(travel?.fuelPrice) || 0);
@@ -774,6 +796,7 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
 
   const sections = [
     {
+      key: "turf",
       cat: "PRATO SINTETICO · FABBISOGNO",
       meta: "Fuori totale",
       showCosts: false,
@@ -782,39 +805,55 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
         : [{ name: "Nessun rotolo inserito", qty: "\u2014" }],
     },
     {
+      key: "substrate",
       cat: "PREPARAZIONE FONDO",
-      meta: "Quantità da approvvigionare",
-      showCosts: false,
+      meta: canViewMaterialCosts ? fmtE(substrateCost) : "Quantità da approvvigionare",
+      showCosts: canViewMaterialCosts,
       items: [
-        substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + " kg" } : null,
-        substrate.drenateCm > 0 ? { name: "Pietrisco drenante (" + substrate.drenateCm + "cm)", qty: fmt(drenateM3, 2) + " m\u00B3 \u2248 " + Math.round(drenateM3 * 1600) + " kg" } : null,
-        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento (" + substrate.sabbiaCm + "cm)", qty: Math.round(sabbiaKg) + " kg · " + fmt(sabbiaM3, 2) + " m\u00B3" } : null,
+        substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + " kg", cost: scavoM3 * MATERIAL_COSTS.scavoPerM3 } : null,
+        substrate.drenateCm > 0 ? { name: "Pietrisco drenante (" + substrate.drenateCm + "cm)", qty: fmt(drenateM3, 2) + " m\u00B3 \u2248 " + Math.round(drenateM3 * 1600) + " kg", cost: drenateM3 * MATERIAL_COSTS.drenantePerM3 } : null,
+        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento (" + substrate.sabbiaCm + "cm)", qty: Math.round(sabbiaKg) + " kg · " + fmt(sabbiaM3, 2) + " m\u00B3", cost: sabbiaM3 * MATERIAL_COSTS.sabbiaPerM3 } : null,
       ].filter(Boolean),
+      sub: substrateCost,
     },
     {
+      key: "pose-materials",
       cat: "MATERIALI POSA",
-      meta: "Quantità da ordinare",
-      showCosts: false,
+      meta: canViewMaterialCosts ? fmtE(poseMaterialCost) : "Quantità da ordinare",
+      showCosts: canViewMaterialCosts,
       items: [
-        { name: "Tessuto non tessuto", qty: fmt(geo) + " m\u00B2" },
-        { name: "Colla bicomponente", qty: `${fmt(glue, 1)} kg${glueBuckets > 0 ? ` · ${glueBuckets} secch${glueBuckets > 1 ? "i" : "io"} da ${GLUE_BUCKET_KG} kg` : ""}` },
-        jLen > 0 ? { name: "Nastro giunzione", qty: `${Math.round(jLen)} m${tapeRolls > 0 ? ` · ${tapeRolls} rotol${tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}` } : null,
-        { name: "Chiodi a U", qty: pins + " pz" },
-        borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m" } : null,
+        { name: "Tessuto non tessuto", qty: fmt(geo) + " m\u00B2", cost: geo * MATERIAL_COSTS.geoPerSqm },
+        { name: "Colla bicomponente", qty: `${fmt(glue, 1)} kg${glueBuckets > 0 ? ` · ${glueBuckets} secch${glueBuckets > 1 ? "i" : "io"} da ${GLUE_BUCKET_KG} kg` : ""}`, cost: glueBuckets * MATERIAL_COSTS.glueBucket },
+        jLen > 0 ? { name: "Nastro giunzione", qty: `${Math.round(jLen)} m${tapeRolls > 0 ? ` · ${tapeRolls} rotol${tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`, cost: tapeRolls * MATERIAL_COSTS.tapeRoll } : null,
+        { name: "Chiodi a U", qty: pins + " pz", cost: pins * MATERIAL_COSTS.pinPerUnit },
+        borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m", cost: borderMeters * Number(border?.price || 0) } : null,
       ].filter(Boolean),
+      sub: poseMaterialCost,
     },
     {
+      key: "infill",
       cat: "INTASO",
-      meta: "Quantità da ordinare",
-      showCosts: false,
+      meta: canViewMaterialCosts ? fmtE(infillCost) : "Quantità da ordinare",
+      showCosts: canViewMaterialCosts,
       items: [
-        { name: INFILL_FO30.name, qty: `${Math.round(infillKg)} kg · ${infillBags} sacchi da ${INFILL_FO30.bagKg} kg` },
+        { name: INFILL_FO30.name, qty: `${Math.round(infillKg)} kg · ${infillBags} sacchi da ${INFILL_FO30.bagKg} kg`, cost: infillCost },
       ],
+      sub: infillCost,
     },
   ];
-  if (decoLines.length > 0) sections.push({ cat: "MATERIALI AGGIUNTIVI", meta: "Extra selezionati", showCosts: false, items: decoLines });
+  if (decoLines.length > 0) {
+    sections.push({
+      key: "extras",
+      cat: "MATERIALI AGGIUNTIVI",
+      meta: canViewMaterialCosts ? fmtE(decoCost) : "Extra selezionati",
+      showCosts: canViewMaterialCosts,
+      items: decoLines,
+      sub: decoCost,
+    });
+  }
   if (travelKm > 0 || travelTollCost > 0 || travel?.departureBase) {
     sections.push({
+      key: "travel",
       cat: "TRASFERTA E LOGISTICA",
       meta: "Stima costi",
       showCosts: true,
@@ -827,6 +866,12 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
       sub: travelCost,
     });
   }
+  const materialCostTotal = canViewMaterialCosts
+    ? sections
+      .filter((sec) => sec.key && !["turf", "travel"].includes(sec.key))
+      .reduce((sum, sec) => sum + (Number(sec.sub) || 0), 0)
+    : 0;
+  const operationalCostTotal = materialCostTotal + travelCost;
 
   return (
     <div>
@@ -859,8 +904,8 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
           </div>
         ))}
         <div style={{ display: "flex", justifyContent: "space-between", padding: "14px", background: B.dark, color: "#fff", fontWeight: 700, fontSize: 16 }}>
-          <span>STIMA COSTI TRASFERTA</span>
-          <span style={{ color: B.accent, fontSize: 18 }}>{fmtE(travelCost)}</span>
+          <span>{canViewMaterialCosts ? "TOTALE COSTI OPERATIVI (NO PRATO)" : "STIMA COSTI TRASFERTA"}</span>
+          <span style={{ color: B.accent, fontSize: 18 }}>{fmtE(canViewMaterialCosts ? operationalCostTotal : travelCost)}</span>
         </div>
       </div>
     </div>
@@ -885,6 +930,7 @@ const fieldInp = { width: "100%", padding: "10px 14px", border: "1.5px solid " +
    MAIN APP
    ═══════════════════════════════════════════ */
 function GardenPlanner() {
+  const [viewerRole, setViewerRole] = useState("crew");
   const [projectInfo, setProjectInfo] = useState({ client: "", address: "", date: getLocalISODate(), notes: "" });
   const [travel, setTravel] = useState(DEFAULT_TRAVEL_SETTINGS);
   const [shape, setShape] = useState("rect");
@@ -973,6 +1019,21 @@ function GardenPlanner() {
       window.clearTimeout(timeoutId);
     };
   }, [projectInfo.address, travel.departureBase]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/session", { credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!active) return;
+        const role = String(payload?.user?.role || "").trim().toLowerCase();
+        setViewerRole(role === "office" ? "office" : "crew");
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div style={{ fontFamily: "'Manrope', 'Segoe UI', sans-serif", minHeight: "100vh", background: B.cream }}>
@@ -1103,7 +1164,7 @@ function GardenPlanner() {
             <div style={{ flex: 1 }} />
             <button onClick={() => window.print()} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa report e disegno</button>
           </div>
-          <MaterialsReport area={area} perimeter={perimeter} borderMeters={selectedBorderMeters} rolls={rolls} borderType={borderType} substrate={substrate} decoItems={decoItems} projectInfo={projectInfo} travel={travel} />
+          <MaterialsReport area={area} perimeter={perimeter} borderMeters={selectedBorderMeters} rolls={rolls} borderType={borderType} substrate={substrate} decoItems={decoItems} projectInfo={projectInfo} travel={travel} viewerRole={viewerRole} />
         </div>
 
         <div style={{ textAlign: "center", padding: "8px 0 24px", fontSize: 11, color: B.textMuted }}>

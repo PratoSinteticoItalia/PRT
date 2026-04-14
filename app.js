@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-24";
+const APP_SHELL_VERSION = "20260414-shell-reset-26";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -8,6 +8,9 @@ const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
+const SALES_GENERATOR_FRAME_MIN_HEIGHT = 680;
+const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 920;
+const SALES_GENERATOR_FRAME_MAX_HEIGHT = 1480;
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
 const COVERAGE_BOUNDS = { minLon: 2.3, maxLon: 26.3, minLat: 34.2, maxLat: 47.8 };
 const COVERAGE_DEFAULT_COLORS = ["#2d6a4f", "#c26c2d", "#3e74d8", "#a74b4b", "#7c5cc4", "#1f7a8c"];
@@ -715,6 +718,7 @@ const state = {
   showSalesRequestImport: false,
   shellPending: true,
   syncInProgress: false,
+  navCounts: {},
   orderPage: 1,
   salesRequestPage: 1,
   mobileMenuOpen: false,
@@ -836,6 +840,10 @@ const ui = {
   salesGeneratorRequestCard: document.getElementById("sales-generator-request-card"),
   salesGeneratorOpenRequestButton: document.getElementById("sales-generator-open-request-button"),
   salesGeneratorPrefillButton: document.getElementById("sales-generator-prefill-button"),
+  salesGeneratorContactPanel: document.getElementById("sales-generator-contact-panel"),
+  salesGeneratorContactSummary: document.getElementById("sales-generator-contact-summary"),
+  salesGeneratorWhatsAppButton: document.getElementById("sales-generator-whatsapp-button"),
+  salesGeneratorEmailButton: document.getElementById("sales-generator-email-button"),
   salesContentSearch: document.getElementById("sales-content-search"),
   salesContentStatus: document.getElementById("sales-content-status"),
   salesContentList: document.getElementById("sales-content-list"),
@@ -1338,7 +1346,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260414-garden-materials-01&shell=20260414-garden-materials-01",
+    href: "./garden-planner.html?v=20260414-garden-materials-02&shell=20260414-garden-materials-02",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -1467,7 +1475,10 @@ function syncMobilePillNav() {
     const label = sourceButton.querySelector(".nav-label")?.textContent?.trim() || t(view);
     const copy = button.querySelector(".mobile-pill-label");
     const visible = !sourceButton.hidden && !sourceButton.classList.contains("hidden");
-    const count = sourceButton.getAttribute("data-count") || "";
+    const count = state.navCounts[view]
+      ?? sourceButton.getAttribute("data-count")
+      ?? button.getAttribute("data-count")
+      ?? "";
     if (copy) copy.textContent = label;
     button.hidden = !visible;
     button.classList.toggle("hidden", !visible);
@@ -1509,6 +1520,12 @@ function syncMobilePillNav() {
       ui.mainContent.style.removeProperty("grid-column");
       ui.mainContent.style.removeProperty("grid-row");
       ui.mainContent.style.removeProperty("grid-area");
+    }
+  }
+  if (mobileSafe) {
+    const activeButton = getMobilePillButton(state.currentView);
+    if (activeButton instanceof HTMLElement) {
+      activeButton.scrollIntoView({ block: "nearest", inline: "center", behavior: "auto" });
     }
   }
 }
@@ -1654,6 +1671,7 @@ function setNavCount(view, count) {
   const node = ui.navLinks.find((link) => link.dataset.view === view);
   if (!node) return;
   const normalized = Number(count) > 0 ? String(count) : "";
+  state.navCounts[view] = normalized;
   node.setAttribute("data-count", normalized);
   const mobileNode = getMobilePillButton(view);
   if (mobileNode) mobileNode.setAttribute("data-count", normalized);
@@ -1763,9 +1781,16 @@ function normalizeSalesRequestRecord(item = {}) {
     ),
     service: String(item.service || item.servizio || "").trim().toLowerCase(),
     surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
-    assignment: String(item.assignment || "").trim(),
+    assignment: String(item.assignment || item.assegnazione || "").trim(),
     status,
     note: String(item.note || "").trim(),
+    whatsappTemplate: String(
+      item.whatsappTemplate
+      || item.whatsappMessage
+      || item.whatsappAutomationMessage
+      || item.whatsapp
+      || "",
+    ).trim(),
     source: String(item.source || "manual").trim() || "manual",
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(item.sourceSheetName || "").trim(),
@@ -1817,6 +1842,49 @@ function getSalesRequestStatusLabel(status = "") {
 
 function isSalesRequestClosedStatus(status = "") {
   return getSalesRequestStatusCode(status) === "closed";
+}
+
+function getSalesRequestStatusesFromSheet() {
+  const rows = state.salesRequests
+    .filter((item) => String(item.source || "").trim() === "google-sheets")
+    .sort((left, right) => {
+      const leftRow = Number(left.sourceRowNumber || 0);
+      const rightRow = Number(right.sourceRowNumber || 0);
+      if (leftRow && rightRow && leftRow !== rightRow) return leftRow - rightRow;
+      const leftCreated = new Date(left.createdAt || 0).getTime();
+      const rightCreated = new Date(right.createdAt || 0).getTime();
+      return leftCreated - rightCreated;
+    });
+  const values = [];
+  const seen = new Set();
+  rows.forEach((item) => {
+    const value = String(item.status || "").trim();
+    if (!value) return;
+    const key = value.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    values.push(value);
+  });
+  return values;
+}
+
+function getSalesRequestAssignmentOptions() {
+  const values = new Set();
+  state.salesRequests.forEach((item) => {
+    const assignment = String(item.assignment || "").trim();
+    if (assignment) values.add(assignment);
+  });
+  getCrewAccounts().forEach((user) => {
+    const crewName = String(user.crewName || user.name || "").trim();
+    if (crewName) values.add(crewName);
+  });
+  state.users
+    .filter((user) => normalizeUserRole(user.role) === "office")
+    .forEach((user) => {
+      const name = String(user.name || "").trim();
+      if (name) values.add(name);
+    });
+  return [...values].sort((left, right) => left.localeCompare(right, "it", { sensitivity: "base" }));
 }
 
 function getSalesRequestHeightLabel(value = "") {
@@ -1872,29 +1940,60 @@ function ensureSelectedSalesRequest() {
 function syncSalesRequestStatusField(value = "") {
   const field = ui.salesRequestForm?.status;
   if (!field) return;
-  const nextValue = String(value || "").trim() || "new";
+  const sheetStatuses = getSalesRequestStatusesFromSheet();
+  const nextValue = String(value || "").trim() || (sheetStatuses[0] || "new");
   const fragment = document.createDocumentFragment();
   const seen = new Set();
   const appendOption = (optionValue, optionLabel, dynamic = false) => {
-    if (!optionValue || seen.has(optionValue)) return;
-    seen.add(optionValue);
+    const normalizedKey = String(optionValue || "").trim().toLowerCase();
+    if (!normalizedKey || seen.has(normalizedKey)) return;
+    seen.add(normalizedKey);
     const option = document.createElement("option");
     option.value = optionValue;
     option.textContent = optionLabel;
     if (dynamic) option.dataset.dynamicStatus = "true";
     fragment.append(option);
   };
-  [
-    ["new", state.lang === "it" ? "Nuova" : "New"],
-    ["quoted", state.lang === "it" ? "In preventivo" : "Quoted"],
-    ["followup", state.lang === "it" ? "Follow-up" : "Follow-up"],
-    ["closed", state.lang === "it" ? "Chiusa" : "Closed"],
-  ].forEach(([optionValue, optionLabel]) => appendOption(optionValue, optionLabel));
-  [...state.salesRequests.map((item) => String(item.status || "").trim()), nextValue]
-    .filter(Boolean)
-    .forEach((status) => appendOption(status, getSalesRequestStatusLabel(status), !["new", "quoted", "followup", "closed"].includes(status)));
+  if (sheetStatuses.length) {
+    sheetStatuses.forEach((status) => appendOption(status, status, true));
+  } else {
+    [
+      ["new", state.lang === "it" ? "Nuova" : "New"],
+      ["quoted", state.lang === "it" ? "In preventivo" : "Quoted"],
+      ["followup", state.lang === "it" ? "Follow-up" : "Follow-up"],
+      ["closed", state.lang === "it" ? "Chiusa" : "Closed"],
+    ].forEach(([optionValue, optionLabel]) => appendOption(optionValue, optionLabel));
+  }
+  if (!seen.has(nextValue.toLowerCase())) {
+    appendOption(nextValue, nextValue, true);
+  }
   field.replaceChildren(fragment);
-  field.value = seen.has(nextValue) ? nextValue : "new";
+  field.value = seen.has(nextValue.toLowerCase())
+    ? nextValue
+    : seen.has("new")
+      ? "new"
+      : String(field.options[0]?.value || "");
+}
+
+function syncSalesRequestAssignmentField(value = "") {
+  const field = ui.salesRequestForm?.assignment;
+  if (!field || field.tagName !== "SELECT") return;
+  const nextValue = String(value || "").trim();
+  const options = getSalesRequestAssignmentOptions();
+  if (nextValue && !options.includes(nextValue)) options.unshift(nextValue);
+  const fragment = document.createDocumentFragment();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = state.lang === "it" ? "Non assegnata" : "Unassigned";
+  fragment.append(placeholder);
+  options.forEach((optionValue) => {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = optionValue;
+    fragment.append(option);
+  });
+  field.replaceChildren(fragment);
+  field.value = nextValue;
 }
 
 function getSalesRequestsPageSize() {
@@ -1940,7 +2039,40 @@ function buildSalesRequestPrefill(item = {}) {
     altezza: item.requestedHeight || "",
     servizio: item.service || "",
     fondo: item.surface || "",
+    whatsappTemplate: item.whatsappTemplate || "",
   };
+}
+
+function normalizePhoneForWhatsApp(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("+")) {
+    const cleaned = raw.replace(/[^\d+]/g, "");
+    return cleaned.startsWith("+") ? cleaned : "";
+  }
+  const digits = raw.replace(/\D+/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("00")) return `+${digits.slice(2)}`;
+  if (digits.startsWith("39")) return `+${digits}`;
+  return `+39${digits}`;
+}
+
+function buildSalesRequestWhatsAppUrl(item = {}) {
+  const phone = normalizePhoneForWhatsApp(item.phone);
+  if (!phone) return "";
+  const message = String(item.whatsappTemplate || "").trim()
+    || `${state.lang === "it" ? "Ciao" : "Hello"} ${getSalesRequestDisplayName(item)}, ${state.lang === "it" ? "ti contattiamo in merito al tuo preventivo." : "we are contacting you about your quote."}`;
+  const waPhone = phone.replace(/[^\d]/g, "");
+  return `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
+}
+
+function buildSalesRequestMailtoUrl(item = {}) {
+  const email = String(item.email || "").trim();
+  if (!email) return "";
+  const subject = state.lang === "it" ? "Aggiornamento preventivo" : "Quote update";
+  const body = String(item.whatsappTemplate || "").trim()
+    || `${state.lang === "it" ? "Ciao" : "Hello"} ${getSalesRequestDisplayName(item)},`;
+  return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 function buildSalesGeneratorBrandingPayload() {
@@ -1996,11 +2128,27 @@ function pushSalesRequestToGenerator(force = false) {
   } catch {}
 }
 
+function applySalesGeneratorFrameHeight(rawHeight) {
+  if (!ui.salesGeneratorFrame) return;
+  const viewportBasedMax = Math.max(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT, Math.round(window.innerHeight * 1.35));
+  const maxHeight = Math.min(SALES_GENERATOR_FRAME_MAX_HEIGHT, viewportBasedMax);
+  const next = Math.max(
+    SALES_GENERATOR_FRAME_MIN_HEIGHT,
+    Math.min(maxHeight, Number(rawHeight) || SALES_GENERATOR_FRAME_DEFAULT_HEIGHT),
+  );
+  ui.salesGeneratorFrame.style.height = `${next}px`;
+}
+
 window.addEventListener("message", (event) => {
-  if (event.data?.type !== "quote-generator:scroll-top") return;
-  if (state.currentView !== "sales-generator") return;
-  scrollCurrentViewToTop();
-  requestAnimationFrame(() => focusViewTarget("sales-generator"));
+  if (event.data?.type === "quote-generator:scroll-top") {
+    if (state.currentView !== "sales-generator") return;
+    scrollCurrentViewToTop();
+    requestAnimationFrame(() => focusViewTarget("sales-generator"));
+    return;
+  }
+  if (event.data?.type === "quote-generator:content-height") {
+    applySalesGeneratorFrameHeight(event.data?.height);
+  }
 });
 
 function getDashboardSubtitle() {
@@ -2262,9 +2410,12 @@ function mapImportedSalesRequestField(target, header, rawValue) {
     "altezza prato",
     "altezza da preventivare",
     "altezza preventivo",
+    "altezza da preventivare mm",
+    "altezza mm",
     "mm",
     "spessore",
     "spessore prato",
+    "spessore mm",
   ].includes(normalizedHeader)) {
     target.requestedHeight = value;
     return;
@@ -2277,12 +2428,24 @@ function mapImportedSalesRequestField(target, header, rawValue) {
     target.surface = value;
     return;
   }
-  if (["assegnazione", "assignment", "owner", "commerciale", "team"].includes(normalizedHeader)) {
+  if (["assegnazione", "assignment", "owner", "commerciale", "team", "assegnato a", "assegnato", "assegnazione preventivo"].includes(normalizedHeader)) {
     target.assignment = value;
     return;
   }
   if (["stato", "status", "stato preventivo"].includes(normalizedHeader)) {
     target.status = value;
+    return;
+  }
+  if ([
+    "messaggio whatsapp",
+    "template whatsapp",
+    "testo whatsapp",
+    "messaggio preimpostato whatsapp",
+    "messaggio automatico whatsapp",
+    "whatsapp message",
+    "whatsapp automation message",
+  ].includes(normalizedHeader)) {
+    target.whatsappTemplate = value;
     return;
   }
   if (["note", "nota", "notes"].includes(normalizedHeader)) {
@@ -5839,6 +6002,7 @@ function getFilteredSalesRequests() {
         item.requestedHeight,
         item.assignment,
         item.note,
+        item.whatsappTemplate,
         getSalesRequestStatusLabel(item.status),
       ].join(" ").toLowerCase();
       return haystack.includes(query);
@@ -5863,6 +6027,7 @@ function getFilteredSalesContents() {
 
 function renderSalesRequests() {
   const filtered = getFilteredSalesRequests();
+  const { pageItems, totalPages, totalItems } = paginateSalesRequests(filtered);
   let selected = ensureSelectedSalesRequest();
   if (selected && !filtered.some((item) => item.id === selected.id) && filtered.length) {
     selected = filtered[0];
@@ -5870,14 +6035,17 @@ function renderSalesRequests() {
   if (!selected && filtered.length) {
     selected = filtered[0];
   }
+  if (selected && !pageItems.some((item) => item.id === selected.id) && pageItems.length) {
+    selected = pageItems[0];
+  }
   if ((selected?.id || "") !== state.selectedSalesRequestId) {
     state.selectedSalesRequestId = selected?.id || "";
   }
   updateSalesRequestImportPanel();
   updateSalesRequestSourcePanel();
   if (ui.salesRequestsList) {
-    ui.salesRequestsList.innerHTML = filtered.length
-      ? filtered.map((item) => `
+    ui.salesRequestsList.innerHTML = pageItems.length
+      ? pageItems.map((item) => `
           <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""}" data-action="select-sales-request" data-id="${item.id}">
             <div class="sales-request-card-head">
               <div>
@@ -5902,7 +6070,17 @@ function renderSalesRequests() {
       : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta disponibile." : "No requests available."}</div>`;
   }
   if (ui.salesRequestsPagination) {
-    ui.salesRequestsPagination.innerHTML = "";
+    const showPagination = totalItems > getSalesRequestsPageSize();
+    ui.salesRequestsPagination.classList.toggle("hidden", !showPagination);
+    ui.salesRequestsPagination.innerHTML = showPagination
+      ? `
+        <div class="list-pagination-copy">${state.lang === "it" ? `Pagina ${state.salesRequestPage} di ${totalPages} · ${totalItems} richieste` : `Page ${state.salesRequestPage} of ${totalPages} · ${totalItems} requests`}</div>
+        <div class="list-pagination-actions">
+          <button class="btn" data-action="sales-requests-prev-page" ${state.salesRequestPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prec." : "Prev"}</button>
+          <button class="btn" data-action="sales-requests-next-page" ${state.salesRequestPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Succ." : "Next"}</button>
+        </div>
+      `
+      : "";
   }
   if (!ui.salesRequestForm) return;
   ui.salesRequestForm.id.value = selected?.id || "";
@@ -5915,9 +6093,12 @@ function renderSalesRequests() {
   ui.salesRequestForm.requestedHeight.value = selected?.requestedHeight || "";
   ui.salesRequestForm.service.value = selected?.service || "";
   ui.salesRequestForm.surface.value = selected?.surface || "";
-  ui.salesRequestForm.assignment.value = selected?.assignment || "";
+  syncSalesRequestAssignmentField(selected?.assignment || "");
   syncSalesRequestStatusField(selected?.status || "new");
   ui.salesRequestForm.note.value = selected?.note || "";
+  if (ui.salesRequestForm.whatsappTemplate) {
+    ui.salesRequestForm.whatsappTemplate.value = selected?.whatsappTemplate || "";
+  }
   if (ui.salesRequestDetailTitle) {
     ui.salesRequestDetailTitle.textContent = selected
       ? getSalesRequestDisplayName(selected)
@@ -5956,6 +6137,32 @@ function renderSalesGenerator() {
   }
   if (ui.salesGeneratorOpenRequestButton) ui.salesGeneratorOpenRequestButton.disabled = generatorOnlyMode || !selected;
   if (ui.salesGeneratorPrefillButton) ui.salesGeneratorPrefillButton.disabled = generatorOnlyMode || !selected;
+  if (ui.salesGeneratorContactPanel) {
+    const canShowContacts = !generatorOnlyMode && Boolean(selected);
+    const whatsappUrl = canShowContacts ? buildSalesRequestWhatsAppUrl(selected) : "";
+    const emailUrl = canShowContacts ? buildSalesRequestMailtoUrl(selected) : "";
+    ui.salesGeneratorContactPanel.hidden = !canShowContacts;
+    ui.salesGeneratorContactPanel.classList.toggle("hidden", !canShowContacts);
+    if (ui.salesGeneratorContactSummary) {
+      const whatsappPreview = String(selected?.whatsappTemplate || "").trim();
+      ui.salesGeneratorContactSummary.textContent = canShowContacts
+        ? `${getSalesRequestDisplayName(selected)} · ${selected.phone || "—"} · ${selected.email || "—"}${whatsappPreview ? `\n${whatsappPreview}` : ""}`
+        : "";
+    }
+    if (ui.salesGeneratorWhatsAppButton) {
+      ui.salesGeneratorWhatsAppButton.href = whatsappUrl || "#";
+      ui.salesGeneratorWhatsAppButton.classList.toggle("hidden", !whatsappUrl);
+      ui.salesGeneratorWhatsAppButton.setAttribute("aria-disabled", whatsappUrl ? "false" : "true");
+    }
+    if (ui.salesGeneratorEmailButton) {
+      ui.salesGeneratorEmailButton.href = emailUrl || "#";
+      ui.salesGeneratorEmailButton.classList.toggle("hidden", !emailUrl);
+      ui.salesGeneratorEmailButton.setAttribute("aria-disabled", emailUrl ? "false" : "true");
+    }
+  }
+  if (state.currentView === "sales-generator") {
+    applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
+  }
   if (state.currentView === "sales-generator") {
     window.setTimeout(() => pushSalesGeneratorBranding(false), 20);
   }
@@ -6081,6 +6288,7 @@ async function saveSalesRequest(event) {
         assignment: form.get("assignment"),
         status: form.get("status"),
         note: form.get("note"),
+        whatsappTemplate: form.get("whatsappTemplate"),
         source: "manual",
       }),
     });
@@ -6139,11 +6347,13 @@ async function importSalesRequests() {
           phone: item.phone,
           email: item.email,
           sqm: item.sqm,
+          requestedHeight: item.requestedHeight,
           service: item.service,
           surface: item.surface,
           assignment: item.assignment,
           status: item.status,
           note: item.note,
+          whatsappTemplate: item.whatsappTemplate,
           source: "import",
         }),
       });

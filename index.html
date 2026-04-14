@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260414-shell-reset-24" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260414-shell-reset-24" />
+    <link rel="preload" href="./styles.css?v=20260414-shell-reset-26" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260414-shell-reset-26" />
   </head>
   <body class="shell-loading">
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -109,7 +109,7 @@
         <div class="topbar-right">
           <button id="reload-button" class="topbar-btn primary">Ricarica dati</button>
           <button id="new-order-button" class="topbar-btn">Nuovo ordine</button>
-          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260414-garden-materials-01&shell=20260414-garden-materials-01" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
+          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260414-garden-materials-02&shell=20260414-garden-materials-02" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
           <div class="lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
             <button class="lang-btn" data-lang="en">EN</button>
@@ -132,7 +132,7 @@
             <button id="mobile-pill-new-order-button" class="mobile-pill-tool" type="button">Nuovo ordine</button>
             <a
               id="mobile-pill-garden-planner-link"
-              href="./garden-planner.html?v=20260414-garden-materials-01&shell=20260414-garden-materials-01"
+              href="./garden-planner.html?v=20260414-garden-materials-02&shell=20260414-garden-materials-02"
               class="mobile-pill-tool"
               style="text-decoration: none;"
             >
@@ -234,7 +234,7 @@
         </nav>
 
         <div class="sidebar-mobile-tools">
-          <a href="./garden-planner.html?v=20260414-garden-materials-01&shell=20260414-garden-materials-01" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
+          <a href="./garden-planner.html?v=20260414-garden-materials-02&shell=20260414-garden-materials-02" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
           <button id="mobile-reload-button" class="sidebar-quick-link" type="button">Ricarica dati</button>
           <div class="lang-switch sidebar-lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
@@ -580,7 +580,9 @@
                 </label>
                 <label class="field">
                   <span>Assegnazione</span>
-                  <input class="text-input" name="assignment" placeholder="Commerciale o team" />
+                  <select class="text-input" name="assignment">
+                    <option value="">Non assegnata</option>
+                  </select>
                 </label>
                 <label class="field">
                   <span>Stato</span>
@@ -590,6 +592,10 @@
                     <option value="followup">Follow-up</option>
                     <option value="closed">Chiusa</option>
                   </select>
+                </label>
+                <label class="field field-full">
+                  <span>Messaggio WhatsApp (template)</span>
+                  <textarea class="text-input" name="whatsappTemplate" rows="3" placeholder="Messaggio preimpostato per contatto cliente da Google Sheets..."></textarea>
                 </label>
                 <label class="field field-full">
                   <span>Note</span>
@@ -632,8 +638,21 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260414-generator-pdf-26&shell=20260414-generator-pdf-26"
+                src="./sales-suite/generator.html?embedded=1&v=20260414-generator-pdf-28&shell=20260414-generator-pdf-28"
               ></iframe>
+            </section>
+            <section id="sales-generator-contact-panel" class="panel sales-generator-contact-panel hidden">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow">Contatto cliente</p>
+                  <h3>Invio rapido</h3>
+                </div>
+              </div>
+              <p id="sales-generator-contact-summary" class="panel-note">Seleziona una richiesta per attivare WhatsApp o email.</p>
+              <div class="inline-actions">
+                <a id="sales-generator-whatsapp-button" class="primary-button small-button" target="_blank" rel="noreferrer" href="#">Apri WhatsApp</a>
+                <a id="sales-generator-email-button" class="ghost-button small-button" target="_blank" rel="noreferrer" href="#">Invia email</a>
+              </div>
             </section>
           </div>
         </section>
@@ -1541,6 +1560,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260414-shell-reset-24" type="module"></script>
+    <script src="./app.js?v=20260414-shell-reset-26" type="module"></script>
   </body>
 </html>

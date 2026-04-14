@@ -1313,9 +1313,12 @@ function mapSheetSalesRequestField(target, header, rawValue) {
     "altezza prato",
     "altezza da preventivare",
     "altezza preventivo",
+    "altezza da preventivare mm",
+    "altezza mm",
     "mm",
     "spessore",
     "spessore prato",
+    "spessore mm",
   ].includes(normalizedHeader)) {
     target.requestedHeight = value;
     return;
@@ -1334,6 +1337,18 @@ function mapSheetSalesRequestField(target, header, rawValue) {
   }
   if (["stato", "status", "stato preventivo"].includes(normalizedHeader)) {
     target.status = value;
+    return;
+  }
+  if ([
+    "messaggio whatsapp",
+    "template whatsapp",
+    "testo whatsapp",
+    "messaggio preimpostato whatsapp",
+    "messaggio automatico whatsapp",
+    "whatsapp message",
+    "whatsapp automation message",
+  ].includes(normalizedHeader)) {
+    target.whatsappTemplate = value;
     return;
   }
   if (["note", "nota", "notes"].includes(normalizedHeader)) {
@@ -1513,9 +1528,16 @@ function normalizeSalesRequestRecord(item = {}) {
     ),
     service: normalizeSalesRequestService(item.service || item.servizio || ""),
     surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),
-    assignment: String(item.assignment || "").trim(),
+    assignment: String(item.assignment || item.assegnazione || "").trim(),
     status: rawStatus || "new",
     note: String(item.note || "").trim(),
+    whatsappTemplate: String(
+      item.whatsappTemplate
+      || item.whatsappMessage
+      || item.whatsappAutomationMessage
+      || item.whatsapp
+      || "",
+    ).trim(),
     source: String(item.source || "manual").trim() || "manual",
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(item.sourceSheetName || "").trim(),
@@ -3106,6 +3128,7 @@ async function handleApi(req, res, url) {
           assignment: item.assignment || existing?.assignment || "",
           status: item.status || existing?.status || "new",
           note: item.note || existing?.note || "",
+          whatsappTemplate: item.whatsappTemplate || existing?.whatsappTemplate || "",
           createdAt: existing?.createdAt || item.createdAt || now,
           updatedAt: now,
         });

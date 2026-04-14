@@ -8,6 +8,7 @@
   let activeBrandingPayload = { crewName: "", crewLogoDataUrl: "" };
   let pdfDownloadInterceptionActive = false;
   let scheduledScrollTop = 0;
+  let scheduledHeightReport = 0;
   let scheduledBridgeSync = 0;
   let bridgeSyncQueued = false;
   let bridgeSyncBurstRuns = 0;
@@ -86,6 +87,30 @@
     });
   }
 
+  function reportEmbeddedContentHeight() {
+    if (scheduledHeightReport) {
+      window.cancelAnimationFrame(scheduledHeightReport);
+    }
+    scheduledHeightReport = window.requestAnimationFrame(() => {
+      scheduledHeightReport = 0;
+      let rootHeight = 0;
+      const root = document.querySelector(".pdf-root");
+      if (root instanceof HTMLElement) {
+        rootHeight = Math.ceil(root.getBoundingClientRect().height || root.offsetHeight || 0);
+      }
+      const documentHeight = rootHeight > 0
+        ? rootHeight
+        : Math.max(
+          document.body?.scrollHeight || 0,
+          document.documentElement?.scrollHeight || 0,
+        );
+      const preferredHeight = Math.min(1480, Math.max(680, Number(documentHeight || 0) + 52));
+      try {
+        window.parent?.postMessage({ type: "quote-generator:content-height", height: preferredHeight }, "*");
+      } catch {}
+    });
+  }
+
   function scrollGeneratorViewportToTop() {
     if (scheduledScrollTop) {
       window.cancelAnimationFrame(scheduledScrollTop);
@@ -103,6 +128,7 @@
       try {
         window.parent?.postMessage({ type: "quote-generator:scroll-top" }, "*");
       } catch {}
+      reportEmbeddedContentHeight();
     });
   }
 
@@ -128,6 +154,7 @@
       }
       if (document.querySelector(".pdf-root")) {
         scrollGeneratorViewportToTop();
+        reportEmbeddedContentHeight();
       }
       if (scheduledBridgeSync) {
         window.clearTimeout(scheduledBridgeSync);
@@ -1104,5 +1131,10 @@
     }
     scrollGeneratorViewportToTop();
     requestBridgeSyncBurst(4);
+    reportEmbeddedContentHeight();
   }, { once: true });
+
+  window.addEventListener("resize", () => {
+    reportEmbeddedContentHeight();
+  });
 })();
