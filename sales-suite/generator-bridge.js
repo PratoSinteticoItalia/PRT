@@ -596,6 +596,56 @@
     await waitForAnimationFrame();
   }
 
+  async function decoratePdfWithBranding(pdf) {
+    if (!pdf || !activeBrandingPayload.crewLogoDataUrl) return false;
+
+    const exportReadySrc = await getExportReadyBrandingLogoDataUrl(activeBrandingPayload.crewLogoDataUrl);
+    if (!exportReadySrc) return false;
+
+    let logoImage = null;
+    try {
+      logoImage = await loadImageFromSource(exportReadySrc);
+    } catch (error) {
+      console.warn("Logo squadra non caricato per decorazione PDF:", error);
+      return false;
+    }
+
+    const imageWidth = Math.max(1, Number(logoImage?.naturalWidth || logoImage?.width || 1));
+    const imageHeight = Math.max(1, Number(logoImage?.naturalHeight || logoImage?.height || 1));
+    const maxWidth = 17;
+    const maxHeight = 17;
+    const scale = Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
+    const width = Math.max(9, Number((imageWidth * scale).toFixed(2)));
+    const height = Math.max(9, Number((imageHeight * scale).toFixed(2)));
+    const x = 88;
+    const y = 14;
+
+    try {
+      pdf.setPage(1);
+      if (typeof pdf.setFillColor === "function" && typeof pdf.roundedRect === "function") {
+        pdf.setFillColor(248, 250, 248);
+        pdf.setDrawColor(214, 224, 214);
+        pdf.roundedRect(x - 2.2, y - 1.5, width + 4.4, height + 9.5, 2, 2, "FD");
+      }
+      pdf.addImage(exportReadySrc, "PNG", x, y, width, height, undefined, "FAST");
+      if (activeBrandingPayload.crewName && typeof pdf.text === "function") {
+        pdf.setTextColor(86, 121, 88);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(5.5);
+        pdf.text(
+          `SQUADRA ${String(activeBrandingPayload.crewName || "").trim().toUpperCase()}`,
+          x + (width / 2),
+          y + height + 3.4,
+          { align: "center", maxWidth: width + 8 },
+        );
+      }
+      return true;
+    } catch (error) {
+      console.warn("Decorazione branding PDF fallita:", error);
+      return false;
+    }
+  }
+
   function installPdfDownloadInterceptor() {
     document.addEventListener("click", (event) => {
       const target = event.target;
@@ -834,6 +884,10 @@
 
   window.__prepareQuoteGeneratorPdfBranding = async () => {
     await preparePdfBrandingForExport();
+  };
+
+  window.__decorateQuoteGeneratorPdfBranding = async (pdf) => {
+    await decoratePdfWithBranding(pdf);
   };
 
   window.addEventListener("load", () => {
