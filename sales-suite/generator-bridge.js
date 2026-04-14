@@ -507,17 +507,17 @@
         margin-left: auto;
         margin-right: -2px;
         margin-top: 0;
-        padding: 3px 4px;
-        border: 1px solid rgba(47, 70, 49, 0.14);
-        border-radius: 9px;
-        background: linear-gradient(180deg, rgba(248,250,248,0.98), rgba(237,243,237,0.94));
-        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
       }
 
       .codex-crew-branding img {
-        width: 46px;
-        max-width: 46px;
-        max-height: 46px;
+        width: 58px;
+        max-width: 58px;
+        max-height: 58px;
         object-fit: contain;
         display: block;
       }
@@ -784,21 +784,16 @@
 
     const imageWidth = Math.max(1, Number(logoImage?.naturalWidth || logoImage?.width || 1));
     const imageHeight = Math.max(1, Number(logoImage?.naturalHeight || logoImage?.height || 1));
-    const maxWidth = 12.1;
-    const maxHeight = 12.1;
+    const maxWidth = 15.4;
+    const maxHeight = 15.4;
     const scale = Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
-    const width = Math.max(7.1, Number((imageWidth * scale).toFixed(2)));
-    const height = Math.max(7.1, Number((imageHeight * scale).toFixed(2)));
-    const x = 103.4;
-    const y = 13.3;
+    const width = Math.max(8.6, Number((imageWidth * scale).toFixed(2)));
+    const height = Math.max(8.6, Number((imageHeight * scale).toFixed(2)));
+    const x = 101.8;
+    const y = 12.4;
 
     try {
       pdf.setPage(1);
-      if (typeof pdf.setFillColor === "function" && typeof pdf.roundedRect === "function") {
-        pdf.setFillColor(248, 250, 248);
-        pdf.setDrawColor(214, 224, 214);
-        pdf.roundedRect(x - 1.5, y - 1.2, width + 3, height + 2.4, 2, 2, "FD");
-      }
       pdf.addImage(exportReadySrc, "PNG", x, y, width, height, undefined, "FAST");
       return true;
     } catch (error) {
