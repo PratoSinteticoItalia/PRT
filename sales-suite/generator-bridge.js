@@ -832,6 +832,10 @@
     scheduleRequestPayload(payload);
   };
 
+  window.__prepareQuoteGeneratorPdfBranding = async () => {
+    await preparePdfBrandingForExport();
+  };
+
   window.addEventListener("load", () => {
     installPdfDownloadInterceptor();
     startCustomAccessoryPriceBridge();
