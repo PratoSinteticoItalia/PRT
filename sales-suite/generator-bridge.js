@@ -521,9 +521,22 @@
     document.head.appendChild(style);
   }
 
+  function findQuoteMetaLine() {
+    const headerRow = document.querySelector(".pdf-root > div > .pdf-no-break");
+    if (!(headerRow instanceof Element)) return null;
+
+    const quoteBlock = Array.from(headerRow.children || []).find((child) => (
+      child instanceof Element
+      && normalizeLabel(child.textContent).includes("preventivo nr")
+    ));
+    if (!(quoteBlock instanceof Element)) return null;
+
+    const lines = Array.from(quoteBlock.children || []).filter((child) => child instanceof Element);
+    return lines.length ? lines[lines.length - 1] : null;
+  }
+
   function applyBrandingCompanyMeta(payload) {
-    const quoteNumberMarker = findElementByText(".pdf-root div, .pdf-root span", "Preventivo Nr.");
-    const quoteMetaLine = quoteNumberMarker?.parentElement?.lastElementChild || null;
+    const quoteMetaLine = findQuoteMetaLine();
     if (!quoteMetaLine) return false;
 
     if (!quoteMetaLine.dataset.codexOriginalText) {
