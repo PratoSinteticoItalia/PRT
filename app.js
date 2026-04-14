@@ -691,6 +691,7 @@ const state = {
   installationMobilePane: "summary",
   lastSalesGeneratorSignature: "",
   lastSalesGeneratorBrandingSignature: "",
+  lastAccountsManagerSignature: "",
   lang: "it",
   filters: {
     order: "all",
@@ -1119,6 +1120,19 @@ function applyMobileSafeMode() {
 
 function getAllowedViewsForRole(role = state.currentUser?.role || "office") {
   return roleViews[String(role || "").trim()] || roleViews.office;
+}
+
+function forceMobileVisibility(node, visible, displayValue = "block") {
+  if (!node) return;
+  if (window.innerWidth <= 980) {
+    node.style.setProperty("display", visible ? displayValue : "none", "important");
+    node.style.setProperty("visibility", visible ? "visible" : "hidden", "important");
+    node.style.setProperty("opacity", visible ? "1" : "0", "important");
+    return;
+  }
+  node.style.removeProperty("display");
+  node.style.removeProperty("visibility");
+  node.style.removeProperty("opacity");
 }
 
 function toNumber(value) {
@@ -4530,18 +4544,43 @@ function updateShell() {
     button.classList.toggle("hidden", !visible);
     button.classList.toggle("is-active", state.currentView === button.dataset.view);
     button.setAttribute("aria-hidden", visible ? "false" : "true");
+    forceMobileVisibility(button, visible, "grid");
   });
   const adminVisible = Array.from(ui.sidebarAdminNav?.querySelectorAll(".nav-link") || []).some((button) => !button.hidden);
-  if (ui.sidebarAdminDivider) ui.sidebarAdminDivider.classList.toggle("hidden", !adminVisible);
-  if (ui.sidebarAdminLabel) ui.sidebarAdminLabel.classList.toggle("hidden", !adminVisible);
-  if (ui.sidebarAdminNav) ui.sidebarAdminNav.classList.toggle("hidden", !adminVisible);
+  if (ui.sidebarAdminDivider) {
+    ui.sidebarAdminDivider.classList.toggle("hidden", !adminVisible);
+    forceMobileVisibility(ui.sidebarAdminDivider, adminVisible, "block");
+  }
+  if (ui.sidebarAdminLabel) {
+    ui.sidebarAdminLabel.classList.toggle("hidden", !adminVisible);
+    forceMobileVisibility(ui.sidebarAdminLabel, adminVisible, "block");
+  }
+  if (ui.sidebarAdminNav) {
+    ui.sidebarAdminNav.classList.toggle("hidden", !adminVisible);
+    forceMobileVisibility(ui.sidebarAdminNav, adminVisible, "grid");
+  }
   const operationalVisible = Array.from(ui.sidebarOperationalNav?.querySelectorAll(".nav-link") || []).some((button) => !button.hidden);
-  if (ui.sidebarOperationalLabel) ui.sidebarOperationalLabel.classList.toggle("hidden", !operationalVisible);
-  if (ui.sidebarOperationalNav) ui.sidebarOperationalNav.classList.toggle("hidden", !operationalVisible);
+  if (ui.sidebarOperationalLabel) {
+    ui.sidebarOperationalLabel.classList.toggle("hidden", !operationalVisible);
+    forceMobileVisibility(ui.sidebarOperationalLabel, operationalVisible, "block");
+  }
+  if (ui.sidebarOperationalNav) {
+    ui.sidebarOperationalNav.classList.toggle("hidden", !operationalVisible);
+    forceMobileVisibility(ui.sidebarOperationalNav, operationalVisible, "grid");
+  }
   const salesVisible = Array.from(ui.sidebarSalesNav?.querySelectorAll(".nav-link") || []).some((button) => !button.hidden);
-  if (ui.sidebarSalesDivider) ui.sidebarSalesDivider.classList.toggle("hidden", !salesVisible);
-  if (ui.sidebarSalesLabel) ui.sidebarSalesLabel.classList.toggle("hidden", !salesVisible);
-  if (ui.sidebarSalesNav) ui.sidebarSalesNav.classList.toggle("hidden", !salesVisible);
+  if (ui.sidebarSalesDivider) {
+    ui.sidebarSalesDivider.classList.toggle("hidden", !salesVisible);
+    forceMobileVisibility(ui.sidebarSalesDivider, salesVisible, "block");
+  }
+  if (ui.sidebarSalesLabel) {
+    ui.sidebarSalesLabel.classList.toggle("hidden", !salesVisible);
+    forceMobileVisibility(ui.sidebarSalesLabel, salesVisible, "block");
+  }
+  if (ui.sidebarSalesNav) {
+    ui.sidebarSalesNav.classList.toggle("hidden", !salesVisible);
+    forceMobileVisibility(ui.sidebarSalesNav, salesVisible, "grid");
+  }
   if (!allowed.includes(state.currentView)) state.currentView = allowed[0];
   ui.views.forEach((view) => view.classList.toggle("is-active", view.id === state.currentView));
   ui.viewTitle.textContent = t(state.currentView);
@@ -4563,6 +4602,7 @@ function updateShell() {
   if (ui.mobileGardenPlannerLink) {
     ui.mobileGardenPlannerLink.hidden = !showGardenPlannerShortcut;
     ui.mobileGardenPlannerLink.classList.toggle("hidden", !showGardenPlannerShortcut);
+    forceMobileVisibility(ui.mobileGardenPlannerLink, showGardenPlannerShortcut, "flex");
   }
   if (ui.sidebarMobileTools) {
     ui.sidebarMobileTools.hidden = false;
@@ -4570,6 +4610,7 @@ function updateShell() {
     ui.sidebarMobileTools.classList.add(
       currentRole === "crew" ? "is-crew-mode" : currentRole === "warehouse" ? "is-warehouse-mode" : "is-office-mode",
     );
+    forceMobileVisibility(ui.sidebarMobileTools, true, "grid");
   }
   if (ui.salesGeneratorContextPanel) {
     const hideGeneratorPrefill = currentRole === "crew";
@@ -7229,15 +7270,46 @@ function syncCoveragePlannerCrewRename(previousCrewName = "", nextCrewName = "")
   saveCoveragePlannerState();
 }
 
+function buildAccountsManagerSignature() {
+  return JSON.stringify({
+    role: state.currentUser?.role || "",
+    lang: state.lang,
+    users: Array.isArray(state.users)
+      ? state.users.map((user) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        mustChangePassword: Boolean(user.mustChangePassword),
+        crewName: user.crewName || "",
+        dailyCapacity: Number(user.dailyCapacity || 0),
+        crewLogoDataUrl: String(user.crewLogoDataUrl || ""),
+      }))
+      : [],
+  });
+}
+
 function renderAccountsManager() {
   if (!ui.accountsList) return;
   if (state.currentUser?.role !== "office") {
+    state.lastAccountsManagerSignature = "";
     ui.accountsList.innerHTML = `<div class="info-card">Solo l'ufficio puo gestire gli account.</div>`;
     if (ui.accountCreateForm) ui.accountCreateForm.classList.add("hidden");
     return;
   }
   if (ui.accountCreateForm) ui.accountCreateForm.classList.remove("hidden");
+  const signature = buildAccountsManagerSignature();
+  if (
+    state.lastAccountsManagerSignature === signature
+    && ui.accountsList.dataset.accountsRendered === "1"
+  ) {
+    bindAccountCrewFields(ui.accountCreateForm);
+    return;
+  }
   if (!state.users.length) {
+    state.lastAccountsManagerSignature = signature;
+    ui.accountsList.dataset.accountsRendered = "1";
     ui.accountsList.innerHTML = `<div class="info-card">Nessun account presente.</div>`;
     return;
   }
@@ -7316,6 +7388,8 @@ function renderAccountsManager() {
     form.addEventListener("submit", updateManagedAccount);
   });
   bindAccountCrewFields(ui.accountCreateForm);
+  state.lastAccountsManagerSignature = signature;
+  ui.accountsList.dataset.accountsRendered = "1";
 }
 
 function escapeHtml(value) {

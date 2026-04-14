@@ -1,4 +1,4 @@
-const CACHE_NAME = "psi-ops-shell-20260414-role-logo-fixes-01";
+const CACHE_NAME = "psi-ops-shell-20260414-office-menu-final-03";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -6,7 +6,7 @@ const APP_SHELL = [
   "/garden-planner.html?v=20260414-role-logo-fixes-01",
   "/garden-planner-page.js?v=20260414-role-logo-fixes-01",
   "/styles.css?v=20260414-role-logo-fixes-01",
-  "/app.js?v=20260414-role-logo-fixes-01",
+  "/app.js?v=20260414-office-menu-final-03",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",
