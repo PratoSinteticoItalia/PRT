@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-15";
+const APP_SHELL_VERSION = "20260414-shell-reset-16";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -763,6 +763,7 @@ const ui = {
   topbarAvatar: document.querySelector(".topbar-avatar"),
   mobilePillShell: document.getElementById("mobile-pill-shell"),
   mobilePillNav: document.getElementById("mobile-pill-nav"),
+  mobilePillTools: document.querySelector(".mobile-pill-tools"),
   mobilePillNewOrderButton: document.getElementById("mobile-pill-new-order-button"),
   mobilePillGardenPlannerLink: document.getElementById("mobile-pill-garden-planner-link"),
   mobilePillReloadButton: document.getElementById("mobile-pill-reload-button"),
@@ -1288,6 +1289,7 @@ function ensureMobilePillShell() {
     tools.className = "mobile-pill-tools";
     ui.mobilePillShell.appendChild(tools);
   }
+  ui.mobilePillTools = tools;
 
   const ensureTool = ({ id, label, type = "button", href = "", className = "mobile-pill-tool" }) => {
     let node = document.getElementById(id);
@@ -1367,6 +1369,26 @@ function syncMobilePillNav() {
     ui.mobilePillShell.hidden = !mobileSafe;
     ui.mobilePillShell.classList.toggle("hidden", !mobileSafe);
     ui.mobilePillShell.setAttribute("aria-hidden", mobileSafe ? "false" : "true");
+    ui.mobilePillShell.style.setProperty("display", mobileSafe ? "grid" : "none", "important");
+    if (mobileSafe) {
+      ui.mobilePillShell.style.setProperty("gap", "8px");
+      ui.mobilePillShell.style.setProperty("padding", "0 12px 10px");
+    } else {
+      ui.mobilePillShell.style.removeProperty("gap");
+      ui.mobilePillShell.style.removeProperty("padding");
+    }
+  }
+  if (ui.mobilePillNav) {
+    ui.mobilePillNav.style.setProperty("display", mobileSafe ? "flex" : "none", "important");
+    ui.mobilePillNav.style.setProperty("align-items", "center");
+    ui.mobilePillNav.style.setProperty("gap", "8px");
+    ui.mobilePillNav.style.setProperty("overflow-x", "auto");
+  }
+  if (ui.mobilePillTools) {
+    ui.mobilePillTools.style.setProperty("display", mobileSafe ? "flex" : "none", "important");
+    ui.mobilePillTools.style.setProperty("align-items", "center");
+    ui.mobilePillTools.style.setProperty("gap", "8px");
+    ui.mobilePillTools.style.setProperty("overflow-x", "auto");
   }
   ui.navLinks.forEach((sourceButton) => {
     const view = sourceButton.dataset.view;
@@ -1384,7 +1406,30 @@ function syncMobilePillNav() {
     button.toggleAttribute("aria-current", state.currentView === view);
     button.setAttribute("data-count", count);
     button.tabIndex = visible ? 0 : -1;
+    button.style.setProperty("display", mobileSafe && visible ? "inline-flex" : "none", "important");
+    button.style.setProperty("align-items", "center");
   });
+
+  [
+    ui.mobilePillNewOrderButton,
+    ui.mobilePillGardenPlannerLink,
+    ui.mobilePillReloadButton,
+    ui.mobilePillLogoutButton,
+  ].forEach((node) => {
+    if (!node) return;
+    const visible = mobileSafe && !node.hidden && !node.classList.contains("hidden");
+    node.style.setProperty("display", visible ? "inline-flex" : "none", "important");
+    node.style.setProperty("align-items", "center");
+    node.style.setProperty("justify-content", "center");
+  });
+
+  if (ui.mobileMenuButton) {
+    if (mobileSafe) {
+      ui.mobileMenuButton.style.setProperty("display", "none", "important");
+    } else {
+      ui.mobileMenuButton.style.removeProperty("display");
+    }
+  }
 }
 
 function syncSidebarLayout(role = state.currentUser?.role || "office") {
