@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-14";
+const APP_SHELL_VERSION = "20260414-shell-reset-15";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -1260,7 +1260,92 @@ function buildMobilePillButton(sourceButton) {
   return button;
 }
 
+function ensureMobilePillShell() {
+  const topbar = document.querySelector(".topbar");
+  if (!topbar) return;
+
+  if (!ui.mobilePillShell) {
+    const shell = document.createElement("div");
+    shell.id = "mobile-pill-shell";
+    shell.className = "mobile-pill-shell hidden";
+    shell.setAttribute("aria-hidden", "true");
+    topbar.insertAdjacentElement("afterend", shell);
+    ui.mobilePillShell = shell;
+  }
+
+  if (!ui.mobilePillNav) {
+    const nav = document.createElement("nav");
+    nav.id = "mobile-pill-nav";
+    nav.className = "mobile-pill-nav";
+    nav.setAttribute("aria-label", "Navigazione mobile");
+    ui.mobilePillShell.appendChild(nav);
+    ui.mobilePillNav = nav;
+  }
+
+  let tools = ui.mobilePillShell.querySelector(".mobile-pill-tools");
+  if (!tools) {
+    tools = document.createElement("div");
+    tools.className = "mobile-pill-tools";
+    ui.mobilePillShell.appendChild(tools);
+  }
+
+  const ensureTool = ({ id, label, type = "button", href = "", className = "mobile-pill-tool" }) => {
+    let node = document.getElementById(id);
+    if (node) return node;
+    node = document.createElement(type === "link" ? "a" : "button");
+    node.id = id;
+    node.className = className;
+    if (type === "link") {
+      node.href = href;
+      node.style.textDecoration = "none";
+    } else {
+      node.type = "button";
+    }
+    node.textContent = label;
+    tools.appendChild(node);
+    return node;
+  };
+
+  ui.mobilePillNewOrderButton ||= ensureTool({
+    id: "mobile-pill-new-order-button",
+    label: t("newOrder"),
+  });
+  ui.mobilePillGardenPlannerLink ||= ensureTool({
+    id: "mobile-pill-garden-planner-link",
+    label: "Garden Planner",
+    type: "link",
+    href: "./garden-planner.html?v=20260414-garden-materials-01&shell=20260414-garden-materials-01",
+  });
+  ui.mobilePillReloadButton ||= ensureTool({
+    id: "mobile-pill-reload-button",
+    label: t("reloadData"),
+  });
+  ui.mobilePillLogoutButton ||= ensureTool({
+    id: "mobile-pill-logout-button",
+    label: t("logout"),
+    className: "mobile-pill-tool is-danger",
+  });
+
+  if (ui.mobilePillReloadButton && !ui.mobilePillReloadButton.dataset.bound) {
+    ui.mobilePillReloadButton.addEventListener("click", reloadAll);
+    ui.mobilePillReloadButton.dataset.bound = "true";
+  }
+  if (ui.mobilePillNewOrderButton && !ui.mobilePillNewOrderButton.dataset.bound) {
+    ui.mobilePillNewOrderButton.addEventListener("click", () => openOrderModal(null));
+    ui.mobilePillNewOrderButton.dataset.bound = "true";
+  }
+  if (ui.mobilePillLogoutButton && !ui.mobilePillLogoutButton.dataset.bound) {
+    ui.mobilePillLogoutButton.addEventListener("click", async () => {
+      await apiFetch("/api/logout", { method: "POST" });
+      applySessionPayload({});
+      showAuth();
+    });
+    ui.mobilePillLogoutButton.dataset.bound = "true";
+  }
+}
+
 function ensureMobilePillNav() {
+  ensureMobilePillShell();
   if (!ui.mobilePillNav || mobilePillLinkMap.size) return;
   ui.navLinks.forEach((sourceButton) => {
     const view = sourceButton.dataset.view;
@@ -9671,9 +9756,7 @@ bindEvent(ui.mobileLogoutInlineButton, "click", async () => {
 });
 bindEvent(ui.reloadButton, "click", reloadAll);
 bindEvent(ui.mobileReloadButton, "click", reloadAll);
-bindEvent(ui.mobilePillReloadButton, "click", reloadAll);
 bindEvent(ui.newOrderButton, "click", () => openOrderModal(null));
-bindEvent(ui.mobilePillNewOrderButton, "click", () => openOrderModal(null));
 bindEvent(ui.mobileMenuButton, "click", () => {
   state.mobileMenuOpen = !state.mobileMenuOpen;
   updateMobileMenu();
@@ -9685,11 +9768,6 @@ bindEvent(ui.mobileMenuClose, "click", () => {
 bindEvent(ui.mobileSidebarBackdrop, "click", () => {
   state.mobileMenuOpen = false;
   updateMobileMenu();
-});
-bindEvent(ui.mobilePillLogoutButton, "click", async () => {
-  await apiFetch("/api/logout", { method: "POST" });
-  applySessionPayload({});
-  showAuth();
 });
 bindEvent(ui.ordersSyncButton, "click", syncShopifyOrders);
 bindEvent(ui.ordersImportButton, "click", () => {
