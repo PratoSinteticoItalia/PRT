@@ -552,6 +552,30 @@
     return true;
   }
 
+  function findFooterMetaLine() {
+    const rootContent = document.querySelector(".pdf-root > div");
+    if (!(rootContent instanceof Element)) return null;
+    const divChildren = Array.from(rootContent.children || []).filter((child) => child instanceof HTMLDivElement);
+    return divChildren.length ? divChildren[divChildren.length - 1] : null;
+  }
+
+  function applyBrandingFooterMeta(payload) {
+    const footerMetaLine = findFooterMetaLine();
+    if (!footerMetaLine) return false;
+
+    if (!footerMetaLine.dataset.codexOriginalText) {
+      footerMetaLine.dataset.codexOriginalText = footerMetaLine.textContent || "";
+    }
+
+    if (!payload?.crewName) {
+      footerMetaLine.textContent = footerMetaLine.dataset.codexOriginalText || footerMetaLine.textContent || "";
+      return false;
+    }
+
+    footerMetaLine.textContent = `${payload.crewName} · Rivenditore autorizzato`;
+    return true;
+  }
+
   function applyBrandingPayloadNow(payload) {
     activeBrandingPayload = normalizeBrandingPayload(payload);
     ensureBrandingStyles();
@@ -595,6 +619,7 @@
 
     brandingNode.appendChild(logo);
     applyBrandingCompanyMeta(activeBrandingPayload);
+    applyBrandingFooterMeta(activeBrandingPayload);
     void applyExportReadyLogoToImage(logo, activeBrandingPayload.crewLogoDataUrl);
     return true;
   }
@@ -652,6 +677,16 @@
           158,
           22.1,
           { align: "center", maxWidth: 40 },
+        );
+
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(44, 274.2, 122, 5.6, "F");
+        pdf.setFontSize(4.8);
+        pdf.text(
+          `${activeBrandingPayload.crewName} · Rivenditore autorizzato`,
+          105,
+          277.5,
+          { align: "center", maxWidth: 122 },
         );
       }
       return true;
