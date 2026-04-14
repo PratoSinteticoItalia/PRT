@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-17";
+const APP_SHELL_VERSION = "20260414-shell-reset-18";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -734,6 +734,8 @@ const shopifyOrderRefreshInFlight = new Set();
 const shopifyOrderRefreshAttempted = new Set();
 const shopifyOrderRefreshErrors = new Map();
 const mobilePillLinkMap = new Map();
+let responsiveResizeFrame = 0;
+let lastResponsiveIsMobile = window.innerWidth <= 980;
 
 const ui = {
   authScreen: document.getElementById("auth-screen"),
@@ -1393,12 +1395,15 @@ function syncMobilePillNav() {
     ui.mobilePillNav.style.setProperty("align-items", "center");
     ui.mobilePillNav.style.setProperty("gap", "8px");
     ui.mobilePillNav.style.setProperty("overflow-x", "auto");
+    if (!mobileSafe) ui.mobilePillNav.scrollLeft = 0;
   }
   if (ui.mobilePillTools) {
     ui.mobilePillTools.style.setProperty("display", mobileSafe ? "flex" : "none", "important");
     ui.mobilePillTools.style.setProperty("align-items", "center");
     ui.mobilePillTools.style.setProperty("gap", "8px");
-    ui.mobilePillTools.style.setProperty("overflow-x", "auto");
+    ui.mobilePillTools.style.setProperty("overflow-x", mobileSafe ? "visible" : "hidden");
+    ui.mobilePillTools.style.setProperty("flex-wrap", mobileSafe ? "wrap" : "nowrap");
+    if (!mobileSafe) ui.mobilePillTools.scrollLeft = 0;
   }
   ui.navLinks.forEach((sourceButton) => {
     const view = sourceButton.dataset.view;
@@ -1451,6 +1456,21 @@ function syncMobilePillNav() {
       ui.mainContent.style.removeProperty("grid-area");
     }
   }
+}
+
+function handleResponsiveResize() {
+  const isMobile = window.innerWidth <= 980;
+  applyMobileSafeMode();
+  updateAccountingPaneVisibility();
+  syncMobilePillNav();
+  if (isMobile !== lastResponsiveIsMobile && state.currentUser) {
+    renderCurrentViewOnly(state.currentView);
+  }
+  if (!isMobile && state.mobileMenuOpen) {
+    state.mobileMenuOpen = false;
+    updateMobileMenu();
+  }
+  lastResponsiveIsMobile = isMobile;
 }
 
 function syncSidebarLayout(role = state.currentUser?.role || "office") {
@@ -10053,12 +10073,11 @@ bindEvent(ui.accountCreateForm, "submit", createManagedAccount);
 bindAccountCrewFields(ui.accountCreateForm);
 handleShopifyOauthFeedback();
 window.addEventListener("resize", () => {
-  applyMobileSafeMode();
-  updateAccountingPaneVisibility();
-  if (window.innerWidth > 980 && state.mobileMenuOpen) {
-    state.mobileMenuOpen = false;
-    updateMobileMenu();
-  }
+  if (responsiveResizeFrame) cancelAnimationFrame(responsiveResizeFrame);
+  responsiveResizeFrame = requestAnimationFrame(() => {
+    responsiveResizeFrame = 0;
+    handleResponsiveResize();
+  });
 });
 document.addEventListener("visibilitychange", () => {
   if (!state.currentUser || document.hidden) return;

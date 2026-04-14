@@ -754,7 +754,6 @@ button.is-feedback,
   justify-content: center;
   padding: 0 16px;
   text-decoration: none;
-  box-shadow: 0 8px 18px rgba(20, 36, 24, 0.05);
 }
 
 .mobile-pill-tool.is-danger {
@@ -10107,10 +10106,14 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
     padding-bottom: 2px;
   }
 
+  body.mobile-safe-mode .mobile-pill-nav {
+    scroll-snap-type: x proximity;
+  }
+
   body.mobile-safe-mode .mobile-pill-link,
   body.mobile-safe-mode .mobile-pill-tool,
   body.mobile-safe-mode .mobile-pill-lang-switch {
-    box-shadow: 0 10px 20px rgba(18, 32, 22, 0.08);
+    box-shadow: none;
   }
 
   body.mobile-safe-mode .mobile-pill-link {
@@ -10118,6 +10121,7 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
     padding: 0 13px;
     background: rgba(255, 255, 255, 0.96);
     border-color: rgba(30, 59, 40, 0.1);
+    scroll-snap-align: start;
   }
 
   body.mobile-safe-mode .mobile-pill-link.is-active {
@@ -10160,7 +10164,13 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
     background: rgba(255, 255, 255, 0.96);
   }
 
+  body.mobile-safe-mode .mobile-pill-tools {
+    overflow-x: visible;
+    flex-wrap: wrap;
+  }
+
   body.mobile-safe-mode .mobile-pill-tool {
+    flex: 0 0 auto;
     padding: 0 14px;
     font-size: 12px;
     font-weight: 800;
