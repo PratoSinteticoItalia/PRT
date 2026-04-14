@@ -6,6 +6,8 @@
   let scheduledPrefillRunId = 0;
   let lastBrandingStorage = "";
   let activeBrandingPayload = { crewName: "", crewLogoDataUrl: "" };
+  let pdfDownloadInterceptionActive = false;
+  const brandingLogoExportCache = new Map();
 
   function normalizeLabel(value) {
     return String(value || "")
@@ -72,6 +74,92 @@
   function buildBrandingSignature(payload) {
     const normalized = normalizeBrandingPayload(payload);
     return JSON.stringify(normalized);
+  }
+
+  function waitForAnimationFrame() {
+    return new Promise((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  }
+
+  function waitForImageElementComplete(image) {
+    if (!image) return Promise.resolve();
+    if (image.complete && Number(image.naturalWidth || 0) > 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      const cleanup = () => {
+        image.removeEventListener("load", handleDone);
+        image.removeEventListener("error", handleDone);
+      };
+      const handleDone = () => {
+        cleanup();
+        resolve();
+      };
+      image.addEventListener("load", handleDone, { once: true });
+      image.addEventListener("error", handleDone, { once: true });
+    });
+  }
+
+  function loadImageFromSource(src) {
+    if (!src) return Promise.resolve(null);
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.decoding = "sync";
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = src;
+      if (image.complete && Number(image.naturalWidth || 0) > 0) {
+        resolve(image);
+      }
+    });
+  }
+
+  async function getExportReadyBrandingLogoDataUrl(src) {
+    const normalizedSrc = String(src || "").trim();
+    if (!normalizedSrc) return "";
+    if (brandingLogoExportCache.has(normalizedSrc)) {
+      return brandingLogoExportCache.get(normalizedSrc);
+    }
+
+    const pending = (async () => {
+      try {
+        const sourceImage = await loadImageFromSource(normalizedSrc);
+        if (!sourceImage) return normalizedSrc;
+
+        const sourceWidth = Math.max(1, Number(sourceImage.naturalWidth || sourceImage.width || 256));
+        const sourceHeight = Math.max(1, Number(sourceImage.naturalHeight || sourceImage.height || 256));
+        const maxSide = Math.max(sourceWidth, sourceHeight);
+        const targetMaxSide = 512;
+        const scale = targetMaxSide / maxSide;
+        const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+        const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const context = canvas.getContext("2d");
+        if (!context) return normalizedSrc;
+
+        context.clearRect(0, 0, targetWidth, targetHeight);
+        context.drawImage(sourceImage, 0, 0, targetWidth, targetHeight);
+        return canvas.toDataURL("image/png", 1);
+      } catch (error) {
+        console.warn("Logo squadra non rasterizzato per export PDF:", error);
+        return normalizedSrc;
+      }
+    })();
+
+    brandingLogoExportCache.set(normalizedSrc, pending);
+    return pending;
+  }
+
+  async function applyExportReadyLogoToImage(image, source) {
+    if (!image || !source) return;
+    const exportReadySrc = await getExportReadyBrandingLogoDataUrl(source);
+    if (!exportReadySrc || !image.isConnected) return;
+    if (image.getAttribute("src") !== exportReadySrc) {
+      image.setAttribute("src", exportReadySrc);
+    }
+    await waitForImageElementComplete(image);
   }
 
   function findFieldByLabel(labelText) {
@@ -494,7 +582,53 @@
 
     brandingNode.appendChild(logo);
     brandingNode.appendChild(label);
+    void applyExportReadyLogoToImage(logo, activeBrandingPayload.crewLogoDataUrl);
     return true;
+  }
+
+  async function preparePdfBrandingForExport() {
+    if (!activeBrandingPayload.crewLogoDataUrl) return;
+    applyBrandingPayloadNow(activeBrandingPayload);
+    const brandingImage = document.querySelector(".pdf-root .codex-crew-branding img");
+    if (!brandingImage) return;
+    await applyExportReadyLogoToImage(brandingImage, activeBrandingPayload.crewLogoDataUrl);
+    await waitForAnimationFrame();
+    await waitForAnimationFrame();
+  }
+
+  function installPdfDownloadInterceptor() {
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest("button");
+      if (!button) return;
+      if (button.dataset.codexPdfBypass === "1") {
+        button.removeAttribute("data-codex-pdf-bypass");
+        return;
+      }
+      if (!normalizeLabel(button.textContent).includes("scarica pdf")) return;
+      if (!activeBrandingPayload.crewLogoDataUrl) return;
+      if (pdfDownloadInterceptionActive) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      pdfDownloadInterceptionActive = true;
+
+      Promise.resolve()
+        .then(() => preparePdfBrandingForExport())
+        .catch((error) => {
+          console.warn("Preparazione branding PDF fallita:", error);
+        })
+        .finally(() => {
+          pdfDownloadInterceptionActive = false;
+          button.dataset.codexPdfBypass = "1";
+          button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+        });
+    }, true);
   }
 
   function parsePriceValue(rawValue) {
@@ -699,6 +833,7 @@
   };
 
   window.addEventListener("load", () => {
+    installPdfDownloadInterceptor();
     startCustomAccessoryPriceBridge();
     const payload = readPrefillFromUrl() || readPrefillFromStorage();
     if (payload) {
