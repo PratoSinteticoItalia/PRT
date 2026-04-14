@@ -9937,7 +9937,7 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
   }
 
   body.mobile-safe-mode .sidebar > * {
-    flex-shrink: 0;
+    flex-shrink: 0 !important;
   }
 
   body.mobile-safe-mode .topbar,
