@@ -500,38 +500,43 @@
     style.textContent = `
       .codex-crew-branding {
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 4px;
-        margin-left: 10px;
-        padding: 6px 8px;
+        margin-left: 8px;
+        padding: 4px;
         border: 1px solid rgba(47, 70, 49, 0.14);
-        border-radius: 12px;
+        border-radius: 10px;
         background: linear-gradient(180deg, rgba(248,250,248,0.98), rgba(237,243,237,0.94));
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
       }
 
       .codex-crew-branding img {
-        width: 54px;
-        max-width: 54px;
-        max-height: 54px;
+        width: 42px;
+        max-width: 42px;
+        max-height: 42px;
         object-fit: contain;
         display: block;
       }
-
-      .codex-crew-branding span {
-        font-size: 8px;
-        font-weight: 700;
-        line-height: 1.1;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #567958;
-        text-align: center;
-        max-width: 72px;
-      }
     `;
     document.head.appendChild(style);
+  }
+
+  function applyBrandingCompanyMeta(payload) {
+    const quoteNumberMarker = findElementByText(".pdf-root div, .pdf-root span", "Preventivo Nr.");
+    const quoteMetaLine = quoteNumberMarker?.parentElement?.lastElementChild || null;
+    if (!quoteMetaLine) return false;
+
+    if (!quoteMetaLine.dataset.codexOriginalText) {
+      quoteMetaLine.dataset.codexOriginalText = quoteMetaLine.textContent || "";
+    }
+
+    if (!payload?.crewName) {
+      quoteMetaLine.textContent = quoteMetaLine.dataset.codexOriginalText || quoteMetaLine.textContent || "";
+      return false;
+    }
+
+    quoteMetaLine.textContent = `${payload.crewName} · Rivenditore autorizzato`;
+    return true;
   }
 
   function applyBrandingPayloadNow(payload) {
@@ -575,13 +580,8 @@
     logo.decoding = "async";
     logo.loading = "eager";
 
-    const label = document.createElement("span");
-    label.textContent = activeBrandingPayload.crewName
-      ? `Squadra ${activeBrandingPayload.crewName}`
-      : "Squadra posa";
-
     brandingNode.appendChild(logo);
-    brandingNode.appendChild(label);
+    applyBrandingCompanyMeta(activeBrandingPayload);
     void applyExportReadyLogoToImage(logo, activeBrandingPayload.crewLogoDataUrl);
     return true;
   }
@@ -612,31 +612,33 @@
 
     const imageWidth = Math.max(1, Number(logoImage?.naturalWidth || logoImage?.width || 1));
     const imageHeight = Math.max(1, Number(logoImage?.naturalHeight || logoImage?.height || 1));
-    const maxWidth = 17;
-    const maxHeight = 17;
+    const maxWidth = 14;
+    const maxHeight = 14;
     const scale = Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
-    const width = Math.max(9, Number((imageWidth * scale).toFixed(2)));
-    const height = Math.max(9, Number((imageHeight * scale).toFixed(2)));
-    const x = 88;
-    const y = 14;
+    const width = Math.max(8, Number((imageWidth * scale).toFixed(2)));
+    const height = Math.max(8, Number((imageHeight * scale).toFixed(2)));
+    const x = 91;
+    const y = 14.5;
 
     try {
       pdf.setPage(1);
       if (typeof pdf.setFillColor === "function" && typeof pdf.roundedRect === "function") {
         pdf.setFillColor(248, 250, 248);
         pdf.setDrawColor(214, 224, 214);
-        pdf.roundedRect(x - 2.2, y - 1.5, width + 4.4, height + 9.5, 2, 2, "FD");
+        pdf.roundedRect(x - 1.8, y - 1.4, width + 3.6, height + 2.8, 2, 2, "FD");
       }
       pdf.addImage(exportReadySrc, "PNG", x, y, width, height, undefined, "FAST");
-      if (activeBrandingPayload.crewName && typeof pdf.text === "function") {
+      if (activeBrandingPayload.crewName && typeof pdf.rect === "function" && typeof pdf.text === "function") {
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(138, 18.5, 40, 5.8, "F");
         pdf.setTextColor(86, 121, 88);
         pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(5.5);
+        pdf.setFontSize(5.2);
         pdf.text(
-          `SQUADRA ${String(activeBrandingPayload.crewName || "").trim().toUpperCase()}`,
-          x + (width / 2),
-          y + height + 3.4,
-          { align: "center", maxWidth: width + 8 },
+          `${activeBrandingPayload.crewName} · Rivenditore autorizzato`,
+          158,
+          22.1,
+          { align: "center", maxWidth: 40 },
         );
       }
       return true;
