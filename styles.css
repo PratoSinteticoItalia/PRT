@@ -10193,7 +10193,8 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
     grid-row: 2 !important;
     display: grid !important;
     gap: 8px;
-    padding: 10px 12px 12px;
+    margin-top: 6px;
+    padding: 12px 12px 12px;
     position: relative;
     z-index: 2;
     background:
@@ -10202,7 +10203,7 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
 
   body.mobile-safe-mode .mobile-pill-nav {
     scroll-snap-type: x proximity;
-    padding-top: 2px;
+    padding-top: 6px;
     padding-bottom: 4px;
   }
 
