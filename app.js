@@ -688,6 +688,7 @@ const state = {
   creatingSalesRequest: false,
   creatingSalesContent: false,
   accountingMobilePane: "summary",
+  installationMobilePane: "summary",
   lastSalesGeneratorSignature: "",
   lastSalesGeneratorBrandingSignature: "",
   lang: "it",
@@ -874,6 +875,7 @@ const ui = {
   installationNextWeekButton: document.getElementById("installation-next-week-button"),
   installationDetailTitle: document.getElementById("installation-detail-title"),
   installationDetailMeta: document.querySelector("#installations .detail-header .detail-id"),
+  installationMobileTabs: Array.from(document.querySelectorAll("#installation-mobile-tabs [data-action='set-installation-pane']")),
   installationDetailSummary: document.getElementById("installation-detail-summary"),
   installationForm: document.getElementById("installation-form"),
   installationCrew: document.querySelector("#installation-form [name='crew']"),
@@ -917,6 +919,8 @@ const ui = {
   settingsForm: document.getElementById("shopify-settings-form"),
   settingsStatus: document.getElementById("settings-status"),
   connectShopifyButton: document.getElementById("connect-shopify-button"),
+  mobileGardenPlannerLink: document.getElementById("mobile-garden-planner-link"),
+  sidebarMobileTools: document.querySelector(".sidebar-mobile-tools"),
   securityForm: document.getElementById("security-form"),
   securityStatus: document.getElementById("security-status"),
   securityPolicyNote: document.getElementById("security-policy-note"),
@@ -3212,6 +3216,36 @@ function setAccountingPane(pane = "summary") {
   updateAccountingPaneVisibility();
 }
 
+function updateInstallationPaneVisibility() {
+  const isMobile = window.innerWidth <= 980;
+  const isCrewView = state.currentUser?.role === "crew";
+  const allowed = isCrewView
+    ? new Set(["summary", "expenses"])
+    : new Set(["summary", "expenses", "coverage"]);
+  if (!allowed.has(state.installationMobilePane)) {
+    state.installationMobilePane = "summary";
+  }
+  const pane = state.installationMobilePane || "summary";
+  ui.installationMobileTabs.forEach((button) => {
+    const buttonPane = button.dataset.pane || "summary";
+    const visible = allowed.has(buttonPane);
+    button.hidden = !visible;
+    button.classList.toggle("hidden", !visible);
+    button.classList.toggle("is-active", visible && buttonPane === pane);
+  });
+  document.querySelectorAll("#installations [data-installation-pane]").forEach((node) => {
+    const nodePane = node.dataset.installationPane || "summary";
+    node.toggleAttribute("hidden", isMobile && nodePane !== pane);
+  });
+}
+
+function setInstallationPane(pane = "summary") {
+  const isCrewView = state.currentUser?.role === "crew";
+  const allowed = new Set(isCrewView ? ["summary", "expenses"] : ["summary", "expenses", "coverage"]);
+  state.installationMobilePane = allowed.has(pane) ? pane : "summary";
+  updateInstallationPaneVisibility();
+}
+
 function buildDashboardActions() {
   const raw = [...state.orders]
     .map((order) => {
@@ -4483,6 +4517,7 @@ function updateShell() {
   const currentRole = state.currentUser?.role || "office";
   const allowed = roleViews[currentRole] || roleViews.office;
   const showCoverageRadar = currentRole === "office";
+  const showMobileGardenPlanner = currentRole === "office" || currentRole === "crew";
   document.body.dataset.userRole = currentRole;
   ui.navLinks.forEach((button) => {
     const visible = allowed.includes(button.dataset.view);
@@ -4515,6 +4550,17 @@ function updateShell() {
     const allowCreateOrders = currentRole === "office";
     ui.newOrderButton.hidden = !allowCreateOrders;
     ui.newOrderButton.classList.toggle("hidden", !allowCreateOrders);
+  }
+  if (ui.mobileGardenPlannerLink) {
+    ui.mobileGardenPlannerLink.hidden = !showMobileGardenPlanner;
+    ui.mobileGardenPlannerLink.classList.toggle("hidden", !showMobileGardenPlanner);
+  }
+  if (ui.sidebarMobileTools) {
+    ui.sidebarMobileTools.hidden = false;
+    ui.sidebarMobileTools.classList.remove("hidden", "is-office-mode", "is-crew-mode", "is-warehouse-mode");
+    ui.sidebarMobileTools.classList.add(
+      currentRole === "crew" ? "is-crew-mode" : currentRole === "warehouse" ? "is-warehouse-mode" : "is-office-mode",
+    );
   }
   if (ui.salesGeneratorContextPanel) {
     const hideGeneratorPrefill = currentRole === "crew";
@@ -6388,6 +6434,7 @@ function renderInstallations() {
         : t("installationPlanningDetail");
     }
     clearInstallationDetail();
+    updateInstallationPaneVisibility();
     return;
   }
   if (!state.selectedInstallationCrew && order.operations?.installation?.crew) {
@@ -6436,6 +6483,7 @@ function renderInstallations() {
   ui.installationAttachments.innerHTML = renderAttachmentGrid(mapAttachmentsForContext(order, "installation"), order.id);
   renderInstallationExpenseSection(order);
   clearStatus(ui.installationStatus);
+  updateInstallationPaneVisibility();
 }
 
 function renderAccounting() {
@@ -7170,7 +7218,7 @@ function renderAccountsManager() {
               ? `<img src="${escapeHtml(user.crewLogoDataUrl)}" alt="Logo squadra ${escapeHtml(user.crewName || user.name || "")}" />`
               : `<span>Nessun logo squadra caricato.</span>`}
           </div>
-          <input class="text-input" name="crewLogoFile" type="file" accept="image/png,image/jpeg,image/webp" />
+          <input class="text-input" name="crewLogoFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" />
           <small class="field-hint">Lascia vuoto per mantenere il logo attuale.</small>
         </label>
         <label class="checkline field-full crew-account-field ${user.role === "crew" ? "" : "hidden"}" data-crew-field>
@@ -7405,10 +7453,57 @@ function render() {
   renderSettings();
 }
 
+function renderCurrentViewOnly(view = state.currentView) {
+  if (state.currentUser && state.shellPending) {
+    setShellPending(false);
+  }
+  ensureSelectedOrder();
+  populateInventoryOptions();
+  updateShell();
+  renderOps();
+  switch (state.currentView) {
+    case "dashboard":
+      renderDashboard();
+      break;
+    case "orders":
+      renderOrders();
+      break;
+    case "sales-requests":
+      renderSalesRequests();
+      break;
+    case "sales-generator":
+      renderSalesGenerator();
+      break;
+    case "sales-content":
+      renderSalesContent();
+      break;
+    case "warehouse":
+      renderWarehouse();
+      break;
+    case "installations":
+      renderInstallations();
+      break;
+    case "accounting":
+      renderAccounting();
+      break;
+    case "shipping":
+      renderShipping();
+      break;
+    case "settings":
+      renderSettings();
+      break;
+    default:
+      renderDashboard();
+      break;
+  }
+}
+
 function setView(view) {
   const previousView = state.currentView;
+  if (view === "accounting") state.accountingMobilePane = "summary";
+  if (view === "installations") state.installationMobilePane = "summary";
   state.currentView = view;
-  render();
+  renderCurrentViewOnly(view);
   if (view !== previousView) {
     requestAnimationFrame(() => {
       scrollCurrentViewToTop();
@@ -8331,8 +8426,19 @@ async function readCrewLogoDataUrlFromForm(form, existingLogo = "") {
   const file = form.querySelector('input[name="crewLogoFile"]')?.files?.[0];
   const shouldRemove = Boolean(form.querySelector('input[name="removeCrewLogo"]')?.checked);
   if (file) {
-    if (!String(file.type || "").startsWith("image/")) {
+    const mime = String(file.type || "").trim().toLowerCase();
+    const ext = String(file.name || "").trim().toLowerCase();
+    const isAcceptedImage = mime.startsWith("image/")
+      || ext.endsWith(".svg")
+      || ext.endsWith(".png")
+      || ext.endsWith(".jpg")
+      || ext.endsWith(".jpeg")
+      || ext.endsWith(".webp");
+    if (!isAcceptedImage) {
       throw new Error("invalid_crew_logo_file");
+    }
+    if (Number(file.size || 0) > 6_000_000) {
+      throw new Error("crew_logo_too_large");
     }
     return readFileAsDataUrl(file);
   }
@@ -8382,7 +8488,9 @@ async function createManagedAccount(event) {
       : error.message === "crew_name_exists"
         ? (state.lang === "it" ? "Esiste gia una squadra con questo nome." : "A crew with this name already exists.")
       : error.message === "invalid_crew_logo_file"
-        ? (state.lang === "it" ? "Carica un logo squadra in formato PNG, JPG o WebP." : "Upload a crew logo in PNG, JPG, or WebP format.")
+        ? (state.lang === "it" ? "Carica un logo squadra in formato PNG, JPG, WebP o SVG." : "Upload a crew logo in PNG, JPG, WebP, or SVG format.")
+      : error.message === "crew_logo_too_large"
+        ? (state.lang === "it" ? "Il logo squadra è troppo pesante. Usa un file più leggero." : "The crew logo is too large. Use a lighter file.")
       : error.message === "weak_password_case"
         ? (state.lang === "it" ? "La password deve contenere maiuscole e minuscole." : "The password must contain uppercase and lowercase letters.")
       : error.message === "weak_password_number"
@@ -8436,7 +8544,9 @@ async function updateManagedAccount(event) {
       : error.message === "crew_name_exists"
         ? (state.lang === "it" ? "Esiste gia una squadra con questo nome." : "A crew with this name already exists.")
       : error.message === "invalid_crew_logo_file"
-        ? (state.lang === "it" ? "Carica un logo squadra in formato PNG, JPG o WebP." : "Upload a crew logo in PNG, JPG, or WebP format.")
+        ? (state.lang === "it" ? "Carica un logo squadra in formato PNG, JPG, WebP o SVG." : "Upload a crew logo in PNG, JPG, WebP, or SVG format.")
+      : error.message === "crew_logo_too_large"
+        ? (state.lang === "it" ? "Il logo squadra è troppo pesante. Usa un file più leggero." : "The crew logo is too large. Use a lighter file.")
       : error.message === "weak_password" || error.message === "weak_password_length"
         ? (state.lang === "it" ? "La nuova password deve avere almeno 12 caratteri." : "The new password must be at least 12 characters long.")
         : error.message === "weak_password_case"
@@ -8894,6 +9004,9 @@ function handleGlobalClick(event) {
     const nextView = button.dataset.view || state.currentView;
     if (nextView === "accounting") {
       state.accountingMobilePane = "summary";
+    }
+    if (nextView === "installations") {
+      state.installationMobilePane = "summary";
     }
     if (window.innerWidth <= 980) {
       state.mobileMenuOpen = false;

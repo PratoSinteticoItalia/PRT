@@ -446,9 +446,15 @@
     ensureBrandingStyles();
 
     const logoElement = Array.from(document.querySelectorAll("img"))
-      .find((img) => img.closest(".pdf-root") && normalizeLabel(img.getAttribute("alt")) === "logo");
+      .find((img) => img.closest(".pdf-root") && normalizeLabel(img.getAttribute("alt")) === "logo")
+      || document.querySelector(".pdf-root img");
     const host = logoElement?.parentElement;
     if (!host) return false;
+    host.style.display = "flex";
+    host.style.alignItems = "center";
+    host.style.flexWrap = "wrap";
+    host.style.columnGap = "12px";
+    host.style.rowGap = "8px";
 
     const existing = host.querySelector(".codex-crew-branding");
     if (!activeBrandingPayload.crewLogoDataUrl) {

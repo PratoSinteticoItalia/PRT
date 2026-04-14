@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260413-crew-branding-29" />
+    <link rel="stylesheet" href="./styles.css?v=20260413-shell-coherence-30" />
   </head>
   <body class="shell-loading">
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -208,7 +208,7 @@
         </nav>
 
         <div class="sidebar-mobile-tools">
-          <a href="./garden-planner.html" class="sidebar-quick-link">Garden Planner</a>
+          <a href="./garden-planner.html" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
           <button id="mobile-reload-button" class="sidebar-quick-link" type="button">Ricarica dati</button>
           <div class="lang-switch sidebar-lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
@@ -602,7 +602,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1"
+                src="./sales-suite/generator.html?embedded=1&v=20260413-shell-coherence-30"
               ></iframe>
             </section>
           </div>
@@ -925,6 +925,13 @@
               </div>
             </div>
 
+              <div id="installation-mobile-tabs" class="detail-mobile-tabs">
+                <button class="detail-mobile-tab is-active" type="button" data-action="set-installation-pane" data-pane="summary">Dettaglio</button>
+                <button class="detail-mobile-tab" type="button" data-action="set-installation-pane" data-pane="expenses">Costi</button>
+                <button class="detail-mobile-tab" type="button" data-action="set-installation-pane" data-pane="coverage">Copertura</button>
+              </div>
+
+              <div class="installation-pane-group" data-installation-pane="summary">
               <div id="installation-detail-summary" class="detail-grid"></div>
 
               <form id="installation-form" class="inline-form-grid">
@@ -966,8 +973,9 @@
               </form>
 
               <div id="installation-attachments" class="attachment-grid"></div>
+              </div>
 
-              <div class="panel-subsection installation-expenses-section">
+              <div class="panel-subsection installation-expenses-section installation-pane-group" data-installation-pane="expenses">
                 <div class="subsection-head">
                   <div>
                     <h4>Costi trasferta squadra</h4>
@@ -1007,7 +1015,7 @@
               </div>
           </section>
 
-          <section class="coverage-panel">
+          <section class="coverage-panel" data-installation-pane="coverage">
             <div class="coverage-shell">
               <aside class="coverage-sidebar">
                 <div class="coverage-card">
@@ -1360,8 +1368,8 @@
                 </label>
                 <label class="field field-full crew-account-field hidden" data-crew-field>
                   <span>Logo squadra (opzionale)</span>
-                  <input class="text-input" name="crewLogoFile" type="file" accept="image/png,image/jpeg,image/webp" />
-                  <small class="field-hint">PNG, JPG o WebP. Comparira nel PDF del generatore squadra accanto al logo PSI.</small>
+                  <input class="text-input" name="crewLogoFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" />
+                  <small class="field-hint">PNG, JPG, WebP o SVG. Comparira nel PDF del generatore squadra accanto al logo PSI.</small>
                 </label>
                 <label class="checkline field-full">
                   <input type="checkbox" name="mustChangePassword" />
@@ -1500,6 +1508,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260413-crew-branding-29" type="module"></script>
+    <script src="./app.js?v=20260413-shell-coherence-30" type="module"></script>
   </body>
 </html>

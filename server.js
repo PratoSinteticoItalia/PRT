@@ -26,7 +26,7 @@ const USE_R2 = Boolean(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY
 const DEFAULT_SALES_REQUEST_SPREADSHEET = "https://docs.google.com/spreadsheets/d/15n7HIxhiX0U2EX28R9euiZfCqBNZPZ0AE8Hmb-p0vHw/edit";
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const MAX_CREW_LOGO_DATA_URL_LENGTH = 2_500_000;
+const MAX_CREW_LOGO_DATA_URL_LENGTH = 6_500_000;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -436,7 +436,7 @@ function getDemoUsers() {
 function sanitizeCrewLogoDataUrl(value = "") {
   const raw = String(value || "").trim();
   if (!raw || raw.length > MAX_CREW_LOGO_DATA_URL_LENGTH) return "";
-  if (!/^data:image\/(?:png|jpe?g|webp);base64,/i.test(raw)) return "";
+  if (!/^data:image\/(?:png|jpe?g|webp|svg\+xml)(?:;charset=[^;,]+)?;base64,/i.test(raw)) return "";
   return raw;
 }
 
@@ -3344,9 +3344,13 @@ async function handleApi(req, res, url) {
     const dailyCapacity = role === "crew"
       ? Math.max(0, toNumber(body.dailyCapacity || DEFAULT_CREW_DAILY_CAPACITY))
       : 0;
+    const submittedCrewLogoDataUrl = String(body.crewLogoDataUrl || "").trim();
     const crewLogoDataUrl = role === "crew"
-      ? sanitizeCrewLogoDataUrl(body.crewLogoDataUrl || "")
+      ? sanitizeCrewLogoDataUrl(submittedCrewLogoDataUrl)
       : "";
+    if (role === "crew" && submittedCrewLogoDataUrl && !crewLogoDataUrl) {
+      return sendJson(res, 400, { error: "invalid_crew_logo_file" });
+    }
     if (!name || !email || !isValidRole(role)) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
     }
@@ -3415,7 +3419,11 @@ async function handleApi(req, res, url) {
       ? Math.max(0, toNumber(body.dailyCapacity || current.dailyCapacity || DEFAULT_CREW_DAILY_CAPACITY))
       : 0;
     const shouldRemoveCrewLogo = body.removeCrewLogo === true || body.removeCrewLogo === "true";
-    const submittedCrewLogoDataUrl = sanitizeCrewLogoDataUrl(body.crewLogoDataUrl || "");
+    const rawCrewLogoDataUrl = String(body.crewLogoDataUrl || "").trim();
+    const submittedCrewLogoDataUrl = sanitizeCrewLogoDataUrl(rawCrewLogoDataUrl);
+    if (nextRole === "crew" && rawCrewLogoDataUrl && !submittedCrewLogoDataUrl) {
+      return sendJson(res, 400, { error: "invalid_crew_logo_file" });
+    }
     const nextCrewLogoDataUrl = nextRole === "crew"
       ? (shouldRemoveCrewLogo ? "" : (submittedCrewLogoDataUrl || sanitizeCrewLogoDataUrl(current.crewLogoDataUrl || "")))
       : "";

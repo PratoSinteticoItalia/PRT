@@ -656,7 +656,7 @@ function RollsTable({ rolls, setRolls, area }) {
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
           <thead><tr style={{ background: B.gray }}>
-            {["#", "Prodotto", "Lungh.", "Larg.", "m\u00B2", "Valore prato", "Note", ""].map((h, i) => (
+            {["#", "Prodotto", "Lungh.", "Larg.", "m\u00B2", "Escluso costi", "Note", ""].map((h, i) => (
               <th key={i} style={{ padding: "8px 6px", textAlign: i > 1 && i < 6 ? "center" : "left", fontSize: 10, fontWeight: 600, color: B.textMuted, textTransform: "uppercase", borderBottom: "1px solid " + B.border, whiteSpace: "nowrap" }}>{h}</th>
             ))}
           </tr></thead>
@@ -667,11 +667,11 @@ function RollsTable({ rolls, setRolls, area }) {
               return (
                 <tr key={r.id} style={{ borderBottom: "1px solid " + B.borderLight }}>
                   <td style={tdS}><div style={{ width: 24, height: 24, borderRadius: 6, background: prod.color + "22", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 11, color: prod.color, border: "1px solid " + prod.color + "44" }}>{r.rollNum}</div></td>
-                  <td style={tdS}><select value={r.product} onChange={e => updateRoll(r.id, "product", e.target.value)} style={cSel}>{PRODUCTS.map(p => <option key={p.id} value={p.id}>{`${p.name} - EUR${p.price.toFixed(2)}/m2`}</option>)}</select></td>
+                  <td style={tdS}><select value={r.product} onChange={e => updateRoll(r.id, "product", e.target.value)} style={cSel}>{PRODUCTS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
                   <td style={{ ...tdS, textAlign: "center" }}><input type="number" value={r.length} min={0.5} max={25} step={0.5} onChange={e => updateRoll(r.id, "length", parseFloat(e.target.value) || 0.5)} style={cInp} /></td>
                   <td style={{ ...tdS, textAlign: "center", color: B.textMuted, fontSize: 12 }}>{r.width}m</td>
                   <td style={{ ...tdS, textAlign: "center", fontWeight: 600 }}>{fmt(sqm)}</td>
-                  <td style={{ ...tdS, textAlign: "center", fontWeight: 600, color: B.primary }}>{fmtE(sqm * prod.price)}</td>
+                  <td style={{ ...tdS, textAlign: "center", fontWeight: 700, color: B.textMuted }}>Escluso</td>
                   <td style={tdS}><input type="text" value={r.note} placeholder="-" onChange={e => updateRoll(r.id, "note", e.target.value)} style={{ ...cInp, width: 85, textAlign: "left" }} /></td>
                   <td style={tdS}><button onClick={() => removeRoll(r.id)} style={{ background: "none", border: "none", color: B.danger, cursor: "pointer", fontSize: 15 }}>x</button></td>
                 </tr>
@@ -743,8 +743,10 @@ function DecoSection({ decoItems, setDecoItems }) {
 function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, substrate, decoItems, projectInfo, travel }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
-  const rollDetails = rolls.map(r => { const prod = PRODUCTS.find(p => p.id === r.product) || PRODUCTS[0]; return { ...r, sqm: r.width * r.length, cost: r.width * r.length * prod.price, prodName: prod.name }; });
-  const totalRollCost = rollDetails.reduce((s, r) => s + r.cost, 0);
+  const rollDetails = rolls.map(r => {
+    const prod = PRODUCTS.find(p => p.id === r.product) || PRODUCTS[0];
+    return { ...r, sqm: r.width * r.length, prodName: prod.name };
+  });
 
   const scavoM3 = (area * substrate.scavoCm) / 100, scavoCost = scavoM3 * 18;
   const drenateM3 = (area * substrate.drenateCm) / 100, drenateCost = drenateM3 * 22;
@@ -772,7 +774,7 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
   const travelCost = travelFuelCost + travelTollCost;
 
   const sections = [
-    { cat: "PRATO SINTETICO · valore indicativo", items: rollDetails.length > 0 ? rollDetails.map(r => ({ name: "Rotolo #" + r.rollNum + " " + r.prodName + " (" + r.width + "\u00D7" + r.length + "m)", qty: fmt(r.sqm) + " m\u00B2", cost: r.cost })) : [{ name: "Nessun rotolo inserito", qty: "\u2014", cost: 0 }], sub: totalRollCost },
+    { cat: "PRATO SINTETICO · fabbisogno", items: rollDetails.length > 0 ? rollDetails.map(r => ({ name: "Rotolo #" + r.rollNum + " " + r.prodName + " (" + r.width + "\u00D7" + r.length + "m)", qty: fmt(r.sqm) + " m\u00B2", cost: null })) : [{ name: "Nessun rotolo inserito", qty: "\u2014", cost: null }], sub: null },
     { cat: "PREPARAZIONE FONDO", items: [
       substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + "kg", cost: scavoCost } : null,
       substrate.drenateCm > 0 ? { name: "Pietrisco drenante (" + substrate.drenateCm + "cm)", qty: fmt(drenateM3, 2) + " m\u00B3 \u2248 " + Math.round(drenateM3 * 1600) + "kg", cost: drenateCost } : null,
@@ -822,13 +824,13 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
           <div key={si}>
             <div style={{ background: B.gray, padding: "8px 14px", fontSize: 11, fontWeight: 700, color: B.primary, textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "1px solid " + B.borderLight, borderTop: si > 0 ? "1px solid " + B.border : "none", display: "flex", justifyContent: "space-between" }}>
               <span>{sec.cat}</span>
-              <span style={{ color: B.dark }}>{fmtE(sec.sub)}</span>
+              <span style={{ color: B.dark }}>{typeof sec.sub === "number" ? fmtE(sec.sub) : ""}</span>
             </div>
             {sec.items.map((item, ii) => (
               <div key={ii} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", fontSize: 13, borderBottom: "1px solid " + B.borderLight, background: ii % 2 === 0 ? B.white : B.cream, flexWrap: "wrap", gap: 4 }}>
                 <span style={{ flex: 2, color: B.text, minWidth: 150 }}>{item.name}</span>
                 <span style={{ flex: 1, textAlign: "center", color: B.textMuted, minWidth: 90 }}>{item.qty}</span>
-                <span style={{ minWidth: 80, textAlign: "right", fontWeight: 600, color: B.dark }}>{fmtE(item.cost)}</span>
+                <span style={{ minWidth: 80, textAlign: "right", fontWeight: 600, color: B.dark }}>{typeof item.cost === "number" ? fmtE(item.cost) : "\u2014"}</span>
               </div>
             ))}
           </div>

@@ -1,17 +1,18 @@
-const CACHE_NAME = "psi-ops-shell-20260413-crew-branding-29";
+const CACHE_NAME = "psi-ops-shell-20260413-shell-coherence-30";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/garden-planner.html",
-  "/garden-planner-page.js?v=20260413-crew-branding-29",
-  "/styles.css?v=20260413-crew-branding-29",
-  "/app.js?v=20260413-crew-branding-29",
+  "/garden-planner.html?v=20260413-shell-coherence-30",
+  "/garden-planner-page.js?v=20260413-shell-coherence-30",
+  "/styles.css?v=20260413-shell-coherence-30",
+  "/app.js?v=20260413-shell-coherence-30",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",
   "/apple-touch-icon.png",
   "/manifest.webmanifest",
-  "/sales-suite/generator.html",
+  "/sales-suite/generator.html?embedded=1&v=20260413-shell-coherence-30",
   "/sales-suite/generator-bridge.js",
   "/sales-suite/favicon.svg",
   "/sales-suite/icons.svg",
