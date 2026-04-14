@@ -1152,6 +1152,43 @@ function normalizeSalesRequestHeight(value = "") {
   return raw;
 }
 
+function getSalesRequestRawHeightValue(item = {}) {
+  const directValue = (
+    item.requestedHeight
+    ?? item.altezza
+    ?? item.height
+    ?? item.mm
+    ?? item.spessore
+    ?? item.altezzaDaPreventivare
+    ?? item.altezza_richiesta
+    ?? ""
+  );
+  const directText = String(directValue ?? "").trim();
+  if (directText) return directText;
+  const dynamicEntry = Object.entries(item || {}).find(([key, raw]) => {
+    const keyText = normalizeSalesRequestImportHeader(key || "");
+    if (!isSalesRequestHeightHeader(keyText)) return false;
+    return String(raw ?? "").trim() !== "";
+  });
+  if (dynamicEntry) return String(dynamicEntry[1] ?? "").trim();
+  const freeText = String(item.note || item.notes || item.nota || "").trim();
+  if (freeText) {
+    const match = freeText.match(/(\d+(?:[.,]\d+)?)\s*(mm|cm)\b/i);
+    if (match) return `${match[1]} ${String(match[2] || "").toLowerCase()}`;
+  }
+  return "";
+}
+
+function normalizeSalesRequestAssignment(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const normalized = normalizeSalesRequestImportHeader(raw);
+  if (!normalized || ["non assegnato", "non assegnata", "unassigned", "none", "na"].includes(normalized)) return "";
+  if (normalized.includes("ivan")) return "Ivan";
+  if (normalized.includes("gabriele")) return "Gabriele";
+  return "";
+}
+
 function normalizeSalesRequestStatus(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "new";
@@ -1528,17 +1565,10 @@ function normalizeSalesRequestRecord(item = {}) {
     phone: String(item.phone || item.telefono || "").trim(),
     email: String(item.email || "").trim(),
     sqm: Number(toNumber(item.sqm ?? item.mq ?? 0).toFixed(2)),
-    requestedHeight: normalizeSalesRequestHeight(
-      item.requestedHeight
-      ?? item.altezza
-      ?? item.height
-      ?? item.mm
-      ?? item.spessore
-      ?? "",
-    ),
+    requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: normalizeSalesRequestService(item.service || item.servizio || ""),
     surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),
-    assignment: String(item.assignment || item.assegnazione || "").trim(),
+    assignment: normalizeSalesRequestAssignment(item.assignment || item.assegnazione || ""),
     status: rawStatus || "new",
     note: String(item.note || "").trim(),
     whatsappTemplate: String(

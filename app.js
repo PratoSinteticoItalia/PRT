@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260415-shell-reset-28";
+const APP_SHELL_VERSION = "20260415-shell-reset-29";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -208,6 +208,7 @@ const SALES_REQUEST_STATUS_REFERENCE = [
   "Email",
   "email inviata",
 ];
+const SALES_REQUEST_ASSIGNMENT_REFERENCE = ["Ivan", "Gabriele"];
 
 const translations = {
   it: {
@@ -1810,6 +1811,43 @@ function normalizeSalesRequestHeight(value = "") {
   return raw;
 }
 
+function getSalesRequestRawHeightValue(item = {}) {
+  const directValue = (
+    item.requestedHeight
+    ?? item.altezza
+    ?? item.height
+    ?? item.mm
+    ?? item.spessore
+    ?? item.altezzaDaPreventivare
+    ?? item.altezza_richiesta
+    ?? ""
+  );
+  const directText = String(directValue ?? "").trim();
+  if (directText) return directText;
+  const dynamicEntry = Object.entries(item || {}).find(([key, raw]) => {
+    const keyText = normalizeImportHeader(key || "");
+    if (!isSalesRequestHeightHeader(keyText)) return false;
+    return String(raw ?? "").trim() !== "";
+  });
+  if (dynamicEntry) return String(dynamicEntry[1] ?? "").trim();
+  const freeText = String(item.note || item.notes || item.nota || "").trim();
+  if (freeText) {
+    const match = freeText.match(/(\d+(?:[.,]\d+)?)\s*(mm|cm)\b/i);
+    if (match) return `${match[1]} ${String(match[2] || "").toLowerCase()}`;
+  }
+  return "";
+}
+
+function normalizeSalesRequestAssignment(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const normalized = normalizeLooseString(raw);
+  if (!normalized || ["non assegnato", "non assegnata", "unassigned", "none", "na"].includes(normalized)) return "";
+  if (normalized.includes("ivan")) return "Ivan";
+  if (normalized.includes("gabriele")) return "Gabriele";
+  return "";
+}
+
 function getSalesRequestStatusCode(status = "") {
   const normalized = normalizeSalesRequestStatus(status);
   if (["new", "quoted", "followup", "closed"].includes(normalized)) return normalized;
@@ -1826,17 +1864,10 @@ function normalizeSalesRequestRecord(item = {}) {
     phone: String(item.phone || item.telefono || "").trim(),
     email: String(item.email || "").trim(),
     sqm: Number(toNumber(item.sqm ?? item.mq ?? 0).toFixed(2)),
-    requestedHeight: normalizeSalesRequestHeight(
-      item.requestedHeight
-      ?? item.altezza
-      ?? item.height
-      ?? item.mm
-      ?? item.spessore
-      ?? "",
-    ),
+    requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: String(item.service || item.servizio || "").trim().toLowerCase(),
     surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
-    assignment: String(item.assignment || item.assegnazione || "").trim(),
+    assignment: normalizeSalesRequestAssignment(item.assignment || item.assegnazione || ""),
     status,
     note: String(item.note || "").trim(),
     whatsappTemplate: String(
@@ -1948,22 +1979,7 @@ function getSalesRequestStatusOptions() {
 }
 
 function getSalesRequestAssignmentOptions() {
-  const values = new Set();
-  state.salesRequests.forEach((item) => {
-    const assignment = String(item.assignment || "").trim();
-    if (assignment) values.add(assignment);
-  });
-  getCrewAccounts().forEach((user) => {
-    const crewName = String(user.crewName || user.name || "").trim();
-    if (crewName) values.add(crewName);
-  });
-  state.users
-    .filter((user) => normalizeUserRole(user.role) === "office")
-    .forEach((user) => {
-      const name = String(user.name || "").trim();
-      if (name) values.add(name);
-    });
-  return [...values].sort((left, right) => left.localeCompare(right, "it", { sensitivity: "base" }));
+  return [...SALES_REQUEST_ASSIGNMENT_REFERENCE];
 }
 
 function getSalesRequestHeightLabel(value = "") {
@@ -2045,13 +2061,12 @@ function syncSalesRequestStatusField(value = "") {
 function syncSalesRequestAssignmentField(value = "") {
   const field = ui.salesRequestForm?.assignment;
   if (!field || field.tagName !== "SELECT") return;
-  const nextValue = String(value || "").trim();
+  const nextValue = normalizeSalesRequestAssignment(value);
   const options = getSalesRequestAssignmentOptions();
-  if (nextValue && !options.includes(nextValue)) options.unshift(nextValue);
   const fragment = document.createDocumentFragment();
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = state.lang === "it" ? "Non assegnata" : "Unassigned";
+  placeholder.textContent = state.lang === "it" ? "non assegnato" : "Unassigned";
   fragment.append(placeholder);
   options.forEach((optionValue) => {
     const option = document.createElement("option");
@@ -6139,7 +6154,7 @@ function renderSalesRequests() {
               ].filter(Boolean).join(" · ")}</span>
             </div>
             <div class="sales-request-card-foot">
-              <span>${escapeHtml(item.assignment || (state.lang === "it" ? "Non assegnata" : "Unassigned"))}</span>
+              <span>${escapeHtml(item.assignment || (state.lang === "it" ? "non assegnato" : "Unassigned"))}</span>
               <span>${item.updatedAt ? formatDate(item.updatedAt) : "—"}</span>
             </div>
           </article>
@@ -6362,7 +6377,7 @@ async function saveSalesRequest(event) {
         requestedHeight: form.get("requestedHeight"),
         service: form.get("service"),
         surface: form.get("surface"),
-        assignment: form.get("assignment"),
+        assignment: normalizeSalesRequestAssignment(form.get("assignment")),
         status: form.get("status"),
         note: form.get("note"),
         whatsappTemplate: form.get("whatsappTemplate"),
@@ -6427,7 +6442,7 @@ async function importSalesRequests() {
           requestedHeight: item.requestedHeight,
           service: item.service,
           surface: item.surface,
-          assignment: item.assignment,
+          assignment: normalizeSalesRequestAssignment(item.assignment),
           status: item.status,
           note: item.note,
           whatsappTemplate: item.whatsappTemplate,
