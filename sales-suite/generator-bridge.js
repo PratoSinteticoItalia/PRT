@@ -504,20 +504,19 @@
         justify-content: center;
         flex: 0 0 auto;
         align-self: flex-start;
-        margin-left: 12px;
-        margin-top: 1px;
-        padding: 3px;
+        margin-left: 18px;
+        margin-top: 0;
+        padding: 2px;
         border: 1px solid rgba(47, 70, 49, 0.14);
         border-radius: 9px;
         background: linear-gradient(180deg, rgba(248,250,248,0.98), rgba(237,243,237,0.94));
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
-        transform: translateY(-1px);
       }
 
       .codex-crew-branding img {
-        width: 33px;
-        max-width: 33px;
-        max-height: 33px;
+        width: 32px;
+        max-width: 32px;
+        max-height: 32px;
         object-fit: contain;
         display: block;
       }
@@ -771,13 +770,13 @@
 
     const imageWidth = Math.max(1, Number(logoImage?.naturalWidth || logoImage?.width || 1));
     const imageHeight = Math.max(1, Number(logoImage?.naturalHeight || logoImage?.height || 1));
-    const maxWidth = 12.3;
-    const maxHeight = 12.3;
+    const maxWidth = 12.1;
+    const maxHeight = 12.1;
     const scale = Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
-    const width = Math.max(7.2, Number((imageWidth * scale).toFixed(2)));
-    const height = Math.max(7.2, Number((imageHeight * scale).toFixed(2)));
-    const x = 89;
-    const y = 13.9;
+    const width = Math.max(7.1, Number((imageWidth * scale).toFixed(2)));
+    const height = Math.max(7.1, Number((imageHeight * scale).toFixed(2)));
+    const x = 91.2;
+    const y = 13.3;
 
     try {
       pdf.setPage(1);
