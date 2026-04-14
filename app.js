@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-06";
+const APP_SHELL_VERSION = "20260414-shell-reset-07";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
