@@ -504,19 +504,18 @@
         justify-content: center;
         flex: 0 0 auto;
         align-self: center;
-        margin-left: 12px;
+        margin-left: 10px;
         padding: 3px;
         border: 1px solid rgba(47, 70, 49, 0.14);
-        border-radius: 8px;
+        border-radius: 9px;
         background: linear-gradient(180deg, rgba(248,250,248,0.98), rgba(237,243,237,0.94));
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
-        transform: translateY(1px);
       }
 
       .codex-crew-branding img {
-        width: 34px;
-        max-width: 34px;
-        max-height: 34px;
+        width: 32px;
+        max-width: 32px;
+        max-height: 32px;
         object-fit: contain;
         display: block;
       }
@@ -610,16 +609,16 @@
     quoteMetaLine.textContent = `${payload.crewName} · Rivenditore autorizzato`;
     quoteMetaLine.style.color = "#567958";
     quoteMetaLine.style.fontWeight = "700";
-    quoteMetaLine.style.fontSize = "5.2px";
+    quoteMetaLine.style.fontSize = "4.8px";
     quoteMetaLine.style.whiteSpace = "nowrap";
     quoteMetaLine.style.display = "block";
-    quoteMetaLine.style.marginTop = "2px";
+    quoteMetaLine.style.marginTop = "1px";
     quoteMetaLine.style.lineHeight = "1.05";
     quoteMetaLine.style.letterSpacing = "-0.01em";
     quoteMetaLine.style.textAlign = "right";
     if (quoteMetaBlock) {
-      quoteMetaBlock.style.minWidth = "170px";
-      quoteMetaBlock.style.width = "170px";
+      quoteMetaBlock.style.minWidth = "160px";
+      quoteMetaBlock.style.width = "160px";
       quoteMetaBlock.style.display = "flex";
       quoteMetaBlock.style.flexDirection = "column";
       quoteMetaBlock.style.alignItems = "flex-end";
@@ -645,6 +644,9 @@
       footerMetaLine.dataset.codexOriginalColor = footerMetaLine.style.color || "";
       footerMetaLine.dataset.codexOriginalFontWeight = footerMetaLine.style.fontWeight || "";
       footerMetaLine.dataset.codexOriginalLetterSpacing = footerMetaLine.style.letterSpacing || "";
+      footerMetaLine.dataset.codexOriginalFontSize = footerMetaLine.style.fontSize || "";
+      footerMetaLine.dataset.codexOriginalLineHeight = footerMetaLine.style.lineHeight || "";
+      footerMetaLine.dataset.codexOriginalTextAlign = footerMetaLine.style.textAlign || "";
     }
 
     if (!payload?.crewName) {
@@ -652,6 +654,9 @@
       footerMetaLine.style.color = footerMetaLine.dataset.codexOriginalColor || "";
       footerMetaLine.style.fontWeight = footerMetaLine.dataset.codexOriginalFontWeight || "";
       footerMetaLine.style.letterSpacing = footerMetaLine.dataset.codexOriginalLetterSpacing || "";
+      footerMetaLine.style.fontSize = footerMetaLine.dataset.codexOriginalFontSize || "";
+      footerMetaLine.style.lineHeight = footerMetaLine.dataset.codexOriginalLineHeight || "";
+      footerMetaLine.style.textAlign = footerMetaLine.dataset.codexOriginalTextAlign || "";
       return false;
     }
 
@@ -659,6 +664,9 @@
     footerMetaLine.style.color = "#567958";
     footerMetaLine.style.fontWeight = "700";
     footerMetaLine.style.letterSpacing = "0";
+    footerMetaLine.style.fontSize = "5.4px";
+    footerMetaLine.style.lineHeight = "1.15";
+    footerMetaLine.style.textAlign = "center";
     return true;
   }
 
@@ -691,7 +699,7 @@
       host.style.display = "flex";
       host.style.alignItems = "center";
       host.style.flexWrap = "nowrap";
-      host.style.columnGap = "14px";
+      host.style.columnGap = "10px";
       host.style.rowGap = "0";
 
       const existing = host.querySelector(".codex-crew-branding");
