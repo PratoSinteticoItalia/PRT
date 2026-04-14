@@ -503,19 +503,21 @@
         align-items: center;
         justify-content: center;
         flex: 0 0 auto;
-        align-self: center;
-        margin-left: 10px;
+        align-self: flex-start;
+        margin-left: 12px;
+        margin-top: 1px;
         padding: 3px;
         border: 1px solid rgba(47, 70, 49, 0.14);
         border-radius: 9px;
         background: linear-gradient(180deg, rgba(248,250,248,0.98), rgba(237,243,237,0.94));
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
+        transform: translateY(-1px);
       }
 
       .codex-crew-branding img {
-        width: 32px;
-        max-width: 32px;
-        max-height: 32px;
+        width: 33px;
+        max-width: 33px;
+        max-height: 33px;
         object-fit: contain;
         display: block;
       }
@@ -699,7 +701,7 @@
       host.style.display = "flex";
       host.style.alignItems = "center";
       host.style.flexWrap = "nowrap";
-      host.style.columnGap = "10px";
+      host.style.columnGap = "12px";
       host.style.rowGap = "0";
 
       const existing = host.querySelector(".codex-crew-branding");

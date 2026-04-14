@@ -39,6 +39,9 @@ const INFILL_FO30 = {
   pricePerTon: 92,
 };
 
+const GLUE_BUCKET_KG = 6;
+const TAPE_ROLL_M = 25;
+
 const DEFAULT_TRAVEL_SETTINGS = {
   departureBase: "Orta di Atella",
   kmTotal: 0,
@@ -712,7 +715,7 @@ function DecoSection({ decoItems, setDecoItems }) {
                   }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: B.text, lineHeight: 1.25, whiteSpace: "normal", overflowWrap: "anywhere" }}>{item.name}</div>
-                      <div style={{ fontSize: 11, color: B.textMuted, marginTop: 4, lineHeight: 1.35 }}>{`EUR${item.pricePerUnit.toFixed(2)}/${item.unit}${item.note ? " | " + item.note : ""}`}</div>
+                      <div style={{ fontSize: 11, color: B.textMuted, marginTop: 4, lineHeight: 1.35 }}>{`Unità: ${item.unit}${item.note ? " | " + item.note : ""}`}</div>
                     </div>
                     <input type="number" min={0} step={1} value={qty || ""} placeholder="0"
                       onChange={e => update(item.id, e.target.value)}
@@ -728,12 +731,7 @@ function DecoSection({ decoItems, setDecoItems }) {
       })}
       {activeCount > 0 && (
         <div style={{ marginTop: 8, padding: "8px 12px", background: B.infoBg, borderRadius: 8, border: "1px solid #bbdefb", fontSize: 12, color: B.info }}>
-          {activeCount} material{activeCount > 1 ? "i" : "e"} aggiuntiv{activeCount > 1 ? "i" : "o"} selezionat{activeCount > 1 ? "i" : "o"} - Totale: {fmtE(
-            Object.entries(decoItems).reduce((sum, [id, qty]) => {
-              const item = DECO_CATALOG.find(d => d.id === id);
-              return sum + (item ? item.pricePerUnit * qty : 0);
-            }, 0)
-          )}
+          {activeCount} material{activeCount > 1 ? "i" : "e"} aggiuntiv{activeCount > 1 ? "i" : "o"} selezionat{activeCount > 1 ? "i" : "o"} - riepilogo pronto per l'ordine.
         </div>
       )}
     </div>
@@ -748,23 +746,24 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
     return { ...r, sqm: r.width * r.length, prodName: prod.name };
   });
 
-  const scavoM3 = (area * substrate.scavoCm) / 100, scavoCost = scavoM3 * 18;
-  const drenateM3 = (area * substrate.drenateCm) / 100, drenateCost = drenateM3 * 22;
-  const sabbiaM3 = (area * substrate.sabbiaCm) / 100, sabbiaKg = sabbiaM3 * 1500, sabbiaCost = sabbiaKg * 0.08;
-  const geo = area * 1.05, geoCost = geo * 1.2;
-  const glue = area * 0.3, glueCost = glue * 12;
-  const jLen = calcJointLength(rolls), tapeCost = jLen * 2.5;
-  const pins = Math.ceil(area * 4), pinsCost = pins * 0.35;
-  const border = BORDER_TYPES.find(b => b.id === borderType), borderCost = borderMeters * (border?.price || 0);
+  const scavoM3 = (area * substrate.scavoCm) / 100;
+  const drenateM3 = (area * substrate.drenateCm) / 100;
+  const sabbiaM3 = (area * substrate.sabbiaCm) / 100;
+  const sabbiaKg = sabbiaM3 * 1500;
+  const geo = area * 1.05;
+  const glue = area * 0.3;
+  const glueBuckets = Math.ceil(glue / GLUE_BUCKET_KG);
+  const jLen = calcJointLength(rolls);
+  const tapeRolls = Math.ceil(jLen / TAPE_ROLL_M);
+  const pins = Math.ceil(area * 4);
+  const border = BORDER_TYPES.find(b => b.id === borderType);
   const infillKg = area * INFILL_FO30.kgPerSqm;
   const infillBags = Math.ceil(infillKg / INFILL_FO30.bagKg);
-  const infillCost = (infillKg / 1000) * INFILL_FO30.pricePerTon;
 
   const decoLines = Object.entries(decoItems).filter(([, q]) => q > 0).map(([id, qty]) => {
     const item = DECO_CATALOG.find(d => d.id === id);
-    return item ? { name: item.name, qty: qty + " " + item.unit, cost: item.pricePerUnit * qty } : null;
+    return item ? { name: item.name, qty: qty + " " + item.unit } : null;
   }).filter(Boolean);
-  const decoCost = decoLines.reduce((s, l) => s + l.cost, 0);
   const travelKm = Math.max(0, Number(travel?.kmTotal) || 0);
   const travelFuelRate = Math.max(0, Number(travel?.fuelPer100Km) || 0);
   const travelFuelPrice = Math.max(0, Number(travel?.fuelPrice) || 0);
@@ -774,38 +773,60 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
   const travelCost = travelFuelCost + travelTollCost;
 
   const sections = [
-    { cat: "PRATO SINTETICO · FABBISOGNO (FUORI TOTALE)", items: rollDetails.length > 0 ? rollDetails.map(r => ({ name: "Rotolo #" + r.rollNum + " " + r.prodName + " (" + r.width + "\u00D7" + r.length + "m)", qty: fmt(r.sqm) + " m\u00B2", cost: null })) : [{ name: "Nessun rotolo inserito", qty: "\u2014", cost: null }], sub: null },
-    { cat: "PREPARAZIONE FONDO", items: [
-      substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + "kg", cost: scavoCost } : null,
-      substrate.drenateCm > 0 ? { name: "Pietrisco drenante (" + substrate.drenateCm + "cm)", qty: fmt(drenateM3, 2) + " m\u00B3 \u2248 " + Math.round(drenateM3 * 1600) + "kg", cost: drenateCost } : null,
-      substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento (" + substrate.sabbiaCm + "cm)", qty: Math.round(sabbiaKg) + " kg", cost: sabbiaCost } : null,
-    ].filter(Boolean), sub: scavoCost + drenateCost + sabbiaCost },
-    { cat: "MATERIALI POSA", items: [
-      { name: "Tessuto non tessuto", qty: fmt(geo) + " m\u00B2", cost: geoCost },
-      { name: "Colla bicomponente", qty: fmt(glue) + " kg", cost: glueCost },
-      jLen > 0 ? { name: "Nastro giunzione", qty: Math.round(jLen) + " m", cost: tapeCost } : null,
-      { name: "Chiodi a U", qty: pins + " pz", cost: pinsCost },
-      borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m", cost: borderCost } : null,
-    ].filter(Boolean), sub: geoCost + glueCost + tapeCost + pinsCost + borderCost },
-    { cat: "INTASO", items: [
-      { name: INFILL_FO30.name, qty: `${Math.round(infillKg)} kg · ${infillBags} sacchi da ${INFILL_FO30.bagKg} kg`, cost: infillCost },
-    ], sub: infillCost },
+    {
+      cat: "PRATO SINTETICO · FABBISOGNO",
+      meta: "Fuori totale",
+      showCosts: false,
+      items: rollDetails.length > 0
+        ? rollDetails.map(r => ({ name: "Rotolo #" + r.rollNum + " " + r.prodName + " (" + r.width + "\u00D7" + r.length + "m)", qty: fmt(r.sqm) + " m\u00B2" }))
+        : [{ name: "Nessun rotolo inserito", qty: "\u2014" }],
+    },
+    {
+      cat: "PREPARAZIONE FONDO",
+      meta: "Quantità da approvvigionare",
+      showCosts: false,
+      items: [
+        substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + " kg" } : null,
+        substrate.drenateCm > 0 ? { name: "Pietrisco drenante (" + substrate.drenateCm + "cm)", qty: fmt(drenateM3, 2) + " m\u00B3 \u2248 " + Math.round(drenateM3 * 1600) + " kg" } : null,
+        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento (" + substrate.sabbiaCm + "cm)", qty: Math.round(sabbiaKg) + " kg · " + fmt(sabbiaM3, 2) + " m\u00B3" } : null,
+      ].filter(Boolean),
+    },
+    {
+      cat: "MATERIALI POSA",
+      meta: "Quantità da ordinare",
+      showCosts: false,
+      items: [
+        { name: "Tessuto non tessuto", qty: fmt(geo) + " m\u00B2" },
+        { name: "Colla bicomponente", qty: `${fmt(glue, 1)} kg${glueBuckets > 0 ? ` · ${glueBuckets} secch${glueBuckets > 1 ? "i" : "io"} da ${GLUE_BUCKET_KG} kg` : ""}` },
+        jLen > 0 ? { name: "Nastro giunzione", qty: `${Math.round(jLen)} m${tapeRolls > 0 ? ` · ${tapeRolls} rotol${tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}` } : null,
+        { name: "Chiodi a U", qty: pins + " pz" },
+        borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m" } : null,
+      ].filter(Boolean),
+    },
+    {
+      cat: "INTASO",
+      meta: "Quantità da ordinare",
+      showCosts: false,
+      items: [
+        { name: INFILL_FO30.name, qty: `${Math.round(infillKg)} kg · ${infillBags} sacchi da ${INFILL_FO30.bagKg} kg` },
+      ],
+    },
   ];
-  if (decoLines.length > 0) sections.push({ cat: "MATERIALI AGGIUNTIVI", items: decoLines, sub: decoCost });
+  if (decoLines.length > 0) sections.push({ cat: "MATERIALI AGGIUNTIVI", meta: "Extra selezionati", showCosts: false, items: decoLines });
   if (travelKm > 0 || travelTollCost > 0 || travel?.departureBase) {
     sections.push({
       cat: "TRASFERTA E LOGISTICA",
+      meta: "Stima costi",
+      showCosts: true,
       items: [
-        { name: "Sede di partenza", qty: travel?.departureBase || "Da definire", cost: 0 },
-        { name: "Percorrenza totale", qty: `${fmt(travelKm, 1)} km`, cost: 0 },
+        { name: "Sede di partenza", qty: travel?.departureBase || "Da definire", cost: null },
+        { name: "Percorrenza totale", qty: `${fmt(travelKm, 1)} km`, cost: null },
         { name: "Carburante stimato", qty: `${fmt(travelLiters, 1)} l`, cost: travelFuelCost },
         { name: "Caselli", qty: travelTollCost > 0 ? fmtE(travelTollCost) : "—", cost: travelTollCost },
       ],
       sub: travelCost,
     });
   }
-
-  const grandTotal = scavoCost + drenateCost + sabbiaCost + geoCost + glueCost + tapeCost + pinsCost + borderCost + infillCost + decoCost + travelCost;
 
   return (
     <div>
@@ -822,22 +843,24 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
       <div style={{ border: "1px solid " + B.border, borderRadius: 10, overflow: "hidden" }}>
         {sections.map((sec, si) => (
           <div key={si}>
-            <div style={{ background: B.gray, padding: "8px 14px", fontSize: 11, fontWeight: 700, color: B.primary, textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "1px solid " + B.borderLight, borderTop: si > 0 ? "1px solid " + B.border : "none", display: "flex", justifyContent: "space-between" }}>
+            <div style={{ background: B.gray, padding: "8px 14px", fontSize: 11, fontWeight: 700, color: B.primary, textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "1px solid " + B.borderLight, borderTop: si > 0 ? "1px solid " + B.border : "none", display: "flex", justifyContent: "space-between", gap: 10 }}>
               <span>{sec.cat}</span>
-              <span style={{ color: B.dark }}>{typeof sec.sub === "number" ? fmtE(sec.sub) : ""}</span>
+              <span style={{ color: B.dark, whiteSpace: "nowrap" }}>{sec.showCosts && typeof sec.sub === "number" ? fmtE(sec.sub) : (sec.meta || "")}</span>
             </div>
             {sec.items.map((item, ii) => (
               <div key={ii} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", fontSize: 13, borderBottom: "1px solid " + B.borderLight, background: ii % 2 === 0 ? B.white : B.cream, flexWrap: "wrap", gap: 4 }}>
-                <span style={{ flex: 2, color: B.text, minWidth: 150 }}>{item.name}</span>
-                <span style={{ flex: 1, textAlign: "center", color: B.textMuted, minWidth: 90 }}>{item.qty}</span>
-                <span style={{ minWidth: 80, textAlign: "right", fontWeight: 600, color: B.dark }}>{typeof item.cost === "number" ? fmtE(item.cost) : "\u2014"}</span>
+                <span style={{ flex: sec.showCosts ? 2 : 3, color: B.text, minWidth: 150 }}>{item.name}</span>
+                <span style={{ flex: 1, textAlign: sec.showCosts ? "center" : "right", color: B.textMuted, minWidth: 120 }}>{item.qty}</span>
+                {sec.showCosts ? (
+                  <span style={{ minWidth: 80, textAlign: "right", fontWeight: 600, color: B.dark }}>{typeof item.cost === "number" ? fmtE(item.cost) : "\u2014"}</span>
+                ) : null}
               </div>
             ))}
           </div>
         ))}
         <div style={{ display: "flex", justifyContent: "space-between", padding: "14px", background: B.dark, color: "#fff", fontWeight: 700, fontSize: 16 }}>
-          <span>TOTALE COSTI OPERATIVI</span>
-          <span style={{ color: B.accent, fontSize: 18 }}>{fmtE(grandTotal)}</span>
+          <span>STIMA COSTI TRASFERTA</span>
+          <span style={{ color: B.accent, fontSize: 18 }}>{fmtE(travelCost)}</span>
         </div>
       </div>
     </div>
@@ -1026,7 +1049,7 @@ function GardenPlanner() {
                   border: borderType === bt.id ? "2px solid " + B.primary : "1px solid " + B.border,
                   background: borderType === bt.id ? B.light : B.white, fontSize: 11, fontWeight: borderType === bt.id ? 600 : 400,
                   color: borderType === bt.id ? B.primary : B.text, cursor: "pointer",
-                }}>{bt.name} {bt.price > 0 ? "\u20AC" + bt.price + "/m" : ""}</button>
+                }}>{bt.name}</button>
               ))}
             </div>
           </div>
@@ -1076,7 +1099,7 @@ function GardenPlanner() {
         {/* STEP 5: REPORT */}
         <div style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <StepBadge n={5} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Riepilogo progetto</span>
+            <StepBadge n={5} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Riepilogo materiali e trasferta</span>
             <div style={{ flex: 1 }} />
             <button onClick={() => window.print()} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa report e disegno</button>
           </div>
