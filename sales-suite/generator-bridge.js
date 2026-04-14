@@ -503,20 +503,20 @@
         align-items: center;
         justify-content: center;
         flex: 0 0 auto;
-        align-self: flex-start;
-        margin-left: 14px;
-        margin-top: 1px;
-        padding: 4px;
+        align-self: center;
+        margin-left: 12px;
+        padding: 3px;
         border: 1px solid rgba(47, 70, 49, 0.14);
-        border-radius: 9px;
+        border-radius: 8px;
         background: linear-gradient(180deg, rgba(248,250,248,0.98), rgba(237,243,237,0.94));
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
+        transform: translateY(2px);
       }
 
       .codex-crew-branding img {
-        width: 34px;
-        max-width: 34px;
-        max-height: 34px;
+        width: 31px;
+        max-width: 31px;
+        max-height: 31px;
         object-fit: contain;
         display: block;
       }
@@ -610,16 +610,16 @@
     quoteMetaLine.textContent = `${payload.crewName} · Rivenditore autorizzato`;
     quoteMetaLine.style.color = "#567958";
     quoteMetaLine.style.fontWeight = "700";
-    quoteMetaLine.style.fontSize = "6.3px";
+    quoteMetaLine.style.fontSize = "5.2px";
     quoteMetaLine.style.whiteSpace = "nowrap";
     quoteMetaLine.style.display = "block";
     quoteMetaLine.style.marginTop = "2px";
-    quoteMetaLine.style.lineHeight = "1.15";
-    quoteMetaLine.style.letterSpacing = "0";
+    quoteMetaLine.style.lineHeight = "1.05";
+    quoteMetaLine.style.letterSpacing = "-0.01em";
     quoteMetaLine.style.textAlign = "right";
     if (quoteMetaBlock) {
-      quoteMetaBlock.style.minWidth = "220px";
-      quoteMetaBlock.style.width = "220px";
+      quoteMetaBlock.style.minWidth = "170px";
+      quoteMetaBlock.style.width = "170px";
       quoteMetaBlock.style.display = "flex";
       quoteMetaBlock.style.flexDirection = "column";
       quoteMetaBlock.style.alignItems = "flex-end";
@@ -756,45 +756,22 @@
 
     const imageWidth = Math.max(1, Number(logoImage?.naturalWidth || logoImage?.width || 1));
     const imageHeight = Math.max(1, Number(logoImage?.naturalHeight || logoImage?.height || 1));
-    const maxWidth = 12.5;
-    const maxHeight = 12.5;
+    const maxWidth = 11.5;
+    const maxHeight = 11.5;
     const scale = Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
-    const width = Math.max(7.4, Number((imageWidth * scale).toFixed(2)));
-    const height = Math.max(7.4, Number((imageHeight * scale).toFixed(2)));
-    const x = 90;
-    const y = 13.6;
+    const width = Math.max(6.8, Number((imageWidth * scale).toFixed(2)));
+    const height = Math.max(6.8, Number((imageHeight * scale).toFixed(2)));
+    const x = 89.4;
+    const y = 14.2;
 
     try {
       pdf.setPage(1);
       if (typeof pdf.setFillColor === "function" && typeof pdf.roundedRect === "function") {
         pdf.setFillColor(248, 250, 248);
         pdf.setDrawColor(214, 224, 214);
-        pdf.roundedRect(x - 1.5, y - 1.2, width + 3, height + 2.4, 2, 2, "FD");
+        pdf.roundedRect(x - 1.4, y - 1.1, width + 2.8, height + 2.2, 2, 2, "FD");
       }
       pdf.addImage(exportReadySrc, "PNG", x, y, width, height, undefined, "FAST");
-      if (activeBrandingPayload.crewName && typeof pdf.rect === "function" && typeof pdf.text === "function") {
-        pdf.setFillColor(255, 255, 255);
-        pdf.rect(112, 18.2, 69, 6.2, "F");
-        pdf.setTextColor(86, 121, 88);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(4.6);
-        pdf.text(
-          `${activeBrandingPayload.crewName} · Rivenditore autorizzato`,
-          146.5,
-          21.8,
-          { align: "center", maxWidth: 66 },
-        );
-
-        pdf.setFillColor(255, 255, 255);
-        pdf.rect(44, 274.2, 122, 5.6, "F");
-        pdf.setFontSize(4.8);
-        pdf.text(
-          `${activeBrandingPayload.crewName} · Rivenditore autorizzato`,
-          105,
-          277.5,
-          { align: "center", maxWidth: 122 },
-        );
-      }
       return true;
     } catch (error) {
       console.warn("Decorazione branding PDF fallita:", error);
