@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-19";
+const APP_SHELL_VERSION = "20260414-shell-reset-20";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -766,6 +766,8 @@ const ui = {
   mobilePillShell: document.getElementById("mobile-pill-shell"),
   mobilePillNav: document.getElementById("mobile-pill-nav"),
   mobilePillTools: document.querySelector(".mobile-pill-tools"),
+  mobilePillActions: document.querySelector(".mobile-pill-actions"),
+  mobilePillMeta: document.querySelector(".mobile-pill-meta"),
   mobilePillNewOrderButton: document.getElementById("mobile-pill-new-order-button"),
   mobilePillGardenPlannerLink: document.getElementById("mobile-pill-garden-planner-link"),
   mobilePillReloadButton: document.getElementById("mobile-pill-reload-button"),
@@ -1288,47 +1290,82 @@ function ensureMobilePillShell() {
   let tools = ui.mobilePillShell.querySelector(".mobile-pill-tools");
   if (!tools) {
     tools = document.createElement("div");
-    tools.className = "mobile-pill-tools";
+    tools.className = "mobile-pill-tools mobile-pill-utility";
     ui.mobilePillShell.appendChild(tools);
   }
   ui.mobilePillTools = tools;
 
-  const ensureTool = ({ id, label, type = "button", href = "", className = "mobile-pill-tool" }) => {
+  let actions = ui.mobilePillShell.querySelector(".mobile-pill-actions");
+  if (!actions) {
+    actions = document.createElement("div");
+    actions.className = "mobile-pill-actions";
+    tools.appendChild(actions);
+  }
+  ui.mobilePillActions = actions;
+
+  let meta = ui.mobilePillShell.querySelector(".mobile-pill-meta");
+  if (!meta) {
+    meta = document.createElement("div");
+    meta.className = "mobile-pill-meta";
+    tools.appendChild(meta);
+  }
+  ui.mobilePillMeta = meta;
+
+  const ensureTool = ({ id, label, type = "button", href = "", className = "mobile-pill-tool", parent = tools }) => {
     let node = document.getElementById(id);
-    if (node) return node;
-    node = document.createElement(type === "link" ? "a" : "button");
-    node.id = id;
-    node.className = className;
-    if (type === "link") {
-      node.href = href;
-      node.style.textDecoration = "none";
-    } else {
-      node.type = "button";
+    if (!node) {
+      node = document.createElement(type === "link" ? "a" : "button");
+      node.id = id;
+      node.className = className;
+      if (type === "link") {
+        node.href = href;
+        node.style.textDecoration = "none";
+      } else {
+        node.type = "button";
+      }
+      node.textContent = label;
     }
-    node.textContent = label;
-    tools.appendChild(node);
+    if (parent && node.parentElement !== parent) parent.appendChild(node);
     return node;
   };
 
   ui.mobilePillNewOrderButton ||= ensureTool({
     id: "mobile-pill-new-order-button",
     label: t("newOrder"),
+    parent: actions,
   });
   ui.mobilePillGardenPlannerLink ||= ensureTool({
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
     href: "./garden-planner.html?v=20260414-garden-materials-01&shell=20260414-garden-materials-01",
+    parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
     id: "mobile-pill-reload-button",
     label: t("reloadData"),
+    parent: actions,
   });
   ui.mobilePillLogoutButton ||= ensureTool({
     id: "mobile-pill-logout-button",
     label: t("logout"),
     className: "mobile-pill-tool is-danger",
+    parent: meta,
   });
+
+  let langSwitch = ui.mobilePillShell.querySelector(".mobile-pill-lang-switch");
+  if (!langSwitch) {
+    langSwitch = document.createElement("div");
+    langSwitch.className = "lang-switch mobile-pill-lang-switch";
+    langSwitch.setAttribute("aria-label", "Language switcher");
+    langSwitch.innerHTML = `
+      <button class="lang-btn is-active" data-lang="it">IT</button>
+      <button class="lang-btn" data-lang="en">EN</button>
+    `;
+    meta.prepend(langSwitch);
+  } else if (langSwitch.parentElement !== meta) {
+    meta.prepend(langSwitch);
+  }
 
   if (ui.mobilePillReloadButton && !ui.mobilePillReloadButton.dataset.bound) {
     ui.mobilePillReloadButton.addEventListener("click", reloadAll);
@@ -1346,6 +1383,17 @@ function ensureMobilePillShell() {
     });
     ui.mobilePillLogoutButton.dataset.bound = "true";
   }
+
+  ui.langButtons = Array.from(document.querySelectorAll(".lang-btn"));
+  ui.langButtons.forEach((button) => {
+    if (button.dataset.boundLang === "true") return;
+    button.addEventListener("click", () => {
+      state.lang = button.dataset.lang;
+      ui.langButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.lang === state.lang));
+      render();
+    });
+    button.dataset.boundLang = "true";
+  });
 }
 
 function ensureMobilePillNav() {
@@ -1399,13 +1447,21 @@ function syncMobilePillNav() {
     if (!mobileSafe) ui.mobilePillNav.scrollLeft = 0;
   }
   if (ui.mobilePillTools) {
-    ui.mobilePillTools.style.setProperty("display", mobileSafe ? "flex" : "none", "important");
-    ui.mobilePillTools.style.setProperty("align-items", "center");
-    ui.mobilePillTools.style.setProperty("gap", mobileSafe ? "6px" : "8px");
-    ui.mobilePillTools.style.setProperty("overflow-x", mobileSafe ? "visible" : "hidden");
-    ui.mobilePillTools.style.setProperty("flex-wrap", mobileSafe ? "wrap" : "nowrap");
+    ui.mobilePillTools.style.setProperty("display", mobileSafe ? "grid" : "none", "important");
+    ui.mobilePillTools.style.setProperty("gap", mobileSafe ? "6px" : "0");
     ui.mobilePillTools.style.setProperty("padding-top", mobileSafe ? "4px" : "0");
-    if (!mobileSafe) ui.mobilePillTools.scrollLeft = 0;
+  }
+  if (ui.mobilePillActions) {
+    ui.mobilePillActions.style.setProperty("display", mobileSafe ? "flex" : "none", "important");
+    ui.mobilePillActions.style.setProperty("align-items", "center");
+    ui.mobilePillActions.style.setProperty("gap", mobileSafe ? "6px" : "8px");
+    ui.mobilePillActions.style.setProperty("flex-wrap", mobileSafe ? "wrap" : "nowrap");
+  }
+  if (ui.mobilePillMeta) {
+    ui.mobilePillMeta.style.setProperty("display", mobileSafe ? "flex" : "none", "important");
+    ui.mobilePillMeta.style.setProperty("align-items", "center");
+    ui.mobilePillMeta.style.setProperty("justify-content", "flex-end");
+    ui.mobilePillMeta.style.setProperty("gap", mobileSafe ? "6px" : "8px");
   }
   ui.navLinks.forEach((sourceButton) => {
     const view = sourceButton.dataset.view;
@@ -9819,11 +9875,15 @@ ui.navLinks.forEach((button) => button.addEventListener("click", () => {
   updateMobileMenu();
   setView(button.dataset.view);
 }));
-ui.langButtons.forEach((button) => button.addEventListener("click", () => {
-  state.lang = button.dataset.lang;
-  ui.langButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.lang === state.lang));
-  render();
-}));
+ui.langButtons.forEach((button) => {
+  if (button.dataset.boundLang === "true") return;
+  button.addEventListener("click", () => {
+    state.lang = button.dataset.lang;
+    ui.langButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.lang === state.lang));
+    render();
+  });
+  button.dataset.boundLang = "true";
+});
 ui.quickViewButtons.forEach((button) => button.addEventListener("click", () => setView(button.dataset.quickView)));
 bindEvent(ui.logoutButton, "click", async () => {
   await apiFetch("/api/logout", { method: "POST" });

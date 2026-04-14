@@ -673,7 +673,8 @@ button.is-feedback,
 }
 
 .mobile-pill-nav,
-.mobile-pill-tools {
+.mobile-pill-actions,
+.mobile-pill-meta {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -681,7 +682,8 @@ button.is-feedback,
 }
 
 .mobile-pill-nav::-webkit-scrollbar,
-.mobile-pill-tools::-webkit-scrollbar {
+.mobile-pill-actions::-webkit-scrollbar,
+.mobile-pill-meta::-webkit-scrollbar {
   display: none;
 }
 
@@ -690,10 +692,19 @@ button.is-feedback,
 }
 
 .mobile-pill-tools {
+  display: grid;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.mobile-pill-actions {
   overflow-x: visible;
   flex-wrap: wrap;
   row-gap: 8px;
-  padding-top: 2px;
+}
+
+.mobile-pill-meta {
+  justify-content: flex-end;
 }
 
 .mobile-pill-link,
@@ -782,9 +793,12 @@ button.is-feedback,
 .mobile-pill-lang-switch {
   flex: 0 0 auto;
   padding: 3px;
+  width: auto;
+  min-width: 0;
   border-radius: 999px;
   border: 1px solid rgba(30, 59, 40, 0.08);
   background: rgba(255, 255, 255, 0.76);
+  justify-content: flex-start;
 }
 
 .mobile-pill-lang-switch .lang-btn {
@@ -10179,12 +10193,23 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
   }
 
   body.mobile-safe-mode .mobile-pill-tools {
-    overflow-x: visible;
-    flex-wrap: wrap;
-    align-items: center;
+    display: grid !important;
+    justify-content: flex-start;
     gap: 6px;
     padding-top: 4px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  body.mobile-safe-mode .mobile-pill-actions {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  body.mobile-safe-mode .mobile-pill-meta {
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
   }
 
   body.mobile-safe-mode .mobile-pill-tool {
@@ -10199,6 +10224,18 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
     min-width: 30px;
     min-height: 26px;
     font-size: 10.5px;
+  }
+
+  body.mobile-safe-mode .mobile-pill-lang-switch {
+    width: auto !important;
+    min-width: 0 !important;
+    flex: 0 0 auto !important;
+    justify-content: flex-start !important;
+    grid-column: auto !important;
+  }
+
+  body.mobile-safe-mode #mobile-pill-logout-button {
+    margin-left: 0;
   }
 
   body.mobile-safe-mode .main-content {
