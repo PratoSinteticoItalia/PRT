@@ -1838,8 +1838,22 @@ function reconcileStoreData(store) {
           role: String(user.role || defaults.users[index]?.role || "office").trim(),
           crewName: String(user.crewName || defaults.users[index]?.crewName || ""),
           dailyCapacity: user.dailyCapacity ?? defaults.users[index]?.dailyCapacity ?? 0,
+          crewLogoDataUrl: String(user.crewLogoDataUrl || defaults.users[index]?.crewLogoDataUrl || ""),
+          status: String(user.status || defaults.users[index]?.status || "active").trim(),
+          mustChangePassword: Boolean(user.mustChangePassword ?? defaults.users[index]?.mustChangePassword),
+          sessionVersion: Number(user.sessionVersion || defaults.users[index]?.sessionVersion || 1),
+          lastPasswordChangeAt: String(user.lastPasswordChangeAt || defaults.users[index]?.lastPasswordChangeAt || ""),
         });
-        if (normalized.passwordHash !== user.passwordHash || normalized.passwordSalt !== user.passwordSalt || "password" in user) {
+        if (
+          normalized.passwordHash !== user.passwordHash
+          || normalized.passwordSalt !== user.passwordSalt
+          || normalized.crewLogoDataUrl !== String(user.crewLogoDataUrl || "")
+          || normalized.status !== String(user.status || "active")
+          || normalized.mustChangePassword !== Boolean(user.mustChangePassword)
+          || normalized.sessionVersion !== Math.max(1, Number(user.sessionVersion || 1))
+          || normalized.lastPasswordChangeAt !== String(user.lastPasswordChangeAt || "")
+          || "password" in user
+        ) {
           changed = true;
         }
         return normalized;
