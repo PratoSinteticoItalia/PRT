@@ -433,11 +433,55 @@ function getDemoUsers() {
   return buildDefaultStore().users.map((user) => ({ ...user }));
 }
 
+function normalizeBase64Payload(value = "") {
+  return String(value || "").replace(/\s+/g, "");
+}
+
+function decodeSvgDataUrlPayload(payload = "") {
+  const rawPayload = String(payload || "").trim();
+  if (!rawPayload) return "";
+  try {
+    return decodeURIComponent(rawPayload);
+  } catch {
+    return rawPayload;
+  }
+}
+
 function sanitizeCrewLogoDataUrl(value = "") {
   const raw = String(value || "").trim();
   if (!raw || raw.length > MAX_CREW_LOGO_DATA_URL_LENGTH) return "";
-  if (!/^data:image\/(?:png|jpe?g|webp|svg\+xml)(?:;charset=[^;,]+)?;base64,/i.test(raw)) return "";
-  return raw;
+  const commaIndex = raw.indexOf(",");
+  if (commaIndex <= 0) return "";
+  const header = raw.slice(0, commaIndex);
+  const payload = raw.slice(commaIndex + 1);
+  const headerMatch = header.match(/^data:([^;,]+)(.*)$/i);
+  if (!headerMatch) return "";
+
+  const mime = String(headerMatch[1] || "").trim().toLowerCase();
+  const params = String(headerMatch[2] || "").toLowerCase();
+  const hasBase64 = params.includes(";base64");
+
+  if (["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(mime)) {
+    if (!hasBase64) return "";
+    const normalizedBase64 = normalizeBase64Payload(payload);
+    if (!normalizedBase64 || !/^[a-z0-9+/=]+$/i.test(normalizedBase64)) return "";
+    const normalizedMime = mime === "image/jpg" ? "image/jpeg" : mime;
+    const normalized = `data:${normalizedMime};base64,${normalizedBase64}`;
+    return normalized.length <= MAX_CREW_LOGO_DATA_URL_LENGTH ? normalized : "";
+  }
+
+  if (mime !== "image/svg+xml") return "";
+
+  const normalizedSvgPayload = normalizeBase64Payload(payload);
+  if (hasBase64 && (!normalizedSvgPayload || !/^[a-z0-9+/=]+$/i.test(normalizedSvgPayload))) return "";
+  const svgMarkup = hasBase64
+    ? Buffer.from(normalizedSvgPayload, "base64").toString("utf8")
+    : decodeSvgDataUrlPayload(payload);
+  const normalizedSvgMarkup = String(svgMarkup || "").trim();
+  if (!normalizedSvgMarkup || !/<svg[\s>]/i.test(normalizedSvgMarkup)) return "";
+
+  const normalized = `data:image/svg+xml;base64,${Buffer.from(normalizedSvgMarkup, "utf8").toString("base64")}`;
+  return normalized.length <= MAX_CREW_LOGO_DATA_URL_LENGTH ? normalized : "";
 }
 
 function sanitizeUser(user) {

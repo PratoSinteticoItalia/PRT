@@ -445,11 +445,15 @@
     activeBrandingPayload = normalizeBrandingPayload(payload);
     ensureBrandingStyles();
 
-    const logoElement = Array.from(document.querySelectorAll("img"))
-      .find((img) => img.closest(".pdf-root") && normalizeLabel(img.getAttribute("alt")) === "logo")
-      || document.querySelector(".pdf-root img");
+    const pdfImages = Array.from(document.querySelectorAll(".pdf-root img"))
+      .filter((img) => !img.closest(".codex-crew-branding"));
+    const logoElement = pdfImages.find((img) => normalizeLabel(img.getAttribute("alt")) === "logo")
+      || pdfImages[0];
     const host = logoElement?.parentElement;
     if (!host) return false;
+    document.querySelectorAll(".pdf-root .codex-crew-branding").forEach((node) => {
+      if (node.parentElement !== host) node.remove();
+    });
     host.style.display = "flex";
     host.style.alignItems = "center";
     host.style.flexWrap = "wrap";

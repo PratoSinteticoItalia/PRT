@@ -9788,7 +9788,11 @@ body.mobile-safe-mode #sidebar-admin-label.hidden,
 body.mobile-safe-mode #sidebar-sales-divider.hidden,
 body.mobile-safe-mode #sidebar-admin-divider.hidden,
 body.mobile-safe-mode .sidebar-section-label.hidden,
-body.mobile-safe-mode .sidebar-divider-line.hidden {
+body.mobile-safe-mode .sidebar-divider-line.hidden,
+body.mobile-safe-mode .sidebar-mobile-tools.hidden,
+body.mobile-safe-mode .sidebar-mobile-tools[hidden],
+body.mobile-safe-mode #mobile-garden-planner-link.hidden,
+body.mobile-safe-mode #mobile-garden-planner-link[hidden] {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
@@ -9810,59 +9814,13 @@ body[data-user-role="crew"] #new-order-button {
   display: none !important;
 }
 
-body.mobile-safe-mode[data-user-role="office"] #sidebar-operational-label,
-body.mobile-safe-mode[data-user-role="office"] #sidebar-sales-label,
-body.mobile-safe-mode[data-user-role="office"] #sidebar-admin-label,
-body.mobile-safe-mode[data-user-role="office"] #sidebar-sales-divider,
-body.mobile-safe-mode[data-user-role="office"] #sidebar-admin-divider {
-  display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
-body.mobile-safe-mode[data-user-role="office"] #sidebar-operational-nav,
-body.mobile-safe-mode[data-user-role="office"] #sidebar-sales-nav,
-body.mobile-safe-mode[data-user-role="office"] #sidebar-admin-nav {
-  display: flex !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
-body.mobile-safe-mode[data-user-role="office"] .nav-link[data-view="dashboard"],
-body.mobile-safe-mode[data-user-role="office"] .nav-link[data-view="orders"],
-body.mobile-safe-mode[data-user-role="office"] .nav-link[data-view="warehouse"],
-body.mobile-safe-mode[data-user-role="office"] .nav-link[data-view="installations"],
-body.mobile-safe-mode[data-user-role="office"] .nav-link[data-view="sales-requests"],
-body.mobile-safe-mode[data-user-role="office"] .nav-link[data-view="sales-generator"],
-body.mobile-safe-mode[data-user-role="office"] .nav-link[data-view="sales-content"],
-body.mobile-safe-mode[data-user-role="office"] .nav-link[data-view="accounting"],
-body.mobile-safe-mode[data-user-role="office"] .nav-link[data-view="shipping"],
-body.mobile-safe-mode[data-user-role="office"] .nav-link[data-view="settings"],
-body.mobile-safe-mode[data-user-role="office"] .sidebar-mobile-tools,
-body.mobile-safe-mode[data-user-role="office"] #mobile-garden-planner-link {
-  display: grid !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
-body.mobile-safe-mode[data-user-role="office"] #mobile-garden-planner-link {
-  display: flex !important;
-}
-
-body.mobile-safe-mode[data-user-role="crew"] .sidebar-mobile-tools,
-body.mobile-safe-mode[data-user-role="crew"] #mobile-garden-planner-link,
-body.mobile-safe-mode[data-user-role="crew"] .nav-link[data-view="installations"],
-body.mobile-safe-mode[data-user-role="crew"] .nav-link[data-view="sales-generator"] {
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
 body.mobile-safe-mode[data-user-role="warehouse"] .nav-link[data-view="dashboard"],
 body.mobile-safe-mode[data-user-role="warehouse"] .nav-link[data-view="orders"],
 body.mobile-safe-mode[data-user-role="warehouse"] .nav-link[data-view="installations"],
 body.mobile-safe-mode[data-user-role="warehouse"] .nav-link[data-view="sales-requests"],
 body.mobile-safe-mode[data-user-role="warehouse"] .nav-link[data-view="sales-generator"],
 body.mobile-safe-mode[data-user-role="warehouse"] .nav-link[data-view="sales-content"],
+body.mobile-safe-mode[data-user-role="warehouse"] .nav-link[data-view="accounting"],
 body.mobile-safe-mode[data-user-role="warehouse"] .nav-link[data-view="settings"],
 body.mobile-safe-mode[data-user-role="warehouse"] #sidebar-sales-divider,
 body.mobile-safe-mode[data-user-role="warehouse"] #sidebar-sales-label,

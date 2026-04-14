@@ -656,7 +656,7 @@ function RollsTable({ rolls, setRolls, area }) {
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
           <thead><tr style={{ background: B.gray }}>
-            {["#", "Prodotto", "Lungh.", "Larg.", "m\u00B2", "Escluso costi", "Note", ""].map((h, i) => (
+            {["#", "Prodotto", "Lungh.", "Larg.", "m\u00B2", "Fuori totale", "Note", ""].map((h, i) => (
               <th key={i} style={{ padding: "8px 6px", textAlign: i > 1 && i < 6 ? "center" : "left", fontSize: 10, fontWeight: 600, color: B.textMuted, textTransform: "uppercase", borderBottom: "1px solid " + B.border, whiteSpace: "nowrap" }}>{h}</th>
             ))}
           </tr></thead>
@@ -671,7 +671,7 @@ function RollsTable({ rolls, setRolls, area }) {
                   <td style={{ ...tdS, textAlign: "center" }}><input type="number" value={r.length} min={0.5} max={25} step={0.5} onChange={e => updateRoll(r.id, "length", parseFloat(e.target.value) || 0.5)} style={cInp} /></td>
                   <td style={{ ...tdS, textAlign: "center", color: B.textMuted, fontSize: 12 }}>{r.width}m</td>
                   <td style={{ ...tdS, textAlign: "center", fontWeight: 600 }}>{fmt(sqm)}</td>
-                  <td style={{ ...tdS, textAlign: "center", fontWeight: 700, color: B.textMuted }}>Escluso</td>
+                  <td style={{ ...tdS, textAlign: "center", fontWeight: 700, color: B.textMuted }}>Fuori totale</td>
                   <td style={tdS}><input type="text" value={r.note} placeholder="-" onChange={e => updateRoll(r.id, "note", e.target.value)} style={{ ...cInp, width: 85, textAlign: "left" }} /></td>
                   <td style={tdS}><button onClick={() => removeRoll(r.id)} style={{ background: "none", border: "none", color: B.danger, cursor: "pointer", fontSize: 15 }}>x</button></td>
                 </tr>
@@ -774,7 +774,7 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
   const travelCost = travelFuelCost + travelTollCost;
 
   const sections = [
-    { cat: "PRATO SINTETICO · fabbisogno", items: rollDetails.length > 0 ? rollDetails.map(r => ({ name: "Rotolo #" + r.rollNum + " " + r.prodName + " (" + r.width + "\u00D7" + r.length + "m)", qty: fmt(r.sqm) + " m\u00B2", cost: null })) : [{ name: "Nessun rotolo inserito", qty: "\u2014", cost: null }], sub: null },
+    { cat: "PRATO SINTETICO · FABBISOGNO (FUORI TOTALE)", items: rollDetails.length > 0 ? rollDetails.map(r => ({ name: "Rotolo #" + r.rollNum + " " + r.prodName + " (" + r.width + "\u00D7" + r.length + "m)", qty: fmt(r.sqm) + " m\u00B2", cost: null })) : [{ name: "Nessun rotolo inserito", qty: "\u2014", cost: null }], sub: null },
     { cat: "PREPARAZIONE FONDO", items: [
       substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + "kg", cost: scavoCost } : null,
       substrate.drenateCm > 0 ? { name: "Pietrisco drenante (" + substrate.drenateCm + "cm)", qty: fmt(drenateM3, 2) + " m\u00B3 \u2248 " + Math.round(drenateM3 * 1600) + "kg", cost: drenateCost } : null,
@@ -836,7 +836,7 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
           </div>
         ))}
         <div style={{ display: "flex", justifyContent: "space-between", padding: "14px", background: B.dark, color: "#fff", fontWeight: 700, fontSize: 16 }}>
-          <span>TOTALE COSTI PROGETTO</span>
+          <span>TOTALE COSTI OPERATIVI</span>
           <span style={{ color: B.accent, fontSize: 18 }}>{fmtE(grandTotal)}</span>
         </div>
       </div>

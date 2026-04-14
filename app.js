@@ -918,6 +918,7 @@ const ui = {
   shippingAttachments: document.getElementById("shipping-attachments"),
   settingsForm: document.getElementById("shopify-settings-form"),
   settingsStatus: document.getElementById("settings-status"),
+  topbarGardenPlannerLink: document.getElementById("topbar-garden-planner-link"),
   connectShopifyButton: document.getElementById("connect-shopify-button"),
   mobileGardenPlannerLink: document.getElementById("mobile-garden-planner-link"),
   sidebarMobileTools: document.querySelector(".sidebar-mobile-tools"),
@@ -1114,6 +1115,10 @@ function applyMobileSafeMode() {
   document.body.classList.toggle("mobile-safe-mode", mobileSafe);
   if (!mobileSafe) state.mobileMenuOpen = false;
   updateMobileMenu();
+}
+
+function getAllowedViewsForRole(role = state.currentUser?.role || "office") {
+  return roleViews[String(role || "").trim()] || roleViews.office;
 }
 
 function toNumber(value) {
@@ -4515,9 +4520,9 @@ function applyStaticTranslations() {
 function updateShell() {
   applyMobileSafeMode();
   const currentRole = state.currentUser?.role || "office";
-  const allowed = roleViews[currentRole] || roleViews.office;
+  const allowed = getAllowedViewsForRole(currentRole);
   const showCoverageRadar = currentRole === "office";
-  const showMobileGardenPlanner = currentRole === "office" || currentRole === "crew";
+  const showGardenPlannerShortcut = currentRole === "office" || currentRole === "crew";
   document.body.dataset.userRole = currentRole;
   ui.navLinks.forEach((button) => {
     const visible = allowed.includes(button.dataset.view);
@@ -4551,9 +4556,13 @@ function updateShell() {
     ui.newOrderButton.hidden = !allowCreateOrders;
     ui.newOrderButton.classList.toggle("hidden", !allowCreateOrders);
   }
+  if (ui.topbarGardenPlannerLink) {
+    ui.topbarGardenPlannerLink.hidden = !showGardenPlannerShortcut;
+    ui.topbarGardenPlannerLink.classList.toggle("hidden", !showGardenPlannerShortcut);
+  }
   if (ui.mobileGardenPlannerLink) {
-    ui.mobileGardenPlannerLink.hidden = !showMobileGardenPlanner;
-    ui.mobileGardenPlannerLink.classList.toggle("hidden", !showMobileGardenPlanner);
+    ui.mobileGardenPlannerLink.hidden = !showGardenPlannerShortcut;
+    ui.mobileGardenPlannerLink.classList.toggle("hidden", !showGardenPlannerShortcut);
   }
   if (ui.sidebarMobileTools) {
     ui.sidebarMobileTools.hidden = false;
@@ -7120,13 +7129,80 @@ function updateAccountCrewFieldVisibility(form) {
   crewOnlyFields.forEach((field) => field.classList.toggle("hidden", !visible));
 }
 
+function getCrewLogoPreviewImageAlt(form, fallbackLabel = "") {
+  const crewLabel = String(
+    form?.querySelector("[name='crewName']")?.value
+    || form?.querySelector("[name='name']")?.value
+    || fallbackLabel
+    || "",
+  ).trim();
+  return crewLabel ? `Logo squadra ${crewLabel}` : "Logo squadra";
+}
+
+function setAccountCrewLogoPreview(form, dataUrl = "", fallbackLabel = "") {
+  const preview = form?.querySelector(".crew-logo-preview");
+  if (!preview) return;
+  const normalizedDataUrl = String(dataUrl || "").trim();
+  preview.classList.toggle("is-empty", !normalizedDataUrl);
+  preview.innerHTML = normalizedDataUrl
+    ? `<img src="${escapeHtml(normalizedDataUrl)}" alt="${escapeHtml(getCrewLogoPreviewImageAlt(form, fallbackLabel))}" />`
+    : "<span>Nessun logo squadra caricato.</span>";
+}
+
+async function syncAccountCrewLogoPreview(form, existingLogo = "") {
+  if (!form) return;
+  try {
+    const nextLogo = await readCrewLogoDataUrlFromForm(form, existingLogo);
+    setAccountCrewLogoPreview(form, nextLogo);
+  } catch {
+    setAccountCrewLogoPreview(form, existingLogo);
+  }
+}
+
 function bindAccountCrewFields(form) {
   if (!form) return;
   updateAccountCrewFieldVisibility(form);
+  if (form.dataset.crewFieldsBound === "1") return;
+  form.dataset.crewFieldsBound = "1";
+  const getPersistedCrewLogo = () => String(form.dataset.persistedCrewLogo || "").trim();
   const roleInput = form.querySelector("[name='role']");
   if (roleInput) {
-    roleInput.addEventListener("change", () => updateAccountCrewFieldVisibility(form));
+    roleInput.addEventListener("change", () => {
+      updateAccountCrewFieldVisibility(form);
+      if (roleInput.value !== "crew") {
+        setAccountCrewLogoPreview(form, "");
+        return;
+      }
+      void syncAccountCrewLogoPreview(form, getPersistedCrewLogo());
+    });
   }
+  const fileInput = form.querySelector("[name='crewLogoFile']");
+  const removeInput = form.querySelector("[name='removeCrewLogo']");
+  const nameInputs = [
+    form.querySelector("[name='crewName']"),
+    form.querySelector("[name='name']"),
+  ].filter(Boolean);
+  if (fileInput) {
+    fileInput.addEventListener("change", () => {
+      if (removeInput?.checked && fileInput.files?.length) removeInput.checked = false;
+      void syncAccountCrewLogoPreview(form, getPersistedCrewLogo());
+    });
+  }
+  if (removeInput) {
+    removeInput.addEventListener("change", () => {
+      if (removeInput.checked && fileInput) fileInput.value = "";
+      const previewLogo = removeInput.checked
+        ? ""
+        : getPersistedCrewLogo();
+      void syncAccountCrewLogoPreview(form, previewLogo);
+    });
+  }
+  nameInputs.forEach((input) => {
+    input.addEventListener("input", () => {
+      const currentLogo = form.querySelector(".crew-logo-preview img")?.getAttribute("src") || "";
+      setAccountCrewLogoPreview(form, currentLogo);
+    });
+  });
 }
 
 function syncCoveragePlannerCrewRename(previousCrewName = "", nextCrewName = "") {
@@ -7174,7 +7250,7 @@ function renderAccountsManager() {
       return left.name.localeCompare(right.name, "it");
     })
     .map((user) => `
-    <form class="detail-box account-edit-form" data-account-id="${user.id}">
+    <form class="detail-box account-edit-form" data-account-id="${user.id}" data-persisted-crew-logo="${escapeHtml(user.crewLogoDataUrl || "")}">
       <div class="inline-form-grid">
         <label class="field">
           <span>Nome</span>
@@ -7461,7 +7537,7 @@ function renderCurrentViewOnly(view = state.currentView) {
   populateInventoryOptions();
   updateShell();
   renderOps();
-  switch (state.currentView) {
+  switch (view) {
     case "dashboard":
       renderDashboard();
       break;
@@ -7499,19 +7575,21 @@ function renderCurrentViewOnly(view = state.currentView) {
 }
 
 function setView(view) {
+  const allowed = getAllowedViewsForRole();
+  const nextView = allowed.includes(view) ? view : (allowed[0] || "dashboard");
   const previousView = state.currentView;
-  if (view === "accounting") state.accountingMobilePane = "summary";
-  if (view === "installations") state.installationMobilePane = "summary";
-  state.currentView = view;
-  renderCurrentViewOnly(view);
-  if (view !== previousView) {
+  if (nextView === "accounting") state.accountingMobilePane = "summary";
+  if (nextView === "installations") state.installationMobilePane = "summary";
+  state.currentView = nextView;
+  renderCurrentViewOnly(nextView);
+  if (nextView !== previousView) {
     requestAnimationFrame(() => {
       scrollCurrentViewToTop();
-      focusViewTarget(view);
+      focusViewTarget(nextView);
     });
     return;
   }
-  focusViewTarget(view);
+  focusViewTarget(nextView);
 }
 
 function setStatus(node, kind, text) {
@@ -8475,6 +8553,7 @@ async function createManagedAccount(event) {
     state.users = [...state.users, created].sort((a, b) => a.name.localeCompare(b.name, "it"));
     ui.accountCreateForm.reset();
     updateAccountCrewFieldVisibility(ui.accountCreateForm);
+    setAccountCrewLogoPreview(ui.accountCreateForm, "");
     if (created.role === "crew" && created.crewName) {
       ensureCoverageTeam(created.crewName);
       saveCoveragePlannerState();
