@@ -10125,7 +10125,7 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
   body.mobile-safe-mode .topbar-search {
     display: block !important;
     margin-top: 14px;
-    margin-bottom: 2px;
+    margin-bottom: 8px;
   }
 
   body.mobile-safe-mode .topbar-search input,
@@ -10192,8 +10192,8 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
     grid-column: 1 / -1 !important;
     grid-row: 2 !important;
     display: grid !important;
-    gap: 6px;
-    padding: 6px 12px 10px;
+    gap: 8px;
+    padding: 10px 12px 12px;
     position: relative;
     z-index: 2;
     background:
@@ -10202,7 +10202,8 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
 
   body.mobile-safe-mode .mobile-pill-nav {
     scroll-snap-type: x proximity;
-    padding-bottom: 2px;
+    padding-top: 2px;
+    padding-bottom: 4px;
   }
 
   body.mobile-safe-mode .mobile-pill-link,
