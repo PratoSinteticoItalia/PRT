@@ -1,4 +1,5 @@
-const APP_SHELL_VERSION = "20260414-shell-refresh-04";
+const APP_SHELL_VERSION = "20260414-shell-reset-05";
+const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
@@ -1103,6 +1104,41 @@ function apiFetch(path, options = {}) {
   });
 }
 
+function buildVersionedUrl(pathname = window.location.pathname, version = APP_SHELL_VERSION) {
+  const url = new URL(window.location.href);
+  url.pathname = pathname;
+  url.searchParams.set("shell", version);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+async function ensureFreshShellVersion() {
+  const currentUrl = new URL(window.location.href);
+  const currentShellVersion = String(currentUrl.searchParams.get("shell") || "").trim();
+  const storedShellVersion = String(window.localStorage.getItem(APP_SHELL_VERSION_STORAGE_KEY) || "").trim();
+  const needsCacheReset = storedShellVersion !== APP_SHELL_VERSION;
+
+  if (needsCacheReset) {
+    window.localStorage.setItem(APP_SHELL_VERSION_STORAGE_KEY, APP_SHELL_VERSION);
+    try {
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister().catch(() => false)));
+      }
+      if ("caches" in window) {
+        const cacheKeys = await window.caches.keys();
+        await Promise.all(cacheKeys.map((key) => window.caches.delete(key).catch(() => false)));
+      }
+    } catch {}
+    window.location.replace(buildVersionedUrl(currentUrl.pathname));
+    return true;
+  }
+
+  if (currentShellVersion !== APP_SHELL_VERSION) {
+    window.history.replaceState({}, "", buildVersionedUrl(currentUrl.pathname));
+  }
+  return false;
+}
+
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   let controllerReloaded = false;
@@ -1297,6 +1333,28 @@ function normalizeSalesRequestStatus(value = "") {
   return raw;
 }
 
+function normalizeSalesRequestHeight(value = "") {
+  const raw = String(value ?? "").trim().replace(/\s+/g, " ");
+  if (!raw) return "";
+  const compact = raw.replace(/\s+/g, "");
+  const numericOnly = compact.match(/^(\d+(?:[.,]\d+)?)$/);
+  if (numericOnly) {
+    const amount = numericOnly[1].replace(/\.0+$/, "").replace(",", ".");
+    return `${Number(amount)} mm`;
+  }
+  const millimeterMatch = compact.match(/^(\d+(?:[.,]\d+)?)(mm|millimetri?|millimeters?)$/i);
+  if (millimeterMatch) {
+    const amount = millimeterMatch[1].replace(/\.0+$/, "").replace(",", ".");
+    return `${Number(amount)} mm`;
+  }
+  const centimeterMatch = compact.match(/^(\d+(?:[.,]\d+)?)(cm|centimetri?|centimeters?)$/i);
+  if (centimeterMatch) {
+    const amount = centimeterMatch[1].replace(/\.0+$/, "").replace(",", ".");
+    return `${Number(amount)} cm`;
+  }
+  return raw;
+}
+
 function getSalesRequestStatusCode(status = "") {
   const normalized = normalizeSalesRequestStatus(status);
   if (["new", "quoted", "followup", "closed"].includes(normalized)) return normalized;
@@ -1304,7 +1362,7 @@ function getSalesRequestStatusCode(status = "") {
 }
 
 function normalizeSalesRequestRecord(item = {}) {
-  const status = normalizeSalesRequestStatus(item.status || item.stato || "");
+  const status = String(item.status ?? item.stato ?? "").trim() || "new";
   return {
     id: String(item.id || crypto.randomUUID()),
     name: String(item.name || item.nome || "").trim(),
@@ -1313,6 +1371,14 @@ function normalizeSalesRequestRecord(item = {}) {
     phone: String(item.phone || item.telefono || "").trim(),
     email: String(item.email || "").trim(),
     sqm: Number(toNumber(item.sqm ?? item.mq ?? 0).toFixed(2)),
+    requestedHeight: normalizeSalesRequestHeight(
+      item.requestedHeight
+      ?? item.altezza
+      ?? item.height
+      ?? item.mm
+      ?? item.spessore
+      ?? "",
+    ),
     service: String(item.service || item.servizio || "").trim().toLowerCase(),
     surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
     assignment: String(item.assignment || "").trim(),
@@ -1355,17 +1421,24 @@ function getSalesRequestDisplayName(item = {}) {
 }
 
 function getSalesRequestStatusLabel(status = "") {
-  const normalized = normalizeSalesRequestStatus(status);
-  const code = getSalesRequestStatusCode(normalized);
+  const raw = String(status || "").trim();
+  if (raw && !["new", "quoted", "followup", "closed"].includes(raw)) {
+    return raw;
+  }
+  const code = getSalesRequestStatusCode(raw);
   if (code === "quoted") return state.lang === "it" ? "In preventivo" : "Quoted";
   if (code === "followup") return state.lang === "it" ? "Follow-up" : "Follow-up";
   if (code === "closed") return state.lang === "it" ? "Chiusa" : "Closed";
-  if (code === "custom") return String(status || "").trim() || (state.lang === "it" ? "Senza stato" : "No status");
+  if (code === "custom") return raw || (state.lang === "it" ? "Senza stato" : "No status");
   return state.lang === "it" ? "Nuova" : "New";
 }
 
 function isSalesRequestClosedStatus(status = "") {
   return getSalesRequestStatusCode(status) === "closed";
+}
+
+function getSalesRequestHeightLabel(value = "") {
+  return String(value || "").trim() || (state.lang === "it" ? "Altezza da definire" : "Height pending");
 }
 
 function getSalesRequestServiceLabel(service = "") {
@@ -1417,17 +1490,29 @@ function ensureSelectedSalesRequest() {
 function syncSalesRequestStatusField(value = "") {
   const field = ui.salesRequestForm?.status;
   if (!field) return;
-  Array.from(field.querySelectorAll("[data-dynamic-status]")).forEach((node) => node.remove());
   const nextValue = String(value || "").trim() || "new";
-  const hasOption = Array.from(field.options).some((option) => option.value === nextValue);
-  if (!hasOption) {
+  const fragment = document.createDocumentFragment();
+  const seen = new Set();
+  const appendOption = (optionValue, optionLabel, dynamic = false) => {
+    if (!optionValue || seen.has(optionValue)) return;
+    seen.add(optionValue);
     const option = document.createElement("option");
-    option.value = nextValue;
-    option.textContent = getSalesRequestStatusLabel(nextValue);
-    option.dataset.dynamicStatus = "true";
-    field.append(option);
-  }
-  field.value = nextValue;
+    option.value = optionValue;
+    option.textContent = optionLabel;
+    if (dynamic) option.dataset.dynamicStatus = "true";
+    fragment.append(option);
+  };
+  [
+    ["new", state.lang === "it" ? "Nuova" : "New"],
+    ["quoted", state.lang === "it" ? "In preventivo" : "Quoted"],
+    ["followup", state.lang === "it" ? "Follow-up" : "Follow-up"],
+    ["closed", state.lang === "it" ? "Chiusa" : "Closed"],
+  ].forEach(([optionValue, optionLabel]) => appendOption(optionValue, optionLabel));
+  [...state.salesRequests.map((item) => String(item.status || "").trim()), nextValue]
+    .filter(Boolean)
+    .forEach((status) => appendOption(status, getSalesRequestStatusLabel(status), !["new", "quoted", "followup", "closed"].includes(status)));
+  field.replaceChildren(fragment);
+  field.value = seen.has(nextValue) ? nextValue : "new";
 }
 
 function getSalesRequestsPageSize() {
@@ -1470,6 +1555,7 @@ function buildSalesRequestPrefill(item = {}) {
     telefono: item.phone || "",
     email: item.email || "",
     mq: item.sqm || "",
+    altezza: item.requestedHeight || "",
     servizio: item.service || "",
     fondo: item.surface || "",
   };
@@ -1782,6 +1868,18 @@ function mapImportedSalesRequestField(target, header, rawValue) {
     target.sqm = value;
     return;
   }
+  if ([
+    "altezza",
+    "altezza prato",
+    "altezza da preventivare",
+    "altezza preventivo",
+    "mm",
+    "spessore",
+    "spessore prato",
+  ].includes(normalizedHeader)) {
+    target.requestedHeight = value;
+    return;
+  }
   if (["servizio", "service", "tipologia"].includes(normalizedHeader)) {
     target.service = value;
     return;
@@ -1794,7 +1892,7 @@ function mapImportedSalesRequestField(target, header, rawValue) {
     target.assignment = value;
     return;
   }
-  if (["stato", "status"].includes(normalizedHeader)) {
+  if (["stato", "status", "stato preventivo"].includes(normalizedHeader)) {
     target.status = value;
     return;
   }
@@ -5331,6 +5429,7 @@ function getFilteredSalesRequests() {
         item.city,
         item.phone,
         item.email,
+        item.requestedHeight,
         item.assignment,
         item.note,
         getSalesRequestStatusLabel(item.status),
@@ -5382,7 +5481,10 @@ function renderSalesRequests() {
             </div>
             <div class="sales-request-card-meta">
               <span>${escapeHtml(getSalesRequestServiceLabel(item.service))}</span>
-              <span>${item.sqm > 0 ? `${Number(item.sqm)} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending")}</span>
+              <span>${[
+                item.sqm > 0 ? `${Number(item.sqm)} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending"),
+                item.requestedHeight ? escapeHtml(item.requestedHeight) : "",
+              ].filter(Boolean).join(" · ")}</span>
             </div>
             <div class="sales-request-card-foot">
               <span>${escapeHtml(item.assignment || (state.lang === "it" ? "Non assegnata" : "Unassigned"))}</span>
@@ -5403,6 +5505,7 @@ function renderSalesRequests() {
   ui.salesRequestForm.phone.value = selected?.phone || "";
   ui.salesRequestForm.email.value = selected?.email || "";
   ui.salesRequestForm.sqm.value = selected?.sqm ? String(selected.sqm).replace(".", ",") : "";
+  ui.salesRequestForm.requestedHeight.value = selected?.requestedHeight || "";
   ui.salesRequestForm.service.value = selected?.service || "";
   ui.salesRequestForm.surface.value = selected?.surface || "";
   ui.salesRequestForm.assignment.value = selected?.assignment || "";
@@ -5434,6 +5537,7 @@ function renderSalesGenerator() {
           <div class="sales-generator-card-grid">
             <span>${escapeHtml(selected.city || (state.lang === "it" ? "Città da definire" : "City pending"))}</span>
             <span>${selected.sqm > 0 ? `${Number(selected.sqm)} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending")}</span>
+            <span>${escapeHtml(getSalesRequestHeightLabel(selected.requestedHeight))}</span>
             <span>${escapeHtml(getSalesRequestServiceLabel(selected.service))}</span>
             <span>${escapeHtml(getSalesRequestSurfaceLabel(selected.surface))}</span>
           </div>
@@ -5564,6 +5668,7 @@ async function saveSalesRequest(event) {
         phone: form.get("phone"),
         email: form.get("email"),
         sqm: form.get("sqm"),
+        requestedHeight: form.get("requestedHeight"),
         service: form.get("service"),
         surface: form.get("surface"),
         assignment: form.get("assignment"),
@@ -9659,7 +9764,10 @@ document.addEventListener("click", handleGlobalClick);
 document.addEventListener("keydown", handleGlobalActionKeydown);
 
 registerServiceWorker();
-loadSession();
+ensureFreshShellVersion().then((resetTriggered) => {
+  if (resetTriggered) return;
+  loadSession();
+});
 
 // === EXPORT CSV ===
 function exportAccountingCSV() {

@@ -56,6 +56,7 @@
       telefono: customer.telefono,
       email: customer.email,
       mq: payload?.mq != null && payload?.mq !== "" ? String(payload.mq).replace(",", ".") : "",
+      altezza: String(payload?.altezza || payload?.height || payload?.requestedHeight || "").trim(),
       servizio: normalizeServiceStateValue(payload?.servizio || payload?.service || payload?.tipologia || ""),
       fondo: normalizeSurfaceValue(payload?.fondo || payload?.superficie || payload?.surface || ""),
     });
@@ -346,6 +347,7 @@
 
     const customer = buildCustomerPayload(payload);
     const requestedMq = payload.mq != null && payload.mq !== "" ? String(payload.mq).replace(",", ".") : "";
+    const requestedHeight = String(payload.altezza || payload.height || payload.requestedHeight || "").trim();
     const requestedServiceLabel = normalizeServiceLabel(payload.servizio || payload.service || payload.tipologia || "");
     const requestedServiceState = normalizeServiceStateValue(payload.servizio || payload.service || payload.tipologia || "");
     const requestedSurface = normalizeSurfaceValue(payload.fondo || payload.superficie || payload.surface || "");
@@ -361,6 +363,9 @@
       ["Telefono", customer.telefono],
       ["Email", customer.email],
       ["Metri Quadri", requestedMq],
+      ["Altezza", requestedHeight],
+      ["Altezza prato", requestedHeight],
+      ["MM", requestedHeight],
     ].filter(([, value]) => value !== undefined && value !== null && String(value) !== "");
 
     assignments.forEach(([label, value]) => {

@@ -1130,6 +1130,28 @@ function normalizeSalesRequestService(value = "") {
   return "";
 }
 
+function normalizeSalesRequestHeight(value = "") {
+  const raw = String(value ?? "").trim().replace(/\s+/g, " ");
+  if (!raw) return "";
+  const compact = raw.replace(/\s+/g, "");
+  const numericOnly = compact.match(/^(\d+(?:[.,]\d+)?)$/);
+  if (numericOnly) {
+    const amount = numericOnly[1].replace(/\.0+$/, "").replace(",", ".");
+    return `${Number(amount)} mm`;
+  }
+  const millimeterMatch = compact.match(/^(\d+(?:[.,]\d+)?)(mm|millimetri?|millimeters?)$/i);
+  if (millimeterMatch) {
+    const amount = millimeterMatch[1].replace(/\.0+$/, "").replace(",", ".");
+    return `${Number(amount)} mm`;
+  }
+  const centimeterMatch = compact.match(/^(\d+(?:[.,]\d+)?)(cm|centimetri?|centimeters?)$/i);
+  if (centimeterMatch) {
+    const amount = centimeterMatch[1].replace(/\.0+$/, "").replace(",", ".");
+    return `${Number(amount)} cm`;
+  }
+  return raw;
+}
+
 function normalizeSalesRequestStatus(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "new";
@@ -1284,6 +1306,18 @@ function mapSheetSalesRequestField(target, header, rawValue) {
   }
   if (["mq", "sqm", "metri quadri", "metriquadrati"].includes(normalizedHeader)) {
     target.sqm = value;
+    return;
+  }
+  if ([
+    "altezza",
+    "altezza prato",
+    "altezza da preventivare",
+    "altezza preventivo",
+    "mm",
+    "spessore",
+    "spessore prato",
+  ].includes(normalizedHeader)) {
+    target.requestedHeight = value;
     return;
   }
   if (["servizio", "service", "tipologia"].includes(normalizedHeader)) {
@@ -1460,6 +1494,7 @@ async function loadGoogleSheetSalesRequests(config = {}) {
 }
 
 function normalizeSalesRequestRecord(item = {}) {
+  const rawStatus = String(item.status ?? item.stato ?? "").trim();
   return {
     id: String(item.id || randomUUID()),
     name: String(item.name || item.nome || "").trim(),
@@ -1468,10 +1503,18 @@ function normalizeSalesRequestRecord(item = {}) {
     phone: String(item.phone || item.telefono || "").trim(),
     email: String(item.email || "").trim(),
     sqm: Number(toNumber(item.sqm ?? item.mq ?? 0).toFixed(2)),
+    requestedHeight: normalizeSalesRequestHeight(
+      item.requestedHeight
+      ?? item.altezza
+      ?? item.height
+      ?? item.mm
+      ?? item.spessore
+      ?? "",
+    ),
     service: normalizeSalesRequestService(item.service || item.servizio || ""),
     surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),
     assignment: String(item.assignment || "").trim(),
-    status: normalizeSalesRequestStatus(item.status || item.stato || ""),
+    status: rawStatus || "new",
     note: String(item.note || "").trim(),
     source: String(item.source || "manual").trim() || "manual",
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
@@ -3037,6 +3080,7 @@ async function handleApi(req, res, url) {
         const existing = existingById.get(item.id) || null;
         return normalizeSalesRequestRecord({
           ...item,
+          requestedHeight: item.requestedHeight || existing?.requestedHeight || "",
           assignment: item.assignment || existing?.assignment || "",
           status: item.status || existing?.status || "new",
           note: item.note || existing?.note || "",
