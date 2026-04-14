@@ -10106,11 +10106,13 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
   }
 
   body.mobile-safe-mode .topbar {
-    padding: 12px 12px 8px !important;
-    gap: 8px;
+    padding: 12px 12px 10px !important;
+    gap: 10px;
   }
 
   body.mobile-safe-mode .topbar-left {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
     gap: 8px;
   }
 
@@ -10120,13 +10122,74 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
     display: none !important;
   }
 
+  body.mobile-safe-mode .topbar-search {
+    display: block !important;
+    margin-top: 4px;
+    margin-bottom: 2px;
+  }
+
+  body.mobile-safe-mode .topbar-search input,
+  body.mobile-safe-mode .topbar-search input:focus {
+    width: 100% !important;
+    height: 38px;
+    padding: 0 14px 0 38px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  body.mobile-safe-mode .search-icon {
+    left: 13px;
+  }
+
+  body.mobile-safe-mode .topbar-right {
+    display: flex !important;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    width: 100%;
+  }
+
+  body.mobile-safe-mode #reload-button,
+  body.mobile-safe-mode #new-order-button,
+  body.mobile-safe-mode #topbar-garden-planner-link,
+  body.mobile-safe-mode .topbar-user {
+    display: none !important;
+  }
+
+  body.mobile-safe-mode .topbar-right .lang-switch {
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 32px;
+    padding: 3px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.08);
+    justify-content: flex-start;
+  }
+
+  body.mobile-safe-mode .topbar-right .lang-btn {
+    min-width: 30px;
+    min-height: 26px;
+    padding: 0 8px;
+    font-size: 10.5px;
+  }
+
+  body.mobile-safe-mode #logout-button.topbar-btn {
+    min-height: 32px;
+    padding: 0 11px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+  }
+
   body.mobile-safe-mode .mobile-pill-shell {
     grid-area: mobile-nav;
     grid-column: 1 / -1 !important;
     grid-row: 2 !important;
     display: grid !important;
     gap: 6px;
-    padding: 0 12px 8px;
+    padding: 6px 12px 10px;
     position: relative;
     z-index: 2;
     background:
@@ -10196,8 +10259,8 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
     display: grid !important;
     justify-content: flex-start;
     gap: 6px;
-    padding-top: 4px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 0;
+    border-top: 0;
   }
 
   body.mobile-safe-mode .mobile-pill-actions {
@@ -10207,9 +10270,7 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
   }
 
   body.mobile-safe-mode .mobile-pill-meta {
-    justify-content: flex-end;
-    align-items: center;
-    gap: 6px;
+    display: none !important;
   }
 
   body.mobile-safe-mode .mobile-pill-tool {

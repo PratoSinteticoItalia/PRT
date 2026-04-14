@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-20";
+const APP_SHELL_VERSION = "20260414-shell-reset-21";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -1458,10 +1458,7 @@ function syncMobilePillNav() {
     ui.mobilePillActions.style.setProperty("flex-wrap", mobileSafe ? "wrap" : "nowrap");
   }
   if (ui.mobilePillMeta) {
-    ui.mobilePillMeta.style.setProperty("display", mobileSafe ? "flex" : "none", "important");
-    ui.mobilePillMeta.style.setProperty("align-items", "center");
-    ui.mobilePillMeta.style.setProperty("justify-content", "flex-end");
-    ui.mobilePillMeta.style.setProperty("gap", mobileSafe ? "6px" : "8px");
+    ui.mobilePillMeta.style.setProperty("display", "none", "important");
   }
   ui.navLinks.forEach((sourceButton) => {
     const view = sourceButton.dataset.view;
