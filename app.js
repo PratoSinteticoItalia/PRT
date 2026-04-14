@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-18";
+const APP_SHELL_VERSION = "20260414-shell-reset-19";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -1373,8 +1373,8 @@ function syncMobilePillNav() {
     ui.mobilePillShell.setAttribute("aria-hidden", mobileSafe ? "false" : "true");
     ui.mobilePillShell.style.setProperty("display", mobileSafe ? "grid" : "none", "important");
     if (mobileSafe) {
-      ui.mobilePillShell.style.setProperty("gap", "8px");
-      ui.mobilePillShell.style.setProperty("padding", "0 12px 10px");
+      ui.mobilePillShell.style.setProperty("gap", "6px");
+      ui.mobilePillShell.style.setProperty("padding", "0 12px 8px");
       ui.mobilePillShell.style.setProperty("grid-column", "1 / -1", "important");
       ui.mobilePillShell.style.setProperty("grid-row", "2", "important");
       ui.mobilePillShell.style.setProperty("grid-area", "mobile-nav", "important");
@@ -1395,14 +1395,16 @@ function syncMobilePillNav() {
     ui.mobilePillNav.style.setProperty("align-items", "center");
     ui.mobilePillNav.style.setProperty("gap", "8px");
     ui.mobilePillNav.style.setProperty("overflow-x", "auto");
+    ui.mobilePillNav.style.setProperty("padding-bottom", mobileSafe ? "2px" : "0");
     if (!mobileSafe) ui.mobilePillNav.scrollLeft = 0;
   }
   if (ui.mobilePillTools) {
     ui.mobilePillTools.style.setProperty("display", mobileSafe ? "flex" : "none", "important");
     ui.mobilePillTools.style.setProperty("align-items", "center");
-    ui.mobilePillTools.style.setProperty("gap", "8px");
+    ui.mobilePillTools.style.setProperty("gap", mobileSafe ? "6px" : "8px");
     ui.mobilePillTools.style.setProperty("overflow-x", mobileSafe ? "visible" : "hidden");
     ui.mobilePillTools.style.setProperty("flex-wrap", mobileSafe ? "wrap" : "nowrap");
+    ui.mobilePillTools.style.setProperty("padding-top", mobileSafe ? "4px" : "0");
     if (!mobileSafe) ui.mobilePillTools.scrollLeft = 0;
   }
   ui.navLinks.forEach((sourceButton) => {
