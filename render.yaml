@@ -6,7 +6,7 @@ services:
     rootDir: .
     buildCommand: npm install
     startCommand: npm start
-    healthCheckPath: /
+    healthCheckPath: /api/healthz
     envVars:
       - key: NODE_VERSION
         value: 22

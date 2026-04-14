@@ -2905,6 +2905,14 @@ async function getSessionContext(req, store) {
 }
 
 async function handleApi(req, res, url) {
+  if (url.pathname === "/api/healthz" && req.method === "GET") {
+    return sendJson(res, 200, {
+      ok: true,
+      service: "vertex-ops-pose-system",
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   await ensureStore();
   const store = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
   const storeChanged = reconcileStoreData(store);
