@@ -8,6 +8,9 @@
   let activeBrandingPayload = { crewName: "", crewLogoDataUrl: "" };
   let pdfDownloadInterceptionActive = false;
   let scheduledScrollTop = 0;
+  let scheduledBridgeSync = 0;
+  let bridgeSyncQueued = false;
+  let bridgeSyncBurstRuns = 0;
   const brandingLogoExportCache = new Map();
 
   function normalizeLabel(value) {
@@ -100,6 +103,45 @@
       try {
         window.parent?.postMessage({ type: "quote-generator:scroll-top" }, "*");
       } catch {}
+    });
+  }
+
+  function requestBridgeSyncBurst(runs = 1) {
+    bridgeSyncBurstRuns = Math.max(bridgeSyncBurstRuns, Number(runs) || 0);
+    scheduleBridgeSync();
+  }
+
+  function scheduleBridgeSync() {
+    if (bridgeSyncQueued) return;
+    bridgeSyncQueued = true;
+    window.requestAnimationFrame(() => {
+      bridgeSyncQueued = false;
+      hideInternalImportPanel();
+      syncCustomAccessoryPriceEditors();
+      const payload = readPrefillFromStorage() || readPrefillFromUrl();
+      if (payload) scheduleRequestPayload(payload);
+      const brandingPayload = readBrandingFromStorage();
+      if (brandingPayload) {
+        applyBrandingPayloadNow(brandingPayload);
+      } else if (activeBrandingPayload.crewLogoDataUrl) {
+        applyBrandingPayloadNow(activeBrandingPayload);
+      }
+      if (document.querySelector(".pdf-root")) {
+        scrollGeneratorViewportToTop();
+      }
+      if (scheduledBridgeSync) {
+        window.clearTimeout(scheduledBridgeSync);
+        scheduledBridgeSync = 0;
+      }
+      if (bridgeSyncBurstRuns > 1) {
+        bridgeSyncBurstRuns -= 1;
+        scheduledBridgeSync = window.setTimeout(() => {
+          scheduledBridgeSync = 0;
+          scheduleBridgeSync();
+        }, 220);
+      } else {
+        bridgeSyncBurstRuns = 0;
+      }
     });
   }
 
@@ -1012,51 +1054,28 @@
   }
 
   function startCustomAccessoryPriceBridge() {
-    let syncScheduled = false;
-
-    const scheduleSync = () => {
-      if (syncScheduled) return;
-      syncScheduled = true;
-      window.requestAnimationFrame(() => {
-        syncScheduled = false;
-        hideInternalImportPanel();
-        syncCustomAccessoryPriceEditors();
-        const payload = readPrefillFromStorage() || readPrefillFromUrl();
-        if (payload) scheduleRequestPayload(payload);
-        const brandingPayload = readBrandingFromStorage();
-        if (brandingPayload) {
-          applyBrandingPayloadNow(brandingPayload);
-        } else if (activeBrandingPayload.crewLogoDataUrl) {
-          applyBrandingPayloadNow(activeBrandingPayload);
-        }
-        if (document.querySelector(".pdf-root")) {
-          scrollGeneratorViewportToTop();
-        }
-      });
-    };
-
     const observer = new MutationObserver(() => {
-      scheduleSync();
+      requestBridgeSyncBurst(2);
     });
 
     observer.observe(document.documentElement, {
       childList: true,
       subtree: true,
     });
-
-    window.setInterval(scheduleSync, 1200);
-    scheduleSync();
+    requestBridgeSyncBurst(6);
   }
 
   window.addEventListener("message", (event) => {
     if (event.data?.type === "quote-generator:prefill-request") {
       scheduleRequestPayload(event.data.payload);
       scrollGeneratorViewportToTop();
+      requestBridgeSyncBurst(4);
       return;
     }
     if (event.data?.type === "quote-generator:branding") {
       applyBrandingPayloadNow(event.data.payload);
       scrollGeneratorViewportToTop();
+      requestBridgeSyncBurst(3);
     }
   });
 
@@ -1084,5 +1103,6 @@
       applyBrandingPayloadNow(brandingPayload);
     }
     scrollGeneratorViewportToTop();
+    requestBridgeSyncBurst(4);
   }, { once: true });
 })();

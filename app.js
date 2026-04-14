@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-09";
+const APP_SHELL_VERSION = "20260414-shell-reset-10";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -1268,6 +1268,13 @@ function syncSidebarLayout(role = state.currentUser?.role || "office") {
     }
   });
   if (!(mobileSafe && normalizedRole === "office")) return;
+  if (ui.sidebar && ui.sidebarAdminDivider) {
+    [ui.sidebarSalesDivider, ui.sidebarSalesLabel, ui.sidebarSalesNav].forEach((node) => {
+      if (node && node.parentElement === ui.sidebar) {
+        ui.sidebar.insertBefore(node, ui.sidebarAdminDivider);
+      }
+    });
+  }
   const officeViews = new Set(roleViews.office);
   ui.navLinks.forEach((button) => {
     if (!officeViews.has(button.dataset.view)) return;
@@ -7745,7 +7752,11 @@ async function keepSessionAlive({ silent = true } = {}) {
     }
     applySessionPayload(session);
     ensureSelectedOrder();
-    render();
+    if (silent) {
+      renderCurrentViewOnly(state.currentView);
+    } else {
+      render();
+    }
     return true;
   } catch (error) {
     if (!silent) throw error;
