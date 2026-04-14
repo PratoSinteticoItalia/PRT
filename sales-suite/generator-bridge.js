@@ -505,9 +505,9 @@
         flex: 0 0 auto;
         align-self: flex-start;
         margin-left: auto;
-        margin-right: 0;
+        margin-right: -2px;
         margin-top: 0;
-        padding: 3px;
+        padding: 3px 4px;
         border: 1px solid rgba(47, 70, 49, 0.14);
         border-radius: 9px;
         background: linear-gradient(180deg, rgba(248,250,248,0.98), rgba(237,243,237,0.94));
@@ -515,9 +515,9 @@
       }
 
       .codex-crew-branding img {
-        width: 40px;
-        max-width: 40px;
-        max-height: 40px;
+        width: 46px;
+        max-width: 46px;
+        max-height: 46px;
         object-fit: contain;
         display: block;
       }
@@ -617,21 +617,21 @@
     quoteMetaLine.textContent = `${payload.crewName} · Rivenditore autorizzato`;
     quoteMetaLine.style.color = "#567958";
     quoteMetaLine.style.fontWeight = "700";
-    quoteMetaLine.style.fontSize = "6.5px";
+    quoteMetaLine.style.fontSize = "7.2px";
     quoteMetaLine.style.whiteSpace = "nowrap";
     quoteMetaLine.style.display = "block";
     quoteMetaLine.style.marginTop = "2px";
-    quoteMetaLine.style.lineHeight = "1.12";
+    quoteMetaLine.style.lineHeight = "1.14";
     quoteMetaLine.style.letterSpacing = "0";
     quoteMetaLine.style.textAlign = "right";
     if (quoteMetaBlock) {
-      quoteMetaBlock.style.minWidth = "188px";
-      quoteMetaBlock.style.width = "188px";
+      quoteMetaBlock.style.minWidth = "204px";
+      quoteMetaBlock.style.width = "204px";
       quoteMetaBlock.style.display = "flex";
       quoteMetaBlock.style.flexDirection = "column";
       quoteMetaBlock.style.alignItems = "flex-end";
       quoteMetaBlock.style.justifyContent = "flex-start";
-      quoteMetaBlock.style.gap = "2px";
+      quoteMetaBlock.style.gap = "3px";
     }
     return true;
   }
@@ -672,8 +672,8 @@
     footerMetaLine.style.color = "#567958";
     footerMetaLine.style.fontWeight = "700";
     footerMetaLine.style.letterSpacing = "0";
-    footerMetaLine.style.fontSize = "6.6px";
-    footerMetaLine.style.lineHeight = "1.18";
+    footerMetaLine.style.fontSize = "7.1px";
+    footerMetaLine.style.lineHeight = "1.2";
     footerMetaLine.style.textAlign = "center";
     return true;
   }
@@ -726,7 +726,7 @@
       headerRow.style.alignItems = "flex-start";
       headerRow.style.gap = "0";
       headerRow.style.columnGap = "0";
-      quoteBlock.style.marginLeft = "1px";
+      quoteBlock.style.marginLeft = "0";
 
       const brandingNode = document.createElement("div");
       brandingNode.className = "codex-crew-branding";
@@ -789,7 +789,7 @@
     const scale = Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
     const width = Math.max(7.1, Number((imageWidth * scale).toFixed(2)));
     const height = Math.max(7.1, Number((imageHeight * scale).toFixed(2)));
-    const x = 101.2;
+    const x = 103.4;
     const y = 13.3;
 
     try {

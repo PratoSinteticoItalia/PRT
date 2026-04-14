@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-07";
+const APP_SHELL_VERSION = "20260414-shell-reset-08";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -739,6 +739,10 @@ const ui = {
   authForm: document.getElementById("auth-form"),
   authError: document.getElementById("auth-error"),
   appShell: document.getElementById("app-shell"),
+  sidebar: document.querySelector(".sidebar"),
+  sidebarMobileHead: document.querySelector(".sidebar-mobile-head"),
+  sidebarBrandBlock: document.querySelector(".sidebar-brand-block"),
+  userCard: document.querySelector(".user-card"),
   mainContent: document.querySelector(".main-content"),
   sidebarOperationalLabel: document.getElementById("sidebar-operational-label"),
   sidebarOperationalNav: document.getElementById("sidebar-operational-nav"),
@@ -925,6 +929,7 @@ const ui = {
   connectShopifyButton: document.getElementById("connect-shopify-button"),
   mobileGardenPlannerLink: document.getElementById("mobile-garden-planner-link"),
   sidebarMobileTools: document.querySelector(".sidebar-mobile-tools"),
+  sidebarCard: document.querySelector(".sidebar-card"),
   securityForm: document.getElementById("security-form"),
   securityStatus: document.getElementById("security-status"),
   securityPolicyNote: document.getElementById("security-policy-note"),
@@ -1220,6 +1225,73 @@ function forceMobileVisibility(node, visible, displayValue = "block") {
   node.style.removeProperty("display");
   node.style.removeProperty("visibility");
   node.style.removeProperty("opacity");
+}
+
+function syncSidebarLayout(role = state.currentUser?.role || "office") {
+  if (!ui.sidebar) return;
+  const normalizedRole = normalizeUserRole(role);
+  const mobileSafe = window.innerWidth <= 980;
+  const defaultSequence = [
+    ui.sidebarMobileHead,
+    ui.sidebarBrandBlock,
+    ui.userCard,
+    ui.sidebarOperationalLabel,
+    ui.sidebarOperationalNav,
+    ui.sidebarSalesDivider,
+    ui.sidebarSalesLabel,
+    ui.sidebarSalesNav,
+    ui.sidebarAdminDivider,
+    ui.sidebarAdminLabel,
+    ui.sidebarAdminNav,
+    ui.sidebarMobileTools,
+    ui.sidebarCard,
+  ];
+  const officeMobileSequence = [
+    ui.sidebarMobileHead,
+    ui.sidebarBrandBlock,
+    ui.userCard,
+    ui.sidebarOperationalLabel,
+    ui.sidebarOperationalNav,
+    ui.sidebarAdminDivider,
+    ui.sidebarAdminLabel,
+    ui.sidebarAdminNav,
+    ui.sidebarMobileTools,
+    ui.sidebarSalesDivider,
+    ui.sidebarSalesLabel,
+    ui.sidebarSalesNav,
+    ui.sidebarCard,
+  ];
+  const sequence = mobileSafe && normalizedRole === "office" ? officeMobileSequence : defaultSequence;
+  sequence.forEach((node) => {
+    if (node && node.parentElement === ui.sidebar) {
+      ui.sidebar.appendChild(node);
+    }
+  });
+  if (!(mobileSafe && normalizedRole === "office")) return;
+  const officeViews = new Set(roleViews.office);
+  ui.navLinks.forEach((button) => {
+    if (!officeViews.has(button.dataset.view)) return;
+    button.hidden = false;
+    button.classList.remove("hidden");
+    button.setAttribute("aria-hidden", "false");
+    forceMobileVisibility(button, true, "grid");
+  });
+  [
+    [ui.sidebarOperationalLabel, "block"],
+    [ui.sidebarOperationalNav, "grid"],
+    [ui.sidebarAdminDivider, "block"],
+    [ui.sidebarAdminLabel, "block"],
+    [ui.sidebarAdminNav, "grid"],
+    [ui.sidebarSalesDivider, "block"],
+    [ui.sidebarSalesLabel, "block"],
+    [ui.sidebarSalesNav, "grid"],
+    [ui.sidebarMobileTools, "grid"],
+  ].forEach(([node, displayValue]) => {
+    if (!node) return;
+    node.hidden = false;
+    node.classList.remove("hidden");
+    forceMobileVisibility(node, true, displayValue);
+  });
 }
 
 function toNumber(value) {
@@ -4770,6 +4842,7 @@ function updateShell() {
     );
     forceMobileVisibility(ui.sidebarMobileTools, true, "grid");
   }
+  syncSidebarLayout(currentRole);
   if (ui.salesGeneratorContextPanel) {
     const hideGeneratorPrefill = currentRole === "crew";
     ui.salesGeneratorContextPanel.hidden = hideGeneratorPrefill;
