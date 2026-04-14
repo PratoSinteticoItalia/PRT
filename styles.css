@@ -4133,6 +4133,11 @@ body {
   box-shadow: inset 0 0 0 1px rgba(45, 106, 79, 0.14);
 }
 
+.nav-count-badge:empty,
+.mobile-pill-count-badge:empty {
+  display: none;
+}
+
 .list-pagination {
   display: flex;
   justify-content: space-between;

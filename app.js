@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260415-shell-reset-27";
+const APP_SHELL_VERSION = "20260415-shell-reset-28";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -187,6 +187,7 @@ const roleViews = {
   warehouse: ["warehouse", "shipping"],
   crew: ["installations", "sales-generator"],
 };
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "settings"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -1712,7 +1713,7 @@ function ensureCountBadge(node, className) {
 function setNavCount(view, count) {
   const node = ui.navLinks.find((link) => link.dataset.view === view);
   if (!node) return;
-  const normalized = Number(count) > 0 ? String(count) : "";
+  const normalized = !NAV_BADGE_DISABLED_VIEWS.has(view) && Number(count) > 0 ? String(count) : "";
   state.navCounts[view] = normalized;
   node.setAttribute("data-count", normalized);
   const desktopBadge = ensureCountBadge(node, "nav-count-badge");
