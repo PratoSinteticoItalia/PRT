@@ -505,7 +505,7 @@
         flex: 0 0 auto;
         align-self: flex-start;
         margin-left: auto;
-        margin-right: 14px;
+        margin-right: 4px;
         margin-top: 0;
         padding: 2px;
         border: 1px solid rgba(47, 70, 49, 0.14);
@@ -617,12 +617,12 @@
     quoteMetaLine.textContent = `${payload.crewName} · Rivenditore autorizzato`;
     quoteMetaLine.style.color = "#567958";
     quoteMetaLine.style.fontWeight = "700";
-    quoteMetaLine.style.fontSize = "4.8px";
+    quoteMetaLine.style.fontSize = "5.6px";
     quoteMetaLine.style.whiteSpace = "nowrap";
     quoteMetaLine.style.display = "block";
     quoteMetaLine.style.marginTop = "1px";
-    quoteMetaLine.style.lineHeight = "1.05";
-    quoteMetaLine.style.letterSpacing = "-0.01em";
+    quoteMetaLine.style.lineHeight = "1.1";
+    quoteMetaLine.style.letterSpacing = "0";
     quoteMetaLine.style.textAlign = "right";
     if (quoteMetaBlock) {
       quoteMetaBlock.style.minWidth = "160px";
@@ -726,7 +726,7 @@
       headerRow.style.alignItems = "flex-start";
       headerRow.style.gap = "0";
       headerRow.style.columnGap = "0";
-      quoteBlock.style.marginLeft = "12px";
+      quoteBlock.style.marginLeft = "4px";
 
       const brandingNode = document.createElement("div");
       brandingNode.className = "codex-crew-branding";
@@ -789,7 +789,7 @@
     const scale = Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
     const width = Math.max(7.1, Number((imageWidth * scale).toFixed(2)));
     const height = Math.max(7.1, Number((imageHeight * scale).toFixed(2)));
-    const x = 91.2;
+    const x = 98.4;
     const y = 13.3;
 
     try {
