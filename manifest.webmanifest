@@ -3,7 +3,7 @@
   "short_name": "PSI Ops",
   "description": "Portale operativo per ordini, logistica, pose e contabilita.",
   "lang": "it-IT",
-  "start_url": "/",
+  "start_url": "/?shell=20260414-shell-reset-06",
   "scope": "/",
   "display": "standalone",
   "background_color": "#eef1f4",
@@ -26,12 +26,12 @@
     {
       "name": "Portale operativo",
       "short_name": "Ops",
-      "url": "/"
+      "url": "/?shell=20260414-shell-reset-06"
     },
     {
       "name": "Garden Planner",
       "short_name": "Planner",
-      "url": "/garden-planner.html"
+      "url": "/garden-planner.html?shell=20260414-shell-reset-06"
     }
   ]
 }
