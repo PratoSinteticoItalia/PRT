@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-08";
+const APP_SHELL_VERSION = "20260414-shell-reset-09";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -1252,13 +1252,13 @@ function syncSidebarLayout(role = state.currentUser?.role || "office") {
     ui.userCard,
     ui.sidebarOperationalLabel,
     ui.sidebarOperationalNav,
+    ui.sidebarSalesDivider,
+    ui.sidebarSalesLabel,
+    ui.sidebarSalesNav,
     ui.sidebarAdminDivider,
     ui.sidebarAdminLabel,
     ui.sidebarAdminNav,
     ui.sidebarMobileTools,
-    ui.sidebarSalesDivider,
-    ui.sidebarSalesLabel,
-    ui.sidebarSalesNav,
     ui.sidebarCard,
   ];
   const sequence = mobileSafe && normalizedRole === "office" ? officeMobileSequence : defaultSequence;
@@ -1685,6 +1685,13 @@ function pushSalesRequestToGenerator(force = false) {
     }, "*");
   } catch {}
 }
+
+window.addEventListener("message", (event) => {
+  if (event.data?.type !== "quote-generator:scroll-top") return;
+  if (state.currentView !== "sales-generator") return;
+  scrollCurrentViewToTop();
+  requestAnimationFrame(() => focusViewTarget("sales-generator"));
+});
 
 function getDashboardSubtitle() {
   const locale = state.lang === "it" ? "it-IT" : "en-GB";

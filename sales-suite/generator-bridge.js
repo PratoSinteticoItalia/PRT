@@ -7,6 +7,7 @@
   let lastBrandingStorage = "";
   let activeBrandingPayload = { crewName: "", crewLogoDataUrl: "" };
   let pdfDownloadInterceptionActive = false;
+  let scheduledScrollTop = 0;
   const brandingLogoExportCache = new Map();
 
   function normalizeLabel(value) {
@@ -79,6 +80,26 @@
   function waitForAnimationFrame() {
     return new Promise((resolve) => {
       window.requestAnimationFrame(() => resolve());
+    });
+  }
+
+  function scrollGeneratorViewportToTop() {
+    if (scheduledScrollTop) {
+      window.cancelAnimationFrame(scheduledScrollTop);
+    }
+    scheduledScrollTop = window.requestAnimationFrame(() => {
+      scheduledScrollTop = 0;
+      try {
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      } catch {
+        window.scrollTo(0, 0);
+      }
+      if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      try {
+        window.parent?.postMessage({ type: "quote-generator:scroll-top" }, "*");
+      } catch {}
     });
   }
 
@@ -1008,6 +1029,9 @@
         } else if (activeBrandingPayload.crewLogoDataUrl) {
           applyBrandingPayloadNow(activeBrandingPayload);
         }
+        if (document.querySelector(".pdf-root")) {
+          scrollGeneratorViewportToTop();
+        }
       });
     };
 
@@ -1027,10 +1051,12 @@
   window.addEventListener("message", (event) => {
     if (event.data?.type === "quote-generator:prefill-request") {
       scheduleRequestPayload(event.data.payload);
+      scrollGeneratorViewportToTop();
       return;
     }
     if (event.data?.type === "quote-generator:branding") {
       applyBrandingPayloadNow(event.data.payload);
+      scrollGeneratorViewportToTop();
     }
   });
 
@@ -1057,5 +1083,6 @@
     if (brandingPayload) {
       applyBrandingPayloadNow(brandingPayload);
     }
+    scrollGeneratorViewportToTop();
   }, { once: true });
 })();
