@@ -68,6 +68,14 @@ let dbBootstrapPromise = null;
 let pgPool = null;
 let r2ClientPromise = null;
 
+function normalizeUserRole(role = "") {
+  const normalized = String(role || "").trim().toLowerCase();
+  if (["office", "ufficio", "admin", "amministrazione"].includes(normalized)) return "office";
+  if (["warehouse", "magazzino", "inventory"].includes(normalized)) return "warehouse";
+  if (["crew", "squadra", "team", "posa", "installer"].includes(normalized)) return "crew";
+  return "";
+}
+
 function validatePasswordStrength(password = "") {
   const value = String(password || "");
   if (value.length < PASSWORD_MIN_LENGTH) return "weak_password_length";
@@ -96,6 +104,7 @@ function verifyPasswordRecord(user, password) {
 
 function sanitizePasswordUser(user = {}) {
   const nextUser = { ...user };
+  nextUser.role = normalizeUserRole(nextUser.role) || "office";
   const plainPassword = String(nextUser.password || "");
   if ((!nextUser.passwordHash || !nextUser.passwordSalt) && plainPassword) {
     const { hash, salt } = hashPassword(plainPassword);
@@ -486,21 +495,22 @@ function sanitizeCrewLogoDataUrl(value = "") {
 
 function sanitizeUser(user) {
   if (!user) return null;
+  const normalizedRole = normalizeUserRole(user.role) || "office";
   return {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role,
+    role: normalizedRole,
     crewName: String(user.crewName || ""),
     dailyCapacity: Math.max(0, Number(user.dailyCapacity || 0)),
-    crewLogoDataUrl: sanitizeCrewLogoDataUrl(user.crewLogoDataUrl || ""),
+    crewLogoDataUrl: normalizedRole === "crew" ? sanitizeCrewLogoDataUrl(user.crewLogoDataUrl || "") : "",
     status: user.status === "suspended" ? "suspended" : "active",
     mustChangePassword: Boolean(user.mustChangePassword),
   };
 }
 
 function isValidRole(role = "") {
-  return ["office", "warehouse", "crew"].includes(String(role || "").trim());
+  return Boolean(normalizeUserRole(role));
 }
 
 function normalizeCrewName(value = "") {
@@ -3378,7 +3388,7 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const name = String(body.name || "").trim();
     const email = String(body.email || "").trim().toLowerCase();
-    const role = String(body.role || "").trim();
+    const role = normalizeUserRole(body.role);
     const password = String(body.password || "");
     const status = String(body.status || "active").trim() === "suspended" ? "suspended" : "active";
     const mustChangePassword = Boolean(body.mustChangePassword);
@@ -3452,7 +3462,7 @@ async function handleApi(req, res, url) {
     const current = store.users[userIndex];
     const nextEmail = String(body.email || current.email || "").trim().toLowerCase();
     const nextName = String(body.name || current.name || "").trim();
-    const nextRole = String(body.role || current.role || "").trim();
+    const nextRole = normalizeUserRole(body.role || current.role || "");
     const nextStatus = String(body.status || current.status || "active").trim() === "suspended" ? "suspended" : "active";
     const mustChangePassword = body.mustChangePassword === true || body.mustChangePassword === "true";
     const newPassword = String(body.password || "");

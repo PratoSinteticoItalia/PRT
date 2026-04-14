@@ -1,19 +1,19 @@
-const CACHE_NAME = "psi-ops-shell-20260414-office-menu-final-03";
+const CACHE_NAME = "psi-ops-shell-20260414-shell-refresh-04";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/garden-planner.html",
-  "/garden-planner.html?v=20260414-role-logo-fixes-01",
-  "/garden-planner-page.js?v=20260414-role-logo-fixes-01",
-  "/styles.css?v=20260414-role-logo-fixes-01",
-  "/app.js?v=20260414-office-menu-final-03",
+  "/garden-planner.html?v=20260414-shell-refresh-04",
+  "/garden-planner-page.js?v=20260414-shell-refresh-04",
+  "/styles.css?v=20260414-shell-refresh-04",
+  "/app.js?v=20260414-shell-refresh-04",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",
   "/apple-touch-icon.png",
   "/manifest.webmanifest",
-  "/sales-suite/generator.html?embedded=1&v=20260414-role-logo-fixes-01",
-  "/sales-suite/generator-bridge.js?v=20260414-role-logo-fixes-01",
+  "/sales-suite/generator.html?embedded=1&v=20260414-shell-refresh-04",
+  "/sales-suite/generator-bridge.js?v=20260414-shell-refresh-04",
   "/sales-suite/favicon.svg",
   "/sales-suite/icons.svg",
   "/sales-suite/logo-prato.png",
@@ -66,23 +66,23 @@ self.addEventListener("fetch", (event) => {
   const isShellRequest = request.mode === "navigate" || NETWORK_FIRST_PATHS.has(url.pathname);
   if (isShellRequest) {
     event.respondWith(
-      caches.match(request).then(async (cached) => {
-        const fallbackTarget = request.mode === "navigate" ? "/index.html" : request;
-        const networkPromise = fetch(request)
-          .then((response) => {
-            if (!response || response.status !== 200 || response.type !== "basic") return response;
+      (async () => {
+        try {
+          const response = await fetch(request);
+          if (response && response.status === 200 && response.type === "basic") {
             const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
-            return response;
-          })
-          .catch(async () => cached || caches.match(fallbackTarget));
-
-        if (cached) {
-          event.waitUntil(networkPromise.then(() => undefined).catch(() => undefined));
-          return cached;
+            event.waitUntil(
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {}),
+            );
+          }
+          return response;
+        } catch {
+          const cached = await caches.match(request);
+          if (cached) return cached;
+          const fallbackTarget = request.mode === "navigate" ? "/index.html" : request;
+          return caches.match(fallbackTarget);
         }
-        return networkPromise;
-      }),
+      })(),
     );
     return;
   }

@@ -1,3 +1,4 @@
+const APP_SHELL_VERSION = "20260414-shell-refresh-04";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
@@ -975,9 +976,28 @@ function noPhysicalGoodsText() {
 }
 
 function roleLabel(role) {
-  if (role === "warehouse") return t("warehouseRole");
-  if (role === "crew") return t("crewRole");
+  const normalizedRole = normalizeUserRole(role);
+  if (normalizedRole === "warehouse") return t("warehouseRole");
+  if (normalizedRole === "crew") return t("crewRole");
   return t("office");
+}
+
+function normalizeUserRole(role = "") {
+  const normalized = String(role || "").trim().toLowerCase();
+  if (["office", "ufficio", "admin", "amministrazione"].includes(normalized)) return "office";
+  if (["warehouse", "magazzino", "inventory"].includes(normalized)) return "warehouse";
+  if (["crew", "squadra", "team", "posa", "installer"].includes(normalized)) return "crew";
+  return normalized || "office";
+}
+
+function normalizeUserRecord(user = null) {
+  if (!user) return null;
+  return {
+    ...user,
+    role: normalizeUserRole(user.role),
+    crewName: String(user.crewName || "").trim(),
+    crewLogoDataUrl: String(user.crewLogoDataUrl || "").trim(),
+  };
 }
 
 function staticLabels() {
@@ -1085,8 +1105,39 @@ function apiFetch(path, options = {}) {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
+  let controllerReloaded = false;
+  const swUrl = `./sw.js?v=${APP_SHELL_VERSION}`;
+  const bindInstallingWorker = (worker) => {
+    if (!worker) return;
+    worker.addEventListener("statechange", () => {
+      if (worker.state === "installed" && navigator.serviceWorker.controller) {
+        worker.postMessage({ type: "SKIP_WAITING" });
+      }
+    });
+  };
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch((error) => {
+    navigator.serviceWorker.register(swUrl).then((registration) => {
+      bindInstallingWorker(registration.installing);
+      if (registration.waiting) {
+        registration.waiting.postMessage({ type: "SKIP_WAITING" });
+      }
+      registration.addEventListener("updatefound", () => {
+        bindInstallingWorker(registration.installing);
+      });
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (controllerReloaded) return;
+        controllerReloaded = true;
+        window.location.reload();
+      });
+      const refreshRegistration = () => {
+        registration.update().catch(() => {});
+      };
+      window.setTimeout(refreshRegistration, 1200);
+      window.addEventListener("focus", refreshRegistration);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") refreshRegistration();
+      });
+    }).catch((error) => {
       console.error("service_worker_register_failed", error);
     });
   });
@@ -1119,7 +1170,7 @@ function applyMobileSafeMode() {
 }
 
 function getAllowedViewsForRole(role = state.currentUser?.role || "office") {
-  return roleViews[String(role || "").trim()] || roleViews.office;
+  return roleViews[normalizeUserRole(role)] || roleViews.office;
 }
 
 function forceMobileVisibility(node, visible, displayValue = "block") {
@@ -1425,7 +1476,7 @@ function buildSalesRequestPrefill(item = {}) {
 }
 
 function buildSalesGeneratorBrandingPayload() {
-  const currentRole = String(state.currentUser?.role || "");
+  const currentRole = normalizeUserRole(state.currentUser?.role || "");
   if (currentRole !== "crew") {
     return { crewName: "", crewLogoDataUrl: "" };
   }
@@ -4533,7 +4584,7 @@ function applyStaticTranslations() {
 
 function updateShell() {
   applyMobileSafeMode();
-  const currentRole = state.currentUser?.role || "office";
+  const currentRole = normalizeUserRole(state.currentUser?.role || "office");
   const allowed = getAllowedViewsForRole(currentRole);
   const showCoverageRadar = currentRole === "office";
   const showGardenPlannerShortcut = currentRole === "office" || currentRole === "crew";
@@ -4588,7 +4639,16 @@ function updateShell() {
   ui.currentUserRole.textContent = roleLabel(state.currentUser?.role);
   ui.topbarUserName.textContent = state.currentUser?.name || "-";
   ui.topbarUserRole.textContent = roleLabel(state.currentUser?.role);
-  if (ui.topbarAvatar) ui.topbarAvatar.textContent = getUserInitials(state.currentUser?.name);
+  if (ui.topbarAvatar) {
+    const crewBranding = buildSalesGeneratorBrandingPayload();
+    if (crewBranding.crewLogoDataUrl) {
+      ui.topbarAvatar.classList.add("has-image");
+      ui.topbarAvatar.innerHTML = `<img src="${escapeHtml(crewBranding.crewLogoDataUrl)}" alt="${escapeHtml(crewBranding.crewName ? `Logo squadra ${crewBranding.crewName}` : "Logo squadra")}" />`;
+    } else {
+      ui.topbarAvatar.classList.remove("has-image");
+      ui.topbarAvatar.textContent = getUserInitials(state.currentUser?.name);
+    }
+  }
   if (ui.coveragePanel) ui.coveragePanel.classList.toggle("hidden", !showCoverageRadar);
   if (ui.newOrderButton) {
     const allowCreateOrders = currentRole === "office";
@@ -7445,7 +7505,7 @@ function populateInventoryOptions() {
 }
 
 function applySessionPayload(session = {}) {
-  state.currentUser = session.user || null;
+  state.currentUser = normalizeUserRecord(session.user || null);
   state.orders = session.orders || [];
   state.inventory = session.inventory || [];
   state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
@@ -7461,7 +7521,7 @@ function applySessionPayload(session = {}) {
   state.lastSalesGeneratorBrandingSignature = "";
   state.coveragePlanner = normalizeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner);
   state.settings = session.shopifySettings || {};
-  state.users = session.users || [];
+  state.users = Array.isArray(session.users) ? session.users.map((user) => normalizeUserRecord(user)).filter(Boolean) : [];
   state.securityEvents = session.securityEvents || [];
   state.securityPolicy = session.securityPolicy || {};
   try {
