@@ -510,13 +510,13 @@
         border-radius: 8px;
         background: linear-gradient(180deg, rgba(248,250,248,0.98), rgba(237,243,237,0.94));
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
-        transform: translateY(2px);
+        transform: translateY(1px);
       }
 
       .codex-crew-branding img {
-        width: 31px;
-        max-width: 31px;
-        max-height: 31px;
+        width: 34px;
+        max-width: 34px;
+        max-height: 34px;
         object-fit: contain;
         display: block;
       }
@@ -761,20 +761,20 @@
 
     const imageWidth = Math.max(1, Number(logoImage?.naturalWidth || logoImage?.width || 1));
     const imageHeight = Math.max(1, Number(logoImage?.naturalHeight || logoImage?.height || 1));
-    const maxWidth = 11.5;
-    const maxHeight = 11.5;
+    const maxWidth = 12.3;
+    const maxHeight = 12.3;
     const scale = Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
-    const width = Math.max(6.8, Number((imageWidth * scale).toFixed(2)));
-    const height = Math.max(6.8, Number((imageHeight * scale).toFixed(2)));
-    const x = 89.4;
-    const y = 14.2;
+    const width = Math.max(7.2, Number((imageWidth * scale).toFixed(2)));
+    const height = Math.max(7.2, Number((imageHeight * scale).toFixed(2)));
+    const x = 89;
+    const y = 13.9;
 
     try {
       pdf.setPage(1);
       if (typeof pdf.setFillColor === "function" && typeof pdf.roundedRect === "function") {
         pdf.setFillColor(248, 250, 248);
         pdf.setDrawColor(214, 224, 214);
-        pdf.roundedRect(x - 1.4, y - 1.1, width + 2.8, height + 2.2, 2, 2, "FD");
+        pdf.roundedRect(x - 1.5, y - 1.2, width + 3, height + 2.4, 2, 2, "FD");
       }
       pdf.addImage(exportReadySrc, "PNG", x, y, width, height, undefined, "FAST");
       return true;
