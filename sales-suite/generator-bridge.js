@@ -740,8 +740,13 @@
     await waitForAnimationFrame();
   }
 
-  async function decoratePdfWithBranding(pdf) {
+  async function decoratePdfWithBranding(pdf, sourceElement) {
     if (!pdf || !activeBrandingPayload.crewLogoDataUrl) return false;
+
+    const sourceRoot = sourceElement instanceof Element ? sourceElement : null;
+    if (sourceRoot?.querySelector(".codex-crew-branding img")) {
+      return true;
+    }
 
     const exportReadySrc = await getExportReadyBrandingLogoDataUrl(activeBrandingPayload.crewLogoDataUrl);
     if (!exportReadySrc) return false;
@@ -1019,8 +1024,8 @@
     await preparePdfBrandingForExport();
   };
 
-  window.__decorateQuoteGeneratorPdfBranding = async (pdf) => {
-    await decoratePdfWithBranding(pdf);
+  window.__decorateQuoteGeneratorPdfBranding = async (pdf, sourceElement) => {
+    await decoratePdfWithBranding(pdf, sourceElement);
   };
 
   window.addEventListener("load", () => {
