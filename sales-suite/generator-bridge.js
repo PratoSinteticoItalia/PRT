@@ -504,7 +504,8 @@
         justify-content: center;
         flex: 0 0 auto;
         align-self: flex-start;
-        margin-left: 18px;
+        margin-left: auto;
+        margin-right: 14px;
         margin-top: 0;
         padding: 2px;
         border: 1px solid rgba(47, 70, 49, 0.14);
@@ -534,7 +535,7 @@
     return Array.from(root.children || []).find((child) => child instanceof Element) || null;
   }
 
-  function findQuoteMetaLine(root) {
+  function findQuoteHeaderBlocks(root) {
     const rootContent = getPdfRootContent(root);
     if (!(rootContent instanceof Element)) return null;
 
@@ -545,10 +546,16 @@
     ));
     if (!(headerRow instanceof Element)) return null;
 
-    const quoteBlock = Array.from(headerRow.children || []).find((child) => (
-      child instanceof Element
-      && normalizeLabel(child.textContent).includes("preventivo nr")
-    ));
+    const children = Array.from(headerRow.children || []).filter((child) => child instanceof Element);
+    const quoteBlock = children.find((child) => normalizeLabel(child.textContent).includes("preventivo nr")) || null;
+    const brandAnchor = children.find((child) => child !== quoteBlock && child.querySelector('img[alt="Logo"]')) || null;
+
+    return { headerRow, quoteBlock, brandAnchor };
+  }
+
+  function findQuoteMetaLine(root) {
+    const headerBlocks = findQuoteHeaderBlocks(root);
+    const quoteBlock = headerBlocks?.quoteBlock;
     if (!(quoteBlock instanceof Element)) return null;
 
     const lines = Array.from(quoteBlock.children || []).filter((child) => child instanceof Element);
@@ -681,42 +688,48 @@
     let applied = false;
 
     pdfRoots.forEach((root) => {
-      const pdfImages = Array.from(root.querySelectorAll("img"))
-        .filter((img) => !img.closest(".codex-crew-branding"));
-      const logoElement = pdfImages.find((img) => normalizeLabel(img.getAttribute("alt")) === "logo")
-        || pdfImages[0];
-      const host = logoElement?.parentElement;
+      const headerBlocks = findQuoteHeaderBlocks(root);
+      const headerRow = headerBlocks?.headerRow;
+      const quoteBlock = headerBlocks?.quoteBlock;
+      const brandAnchor = headerBlocks?.brandAnchor;
 
-      if (!(host instanceof Element)) {
+      if (!(headerRow instanceof Element) || !(quoteBlock instanceof Element) || !(brandAnchor instanceof Element)) {
         applied = applyBrandingCompanyMeta(root, activeBrandingPayload) || applied;
         applied = applyBrandingFooterMeta(root, activeBrandingPayload) || applied;
         return;
       }
 
-      root.querySelectorAll(".codex-crew-branding").forEach((node) => {
-        if (node.parentElement !== host) node.remove();
-      });
+      if (!headerRow.dataset.codexOriginalJustifyContent) {
+        headerRow.dataset.codexOriginalJustifyContent = headerRow.style.justifyContent || "";
+        headerRow.dataset.codexOriginalAlignItems = headerRow.style.alignItems || "";
+        headerRow.dataset.codexOriginalGap = headerRow.style.gap || "";
+        headerRow.dataset.codexOriginalColumnGap = headerRow.style.columnGap || "";
+      }
+      if (!quoteBlock.dataset.codexOriginalMarginLeft) {
+        quoteBlock.dataset.codexOriginalMarginLeft = quoteBlock.style.marginLeft || "";
+      }
 
-      host.style.display = "flex";
-      host.style.alignItems = "center";
-      host.style.flexWrap = "nowrap";
-      host.style.columnGap = "12px";
-      host.style.rowGap = "0";
+      root.querySelectorAll(".codex-crew-branding").forEach((node) => node.remove());
 
-      const existing = host.querySelector(".codex-crew-branding");
       if (!activeBrandingPayload.crewLogoDataUrl) {
-        existing?.remove();
+        headerRow.style.justifyContent = headerRow.dataset.codexOriginalJustifyContent || "";
+        headerRow.style.alignItems = headerRow.dataset.codexOriginalAlignItems || "";
+        headerRow.style.gap = headerRow.dataset.codexOriginalGap || "";
+        headerRow.style.columnGap = headerRow.dataset.codexOriginalColumnGap || "";
+        quoteBlock.style.marginLeft = quoteBlock.dataset.codexOriginalMarginLeft || "";
         applied = applyBrandingCompanyMeta(root, activeBrandingPayload) || applied;
         applied = applyBrandingFooterMeta(root, activeBrandingPayload) || applied;
         return;
       }
 
-      let brandingNode = existing;
-      if (!brandingNode) {
-        brandingNode = document.createElement("div");
-        brandingNode.className = "codex-crew-branding";
-        host.appendChild(brandingNode);
-      }
+      headerRow.style.justifyContent = "flex-start";
+      headerRow.style.alignItems = "flex-start";
+      headerRow.style.gap = "0";
+      headerRow.style.columnGap = "0";
+      quoteBlock.style.marginLeft = "12px";
+
+      const brandingNode = document.createElement("div");
+      brandingNode.className = "codex-crew-branding";
 
       brandingNode.innerHTML = "";
       const logo = document.createElement("img");
@@ -728,6 +741,7 @@
       logo.loading = "eager";
 
       brandingNode.appendChild(logo);
+      headerRow.insertBefore(brandingNode, quoteBlock);
       applied = applyBrandingCompanyMeta(root, activeBrandingPayload) || applied;
       applied = applyBrandingFooterMeta(root, activeBrandingPayload) || applied;
       void applyExportReadyLogoToImage(logo, activeBrandingPayload.crewLogoDataUrl);
