@@ -502,18 +502,21 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        margin-left: 8px;
+        flex: 0 0 auto;
+        align-self: flex-start;
+        margin-left: 14px;
+        margin-top: 1px;
         padding: 4px;
         border: 1px solid rgba(47, 70, 49, 0.14);
-        border-radius: 10px;
+        border-radius: 9px;
         background: linear-gradient(180deg, rgba(248,250,248,0.98), rgba(237,243,237,0.94));
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
       }
 
       .codex-crew-branding img {
-        width: 42px;
-        max-width: 42px;
-        max-height: 42px;
+        width: 34px;
+        max-width: 34px;
+        max-height: 34px;
         object-fit: contain;
         display: block;
       }
@@ -521,8 +524,25 @@
     document.head.appendChild(style);
   }
 
-  function findQuoteMetaLine() {
-    const headerRow = document.querySelector(".pdf-root > div > .pdf-no-break");
+  function getPdfRoots() {
+    return Array.from(document.querySelectorAll(".pdf-root"))
+      .filter((root) => root instanceof Element);
+  }
+
+  function getPdfRootContent(root) {
+    if (!(root instanceof Element)) return null;
+    return Array.from(root.children || []).find((child) => child instanceof Element) || null;
+  }
+
+  function findQuoteMetaLine(root) {
+    const rootContent = getPdfRootContent(root);
+    if (!(rootContent instanceof Element)) return null;
+
+    const headerRow = Array.from(rootContent.children || []).find((child) => (
+      child instanceof Element
+      && child.classList.contains("pdf-no-break")
+      && child.querySelector('img[alt="Logo"]')
+    ));
     if (!(headerRow instanceof Element)) return null;
 
     const quoteBlock = Array.from(headerRow.children || []).find((child) => (
@@ -535,44 +555,110 @@
     return lines.length ? lines[lines.length - 1] : null;
   }
 
-  function applyBrandingCompanyMeta(payload) {
-    const quoteMetaLine = findQuoteMetaLine();
+  function applyBrandingCompanyMeta(root, payload) {
+    const quoteMetaLine = findQuoteMetaLine(root);
     if (!quoteMetaLine) return false;
+    const quoteMetaBlock = quoteMetaLine.parentElement;
 
     if (!quoteMetaLine.dataset.codexOriginalText) {
       quoteMetaLine.dataset.codexOriginalText = quoteMetaLine.textContent || "";
     }
+    if (!quoteMetaLine.dataset.codexOriginalColor) {
+      quoteMetaLine.dataset.codexOriginalColor = quoteMetaLine.style.color || "";
+      quoteMetaLine.dataset.codexOriginalFontWeight = quoteMetaLine.style.fontWeight || "";
+      quoteMetaLine.dataset.codexOriginalFontSize = quoteMetaLine.style.fontSize || "";
+      quoteMetaLine.dataset.codexOriginalWhiteSpace = quoteMetaLine.style.whiteSpace || "";
+      quoteMetaLine.dataset.codexOriginalDisplay = quoteMetaLine.style.display || "";
+      quoteMetaLine.dataset.codexOriginalMarginTop = quoteMetaLine.style.marginTop || "";
+      quoteMetaLine.dataset.codexOriginalLineHeight = quoteMetaLine.style.lineHeight || "";
+      quoteMetaLine.dataset.codexOriginalLetterSpacing = quoteMetaLine.style.letterSpacing || "";
+      quoteMetaLine.dataset.codexOriginalTextAlign = quoteMetaLine.style.textAlign || "";
+    }
+    if (quoteMetaBlock && !quoteMetaBlock.dataset.codexOriginalMinWidth) {
+      quoteMetaBlock.dataset.codexOriginalMinWidth = quoteMetaBlock.style.minWidth || "";
+      quoteMetaBlock.dataset.codexOriginalWidth = quoteMetaBlock.style.width || "";
+      quoteMetaBlock.dataset.codexOriginalDisplay = quoteMetaBlock.style.display || "";
+      quoteMetaBlock.dataset.codexOriginalFlexDirection = quoteMetaBlock.style.flexDirection || "";
+      quoteMetaBlock.dataset.codexOriginalAlignItems = quoteMetaBlock.style.alignItems || "";
+      quoteMetaBlock.dataset.codexOriginalJustifyContent = quoteMetaBlock.style.justifyContent || "";
+      quoteMetaBlock.dataset.codexOriginalGap = quoteMetaBlock.style.gap || "";
+    }
 
     if (!payload?.crewName) {
       quoteMetaLine.textContent = quoteMetaLine.dataset.codexOriginalText || quoteMetaLine.textContent || "";
+      quoteMetaLine.style.color = quoteMetaLine.dataset.codexOriginalColor || "";
+      quoteMetaLine.style.fontWeight = quoteMetaLine.dataset.codexOriginalFontWeight || "";
+      quoteMetaLine.style.fontSize = quoteMetaLine.dataset.codexOriginalFontSize || "";
+      quoteMetaLine.style.whiteSpace = quoteMetaLine.dataset.codexOriginalWhiteSpace || "";
+      quoteMetaLine.style.display = quoteMetaLine.dataset.codexOriginalDisplay || "";
+      quoteMetaLine.style.marginTop = quoteMetaLine.dataset.codexOriginalMarginTop || "";
+      quoteMetaLine.style.lineHeight = quoteMetaLine.dataset.codexOriginalLineHeight || "";
+      quoteMetaLine.style.letterSpacing = quoteMetaLine.dataset.codexOriginalLetterSpacing || "";
+      quoteMetaLine.style.textAlign = quoteMetaLine.dataset.codexOriginalTextAlign || "";
+      if (quoteMetaBlock) {
+        quoteMetaBlock.style.minWidth = quoteMetaBlock.dataset.codexOriginalMinWidth || "";
+        quoteMetaBlock.style.width = quoteMetaBlock.dataset.codexOriginalWidth || "";
+        quoteMetaBlock.style.display = quoteMetaBlock.dataset.codexOriginalDisplay || "";
+        quoteMetaBlock.style.flexDirection = quoteMetaBlock.dataset.codexOriginalFlexDirection || "";
+        quoteMetaBlock.style.alignItems = quoteMetaBlock.dataset.codexOriginalAlignItems || "";
+        quoteMetaBlock.style.justifyContent = quoteMetaBlock.dataset.codexOriginalJustifyContent || "";
+        quoteMetaBlock.style.gap = quoteMetaBlock.dataset.codexOriginalGap || "";
+      }
       return false;
     }
 
     quoteMetaLine.textContent = `${payload.crewName} · Rivenditore autorizzato`;
+    quoteMetaLine.style.color = "#567958";
+    quoteMetaLine.style.fontWeight = "700";
+    quoteMetaLine.style.fontSize = "6.3px";
+    quoteMetaLine.style.whiteSpace = "nowrap";
+    quoteMetaLine.style.display = "block";
+    quoteMetaLine.style.marginTop = "2px";
+    quoteMetaLine.style.lineHeight = "1.15";
+    quoteMetaLine.style.letterSpacing = "0";
+    quoteMetaLine.style.textAlign = "right";
+    if (quoteMetaBlock) {
+      quoteMetaBlock.style.minWidth = "220px";
+      quoteMetaBlock.style.width = "220px";
+      quoteMetaBlock.style.display = "flex";
+      quoteMetaBlock.style.flexDirection = "column";
+      quoteMetaBlock.style.alignItems = "flex-end";
+      quoteMetaBlock.style.justifyContent = "flex-start";
+      quoteMetaBlock.style.gap = "1px";
+    }
     return true;
   }
 
-  function findFooterMetaLine() {
-    const rootContent = document.querySelector(".pdf-root > div");
+  function findFooterMetaLine(root) {
+    const rootContent = getPdfRootContent(root);
     if (!(rootContent instanceof Element)) return null;
     const divChildren = Array.from(rootContent.children || []).filter((child) => child instanceof HTMLDivElement);
     return divChildren.length ? divChildren[divChildren.length - 1] : null;
   }
 
-  function applyBrandingFooterMeta(payload) {
-    const footerMetaLine = findFooterMetaLine();
+  function applyBrandingFooterMeta(root, payload) {
+    const footerMetaLine = findFooterMetaLine(root);
     if (!footerMetaLine) return false;
 
     if (!footerMetaLine.dataset.codexOriginalText) {
       footerMetaLine.dataset.codexOriginalText = footerMetaLine.textContent || "";
+      footerMetaLine.dataset.codexOriginalColor = footerMetaLine.style.color || "";
+      footerMetaLine.dataset.codexOriginalFontWeight = footerMetaLine.style.fontWeight || "";
+      footerMetaLine.dataset.codexOriginalLetterSpacing = footerMetaLine.style.letterSpacing || "";
     }
 
     if (!payload?.crewName) {
       footerMetaLine.textContent = footerMetaLine.dataset.codexOriginalText || footerMetaLine.textContent || "";
+      footerMetaLine.style.color = footerMetaLine.dataset.codexOriginalColor || "";
+      footerMetaLine.style.fontWeight = footerMetaLine.dataset.codexOriginalFontWeight || "";
+      footerMetaLine.style.letterSpacing = footerMetaLine.dataset.codexOriginalLetterSpacing || "";
       return false;
     }
 
     footerMetaLine.textContent = `${payload.crewName} · Rivenditore autorizzato`;
+    footerMetaLine.style.color = "#567958";
+    footerMetaLine.style.fontWeight = "700";
+    footerMetaLine.style.letterSpacing = "0";
     return true;
   }
 
@@ -580,56 +666,76 @@
     activeBrandingPayload = normalizeBrandingPayload(payload);
     ensureBrandingStyles();
 
-    const pdfImages = Array.from(document.querySelectorAll(".pdf-root img"))
-      .filter((img) => !img.closest(".codex-crew-branding"));
-    const logoElement = pdfImages.find((img) => normalizeLabel(img.getAttribute("alt")) === "logo")
-      || pdfImages[0];
-    const host = logoElement?.parentElement;
-    if (!host) return false;
-    document.querySelectorAll(".pdf-root .codex-crew-branding").forEach((node) => {
-      if (node.parentElement !== host) node.remove();
+    const pdfRoots = getPdfRoots();
+    if (!pdfRoots.length) return false;
+
+    let applied = false;
+
+    pdfRoots.forEach((root) => {
+      const pdfImages = Array.from(root.querySelectorAll("img"))
+        .filter((img) => !img.closest(".codex-crew-branding"));
+      const logoElement = pdfImages.find((img) => normalizeLabel(img.getAttribute("alt")) === "logo")
+        || pdfImages[0];
+      const host = logoElement?.parentElement;
+
+      if (!(host instanceof Element)) {
+        applied = applyBrandingCompanyMeta(root, activeBrandingPayload) || applied;
+        applied = applyBrandingFooterMeta(root, activeBrandingPayload) || applied;
+        return;
+      }
+
+      root.querySelectorAll(".codex-crew-branding").forEach((node) => {
+        if (node.parentElement !== host) node.remove();
+      });
+
+      host.style.display = "flex";
+      host.style.alignItems = "center";
+      host.style.flexWrap = "nowrap";
+      host.style.columnGap = "14px";
+      host.style.rowGap = "0";
+
+      const existing = host.querySelector(".codex-crew-branding");
+      if (!activeBrandingPayload.crewLogoDataUrl) {
+        existing?.remove();
+        applied = applyBrandingCompanyMeta(root, activeBrandingPayload) || applied;
+        applied = applyBrandingFooterMeta(root, activeBrandingPayload) || applied;
+        return;
+      }
+
+      let brandingNode = existing;
+      if (!brandingNode) {
+        brandingNode = document.createElement("div");
+        brandingNode.className = "codex-crew-branding";
+        host.appendChild(brandingNode);
+      }
+
+      brandingNode.innerHTML = "";
+      const logo = document.createElement("img");
+      logo.src = activeBrandingPayload.crewLogoDataUrl;
+      logo.alt = activeBrandingPayload.crewName
+        ? `Logo squadra ${activeBrandingPayload.crewName}`
+        : "Logo squadra";
+      logo.decoding = "async";
+      logo.loading = "eager";
+
+      brandingNode.appendChild(logo);
+      applied = applyBrandingCompanyMeta(root, activeBrandingPayload) || applied;
+      applied = applyBrandingFooterMeta(root, activeBrandingPayload) || applied;
+      void applyExportReadyLogoToImage(logo, activeBrandingPayload.crewLogoDataUrl);
+      applied = true;
     });
-    host.style.display = "flex";
-    host.style.alignItems = "center";
-    host.style.flexWrap = "wrap";
-    host.style.columnGap = "12px";
-    host.style.rowGap = "8px";
 
-    const existing = host.querySelector(".codex-crew-branding");
-    if (!activeBrandingPayload.crewLogoDataUrl) {
-      existing?.remove();
-      return false;
-    }
-
-    let brandingNode = existing;
-    if (!brandingNode) {
-      brandingNode = document.createElement("div");
-      brandingNode.className = "codex-crew-branding";
-      host.appendChild(brandingNode);
-    }
-
-    brandingNode.innerHTML = "";
-    const logo = document.createElement("img");
-    logo.src = activeBrandingPayload.crewLogoDataUrl;
-    logo.alt = activeBrandingPayload.crewName
-      ? `Logo squadra ${activeBrandingPayload.crewName}`
-      : "Logo squadra";
-    logo.decoding = "async";
-    logo.loading = "eager";
-
-    brandingNode.appendChild(logo);
-    applyBrandingCompanyMeta(activeBrandingPayload);
-    applyBrandingFooterMeta(activeBrandingPayload);
-    void applyExportReadyLogoToImage(logo, activeBrandingPayload.crewLogoDataUrl);
-    return true;
+    return applied;
   }
 
   async function preparePdfBrandingForExport() {
     if (!activeBrandingPayload.crewLogoDataUrl) return;
     applyBrandingPayloadNow(activeBrandingPayload);
-    const brandingImage = document.querySelector(".pdf-root .codex-crew-branding img");
-    if (!brandingImage) return;
-    await applyExportReadyLogoToImage(brandingImage, activeBrandingPayload.crewLogoDataUrl);
+    const brandingImages = Array.from(document.querySelectorAll(".pdf-root .codex-crew-branding img"));
+    if (!brandingImages.length) return;
+    await Promise.all(brandingImages.map((brandingImage) => (
+      applyExportReadyLogoToImage(brandingImage, activeBrandingPayload.crewLogoDataUrl)
+    )));
     await waitForAnimationFrame();
     await waitForAnimationFrame();
   }
@@ -650,33 +756,33 @@
 
     const imageWidth = Math.max(1, Number(logoImage?.naturalWidth || logoImage?.width || 1));
     const imageHeight = Math.max(1, Number(logoImage?.naturalHeight || logoImage?.height || 1));
-    const maxWidth = 14;
-    const maxHeight = 14;
+    const maxWidth = 12.5;
+    const maxHeight = 12.5;
     const scale = Math.min(maxWidth / imageWidth, maxHeight / imageHeight, 1);
-    const width = Math.max(8, Number((imageWidth * scale).toFixed(2)));
-    const height = Math.max(8, Number((imageHeight * scale).toFixed(2)));
-    const x = 91;
-    const y = 14.5;
+    const width = Math.max(7.4, Number((imageWidth * scale).toFixed(2)));
+    const height = Math.max(7.4, Number((imageHeight * scale).toFixed(2)));
+    const x = 90;
+    const y = 13.6;
 
     try {
       pdf.setPage(1);
       if (typeof pdf.setFillColor === "function" && typeof pdf.roundedRect === "function") {
         pdf.setFillColor(248, 250, 248);
         pdf.setDrawColor(214, 224, 214);
-        pdf.roundedRect(x - 1.8, y - 1.4, width + 3.6, height + 2.8, 2, 2, "FD");
+        pdf.roundedRect(x - 1.5, y - 1.2, width + 3, height + 2.4, 2, 2, "FD");
       }
       pdf.addImage(exportReadySrc, "PNG", x, y, width, height, undefined, "FAST");
       if (activeBrandingPayload.crewName && typeof pdf.rect === "function" && typeof pdf.text === "function") {
         pdf.setFillColor(255, 255, 255);
-        pdf.rect(138, 18.5, 40, 5.8, "F");
+        pdf.rect(112, 18.2, 69, 6.2, "F");
         pdf.setTextColor(86, 121, 88);
         pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(5.2);
+        pdf.setFontSize(4.6);
         pdf.text(
           `${activeBrandingPayload.crewName} · Rivenditore autorizzato`,
-          158,
-          22.1,
-          { align: "center", maxWidth: 40 },
+          146.5,
+          21.8,
+          { align: "center", maxWidth: 66 },
         );
 
         pdf.setFillColor(255, 255, 255);
