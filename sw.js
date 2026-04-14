@@ -1,14 +1,14 @@
-const CACHE_NAME = "psi-ops-shell-20260414-shell-reset-11";
+const CACHE_NAME = "psi-ops-shell-20260414-shell-reset-12";
 const APP_SHELL = [
   "/",
-  "/?shell=20260414-shell-reset-11",
+  "/?shell=20260414-shell-reset-12",
   "/index.html",
   "/garden-planner.html",
-  "/garden-planner.html?shell=20260414-shell-reset-11",
-  "/garden-planner.html?v=20260414-shell-reset-11&shell=20260414-shell-reset-11",
-  "/garden-planner-page.js?v=20260414-shell-reset-11",
-  "/styles.css?v=20260414-shell-reset-11",
-  "/app.js?v=20260414-shell-reset-11",
+  "/garden-planner.html?shell=20260414-shell-reset-12",
+  "/garden-planner.html?v=20260414-shell-reset-12&shell=20260414-shell-reset-12",
+  "/garden-planner-page.js?v=20260414-shell-reset-12",
+  "/styles.css?v=20260414-shell-reset-12",
+  "/app.js?v=20260414-shell-reset-12",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",
