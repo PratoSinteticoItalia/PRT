@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-16";
+const APP_SHELL_VERSION = "20260414-shell-reset-17";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -1373,9 +1373,19 @@ function syncMobilePillNav() {
     if (mobileSafe) {
       ui.mobilePillShell.style.setProperty("gap", "8px");
       ui.mobilePillShell.style.setProperty("padding", "0 12px 10px");
+      ui.mobilePillShell.style.setProperty("grid-column", "1 / -1", "important");
+      ui.mobilePillShell.style.setProperty("grid-row", "2", "important");
+      ui.mobilePillShell.style.setProperty("grid-area", "mobile-nav", "important");
+      ui.mobilePillShell.style.setProperty("position", "relative");
+      ui.mobilePillShell.style.setProperty("z-index", "2");
     } else {
       ui.mobilePillShell.style.removeProperty("gap");
       ui.mobilePillShell.style.removeProperty("padding");
+      ui.mobilePillShell.style.removeProperty("grid-column");
+      ui.mobilePillShell.style.removeProperty("grid-row");
+      ui.mobilePillShell.style.removeProperty("grid-area");
+      ui.mobilePillShell.style.removeProperty("position");
+      ui.mobilePillShell.style.removeProperty("z-index");
     }
   }
   if (ui.mobilePillNav) {
@@ -1428,6 +1438,17 @@ function syncMobilePillNav() {
       ui.mobileMenuButton.style.setProperty("display", "none", "important");
     } else {
       ui.mobileMenuButton.style.removeProperty("display");
+    }
+  }
+  if (ui.mainContent) {
+    if (mobileSafe) {
+      ui.mainContent.style.setProperty("grid-column", "1 / -1", "important");
+      ui.mainContent.style.setProperty("grid-row", "3", "important");
+      ui.mainContent.style.setProperty("grid-area", "main", "important");
+    } else {
+      ui.mainContent.style.removeProperty("grid-column");
+      ui.mainContent.style.removeProperty("grid-row");
+      ui.mainContent.style.removeProperty("grid-area");
     }
   }
 }

@@ -10091,9 +10091,13 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
 
   body.mobile-safe-mode .mobile-pill-shell {
     grid-area: mobile-nav;
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
     display: grid !important;
     gap: 8px;
     padding: 0 12px 10px;
+    position: relative;
+    z-index: 2;
     background:
       linear-gradient(180deg, rgba(24, 36, 31, 0.98) 0%, rgba(24, 36, 31, 0.92) 52%, rgba(249, 248, 243, 0) 100%);
   }
@@ -10169,6 +10173,9 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
   }
 
   body.mobile-safe-mode .main-content {
+    grid-column: 1 / -1 !important;
+    grid-row: 3 !important;
+    grid-area: main !important;
     padding: 8px 12px calc(24px + env(safe-area-inset-bottom, 0px)) !important;
   }
 }
