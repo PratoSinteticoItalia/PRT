@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260414-shell-reset-26";
+const APP_SHELL_VERSION = "20260415-shell-reset-27";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -187,6 +187,26 @@ const roleViews = {
   warehouse: ["warehouse", "shipping"],
   crew: ["installations", "sales-generator"],
 };
+const SALES_REQUEST_STATUS_REFERENCE = [
+  "follow up eseguito",
+  "nuovo contatto",
+  "1° contatto",
+  "preventivo confermato",
+  "ordine eseguito",
+  "fare follow up",
+  "declinata",
+  "campione acquistato",
+  "Preventivo inviato",
+  "preventivo da inviare",
+  "Lead non qualificato",
+  "In attesa di risposta",
+  "NESSUNA RISPOSTA",
+  "RICONTATTATO",
+  "da richiamare",
+  "Chiamare",
+  "Email",
+  "email inviata",
+];
 
 const translations = {
   it: {
@@ -1269,6 +1289,11 @@ function buildMobilePillButton(sourceButton) {
   copy.className = "mobile-pill-label";
   copy.textContent = label;
   button.appendChild(copy);
+  const badge = document.createElement("span");
+  badge.className = "mobile-pill-count-badge";
+  badge.hidden = true;
+  badge.setAttribute("aria-hidden", "true");
+  button.appendChild(badge);
   button.addEventListener("click", () => setView(button.dataset.view));
   return button;
 }
@@ -1489,6 +1514,11 @@ function syncMobilePillNav() {
     button.tabIndex = visible ? 0 : -1;
     button.style.setProperty("display", mobileSafe && visible ? "inline-flex" : "none", "important");
     button.style.setProperty("align-items", "center");
+    const badge = ensureCountBadge(button, "mobile-pill-count-badge");
+    if (badge) {
+      badge.hidden = !count;
+      badge.textContent = count || "";
+    }
   });
 
   [
@@ -1667,14 +1697,38 @@ function getUserInitials(name) {
     .join("") || "VO";
 }
 
+function ensureCountBadge(node, className) {
+  if (!(node instanceof HTMLElement) || !className) return null;
+  let badge = node.querySelector(`.${className}`);
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = className;
+    badge.setAttribute("aria-hidden", "true");
+    node.appendChild(badge);
+  }
+  return badge;
+}
+
 function setNavCount(view, count) {
   const node = ui.navLinks.find((link) => link.dataset.view === view);
   if (!node) return;
   const normalized = Number(count) > 0 ? String(count) : "";
   state.navCounts[view] = normalized;
   node.setAttribute("data-count", normalized);
+  const desktopBadge = ensureCountBadge(node, "nav-count-badge");
+  if (desktopBadge) {
+    desktopBadge.hidden = !normalized;
+    desktopBadge.textContent = normalized || "";
+  }
   const mobileNode = getMobilePillButton(view);
-  if (mobileNode) mobileNode.setAttribute("data-count", normalized);
+  if (mobileNode) {
+    mobileNode.setAttribute("data-count", normalized);
+    const mobileBadge = ensureCountBadge(mobileNode, "mobile-pill-count-badge");
+    if (mobileBadge) {
+      mobileBadge.hidden = !normalized;
+      mobileBadge.textContent = normalized || "";
+    }
+  }
 }
 
 function normalizeSalesRequestStatus(value = "") {
@@ -1868,6 +1922,30 @@ function getSalesRequestStatusesFromSheet() {
   return values;
 }
 
+function getSalesRequestStatusOptions() {
+  const options = [];
+  const seen = new Set();
+  const append = (value) => {
+    const next = String(value || "").trim();
+    if (!next) return;
+    const key = next.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    options.push(next);
+  };
+  SALES_REQUEST_STATUS_REFERENCE.forEach(append);
+  getSalesRequestStatusesFromSheet().forEach(append);
+  if (!options.length) {
+    [
+      state.lang === "it" ? "Nuova" : "New",
+      state.lang === "it" ? "In preventivo" : "Quoted",
+      state.lang === "it" ? "Follow-up" : "Follow-up",
+      state.lang === "it" ? "Chiusa" : "Closed",
+    ].forEach(append);
+  }
+  return options;
+}
+
 function getSalesRequestAssignmentOptions() {
   const values = new Set();
   state.salesRequests.forEach((item) => {
@@ -1940,8 +2018,8 @@ function ensureSelectedSalesRequest() {
 function syncSalesRequestStatusField(value = "") {
   const field = ui.salesRequestForm?.status;
   if (!field) return;
-  const sheetStatuses = getSalesRequestStatusesFromSheet();
-  const nextValue = String(value || "").trim() || (sheetStatuses[0] || "new");
+  const options = getSalesRequestStatusOptions();
+  const nextValue = String(value || "").trim() || options[0] || "new";
   const fragment = document.createDocumentFragment();
   const seen = new Set();
   const appendOption = (optionValue, optionLabel, dynamic = false) => {
@@ -1954,25 +2032,13 @@ function syncSalesRequestStatusField(value = "") {
     if (dynamic) option.dataset.dynamicStatus = "true";
     fragment.append(option);
   };
-  if (sheetStatuses.length) {
-    sheetStatuses.forEach((status) => appendOption(status, status, true));
-  } else {
-    [
-      ["new", state.lang === "it" ? "Nuova" : "New"],
-      ["quoted", state.lang === "it" ? "In preventivo" : "Quoted"],
-      ["followup", state.lang === "it" ? "Follow-up" : "Follow-up"],
-      ["closed", state.lang === "it" ? "Chiusa" : "Closed"],
-    ].forEach(([optionValue, optionLabel]) => appendOption(optionValue, optionLabel));
-  }
+  options.forEach((status) => appendOption(status, status, true));
   if (!seen.has(nextValue.toLowerCase())) {
     appendOption(nextValue, nextValue, true);
   }
   field.replaceChildren(fragment);
-  field.value = seen.has(nextValue.toLowerCase())
-    ? nextValue
-    : seen.has("new")
-      ? "new"
-      : String(field.options[0]?.value || "");
+  const fallbackValue = options[0] || String(field.options[0]?.value || "new");
+  field.value = seen.has(nextValue.toLowerCase()) ? nextValue : fallbackValue;
 }
 
 function syncSalesRequestAssignmentField(value = "") {
@@ -2369,6 +2435,27 @@ function parseDelimitedImportLine(line, delimiter) {
   return values.map((item) => item.replace(/^"(.*)"$/, "$1").trim());
 }
 
+function isSalesRequestHeightHeader(normalizedHeader = "") {
+  const header = String(normalizedHeader || "").trim().replace(/\s+/g, " ");
+  if (!header) return false;
+  if ([
+    "altezza",
+    "altezza prato",
+    "altezza da preventivare",
+    "altezza preventivo",
+    "altezza da preventivare mm",
+    "altezza mm",
+    "mm",
+    "spessore",
+    "spessore prato",
+    "spessore mm",
+    "h",
+    "h mm",
+    "h prato",
+  ].includes(header)) return true;
+  return header.includes("altezza") || header.includes("spessore");
+}
+
 function mapImportedSalesRequestField(target, header, rawValue) {
   const value = String(rawValue || "").trim();
   if (!value) return;
@@ -2405,18 +2492,7 @@ function mapImportedSalesRequestField(target, header, rawValue) {
     target.sqm = value;
     return;
   }
-  if ([
-    "altezza",
-    "altezza prato",
-    "altezza da preventivare",
-    "altezza preventivo",
-    "altezza da preventivare mm",
-    "altezza mm",
-    "mm",
-    "spessore",
-    "spessore prato",
-    "spessore mm",
-  ].includes(normalizedHeader)) {
+  if (isSalesRequestHeightHeader(normalizedHeader)) {
     target.requestedHeight = value;
     return;
   }
@@ -6094,7 +6170,7 @@ function renderSalesRequests() {
   ui.salesRequestForm.service.value = selected?.service || "";
   ui.salesRequestForm.surface.value = selected?.surface || "";
   syncSalesRequestAssignmentField(selected?.assignment || "");
-  syncSalesRequestStatusField(selected?.status || "new");
+  syncSalesRequestStatusField(selected?.status || "");
   ui.salesRequestForm.note.value = selected?.note || "";
   if (ui.salesRequestForm.whatsappTemplate) {
     ui.salesRequestForm.whatsappTemplate.value = selected?.whatsappTemplate || "";

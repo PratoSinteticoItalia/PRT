@@ -255,9 +255,30 @@
   function findFieldByLabel(labelText) {
     const expected = normalizeLabel(labelText);
     const labels = Array.from(document.querySelectorAll("label"));
-    const match = labels.find((label) => normalizeLabel(label.textContent) === expected);
+    const match = labels.find((label) => {
+      const labelValue = normalizeLabel(label.textContent);
+      return labelValue === expected || labelValue.includes(expected) || expected.includes(labelValue);
+    });
     if (!match) return null;
     return match.parentElement?.querySelector("input, textarea, select") || null;
+  }
+
+  function findHeightField() {
+    const targets = Array.from(document.querySelectorAll("input, textarea, select"));
+    const finder = /(altezza|spessore|\bmm\b)/i;
+    return targets.find((field) => {
+      const label = field.closest("label");
+      const labelText = normalizeLabel(label?.textContent || "");
+      const name = normalizeLabel(field.getAttribute("name") || "");
+      const placeholder = normalizeLabel(field.getAttribute("placeholder") || "");
+      const ariaLabel = normalizeLabel(field.getAttribute("aria-label") || "");
+      const title = normalizeLabel(field.getAttribute("title") || "");
+      return finder.test(labelText)
+        || finder.test(name)
+        || finder.test(placeholder)
+        || finder.test(ariaLabel)
+        || finder.test(title);
+    }) || null;
   }
 
   function findFieldGroupByLabel(labelText) {
@@ -542,16 +563,32 @@
       ["Email", customer.email],
       ["Metri Quadri", requestedMq],
       ["Altezza", requestedHeight],
+      ["Altezza da preventivare", requestedHeight],
+      ["Altezza da preventivare mm", requestedHeight],
       ["Altezza prato", requestedHeight],
+      ["Spessore", requestedHeight],
       ["MM", requestedHeight],
     ].filter(([, value]) => value !== undefined && value !== null && String(value) !== "");
 
+    let heightApplied = false;
     assignments.forEach(([label, value]) => {
       const field = findFieldByLabel(label);
       if (!field) return;
       setNativeValue(field, String(value));
       applied = true;
+      const normalizedLabel = normalizeLabel(label);
+      if (normalizedLabel.includes("altezza") || normalizedLabel.includes("spessore") || normalizedLabel === "mm") {
+        heightApplied = true;
+      }
     });
+
+    if (requestedHeight && !heightApplied) {
+      const heightField = findHeightField();
+      if (heightField) {
+        setNativeValue(heightField, String(requestedHeight));
+        applied = true;
+      }
+    }
 
     if (requestedServiceLabel) {
       applied = applyButtonValue("Tipologia", requestedServiceLabel) || applied;

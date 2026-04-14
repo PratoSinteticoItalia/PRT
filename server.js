@@ -1272,6 +1272,27 @@ function splitImportedSalesRequestName(value = "") {
   };
 }
 
+function isSalesRequestHeightHeader(normalizedHeader = "") {
+  const header = String(normalizedHeader || "").trim().replace(/\s+/g, " ");
+  if (!header) return false;
+  if ([
+    "altezza",
+    "altezza prato",
+    "altezza da preventivare",
+    "altezza preventivo",
+    "altezza da preventivare mm",
+    "altezza mm",
+    "mm",
+    "spessore",
+    "spessore prato",
+    "spessore mm",
+    "h",
+    "h mm",
+    "h prato",
+  ].includes(header)) return true;
+  return header.includes("altezza") || header.includes("spessore");
+}
+
 function mapSheetSalesRequestField(target, header, rawValue) {
   const value = String(rawValue || "").trim();
   if (!value) return;
@@ -1308,18 +1329,7 @@ function mapSheetSalesRequestField(target, header, rawValue) {
     target.sqm = value;
     return;
   }
-  if ([
-    "altezza",
-    "altezza prato",
-    "altezza da preventivare",
-    "altezza preventivo",
-    "altezza da preventivare mm",
-    "altezza mm",
-    "mm",
-    "spessore",
-    "spessore prato",
-    "spessore mm",
-  ].includes(normalizedHeader)) {
+  if (isSalesRequestHeightHeader(normalizedHeader)) {
     target.requestedHeight = value;
     return;
   }
