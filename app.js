@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260415-shell-reset-32";
+const APP_SHELL_VERSION = "20260415-shell-reset-33";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -398,6 +398,10 @@ const translations = {
     salesRequestsSubtitle: "Gestisci richieste commerciali e prepara il passaggio verso il generatore.",
     salesGeneratorTitle: "Generatore Preventivi",
     salesGeneratorSubtitle: "Usa il preventivatore integrato e precompila i dati partendo da una richiesta selezionata.",
+    salesGeneratorFreeQuote: "Preventivo libero",
+    salesGeneratorUseSelectedRequest: "Usa richiesta selezionata",
+    salesGeneratorFreeModeTitle: "Preventivo libero attivo",
+    salesGeneratorFreeModeCopy: "Compila il preventivo senza prefill automatico. Puoi riattivare in qualsiasi momento la richiesta selezionata.",
     salesContentTitle: "Contenuti e Documentazione",
     salesContentSubtitle: "Raccogli materiali utili per vendita, preventivi e documentazione commerciale.",
     orderRadar: "Radar ordine",
@@ -639,6 +643,10 @@ const translations = {
     salesRequestsSubtitle: "Manage sales requests and move them into the quote generator.",
     salesGeneratorTitle: "Quote Generator",
     salesGeneratorSubtitle: "Use the integrated quote tool and prefill it from a selected request.",
+    salesGeneratorFreeQuote: "Free quote",
+    salesGeneratorUseSelectedRequest: "Use selected request",
+    salesGeneratorFreeModeTitle: "Free quote mode active",
+    salesGeneratorFreeModeCopy: "Build the quote without automatic prefill. You can re-enable the selected request at any time.",
     salesContentTitle: "Content and Documentation",
     salesContentSubtitle: "Collect useful sales documents, resources, and shared material.",
     orderRadar: "Order radar",
@@ -718,6 +726,7 @@ const state = {
   installationMobilePane: "summary",
   lastSalesGeneratorSignature: "",
   lastSalesGeneratorBrandingSignature: "",
+  salesGeneratorFreeMode: false,
   lastAccountsManagerSignature: "",
   lang: "it",
   filters: {
@@ -862,6 +871,7 @@ const ui = {
   salesGeneratorRequestCard: document.getElementById("sales-generator-request-card"),
   salesGeneratorOpenRequestButton: document.getElementById("sales-generator-open-request-button"),
   salesGeneratorPrefillButton: document.getElementById("sales-generator-prefill-button"),
+  salesGeneratorFreeQuoteButton: document.getElementById("sales-generator-free-quote-button"),
   salesGeneratorContactPanel: document.getElementById("sales-generator-contact-panel"),
   salesGeneratorContactSummary: document.getElementById("sales-generator-contact-summary"),
   salesGeneratorWhatsAppButton: document.getElementById("sales-generator-whatsapp-button"),
@@ -2189,12 +2199,27 @@ function pushSalesGeneratorBranding(force = false) {
   } catch {}
 }
 
+function clearSalesRequestPrefillInGenerator({ keepFreeMode = true } = {}) {
+  if (keepFreeMode) state.salesGeneratorFreeMode = true;
+  state.lastSalesGeneratorSignature = "";
+  try {
+    window.localStorage.removeItem(SALES_PREFILL_STORAGE_KEY);
+  } catch {}
+  try {
+    ui.salesGeneratorFrame?.contentWindow?.postMessage({
+      type: "quote-generator:clear-prefill",
+    }, "*");
+  } catch {}
+}
+
 function pushSalesRequestToGenerator(force = false) {
+  if (state.salesGeneratorFreeMode && !force) return;
   const request = getSelectedSalesRequest();
   if (!request) return;
   const payload = buildSalesRequestPrefill(request);
   const signature = JSON.stringify(payload);
   if (!force && state.lastSalesGeneratorSignature === signature) return;
+  state.salesGeneratorFreeMode = false;
   state.lastSalesGeneratorSignature = signature;
   try {
     window.localStorage.setItem(SALES_PREFILL_STORAGE_KEY, JSON.stringify({
@@ -2206,6 +2231,7 @@ function pushSalesRequestToGenerator(force = false) {
     ui.salesGeneratorFrame?.contentWindow?.postMessage({
       type: "quote-generator:prefill-request",
       payload,
+      force,
     }, "*");
   } catch {}
 }
@@ -6203,11 +6229,22 @@ function renderSalesRequests() {
 function renderSalesGenerator() {
   const generatorOnlyMode = state.currentUser?.role === "crew";
   const selected = ensureSelectedSalesRequest();
+  const freeMode = !generatorOnlyMode && state.salesGeneratorFreeMode;
   if (ui.salesGeneratorRequestCard) {
     ui.salesGeneratorRequestCard.innerHTML = generatorOnlyMode
       ? (state.lang === "it"
           ? "Preventivatore attivo per la squadra. Le richieste commerciali restano riservate all'ufficio."
           : "Crew quote mode is active. Sales requests remain visible only to the office.")
+      : freeMode
+      ? `
+          <div class="sales-generator-card-head">
+            <strong>${escapeHtml(t("salesGeneratorFreeModeTitle"))}</strong>
+          </div>
+          <p>${escapeHtml(t("salesGeneratorFreeModeCopy"))}</p>
+          ${selected
+            ? `<p class="panel-note">${state.lang === "it" ? "Richiesta attualmente selezionata:" : "Currently selected request:"} <strong>${escapeHtml(getSalesRequestDisplayName(selected))}</strong></p>`
+            : ""}
+        `
       : selected
       ? `
           <div class="sales-generator-card-head">
@@ -6228,7 +6265,17 @@ function renderSalesGenerator() {
           : "Select a request to prefill the generator.");
   }
   if (ui.salesGeneratorOpenRequestButton) ui.salesGeneratorOpenRequestButton.disabled = generatorOnlyMode || !selected;
-  if (ui.salesGeneratorPrefillButton) ui.salesGeneratorPrefillButton.disabled = generatorOnlyMode || !selected;
+  if (ui.salesGeneratorPrefillButton) ui.salesGeneratorPrefillButton.disabled = generatorOnlyMode || !selected || freeMode;
+  if (ui.salesGeneratorFreeQuoteButton) {
+    ui.salesGeneratorFreeQuoteButton.hidden = generatorOnlyMode;
+    ui.salesGeneratorFreeQuoteButton.classList.toggle("hidden", generatorOnlyMode);
+    ui.salesGeneratorFreeQuoteButton.disabled = freeMode && !selected;
+    ui.salesGeneratorFreeQuoteButton.textContent = freeMode
+      ? t("salesGeneratorUseSelectedRequest")
+      : t("salesGeneratorFreeQuote");
+    ui.salesGeneratorFreeQuoteButton.classList.toggle("primary-button", !freeMode);
+    ui.salesGeneratorFreeQuoteButton.classList.toggle("ghost-button", freeMode);
+  }
   if (ui.salesGeneratorContactPanel) {
     const canShowContacts = !generatorOnlyMode && Boolean(selected);
     const whatsappUrl = canShowContacts ? buildSalesRequestWhatsAppUrl(selected) : "";
@@ -6258,7 +6305,7 @@ function renderSalesGenerator() {
   if (state.currentView === "sales-generator") {
     window.setTimeout(() => pushSalesGeneratorBranding(false), 20);
   }
-  if (state.currentView === "sales-generator" && selected && !generatorOnlyMode) {
+  if (state.currentView === "sales-generator" && selected && !generatorOnlyMode && !freeMode) {
     window.setTimeout(() => pushSalesRequestToGenerator(false), 40);
   }
 }
@@ -6465,8 +6512,22 @@ async function importSalesRequests() {
 function useSelectedSalesRequestInGenerator() {
   const selected = getSelectedSalesRequest();
   if (!selected) return;
+  state.salesGeneratorFreeMode = false;
   pushSalesRequestToGenerator(true);
   setView("sales-generator");
+}
+
+function toggleSalesGeneratorFreeMode() {
+  const selected = getSelectedSalesRequest();
+  if (state.salesGeneratorFreeMode) {
+    if (!selected) return;
+    state.salesGeneratorFreeMode = false;
+    pushSalesRequestToGenerator(true);
+    renderSalesGenerator();
+    return;
+  }
+  clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
+  renderSalesGenerator();
 }
 
 function createNewSalesContent() {
@@ -8319,7 +8380,11 @@ function populateInventoryOptions() {
 }
 
 function applySessionPayload(session = {}) {
-  state.currentUser = normalizeUserRecord(session.user || null);
+  const previousUserId = String(state.currentUser?.id || "");
+  const nextUser = normalizeUserRecord(session.user || null);
+  const nextUserId = String(nextUser?.id || "");
+  const userChanged = previousUserId !== nextUserId;
+  state.currentUser = nextUser;
   state.orders = session.orders || [];
   state.inventory = session.inventory || [];
   state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
@@ -8331,8 +8396,11 @@ function applySessionPayload(session = {}) {
   state.creatingSalesContent = false;
   state.accountingMobilePane = "summary";
   state.salesRequestPage = 1;
-  state.lastSalesGeneratorSignature = "";
-  state.lastSalesGeneratorBrandingSignature = "";
+  if (userChanged) {
+    state.lastSalesGeneratorSignature = "";
+    state.lastSalesGeneratorBrandingSignature = "";
+    state.salesGeneratorFreeMode = false;
+  }
   state.coveragePlanner = normalizeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner);
   state.settings = session.shopifySettings || {};
   state.users = Array.isArray(session.users) ? session.users.map((user) => normalizeUserRecord(user)).filter(Boolean) : [];
@@ -10267,10 +10335,19 @@ bindEvent(ui.salesRequestSourceSaveButton, "click", () => saveSalesRequestSource
 bindEvent(ui.salesRequestSourceSyncButton, "click", syncSalesRequestSource);
 bindEvent(ui.salesRequestOpenSheetButton, "click", openSalesRequestSourceSheet);
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
-bindEvent(ui.salesGeneratorPrefillButton, "click", () => pushSalesRequestToGenerator(true));
+bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
+  state.salesGeneratorFreeMode = false;
+  pushSalesRequestToGenerator(true);
+  renderSalesGenerator();
+});
+bindEvent(ui.salesGeneratorFreeQuoteButton, "click", toggleSalesGeneratorFreeMode);
 bindEvent(ui.salesGeneratorFrame, "load", () => {
   pushSalesGeneratorBranding(true);
-  pushSalesRequestToGenerator(true);
+  if (state.salesGeneratorFreeMode) {
+    clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
+  } else {
+    pushSalesRequestToGenerator(true);
+  }
 });
 bindEvent(ui.salesContentSearch, "input", (event) => {
   state.search.salesContent = event.target.value;

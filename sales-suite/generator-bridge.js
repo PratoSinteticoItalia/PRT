@@ -4,6 +4,7 @@
   let lastUrlPrefill = "";
   let lastStoragePrefill = "";
   let scheduledPrefillRunId = 0;
+  let lastAppliedPrefillSignature = "";
   let lastBrandingStorage = "";
   let activeBrandingPayload = { crewName: "", crewLogoDataUrl: "" };
   let pdfDownloadInterceptionActive = false;
@@ -602,9 +603,53 @@
     return applied;
   }
 
-  function scheduleRequestPayload(payload) {
+  function clearRequestPayloadNow() {
+    scheduledPrefillRunId += 1;
+    lastAppliedPrefillSignature = "";
+    hideInternalImportPanel();
+
+    const emptyCustomer = {
+      nome: "",
+      cognome: "",
+      citta: "",
+      telefono: "",
+      email: "",
+    };
+    applyReactStatePrefill(emptyCustomer, "", "", "");
+
+    const clearLabels = [
+      "Nome",
+      "Cognome",
+      "Città",
+      "Telefono",
+      "Email",
+      "Metri Quadri",
+      "Altezza",
+      "Altezza da preventivare",
+      "Altezza da preventivare mm",
+      "Altezza prato",
+      "Spessore",
+      "MM",
+      "Superficie",
+    ];
+
+    clearLabels.forEach((label) => {
+      const field = findFieldByLabel(label);
+      if (!field) return;
+      setNativeValue(field, "");
+    });
+    const heightField = findHeightField();
+    if (heightField) {
+      setNativeValue(heightField, "");
+    }
+    reportEmbeddedContentHeight();
+  }
+
+  function scheduleRequestPayload(payload, { force = false } = {}) {
     const signature = buildPayloadSignature(payload);
     if (!signature) return false;
+    if (!force && signature === lastAppliedPrefillSignature) return false;
+    lastAppliedPrefillSignature = signature;
 
     const runId = ++scheduledPrefillRunId;
     const delays = [0, 80, 200, 420, 760, 1200, 1800, 2600];
@@ -1130,9 +1175,13 @@
 
   window.addEventListener("message", (event) => {
     if (event.data?.type === "quote-generator:prefill-request") {
-      scheduleRequestPayload(event.data.payload);
-      scrollGeneratorViewportToTop();
+      scheduleRequestPayload(event.data.payload, { force: Boolean(event.data?.force) });
       requestBridgeSyncBurst(4);
+      return;
+    }
+    if (event.data?.type === "quote-generator:clear-prefill") {
+      clearRequestPayloadNow();
+      requestBridgeSyncBurst(2);
       return;
     }
     if (event.data?.type === "quote-generator:branding") {
