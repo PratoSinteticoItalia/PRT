@@ -70,9 +70,15 @@ let r2ClientPromise = null;
 
 function normalizeUserRole(role = "") {
   const normalized = String(role || "").trim().toLowerCase();
-  if (["office", "ufficio", "admin", "amministrazione"].includes(normalized)) return "office";
-  if (["warehouse", "magazzino", "inventory"].includes(normalized)) return "warehouse";
-  if (["crew", "squadra", "team", "posa", "installer"].includes(normalized)) return "crew";
+  const compact = normalized
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (!compact) return "";
+  if (/(^|\s)(crew|squadra|team|posa|posatore|posatori|installer|installatori)(\s|$)/.test(compact)) return "crew";
+  if (/(^|\s)(warehouse|magazzino|inventory|logistica)(\s|$)/.test(compact)) return "warehouse";
+  if (/(^|\s)(office|ufficio|admin|amministrazione|commerciale)(\s|$)/.test(compact)) return "office";
   return "";
 }
 
