@@ -21,6 +21,7 @@ const R2_BUCKET_NAME = String(process.env.R2_BUCKET_NAME || "").trim();
 const R2_REGION = String(process.env.R2_REGION || "auto").trim() || "auto";
 const STORE_DOC_KEY = "store";
 const SESSION_DOC_KEY = "sessions";
+const SESSION_TABLE = "app_sessions";
 const USE_POSTGRES = Boolean(DATABASE_URL);
 const USE_R2 = Boolean(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET_NAME);
 const DEFAULT_SALES_REQUEST_SPREADSHEET = "https://docs.google.com/spreadsheets/d/15n7HIxhiX0U2EX28R9euiZfCqBNZPZ0AE8Hmb-p0vHw/edit";
@@ -64,7 +65,7 @@ const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const BOOTSTRAP_OFFICE_EMAIL = String(process.env.BOOTSTRAP_OFFICE_EMAIL || "office@vertex.local").trim().toLowerCase();
 const BOOTSTRAP_OFFICE_PASSWORD = String(process.env.BOOTSTRAP_OFFICE_PASSWORD || "");
 const API_STATE_LOCK_KEY = 41051721;
-const API_STATE_LOCK_TIMEOUT_MS = 15_000;
+const API_STATE_LOCK_TIMEOUT_MS = 60_000;
 const API_STATE_LOCK_POLL_MS = 40;
 const loginAttempts = new Map();
 let dbBootstrapPromise = null;
@@ -273,6 +274,18 @@ async function ensureDatabaseStorage() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ${SESSION_TABLE} (
+        session_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        expires_at BIGINT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ${SESSION_TABLE}_user_idx ON ${SESSION_TABLE} (user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ${SESSION_TABLE}_expires_idx ON ${SESSION_TABLE} (expires_at)`);
 
     const storeResult = await pool.query("SELECT key FROM app_documents WHERE key = $1 LIMIT 1", [STORE_DOC_KEY]);
     if (!storeResult.rowCount) {
@@ -300,6 +313,25 @@ async function ensureDatabaseStorage() {
         `,
         [SESSION_DOC_KEY, JSON.stringify(initialSessions)],
       );
+      const migrationEntries = Object.entries(initialSessions || {});
+      for (const [legacySessionId, rawEntry] of migrationEntries) {
+        const normalized = normalizeSessionEntry(rawEntry);
+        if (!normalized || !legacySessionId) continue;
+        await pool.query(
+          `
+            INSERT INTO ${SESSION_TABLE} (session_id, user_id, version, expires_at, updated_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT (session_id)
+            DO UPDATE SET user_id = EXCLUDED.user_id, version = EXCLUDED.version, expires_at = EXCLUDED.expires_at, updated_at = NOW()
+          `,
+          [
+            String(legacySessionId),
+            normalized.userId,
+            normalized.version,
+            normalized.expiresAt || (Date.now() + SESSION_TTL_MS),
+          ],
+        );
+      }
     }
   })().catch((error) => {
     dbBootstrapPromise = null;
@@ -357,6 +389,80 @@ async function writeJson(path, value) {
     return;
   }
   await writeLocalJson(path, value);
+}
+
+function normalizeSessionEntry(entry = null) {
+  const userId = typeof entry === "string" ? entry : entry?.userId;
+  const versionRaw = typeof entry === "object" ? entry?.version : 1;
+  const expiresAtRaw = typeof entry === "object" ? entry?.expiresAt : 0;
+  const version = Math.max(1, Number(versionRaw || 1));
+  const expiresAt = Math.max(0, Number(expiresAtRaw || 0));
+  if (!userId) return null;
+  return {
+    userId: String(userId),
+    version: Number.isFinite(version) ? version : 1,
+    expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
+  };
+}
+
+async function readSessionEntry(sessionId = "") {
+  const normalizedSessionId = String(sessionId || "").trim();
+  if (!normalizedSessionId) return null;
+  if (USE_POSTGRES) {
+    await ensureDatabaseStorage();
+    const pool = await getPgPool();
+    const result = await pool.query(
+      `SELECT user_id, version, expires_at FROM ${SESSION_TABLE} WHERE session_id = $1 LIMIT 1`,
+      [normalizedSessionId],
+    );
+    if (!result.rowCount) return null;
+    const row = result.rows[0] || {};
+    return normalizeSessionEntry({
+      userId: row.user_id,
+      version: row.version,
+      expiresAt: row.expires_at,
+    });
+  }
+  const sessions = await readJson(SESSION_PATH, {});
+  return normalizeSessionEntry(sessions[normalizedSessionId]);
+}
+
+async function writeSessionEntry(sessionId = "", entry = {}) {
+  const normalizedSessionId = String(sessionId || "").trim();
+  const normalizedEntry = normalizeSessionEntry(entry);
+  if (!normalizedSessionId || !normalizedEntry) return;
+  if (USE_POSTGRES) {
+    await ensureDatabaseStorage();
+    const pool = await getPgPool();
+    await pool.query(
+      `
+        INSERT INTO ${SESSION_TABLE} (session_id, user_id, version, expires_at, updated_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (session_id)
+        DO UPDATE SET user_id = EXCLUDED.user_id, version = EXCLUDED.version, expires_at = EXCLUDED.expires_at, updated_at = NOW()
+      `,
+      [normalizedSessionId, normalizedEntry.userId, normalizedEntry.version, normalizedEntry.expiresAt],
+    );
+    return;
+  }
+  const sessions = await readJson(SESSION_PATH, {});
+  sessions[normalizedSessionId] = normalizedEntry;
+  await writeJson(SESSION_PATH, sessions);
+}
+
+async function deleteSessionEntry(sessionId = "") {
+  const normalizedSessionId = String(sessionId || "").trim();
+  if (!normalizedSessionId) return;
+  if (USE_POSTGRES) {
+    await ensureDatabaseStorage();
+    const pool = await getPgPool();
+    await pool.query(`DELETE FROM ${SESSION_TABLE} WHERE session_id = $1`, [normalizedSessionId]);
+    return;
+  }
+  const sessions = await readJson(SESSION_PATH, {});
+  if (!(normalizedSessionId in sessions)) return;
+  delete sessions[normalizedSessionId];
+  await writeJson(SESSION_PATH, sessions);
 }
 
 async function withApiStateLock(task) {
@@ -2971,32 +3077,28 @@ async function getSessionContext(req, store) {
   const cookies = parseCookies(req.headers.cookie);
   if (!cookies.vertex_session) return { user: null, sessionId: "", refreshed: false };
   const sessionId = String(cookies.vertex_session || "");
-  const session = await readJson(SESSION_PATH, {});
-  const entry = session[sessionId];
-  const userId = typeof entry === "string" ? entry : entry?.userId;
-  const version = typeof entry === "object" && entry?.version ? Number(entry.version) : 1;
-  const expiresAt = typeof entry === "object" && entry?.expiresAt ? Number(entry.expiresAt) : 0;
+  const entry = await readSessionEntry(sessionId);
+  const userId = entry?.userId || "";
+  const version = Number(entry?.version || 1);
+  const expiresAt = Number(entry?.expiresAt || 0);
   if (expiresAt && expiresAt < Date.now()) {
-    delete session[sessionId];
-    await writeJson(SESSION_PATH, session);
+    await deleteSessionEntry(sessionId);
     return { user: null, sessionId: "", refreshed: false };
   }
   if (!userId) return { user: null, sessionId: "", refreshed: false };
   const user = store.users.find((item) => item.id === userId) || null;
   if (!user) return { user: null, sessionId: "", refreshed: false };
   if (Number(user.sessionVersion || 1) !== version || user.status === "suspended") {
-    delete session[sessionId];
-    await writeJson(SESSION_PATH, session);
+    await deleteSessionEntry(sessionId);
     return { user: null, sessionId: "", refreshed: false };
   }
   let refreshed = false;
   if (!expiresAt || expiresAt - Date.now() <= SESSION_REFRESH_BUFFER_MS) {
-    session[sessionId] = {
+    await writeSessionEntry(sessionId, {
       userId,
       version,
       expiresAt: Date.now() + SESSION_TTL_MS,
-    };
-    await writeJson(SESSION_PATH, session);
+    });
     refreshed = true;
   }
   return { user, sessionId, refreshed };
@@ -3083,9 +3185,11 @@ async function handleApi(req, res, url) {
     clearFailedLogin(req, email);
 
     const sessionId = randomUUID();
-    const sessions = await readJson(SESSION_PATH, {});
-    sessions[sessionId] = { userId: user.id, version: Number(user.sessionVersion || 1), expiresAt: Date.now() + SESSION_TTL_MS };
-    await writeJson(SESSION_PATH, sessions);
+    await writeSessionEntry(sessionId, {
+      userId: user.id,
+      version: Number(user.sessionVersion || 1),
+      expiresAt: Date.now() + SESSION_TTL_MS,
+    });
     pushSecurityEvent(store, "login_success", user.email, "Login effettuato.", { ip: getClientIp(req) });
     await writeJson(STORE_PATH, store);
 
@@ -3119,11 +3223,7 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/logout" && req.method === "POST") {
     const cookies = parseCookies(req.headers.cookie);
-    if (cookies.vertex_session) {
-      const sessions = await readJson(SESSION_PATH, {});
-      delete sessions[cookies.vertex_session];
-      await writeJson(SESSION_PATH, sessions);
-    }
+    await deleteSessionEntry(cookies.vertex_session || "");
     return sendJson(
       res,
       200,
@@ -3378,7 +3478,6 @@ async function handleApi(req, res, url) {
       return sendJson(res, 400, { error: "invalid_current_password" });
     }
     const { hash, salt } = hashPassword(nextPassword);
-    const sessions = await readJson(SESSION_PATH, {});
     const currentCookie = parseCookies(req.headers.cookie).vertex_session;
     store.users[userIndex] = {
       ...storedUser,
@@ -3390,13 +3489,12 @@ async function handleApi(req, res, url) {
     };
     delete store.users[userIndex].password;
     const sessionId = randomUUID();
-    sessions[sessionId] = {
+    await writeSessionEntry(sessionId, {
       userId: storedUser.id,
       version: store.users[userIndex].sessionVersion,
       expiresAt: Date.now() + SESSION_TTL_MS,
-    };
-    if (currentCookie) delete sessions[currentCookie];
-    await writeJson(SESSION_PATH, sessions);
+    });
+    await deleteSessionEntry(currentCookie || "");
     pushSecurityEvent(store, "password_changed", currentUser.email, "Password aggiornata dall'utente.", {});
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, { ok: true }, {
@@ -4357,7 +4455,10 @@ const server = createServer(async (req, res) => {
 
   try {
     if (url.pathname.startsWith("/api/")) {
-      if (url.pathname === "/api/healthz") {
+      const method = String(req.method || "GET").toUpperCase();
+      const readOnlyRequest = method === "GET" || method === "HEAD" || method === "OPTIONS";
+      const shouldLockState = USE_POSTGRES && !readOnlyRequest && url.pathname !== "/api/healthz";
+      if (!shouldLockState) {
         return await handleApi(req, res, url);
       }
       try {
