@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260415-shell-reset-29";
+const APP_SHELL_VERSION = "20260415-shell-reset-30";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -1829,13 +1829,7 @@ function getSalesRequestRawHeightValue(item = {}) {
     if (!isSalesRequestHeightHeader(keyText)) return false;
     return String(raw ?? "").trim() !== "";
   });
-  if (dynamicEntry) return String(dynamicEntry[1] ?? "").trim();
-  const freeText = String(item.note || item.notes || item.nota || "").trim();
-  if (freeText) {
-    const match = freeText.match(/(\d+(?:[.,]\d+)?)\s*(mm|cm)\b/i);
-    if (match) return `${match[1]} ${String(match[2] || "").toLowerCase()}`;
-  }
-  return "";
+  return dynamicEntry ? String(dynamicEntry[1] ?? "").trim() : "";
 }
 
 function normalizeSalesRequestAssignment(value = "") {
