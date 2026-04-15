@@ -153,7 +153,6 @@
         applyBrandingPayloadNow(activeBrandingPayload);
       }
       if (document.querySelector(".pdf-root")) {
-        scrollGeneratorViewportToTop();
         reportEmbeddedContentHeight();
       }
       if (scheduledBridgeSync) {
@@ -1138,7 +1137,6 @@
     }
     if (event.data?.type === "quote-generator:branding") {
       applyBrandingPayloadNow(event.data.payload);
-      scrollGeneratorViewportToTop();
       requestBridgeSyncBurst(3);
     }
   });
