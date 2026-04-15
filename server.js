@@ -63,6 +63,9 @@ const PASSWORD_MIN_LENGTH = 12;
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const BOOTSTRAP_OFFICE_EMAIL = String(process.env.BOOTSTRAP_OFFICE_EMAIL || "office@vertex.local").trim().toLowerCase();
 const BOOTSTRAP_OFFICE_PASSWORD = String(process.env.BOOTSTRAP_OFFICE_PASSWORD || "");
+const API_STATE_LOCK_KEY = 41051721;
+const API_STATE_LOCK_TIMEOUT_MS = 15_000;
+const API_STATE_LOCK_POLL_MS = 40;
 const loginAttempts = new Map();
 let dbBootstrapPromise = null;
 let pgPool = null;
@@ -354,6 +357,39 @@ async function writeJson(path, value) {
     return;
   }
   await writeLocalJson(path, value);
+}
+
+async function withApiStateLock(task) {
+  if (!USE_POSTGRES) {
+    return task();
+  }
+  const pool = await getPgPool();
+  const lockClient = await pool.connect();
+  let locked = false;
+  try {
+    const deadline = Date.now() + API_STATE_LOCK_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const attempt = await lockClient.query("SELECT pg_try_advisory_lock($1) AS locked", [API_STATE_LOCK_KEY]);
+      if (attempt.rows?.[0]?.locked) {
+        locked = true;
+        break;
+      }
+      await wait(API_STATE_LOCK_POLL_MS);
+    }
+    if (!locked) {
+      const error = new Error("state_lock_timeout");
+      error.code = "state_lock_timeout";
+      throw error;
+    }
+    return await task();
+  } finally {
+    if (locked) {
+      try {
+        await lockClient.query("SELECT pg_advisory_unlock($1)", [API_STATE_LOCK_KEY]);
+      } catch {}
+    }
+    lockClient.release();
+  }
 }
 
 function buildDefaultStore() {
@@ -4321,7 +4357,20 @@ const server = createServer(async (req, res) => {
 
   try {
     if (url.pathname.startsWith("/api/")) {
-      return await handleApi(req, res, url);
+      if (url.pathname === "/api/healthz") {
+        return await handleApi(req, res, url);
+      }
+      try {
+        return await withApiStateLock(() => handleApi(req, res, url));
+      } catch (error) {
+        if (error?.code === "state_lock_timeout") {
+          return sendJson(res, 503, {
+            error: "busy",
+            message: "Aggiornamento in corso, riprova tra qualche secondo.",
+          });
+        }
+        throw error;
+      }
     }
 
     let requestedPath = rawRequestPath === "/" ? "/index.html" : rawRequestPath;
