@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260416-shipping-sample-visibility-39";
+const APP_SHELL_VERSION = "20260417-shipping-sample-visibility-40";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7043,12 +7043,20 @@ function renderDdtPreview(order) {
   const physicalLines = getWarehousePreparedLines(order);
   const estimate = calculateShippingEstimate(order, ddt);
   const destination = getShippingDestination(order);
+  const shopifyOrderDate = formatDate(order.createdAt || order.updatedAt || new Date().toISOString());
   ui.ddtItemsPreview.innerHTML = `
     <div class="detail-grid">
       ${renderDetailBox({
         label: t("shippingAddress"),
         value: composeClientName(order),
         meta: `${composeAddress(order) || addressIncompleteText()} · ${destination.provinceCode || provinceIncompleteText()} · ${order.phone ? `${order.phone} · ${phoneNoticeText().toUpperCase()}` : phoneIncompleteText()}`,
+      })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Data ordine Shopify" : "Shopify order date",
+        value: shopifyOrderDate,
+        meta: String(order.source || "").toLowerCase().startsWith("shopify")
+          ? (state.lang === "it" ? "Data acquisita dallo store Shopify" : "Date pulled from Shopify store")
+          : (state.lang === "it" ? "Data ordine registrata nel gestionale" : "Order date registered in the app"),
       })}
       ${renderDetailBox({
         label: t("palletLabel"),
@@ -9697,8 +9705,10 @@ async function downloadDdtPdf(order) {
   pushText(348, 766, 8.5, "www.pratosinteticoitalia.com");
   pushRect(40, 690, 515, 44);
   const printableDdtNumber = String(ddt.number || getOrderNumber(order)).replace(/^D\.?D\.?T\.?\s*[-:]?\s*/i, "");
+  const shopifyOrderDateLabel = `${state.lang === "it" ? "Ordine Shopify" : "Shopify order"} ${formatDate(order.createdAt || order.updatedAt || ddt.createdAt || new Date().toISOString())}`;
   pushText(52, 716, 19, `DDT ${printableDdtNumber}`);
   pushText(404, 716, 10, `${state.lang === "it" ? "Data" : "Date"} ${formatDate(ddt.createdAt || new Date().toISOString())}`);
+  pushText(404, 703, 8.5, shopifyOrderDateLabel);
   pushWrappedPdfText(pushText, {
     x: 52,
     startY: 698,
