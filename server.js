@@ -1068,11 +1068,17 @@ function normalizeLineDetailRecord(item = {}) {
       : item.discountedTotalSet?.shopMoney?.amount != null
         ? toNumber(item.discountedTotalSet.shopMoney.amount)
         : 0;
+  const rawTitle = String(item.title || item.name || "").trim();
+  const rawVariant = String(item.variant || item.variantTitle || item.variant_title || "").trim();
+  const hasUsefulVariant = Boolean(rawVariant) && !/^(default|titolo predefinito)\s*title$/i.test(rawVariant);
+  const title = hasUsefulVariant && rawTitle && !rawTitle.toLowerCase().includes(rawVariant.toLowerCase())
+    ? `${rawTitle} - ${rawVariant}`
+    : (rawTitle || (hasUsefulVariant ? rawVariant : ""));
   return {
-    title: String(item.title || item.name || "").trim(),
+    title,
     quantity: Math.max(1, Number(item.quantity || item.currentQuantity || 1)),
     sku: String(item.sku || "").trim(),
-    variant: String(item.variant || item.variantTitle || item.variant_title || "").trim(),
+    variant: hasUsefulVariant ? rawVariant : "",
     taxable: item.taxable == null ? taxLines.length > 0 : Boolean(item.taxable),
     requiresShipping: item.requiresShipping == null ? true : Boolean(item.requiresShipping),
     taxLines,
@@ -1211,6 +1217,7 @@ function deriveOrderData(order) {
 
   details.forEach((detail) => {
     const title = String(detail.title || "").trim();
+    const variant = String(detail.variant || "").trim();
     const quantity = Number(detail.quantity || 1);
     if (!title) return;
     const type = classifyOrderLine(title);
@@ -1223,7 +1230,13 @@ function deriveOrderData(order) {
       materials.push(title);
       return;
     }
-    const itemSqm = parseSquareMeters(title, quantity);
+    let itemSqm = parseSquareMeters(title, quantity);
+    if (!itemSqm && variant) {
+      itemSqm = parseSquareMeters(variant, quantity);
+    }
+    if (!itemSqm && quantity > 0) {
+      itemSqm = quantity;
+    }
     sqm += itemSqm;
     products.push({ title, sqm: itemSqm });
   });
@@ -1232,7 +1245,7 @@ function deriveOrderData(order) {
   const inferredSurface = materials.some((item) => /(pietrisco|picchetti|telo)/i.test(item)) ? "terra" : "pavimentazione";
 
   return {
-    mainProduct: mainProduct.split(" - ")[0].trim(),
+    mainProduct: mainProduct.trim(),
     sqm: Math.round(sqm || 0),
     materials,
     services,
@@ -1966,9 +1979,11 @@ function buildDefaultOperations(order, linkedJob = null) {
 function normalizeOperations(order, linkedJob = null) {
   const defaults = buildDefaultOperations(order, linkedJob);
   const current = order.operations || {};
+  const currentProduct = String(current.product || "").trim();
+  const shouldUseDefaultProduct = !currentProduct || /^da definire$/i.test(currentProduct);
   return {
     officeStatus: current.officeStatus || defaults.officeStatus,
-    product: current.product || defaults.product,
+    product: shouldUseDefaultProduct ? defaults.product : currentProduct,
     sqm: Number(current.sqm || defaults.sqm || 0),
     surface: current.surface || defaults.surface,
     officeNote: current.officeNote || defaults.officeNote || "",

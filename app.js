@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260416-shipping-sample-35";
+const APP_SHELL_VERSION = "20260416-inbox-shipping-fix-36";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -5343,9 +5343,6 @@ function renderInboxFlowControls(order) {
           ? "Sede centrale Orta di Atella: la merce da spedire parte su pallet per corrieri o ritiro cliente, la merce da posare viene preparata e caricata sul furgone."
           : "HQ in Orta di Atella: shipment-only goods leave on pallets for couriers or pickup, installation goods are prepared and loaded onto the van."}
       </div>
-      <div class="order-office-actions">
-        <button class="mini-action primary-mini" data-action="save-inbox-flow" data-id="${order.id}">${state.lang === "it" ? "Salva processo ordine" : "Save order flow"}</button>
-      </div>
     </article>
   `;
 }
@@ -9181,13 +9178,23 @@ async function savePrepList() {
       note: String(noteInput?.value || "").trim(),
     };
   });
+  const flowPayload = buildInboxOrderFlowPayload(order.id, order);
+  const payload = flowPayload
+    ? {
+        ...flowPayload,
+        warehouse: {
+          ...(flowPayload.warehouse || {}),
+          prepItems: nextItems,
+        },
+      }
+    : {
+        warehouse: {
+          prepItems: nextItems,
+        },
+      };
   const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
     method: "POST",
-    body: JSON.stringify({
-      warehouse: {
-        prepItems: nextItems,
-      },
-    }),
+    body: JSON.stringify(payload),
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   render();
@@ -9210,13 +9217,14 @@ async function updateOrderRoutingById(orderId, patch) {
   return saved;
 }
 
-async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
-  const currentOrder = state.orders.find((item) => item.id === orderId) || null;
+function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
+  const order = currentOrder || state.orders.find((item) => item.id === orderId) || null;
   const statusInput = document.querySelector(`[data-order-flow-status="${orderId}"]`);
   const modeInput = document.querySelector(`[data-order-flow-mode="${orderId}"]`);
   const dateInput = document.querySelector(`[data-order-flow-date="${orderId}"]`);
   const warehouseToggle = document.querySelector(`[data-order-flow-warehouse="${orderId}"]`);
   const installToggle = document.querySelector(`[data-order-flow-installation="${orderId}"]`);
+  if (!statusInput && !modeInput && !dateInput && !warehouseToggle && !installToggle) return null;
   const nextStatus = statusInput?.value || "da-preparare";
   const installSelected = Boolean(installToggle?.checked);
   const warehouseSelected = Boolean(warehouseToggle?.checked) || installSelected;
@@ -9229,7 +9237,7 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
     || nextStatus !== "da-preparare"
     || nextDate
   );
-  const payload = patch || {
+  return {
     warehouse: {
       selected: shouldRouteWarehouse,
       status: nextStatus,
@@ -9238,9 +9246,14 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
     },
     installation: {
       selected: installSelected,
-      required: installSelected || Boolean(currentOrder?.operations?.installation?.required),
+      required: installSelected || Boolean(order?.operations?.installation?.required),
     },
   };
+}
+
+async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
+  const payload = patch || buildInboxOrderFlowPayload(orderId);
+  if (!payload) return;
   const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
     method: "POST",
     body: JSON.stringify(payload),
@@ -9272,6 +9285,22 @@ async function saveShipping(event) {
   if (nextShipped) {
     nextReadyToShip = true;
     if (fulfillmentMode === "corriere") nextCarrierPassed = true;
+  }
+  const shippingProofAttachments = mapAttachmentsForContext(order, "shipping");
+  const requiresDeparturePhoto = Boolean(
+    !isSampleOrder(order)
+    && fulfillmentMode === "corriere"
+    && nextShipped,
+  );
+  if (requiresDeparturePhoto && !shippingProofAttachments.length) {
+    setStatus(
+      ui.shippingStatus,
+      "error",
+      state.lang === "it"
+        ? "Per segnare l'ordine come evaso carica prima la foto di partenza."
+        : "Upload the departure photo before marking the order as shipped.",
+    );
+    return;
   }
   const destinationProvinceCode = normalizeProvinceCode(form.get("destinationProvinceCode"));
   const destinationProvinceRecord = getProvinceRecord(destinationProvinceCode);
