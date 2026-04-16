@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260416-inbox-shipping-fix-36";
+const APP_SHELL_VERSION = "20260416-shipping-sample-visibility-37";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -5253,6 +5253,7 @@ function filterOrdersForView(kind) {
       if (filter === "completed") return isLogisticsOrderCompleted(order);
       if (isLogisticsOrderCompleted(order)) return false;
       if (filter === "sample") return sample;
+      if (filter === "all") return true;
       if (sample) return false;
       const mode = order.operations?.warehouse?.fulfillmentMode;
       if (filter === "courier") return mode === "corriere";
@@ -5646,11 +5647,11 @@ function renderOps() {
   const inventorySnapshot = getDashboardInventorySnapshot();
   const installations = state.orders.filter((order) => isRoutedToInstallation(order) && !["completata"].includes(String(order.operations?.installation?.status || "").trim())).length;
   const accounting = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
-  const shipping = state.orders.filter((order) => (
-    ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode)
-    && !isLogisticsOrderCompleted(order)
-    && !isSampleOrder(order)
-  )).length;
+  const shipping = state.orders.filter((order) => {
+    if (isLogisticsOrderCompleted(order)) return false;
+    if (isSampleOrder(order)) return true;
+    return ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode);
+  }).length;
   const closed = state.orders.filter((order) => isOrderClosed(order)).length;
   const salesRequests = state.salesRequests.filter((item) => !isSalesRequestClosedStatus(item.status)).length;
   const salesContents = state.salesContents.length;
