@@ -1,5 +1,6 @@
-const APP_SHELL_VERSION = "20260416-shipping-sample-visibility-37";
+const APP_SHELL_VERSION = "20260416-shipping-sample-visibility-38";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
+const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
@@ -7926,6 +7927,18 @@ function getShippingNextAction(order) {
   if (isLogisticsOrderCompleted(order)) {
     return state.lang === "it" ? "Uscita completata: resta solo verifica finale" : "Dispatch completed: only final verification remains";
   }
+  if (isSampleOrder(order)) {
+    if (!hasSampleLdvAttachment(order)) {
+      return state.lang === "it" ? "Apri RDF e carica la LDV" : "Open RDF and upload the waybill";
+    }
+    if (!String(order.operations?.warehouse?.trackingNumber || "").trim()) {
+      return state.lang === "it" ? "Inserisci il tracking SDA" : "Enter SDA tracking";
+    }
+    if (!order.operations?.warehouse?.shipped && !order.operations?.warehouse?.shippedAt) {
+      return state.lang === "it" ? "Conferma box spedito" : "Confirm sample box shipped";
+    }
+    return state.lang === "it" ? "Verifica chiusura logistica" : "Verify logistics closure";
+  }
   if (getWarehousePreparedLines(order).length === 0) {
     return state.lang === "it" ? "Completa le righe da preparare" : "Complete the preparation lines";
   }
@@ -7952,6 +7965,7 @@ function getShippingNextAction(order) {
 
 function renderShippingQueueCard(order) {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
+  const sampleOrder = isSampleOrder(order);
   const mode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
   const preparedLines = getWarehousePreparedLines(order);
   const prepSummary = preparedLines.length
@@ -7967,6 +7981,11 @@ function renderShippingQueueCard(order) {
   const routeLabel = getShippingModeLabel(order);
   const targetLabel = getShippingTargetLabel(order);
   const destination = composeAddress(order) || addressIncompleteText();
+  const ddtOrSampleLabel = sampleOrder
+    ? (hasSampleLdvAttachment(order)
+      ? (state.lang === "it" ? "LDV allegata" : "Waybill attached")
+      : (state.lang === "it" ? "LDV da caricare" : "Upload waybill"))
+    : (order.operations?.warehouse?.ddt?.number || (state.lang === "it" ? "DDT da creare" : "DDT to create"));
   const badgeTone = stage.tone === "green"
     ? "badge-success"
     : stage.tone === "red"
@@ -7975,13 +7994,14 @@ function renderShippingQueueCard(order) {
         ? "badge-info"
         : "badge-warning";
   return `
-    <article class="shipping-queue-card ${selected}" data-action="select-order" data-id="${order.id}" data-view="shipping">
+    <article class="shipping-queue-card ${selected} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping">
       <div class="shipping-queue-head">
         <div>
           <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
           <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${destination}</div>
         </div>
         <div class="shipping-queue-badges">
+          ${sampleOrder ? `<div class="order-type-badge type-sample-box">${state.lang === "it" ? "Box campioni" : "Sample box"}</div>` : ""}
           <div class="order-type-badge ${mode === "corriere" ? "type-spedizione" : mode === "ritiro" ? "type-ritiro" : "type-posa"}">${routeLabel}</div>
           <div class="action-badge ${badgeTone}">${stage.label}</div>
         </div>
@@ -8003,7 +8023,7 @@ function renderShippingQueueCard(order) {
       </div>
       <div class="shipping-queue-footer">
         <span class="shipping-prep-date ${String(getShippingTargetDate(order) || "") === new Date().toISOString().slice(0, 10) ? "is-today" : ""}">${targetLabel}</span>
-        <strong>${order.operations?.warehouse?.ddt?.number || (state.lang === "it" ? "DDT da creare" : "DDT to create")}</strong>
+        <strong>${ddtOrSampleLabel}</strong>
       </div>
     </article>
   `;
@@ -8167,7 +8187,7 @@ async function openRdfWithData(order) {
         : (state.lang === "it" ? "Apertura RDF eseguita. Copia manualmente i dati cliente." : "RDF opened. Copy customer data manually."),
     );
   }
-  window.open("https://portale.rdf.it", "_blank", "noopener,noreferrer");
+  window.open(RDF_PORTAL_URL, "_blank", "noopener,noreferrer");
 }
 
 function openSampleLdvFile(order) {
@@ -9446,20 +9466,49 @@ async function createDdt() {
   const order = getSelectedOrder();
   if (!order) return;
   const form = new FormData(ui.ddtForm);
-  const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/create-ddt`, {
-    method: "POST",
-    body: JSON.stringify({
-      number: form.get("number"),
-      palletLength: form.get("palletLength"),
-      palletWidth: form.get("palletWidth"),
-      palletHeight: form.get("palletHeight"),
-      palletWeight: form.get("palletWeight"),
-    }),
-  });
-  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  await downloadDdtPdf(saved);
-  ui.warehouseDdtStatus.textContent = `DDT ${saved.operations?.warehouse?.ddt?.number || ""} creato e scaricato in PDF.`;
-  render();
+  const trigger = ui.createDdtButton;
+  const defaultLabel = trigger?.textContent || (state.lang === "it" ? "Crea PDF DDT" : "Create DDT PDF");
+  if (trigger) {
+    trigger.disabled = true;
+    trigger.classList.add("is-busy");
+    trigger.textContent = state.lang === "it" ? "Generazione..." : "Generating...";
+  }
+  if (ui.warehouseDdtStatus) {
+    ui.warehouseDdtStatus.textContent = state.lang === "it"
+      ? "Generazione DDT in corso..."
+      : "Generating DDT...";
+  }
+  try {
+    const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/create-ddt`, {
+      method: "POST",
+      body: JSON.stringify({
+        number: form.get("number"),
+        palletLength: form.get("palletLength"),
+        palletWidth: form.get("palletWidth"),
+        palletHeight: form.get("palletHeight"),
+        palletWeight: form.get("palletWeight"),
+      }),
+    });
+    state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+    render();
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    await downloadDdtPdf(saved);
+    if (ui.warehouseDdtStatus) {
+      ui.warehouseDdtStatus.textContent = `DDT ${saved.operations?.warehouse?.ddt?.number || ""} ${state.lang === "it" ? "creato e scaricato in PDF." : "created and downloaded as PDF."}`;
+    }
+  } catch (error) {
+    if (ui.warehouseDdtStatus) {
+      ui.warehouseDdtStatus.textContent = state.lang === "it"
+        ? `Errore generazione DDT: ${String(error?.message || "riprovare").trim()}`
+        : `DDT generation failed: ${String(error?.message || "please retry").trim()}`;
+    }
+  } finally {
+    if (trigger) {
+      trigger.disabled = false;
+      trigger.classList.remove("is-busy");
+      trigger.textContent = defaultLabel;
+    }
+  }
 }
 
 function escapePdfText(value) {
@@ -9467,6 +9516,62 @@ function escapePdfText(value) {
     .replace(/\\/g, "\\\\")
     .replace(/\(/g, "\\(")
     .replace(/\)/g, "\\)");
+}
+
+function splitPdfTextLines(value, maxChars = 56) {
+  const clean = String(value || "").replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const words = clean.split(" ");
+  const lines = [];
+  let current = "";
+  words.forEach((word) => {
+    if (!word) return;
+    if (word.length > maxChars) {
+      if (current) {
+        lines.push(current);
+        current = "";
+      }
+      let chunk = word;
+      while (chunk.length > maxChars) {
+        lines.push(`${chunk.slice(0, Math.max(1, maxChars - 1))}-`);
+        chunk = chunk.slice(Math.max(1, maxChars - 1));
+      }
+      current = chunk;
+      return;
+    }
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > maxChars) {
+      lines.push(current);
+      current = word;
+      return;
+    }
+    current = candidate;
+  });
+  if (current) lines.push(current);
+  return lines;
+}
+
+function pushWrappedPdfText(pushText, {
+  x,
+  startY,
+  size,
+  value,
+  maxChars = 56,
+  lineHeight = 12,
+  maxLines = 2,
+}) {
+  const wrapped = splitPdfTextLines(value, maxChars);
+  if (!wrapped.length) return 0;
+  let rows = wrapped.slice(0, Math.max(1, maxLines));
+  if (wrapped.length > rows.length) {
+    const lastIndex = rows.length - 1;
+    const base = rows[lastIndex].slice(0, Math.max(1, maxChars - 1)).trim();
+    rows[lastIndex] = `${base}…`;
+  }
+  rows.forEach((row, index) => {
+    pushText(x, startY - (index * lineHeight), size, row);
+  });
+  return rows.length;
 }
 
 function buildPdfContent(lines) {
@@ -9498,61 +9603,47 @@ function concatBytes(...parts) {
   return out;
 }
 
+let ddtLogoCache = undefined;
+
+async function loadLogoJpegFromPath(path) {
+  const image = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = path;
+  });
+  const ratio = image.naturalHeight / image.naturalWidth;
+  const width = 98;
+  const height = Math.round(width * ratio);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, 0, 0);
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+  const binary = atob(dataUrl.split(",")[1]);
+  return {
+    binary,
+    width,
+    height,
+    pixelWidth: image.naturalWidth,
+    pixelHeight: image.naturalHeight,
+  };
+}
+
 async function loadLogoJpeg() {
+  if (ddtLogoCache !== undefined) return ddtLogoCache;
   try {
-    const image = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = "./logo-prato.png";
-    });
-    const ratio = image.naturalHeight / image.naturalWidth;
-    const width = 98;
-    const height = Math.round(width * ratio);
-    const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(image, 0, 0);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-    const binary = atob(dataUrl.split(",")[1]);
-    return {
-      binary,
-      width,
-      height,
-      pixelWidth: image.naturalWidth,
-      pixelHeight: image.naturalHeight,
-    };
+    ddtLogoCache = await loadLogoJpegFromPath("./logo-prato.png");
+    return ddtLogoCache;
   } catch {
     try {
-      const image = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = "./logo-prato.jpg";
-      });
-      const ratio = image.naturalHeight / image.naturalWidth;
-      const width = 98;
-      const height = Math.round(width * ratio);
-      const canvas = document.createElement("canvas");
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-      const binary = atob(dataUrl.split(",")[1]);
-      return {
-        binary,
-        width,
-        height,
-        pixelWidth: image.naturalWidth,
-        pixelHeight: image.naturalHeight,
-      };
+      ddtLogoCache = await loadLogoJpegFromPath("./logo-prato.jpg");
+      return ddtLogoCache;
     } catch {
+      ddtLogoCache = null;
       return null;
     }
   }
@@ -9563,13 +9654,20 @@ async function downloadDdtPdf(order) {
   const logo = await loadLogoJpeg();
   const physicalLines = getWarehousePreparedLines(order);
   const estimate = calculateShippingEstimate(order, ddt);
-  const recipient = [
-    composeClientName(order),
-    composeAddress(order) || addressIncompleteText(),
+  const destination = getShippingDestination(order);
+  const recipientRows = [];
+  const customerName = String(composeClientName(order) || "").trim();
+  if (customerName) recipientRows.push(customerName);
+  const addressRows = splitPdfTextLines(composeAddress(order) || addressIncompleteText(), 52);
+  recipientRows.push(...addressRows);
+  const cityRow = [
+    destination.postalCode || "",
     order.city || "",
-    order.phone ? `Tel: ${order.phone} · ${phoneNoticeText().toUpperCase()}` : `Tel: ${phoneIncompleteText()} · ${phoneNoticeText().toUpperCase()}`,
-    order.email ? `Email: ${order.email}` : "",
-  ].filter(Boolean);
+    destination.provinceCode ? `(${destination.provinceCode})` : "",
+  ].filter(Boolean).join(" ");
+  if (cityRow) recipientRows.push(cityRow);
+  recipientRows.push(order.phone ? `Tel: ${order.phone} · ${phoneNoticeText().toUpperCase()}` : `Tel: ${phoneIncompleteText()} · ${phoneNoticeText().toUpperCase()}`);
+  if (order.email) recipientRows.push(`Email: ${order.email}`);
   const lines = [];
   const pushText = (x, y, size, value) => {
     lines.push(`BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(value)}) Tj ET`);
@@ -9599,10 +9697,18 @@ async function downloadDdtPdf(order) {
   const printableDdtNumber = String(ddt.number || getOrderNumber(order)).replace(/^D\.?D\.?T\.?\s*[-:]?\s*/i, "");
   pushText(52, 716, 19, `DDT ${printableDdtNumber}`);
   pushText(404, 716, 10, `${state.lang === "it" ? "Data" : "Date"} ${formatDate(ddt.createdAt || new Date().toISOString())}`);
-  pushText(52, 698, 9, `${state.lang === "it" ? "Ordine" : "Order"} ${getOrderNumber(order)} · ${composeClientName(order)}`);
+  pushWrappedPdfText(pushText, {
+    x: 52,
+    startY: 698,
+    size: 9,
+    value: `${state.lang === "it" ? "Ordine" : "Order"} ${getOrderNumber(order)} · ${composeClientName(order)}`,
+    maxChars: 84,
+    lineHeight: 10,
+    maxLines: 1,
+  });
   pushRect(40, 564, 335, 112);
   pushText(52, 658, 9, state.lang === "it" ? "DESTINATARIO / SPEDIZIONE" : "RECIPIENT / SHIPMENT");
-  recipient.forEach((row, index) => pushText(52, 638 - (index * 14), 10, row));
+  recipientRows.slice(0, 6).forEach((row, index) => pushText(52, 638 - (index * 13), index === 0 ? 10 : 9, row));
   pushRect(392, 564, 163, 112);
   pushText(404, 658, 9, String(t("palletLabel")).toUpperCase());
   pushText(404, 638, 14, formatPalletDimensions(ddt));

@@ -10397,6 +10397,36 @@ body.mobile-safe-mode .main-content {
   border-color: #3C3489;
 }
 
+.shipping-queue-card.is-sample {
+  border-color: rgba(90, 77, 168, 0.26);
+  background: linear-gradient(180deg, rgba(249, 248, 255, 0.95), rgba(244, 242, 255, 0.9));
+}
+
+.shipping-queue-card.is-sample:hover {
+  border-color: rgba(90, 77, 168, 0.38);
+  box-shadow: 0 14px 30px rgba(60, 52, 137, 0.12);
+}
+
+.shipping-queue-card.is-sample.selected {
+  border-color: rgba(90, 77, 168, 0.5);
+  box-shadow: 0 16px 34px rgba(60, 52, 137, 0.16);
+}
+
+.order-type-badge.type-sample-box {
+  background: #EEEDFE;
+  color: #3C3489;
+  border-color: rgba(127, 119, 221, 0.35);
+}
+
+.primary-button.is-busy,
+.ghost-button.is-busy {
+  opacity: 0.72;
+  pointer-events: none;
+  cursor: progress;
+  box-shadow: none;
+  transform: none;
+}
+
 .sample-list {
   display: flex;
   flex-direction: column;
