@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260415-shell-reset-33" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260415-shell-reset-33" />
+    <link rel="preload" href="./styles.css?v=20260416-shipping-sample-35" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260416-shipping-sample-35" />
   </head>
   <body class="shell-loading">
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -849,6 +849,7 @@
               <button class="filter-btn shipping-filter-tag" data-shipping-filter="courier">Corriere</button>
               <button class="filter-btn shipping-filter-tag" data-shipping-filter="pickup">Ritiro</button>
               <button class="filter-btn shipping-filter-tag" data-shipping-filter="van">Furgone</button>
+              <button class="filter-btn shipping-filter-tag shipping-filter-sample" data-shipping-filter="sample">Box campioni</button>
               <button class="filter-btn shipping-filter-tag" data-shipping-filter="completed">Evasi / chiusi</button>
             </div>
           </div>
@@ -856,7 +857,7 @@
           <div class="order-grid">
             <div id="shipping-list" class="order-list shipping-order-list"></div>
 
-            <section class="detail-panel">
+            <section id="shipping-standard-detail-panel" class="detail-panel shipping-standard-detail-panel">
               <div class="panel-subsection">
                 <div class="subsection-head">
                   <h4>Materiale e preparazione ordine</h4>
@@ -934,6 +935,62 @@
                   </div>
                   <div id="shipping-estimate" class="info-stack"></div>
                 </div>
+              </div>
+            </section>
+
+            <section class="detail-panel sample-detail-panel hidden" id="sample-detail-panel">
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Flusso box campioni</h4>
+                </div>
+                <h3 id="sample-detail-title" class="section-inline-title">Seleziona un ordine campione</h3>
+                <div id="sample-detail-fields" class="detail-grid"></div>
+              </div>
+
+              <div class="panel-subsection sample-action-strip">
+                <div class="sample-action-title">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                  <span>RDF › SDA · Lettera di vettura automatica</span>
+                </div>
+                <div class="sample-action-row">
+                  <button type="button" class="primary-button" id="sample-open-rdf-button">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                    Apri RDF (dati copiati)
+                  </button>
+                  <button type="button" class="ghost-button" id="sample-upload-ldv-button">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Carica LDV (PDF)
+                  </button>
+                </div>
+                <div class="sample-info-strip">
+                  RDF genera la lettera di vettura importando i dati da Shopify. Scarica la LDV dal portale, caricala qui, e il sistema salva tracking e data spedizione.
+                </div>
+              </div>
+
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Tracking SDA</h4>
+                </div>
+                <form id="sample-form" class="inline-form-grid">
+                  <label class="field">
+                    <span>Corriere effettivo</span>
+                    <input class="text-input" name="sampleCarrier" value="SDA" readonly />
+                  </label>
+                  <label class="field">
+                    <span>Numero LDV</span>
+                    <input class="text-input" name="sampleLdvNumber" placeholder="Si compila dalla LDV..." />
+                  </label>
+                  <label class="field field-full">
+                    <span>Tracking</span>
+                    <input class="text-input" name="sampleTracking" placeholder="Codice tracking SDA" />
+                  </label>
+                  <label class="checkline"><input type="checkbox" name="sampleShipped" /> <span>Box spedito</span></label>
+                  <div id="sample-status" class="panel-note hidden field-full"></div>
+                  <div class="inline-actions field-full">
+                    <button type="submit" class="primary-button small-button">Salva spedizione campione</button>
+                  </div>
+                </form>
+                <div id="sample-attachments" class="attachment-grid"></div>
               </div>
             </section>
           </div>
@@ -1561,6 +1618,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260415-shell-reset-33" type="module"></script>
+    <script src="./app.js?v=20260416-shipping-sample-35" type="module"></script>
   </body>
 </html>

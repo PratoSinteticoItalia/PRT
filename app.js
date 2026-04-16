@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260415-shell-reset-33";
+const APP_SHELL_VERSION = "20260416-shipping-sample-35";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
@@ -967,6 +967,7 @@ const ui = {
   shippingSearch: document.getElementById("shipping-search"),
   shippingFilterTags: Array.from(document.querySelectorAll(".shipping-filter-tag")),
   shippingList: document.getElementById("shipping-list"),
+  shippingStandardDetailPanel: document.getElementById("shipping-standard-detail-panel"),
   shippingDetailTitle: document.getElementById("shipping-detail-title"),
   shippingDetailFields: document.getElementById("shipping-detail-fields"),
   shippingMaterialPreview: document.getElementById("shipping-material-preview"),
@@ -975,6 +976,14 @@ const ui = {
   shippingStatus: document.getElementById("shipping-status"),
   shippingAttachmentButton: document.getElementById("shipping-attachment-button"),
   shippingAttachments: document.getElementById("shipping-attachments"),
+  sampleDetailPanel: document.getElementById("sample-detail-panel"),
+  sampleDetailTitle: document.getElementById("sample-detail-title"),
+  sampleDetailFields: document.getElementById("sample-detail-fields"),
+  sampleForm: document.getElementById("sample-form"),
+  sampleStatus: document.getElementById("sample-status"),
+  sampleAttachments: document.getElementById("sample-attachments"),
+  sampleOpenRdfButton: document.getElementById("sample-open-rdf-button"),
+  sampleUploadLdvButton: document.getElementById("sample-upload-ldv-button"),
   settingsForm: document.getElementById("shopify-settings-form"),
   settingsStatus: document.getElementById("settings-status"),
   topbarGardenPlannerLink: document.getElementById("topbar-garden-planner-link"),
@@ -1134,6 +1143,7 @@ function staticLabels() {
     ["[data-shipping-filter='courier']", state.lang === "it" ? "Corriere" : "Courier"],
     ["[data-shipping-filter='pickup']", state.lang === "it" ? "Ritiro" : "Pickup"],
     ["[data-shipping-filter='van']", state.lang === "it" ? "Furgone" : "Van"],
+    ["[data-shipping-filter='sample']", state.lang === "it" ? "Box campioni" : "Sample boxes"],
     ["[data-shipping-filter='completed']", state.lang === "it" ? "Evasi / chiusi" : "Completed / closed"],
     ["#accounting .panel-head .panel-eyebrow", state.lang === "it" ? "Controllo economico" : "Financial control"],
     ["#accounting-search", null, t("searchOrderPayment")],
@@ -3866,6 +3876,7 @@ function describeTaxStatus(line = {}) {
 function getStatusNodeForAttachmentTarget(targetType = "") {
   if (targetType === "installation") return ui.installationStatus;
   if (targetType === "shipping") return ui.shippingStatus;
+  if (targetType === "sample-ldv") return ui.sampleStatus || ui.shippingStatus;
   if (targetType === "sales-content") return ui.salesContentStatus;
   return ui.ordersStatus;
 }
@@ -3877,6 +3888,7 @@ function isImageAttachment(item = {}) {
 function getAttachmentContextLabel(context = "") {
   if (context === "installation") return state.lang === "it" ? "Posa" : "Install";
   if (context === "shipping") return state.lang === "it" ? "Logistica" : "Shipping";
+  if (context === "sample-ldv") return state.lang === "it" ? "LDV" : "Waybill";
   if (context === "sales-content") return state.lang === "it" ? "Contenuti" : "Content";
   return state.lang === "it" ? "Ordine" : "Order";
 }
@@ -3953,6 +3965,102 @@ function getPhysicalOrderLines(order) {
     }));
 }
 
+function getOrderLineItemsForSample(order) {
+  if (!order || typeof order !== "object") return [];
+  const candidates = [
+    order.lineDetails,
+    order.line_items,
+    order.lineItems,
+    order.items,
+  ];
+  for (const source of candidates) {
+    if (Array.isArray(source) && source.length) return source;
+  }
+  return [];
+}
+
+function isSampleOrder(order) {
+  const sampleRegex = /(box campion|campionatura|box-camp|campion)/i;
+  const lineItems = getOrderLineItemsForSample(order);
+  const hasSampleLine = lineItems.some((item) => {
+    const name = typeof item === "string"
+      ? item
+      : String(item?.title || item?.name || item?.product_title || "").trim();
+    const sku = typeof item === "string"
+      ? ""
+      : String(item?.sku || item?.variant_sku || "").trim();
+    return sampleRegex.test(name) || sampleRegex.test(sku);
+  });
+  if (hasSampleLine) return true;
+  return sampleRegex.test(String(order?.operations?.product || ""));
+}
+
+function getSampleLdvAttachments(order) {
+  const items = mapAttachmentsForContext(order, "")
+    .map((item) => ({
+      ...item,
+      __ctx: String(item.context || "").trim().toLowerCase(),
+      __name: String(item.name || "").trim().toLowerCase(),
+    }))
+    .filter((item) => (
+      item.__ctx === "sample-ldv"
+      || item.__ctx === "ldv"
+      || (item.__ctx === "shipping" && /(ldv|lettera.*vettura)/i.test(item.__name))
+      || (!item.__ctx && /(ldv|lettera.*vettura)/i.test(item.__name))
+    ));
+  return items.sort((left, right) => (
+    new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime()
+  ));
+}
+
+function hasSampleLdvAttachment(order) {
+  return getSampleLdvAttachments(order).length > 0;
+}
+
+function getSampleLdvNumber(order) {
+  return String(
+    order?.operations?.warehouse?.sampleLdvNumber
+    || order?.operations?.warehouse?.pickupLabel
+    || "",
+  ).trim();
+}
+
+function getSampleUrgencyMeta(order) {
+  const targetDate = String(getShippingTargetDate(order) || "").trim();
+  if (!targetDate) {
+    return {
+      urgencyClass: "scheduled",
+      urgencyText: state.lang === "it" ? "Da pianificare" : "To schedule",
+    };
+  }
+  const target = new Date(`${targetDate}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) {
+    return {
+      urgencyClass: "overdue",
+      urgencyText: state.lang === "it" ? "In ritardo" : "Overdue",
+    };
+  }
+  if (diffDays === 0) {
+    return {
+      urgencyClass: "imminent",
+      urgencyText: state.lang === "it" ? "Oggi" : "Today",
+    };
+  }
+  if (diffDays <= 2) {
+    return {
+      urgencyClass: "soon",
+      urgencyText: state.lang === "it" ? "Prossima" : "Soon",
+    };
+  }
+  return {
+    urgencyClass: "scheduled",
+    urgencyText: state.lang === "it" ? "Programmato" : "Scheduled",
+  };
+}
+
 function getDisplayPieceCount(order, item) {
   const rawQty = Math.max(1, Number(item?.quantity || 1));
   const dims = extractDimensions(item?.title || "");
@@ -4001,7 +4109,12 @@ function focusViewTarget(view) {
 
 function getMobileDetailTarget(view) {
   if (view === "accounting") return ui.accountingDetailTitle?.closest(".detail-panel") || ui.accountingDetailTitle;
-  if (view === "shipping") return ui.shippingDetailTitle?.closest(".detail-panel") || ui.shippingDetailTitle;
+  if (view === "shipping") {
+    if (ui.sampleDetailPanel && !ui.sampleDetailPanel.classList.contains("hidden")) {
+      return ui.sampleDetailPanel;
+    }
+    return ui.shippingStandardDetailPanel || ui.shippingDetailTitle?.closest(".detail-panel") || ui.shippingDetailTitle;
+  }
   if (view === "installations") return ui.installationDetailTitle?.closest(".detail-panel") || ui.installationDetailTitle;
   return null;
 }
@@ -5136,8 +5249,11 @@ function filterOrdersForView(kind) {
       return true;
     }
     if (kind === "shipping") {
+      const sample = isSampleOrder(order);
       if (filter === "completed") return isLogisticsOrderCompleted(order);
       if (isLogisticsOrderCompleted(order)) return false;
+      if (filter === "sample") return sample;
+      if (sample) return false;
       const mode = order.operations?.warehouse?.fulfillmentMode;
       if (filter === "courier") return mode === "corriere";
       if (filter === "pickup") return mode === "ritiro";
@@ -5533,7 +5649,11 @@ function renderOps() {
   const inventorySnapshot = getDashboardInventorySnapshot();
   const installations = state.orders.filter((order) => isRoutedToInstallation(order) && !["completata"].includes(String(order.operations?.installation?.status || "").trim())).length;
   const accounting = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
-  const shipping = state.orders.filter((order) => ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode) && !isLogisticsOrderCompleted(order)).length;
+  const shipping = state.orders.filter((order) => (
+    ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode)
+    && !isLogisticsOrderCompleted(order)
+    && !isSampleOrder(order)
+  )).length;
   const closed = state.orders.filter((order) => isOrderClosed(order)).length;
   const salesRequests = state.salesRequests.filter((item) => !isSalesRequestClosedStatus(item.status)).length;
   const salesContents = state.salesContents.length;
@@ -7891,61 +8011,245 @@ function renderShippingQueueCard(order) {
   `;
 }
 
+function renderSampleShippingRow(order) {
+  const selected = order.id === state.selectedOrderId ? "is-selected" : "";
+  const destination = composeAddress(order) || addressIncompleteText();
+  const hasLdvAttached = hasSampleLdvAttachment(order);
+  const urgency = getSampleUrgencyMeta(order);
+  const actionLabel = hasLdvAttached
+    ? (state.lang === "it" ? "Scarica LDV" : "Download waybill")
+    : "Vai a RDF";
+  const actionKind = hasLdvAttached ? "open-sample-ldv" : "open-rdf";
+  return `
+    <article class="sample-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="shipping">
+      <div class="sample-info">
+        <div class="sample-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27,6.96 12,12.01 20.73,6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+        </div>
+        <div class="sample-text">
+          <div class="sample-name">${escapeHtml(composeClientName(order))} <span class="sample-num">· ${escapeHtml(getOrderNumber(order))}</span></div>
+          <div class="sample-addr">${escapeHtml(destination)}</div>
+        </div>
+      </div>
+      <div class="sample-actions">
+        ${hasLdvAttached ? `<span class="sample-status ok">${state.lang === "it" ? "LDV allegata" : "Waybill attached"}</span>` : ""}
+        <span class="shipping-urgency-badge urgency-${urgency.urgencyClass}">${urgency.urgencyText}</span>
+        <button class="sample-btn-primary" type="button" data-action="${actionKind}" data-id="${order.id}">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 3h6v6"></path>
+            <path d="M10 14 21 3"></path>
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          </svg>
+          ${actionLabel}
+        </button>
+      </div>
+    </article>
+  `;
+}
+
+function toggleShippingDetailPanel(order = null) {
+  const shouldShowSample = order ? isSampleOrder(order) : state.filters.shipping === "sample";
+  if (ui.shippingStandardDetailPanel) {
+    ui.shippingStandardDetailPanel.classList.toggle("hidden", shouldShowSample);
+  }
+  if (ui.sampleDetailPanel) {
+    ui.sampleDetailPanel.classList.toggle("hidden", !shouldShowSample);
+  }
+  if (shouldShowSample) {
+    clearStatus(ui.shippingStatus);
+  } else {
+    clearStatus(ui.sampleStatus);
+  }
+  return shouldShowSample;
+}
+
+function renderSampleShippingDetail(order) {
+  if (!ui.sampleDetailTitle || !ui.sampleDetailFields) return;
+  if (!order) {
+    ui.sampleDetailTitle.textContent = state.lang === "it" ? "Seleziona un ordine campione" : "Select a sample order";
+    ui.sampleDetailFields.innerHTML = "";
+    if (ui.sampleAttachments) {
+      ui.sampleAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessuna LDV caricata." : "No waybill uploaded."}</div>`;
+    }
+    if (ui.sampleForm) ui.sampleForm.reset();
+    clearStatus(ui.sampleStatus);
+    return;
+  }
+
+  const destination = getShippingDestination(order);
+  const sampleLdvAttachments = getSampleLdvAttachments(order);
+  const hasLdv = sampleLdvAttachments.length > 0;
+  const ldvAttachment = sampleLdvAttachments[0] || null;
+
+  ui.sampleDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
+  ui.sampleDetailFields.innerHTML = [
+    {
+      label: state.lang === "it" ? "Cliente" : "Customer",
+      value: composeClientName(order),
+      meta: composeAddress(order) || addressIncompleteText(),
+    },
+    {
+      label: state.lang === "it" ? "Flusso" : "Flow",
+      value: state.lang === "it" ? "Box campioni" : "Sample boxes",
+      meta: getShippingTargetLabel(order),
+    },
+    {
+      label: state.lang === "it" ? "Stato spedizione" : "Shipping status",
+      value: getShipmentStateLabel(order),
+      meta: order.operations?.warehouse?.trackingNumber || (state.lang === "it" ? "Tracking non inserito" : "Tracking not set"),
+    },
+    {
+      label: "LDV",
+      value: hasLdv
+        ? (state.lang === "it" ? "Allegata" : "Attached")
+        : (state.lang === "it" ? "Da caricare" : "To upload"),
+      meta: hasLdv
+        ? `${ldvAttachment?.name || "LDV"} · ${formatDate(ldvAttachment?.createdAt)}`
+        : (state.lang === "it" ? "Carica PDF o immagine della lettera di vettura." : "Upload the PDF/image waybill."),
+    },
+    {
+      label: state.lang === "it" ? "Destinazione" : "Destination",
+      value: destination.provinceCode || provinceIncompleteText(),
+      meta: `${destination.postalCode || "—"} · ${destination.province || order.province || "—"}`,
+    },
+  ].map(renderDetailBox).join("");
+
+  if (ui.sampleForm) {
+    ui.sampleForm.sampleCarrier.value = String(order.operations?.warehouse?.carrier || "SDA").trim() || "SDA";
+    ui.sampleForm.sampleLdvNumber.value = getSampleLdvNumber(order);
+    ui.sampleForm.sampleTracking.value = String(order.operations?.warehouse?.trackingNumber || "").trim();
+    ui.sampleForm.sampleShipped.checked = Boolean(
+      order.operations?.warehouse?.shipped
+      || String(order.operations?.warehouse?.status || "").trim() === "ritirato",
+    );
+  }
+
+  if (ui.sampleAttachments) {
+    ui.sampleAttachments.innerHTML = renderAttachmentGrid(sampleLdvAttachments, order.id);
+  }
+}
+
+function formatClientDataForRdf(order) {
+  const destination = getShippingDestination(order);
+  const fullName = String(composeClientName(order) || "").trim();
+  const lines = [
+    fullName ? `Nome: ${fullName}` : "",
+    order?.address ? `Indirizzo: ${order.address}` : "",
+    order?.city ? `Città: ${order.city}` : "",
+    destination.postalCode ? `CAP: ${destination.postalCode}` : "",
+    (destination.provinceCode || destination.province) ? `Provincia: ${destination.provinceCode || destination.province}` : "",
+    order?.phone ? `Telefono: ${order.phone}` : "",
+    order?.email ? `Email: ${order.email}` : "",
+    `Riferimento: Ordine ${getOrderNumber(order)}`,
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+async function openRdfWithData(order) {
+  if (!order) return;
+  const statusNode = isSampleOrder(order) ? (ui.sampleStatus || ui.shippingStatus) : ui.shippingStatus;
+  const payload = formatClientDataForRdf(order);
+  let copied = false;
+  if (navigator?.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(payload);
+      copied = true;
+    } catch {}
+  }
+  if (statusNode) {
+    setStatus(
+      statusNode,
+      copied ? "success" : "error",
+      copied
+        ? (state.lang === "it" ? "Dati cliente copiati. Incolla nel portale RDF." : "Customer data copied. Paste in the RDF portal.")
+        : (state.lang === "it" ? "Apertura RDF eseguita. Copia manualmente i dati cliente." : "RDF opened. Copy customer data manually."),
+    );
+  }
+  window.open("https://portale.rdf.it", "_blank", "noopener,noreferrer");
+}
+
+function openSampleLdvFile(order) {
+  if (!order) return;
+  const firstAttachment = getSampleLdvAttachments(order)[0];
+  const fileUrl = firstAttachment?.url || firstAttachment?.dataUrl || "";
+  if (!fileUrl) {
+    setStatus(
+      ui.sampleStatus || ui.shippingStatus,
+      "error",
+      state.lang === "it" ? "Nessuna LDV disponibile per questo ordine." : "No waybill available for this order.",
+    );
+    return;
+  }
+  window.open(fileUrl, "_blank", "noopener,noreferrer");
+}
+
 function renderShipping() {
   const orders = filterOrdersForView("shipping");
+  const isSampleFilter = state.filters.shipping === "sample";
   const shippingGrid = ui.shippingList?.closest(".order-grid");
   if (shippingGrid) shippingGrid.classList.toggle("is-empty", orders.length === 0);
   if (ui.shippingList) {
-    const groupedOrders = [
-      getShippingQueueGroupMeta("corriere"),
-      getShippingQueueGroupMeta("ritiro"),
-      getShippingQueueGroupMeta("furgone"),
-      getShippingQueueGroupMeta("altro"),
-    ].map((group) => ({
-      ...group,
-      orders: orders.filter((order) => {
-        const mode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
-        if (group.key === "altro") return !["corriere", "ritiro", "furgone"].includes(mode);
-        return mode === group.key;
-      }),
-    })).filter((group) => group.orders.length);
-    const totalPreparedLines = orders.reduce((sum, order) => sum + getWarehousePreparedLines(order).length, 0);
-    ui.shippingList.innerHTML = orders.length
-      ? `
-        <div class="shipping-queue-summary">
-          ${renderDetailBox({
-            label: state.lang === "it" ? "Ordini in coda" : "Queued orders",
-            value: String(orders.length),
-            meta: state.lang === "it" ? "Lista ordini da gestire in logistica." : "Order list to handle in logistics.",
-          })}
-          ${renderDetailBox({
-            label: state.lang === "it" ? "Righe da preparare" : "Lines to prepare",
-            value: String(totalPreparedLines),
-            meta: state.lang === "it" ? "Somma delle righe materiali pronte o da verificare." : "Combined material lines ready or to verify.",
-          })}
-        </div>
-        <div class="shipping-queue-groups">
-          ${groupedOrders.map((group) => `
-            <section class="shipping-queue-group">
-              <div class="shipping-queue-group-head">
-                <div>
-                  <h4>${group.title}</h4>
-                  <p>${group.copy}</p>
+    if (isSampleFilter) {
+      ui.shippingList.innerHTML = orders.length
+        ? `<div class="sample-list">${orders.map(renderSampleShippingRow).join("")}</div>`
+        : `<div class="info-card">${state.lang === "it" ? "Nessun ordine Box campioni con questo filtro." : "No sample-box orders for this filter."}</div>`;
+    } else {
+      const groupedOrders = [
+        getShippingQueueGroupMeta("corriere"),
+        getShippingQueueGroupMeta("ritiro"),
+        getShippingQueueGroupMeta("furgone"),
+        getShippingQueueGroupMeta("altro"),
+      ].map((group) => ({
+        ...group,
+        orders: orders.filter((order) => {
+          const mode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
+          if (group.key === "altro") return !["corriere", "ritiro", "furgone"].includes(mode);
+          return mode === group.key;
+        }),
+      })).filter((group) => group.orders.length);
+      const totalPreparedLines = orders.reduce((sum, order) => sum + getWarehousePreparedLines(order).length, 0);
+      ui.shippingList.innerHTML = orders.length
+        ? `
+          <div class="shipping-queue-summary">
+            ${renderDetailBox({
+              label: state.lang === "it" ? "Ordini in coda" : "Queued orders",
+              value: String(orders.length),
+              meta: state.lang === "it" ? "Lista ordini da gestire in logistica." : "Order list to handle in logistics.",
+            })}
+            ${renderDetailBox({
+              label: state.lang === "it" ? "Righe da preparare" : "Lines to prepare",
+              value: String(totalPreparedLines),
+              meta: state.lang === "it" ? "Somma delle righe materiali pronte o da verificare." : "Combined material lines ready or to verify.",
+            })}
+          </div>
+          <div class="shipping-queue-groups">
+            ${groupedOrders.map((group) => `
+              <section class="shipping-queue-group">
+                <div class="shipping-queue-group-head">
+                  <div>
+                    <h4>${group.title}</h4>
+                    <p>${group.copy}</p>
+                  </div>
+                  <span class="search-pill compact-pill">${group.orders.length}</span>
                 </div>
-                <span class="search-pill compact-pill">${group.orders.length}</span>
-              </div>
-              <div class="shipping-queue-list">
-                ${group.orders.map(renderShippingQueueCard).join("")}
-              </div>
-            </section>
-          `).join("")}
-        </div>
-      `
-      : `<div class="info-card">${state.lang === "it" ? "Nessuna spedizione o ritiro con questo filtro." : "No shipments or pickups for this filter."}</div>`;
+                <div class="shipping-queue-list">
+                  ${group.orders.map(renderShippingQueueCard).join("")}
+                </div>
+              </section>
+            `).join("")}
+          </div>
+        `
+        : `<div class="info-card">${state.lang === "it" ? "Nessuna spedizione o ritiro con questo filtro." : "No shipments or pickups for this filter."}</div>`;
+    }
   }
 
   const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
   if (state.currentView === "shipping" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
+  const samplePanelActive = toggleShippingDetailPanel(order);
   if (!order) {
     if (ui.shippingDetailTitle) ui.shippingDetailTitle.textContent = t("noSelection");
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
@@ -7953,13 +8257,28 @@ function renderShipping() {
     if (ui.shippingEstimate) ui.shippingEstimate.innerHTML = "";
     if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato logistico." : "No shipping attachments."}</div>`;
     clearStatus(ui.shippingStatus);
+    clearStatus(ui.sampleStatus);
+    renderSampleShippingDetail(null);
     if (ui.ddtItemsPreview) renderDdtPreview(null);
+    return;
+  }
+
+  if (samplePanelActive) {
+    renderSampleShippingDetail(order);
+    if (ui.shippingDetailTitle) ui.shippingDetailTitle.textContent = t("noSelection");
+    if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
+    if (ui.shippingMaterialPreview) renderShippingMaterialPreview(null);
+    if (ui.shippingEstimate) ui.shippingEstimate.innerHTML = "";
+    if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato logistico." : "No shipping attachments."}</div>`;
+    if (ui.ddtItemsPreview) renderDdtPreview(null);
+    clearStatus(ui.shippingStatus);
     return;
   }
 
   if (ui.shippingDetailTitle) {
     ui.shippingDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
   }
+  renderSampleShippingDetail(null);
   const destination = getShippingDestination(order);
   const estimate = calculateShippingEstimate(order, getCurrentDdtDraft(order));
   const stage = getUnifiedOrderStage(order);
@@ -8363,8 +8682,8 @@ function renderAttachmentGrid(items, orderId = "") {
       ${isImageAttachment(item) && (item.url || item.dataUrl)
         ? `<img src="${escapeHtml(item.url || item.dataUrl)}" alt="${escapeHtml(item.name || "Allegato")}" loading="lazy" />`
         : `<div class="attachment-file-badge">${escapeHtml(String(item.type || "file").split("/").pop()?.toUpperCase() || "FILE")}</div>`}
-      <strong>${item.url
-        ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.name || "Allegato")}</a>`
+      <strong>${item.url || item.dataUrl
+        ? `<a href="${escapeHtml(item.url || item.dataUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.name || "Allegato")}</a>`
         : escapeHtml(item.name || "Allegato")}</strong>
       <div class="attachment-copy">${getAttachmentContextLabel(String(item.context || ""))}</div>
       <div>${item.createdAt ? formatDate(item.createdAt) : "—"}</div>
@@ -9017,6 +9336,79 @@ async function saveShipping(event) {
     ui.shippingStatus,
     "success",
     `${state.lang === "it" ? "Spedizione aggiornata correttamente." : "Shipping updated successfully."}${shopifyMessage}`,
+  );
+}
+
+async function saveSampleShipping(event) {
+  event.preventDefault();
+  const order = getSelectedOrder();
+  if (!order || !ui.sampleForm || !isSampleOrder(order)) return;
+  const sampleStatusNode = ui.sampleStatus || ui.shippingStatus;
+  clearStatus(sampleStatusNode);
+  const form = new FormData(ui.sampleForm);
+  const nextShipped = form.get("sampleShipped") === "on";
+  const carrier = String(form.get("sampleCarrier") || "SDA").trim() || "SDA";
+  const trackingNumber = String(form.get("sampleTracking") || "").trim();
+  const ldvNumber = String(form.get("sampleLdvNumber") || "").trim();
+  const payload = {
+    warehouse: {
+      fulfillmentMode: order.operations?.warehouse?.fulfillmentMode && order.operations?.warehouse?.fulfillmentMode !== "da-definire"
+        ? order.operations.warehouse.fulfillmentMode
+        : "corriere",
+      carrier,
+      trackingNumber,
+      pickupLabel: ldvNumber,
+      readyToShip: nextShipped,
+      carrierPassed: nextShipped,
+      shipped: nextShipped,
+    },
+  };
+
+  let saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  let shopifyMessage = "";
+  const shouldSyncTrackingToShopify = Boolean(
+    nextShipped
+    && trackingNumber
+    && String(saved.source || order.source || "").toLowerCase().startsWith("shopify"),
+  );
+
+  if (shouldSyncTrackingToShopify) {
+    try {
+      const syncResult = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/sync-shopify-fulfillment`, {
+        method: "POST",
+        body: JSON.stringify({
+          trackingNumber,
+          carrier,
+        }),
+      });
+      saved = syncResult.order || saved;
+      shopifyMessage = syncResult.alreadySynced
+        ? (state.lang === "it" ? " Tracking Shopify già allineato." : " Shopify tracking was already aligned.")
+        : (state.lang === "it" ? " Tracking inviato anche a Shopify." : " Tracking was also sent to Shopify.");
+    } catch (error) {
+      state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+      render();
+      setStatus(
+        sampleStatusNode,
+        "error",
+        state.lang === "it"
+          ? `Spedizione campione salvata, ma sync Shopify fallita. ${String(error.message || "").trim()}`
+          : `Sample shipping saved, but Shopify sync failed. ${String(error.message || "").trim()}`,
+      );
+      return;
+    }
+  }
+
+  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  render();
+  setStatus(
+    sampleStatusNode,
+    "success",
+    `${state.lang === "it" ? "Spedizione campione aggiornata correttamente." : "Sample shipping updated successfully."}${shopifyMessage}`,
   );
 }
 
@@ -9788,12 +10180,22 @@ function openAttachmentPicker(type) {
   if (ui.attachmentInput) {
     ui.attachmentInput.accept = type === "sales-content"
       ? "image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+      : type === "sample-ldv"
+        ? "application/pdf,image/*"
       : "image/*,.pdf";
   }
   if (type === "sales-content") {
     const content = getSelectedSalesContent();
     if (!content) return;
     state.pendingAttachmentTarget = { type, id: content.id };
+    ui.attachmentInput.value = "";
+    ui.attachmentInput.click();
+    return;
+  }
+  if (type === "sample-ldv") {
+    const order = getSelectedOrder();
+    if (!order || !isSampleOrder(order)) return;
+    state.pendingAttachmentTarget = { type, id: order.id };
     ui.attachmentInput.value = "";
     ui.attachmentInput.click();
     return;
@@ -9857,6 +10259,8 @@ async function handleAttachmentChange(event) {
       "success",
       target.type === "shipping"
         ? (state.lang === "it" ? "Foto logistica caricata correttamente." : "Shipping photo uploaded successfully.")
+        : target.type === "sample-ldv"
+          ? (state.lang === "it" ? "LDV caricata correttamente." : "Waybill uploaded successfully.")
         : target.type === "installation"
           ? (state.lang === "it" ? "Foto cantiere caricata correttamente." : "Site photo uploaded successfully.")
           : (state.lang === "it" ? "Allegato ordine caricato correttamente." : "Order attachment uploaded successfully."),
@@ -9867,6 +10271,8 @@ async function handleAttachmentChange(event) {
       "error",
       target.type === "sales-content"
         ? (state.lang === "it" ? "Impossibile caricare l'allegato contenuto." : "Unable to upload the content attachment.")
+        : target.type === "sample-ldv"
+          ? (state.lang === "it" ? "Impossibile caricare la LDV." : "Unable to upload the waybill.")
         : (state.lang === "it" ? "Impossibile caricare l'allegato." : "Unable to upload the attachment."),
     );
   } finally {
@@ -9992,13 +10398,28 @@ function handleGlobalClick(event) {
       const message = error?.message === "attachment_not_found"
         ? (state.lang === "it" ? "Allegato gia rimosso o non trovato." : "Attachment already removed or not found.")
         : (state.lang === "it" ? "Impossibile rimuovere l'allegato." : "Unable to remove attachment.");
+      const activeShippingStatus = ui.sampleDetailPanel && !ui.sampleDetailPanel.classList.contains("hidden")
+        ? (ui.sampleStatus || ui.shippingStatus)
+        : ui.shippingStatus;
       const targetStatus = state.currentView === "installations"
         ? ui.installationStatus
         : state.currentView === "shipping"
-          ? ui.shippingStatus
+          ? activeShippingStatus
           : ui.ordersStatus;
       if (targetStatus) setStatus(targetStatus, "error", message);
     });
+    return;
+  }
+  if (action === "open-rdf") {
+    const targetOrder = state.orders.find((item) => item.id === id) || getSelectedOrder();
+    if (!targetOrder) return;
+    openRdfWithData(targetOrder);
+    return;
+  }
+  if (action === "open-sample-ldv") {
+    const targetOrder = state.orders.find((item) => item.id === id) || getSelectedOrder();
+    if (!targetOrder) return;
+    openSampleLdvFile(targetOrder);
     return;
   }
   if (action === "save-inbox-flow") {
@@ -10417,6 +10838,12 @@ if (ui.shippingFilterTags?.length) {
 }
 bindEvent(ui.orderAttachmentButton, "click", () => openAttachmentPicker("order"));
 bindEvent(ui.shippingAttachmentButton, "click", () => openAttachmentPicker("shipping"));
+bindEvent(ui.sampleUploadLdvButton, "click", () => openAttachmentPicker("sample-ldv"));
+bindEvent(ui.sampleOpenRdfButton, "click", () => {
+  const order = getSelectedOrder();
+  if (!order) return;
+  openRdfWithData(order);
+});
 if (ui.savePrepListButton) {
   ui.savePrepListButton.addEventListener("click", savePrepList);
 }
@@ -10431,6 +10858,9 @@ bindEvent(ui.inventoryJumpButton, "click", () => {
 });
 if (ui.shippingForm) {
   ui.shippingForm.addEventListener("submit", saveShipping);
+}
+if (ui.sampleForm) {
+  ui.sampleForm.addEventListener("submit", saveSampleShipping);
 }
 bindEvent(ui.createDdtButton, "click", createDdt);
 if (ui.ddtForm) {
