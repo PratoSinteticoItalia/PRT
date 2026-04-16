@@ -825,6 +825,36 @@ function toNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeDdtLabel(value = "") {
+  return String(value || "")
+    .replace(/^D\.?D\.?T\.?\s*[-:]?\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildUniqueDdtNumber(store = {}) {
+  const used = new Set();
+  let highestNumeric = 0;
+  const orders = Array.isArray(store.orders) ? store.orders : [];
+  orders.forEach((order) => {
+    const raw = String(order?.operations?.warehouse?.ddt?.number || "").trim();
+    if (!raw) return;
+    used.add(raw.toUpperCase());
+    const normalized = normalizeDdtLabel(raw);
+    const numericMatch = normalized.match(/(\d{2,})/);
+    if (!numericMatch) return;
+    const numeric = Number(numericMatch[1]);
+    if (Number.isFinite(numeric)) highestNumeric = Math.max(highestNumeric, numeric);
+  });
+  let nextNumeric = Math.max(1, highestNumeric + 1);
+  let candidate = `DDT ${nextNumeric}`;
+  while (used.has(candidate.toUpperCase())) {
+    nextNumeric += 1;
+    candidate = `DDT ${nextNumeric}`;
+  }
+  return candidate;
+}
+
 function parseSquareMeters(title, quantity = 1) {
   const normalized = String(title || "").replace(",", ".");
   const slashMatch = normalized.match(/(\d+(?:\.\d+)?)\s*m\s*\/\s*(\d+(?:\.\d+)?)\s*m/i);
@@ -856,6 +886,18 @@ function normalizeStringLineDetails(lineItems = []) {
       quantity: qtyMatch ? toNumber(qtyMatch[1]) : 1,
     });
   });
+}
+
+function extractLineCutNote(entries = [], fallback = "") {
+  const pairs = normalizeAttributePairs(entries);
+  const preferred = pairs.filter((item) => /(tagli?|taglio|cut|cuts|misure|dimensioni|formato|size|lunghezza|larghezza)/i.test(item.key));
+  const selected = preferred.length ? preferred : pairs.slice(0, 2);
+  const chunks = selected
+    .map((item) => `${String(item.key || "").trim()}: ${String(item.value || "").trim()}`.trim())
+    .filter(Boolean);
+  const fallbackText = String(fallback || "").trim();
+  if (!chunks.length && fallbackText) chunks.push(fallbackText);
+  return chunks.join(" · ");
 }
 
 function normalizeTaxLines(lines = []) {
@@ -1074,11 +1116,20 @@ function normalizeLineDetailRecord(item = {}) {
   const title = hasUsefulVariant && rawTitle && !rawTitle.toLowerCase().includes(rawVariant.toLowerCase())
     ? `${rawTitle} - ${rawVariant}`
     : (rawTitle || (hasUsefulVariant ? rawVariant : ""));
+  const note = extractLineCutNote(
+    [
+      ...(Array.isArray(item.properties) ? item.properties : []),
+      ...(Array.isArray(item.customAttributes) ? item.customAttributes : []),
+      ...(Array.isArray(item.noteAttributes) ? item.noteAttributes : []),
+    ],
+    item.note || item.lineNote || item.line_note || "",
+  );
   return {
     title,
     quantity: Math.max(1, Number(item.quantity || item.currentQuantity || 1)),
     sku: String(item.sku || "").trim(),
     variant: hasUsefulVariant ? rawVariant : "",
+    note,
     taxable: item.taxable == null ? taxLines.length > 0 : Boolean(item.taxable),
     requiresShipping: item.requiresShipping == null ? true : Boolean(item.requiresShipping),
     taxLines,
@@ -2274,6 +2325,8 @@ function normalizeOrderPayload(order, index) {
         quantity: Number(item.quantity || 1),
         sku: item.sku,
         variant_title: item.variant_title,
+        properties: item.properties,
+        note: item.note || "",
         taxable: item.taxable,
         tax_lines: item.tax_lines,
         totalPrice: item.line_price != null
@@ -2366,6 +2419,7 @@ function normalizeGraphqlOrder(node, index) {
         quantity: Number(item.currentQuantity || 1),
         sku: item.sku,
         variantTitle: item.variantTitle,
+        customAttributes: item.customAttributes,
         taxable: item.taxable,
         requiresShipping: item.requiresShipping,
         taxLines: item.taxLines,
@@ -2751,6 +2805,10 @@ function getShopifyOrderFields(lineLimit = 20) {
           currentQuantity
           sku
           variantTitle
+          customAttributes {
+            key
+            value
+          }
           taxable
           requiresShipping
           discountedTotalSet {
@@ -4185,7 +4243,8 @@ async function handleApi(req, res, url) {
     const current = store.orders[orderIndex];
     const currentDdt = current.operations?.warehouse?.ddt || {};
     const createdAt = new Date().toISOString();
-    const number = body.number || currentDdt.number || `DDT-${String(current.orderNumber || orderId).replace(/[^\w-]/g, "")}`;
+    const requestedNumber = String(body.number || "").trim();
+    const number = requestedNumber || currentDdt.number || buildUniqueDdtNumber(store);
     store.orders[orderIndex] = {
       ...current,
       operations: normalizeOperations(

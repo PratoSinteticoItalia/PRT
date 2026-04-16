@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260416-shipping-sample-visibility-38";
+const APP_SHELL_VERSION = "20260416-shipping-sample-visibility-39";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3963,6 +3963,7 @@ function getPhysicalOrderLines(order) {
       title: String(item.title).trim(),
       quantity: Number(item.quantity || 1),
       dimensions: extractDimensions(item.title),
+      note: String(item.note || "").trim(),
     }));
 }
 
@@ -4944,7 +4945,7 @@ function getWarehousePrepItems(order) {
     title: line.title,
     quantity: getDisplayPieceCount(order, line),
     included: true,
-    note: "",
+    note: String(line.note || "").trim(),
   }));
 }
 
@@ -7071,7 +7072,7 @@ function renderDdtPreview(order) {
     </div>
     ${physicalLines.length ? `
       <ul class="material-list compact-list">
-        ${physicalLines.map((item) => `<li><span>${item.title}</span><strong>x${item.quantity}</strong></li>`).join("")}
+        ${physicalLines.map((item) => `<li><span>${escapeHtml(item.title)}${item.note ? `<small>${escapeHtml(item.note)}</small>` : ""}</span><strong>x${item.quantity}</strong></li>`).join("")}
       </ul>
     ` : `<div class="info-card">${state.lang === "it" ? "Questo ordine non ha articoli fisici da riportare nel DDT." : "This order has no physical items to include in the DDT."}</div>`}
   `;
@@ -9690,9 +9691,10 @@ async function downloadDdtPdf(order) {
     lines.push("/Im1 Do");
     lines.push("Q");
   }
-  pushText(392, 805, 11, "PRATO SINTETICO ITALIA");
-  pushText(392, 790, 9, "Vertex Srls · Via Ottorino Respighi 57");
-  pushText(392, 777, 9, "81025 Marcianise (CE) · www.pratosinteticoitalia.com");
+  pushText(348, 805, 11, "PRATO SINTETICO ITALIA");
+  pushText(348, 790, 8.5, "Vertex Srls · Via Ottorino Respighi 57");
+  pushText(348, 778, 8.5, "81025 Marcianise (CE)");
+  pushText(348, 766, 8.5, "www.pratosinteticoitalia.com");
   pushRect(40, 690, 515, 44);
   const printableDdtNumber = String(ddt.number || getOrderNumber(order)).replace(/^D\.?D\.?T\.?\s*[-:]?\s*/i, "");
   pushText(52, 716, 19, `DDT ${printableDdtNumber}`);
@@ -9722,15 +9724,40 @@ async function downloadDdtPdf(order) {
   pushText(500, 530, 9, state.lang === "it" ? "NOTE" : "NOTES");
   pushRule(48, 518, 545, 518);
   let rowY = 496;
-  physicalLines.forEach((item) => {
-    const title = String(item.title || t("product"));
-    const lineTitle = title.length > 56 ? `${title.slice(0, 56)}…` : title;
-    const lineNote = String(item.note || "").slice(0, 16);
-    pushText(52, rowY, 10, lineTitle);
-    pushText(458, rowY, 10, String(item.quantity || 1));
-    if (lineNote) pushText(500, rowY, 9, lineNote);
-    rowY -= 18;
-  });
+  let ddtRowsTruncated = false;
+  for (const item of physicalLines) {
+    const lineTitleRows = splitPdfTextLines(item.title || t("product"), 58);
+    const noteRaw = String(item.note || "").trim();
+    const noteLabel = state.lang === "it" ? "Tagli" : "Cuts";
+    const noteText = noteRaw
+      ? (/tagli?|cut/i.test(noteRaw) ? noteRaw : `${noteLabel}: ${noteRaw}`)
+      : "";
+    const lineNoteRows = noteText ? splitPdfTextLines(noteText, 20) : [];
+    const visualRows = Math.max(1, lineTitleRows.length || 0, lineNoteRows.length || 0);
+    const blockTopY = rowY;
+    const blockBottomY = blockTopY - ((visualRows - 1) * 11);
+    if (blockBottomY < 176) {
+      ddtRowsTruncated = true;
+      break;
+    }
+    for (let index = 0; index < visualRows; index += 1) {
+      const lineY = rowY - (index * 11);
+      const titleChunk = lineTitleRows[index] || "";
+      const noteChunk = lineNoteRows[index] || "";
+      if (titleChunk) pushText(52, lineY, 9.5, titleChunk);
+      if (index === 0) pushText(458, lineY, 10, String(item.quantity || 1));
+      if (noteChunk) pushText(500, lineY, 8.5, noteChunk);
+    }
+    rowY -= (visualRows * 11) + 7;
+  }
+  if (ddtRowsTruncated) {
+    pushText(
+      52,
+      Math.max(170, rowY),
+      8.5,
+      state.lang === "it" ? "… altre righe presenti nel gestionale operativo" : "… additional rows available in the operations app",
+    );
+  }
   if (!physicalLines.length) {
     pushText(40, rowY, 10, state.lang === "it" ? "Nessuna merce fisica da trasportare" : "No physical goods to transport");
   }

@@ -2080,6 +2080,19 @@ button.is-feedback,
   border-bottom: 1px solid var(--line);
 }
 
+.material-list li > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.material-list li > span small {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .compact-list li {
   padding: 10px 0;
 }
