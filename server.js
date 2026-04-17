@@ -72,6 +72,90 @@ let dbBootstrapPromise = null;
 let pgPool = null;
 let r2ClientPromise = null;
 let runtimeStoreRevision = "";
+const STORE_EVENTS_HEARTBEAT_MS = 25_000;
+const storeEventsClients = new Map();
+
+function writeStoreEvent(res, eventName = "", payload = {}) {
+  const event = String(eventName || "").trim();
+  if (event) {
+    res.write(`event: ${event}\n`);
+  }
+  res.write(`data: ${JSON.stringify(payload || {})}\n\n`);
+}
+
+function unregisterStoreEventsClient(clientId = "") {
+  const record = storeEventsClients.get(clientId);
+  if (!record) return;
+  if (record.heartbeatTimer) {
+    clearInterval(record.heartbeatTimer);
+  }
+  storeEventsClients.delete(clientId);
+}
+
+function registerStoreEventsClient(req, res, { userId = "", extraHeaders = {} } = {}) {
+  const clientId = randomUUID();
+  const heartbeatTimer = setInterval(() => {
+    try {
+      res.write(`: keepalive ${Date.now()}\n\n`);
+    } catch {
+      unregisterStoreEventsClient(clientId);
+    }
+  }, STORE_EVENTS_HEARTBEAT_MS);
+  if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
+
+  storeEventsClients.set(clientId, {
+    userId: String(userId || ""),
+    res,
+    heartbeatTimer,
+    lastRevision: "",
+  });
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+    ...extraHeaders,
+  });
+  if (typeof res.flushHeaders === "function") res.flushHeaders();
+  res.write("retry: 2000\n\n");
+
+  const currentRevision = getStoreRevision();
+  const currentClient = storeEventsClients.get(clientId);
+  if (currentClient) currentClient.lastRevision = currentRevision;
+  writeStoreEvent(res, "ready", {
+    revision: currentRevision,
+    timestamp: new Date().toISOString(),
+  });
+
+  const cleanup = () => unregisterStoreEventsClient(clientId);
+  req.on("close", cleanup);
+  req.on("aborted", cleanup);
+  res.on("close", cleanup);
+  res.on("error", cleanup);
+}
+
+function broadcastStoreRevision(revision = "") {
+  const normalizedRevision = String(revision || "").trim();
+  if (!normalizedRevision) return;
+  const payload = {
+    revision: normalizedRevision,
+    timestamp: new Date().toISOString(),
+  };
+  for (const [clientId, client] of storeEventsClients.entries()) {
+    if (!client || !client.res) {
+      unregisterStoreEventsClient(clientId);
+      continue;
+    }
+    if (client.lastRevision === normalizedRevision) continue;
+    try {
+      writeStoreEvent(client.res, "store-revision", payload);
+      client.lastRevision = normalizedRevision;
+    } catch {
+      unregisterStoreEventsClient(clientId);
+    }
+  }
+}
 
 function buildStoreRevisionToken() {
   return `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
@@ -425,6 +509,7 @@ async function readJson(path, fallback) {
 
 async function writeJson(path, value) {
   const resolvedPath = resolve(path);
+  const isStorePayload = resolvedPath === resolve(STORE_PATH);
   if (resolvedPath === resolve(STORE_PATH) && value && typeof value === "object") {
     rotateStoreRevision(value);
   }
@@ -435,6 +520,9 @@ async function writeJson(path, value) {
     } catch (error) {
       console.error("store_mirror_write_failed", error);
     }
+    if (isStorePayload) {
+      broadcastStoreRevision(getStoreRevision(value));
+    }
     return;
   }
   if (USE_POSTGRES && resolvedPath === resolve(SESSION_PATH)) {
@@ -442,6 +530,9 @@ async function writeJson(path, value) {
     return;
   }
   await writeLocalJson(path, value);
+  if (isStorePayload) {
+    broadcastStoreRevision(getStoreRevision(value));
+  }
 }
 
 function normalizeSessionEntry(entry = null) {
@@ -3333,6 +3424,29 @@ async function handleApi(req, res, url) {
       service: "vertex-ops-pose-system",
       timestamp: new Date().toISOString(),
     });
+  }
+
+  if (url.pathname === "/api/events" && req.method === "GET") {
+    await ensureStore();
+    const store = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
+    const storeChanged = reconcileStoreData(store);
+    if (storeChanged) {
+      await writeJson(STORE_PATH, store);
+    }
+    const sessionContext = await getSessionContext(req, store);
+    if (!sessionContext.user) {
+      return sendJson(
+        res,
+        401,
+        { error: "unauthorized" },
+        { "Set-Cookie": buildExpiredSessionCookie() },
+      );
+    }
+    registerStoreEventsClient(req, res, {
+      userId: sessionContext.user.id,
+      extraHeaders: sessionContext.sessionId ? { "Set-Cookie": buildSessionCookie(sessionContext.sessionId) } : {},
+    });
+    return;
   }
 
   if (url.pathname === "/api/session/revision" && req.method === "GET") {

@@ -1,11 +1,14 @@
-const APP_SHELL_VERSION = "20260417-whatsapp-dual-template-sw-stability-45";
+const APP_SHELL_VERSION = "20260417-realtime-sync-sse-stability-46";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
-const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 10;
+const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 25;
 const SESSION_REVISION_ENDPOINT = "/api/session/revision";
+const SESSION_EVENTS_ENDPOINT = "/api/events";
+const SESSION_EVENTS_RECONNECT_BASE_MS = 1200;
+const SESSION_EVENTS_RECONNECT_MAX_MS = 20_000;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
@@ -765,6 +768,11 @@ const state = {
 
 let sessionKeepaliveTimer = 0;
 let sessionKeepaliveInFlight = false;
+let sessionKeepaliveForceQueued = false;
+let sessionEventsSource = null;
+let sessionEventsReconnectTimer = 0;
+let sessionEventsReconnectBackoffMs = SESSION_EVENTS_RECONNECT_BASE_MS;
+let sessionEventsStopped = false;
 let shopifyAutoSyncTimer = 0;
 let shopifyAutoSyncInFlight = false;
 let coverageSyncTimer = 0;
@@ -8930,6 +8938,87 @@ function stopSessionKeepalive() {
     sessionKeepaliveTimer = 0;
   }
   sessionKeepaliveInFlight = false;
+  sessionKeepaliveForceQueued = false;
+}
+
+function clearSessionEventsReconnectTimer() {
+  if (!sessionEventsReconnectTimer) return;
+  window.clearTimeout(sessionEventsReconnectTimer);
+  sessionEventsReconnectTimer = 0;
+}
+
+function stopSessionEvents() {
+  sessionEventsStopped = true;
+  clearSessionEventsReconnectTimer();
+  if (sessionEventsSource) {
+    sessionEventsSource.close();
+    sessionEventsSource = null;
+  }
+  sessionEventsReconnectBackoffMs = SESSION_EVENTS_RECONNECT_BASE_MS;
+}
+
+function parseSessionEventPayload(event) {
+  try {
+    return JSON.parse(String(event?.data || "{}"));
+  } catch {
+    return {};
+  }
+}
+
+function handleRealtimeSessionRevision(rawRevision = "") {
+  if (!state.currentUser || document.hidden) return;
+  const revision = String(rawRevision || "").trim();
+  if (!revision || revision === state.sessionRevision) return;
+  void keepSessionAlive({ silent: true, force: true });
+}
+
+function scheduleSessionEventsReconnect() {
+  if (sessionEventsStopped || sessionEventsReconnectTimer || !state.currentUser || !("EventSource" in window)) return;
+  const waitMs = Math.max(SESSION_EVENTS_RECONNECT_BASE_MS, sessionEventsReconnectBackoffMs);
+  sessionEventsReconnectTimer = window.setTimeout(() => {
+    sessionEventsReconnectTimer = 0;
+    if (!state.currentUser || sessionEventsStopped) return;
+    startSessionEvents();
+  }, waitMs);
+  sessionEventsReconnectBackoffMs = Math.min(SESSION_EVENTS_RECONNECT_MAX_MS, waitMs * 2);
+}
+
+function startSessionEvents() {
+  if (!state.currentUser || !("EventSource" in window)) return;
+  sessionEventsStopped = false;
+  clearSessionEventsReconnectTimer();
+  if (sessionEventsSource) {
+    sessionEventsSource.close();
+    sessionEventsSource = null;
+  }
+  const source = new EventSource(SESSION_EVENTS_ENDPOINT);
+  sessionEventsSource = source;
+
+  source.addEventListener("ready", (event) => {
+    if (sessionEventsSource !== source) return;
+    const payload = parseSessionEventPayload(event);
+    handleRealtimeSessionRevision(payload?.revision);
+  });
+
+  source.addEventListener("store-revision", (event) => {
+    if (sessionEventsSource !== source) return;
+    const payload = parseSessionEventPayload(event);
+    handleRealtimeSessionRevision(payload?.revision);
+  });
+
+  source.onopen = () => {
+    if (sessionEventsSource !== source) return;
+    sessionEventsReconnectBackoffMs = SESSION_EVENTS_RECONNECT_BASE_MS;
+  };
+
+  source.onerror = () => {
+    if (sessionEventsSource !== source) return;
+    if (source.readyState === EventSource.CLOSED) {
+      source.close();
+      sessionEventsSource = null;
+      scheduleSessionEventsReconnect();
+    }
+  };
 }
 
 function stopShopifyAutoSync() {
@@ -8949,7 +9038,11 @@ async function readSessionRevision() {
 }
 
 async function keepSessionAlive({ silent = true, force = false } = {}) {
-  if (!state.currentUser || sessionKeepaliveInFlight) return Boolean(state.currentUser);
+  if (!state.currentUser) return false;
+  if (sessionKeepaliveInFlight) {
+    if (force) sessionKeepaliveForceQueued = true;
+    return true;
+  }
   sessionKeepaliveInFlight = true;
   if (!silent) setShellPending(true);
   try {
@@ -8992,6 +9085,13 @@ async function keepSessionAlive({ silent = true, force = false } = {}) {
   } finally {
     sessionKeepaliveInFlight = false;
     if (!silent) setShellPending(false);
+    if (sessionKeepaliveForceQueued && state.currentUser) {
+      sessionKeepaliveForceQueued = false;
+      window.setTimeout(() => {
+        if (!state.currentUser) return;
+        void keepSessionAlive({ silent: true, force: true });
+      }, 40);
+    }
   }
 }
 
@@ -9044,6 +9144,7 @@ async function loadSession() {
 
 function showAuth() {
   stopSessionKeepalive();
+  stopSessionEvents();
   stopShopifyAutoSync();
   setShellPending(false);
   state.mobileMenuOpen = false;
@@ -9054,6 +9155,7 @@ function showAuth() {
 
 function showApp() {
   startSessionKeepalive();
+  startSessionEvents();
   startShopifyAutoSync();
   setShellPending(false);
   state.mobileMenuOpen = false;
