@@ -9037,6 +9037,29 @@ async function readSessionRevision() {
   };
 }
 
+function resetSessionToAuthView() {
+  applySessionPayload({});
+  showAuth();
+}
+
+function applyFetchedSessionSnapshot(session, { renderMode = "current", enforcePasswordResetView = false } = {}) {
+  if (!session?.user) {
+    resetSessionToAuthView();
+    return false;
+  }
+  applySessionPayload(session);
+  if (enforcePasswordResetView && state.currentUser?.mustChangePassword) {
+    state.currentView = "settings";
+  }
+  ensureSelectedOrder();
+  if (renderMode === "all") {
+    render();
+  } else if (renderMode === "current") {
+    renderCurrentViewOnly(state.currentView);
+  }
+  return true;
+}
+
 async function keepSessionAlive({ silent = true, force = false } = {}) {
   if (!state.currentUser) return false;
   if (sessionKeepaliveInFlight) {
@@ -9051,10 +9074,7 @@ async function keepSessionAlive({ silent = true, force = false } = {}) {
       try {
         const revisionPayload = await readSessionRevision();
         if (!revisionPayload.hasUser) {
-          applySessionPayload({});
-          stopSessionKeepalive();
-          stopShopifyAutoSync();
-          showAuth();
+          resetSessionToAuthView();
           return false;
         }
         shouldReloadSession = !revisionPayload.revision || revisionPayload.revision !== state.sessionRevision;
@@ -9064,21 +9084,10 @@ async function keepSessionAlive({ silent = true, force = false } = {}) {
     }
     if (!shouldReloadSession) return true;
     const session = await apiFetch("/api/session");
-    if (!session.user) {
-      applySessionPayload({});
-      stopSessionKeepalive();
-      stopShopifyAutoSync();
-      showAuth();
-      return false;
-    }
-    applySessionPayload(session);
-    ensureSelectedOrder();
-    if (silent) {
-      renderCurrentViewOnly(state.currentView);
-    } else {
-      render();
-    }
-    return true;
+    return applyFetchedSessionSnapshot(session, {
+      renderMode: silent ? "current" : "all",
+      enforcePasswordResetView: false,
+    });
   } catch (error) {
     if (!silent) throw error;
     return false;
@@ -9128,14 +9137,13 @@ async function loadSession() {
   setShellPending(false);
   try {
     const session = await apiFetch("/api/session");
-    if (!session.user) {
-      applySessionPayload({});
-      showAuth();
+    const hasSession = applyFetchedSessionSnapshot(session, {
+      renderMode: "none",
+      enforcePasswordResetView: true,
+    });
+    if (!hasSession) {
       return;
     }
-    applySessionPayload(session);
-    if (state.currentUser?.mustChangePassword) state.currentView = "settings";
-    ensureSelectedOrder();
     showApp();
   } finally {
     setShellPending(false);
@@ -10771,15 +10779,10 @@ async function reloadAll() {
   updateShell();
   try {
     const session = await apiFetch("/api/session");
-    if (!session.user) {
-      applySessionPayload({});
-      showAuth();
-      return false;
-    }
-    applySessionPayload(session);
-    ensureSelectedOrder();
-    render();
-    return true;
+    return applyFetchedSessionSnapshot(session, {
+      renderMode: "current",
+      enforcePasswordResetView: false,
+    });
   } finally {
     reloadAllInFlight = false;
     state.syncInProgress = false;
