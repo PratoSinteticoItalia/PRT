@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260417-sales-whatsapp-button-42";
+const APP_SHELL_VERSION = "20260417-sales-whatsapp-button-fallback-43";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2224,6 +2224,49 @@ function buildSalesRequestMailtoUrl(item = {}) {
   const body = String(item.whatsappTemplate || "").trim()
     || `${state.lang === "it" ? "Ciao" : "Hello"} ${getSalesRequestDisplayName(item)},`;
   return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function ensureSalesRequestWhatsAppActionUi() {
+  const form = ui.salesRequestForm;
+  if (!form) return;
+
+  if (!form.querySelector('input[name="whatsappUrl"]')) {
+    const hiddenUrlInput = document.createElement("input");
+    hiddenUrlInput.type = "hidden";
+    hiddenUrlInput.name = "whatsappUrl";
+    form.append(hiddenUrlInput);
+  }
+
+  if (ui.salesRequestWhatsAppButton) return;
+
+  const legacyTemplateField = form.querySelector('textarea[name="whatsappTemplate"]');
+  if (!legacyTemplateField) return;
+
+  const fieldWrap = legacyTemplateField.closest(".field");
+  if (!fieldWrap) return;
+
+  const legacyLabel = fieldWrap.querySelector("span");
+  if (legacyLabel) {
+    legacyLabel.textContent = state.lang === "it" ? "Primo contatto WhatsApp" : "First WhatsApp contact";
+  }
+
+  const actionsRow = document.createElement("div");
+  actionsRow.className = "inline-actions";
+  const actionButton = document.createElement("a");
+  actionButton.id = "sales-request-whatsapp-button";
+  actionButton.className = "primary-button small-button hidden";
+  actionButton.href = "#";
+  actionButton.target = "_blank";
+  actionButton.rel = "noreferrer";
+  actionButton.textContent = state.lang === "it" ? "Primo contatto WhatsApp" : "First WhatsApp contact";
+  actionsRow.append(actionButton);
+
+  legacyTemplateField.classList.add("hidden");
+  legacyTemplateField.setAttribute("aria-hidden", "true");
+  legacyTemplateField.tabIndex = -1;
+
+  legacyTemplateField.insertAdjacentElement("beforebegin", actionsRow);
+  ui.salesRequestWhatsAppButton = actionButton;
 }
 
 function buildSalesGeneratorBrandingPayload() {
@@ -6375,6 +6418,7 @@ function renderSalesRequests() {
       : "";
   }
   if (!ui.salesRequestForm) return;
+  ensureSalesRequestWhatsAppActionUi();
   ui.salesRequestForm.id.value = selected?.id || "";
   ui.salesRequestForm.name.value = selected?.name || "";
   ui.salesRequestForm.surname.value = selected?.surname || "";
