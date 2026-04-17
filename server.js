@@ -1589,9 +1589,45 @@ function isSalesRequestHeightHeader(normalizedHeader = "") {
   return header.includes("altezza") || header.includes("spessore");
 }
 
-function mapSheetSalesRequestField(target, header, rawValue) {
+function parseWhatsAppHyperlinkFormulaUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const match = raw.match(/^=?\s*HYPERLINK\(\s*"([^"]+)"/i);
+  return match ? String(match[1] || "").trim() : "";
+}
+
+function normalizeSalesRequestWhatsAppUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const formulaUrl = parseWhatsAppHyperlinkFormulaUrl(raw);
+  const candidate = String(formulaUrl || raw).trim();
+  if (!candidate) return "";
+  const withProtocol = /^https?:\/\//i.test(candidate)
+    ? candidate
+    : candidate.startsWith("www.")
+      ? `https://${candidate}`
+      : "";
+  if (!withProtocol) return "";
+  try {
+    const parsed = new URL(withProtocol);
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === "wa.me"
+      || host === "api.whatsapp.com"
+      || host === "web.whatsapp.com"
+      || host === "whatsapp.com"
+      || host.endsWith(".whatsapp.com")
+    ) {
+      return parsed.toString();
+    }
+  } catch {}
+  return "";
+}
+
+function mapSheetSalesRequestField(target, header, rawValue, rawFormulaValue = "") {
   const value = String(rawValue || "").trim();
-  if (!value) return;
+  const formulaValue = String(rawFormulaValue || "").trim();
+  if (!value && !formulaValue) return;
   const normalizedHeader = normalizeSalesRequestImportHeader(header);
   if (!normalizedHeader) return;
 
@@ -1654,6 +1690,15 @@ function mapSheetSalesRequestField(target, header, rawValue) {
     "whatsapp message",
     "whatsapp automation message",
   ].includes(normalizedHeader)) {
+    const whatsappUrl = normalizeSalesRequestWhatsAppUrl(formulaValue || value);
+    if (whatsappUrl) {
+      target.whatsappUrl = whatsappUrl;
+      if (!target.whatsappTemplate) {
+        const textFromUrl = String(new URL(whatsappUrl).searchParams.get("text") || "").trim();
+        if (textFromUrl) target.whatsappTemplate = textFromUrl;
+      }
+      return;
+    }
     target.whatsappTemplate = value;
     return;
   }
@@ -1772,11 +1817,17 @@ async function loadGoogleSheetSalesRequests(config = {}) {
     };
   }
 
+  const encodedRange = encodeURIComponent(quoteSheetName(sheetName));
   const valuesPayload = await googleSheetsFetch(
     normalizedConfig,
-    `/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(quoteSheetName(sheetName))}`,
+    `/spreadsheets/${spreadsheetId}/values/${encodedRange}`,
+  );
+  const formulasPayload = await googleSheetsFetch(
+    normalizedConfig,
+    `/spreadsheets/${spreadsheetId}/values/${encodedRange}?valueRenderOption=FORMULA`,
   );
   const values = Array.isArray(valuesPayload?.values) ? valuesPayload.values : [];
+  const formulaValues = Array.isArray(formulasPayload?.values) ? formulasPayload.values : [];
   const maxColumns = values.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0);
   if (!maxColumns) {
     return {
@@ -1793,6 +1844,7 @@ async function loadGoogleSheetSalesRequests(config = {}) {
     .slice(1)
     .map((row = [], index) => {
       const rowNumber = index + 2;
+      const formulaRow = Array.isArray(formulaValues[index + 1]) ? formulaValues[index + 1] : [];
       const draft = {
         id: `gs:${spreadsheetId}:${normalizeSheetKey(sheetName) || "sheet"}:${rowNumber}`,
         source: "google-sheets",
@@ -1800,7 +1852,12 @@ async function loadGoogleSheetSalesRequests(config = {}) {
         sourceSheetName: sheetName,
         sourceRowNumber: rowNumber,
       };
-      headers.forEach((header, columnIndex) => mapSheetSalesRequestField(draft, header, row[columnIndex] || ""));
+      headers.forEach((header, columnIndex) => mapSheetSalesRequestField(
+        draft,
+        header,
+        row[columnIndex] || "",
+        formulaRow[columnIndex] || "",
+      ));
       return normalizeSalesRequestRecord(draft);
     })
     .filter((item) => item.name || item.surname || item.city || item.phone || item.email);
@@ -1837,6 +1894,14 @@ function normalizeSalesRequestRecord(item = {}) {
       || item.whatsapp
       || "",
     ).trim(),
+    whatsappUrl: normalizeSalesRequestWhatsAppUrl(
+      item.whatsappUrl
+      || item.whatsappLink
+      || item.whatsappHref
+      || item.whatsappTemplate
+      || item.whatsappMessage
+      || "",
+    ),
     source: String(item.source || "manual").trim() || "manual",
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(item.sourceSheetName || "").trim(),
@@ -3477,6 +3542,7 @@ async function handleApi(req, res, url) {
           status: item.status || existing?.status || "new",
           note: item.note || existing?.note || "",
           whatsappTemplate: item.whatsappTemplate || existing?.whatsappTemplate || "",
+          whatsappUrl: item.whatsappUrl || existing?.whatsappUrl || "",
           createdAt: existing?.createdAt || item.createdAt || now,
           updatedAt: now,
         });

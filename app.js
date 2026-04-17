@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260417-session-revision-sync-41";
+const APP_SHELL_VERSION = "20260417-sales-whatsapp-button-42";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -869,6 +869,7 @@ const ui = {
   salesRequestDeleteButton: document.getElementById("sales-request-delete-button"),
   salesRequestUseGeneratorButton: document.getElementById("sales-request-use-generator-button"),
   salesRequestDetailTitle: document.getElementById("sales-request-detail-title"),
+  salesRequestWhatsAppButton: document.getElementById("sales-request-whatsapp-button"),
   salesGeneratorContextPanel: document.getElementById("sales-generator-context-panel"),
   salesGeneratorFrame: document.getElementById("sales-generator-frame"),
   salesGeneratorRequestCard: document.getElementById("sales-generator-request-card"),
@@ -1900,6 +1901,14 @@ function normalizeSalesRequestRecord(item = {}) {
       || item.whatsapp
       || "",
     ).trim(),
+    whatsappUrl: normalizeSalesRequestWhatsAppUrl(
+      item.whatsappUrl
+      || item.whatsappLink
+      || item.whatsappHref
+      || item.whatsappTemplate
+      || item.whatsappMessage
+      || "",
+    ),
     source: String(item.source || "manual").trim() || "manual",
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(item.sourceSheetName || "").trim(),
@@ -2148,6 +2157,41 @@ function buildSalesRequestPrefill(item = {}) {
   };
 }
 
+function parseWhatsAppHyperlinkFormulaUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const match = raw.match(/^=?\s*HYPERLINK\(\s*"([^"]+)"/i);
+  return match ? String(match[1] || "").trim() : "";
+}
+
+function normalizeSalesRequestWhatsAppUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const formulaUrl = parseWhatsAppHyperlinkFormulaUrl(raw);
+  const candidate = String(formulaUrl || raw).trim();
+  if (!candidate) return "";
+  const withProtocol = /^https?:\/\//i.test(candidate)
+    ? candidate
+    : candidate.startsWith("www.")
+      ? `https://${candidate}`
+      : "";
+  if (!withProtocol) return "";
+  try {
+    const parsed = new URL(withProtocol);
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === "wa.me"
+      || host === "api.whatsapp.com"
+      || host === "web.whatsapp.com"
+      || host === "whatsapp.com"
+      || host.endsWith(".whatsapp.com")
+    ) {
+      return parsed.toString();
+    }
+  } catch {}
+  return "";
+}
+
 function normalizePhoneForWhatsApp(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -2163,6 +2207,8 @@ function normalizePhoneForWhatsApp(value = "") {
 }
 
 function buildSalesRequestWhatsAppUrl(item = {}) {
+  const explicitUrl = normalizeSalesRequestWhatsAppUrl(item.whatsappUrl || item.whatsappTemplate || "");
+  if (explicitUrl) return explicitUrl;
   const phone = normalizePhoneForWhatsApp(item.phone);
   if (!phone) return "";
   const message = String(item.whatsappTemplate || "").trim()
@@ -2576,6 +2622,11 @@ function mapImportedSalesRequestField(target, header, rawValue) {
     "whatsapp message",
     "whatsapp automation message",
   ].includes(normalizedHeader)) {
+    const maybeWhatsAppUrl = normalizeSalesRequestWhatsAppUrl(value);
+    if (maybeWhatsAppUrl) {
+      target.whatsappUrl = maybeWhatsAppUrl;
+      return;
+    }
     target.whatsappTemplate = value;
     return;
   }
@@ -6243,6 +6294,7 @@ function getFilteredSalesRequests() {
         item.assignment,
         item.note,
         item.whatsappTemplate,
+        item.whatsappUrl,
         getSalesRequestStatusLabel(item.status),
       ].join(" ").toLowerCase();
       return haystack.includes(query);
@@ -6338,6 +6390,16 @@ function renderSalesRequests() {
   ui.salesRequestForm.note.value = selected?.note || "";
   if (ui.salesRequestForm.whatsappTemplate) {
     ui.salesRequestForm.whatsappTemplate.value = selected?.whatsappTemplate || "";
+  }
+  if (ui.salesRequestForm.whatsappUrl) {
+    ui.salesRequestForm.whatsappUrl.value = selected?.whatsappUrl || "";
+  }
+  const salesRequestWhatsAppUrl = selected ? buildSalesRequestWhatsAppUrl(selected) : "";
+  if (ui.salesRequestWhatsAppButton) {
+    ui.salesRequestWhatsAppButton.href = salesRequestWhatsAppUrl || "#";
+    ui.salesRequestWhatsAppButton.classList.toggle("hidden", !salesRequestWhatsAppUrl);
+    ui.salesRequestWhatsAppButton.setAttribute("aria-disabled", salesRequestWhatsAppUrl ? "false" : "true");
+    ui.salesRequestWhatsAppButton.textContent = state.lang === "it" ? "Primo contatto WhatsApp" : "First WhatsApp contact";
   }
   if (ui.salesRequestDetailTitle) {
     ui.salesRequestDetailTitle.textContent = selected
@@ -6550,6 +6612,7 @@ async function saveSalesRequest(event) {
         status: form.get("status"),
         note: form.get("note"),
         whatsappTemplate: form.get("whatsappTemplate"),
+        whatsappUrl: form.get("whatsappUrl"),
         source: "manual",
       }),
     });
@@ -6615,6 +6678,7 @@ async function importSalesRequests() {
           status: item.status,
           note: item.note,
           whatsappTemplate: item.whatsappTemplate,
+          whatsappUrl: item.whatsappUrl,
           source: "import",
         }),
       });

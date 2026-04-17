@@ -1,7 +1,7 @@
-const CACHE_NAME = "psi-ops-shell-20260417-session-revision-sync-41";
+const CACHE_NAME = "psi-ops-shell-20260417-sales-whatsapp-button-42";
 const APP_SHELL = [
   "/",
-  "/?shell=20260417-session-revision-sync-41",
+  "/?shell=20260417-sales-whatsapp-button-42",
   "/index.html",
   "/garden-planner.html",
   "/garden-planner.html?shell=20260415-shell-reset-33",
@@ -9,8 +9,8 @@ const APP_SHELL = [
   "/garden-photo-configurator.html?v=20260416-photo-loader-fix-34",
   "/garden-photo-configurator-v2.html?v=20260416-photo-loader-fix-34",
   "/garden-planner-page.js?v=20260414-garden-materials-02",
-  "/styles.css?v=20260417-session-revision-sync-41",
-  "/app.js?v=20260417-session-revision-sync-41",
+  "/styles.css?v=20260417-sales-whatsapp-button-42",
+  "/app.js?v=20260417-sales-whatsapp-button-42",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",

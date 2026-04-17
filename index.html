@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260417-session-revision-sync-41" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260417-session-revision-sync-41" />
+    <link rel="preload" href="./styles.css?v=20260417-sales-whatsapp-button-42" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260417-sales-whatsapp-button-42" />
   </head>
   <body class="shell-loading">
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -593,10 +593,15 @@
                     <option value="closed">Chiusa</option>
                   </select>
                 </label>
-                <label class="field field-full">
-                  <span>Messaggio WhatsApp (template)</span>
-                  <textarea class="text-input" name="whatsappTemplate" rows="3" placeholder="Messaggio preimpostato per contatto cliente da Google Sheets..."></textarea>
-                </label>
+                <div class="field field-full">
+                  <span>Primo contatto WhatsApp</span>
+                  <div class="inline-actions">
+                    <a id="sales-request-whatsapp-button" class="primary-button small-button hidden" target="_blank" rel="noreferrer" href="#">Apri messaggio WhatsApp</a>
+                  </div>
+                  <small class="field-hint">Usa lo stesso link rapido del foglio Google quando disponibile, altrimenti viene creato dal numero cliente.</small>
+                  <input type="hidden" name="whatsappTemplate" />
+                  <input type="hidden" name="whatsappUrl" />
+                </div>
                 <label class="field field-full">
                   <span>Note</span>
                   <textarea class="text-input" name="note" rows="4" placeholder="Esigenze cliente, note commerciali, riferimenti utili..."></textarea>
@@ -1618,6 +1623,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260417-session-revision-sync-41" type="module"></script>
+    <script src="./app.js?v=20260417-sales-whatsapp-button-42" type="module"></script>
   </body>
 </html>
