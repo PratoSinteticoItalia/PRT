@@ -780,6 +780,7 @@ let shopifyAutoSyncInFlight = false;
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
+let currentViewRenderFrame = 0;
 const shopifyOrderRefreshInFlight = new Set();
 const shopifyOrderRefreshAttempted = new Set();
 const shopifyOrderRefreshErrors = new Map();
@@ -1469,7 +1470,7 @@ function ensureMobilePillShell() {
     button.addEventListener("click", () => {
       state.lang = button.dataset.lang;
       ui.langButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.lang === state.lang));
-      render();
+      renderCurrentViewOnly(state.currentView);
     });
     button.dataset.boundLang = "true";
   });
@@ -2933,6 +2934,7 @@ async function syncSalesRequestSource() {
     state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(payload.config || state.salesRequestSourceConfig || {});
     state.creatingSalesRequest = false;
     state.salesRequestPage = 1;
+    renderOps();
     renderSalesRequests();
     renderSalesGenerator();
     setStatus(
@@ -3925,7 +3927,7 @@ async function refreshOrderFromShopify(orderId) {
     console.warn("shopify_order_refresh_failed", orderId, error);
   } finally {
     shopifyOrderRefreshInFlight.delete(orderId);
-    render();
+    scheduleCurrentViewRender();
   }
 }
 
@@ -6662,7 +6664,7 @@ function renderSalesContent() {
   }
 }
 
-function upsertSalesRequest(saved) {
+function upsertSalesRequest(saved, { skipOpsRender = false } = {}) {
   const normalized = normalizeSalesRequestRecord(saved);
   state.salesRequests = [
     normalized,
@@ -6671,7 +6673,7 @@ function upsertSalesRequest(saved) {
   state.selectedSalesRequestId = normalized.id;
   state.salesRequestPage = 1;
   state.creatingSalesRequest = false;
-  renderOps();
+  if (!skipOpsRender) renderOps();
 }
 
 function upsertSalesContent(saved) {
@@ -6789,15 +6791,17 @@ async function importSalesRequests() {
           source: "import",
         }),
       });
-      upsertSalesRequest(saved);
+      upsertSalesRequest(saved, { skipOpsRender: true });
     }
     if (ui.salesRequestImportText) ui.salesRequestImportText.value = "";
     state.showSalesRequestImport = false;
     state.salesRequestPage = 1;
+    renderOps();
     renderSalesRequests();
     renderSalesGenerator();
     setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? `${parsedItems.length} richieste importate correttamente.` : `${parsedItems.length} requests imported successfully.`);
   } catch (error) {
+    renderOps();
     setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile importare le richieste." : "Unable to import the requests.");
   }
 }
@@ -9242,10 +9246,22 @@ function renderCurrentViewOnly(view = state.currentView) {
   }
 }
 
+function scheduleCurrentViewRender() {
+  if (currentViewRenderFrame) return;
+  currentViewRenderFrame = window.requestAnimationFrame(() => {
+    currentViewRenderFrame = 0;
+    renderCurrentViewOnly(state.currentView);
+  });
+}
+
 function setView(view) {
   const allowed = getAllowedViewsForRole();
   const nextView = allowed.includes(view) ? view : (allowed[0] || "dashboard");
   const previousView = state.currentView;
+  if (currentViewRenderFrame) {
+    window.cancelAnimationFrame(currentViewRenderFrame);
+    currentViewRenderFrame = 0;
+  }
   if (nextView === "accounting") state.accountingMobilePane = "summary";
   if (nextView === "installations") state.installationMobilePane = "summary";
   state.currentView = nextView;
@@ -9343,7 +9359,7 @@ async function importOrdersJson() {
     ensureSelectedOrder();
     setStatus(ui.ordersStatus, "success", state.lang === "it" ? "Ordini importati correttamente." : "Orders imported successfully.");
     updateOrderImportPanel();
-    render();
+    renderCurrentViewOnly(state.currentView);
   } catch {
     setStatus(ui.ordersStatus, "error", state.lang === "it" ? "JSON non valido. Incolla un payload Shopify corretto." : "Invalid JSON. Paste a valid Shopify payload.");
   }
@@ -9432,7 +9448,7 @@ async function saveOrder(event) {
   }
   state.selectedOrderId = saved.id;
   closeOrderModal();
-  render();
+  renderCurrentViewOnly(state.currentView);
 }
 
 async function deleteSelectedOrder() {
@@ -9466,7 +9482,7 @@ async function saveWarehouse(event) {
     body: JSON.stringify(payload),
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  render();
+  renderCurrentViewOnly(state.currentView);
 }
 
 async function saveInventory(event) {
@@ -9529,7 +9545,7 @@ async function savePrepList() {
     body: JSON.stringify(payload),
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  render();
+  renderCurrentViewOnly(state.currentView);
 }
 
 async function updateOrderRouting(patch) {
@@ -9545,7 +9561,7 @@ async function updateOrderRoutingById(orderId, patch) {
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.selectedOrderId = saved.id;
-  render();
+  renderCurrentViewOnly(state.currentView);
   return saved;
 }
 
@@ -9592,7 +9608,7 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.selectedOrderId = saved.id;
-  render();
+  renderCurrentViewOnly(state.currentView);
   flashButtonFeedback(triggerButton);
 }
 
@@ -9680,7 +9696,7 @@ async function saveShipping(event) {
           : " Tracking was also sent to Shopify.");
     } catch (error) {
       state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-      render();
+      renderCurrentViewOnly(state.currentView);
       setStatus(
         ui.shippingStatus,
         "error",
@@ -9692,7 +9708,7 @@ async function saveShipping(event) {
     }
   }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  render();
+  renderCurrentViewOnly(state.currentView);
   setStatus(
     ui.shippingStatus,
     "success",
@@ -9752,7 +9768,7 @@ async function saveSampleShipping(event) {
         : (state.lang === "it" ? " Tracking inviato anche a Shopify." : " Tracking was also sent to Shopify.");
     } catch (error) {
       state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-      render();
+      renderCurrentViewOnly(state.currentView);
       setStatus(
         sampleStatusNode,
         "error",
@@ -9765,7 +9781,7 @@ async function saveSampleShipping(event) {
   }
 
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  render();
+  renderCurrentViewOnly(state.currentView);
   setStatus(
     sampleStatusNode,
     "success",
@@ -9801,7 +9817,7 @@ async function createDdt() {
       }),
     });
     state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-    render();
+    renderCurrentViewOnly(state.currentView);
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
     await downloadDdtPdf(saved);
     if (ui.warehouseDdtStatus) {
@@ -10728,7 +10744,7 @@ async function handleAttachmentChange(event) {
       }),
     });
     state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-    render();
+    renderCurrentViewOnly(state.currentView);
     setStatus(
       targetStatus,
       "success",
@@ -10760,7 +10776,7 @@ async function removeAttachment(orderId, attachmentIndex) {
     method: "DELETE",
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  render();
+  renderCurrentViewOnly(state.currentView);
 }
 
 function readFileAsDataUrl(file) {
@@ -11016,7 +11032,7 @@ function handleGlobalClick(event) {
     if (button.dataset.view) {
       setView(button.dataset.view);
     } else {
-      render();
+      renderCurrentViewOnly(state.currentView);
       focusViewTarget(state.currentView);
     }
     revealMobileDetailTarget(nextView);
@@ -11149,7 +11165,7 @@ ui.langButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.lang = button.dataset.lang;
     ui.langButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.lang === state.lang));
-    render();
+    renderCurrentViewOnly(state.currentView);
   });
   button.dataset.boundLang = "true";
 });
