@@ -1,10 +1,11 @@
-const APP_SHELL_VERSION = "20260417-shipping-sample-visibility-40";
+const APP_SHELL_VERSION = "20260417-session-revision-sync-41";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
-const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 60 * 2;
+const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 10;
+const SESSION_REVISION_ENDPOINT = "/api/session/revision";
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
@@ -753,6 +754,7 @@ const state = {
   navCounts: {},
   orderPage: 1,
   salesRequestPage: 1,
+  sessionRevision: "",
   mobileMenuOpen: false,
   installationWeekOffset: 0,
   selectedInstallationCrew: "",
@@ -8730,7 +8732,9 @@ function applySessionPayload(session = {}) {
   const nextUser = normalizeUserRecord(session.user || null);
   const nextUserId = String(nextUser?.id || "");
   const userChanged = previousUserId !== nextUserId;
+  const nextSessionRevision = String(session.revision || "").trim();
   state.currentUser = nextUser;
+  state.sessionRevision = nextUser ? nextSessionRevision : "";
   state.orders = session.orders || [];
   state.inventory = session.inventory || [];
   state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
@@ -8773,11 +8777,36 @@ function stopShopifyAutoSync() {
   shopifyAutoSyncInFlight = false;
 }
 
-async function keepSessionAlive({ silent = true } = {}) {
+async function readSessionRevision() {
+  const payload = await apiFetch(SESSION_REVISION_ENDPOINT);
+  return {
+    hasUser: Boolean(payload?.user),
+    revision: String(payload?.revision || "").trim(),
+  };
+}
+
+async function keepSessionAlive({ silent = true, force = false } = {}) {
   if (!state.currentUser || sessionKeepaliveInFlight) return Boolean(state.currentUser);
   sessionKeepaliveInFlight = true;
   if (!silent) setShellPending(true);
   try {
+    let shouldReloadSession = force || !state.sessionRevision;
+    if (!shouldReloadSession) {
+      try {
+        const revisionPayload = await readSessionRevision();
+        if (!revisionPayload.hasUser) {
+          applySessionPayload({});
+          stopSessionKeepalive();
+          stopShopifyAutoSync();
+          showAuth();
+          return false;
+        }
+        shouldReloadSession = !revisionPayload.revision || revisionPayload.revision !== state.sessionRevision;
+      } catch {
+        shouldReloadSession = true;
+      }
+    }
+    if (!shouldReloadSession) return true;
     const session = await apiFetch("/api/session");
     if (!session.user) {
       applySessionPayload({});

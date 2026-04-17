@@ -71,6 +71,35 @@ const loginAttempts = new Map();
 let dbBootstrapPromise = null;
 let pgPool = null;
 let r2ClientPromise = null;
+let runtimeStoreRevision = "";
+
+function buildStoreRevisionToken() {
+  return `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+}
+
+function getStoreRevision(store = null) {
+  const fromStore = String(store?._storeRevision || "").trim();
+  if (fromStore) {
+    runtimeStoreRevision = fromStore;
+    return fromStore;
+  }
+  return String(runtimeStoreRevision || "");
+}
+
+function rotateStoreRevision(store = null) {
+  const nextRevision = buildStoreRevisionToken();
+  if (store && typeof store === "object") {
+    store._storeRevision = nextRevision;
+  }
+  runtimeStoreRevision = nextRevision;
+  return nextRevision;
+}
+
+function ensureStoreRevision(store = null) {
+  const existingRevision = getStoreRevision(store);
+  if (existingRevision) return existingRevision;
+  return rotateStoreRevision(store);
+}
 
 function normalizeUserRole(role = "") {
   const normalized = String(role || "").trim().toLowerCase();
@@ -362,19 +391,43 @@ async function writeDatabaseDocument(key, value) {
   );
 }
 
+async function readStoreRevisionSnapshot() {
+  if (USE_POSTGRES) {
+    await ensureDatabaseStorage();
+    const pool = await getPgPool();
+    const result = await pool.query(
+      "SELECT payload->>'_storeRevision' AS revision FROM app_documents WHERE key = $1 LIMIT 1",
+      [STORE_DOC_KEY],
+    );
+    const revision = String(result.rows?.[0]?.revision || "").trim();
+    if (revision) {
+      runtimeStoreRevision = revision;
+      return revision;
+    }
+  }
+  return getStoreRevision();
+}
+
 async function readJson(path, fallback) {
   const resolvedPath = resolve(path);
   if (USE_POSTGRES && resolvedPath === resolve(STORE_PATH)) {
-    return readDatabaseDocument(STORE_DOC_KEY, fallback);
+    const payload = await readDatabaseDocument(STORE_DOC_KEY, fallback);
+    if (payload && typeof payload === "object") ensureStoreRevision(payload);
+    return payload;
   }
   if (USE_POSTGRES && resolvedPath === resolve(SESSION_PATH)) {
     return readDatabaseDocument(SESSION_DOC_KEY, fallback);
   }
-  return readLocalJson(path, fallback);
+  const payload = await readLocalJson(path, fallback);
+  if (resolvedPath === resolve(STORE_PATH) && payload && typeof payload === "object") ensureStoreRevision(payload);
+  return payload;
 }
 
 async function writeJson(path, value) {
   const resolvedPath = resolve(path);
+  if (resolvedPath === resolve(STORE_PATH) && value && typeof value === "object") {
+    rotateStoreRevision(value);
+  }
   if (USE_POSTGRES && resolvedPath === resolve(STORE_PATH)) {
     await writeDatabaseDocument(STORE_DOC_KEY, value);
     try {
@@ -2095,6 +2148,9 @@ function normalizeOperations(order, linkedJob = null) {
 function reconcileStoreData(store) {
   const defaults = buildDefaultStore();
   let changed = false;
+  const hasStoreRevision = Boolean(String(store?._storeRevision || "").trim());
+  ensureStoreRevision(store);
+  if (!hasStoreRevision) changed = true;
 
   store.users = Array.isArray(store.users) && store.users.length
     ? store.users.map((user, index) => {
@@ -3186,6 +3242,47 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (url.pathname === "/api/session/revision" && req.method === "GET") {
+    const cookies = parseCookies(req.headers.cookie);
+    const sessionId = String(cookies.vertex_session || "");
+    const entry = await readSessionEntry(sessionId);
+    const userId = String(entry?.userId || "");
+    const version = Number(entry?.version || 1);
+    const expiresAt = Number(entry?.expiresAt || 0);
+    if (expiresAt && expiresAt < Date.now()) {
+      await deleteSessionEntry(sessionId);
+      return sendJson(res, 200, { user: null, revision: getStoreRevision() });
+    }
+    if (userId && (!expiresAt || expiresAt - Date.now() <= SESSION_REFRESH_BUFFER_MS)) {
+      await writeSessionEntry(sessionId, {
+        userId,
+        version,
+        expiresAt: Date.now() + SESSION_TTL_MS,
+      });
+    }
+    let revision = await readStoreRevisionSnapshot();
+    if (!revision) {
+      await ensureStore();
+      const storeSnapshot = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
+      const storeSnapshotChanged = reconcileStoreData(storeSnapshot);
+      if (storeSnapshotChanged) {
+        await writeJson(STORE_PATH, storeSnapshot);
+      } else {
+        ensureStoreRevision(storeSnapshot);
+      }
+      revision = getStoreRevision(storeSnapshot);
+    }
+    return sendJson(
+      res,
+      200,
+      {
+        user: userId ? { id: userId } : null,
+        revision,
+      },
+      userId && sessionId ? { "Set-Cookie": buildSessionCookie(sessionId) } : {},
+    );
+  }
+
   await ensureStore();
   const store = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
   const storeChanged = reconcileStoreData(store);
@@ -3197,6 +3294,7 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/session" && req.method === "GET") {
     return sendJson(res, 200, {
+      revision: getStoreRevision(store),
       user: sanitizeUser(currentUser),
       jobs: currentUser ? store.jobs : [],
       orders: currentUser ? store.orders : [],
@@ -3270,6 +3368,7 @@ async function handleApi(req, res, url) {
       res,
       200,
       {
+        revision: getStoreRevision(store),
         user: sanitizeUser(user),
         jobs: store.jobs,
         orders: store.orders,
