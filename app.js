@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260417-realtime-sync-sse-stability-46";
+const APP_SHELL_VERSION = "20260417-soft-boot-no-random-loader-47";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1230,31 +1230,9 @@ async function ensureFreshShellVersion() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  let controllerChangeLogged = false;
   const swUrl = `./sw.js?v=${APP_SHELL_VERSION}`;
-  const bindInstallingWorker = (worker) => {
-    if (!worker) return;
-    worker.addEventListener("statechange", () => {
-      if (worker.state === "installed" && navigator.serviceWorker.controller) {
-        worker.postMessage({ type: "SKIP_WAITING" });
-      }
-    });
-  };
   window.addEventListener("load", () => {
     navigator.serviceWorker.register(swUrl).then((registration) => {
-      bindInstallingWorker(registration.installing);
-      if (registration.waiting) {
-        registration.waiting.postMessage({ type: "SKIP_WAITING" });
-      }
-      registration.addEventListener("updatefound", () => {
-        bindInstallingWorker(registration.installing);
-      });
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (controllerChangeLogged) return;
-        controllerChangeLogged = true;
-        // Keep the current session stable: update applies on next navigation/reload.
-        console.info("service_worker_controller_changed");
-      });
       let lastUpdateCheckAt = 0;
       const refreshRegistration = () => {
         const now = Date.now();
@@ -9125,7 +9103,7 @@ function startShopifyAutoSync() {
 }
 
 async function loadSession() {
-  setShellPending(true);
+  setShellPending(false);
   try {
     const session = await apiFetch("/api/session");
     if (!session.user) {
