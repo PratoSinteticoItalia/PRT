@@ -216,6 +216,10 @@ const SALES_REQUEST_STATUS_REFERENCE = [
   "email inviata",
 ];
 const SALES_REQUEST_ASSIGNMENT_REFERENCE = ["Ivan", "Gabriele"];
+const SALES_REQUEST_FIRST_CONTACT_START_HOUR = 8;
+const SALES_REQUEST_FIRST_CONTACT_END_HOUR = 20;
+const SALES_REQUEST_FIRST_CONTACT_SENT_STATUS = "1° contatto";
+const SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS = "da richiamare";
 
 const translations = {
   it: {
@@ -883,6 +887,7 @@ const ui = {
   salesRequestUseGeneratorButton: document.getElementById("sales-request-use-generator-button"),
   salesRequestDetailTitle: document.getElementById("sales-request-detail-title"),
   salesRequestWhatsAppButton: document.getElementById("sales-request-whatsapp-button"),
+  salesRequestWhatsAppHint: document.getElementById("sales-request-whatsapp-hint"),
   salesGeneratorContextPanel: document.getElementById("sales-generator-context-panel"),
   salesGeneratorFrame: document.getElementById("sales-generator-frame"),
   salesGeneratorRequestCard: document.getElementById("sales-generator-request-card"),
@@ -1887,6 +1892,169 @@ function normalizeSalesRequestAssignment(value = "") {
   return "";
 }
 
+function normalizeIsoDateTime(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const parsed = new Date(raw);
+  if (!Number.isFinite(parsed.getTime())) return "";
+  return parsed.toISOString();
+}
+
+function normalizeSalesRequestFirstContactState(value = "") {
+  const normalized = normalizeLooseString(value);
+  if (!normalized) return "";
+  if (["sent", "inviato", "inviata", "sent-now"].includes(normalized)) return "sent";
+  if (["queued", "coda", "in coda", "scheduled", "pending"].includes(normalized)) return "queued";
+  return "";
+}
+
+function isSalesRequestWithinFirstContactWindow(now = new Date()) {
+  const hour = Number(now.getHours());
+  return hour >= SALES_REQUEST_FIRST_CONTACT_START_HOUR && hour < SALES_REQUEST_FIRST_CONTACT_END_HOUR;
+}
+
+function getSalesRequestNextMorningAt(now = new Date()) {
+  const next = new Date(now);
+  const hour = Number(now.getHours());
+  if (hour >= SALES_REQUEST_FIRST_CONTACT_END_HOUR) {
+    next.setDate(next.getDate() + 1);
+  }
+  next.setHours(SALES_REQUEST_FIRST_CONTACT_START_HOUR, 0, 0, 0);
+  return next.toISOString();
+}
+
+function getSalesRequestOperatorFromCurrentUser() {
+  const direct = normalizeSalesRequestAssignment(state.currentUser?.name || "");
+  if (direct) return direct;
+  const fallback = normalizeSalesRequestAssignment(state.currentUser?.email || "");
+  return fallback || "";
+}
+
+function isSalesRequestFirstContactDue(item = {}, now = new Date()) {
+  const scheduledAt = normalizeIsoDateTime(item.firstContactScheduledAt || "");
+  if (!scheduledAt) return false;
+  const scheduledTime = new Date(scheduledAt).getTime();
+  return Number.isFinite(scheduledTime) && scheduledTime <= now.getTime();
+}
+
+function shouldPromoteSalesRequestToFirstContact(status = "") {
+  const code = getSalesRequestStatusCode(status);
+  if (code === "new" || !String(status || "").trim()) return true;
+  const normalized = normalizeLooseString(status);
+  return [
+    "followup",
+    "follow up",
+    "follow-up",
+    "da richiamare",
+    "richiamare",
+    "in attesa di risposta",
+    "nessuna risposta",
+  ].includes(normalized);
+}
+
+function buildSalesRequestPayloadFromRecord(record = {}, patch = {}) {
+  const merged = { ...record, ...patch };
+  return {
+    id: String(merged.id || "").trim() || undefined,
+    name: merged.name,
+    surname: merged.surname,
+    city: merged.city,
+    phone: merged.phone,
+    email: merged.email,
+    sqm: merged.sqm,
+    requestedHeight: merged.requestedHeight,
+    service: merged.service,
+    surface: merged.surface,
+    assignment: normalizeSalesRequestAssignment(merged.assignment),
+    status: merged.status,
+    note: merged.note,
+    whatsappTemplate: merged.whatsappTemplate,
+    whatsappUrl: merged.whatsappUrl,
+    firstContactState: normalizeSalesRequestFirstContactState(merged.firstContactState),
+    firstContactScheduledAt: normalizeIsoDateTime(merged.firstContactScheduledAt),
+    firstContactSentAt: normalizeIsoDateTime(merged.firstContactSentAt),
+    firstContactBy: normalizeSalesRequestAssignment(merged.firstContactBy || merged.assignment),
+    source: String(merged.source || "manual").trim() || "manual",
+    sourceSpreadsheetId: String(merged.sourceSpreadsheetId || "").trim(),
+    sourceSheetName: String(merged.sourceSheetName || "").trim(),
+    sourceRowNumber: Number(merged.sourceRowNumber || 0),
+    createdAt: String(merged.createdAt || "").trim() || undefined,
+  };
+}
+
+function getSalesRequestFirstContactAutomationDecision({
+  existingRequest = null,
+  nextAssignment = "",
+  nextStatus = "",
+  canOpenWhatsAppNow = false,
+  now = new Date(),
+} = {}) {
+  const normalizedAssignment = normalizeSalesRequestAssignment(nextAssignment);
+  const previousAssignment = normalizeSalesRequestAssignment(existingRequest?.assignment || "");
+  const assignmentChanged = Boolean(normalizedAssignment && normalizedAssignment !== previousAssignment);
+  const currentOperator = getSalesRequestOperatorFromCurrentUser();
+  const canSendNow = Boolean(
+    assignmentChanged
+    && normalizedAssignment
+    && currentOperator
+    && normalizedAssignment === currentOperator
+    && isSalesRequestWithinFirstContactWindow(now)
+    && canOpenWhatsAppNow,
+  );
+  const queued = Boolean(assignmentChanged && normalizedAssignment && !canSendNow);
+  const queuedAt = queued
+    ? (isSalesRequestWithinFirstContactWindow(now) ? now.toISOString() : getSalesRequestNextMorningAt(now))
+    : "";
+  const nextState = canSendNow
+    ? "sent"
+    : queued
+      ? "queued"
+      : normalizeSalesRequestFirstContactState(existingRequest?.firstContactState || "");
+  const statusOverride = assignmentChanged && shouldPromoteSalesRequestToFirstContact(nextStatus)
+    ? (canSendNow ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS : SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS)
+    : String(nextStatus || "").trim();
+  return {
+    action: canSendNow ? "send-now" : queued ? "queued" : "none",
+    firstContactState: nextState,
+    firstContactScheduledAt: canSendNow
+      ? now.toISOString()
+      : queued
+        ? queuedAt
+        : normalizeIsoDateTime(existingRequest?.firstContactScheduledAt || ""),
+    firstContactSentAt: canSendNow
+      ? now.toISOString()
+      : normalizeIsoDateTime(existingRequest?.firstContactSentAt || ""),
+    firstContactBy: normalizedAssignment || normalizeSalesRequestAssignment(existingRequest?.firstContactBy || ""),
+    status: statusOverride || String(nextStatus || "").trim() || "new",
+  };
+}
+
+function getSalesRequestFirstContactHint(item = {}) {
+  const stateValue = normalizeSalesRequestFirstContactState(item.firstContactState || "");
+  const by = normalizeSalesRequestAssignment(item.firstContactBy || item.assignment || "");
+  const scheduledAt = normalizeIsoDateTime(item.firstContactScheduledAt || "");
+  const sentAt = normalizeIsoDateTime(item.firstContactSentAt || "");
+  const isDue = stateValue === "queued" && isSalesRequestFirstContactDue(item) && isSalesRequestWithinFirstContactWindow();
+  if (stateValue === "sent" && sentAt) {
+    return state.lang === "it"
+      ? `Primo contatto inviato${by ? ` da ${by}` : ""} il ${formatDate(sentAt)}.`
+      : `First contact sent${by ? ` by ${by}` : ""} on ${formatDate(sentAt)}.`;
+  }
+  if (stateValue === "queued" && scheduledAt) {
+    if (isDue) {
+      return state.lang === "it"
+        ? `Contatto in coda pronto all'invio${by ? ` per ${by}` : ""}.`
+        : `Queued contact ready to send${by ? ` for ${by}` : ""}.`;
+    }
+    return state.lang === "it"
+      ? `Contatto in coda${by ? ` per ${by}` : ""} · pianificato ${formatDate(scheduledAt)}.`
+      : `Queued contact${by ? ` for ${by}` : ""} · scheduled ${formatDate(scheduledAt)}.`;
+  }
+  return state.lang === "it"
+    ? "Assegna il contatto e salva per avviare l'automazione WhatsApp."
+    : "Assign the contact and save to trigger WhatsApp automation.";
+}
+
 function getSalesRequestStatusCode(status = "") {
   const normalized = normalizeSalesRequestStatus(status);
   if (["new", "quoted", "followup", "closed"].includes(normalized)) return normalized;
@@ -1928,6 +2096,10 @@ function normalizeSalesRequestRecord(item = {}) {
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(item.sourceSheetName || "").trim(),
     sourceRowNumber: Number(item.sourceRowNumber || 0),
+    firstContactState: normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || ""),
+    firstContactScheduledAt: normalizeIsoDateTime(item.firstContactScheduledAt || item.firstContact?.scheduledAt || ""),
+    firstContactSentAt: normalizeIsoDateTime(item.firstContactSentAt || item.firstContact?.sentAt || ""),
+    firstContactBy: normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
   };
@@ -2281,6 +2453,51 @@ function buildSalesRequestWhatsAppUrl(item = {}) {
   return `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
 }
 
+async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
+  const saved = await apiFetch("/api/sales/requests", {
+    method: "POST",
+    body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, patch)),
+  });
+  upsertSalesRequest(saved);
+  renderSalesRequests();
+  renderSalesGenerator();
+  return saved;
+}
+
+async function openSalesRequestWhatsAppContact(record = {}, { markAsSent = true } = {}) {
+  const request = normalizeSalesRequestRecord(record || {});
+  const url = buildSalesRequestWhatsAppUrl(request);
+  if (!url) {
+    setStatus(
+      ui.salesRequestsStatus,
+      "error",
+      state.lang === "it"
+        ? "Numero cliente non disponibile: impossibile aprire WhatsApp."
+        : "Customer phone is missing: unable to open WhatsApp.",
+    );
+    return null;
+  }
+
+  window.open(url, "_blank", "noopener,noreferrer");
+
+  if (!markAsSent) return request;
+
+  const nowIso = new Date().toISOString();
+  const shouldPersistSent = normalizeSalesRequestFirstContactState(request.firstContactState || "") !== "sent"
+    || String(request.status || "").trim() !== SALES_REQUEST_FIRST_CONTACT_SENT_STATUS;
+  if (!shouldPersistSent) return request;
+
+  return persistSalesRequestRecordPatch(request, {
+    firstContactState: "sent",
+    firstContactScheduledAt: request.firstContactScheduledAt || nowIso,
+    firstContactSentAt: nowIso,
+    firstContactBy: normalizeSalesRequestAssignment(request.assignment || request.firstContactBy || ""),
+    status: shouldPromoteSalesRequestToFirstContact(request.status)
+      ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS
+      : request.status,
+  });
+}
+
 function buildSalesRequestMailtoUrl(item = {}) {
   const email = String(item.email || "").trim();
   if (!email) return "";
@@ -2299,6 +2516,10 @@ function ensureSalesRequestWhatsAppActionUi() {
     hiddenUrlInput.type = "hidden";
     hiddenUrlInput.name = "whatsappUrl";
     form.append(hiddenUrlInput);
+  }
+
+  if (!ui.salesRequestWhatsAppHint) {
+    ui.salesRequestWhatsAppHint = form.querySelector("#sales-request-whatsapp-hint") || form.querySelector(".field-hint");
   }
 
   if (ui.salesRequestWhatsAppButton) return;
@@ -2331,6 +2552,9 @@ function ensureSalesRequestWhatsAppActionUi() {
 
   legacyTemplateField.insertAdjacentElement("beforebegin", actionsRow);
   ui.salesRequestWhatsAppButton = actionButton;
+  const hint = fieldWrap.querySelector(".field-hint");
+  if (hint && !hint.id) hint.id = "sales-request-whatsapp-hint";
+  if (!ui.salesRequestWhatsAppHint) ui.salesRequestWhatsAppHint = hint;
 }
 
 function buildSalesGeneratorBrandingPayload() {
@@ -6504,11 +6728,29 @@ function renderSalesRequests() {
     ui.salesRequestForm.whatsappUrl.value = selected?.whatsappUrl || "";
   }
   const salesRequestWhatsAppUrl = selected ? buildSalesRequestWhatsAppUrl(selected) : "";
+  const queuedDueForCurrentOperator = Boolean(
+    selected
+    && normalizeSalesRequestFirstContactState(selected.firstContactState || "") === "queued"
+    && isSalesRequestFirstContactDue(selected)
+    && normalizeSalesRequestAssignment(selected.assignment || selected.firstContactBy || "")
+      && normalizeSalesRequestAssignment(selected.assignment || selected.firstContactBy || "") === getSalesRequestOperatorFromCurrentUser(),
+  );
   if (ui.salesRequestWhatsAppButton) {
     ui.salesRequestWhatsAppButton.href = salesRequestWhatsAppUrl || "#";
     ui.salesRequestWhatsAppButton.classList.toggle("hidden", !salesRequestWhatsAppUrl);
     ui.salesRequestWhatsAppButton.setAttribute("aria-disabled", salesRequestWhatsAppUrl ? "false" : "true");
-    ui.salesRequestWhatsAppButton.textContent = state.lang === "it" ? "Primo contatto WhatsApp" : "First WhatsApp contact";
+    ui.salesRequestWhatsAppButton.dataset.action = "open-sales-request-whatsapp";
+    ui.salesRequestWhatsAppButton.dataset.id = selected?.id || "";
+    ui.salesRequestWhatsAppButton.textContent = queuedDueForCurrentOperator
+      ? (state.lang === "it" ? "Invia primo contatto (in coda)" : "Send queued first contact")
+      : (state.lang === "it" ? "Primo contatto WhatsApp" : "First WhatsApp contact");
+  }
+  if (ui.salesRequestWhatsAppHint) {
+    ui.salesRequestWhatsAppHint.textContent = selected
+      ? getSalesRequestFirstContactHint(selected)
+      : (state.lang === "it"
+        ? "Usa lo stesso link rapido del foglio Google quando disponibile, altrimenti viene creato dal numero cliente."
+        : "Uses the Google Sheet quick link when available, otherwise it is built from the client phone number.");
   }
   if (ui.salesRequestDetailTitle) {
     ui.salesRequestDetailTitle.textContent = selected
@@ -6703,32 +6945,86 @@ async function saveSalesRequest(event) {
   event.preventDefault();
   clearStatus(ui.salesRequestsStatus);
   const form = new FormData(ui.salesRequestForm);
+  const requestId = String(form.get("id") || "").trim();
+  const existingRequest = requestId
+    ? (state.salesRequests.find((item) => item.id === requestId) || null)
+    : null;
+  const nextStatus = String(form.get("status") || "").trim() || "new";
+  const draftRecord = normalizeSalesRequestRecord({
+    ...(existingRequest || {}),
+    id: requestId || undefined,
+    name: form.get("name"),
+    surname: form.get("surname"),
+    city: form.get("city"),
+    phone: form.get("phone"),
+    email: form.get("email"),
+    sqm: form.get("sqm"),
+    requestedHeight: form.get("requestedHeight"),
+    service: form.get("service"),
+    surface: form.get("surface"),
+    assignment: normalizeSalesRequestAssignment(form.get("assignment")),
+    status: nextStatus,
+    note: form.get("note"),
+    whatsappTemplate: form.get("whatsappTemplate"),
+    whatsappUrl: form.get("whatsappUrl"),
+    source: existingRequest?.source || "manual",
+    sourceSpreadsheetId: existingRequest?.sourceSpreadsheetId || "",
+    sourceSheetName: existingRequest?.sourceSheetName || "",
+    sourceRowNumber: Number(existingRequest?.sourceRowNumber || 0),
+    createdAt: existingRequest?.createdAt || undefined,
+  });
+  const automationDecision = getSalesRequestFirstContactAutomationDecision({
+    existingRequest,
+    nextAssignment: draftRecord.assignment,
+    nextStatus,
+    canOpenWhatsAppNow: Boolean(buildSalesRequestWhatsAppUrl(draftRecord)),
+  });
+  const shouldAutoOpenNow = automationDecision.action === "send-now" && Boolean(buildSalesRequestWhatsAppUrl(draftRecord));
+  const autoOpenUrl = shouldAutoOpenNow ? buildSalesRequestWhatsAppUrl(draftRecord) : "";
+  let autoOpenWindow = null;
+  if (autoOpenUrl) {
+    autoOpenWindow = window.open(autoOpenUrl, "_blank", "noopener,noreferrer");
+  }
+  const effectiveAutomationDecision = automationDecision.action === "send-now" && !autoOpenWindow
+    ? {
+        ...automationDecision,
+        action: "queued",
+        firstContactState: "queued",
+        firstContactSentAt: "",
+        firstContactScheduledAt: new Date().toISOString(),
+        status: shouldPromoteSalesRequestToFirstContact(nextStatus)
+          ? SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS
+          : nextStatus,
+      }
+    : automationDecision;
   try {
     const saved = await apiFetch("/api/sales/requests", {
       method: "POST",
-      body: JSON.stringify({
-        id: String(form.get("id") || "").trim() || undefined,
-        name: form.get("name"),
-        surname: form.get("surname"),
-        city: form.get("city"),
-        phone: form.get("phone"),
-        email: form.get("email"),
-        sqm: form.get("sqm"),
-        requestedHeight: form.get("requestedHeight"),
-        service: form.get("service"),
-        surface: form.get("surface"),
-        assignment: normalizeSalesRequestAssignment(form.get("assignment")),
-        status: form.get("status"),
-        note: form.get("note"),
-        whatsappTemplate: form.get("whatsappTemplate"),
-        whatsappUrl: form.get("whatsappUrl"),
-        source: "manual",
-      }),
+      body: JSON.stringify(buildSalesRequestPayloadFromRecord(draftRecord, {
+        status: effectiveAutomationDecision.status,
+        firstContactState: effectiveAutomationDecision.firstContactState,
+        firstContactScheduledAt: effectiveAutomationDecision.firstContactScheduledAt,
+        firstContactSentAt: effectiveAutomationDecision.firstContactSentAt,
+        firstContactBy: effectiveAutomationDecision.firstContactBy,
+      })),
     });
     upsertSalesRequest(saved);
     renderSalesRequests();
     renderSalesGenerator();
-    setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Richiesta salvata." : "Request saved.");
+    const autoOpenMessage = effectiveAutomationDecision.action === "send-now"
+      ? (autoOpenWindow
+          ? (state.lang === "it" ? " Primo contatto WhatsApp aperto automaticamente." : " First WhatsApp contact opened automatically.")
+          : (state.lang === "it" ? " Primo contatto pronto: popup bloccato, usa il pulsante WhatsApp." : " First contact ready: popup blocked, use the WhatsApp button."))
+      : effectiveAutomationDecision.action === "queued"
+        ? (state.lang === "it"
+          ? ` Contatto messo in coda per ${formatDate(effectiveAutomationDecision.firstContactScheduledAt)}.`
+          : ` Contact queued for ${formatDate(effectiveAutomationDecision.firstContactScheduledAt)}.`)
+        : "";
+    setStatus(
+      ui.salesRequestsStatus,
+      "success",
+      `${state.lang === "it" ? "Richiesta salvata." : "Request saved."}${autoOpenMessage}`,
+    );
   } catch (error) {
     setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta." : "Unable to save the request.");
   }
@@ -10875,6 +11171,20 @@ function handleGlobalClick(event) {
     state.salesRequestPage = (state.salesRequestPage || 1) + 1;
     renderSalesRequests();
     ui.salesRequestsList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "open-sales-request-whatsapp") {
+    event.preventDefault();
+    event.stopPropagation();
+    const request = state.salesRequests.find((item) => item.id === id) || getSelectedSalesRequest();
+    if (!request) return;
+    openSalesRequestWhatsAppContact(request).catch(() => {
+      setStatus(
+        ui.salesRequestsStatus,
+        "error",
+        state.lang === "it" ? "Impossibile aprire il contatto WhatsApp." : "Unable to open WhatsApp contact.",
+      );
+    });
     return;
   }
   if (action === "delete-inventory-piece") {

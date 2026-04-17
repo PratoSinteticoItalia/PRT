@@ -1539,6 +1539,22 @@ function normalizeSalesRequestAssignment(value = "") {
   return "";
 }
 
+function normalizeIsoDateTime(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const parsed = new Date(raw);
+  if (!Number.isFinite(parsed.getTime())) return "";
+  return parsed.toISOString();
+}
+
+function normalizeSalesRequestFirstContactState(value = "") {
+  const normalized = normalizeSalesRequestImportHeader(value);
+  if (!normalized) return "";
+  if (["sent", "inviato", "inviata", "sent now"].includes(normalized)) return "sent";
+  if (["queued", "coda", "in coda", "scheduled", "pending"].includes(normalized)) return "queued";
+  return "";
+}
+
 function normalizeSalesRequestStatus(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "new";
@@ -2025,6 +2041,10 @@ function normalizeSalesRequestRecord(item = {}) {
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(item.sourceSheetName || "").trim(),
     sourceRowNumber: Number(item.sourceRowNumber || 0),
+    firstContactState: normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || ""),
+    firstContactScheduledAt: normalizeIsoDateTime(item.firstContactScheduledAt || item.firstContact?.scheduledAt || ""),
+    firstContactSentAt: normalizeIsoDateTime(item.firstContactSentAt || item.firstContact?.sentAt || ""),
+    firstContactBy: normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || new Date().toISOString()),
   };
@@ -3685,6 +3705,10 @@ async function handleApi(req, res, url) {
           note: item.note || existing?.note || "",
           whatsappTemplate: item.whatsappTemplate || existing?.whatsappTemplate || "",
           whatsappUrl: item.whatsappUrl || existing?.whatsappUrl || "",
+          firstContactState: existing?.firstContactState || "",
+          firstContactScheduledAt: existing?.firstContactScheduledAt || "",
+          firstContactSentAt: existing?.firstContactSentAt || "",
+          firstContactBy: existing?.firstContactBy || "",
           createdAt: existing?.createdAt || item.createdAt || now,
           updatedAt: now,
         });
