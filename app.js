@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260417-sales-whatsapp-button-fallback-43";
+const APP_SHELL_VERSION = "20260417-whatsapp-dual-template-sw-stability-45";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -13,6 +13,7 @@ const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
 const SALES_GENERATOR_FRAME_MIN_HEIGHT = 680;
 const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 920;
 const SALES_GENERATOR_FRAME_MAX_HEIGHT = 1480;
+const SW_UPDATE_CHECK_INTERVAL_MS = 1000 * 60 * 10;
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
 const COVERAGE_BOUNDS = { minLon: 2.3, maxLon: 26.3, minLat: 34.2, maxLat: 47.8 };
 const COVERAGE_DEFAULT_COLORS = ["#2d6a4f", "#c26c2d", "#3e74d8", "#a74b4b", "#7c5cc4", "#1f7a8c"];
@@ -1221,7 +1222,7 @@ async function ensureFreshShellVersion() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  let controllerReloaded = false;
+  let controllerChangeLogged = false;
   const swUrl = `./sw.js?v=${APP_SHELL_VERSION}`;
   const bindInstallingWorker = (worker) => {
     if (!worker) return;
@@ -1241,11 +1242,16 @@ function registerServiceWorker() {
         bindInstallingWorker(registration.installing);
       });
       navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (controllerReloaded) return;
-        controllerReloaded = true;
-        window.location.reload();
+        if (controllerChangeLogged) return;
+        controllerChangeLogged = true;
+        // Keep the current session stable: update applies on next navigation/reload.
+        console.info("service_worker_controller_changed");
       });
+      let lastUpdateCheckAt = 0;
       const refreshRegistration = () => {
+        const now = Date.now();
+        if (now - lastUpdateCheckAt < SW_UPDATE_CHECK_INTERVAL_MS) return;
+        lastUpdateCheckAt = now;
         registration.update().catch(() => {});
       };
       window.setTimeout(refreshRegistration, 1200);
@@ -2206,13 +2212,62 @@ function normalizePhoneForWhatsApp(value = "") {
   return `+39${digits}`;
 }
 
+function getSalesRequestServiceIntent(value = "") {
+  const normalized = normalizeLooseString(value);
+  if (!normalized) return "";
+  const hasSupply = normalized.includes("fornitura") || normalized.includes("supply");
+  const hasInstall = normalized.includes("posa") || normalized.includes("install");
+  if (hasInstall) return "supply-install";
+  if (hasSupply) return "supply-only";
+  return "";
+}
+
+function isGenericSalesRequestWhatsAppTemplate(value = "") {
+  const normalized = normalizeLooseString(value);
+  if (!normalized) return false;
+  return (
+    normalized === "messaggio whatsapp"
+    || normalized === "whatsapp message"
+    || normalized === "primo contatto whatsapp"
+    || normalized === "first whatsapp contact"
+    || normalized.includes("messaggio preimpostato")
+    || normalized.includes("template whatsapp")
+  );
+}
+
+function getSalesRequestTemplateText(item = {}) {
+  const raw = String(item.whatsappTemplate || "").trim();
+  if (!raw) return "";
+  return isGenericSalesRequestWhatsAppTemplate(raw) ? "" : raw;
+}
+
+function buildSalesRequestDefaultWhatsAppMessage(item = {}) {
+  const recipient = getSalesRequestDisplayName(item);
+  const serviceIntent = getSalesRequestServiceIntent(item.service);
+  if (state.lang === "it") {
+    if (serviceIntent === "supply-only") {
+      return `Ciao ${recipient}, grazie per la richiesta. Ti confermiamo disponibilita per la sola fornitura del prato sintetico. Se vuoi ti inviamo subito proposta e tempi di consegna.`;
+    }
+    if (serviceIntent === "supply-install") {
+      return `Ciao ${recipient}, grazie per la richiesta. Ti confermiamo disponibilita per fornitura e posa completa. Se vuoi ti inviamo proposta con materiali, posa e tempistiche.`;
+    }
+    return `Ciao ${recipient}, ti contattiamo in merito al tuo preventivo.`;
+  }
+  if (serviceIntent === "supply-only") {
+    return `Hello ${recipient}, thank you for your request. We can support supply-only and share quote details with delivery timing.`;
+  }
+  if (serviceIntent === "supply-install") {
+    return `Hello ${recipient}, thank you for your request. We can support full supply and installation and share the complete quote details.`;
+  }
+  return `Hello ${recipient}, we are contacting you about your quote.`;
+}
+
 function buildSalesRequestWhatsAppUrl(item = {}) {
   const explicitUrl = normalizeSalesRequestWhatsAppUrl(item.whatsappUrl || item.whatsappTemplate || "");
   if (explicitUrl) return explicitUrl;
   const phone = normalizePhoneForWhatsApp(item.phone);
   if (!phone) return "";
-  const message = String(item.whatsappTemplate || "").trim()
-    || `${state.lang === "it" ? "Ciao" : "Hello"} ${getSalesRequestDisplayName(item)}, ${state.lang === "it" ? "ti contattiamo in merito al tuo preventivo." : "we are contacting you about your quote."}`;
+  const message = getSalesRequestTemplateText(item) || buildSalesRequestDefaultWhatsAppMessage(item);
   const waPhone = phone.replace(/[^\d]/g, "");
   return `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
 }
@@ -2221,7 +2276,7 @@ function buildSalesRequestMailtoUrl(item = {}) {
   const email = String(item.email || "").trim();
   if (!email) return "";
   const subject = state.lang === "it" ? "Aggiornamento preventivo" : "Quote update";
-  const body = String(item.whatsappTemplate || "").trim()
+  const body = getSalesRequestTemplateText(item)
     || `${state.lang === "it" ? "Ciao" : "Hello"} ${getSalesRequestDisplayName(item)},`;
   return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }

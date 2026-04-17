@@ -1592,7 +1592,7 @@ function isSalesRequestHeightHeader(normalizedHeader = "") {
 function parseWhatsAppHyperlinkFormulaUrl(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const match = raw.match(/^=?\s*HYPERLINK\(\s*"([^"]+)"/i);
+  const match = raw.match(/HYPERLINK\(\s*"([^"]+)"/i);
   return match ? String(match[1] || "").trim() : "";
 }
 
@@ -1622,6 +1622,34 @@ function normalizeSalesRequestWhatsAppUrl(value = "") {
     }
   } catch {}
   return "";
+}
+
+function extractSalesRequestWhatsAppFormulaUrls(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  const matches = [...raw.matchAll(/"(https?:\/\/[^"]+)"/gi)];
+  if (!matches.length) return [];
+  const results = [];
+  const seen = new Set();
+  matches.forEach((entry) => {
+    const candidate = normalizeSalesRequestWhatsAppUrl(entry?.[1] || "");
+    if (!candidate || seen.has(candidate)) return;
+    seen.add(candidate);
+    results.push(candidate);
+  });
+  return results;
+}
+
+function pickSalesRequestWhatsAppUrlForService(rawValue = "", service = "") {
+  const direct = normalizeSalesRequestWhatsAppUrl(rawValue);
+  if (direct) return direct;
+  const candidates = extractSalesRequestWhatsAppFormulaUrls(rawValue);
+  if (!candidates.length) return "";
+  if (candidates.length === 1) return candidates[0];
+  const serviceCode = normalizeSalesRequestService(service);
+  if (serviceCode === "fornitura") return candidates[0];
+  if (serviceCode === "posa") return candidates[candidates.length - 1];
+  return candidates[0];
 }
 
 function mapSheetSalesRequestField(target, header, rawValue, rawFormulaValue = "") {
@@ -1690,7 +1718,7 @@ function mapSheetSalesRequestField(target, header, rawValue, rawFormulaValue = "
     "whatsapp message",
     "whatsapp automation message",
   ].includes(normalizedHeader)) {
-    const whatsappUrl = normalizeSalesRequestWhatsAppUrl(formulaValue || value);
+    const whatsappUrl = pickSalesRequestWhatsAppUrlForService(formulaValue || value, target.service || "");
     if (whatsappUrl) {
       target.whatsappUrl = whatsappUrl;
       if (!target.whatsappTemplate) {
