@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260417-soft-boot-no-random-loader-47";
+const APP_SHELL_VERSION = "20260417-guardrails-checks-performance-48";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -17,6 +17,7 @@ const SALES_GENERATOR_FRAME_MIN_HEIGHT = 680;
 const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 920;
 const SALES_GENERATOR_FRAME_MAX_HEIGHT = 1480;
 const SW_UPDATE_CHECK_INTERVAL_MS = 1000 * 60 * 10;
+const SHELL_PENDING_FAILSAFE_MS = 1000 * 15;
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
 const COVERAGE_BOUNDS = { minLon: 2.3, maxLon: 26.3, minLat: 34.2, maxLat: 47.8 };
 const COVERAGE_DEFAULT_COLORS = ["#2d6a4f", "#c26c2d", "#3e74d8", "#a74b4b", "#7c5cc4", "#1f7a8c"];
@@ -769,12 +770,14 @@ const state = {
 let sessionKeepaliveTimer = 0;
 let sessionKeepaliveInFlight = false;
 let sessionKeepaliveForceQueued = false;
+let shellPendingFailsafeTimer = 0;
 let sessionEventsSource = null;
 let sessionEventsReconnectTimer = 0;
 let sessionEventsReconnectBackoffMs = SESSION_EVENTS_RECONNECT_BASE_MS;
 let sessionEventsStopped = false;
 let shopifyAutoSyncTimer = 0;
 let shopifyAutoSyncInFlight = false;
+let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
 const shopifyOrderRefreshInFlight = new Set();
@@ -1252,10 +1255,29 @@ function registerServiceWorker() {
 }
 
 function setShellPending(active) {
-  state.shellPending = active;
-  document.body.classList.toggle("shell-loading", active);
-  ui.authScreen?.classList.toggle("shell-pending", active);
-  ui.appShell?.classList.toggle("shell-pending", active);
+  const next = Boolean(active);
+  state.shellPending = next;
+  document.body.classList.toggle("shell-loading", next);
+  ui.authScreen?.classList.toggle("shell-pending", next);
+  ui.appShell?.classList.toggle("shell-pending", next);
+
+  if (shellPendingFailsafeTimer) {
+    window.clearTimeout(shellPendingFailsafeTimer);
+    shellPendingFailsafeTimer = 0;
+  }
+  if (!next) return;
+
+  // Failsafe: never leave the app blocked behind launch overlay during active usage.
+  shellPendingFailsafeTimer = window.setTimeout(() => {
+    shellPendingFailsafeTimer = 0;
+    if (!state.shellPending) return;
+    if (!state.currentUser) return;
+    console.warn("shell_pending_failsafe_released");
+    state.shellPending = false;
+    document.body.classList.remove("shell-loading");
+    ui.authScreen?.classList.remove("shell-pending");
+    ui.appShell?.classList.remove("shell-pending");
+  }, SHELL_PENDING_FAILSAFE_MS);
 }
 
 function updateMobileMenu() {
@@ -10743,15 +10765,26 @@ function readFileAsDataUrl(file) {
 }
 
 async function reloadAll() {
-  const session = await apiFetch("/api/session");
-  if (!session.user) {
-    applySessionPayload({});
-    showAuth();
-    return;
+  if (reloadAllInFlight || state.syncInProgress) return false;
+  reloadAllInFlight = true;
+  state.syncInProgress = true;
+  updateShell();
+  try {
+    const session = await apiFetch("/api/session");
+    if (!session.user) {
+      applySessionPayload({});
+      showAuth();
+      return false;
+    }
+    applySessionPayload(session);
+    ensureSelectedOrder();
+    render();
+    return true;
+  } finally {
+    reloadAllInFlight = false;
+    state.syncInProgress = false;
+    updateShell();
   }
-  applySessionPayload(session);
-  ensureSelectedOrder();
-  render();
 }
 
 function handleInstallationBacklogDragStart(event) {
