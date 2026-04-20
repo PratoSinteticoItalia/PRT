@@ -3168,8 +3168,9 @@ button.is-feedback,
 }
 
 .wh-piece {
+  position: relative;
   min-width: 90px;
-  padding: 12px 12px 10px;
+  padding: 14px 12px 10px;
   border-radius: 14px;
   border: 1px solid #d6ead9;
   background: #effaf2;
@@ -3177,10 +3178,42 @@ button.is-feedback,
   color: #2a5935;
 }
 
+.wh-piece-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(42, 89, 53, 0.16);
+  color: #1f4e2e;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.wh-piece-remove:hover {
+  background: rgba(42, 89, 53, 0.24);
+}
+
 .wh-piece.residuo {
   border: 2px dashed #e1a34f;
   background: #fff6ea;
   color: #995e15;
+}
+
+.wh-piece.residuo .wh-piece-remove {
+  background: rgba(153, 94, 21, 0.16);
+  color: #7c4a11;
+}
+
+.wh-piece.residuo .wh-piece-remove:hover {
+  background: rgba(153, 94, 21, 0.24);
 }
 
 .wh-piece strong {
@@ -3198,8 +3231,13 @@ button.is-feedback,
 .wh-piece.material-slot {
   min-width: 168px;
   max-width: 220px;
-  padding: 14px 16px 12px;
+  padding: 18px 16px 12px;
   text-align: left;
+}
+
+.wh-piece.material-slot .wh-piece-remove {
+  top: 8px;
+  right: 8px;
 }
 
 .wh-piece.material-slot strong {
@@ -4735,6 +4773,14 @@ body {
   padding: 8px 4px;
   border-radius: 6px;
   font-size: 11px;
+}
+
+.wh-piece-remove {
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  font-size: 12px;
 }
 
 .wh-piece strong {

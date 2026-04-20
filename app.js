@@ -7319,17 +7319,33 @@ function renderInventoryCard(group) {
       ` : ""}
       <div class="wh-pieces">
         ${group.isModel && group.pieces.length ? group.pieces.map((item) => `
-          <button class="wh-piece ${item.status === "residuo" ? "residuo" : "intero"}" data-action="delete-inventory-piece" data-id="${item.id}" title="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}">
+          <div class="wh-piece ${item.status === "residuo" ? "residuo" : "intero"}">
+            <button
+              class="wh-piece-remove"
+              type="button"
+              data-action="delete-inventory-piece"
+              data-id="${item.id}"
+              title="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}"
+              aria-label="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}"
+            >×</button>
             <strong>${formatPieceLabel(item)}</strong>
             <span>${group.isModel ? `${Math.round(item.sqm)} mq` : (item.note || unitDetailLabel)}</span>
             <small>${group.isModel ? (item.status === "residuo" ? "RESIDUO" : "INTERO") : unitDetailLabel.toUpperCase()}</small>
-          </button>
+          </div>
         `).join("") : !group.isModel && materialSlots.length ? materialSlots.map((slot) => `
-          <button class="wh-piece material-slot ${slot.status === "residuo" ? "residuo" : "intero"}" data-action="delete-inventory-piece" data-id="${slot.id}" title="${state.lang === "it" ? "Rimuovi lotto" : "Remove slot"}">
+          <div class="wh-piece material-slot ${slot.status === "residuo" ? "residuo" : "intero"}">
+            <button
+              class="wh-piece-remove"
+              type="button"
+              data-action="delete-inventory-piece"
+              data-id="${slot.id}"
+              title="${state.lang === "it" ? "Rimuovi lotto" : "Remove slot"}"
+              aria-label="${state.lang === "it" ? "Rimuovi lotto" : "Remove slot"}"
+            >×</button>
             <strong>${slot.variant || (state.lang === "it" ? "Slot magazzino" : "Warehouse slot")}</strong>
             <span>${slot.note || (state.lang === "it" ? "Quantita aggregata a magazzino" : "Aggregated stock quantity")}</span>
             <small class="material-slot-qty">${slot.units} ${unitDetailLabel}</small>
-          </button>
+          </div>
         `).join("") : `<div class="wh-empty">${state.lang === "it" ? "Nessun pezzo caricato." : "No pieces loaded."}</div>`}
       </div>
       <div class="wh-piece-tools">
