@@ -11309,7 +11309,9 @@ function handleInstallationCalendarDrop(event) {
 }
 
 function handleGlobalClick(event) {
-  const button = event.target.closest("[data-action]");
+  const targetNode = event.target instanceof Element ? event.target : event.target?.parentElement;
+  if (!targetNode) return;
+  const button = targetNode.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
   const id = button.dataset.id;

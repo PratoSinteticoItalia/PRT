@@ -3169,8 +3169,9 @@ button.is-feedback,
 
 .wh-piece {
   position: relative;
+  overflow: visible;
   min-width: 90px;
-  padding: 14px 12px 10px;
+  padding: 16px 12px 10px;
   border-radius: 14px;
   border: 1px solid #d6ead9;
   background: #effaf2;
@@ -3180,17 +3181,20 @@ button.is-feedback,
 
 .wh-piece-remove {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 18px;
-  height: 18px;
-  border: 0;
+  top: -7px;
+  right: -7px;
+  z-index: 4;
+  pointer-events: auto;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(34, 64, 45, 0.14);
   border-radius: 999px;
-  background: rgba(42, 89, 53, 0.16);
-  color: #1f4e2e;
+  background: #ffffff;
+  color: #365f45;
+  box-shadow: 0 4px 10px rgba(26, 47, 31, 0.12);
   display: grid;
   place-items: center;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   line-height: 1;
   padding: 0;
@@ -3198,7 +3202,9 @@ button.is-feedback,
 }
 
 .wh-piece-remove:hover {
-  background: rgba(42, 89, 53, 0.24);
+  background: #ffe9e9;
+  color: #b42323;
+  border-color: rgba(180, 35, 35, 0.3);
 }
 
 .wh-piece.residuo {
@@ -3208,15 +3214,18 @@ button.is-feedback,
 }
 
 .wh-piece.residuo .wh-piece-remove {
-  background: rgba(153, 94, 21, 0.16);
-  color: #7c4a11;
+  border-color: rgba(153, 94, 21, 0.16);
+  color: #8d5413;
 }
 
 .wh-piece.residuo .wh-piece-remove:hover {
-  background: rgba(153, 94, 21, 0.24);
+  background: #fff0df;
+  color: #7c4a11;
+  border-color: rgba(153, 94, 21, 0.3);
 }
 
 .wh-piece strong {
+  pointer-events: none;
   display: block;
   font-size: 18px;
   margin-bottom: 4px;
@@ -3224,6 +3233,7 @@ button.is-feedback,
 
 .wh-piece span,
 .wh-piece small {
+  pointer-events: none;
   display: block;
   font-size: 12px;
 }
@@ -3236,8 +3246,8 @@ button.is-feedback,
 }
 
 .wh-piece.material-slot .wh-piece-remove {
-  top: 8px;
-  right: 8px;
+  top: -7px;
+  right: -7px;
 }
 
 .wh-piece.material-slot strong {
@@ -4776,10 +4786,10 @@ body {
 }
 
 .wh-piece-remove {
-  top: 4px;
-  right: 4px;
-  width: 16px;
-  height: 16px;
+  top: -5px;
+  right: -5px;
+  width: 20px;
+  height: 20px;
   font-size: 12px;
 }
 
