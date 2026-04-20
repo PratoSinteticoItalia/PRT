@@ -67,11 +67,13 @@ const BOOTSTRAP_OFFICE_PASSWORD = String(process.env.BOOTSTRAP_OFFICE_PASSWORD |
 const API_STATE_LOCK_KEY = 41051721;
 const API_STATE_LOCK_TIMEOUT_MS = 60_000;
 const API_STATE_LOCK_POLL_MS = 40;
+const STORE_BACKUP_MIN_INTERVAL_MS = 1000 * 60 * 2;
 const loginAttempts = new Map();
 let dbBootstrapPromise = null;
 let pgPool = null;
 let r2ClientPromise = null;
 let runtimeStoreRevision = "";
+let lastStoreBackupSnapshotAt = 0;
 const STORE_EVENTS_HEARTBEAT_MS = 25_000;
 const storeEventsClients = new Map();
 
@@ -345,18 +347,24 @@ async function writeLocalJson(path, value) {
   if (resolve(path) === resolve(STORE_PATH)) {
     try {
       mkdirSync(BACKUP_DIR, { recursive: true });
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       writeFileSync(join(BACKUP_DIR, "store-latest.json"), serialized, "utf8");
-      writeFileSync(join(BACKUP_DIR, `store-${timestamp}.json`), serialized, "utf8");
-      const snapshots = readdirSync(BACKUP_DIR)
-        .filter((file) => /^store-\d{4}-\d{2}-\d{2}T/.test(file))
-        .sort()
-        .reverse();
-      snapshots.slice(30).forEach((file) => {
-        try {
-          unlinkSync(join(BACKUP_DIR, file));
-        } catch {}
-      });
+      const now = Date.now();
+      const shouldCreateTimestampSnapshot = !lastStoreBackupSnapshotAt
+        || (now - lastStoreBackupSnapshotAt) >= STORE_BACKUP_MIN_INTERVAL_MS;
+      if (shouldCreateTimestampSnapshot) {
+        lastStoreBackupSnapshotAt = now;
+        const timestamp = new Date(now).toISOString().replace(/[:.]/g, "-");
+        writeFileSync(join(BACKUP_DIR, `store-${timestamp}.json`), serialized, "utf8");
+        const snapshots = readdirSync(BACKUP_DIR)
+          .filter((file) => /^store-\d{4}-\d{2}-\d{2}T/.test(file))
+          .sort()
+          .reverse();
+        snapshots.slice(30).forEach((file) => {
+          try {
+            unlinkSync(join(BACKUP_DIR, file));
+          } catch {}
+        });
+      }
     } catch (error) {
       console.error("store_backup_failed", error);
     }
@@ -547,6 +555,14 @@ function normalizeSessionEntry(entry = null) {
     version: Number.isFinite(version) ? version : 1,
     expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
   };
+}
+
+function normalizeInventoryProductKey(value = "") {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*\d+\s*(?:m|mq|cm)?\s*$/i, "")
+    .trim()
+    .toLowerCase();
 }
 
 async function readSessionEntry(sessionId = "") {
@@ -4274,6 +4290,17 @@ async function handleApi(req, res, url) {
         createdAt: new Date().toISOString(),
       }];
     store.inventory.unshift(...created);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, store.inventory);
+  }
+
+  if (url.pathname.match(/^\/api\/inventory\/items\/by-product\/[^/]+$/) && req.method === "DELETE") {
+    const productLabel = decodeURIComponent(url.pathname.split("/")[5] || "");
+    const productKey = normalizeInventoryProductKey(productLabel);
+    if (!productKey) {
+      return sendJson(res, 400, { error: "invalid_inventory_product" });
+    }
+    store.inventory = (store.inventory || []).filter((item) => normalizeInventoryProductKey(item.product || "") !== productKey);
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.inventory);
   }

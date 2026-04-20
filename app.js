@@ -1,14 +1,15 @@
-const APP_SHELL_VERSION = "20260417-guardrails-checks-performance-48";
+const APP_SHELL_VERSION = "20260419-process-debug-fix-49";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
-const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 25;
+const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 12;
 const SESSION_REVISION_ENDPOINT = "/api/session/revision";
 const SESSION_EVENTS_ENDPOINT = "/api/events";
 const SESSION_EVENTS_RECONNECT_BASE_MS = 1200;
 const SESSION_EVENTS_RECONNECT_MAX_MS = 20_000;
+const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 900;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
@@ -779,6 +780,8 @@ let sessionEventsSource = null;
 let sessionEventsReconnectTimer = 0;
 let sessionEventsReconnectBackoffMs = SESSION_EVENTS_RECONNECT_BASE_MS;
 let sessionEventsStopped = false;
+let sessionEventsRefreshTimer = 0;
+let sessionEventsLastRefreshAt = 0;
 let shopifyAutoSyncTimer = 0;
 let shopifyAutoSyncInFlight = false;
 let reloadAllInFlight = false;
@@ -1262,6 +1265,14 @@ function registerServiceWorker() {
 
 function setShellPending(active) {
   const next = Boolean(active);
+  if (next && state.currentUser) {
+    // Never block active operators behind the launch overlay during live usage.
+    state.shellPending = false;
+    document.body.classList.remove("shell-loading");
+    ui.authScreen?.classList.remove("shell-pending");
+    ui.appShell?.classList.remove("shell-pending");
+    return;
+  }
   state.shellPending = next;
   document.body.classList.toggle("shell-loading", next);
   ui.authScreen?.classList.toggle("shell-pending", next);
@@ -2055,6 +2066,30 @@ function getSalesRequestFirstContactHint(item = {}) {
     : "Assign the contact and save to trigger WhatsApp automation.";
 }
 
+function getSalesRequestAutomationBadge(item = {}) {
+  const stateValue = normalizeSalesRequestFirstContactState(item.firstContactState || "");
+  const scheduledAt = normalizeIsoDateTime(item.firstContactScheduledAt || "");
+  if (stateValue === "queued") {
+    const label = state.lang === "it" ? "✓ In programmazione" : "✓ Scheduled";
+    const title = scheduledAt
+      ? (state.lang === "it" ? `Primo contatto pianificato ${formatDate(scheduledAt)}` : `First contact scheduled ${formatDate(scheduledAt)}`)
+      : (state.lang === "it" ? "Primo contatto in programmazione" : "First contact scheduled");
+    return {
+      label,
+      title,
+      tone: "queued",
+    };
+  }
+  if (stateValue === "sent") {
+    return {
+      label: state.lang === "it" ? "✓ Contattato" : "✓ Contacted",
+      title: state.lang === "it" ? "Primo contatto WhatsApp inviato" : "First WhatsApp contact sent",
+      tone: "sent",
+    };
+  }
+  return null;
+}
+
 function getSalesRequestStatusCode(status = "") {
   const normalized = normalizeSalesRequestStatus(status);
   if (["new", "quoted", "followup", "closed"].includes(normalized)) return normalized;
@@ -2458,9 +2493,9 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     method: "POST",
     body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, patch)),
   });
-  upsertSalesRequest(saved);
+  upsertSalesRequest(saved, { skipOpsRender: true });
   renderSalesRequests();
-  renderSalesGenerator();
+  if (state.currentView === "sales-generator") renderSalesGenerator();
   return saved;
 }
 
@@ -3160,7 +3195,7 @@ async function syncSalesRequestSource() {
     state.salesRequestPage = 1;
     renderOps();
     renderSalesRequests();
-    renderSalesGenerator();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
     setStatus(
       ui.salesRequestSourceStatus,
       "success",
@@ -6604,14 +6639,15 @@ function getFilteredSalesRequests() {
   const query = String(state.search.salesRequests || "").trim().toLowerCase();
   return [...state.salesRequests]
     .sort((left, right) => {
-      const rightUpdated = new Date(right.updatedAt || right.createdAt || 0).getTime();
-      const leftUpdated = new Date(left.updatedAt || left.createdAt || 0).getTime();
-      if (rightUpdated !== leftUpdated) return rightUpdated - leftUpdated;
-      const rightCreated = new Date(right.createdAt || 0).getTime();
-      const leftCreated = new Date(left.createdAt || 0).getTime();
-      if (rightCreated !== leftCreated) return rightCreated - leftCreated;
-      const rightRow = Number(right.sourceRowNumber || 0);
       const leftRow = Number(left.sourceRowNumber || 0);
+      const rightRow = Number(right.sourceRowNumber || 0);
+      const leftHasRow = leftRow > 0;
+      const rightHasRow = rightRow > 0;
+      if (leftHasRow && rightHasRow && leftRow !== rightRow) return leftRow - rightRow;
+      if (leftHasRow !== rightHasRow) return leftHasRow ? -1 : 1;
+      const rightCreated = new Date(right.createdAt || right.updatedAt || 0).getTime();
+      const leftCreated = new Date(left.createdAt || left.updatedAt || 0).getTime();
+      if (rightCreated !== leftCreated) return rightCreated - leftCreated;
       if (rightRow !== leftRow) return rightRow - leftRow;
       return String(right.id || "").localeCompare(String(left.id || ""));
     })
@@ -6669,14 +6705,21 @@ function renderSalesRequests() {
   updateSalesRequestSourcePanel();
   if (ui.salesRequestsList) {
     ui.salesRequestsList.innerHTML = pageItems.length
-      ? pageItems.map((item) => `
-          <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""}" data-action="select-sales-request" data-id="${item.id}">
+      ? pageItems.map((item) => {
+        const automationBadge = getSalesRequestAutomationBadge(item);
+        return `
+          <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""}" data-action="select-sales-request" data-id="${item.id}" data-first-contact-state="${escapeHtml(normalizeSalesRequestFirstContactState(item.firstContactState || ""))}">
             <div class="sales-request-card-head">
               <div>
                 <strong>${escapeHtml(getSalesRequestDisplayName(item))}</strong>
                 <p>${escapeHtml(item.city || (state.lang === "it" ? "Città da definire" : "City pending"))}</p>
               </div>
-              <span class="sales-status-pill">${escapeHtml(getSalesRequestStatusLabel(item.status))}</span>
+              <div class="sales-request-card-head-badges">
+                <span class="sales-status-pill">${escapeHtml(getSalesRequestStatusLabel(item.status))}</span>
+                ${automationBadge
+                  ? `<span class="sales-automation-pill ${automationBadge.tone === "queued" ? "is-queued" : "is-sent"}" title="${escapeHtml(automationBadge.title)}">${escapeHtml(automationBadge.label)}</span>`
+                  : ""}
+              </div>
             </div>
             <div class="sales-request-card-meta">
               <span>${escapeHtml(getSalesRequestServiceLabel(item.service))}</span>
@@ -6690,7 +6733,8 @@ function renderSalesRequests() {
               <span>${item.updatedAt ? formatDate(item.updatedAt) : "—"}</span>
             </div>
           </article>
-        `).join("")
+        `;
+      }).join("")
       : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta disponibile." : "No requests available."}</div>`;
   }
   if (ui.salesRequestsPagination) {
@@ -6908,12 +6952,14 @@ function renderSalesContent() {
 
 function upsertSalesRequest(saved, { skipOpsRender = false } = {}) {
   const normalized = normalizeSalesRequestRecord(saved);
-  state.salesRequests = [
-    normalized,
-    ...state.salesRequests.filter((item) => item.id !== normalized.id),
-  ];
+  const existingIndex = state.salesRequests.findIndex((item) => item.id === normalized.id);
+  if (existingIndex >= 0) {
+    state.salesRequests = state.salesRequests.map((item, index) => (index === existingIndex ? normalized : item));
+  } else {
+    state.salesRequests = [normalized, ...state.salesRequests];
+    state.salesRequestPage = 1;
+  }
   state.selectedSalesRequestId = normalized.id;
-  state.salesRequestPage = 1;
   state.creatingSalesRequest = false;
   if (!skipOpsRender) renderOps();
 }
@@ -7008,9 +7054,9 @@ async function saveSalesRequest(event) {
         firstContactBy: effectiveAutomationDecision.firstContactBy,
       })),
     });
-    upsertSalesRequest(saved);
+    upsertSalesRequest(saved, { skipOpsRender: true });
     renderSalesRequests();
-    renderSalesGenerator();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
     const autoOpenMessage = effectiveAutomationDecision.action === "send-now"
       ? (autoOpenWindow
           ? (state.lang === "it" ? " Primo contatto WhatsApp aperto automaticamente." : " First WhatsApp contact opened automatically.")
@@ -7044,7 +7090,7 @@ async function deleteSalesRequest() {
     state.lastSalesGeneratorSignature = "";
     renderOps();
     renderSalesRequests();
-    renderSalesGenerator();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
     setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Richiesta eliminata." : "Request deleted.");
   } catch (error) {
     setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile eliminare la richiesta." : "Unable to delete the request.");
@@ -7094,7 +7140,7 @@ async function importSalesRequests() {
     state.salesRequestPage = 1;
     renderOps();
     renderSalesRequests();
-    renderSalesGenerator();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
     setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? `${parsedItems.length} richieste importate correttamente.` : `${parsedItems.length} requests imported successfully.`);
   } catch (error) {
     renderOps();
@@ -7116,7 +7162,7 @@ function toggleSalesGeneratorFreeMode() {
     if (!selected) return;
     state.salesGeneratorFreeMode = false;
     pushSalesRequestToGenerator(true);
-    renderSalesGenerator();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
     return;
   }
   clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
@@ -7285,6 +7331,28 @@ function renderInventoryCard(group) {
             <small class="material-slot-qty">${slot.units} ${unitDetailLabel}</small>
           </button>
         `).join("") : `<div class="wh-empty">${state.lang === "it" ? "Nessun pezzo caricato." : "No pieces loaded."}</div>`}
+      </div>
+      <div class="wh-piece-tools">
+        <button
+          class="btn"
+          type="button"
+          data-action="remove-last-inventory-piece"
+          data-product="${escapeHtml(group.product)}"
+          ${group.pieces.length ? "" : "disabled"}
+        >
+          ${group.isModel
+            ? (state.lang === "it" ? "Rimuovi ultimo rotolo" : "Remove latest roll")
+            : (state.lang === "it" ? "Rimuovi ultimo lotto" : "Remove latest slot")}
+        </button>
+        <button
+          class="btn ghost-button danger-button"
+          type="button"
+          data-action="clear-inventory-product"
+          data-product="${escapeHtml(group.product)}"
+          ${group.pieces.length ? "" : "disabled"}
+        >
+          ${state.lang === "it" ? "Azzera giacenza" : "Clear stock"}
+        </button>
       </div>
       <div class="wh-stats">
         <div class="wh-stat soft">
@@ -9247,9 +9315,17 @@ function clearSessionEventsReconnectTimer() {
   sessionEventsReconnectTimer = 0;
 }
 
+function clearSessionEventsRefreshTimer() {
+  if (!sessionEventsRefreshTimer) return;
+  window.clearTimeout(sessionEventsRefreshTimer);
+  sessionEventsRefreshTimer = 0;
+}
+
 function stopSessionEvents() {
   sessionEventsStopped = true;
   clearSessionEventsReconnectTimer();
+  clearSessionEventsRefreshTimer();
+  sessionEventsLastRefreshAt = 0;
   if (sessionEventsSource) {
     sessionEventsSource.close();
     sessionEventsSource = null;
@@ -9265,11 +9341,30 @@ function parseSessionEventPayload(event) {
   }
 }
 
+function requestRealtimeSessionRefresh() {
+  if (!state.currentUser || document.hidden) return;
+  const now = Date.now();
+  const elapsed = now - sessionEventsLastRefreshAt;
+  if (elapsed >= SESSION_EVENTS_REFRESH_DEBOUNCE_MS && !sessionEventsRefreshTimer) {
+    sessionEventsLastRefreshAt = now;
+    void keepSessionAlive({ silent: true, force: true });
+    return;
+  }
+  if (sessionEventsRefreshTimer) return;
+  const waitMs = Math.max(120, SESSION_EVENTS_REFRESH_DEBOUNCE_MS - Math.max(0, elapsed));
+  sessionEventsRefreshTimer = window.setTimeout(() => {
+    sessionEventsRefreshTimer = 0;
+    if (!state.currentUser || document.hidden) return;
+    sessionEventsLastRefreshAt = Date.now();
+    void keepSessionAlive({ silent: true, force: true });
+  }, waitMs);
+}
+
 function handleRealtimeSessionRevision(rawRevision = "") {
   if (!state.currentUser || document.hidden) return;
   const revision = String(rawRevision || "").trim();
   if (!revision || revision === state.sessionRevision) return;
-  void keepSessionAlive({ silent: true, force: true });
+  requestRealtimeSessionRefresh();
 }
 
 function scheduleSessionEventsReconnect() {
@@ -9287,6 +9382,7 @@ function startSessionEvents() {
   if (!state.currentUser || !("EventSource" in window)) return;
   sessionEventsStopped = false;
   clearSessionEventsReconnectTimer();
+  clearSessionEventsRefreshTimer();
   if (sessionEventsSource) {
     sessionEventsSource.close();
     sessionEventsSource = null;
@@ -9806,6 +9902,60 @@ async function saveInventory(event) {
   ui.inventoryForm.reset();
   updateInventoryFormUI();
   renderWarehouse();
+}
+
+function getInventoryItemsByProductName(product = "") {
+  const productKey = normalizeProductName(product);
+  if (!productKey) return [];
+  return state.inventory.filter((item) => {
+    const itemLabel = getCatalogLabel(item.product || "");
+    return normalizeProductName(itemLabel) === productKey;
+  });
+}
+
+async function removeInventoryPieceById(itemId = "") {
+  const normalizedId = String(itemId || "").trim();
+  if (!normalizedId) return false;
+  const nextInventory = await apiFetch(`/api/inventory/items/${encodeURIComponent(normalizedId)}`, { method: "DELETE" });
+  state.inventory = nextInventory;
+  renderWarehouse();
+  return true;
+}
+
+async function removeLatestInventoryPieceByProduct(product = "") {
+  const productLabel = String(product || "").trim();
+  const candidates = getInventoryItemsByProductName(productLabel);
+  if (!candidates.length) return false;
+  const sortedCandidates = [...candidates].sort((left, right) => {
+    const rightTime = new Date(right.createdAt || 0).getTime();
+    const leftTime = new Date(left.createdAt || 0).getTime();
+    if (rightTime !== leftTime) return rightTime - leftTime;
+    return String(right.id || "").localeCompare(String(left.id || ""));
+  });
+  const target = sortedCandidates[0];
+  const confirmed = window.confirm(
+    state.lang === "it"
+      ? `Rimuovere l'ultimo elemento caricato per ${productLabel}?`
+      : `Remove the latest loaded stock item for ${productLabel}?`,
+  );
+  if (!confirmed) return false;
+  return removeInventoryPieceById(target.id);
+}
+
+async function clearInventoryProductStock(product = "") {
+  const productLabel = String(product || "").trim();
+  const candidates = getInventoryItemsByProductName(productLabel);
+  if (!candidates.length) return false;
+  const confirmed = window.confirm(
+    state.lang === "it"
+      ? `Azzerare tutta la giacenza per ${productLabel}? (${candidates.length} elementi)`
+      : `Clear all stock for ${productLabel}? (${candidates.length} items)`,
+  );
+  if (!confirmed) return false;
+  const nextInventory = await apiFetch(`/api/inventory/items/by-product/${encodeURIComponent(productLabel)}`, { method: "DELETE" });
+  state.inventory = nextInventory;
+  renderWarehouse();
+  return true;
 }
 
 async function savePrepList() {
@@ -11188,9 +11338,36 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "delete-inventory-piece") {
-    apiFetch(`/api/inventory/items/${encodeURIComponent(id)}`, { method: "DELETE" }).then((inventory) => {
-      state.inventory = inventory;
-      renderWarehouse();
+    removeInventoryPieceById(id).catch(() => {
+      setStatus(
+        ui.ordersStatus,
+        "error",
+        state.lang === "it" ? "Impossibile rimuovere l'elemento di giacenza." : "Unable to remove stock item.",
+      );
+    });
+    return;
+  }
+  if (action === "remove-last-inventory-piece") {
+    const product = String(button.dataset.product || "").trim();
+    if (!product) return;
+    removeLatestInventoryPieceByProduct(product).catch(() => {
+      setStatus(
+        ui.ordersStatus,
+        "error",
+        state.lang === "it" ? "Impossibile rimuovere l'ultimo elemento di giacenza." : "Unable to remove latest stock item.",
+      );
+    });
+    return;
+  }
+  if (action === "clear-inventory-product") {
+    const product = String(button.dataset.product || "").trim();
+    if (!product) return;
+    clearInventoryProductStock(product).catch(() => {
+      setStatus(
+        ui.ordersStatus,
+        "error",
+        state.lang === "it" ? "Impossibile azzerare la giacenza del prodotto." : "Unable to clear product stock.",
+      );
     });
     return;
   }
@@ -11283,7 +11460,7 @@ function handleGlobalClick(event) {
     state.creatingSalesRequest = false;
     state.selectedSalesRequestId = id || "";
     renderSalesRequests();
-    renderSalesGenerator();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
     if (window.innerWidth <= 980) {
       requestAnimationFrame(() => ui.salesRequestDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }

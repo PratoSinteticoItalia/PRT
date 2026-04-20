@@ -3092,6 +3092,21 @@ button.is-feedback,
   margin-bottom: 14px;
 }
 
+.wh-piece-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -2px 0 14px;
+}
+
+.wh-piece-tools .btn {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .wh-demand-orders {
   margin-bottom: 14px;
   padding: 14px;
@@ -3539,6 +3554,9 @@ button.is-feedback,
   .detail-header {
     flex-direction: column;
     align-items: stretch;
+  }
+  .wh-piece-tools .btn {
+    width: 100%;
   }
 }
 
@@ -9766,6 +9784,14 @@ body.mobile-safe-mode .nav-link.is-active {
   gap: 12px;
 }
 
+.sales-request-card-head-badges {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .sales-request-card-head strong,
 .sales-content-card-head strong,
 .sales-generator-card-head strong {
@@ -9812,6 +9838,31 @@ body.mobile-safe-mode .nav-link.is-active {
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.sales-automation-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sales-automation-pill.is-queued {
+  background: rgba(59, 130, 246, 0.11);
+  border-color: rgba(59, 130, 246, 0.24);
+  color: #1d4ed8;
+}
+
+.sales-automation-pill.is-sent {
+  background: rgba(22, 163, 74, 0.11);
+  border-color: rgba(22, 163, 74, 0.24);
+  color: #15803d;
 }
 
 .sales-generator-frame-panel {
@@ -9956,6 +10007,11 @@ body.mobile-safe-mode .nav-link.is-active {
   .sales-generator-card-head {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .sales-request-card-head-badges {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .sales-status-pill,
