@@ -1,10 +1,10 @@
-const APP_SHELL_VERSION = "20260419-process-debug-fix-49";
+const APP_SHELL_VERSION = "20260421-auth-stability-inventory-fast-50";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
-const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 12;
+const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 20;
 const SESSION_REVISION_ENDPOINT = "/api/session/revision";
 const SESSION_EVENTS_ENDPOINT = "/api/events";
 const SESSION_EVENTS_RECONNECT_BASE_MS = 1200;
@@ -9486,6 +9486,14 @@ async function keepSessionAlive({ silent = true, force = false } = {}) {
       try {
         const revisionPayload = await readSessionRevision();
         if (!revisionPayload.hasUser) {
+          // Guard against transient revision desyncs: confirm with a full session snapshot once.
+          const fallbackSession = await apiFetch("/api/session").catch(() => null);
+          if (fallbackSession?.user) {
+            return applyFetchedSessionSnapshot(fallbackSession, {
+              renderMode: silent ? "current" : "all",
+              enforcePasswordResetView: false,
+            });
+          }
           resetSessionToAuthView();
           return false;
         }
@@ -9546,7 +9554,7 @@ function startShopifyAutoSync() {
 }
 
 async function loadSession() {
-  setShellPending(false);
+  setShellPending(true);
   try {
     const session = await apiFetch("/api/session");
     const hasSession = applyFetchedSessionSnapshot(session, {
@@ -9554,11 +9562,15 @@ async function loadSession() {
       enforcePasswordResetView: true,
     });
     if (!hasSession) {
+      showAuth();
       return;
     }
     showApp();
+  } catch (error) {
+    console.warn("session_bootstrap_failed", error);
+    resetSessionToAuthView();
   } finally {
-    setShellPending(false);
+    if (!state.currentUser) setShellPending(false);
   }
 }
 
@@ -9932,9 +9944,18 @@ function getInventoryItemsByProductName(product = "") {
 async function removeInventoryPieceById(itemId = "") {
   const normalizedId = String(itemId || "").trim();
   if (!normalizedId) return false;
-  const nextInventory = await apiFetch(`/api/inventory/items/${encodeURIComponent(normalizedId)}`, { method: "DELETE" });
-  state.inventory = nextInventory;
+  const previousInventory = [...state.inventory];
+  state.inventory = state.inventory.filter((item) => String(item.id || "") !== normalizedId);
   renderWarehouse();
+  try {
+    const nextInventory = await apiFetch(`/api/inventory/items/${encodeURIComponent(normalizedId)}`, { method: "DELETE" });
+    state.inventory = nextInventory;
+    renderWarehouse();
+  } catch (error) {
+    state.inventory = previousInventory;
+    renderWarehouse();
+    throw error;
+  }
   return true;
 }
 
@@ -9968,9 +9989,19 @@ async function clearInventoryProductStock(product = "") {
       : `Clear all stock for ${productLabel}? (${candidates.length} items)`,
   );
   if (!confirmed) return false;
-  const nextInventory = await apiFetch(`/api/inventory/items/by-product/${encodeURIComponent(productLabel)}`, { method: "DELETE" });
-  state.inventory = nextInventory;
+  const productKey = normalizeProductName(productLabel);
+  const previousInventory = [...state.inventory];
+  state.inventory = state.inventory.filter((item) => normalizeProductName(getCatalogLabel(item.product || "")) !== productKey);
   renderWarehouse();
+  try {
+    const nextInventory = await apiFetch(`/api/inventory/items/by-product/${encodeURIComponent(productLabel)}`, { method: "DELETE" });
+    state.inventory = nextInventory;
+    renderWarehouse();
+  } catch (error) {
+    state.inventory = previousInventory;
+    renderWarehouse();
+    throw error;
+  }
   return true;
 }
 
@@ -11989,6 +12020,9 @@ document.addEventListener("click", handleGlobalClick);
 document.addEventListener("keydown", handleGlobalActionKeydown);
 
 registerServiceWorker();
+if (ui.appShell) ui.appShell.classList.add("hidden");
+if (ui.authScreen) ui.authScreen.classList.add("hidden");
+setShellPending(true);
 ensureFreshShellVersion().then((resetTriggered) => {
   if (resetTriggered) return;
   loadSession();
