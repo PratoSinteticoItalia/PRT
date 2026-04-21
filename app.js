@@ -7350,17 +7350,6 @@ function renderInventoryCard(group) {
       </div>
       <div class="wh-piece-tools">
         <button
-          class="btn"
-          type="button"
-          data-action="remove-last-inventory-piece"
-          data-product="${escapeHtml(group.product)}"
-          ${group.pieces.length ? "" : "disabled"}
-        >
-          ${group.isModel
-            ? (state.lang === "it" ? "Rimuovi ultimo rotolo" : "Remove latest roll")
-            : (state.lang === "it" ? "Rimuovi ultimo lotto" : "Remove latest slot")}
-        </button>
-        <button
           class="btn ghost-button danger-button"
           type="button"
           data-action="clear-inventory-product"
