@@ -1,4 +1,4 @@
-const { useState, useMemo, useCallback, useRef, useEffect } = React;
+const { useState, useMemo, useRef, useEffect } = React;
 
 /* ═══════════════════════════════════════════
    CONSTANTS & DATA
@@ -11,21 +11,6 @@ const B = {
   info: "#1565c0", infoBg: "#eff6ff",
   warn: "#e65100", warnBg: "#fff8e1",
 };
-
-const PRODUCTS = [
-  { id: "CED-030", name: "Cedro 30mm", price: 14.5, color: "#4a8c3f" },
-  { id: "OLI-035", name: "Olivo 35mm", price: 16.0, color: "#3d7a35" },
-  { id: "PIN-040", name: "Pino 40mm", price: 18.5, color: "#2d6b2a" },
-  { id: "QUE-025", name: "Quercia 25mm", price: 12.0, color: "#5a9c4f" },
-  { id: "ACE-030", name: "Acero 30mm", price: 15.0, color: "#3f8535" },
-  { id: "FRA-045", name: "Frassino 45mm", price: 21.0, color: "#1f5c20" },
-  { id: "LAU-035", name: "Lauro 35mm", price: 17.5, color: "#358030" },
-  { id: "SAL-020", name: "Salice 20mm", price: 10.5, color: "#6aac5f" },
-  { id: "TIG-030", name: "Tiglio 30mm", price: 14.0, color: "#4f9040" },
-  { id: "CIP-050", name: "Cipresso 50mm", price: 24.0, color: "#155518" },
-];
-
-const ROLL_WIDTH = 2;
 
 const BORDER_TYPES = [
   { id: "pvc", name: "Bordura PVC", price: 4.5, unit: "m" },
@@ -51,6 +36,12 @@ const MATERIAL_COSTS = {
 
 const GLUE_BUCKET_KG = 6;
 const TAPE_ROLL_M = 25;
+const INSTALLATION_RULES = {
+  geoCoverageFactor: 1.05,
+  glueKgPerSqm: 0.3,
+  jointMetersPerSqm: 0.55,
+  pinsPerLinearMeter: 2.2,
+};
 
 const DEFAULT_TRAVEL_SETTINGS = {
   departureBase: "Orta di Atella",
@@ -86,7 +77,6 @@ const SHAPES = [
 
 const fmt = (n, d = 1) => Number(n).toFixed(d);
 const fmtE = (n) => "\u20AC " + Number(n).toFixed(2);
-const uid = () => Math.random().toString(36).slice(2, 8);
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 const getLocalISODate = () => {
   const now = new Date();
@@ -186,15 +176,6 @@ function polyBBox(pts) {
   pts.forEach(p => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });
   return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
 }
-function calcJointLength(rolls) {
-  if (rolls.length < 2) return 0;
-  return rolls.slice(1).reduce((sum, roll, i) => {
-    const prevLength = Number(rolls[i].length) || 0;
-    const nextLength = Number(roll.length) || 0;
-    return sum + Math.min(prevLength, nextLength);
-  }, 0);
-}
-
 function getShapePolygon(shape, dims) {
   const { a = 0, b = 0, c = 0, d = 0 } = sanitizeDims(shape, dims);
   if (shape === "rect" && a > 0 && b > 0) {
@@ -232,46 +213,20 @@ function getShapeEdges(shape, dims, customPts, customClosed) {
   });
 }
 
-function autoCalcRolls(area, shape, dims, customPts, customClosed) {
-  if (area <= 0) return [];
-  const rolls = [];
-  let coverW, coverH;
-  const safeDims = sanitizeDims(shape, dims);
-
-  if (shape === "custom" && customClosed && customPts.length >= 3) {
-    const bb = polyBBox(customPts);
-    coverW = bb.w;
-    coverH = bb.h;
-    if (coverW < coverH) { const t = coverW; coverW = coverH; coverH = t; }
-  } else if (shape === "rect") {
-    coverW = Math.max(safeDims.a || 0, safeDims.b || 0);
-    coverH = Math.min(safeDims.a || 0, safeDims.b || 0);
-  } else {
-    coverW = safeDims.a || 0;
-    coverH = safeDims.b || 0;
-  }
-
-  if (coverW <= 0 || coverH <= 0) {
-    const totalLen = Math.ceil(area / ROLL_WIDTH);
-    const n = Math.max(1, Math.ceil(totalLen / 10));
-    const per = Math.round((totalLen / n) * 10) / 10;
-    for (let i = 0; i < n; i++) rolls.push({ id: uid(), rollNum: i + 1, length: per, width: ROLL_WIDTH, product: "CED-030", note: "" });
-    return rolls;
-  }
-
-  const nRolls = Math.ceil(coverH / ROLL_WIDTH);
-  for (let i = 0; i < nRolls; i++) {
-    const isLast = i === nRolls - 1;
-    const remaining = Math.round((coverH - i * ROLL_WIDTH) * 100) / 100;
-    const ew = isLast && remaining < ROLL_WIDTH ? remaining : ROLL_WIDTH;
-    rolls.push({
-      id: uid(), rollNum: i + 1,
-      length: Math.round(coverW * 10) / 10,
-      width: ROLL_WIDTH, product: "CED-030",
-      note: isLast && ew < ROLL_WIDTH ? "Taglio largo. a " + fmt(ew) + "m" : "",
-    });
-  }
-  return rolls;
+function estimateInstallationNeeds(area, perimeter) {
+  const safeArea = Math.max(0, Number(area) || 0);
+  const safePerimeter = Math.max(0, Number(perimeter) || 0);
+  const geo = safeArea * INSTALLATION_RULES.geoCoverageFactor;
+  const glueKg = safeArea * INSTALLATION_RULES.glueKgPerSqm;
+  const jointMeters = safeArea * INSTALLATION_RULES.jointMetersPerSqm;
+  return {
+    geo,
+    glueKg,
+    glueBuckets: glueKg > 0 ? Math.max(1, Math.ceil(glueKg / GLUE_BUCKET_KG)) : 0,
+    jointMeters,
+    tapeRolls: Math.ceil(jointMeters / TAPE_ROLL_M),
+    pins: Math.ceil(safePerimeter * INSTALLATION_RULES.pinsPerLinearMeter),
+  };
 }
 
 /* ═══════════════════════════════════════════
@@ -519,13 +474,10 @@ function ShapePreview({ shape, dims }) {
   if (shape === "rect") path = "M" + ox + "," + oy + " h" + sw + " v" + sh + " h" + (-sw) + " Z";
   else if (shape === "lshape") { const cw = c * scale, cd = d * scale; path = "M" + ox + "," + oy + " h" + sw + " v" + cd + " h" + (-cw) + " v" + (sh - cd) + " h" + (-(sw - cw)) + " Z"; }
   else if (shape === "ushape") { const cw = c * scale, cd = d * scale; path = "M" + ox + "," + oy + " h" + sw + " v" + sh + " h" + (-cw) + " v" + (-cd) + " h" + (-(sw - 2 * cw)) + " v" + cd + " h" + (-cw) + " Z"; }
-  const rollLines = []; const n = Math.ceil(b / ROLL_WIDTH);
-  for (let i = 1; i < n; i++) { const y = oy + i * ROLL_WIDTH * scale; if (y < oy + sh) rollLines.push(y); }
   return (
     <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
       <svg width={W} height={H} style={{ borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
         <path d={path} fill={B.primary + "18"} stroke={B.primary} strokeWidth={2} />
-        {rollLines.map((y, i) => <line key={i} x1={ox + 2} y1={y} x2={ox + sw - 2} y2={y} stroke={B.accent} strokeWidth={1} strokeDasharray="4,3" opacity={0.6} />)}
         <text x={ox + sw / 2} y={oy - 6} textAnchor="middle" fontSize={11} fill={B.primary} fontWeight={600}>{a}m</text>
         <text x={ox + sw + 8} y={oy + sh / 2} textAnchor="start" fontSize={11} fill={B.primary} fontWeight={600} dominantBaseline="middle">{b}m</text>
       </svg>
@@ -648,55 +600,66 @@ function ShapeInput({ shape, setShape, dims, setDims, customPts, setCustomPts, c
   );
 }
 
-function RollsTable({ rolls, setRolls, area }) {
-  const addRoll = () => setRolls(prev => [...prev, { id: uid(), rollNum: prev.length + 1, length: 5, width: ROLL_WIDTH, product: "CED-030", note: "" }]);
-  const updateRoll = (id, key, val) => setRolls(prev => prev.map(r => r.id === id ? { ...r, [key]: val } : r));
-  const removeRoll = id => setRolls(prev => prev.filter(r => r.id !== id).map((r, i) => ({ ...r, rollNum: i + 1 })));
-  const totalRA = rolls.reduce((s, r) => s + r.width * r.length, 0);
-  const cov = area > 0 ? Math.round((totalRA / area) * 100) : 0;
+function TechnicalSketch({ shape, dims, customPts, customClosed }) {
+  const points = shape === "custom" ? (customClosed ? customPts : []) : getShapePolygon(shape, dims);
+  if (!points.length) {
+    return (
+      <div style={{ padding: "18px 14px", borderRadius: 10, border: "1px dashed " + B.border, color: B.textMuted, fontSize: 12 }}>
+        Completa il perimetro per vedere la tavola tecnica 2D.
+      </div>
+    );
+  }
+  const bb = polyBBox(points);
+  const W = 320;
+  const H = 210;
+  const pad = 22;
+  const safeW = Math.max(bb.w, 0.5);
+  const safeH = Math.max(bb.h, 0.5);
+  const scale = Math.min((W - pad * 2) / safeW, (H - pad * 2) / safeH);
+  const ox = (W - safeW * scale) / 2 - bb.minX * scale;
+  const oy = (H - safeH * scale) / 2 - bb.minY * scale;
+  const d = points.map((p, index) => `${index === 0 ? "M" : "L"}${(p.x * scale + ox).toFixed(2)},${(p.y * scale + oy).toFixed(2)}`).join(" ") + " Z";
+  const edges = points.map((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const x1 = point.x * scale + ox;
+    const y1 = point.y * scale + oy;
+    const x2 = next.x * scale + ox;
+    const y2 = next.y * scale + oy;
+    return {
+      length: Math.hypot(next.x - point.x, next.y - point.y),
+      mx: (x1 + x2) / 2,
+      my: (y1 + y2) / 2,
+    };
+  });
 
   return (
-    <div>
-      {area > 0 && <div style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-          <span style={{ color: B.textMuted }}>Copertura: {fmt(totalRA)} m\u00B2 su {fmt(area)} m\u00B2</span>
-          <span style={{ fontWeight: 700, color: cov >= 100 ? B.primary : B.danger }}>{cov}%</span>
-        </div>
-        <div style={{ height: 8, background: B.gray, borderRadius: 4, overflow: "hidden" }}>
-          <div style={{ height: "100%", borderRadius: 4, transition: "width 0.3s", width: Math.min(cov, 100) + "%", background: cov >= 100 ? B.primary : cov >= 80 ? B.warn : B.danger }} />
-        </div>
-      </div>}
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
-          <thead><tr style={{ background: B.gray }}>
-            {["#", "Prodotto", "Lungh.", "Larg.", "m\u00B2", "Fuori totale", "Note", ""].map((h, i) => (
-              <th key={i} style={{ padding: "8px 6px", textAlign: i > 1 && i < 6 ? "center" : "left", fontSize: 10, fontWeight: 600, color: B.textMuted, textTransform: "uppercase", borderBottom: "1px solid " + B.border, whiteSpace: "nowrap" }}>{h}</th>
-            ))}
-          </tr></thead>
-          <tbody>
-            {rolls.map(r => {
-              const prod = PRODUCTS.find(p => p.id === r.product) || PRODUCTS[0];
-              const sqm = r.width * r.length;
-              return (
-                <tr key={r.id} style={{ borderBottom: "1px solid " + B.borderLight }}>
-                  <td style={tdS}><div style={{ width: 24, height: 24, borderRadius: 6, background: prod.color + "22", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 11, color: prod.color, border: "1px solid " + prod.color + "44" }}>{r.rollNum}</div></td>
-                  <td style={tdS}><select value={r.product} onChange={e => updateRoll(r.id, "product", e.target.value)} style={cSel}>{PRODUCTS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
-                  <td style={{ ...tdS, textAlign: "center" }}><input type="number" value={r.length} min={0.5} max={25} step={0.5} onChange={e => updateRoll(r.id, "length", parseFloat(e.target.value) || 0.5)} style={cInp} /></td>
-                  <td style={{ ...tdS, textAlign: "center", color: B.textMuted, fontSize: 12 }}>{r.width}m</td>
-                  <td style={{ ...tdS, textAlign: "center", fontWeight: 600 }}>{fmt(sqm)}</td>
-                  <td style={{ ...tdS, textAlign: "center", fontWeight: 700, color: B.textMuted }}>Fuori totale</td>
-                  <td style={tdS}><input type="text" value={r.note} placeholder="-" onChange={e => updateRoll(r.id, "note", e.target.value)} style={{ ...cInp, width: 85, textAlign: "left" }} /></td>
-                  <td style={tdS}><button onClick={() => removeRoll(r.id)} style={{ background: "none", border: "none", color: B.danger, cursor: "pointer", fontSize: 15 }}>x</button></td>
-                </tr>
-              );
-            })}
-            {!rolls.length && <tr><td colSpan={8} style={{ padding: 18, textAlign: "center", color: B.textMuted }}>Nessun rotolo. Usa "Calcola automatico" o aggiungi manualmente.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-        <button onClick={addRoll} style={btnPrim}>+ Aggiungi rotolo</button>
-      </div>
+    <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: 10 }}>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
+        <rect x="1" y="1" width={W - 2} height={H - 2} rx="10" fill={B.cream} stroke={B.borderLight} />
+        <path d={d} fill={B.primary + "1c"} stroke={B.primary} strokeWidth="2.2" />
+        {edges.map((edge, index) => (
+          <text key={index} x={edge.mx} y={edge.my} fontSize="9.5" textAnchor="middle" fill={B.dark} fontWeight="700">
+            {fmt(edge.length, 2)}m
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function InstallationNeedsPanel({ area, perimeter, borderType, borderMeters }) {
+  if (area <= 0) return null;
+  const border = BORDER_TYPES.find(item => item.id === borderType);
+  const needs = estimateInstallationNeeds(area, perimeter);
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+      <MetricCard label="TNT da ordinare" value={`${fmt(needs.geo)} m²`} />
+      <MetricCard label="Colla bicomponente" value={`${needs.glueBuckets} secchi`} sub={`${fmt(needs.glueKg, 1)} kg stimati`} />
+      <MetricCard label="Banda giunzione" value={`${needs.tapeRolls} rotoli`} sub={`${fmt(needs.jointMeters, 1)} m stimati`} />
+      <MetricCard label="Picchetti a U" value={`${needs.pins} pz`} />
+      {borderType !== "nessuna" && borderMeters > 0 ? (
+        <MetricCard label={border?.name || "Bordura"} value={`${fmt(borderMeters, 1)} m`} sub="Lati selezionati" accent />
+      ) : null}
     </div>
   );
 }
@@ -748,24 +711,14 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole }) {
+function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
-  const rollDetails = rolls.map(r => {
-    const prod = PRODUCTS.find(p => p.id === r.product) || PRODUCTS[0];
-    return { ...r, sqm: r.width * r.length, prodName: prod.name };
-  });
-
+  const installNeeds = estimateInstallationNeeds(area, perimeter);
   const scavoM3 = (area * substrate.scavoCm) / 100;
   const drenateM3 = (area * substrate.drenateCm) / 100;
   const sabbiaM3 = (area * substrate.sabbiaCm) / 100;
   const sabbiaKg = sabbiaM3 * 1500;
-  const geo = area * 1.05;
-  const glue = area * 0.3;
-  const glueBuckets = Math.ceil(glue / GLUE_BUCKET_KG);
-  const jLen = calcJointLength(rolls);
-  const tapeRolls = Math.ceil(jLen / TAPE_ROLL_M);
-  const pins = Math.ceil(area * 4);
   const border = BORDER_TYPES.find(b => b.id === borderType);
   const infillKg = area * INFILL_FO30.kgPerSqm;
   const infillBags = Math.ceil(infillKg / INFILL_FO30.bagKg);
@@ -774,10 +727,10 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
   const substrateCost = (scavoM3 * MATERIAL_COSTS.scavoPerM3)
     + (drenateM3 * MATERIAL_COSTS.drenantePerM3)
     + (sabbiaM3 * MATERIAL_COSTS.sabbiaPerM3);
-  const poseMaterialCost = (geo * MATERIAL_COSTS.geoPerSqm)
-    + (glueBuckets * MATERIAL_COSTS.glueBucket)
-    + (tapeRolls * MATERIAL_COSTS.tapeRoll)
-    + (pins * MATERIAL_COSTS.pinPerUnit)
+  const poseMaterialCost = (installNeeds.geo * MATERIAL_COSTS.geoPerSqm)
+    + (installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket)
+    + (installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll)
+    + (installNeeds.pins * MATERIAL_COSTS.pinPerUnit)
     + (borderType !== "nessuna" ? borderMeters * Number(border?.price || 0) : 0);
   const infillCost = (infillKg / 1000) * INFILL_FO30.pricePerTon;
 
@@ -796,15 +749,6 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
 
   const sections = [
     {
-      key: "turf",
-      cat: "PRATO SINTETICO · FABBISOGNO",
-      meta: "Fuori totale",
-      showCosts: false,
-      items: rollDetails.length > 0
-        ? rollDetails.map(r => ({ name: "Rotolo #" + r.rollNum + " " + r.prodName + " (" + r.width + "\u00D7" + r.length + "m)", qty: fmt(r.sqm) + " m\u00B2" }))
-        : [{ name: "Nessun rotolo inserito", qty: "\u2014" }],
-    },
-    {
       key: "substrate",
       cat: "PREPARAZIONE FONDO",
       meta: canViewMaterialCosts ? fmtE(substrateCost) : "Quantità da approvvigionare",
@@ -822,10 +766,10 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
       meta: canViewMaterialCosts ? fmtE(poseMaterialCost) : "Quantità da ordinare",
       showCosts: canViewMaterialCosts,
       items: [
-        { name: "Tessuto non tessuto", qty: fmt(geo) + " m\u00B2", cost: geo * MATERIAL_COSTS.geoPerSqm },
-        { name: "Colla bicomponente", qty: `${fmt(glue, 1)} kg${glueBuckets > 0 ? ` · ${glueBuckets} secch${glueBuckets > 1 ? "i" : "io"} da ${GLUE_BUCKET_KG} kg` : ""}`, cost: glueBuckets * MATERIAL_COSTS.glueBucket },
-        jLen > 0 ? { name: "Nastro giunzione", qty: `${Math.round(jLen)} m${tapeRolls > 0 ? ` · ${tapeRolls} rotol${tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`, cost: tapeRolls * MATERIAL_COSTS.tapeRoll } : null,
-        { name: "Chiodi a U", qty: pins + " pz", cost: pins * MATERIAL_COSTS.pinPerUnit },
+        { name: "Tessuto non tessuto", qty: fmt(installNeeds.geo) + " m\u00B2", cost: installNeeds.geo * MATERIAL_COSTS.geoPerSqm },
+        { name: "Colla bicomponente", qty: `${fmt(installNeeds.glueKg, 1)} kg${installNeeds.glueBuckets > 0 ? ` · ${installNeeds.glueBuckets} secch${installNeeds.glueBuckets > 1 ? "i" : "io"} da ${GLUE_BUCKET_KG} kg` : ""}`, cost: installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket },
+        installNeeds.jointMeters > 0 ? { name: "Nastro giunzione", qty: `${Math.round(installNeeds.jointMeters)} m${installNeeds.tapeRolls > 0 ? ` · ${installNeeds.tapeRolls} rotol${installNeeds.tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`, cost: installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll } : null,
+        { name: "Chiodi a U", qty: installNeeds.pins + " pz", cost: installNeeds.pins * MATERIAL_COSTS.pinPerUnit },
         borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m", cost: borderMeters * Number(border?.price || 0) } : null,
       ].filter(Boolean),
       sub: poseMaterialCost,
@@ -868,14 +812,13 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
   }
   const materialCostTotal = canViewMaterialCosts
     ? sections
-      .filter((sec) => sec.key && !["turf", "travel"].includes(sec.key))
+      .filter((sec) => sec.key && sec.key !== "travel")
       .reduce((sum, sec) => sum + (Number(sec.sub) || 0), 0)
     : 0;
   const operationalCostTotal = materialCostTotal + travelCost;
 
   return (
     <div>
-      {/* Project info header */}
       {(projectInfo.client || projectInfo.address) && (
         <div style={{ marginBottom: 14, padding: "10px 14px", background: B.gray, borderRadius: 8, fontSize: 12, display: "flex", gap: 20, flexWrap: "wrap" }}>
           {projectInfo.client && <span><strong>Cliente:</strong> {projectInfo.client}</span>}
@@ -885,6 +828,35 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
           {travel?.departureBase && <span><strong>Partenza:</strong> {travel.departureBase}</span>}
         </div>
       )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginBottom: 14 }}>
+        <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} />
+        <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: "12px 14px", display: "grid", gap: 8 }}>
+          <div style={{ fontSize: 11, color: B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>Tavola tecnica 2D</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+            <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
+              <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Superficie</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: B.dark }}>{fmt(area)} m²</div>
+            </div>
+            <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
+              <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Perimetro</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: B.dark }}>{fmt(perimeter)} m</div>
+            </div>
+            <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
+              <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Bordura</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: B.dark }}>{borderType === "nessuna" ? "No" : `${fmt(borderMeters)} m`}</div>
+            </div>
+            <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
+              <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Forma</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{shape === "custom" ? "Disegno libero" : SHAPES.find(s => s.id === shape)?.name || shape}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
+            Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm.
+          </div>
+        </div>
+      </div>
+
       <div style={{ border: "1px solid " + B.border, borderRadius: 10, overflow: "hidden" }}>
         {sections.map((sec, si) => (
           <div key={si}>
@@ -916,11 +888,6 @@ function MaterialsReport({ area, perimeter, rolls, borderType, borderMeters, sub
    STYLES
    ═══════════════════════════════════════════ */
 const secTitle = { fontSize: 12, fontWeight: 700, color: B.dark, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.2px" };
-const tdS = { padding: "7px 6px", verticalAlign: "middle" };
-const thS = { padding: "6px 8px", fontSize: 10, fontWeight: 600, color: B.textMuted, textTransform: "uppercase", textAlign: "center", borderBottom: "1px solid " + B.border };
-const cInp = { width: 65, padding: "5px 6px", border: "1.5px solid " + B.borderLight, borderRadius: 6, fontSize: 13, textAlign: "center", fontWeight: 600, outline: "none", boxSizing: "border-box" };
-const vtxInp = { width: 60, padding: "4px 6px", border: "1px solid " + B.borderLight, borderRadius: 4, fontSize: 12, textAlign: "center", fontWeight: 600, outline: "none", boxSizing: "border-box" };
-const cSel = { padding: "5px 4px", border: "1.5px solid " + B.borderLight, borderRadius: 6, fontSize: 12, background: B.white, outline: "none", maxWidth: 180 };
 const btnPrim = { padding: "8px 16px", borderRadius: 8, border: "none", background: B.primary, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" };
 const cardStyle = { background: B.white, borderRadius: 12, padding: "20px 24px", border: "1px solid " + B.borderLight };
 const lbl = { display: "block", fontSize: 11, color: B.textMuted, marginBottom: 4, fontWeight: 500 };
@@ -937,7 +904,6 @@ function GardenPlanner() {
   const [dims, setDims] = useState({ a: 10, b: 6, c: 3, d: 3 });
   const [customPts, setCustomPts] = useState([]);
   const [customClosed, setCustomClosed] = useState(false);
-  const [rolls, setRolls] = useState([]);
   const [borderType, setBorderType] = useState("pvc");
   const [selectedBorderEdges, setSelectedBorderEdges] = useState([]);
   const [substrate, setSubstrate] = useState({ scavoCm: 10, drenateCm: 5, sabbiaCm: 3 });
@@ -953,14 +919,6 @@ function GardenPlanner() {
       .filter(edge => selectedBorderEdges.includes(edge.id))
       .reduce((sum, edge) => sum + edge.length, 0)
   ), [borderEdges, selectedBorderEdges]);
-
-  const handleAutoCalc = useCallback(() => {
-    setRolls(autoCalcRolls(area, shape, safeDims, customPts, customClosed));
-  }, [area, shape, safeDims, customPts, customClosed]);
-
-  useEffect(() => {
-    setRolls(prev => (prev.length ? [] : prev));
-  }, [layoutKey]);
 
   useEffect(() => {
     setSelectedBorderEdges(borderEdges.map(edge => edge.id));
@@ -1069,7 +1027,7 @@ function GardenPlanner() {
               {shape === "custom" && customClosed
                 ? <MetricCard label="Vertici" value={`${customPts.length}`} sub="Punti del perimetro" />
                 : null}
-              <MetricCard label="Rotoli stimati" value={"" + Math.ceil(area / (ROLL_WIDTH * 5))} sub={"(da 2m \u00D7 5m)"} />
+              <MetricCard label="Lati rilevati" value={`${borderEdges.length}`} sub="Perimetro disponibile" />
             </div>
           )}
         </div>
@@ -1094,12 +1052,10 @@ function GardenPlanner() {
           )}
         </div>
 
-        {/* STEP 3: ROLLS */}
+        {/* STEP 3: BORDER + INSTALLATION */}
         <div style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <StepBadge n={3} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Rotoli prato sintetico</span>
-            <div style={{ flex: 1 }} />
-            {area > 0 && <button onClick={handleAutoCalc} style={{ padding: "8px 16px", borderRadius: 8, border: "1.5px solid " + B.primary, background: B.white, color: B.primary, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Calcola automatico</button>}
+            <StepBadge n={3} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Bordure e posa</span>
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lbl}>Bordura perimetrale</label>
@@ -1117,6 +1073,22 @@ function GardenPlanner() {
           {borderType === "pvc" && borderEdges.length > 0 && (
             <div style={{ marginBottom: 14 }}>
               <label style={lbl}>Seleziona i lati dove posare la bordura</label>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBorderEdges(borderEdges.map(edge => edge.id))}
+                  style={{ padding: "5px 10px", borderRadius: 999, border: "1px solid " + B.border, background: B.white, color: B.text, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Seleziona tutti i lati
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBorderEdges([])}
+                  style={{ padding: "5px 10px", borderRadius: 999, border: "1px solid " + B.border, background: B.white, color: B.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Deseleziona tutto
+                </button>
+              </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {borderEdges.map(edge => {
                   const active = selectedBorderEdges.includes(edge.id);
@@ -1142,11 +1114,11 @@ function GardenPlanner() {
                 })}
               </div>
               <div style={{ marginTop: 8, fontSize: 12, color: B.textMuted }}>
-                Bordura selezionata: <strong style={{ color: B.dark }}>{fmt(selectedBorderMeters)} m</strong>
+                Bordura selezionata: <strong style={{ color: B.dark }}>{fmt(selectedBorderMeters)} m</strong> · {selectedBorderEdges.length}/{borderEdges.length} lati
               </div>
             </div>
           )}
-          <RollsTable rolls={rolls} setRolls={setRolls} area={area} />
+          <InstallationNeedsPanel area={area} perimeter={perimeter} borderType={borderType} borderMeters={selectedBorderMeters} />
         </div>
 
         {/* STEP 4: DECORATIVE */}
@@ -1164,11 +1136,25 @@ function GardenPlanner() {
             <div style={{ flex: 1 }} />
             <button onClick={() => window.print()} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa report e disegno</button>
           </div>
-          <MaterialsReport area={area} perimeter={perimeter} borderMeters={selectedBorderMeters} rolls={rolls} borderType={borderType} substrate={substrate} decoItems={decoItems} projectInfo={projectInfo} travel={travel} viewerRole={viewerRole} />
+          <MaterialsReport
+            area={area}
+            perimeter={perimeter}
+            shape={shape}
+            dims={safeDims}
+            customPts={customPts}
+            customClosed={customClosed}
+            borderMeters={selectedBorderMeters}
+            borderType={borderType}
+            substrate={substrate}
+            decoItems={decoItems}
+            projectInfo={projectInfo}
+            travel={travel}
+            viewerRole={viewerRole}
+          />
         </div>
 
         <div style={{ textAlign: "center", padding: "8px 0 24px", fontSize: 11, color: B.textMuted }}>
-          Garden Planner v3.0 - Prato Sintetico Italia / VERTEX SRLS - Strumento interno
+          Garden Planner v3.1 - Prato Sintetico Italia / VERTEX SRLS - Strumento interno
         </div>
       </div>
     </div>
