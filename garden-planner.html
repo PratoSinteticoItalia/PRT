@@ -39,12 +39,12 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260422-garden-v31"></script>
+    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260422-garden-v32-print"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let reloaded = false;
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260422-garden-v31").then((registration) => {
+          navigator.serviceWorker.register("./sw.js?v=20260422-garden-v32-print").then((registration) => {
             if (registration.waiting) {
               registration.waiting.postMessage({ type: "SKIP_WAITING" });
             }

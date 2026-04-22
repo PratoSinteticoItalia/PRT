@@ -631,18 +631,57 @@ function TechnicalSketch({ shape, dims, customPts, customClosed }) {
       my: (y1 + y2) / 2,
     };
   });
+  const vertexPoints = points.map((p) => ({ x: p.x * scale + ox, y: p.y * scale + oy }));
 
   return (
     <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: 10 }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
         <rect x="1" y="1" width={W - 2} height={H - 2} rx="10" fill={B.cream} stroke={B.borderLight} />
         <path d={d} fill={B.primary + "1c"} stroke={B.primary} strokeWidth="2.2" />
-        {edges.map((edge, index) => (
-          <text key={index} x={edge.mx} y={edge.my} fontSize="9.5" textAnchor="middle" fill={B.dark} fontWeight="700">
-            {fmt(edge.length, 2)}m
-          </text>
+        {edges.map((edge, index) => {
+          const txt = `${fmt(edge.length, 2)}m`;
+          const chipW = Math.max(26, txt.length * 5.1 + 8);
+          return (
+            <g key={index}>
+              <rect x={edge.mx - chipW / 2} y={edge.my - 7.5} width={chipW} height={15} rx={6} fill="rgba(255,255,255,0.92)" stroke={B.borderLight} />
+              <text x={edge.mx} y={edge.my + 3.2} fontSize="8.8" textAnchor="middle" fill={B.dark} fontWeight="700">
+                {txt}
+              </text>
+            </g>
+          );
+        })}
+        {vertexPoints.map((point, index) => (
+          <g key={`v-${index}`}>
+            <circle cx={point.x} cy={point.y} r="4.3" fill={B.primary} stroke="#fff" strokeWidth="1.6" />
+            <text x={point.x} y={point.y - 8} fontSize="8.4" textAnchor="middle" fill={B.dark} fontWeight="700">
+              V{index + 1}
+            </text>
+          </g>
         ))}
       </svg>
+      <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+        <div style={{ fontSize: 11, color: B.textMuted }}>
+          Ingombro massimo: <strong style={{ color: B.dark }}>{fmt(bb.w, 2)} m × {fmt(bb.h, 2)} m</strong> · Vertici: <strong style={{ color: B.dark }}>{points.length}</strong>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {edges.map((edge, index) => (
+            <span
+              key={`edge-chip-${index}`}
+              style={{
+                fontSize: 10,
+                padding: "4px 7px",
+                borderRadius: 999,
+                border: "1px solid " + B.borderLight,
+                background: B.cream,
+                color: B.dark,
+                fontWeight: 600,
+              }}
+            >
+              L{index + 1}: {fmt(edge.length, 2)} m
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -993,6 +1032,52 @@ function GardenPlanner() {
     };
   }, []);
 
+  const handlePrintReport = () => {
+    const reportNode = document.getElementById("garden-planner-print-content");
+    if (!reportNode) {
+      window.print();
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1100,height=900");
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    const printableMarkup = reportNode.innerHTML;
+    const title = `Garden Planner - ${projectInfo.client || "Report tecnico"}`;
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <title>${title}</title>
+    <style>
+      @page { size: A4; margin: 10mm; }
+      * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      html, body { margin: 0; padding: 0; background: #fff; color: #1e1e1c; font-family: "Manrope", "Segoe UI", Arial, sans-serif; }
+      body { padding: 0; }
+      #print-root { width: 100%; }
+      #print-root > div { width: 100%; }
+      table, tr, td, th { page-break-inside: avoid; }
+      svg { max-width: 100%; height: auto; }
+    </style>
+  </head>
+  <body>
+    <div id="print-root">${printableMarkup}</div>
+  </body>
+</html>`);
+    printWindow.document.close();
+    window.setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      window.setTimeout(() => {
+        try { printWindow.close(); } catch (_) {}
+      }, 150);
+    }, 220);
+  };
+
   return (
     <div style={{ fontFamily: "'Manrope', 'Segoe UI', sans-serif", minHeight: "100vh", background: B.cream }}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -1134,27 +1219,39 @@ function GardenPlanner() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             <StepBadge n={5} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Riepilogo materiali e trasferta</span>
             <div style={{ flex: 1 }} />
-            <button onClick={() => window.print()} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa report e disegno</button>
+            <button onClick={handlePrintReport} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa solo report tecnico</button>
           </div>
-          <MaterialsReport
-            area={area}
-            perimeter={perimeter}
-            shape={shape}
-            dims={safeDims}
-            customPts={customPts}
-            customClosed={customClosed}
-            borderMeters={selectedBorderMeters}
-            borderType={borderType}
-            substrate={substrate}
-            decoItems={decoItems}
-            projectInfo={projectInfo}
-            travel={travel}
-            viewerRole={viewerRole}
-          />
+          <div id="garden-planner-print-content">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10, padding: "8px 2px 10px", borderBottom: "1px solid " + B.borderLight }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: B.primary, letterSpacing: "0.4px", textTransform: "uppercase" }}>Prato Sintetico Italia</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: B.dark, lineHeight: 1.15 }}>Report tecnico Garden Planner</div>
+              </div>
+              <div style={{ textAlign: "right", fontSize: 11, color: B.textMuted }}>
+                <div><strong style={{ color: B.dark }}>Data report:</strong> {projectInfo.date || getLocalISODate()}</div>
+                {projectInfo.client ? <div><strong style={{ color: B.dark }}>Cliente:</strong> {projectInfo.client}</div> : null}
+              </div>
+            </div>
+            <MaterialsReport
+              area={area}
+              perimeter={perimeter}
+              shape={shape}
+              dims={safeDims}
+              customPts={customPts}
+              customClosed={customClosed}
+              borderMeters={selectedBorderMeters}
+              borderType={borderType}
+              substrate={substrate}
+              decoItems={decoItems}
+              projectInfo={projectInfo}
+              travel={travel}
+              viewerRole={viewerRole}
+            />
+          </div>
         </div>
 
         <div style={{ textAlign: "center", padding: "8px 0 24px", fontSize: 11, color: B.textMuted }}>
-          Garden Planner v3.1 - Prato Sintetico Italia / VERTEX SRLS - Strumento interno
+          Garden Planner v3.2 - Prato Sintetico Italia / VERTEX SRLS - Strumento interno
         </div>
       </div>
     </div>
