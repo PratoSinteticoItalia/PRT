@@ -29,6 +29,25 @@
           print-color-adjust: exact;
           -webkit-print-color-adjust: exact;
         }
+
+        body.garden-print-report #app * {
+          visibility: hidden !important;
+        }
+
+        body.garden-print-report #garden-planner-print-content,
+        body.garden-print-report #garden-planner-print-content * {
+          visibility: visible !important;
+        }
+
+        body.garden-print-report #garden-planner-print-content {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          padding: 10mm !important;
+          margin: 0 !important;
+          background: #fff !important;
+        }
       }
     </style>
   </head>
@@ -39,12 +58,12 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260422-garden-v32-print"></script>
+    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260422-garden-v33-region-pricing"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let reloaded = false;
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260422-garden-v32-print").then((registration) => {
+          navigator.serviceWorker.register("./sw.js?v=20260422-garden-v33-region-pricing").then((registration) => {
             if (registration.waiting) {
               registration.waiting.postMessage({ type: "SKIP_WAITING" });
             }

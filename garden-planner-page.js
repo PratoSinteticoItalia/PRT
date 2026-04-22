@@ -26,12 +26,35 @@ const INFILL_FO30 = {
 
 const MATERIAL_COSTS = {
   scavoPerM3: 24,
-  drenantePerM3: 38,
-  sabbiaPerM3: 32,
+  stabilizedPerTonFallback: 21,
+  sandPerTonFallback: 21,
   geoPerSqm: 1.0,
   glueBucket: 45,
   tapeRoll: 30,
   pinPerUnit: 0.3,
+};
+
+const REGION_MATERIAL_PRICES = {
+  "Abruzzo": { stabilizedPerTon: 18.0, sandPerTon: 19.0 },
+  "Basilicata": { stabilizedPerTon: 15.0, sandPerTon: 17.0 },
+  "Calabria": { stabilizedPerTon: 15.0, sandPerTon: 17.0 },
+  "Campania": { stabilizedPerTon: 17.0, sandPerTon: 19.0 },
+  "Emilia-Romagna": { stabilizedPerTon: 22.0, sandPerTon: 25.0 },
+  "Friuli-Venezia Giulia": { stabilizedPerTon: 24.0, sandPerTon: 24.0 },
+  "Lazio": { stabilizedPerTon: 21.0, sandPerTon: 21.0 },
+  "Liguria": { stabilizedPerTon: 29.0, sandPerTon: 28.0 },
+  "Lombardia": { stabilizedPerTon: 25.0, sandPerTon: 23.0 },
+  "Marche": { stabilizedPerTon: 19.0, sandPerTon: 19.0 },
+  "Molise": { stabilizedPerTon: 16.0, sandPerTon: 18.0 },
+  "Piemonte": { stabilizedPerTon: 24.0, sandPerTon: 22.0 },
+  "Puglia": { stabilizedPerTon: 16.0, sandPerTon: 18.0 },
+  "Sardegna": { stabilizedPerTon: 18.0, sandPerTon: 20.0 },
+  "Sicilia": { stabilizedPerTon: 14.0, sandPerTon: 17.0 },
+  "Toscana": { stabilizedPerTon: 22.0, sandPerTon: 22.0 },
+  "Trentino-Alto Adige": { stabilizedPerTon: 25.0, sandPerTon: 25.0 },
+  "Umbria": { stabilizedPerTon: 19.0, sandPerTon: 23.0 },
+  "Valle d'Aosta": { stabilizedPerTon: 27.0, sandPerTon: 25.0 },
+  "Veneto": { stabilizedPerTon: 19.0, sandPerTon: 19.0 },
 };
 
 const GLUE_BUCKET_KG = 6;
@@ -83,10 +106,68 @@ const getLocalISODate = () => {
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 
+function normalizeRegionName(raw) {
+  const normalized = String(raw || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  const aliases = {
+    "abruzzo": "Abruzzo",
+    "basilicata": "Basilicata",
+    "calabria": "Calabria",
+    "campania": "Campania",
+    "emilia romagna": "Emilia-Romagna",
+    "friuli venezia giulia": "Friuli-Venezia Giulia",
+    "lazio": "Lazio",
+    "liguria": "Liguria",
+    "lombardia": "Lombardia",
+    "marche": "Marche",
+    "molise": "Molise",
+    "piemonte": "Piemonte",
+    "puglia": "Puglia",
+    "sardegna": "Sardegna",
+    "sicilia": "Sicilia",
+    "toscana": "Toscana",
+    "trentino alto adige": "Trentino-Alto Adige",
+    "trentino alto adige sudtirol": "Trentino-Alto Adige",
+    "provincia autonoma di trento": "Trentino-Alto Adige",
+    "provincia autonoma di bolzano alto adige": "Trentino-Alto Adige",
+    "umbria": "Umbria",
+    "valle d aosta": "Valle d'Aosta",
+    "vallee d aoste": "Valle d'Aosta",
+    "aosta valley": "Valle d'Aosta",
+    "veneto": "Veneto",
+  };
+  return aliases[normalized] || "";
+}
+
+function getRegionalMaterialPricing(rawRegion) {
+  const regionName = normalizeRegionName(rawRegion);
+  if (regionName && REGION_MATERIAL_PRICES[regionName]) {
+    const row = REGION_MATERIAL_PRICES[regionName];
+    return {
+      region: regionName,
+      stabilizedPerTon: Number(row.stabilizedPerTon),
+      sandPerTon: Number(row.sandPerTon),
+      fromRegionList: true,
+    };
+  }
+  return {
+    region: "Lazio (fallback)",
+    stabilizedPerTon: Number(MATERIAL_COSTS.stabilizedPerTonFallback),
+    sandPerTon: Number(MATERIAL_COSTS.sandPerTonFallback),
+    fromRegionList: false,
+  };
+}
+
 async function geocodeItalianAddress(query) {
   const cleaned = String(query || "").trim();
   if (!cleaned) throw new Error("missing_address");
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=it&q=${encodeURIComponent(cleaned)}`;
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=it&q=${encodeURIComponent(cleaned)}`;
   const response = await fetch(url, {
     headers: {
       Accept: "application/json",
@@ -96,10 +177,13 @@ async function geocodeItalianAddress(query) {
   const data = await response.json();
   const first = Array.isArray(data) ? data[0] : null;
   if (!first) throw new Error("address_not_found");
+  const rawRegion = first?.address?.state || first?.address?.region || first?.address?.county || "";
   return {
     lat: Number(first.lat),
     lon: Number(first.lon),
     label: first.display_name || cleaned,
+    region: normalizeRegionName(rawRegion),
+    regionRaw: rawRegion,
   };
 }
 
@@ -750,22 +834,27 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole }) {
+function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
   const installNeeds = estimateInstallationNeeds(area, perimeter);
   const scavoM3 = (area * substrate.scavoCm) / 100;
   const drenateM3 = (area * substrate.drenateCm) / 100;
+  const drenateTon = (drenateM3 * 1600) / 1000;
   const sabbiaM3 = (area * substrate.sabbiaCm) / 100;
   const sabbiaKg = sabbiaM3 * 1500;
+  const sabbiaTon = sabbiaKg / 1000;
   const border = BORDER_TYPES.find(b => b.id === borderType);
   const infillKg = area * INFILL_FO30.kgPerSqm;
   const infillBags = Math.ceil(infillKg / INFILL_FO30.bagKg);
   const canViewMaterialCosts = String(viewerRole || "").trim().toLowerCase() === "office";
+  const stabilizedPerTon = Number(regionalPricing?.stabilizedPerTon) || Number(MATERIAL_COSTS.stabilizedPerTonFallback);
+  const sandPerTon = Number(regionalPricing?.sandPerTon) || Number(MATERIAL_COSTS.sandPerTonFallback);
+  const pricingRegionLabel = regionalPricing?.region || "Lazio (fallback)";
 
   const substrateCost = (scavoM3 * MATERIAL_COSTS.scavoPerM3)
-    + (drenateM3 * MATERIAL_COSTS.drenantePerM3)
-    + (sabbiaM3 * MATERIAL_COSTS.sabbiaPerM3);
+    + (drenateTon * stabilizedPerTon)
+    + (sabbiaTon * sandPerTon);
   const poseMaterialCost = (installNeeds.geo * MATERIAL_COSTS.geoPerSqm)
     + (installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket)
     + (installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll)
@@ -794,8 +883,8 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
       showCosts: canViewMaterialCosts,
       items: [
         substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + " kg", cost: scavoM3 * MATERIAL_COSTS.scavoPerM3 } : null,
-        substrate.drenateCm > 0 ? { name: "Pietrisco drenante (" + substrate.drenateCm + "cm)", qty: fmt(drenateM3, 2) + " m\u00B3 \u2248 " + Math.round(drenateM3 * 1600) + " kg", cost: drenateM3 * MATERIAL_COSTS.drenantePerM3 } : null,
-        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento (" + substrate.sabbiaCm + "cm)", qty: Math.round(sabbiaKg) + " kg · " + fmt(sabbiaM3, 2) + " m\u00B3", cost: sabbiaM3 * MATERIAL_COSTS.sabbiaPerM3 } : null,
+        substrate.drenateCm > 0 ? { name: "Stabilizzato drenante (" + substrate.drenateCm + "cm)", qty: `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t (${fmt(stabilizedPerTon, 1)} €/t)`, cost: drenateTon * stabilizedPerTon } : null,
+        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento 0/4 (" + substrate.sabbiaCm + "cm)", qty: `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t (${fmt(sandPerTon, 1)} €/t)`, cost: sabbiaTon * sandPerTon } : null,
       ].filter(Boolean),
       sub: substrateCost,
     },
@@ -865,6 +954,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
           {projectInfo.date && <span><strong>Data:</strong> {projectInfo.date}</span>}
           {projectInfo.notes && <span><strong>Note:</strong> {projectInfo.notes}</span>}
           {travel?.departureBase && <span><strong>Partenza:</strong> {travel.departureBase}</span>}
+          <span><strong>Listino regionale:</strong> {pricingRegionLabel}</span>
         </div>
       )}
 
@@ -891,7 +981,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
             </div>
           </div>
           <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
-            Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm.
+            Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm · Listino {pricingRegionLabel}: stabilizzato {fmt(stabilizedPerTon, 1)} €/t, sabbia {fmt(sandPerTon, 1)} €/t.
           </div>
         </div>
       </div>
@@ -947,6 +1037,7 @@ function GardenPlanner() {
   const [selectedBorderEdges, setSelectedBorderEdges] = useState([]);
   const [substrate, setSubstrate] = useState({ scavoCm: 10, drenateCm: 5, sabbiaCm: 3 });
   const [decoItems, setDecoItems] = useState({});
+  const [regionalPricing, setRegionalPricing] = useState(() => getRegionalMaterialPricing(""));
   const safeDims = useMemo(() => sanitizeDims(shape, dims), [shape, dims]);
   const layoutKey = useMemo(() => JSON.stringify({ shape, dims: safeDims, customPts, customClosed }), [shape, safeDims, customPts, customClosed]);
 
@@ -989,6 +1080,10 @@ function GardenPlanner() {
           geocodeItalianAddress(origin),
           geocodeItalianAddress(destination),
         ]);
+        const destinationPricing = getRegionalMaterialPricing(destinationPoint.region || destinationPoint.regionRaw || "");
+        if (!cancelled) {
+          setRegionalPricing(destinationPricing);
+        }
         const route = await fetchDrivingRoute(originPoint, destinationPoint);
         const tollEstimate = estimateItalianTolls(route.distanceKm);
         if (cancelled) return;
@@ -999,7 +1094,7 @@ function GardenPlanner() {
           tollCost: Number(tollEstimate.toFixed(2)),
           routeLoading: false,
           routeNote: `${originPoint.label} → ${destinationPoint.label}`,
-          routeStatus: `Percorso aggiornato automaticamente. Caselli stimati su tariffa media autostradale classe B.`,
+          routeStatus: `Percorso aggiornato automaticamente. Regione cantiere: ${destinationPricing.region}. Caselli stimati su tariffa media autostradale classe B.`,
         }));
       } catch (error) {
         if (cancelled) return;
@@ -1038,44 +1133,22 @@ function GardenPlanner() {
       window.print();
       return;
     }
-
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1100,height=900");
-    if (!printWindow) {
-      window.print();
-      return;
-    }
-
-    const printableMarkup = reportNode.innerHTML;
-    const title = `Garden Planner - ${projectInfo.client || "Report tecnico"}`;
-    printWindow.document.open();
-    printWindow.document.write(`<!doctype html>
-<html lang="it">
-  <head>
-    <meta charset="utf-8" />
-    <title>${title}</title>
-    <style>
-      @page { size: A4; margin: 10mm; }
-      * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-      html, body { margin: 0; padding: 0; background: #fff; color: #1e1e1c; font-family: "Manrope", "Segoe UI", Arial, sans-serif; }
-      body { padding: 0; }
-      #print-root { width: 100%; }
-      #print-root > div { width: 100%; }
-      table, tr, td, th { page-break-inside: avoid; }
-      svg { max-width: 100%; height: auto; }
-    </style>
-  </head>
-  <body>
-    <div id="print-root">${printableMarkup}</div>
-  </body>
-</html>`);
-    printWindow.document.close();
+    const body = document.body;
+    let fallbackTimer = null;
+    const cleanup = () => {
+      if (fallbackTimer) {
+        window.clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      body.classList.remove("garden-print-report");
+      window.removeEventListener("afterprint", cleanup);
+    };
+    body.classList.add("garden-print-report");
+    window.addEventListener("afterprint", cleanup);
+    fallbackTimer = window.setTimeout(cleanup, 4000);
     window.setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-      window.setTimeout(() => {
-        try { printWindow.close(); } catch (_) {}
-      }, 150);
-    }, 220);
+      window.print();
+    }, 80);
   };
 
   return (
@@ -1135,6 +1208,9 @@ function GardenPlanner() {
               {substrate.sabbiaCm > 0 && <MetricCard label="Sabbia livellamento" value={Math.round(area * substrate.sabbiaCm / 100 * 1500) + " kg"} sub={fmt((area * substrate.sabbiaCm) / 100, 2) + " m\u00B3"} />}
             </div>
           )}
+          <div style={{ marginTop: 10, fontSize: 12, color: B.textMuted, padding: "8px 10px", background: B.cream, borderRadius: 8, border: "1px solid " + B.borderLight }}>
+            Listino regionale attivo: <strong style={{ color: B.dark }}>{regionalPricing.region}</strong> · Stabilizzato <strong style={{ color: B.dark }}>{fmt(regionalPricing.stabilizedPerTon, 1)} €/t</strong> · Sabbia 0/4 <strong style={{ color: B.dark }}>{fmt(regionalPricing.sandPerTon, 1)} €/t</strong>
+          </div>
         </div>
 
         {/* STEP 3: BORDER + INSTALLATION */}
@@ -1246,6 +1322,7 @@ function GardenPlanner() {
               projectInfo={projectInfo}
               travel={travel}
               viewerRole={viewerRole}
+              regionalPricing={regionalPricing}
             />
           </div>
         </div>
