@@ -6643,7 +6643,7 @@ function getFilteredSalesRequests() {
       const rightRow = Number(right.sourceRowNumber || 0);
       const leftHasRow = leftRow > 0;
       const rightHasRow = rightRow > 0;
-      if (leftHasRow && rightHasRow && leftRow !== rightRow) return rightRow - leftRow;
+      if (leftHasRow && rightHasRow && leftRow !== rightRow) return leftRow - rightRow;
       if (leftHasRow !== rightHasRow) return leftHasRow ? -1 : 1;
       const rightCreated = new Date(right.createdAt || right.updatedAt || 0).getTime();
       const leftCreated = new Date(left.createdAt || left.updatedAt || 0).getTime();
