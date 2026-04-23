@@ -1,7 +1,7 @@
-const CACHE_NAME = "psi-ops-shell-20260421-auth-stability-inventory-fast-50";
+const CACHE_NAME = "psi-ops-shell-20260423-sales-requests-order-fix-51";
 const APP_SHELL = [
   "/",
-  "/?shell=20260421-auth-stability-inventory-fast-50",
+  "/?shell=20260423-sales-requests-order-fix-51",
   "/index.html",
   "/garden-planner.html",
   "/garden-planner.html?shell=20260415-shell-reset-33",
@@ -9,8 +9,8 @@ const APP_SHELL = [
   "/garden-photo-configurator.html?v=20260416-photo-loader-fix-34",
   "/garden-photo-configurator-v2.html?v=20260416-photo-loader-fix-34",
   "/garden-planner-page.js?v=20260414-garden-materials-02",
-  "/styles.css?v=20260421-auth-stability-inventory-fast-50",
-  "/app.js?v=20260421-auth-stability-inventory-fast-50",
+  "/styles.css?v=20260423-sales-requests-order-fix-51",
+  "/app.js?v=20260423-sales-requests-order-fix-51",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",

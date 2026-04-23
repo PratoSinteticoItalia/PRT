@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260421-auth-stability-inventory-fast-50";
+const APP_SHELL_VERSION = "20260423-sales-requests-order-fix-51";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6643,7 +6643,7 @@ function getFilteredSalesRequests() {
       const rightRow = Number(right.sourceRowNumber || 0);
       const leftHasRow = leftRow > 0;
       const rightHasRow = rightRow > 0;
-      if (leftHasRow && rightHasRow && leftRow !== rightRow) return leftRow - rightRow;
+      if (leftHasRow && rightHasRow && leftRow !== rightRow) return rightRow - leftRow;
       if (leftHasRow !== rightHasRow) return leftHasRow ? -1 : 1;
       const rightCreated = new Date(right.createdAt || right.updatedAt || 0).getTime();
       const leftCreated = new Date(left.createdAt || left.updatedAt || 0).getTime();
