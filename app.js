@@ -7025,19 +7025,13 @@ async function saveSalesRequest(event) {
     nextStatus,
     canOpenWhatsAppNow: Boolean(buildSalesRequestWhatsAppUrl(draftRecord)),
   });
-  const shouldAutoOpenNow = automationDecision.action === "send-now" && Boolean(buildSalesRequestWhatsAppUrl(draftRecord));
-  const autoOpenUrl = shouldAutoOpenNow ? buildSalesRequestWhatsAppUrl(draftRecord) : "";
-  let autoOpenWindow = null;
-  if (autoOpenUrl) {
-    autoOpenWindow = window.open(autoOpenUrl, "_blank", "noopener,noreferrer");
-  }
-  const effectiveAutomationDecision = automationDecision.action === "send-now" && !autoOpenWindow
+  const effectiveAutomationDecision = automationDecision.action === "send-now"
     ? {
         ...automationDecision,
         action: "queued",
         firstContactState: "queued",
         firstContactSentAt: "",
-        firstContactScheduledAt: new Date().toISOString(),
+        firstContactScheduledAt: automationDecision.firstContactScheduledAt || new Date().toISOString(),
         status: shouldPromoteSalesRequestToFirstContact(nextStatus)
           ? SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS
           : nextStatus,
@@ -7057,11 +7051,7 @@ async function saveSalesRequest(event) {
     upsertSalesRequest(saved, { skipOpsRender: true });
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    const autoOpenMessage = effectiveAutomationDecision.action === "send-now"
-      ? (autoOpenWindow
-          ? (state.lang === "it" ? " Primo contatto WhatsApp aperto automaticamente." : " First WhatsApp contact opened automatically.")
-          : (state.lang === "it" ? " Primo contatto pronto: popup bloccato, usa il pulsante WhatsApp." : " First contact ready: popup blocked, use the WhatsApp button."))
-      : effectiveAutomationDecision.action === "queued"
+    const autoOpenMessage = effectiveAutomationDecision.action === "queued"
         ? (state.lang === "it"
           ? ` Contatto messo in coda per ${formatDate(effectiveAutomationDecision.firstContactScheduledAt)}.`
           : ` Contact queued for ${formatDate(effectiveAutomationDecision.firstContactScheduledAt)}.`)
