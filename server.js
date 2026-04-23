@@ -40,6 +40,13 @@ const WHATSAPP_IVAN_PHONE_NUMBER_ID = String(process.env.WHATSAPP_IVAN_PHONE_NUM
 const WHATSAPP_GABRIELE_PHONE_NUMBER_ID = String(process.env.WHATSAPP_GABRIELE_PHONE_NUMBER_ID || WHATSAPP_DEFAULT_PHONE_NUMBER_ID).trim();
 const WHATSAPP_DEFAULT_COUNTRY_CODE = String(process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || "39").replace(/\D+/g, "") || "39";
 const WHATSAPP_GRAPH_TIMEOUT_MS = Math.max(5_000, Number(process.env.WHATSAPP_GRAPH_TIMEOUT_MS || 15_000));
+const SALES_REQUEST_AUTOMATION_MODE = String(process.env.SALES_REQUEST_AUTOMATION_MODE || "none").trim().toLowerCase();
+const SALES_REQUEST_EMAIL_PROVIDER = String(process.env.SALES_REQUEST_EMAIL_PROVIDER || "resend").trim().toLowerCase();
+const SALES_REQUEST_EMAIL_FROM = String(process.env.SALES_REQUEST_EMAIL_FROM || "").trim();
+const SALES_REQUEST_EMAIL_REPLY_TO = cleanEmail(process.env.SALES_REQUEST_EMAIL_REPLY_TO || "");
+const SALES_REQUEST_EMAIL_SUBJECT_PREFIX = String(process.env.SALES_REQUEST_EMAIL_SUBJECT_PREFIX || "Prato Sintetico Italia").trim();
+const SALES_REQUEST_EMAIL_TIMEOUT_MS = Math.max(5_000, Number(process.env.SALES_REQUEST_EMAIL_TIMEOUT_MS || 15_000));
+const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -1690,6 +1697,130 @@ function getSalesRequestAutomatedWhatsAppMessage(item = {}) {
   return buildSalesRequestDefaultWhatsAppMessage(item);
 }
 
+function isValidEmailAddress(value = "") {
+  const email = cleanEmail(value);
+  return Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+}
+
+function buildSalesRequestDefaultEmailSubject(item = {}) {
+  const recipient = getSalesRequestDisplayName(item);
+  return `${SALES_REQUEST_EMAIL_SUBJECT_PREFIX} · Richiesta preventivo ${recipient}`.trim();
+}
+
+function buildSalesRequestDefaultEmailBody(item = {}) {
+  const recipient = getSalesRequestDisplayName(item);
+  const serviceIntent = getSalesRequestServiceIntent(item.service);
+  if (serviceIntent === "supply-only") {
+    return [
+      `Ciao ${recipient},`,
+      "",
+      "grazie per la tua richiesta. Possiamo supportarti con la fornitura del prato sintetico.",
+      "Se vuoi, rispondi a questa email e ti inviamo proposta completa con tempi di consegna.",
+      "",
+      "Team Prato Sintetico Italia",
+    ].join("\n");
+  }
+  if (serviceIntent === "supply-install") {
+    return [
+      `Ciao ${recipient},`,
+      "",
+      "grazie per la tua richiesta. Possiamo supportarti con fornitura e posa completa.",
+      "Se vuoi, rispondi a questa email e ti inviamo proposta con materiali, posa e tempistiche.",
+      "",
+      "Team Prato Sintetico Italia",
+    ].join("\n");
+  }
+  return [
+    `Ciao ${recipient},`,
+    "",
+    "ti contattiamo in merito alla tua richiesta di preventivo.",
+    "Rispondi a questa email e ti inviamo tutti i dettagli.",
+    "",
+    "Team Prato Sintetico Italia",
+  ].join("\n");
+}
+
+function getSalesRequestAutomatedEmailPayload(item = {}) {
+  const template = String(item.whatsappTemplate || "").trim();
+  const bodyText = template && !isGenericSalesRequestWhatsAppTemplate(template)
+    ? template
+    : buildSalesRequestDefaultEmailBody(item);
+  return {
+    subject: buildSalesRequestDefaultEmailSubject(item),
+    bodyText,
+  };
+}
+
+async function sendSalesRequestFirstContactEmail({ requestRecord = {} } = {}) {
+  if (SALES_REQUEST_EMAIL_PROVIDER !== "resend") {
+    return { ok: false, reason: "unsupported_email_provider" };
+  }
+  if (!RESEND_API_KEY || !isValidEmailAddress(SALES_REQUEST_EMAIL_FROM)) {
+    return { ok: false, reason: "missing_email_config" };
+  }
+  const recipientEmail = cleanEmail(requestRecord.email || "");
+  if (!isValidEmailAddress(recipientEmail)) {
+    return { ok: false, reason: "missing_email" };
+  }
+  const { subject, bodyText } = getSalesRequestAutomatedEmailPayload(requestRecord);
+  if (!String(bodyText || "").trim()) {
+    return { ok: false, reason: "missing_message" };
+  }
+
+  const payload = {
+    from: SALES_REQUEST_EMAIL_FROM,
+    to: [recipientEmail],
+    subject: subject || `${SALES_REQUEST_EMAIL_SUBJECT_PREFIX} · Preventivo`,
+    text: bodyText,
+  };
+  if (isValidEmailAddress(SALES_REQUEST_EMAIL_REPLY_TO)) {
+    payload.reply_to = SALES_REQUEST_EMAIL_REPLY_TO;
+  }
+
+  try {
+    const response = await fetchWithTimeout(
+      "https://api.resend.com/emails",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+      SALES_REQUEST_EMAIL_TIMEOUT_MS,
+    );
+    const rawResponse = await response.text().catch(() => "");
+    let parsed = {};
+    if (rawResponse) {
+      try {
+        parsed = JSON.parse(rawResponse);
+      } catch {
+        parsed = { raw: rawResponse };
+      }
+    }
+    if (!response.ok) {
+      const providerError = String(parsed?.message || parsed?.error?.message || parsed?.raw || "").trim();
+      return {
+        ok: false,
+        reason: "provider_error",
+        statusCode: Number(response.status || 0),
+        details: providerError,
+      };
+    }
+    return {
+      ok: true,
+      messageId: String(parsed?.id || "").trim(),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "network_error",
+      details: String(error?.message || "network_error"),
+    };
+  }
+}
+
 function getSalesRequestWhatsAppOperatorConfig(assignment = "") {
   const operator = normalizeSalesRequestAssignment(assignment);
   if (!operator) return { operator: "", accessToken: "", phoneNumberId: "" };
@@ -1794,7 +1925,16 @@ async function applySalesRequestAutomationOnSave({ existingRequest = null, reque
   const nextAssignment = normalizeSalesRequestAssignment(normalized.assignment || "");
   const assignmentChanged = Boolean(nextAssignment && nextAssignment !== previousAssignment);
   const alreadySent = normalizeSalesRequestFirstContactState(existingRequest?.firstContactState || "") === "sent";
+  const mode = ["email", "whatsapp"].includes(SALES_REQUEST_AUTOMATION_MODE)
+    ? SALES_REQUEST_AUTOMATION_MODE
+    : "none";
   if (!assignmentChanged || alreadySent) {
+    return {
+      record: normalized,
+      automation: { action: "none" },
+    };
+  }
+  if (mode === "none") {
     return {
       record: normalized,
       automation: { action: "none" },
@@ -1803,10 +1943,15 @@ async function applySalesRequestAutomationOnSave({ existingRequest = null, reque
 
   const baseStatus = String(normalized.status || "").trim() || "new";
   const shouldPromoteStatus = shouldPromoteSalesRequestToFirstContact(baseStatus);
-  const sendResult = await sendSalesRequestFirstContactWhatsApp({
-    requestRecord: normalized,
-    assignment: nextAssignment,
-  });
+  const sendResult = mode === "email"
+    ? await sendSalesRequestFirstContactEmail({
+      requestRecord: normalized,
+      assignment: nextAssignment,
+    })
+    : await sendSalesRequestFirstContactWhatsApp({
+      requestRecord: normalized,
+      assignment: nextAssignment,
+    });
 
   if (sendResult.ok) {
     return {
@@ -1820,6 +1965,7 @@ async function applySalesRequestAutomationOnSave({ existingRequest = null, reque
       }),
       automation: {
         action: "sent",
+        channel: mode,
         operator: nextAssignment,
         scheduledAt: nowIso,
         messageId: sendResult.messageId || "",
@@ -1838,6 +1984,7 @@ async function applySalesRequestAutomationOnSave({ existingRequest = null, reque
     }),
     automation: {
       action: "queued",
+      channel: mode,
       operator: nextAssignment,
       scheduledAt: nowIso,
       reason: String(sendResult.reason || "send_failed"),

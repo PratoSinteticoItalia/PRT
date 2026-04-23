@@ -2062,8 +2062,8 @@ function getSalesRequestFirstContactHint(item = {}) {
       : `Queued contact${by ? ` for ${by}` : ""} · scheduled ${formatDate(scheduledAt)}.`;
   }
   return state.lang === "it"
-    ? "Assegna il contatto e salva per avviare l'automazione WhatsApp."
-    : "Assign the contact and save to trigger WhatsApp automation.";
+    ? "Assegna il contatto e salva per avviare l'automazione del primo contatto."
+    : "Assign the contact and save to trigger first-contact automation.";
 }
 
 function getSalesRequestAutomationBadge(item = {}) {
@@ -2083,7 +2083,7 @@ function getSalesRequestAutomationBadge(item = {}) {
   if (stateValue === "sent") {
     return {
       label: state.lang === "it" ? "✓ Contattato" : "✓ Contacted",
-      title: state.lang === "it" ? "Primo contatto WhatsApp inviato" : "First WhatsApp contact sent",
+      title: state.lang === "it" ? "Primo contatto inviato automaticamente" : "First contact sent automatically",
       tone: "sent",
     };
   }
@@ -6998,12 +6998,18 @@ function getSalesRequestAutomationFailureMessage(reason = "", details = "") {
       ? (state.lang === "it" ? "configurazione operatore WhatsApp mancante" : "missing operator WhatsApp config")
       : code === "missing_phone"
         ? (state.lang === "it" ? "numero cliente non valido" : "invalid customer phone")
-        : code === "missing_message"
-          ? (state.lang === "it" ? "messaggio automatico non disponibile" : "automatic message missing")
+        : code === "missing_email"
+          ? (state.lang === "it" ? "email cliente non valida" : "invalid customer email")
+          : code === "missing_email_config"
+            ? (state.lang === "it" ? "configurazione email automatica mancante" : "missing automated email config")
+            : code === "unsupported_email_provider"
+              ? (state.lang === "it" ? "provider email non supportato" : "unsupported email provider")
+          : code === "missing_message"
+            ? (state.lang === "it" ? "messaggio automatico non disponibile" : "automatic message missing")
           : code === "provider_error"
-            ? (state.lang === "it" ? "errore provider WhatsApp" : "WhatsApp provider error")
+            ? (state.lang === "it" ? "errore provider automazione" : "automation provider error")
             : code === "network_error"
-              ? (state.lang === "it" ? "errore di rete verso WhatsApp" : "network error to WhatsApp")
+              ? (state.lang === "it" ? "errore di rete verso provider" : "network error to provider")
               : fallback;
   const detailText = String(details || "").trim();
   if (!detailText) return mapped;
@@ -7013,22 +7019,31 @@ function getSalesRequestAutomationFailureMessage(reason = "", details = "") {
 function getSalesRequestAutomationSaveMessage(automation = null) {
   if (!automation || typeof automation !== "object") return "";
   const action = String(automation.action || "").trim().toLowerCase();
+  const channel = String(automation.channel || "").trim().toLowerCase();
   if (action === "sent") {
+    if (channel === "email") {
+      return state.lang === "it"
+        ? " Follow-up email inviato automaticamente."
+        : " Follow-up email sent automatically.";
+    }
     return state.lang === "it"
-      ? " Primo contatto WhatsApp inviato automaticamente."
-      : " First WhatsApp contact sent automatically.";
+      ? " Primo contatto inviato automaticamente."
+      : " First contact sent automatically.";
   }
   if (action === "queued") {
     const scheduledAt = normalizeIsoDateTime(automation.scheduledAt || automation.firstContactScheduledAt || "");
     const failureReason = getSalesRequestAutomationFailureMessage(automation.reason, automation.details);
+    const prefix = channel === "email"
+      ? (state.lang === "it" ? "Follow-up email in coda" : "Follow-up email queued")
+      : (state.lang === "it" ? "Contatto in coda" : "Contact queued");
     if (scheduledAt) {
       return state.lang === "it"
-        ? ` Contatto in coda (${failureReason}) · pianificato ${formatDate(scheduledAt)}.`
-        : ` Contact queued (${failureReason}) · scheduled ${formatDate(scheduledAt)}.`;
+        ? ` ${prefix} (${failureReason}) · pianificato ${formatDate(scheduledAt)}.`
+        : ` ${prefix} (${failureReason}) · scheduled ${formatDate(scheduledAt)}.`;
     }
     return state.lang === "it"
-      ? ` Contatto in coda (${failureReason}).`
-      : ` Contact queued (${failureReason}).`;
+      ? ` ${prefix} (${failureReason}).`
+      : ` ${prefix} (${failureReason}).`;
   }
   return "";
 }
