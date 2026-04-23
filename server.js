@@ -28,6 +28,18 @@ const DEFAULT_SALES_REQUEST_SPREADSHEET = "https://docs.google.com/spreadsheets/
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const MAX_CREW_LOGO_DATA_URL_LENGTH = 6_500_000;
+const SALES_REQUEST_FIRST_CONTACT_SENT_STATUS = "1° contatto";
+const SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS = "da richiamare";
+const WHATSAPP_AUTOMATION_ENABLED = String(process.env.WHATSAPP_AUTOMATION_ENABLED || "true").trim().toLowerCase() !== "false";
+const WHATSAPP_GRAPH_API_VERSION = String(process.env.WHATSAPP_GRAPH_API_VERSION || "v20.0").trim() || "v20.0";
+const WHATSAPP_DEFAULT_ACCESS_TOKEN = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+const WHATSAPP_DEFAULT_PHONE_NUMBER_ID = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+const WHATSAPP_IVAN_ACCESS_TOKEN = String(process.env.WHATSAPP_IVAN_ACCESS_TOKEN || WHATSAPP_DEFAULT_ACCESS_TOKEN).trim();
+const WHATSAPP_GABRIELE_ACCESS_TOKEN = String(process.env.WHATSAPP_GABRIELE_ACCESS_TOKEN || WHATSAPP_DEFAULT_ACCESS_TOKEN).trim();
+const WHATSAPP_IVAN_PHONE_NUMBER_ID = String(process.env.WHATSAPP_IVAN_PHONE_NUMBER_ID || WHATSAPP_DEFAULT_PHONE_NUMBER_ID).trim();
+const WHATSAPP_GABRIELE_PHONE_NUMBER_ID = String(process.env.WHATSAPP_GABRIELE_PHONE_NUMBER_ID || WHATSAPP_DEFAULT_PHONE_NUMBER_ID).trim();
+const WHATSAPP_DEFAULT_COUNTRY_CODE = String(process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || "39").replace(/\D+/g, "") || "39";
+const WHATSAPP_GRAPH_TIMEOUT_MS = Math.max(5_000, Number(process.env.WHATSAPP_GRAPH_TIMEOUT_MS || 15_000));
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -1569,6 +1581,269 @@ function normalizeSalesRequestFirstContactState(value = "") {
   if (["sent", "inviato", "inviata", "sent now"].includes(normalized)) return "sent";
   if (["queued", "coda", "in coda", "scheduled", "pending"].includes(normalized)) return "queued";
   return "";
+}
+
+function shouldPromoteSalesRequestToFirstContact(status = "") {
+  const code = normalizeSalesRequestStatus(status);
+  if (code === "new" || !String(status || "").trim()) return true;
+  const normalized = normalizeSalesRequestImportHeader(status);
+  return [
+    "followup",
+    "follow up",
+    "follow-up",
+    "da richiamare",
+    "richiamare",
+    "in attesa di risposta",
+    "nessuna risposta",
+  ].includes(normalized);
+}
+
+function normalizePhoneForWhatsApp(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  let digits = "";
+  if (raw.startsWith("+")) {
+    digits = raw.replace(/\D+/g, "");
+  } else {
+    const cleaned = raw.replace(/\D+/g, "");
+    if (!cleaned) return "";
+    if (cleaned.startsWith("00")) {
+      digits = cleaned.slice(2);
+    } else if (cleaned.startsWith(WHATSAPP_DEFAULT_COUNTRY_CODE)) {
+      digits = cleaned;
+    } else {
+      digits = `${WHATSAPP_DEFAULT_COUNTRY_CODE}${cleaned}`;
+    }
+  }
+  return digits.length >= 8 ? digits : "";
+}
+
+function extractSalesRequestPhoneFromWhatsAppUrl(value = "") {
+  const normalizedUrl = normalizeSalesRequestWhatsAppUrl(value);
+  if (!normalizedUrl) return "";
+  try {
+    const parsed = new URL(normalizedUrl);
+    const host = parsed.hostname.toLowerCase();
+    if (host === "wa.me") {
+      const direct = parsed.pathname.replace(/^\//, "").split("/")[0] || "";
+      return normalizePhoneForWhatsApp(direct);
+    }
+    const queryPhone = parsed.searchParams.get("phone") || "";
+    return normalizePhoneForWhatsApp(queryPhone);
+  } catch {
+    return "";
+  }
+}
+
+function extractSalesRequestMessageFromWhatsAppUrl(value = "") {
+  const normalizedUrl = normalizeSalesRequestWhatsAppUrl(value);
+  if (!normalizedUrl) return "";
+  try {
+    const parsed = new URL(normalizedUrl);
+    return String(parsed.searchParams.get("text") || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function isGenericSalesRequestWhatsAppTemplate(value = "") {
+  const normalized = normalizeSalesRequestImportHeader(value);
+  if (!normalized) return false;
+  return (
+    normalized === "messaggio whatsapp"
+    || normalized === "whatsapp message"
+    || normalized === "primo contatto whatsapp"
+    || normalized === "first whatsapp contact"
+    || normalized.includes("messaggio preimpostato")
+    || normalized.includes("template whatsapp")
+  );
+}
+
+function getSalesRequestServiceIntent(value = "") {
+  const normalized = normalizeSalesRequestService(value);
+  if (normalized === "fornitura") return "supply-only";
+  if (normalized === "posa") return "supply-install";
+  return "";
+}
+
+function getSalesRequestDisplayName(item = {}) {
+  return `${item.name || ""} ${item.surname || ""}`.trim() || "cliente";
+}
+
+function buildSalesRequestDefaultWhatsAppMessage(item = {}) {
+  const recipient = getSalesRequestDisplayName(item);
+  const serviceIntent = getSalesRequestServiceIntent(item.service);
+  if (serviceIntent === "supply-only") {
+    return `Ciao ${recipient}, grazie per la richiesta. Ti confermiamo disponibilita per la sola fornitura del prato sintetico. Se vuoi ti inviamo subito proposta e tempi di consegna.`;
+  }
+  if (serviceIntent === "supply-install") {
+    return `Ciao ${recipient}, grazie per la richiesta. Ti confermiamo disponibilita per fornitura e posa completa. Se vuoi ti inviamo proposta con materiali, posa e tempistiche.`;
+  }
+  return `Ciao ${recipient}, ti contattiamo in merito al tuo preventivo.`;
+}
+
+function getSalesRequestAutomatedWhatsAppMessage(item = {}) {
+  const template = String(item.whatsappTemplate || "").trim();
+  if (template && !isGenericSalesRequestWhatsAppTemplate(template)) return template;
+  const fromUrl = extractSalesRequestMessageFromWhatsAppUrl(item.whatsappUrl || "");
+  if (fromUrl) return fromUrl;
+  return buildSalesRequestDefaultWhatsAppMessage(item);
+}
+
+function getSalesRequestWhatsAppOperatorConfig(assignment = "") {
+  const operator = normalizeSalesRequestAssignment(assignment);
+  if (!operator) return { operator: "", accessToken: "", phoneNumberId: "" };
+  if (operator === "Ivan") {
+    return {
+      operator,
+      accessToken: WHATSAPP_IVAN_ACCESS_TOKEN,
+      phoneNumberId: WHATSAPP_IVAN_PHONE_NUMBER_ID,
+    };
+  }
+  if (operator === "Gabriele") {
+    return {
+      operator,
+      accessToken: WHATSAPP_GABRIELE_ACCESS_TOKEN,
+      phoneNumberId: WHATSAPP_GABRIELE_PHONE_NUMBER_ID,
+    };
+  }
+  return { operator, accessToken: "", phoneNumberId: "" };
+}
+
+async function sendSalesRequestFirstContactWhatsApp({ requestRecord = {}, assignment = "" } = {}) {
+  if (!WHATSAPP_AUTOMATION_ENABLED) {
+    return { ok: false, reason: "automation_disabled" };
+  }
+  const operatorConfig = getSalesRequestWhatsAppOperatorConfig(assignment);
+  if (!operatorConfig.operator) {
+    return { ok: false, reason: "missing_assignment" };
+  }
+  if (!operatorConfig.accessToken || !operatorConfig.phoneNumberId) {
+    return { ok: false, reason: "missing_operator_config" };
+  }
+  const to = extractSalesRequestPhoneFromWhatsAppUrl(requestRecord.whatsappUrl || "")
+    || normalizePhoneForWhatsApp(requestRecord.phone || "");
+  if (!to) {
+    return { ok: false, reason: "missing_phone" };
+  }
+  const message = getSalesRequestAutomatedWhatsAppMessage(requestRecord);
+  if (!message) {
+    return { ok: false, reason: "missing_message" };
+  }
+
+  const endpoint = `https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${operatorConfig.phoneNumberId}/messages`;
+  const payload = {
+    messaging_product: "whatsapp",
+    to,
+    type: "text",
+    text: {
+      preview_url: false,
+      body: message,
+    },
+  };
+
+  try {
+    const response = await fetchWithTimeout(
+      endpoint,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${operatorConfig.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+      WHATSAPP_GRAPH_TIMEOUT_MS,
+    );
+    const rawResponse = await response.text().catch(() => "");
+    let parsed = {};
+    if (rawResponse) {
+      try {
+        parsed = JSON.parse(rawResponse);
+      } catch {
+        parsed = { raw: rawResponse };
+      }
+    }
+    if (!response.ok) {
+      const providerError = String(parsed?.error?.message || parsed?.raw || "").trim();
+      return {
+        ok: false,
+        reason: "provider_error",
+        statusCode: Number(response.status || 0),
+        details: providerError,
+      };
+    }
+    const messageId = String(parsed?.messages?.[0]?.id || "").trim();
+    return {
+      ok: true,
+      operator: operatorConfig.operator,
+      messageId,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "network_error",
+      details: String(error?.message || "network_error"),
+    };
+  }
+}
+
+async function applySalesRequestAutomationOnSave({ existingRequest = null, requestRecord = {}, nowIso = new Date().toISOString() } = {}) {
+  const normalized = normalizeSalesRequestRecord(requestRecord);
+  const previousAssignment = normalizeSalesRequestAssignment(existingRequest?.assignment || "");
+  const nextAssignment = normalizeSalesRequestAssignment(normalized.assignment || "");
+  const assignmentChanged = Boolean(nextAssignment && nextAssignment !== previousAssignment);
+  const alreadySent = normalizeSalesRequestFirstContactState(existingRequest?.firstContactState || "") === "sent";
+  if (!assignmentChanged || alreadySent) {
+    return {
+      record: normalized,
+      automation: { action: "none" },
+    };
+  }
+
+  const baseStatus = String(normalized.status || "").trim() || "new";
+  const shouldPromoteStatus = shouldPromoteSalesRequestToFirstContact(baseStatus);
+  const sendResult = await sendSalesRequestFirstContactWhatsApp({
+    requestRecord: normalized,
+    assignment: nextAssignment,
+  });
+
+  if (sendResult.ok) {
+    return {
+      record: normalizeSalesRequestRecord({
+        ...normalized,
+        firstContactState: "sent",
+        firstContactScheduledAt: nowIso,
+        firstContactSentAt: nowIso,
+        firstContactBy: nextAssignment,
+        status: shouldPromoteStatus ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS : baseStatus,
+      }),
+      automation: {
+        action: "sent",
+        operator: nextAssignment,
+        scheduledAt: nowIso,
+        messageId: sendResult.messageId || "",
+      },
+    };
+  }
+
+  return {
+    record: normalizeSalesRequestRecord({
+      ...normalized,
+      firstContactState: "queued",
+      firstContactScheduledAt: nowIso,
+      firstContactSentAt: "",
+      firstContactBy: nextAssignment,
+      status: shouldPromoteStatus ? SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS : baseStatus,
+    }),
+    automation: {
+      action: "queued",
+      operator: nextAssignment,
+      scheduledAt: nowIso,
+      reason: String(sendResult.reason || "send_failed"),
+      details: String(sendResult.details || ""),
+    },
+  };
 }
 
 function normalizeSalesRequestStatus(value = "") {
@@ -3760,9 +4035,19 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const now = new Date().toISOString();
     const existingRequest = store.salesRequests.find((item) => item.id === String(body.id || "")) || null;
-    const requestRecord = normalizeSalesRequestRecord({
+    const draftRecord = normalizeSalesRequestRecord({
       ...body,
       createdAt: existingRequest?.createdAt || body.createdAt || now,
+      updatedAt: now,
+    });
+    const automationResult = await applySalesRequestAutomationOnSave({
+      existingRequest,
+      requestRecord: draftRecord,
+      nowIso: now,
+    });
+    const requestRecord = normalizeSalesRequestRecord({
+      ...automationResult.record,
+      createdAt: existingRequest?.createdAt || draftRecord.createdAt || now,
       updatedAt: now,
     });
     const existingIndex = store.salesRequests.findIndex((item) => item.id === requestRecord.id);
@@ -3772,7 +4057,10 @@ async function handleApi(req, res, url) {
       store.salesRequests.unshift(requestRecord);
     }
     await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, requestRecord);
+    return sendJson(res, 200, {
+      ...requestRecord,
+      _automation: automationResult.automation || { action: "none" },
+    });
   }
 
   if (url.pathname.match(/^\/api\/sales\/requests\/[^/]+$/) && req.method === "DELETE") {

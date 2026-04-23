@@ -6987,6 +6987,52 @@ function createNewSalesRequest() {
   });
 }
 
+function getSalesRequestAutomationFailureMessage(reason = "", details = "") {
+  const code = String(reason || "").trim().toLowerCase();
+  const fallback = state.lang === "it"
+    ? "invio automatico non riuscito"
+    : "automatic send failed";
+  const mapped = code === "automation_disabled"
+    ? (state.lang === "it" ? "automazione disattivata lato server" : "server automation disabled")
+    : code === "missing_operator_config"
+      ? (state.lang === "it" ? "configurazione operatore WhatsApp mancante" : "missing operator WhatsApp config")
+      : code === "missing_phone"
+        ? (state.lang === "it" ? "numero cliente non valido" : "invalid customer phone")
+        : code === "missing_message"
+          ? (state.lang === "it" ? "messaggio automatico non disponibile" : "automatic message missing")
+          : code === "provider_error"
+            ? (state.lang === "it" ? "errore provider WhatsApp" : "WhatsApp provider error")
+            : code === "network_error"
+              ? (state.lang === "it" ? "errore di rete verso WhatsApp" : "network error to WhatsApp")
+              : fallback;
+  const detailText = String(details || "").trim();
+  if (!detailText) return mapped;
+  return `${mapped}: ${detailText}`;
+}
+
+function getSalesRequestAutomationSaveMessage(automation = null) {
+  if (!automation || typeof automation !== "object") return "";
+  const action = String(automation.action || "").trim().toLowerCase();
+  if (action === "sent") {
+    return state.lang === "it"
+      ? " Primo contatto WhatsApp inviato automaticamente."
+      : " First WhatsApp contact sent automatically.";
+  }
+  if (action === "queued") {
+    const scheduledAt = normalizeIsoDateTime(automation.scheduledAt || automation.firstContactScheduledAt || "");
+    const failureReason = getSalesRequestAutomationFailureMessage(automation.reason, automation.details);
+    if (scheduledAt) {
+      return state.lang === "it"
+        ? ` Contatto in coda (${failureReason}) · pianificato ${formatDate(scheduledAt)}.`
+        : ` Contact queued (${failureReason}) · scheduled ${formatDate(scheduledAt)}.`;
+    }
+    return state.lang === "it"
+      ? ` Contatto in coda (${failureReason}).`
+      : ` Contact queued (${failureReason}).`;
+  }
+  return "";
+}
+
 async function saveSalesRequest(event) {
   event.preventDefault();
   clearStatus(ui.salesRequestsStatus);
@@ -7019,57 +7065,19 @@ async function saveSalesRequest(event) {
     sourceRowNumber: Number(existingRequest?.sourceRowNumber || 0),
     createdAt: existingRequest?.createdAt || undefined,
   });
-  const automationDecision = getSalesRequestFirstContactAutomationDecision({
-    existingRequest,
-    nextAssignment: draftRecord.assignment,
-    nextStatus,
-    canOpenWhatsAppNow: Boolean(buildSalesRequestWhatsAppUrl(draftRecord)),
-  });
-  const shouldAutoOpenNow = automationDecision.action === "send-now" && Boolean(buildSalesRequestWhatsAppUrl(draftRecord));
-  const autoOpenUrl = shouldAutoOpenNow ? buildSalesRequestWhatsAppUrl(draftRecord) : "";
-  let autoOpenWindow = null;
-  if (autoOpenUrl) {
-    autoOpenWindow = window.open(autoOpenUrl, "_blank", "noopener,noreferrer");
-  }
-  const effectiveAutomationDecision = automationDecision.action === "send-now" && !autoOpenWindow
-    ? {
-        ...automationDecision,
-        action: "queued",
-        firstContactState: "queued",
-        firstContactSentAt: "",
-        firstContactScheduledAt: new Date().toISOString(),
-        status: shouldPromoteSalesRequestToFirstContact(nextStatus)
-          ? SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS
-          : nextStatus,
-      }
-    : automationDecision;
   try {
     const saved = await apiFetch("/api/sales/requests", {
       method: "POST",
-      body: JSON.stringify(buildSalesRequestPayloadFromRecord(draftRecord, {
-        status: effectiveAutomationDecision.status,
-        firstContactState: effectiveAutomationDecision.firstContactState,
-        firstContactScheduledAt: effectiveAutomationDecision.firstContactScheduledAt,
-        firstContactSentAt: effectiveAutomationDecision.firstContactSentAt,
-        firstContactBy: effectiveAutomationDecision.firstContactBy,
-      })),
+      body: JSON.stringify(buildSalesRequestPayloadFromRecord(draftRecord)),
     });
+    const automationMessage = getSalesRequestAutomationSaveMessage(saved?._automation || null);
     upsertSalesRequest(saved, { skipOpsRender: true });
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    const autoOpenMessage = effectiveAutomationDecision.action === "send-now"
-      ? (autoOpenWindow
-          ? (state.lang === "it" ? " Primo contatto WhatsApp aperto automaticamente." : " First WhatsApp contact opened automatically.")
-          : (state.lang === "it" ? " Primo contatto pronto: popup bloccato, usa il pulsante WhatsApp." : " First contact ready: popup blocked, use the WhatsApp button."))
-      : effectiveAutomationDecision.action === "queued"
-        ? (state.lang === "it"
-          ? ` Contatto messo in coda per ${formatDate(effectiveAutomationDecision.firstContactScheduledAt)}.`
-          : ` Contact queued for ${formatDate(effectiveAutomationDecision.firstContactScheduledAt)}.`)
-        : "";
     setStatus(
       ui.salesRequestsStatus,
       "success",
-      `${state.lang === "it" ? "Richiesta salvata." : "Request saved."}${autoOpenMessage}`,
+      `${state.lang === "it" ? "Richiesta salvata." : "Request saved."}${automationMessage}`,
     );
   } catch (error) {
     setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta." : "Unable to save the request.");

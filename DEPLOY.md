@@ -27,6 +27,14 @@ Il servizio usa:
 
 Le credenziali Shopify non vanno salvate nel frontend. Restano nel backend e, una volta dentro l'app, puoi continuare a gestirle dalla schermata `Impostazioni`.
 
+Per automazione WhatsApp primo contatto (invio reale lato server), aggiungi anche:
+
+- `WHATSAPP_AUTOMATION_ENABLED=true`
+- `WHATSAPP_ACCESS_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID` (fallback)
+- `WHATSAPP_IVAN_ACCESS_TOKEN` + `WHATSAPP_IVAN_PHONE_NUMBER_ID`
+- `WHATSAPP_GABRIELE_ACCESS_TOKEN` + `WHATSAPP_GABRIELE_PHONE_NUMBER_ID`
+- opzionali: `WHATSAPP_DEFAULT_COUNTRY_CODE=39`, `WHATSAPP_GRAPH_API_VERSION=v20.0`, `WHATSAPP_GRAPH_TIMEOUT_MS=15000`
+
 ## 4. Primo avvio
 
 Al primo deploy il server:
