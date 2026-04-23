@@ -20,9 +20,20 @@
         min-height: 100vh;
       }
 
+      #garden-print-sheet {
+        display: none;
+      }
+
       @media print {
+        @page {
+          size: A4 portrait;
+          margin: 10mm;
+        }
+
         html, body {
           background: #ffffff;
+          margin: 0;
+          padding: 0;
         }
 
         body {
@@ -30,40 +41,46 @@
           -webkit-print-color-adjust: exact;
         }
 
-        body.garden-print-report #app * {
-          visibility: hidden !important;
+        body.garden-print-report #app {
+          display: none !important;
         }
 
-        body.garden-print-report #garden-planner-print-content,
-        body.garden-print-report #garden-planner-print-content * {
-          visibility: visible !important;
-        }
-
-        body.garden-print-report #garden-planner-print-content {
-          position: absolute !important;
-          left: 0 !important;
-          top: 0 !important;
+        body.garden-print-report #garden-print-sheet {
+          display: block !important;
           width: 100% !important;
-          padding: 10mm !important;
+          max-width: 190mm;
+          padding: 0 !important;
           margin: 0 !important;
           background: #fff !important;
+        }
+
+        body.garden-print-report #garden-print-sheet .print-sheet-root {
+          width: 100%;
+          margin: 0 auto;
+          box-sizing: border-box;
+        }
+
+        body.garden-print-report #garden-print-sheet .print-no-break {
+          break-inside: avoid-page;
+          page-break-inside: avoid;
         }
       }
     </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="garden-print-sheet" aria-hidden="true"></div>
     <noscript>Abilita JavaScript per usare il Garden Planner.</noscript>
 
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260422-garden-v33-region-pricing"></script>
+    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260423-garden-v34-rolls-print"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let reloaded = false;
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260422-garden-v33-region-pricing").then((registration) => {
+          navigator.serviceWorker.register("./sw.js?v=20260423-garden-v34-rolls-print").then((registration) => {
             if (registration.waiting) {
               registration.waiting.postMessage({ type: "SKIP_WAITING" });
             }

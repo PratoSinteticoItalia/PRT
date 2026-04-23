@@ -65,6 +65,9 @@ const INSTALLATION_RULES = {
   jointMetersPerSqm: 0.55,
   pinsPerLinearMeter: 2.2,
 };
+const MANUAL_ROLL_WIDTH_M = 2;
+const MANUAL_ROLL_MAX_LENGTH_M = 25;
+const MANUAL_ROLL_MIN_LENGTH_M = 1;
 
 const DEFAULT_TRAVEL_SETTINGS = {
   departureBase: "Orta di Atella",
@@ -274,6 +277,73 @@ function getShapePolygon(shape, dims) {
   return [];
 }
 
+function pointOnSegment(point, a, b, epsilon = 1e-6) {
+  const cross = (point.y - a.y) * (b.x - a.x) - (point.x - a.x) * (b.y - a.y);
+  if (Math.abs(cross) > epsilon) return false;
+  const dot = (point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y);
+  if (dot < -epsilon) return false;
+  const sqLen = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+  if (dot - sqLen > epsilon) return false;
+  return true;
+}
+
+function pointInPolygon(point, polygon) {
+  if (!Array.isArray(polygon) || polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i];
+    const b = polygon[j];
+    if (pointOnSegment(point, a, b)) return true;
+    const intersect = ((a.y > point.y) !== (b.y > point.y))
+      && (point.x < ((b.x - a.x) * (point.y - a.y)) / ((b.y - a.y) || 1e-9) + a.x);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function getRollCorners(roll) {
+  const halfLength = (Number(roll?.length) || 0) / 2;
+  const halfWidth = (Number(roll?.width) || MANUAL_ROLL_WIDTH_M) / 2;
+  const angle = Number(roll?.angle) || 0;
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+  const vx = -uy;
+  const vy = ux;
+  const cx = Number(roll?.cx) || 0;
+  const cy = Number(roll?.cy) || 0;
+  return [
+    { x: cx - ux * halfLength - vx * halfWidth, y: cy - uy * halfLength - vy * halfWidth },
+    { x: cx + ux * halfLength - vx * halfWidth, y: cy + uy * halfLength - vy * halfWidth },
+    { x: cx + ux * halfLength + vx * halfWidth, y: cy + uy * halfLength + vy * halfWidth },
+    { x: cx - ux * halfLength + vx * halfWidth, y: cy - uy * halfLength + vy * halfWidth },
+  ];
+}
+
+function isRollInsidePolygon(roll, polygon) {
+  const corners = getRollCorners(roll);
+  return corners.every(point => pointInPolygon(point, polygon));
+}
+
+function createManualRollFromSegment(start, end) {
+  const dx = Number(end?.x || 0) - Number(start?.x || 0);
+  const dy = Number(end?.y || 0) - Number(start?.y || 0);
+  const rawLength = Math.hypot(dx, dy);
+  if (rawLength <= 0) return null;
+  const length = clamp(rawLength, MANUAL_ROLL_MIN_LENGTH_M, MANUAL_ROLL_MAX_LENGTH_M);
+  const ux = dx / rawLength;
+  const uy = dy / rawLength;
+  const centerX = Number(start?.x || 0) + ux * (length / 2);
+  const centerY = Number(start?.y || 0) + uy * (length / 2);
+  return {
+    id: `roll-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    cx: centerX,
+    cy: centerY,
+    length,
+    width: MANUAL_ROLL_WIDTH_M,
+    angle: Math.atan2(dy, dx),
+  };
+}
+
 function getEdgeLabel(shape, index, count) {
   if (shape === "rect") {
     return ["Lato superiore", "Lato destro", "Lato inferiore", "Lato sinistro"][index] || `Lato ${index + 1}`;
@@ -319,20 +389,26 @@ function estimateInstallationNeeds(area, perimeter) {
 const GRID = 0.5;
 const BASE_PX = 36;
 
-function FreeDrawCanvas({ points, setPoints, closed, setClosed }) {
+function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setRolls }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [hoverPt, setHoverPt] = useState(null);
   const [dragging, setDragging] = useState(null);
   const [canvasW, setCanvasW] = useState(760);
   const [zoom, setZoom] = useState(1);
+  const [drawMode, setDrawMode] = useState("shape");
+  const [rollStart, setRollStart] = useState(null);
+  const [canvasMessage, setCanvasMessage] = useState("");
   const canvasH = 420;
   const PX = BASE_PX * zoom;
 
   const snap = v => Math.round(v / GRID) * GRID;
-  const normalizePointValue = v => snap(Math.max(0, v));
   const toM = px => snap(px / PX);
   const toPx = m => m * PX;
+  const totalRollMeters = useMemo(
+    () => (Array.isArray(rolls) ? rolls.reduce((sum, roll) => sum + (Number(roll.length) || 0), 0) : 0),
+    [rolls],
+  );
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -353,15 +429,57 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed }) {
     return () => window.removeEventListener("resize", updateCanvasW);
   }, []);
 
+  useEffect(() => {
+    if (!closed && drawMode === "roll") {
+      setDrawMode("shape");
+      setRollStart(null);
+      setCanvasMessage("");
+    }
+  }, [closed, drawMode]);
+
   const getPos = e => {
     const r = canvasRef.current.getBoundingClientRect();
     return { mx: toM(e.clientX - r.left), my: toM(e.clientY - r.top) };
   };
 
   const handleClick = e => {
-    if (closed && dragging === null) return;
     const { mx, my } = getPos(e);
-    if (points.length > 2) { if (Math.hypot(mx - points[0].x, my - points[0].y) < 0.7) { setClosed(true); return; } }
+    if (drawMode === "roll" && closed) {
+      if (!rollStart) {
+        setRollStart({ x: mx, y: my });
+        setCanvasMessage("Punto iniziale fissato. Clicca il punto finale del rotolo.");
+        return;
+      }
+      const nextRoll = createManualRollFromSegment(rollStart, { x: mx, y: my });
+      if (!nextRoll) {
+        setCanvasMessage("Seleziona una lunghezza valida per il rotolo.");
+        setRollStart(null);
+        return;
+      }
+      nextRoll.length = clamp(snap(nextRoll.length), MANUAL_ROLL_MIN_LENGTH_M, MANUAL_ROLL_MAX_LENGTH_M);
+      const dx = Math.cos(nextRoll.angle) * (nextRoll.length / 2);
+      const dy = Math.sin(nextRoll.angle) * (nextRoll.length / 2);
+      nextRoll.cx = rollStart.x + dx;
+      nextRoll.cy = rollStart.y + dy;
+
+      if (!isRollInsidePolygon(nextRoll, points)) {
+        setCanvasMessage("Rotolo fuori area: riposizionalo interamente nel perimetro.");
+        setRollStart(null);
+        return;
+      }
+      setRolls(prev => [...prev, nextRoll]);
+      setRollStart(null);
+      setCanvasMessage(`Rotolo inserito: 2.00m × ${fmt(nextRoll.length, 2)}m.`);
+      return;
+    }
+
+    if (closed && dragging === null) return;
+    if (points.length > 2) {
+      if (Math.hypot(mx - points[0].x, my - points[0].y) < 0.7) {
+        setClosed(true);
+        return;
+      }
+    }
     setPoints(prev => [...prev, { x: mx, y: my }]);
   };
 
@@ -372,13 +490,32 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed }) {
   };
 
   const handleMouseDown = e => {
+    if (drawMode !== "shape") return;
     if (!closed) return;
     const { mx, my } = getPos(e);
     const idx = points.findIndex(p => Math.hypot(p.x - mx, p.y - my) < 0.6);
     if (idx >= 0) { setDragging(idx); e.stopPropagation(); e.preventDefault(); }
   };
 
-  const reset = () => { setPoints([]); setClosed(false); setDragging(null); };
+  const reset = () => {
+    setPoints([]);
+    setClosed(false);
+    setDragging(null);
+    setRollStart(null);
+    setDrawMode("shape");
+    setCanvasMessage("");
+    setRolls([]);
+  };
+
+  const removeLastRoll = () => {
+    setRolls(prev => prev.slice(0, -1));
+    setCanvasMessage("Ultimo rotolo rimosso.");
+  };
+
+  const clearRolls = () => {
+    setRolls([]);
+    setCanvasMessage("Layout rotoli azzerato.");
+  };
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -421,6 +558,58 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed }) {
         ctx.fillStyle = B.dark; ctx.textAlign = "center"; ctx.fillText(txt, mx2, my2 + 4); ctx.textAlign = "start";
       }
 
+      const drawRoll = (roll, index, options = {}) => {
+        const corners = getRollCorners(roll);
+        if (!corners.length) return;
+        const valid = isRollInsidePolygon(roll, points);
+        ctx.beginPath();
+        ctx.moveTo(toPx(corners[0].x), toPx(corners[0].y));
+        for (let i = 1; i < corners.length; i++) ctx.lineTo(toPx(corners[i].x), toPx(corners[i].y));
+        ctx.closePath();
+        if (options.preview) {
+          ctx.fillStyle = valid ? "rgba(21, 101, 192, 0.18)" : "rgba(198, 40, 40, 0.18)";
+          ctx.strokeStyle = valid ? "#1565c0" : B.danger;
+          ctx.setLineDash([6, 5]);
+          ctx.lineWidth = 2;
+        } else {
+          ctx.fillStyle = valid ? "rgba(21, 101, 192, 0.20)" : "rgba(198, 40, 40, 0.18)";
+          ctx.strokeStyle = valid ? "#1565c0" : B.danger;
+          ctx.setLineDash([]);
+          ctx.lineWidth = 1.8;
+        }
+        ctx.stroke();
+        ctx.fill();
+        ctx.setLineDash([]);
+
+        const labelText = options.preview
+          ? `Preview ${fmt(roll.length, 2)}m`
+          : `R${index + 1} · 2m × ${fmt(roll.length, 2)}m`;
+        const labelX = toPx(roll.cx);
+        const labelY = toPx(roll.cy);
+        ctx.font = "bold 10px sans-serif";
+        const tw = ctx.measureText(labelText).width;
+        ctx.fillStyle = "rgba(255,255,255,0.94)";
+        ctx.fillRect(labelX - tw / 2 - 4, labelY - 8, tw + 8, 16);
+        ctx.fillStyle = valid ? "#0d2f16" : B.danger;
+        ctx.textAlign = "center";
+        ctx.fillText(labelText, labelX, labelY + 3);
+        ctx.textAlign = "start";
+      };
+
+      (rolls || []).forEach((roll, index) => drawRoll(roll, index));
+
+      if (drawMode === "roll" && closed && rollStart && hoverPt) {
+        const previewRoll = createManualRollFromSegment(rollStart, hoverPt);
+        if (previewRoll) {
+          previewRoll.length = clamp(snap(previewRoll.length), MANUAL_ROLL_MIN_LENGTH_M, MANUAL_ROLL_MAX_LENGTH_M);
+          const dx = Math.cos(previewRoll.angle) * (previewRoll.length / 2);
+          const dy = Math.sin(previewRoll.angle) * (previewRoll.length / 2);
+          previewRoll.cx = rollStart.x + dx;
+          previewRoll.cy = rollStart.y + dy;
+          drawRoll(previewRoll, rolls.length, { preview: true });
+        }
+      }
+
       // Vertices
       points.forEach((p, i) => {
         const px = toPx(p.x), py = toPx(p.y);
@@ -443,18 +632,55 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed }) {
       ctx.fillStyle = B.textMuted; ctx.font = "14px sans-serif"; ctx.textAlign = "center";
       ctx.fillText("Clicca per posizionare i vertici del giardino", canvasW / 2, canvasH / 2 - 10);
       ctx.font = "12px sans-serif";
-      ctx.fillText("Griglia = 0.5m \u00B7 Clicca vicino al punto 1 per chiudere", canvasW / 2, canvasH / 2 + 14);
+      ctx.fillText("Griglia = 0.5m · Clicca vicino al punto 1 per chiudere", canvasW / 2, canvasH / 2 + 14);
       ctx.textAlign = "start";
     }
-  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom]);
+  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart]);
 
   return (
     <div ref={containerRef}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 12, color: closed ? B.primary : B.textMuted, fontWeight: 500 }}>
-          {closed ? "Area chiusa \u2014 trascina i vertici per modificare" : points.length === 0 ? "Clicca per posizionare il primo vertice" : "Clicca per aggiungere vertici \u00B7 Chiudi sul punto 1"}
+        <div style={{ fontSize: 12, color: closed ? B.primary : B.textMuted, fontWeight: 500, lineHeight: 1.35 }}>
+          {drawMode === "roll"
+            ? `Modalità rotoli: click inizio + click fine. Larghezza fissa ${MANUAL_ROLL_WIDTH_M}m, lunghezza max ${MANUAL_ROLL_MAX_LENGTH_M}m.`
+            : closed
+              ? "Area chiusa — trascina i vertici per modificare il perimetro"
+              : points.length === 0
+                ? "Clicca per posizionare il primo vertice"
+                : "Clicca per aggiungere vertici · Chiudi sul punto 1"}
         </div>
-        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setDrawMode("shape");
+              setRollStart(null);
+            }}
+            style={{
+              padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+              border: drawMode === "shape" ? "1.5px solid " + B.primary : "1px solid " + B.border,
+              background: drawMode === "shape" ? B.light : B.white, color: drawMode === "shape" ? B.primary : B.text, fontWeight: drawMode === "shape" ? 700 : 500,
+            }}
+          >
+            Perimetro
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!closed) return;
+              setDrawMode("roll");
+              setRollStart(null);
+            }}
+            disabled={!closed}
+            style={{
+              padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: closed ? "pointer" : "not-allowed",
+              border: drawMode === "roll" ? "1.5px solid #1565c0" : "1px solid " + B.border,
+              background: drawMode === "roll" ? "#e8f1ff" : B.white, color: drawMode === "roll" ? "#1565c0" : B.textMuted, fontWeight: drawMode === "roll" ? 700 : 500,
+              opacity: closed ? 1 : 0.55,
+            }}
+          >
+            Aggiungi rotolo
+          </button>
           <span style={{ fontSize: 11, color: B.textMuted }}>Zoom:</span>
           {[0.6, 0.8, 1, 1.3, 1.6].map(z => (
             <button key={z} onClick={() => setZoom(z)} style={{
@@ -463,20 +689,51 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed }) {
               background: zoom === z ? B.light : B.white, color: zoom === z ? B.primary : B.text, fontWeight: zoom === z ? 600 : 400,
             }}>{Math.round(z * 100)}%</button>
           ))}
-          <button onClick={reset} style={{ padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11, cursor: "pointer", color: B.text, marginLeft: 8 }}>Ricomincia</button>
+          <button
+            type="button"
+            onClick={removeLastRoll}
+            disabled={!rolls.length}
+            style={{
+              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+              cursor: rolls.length ? "pointer" : "not-allowed", color: rolls.length ? B.text : B.textMuted, opacity: rolls.length ? 1 : 0.55,
+            }}
+          >
+            Rimuovi ultimo rotolo
+          </button>
+          <button
+            type="button"
+            onClick={clearRolls}
+            disabled={!rolls.length}
+            style={{
+              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+              cursor: rolls.length ? "pointer" : "not-allowed", color: rolls.length ? B.text : B.textMuted, opacity: rolls.length ? 1 : 0.55,
+            }}
+          >
+            Azzera rotoli
+          </button>
+          <button onClick={reset} style={{ padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11, cursor: "pointer", color: B.text }}>Ricomincia</button>
         </div>
       </div>
       <canvas ref={canvasRef} width={canvasW} height={canvasH}
         onClick={handleClick} onMouseMove={handleMove} onMouseDown={handleMouseDown}
         onMouseUp={() => setDragging(null)} onMouseLeave={() => { setHoverPt(null); setDragging(null); }}
-        style={{ width: "100%", height: canvasH, borderRadius: 10, border: "1.5px solid " + (closed ? B.primary : B.border), cursor: closed ? (dragging !== null ? "grabbing" : "default") : "crosshair", display: "block" }}
+        style={{
+          width: "100%",
+          height: canvasH,
+          borderRadius: 10,
+          border: "1.5px solid " + (closed ? B.primary : B.border),
+          cursor: drawMode === "roll" && closed ? "crosshair" : closed ? (dragging !== null ? "grabbing" : "default") : "crosshair",
+          display: "block",
+        }}
       />
 
       {points.length > 0 && (
         <div style={{ marginTop: 10, padding: "10px 12px", border: "1px solid " + B.borderLight, borderRadius: 8, background: B.white, fontSize: 12, color: B.textMuted }}>
-          {closed
-            ? `${points.length} vertici definiti. Per modificare il perimetro trascina i punti direttamente sul disegno.`
-            : `${points.length} vertici inseriti. Continua a cliccare sul disegno e chiudi il perimetro sul punto iniziale.`}
+          {drawMode === "roll" && closed
+            ? `${rolls.length} rotoli inseriti (${fmt(totalRollMeters, 2)} m lineari). ${canvasMessage || "Traccia i rotoli da inserire nel report cliente."}`
+            : closed
+              ? `${points.length} vertici definiti. Per modificare il perimetro trascina i punti direttamente sul disegno.`
+              : `${points.length} vertici inseriti. Continua a cliccare sul disegno e chiudi il perimetro sul punto iniziale.`}
         </div>
       )}
     </div>
@@ -648,7 +905,7 @@ function TravelPlanner({ travel, setTravel }) {
   );
 }
 
-function ShapeInput({ shape, setShape, dims, setDims, customPts, setCustomPts, customClosed, setCustomClosed }) {
+function ShapeInput({ shape, setShape, dims, setDims, customPts, setCustomPts, customClosed, setCustomClosed, manualRolls, setManualRolls }) {
   const updateDim = (key, val) => setDims(prev => sanitizeDims(shape, { ...prev, [key]: parseFloat(val) || 0 }));
   const handleShapeChange = nextShape => {
     setShape(nextShape);
@@ -679,12 +936,21 @@ function ShapeInput({ shape, setShape, dims, setDims, customPts, setCustomPts, c
           <ShapePreview shape={shape} dims={dims} />
         </div>
       )}
-      {shape === "custom" && <FreeDrawCanvas points={customPts} setPoints={setCustomPts} closed={customClosed} setClosed={setCustomClosed} />}
+      {shape === "custom" && (
+        <FreeDrawCanvas
+          points={customPts}
+          setPoints={setCustomPts}
+          closed={customClosed}
+          setClosed={setCustomClosed}
+          rolls={manualRolls}
+          setRolls={setManualRolls}
+        />
+      )}
     </div>
   );
 }
 
-function TechnicalSketch({ shape, dims, customPts, customClosed }) {
+function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [] }) {
   const points = shape === "custom" ? (customClosed ? customPts : []) : getShapePolygon(shape, dims);
   if (!points.length) {
     return (
@@ -716,12 +982,37 @@ function TechnicalSketch({ shape, dims, customPts, customClosed }) {
     };
   });
   const vertexPoints = points.map((p) => ({ x: p.x * scale + ox, y: p.y * scale + oy }));
+  const rollPaths = (manualRolls || []).map((roll, index) => {
+    const corners = getRollCorners(roll);
+    const svgCorners = corners.map(corner => ({
+      x: corner.x * scale + ox,
+      y: corner.y * scale + oy,
+    }));
+    const path = svgCorners.map((corner, cornerIndex) => `${cornerIndex === 0 ? "M" : "L"}${corner.x.toFixed(2)},${corner.y.toFixed(2)}`).join(" ") + " Z";
+    return {
+      id: roll.id || `roll-${index}`,
+      path,
+      label: `R${index + 1} · 2m × ${fmt(roll.length, 2)}m`,
+      labelWidth: Math.max(62, (`R${index + 1} · 2m × ${fmt(roll.length, 2)}m`).length * 4.7),
+      cx: (Number(roll.cx) || 0) * scale + ox,
+      cy: (Number(roll.cy) || 0) * scale + oy,
+    };
+  });
 
   return (
     <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: 10 }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
         <rect x="1" y="1" width={W - 2} height={H - 2} rx="10" fill={B.cream} stroke={B.borderLight} />
         <path d={d} fill={B.primary + "1c"} stroke={B.primary} strokeWidth="2.2" />
+        {rollPaths.map(roll => (
+          <g key={roll.id}>
+            <path d={roll.path} fill="rgba(21,101,192,0.2)" stroke="#1565c0" strokeWidth="1.35" />
+            <rect x={roll.cx - roll.labelWidth / 2} y={roll.cy - 7} width={roll.labelWidth} height="14" rx="6" fill="rgba(255,255,255,0.92)" stroke={B.borderLight} />
+            <text x={roll.cx} y={roll.cy + 3} fontSize="8.2" textAnchor="middle" fill={B.dark} fontWeight="700">
+              {roll.label}
+            </text>
+          </g>
+        ))}
         {edges.map((edge, index) => {
           const txt = `${fmt(edge.length, 2)}m`;
           const chipW = Math.max(26, txt.length * 5.1 + 8);
@@ -747,6 +1038,11 @@ function TechnicalSketch({ shape, dims, customPts, customClosed }) {
         <div style={{ fontSize: 11, color: B.textMuted }}>
           Ingombro massimo: <strong style={{ color: B.dark }}>{fmt(bb.w, 2)} m × {fmt(bb.h, 2)} m</strong> · Vertici: <strong style={{ color: B.dark }}>{points.length}</strong>
         </div>
+        {rollPaths.length > 0 ? (
+          <div style={{ fontSize: 11, color: B.textMuted }}>
+            Rotoli posizionati nel layout: <strong style={{ color: B.dark }}>{rollPaths.length}</strong>
+          </div>
+        ) : null}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {edges.map((edge, index) => (
             <span
@@ -834,7 +1130,7 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing }) {
+function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
   const installNeeds = estimateInstallationNeeds(area, perimeter);
@@ -874,6 +1170,11 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
   const travelLiters = (travelKm / 100) * travelFuelRate;
   const travelFuelCost = travelLiters * travelFuelPrice;
   const travelCost = travelFuelCost + travelTollCost;
+  const rollCount = Array.isArray(manualRolls) ? manualRolls.length : 0;
+  const rollLinearMeters = Array.isArray(manualRolls)
+    ? manualRolls.reduce((sum, roll) => sum + (Number(roll.length) || 0), 0)
+    : 0;
+  const rollVisualArea = rollLinearMeters * MANUAL_ROLL_WIDTH_M;
 
   const sections = [
     {
@@ -948,7 +1249,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
   return (
     <div>
       {(projectInfo.client || projectInfo.address) && (
-        <div style={{ marginBottom: 14, padding: "10px 14px", background: B.gray, borderRadius: 8, fontSize: 12, display: "flex", gap: 20, flexWrap: "wrap" }}>
+        <div className="print-no-break" style={{ marginBottom: 14, padding: "10px 14px", background: B.gray, borderRadius: 8, fontSize: 12, display: "flex", gap: 20, flexWrap: "wrap" }}>
           {projectInfo.client && <span><strong>Cliente:</strong> {projectInfo.client}</span>}
           {projectInfo.address && <span><strong>Cantiere:</strong> {projectInfo.address}</span>}
           {projectInfo.date && <span><strong>Data:</strong> {projectInfo.date}</span>}
@@ -958,8 +1259,8 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginBottom: 14 }}>
-        <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} />
+      <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginBottom: 14 }}>
+        <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} manualRolls={manualRolls} />
         <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: "12px 14px", display: "grid", gap: 8 }}>
           <div style={{ fontSize: 11, color: B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>Tavola tecnica 2D</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
@@ -979,6 +1280,11 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Forma</div>
               <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{shape === "custom" ? "Disegno libero" : SHAPES.find(s => s.id === shape)?.name || shape}</div>
             </div>
+            <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
+              <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Layout rotoli</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{rollCount} rotoli</div>
+              <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>{fmt(rollLinearMeters, 2)} m lineari · {fmt(rollVisualArea, 1)} m² coperti</div>
+            </div>
           </div>
           <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
             Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm · Listino {pricingRegionLabel}: stabilizzato {fmt(stabilizedPerTon, 1)} €/t, sabbia {fmt(sandPerTon, 1)} €/t.
@@ -986,7 +1292,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
         </div>
       </div>
 
-      <div style={{ border: "1px solid " + B.border, borderRadius: 10, overflow: "hidden" }}>
+      <div className="print-no-break" style={{ border: "1px solid " + B.border, borderRadius: 10, overflow: "hidden" }}>
         {sections.map((sec, si) => (
           <div key={si}>
             <div style={{ background: B.gray, padding: "8px 14px", fontSize: 11, fontWeight: 700, color: B.primary, textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "1px solid " + B.borderLight, borderTop: si > 0 ? "1px solid " + B.border : "none", display: "flex", justifyContent: "space-between", gap: 10 }}>
@@ -1033,6 +1339,7 @@ function GardenPlanner() {
   const [dims, setDims] = useState({ a: 10, b: 6, c: 3, d: 3 });
   const [customPts, setCustomPts] = useState([]);
   const [customClosed, setCustomClosed] = useState(false);
+  const [manualRolls, setManualRolls] = useState([]);
   const [borderType, setBorderType] = useState("pvc");
   const [selectedBorderEdges, setSelectedBorderEdges] = useState([]);
   const [substrate, setSubstrate] = useState({ scavoCm: 10, drenateCm: 5, sabbiaCm: 3 });
@@ -1053,6 +1360,17 @@ function GardenPlanner() {
   useEffect(() => {
     setSelectedBorderEdges(borderEdges.map(edge => edge.id));
   }, [layoutKey, borderEdges]);
+
+  useEffect(() => {
+    if (shape !== "custom" || !customClosed) {
+      setManualRolls(prev => (prev.length ? [] : prev));
+      return;
+    }
+    setManualRolls(prev => {
+      const next = prev.filter(roll => isRollInsidePolygon(roll, customPts));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [shape, customClosed, customPts]);
 
   useEffect(() => {
     const origin = String(travel.departureBase || "").trim();
@@ -1129,10 +1447,17 @@ function GardenPlanner() {
 
   const handlePrintReport = () => {
     const reportNode = document.getElementById("garden-planner-print-content");
-    if (!reportNode) {
+    const printSheet = document.getElementById("garden-print-sheet");
+    if (!reportNode || !printSheet) {
       window.print();
       return;
     }
+
+    printSheet.innerHTML = "";
+    const printableClone = reportNode.cloneNode(true);
+    printableClone.classList.add("print-sheet-root");
+    printSheet.appendChild(printableClone);
+
     const body = document.body;
     let fallbackTimer = null;
     const cleanup = () => {
@@ -1141,14 +1466,15 @@ function GardenPlanner() {
         fallbackTimer = null;
       }
       body.classList.remove("garden-print-report");
+      printSheet.innerHTML = "";
       window.removeEventListener("afterprint", cleanup);
     };
     body.classList.add("garden-print-report");
     window.addEventListener("afterprint", cleanup);
-    fallbackTimer = window.setTimeout(cleanup, 4000);
+    fallbackTimer = window.setTimeout(cleanup, 7000);
     window.setTimeout(() => {
       window.print();
-    }, 80);
+    }, 40);
   };
 
   return (
@@ -1177,7 +1503,18 @@ function GardenPlanner() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
             <StepBadge n={1} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Definisci l'area</span>
           </div>
-          <ShapeInput shape={shape} setShape={setShape} dims={safeDims} setDims={setDims} customPts={customPts} setCustomPts={setCustomPts} customClosed={customClosed} setCustomClosed={setCustomClosed} />
+          <ShapeInput
+            shape={shape}
+            setShape={setShape}
+            dims={safeDims}
+            setDims={setDims}
+            customPts={customPts}
+            setCustomPts={setCustomPts}
+            customClosed={customClosed}
+            setCustomClosed={setCustomClosed}
+            manualRolls={manualRolls}
+            setManualRolls={setManualRolls}
+          />
           {area > 0 && (
             <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
               <MetricCard label="Superficie" value={fmt(area) + " m\u00B2"} accent />
@@ -1323,6 +1660,7 @@ function GardenPlanner() {
               travel={travel}
               viewerRole={viewerRole}
               regionalPricing={regionalPricing}
+              manualRolls={manualRolls}
             />
           </div>
         </div>
