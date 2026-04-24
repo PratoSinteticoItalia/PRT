@@ -2532,7 +2532,7 @@ function normalizeAttachmentRecord(item = {}, ownerId = "", resource = "orders")
     objectKey: hasR2Object ? String(item.objectKey || "").trim() : "",
     dataUrl: hasR2Object ? "" : String(item.dataUrl || ""),
     context: String(item.context || "").trim(),
-    url: hasR2Object ? buildAttachmentProxyPath(ownerId, attachmentId, resource) : String(item.url || ""),
+    url: String(item.url || "").trim() || buildAttachmentProxyPath(ownerId, attachmentId, resource),
   };
 }
 
@@ -2550,6 +2550,20 @@ function normalizeSalesContentRecord(item = {}) {
       ? item.attachments.map((attachment) => normalizeAttachmentRecord(attachment, contentId, "sales-content"))
       : [],
   };
+}
+
+function serializeSalesContentsForClient(items = []) {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) => {
+    const normalized = normalizeSalesContentRecord(item);
+    return {
+      ...normalized,
+      attachments: (normalized.attachments || []).map((attachment) => ({
+        ...attachment,
+        dataUrl: "",
+      })),
+    };
+  });
 }
 
 async function getR2Sdk() {
@@ -3965,7 +3979,7 @@ async function handleApi(req, res, url) {
       orders: currentUser ? store.orders : [],
       inventory: currentUser ? store.inventory : [],
       salesRequests: currentUser?.role === "office" ? store.salesRequests : [],
-      salesContents: currentUser?.role === "office" ? store.salesContents : [],
+      salesContents: currentUser?.role === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
       salesRequestSource: currentUser?.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
       coveragePlanner: currentUser ? store.coveragePlanner : normalizeCoveragePlanner(),
       shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
@@ -4039,7 +4053,7 @@ async function handleApi(req, res, url) {
         orders: store.orders,
         inventory: store.inventory,
         salesRequests: user.role === "office" ? store.salesRequests : [],
-        salesContents: user.role === "office" ? store.salesContents : [],
+        salesContents: user.role === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
         salesRequestSource: user.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
         coveragePlanner: store.coveragePlanner,
         shopifySettings: serializeShopifySettings(store.shopifySettings),
@@ -4477,7 +4491,7 @@ async function handleApi(req, res, url) {
       orders: store.orders,
       inventory: store.inventory,
       salesRequests: currentUser?.role === "office" ? store.salesRequests : [],
-      salesContents: currentUser?.role === "office" ? store.salesContents : [],
+      salesContents: currentUser?.role === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
       salesRequestSource: currentUser?.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
       shopifySettings: serializeShopifySettings(store.shopifySettings),
       users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260423-sales-requests-order-fix-51";
+const APP_SHELL_VERSION = "20260423-sales-content-performance-52";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -764,6 +764,8 @@ const state = {
   navCounts: {},
   orderPage: 1,
   salesRequestPage: 1,
+  salesContentPage: 1,
+  salesContentCategory: "all",
   sessionRevision: "",
   mobileMenuOpen: false,
   installationWeekOffset: 0,
@@ -788,6 +790,7 @@ let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
 let currentViewRenderFrame = 0;
+let salesContentSearchTimer = 0;
 const shopifyOrderRefreshInFlight = new Set();
 const shopifyOrderRefreshAttempted = new Set();
 const shopifyOrderRefreshErrors = new Map();
@@ -903,7 +906,10 @@ const ui = {
   salesGeneratorEmailButton: document.getElementById("sales-generator-email-button"),
   salesContentSearch: document.getElementById("sales-content-search"),
   salesContentStatus: document.getElementById("sales-content-status"),
+  salesContentCategoryFilters: document.getElementById("sales-content-category-filters"),
+  salesContentInsights: document.getElementById("sales-content-insights"),
   salesContentList: document.getElementById("sales-content-list"),
+  salesContentPagination: document.getElementById("sales-content-pagination"),
   salesContentForm: document.getElementById("sales-content-form"),
   salesContentNewButton: document.getElementById("sales-content-new-button"),
   salesContentDeleteButton: document.getElementById("sales-content-delete-button"),
@@ -2260,7 +2266,25 @@ function getSalesContentCategoryLabel(category = "") {
   if (value === "listino") return state.lang === "it" ? "Listino" : "Price list";
   if (value === "template") return state.lang === "it" ? "Template" : "Template";
   if (value === "altro") return state.lang === "it" ? "Altro" : "Other";
+  if (value) return value.charAt(0).toUpperCase() + value.slice(1);
   return state.lang === "it" ? "Documentazione" : "Documentation";
+}
+
+function normalizeSalesContentCategoryFilter(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized || "all";
+}
+
+function getSalesContentCategoryOptions(items = []) {
+  const base = ["documentazione", "marketing", "listino", "template", "altro"];
+  const seen = new Set(base);
+  items.forEach((item) => {
+    const category = normalizeSalesContentCategoryFilter(item?.category || "");
+    if (!category || category === "all" || seen.has(category)) return;
+    seen.add(category);
+    base.push(category);
+  });
+  return base;
 }
 
 function getSelectedSalesRequest() {
@@ -2342,6 +2366,23 @@ function paginateSalesRequests(items = []) {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   state.salesRequestPage = Math.min(Math.max(1, Number(state.salesRequestPage || 1)), totalPages);
   const start = (state.salesRequestPage - 1) * pageSize;
+  return {
+    pageItems: items.slice(start, start + pageSize),
+    totalItems,
+    totalPages,
+  };
+}
+
+function getSalesContentPageSize() {
+  return window.innerWidth <= 980 ? 10 : 18;
+}
+
+function paginateSalesContents(items = []) {
+  const pageSize = getSalesContentPageSize();
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  state.salesContentPage = Math.min(Math.max(1, Number(state.salesContentPage || 1)), totalPages);
+  const start = (state.salesContentPage - 1) * pageSize;
   return {
     pageItems: items.slice(start, start + pageSize),
     totalItems,
@@ -6669,11 +6710,16 @@ function getFilteredSalesRequests() {
     });
 }
 
-function getFilteredSalesContents() {
+function getFilteredSalesContents({ ignoreCategory = false } = {}) {
   const query = String(state.search.salesContent || "").trim().toLowerCase();
+  const categoryFilter = normalizeSalesContentCategoryFilter(state.salesContentCategory);
   return [...state.salesContents]
     .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))
     .filter((item) => {
+      if (!ignoreCategory && categoryFilter !== "all") {
+        const category = normalizeSalesContentCategoryFilter(item.category || "");
+        if (category !== categoryFilter) return false;
+      }
       if (!query) return true;
       const haystack = [
         item.title,
@@ -6914,11 +6960,83 @@ function renderSalesContentAttachments(items = [], contentId = "") {
 }
 
 function renderSalesContent() {
-  const selected = ensureSelectedSalesContent();
-  const filtered = getFilteredSalesContents();
+  let selected = ensureSelectedSalesContent();
+  const filteredBase = getFilteredSalesContents({ ignoreCategory: true });
+  const activeCategory = normalizeSalesContentCategoryFilter(state.salesContentCategory);
+  const filtered = activeCategory === "all"
+    ? filteredBase
+    : filteredBase.filter((item) => normalizeSalesContentCategoryFilter(item.category || "") === activeCategory);
+  const { pageItems, totalPages, totalItems } = paginateSalesContents(filtered);
+  if (!state.creatingSalesContent && selected && !filtered.some((item) => item.id === selected.id) && filtered.length) {
+    selected = filtered[0];
+  }
+  if (!state.creatingSalesContent && !selected && filtered.length) {
+    selected = filtered[0];
+  }
+  if (!state.creatingSalesContent && selected && !pageItems.some((item) => item.id === selected.id) && pageItems.length) {
+    selected = pageItems[0];
+  }
+  if (state.creatingSalesContent) {
+    state.selectedSalesContentId = "";
+  } else if ((selected?.id || "") !== state.selectedSalesContentId) {
+    state.selectedSalesContentId = selected?.id || "";
+  }
+  if (ui.salesContentCategoryFilters) {
+    const categoryOptions = getSalesContentCategoryOptions(state.salesContents);
+    const categoryCountMap = new Map();
+    filteredBase.forEach((item) => {
+      const key = normalizeSalesContentCategoryFilter(item.category || "");
+      categoryCountMap.set(key, (categoryCountMap.get(key) || 0) + 1);
+    });
+    const chips = [
+      {
+        value: "all",
+        label: t("all"),
+        count: filteredBase.length,
+      },
+      ...categoryOptions.map((category) => ({
+        value: category,
+        label: getSalesContentCategoryLabel(category),
+        count: categoryCountMap.get(category) || 0,
+      })),
+    ];
+    ui.salesContentCategoryFilters.innerHTML = chips.map((chip) => `
+      <button
+        type="button"
+        class="sales-content-chip ${chip.value === activeCategory ? "is-active" : ""}"
+        data-action="set-sales-content-category"
+        data-category="${escapeHtml(chip.value)}"
+      >
+        <span>${escapeHtml(chip.label)}</span>
+        <span class="sales-content-chip-count">${Number(chip.count || 0)}</span>
+      </button>
+    `).join("");
+  }
+  if (ui.salesContentInsights) {
+    const totalAttachments = filtered.reduce((sum, item) => sum + (Array.isArray(item.attachments) ? item.attachments.length : 0), 0);
+    const recentThreshold = Date.now() - (1000 * 60 * 60 * 24 * 7);
+    const updatedRecently = filtered.reduce((sum, item) => {
+      const updatedAt = new Date(item.updatedAt || item.createdAt || 0).getTime();
+      return updatedAt >= recentThreshold ? sum + 1 : sum;
+    }, 0);
+    ui.salesContentInsights.innerHTML = `
+      <article class="sales-content-kpi">
+        <strong>${filtered.length}</strong>
+        <span>${state.lang === "it" ? "risultati filtro" : "filtered results"}</span>
+      </article>
+      <article class="sales-content-kpi">
+        <strong>${totalAttachments}</strong>
+        <span>${state.lang === "it" ? "allegati visibili" : "visible attachments"}</span>
+      </article>
+      <article class="sales-content-kpi">
+        <strong>${updatedRecently}</strong>
+        <span>${state.lang === "it" ? "aggiornati 7 giorni" : "updated in 7 days"}</span>
+      </article>
+    `;
+  }
   if (ui.salesContentList) {
-    ui.salesContentList.innerHTML = filtered.length
-      ? filtered.map((item) => `
+    ui.salesContentList.innerHTML = pageItems.length
+      ? pageItems.map((item) => `
           <article class="sales-content-card ${item.id === selected?.id ? "is-active" : ""}" data-action="select-sales-content" data-id="${item.id}">
             <div class="sales-content-card-head">
               <strong>${escapeHtml(item.title || (state.lang === "it" ? "Contenuto senza titolo" : "Untitled content"))}</strong>
@@ -6932,6 +7050,19 @@ function renderSalesContent() {
           </article>
         `).join("")
       : `<div class="info-card">${state.lang === "it" ? "Nessun contenuto disponibile." : "No content available."}</div>`;
+  }
+  if (ui.salesContentPagination) {
+    const showPagination = totalItems > getSalesContentPageSize();
+    ui.salesContentPagination.classList.toggle("hidden", !showPagination);
+    ui.salesContentPagination.innerHTML = showPagination
+      ? `
+        <div class="list-pagination-copy">${state.lang === "it" ? `Pagina ${state.salesContentPage} di ${totalPages} · ${totalItems} contenuti` : `Page ${state.salesContentPage} of ${totalPages} · ${totalItems} contents`}</div>
+        <div class="list-pagination-actions">
+          <button class="btn" data-action="sales-content-prev-page" ${state.salesContentPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prec." : "Prev"}</button>
+          <button class="btn" data-action="sales-content-next-page" ${state.salesContentPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Succ." : "Next"}</button>
+        </div>
+      `
+      : "";
   }
   if (!ui.salesContentForm) return;
   ui.salesContentForm.id.value = selected?.id || "";
@@ -6972,6 +7103,7 @@ function upsertSalesContent(saved) {
   ];
   state.selectedSalesContentId = normalized.id;
   state.creatingSalesContent = false;
+  state.salesContentPage = 1;
   renderOps();
 }
 
@@ -7195,6 +7327,7 @@ function toggleSalesGeneratorFreeMode() {
 function createNewSalesContent() {
   state.creatingSalesContent = true;
   state.selectedSalesContentId = "";
+  state.salesContentPage = 1;
   renderSalesContent();
   clearStatus(ui.salesContentStatus);
   requestAnimationFrame(() => {
@@ -7236,6 +7369,7 @@ async function deleteSalesContent() {
     state.salesContents = state.salesContents.filter((item) => item.id !== selected.id);
     state.selectedSalesContentId = "";
     state.creatingSalesContent = false;
+    state.salesContentPage = 1;
     renderOps();
     renderSalesContent();
     setStatus(ui.salesContentStatus, "success", state.lang === "it" ? "Contenuto eliminato." : "Content deleted.");
@@ -9313,6 +9447,8 @@ function applySessionPayload(session = {}) {
   state.creatingSalesContent = false;
   state.accountingMobilePane = "summary";
   state.salesRequestPage = 1;
+  state.salesContentPage = 1;
+  state.salesContentCategory = "all";
   if (userChanged) {
     state.lastSalesGeneratorSignature = "";
     state.lastSalesGeneratorBrandingSignature = "";
@@ -11536,6 +11672,22 @@ function handleGlobalClick(event) {
     }
     return;
   }
+  if (action === "set-sales-content-category") {
+    state.salesContentCategory = normalizeSalesContentCategoryFilter(button.dataset.category || "");
+    state.salesContentPage = 1;
+    renderSalesContent();
+    return;
+  }
+  if (action === "sales-content-prev-page") {
+    state.salesContentPage = Math.max(1, Number(state.salesContentPage || 1) - 1);
+    renderSalesContent();
+    return;
+  }
+  if (action === "sales-content-next-page") {
+    state.salesContentPage = Number(state.salesContentPage || 1) + 1;
+    renderSalesContent();
+    return;
+  }
   if (action === "remove-sales-content-attachment") {
     event.preventDefault();
     event.stopPropagation();
@@ -11817,7 +11969,12 @@ bindEvent(ui.salesGeneratorFrame, "load", () => {
 });
 bindEvent(ui.salesContentSearch, "input", (event) => {
   state.search.salesContent = event.target.value;
-  renderSalesContent();
+  state.salesContentPage = 1;
+  if (salesContentSearchTimer) window.clearTimeout(salesContentSearchTimer);
+  salesContentSearchTimer = window.setTimeout(() => {
+    salesContentSearchTimer = 0;
+    renderSalesContent();
+  }, 120);
 });
 bindEvent(ui.salesContentForm, "submit", saveSalesContent);
 bindEvent(ui.salesContentNewButton, "click", createNewSalesContent);

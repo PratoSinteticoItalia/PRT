@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260423-sales-requests-order-fix-51" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260423-sales-requests-order-fix-51" />
+    <link rel="preload" href="./styles.css?v=20260423-sales-content-performance-52" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260423-sales-content-performance-52" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -685,8 +685,13 @@
                 <span id="sales-content-search-label">Cerca</span>
                 <input id="sales-content-search" type="search" placeholder="Titolo, categoria o nota..." />
               </label>
+              <div class="sales-content-toolbar">
+                <div id="sales-content-category-filters" class="sales-content-category-filters"></div>
+                <div id="sales-content-insights" class="sales-content-insights"></div>
+              </div>
               <div id="sales-content-status" class="panel-note hidden"></div>
               <div id="sales-content-list" class="detail-stack sales-content-list"></div>
+              <div id="sales-content-pagination" class="list-pagination hidden"></div>
             </section>
 
             <section class="panel panel-large sales-content-detail-panel">
@@ -1623,6 +1628,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260423-sales-requests-order-fix-51" type="module"></script>
+    <script src="./app.js?v=20260423-sales-content-performance-52" type="module"></script>
   </body>
 </html>

@@ -9779,6 +9779,86 @@ body.mobile-safe-mode .nav-link.is-active {
   margin-bottom: 18px;
 }
 
+.sales-content-toolbar {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sales-content-category-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sales-content-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 24, 39, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+  color: #445466;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.sales-content-chip:hover {
+  border-color: rgba(31, 70, 55, 0.28);
+  color: #1f4637;
+  transform: translateY(-1px);
+}
+
+.sales-content-chip.is-active {
+  border-color: rgba(31, 70, 55, 0.45);
+  background: rgba(31, 70, 55, 0.1);
+  color: #1f4637;
+}
+
+.sales-content-chip-count {
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-size: 11px;
+  background: rgba(31, 70, 55, 0.1);
+  color: #1f4637;
+}
+
+.sales-content-insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sales-content-kpi {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(16, 24, 39, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(246, 249, 251, 0.9));
+  display: grid;
+  gap: 4px;
+}
+
+.sales-content-kpi strong {
+  color: #102131;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.sales-content-kpi span {
+  color: #6c7b8c;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 #sales-requests .sales-request-list,
 #sales-content .sales-content-list {
   flex: 1 1 auto;
@@ -10044,6 +10124,10 @@ body.mobile-safe-mode .nav-link.is-active {
     padding-right: 2px;
   }
 
+  .sales-content-insights {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .sales-generator-frame {
     min-height: 680px;
     height: 860px;
@@ -10068,6 +10152,10 @@ body.mobile-safe-mode .nav-link.is-active {
   .sales-request-card-head-badges {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .sales-content-insights {
+    grid-template-columns: 1fr;
   }
 
   .sales-status-pill,
