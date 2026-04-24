@@ -95,9 +95,6 @@ const DECO_CATALOG = [
 ];
 
 const SHAPES = [
-  { id: "rect", name: "Rettangolare", icon: "\u25AC" },
-  { id: "lshape", name: "A L", icon: "\u231F" },
-  { id: "ushape", name: "A U", icon: "\u2294" },
   { id: "custom", name: "Disegno libero", icon: "\u270E" },
 ];
 
@@ -461,12 +458,6 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
       const dy = Math.sin(nextRoll.angle) * (nextRoll.length / 2);
       nextRoll.cx = rollStart.x + dx;
       nextRoll.cy = rollStart.y + dy;
-
-      if (!isRollInsidePolygon(nextRoll, points)) {
-        setCanvasMessage("Rotolo fuori area: riposizionalo interamente nel perimetro.");
-        setRollStart(null);
-        return;
-      }
       setRolls(prev => [...prev, nextRoll]);
       setRollStart(null);
       setCanvasMessage(`Rotolo inserito: 2.00m × ${fmt(nextRoll.length, 2)}m.`);
@@ -730,7 +721,7 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
       {points.length > 0 && (
         <div style={{ marginTop: 10, padding: "10px 12px", border: "1px solid " + B.borderLight, borderRadius: 8, background: B.white, fontSize: 12, color: B.textMuted }}>
           {drawMode === "roll" && closed
-            ? `${rolls.length} rotoli inseriti (${fmt(totalRollMeters, 2)} m lineari). ${canvasMessage || "Traccia i rotoli da inserire nel report cliente."}`
+            ? `${rolls.length} rotoli inseriti (${fmt(totalRollMeters, 2)} m lineari). ${canvasMessage || "I rotoli possono uscire dal perimetro per stimare lo scarto reale."}`
             : closed
               ? `${points.length} vertici definiti. Per modificare il perimetro trascina i punti direttamente sul disegno.`
               : `${points.length} vertici inseriti. Continua a cliccare sul disegno e chiudi il perimetro sul punto iniziale.`}
@@ -905,47 +896,21 @@ function TravelPlanner({ travel, setTravel }) {
   );
 }
 
-function ShapeInput({ shape, setShape, dims, setDims, customPts, setCustomPts, customClosed, setCustomClosed, manualRolls, setManualRolls }) {
-  const updateDim = (key, val) => setDims(prev => sanitizeDims(shape, { ...prev, [key]: parseFloat(val) || 0 }));
-  const handleShapeChange = nextShape => {
-    setShape(nextShape);
-    setDims(prev => sanitizeDims(nextShape, prev));
-  };
+function ShapeInput({ customPts, setCustomPts, customClosed, setCustomClosed, manualRolls, setManualRolls }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <div style={secTitle}>Forma del giardino</div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {SHAPES.map(s => (
-            <button key={s.id} onClick={() => handleShapeChange(s.id)} style={{
-              flex: 1, padding: "10px 8px", borderRadius: 8,
-              border: shape === s.id ? "2px solid " + B.primary : "1px solid " + B.border,
-              background: shape === s.id ? B.light : B.white, color: shape === s.id ? B.primary : B.text,
-              fontWeight: shape === s.id ? 600 : 400, fontSize: 12, cursor: "pointer",
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-            }}><span style={{ fontSize: 20 }}>{s.icon}</span>{s.name}</button>
-          ))}
-        </div>
+      <div style={secTitle}>Disegno libero tecnico</div>
+      <div style={{ marginTop: -4, fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
+        Definisci il perimetro cliccando i vertici e chiudi sul punto iniziale. Poi usa <strong style={{ color: B.dark }}>Aggiungi rotolo</strong> per simulare la posa reale e gli scarti.
       </div>
-      {shape !== "custom" && (
-        <div>
-          <div style={secTitle}>Dimensioni (metri)</div>
-          {shape === "rect" && <div style={{ display: "flex", gap: 12 }}><DimInput label="Lunghezza (A)" value={dims.a} onChange={v => updateDim("a", v)} unit="m" /><DimInput label="Larghezza (B)" value={dims.b} onChange={v => updateDim("b", v)} unit="m" /></div>}
-          {shape === "lshape" && <><div style={{ display: "flex", gap: 12, marginBottom: 10 }}><DimInput label="Lungh. totale (A)" value={dims.a} onChange={v => updateDim("a", v)} unit="m" /><DimInput label="Largh. totale (B)" value={dims.b} onChange={v => updateDim("b", v)} unit="m" /></div><div style={{ display: "flex", gap: 12 }}><DimInput label="Rientranza larg. (C)" value={dims.c} onChange={v => updateDim("c", v)} unit="m" /><DimInput label="Rientranza lung. (D)" value={dims.d} onChange={v => updateDim("d", v)} unit="m" /></div></>}
-          {shape === "ushape" && <><div style={{ display: "flex", gap: 12, marginBottom: 10 }}><DimInput label="Lunghezza (A)" value={dims.a} onChange={v => updateDim("a", v)} unit="m" /><DimInput label="Larghezza (B)" value={dims.b} onChange={v => updateDim("b", v)} unit="m" /></div><div style={{ display: "flex", gap: 12 }}><DimInput label="Spessore braccio (C)" value={dims.c} onChange={v => updateDim("c", v)} unit="m" /><DimInput label="Prof. rientranza (D)" value={dims.d} onChange={v => updateDim("d", v)} unit="m" /></div></>}
-          <ShapePreview shape={shape} dims={dims} />
-        </div>
-      )}
-      {shape === "custom" && (
-        <FreeDrawCanvas
-          points={customPts}
-          setPoints={setCustomPts}
-          closed={customClosed}
-          setClosed={setCustomClosed}
-          rolls={manualRolls}
-          setRolls={setManualRolls}
-        />
-      )}
+      <FreeDrawCanvas
+        points={customPts}
+        setPoints={setCustomPts}
+        closed={customClosed}
+        setClosed={setCustomClosed}
+        rolls={manualRolls}
+        setRolls={setManualRolls}
+      />
     </div>
   );
 }
@@ -959,7 +924,9 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
       </div>
     );
   }
-  const bb = polyBBox(points);
+  const rollCornerPoints = (manualRolls || []).flatMap((roll) => getRollCorners(roll));
+  const drawingPoints = rollCornerPoints.length ? [...points, ...rollCornerPoints] : points;
+  const bb = polyBBox(drawingPoints);
   const W = 320;
   const H = 210;
   const pad = 22;
@@ -1175,6 +1142,13 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
     ? manualRolls.reduce((sum, roll) => sum + (Number(roll.length) || 0), 0)
     : 0;
   const rollVisualArea = rollLinearMeters * MANUAL_ROLL_WIDTH_M;
+  const rollWasteArea = Math.max(0, rollVisualArea - area);
+  const rollPolygon = shape === "custom"
+    ? (customClosed ? customPts : [])
+    : getShapePolygon(shape, dims);
+  const outsideRollCount = rollPolygon.length >= 3
+    ? (manualRolls || []).reduce((count, roll) => (isRollInsidePolygon(roll, rollPolygon) ? count : count + 1), 0)
+    : 0;
 
   const sections = [
     {
@@ -1284,6 +1258,10 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Layout rotoli</div>
               <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{rollCount} rotoli</div>
               <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>{fmt(rollLinearMeters, 2)} m lineari · {fmt(rollVisualArea, 1)} m² coperti</div>
+              <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>
+                Scarto stimato: <strong style={{ color: B.dark }}>{fmt(rollWasteArea, 1)} m²</strong>
+                {outsideRollCount > 0 ? ` · ${outsideRollCount} rotol${outsideRollCount > 1 ? "i" : "o"} oltre bordo` : ""}
+              </div>
             </div>
           </div>
           <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
@@ -1335,8 +1313,7 @@ function GardenPlanner() {
   const [viewerRole, setViewerRole] = useState("crew");
   const [projectInfo, setProjectInfo] = useState({ client: "", address: "", date: getLocalISODate(), notes: "" });
   const [travel, setTravel] = useState(DEFAULT_TRAVEL_SETTINGS);
-  const [shape, setShape] = useState("rect");
-  const [dims, setDims] = useState({ a: 10, b: 6, c: 3, d: 3 });
+  const shape = "custom";
   const [customPts, setCustomPts] = useState([]);
   const [customClosed, setCustomClosed] = useState(false);
   const [manualRolls, setManualRolls] = useState([]);
@@ -1345,11 +1322,11 @@ function GardenPlanner() {
   const [substrate, setSubstrate] = useState({ scavoCm: 10, drenateCm: 5, sabbiaCm: 3 });
   const [decoItems, setDecoItems] = useState({});
   const [regionalPricing, setRegionalPricing] = useState(() => getRegionalMaterialPricing(""));
-  const safeDims = useMemo(() => sanitizeDims(shape, dims), [shape, dims]);
-  const layoutKey = useMemo(() => JSON.stringify({ shape, dims: safeDims, customPts, customClosed }), [shape, safeDims, customPts, customClosed]);
+  const safeDims = useMemo(() => ({ a: 0, b: 0, c: 0, d: 0 }), []);
+  const layoutKey = useMemo(() => JSON.stringify({ customPts, customClosed }), [customPts, customClosed]);
 
-  const area = useMemo(() => shape === "custom" ? (customClosed ? polyArea(customPts) : 0) : calcShapeArea(shape, safeDims), [shape, safeDims, customPts, customClosed]);
-  const perimeter = useMemo(() => shape === "custom" ? (customClosed ? polyPerimeter(customPts) : 0) : calcShapePerimeter(shape, safeDims), [shape, safeDims, customPts, customClosed]);
+  const area = useMemo(() => (customClosed ? polyArea(customPts) : 0), [customPts, customClosed]);
+  const perimeter = useMemo(() => (customClosed ? polyPerimeter(customPts) : 0), [customPts, customClosed]);
   const borderEdges = useMemo(() => getShapeEdges(shape, safeDims, customPts, customClosed), [shape, safeDims, customPts, customClosed]);
   const selectedBorderMeters = useMemo(() => (
     borderEdges
@@ -1360,17 +1337,6 @@ function GardenPlanner() {
   useEffect(() => {
     setSelectedBorderEdges(borderEdges.map(edge => edge.id));
   }, [layoutKey, borderEdges]);
-
-  useEffect(() => {
-    if (shape !== "custom" || !customClosed) {
-      setManualRolls(prev => (prev.length ? [] : prev));
-      return;
-    }
-    setManualRolls(prev => {
-      const next = prev.filter(roll => isRollInsidePolygon(roll, customPts));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [shape, customClosed, customPts]);
 
   useEffect(() => {
     const origin = String(travel.departureBase || "").trim();
@@ -1504,10 +1470,6 @@ function GardenPlanner() {
             <StepBadge n={1} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Definisci l'area</span>
           </div>
           <ShapeInput
-            shape={shape}
-            setShape={setShape}
-            dims={safeDims}
-            setDims={setDims}
             customPts={customPts}
             setCustomPts={setCustomPts}
             customClosed={customClosed}

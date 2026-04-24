@@ -2552,18 +2552,24 @@ function normalizeSalesContentRecord(item = {}) {
   };
 }
 
+function serializeAttachmentForClient(item = {}) {
+  return {
+    ...item,
+    dataUrl: "",
+  };
+}
+
+function serializeSalesContentForClient(item = {}) {
+  const normalized = normalizeSalesContentRecord(item);
+  return {
+    ...normalized,
+    attachments: (normalized.attachments || []).map((attachment) => serializeAttachmentForClient(attachment)),
+  };
+}
+
 function serializeSalesContentsForClient(items = []) {
   if (!Array.isArray(items)) return [];
-  return items.map((item) => {
-    const normalized = normalizeSalesContentRecord(item);
-    return {
-      ...normalized,
-      attachments: (normalized.attachments || []).map((attachment) => ({
-        ...attachment,
-        dataUrl: "",
-      })),
-    };
-  });
+  return items.map((item) => serializeSalesContentForClient(item));
 }
 
 async function getR2Sdk() {
@@ -2649,7 +2655,23 @@ async function removeAttachmentAsset(attachment = {}) {
 }
 
 async function streamAttachmentAsset(res, attachment = {}) {
-  if (String(attachment.storage || "").trim() !== "r2" || !String(attachment.objectKey || "").trim()) {
+  const storageType = String(attachment.storage || "").trim();
+  if (storageType !== "r2") {
+    const inlineData = parseDataUrl(attachment.dataUrl || "");
+    if (!inlineData?.buffer?.length) {
+      return sendJson(res, 404, { error: "attachment_not_found" });
+    }
+    res.writeHead(200, {
+      "Content-Type": attachment.type || inlineData.contentType || "application/octet-stream",
+      "Content-Length": inlineData.buffer.length,
+      "Cache-Control": "private, max-age=300",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+    });
+    res.end(inlineData.buffer);
+    return;
+  }
+  if (!String(attachment.objectKey || "").trim()) {
     return sendJson(res, 404, { error: "attachment_not_found" });
   }
   const client = await getR2Client();
@@ -4254,7 +4276,7 @@ async function handleApi(req, res, url) {
       store.salesContents.unshift(contentRecord);
     }
     await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, contentRecord);
+    return sendJson(res, 200, serializeSalesContentForClient(contentRecord));
   }
 
   if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+$/) && req.method === "DELETE") {
@@ -4292,7 +4314,7 @@ async function handleApi(req, res, url) {
       updatedAt: new Date().toISOString(),
     });
     await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, store.salesContents[contentIndex]);
+    return sendJson(res, 200, serializeSalesContentForClient(store.salesContents[contentIndex]));
   }
 
   if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+\/attachments\/[^/]+\/file$/) && req.method === "GET") {
@@ -4328,7 +4350,7 @@ async function handleApi(req, res, url) {
       updatedAt: new Date().toISOString(),
     });
     await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, store.salesContents[contentIndex]);
+    return sendJson(res, 200, serializeSalesContentForClient(store.salesContents[contentIndex]));
   }
 
   if (url.pathname === "/api/account/password" && req.method === "POST") {

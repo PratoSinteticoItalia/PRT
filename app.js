@@ -905,6 +905,7 @@ const ui = {
   salesGeneratorWhatsAppButton: document.getElementById("sales-generator-whatsapp-button"),
   salesGeneratorEmailButton: document.getElementById("sales-generator-email-button"),
   salesContentSearch: document.getElementById("sales-content-search"),
+  salesContentSearchClear: document.getElementById("sales-content-search-clear"),
   salesContentStatus: document.getElementById("sales-content-status"),
   salesContentCategoryFilters: document.getElementById("sales-content-category-filters"),
   salesContentInsights: document.getElementById("sales-content-insights"),
@@ -6967,6 +6968,11 @@ function renderSalesContent() {
     ? filteredBase
     : filteredBase.filter((item) => normalizeSalesContentCategoryFilter(item.category || "") === activeCategory);
   const { pageItems, totalPages, totalItems } = paginateSalesContents(filtered);
+  const hasSearchValue = String(state.search.salesContent || "").trim().length > 0;
+  if (ui.salesContentSearchClear) {
+    ui.salesContentSearchClear.classList.toggle("hidden", !hasSearchValue);
+    ui.salesContentSearchClear.disabled = !hasSearchValue;
+  }
   if (!state.creatingSalesContent && selected && !filtered.some((item) => item.id === selected.id) && filtered.length) {
     selected = filtered[0];
   }
@@ -7074,7 +7080,7 @@ function renderSalesContent() {
     ui.salesContentDetailTitle.textContent = selected?.title || (state.lang === "it" ? "Nuovo contenuto" : "New content");
   }
   if (ui.salesContentDeleteButton) ui.salesContentDeleteButton.disabled = !selected;
-  if (ui.salesContentAttachmentButton) ui.salesContentAttachmentButton.disabled = !selected;
+  if (ui.salesContentAttachmentButton) ui.salesContentAttachmentButton.disabled = false;
   if (ui.salesContentAttachments) {
     const items = (selected?.attachments || []).map((item, index) => ({ ...item, _attachmentIndex: index }));
     ui.salesContentAttachments.innerHTML = renderSalesContentAttachments(items, selected?.id || "");
@@ -7095,7 +7101,7 @@ function upsertSalesRequest(saved, { skipOpsRender = false } = {}) {
   if (!skipOpsRender) renderOps();
 }
 
-function upsertSalesContent(saved) {
+function upsertSalesContent(saved, { skipOpsRender = false } = {}) {
   const normalized = normalizeSalesContentRecord(saved);
   state.salesContents = [
     normalized,
@@ -7104,7 +7110,7 @@ function upsertSalesContent(saved) {
   state.selectedSalesContentId = normalized.id;
   state.creatingSalesContent = false;
   state.salesContentPage = 1;
-  renderOps();
+  if (!skipOpsRender) renderOps();
 }
 
 function createNewSalesRequest() {
@@ -7337,10 +7343,11 @@ function createNewSalesContent() {
 }
 
 async function saveSalesContent(event) {
-  event.preventDefault();
+  if (event?.preventDefault) event.preventDefault();
   clearStatus(ui.salesContentStatus);
   const form = new FormData(ui.salesContentForm);
   try {
+    const isUpdate = Boolean(String(form.get("id") || "").trim());
     const saved = await apiFetch("/api/sales/content-items", {
       method: "POST",
       body: JSON.stringify({
@@ -7351,12 +7358,40 @@ async function saveSalesContent(event) {
         description: form.get("description"),
       }),
     });
-    upsertSalesContent(saved);
+    upsertSalesContent(saved, { skipOpsRender: isUpdate });
     renderSalesContent();
     setStatus(ui.salesContentStatus, "success", state.lang === "it" ? "Contenuto salvato." : "Content saved.");
+    return saved;
   } catch (error) {
     setStatus(ui.salesContentStatus, "error", state.lang === "it" ? "Impossibile salvare il contenuto." : "Unable to save the content.");
+    return null;
   }
+}
+
+async function ensureSelectedSalesContentForAttachment() {
+  const selected = getSelectedSalesContent();
+  if (selected?.id) return selected;
+  if (!ui.salesContentForm) return null;
+  const form = new FormData(ui.salesContentForm);
+  const title = String(form.get("title") || "").trim()
+    || (state.lang === "it" ? `Nuovo contenuto ${new Date().toLocaleDateString("it-IT")}` : `New content ${new Date().toLocaleDateString("en-GB")}`);
+  const category = String(form.get("category") || "").trim() || "documentazione";
+  const link = String(form.get("link") || "").trim();
+  const description = String(form.get("description") || "").trim();
+  const saved = await apiFetch("/api/sales/content-items", {
+    method: "POST",
+    body: JSON.stringify({ title, category, link, description }),
+  });
+  upsertSalesContent(saved, { skipOpsRender: true });
+  renderSalesContent();
+  setStatus(
+    ui.salesContentStatus,
+    "success",
+    state.lang === "it"
+      ? "Contenuto creato automaticamente. Ora seleziona il file da allegare."
+      : "Content auto-created. Now choose the file to attach.",
+  );
+  return getSelectedSalesContent();
 }
 
 async function deleteSalesContent() {
@@ -7382,7 +7417,7 @@ async function removeSalesContentAttachment(contentId, attachmentIndex) {
   const saved = await apiFetch(`/api/sales/content-items/${encodeURIComponent(contentId)}/attachments/${attachmentIndex}`, {
     method: "DELETE",
   });
-  upsertSalesContent(saved);
+  upsertSalesContent(saved, { skipOpsRender: true });
   renderSalesContent();
 }
 
@@ -11308,7 +11343,7 @@ function prefillInventoryForm(product) {
   requestAnimationFrame(() => ui.inventoryForm.product.focus());
 }
 
-function openAttachmentPicker(type) {
+async function openAttachmentPicker(type) {
   if (ui.attachmentInput) {
     ui.attachmentInput.accept = type === "sales-content"
       ? "image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
@@ -11317,7 +11352,21 @@ function openAttachmentPicker(type) {
       : "image/*,.pdf";
   }
   if (type === "sales-content") {
-    const content = getSelectedSalesContent();
+    let content = getSelectedSalesContent();
+    if (!content) {
+      try {
+        content = await ensureSelectedSalesContentForAttachment();
+      } catch (error) {
+        setStatus(
+          ui.salesContentStatus,
+          "error",
+          state.lang === "it"
+            ? "Salva almeno i dati base del contenuto prima di allegare file."
+            : "Save basic content data before attaching files.",
+        );
+        return;
+      }
+    }
     if (!content) return;
     state.pendingAttachmentTarget = { type, id: content.id };
     ui.attachmentInput.value = "";
@@ -11345,23 +11394,48 @@ async function handleAttachmentChange(event) {
   if (!file || !target) return;
   const targetStatus = getStatusNodeForAttachmentTarget(target.type);
   clearStatus(targetStatus);
-  const dataUrl = await readFileAsDataUrl(file);
+  setStatus(
+    targetStatus,
+    "success",
+    state.lang === "it" ? "Preparazione file in corso..." : "Preparing file...",
+  );
+  let payload = null;
+  try {
+    payload = await buildAttachmentPayload(file);
+  } catch (error) {
+    setStatus(
+      targetStatus,
+      "error",
+      state.lang === "it"
+        ? "Impossibile preparare il file selezionato. Riprova con un file più leggero."
+        : "Unable to prepare the selected file. Try a lighter file.",
+    );
+    state.pendingAttachmentTarget = null;
+    return;
+  }
+  setStatus(
+    targetStatus,
+    "success",
+    state.lang === "it"
+      ? `Caricamento ${payload.optimized ? "ottimizzato " : ""}in corso...`
+      : `Uploading ${payload.optimized ? "optimized " : ""}file...`,
+  );
   try {
     if (target.type === "sales-content") {
       const saved = await apiFetch(`/api/sales/content-items/${encodeURIComponent(target.id)}/attachments`, {
         method: "POST",
         body: JSON.stringify({
           attachments: [{
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            dataUrl,
+            name: payload.name,
+            type: payload.type,
+            size: payload.size,
+            dataUrl: payload.dataUrl,
             context: target.type,
             createdAt: new Date().toISOString(),
           }],
         }),
       });
-      upsertSalesContent(saved);
+      upsertSalesContent(saved, { skipOpsRender: true });
       renderSalesContent();
       setStatus(
         targetStatus,
@@ -11375,10 +11449,10 @@ async function handleAttachmentChange(event) {
       method: "POST",
       body: JSON.stringify({
         attachments: [{
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          dataUrl,
+          name: payload.name,
+          type: payload.type,
+          size: payload.size,
+          dataUrl: payload.dataUrl,
           context: target.type,
           createdAt: new Date().toISOString(),
         }],
@@ -11418,6 +11492,109 @@ async function removeAttachment(orderId, attachmentIndex) {
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   renderCurrentViewOnly(state.currentView);
+}
+
+function estimateDataUrlSize(dataUrl = "") {
+  const encoded = String(dataUrl || "").split(",")[1] || "";
+  if (!encoded) return 0;
+  return Math.floor((encoded.length * 3) / 4);
+}
+
+function renameFileExtension(fileName = "", nextType = "") {
+  const baseName = String(fileName || "").trim();
+  if (!baseName) return baseName;
+  const ext = nextType === "image/jpeg"
+    ? "jpg"
+    : nextType === "image/webp"
+      ? "webp"
+      : nextType === "image/png"
+        ? "png"
+        : "";
+  if (!ext) return baseName;
+  const cleanedBase = baseName.replace(/\.[a-z0-9]{1,5}$/i, "");
+  return `${cleanedBase}.${ext}`;
+}
+
+function loadImageFromDataUrl(dataUrl = "") {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = dataUrl;
+  });
+}
+
+async function optimizeImageAttachment(file) {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  const originalSize = estimateDataUrlSize(originalDataUrl);
+  const image = await loadImageFromDataUrl(originalDataUrl);
+  const maxDimension = 2048;
+  const largestSide = Math.max(image.width || 0, image.height || 0);
+  const scale = largestSide > maxDimension ? (maxDimension / largestSide) : 1;
+  if (scale >= 1 && originalSize <= 1_200_000) {
+    return {
+      dataUrl: originalDataUrl,
+      size: file.size,
+      type: file.type || "image/png",
+      name: file.name,
+      optimized: false,
+    };
+  }
+  const width = Math.max(1, Math.round((image.width || 1) * scale));
+  const height = Math.max(1, Math.round((image.height || 1) * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return {
+      dataUrl: originalDataUrl,
+      size: file.size,
+      type: file.type || "image/png",
+      name: file.name,
+      optimized: false,
+    };
+  }
+  ctx.drawImage(image, 0, 0, width, height);
+  const hasAlpha = String(file.type || "").toLowerCase() === "image/png";
+  const outputType = hasAlpha ? "image/png" : "image/jpeg";
+  const outputDataUrl = canvas.toDataURL(outputType, outputType === "image/jpeg" ? 0.82 : undefined);
+  const outputSize = estimateDataUrlSize(outputDataUrl);
+  if (outputSize > 0 && outputSize >= originalSize && scale >= 1) {
+    return {
+      dataUrl: originalDataUrl,
+      size: file.size,
+      type: file.type || outputType,
+      name: file.name,
+      optimized: false,
+    };
+  }
+  return {
+    dataUrl: outputDataUrl,
+    size: outputSize || file.size,
+    type: outputType,
+    name: renameFileExtension(file.name, outputType),
+    optimized: true,
+  };
+}
+
+async function buildAttachmentPayload(file) {
+  const mime = String(file?.type || "").toLowerCase();
+  if (mime.startsWith("image/")) {
+    try {
+      return await optimizeImageAttachment(file);
+    } catch {
+      // fallback to original payload
+    }
+  }
+  const dataUrl = await readFileAsDataUrl(file);
+  return {
+    dataUrl,
+    size: file.size,
+    type: file.type || "application/octet-stream",
+    name: file.name || "attachment",
+    optimized: false,
+  };
 }
 
 function readFileAsDataUrl(file) {
@@ -11975,6 +12152,18 @@ bindEvent(ui.salesContentSearch, "input", (event) => {
     salesContentSearchTimer = 0;
     renderSalesContent();
   }, 120);
+});
+bindEvent(ui.salesContentSearchClear, "click", () => {
+  if (!ui.salesContentSearch) return;
+  ui.salesContentSearch.value = "";
+  state.search.salesContent = "";
+  state.salesContentPage = 1;
+  if (salesContentSearchTimer) {
+    window.clearTimeout(salesContentSearchTimer);
+    salesContentSearchTimer = 0;
+  }
+  renderSalesContent();
+  ui.salesContentSearch.focus();
 });
 bindEvent(ui.salesContentForm, "submit", saveSalesContent);
 bindEvent(ui.salesContentNewButton, "click", createNewSalesContent);

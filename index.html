@@ -681,9 +681,12 @@
                   <h3 id="sales-content-list-title">Documenti disponibili</h3>
                 </div>
               </div>
-              <label class="search-field">
+              <label class="search-field sales-content-search-field">
                 <span id="sales-content-search-label">Cerca</span>
-                <input id="sales-content-search" type="search" placeholder="Titolo, categoria o nota..." />
+                <div class="search-field-input-wrap">
+                  <input id="sales-content-search" type="search" placeholder="Titolo, categoria o nota..." />
+                  <button id="sales-content-search-clear" class="search-field-clear hidden" type="button" aria-label="Svuota ricerca">×</button>
+                </div>
               </label>
               <div class="sales-content-toolbar">
                 <div id="sales-content-category-filters" class="sales-content-category-filters"></div>
