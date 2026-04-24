@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
-import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, dirname, join, resolve, sep } from "node:path";
 import { createHmac, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ let DATA_DIR = resolve(process.env.DATA_DIR || FALLBACK_DATA_DIR);
 let STORE_PATH = join(DATA_DIR, "store.json");
 let SESSION_PATH = join(DATA_DIR, "session.json");
 let BACKUP_DIR = join(DATA_DIR, "backups");
+let LOCAL_ATTACHMENTS_DIR = join(DATA_DIR, "attachments");
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const R2_ACCOUNT_ID = String(process.env.R2_ACCOUNT_ID || "").trim();
 const R2_ACCESS_KEY_ID = String(process.env.R2_ACCESS_KEY_ID || "").trim();
@@ -313,6 +314,7 @@ function setDataDir(nextDir) {
   STORE_PATH = join(DATA_DIR, "store.json");
   SESSION_PATH = join(DATA_DIR, "session.json");
   BACKUP_DIR = join(DATA_DIR, "backups");
+  LOCAL_ATTACHMENTS_DIR = join(DATA_DIR, "attachments");
 }
 
 function buildSessionCookie(sessionId, maxAgeSeconds = Math.floor(SESSION_TTL_MS / 1000)) {
@@ -338,6 +340,7 @@ function buildExpiredShopifyOauthStateCookie() {
 function ensureWritableDataDir() {
   try {
     mkdirSync(DATA_DIR, { recursive: true });
+    mkdirSync(LOCAL_ATTACHMENTS_DIR, { recursive: true });
     const probePath = join(DATA_DIR, ".write-test");
     writeFileSync(probePath, "ok", "utf8");
     unlinkSync(probePath);
@@ -345,6 +348,7 @@ function ensureWritableDataDir() {
     if (DATA_DIR !== FALLBACK_DATA_DIR) {
       setDataDir(FALLBACK_DATA_DIR);
       mkdirSync(DATA_DIR, { recursive: true });
+      mkdirSync(LOCAL_ATTACHMENTS_DIR, { recursive: true });
     }
   }
 }
@@ -2495,6 +2499,26 @@ function buildAttachmentProxyPath(ownerId, attachmentId, resource = "orders") {
   return `/api/orders/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
 }
 
+function normalizeAttachmentLocalPath(value = "") {
+  const normalized = String(value || "")
+    .replace(/\\/g, "/")
+    .trim();
+  if (!normalized) return "";
+  return normalized
+    .split("/")
+    .filter((segment) => segment && segment !== "." && segment !== "..")
+    .join("/");
+}
+
+function resolveAttachmentLocalPath(localPath = "") {
+  const normalized = normalizeAttachmentLocalPath(localPath);
+  if (!normalized) return "";
+  const rootPath = resolve(LOCAL_ATTACHMENTS_DIR);
+  const absolutePath = resolve(join(rootPath, normalized));
+  if (absolutePath !== rootPath && !absolutePath.startsWith(`${rootPath}${sep}`)) return "";
+  return absolutePath;
+}
+
 function getMimeTypeExtension(contentType = "") {
   const normalized = String(contentType || "").split(";")[0].trim().toLowerCase();
   if (normalized === "image/jpeg") return ".jpg";
@@ -2519,21 +2543,71 @@ function parseDataUrl(value = "") {
   };
 }
 
+function buildLocalAttachmentRecord(ownerId = "", attachment = {}, parsed = null, resource = "orders") {
+  if (!parsed?.buffer?.length) return null;
+  const attachmentId = String(attachment.id || randomUUID());
+  const contentType = String(attachment.type || parsed.contentType || "application/octet-stream").trim();
+  const fallbackExtension = getMimeTypeExtension(contentType);
+  const safeName = sanitizeAttachmentName(attachment.name, fallbackExtension);
+  const bucketPrefix = resource === "sales-content" ? "sales-content" : "orders";
+  const ownerSegment = String(ownerId || resource).replace(/[^\w.-]+/g, "_");
+  const relativePath = normalizeAttachmentLocalPath(`${bucketPrefix}/${ownerSegment}/${attachmentId}-${safeName}`);
+  const absolutePath = resolveAttachmentLocalPath(relativePath);
+  if (!absolutePath) return null;
+  mkdirSync(dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, parsed.buffer);
+  return {
+    ...attachment,
+    id: attachmentId,
+    name: safeName,
+    type: contentType,
+    size: Number(attachment.size || parsed.buffer.length || 0),
+    storage: "file",
+    localPath: relativePath,
+    dataUrl: "",
+  };
+}
+
 function normalizeAttachmentRecord(item = {}, ownerId = "", resource = "orders") {
   const attachmentId = String(item.id || randomUUID());
   const hasR2Object = String(item.storage || "").trim() === "r2" && String(item.objectKey || "").trim();
+  const normalizedLocalPath = normalizeAttachmentLocalPath(item.localPath || "");
+  const hasLocalFile = String(item.storage || "").trim() === "file" && normalizedLocalPath;
   return {
     id: attachmentId,
     name: String(item.name || "Allegato").trim() || "Allegato",
     type: String(item.type || "application/octet-stream").trim() || "application/octet-stream",
     size: Math.max(0, Number(item.size || 0)),
     createdAt: String(item.createdAt || new Date().toISOString()),
-    storage: hasR2Object ? "r2" : "inline",
+    storage: hasR2Object ? "r2" : (hasLocalFile ? "file" : "inline"),
     objectKey: hasR2Object ? String(item.objectKey || "").trim() : "",
-    dataUrl: hasR2Object ? "" : String(item.dataUrl || ""),
+    localPath: hasLocalFile ? normalizedLocalPath : "",
+    dataUrl: hasR2Object || hasLocalFile ? "" : String(item.dataUrl || ""),
     context: String(item.context || "").trim(),
     url: String(item.url || "").trim() || buildAttachmentProxyPath(ownerId, attachmentId, resource),
   };
+}
+
+function migrateInlineAttachmentToLocalFile(item = {}, ownerId = "", resource = "orders") {
+  if (USE_R2) return { attachment: item, migrated: false };
+  if (String(item.storage || "").trim() !== "inline") return { attachment: item, migrated: false };
+  if (!String(item.dataUrl || "").trim()) return { attachment: item, migrated: false };
+  const parsed = parseDataUrl(item.dataUrl || "");
+  const saved = buildLocalAttachmentRecord(ownerId, item, parsed, resource);
+  if (!saved) return { attachment: item, migrated: false };
+  return { attachment: normalizeAttachmentRecord(saved, ownerId, resource), migrated: true };
+}
+
+function normalizeAndMigrateAttachments(items = [], ownerId = "", resource = "orders") {
+  if (!Array.isArray(items)) return { attachments: [], migrated: false };
+  let migrated = false;
+  const attachments = items.map((item) => {
+    const normalized = normalizeAttachmentRecord(item, ownerId, resource);
+    const migration = migrateInlineAttachmentToLocalFile(normalized, ownerId, resource);
+    if (migration.migrated) migrated = true;
+    return migration.attachment;
+  });
+  return { attachments, migrated };
 }
 
 function normalizeSalesContentRecord(item = {}) {
@@ -2555,6 +2629,8 @@ function normalizeSalesContentRecord(item = {}) {
 function serializeAttachmentForClient(item = {}) {
   return {
     ...item,
+    objectKey: "",
+    localPath: "",
     dataUrl: "",
   };
 }
@@ -2596,15 +2672,47 @@ async function getR2Client() {
   return getR2Client.client;
 }
 
-async function storeAttachmentAsset(ownerId, attachment = {}, resource = "orders") {
-  const parsed = parseDataUrl(attachment.dataUrl || "");
+async function storeAttachmentBuffer(ownerId, attachment = {}, buffer = Buffer.alloc(0), resource = "orders") {
   const attachmentId = String(attachment.id || randomUUID());
-  if (!parsed || !USE_R2) {
+  const safeBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
+  const contentType = String(attachment.type || "application/octet-stream").trim() || "application/octet-stream";
+
+  if (!safeBuffer.length) {
     return normalizeAttachmentRecord(
       {
         ...attachment,
         id: attachmentId,
+        type: contentType,
+        size: Number(attachment.size || 0),
         storage: "inline",
+      },
+      ownerId,
+      resource,
+    );
+  }
+
+  if (!USE_R2) {
+    try {
+      const savedLocalAttachment = buildLocalAttachmentRecord(
+        ownerId,
+        { ...attachment, id: attachmentId, type: contentType, size: Number(attachment.size || safeBuffer.length || 0) },
+        { contentType, buffer: safeBuffer },
+        resource,
+      );
+      if (savedLocalAttachment) {
+        return normalizeAttachmentRecord(savedLocalAttachment, ownerId, resource);
+      }
+    } catch (error) {
+      console.error("attachment_local_store_failed", error);
+    }
+    return normalizeAttachmentRecord(
+      {
+        ...attachment,
+        id: attachmentId,
+        type: contentType,
+        size: Number(attachment.size || safeBuffer.length || 0),
+        storage: "inline",
+        dataUrl: `data:${contentType};base64,${safeBuffer.toString("base64")}`,
       },
       ownerId,
       resource,
@@ -2613,7 +2721,7 @@ async function storeAttachmentAsset(ownerId, attachment = {}, resource = "orders
 
   const client = await getR2Client();
   const sdk = await getR2Sdk();
-  const fallbackExtension = getMimeTypeExtension(attachment.type || parsed.contentType);
+  const fallbackExtension = getMimeTypeExtension(contentType);
   const safeName = sanitizeAttachmentName(attachment.name, fallbackExtension);
   const bucketPrefix = resource === "sales-content" ? "sales-content" : "orders";
   const objectKey = `${bucketPrefix}/${String(ownerId || resource).replace(/[^\w.-]+/g, "_")}/${attachmentId}-${safeName}`;
@@ -2621,9 +2729,9 @@ async function storeAttachmentAsset(ownerId, attachment = {}, resource = "orders
   await client.send(new sdk.PutObjectCommand({
     Bucket: R2_BUCKET_NAME,
     Key: objectKey,
-    Body: parsed.buffer,
-    ContentType: String(attachment.type || parsed.contentType || "application/octet-stream").trim(),
-    ContentLength: parsed.buffer.length,
+    Body: safeBuffer,
+    ContentType: contentType,
+    ContentLength: safeBuffer.length,
   }));
 
   return normalizeAttachmentRecord(
@@ -2631,8 +2739,8 @@ async function storeAttachmentAsset(ownerId, attachment = {}, resource = "orders
       ...attachment,
       id: attachmentId,
       name: safeName,
-      type: String(attachment.type || parsed.contentType || "application/octet-stream").trim(),
-      size: Number(attachment.size || parsed.buffer.length || 0),
+      type: contentType,
+      size: Number(attachment.size || safeBuffer.length || 0),
       storage: "r2",
       objectKey,
       dataUrl: "",
@@ -2642,9 +2750,44 @@ async function storeAttachmentAsset(ownerId, attachment = {}, resource = "orders
   );
 }
 
+async function storeAttachmentAsset(ownerId, attachment = {}, resource = "orders") {
+  const parsed = parseDataUrl(attachment.dataUrl || "");
+  if (!parsed?.buffer?.length) {
+    return normalizeAttachmentRecord(
+      {
+        ...attachment,
+        id: String(attachment.id || randomUUID()),
+        storage: "inline",
+      },
+      ownerId,
+      resource,
+    );
+  }
+  return storeAttachmentBuffer(
+    ownerId,
+    {
+      ...attachment,
+      type: String(attachment.type || parsed.contentType || "application/octet-stream").trim(),
+      size: Number(attachment.size || parsed.buffer.length || 0),
+    },
+    parsed.buffer,
+    resource,
+  );
+}
+
 async function removeAttachmentAsset(attachment = {}) {
+  const storageType = String(attachment.storage || "").trim();
+  if (storageType === "file") {
+    const absolutePath = resolveAttachmentLocalPath(attachment.localPath || "");
+    if (absolutePath && existsSync(absolutePath)) {
+      try {
+        unlinkSync(absolutePath);
+      } catch {}
+    }
+    return;
+  }
+  if (storageType !== "r2") return;
   if (!USE_R2) return;
-  if (String(attachment.storage || "").trim() !== "r2") return;
   if (!String(attachment.objectKey || "").trim()) return;
   const client = await getR2Client();
   const sdk = await getR2Sdk();
@@ -2656,6 +2799,32 @@ async function removeAttachmentAsset(attachment = {}) {
 
 async function streamAttachmentAsset(res, attachment = {}) {
   const storageType = String(attachment.storage || "").trim();
+  if (storageType === "file") {
+    const absolutePath = resolveAttachmentLocalPath(attachment.localPath || "");
+    if (!absolutePath || !existsSync(absolutePath)) {
+      return sendJson(res, 404, { error: "attachment_not_found" });
+    }
+    try {
+      const stream = createReadStream(absolutePath);
+      res.writeHead(200, {
+        "Content-Type": attachment.type || "application/octet-stream",
+        "Cache-Control": "private, max-age=300",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+      });
+      stream.on("error", () => {
+        if (!res.headersSent) {
+          sendJson(res, 500, { error: "attachment_stream_failed" });
+        } else {
+          res.end();
+        }
+      });
+      stream.pipe(res);
+      return;
+    } catch {
+      return sendJson(res, 500, { error: "attachment_stream_failed" });
+    }
+  }
   if (storageType !== "r2") {
     const inlineData = parseDataUrl(attachment.dataUrl || "");
     if (!inlineData?.buffer?.length) {
@@ -2886,7 +3055,15 @@ function reconcileStoreData(store) {
     : [];
 
   store.salesContents = Array.isArray(store.salesContents)
-    ? store.salesContents.map((item) => normalizeSalesContentRecord(item))
+    ? store.salesContents.map((item) => {
+        const normalized = normalizeSalesContentRecord(item);
+        const attachmentResult = normalizeAndMigrateAttachments(normalized.attachments, normalized.id, "sales-content");
+        if (attachmentResult.migrated) changed = true;
+        return {
+          ...normalized,
+          attachments: attachmentResult.attachments,
+        };
+      })
     : [];
 
   store.salesRequestSource = normalizeSalesRequestSourceConfig(store.salesRequestSource || defaults.salesRequestSource);
@@ -2957,9 +3134,13 @@ function reconcileStoreData(store) {
       }
     }
     nextOrder.accounting = normalizeAccountingRecord(nextOrder.accounting || {}, nextOrder.paymentMethod || "", nextOrder.billing);
-    nextOrder.attachments = Array.isArray(nextOrder.attachments)
-      ? nextOrder.attachments.map((item) => normalizeAttachmentRecord(item, nextOrder.id))
-      : [];
+    if (Array.isArray(nextOrder.attachments)) {
+      const attachmentResult = normalizeAndMigrateAttachments(nextOrder.attachments, nextOrder.id, "orders");
+      nextOrder.attachments = attachmentResult.attachments;
+      if (attachmentResult.migrated) changed = true;
+    } else {
+      nextOrder.attachments = [];
+    }
     const linkedJob = store.jobs.find((job) => job.sourceOrderId === nextOrder.id) || null;
     nextOrder.operations = normalizeOperations(nextOrder, linkedJob);
     return nextOrder;
@@ -2984,7 +3165,11 @@ function reconcileStoreData(store) {
       sqm: derived.sqm || job.sqm,
       materials: derived.materials.length ? derived.materials : job.materials,
       attachments: Array.isArray(job.attachments)
-        ? job.attachments.map((item) => normalizeAttachmentRecord(item, job.sourceOrderId || job.id))
+        ? (() => {
+            const attachmentResult = normalizeAndMigrateAttachments(job.attachments, job.sourceOrderId || job.id, "orders");
+            if (attachmentResult.migrated) changed = true;
+            return attachmentResult.attachments;
+          })()
         : [],
     };
   });
@@ -4311,6 +4496,40 @@ async function handleApi(req, res, url) {
     store.salesContents[contentIndex] = normalizeSalesContentRecord({
       ...current,
       attachments: [...(current.attachments || []), ...savedAttachments],
+      updatedAt: new Date().toISOString(),
+    });
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, serializeSalesContentForClient(store.salesContents[contentIndex]));
+  }
+
+  if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+\/attachments\/upload$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const contentId = decodeURIComponent(url.pathname.split("/")[4]);
+    const contentIndex = store.salesContents.findIndex((item) => item.id === contentId);
+    if (contentIndex < 0) return sendJson(res, 404, { error: "content_not_found" });
+    const fileBuffer = await readRawBody(req);
+    if (!fileBuffer?.length) return sendJson(res, 400, { error: "empty_attachment" });
+    const name = String(url.searchParams.get("name") || "attachment").trim() || "attachment";
+    const type = String(url.searchParams.get("type") || req.headers["content-type"] || "application/octet-stream").trim() || "application/octet-stream";
+    const size = Math.max(0, Number(url.searchParams.get("size") || fileBuffer.length || 0));
+    const context = String(url.searchParams.get("context") || "sales-content").trim();
+    const savedAttachment = await storeAttachmentBuffer(
+      contentId,
+      {
+        name,
+        type,
+        size,
+        context,
+        createdAt: new Date().toISOString(),
+      },
+      fileBuffer,
+      "sales-content",
+    );
+    const current = store.salesContents[contentIndex];
+    store.salesContents[contentIndex] = normalizeSalesContentRecord({
+      ...current,
+      attachments: [...(current.attachments || []), savedAttachment],
       updatedAt: new Date().toISOString(),
     });
     await writeJson(STORE_PATH, store);

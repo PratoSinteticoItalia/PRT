@@ -364,6 +364,77 @@ function getShapeEdges(shape, dims, customPts, customClosed) {
   });
 }
 
+function areClose(a, b, tolerance = 0.08) {
+  const left = Math.max(0, Number(a) || 0);
+  const right = Math.max(0, Number(b) || 0);
+  const base = Math.max(left, right, 1e-6);
+  return Math.abs(left - right) <= base * tolerance;
+}
+
+function isParallelVector(a, b, tolerance = 0.12) {
+  const ax = Number(a?.x || 0);
+  const ay = Number(a?.y || 0);
+  const bx = Number(b?.x || 0);
+  const by = Number(b?.y || 0);
+  const aLen = Math.hypot(ax, ay);
+  const bLen = Math.hypot(bx, by);
+  if (aLen <= 1e-6 || bLen <= 1e-6) return false;
+  const crossNorm = Math.abs((ax * by - ay * bx) / (aLen * bLen));
+  return crossNorm <= tolerance;
+}
+
+function isRightAngleVector(a, b, tolerance = 0.12) {
+  const ax = Number(a?.x || 0);
+  const ay = Number(a?.y || 0);
+  const bx = Number(b?.x || 0);
+  const by = Number(b?.y || 0);
+  const aLen = Math.hypot(ax, ay);
+  const bLen = Math.hypot(bx, by);
+  if (aLen <= 1e-6 || bLen <= 1e-6) return false;
+  const dotNorm = Math.abs((ax * bx + ay * by) / (aLen * bLen));
+  return dotNorm <= tolerance;
+}
+
+function classifyPolygonShape(points = []) {
+  const pts = Array.isArray(points) ? points : [];
+  if (pts.length === 3) return "Triangolo";
+  if (pts.length !== 4) return "Forma irregolare";
+
+  const vectors = pts.map((point, index) => {
+    const next = pts[(index + 1) % pts.length];
+    return {
+      x: Number(next.x || 0) - Number(point.x || 0),
+      y: Number(next.y || 0) - Number(point.y || 0),
+    };
+  });
+  const sides = vectors.map((vector) => Math.hypot(vector.x, vector.y));
+  const hasTwoParallelPairs = isParallelVector(vectors[0], vectors[2]) && isParallelVector(vectors[1], vectors[3]);
+  const hasSingleParallelPair = isParallelVector(vectors[0], vectors[2]) !== isParallelVector(vectors[1], vectors[3]);
+  const allRightAngles = vectors.every((vector, index) => isRightAngleVector(vector, vectors[(index + 1) % vectors.length]));
+
+  if (hasTwoParallelPairs && allRightAngles) {
+    const allEqual = sides.every((length) => areClose(length, sides[0], 0.07));
+    return allEqual ? "Quadrato" : "Rettangolo";
+  }
+  if (hasSingleParallelPair) {
+    return "Trapezio";
+  }
+  return "Forma irregolare";
+}
+
+function getShapeLabel(shape, dims, customPts, customClosed) {
+  if (shape === "rect") {
+    const { a = 0, b = 0 } = sanitizeDims(shape, dims);
+    return areClose(a, b, 0.04) ? "Quadrato" : "Rettangolo";
+  }
+  if (shape === "custom") {
+    if (!customClosed || !Array.isArray(customPts) || customPts.length < 3) return "Forma irregolare";
+    return classifyPolygonShape(customPts);
+  }
+  if (shape === "lshape" || shape === "ushape") return "Forma irregolare";
+  return "Forma irregolare";
+}
+
 function estimateInstallationNeeds(area, perimeter) {
   const safeArea = Math.max(0, Number(area) || 0);
   const safePerimeter = Math.max(0, Number(perimeter) || 0);
@@ -959,8 +1030,8 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
     return {
       id: roll.id || `roll-${index}`,
       path,
-      label: `R${index + 1} · 2m × ${fmt(roll.length, 2)}m`,
-      labelWidth: Math.max(62, (`R${index + 1} · 2m × ${fmt(roll.length, 2)}m`).length * 4.7),
+      rollIndex: index + 1,
+      length: Number(roll.length) || 0,
       cx: (Number(roll.cx) || 0) * scale + ox,
       cy: (Number(roll.cy) || 0) * scale + oy,
     };
@@ -974,9 +1045,9 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
         {rollPaths.map(roll => (
           <g key={roll.id}>
             <path d={roll.path} fill="rgba(21,101,192,0.2)" stroke="#1565c0" strokeWidth="1.35" />
-            <rect x={roll.cx - roll.labelWidth / 2} y={roll.cy - 7} width={roll.labelWidth} height="14" rx="6" fill="rgba(255,255,255,0.92)" stroke={B.borderLight} />
-            <text x={roll.cx} y={roll.cy + 3} fontSize="8.2" textAnchor="middle" fill={B.dark} fontWeight="700">
-              {roll.label}
+            <circle cx={roll.cx} cy={roll.cy} r="5.2" fill="#1565c0" stroke="#fff" strokeWidth="1.2" />
+            <text x={roll.cx} y={roll.cy + 2.9} fontSize="7.4" textAnchor="middle" fill="#fff" fontWeight="700">
+              {roll.rollIndex}
             </text>
           </g>
         ))}
@@ -1008,6 +1079,26 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
         {rollPaths.length > 0 ? (
           <div style={{ fontSize: 11, color: B.textMuted }}>
             Rotoli posizionati nel layout: <strong style={{ color: B.dark }}>{rollPaths.length}</strong>
+          </div>
+        ) : null}
+        {rollPaths.length > 0 ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 6 }}>
+            {rollPaths.map((roll) => (
+              <span
+                key={`roll-chip-${roll.id}`}
+                style={{
+                  fontSize: 10,
+                  padding: "4px 7px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(21,101,192,0.28)",
+                  background: "#eff6ff",
+                  color: "#0b4f8a",
+                  fontWeight: 700,
+                }}
+              >
+                R{roll.rollIndex}: 2.00 × {fmt(roll.length, 2)} m
+              </span>
+            ))}
           </div>
         ) : null}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -1149,6 +1240,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
   const outsideRollCount = rollPolygon.length >= 3
     ? (manualRolls || []).reduce((count, roll) => (isRollInsidePolygon(roll, rollPolygon) ? count : count + 1), 0)
     : 0;
+  const shapeLabel = getShapeLabel(shape, dims, customPts, customClosed);
 
   const sections = [
     {
@@ -1252,7 +1344,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
             </div>
             <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Forma</div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{shape === "custom" ? "Disegno libero" : SHAPES.find(s => s.id === shape)?.name || shape}</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{shapeLabel}</div>
             </div>
             <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Layout rotoli</div>

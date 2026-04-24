@@ -11352,23 +11352,8 @@ async function openAttachmentPicker(type) {
       : "image/*,.pdf";
   }
   if (type === "sales-content") {
-    let content = getSelectedSalesContent();
-    if (!content) {
-      try {
-        content = await ensureSelectedSalesContentForAttachment();
-      } catch (error) {
-        setStatus(
-          ui.salesContentStatus,
-          "error",
-          state.lang === "it"
-            ? "Salva almeno i dati base del contenuto prima di allegare file."
-            : "Save basic content data before attaching files.",
-        );
-        return;
-      }
-    }
-    if (!content) return;
-    state.pendingAttachmentTarget = { type, id: content.id };
+    const content = getSelectedSalesContent();
+    state.pendingAttachmentTarget = { type, id: content?.id || "" };
     ui.attachmentInput.value = "";
     ui.attachmentInput.click();
     return;
@@ -11394,11 +11379,80 @@ async function handleAttachmentChange(event) {
   if (!file || !target) return;
   const targetStatus = getStatusNodeForAttachmentTarget(target.type);
   clearStatus(targetStatus);
+  let resolvedTarget = target;
+  if (target.type === "sales-content" && !target.id) {
+    setStatus(
+      targetStatus,
+      "success",
+      state.lang === "it" ? "Salvataggio contenuto in corso..." : "Saving content...",
+    );
+    try {
+      const savedContent = await ensureSelectedSalesContentForAttachment();
+      if (!savedContent?.id) {
+        throw new Error("missing_content_id");
+      }
+      resolvedTarget = { ...target, id: savedContent.id };
+      state.pendingAttachmentTarget = resolvedTarget;
+    } catch (error) {
+      setStatus(
+        targetStatus,
+        "error",
+        state.lang === "it"
+          ? "Impossibile preparare il contenuto. Salva titolo/categoria e riprova."
+          : "Unable to prepare the content. Save title/category and try again.",
+      );
+      state.pendingAttachmentTarget = null;
+      return;
+    }
+  }
   setStatus(
     targetStatus,
     "success",
     state.lang === "it" ? "Preparazione file in corso..." : "Preparing file...",
   );
+  if (resolvedTarget.type === "sales-content") {
+    try {
+      setStatus(
+        targetStatus,
+        "success",
+        state.lang === "it" ? "Caricamento diretto in corso..." : "Direct upload in progress...",
+      );
+      const query = new URLSearchParams({
+        name: file.name || "attachment",
+        type: file.type || "application/octet-stream",
+        size: String(Number(file.size || 0)),
+        context: "sales-content",
+      });
+      const response = await fetch(`/api/sales/content-items/${encodeURIComponent(resolvedTarget.id)}/attachments/upload?${query.toString()}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+        },
+        body: file,
+      });
+      const saved = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(saved?.error || saved?.message || "upload_failed");
+      }
+      upsertSalesContent(saved, { skipOpsRender: true });
+      renderSalesContent();
+      setStatus(
+        targetStatus,
+        "success",
+        state.lang === "it" ? "Allegato contenuto caricato correttamente." : "Content attachment uploaded successfully.",
+      );
+      return;
+    } catch (error) {
+      setStatus(
+        targetStatus,
+        "error",
+        state.lang === "it" ? "Impossibile caricare l'allegato contenuto." : "Unable to upload the content attachment.",
+      );
+      return;
+    } finally {
+      state.pendingAttachmentTarget = null;
+    }
+  }
   let payload = null;
   try {
     payload = await buildAttachmentPayload(file);
@@ -11421,31 +11475,7 @@ async function handleAttachmentChange(event) {
       : `Uploading ${payload.optimized ? "optimized " : ""}file...`,
   );
   try {
-    if (target.type === "sales-content") {
-      const saved = await apiFetch(`/api/sales/content-items/${encodeURIComponent(target.id)}/attachments`, {
-        method: "POST",
-        body: JSON.stringify({
-          attachments: [{
-            name: payload.name,
-            type: payload.type,
-            size: payload.size,
-            dataUrl: payload.dataUrl,
-            context: target.type,
-            createdAt: new Date().toISOString(),
-          }],
-        }),
-      });
-      upsertSalesContent(saved, { skipOpsRender: true });
-      renderSalesContent();
-      setStatus(
-        targetStatus,
-        "success",
-        state.lang === "it" ? "Allegato contenuto caricato correttamente." : "Content attachment uploaded successfully.",
-      );
-      return;
-    }
-
-    const saved = await apiFetch(`/api/orders/${encodeURIComponent(target.id)}/attachments`, {
+    const saved = await apiFetch(`/api/orders/${encodeURIComponent(resolvedTarget.id)}/attachments`, {
       method: "POST",
       body: JSON.stringify({
         attachments: [{
@@ -11463,11 +11493,11 @@ async function handleAttachmentChange(event) {
     setStatus(
       targetStatus,
       "success",
-      target.type === "shipping"
+      resolvedTarget.type === "shipping"
         ? (state.lang === "it" ? "Foto logistica caricata correttamente." : "Shipping photo uploaded successfully.")
-        : target.type === "sample-ldv"
+        : resolvedTarget.type === "sample-ldv"
           ? (state.lang === "it" ? "LDV caricata correttamente." : "Waybill uploaded successfully.")
-        : target.type === "installation"
+        : resolvedTarget.type === "installation"
           ? (state.lang === "it" ? "Foto cantiere caricata correttamente." : "Site photo uploaded successfully.")
           : (state.lang === "it" ? "Allegato ordine caricato correttamente." : "Order attachment uploaded successfully."),
     );
@@ -11475,9 +11505,9 @@ async function handleAttachmentChange(event) {
     setStatus(
       targetStatus,
       "error",
-      target.type === "sales-content"
+      resolvedTarget.type === "sales-content"
         ? (state.lang === "it" ? "Impossibile caricare l'allegato contenuto." : "Unable to upload the content attachment.")
-        : target.type === "sample-ldv"
+        : resolvedTarget.type === "sample-ldv"
           ? (state.lang === "it" ? "Impossibile caricare la LDV." : "Unable to upload the waybill.")
         : (state.lang === "it" ? "Impossibile caricare l'allegato." : "Unable to upload the attachment."),
     );
