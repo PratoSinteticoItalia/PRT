@@ -64,6 +64,9 @@ const INSTALLATION_RULES = {
   glueKgPerSqm: 0.3,
   jointMetersPerSqm: 0.55,
   pinsPerLinearMeter: 2.2,
+  layoutCoverageMin: 0.9,
+  seamAlignmentToleranceM: 0.18,
+  seamOverlapMinM: 0.25,
 };
 const MANUAL_ROLL_WIDTH_M = 2;
 const MANUAL_ROLL_MAX_LENGTH_M = 25;
@@ -76,6 +79,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
   fuelPrice: 1.73,
   tollCost: 0,
   driveMinutes: 0,
+  roundTrip: true,
   routeNote: "",
   routeStatus: "",
   routeLoading: false,
@@ -321,6 +325,171 @@ function isRollInsidePolygon(roll, polygon) {
   return corners.every(point => pointInPolygon(point, polygon));
 }
 
+function normalizeRollGeometry(roll) {
+  const length = Math.max(0, Number(roll?.length) || 0);
+  const width = Math.max(0, Number(roll?.width) || MANUAL_ROLL_WIDTH_M);
+  if (length <= 0 || width <= 0) return null;
+  const angle = Number(roll?.angle) || 0;
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+  const vx = -uy;
+  const vy = ux;
+  return {
+    ...roll,
+    length,
+    width,
+    angle,
+    cx: Number(roll?.cx) || 0,
+    cy: Number(roll?.cy) || 0,
+    halfLength: length / 2,
+    halfWidth: width / 2,
+    ux,
+    uy,
+    vx,
+    vy,
+  };
+}
+
+function intervalOverlapLength(minA, maxA, minB, maxB) {
+  return Math.max(0, Math.min(maxA, maxB) - Math.max(minA, minB));
+}
+
+function estimateJointLengthBetweenRolls(rollA, rollB) {
+  const a = normalizeRollGeometry(rollA);
+  const b = normalizeRollGeometry(rollB);
+  if (!a || !b) return null;
+
+  const crossNorm = Math.abs(a.ux * b.uy - a.uy * b.ux);
+  if (crossNorm > 0.12) return null;
+
+  const dx = b.cx - a.cx;
+  const dy = b.cy - a.cy;
+  const along = dx * a.ux + dy * a.uy;
+  const across = dx * a.vx + dy * a.vy;
+  const lengthOverlap = intervalOverlapLength(
+    -a.halfLength,
+    a.halfLength,
+    along - b.halfLength,
+    along + b.halfLength,
+  );
+  const widthOverlap = intervalOverlapLength(
+    -a.halfWidth,
+    a.halfWidth,
+    across - b.halfWidth,
+    across + b.halfWidth,
+  );
+  const sideGap = Math.abs(Math.abs(across) - (a.halfWidth + b.halfWidth));
+  const endGap = Math.abs(Math.abs(along) - (a.halfLength + b.halfLength));
+
+  const sideJointMeters = sideGap <= INSTALLATION_RULES.seamAlignmentToleranceM
+    && lengthOverlap >= INSTALLATION_RULES.seamOverlapMinM
+    ? lengthOverlap
+    : 0;
+  const endJointMeters = endGap <= INSTALLATION_RULES.seamAlignmentToleranceM
+    && widthOverlap >= INSTALLATION_RULES.seamOverlapMinM
+    ? widthOverlap
+    : 0;
+  const totalJointMeters = sideJointMeters + endJointMeters;
+
+  if (totalJointMeters <= 0) return null;
+  return {
+    totalJointMeters,
+    sideJointMeters,
+    endJointMeters,
+  };
+}
+
+function estimateRollLayoutMetrics(rolls = []) {
+  const safeRolls = Array.isArray(rolls) ? rolls.filter(Boolean) : [];
+  let jointMeters = 0;
+  let sideJointMeters = 0;
+  let endJointMeters = 0;
+  let pairCount = 0;
+
+  for (let i = 0; i < safeRolls.length; i += 1) {
+    for (let j = i + 1; j < safeRolls.length; j += 1) {
+      const seam = estimateJointLengthBetweenRolls(safeRolls[i], safeRolls[j]);
+      if (!seam) continue;
+      jointMeters += seam.totalJointMeters;
+      sideJointMeters += seam.sideJointMeters;
+      endJointMeters += seam.endJointMeters;
+      pairCount += 1;
+    }
+  }
+
+  const coverageArea = safeRolls.reduce((sum, roll) => (
+    sum + (Math.max(0, Number(roll?.length) || 0) * Math.max(0, Number(roll?.width) || MANUAL_ROLL_WIDTH_M))
+  ), 0);
+
+  return {
+    jointMeters,
+    sideJointMeters,
+    endJointMeters,
+    pairCount,
+    coverageArea,
+    rollCount: safeRolls.length,
+  };
+}
+
+function buildAdjacentRollCandidate(referenceRoll, direction = 1) {
+  const source = normalizeRollGeometry(referenceRoll);
+  if (!source) return null;
+  const offset = source.width * direction;
+  return {
+    ...referenceRoll,
+    id: `roll-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    cx: source.cx + source.vx * offset,
+    cy: source.cy + source.vy * offset,
+  };
+}
+
+function scoreRollPlacementCandidate(candidateRoll, polygon = [], existingRolls = []) {
+  if (!candidateRoll) return -Infinity;
+  const corners = getRollCorners(candidateRoll);
+  const insideCorners = Array.isArray(polygon) && polygon.length >= 3
+    ? corners.reduce((sum, point) => sum + (pointInPolygon(point, polygon) ? 1 : 0), 0)
+    : 0;
+  const adjacencyScore = (existingRolls || []).reduce((sum, roll) => {
+    const seam = estimateJointLengthBetweenRolls(candidateRoll, roll);
+    return sum + (seam?.totalJointMeters || 0);
+  }, 0);
+  return insideCorners * 20 + adjacencyScore;
+}
+
+function getTravelSummary(travel = {}) {
+  const routeKm = Math.max(0, Number(travel?.kmTotal) || 0);
+  const fuelRate = Math.max(0, Number(travel?.fuelPer100Km) || 0);
+  const fuelPrice = Math.max(0, Number(travel?.fuelPrice) || 0);
+  const baseTollCost = Math.max(0, Number(travel?.tollCost) || 0);
+  const baseDriveMinutes = Math.max(0, Number(travel?.driveMinutes) || 0);
+  const isRoundTrip = travel?.roundTrip !== false;
+  const multiplier = isRoundTrip ? 2 : 1;
+  const totalKm = routeKm * multiplier;
+  const driveMinutes = baseDriveMinutes * multiplier;
+  const tollCost = baseTollCost * multiplier;
+  const liters = (totalKm / 100) * fuelRate;
+  const fuelCost = liters * fuelPrice;
+  const totalCost = fuelCost + tollCost;
+
+  return {
+    routeKm,
+    totalKm,
+    fuelRate,
+    fuelPrice,
+    baseTollCost,
+    tollCost,
+    baseDriveMinutes,
+    driveMinutes,
+    liters,
+    fuelCost,
+    totalCost,
+    multiplier,
+    isRoundTrip,
+    modeLabel: isRoundTrip ? "Andata e ritorno" : "Solo andata",
+    modeShortLabel: isRoundTrip ? "A/R" : "A",
+  };
+}
+
 function createManualRollFromSegment(start, end) {
   const dx = Number(end?.x || 0) - Number(start?.x || 0);
   const dy = Number(end?.y || 0) - Number(start?.y || 0);
@@ -511,19 +680,37 @@ function registerOccupiedCircle(occupied = [], centerX = 0, centerY = 0, radius 
   });
 }
 
-function estimateInstallationNeeds(area, perimeter) {
+function estimateInstallationNeeds(area, perimeter, manualRolls = []) {
   const safeArea = Math.max(0, Number(area) || 0);
   const safePerimeter = Math.max(0, Number(perimeter) || 0);
   const geo = safeArea * INSTALLATION_RULES.geoCoverageFactor;
-  const glueKg = safeArea * INSTALLATION_RULES.glueKgPerSqm;
-  const jointMeters = safeArea * INSTALLATION_RULES.jointMetersPerSqm;
+  const layoutMetrics = estimateRollLayoutMetrics(manualRolls);
+  const layoutCoverageRatio = safeArea > 0 ? layoutMetrics.coverageArea / safeArea : 0;
+  const useLayoutDrivenPose = layoutMetrics.rollCount > 0 && layoutCoverageRatio >= INSTALLATION_RULES.layoutCoverageMin;
+  const fallbackGlueKg = safeArea * INSTALLATION_RULES.glueKgPerSqm;
+  const fallbackJointMeters = safeArea * INSTALLATION_RULES.jointMetersPerSqm;
+  const jointMeters = useLayoutDrivenPose ? layoutMetrics.jointMeters : fallbackJointMeters;
+  const tapeRolls = jointMeters > 0 ? Math.ceil(jointMeters / TAPE_ROLL_M) : 0;
+  const glueBuckets = useLayoutDrivenPose
+    ? tapeRolls
+    : (fallbackGlueKg > 0 ? Math.max(1, Math.ceil(fallbackGlueKg / GLUE_BUCKET_KG)) : 0);
+  const glueKg = useLayoutDrivenPose ? glueBuckets * GLUE_BUCKET_KG : fallbackGlueKg;
   return {
     geo,
     glueKg,
-    glueBuckets: glueKg > 0 ? Math.max(1, Math.ceil(glueKg / GLUE_BUCKET_KG)) : 0,
+    glueBuckets,
     jointMeters,
-    tapeRolls: Math.ceil(jointMeters / TAPE_ROLL_M),
+    tapeRolls,
     pins: Math.ceil(safePerimeter * INSTALLATION_RULES.pinsPerLinearMeter),
+    calcMode: useLayoutDrivenPose ? "layout" : "area",
+    layoutCoverageRatio,
+    layoutCoverageArea: layoutMetrics.coverageArea,
+    layoutJointMeters: layoutMetrics.jointMeters,
+    sideJointMeters: layoutMetrics.sideJointMeters,
+    endJointMeters: layoutMetrics.endJointMeters,
+    jointPairCount: layoutMetrics.pairCount,
+    fallbackGlueKg,
+    fallbackJointMeters,
   };
 }
 
@@ -695,6 +882,33 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
   const clearRolls = () => {
     setRolls([]);
     setCanvasMessage("Layout rotoli azzerato.");
+  };
+
+  const duplicateLastRoll = () => {
+    if (!closed || !rolls.length) return;
+    const lastRoll = rolls[rolls.length - 1];
+    const candidates = [
+      buildAdjacentRollCandidate(lastRoll, 1),
+      buildAdjacentRollCandidate(lastRoll, -1),
+    ].filter(Boolean);
+    if (!candidates.length) {
+      setCanvasMessage("Non riesco a duplicare questo rotolo.");
+      return;
+    }
+    const bestCandidate = candidates
+      .map(candidate => ({
+        candidate,
+        score: scoreRollPlacementCandidate(candidate, points, rolls),
+      }))
+      .sort((left, right) => right.score - left.score)[0]?.candidate;
+    if (!bestCandidate) {
+      setCanvasMessage("Non trovo una replica parallela utile.");
+      return;
+    }
+    setRolls(prev => [...prev, bestCandidate]);
+    setDrawMode("roll");
+    setRollStart(null);
+    setCanvasMessage(`Rotolo duplicato in parallelo: 2.00m × ${fmt(bestCandidate.length, 2)}m.`);
   };
 
   const undoLastPoint = () => {
@@ -941,6 +1155,17 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
           </button>
           <button
             type="button"
+            onClick={duplicateLastRoll}
+            disabled={!closed || !rolls.length}
+            style={{
+              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+              cursor: closed && rolls.length ? "pointer" : "not-allowed", color: closed && rolls.length ? B.text : B.textMuted, opacity: closed && rolls.length ? 1 : 0.55,
+            }}
+          >
+            Duplica in parallelo
+          </button>
+          <button
+            type="button"
             onClick={clearRolls}
             disabled={!rolls.length}
             style={{
@@ -1019,7 +1244,7 @@ function Header() {
         <div style={{ color: B.accent, fontSize: 11, fontWeight: 500, letterSpacing: "0.5px", textTransform: "uppercase" }}>Prato Sintetico Italia - Vertex SRLS</div>
       </div>
       <div style={{ flex: 1 }} />
-      <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>v3.0</div>
+      <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>v3.4</div>
     </div>
   );
 }
@@ -1098,13 +1323,7 @@ function ProjectHeader({ info, setInfo }) {
 
 function TravelPlanner({ travel, setTravel }) {
   const upd = (key, value) => setTravel(prev => ({ ...prev, [key]: value }));
-  const km = Math.max(0, Number(travel.kmTotal) || 0);
-  const fuelRate = Math.max(0, Number(travel.fuelPer100Km) || 0);
-  const fuelPrice = Math.max(0, Number(travel.fuelPrice) || 0);
-  const tollCost = Math.max(0, Number(travel.tollCost) || 0);
-  const liters = (km / 100) * fuelRate;
-  const fuelCost = liters * fuelPrice;
-  const tripCost = fuelCost + tollCost;
+  const travelSummary = getTravelSummary(travel);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1118,10 +1337,41 @@ function TravelPlanner({ travel, setTravel }) {
             style={fieldInp}
           />
         </div>
-        <DimInput label="Km totali" value={travel.kmTotal} onChange={v => upd("kmTotal", v)} unit="km" />
+        <DimInput label="Km tratta" value={travel.kmTotal} onChange={v => upd("kmTotal", v)} unit="km" />
         <DimInput label="Consumo medio" value={travel.fuelPer100Km} onChange={v => upd("fuelPer100Km", v)} unit="l/100" />
         <DimInput label="Prezzo carburante" value={travel.fuelPrice} onChange={v => upd("fuelPrice", v)} unit="€/l" />
-        <DimInput label="Caselli" value={travel.tollCost} onChange={v => upd("tollCost", v)} unit="€" />
+        <DimInput label="Caselli tratta" value={travel.tollCost} onChange={v => upd("tollCost", v)} unit="€" />
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: B.dark }}>Modalità viaggio</span>
+        {[
+          { value: false, label: "Solo andata" },
+          { value: true, label: "Andata + ritorno" },
+        ].map((option) => {
+          const active = travelSummary.isRoundTrip === option.value;
+          return (
+            <button
+              key={option.label}
+              type="button"
+              onClick={() => upd("roundTrip", option.value)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: active ? "2px solid " + B.primary : "1px solid " + B.border,
+                background: active ? B.light : B.white,
+                color: active ? B.primary : B.text,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+        <span style={{ fontSize: 11, color: B.textMuted }}>
+          Il navigatore calcola la singola tratta e il planner applica il moltiplicatore scelto.
+        </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "10px 14px", borderRadius: 10, background: "#f7f7f2", border: "1px solid " + B.borderLight }}>
         <div style={{ minWidth: 0 }}>
@@ -1132,17 +1382,17 @@ function TravelPlanner({ travel, setTravel }) {
             {travel.routeStatus || "Inserisci sede di partenza e indirizzo cantiere: km, tempo, carburante e stima caselli si aggiornano in automatico."}
           </div>
         </div>
-        {travel.driveMinutes > 0 ? (
+        {travelSummary.baseDriveMinutes > 0 ? (
           <div style={{ padding: "8px 12px", borderRadius: 999, background: B.infoBg, border: "1px solid #bbdefb", color: B.info, fontSize: 12, fontWeight: 700 }}>
-            Tempo stimato: {Math.round(travel.driveMinutes)} min
+            Tempo stimato: {Math.round(travelSummary.driveMinutes)} min {travelSummary.modeShortLabel}
           </div>
         ) : null}
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <MetricCard label="Litri stimati" value={`${fmt(liters, 1)} l`} accent />
-        <MetricCard label="Costo carburante" value={fmtE(fuelCost)} />
-        <MetricCard label="Caselli" value={fmtE(tollCost)} sub="Stima modificabile" />
-        <MetricCard label="Costo trasferta" value={fmtE(tripCost)} warning={tripCost > 0} sub={travel.departureBase ? `Partenza: ${travel.departureBase}` : "Compila la sede di partenza"} />
+        <MetricCard label="Percorrenza" value={`${fmt(travelSummary.totalKm, 1)} km`} accent sub={travelSummary.modeLabel} />
+        <MetricCard label="Litri stimati" value={`${fmt(travelSummary.liters, 1)} l`} />
+        <MetricCard label="Caselli" value={fmtE(travelSummary.tollCost)} sub={`${fmtE(travelSummary.baseTollCost)} per tratta`} />
+        <MetricCard label="Costo trasferta" value={fmtE(travelSummary.totalCost)} warning={travelSummary.totalCost > 0} sub={travel.departureBase ? `${travel.departureBase} · ${travelSummary.modeLabel}` : "Compila la sede di partenza"} />
       </div>
     </div>
   );
@@ -1330,19 +1580,38 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
   );
 }
 
-function InstallationNeedsPanel({ area, perimeter, borderType, borderMeters }) {
+function InstallationNeedsPanel({ area, perimeter, borderType, borderMeters, manualRolls }) {
   if (area <= 0) return null;
   const border = BORDER_TYPES.find(item => item.id === borderType);
-  const needs = estimateInstallationNeeds(area, perimeter);
+  const needs = estimateInstallationNeeds(area, perimeter, manualRolls);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-      <MetricCard label="TNT da ordinare" value={`${fmt(needs.geo)} m²`} />
-      <MetricCard label="Colla bicomponente" value={`${needs.glueBuckets} secchi`} sub={`${fmt(needs.glueKg, 1)} kg stimati`} />
-      <MetricCard label="Banda giunzione" value={`${needs.tapeRolls} rotoli`} sub={`${fmt(needs.jointMeters, 1)} m stimati`} />
-      <MetricCard label="Picchetti a U" value={`${needs.pins} pz`} />
-      {borderType !== "nessuna" && borderMeters > 0 ? (
-        <MetricCard label={border?.name || "Bordura"} value={`${fmt(borderMeters, 1)} m`} sub="Lati selezionati" accent />
-      ) : null}
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+        <MetricCard label="TNT da ordinare" value={`${fmt(needs.geo)} m²`} />
+        <MetricCard
+          label="Colla bicomponente"
+          value={`${needs.glueBuckets} secchi`}
+          sub={needs.calcMode === "layout"
+            ? `${fmt(needs.glueKg, 1)} kg · 1 secchio per ogni rotolo banda`
+            : `${fmt(needs.glueKg, 1)} kg stimati (${fmt(INSTALLATION_RULES.glueKgPerSqm, 1)} kg/m²)`}
+        />
+        <MetricCard
+          label="Banda giunzione"
+          value={`${needs.tapeRolls} rotoli`}
+          sub={needs.calcMode === "layout"
+            ? `${fmt(needs.jointMeters, 1)} m reali di giunzione`
+            : `${fmt(needs.jointMeters, 1)} m stimati da superficie`}
+        />
+        <MetricCard label="Picchetti a U" value={`${needs.pins} pz`} />
+        {borderType !== "nessuna" && borderMeters > 0 ? (
+          <MetricCard label={border?.name || "Bordura"} value={`${fmt(borderMeters, 1)} m`} sub="Lati selezionati" accent />
+        ) : null}
+      </div>
+      <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid " + B.borderLight, background: needs.calcMode === "layout" ? B.infoBg : B.cream, fontSize: 12, color: needs.calcMode === "layout" ? B.info : B.textMuted, lineHeight: 1.45 }}>
+        {needs.calcMode === "layout"
+          ? `Calcolo posa basato sul layout reale: ${fmt(needs.layoutCoverageArea, 1)} m² coperti dai rotoli (${fmt(needs.layoutCoverageRatio * 100, 0)}% dell'area), ${fmt(needs.sideJointMeters, 1)} m di giunte laterali${needs.endJointMeters > 0 ? ` + ${fmt(needs.endJointMeters, 1)} m di testate` : ""}.`
+          : `Stima rapida attiva finché il layout rotoli non copre almeno il ${fmt(INSTALLATION_RULES.layoutCoverageMin * 100, 0)}% dell'area. Al momento risultano ${fmt(needs.layoutCoverageArea, 1)} m² tracciati: banda e colla restano sul fallback da m².`}
+      </div>
     </div>
   );
 }
@@ -1397,7 +1666,7 @@ function DecoSection({ decoItems, setDecoItems }) {
 function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, reportVariant = "technical" }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
-  const installNeeds = estimateInstallationNeeds(area, perimeter);
+  const installNeeds = estimateInstallationNeeds(area, perimeter, manualRolls);
   const scavoM3 = (area * substrate.scavoCm) / 100;
   const drenateM3 = (area * substrate.drenateCm) / 100;
   const drenateTon = (drenateM3 * 1600) / 1000;
@@ -1428,13 +1697,8 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
     return item ? { name: item.name, qty: qty + " " + item.unit, cost: Number(qty) * Number(item.pricePerUnit || 0) } : null;
   }).filter(Boolean);
   const decoCost = decoLines.reduce((sum, item) => sum + Number(item.cost || 0), 0);
-  const travelKm = Math.max(0, Number(travel?.kmTotal) || 0);
-  const travelFuelRate = Math.max(0, Number(travel?.fuelPer100Km) || 0);
-  const travelFuelPrice = Math.max(0, Number(travel?.fuelPrice) || 0);
-  const travelTollCost = Math.max(0, Number(travel?.tollCost) || 0);
-  const travelLiters = (travelKm / 100) * travelFuelRate;
-  const travelFuelCost = travelLiters * travelFuelPrice;
-  const travelCost = travelFuelCost + travelTollCost;
+  const travelSummary = getTravelSummary(travel);
+  const travelCost = travelSummary.totalCost;
   const rollCount = Array.isArray(manualRolls) ? manualRolls.length : 0;
   const rollLinearMeters = Array.isArray(manualRolls)
     ? manualRolls.reduce((sum, roll) => sum + (Number(roll.length) || 0), 0)
@@ -1469,8 +1733,20 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
       showCosts: canViewMaterialCosts,
       items: [
         { name: "Tessuto non tessuto", qty: fmt(installNeeds.geo) + " m\u00B2", cost: installNeeds.geo * MATERIAL_COSTS.geoPerSqm },
-        { name: "Colla bicomponente", qty: `${fmt(installNeeds.glueKg, 1)} kg${installNeeds.glueBuckets > 0 ? ` · ${installNeeds.glueBuckets} secch${installNeeds.glueBuckets > 1 ? "i" : "io"} da ${GLUE_BUCKET_KG} kg` : ""}`, cost: installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket },
-        installNeeds.jointMeters > 0 ? { name: "Nastro giunzione", qty: `${Math.round(installNeeds.jointMeters)} m${installNeeds.tapeRolls > 0 ? ` · ${installNeeds.tapeRolls} rotol${installNeeds.tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`, cost: installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll } : null,
+        {
+          name: "Colla bicomponente",
+          qty: installNeeds.calcMode === "layout"
+            ? `${installNeeds.glueBuckets} secch${installNeeds.glueBuckets === 1 ? "io" : "i"} da ${GLUE_BUCKET_KG} kg · 1 secchio per rotolo banda`
+            : `${fmt(installNeeds.glueKg, 1)} kg${installNeeds.glueBuckets > 0 ? ` · ${installNeeds.glueBuckets} secch${installNeeds.glueBuckets > 1 ? "i" : "io"} da ${GLUE_BUCKET_KG} kg` : ""} (${fmt(INSTALLATION_RULES.glueKgPerSqm, 1)} kg/m²)`,
+          cost: installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket,
+        },
+        installNeeds.jointMeters > 0 ? {
+          name: "Nastro giunzione",
+          qty: installNeeds.calcMode === "layout"
+            ? `${fmt(installNeeds.jointMeters, 1)} m reali${installNeeds.tapeRolls > 0 ? ` · ${installNeeds.tapeRolls} rotol${installNeeds.tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`
+            : `${Math.round(installNeeds.jointMeters)} m stimati${installNeeds.tapeRolls > 0 ? ` · ${installNeeds.tapeRolls} rotol${installNeeds.tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`,
+          cost: installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll,
+        } : null,
         { name: "Chiodi a U", qty: installNeeds.pins + " pz", cost: installNeeds.pins * MATERIAL_COSTS.pinPerUnit },
         borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m", cost: borderMeters * Number(border?.price || 0) } : null,
       ].filter(Boolean),
@@ -1497,7 +1773,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
       sub: decoCost,
     });
   }
-  if (travelKm > 0 || travelTollCost > 0 || travel?.departureBase) {
+  if (travelSummary.totalKm > 0 || travelSummary.tollCost > 0 || travel?.departureBase) {
     sections.push({
       key: "travel",
       cat: "TRASFERTA E LOGISTICA",
@@ -1505,9 +1781,11 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
       showCosts: !isClientVariant,
       items: [
         { name: "Sede di partenza", qty: travel?.departureBase || "Da definire", cost: null },
-        { name: "Percorrenza totale", qty: `${fmt(travelKm, 1)} km`, cost: null },
-        { name: "Carburante stimato", qty: `${fmt(travelLiters, 1)} l`, cost: travelFuelCost },
-        { name: "Caselli", qty: travelTollCost > 0 ? fmtE(travelTollCost) : "—", cost: travelTollCost },
+        { name: "Modalità viaggio", qty: travelSummary.modeLabel, cost: null },
+        { name: "Percorrenza totale", qty: `${fmt(travelSummary.totalKm, 1)} km`, cost: null },
+        { name: "Tempo guida stimato", qty: travelSummary.driveMinutes > 0 ? `${Math.round(travelSummary.driveMinutes)} min` : "—", cost: null },
+        { name: "Carburante stimato", qty: `${fmt(travelSummary.liters, 1)} l`, cost: travelSummary.fuelCost },
+        { name: "Caselli", qty: travelSummary.tollCost > 0 ? fmtE(travelSummary.tollCost) : "—", cost: travelSummary.tollCost },
       ],
       sub: travelCost,
     });
@@ -1529,6 +1807,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
           {projectInfo.date && <span><strong>Data:</strong> {projectInfo.date}</span>}
           {projectInfo.notes && <span><strong>Note:</strong> {projectInfo.notes}</span>}
           {!isClientVariant && travel?.departureBase && <span><strong>Partenza:</strong> {travel.departureBase}</span>}
+          {!isClientVariant && travelSummary.totalKm > 0 && <span><strong>Viaggio:</strong> {travelSummary.modeLabel}</span>}
           {!isClientVariant && <span><strong>Listino regionale:</strong> {pricingRegionLabel}</span>}
         </div>
       )}
@@ -1562,10 +1841,13 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
                 Scarto stimato: <strong style={{ color: B.dark }}>{fmt(rollWasteArea, 1)} m²</strong>
                 {outsideRollCount > 0 ? ` · ${outsideRollCount} rotol${outsideRollCount > 1 ? "i" : "o"} oltre bordo` : ""}
               </div>
+              <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>
+                Giunzioni: <strong style={{ color: B.dark }}>{fmt(installNeeds.jointMeters, 1)} m</strong> · {installNeeds.calcMode === "layout" ? "layout reale" : "stima provvisoria"}
+              </div>
             </div>
           </div>
           <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
-            Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm{!isClientVariant ? ` · Listino ${pricingRegionLabel}: stabilizzato ${fmt(stabilizedPerTon, 1)} €/t, sabbia ${fmt(sandPerTon, 1)} €/t.` : "."}
+            Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm{!isClientVariant ? ` · Posa ${installNeeds.calcMode === "layout" ? "calcolata da layout rotoli" : `in fallback da m² finché il layout non copre il ${fmt(INSTALLATION_RULES.layoutCoverageMin * 100, 0)}% dell'area`}` : "."}{!isClientVariant ? ` · Listino ${pricingRegionLabel}: stabilizzato ${fmt(stabilizedPerTon, 1)} €/t, sabbia ${fmt(sandPerTon, 1)} €/t.` : ""}
           </div>
         </div>
       </div>
@@ -1719,7 +2001,7 @@ function GardenPlanner() {
           tollCost: Number(tollEstimate.toFixed(2)),
           routeLoading: false,
           routeNote: `${originPoint.label} → ${destinationPoint.label}`,
-          routeStatus: `Percorso aggiornato automaticamente. Regione cantiere: ${destinationPricing.region}. Caselli stimati su tariffa media autostradale classe B.`,
+          routeStatus: `Percorso singola tratta aggiornato automaticamente. Regione cantiere: ${destinationPricing.region}. Caselli stimati su tariffa media autostradale classe B.`,
         }));
       } catch (error) {
         if (cancelled) return;
@@ -1942,7 +2224,7 @@ function GardenPlanner() {
               </div>
             </div>
           )}
-          <InstallationNeedsPanel area={area} perimeter={perimeter} borderType={borderType} borderMeters={selectedBorderMeters} />
+          <InstallationNeedsPanel area={area} perimeter={perimeter} borderType={borderType} borderMeters={selectedBorderMeters} manualRolls={manualRolls} />
         </div>
 
         {/* STEP 4: DECORATIVE */}
@@ -2004,7 +2286,7 @@ function GardenPlanner() {
         </div>
 
         <div style={{ textAlign: "center", padding: "8px 0 24px", fontSize: 11, color: B.textMuted }}>
-          Garden Planner v3.2 - Prato Sintetico Italia / VERTEX SRLS - Strumento interno
+          Garden Planner v3.4 - Prato Sintetico Italia / VERTEX SRLS - Strumento interno
         </div>
       </div>
     </div>
