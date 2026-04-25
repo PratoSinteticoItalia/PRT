@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260423-sales-content-performance-52";
+const APP_SHELL_VERSION = "20260425-stability-garden-53";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11,6 +11,7 @@ const SESSION_EVENTS_RECONNECT_BASE_MS = 1200;
 const SESSION_EVENTS_RECONNECT_MAX_MS = 20_000;
 const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 900;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
+const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 60;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
@@ -786,6 +787,8 @@ let sessionEventsRefreshTimer = 0;
 let sessionEventsLastRefreshAt = 0;
 let shopifyAutoSyncTimer = 0;
 let shopifyAutoSyncInFlight = false;
+let salesRequestAutoSyncTimer = 0;
+let salesRequestSyncInFlight = false;
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
@@ -1198,6 +1201,10 @@ function setSubheading(selector, text) {
   if (node) node.textContent = text;
 }
 
+function waitMs(ms = 0) {
+  return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
 function apiFetch(path, options = {}) {
   return fetch(path, {
     headers: {
@@ -1207,8 +1214,19 @@ function apiFetch(path, options = {}) {
     ...options,
   }).then(async (response) => {
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || data.message || "request_failed");
+    if (!response.ok) {
+      const error = new Error(data.error || data.message || "request_failed");
+      error.status = Number(response.status || 0);
+      error.payload = data;
+      throw error;
+    }
     return data;
+  }).catch((error) => {
+    if (typeof error?.status === "number") throw error;
+    const networkError = new Error("network_error");
+    networkError.status = 0;
+    networkError.cause = error;
+    throw networkError;
   });
 }
 
@@ -1441,7 +1459,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260414-garden-materials-02&shell=20260414-garden-materials-02",
+    href: "./garden-planner.html?v=20260425-stability-garden-53&shell=20260425-stability-garden-53",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -3227,8 +3245,10 @@ async function saveSalesRequestSourceConfig({ clearServiceAccount = false } = {}
   }
 }
 
-async function syncSalesRequestSource() {
-  clearStatus(ui.salesRequestSourceStatus);
+async function syncSalesRequestSource({ auto = false, silent = false } = {}) {
+  if (salesRequestSyncInFlight) return false;
+  salesRequestSyncInFlight = true;
+  if (!silent) clearStatus(ui.salesRequestSourceStatus);
   try {
     const payload = await apiFetch("/api/sales/request-source/sync", { method: "POST" });
     state.salesRequests = Array.isArray(payload.requests) ? payload.requests.map(normalizeSalesRequestRecord) : [];
@@ -3238,13 +3258,16 @@ async function syncSalesRequestSource() {
     renderOps();
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    setStatus(
-      ui.salesRequestSourceStatus,
-      "success",
-      state.lang === "it"
-        ? `${Number(payload.importedCount || 0)} richieste aggiornate da Google Sheets.`
-        : `${Number(payload.importedCount || 0)} requests updated from Google Sheets.`,
-    );
+    if (!silent) {
+      setStatus(
+        ui.salesRequestSourceStatus,
+        "success",
+        state.lang === "it"
+          ? `${Number(payload.importedCount || 0)} richieste aggiornate da Google Sheets.`
+          : `${Number(payload.importedCount || 0)} requests updated from Google Sheets.`,
+      );
+    }
+    return true;
   } catch (error) {
     const message = error?.message === "missing_service_account"
       ? (state.lang === "it" ? "Carica prima il service account Google." : "Upload the Google service account first.")
@@ -3253,7 +3276,20 @@ async function syncSalesRequestSource() {
         : (error?.message && !["sales_request_source_sync_failed", "request_failed"].includes(error.message)
             ? error.message
             : (state.lang === "it" ? "Impossibile aggiornare le richieste dal foglio Google." : "Unable to update requests from Google Sheets."));
-    setStatus(ui.salesRequestSourceStatus, "error", message);
+    if (auto) {
+      setStatus(
+        ui.salesRequestSourceStatus,
+        "error",
+        state.lang === "it"
+          ? `Auto-refresh richieste fallito. ${message}`
+          : `Requests auto-refresh failed. ${message}`,
+      );
+    } else {
+      setStatus(ui.salesRequestSourceStatus, "error", message);
+    }
+    return false;
+  } finally {
+    salesRequestSyncInFlight = false;
   }
 }
 
@@ -6951,7 +6987,7 @@ function renderSalesContentAttachments(items = [], contentId = "") {
         aria-label="${state.lang === "it" ? "Rimuovi allegato" : "Remove attachment"}"
       >×</button>
       ${isImageAttachment(item) && (item.url || item.dataUrl)
-        ? `<img src="${escapeHtml(item.url || item.dataUrl)}" alt="${escapeHtml(item.name || "Attachment")}" loading="lazy" />`
+        ? `<img src="${escapeHtml(item.url || item.dataUrl)}" alt="${escapeHtml(item.name || "Attachment")}" loading="lazy" decoding="async" fetchpriority="low" />`
         : `<div class="attachment-file-badge">${escapeHtml(String(item.type || "file").split("/").pop()?.toUpperCase() || "FILE")}</div>`}
       <strong>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.name || "Attachment")}</a>` : escapeHtml(item.name || "Attachment")}</strong>
       <div class="attachment-copy">${escapeHtml(getAttachmentContextLabel("sales-content"))}</div>
@@ -7368,7 +7404,7 @@ async function saveSalesContent(event) {
   }
 }
 
-async function ensureSelectedSalesContentForAttachment() {
+async function ensureSelectedSalesContentForAttachment({ preparingUpload = false } = {}) {
   const selected = getSelectedSalesContent();
   if (selected?.id) return selected;
   if (!ui.salesContentForm) return null;
@@ -7384,13 +7420,9 @@ async function ensureSelectedSalesContentForAttachment() {
   });
   upsertSalesContent(saved, { skipOpsRender: true });
   renderSalesContent();
-  setStatus(
-    ui.salesContentStatus,
-    "success",
-    state.lang === "it"
-      ? "Contenuto creato automaticamente. Ora seleziona il file da allegare."
-      : "Content auto-created. Now choose the file to attach.",
-  );
+  setStatus(ui.salesContentStatus, "success", state.lang === "it"
+    ? (preparingUpload ? "Contenuto creato e pronto per il caricamento allegati." : "Contenuto creato automaticamente.")
+    : (preparingUpload ? "Content created and ready for attachment upload." : "Content auto-created."));
   return getSelectedSalesContent();
 }
 
@@ -9624,6 +9656,13 @@ function stopShopifyAutoSync() {
   shopifyAutoSyncInFlight = false;
 }
 
+function stopSalesRequestAutoSync() {
+  if (salesRequestAutoSyncTimer) {
+    window.clearInterval(salesRequestAutoSyncTimer);
+    salesRequestAutoSyncTimer = 0;
+  }
+}
+
 async function readSessionRevision() {
   const payload = await apiFetch(SESSION_REVISION_ENDPOINT);
   return {
@@ -9727,6 +9766,17 @@ function canAutoSyncShopify() {
   );
 }
 
+function canAutoRefreshSalesRequests() {
+  const config = normalizeSalesRequestSourceConfig(state.salesRequestSourceConfig || {});
+  return Boolean(
+    state.currentUser
+    && state.currentUser.role === "office"
+    && config.hasServiceAccount
+    && config.spreadsheetInput
+    && navigator.onLine !== false,
+  );
+}
+
 function startShopifyAutoSync() {
   stopShopifyAutoSync();
   if (!state.currentUser) return;
@@ -9736,31 +9786,63 @@ function startShopifyAutoSync() {
   }, SHOPIFY_AUTO_SYNC_INTERVAL_MS);
 }
 
+function startSalesRequestAutoSync() {
+  stopSalesRequestAutoSync();
+  if (!state.currentUser || state.currentUser.role !== "office") return;
+  salesRequestAutoSyncTimer = window.setInterval(() => {
+    if (!canAutoRefreshSalesRequests()) return;
+    void syncSalesRequestSource({ auto: true, silent: true });
+  }, SALES_REQUEST_AUTO_SYNC_INTERVAL_MS);
+}
+
 async function loadSession() {
   setShellPending(true);
-  try {
-    const session = await apiFetch("/api/session");
-    const hasSession = applyFetchedSessionSnapshot(session, {
-      renderMode: "none",
-      enforcePasswordResetView: true,
-    });
-    if (!hasSession) {
-      showAuth();
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const session = await apiFetch("/api/session");
+      const hasSession = applyFetchedSessionSnapshot(session, {
+        renderMode: "none",
+        enforcePasswordResetView: true,
+      });
+      if (!hasSession) {
+        showAuth();
+        return;
+      }
+      showApp();
       return;
+    } catch (error) {
+      lastError = error;
+      if (error?.status === 401 || error?.message === "unauthorized") {
+        resetSessionToAuthView();
+        return;
+      }
+      if (attempt < 1) {
+        await waitMs(280 * (attempt + 1));
+        continue;
+      }
     }
-    showApp();
-  } catch (error) {
-    console.warn("session_bootstrap_failed", error);
-    resetSessionToAuthView();
-  } finally {
-    if (!state.currentUser) setShellPending(false);
   }
+  console.warn("session_bootstrap_failed", lastError);
+  if (state.currentUser) {
+    showApp();
+    return;
+  }
+  showAuth();
+  if (ui.authError) {
+    ui.authError.textContent = state.lang === "it"
+      ? "Connessione instabile o server occupato. Riprova tra qualche secondo."
+      : "Connection is unstable or the server is busy. Try again in a few seconds.";
+    ui.authError.classList.remove("hidden");
+  }
+  if (!state.currentUser) setShellPending(false);
 }
 
 function showAuth() {
   stopSessionKeepalive();
   stopSessionEvents();
   stopShopifyAutoSync();
+  stopSalesRequestAutoSync();
   setShellPending(false);
   state.mobileMenuOpen = false;
   updateMobileMenu();
@@ -9772,6 +9854,7 @@ function showApp() {
   startSessionKeepalive();
   startSessionEvents();
   startShopifyAutoSync();
+  startSalesRequestAutoSync();
   setShellPending(false);
   state.mobileMenuOpen = false;
   updateMobileMenu();
@@ -11352,8 +11435,32 @@ async function openAttachmentPicker(type) {
       : "image/*,.pdf";
   }
   if (type === "sales-content") {
-    const content = getSelectedSalesContent();
-    state.pendingAttachmentTarget = { type, id: content?.id || "" };
+    let content = getSelectedSalesContent();
+    if (!content?.id) {
+      clearStatus(ui.salesContentStatus);
+      setStatus(
+        ui.salesContentStatus,
+        "success",
+        state.lang === "it" ? "Preparazione contenuto in corso..." : "Preparing content...",
+      );
+      try {
+        content = await ensureSelectedSalesContentForAttachment({ preparingUpload: true });
+      } catch {
+        content = null;
+      }
+      if (!content?.id) {
+        setStatus(
+          ui.salesContentStatus,
+          "error",
+          state.lang === "it"
+            ? "Impossibile preparare il contenuto per l'allegato."
+            : "Unable to prepare the content for the attachment.",
+        );
+        state.pendingAttachmentTarget = null;
+        return;
+      }
+    }
+    state.pendingAttachmentTarget = { type, id: content.id };
     ui.attachmentInput.value = "";
     ui.attachmentInput.click();
     return;
@@ -11412,23 +11519,26 @@ async function handleAttachmentChange(event) {
   );
   if (resolvedTarget.type === "sales-content") {
     try {
+      const uploadPayload = await buildBinaryUploadPayload(file);
       setStatus(
         targetStatus,
         "success",
-        state.lang === "it" ? "Caricamento diretto in corso..." : "Direct upload in progress...",
+        state.lang === "it"
+          ? `Caricamento diretto ${uploadPayload.optimized ? "ottimizzato " : ""}in corso...`
+          : `Direct ${uploadPayload.optimized ? "optimized " : ""}upload in progress...`,
       );
       const query = new URLSearchParams({
-        name: file.name || "attachment",
-        type: file.type || "application/octet-stream",
-        size: String(Number(file.size || 0)),
+        name: uploadPayload.name || file.name || "attachment",
+        type: uploadPayload.type || file.type || "application/octet-stream",
+        size: String(Number(uploadPayload.size || file.size || 0)),
         context: "sales-content",
       });
       const response = await fetch(`/api/sales/content-items/${encodeURIComponent(resolvedTarget.id)}/attachments/upload?${query.toString()}`, {
         method: "POST",
         headers: {
-          "Content-Type": file.type || "application/octet-stream",
+          "Content-Type": uploadPayload.type || file.type || "application/octet-stream",
         },
-        body: file,
+        body: uploadPayload.blob || file,
       });
       const saved = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -11605,6 +11715,48 @@ async function optimizeImageAttachment(file) {
     type: outputType,
     name: renameFileExtension(file.name, outputType),
     optimized: true,
+  };
+}
+
+function dataUrlToBlob(dataUrl = "") {
+  const match = String(dataUrl || "").match(/^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,(.+)$/i);
+  if (!match) return null;
+  const mime = String(match[1] || "application/octet-stream").trim() || "application/octet-stream";
+  const binary = window.atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+async function buildBinaryUploadPayload(file) {
+  const mime = String(file?.type || "").toLowerCase();
+  if (mime.startsWith("image/")) {
+    try {
+      const optimized = await optimizeImageAttachment(file);
+      if (optimized.optimized && optimized.dataUrl) {
+        const blob = dataUrlToBlob(optimized.dataUrl);
+        if (blob?.size) {
+          return {
+            blob,
+            size: blob.size,
+            type: optimized.type || file.type || "application/octet-stream",
+            name: optimized.name || file.name || "attachment",
+            optimized: true,
+          };
+        }
+      }
+    } catch {
+      // fallback to original file upload
+    }
+  }
+  return {
+    blob: file,
+    size: Number(file?.size || 0),
+    type: file?.type || "application/octet-stream",
+    name: file?.name || "attachment",
+    optimized: false,
   };
 }
 
@@ -12374,12 +12526,18 @@ document.addEventListener("visibilitychange", () => {
   if (canAutoSyncShopify()) {
     void runShopifySync({ silent: true });
   }
+  if (canAutoRefreshSalesRequests()) {
+    void syncSalesRequestSource({ auto: true, silent: true });
+  }
 });
 window.addEventListener("focus", () => {
   if (!state.currentUser) return;
   void keepSessionAlive({ silent: true });
   if (canAutoSyncShopify()) {
     void runShopifySync({ silent: true });
+  }
+  if (canAutoRefreshSalesRequests()) {
+    void syncSalesRequestSource({ auto: true, silent: true });
   }
 });
 window.addEventListener("online", () => {
@@ -12388,10 +12546,14 @@ window.addEventListener("online", () => {
   if (canAutoSyncShopify()) {
     void runShopifySync({ silent: true });
   }
+  if (canAutoRefreshSalesRequests()) {
+    void syncSalesRequestSource({ auto: true, silent: true });
+  }
 });
 window.addEventListener("beforeunload", () => {
   stopSessionKeepalive();
   stopShopifyAutoSync();
+  stopSalesRequestAutoSync();
 });
 
 if (ui.authDemo && !/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {

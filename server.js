@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { createReadStream, existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, dirname, join, resolve, sep } from "node:path";
 import { createHmac, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
@@ -94,6 +94,8 @@ let pgPool = null;
 let r2ClientPromise = null;
 let runtimeStoreRevision = "";
 let lastStoreBackupSnapshotAt = 0;
+let processApiWriteQueue = Promise.resolve();
+let processSessionWriteQueue = Promise.resolve();
 const STORE_EVENTS_HEARTBEAT_MS = 25_000;
 const storeEventsClients = new Map();
 
@@ -366,7 +368,10 @@ async function readLocalJson(path, fallback) {
 
 async function writeLocalJson(path, value) {
   const serialized = JSON.stringify(value, null, 2);
-  await writeFile(path, serialized, "utf8");
+  const resolvedPath = resolve(path);
+  const tempPath = `${resolvedPath}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tempPath, serialized, "utf8");
+  await rename(tempPath, resolvedPath);
   if (resolve(path) === resolve(STORE_PATH)) {
     try {
       mkdirSync(BACKUP_DIR, { recursive: true });
@@ -588,9 +593,22 @@ function normalizeInventoryProductKey(value = "") {
     .toLowerCase();
 }
 
+function runExclusiveApiWrite(task) {
+  const nextRun = processApiWriteQueue.catch(() => {}).then(task);
+  processApiWriteQueue = nextRun.catch(() => {});
+  return nextRun;
+}
+
+function runExclusiveSessionWrite(task) {
+  const nextRun = processSessionWriteQueue.catch(() => {}).then(task);
+  processSessionWriteQueue = nextRun.catch(() => {});
+  return nextRun;
+}
+
 async function readSessionEntry(sessionId = "") {
   const normalizedSessionId = String(sessionId || "").trim();
   if (!normalizedSessionId) return null;
+  await processSessionWriteQueue.catch(() => {});
   if (USE_POSTGRES) {
     await ensureDatabaseStorage();
     const pool = await getPgPool();
@@ -612,73 +630,80 @@ async function readSessionEntry(sessionId = "") {
 
 async function writeSessionEntry(sessionId = "", entry = {}) {
   const normalizedSessionId = String(sessionId || "").trim();
-  const normalizedEntry = normalizeSessionEntry(entry);
-  if (!normalizedSessionId || !normalizedEntry) return;
-  if (USE_POSTGRES) {
-    await ensureDatabaseStorage();
-    const pool = await getPgPool();
-    await pool.query(
-      `
-        INSERT INTO ${SESSION_TABLE} (session_id, user_id, version, expires_at, updated_at)
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (session_id)
-        DO UPDATE SET user_id = EXCLUDED.user_id, version = EXCLUDED.version, expires_at = EXCLUDED.expires_at, updated_at = NOW()
-      `,
-      [normalizedSessionId, normalizedEntry.userId, normalizedEntry.version, normalizedEntry.expiresAt],
-    );
-    return;
-  }
-  const sessions = await readJson(SESSION_PATH, {});
-  sessions[normalizedSessionId] = normalizedEntry;
-  await writeJson(SESSION_PATH, sessions);
+  if (!normalizedSessionId) return;
+  return runExclusiveSessionWrite(async () => {
+    const normalizedEntry = normalizeSessionEntry(entry);
+    if (!normalizedEntry) return;
+    if (USE_POSTGRES) {
+      await ensureDatabaseStorage();
+      const pool = await getPgPool();
+      await pool.query(
+        `
+          INSERT INTO ${SESSION_TABLE} (session_id, user_id, version, expires_at, updated_at)
+          VALUES ($1, $2, $3, $4, NOW())
+          ON CONFLICT (session_id)
+          DO UPDATE SET user_id = EXCLUDED.user_id, version = EXCLUDED.version, expires_at = EXCLUDED.expires_at, updated_at = NOW()
+        `,
+        [normalizedSessionId, normalizedEntry.userId, normalizedEntry.version, normalizedEntry.expiresAt],
+      );
+      return;
+    }
+    const sessions = await readJson(SESSION_PATH, {});
+    sessions[normalizedSessionId] = normalizedEntry;
+    await writeJson(SESSION_PATH, sessions);
+  });
 }
 
 async function deleteSessionEntry(sessionId = "") {
   const normalizedSessionId = String(sessionId || "").trim();
   if (!normalizedSessionId) return;
-  if (USE_POSTGRES) {
-    await ensureDatabaseStorage();
-    const pool = await getPgPool();
-    await pool.query(`DELETE FROM ${SESSION_TABLE} WHERE session_id = $1`, [normalizedSessionId]);
-    return;
-  }
-  const sessions = await readJson(SESSION_PATH, {});
-  if (!(normalizedSessionId in sessions)) return;
-  delete sessions[normalizedSessionId];
-  await writeJson(SESSION_PATH, sessions);
+  return runExclusiveSessionWrite(async () => {
+    if (USE_POSTGRES) {
+      await ensureDatabaseStorage();
+      const pool = await getPgPool();
+      await pool.query(`DELETE FROM ${SESSION_TABLE} WHERE session_id = $1`, [normalizedSessionId]);
+      return;
+    }
+    const sessions = await readJson(SESSION_PATH, {});
+    if (!(normalizedSessionId in sessions)) return;
+    delete sessions[normalizedSessionId];
+    await writeJson(SESSION_PATH, sessions);
+  });
 }
 
 async function withApiStateLock(task) {
-  if (!USE_POSTGRES) {
-    return task();
-  }
-  const pool = await getPgPool();
-  const lockClient = await pool.connect();
-  let locked = false;
-  try {
-    const deadline = Date.now() + API_STATE_LOCK_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      const attempt = await lockClient.query("SELECT pg_try_advisory_lock($1) AS locked", [API_STATE_LOCK_KEY]);
-      if (attempt.rows?.[0]?.locked) {
-        locked = true;
-        break;
+  return runExclusiveApiWrite(async () => {
+    if (!USE_POSTGRES) {
+      return task();
+    }
+    const pool = await getPgPool();
+    const lockClient = await pool.connect();
+    let locked = false;
+    try {
+      const deadline = Date.now() + API_STATE_LOCK_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        const attempt = await lockClient.query("SELECT pg_try_advisory_lock($1) AS locked", [API_STATE_LOCK_KEY]);
+        if (attempt.rows?.[0]?.locked) {
+          locked = true;
+          break;
+        }
+        await wait(API_STATE_LOCK_POLL_MS);
       }
-      await wait(API_STATE_LOCK_POLL_MS);
+      if (!locked) {
+        const error = new Error("state_lock_timeout");
+        error.code = "state_lock_timeout";
+        throw error;
+      }
+      return await task();
+    } finally {
+      if (locked) {
+        try {
+          await lockClient.query("SELECT pg_advisory_unlock($1)", [API_STATE_LOCK_KEY]);
+        } catch {}
+      }
+      lockClient.release();
     }
-    if (!locked) {
-      const error = new Error("state_lock_timeout");
-      error.code = "state_lock_timeout";
-      throw error;
-    }
-    return await task();
-  } finally {
-    if (locked) {
-      try {
-        await lockClient.query("SELECT pg_advisory_unlock($1)", [API_STATE_LOCK_KEY]);
-      } catch {}
-    }
-    lockClient.release();
-  }
+  });
 }
 
 function buildDefaultStore() {
@@ -5579,7 +5604,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) {
       const method = String(req.method || "GET").toUpperCase();
       const readOnlyRequest = method === "GET" || method === "HEAD" || method === "OPTIONS";
-      const shouldLockState = USE_POSTGRES && !readOnlyRequest && url.pathname !== "/api/healthz";
+      const shouldLockState = !readOnlyRequest && url.pathname !== "/api/healthz";
       if (!shouldLockState) {
         return await handleApi(req, res, url);
       }

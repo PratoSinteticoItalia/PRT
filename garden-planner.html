@@ -27,7 +27,7 @@
       @media print {
         @page {
           size: A4 portrait;
-          margin: 10mm;
+          margin: 8mm;
         }
 
         html, body {
@@ -48,7 +48,7 @@
         body.garden-print-report #garden-print-sheet {
           display: block !important;
           width: 100% !important;
-          max-width: 190mm;
+          max-width: 194mm;
           padding: 0 !important;
           margin: 0 !important;
           background: #fff !important;
@@ -75,12 +75,12 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260423-garden-v34-rolls-print"></script>
+    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260425-stability-garden-53"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let reloaded = false;
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260423-garden-v34-rolls-print").then((registration) => {
+          navigator.serviceWorker.register("./sw.js?v=20260425-stability-garden-53").then((registration) => {
             if (registration.waiting) {
               registration.waiting.postMessage({ type: "SKIP_WAITING" });
             }

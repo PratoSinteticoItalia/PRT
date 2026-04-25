@@ -435,6 +435,82 @@ function getShapeLabel(shape, dims, customPts, customClosed) {
   return "Forma irregolare";
 }
 
+function createLabelRect(centerX, centerY, width, height) {
+  return {
+    x: centerX - width / 2,
+    y: centerY - height / 2,
+    width,
+    height,
+  };
+}
+
+function clampLabelRect(rect, bounds, padding = 6) {
+  const maxX = Math.max(padding, Number(bounds?.width || 0) - rect.width - padding);
+  const maxY = Math.max(padding, Number(bounds?.height || 0) - rect.height - padding);
+  return {
+    ...rect,
+    x: clamp(rect.x, padding, maxX),
+    y: clamp(rect.y, padding, maxY),
+  };
+}
+
+function rectsOverlap(a, b, gap = 4) {
+  return !(
+    a.x + a.width + gap <= b.x
+    || b.x + b.width + gap <= a.x
+    || a.y + a.height + gap <= b.y
+    || b.y + b.height + gap <= a.y
+  );
+}
+
+function findAvailableLabelRect(candidates = [], width = 0, height = 0, occupied = [], bounds = { width: 0, height: 0 }) {
+  let bestRect = null;
+  let bestScore = Infinity;
+  for (const candidate of candidates) {
+    const rect = clampLabelRect(createLabelRect(candidate.x, candidate.y, width, height), bounds);
+    const overlapScore = occupied.reduce((sum, item) => sum + (rectsOverlap(rect, item) ? 1 : 0), 0);
+    if (overlapScore < bestScore) {
+      bestRect = rect;
+      bestScore = overlapScore;
+      if (overlapScore === 0) break;
+    }
+  }
+  const finalRect = bestRect || clampLabelRect(createLabelRect(bounds.width / 2, bounds.height / 2, width, height), bounds);
+  occupied.push(finalRect);
+  return finalRect;
+}
+
+function getEdgeOutwardNormal(point, next, polygon) {
+  const dx = Number(next?.x || 0) - Number(point?.x || 0);
+  const dy = Number(next?.y || 0) - Number(point?.y || 0);
+  const length = Math.hypot(dx, dy) || 1;
+  let nx = -dy / length;
+  let ny = dx / length;
+  const midpoint = {
+    x: (Number(point?.x || 0) + Number(next?.x || 0)) / 2,
+    y: (Number(point?.y || 0) + Number(next?.y || 0)) / 2,
+  };
+  const probePoint = { x: midpoint.x + nx * 0.35, y: midpoint.y + ny * 0.35 };
+  if (pointInPolygon(probePoint, polygon)) {
+    nx *= -1;
+    ny *= -1;
+  }
+  return {
+    midpoint,
+    normal: { x: nx, y: ny },
+    tangent: { x: dx / length, y: dy / length },
+  };
+}
+
+function registerOccupiedCircle(occupied = [], centerX = 0, centerY = 0, radius = 0) {
+  occupied.push({
+    x: centerX - radius,
+    y: centerY - radius,
+    width: radius * 2,
+    height: radius * 2,
+  });
+}
+
 function estimateInstallationNeeds(area, perimeter) {
   const safeArea = Math.max(0, Number(area) || 0);
   const safePerimeter = Math.max(0, Number(perimeter) || 0);
@@ -460,6 +536,7 @@ const BASE_PX = 36;
 function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setRolls }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const pointerStateRef = useRef({ pointerId: null, mode: "", start: null, moved: false });
   const [hoverPt, setHoverPt] = useState(null);
   const [dragging, setDragging] = useState(null);
   const [canvasW, setCanvasW] = useState(760);
@@ -510,8 +587,11 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
     return { mx: toM(e.clientX - r.left), my: toM(e.clientY - r.top) };
   };
 
-  const handleClick = e => {
-    const { mx, my } = getPos(e);
+  const resetPointerState = () => {
+    pointerStateRef.current = { pointerId: null, mode: "", start: null, moved: false };
+  };
+
+  const handleCanvasTap = ({ x: mx, y: my }) => {
     if (drawMode === "roll" && closed) {
       if (!rollStart) {
         setRollStart({ x: mx, y: my });
@@ -545,18 +625,55 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
     setPoints(prev => [...prev, { x: mx, y: my }]);
   };
 
-  const handleMove = e => {
+  const handlePointerMove = e => {
     const { mx, my } = getPos(e);
     setHoverPt({ x: mx, y: my });
-    if (dragging !== null && closed) setPoints(prev => prev.map((p, i) => i === dragging ? { x: mx, y: my } : p));
+    const pointerState = pointerStateRef.current;
+    if (pointerState.pointerId !== e.pointerId) return;
+    if (pointerState.start && Math.hypot(mx - pointerState.start.x, my - pointerState.start.y) > 0.08) {
+      pointerState.moved = true;
+    }
+    if (pointerState.mode === "drag" && dragging !== null && closed) {
+      setPoints(prev => prev.map((p, i) => i === dragging ? { x: mx, y: my } : p));
+    }
   };
 
-  const handleMouseDown = e => {
-    if (drawMode !== "shape") return;
-    if (!closed) return;
+  const handlePointerDown = e => {
+    if (typeof e.button === "number" && e.button !== 0) return;
     const { mx, my } = getPos(e);
-    const idx = points.findIndex(p => Math.hypot(p.x - mx, p.y - my) < 0.6);
-    if (idx >= 0) { setDragging(idx); e.stopPropagation(); e.preventDefault(); }
+    setHoverPt({ x: mx, y: my });
+    if (drawMode === "shape" && closed) {
+      const idx = points.findIndex(p => Math.hypot(p.x - mx, p.y - my) < 0.6);
+      if (idx >= 0) {
+        pointerStateRef.current = { pointerId: e.pointerId, mode: "drag", start: { x: mx, y: my }, moved: false };
+        setDragging(idx);
+        canvasRef.current?.setPointerCapture?.(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
+    pointerStateRef.current = { pointerId: e.pointerId, mode: "tap", start: { x: mx, y: my }, moved: false };
+  };
+
+  const handlePointerUp = e => {
+    const pointerState = pointerStateRef.current;
+    if (pointerState.pointerId !== e.pointerId) return;
+    const { mx, my } = getPos(e);
+    if (pointerState.mode === "tap") {
+      handleCanvasTap({ x: mx, y: my });
+    }
+    setDragging(null);
+    canvasRef.current?.releasePointerCapture?.(e.pointerId);
+    resetPointerState();
+  };
+
+  const handlePointerCancel = e => {
+    if (pointerStateRef.current.pointerId === e.pointerId) {
+      canvasRef.current?.releasePointerCapture?.(e.pointerId);
+      resetPointerState();
+    }
+    setHoverPt(null);
+    setDragging(null);
   };
 
   const reset = () => {
@@ -567,6 +684,7 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
     setDrawMode("shape");
     setCanvasMessage("");
     setRolls([]);
+    resetPointerState();
   };
 
   const removeLastRoll = () => {
@@ -577,6 +695,32 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
   const clearRolls = () => {
     setRolls([]);
     setCanvasMessage("Layout rotoli azzerato.");
+  };
+
+  const undoLastPoint = () => {
+    if (closed) {
+      setClosed(false);
+      setDrawMode("shape");
+      setCanvasMessage("Perimetro riaperto.");
+      return;
+    }
+    if (!points.length) return;
+    setPoints(prev => prev.slice(0, -1));
+    setCanvasMessage("Ultimo vertice rimosso.");
+  };
+
+  const closeShape = () => {
+    if (closed || points.length < 3) return;
+    setClosed(true);
+    setCanvasMessage("Perimetro chiuso.");
+  };
+
+  const reopenShape = () => {
+    if (!closed) return;
+    setClosed(false);
+    setDrawMode("shape");
+    setRollStart(null);
+    setCanvasMessage("Perimetro riaperto per nuove modifiche.");
   };
 
   useEffect(() => {
@@ -743,6 +887,39 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
           >
             Aggiungi rotolo
           </button>
+          <button
+            type="button"
+            onClick={undoLastPoint}
+            disabled={!points.length}
+            style={{
+              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+              cursor: points.length ? "pointer" : "not-allowed", color: points.length ? B.text : B.textMuted, opacity: points.length ? 1 : 0.55,
+            }}
+          >
+            {closed ? "Riapri" : "Annulla punto"}
+          </button>
+          <button
+            type="button"
+            onClick={closeShape}
+            disabled={closed || points.length < 3}
+            style={{
+              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+              cursor: !closed && points.length >= 3 ? "pointer" : "not-allowed", color: !closed && points.length >= 3 ? B.text : B.textMuted, opacity: !closed && points.length >= 3 ? 1 : 0.55,
+            }}
+          >
+            Chiudi perimetro
+          </button>
+          <button
+            type="button"
+            onClick={reopenShape}
+            disabled={!closed}
+            style={{
+              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+              cursor: closed ? "pointer" : "not-allowed", color: closed ? B.text : B.textMuted, opacity: closed ? 1 : 0.55,
+            }}
+          >
+            Modifica profilo
+          </button>
           <span style={{ fontSize: 11, color: B.textMuted }}>Zoom:</span>
           {[0.6, 0.8, 1, 1.3, 1.6].map(z => (
             <button key={z} onClick={() => setZoom(z)} style={{
@@ -777,8 +954,11 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
         </div>
       </div>
       <canvas ref={canvasRef} width={canvasW} height={canvasH}
-        onClick={handleClick} onMouseMove={handleMove} onMouseDown={handleMouseDown}
-        onMouseUp={() => setDragging(null)} onMouseLeave={() => { setHoverPt(null); setDragging(null); }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onPointerLeave={handlePointerCancel}
         style={{
           width: "100%",
           height: canvasH,
@@ -786,6 +966,7 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
           border: "1.5px solid " + (closed ? B.primary : B.border),
           cursor: drawMode === "roll" && closed ? "crosshair" : closed ? (dragging !== null ? "grabbing" : "default") : "crosshair",
           display: "block",
+          touchAction: "none",
         }}
       />
 
@@ -998,27 +1179,17 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
   const rollCornerPoints = (manualRolls || []).flatMap((roll) => getRollCorners(roll));
   const drawingPoints = rollCornerPoints.length ? [...points, ...rollCornerPoints] : points;
   const bb = polyBBox(drawingPoints);
-  const W = 320;
-  const H = 210;
-  const pad = 22;
+  const W = 328;
+  const H = 214;
+  const pad = 28;
   const safeW = Math.max(bb.w, 0.5);
   const safeH = Math.max(bb.h, 0.5);
   const scale = Math.min((W - pad * 2) / safeW, (H - pad * 2) / safeH);
   const ox = (W - safeW * scale) / 2 - bb.minX * scale;
   const oy = (H - safeH * scale) / 2 - bb.minY * scale;
   const d = points.map((p, index) => `${index === 0 ? "M" : "L"}${(p.x * scale + ox).toFixed(2)},${(p.y * scale + oy).toFixed(2)}`).join(" ") + " Z";
-  const edges = points.map((point, index) => {
-    const next = points[(index + 1) % points.length];
-    const x1 = point.x * scale + ox;
-    const y1 = point.y * scale + oy;
-    const x2 = next.x * scale + ox;
-    const y2 = next.y * scale + oy;
-    return {
-      length: Math.hypot(next.x - point.x, next.y - point.y),
-      mx: (x1 + x2) / 2,
-      my: (y1 + y2) / 2,
-    };
-  });
+  const occupiedLabels = [];
+  const bounds = { width: W, height: H };
   const vertexPoints = points.map((p) => ({ x: p.x * scale + ox, y: p.y * scale + oy }));
   const rollPaths = (manualRolls || []).map((roll, index) => {
     const corners = getRollCorners(roll);
@@ -1036,6 +1207,43 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
       cy: (Number(roll.cy) || 0) * scale + oy,
     };
   });
+  vertexPoints.forEach((point) => registerOccupiedCircle(occupiedLabels, point.x, point.y, 6));
+  rollPaths.forEach((roll) => registerOccupiedCircle(occupiedLabels, roll.cx, roll.cy, 8.5));
+  const edges = points.map((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const edgeNormal = getEdgeOutwardNormal(point, next, points);
+    const txt = `${fmt(Math.hypot(next.x - point.x, next.y - point.y), 2)}m`;
+    const chipW = Math.max(30, txt.length * 5.4 + 10);
+    const chipH = 16;
+    const candidates = [];
+    [14, 20, 28].forEach((offset) => {
+      [0, 10, -10].forEach((shift) => {
+        candidates.push({
+          x: edgeNormal.midpoint.x * scale + ox + (edgeNormal.normal.x * offset) + (edgeNormal.tangent.x * shift),
+          y: edgeNormal.midpoint.y * scale + oy + (edgeNormal.normal.y * offset) + (edgeNormal.tangent.y * shift),
+        });
+      });
+    });
+    const labelRect = findAvailableLabelRect(candidates, chipW, chipH, occupiedLabels, bounds);
+    return {
+      length: Math.hypot(next.x - point.x, next.y - point.y),
+      txt,
+      chipW,
+      chipH,
+      labelRect,
+    };
+  });
+  const vertexLabelRects = vertexPoints.map((point) => {
+    const candidates = [
+      { x: point.x, y: point.y - 14 },
+      { x: point.x + 14, y: point.y - 10 },
+      { x: point.x - 14, y: point.y - 10 },
+      { x: point.x + 14, y: point.y + 12 },
+      { x: point.x - 14, y: point.y + 12 },
+      { x: point.x, y: point.y + 16 },
+    ];
+    return findAvailableLabelRect(candidates, 24, 12, occupiedLabels, bounds);
+  });
 
   return (
     <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: 10 }}>
@@ -1052,13 +1260,11 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
           </g>
         ))}
         {edges.map((edge, index) => {
-          const txt = `${fmt(edge.length, 2)}m`;
-          const chipW = Math.max(26, txt.length * 5.1 + 8);
           return (
             <g key={index}>
-              <rect x={edge.mx - chipW / 2} y={edge.my - 7.5} width={chipW} height={15} rx={6} fill="rgba(255,255,255,0.92)" stroke={B.borderLight} />
-              <text x={edge.mx} y={edge.my + 3.2} fontSize="8.8" textAnchor="middle" fill={B.dark} fontWeight="700">
-                {txt}
+              <rect x={edge.labelRect.x} y={edge.labelRect.y} width={edge.chipW} height={edge.chipH} rx={6} fill="rgba(255,255,255,0.96)" stroke={B.borderLight} />
+              <text x={edge.labelRect.x + edge.chipW / 2} y={edge.labelRect.y + 10.6} fontSize="8.7" textAnchor="middle" fill={B.dark} fontWeight="700">
+                {edge.txt}
               </text>
             </g>
           );
@@ -1066,7 +1272,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
         {vertexPoints.map((point, index) => (
           <g key={`v-${index}`}>
             <circle cx={point.x} cy={point.y} r="4.3" fill={B.primary} stroke="#fff" strokeWidth="1.6" />
-            <text x={point.x} y={point.y - 8} fontSize="8.4" textAnchor="middle" fill={B.dark} fontWeight="700">
+            <text x={vertexLabelRects[index].x + (vertexLabelRects[index].width / 2)} y={vertexLabelRects[index].y + 9} fontSize="8.2" textAnchor="middle" fill={B.dark} fontWeight="700">
               V{index + 1}
             </text>
           </g>
@@ -1188,7 +1394,7 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls }) {
+function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, reportVariant = "technical" }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
   const installNeeds = estimateInstallationNeeds(area, perimeter);
@@ -1201,7 +1407,8 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
   const border = BORDER_TYPES.find(b => b.id === borderType);
   const infillKg = area * INFILL_FO30.kgPerSqm;
   const infillBags = Math.ceil(infillKg / INFILL_FO30.bagKg);
-  const canViewMaterialCosts = String(viewerRole || "").trim().toLowerCase() === "office";
+  const isClientVariant = reportVariant === "client";
+  const canViewMaterialCosts = String(viewerRole || "").trim().toLowerCase() === "office" && !isClientVariant;
   const stabilizedPerTon = Number(regionalPricing?.stabilizedPerTon) || Number(MATERIAL_COSTS.stabilizedPerTonFallback);
   const sandPerTon = Number(regionalPricing?.sandPerTon) || Number(MATERIAL_COSTS.sandPerTonFallback);
   const pricingRegionLabel = regionalPricing?.region || "Lazio (fallback)";
@@ -1250,8 +1457,8 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
       showCosts: canViewMaterialCosts,
       items: [
         substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + " kg", cost: scavoM3 * MATERIAL_COSTS.scavoPerM3 } : null,
-        substrate.drenateCm > 0 ? { name: "Stabilizzato drenante (" + substrate.drenateCm + "cm)", qty: `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t (${fmt(stabilizedPerTon, 1)} €/t)`, cost: drenateTon * stabilizedPerTon } : null,
-        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento 0/4 (" + substrate.sabbiaCm + "cm)", qty: `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t (${fmt(sandPerTon, 1)} €/t)`, cost: sabbiaTon * sandPerTon } : null,
+        substrate.drenateCm > 0 ? { name: "Stabilizzato drenante (" + substrate.drenateCm + "cm)", qty: canViewMaterialCosts ? `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t (${fmt(stabilizedPerTon, 1)} €/t)` : `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t`, cost: drenateTon * stabilizedPerTon } : null,
+        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento 0/4 (" + substrate.sabbiaCm + "cm)", qty: canViewMaterialCosts ? `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t (${fmt(sandPerTon, 1)} €/t)` : `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t`, cost: sabbiaTon * sandPerTon } : null,
       ].filter(Boolean),
       sub: substrateCost,
     },
@@ -1295,7 +1502,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
       key: "travel",
       cat: "TRASFERTA E LOGISTICA",
       meta: "Stima costi",
-      showCosts: true,
+      showCosts: !isClientVariant,
       items: [
         { name: "Sede di partenza", qty: travel?.departureBase || "Da definire", cost: null },
         { name: "Percorrenza totale", qty: `${fmt(travelKm, 1)} km`, cost: null },
@@ -1311,36 +1518,37 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
       .reduce((sum, sec) => sum + (Number(sec.sub) || 0), 0)
     : 0;
   const operationalCostTotal = materialCostTotal + travelCost;
+  const visibleSections = isClientVariant ? sections.filter((section) => section.key !== "travel") : sections;
 
   return (
     <div>
       {(projectInfo.client || projectInfo.address) && (
-        <div className="print-no-break" style={{ marginBottom: 14, padding: "10px 14px", background: B.gray, borderRadius: 8, fontSize: 12, display: "flex", gap: 20, flexWrap: "wrap" }}>
+        <div className="print-no-break" style={{ marginBottom: 12, padding: "8px 12px", background: B.gray, borderRadius: 8, fontSize: 11.5, display: "flex", gap: 18, flexWrap: "wrap" }}>
           {projectInfo.client && <span><strong>Cliente:</strong> {projectInfo.client}</span>}
           {projectInfo.address && <span><strong>Cantiere:</strong> {projectInfo.address}</span>}
           {projectInfo.date && <span><strong>Data:</strong> {projectInfo.date}</span>}
           {projectInfo.notes && <span><strong>Note:</strong> {projectInfo.notes}</span>}
-          {travel?.departureBase && <span><strong>Partenza:</strong> {travel.departureBase}</span>}
-          <span><strong>Listino regionale:</strong> {pricingRegionLabel}</span>
+          {!isClientVariant && travel?.departureBase && <span><strong>Partenza:</strong> {travel.departureBase}</span>}
+          {!isClientVariant && <span><strong>Listino regionale:</strong> {pricingRegionLabel}</span>}
         </div>
       )}
 
-      <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginBottom: 14 }}>
+      <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10, marginBottom: 12 }}>
         <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} manualRolls={manualRolls} />
-        <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: "12px 14px", display: "grid", gap: 8 }}>
+        <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: "10px 12px", display: "grid", gap: 7 }}>
           <div style={{ fontSize: 11, color: B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>Tavola tecnica 2D</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
             <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Superficie</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: B.dark }}>{fmt(area)} m²</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: B.dark }}>{fmt(area)} m²</div>
             </div>
             <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Perimetro</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: B.dark }}>{fmt(perimeter)} m</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: B.dark }}>{fmt(perimeter)} m</div>
             </div>
             <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Bordura</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: B.dark }}>{borderType === "nessuna" ? "No" : `${fmt(borderMeters)} m`}</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: B.dark }}>{borderType === "nessuna" ? "No" : `${fmt(borderMeters)} m`}</div>
             </div>
             <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Forma</div>
@@ -1357,20 +1565,20 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
             </div>
           </div>
           <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
-            Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm · Listino {pricingRegionLabel}: stabilizzato {fmt(stabilizedPerTon, 1)} €/t, sabbia {fmt(sandPerTon, 1)} €/t.
+            Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm{!isClientVariant ? ` · Listino ${pricingRegionLabel}: stabilizzato ${fmt(stabilizedPerTon, 1)} €/t, sabbia ${fmt(sandPerTon, 1)} €/t.` : "."}
           </div>
         </div>
       </div>
 
       <div className="print-no-break" style={{ border: "1px solid " + B.border, borderRadius: 10, overflow: "hidden" }}>
-        {sections.map((sec, si) => (
+        {visibleSections.map((sec, si) => (
           <div key={si}>
-            <div style={{ background: B.gray, padding: "8px 14px", fontSize: 11, fontWeight: 700, color: B.primary, textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "1px solid " + B.borderLight, borderTop: si > 0 ? "1px solid " + B.border : "none", display: "flex", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ background: B.gray, padding: "7px 12px", fontSize: 10.8, fontWeight: 700, color: B.primary, textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: "1px solid " + B.borderLight, borderTop: si > 0 ? "1px solid " + B.border : "none", display: "flex", justifyContent: "space-between", gap: 10 }}>
               <span>{sec.cat}</span>
               <span style={{ color: B.dark, whiteSpace: "nowrap" }}>{sec.showCosts && typeof sec.sub === "number" ? fmtE(sec.sub) : (sec.meta || "")}</span>
             </div>
             {sec.items.map((item, ii) => (
-              <div key={ii} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", fontSize: 13, borderBottom: "1px solid " + B.borderLight, background: ii % 2 === 0 ? B.white : B.cream, flexWrap: "wrap", gap: 4 }}>
+              <div key={ii} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 12px", fontSize: 12.2, borderBottom: "1px solid " + B.borderLight, background: ii % 2 === 0 ? B.white : B.cream, flexWrap: "wrap", gap: 4 }}>
                 <span style={{ flex: sec.showCosts ? 2 : 3, color: B.text, minWidth: 150 }}>{item.name}</span>
                 <span style={{ flex: 1, textAlign: sec.showCosts ? "center" : "right", color: B.textMuted, minWidth: 120 }}>{item.qty}</span>
                 {sec.showCosts ? (
@@ -1380,11 +1588,52 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
             ))}
           </div>
         ))}
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "14px", background: B.dark, color: "#fff", fontWeight: 700, fontSize: 16 }}>
-          <span>{canViewMaterialCosts ? "TOTALE COSTI OPERATIVI (NO PRATO)" : "STIMA COSTI TRASFERTA"}</span>
-          <span style={{ color: B.accent, fontSize: 18 }}>{fmtE(canViewMaterialCosts ? operationalCostTotal : travelCost)}</span>
+        {!isClientVariant ? (
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "12px", background: B.dark, color: "#fff", fontWeight: 700, fontSize: 15 }}>
+            <span>{canViewMaterialCosts ? "TOTALE COSTI OPERATIVI (NO PRATO)" : "STIMA COSTI TRASFERTA"}</span>
+            <span style={{ color: B.accent, fontSize: 17 }}>{fmtE(canViewMaterialCosts ? operationalCostTotal : travelCost)}</span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ReportShell({ id, variant = "technical", area, perimeter, shape, dims, customPts, customClosed, borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls }) {
+  const isClientVariant = variant === "client";
+  return (
+    <div id={id}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10, padding: "8px 2px 10px", borderBottom: "1px solid " + B.borderLight }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: B.primary, letterSpacing: "0.4px", textTransform: "uppercase" }}>Prato Sintetico Italia</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: B.dark, lineHeight: 1.15 }}>
+            {isClientVariant ? "Report materiali Garden Planner" : "Report tecnico Garden Planner"}
+          </div>
+        </div>
+        <div style={{ textAlign: "right", fontSize: 11, color: B.textMuted }}>
+          <div><strong style={{ color: B.dark }}>Data report:</strong> {projectInfo.date || getLocalISODate()}</div>
+          {projectInfo.client ? <div><strong style={{ color: B.dark }}>Cliente:</strong> {projectInfo.client}</div> : null}
+          <div><strong style={{ color: B.dark }}>Versione:</strong> {isClientVariant ? "Cliente" : "Tecnica"}</div>
         </div>
       </div>
+      <MaterialsReport
+        area={area}
+        perimeter={perimeter}
+        shape={shape}
+        dims={dims}
+        customPts={customPts}
+        customClosed={customClosed}
+        borderMeters={borderMeters}
+        borderType={borderType}
+        substrate={substrate}
+        decoItems={decoItems}
+        projectInfo={projectInfo}
+        travel={travel}
+        viewerRole={viewerRole}
+        regionalPricing={regionalPricing}
+        manualRolls={manualRolls}
+        reportVariant={variant}
+      />
     </div>
   );
 }
@@ -1503,8 +1752,8 @@ function GardenPlanner() {
     };
   }, []);
 
-  const handlePrintReport = () => {
-    const reportNode = document.getElementById("garden-planner-print-content");
+  const handlePrintReport = (variant = "technical") => {
+    const reportNode = document.getElementById(variant === "client" ? "garden-planner-client-print-content" : "garden-planner-print-content");
     const printSheet = document.getElementById("garden-print-sheet");
     if (!reportNode || !printSheet) {
       window.print();
@@ -1512,9 +1761,27 @@ function GardenPlanner() {
     }
 
     printSheet.innerHTML = "";
+    const previousInlineDisplay = printSheet.style.display;
+    const previousInlinePosition = printSheet.style.position;
+    const previousInlineLeft = printSheet.style.left;
+    const previousInlineTop = printSheet.style.top;
+    const previousInlineWidth = printSheet.style.width;
+    const previousInlineMaxWidth = printSheet.style.maxWidth;
+    printSheet.style.display = "block";
+    printSheet.style.position = "fixed";
+    printSheet.style.left = "-10000px";
+    printSheet.style.top = "0";
+    printSheet.style.width = "194mm";
+    printSheet.style.maxWidth = "194mm";
     const printableClone = reportNode.cloneNode(true);
     printableClone.classList.add("print-sheet-root");
     printSheet.appendChild(printableClone);
+    const targetPrintHeightPx = Math.round((281 / 25.4) * 96);
+    const measuredHeight = Number(printableClone.scrollHeight || 0);
+    const printScale = measuredHeight > 0 ? Math.min(1, targetPrintHeightPx / measuredHeight) : 1;
+    if (printScale < 0.995) {
+      printableClone.style.zoom = String(Number(printScale.toFixed(3)));
+    }
 
     const body = document.body;
     let fallbackTimer = null;
@@ -1525,6 +1792,12 @@ function GardenPlanner() {
       }
       body.classList.remove("garden-print-report");
       printSheet.innerHTML = "";
+      printSheet.style.display = previousInlineDisplay;
+      printSheet.style.position = previousInlinePosition;
+      printSheet.style.left = previousInlineLeft;
+      printSheet.style.top = previousInlineTop;
+      printSheet.style.width = previousInlineWidth;
+      printSheet.style.maxWidth = previousInlineMaxWidth;
       window.removeEventListener("afterprint", cleanup);
     };
     body.classList.add("garden-print-report");
@@ -1686,20 +1959,31 @@ function GardenPlanner() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             <StepBadge n={5} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Riepilogo materiali e trasferta</span>
             <div style={{ flex: 1 }} />
-            <button onClick={handlePrintReport} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa solo report tecnico</button>
+            <button onClick={() => handlePrintReport("technical")} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa report tecnico</button>
+            <button onClick={() => handlePrintReport("client")} style={{ ...btnPrim, whiteSpace: "nowrap", background: B.white, color: B.primary, border: "1px solid " + B.primary }}>Stampa versione cliente</button>
           </div>
-          <div id="garden-planner-print-content">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10, padding: "8px 2px 10px", borderBottom: "1px solid " + B.borderLight }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: B.primary, letterSpacing: "0.4px", textTransform: "uppercase" }}>Prato Sintetico Italia</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: B.dark, lineHeight: 1.15 }}>Report tecnico Garden Planner</div>
-              </div>
-              <div style={{ textAlign: "right", fontSize: 11, color: B.textMuted }}>
-                <div><strong style={{ color: B.dark }}>Data report:</strong> {projectInfo.date || getLocalISODate()}</div>
-                {projectInfo.client ? <div><strong style={{ color: B.dark }}>Cliente:</strong> {projectInfo.client}</div> : null}
-              </div>
-            </div>
-            <MaterialsReport
+          <ReportShell
+            id="garden-planner-print-content"
+            area={area}
+            perimeter={perimeter}
+            shape={shape}
+            dims={safeDims}
+            customPts={customPts}
+            customClosed={customClosed}
+            borderMeters={selectedBorderMeters}
+            borderType={borderType}
+            substrate={substrate}
+            decoItems={decoItems}
+            projectInfo={projectInfo}
+            travel={travel}
+            viewerRole={viewerRole}
+            regionalPricing={regionalPricing}
+            manualRolls={manualRolls}
+            variant="technical"
+          />
+          <div style={{ display: "none" }} aria-hidden="true">
+            <ReportShell
+              id="garden-planner-client-print-content"
               area={area}
               perimeter={perimeter}
               shape={shape}
@@ -1715,6 +1999,7 @@ function GardenPlanner() {
               viewerRole={viewerRole}
               regionalPricing={regionalPricing}
               manualRolls={manualRolls}
+              variant="client"
             />
           </div>
         </div>
