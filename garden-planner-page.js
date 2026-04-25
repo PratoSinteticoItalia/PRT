@@ -400,6 +400,33 @@ function estimateJointLengthBetweenRolls(rollA, rollB) {
   };
 }
 
+function estimateRollOverlapArea(rollA, rollB) {
+  const a = normalizeRollGeometry(rollA);
+  const b = normalizeRollGeometry(rollB);
+  if (!a || !b) return 0;
+
+  const crossNorm = Math.abs(a.ux * b.uy - a.uy * b.ux);
+  if (crossNorm > 0.12) return 0;
+
+  const dx = b.cx - a.cx;
+  const dy = b.cy - a.cy;
+  const along = dx * a.ux + dy * a.uy;
+  const across = dx * a.vx + dy * a.vy;
+  const lengthOverlap = intervalOverlapLength(
+    -a.halfLength,
+    a.halfLength,
+    along - b.halfLength,
+    along + b.halfLength,
+  );
+  const widthOverlap = intervalOverlapLength(
+    -a.halfWidth,
+    a.halfWidth,
+    across - b.halfWidth,
+    across + b.halfWidth,
+  );
+  return lengthOverlap * widthOverlap;
+}
+
 function estimateRollLayoutMetrics(rolls = []) {
   const safeRolls = Array.isArray(rolls) ? rolls.filter(Boolean) : [];
   let jointMeters = 0;
@@ -444,6 +471,22 @@ function buildAdjacentRollCandidate(referenceRoll, direction = 1) {
   };
 }
 
+function getPreferredParallelDuplicationDirection(referenceRoll, existingRolls = []) {
+  if (!referenceRoll || !Array.isArray(existingRolls) || existingRolls.length < 2) return 1;
+  const current = normalizeRollGeometry(referenceRoll);
+  const previous = normalizeRollGeometry(existingRolls[existingRolls.length - 2]);
+  if (!current || !previous) return 1;
+
+  const crossNorm = Math.abs(current.ux * previous.uy - current.uy * previous.ux);
+  if (crossNorm > 0.12) return 1;
+
+  const dx = current.cx - previous.cx;
+  const dy = current.cy - previous.cy;
+  const normalOffset = dx * current.vx + dy * current.vy;
+  if (Math.abs(normalOffset) < 0.05) return 1;
+  return normalOffset >= 0 ? 1 : -1;
+}
+
 function scoreRollPlacementCandidate(candidateRoll, polygon = [], existingRolls = []) {
   if (!candidateRoll) return -Infinity;
   const corners = getRollCorners(candidateRoll);
@@ -454,7 +497,10 @@ function scoreRollPlacementCandidate(candidateRoll, polygon = [], existingRolls 
     const seam = estimateJointLengthBetweenRolls(candidateRoll, roll);
     return sum + (seam?.totalJointMeters || 0);
   }, 0);
-  return insideCorners * 20 + adjacencyScore;
+  const overlapPenalty = (existingRolls || []).reduce((sum, roll) => (
+    sum + (estimateRollOverlapArea(candidateRoll, roll) * 120)
+  ), 0);
+  return insideCorners * 20 + adjacencyScore - overlapPenalty;
 }
 
 function getTravelSummary(travel = {}) {
@@ -902,9 +948,10 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
   const duplicateLastRoll = () => {
     if (!closed || !rolls.length) return;
     const lastRoll = rolls[rolls.length - 1];
+    const preferredDirection = getPreferredParallelDuplicationDirection(lastRoll, rolls);
     const candidates = [
-      buildAdjacentRollCandidate(lastRoll, 1),
-      buildAdjacentRollCandidate(lastRoll, -1),
+      buildAdjacentRollCandidate(lastRoll, preferredDirection),
+      buildAdjacentRollCandidate(lastRoll, preferredDirection * -1),
     ].filter(Boolean);
     if (!candidates.length) {
       setCanvasMessage("Non riesco a duplicare questo rotolo.");
@@ -923,7 +970,7 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
     setRolls(prev => [...prev, bestCandidate]);
     setDrawMode("roll");
     setRollStart(null);
-    setCanvasMessage(`Rotolo duplicato in parallelo: 2.00m × ${fmt(bestCandidate.length, 2)}m.`);
+    setCanvasMessage(`Rotolo duplicato in parallelo mantenendo la fila: 2.00m × ${fmt(bestCandidate.length, 2)}m.`);
   };
 
   const undoLastPoint = () => {
