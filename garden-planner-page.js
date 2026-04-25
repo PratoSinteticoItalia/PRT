@@ -1760,30 +1760,33 @@ function GardenPlanner() {
       return;
     }
 
+    const body = document.body;
+    const measureSheet = document.createElement("div");
+    measureSheet.style.position = "fixed";
+    measureSheet.style.left = "0";
+    measureSheet.style.top = "0";
+    measureSheet.style.width = "194mm";
+    measureSheet.style.maxWidth = "194mm";
+    measureSheet.style.visibility = "hidden";
+    measureSheet.style.pointerEvents = "none";
+    measureSheet.style.zIndex = "-1";
+    const measureClone = reportNode.cloneNode(true);
+    measureClone.classList.add("print-sheet-root");
+    measureSheet.appendChild(measureClone);
+    body.appendChild(measureSheet);
+    const targetPrintHeightPx = Math.round((281 / 25.4) * 96);
+    const measuredHeight = Number(measureClone.scrollHeight || 0);
+    const printScale = measuredHeight > 0 ? Math.min(1, targetPrintHeightPx / measuredHeight) : 1;
+    body.removeChild(measureSheet);
+
     printSheet.innerHTML = "";
-    const previousInlineDisplay = printSheet.style.display;
-    const previousInlinePosition = printSheet.style.position;
-    const previousInlineLeft = printSheet.style.left;
-    const previousInlineTop = printSheet.style.top;
-    const previousInlineWidth = printSheet.style.width;
-    const previousInlineMaxWidth = printSheet.style.maxWidth;
-    printSheet.style.display = "block";
-    printSheet.style.position = "fixed";
-    printSheet.style.left = "-10000px";
-    printSheet.style.top = "0";
-    printSheet.style.width = "194mm";
-    printSheet.style.maxWidth = "194mm";
     const printableClone = reportNode.cloneNode(true);
     printableClone.classList.add("print-sheet-root");
     printSheet.appendChild(printableClone);
-    const targetPrintHeightPx = Math.round((281 / 25.4) * 96);
-    const measuredHeight = Number(printableClone.scrollHeight || 0);
-    const printScale = measuredHeight > 0 ? Math.min(1, targetPrintHeightPx / measuredHeight) : 1;
     if (printScale < 0.995) {
       printableClone.style.zoom = String(Number(printScale.toFixed(3)));
     }
 
-    const body = document.body;
     let fallbackTimer = null;
     const cleanup = () => {
       if (fallbackTimer) {
@@ -1792,20 +1795,16 @@ function GardenPlanner() {
       }
       body.classList.remove("garden-print-report");
       printSheet.innerHTML = "";
-      printSheet.style.display = previousInlineDisplay;
-      printSheet.style.position = previousInlinePosition;
-      printSheet.style.left = previousInlineLeft;
-      printSheet.style.top = previousInlineTop;
-      printSheet.style.width = previousInlineWidth;
-      printSheet.style.maxWidth = previousInlineMaxWidth;
       window.removeEventListener("afterprint", cleanup);
     };
     body.classList.add("garden-print-report");
     window.addEventListener("afterprint", cleanup);
     fallbackTimer = window.setTimeout(cleanup, 7000);
-    window.setTimeout(() => {
-      window.print();
-    }, 40);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.print();
+      });
+    });
   };
 
   return (

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260425-stability-garden-53";
+const APP_SHELL_VERSION = "20260425-stability-garden-54";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -789,6 +789,8 @@ let shopifyAutoSyncTimer = 0;
 let shopifyAutoSyncInFlight = false;
 let salesRequestAutoSyncTimer = 0;
 let salesRequestSyncInFlight = false;
+let salesContentDeleteInFlightId = "";
+const salesContentAttachmentDeleteInFlight = new Set();
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
@@ -1459,7 +1461,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260425-stability-garden-53&shell=20260425-stability-garden-53",
+    href: "./garden-planner.html?v=20260425-stability-garden-54&shell=20260425-stability-garden-54",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -2186,6 +2188,12 @@ function normalizeSalesContentRecord(item = {}) {
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
   };
+}
+
+function getSalesContentAttachmentPendingKey(contentId = "", attachmentId = "", fallbackIndex = -1) {
+  const safeContentId = String(contentId || "").trim();
+  const safeAttachmentId = String(attachmentId || "").trim() || `index-${Number(fallbackIndex)}`;
+  return `${safeContentId}::${safeAttachmentId}`;
 }
 
 function getSalesRequestDisplayName(item = {}) {
@@ -6976,16 +6984,21 @@ function renderSalesContentAttachments(items = [], contentId = "") {
   if (!items.length) {
     return `<div class="info-card">${state.lang === "it" ? "Nessun allegato caricato." : "No attachments uploaded."}</div>`;
   }
-  return items.map((item, index) => `
-    <article class="attachment-item">
+  return items.map((item, index) => {
+    const pendingKey = getSalesContentAttachmentPendingKey(contentId, item.id || "", Number(item._attachmentIndex ?? index));
+    const isDeleting = salesContentAttachmentDeleteInFlight.has(pendingKey);
+    return `
+    <article class="attachment-item${isDeleting ? " is-pending" : ""}">
       <button
         class="attachment-remove"
         type="button"
         data-action="remove-sales-content-attachment"
         data-id="${contentId}"
         data-index="${Number(item._attachmentIndex ?? index)}"
+        data-attachment-id="${escapeHtml(item.id || "")}"
         aria-label="${state.lang === "it" ? "Rimuovi allegato" : "Remove attachment"}"
-      >×</button>
+        ${isDeleting ? "disabled" : ""}
+      >${isDeleting ? "…" : "×"}</button>
       ${isImageAttachment(item) && (item.url || item.dataUrl)
         ? `<img src="${escapeHtml(item.url || item.dataUrl)}" alt="${escapeHtml(item.name || "Attachment")}" loading="lazy" decoding="async" fetchpriority="low" />`
         : `<div class="attachment-file-badge">${escapeHtml(String(item.type || "file").split("/").pop()?.toUpperCase() || "FILE")}</div>`}
@@ -6993,7 +7006,8 @@ function renderSalesContentAttachments(items = [], contentId = "") {
       <div class="attachment-copy">${escapeHtml(getAttachmentContextLabel("sales-content"))}</div>
       <div>${item.createdAt ? formatDate(item.createdAt) : "—"}</div>
     </article>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function renderSalesContent() {
@@ -7115,7 +7129,15 @@ function renderSalesContent() {
   if (ui.salesContentDetailTitle) {
     ui.salesContentDetailTitle.textContent = selected?.title || (state.lang === "it" ? "Nuovo contenuto" : "New content");
   }
-  if (ui.salesContentDeleteButton) ui.salesContentDeleteButton.disabled = !selected;
+  if (ui.salesContentDeleteButton) {
+    if (!ui.salesContentDeleteButton.dataset.defaultLabel) {
+      ui.salesContentDeleteButton.dataset.defaultLabel = ui.salesContentDeleteButton.textContent || (state.lang === "it" ? "Elimina" : "Delete");
+    }
+    ui.salesContentDeleteButton.disabled = !selected || Boolean(salesContentDeleteInFlightId);
+    ui.salesContentDeleteButton.textContent = salesContentDeleteInFlightId
+      ? (state.lang === "it" ? "Eliminazione..." : "Deleting...")
+      : (ui.salesContentDeleteButton.dataset.defaultLabel || (state.lang === "it" ? "Elimina" : "Delete"));
+  }
   if (ui.salesContentAttachmentButton) ui.salesContentAttachmentButton.disabled = false;
   if (ui.salesContentAttachments) {
     const items = (selected?.attachments || []).map((item, index) => ({ ...item, _attachmentIndex: index }));
@@ -7431,26 +7453,65 @@ async function deleteSalesContent() {
   if (!selected) return;
   const confirmed = window.confirm(state.lang === "it" ? "Vuoi eliminare questo contenuto?" : "Do you want to delete this content?");
   if (!confirmed) return;
+  const previousContents = [...state.salesContents];
+  const previousSelectedId = state.selectedSalesContentId;
+  const previousCreatingState = state.creatingSalesContent;
+  const previousPage = state.salesContentPage;
+  salesContentDeleteInFlightId = selected.id;
+  state.salesContents = state.salesContents.filter((item) => item.id !== selected.id);
+  state.selectedSalesContentId = "";
+  state.creatingSalesContent = false;
+  state.salesContentPage = 1;
+  renderOps();
+  renderSalesContent();
+  setStatus(ui.salesContentStatus, "success", state.lang === "it" ? "Eliminazione contenuto in corso..." : "Deleting content...");
   try {
     await apiFetch(`/api/sales/content-items/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
-    state.salesContents = state.salesContents.filter((item) => item.id !== selected.id);
-    state.selectedSalesContentId = "";
-    state.creatingSalesContent = false;
-    state.salesContentPage = 1;
-    renderOps();
-    renderSalesContent();
     setStatus(ui.salesContentStatus, "success", state.lang === "it" ? "Contenuto eliminato." : "Content deleted.");
   } catch (error) {
+    state.salesContents = previousContents;
+    state.selectedSalesContentId = previousSelectedId;
+    state.creatingSalesContent = previousCreatingState;
+    state.salesContentPage = previousPage;
+    renderOps();
+    renderSalesContent();
     setStatus(ui.salesContentStatus, "error", state.lang === "it" ? "Impossibile eliminare il contenuto." : "Unable to delete the content.");
+  } finally {
+    salesContentDeleteInFlightId = "";
+    renderSalesContent();
   }
 }
 
-async function removeSalesContentAttachment(contentId, attachmentIndex) {
-  const saved = await apiFetch(`/api/sales/content-items/${encodeURIComponent(contentId)}/attachments/${attachmentIndex}`, {
-    method: "DELETE",
-  });
-  upsertSalesContent(saved, { skipOpsRender: true });
+async function removeSalesContentAttachment(contentId, attachmentIndex, attachmentId = "") {
+  const contentIndex = state.salesContents.findIndex((item) => item.id === contentId);
+  if (contentIndex < 0) return;
+  const currentContent = state.salesContents[contentIndex];
+  const currentAttachments = Array.isArray(currentContent.attachments) ? [...currentContent.attachments] : [];
+  if (attachmentIndex < 0 || attachmentIndex >= currentAttachments.length) return;
+  const previousContents = [...state.salesContents];
+  const pendingKey = getSalesContentAttachmentPendingKey(contentId, attachmentId || currentAttachments[attachmentIndex]?.id || "", attachmentIndex);
+  salesContentAttachmentDeleteInFlight.add(pendingKey);
+  state.salesContents = state.salesContents.map((item, index) => (
+    index === contentIndex
+      ? { ...item, attachments: currentAttachments.filter((_, indexItem) => indexItem !== attachmentIndex) }
+      : item
+  ));
   renderSalesContent();
+  setStatus(ui.salesContentStatus, "success", state.lang === "it" ? "Rimozione allegato in corso..." : "Removing attachment...");
+  try {
+    const saved = await apiFetch(`/api/sales/content-items/${encodeURIComponent(contentId)}/attachments/${attachmentIndex}`, {
+      method: "DELETE",
+    });
+    upsertSalesContent(saved, { skipOpsRender: true });
+    setStatus(ui.salesContentStatus, "success", state.lang === "it" ? "Allegato rimosso." : "Attachment removed.");
+  } catch (error) {
+    state.salesContents = previousContents;
+    setStatus(ui.salesContentStatus, "error", state.lang === "it" ? "Impossibile rimuovere l'allegato." : "Unable to remove the attachment.");
+    throw error;
+  } finally {
+    salesContentAttachmentDeleteInFlight.delete(pendingKey);
+    renderSalesContent();
+  }
 }
 
 function renderInventoryCard(group) {
@@ -12051,7 +12112,7 @@ function handleGlobalClick(event) {
     event.preventDefault();
     event.stopPropagation();
     if (!id) return;
-    removeSalesContentAttachment(id, Number(button.dataset.index || -1)).catch(() => {
+    removeSalesContentAttachment(id, Number(button.dataset.index || -1), button.dataset.attachmentId || "").catch(() => {
       setStatus(
         ui.salesContentStatus,
         "error",

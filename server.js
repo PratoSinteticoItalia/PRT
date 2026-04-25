@@ -2822,6 +2822,18 @@ async function removeAttachmentAsset(attachment = {}) {
   }));
 }
 
+function scheduleAttachmentAssetRemoval(items = [], logLabel = "attachment_delete_failed") {
+  const queue = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!queue.length) return;
+  setTimeout(() => {
+    queue.forEach((attachment) => {
+      removeAttachmentAsset(attachment).catch((error) => {
+        console.error(logLabel, error);
+      });
+    });
+  }, 0);
+}
+
 async function streamAttachmentAsset(res, attachment = {}) {
   const storageType = String(attachment.storage || "").trim();
   if (storageType === "file") {
@@ -4496,12 +4508,8 @@ async function handleApi(req, res, url) {
     const contentIndex = store.salesContents.findIndex((item) => item.id === contentId);
     if (contentIndex < 0) return sendJson(res, 404, { error: "content_not_found" });
     const [removedContent] = store.salesContents.splice(contentIndex, 1);
-    for (const attachment of removedContent.attachments || []) {
-      await removeAttachmentAsset(attachment).catch((error) => {
-        console.error("sales_content_attachment_delete_failed", error);
-      });
-    }
     await writeJson(STORE_PATH, store);
+    scheduleAttachmentAssetRemoval(removedContent.attachments || [], "sales_content_attachment_delete_failed");
     return sendJson(res, 200, { ok: true });
   }
 
@@ -4585,15 +4593,13 @@ async function handleApi(req, res, url) {
     const attachments = Array.isArray(current.attachments) ? [...current.attachments] : [];
     if (attachmentIndex < 0 || attachmentIndex >= attachments.length) return sendJson(res, 404, { error: "attachment_not_found" });
     const [removedAttachment] = attachments.splice(attachmentIndex, 1);
-    await removeAttachmentAsset(removedAttachment).catch((error) => {
-      console.error("sales_content_attachment_delete_failed", error);
-    });
     store.salesContents[contentIndex] = normalizeSalesContentRecord({
       ...current,
       attachments,
       updatedAt: new Date().toISOString(),
     });
     await writeJson(STORE_PATH, store);
+    scheduleAttachmentAssetRemoval([removedAttachment], "sales_content_attachment_delete_failed");
     return sendJson(res, 200, serializeSalesContentForClient(store.salesContents[contentIndex]));
   }
 
