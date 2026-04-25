@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260425-stability-garden-58" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260425-stability-garden-58" />
+    <link rel="preload" href="./styles.css?v=20260426-profit-split-59" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260426-profit-split-59" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -109,7 +109,7 @@
         <div class="topbar-right">
           <button id="reload-button" class="topbar-btn primary">Ricarica dati</button>
           <button id="new-order-button" class="topbar-btn">Nuovo ordine</button>
-          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260425-stability-garden-58&shell=20260425-stability-garden-58" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
+          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260426-profit-split-59&shell=20260426-profit-split-59" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
           <div class="lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
             <button class="lang-btn" data-lang="en">EN</button>
@@ -132,7 +132,7 @@
             <button id="mobile-pill-new-order-button" class="mobile-pill-tool" type="button">Nuovo ordine</button>
             <a
               id="mobile-pill-garden-planner-link"
-              href="./garden-planner.html?v=20260425-stability-garden-58&shell=20260425-stability-garden-58"
+              href="./garden-planner.html?v=20260426-profit-split-59&shell=20260426-profit-split-59"
               class="mobile-pill-tool"
               style="text-decoration: none;"
             >
@@ -234,7 +234,7 @@
         </nav>
 
         <div class="sidebar-mobile-tools">
-          <a href="./garden-planner.html?v=20260425-stability-garden-58&shell=20260425-stability-garden-58" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
+          <a href="./garden-planner.html?v=20260426-profit-split-59&shell=20260426-profit-split-59" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
           <button id="mobile-reload-button" class="sidebar-quick-link" type="button">Ricarica dati</button>
           <div class="lang-switch sidebar-lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
@@ -1515,6 +1515,81 @@
               <div id="crew-expense-monthly-report" class="detail-stack"></div>
             </section>
 
+            <section class="panel panel-large">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-eyebrow">Ripartizione utili</p>
+                  <h3>Calcolatore collaboratori posa</h3>
+                </div>
+              </div>
+              <div class="info-card profit-split-intro">
+                <strong>Formula operativa.</strong>
+                <p>Il tool detrae dal ricavo le spese, i recuperi e il fisso del collaboratore; poi divide l'utile residuo e mostra quanto spetta a ciascuno.</p>
+              </div>
+              <form id="profit-split-form" class="inline-form-grid" style="margin-top: 16px;">
+                <label class="field field-full">
+                  <span>Commessa / nota</span>
+                  <input class="text-input" name="jobLabel" placeholder="Es. Firenze · posa 3 giorni" />
+                </label>
+                <label class="field">
+                  <span>Collaboratore</span>
+                  <input class="text-input" name="partnerName" list="profit-split-crew-options" placeholder="Es. Luigi" />
+                  <datalist id="profit-split-crew-options"></datalist>
+                </label>
+                <label class="field">
+                  <span>Ricavo posa</span>
+                  <input class="text-input" name="revenue" type="text" inputmode="decimal" placeholder="0,00" />
+                </label>
+                <label class="field">
+                  <span>Fisso giornaliero collaboratore</span>
+                  <input class="text-input" name="partnerDailyFixed" type="text" inputmode="decimal" placeholder="100,00" />
+                </label>
+                <label class="field">
+                  <span>Giornate collaboratore</span>
+                  <input class="text-input" name="partnerDays" type="text" inputmode="decimal" placeholder="3" />
+                </label>
+                <label class="field">
+                  <span>Quota utile collaboratore %</span>
+                  <input class="text-input" name="partnerSharePct" type="text" inputmode="decimal" placeholder="50" />
+                  <small class="field-hint">La tua quota è il complemento a 100.</small>
+                </label>
+                <label class="field">
+                  <span>Spese pagate da te</span>
+                  <input class="text-input" name="ownerPaidExpenses" type="text" inputmode="decimal" placeholder="0,00" />
+                  <small class="field-hint">Benzina, alloggi, dipendenti o altre spese vive anticipate da te.</small>
+                </label>
+                <label class="field">
+                  <span>Spese pagate dal collaboratore</span>
+                  <input class="text-input" name="partnerPaidExpenses" type="text" inputmode="decimal" placeholder="0,00" />
+                  <small class="field-hint">Tutto cio che lui ha anticipato e deve recuperare.</small>
+                </label>
+                <label class="field">
+                  <span>Altri costi condivisi</span>
+                  <input class="text-input" name="sharedJobCosts" type="text" inputmode="decimal" placeholder="0,00" />
+                  <small class="field-hint">Costi da detrarre dal lavoro che non vanno rimborsati a uno dei due.</small>
+                </label>
+                <label class="field">
+                  <span>Recuperi tuoi</span>
+                  <input class="text-input" name="ownerRecovery" type="text" inputmode="decimal" placeholder="0,00" />
+                  <small class="field-hint">Anticipi o budget che devono tornare a te prima del riparto.</small>
+                </label>
+                <label class="field">
+                  <span>Recuperi collaboratore</span>
+                  <input class="text-input" name="partnerRecovery" type="text" inputmode="decimal" placeholder="0,00" />
+                  <small class="field-hint">Usalo solo se anche lui deve recuperare extra fuori dalle spese vive.</small>
+                </label>
+                <label class="field field-full">
+                  <span>Note di quadratura</span>
+                  <textarea class="text-input" name="note" rows="3" placeholder="Es. 200 euro budget furgone da recuperare da me, alloggio pagato da Luigi..."></textarea>
+                </label>
+                <div class="inline-actions field-full">
+                  <button type="button" id="profit-split-reset-button" class="ghost-button small-button">Azzera calcolo</button>
+                </div>
+              </form>
+              <div id="profit-split-summary" class="crew-expense-summary-grid" style="margin-top: 16px;"></div>
+              <div id="profit-split-breakdown" class="profit-split-breakdown"></div>
+            </section>
+
             <section class="panel">
               <div class="panel-head">
                 <div>
@@ -1631,6 +1706,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260425-stability-garden-58" type="module"></script>
+    <script src="./app.js?v=20260426-profit-split-59" type="module"></script>
   </body>
 </html>

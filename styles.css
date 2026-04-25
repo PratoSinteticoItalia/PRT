@@ -8597,6 +8597,27 @@ button:active,
   color: #17321f;
 }
 
+.profit-split-intro {
+  margin-top: 4px;
+}
+
+.profit-split-breakdown {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.profit-split-warning {
+  border: 1px solid rgba(200, 90, 0, 0.18);
+  background: linear-gradient(180deg, #fff9ef 0%, #fff4dd 100%);
+  color: #8a4b08;
+}
+
+.profit-split-warning strong,
+.profit-split-warning p {
+  color: inherit;
+}
+
 @media (max-width: 980px) {
   body.mobile-safe-mode .topbar {
     padding: 12px 12px 6px;
