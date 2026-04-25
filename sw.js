@@ -1,16 +1,16 @@
-const CACHE_NAME = "psi-ops-shell-20260426-profit-split-59";
+const CACHE_NAME = "psi-ops-shell-20260426-profit-split-lines-60";
 const APP_SHELL = [
   "/",
-  "/?shell=20260426-profit-split-59",
+  "/?shell=20260426-profit-split-lines-60",
   "/index.html",
   "/garden-planner.html",
   "/garden-planner.html?shell=20260415-shell-reset-33",
-  "/garden-planner.html?v=20260426-profit-split-59&shell=20260426-profit-split-59",
+  "/garden-planner.html?v=20260426-profit-split-lines-60&shell=20260426-profit-split-lines-60",
   "/garden-photo-configurator.html?v=20260416-photo-loader-fix-34",
   "/garden-photo-configurator-v2.html?v=20260416-photo-loader-fix-34",
-  "/garden-planner-page.js?v=20260426-profit-split-59",
-  "/styles.css?v=20260426-profit-split-59",
-  "/app.js?v=20260426-profit-split-59",
+  "/garden-planner-page.js?v=20260426-profit-split-lines-60",
+  "/styles.css?v=20260426-profit-split-lines-60",
+  "/app.js?v=20260426-profit-split-lines-60",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",

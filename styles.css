@@ -8601,6 +8601,66 @@ button:active,
   margin-top: 4px;
 }
 
+.profit-split-expense-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.profit-split-expense-editor-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.profit-split-expense-editor-head > div {
+  display: grid;
+  gap: 6px;
+}
+
+.profit-split-expense-lines {
+  display: grid;
+  gap: 10px;
+}
+
+.profit-split-expense-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 2fr) minmax(120px, 0.8fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(45, 106, 79, 0.12);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbf7 100%);
+}
+
+.profit-split-expense-row-index {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef5ef;
+  color: #31563b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profit-split-expense-empty {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f6f8f5;
+  color: #748272;
+  font-size: 13px;
+}
+
+.crew-expense-panel-subhead {
+  margin-top: 4px;
+}
+
 .profit-split-breakdown {
   display: grid;
   gap: 14px;
@@ -8731,6 +8791,15 @@ button:active,
   .crew-expense-summary-grid,
   .crew-expense-report-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profit-split-expense-row {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .profit-split-expense-row > .text-input,
+  .profit-split-expense-row > .ghost-button {
+    grid-column: 2;
   }
 }
 

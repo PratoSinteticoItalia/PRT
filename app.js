@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260426-profit-split-59";
+const APP_SHELL_VERSION = "20260426-profit-split-lines-60";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -717,6 +717,53 @@ const translations = {
   },
 };
 
+function getDefaultProfitSplitExpenseLine(overrides = {}) {
+  const payer = ["owner", "partner", "shared"].includes(String(overrides.payer || "").trim())
+    ? String(overrides.payer || "").trim()
+    : "owner";
+  return {
+    id: String(overrides.id || crypto.randomUUID()),
+    label: String(overrides.label ?? ""),
+    amount: String(overrides.amount ?? ""),
+    payer,
+  };
+}
+
+function getProfitSplitLegacyExpenseLines(input = {}) {
+  const lines = [];
+  const legacyRows = [
+    {
+      amount: input.ownerPaidExpenses,
+      payer: "owner",
+      label: "Spesa pagata da te",
+    },
+    {
+      amount: input.partnerPaidExpenses,
+      payer: "partner",
+      label: "Spesa pagata dal collaboratore",
+    },
+    {
+      amount: input.sharedJobCosts,
+      payer: "shared",
+      label: "Costo condiviso",
+    },
+  ];
+  legacyRows.forEach((row) => {
+    const rawAmount = String(row.amount ?? "").trim();
+    if (!rawAmount || Math.abs(toNumber(rawAmount || 0)) <= 0) return;
+    lines.push(getDefaultProfitSplitExpenseLine(row));
+  });
+  return lines;
+}
+
+function normalizeProfitSplitExpenseLines(lines = [], legacyInput = {}) {
+  const sourceLines = Array.isArray(lines) && lines.length
+    ? lines
+    : getProfitSplitLegacyExpenseLines(legacyInput);
+  const normalizedLines = sourceLines.map((line) => getDefaultProfitSplitExpenseLine(line));
+  return normalizedLines.length ? normalizedLines : [getDefaultProfitSplitExpenseLine()];
+}
+
 function getDefaultProfitSplitDraft() {
   return {
     jobLabel: "",
@@ -725,9 +772,7 @@ function getDefaultProfitSplitDraft() {
     partnerDailyFixed: "100",
     partnerDays: "1",
     partnerSharePct: "50",
-    ownerPaidExpenses: "",
-    partnerPaidExpenses: "",
-    sharedJobCosts: "",
+    expenseLines: [getDefaultProfitSplitExpenseLine()],
     ownerRecovery: "",
     partnerRecovery: "",
     note: "",
@@ -743,9 +788,7 @@ function normalizeProfitSplitDraft(input = {}) {
     partnerDailyFixed: String(input.partnerDailyFixed ?? defaults.partnerDailyFixed),
     partnerDays: String(input.partnerDays ?? defaults.partnerDays),
     partnerSharePct: String(input.partnerSharePct ?? defaults.partnerSharePct),
-    ownerPaidExpenses: String(input.ownerPaidExpenses ?? defaults.ownerPaidExpenses),
-    partnerPaidExpenses: String(input.partnerPaidExpenses ?? defaults.partnerPaidExpenses),
-    sharedJobCosts: String(input.sharedJobCosts ?? defaults.sharedJobCosts),
+    expenseLines: normalizeProfitSplitExpenseLines(input.expenseLines, input),
     ownerRecovery: String(input.ownerRecovery ?? defaults.ownerRecovery),
     partnerRecovery: String(input.partnerRecovery ?? defaults.partnerRecovery),
     note: String(input.note ?? defaults.note),
@@ -1091,6 +1134,7 @@ const ui = {
   crewExpenseMonthlyReport: document.getElementById("crew-expense-monthly-report"),
   profitSplitForm: document.getElementById("profit-split-form"),
   profitSplitCrewOptions: document.getElementById("profit-split-crew-options"),
+  profitSplitExpenseLines: document.getElementById("profit-split-expense-lines"),
   profitSplitSummary: document.getElementById("profit-split-summary"),
   profitSplitBreakdown: document.getElementById("profit-split-breakdown"),
   profitSplitResetButton: document.getElementById("profit-split-reset-button"),
@@ -1519,7 +1563,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260426-profit-split-59&shell=20260426-profit-split-59",
+    href: "./garden-planner.html?v=20260426-profit-split-lines-60&shell=20260426-profit-split-lines-60",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -1839,9 +1883,35 @@ function computeProfitSplitScenario(draft = {}) {
   const partnerDays = Math.max(0, Number(toNumber(draft.partnerDays || 0).toFixed(2)));
   const partnerSharePct = Math.min(100, Math.max(0, Number(toNumber(draft.partnerSharePct || 50).toFixed(2))));
   const ownerSharePct = Number((100 - partnerSharePct).toFixed(2));
-  const ownerPaidExpenses = Number(toNumber(draft.ownerPaidExpenses || 0).toFixed(2));
-  const partnerPaidExpenses = Number(toNumber(draft.partnerPaidExpenses || 0).toFixed(2));
-  const sharedJobCosts = Number(toNumber(draft.sharedJobCosts || 0).toFixed(2));
+  const expenseLines = normalizeProfitSplitExpenseLines(draft.expenseLines, draft)
+    .map((line) => {
+      const payer = ["owner", "partner", "shared"].includes(String(line.payer || "").trim())
+        ? String(line.payer || "").trim()
+        : "owner";
+      const label = String(line.label || "").trim();
+      const amountValue = Number(toNumber(line.amount || 0).toFixed(2));
+      const fallbackLabel = payer === "partner"
+        ? (state.lang === "it" ? "Spesa collaboratore" : "Partner expense")
+        : payer === "shared"
+          ? (state.lang === "it" ? "Costo condiviso" : "Shared cost")
+          : (state.lang === "it" ? "Spesa tua" : "Your expense");
+      const isFilled = Boolean(label) || Math.abs(amountValue) > 0;
+      return {
+        ...line,
+        payer,
+        label,
+        amountValue,
+        displayLabel: label || fallbackLabel,
+        isFilled,
+      };
+    });
+  const ownerExpenseLines = expenseLines.filter((line) => line.payer === "owner" && line.isFilled);
+  const partnerExpenseLines = expenseLines.filter((line) => line.payer === "partner" && line.isFilled);
+  const sharedExpenseLines = expenseLines.filter((line) => line.payer === "shared" && line.isFilled);
+  const sumExpenseLines = (lines) => Number(lines.reduce((sum, line) => sum + line.amountValue, 0).toFixed(2));
+  const ownerPaidExpenses = sumExpenseLines(ownerExpenseLines);
+  const partnerPaidExpenses = sumExpenseLines(partnerExpenseLines);
+  const sharedJobCosts = sumExpenseLines(sharedExpenseLines);
   const ownerRecovery = Number(toNumber(draft.ownerRecovery || 0).toFixed(2));
   const partnerRecovery = Number(toNumber(draft.partnerRecovery || 0).toFixed(2));
   const partnerFixedTotal = Number((partnerDailyFixed * partnerDays).toFixed(2));
@@ -1862,6 +1932,11 @@ function computeProfitSplitScenario(draft = {}) {
 
   return {
     partnerName,
+    expenseLines,
+    ownerExpenseLines,
+    partnerExpenseLines,
+    sharedExpenseLines,
+    expenseLineCount: expenseLines.filter((line) => line.isFilled).length,
     revenue,
     partnerDailyFixed,
     partnerDays,
@@ -1883,9 +1958,58 @@ function computeProfitSplitScenario(draft = {}) {
   };
 }
 
+function renderProfitSplitExpenseRows(lines = []) {
+  return normalizeProfitSplitExpenseLines(lines).map((line, index) => `
+    <div class="profit-split-expense-row" data-profit-split-expense-row data-expense-id="${escapeHtml(line.id)}">
+      <div class="profit-split-expense-row-index">${index + 1}</div>
+      <input
+        class="text-input"
+        data-expense-field="label"
+        list="profit-split-expense-label-options"
+        placeholder="${escapeHtml(state.lang === "it" ? "Es. benzina, caselli, vitto, dipendenti..." : "Fuel, tolls, meals, wages...")}"
+        value="${escapeHtml(line.label)}"
+      />
+      <input
+        class="text-input"
+        data-expense-field="amount"
+        type="text"
+        inputmode="decimal"
+        placeholder="0,00"
+        value="${escapeHtml(line.amount)}"
+      />
+      <select class="text-input" data-expense-field="payer">
+        <option value="owner" ${line.payer === "owner" ? "selected" : ""}>${escapeHtml(state.lang === "it" ? "Pagata da te" : "Paid by you")}</option>
+        <option value="partner" ${line.payer === "partner" ? "selected" : ""}>${escapeHtml(state.lang === "it" ? "Pagata dal collaboratore" : "Paid by partner")}</option>
+        <option value="shared" ${line.payer === "shared" ? "selected" : ""}>${escapeHtml(state.lang === "it" ? "Costo condiviso" : "Shared cost")}</option>
+      </select>
+      <button type="button" class="ghost-button small-button" data-profit-split-remove-expense="${escapeHtml(line.id)}">${escapeHtml(state.lang === "it" ? "Rimuovi" : "Remove")}</button>
+    </div>
+  `).join("");
+}
+
+function renderProfitSplitExpenseList(lines = [], emptyText = "") {
+  if (!lines.length) return `<p class="profit-split-expense-empty">${escapeHtml(emptyText || "—")}</p>`;
+  return `
+    <div class="crew-expense-order-list">
+      ${lines.map((line) => `
+        <div class="crew-expense-order-line">
+          <span>${escapeHtml(line.displayLabel)}</span>
+          <strong>${escapeHtml(formatCurrency(line.amountValue))}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function readProfitSplitDraftFromForm() {
   if (!ui.profitSplitForm) return normalizeProfitSplitDraft(state.profitSplitDraft);
   const form = ui.profitSplitForm;
+  const expenseLines = Array.from(form.querySelectorAll("[data-profit-split-expense-row]")).map((row) => ({
+    id: row.getAttribute("data-expense-id") || crypto.randomUUID(),
+    label: row.querySelector('[data-expense-field="label"]')?.value || "",
+    amount: row.querySelector('[data-expense-field="amount"]')?.value || "",
+    payer: row.querySelector('[data-expense-field="payer"]')?.value || "owner",
+  }));
   return normalizeProfitSplitDraft({
     jobLabel: form.jobLabel?.value || "",
     partnerName: form.partnerName?.value || "",
@@ -1893,9 +2017,7 @@ function readProfitSplitDraftFromForm() {
     partnerDailyFixed: form.partnerDailyFixed?.value || "",
     partnerDays: form.partnerDays?.value || "",
     partnerSharePct: form.partnerSharePct?.value || "",
-    ownerPaidExpenses: form.ownerPaidExpenses?.value || "",
-    partnerPaidExpenses: form.partnerPaidExpenses?.value || "",
-    sharedJobCosts: form.sharedJobCosts?.value || "",
+    expenseLines,
     ownerRecovery: form.ownerRecovery?.value || "",
     partnerRecovery: form.partnerRecovery?.value || "",
     note: form.note?.value || "",
@@ -1905,9 +2027,20 @@ function readProfitSplitDraftFromForm() {
 function syncProfitSplitDraftFromState() {
   if (!ui.profitSplitForm) return;
   const draft = normalizeProfitSplitDraft(state.profitSplitDraft);
-  Object.entries(draft).forEach(([key, value]) => {
-    if (ui.profitSplitForm[key]) ui.profitSplitForm[key].value = value;
+  [
+    "jobLabel",
+    "partnerName",
+    "revenue",
+    "partnerDailyFixed",
+    "partnerDays",
+    "partnerSharePct",
+    "ownerRecovery",
+    "partnerRecovery",
+    "note",
+  ].forEach((key) => {
+    if (ui.profitSplitForm[key]) ui.profitSplitForm[key].value = draft[key] || "";
   });
+  if (ui.profitSplitExpenseLines) ui.profitSplitExpenseLines.innerHTML = renderProfitSplitExpenseRows(draft.expenseLines);
 }
 
 function renderProfitSplitCalculator({ syncForm = true } = {}) {
@@ -1933,6 +2066,7 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
     result.ownerRecovery,
     result.partnerRecovery,
     result.partnerFixedTotal,
+    result.expenseLineCount,
   ].some((value) => Math.abs(value) > 0);
 
   if (!hasValues) {
@@ -1941,8 +2075,8 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
         label: state.lang === "it" ? "Pronto per il conto" : "Ready to calculate",
         value: state.lang === "it" ? "Inserisci i numeri" : "Enter values",
         meta: state.lang === "it"
-          ? "Ricavo, spese, recuperi e fisso giornaliero vengono trasformati nel saldo finale per te e per il collaboratore."
-          : "Revenue, expenses, recoveries, and daily fixed pay are converted into the final split.",
+          ? "Aggiungi le spese una riga per volta, poi il tool trasforma tutto nel saldo finale per te e per il collaboratore."
+          : "Add expenses line by line and the tool will turn everything into the final split.",
       },
     ].map(renderDetailBox).join("");
     ui.profitSplitBreakdown.innerHTML = "";
@@ -1958,7 +2092,7 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
     {
       label: state.lang === "it" ? "Costi dedotti" : "Deducted costs",
       value: formatCurrency(result.deductibleCosts),
-      meta: `${state.lang === "it" ? "Fisso" : "Fixed"} ${formatCurrency(result.partnerFixedTotal)} · ${state.lang === "it" ? "Spese comuni" : "Shared costs"} ${formatCurrency(result.sharedJobCosts)}`,
+      meta: `${result.expenseLineCount} ${state.lang === "it" ? "voci spesa" : "expense items"} · ${state.lang === "it" ? "Fisso" : "Fixed"} ${formatCurrency(result.partnerFixedTotal)}`,
     },
     {
       label: state.lang === "it" ? "Utile da dividere" : "Profit to split",
@@ -2014,6 +2148,10 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
             </article>
           `).join("")}
         </div>
+        ${renderProfitSplitExpenseList(
+          result.partnerExpenseLines,
+          state.lang === "it" ? "Nessuna spesa registrata a carico del collaboratore." : "No partner-paid expenses yet.",
+        )}
       </section>
       <section class="crew-expense-panel">
         <div class="crew-expense-panel-head">
@@ -2035,6 +2173,16 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
             </article>
           `).join("")}
         </div>
+        ${renderProfitSplitExpenseList(
+          result.ownerExpenseLines,
+          state.lang === "it" ? "Nessuna spesa registrata a tuo carico." : "No owner-paid expenses yet.",
+        )}
+        ${result.sharedExpenseLines.length ? `
+          <div class="crew-expense-panel-subhead">
+            <p class="panel-eyebrow">${state.lang === "it" ? "Costi condivisi" : "Shared costs"}</p>
+          </div>
+          ${renderProfitSplitExpenseList(result.sharedExpenseLines)}
+        ` : ""}
       </section>
     </div>
   `;
@@ -12836,7 +12984,33 @@ bindEvent(ui.installationEmailButton, "click", () => {
 bindEvent(ui.installationAttachmentButton, "click", () => openAttachmentPicker("installation"));
 bindEvent(ui.accountingForm, "submit", saveAccounting);
 bindEvent(ui.settingsForm, "submit", saveSettings);
+bindEvent(ui.profitSplitForm, "click", (event) => {
+  const addButton = event.target.closest("[data-profit-split-add-expense]");
+  const removeButton = event.target.closest("[data-profit-split-remove-expense]");
+  if (!addButton && !removeButton) return;
+  event.preventDefault();
+  const draft = readProfitSplitDraftFromForm();
+  const expenseLines = [...draft.expenseLines];
+  if (addButton) {
+    expenseLines.push(getDefaultProfitSplitExpenseLine());
+  }
+  if (removeButton) {
+    const lineId = removeButton.getAttribute("data-profit-split-remove-expense");
+    const filteredLines = expenseLines.filter((line) => line.id !== lineId);
+    draft.expenseLines = filteredLines.length ? filteredLines : [getDefaultProfitSplitExpenseLine()];
+  } else {
+    draft.expenseLines = expenseLines;
+  }
+  state.profitSplitDraft = normalizeProfitSplitDraft(draft);
+  saveProfitSplitDraft();
+  renderProfitSplitCalculator();
+});
 bindEvent(ui.profitSplitForm, "input", () => {
+  state.profitSplitDraft = readProfitSplitDraftFromForm();
+  saveProfitSplitDraft();
+  renderProfitSplitCalculator({ syncForm: false });
+});
+bindEvent(ui.profitSplitForm, "change", () => {
   state.profitSplitDraft = readProfitSplitDraftFromForm();
   saveProfitSplitDraft();
   renderProfitSplitCalculator({ syncForm: false });

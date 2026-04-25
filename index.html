@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260426-profit-split-59" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260426-profit-split-59" />
+    <link rel="preload" href="./styles.css?v=20260426-profit-split-lines-60" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260426-profit-split-lines-60" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -109,7 +109,7 @@
         <div class="topbar-right">
           <button id="reload-button" class="topbar-btn primary">Ricarica dati</button>
           <button id="new-order-button" class="topbar-btn">Nuovo ordine</button>
-          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260426-profit-split-59&shell=20260426-profit-split-59" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
+          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260426-profit-split-lines-60&shell=20260426-profit-split-lines-60" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
           <div class="lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
             <button class="lang-btn" data-lang="en">EN</button>
@@ -132,7 +132,7 @@
             <button id="mobile-pill-new-order-button" class="mobile-pill-tool" type="button">Nuovo ordine</button>
             <a
               id="mobile-pill-garden-planner-link"
-              href="./garden-planner.html?v=20260426-profit-split-59&shell=20260426-profit-split-59"
+              href="./garden-planner.html?v=20260426-profit-split-lines-60&shell=20260426-profit-split-lines-60"
               class="mobile-pill-tool"
               style="text-decoration: none;"
             >
@@ -234,7 +234,7 @@
         </nav>
 
         <div class="sidebar-mobile-tools">
-          <a href="./garden-planner.html?v=20260426-profit-split-59&shell=20260426-profit-split-59" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
+          <a href="./garden-planner.html?v=20260426-profit-split-lines-60&shell=20260426-profit-split-lines-60" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
           <button id="mobile-reload-button" class="sidebar-quick-link" type="button">Ricarica dati</button>
           <div class="lang-switch sidebar-lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
@@ -1553,21 +1553,26 @@
                   <input class="text-input" name="partnerSharePct" type="text" inputmode="decimal" placeholder="50" />
                   <small class="field-hint">La tua quota è il complemento a 100.</small>
                 </label>
-                <label class="field">
-                  <span>Spese pagate da te</span>
-                  <input class="text-input" name="ownerPaidExpenses" type="text" inputmode="decimal" placeholder="0,00" />
-                  <small class="field-hint">Benzina, alloggi, dipendenti o altre spese vive anticipate da te.</small>
-                </label>
-                <label class="field">
-                  <span>Spese pagate dal collaboratore</span>
-                  <input class="text-input" name="partnerPaidExpenses" type="text" inputmode="decimal" placeholder="0,00" />
-                  <small class="field-hint">Tutto cio che lui ha anticipato e deve recuperare.</small>
-                </label>
-                <label class="field">
-                  <span>Altri costi condivisi</span>
-                  <input class="text-input" name="sharedJobCosts" type="text" inputmode="decimal" placeholder="0,00" />
-                  <small class="field-hint">Costi da detrarre dal lavoro che non vanno rimborsati a uno dei due.</small>
-                </label>
+                <div class="field field-full profit-split-expense-editor">
+                  <div class="profit-split-expense-editor-head">
+                    <div>
+                      <span>Spese della commessa</span>
+                      <small class="field-hint">Inserisci una voce per volta: benzina, caselli, mangiare, dipendenti, hotel, treni, materiali extra...</small>
+                    </div>
+                    <button type="button" class="ghost-button small-button" data-profit-split-add-expense>Aggiungi spesa</button>
+                  </div>
+                  <div id="profit-split-expense-lines" class="profit-split-expense-lines"></div>
+                  <datalist id="profit-split-expense-label-options">
+                    <option value="Benzina"></option>
+                    <option value="Caselli"></option>
+                    <option value="Biglietto treno"></option>
+                    <option value="Alloggio"></option>
+                    <option value="Mangiare"></option>
+                    <option value="Dipendenti"></option>
+                    <option value="Materiali extra"></option>
+                    <option value="Nolo attrezzatura"></option>
+                  </datalist>
+                </div>
                 <label class="field">
                   <span>Recuperi tuoi</span>
                   <input class="text-input" name="ownerRecovery" type="text" inputmode="decimal" placeholder="0,00" />
@@ -1706,6 +1711,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260426-profit-split-59" type="module"></script>
+    <script src="./app.js?v=20260426-profit-split-lines-60" type="module"></script>
   </body>
 </html>
