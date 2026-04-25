@@ -470,9 +470,14 @@ function getTravelSummary(travel = {}) {
   const totalKm = routeKmTotal + extraKm;
   const driveMinutes = baseDriveMinutes * multiplier;
   const tollCost = baseTollCost * multiplier;
-  const liters = (totalKm / 100) * fuelRate;
-  const fuelCost = liters * fuelPrice;
-  const totalCost = fuelCost + tollCost;
+  const baseLiters = (routeKmTotal / 100) * fuelRate;
+  const extraLiters = (extraKm / 100) * fuelRate;
+  const liters = baseLiters + extraLiters;
+  const baseFuelCost = baseLiters * fuelPrice;
+  const extraFuelCost = extraLiters * fuelPrice;
+  const fuelCost = baseFuelCost + extraFuelCost;
+  const baseTripCost = baseFuelCost + tollCost;
+  const totalCost = baseTripCost + extraFuelCost;
 
   return {
     routeKm,
@@ -485,8 +490,13 @@ function getTravelSummary(travel = {}) {
     tollCost,
     baseDriveMinutes,
     driveMinutes,
+    baseLiters,
+    extraLiters,
     liters,
+    baseFuelCost,
+    extraFuelCost,
     fuelCost,
+    baseTripCost,
     totalCost,
     multiplier,
     isRoundTrip,
@@ -1399,16 +1409,29 @@ function TravelPlanner({ travel, setTravel }) {
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <MetricCard
-          label="Percorrenza"
-          value={`${fmt(travelSummary.totalKm, 1)} km`}
+          label="Tratta base"
+          value={`${fmt(travelSummary.routeKmTotal, 1)} km`}
           accent
-          sub={travelSummary.extraKm > 0
-            ? `${travelSummary.modeLabel} · ${fmt(travelSummary.routeKmTotal, 1)} km base + ${fmt(travelSummary.extraKm, 1)} km extra`
-            : travelSummary.modeLabel}
+          sub={travelSummary.modeLabel}
         />
-        <MetricCard label="Litri stimati" value={`${fmt(travelSummary.liters, 1)} l`} />
-        <MetricCard label="Caselli" value={fmtE(travelSummary.tollCost)} sub={`${fmtE(travelSummary.baseTollCost)} per tratta`} />
-        <MetricCard label="Costo trasferta" value={fmtE(travelSummary.totalCost)} warning={travelSummary.totalCost > 0} sub={travel.departureBase ? `${travel.departureBase} · ${travelSummary.modeLabel}` : "Compila la sede di partenza"} />
+        <MetricCard
+          label="Costo base sede-cantiere"
+          value={fmtE(travelSummary.baseTripCost)}
+          sub={`${fmt(travelSummary.baseLiters, 1)} l carburante + ${fmtE(travelSummary.tollCost)} caselli`}
+        />
+        <MetricCard
+          label="Km extra"
+          value={`${fmt(travelSummary.extraKm, 1)} km`}
+          sub={travelSummary.extraKm > 0 ? `${fmtE(travelSummary.extraFuelCost)} carburante extra` : "Nessun extra"}
+        />
+        <MetricCard
+          label="Costo trasferta totale"
+          value={fmtE(travelSummary.totalCost)}
+          warning={travelSummary.totalCost > 0}
+          sub={travelSummary.extraKm > 0
+            ? `${fmtE(travelSummary.baseTripCost)} base + ${fmtE(travelSummary.extraFuelCost)} extra`
+            : (travel.departureBase ? `${travel.departureBase} · ${travelSummary.modeLabel}` : "Compila la sede di partenza")}
+        />
       </div>
     </div>
   );
@@ -1799,11 +1822,14 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
         { name: "Sede di partenza", qty: travel?.departureBase || "Da definire", cost: null },
         { name: "Modalità viaggio", qty: travelSummary.modeLabel, cost: null },
         { name: "Km navigatore base", qty: `${fmt(travelSummary.routeKmTotal, 1)} km`, cost: null },
-        travelSummary.extraKm > 0 ? { name: "Km extra operativi", qty: `${fmt(travelSummary.extraKm, 1)} km`, cost: null } : null,
-        { name: "Percorrenza totale", qty: `${fmt(travelSummary.totalKm, 1)} km`, cost: null },
         { name: "Tempo guida stimato", qty: travelSummary.driveMinutes > 0 ? `${Math.round(travelSummary.driveMinutes)} min` : "—", cost: null },
-        { name: "Carburante stimato", qty: `${fmt(travelSummary.liters, 1)} l`, cost: travelSummary.fuelCost },
+        { name: "Carburante tratta base", qty: `${fmt(travelSummary.baseLiters, 1)} l`, cost: travelSummary.baseFuelCost },
         { name: "Caselli", qty: travelSummary.tollCost > 0 ? fmtE(travelSummary.tollCost) : "—", cost: travelSummary.tollCost },
+        { name: "Costo base sede-cantiere", qty: `${fmt(travelSummary.routeKmTotal, 1)} km`, cost: travelSummary.baseTripCost },
+        travelSummary.extraKm > 0 ? { name: "Km extra operativi", qty: `${fmt(travelSummary.extraKm, 1)} km`, cost: null } : null,
+        travelSummary.extraKm > 0 ? { name: "Carburante km extra", qty: `${fmt(travelSummary.extraLiters, 1)} l`, cost: travelSummary.extraFuelCost } : null,
+        { name: "Percorrenza totale", qty: `${fmt(travelSummary.totalKm, 1)} km`, cost: null },
+        { name: "Costo trasferta totale", qty: travelSummary.extraKm > 0 ? "Base + extra" : "Solo tratta base", cost: travelSummary.totalCost },
       ].filter(Boolean),
       sub: travelCost,
     });
