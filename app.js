@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260425-stability-garden-55";
+const APP_SHELL_VERSION = "20260425-stability-garden-56";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1461,7 +1461,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260425-stability-garden-55&shell=20260425-stability-garden-55",
+    href: "./garden-planner.html?v=20260425-stability-garden-56&shell=20260425-stability-garden-56",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({

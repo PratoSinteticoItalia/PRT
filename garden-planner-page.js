@@ -75,6 +75,7 @@ const MANUAL_ROLL_MIN_LENGTH_M = 1;
 const DEFAULT_TRAVEL_SETTINGS = {
   departureBase: "Orta di Atella",
   kmTotal: 0,
+  extraKm: 0,
   fuelPer100Km: 9.5,
   fuelPrice: 1.73,
   tollCost: 0,
@@ -458,13 +459,15 @@ function scoreRollPlacementCandidate(candidateRoll, polygon = [], existingRolls 
 
 function getTravelSummary(travel = {}) {
   const routeKm = Math.max(0, Number(travel?.kmTotal) || 0);
+  const extraKm = Math.max(0, Number(travel?.extraKm) || 0);
   const fuelRate = Math.max(0, Number(travel?.fuelPer100Km) || 0);
   const fuelPrice = Math.max(0, Number(travel?.fuelPrice) || 0);
   const baseTollCost = Math.max(0, Number(travel?.tollCost) || 0);
   const baseDriveMinutes = Math.max(0, Number(travel?.driveMinutes) || 0);
   const isRoundTrip = travel?.roundTrip !== false;
   const multiplier = isRoundTrip ? 2 : 1;
-  const totalKm = routeKm * multiplier;
+  const routeKmTotal = routeKm * multiplier;
+  const totalKm = routeKmTotal + extraKm;
   const driveMinutes = baseDriveMinutes * multiplier;
   const tollCost = baseTollCost * multiplier;
   const liters = (totalKm / 100) * fuelRate;
@@ -473,6 +476,8 @@ function getTravelSummary(travel = {}) {
 
   return {
     routeKm,
+    routeKmTotal,
+    extraKm,
     totalKm,
     fuelRate,
     fuelPrice,
@@ -1338,9 +1343,13 @@ function TravelPlanner({ travel, setTravel }) {
           />
         </div>
         <DimInput label="Km tratta" value={travel.kmTotal} onChange={v => upd("kmTotal", v)} unit="km" />
+        <DimInput label="Km extra" value={travel.extraKm} onChange={v => upd("extraKm", v)} unit="km" />
         <DimInput label="Consumo medio" value={travel.fuelPer100Km} onChange={v => upd("fuelPer100Km", v)} unit="l/100" />
         <DimInput label="Prezzo carburante" value={travel.fuelPrice} onChange={v => upd("fuelPrice", v)} unit="€/l" />
         <DimInput label="Caselli tratta" value={travel.tollCost} onChange={v => upd("tollCost", v)} unit="€" />
+      </div>
+      <div style={{ marginTop: -4, fontSize: 11, color: B.textMuted, lineHeight: 1.4 }}>
+        Usa <strong style={{ color: B.dark }}>Km extra</strong> per sommare viaggi locali, pietrisco, cantiere ↔ albergo o altri spostamenti extra già totali. I km extra incidono sul carburante ma non duplicano i caselli del navigatore.
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: B.dark }}>Modalità viaggio</span>
@@ -1389,7 +1398,14 @@ function TravelPlanner({ travel, setTravel }) {
         ) : null}
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <MetricCard label="Percorrenza" value={`${fmt(travelSummary.totalKm, 1)} km`} accent sub={travelSummary.modeLabel} />
+        <MetricCard
+          label="Percorrenza"
+          value={`${fmt(travelSummary.totalKm, 1)} km`}
+          accent
+          sub={travelSummary.extraKm > 0
+            ? `${travelSummary.modeLabel} · ${fmt(travelSummary.routeKmTotal, 1)} km base + ${fmt(travelSummary.extraKm, 1)} km extra`
+            : travelSummary.modeLabel}
+        />
         <MetricCard label="Litri stimati" value={`${fmt(travelSummary.liters, 1)} l`} />
         <MetricCard label="Caselli" value={fmtE(travelSummary.tollCost)} sub={`${fmtE(travelSummary.baseTollCost)} per tratta`} />
         <MetricCard label="Costo trasferta" value={fmtE(travelSummary.totalCost)} warning={travelSummary.totalCost > 0} sub={travel.departureBase ? `${travel.departureBase} · ${travelSummary.modeLabel}` : "Compila la sede di partenza"} />
@@ -1782,11 +1798,13 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
       items: [
         { name: "Sede di partenza", qty: travel?.departureBase || "Da definire", cost: null },
         { name: "Modalità viaggio", qty: travelSummary.modeLabel, cost: null },
+        { name: "Km navigatore base", qty: `${fmt(travelSummary.routeKmTotal, 1)} km`, cost: null },
+        travelSummary.extraKm > 0 ? { name: "Km extra operativi", qty: `${fmt(travelSummary.extraKm, 1)} km`, cost: null } : null,
         { name: "Percorrenza totale", qty: `${fmt(travelSummary.totalKm, 1)} km`, cost: null },
         { name: "Tempo guida stimato", qty: travelSummary.driveMinutes > 0 ? `${Math.round(travelSummary.driveMinutes)} min` : "—", cost: null },
         { name: "Carburante stimato", qty: `${fmt(travelSummary.liters, 1)} l`, cost: travelSummary.fuelCost },
         { name: "Caselli", qty: travelSummary.tollCost > 0 ? fmtE(travelSummary.tollCost) : "—", cost: travelSummary.tollCost },
-      ],
+      ].filter(Boolean),
       sub: travelCost,
     });
   }
@@ -1808,6 +1826,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
           {projectInfo.notes && <span><strong>Note:</strong> {projectInfo.notes}</span>}
           {!isClientVariant && travel?.departureBase && <span><strong>Partenza:</strong> {travel.departureBase}</span>}
           {!isClientVariant && travelSummary.totalKm > 0 && <span><strong>Viaggio:</strong> {travelSummary.modeLabel}</span>}
+          {!isClientVariant && travelSummary.extraKm > 0 && <span><strong>Km extra:</strong> {fmt(travelSummary.extraKm, 1)} km</span>}
           {!isClientVariant && <span><strong>Listino regionale:</strong> {pricingRegionLabel}</span>}
         </div>
       )}
