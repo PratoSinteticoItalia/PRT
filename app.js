@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260426-profit-split-view-61";
+const APP_SHELL_VERSION = "20260426-deep-debug-62";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -900,6 +900,7 @@ const state = {
   coveragePlanner: loadCoveragePlannerState(),
   coverageDrawing: { active: false, points: [] },
   profitSplitDraft: loadProfitSplitDraft(),
+  pendingCurrentViewRefresh: false,
 };
 
 let sessionKeepaliveTimer = 0;
@@ -922,7 +923,7 @@ let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
 let currentViewRenderFrame = 0;
-let salesContentSearchTimer = 0;
+const searchRenderTimers = Object.create(null);
 const shopifyOrderRefreshInFlight = new Set();
 const shopifyOrderRefreshAttempted = new Set();
 const shopifyOrderRefreshErrors = new Map();
@@ -1594,7 +1595,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260426-profit-split-view-61&shell=20260426-profit-split-view-61",
+    href: "./garden-planner.html?v=20260426-deep-debug-62&shell=20260426-deep-debug-62",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -2077,12 +2078,16 @@ function syncProfitSplitDraftFromState() {
 function renderProfitSplitCalculator({ syncForm = true } = {}) {
   if (!ui.profitSplitSummary || !ui.profitSplitBreakdown) return;
   if (ui.profitSplitCrewOptions) {
-    ui.profitSplitCrewOptions.innerHTML = getCrewAccounts()
+    const crewOptionsMarkup = getCrewAccounts()
       .map((user) => getCrewLabelForUser(user))
       .filter(Boolean)
       .sort((left, right) => left.localeCompare(right, "it"))
       .map((label) => `<option value="${escapeHtml(label)}"></option>`)
       .join("");
+    if (ui.profitSplitCrewOptions.dataset.signature !== crewOptionsMarkup) {
+      ui.profitSplitCrewOptions.innerHTML = crewOptionsMarkup;
+      ui.profitSplitCrewOptions.dataset.signature = crewOptionsMarkup;
+    }
   }
 
   if (syncForm) syncProfitSplitDraftFromState();
@@ -10000,9 +10005,12 @@ function renderAttachmentGrid(items, orderId = "") {
 
 function populateInventoryOptions() {
   if (!ui.inventoryProductOptions) return;
+  const signature = INVENTORY_CATALOG.map((item) => item.label).join("|");
+  if (ui.inventoryProductOptions.dataset.signature === signature) return;
   ui.inventoryProductOptions.innerHTML = INVENTORY_CATALOG
     .map((item) => `<option value="${item.label}"></option>`)
     .join("");
+  ui.inventoryProductOptions.dataset.signature = signature;
 }
 
 function applySessionPayload(session = {}) {
@@ -10011,6 +10019,7 @@ function applySessionPayload(session = {}) {
   const nextUserId = String(nextUser?.id || "");
   const userChanged = previousUserId !== nextUserId;
   const nextSessionRevision = String(session.revision || "").trim();
+  const preserveEditingState = !userChanged;
   state.currentUser = nextUser;
   state.sessionRevision = nextUser ? nextSessionRevision : "";
   state.orders = session.orders || [];
@@ -10018,18 +10027,22 @@ function applySessionPayload(session = {}) {
   state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
   state.salesContents = Array.isArray(session.salesContents) ? session.salesContents.map(normalizeSalesContentRecord) : [];
   state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(session.salesRequestSource || {});
-  state.pendingSalesRequestServiceAccountJson = "";
-  state.pendingSalesRequestServiceAccountEmail = "";
-  state.creatingSalesRequest = false;
-  state.creatingSalesContent = false;
-  state.accountingMobilePane = "summary";
-  state.salesRequestPage = 1;
-  state.salesContentPage = 1;
-  state.salesContentCategory = "all";
+  state.pendingSalesRequestServiceAccountJson = preserveEditingState ? state.pendingSalesRequestServiceAccountJson : "";
+  state.pendingSalesRequestServiceAccountEmail = preserveEditingState ? state.pendingSalesRequestServiceAccountEmail : "";
+  state.creatingSalesRequest = preserveEditingState ? state.creatingSalesRequest : false;
+  state.creatingSalesContent = preserveEditingState ? state.creatingSalesContent : false;
+  state.accountingMobilePane = preserveEditingState ? state.accountingMobilePane : "summary";
+  state.installationMobilePane = preserveEditingState ? state.installationMobilePane : "summary";
+  state.salesRequestPage = preserveEditingState ? Math.max(1, Number(state.salesRequestPage || 1)) : 1;
+  state.salesContentPage = preserveEditingState ? Math.max(1, Number(state.salesContentPage || 1)) : 1;
+  state.salesContentCategory = preserveEditingState
+    ? normalizeSalesContentCategoryFilter(state.salesContentCategory || "all")
+    : "all";
   if (userChanged) {
     state.lastSalesGeneratorSignature = "";
     state.lastSalesGeneratorBrandingSignature = "";
     state.salesGeneratorFreeMode = false;
+    state.pendingCurrentViewRefresh = false;
   }
   state.coveragePlanner = normalizeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner);
   state.settings = session.shopifySettings || {};
@@ -10199,7 +10212,7 @@ function applyFetchedSessionSnapshot(session, { renderMode = "current", enforceP
   if (renderMode === "all") {
     render();
   } else if (renderMode === "current") {
-    renderCurrentViewOnly(state.currentView);
+    refreshCurrentView({ allowDefer: true });
   }
   return true;
 }
@@ -10353,6 +10366,7 @@ function showAuth() {
   stopSessionEvents();
   stopShopifyAutoSync();
   stopSalesRequestAutoSync();
+  clearPendingCurrentViewRefresh();
   setShellPending(false);
   state.mobileMenuOpen = false;
   updateMobileMenu();
@@ -10365,12 +10379,13 @@ function showApp() {
   startSessionEvents();
   startShopifyAutoSync();
   startSalesRequestAutoSync();
+  clearPendingCurrentViewRefresh();
   setShellPending(false);
   state.mobileMenuOpen = false;
   updateMobileMenu();
   ui.authScreen.classList.add("hidden");
   ui.appShell.classList.remove("hidden");
-  render();
+  renderCurrentViewOnly(state.currentView);
   requestAnimationFrame(() => {
     scrollCurrentViewToTop();
     focusViewTarget(state.currentView);
@@ -10454,6 +10469,51 @@ function scheduleCurrentViewRender() {
   });
 }
 
+function isActiveElementInsideCurrentViewForm() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return false;
+  const viewNode = active.closest(".view");
+  if (!viewNode || viewNode.id !== state.currentView) return false;
+  return Boolean(active.closest("form"));
+}
+
+function clearPendingCurrentViewRefresh() {
+  state.pendingCurrentViewRefresh = false;
+}
+
+function flushPendingCurrentViewRefresh({ force = false } = {}) {
+  if (!state.pendingCurrentViewRefresh) return false;
+  if (!force && isActiveElementInsideCurrentViewForm()) return false;
+  clearPendingCurrentViewRefresh();
+  scheduleCurrentViewRender();
+  return true;
+}
+
+function refreshCurrentView({ allowDefer = false } = {}) {
+  if (allowDefer && isActiveElementInsideCurrentViewForm()) {
+    state.pendingCurrentViewRefresh = true;
+    return false;
+  }
+  clearPendingCurrentViewRefresh();
+  renderCurrentViewOnly(state.currentView);
+  return true;
+}
+
+function scheduleSearchRender(key = "", renderFn = () => {}, delay = 120) {
+  const timerKey = String(key || "").trim();
+  if (!timerKey) {
+    renderFn();
+    return;
+  }
+  if (searchRenderTimers[timerKey]) {
+    window.clearTimeout(searchRenderTimers[timerKey]);
+  }
+  searchRenderTimers[timerKey] = window.setTimeout(() => {
+    searchRenderTimers[timerKey] = 0;
+    renderFn();
+  }, delay);
+}
+
 function setView(view) {
   const allowed = getAllowedViewsForRole();
   const nextView = allowed.includes(view) ? view : (allowed[0] || "dashboard");
@@ -10464,6 +10524,7 @@ function setView(view) {
   }
   if (nextView === "accounting") state.accountingMobilePane = "summary";
   if (nextView === "installations") state.installationMobilePane = "summary";
+  clearPendingCurrentViewRefresh();
   state.currentView = nextView;
   renderCurrentViewOnly(nextView);
   if (nextView !== previousView) {
@@ -11448,7 +11509,7 @@ async function saveInstallation(event) {
     ensureCoverageTeam(saved.operations.installation.crew);
     saveCoveragePlannerState();
   }
-  render();
+  renderCurrentViewOnly(state.currentView);
   setStatus(
     ui.installationStatus,
     "success",
@@ -11499,7 +11560,7 @@ async function saveInstallationExpense(event) {
     ui.installationExpenseForm.reset();
     if (ui.installationExpenseForm.date) ui.installationExpenseForm.date.value = new Date().toISOString().slice(0, 10);
   }
-  render();
+  renderCurrentViewOnly(state.currentView);
   setStatus(
     ui.installationExpenseStatus,
     "success",
@@ -11524,7 +11585,7 @@ async function removeInstallationExpense(orderId, expenseId) {
     }),
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  render();
+  renderCurrentViewOnly(state.currentView);
 }
 
 async function assignInstallationOrderToDate(orderId, dateKey) {
@@ -11543,7 +11604,7 @@ async function assignInstallationOrderToDate(orderId, dateKey) {
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.selectedOrderId = saved.id;
-  render();
+  renderCurrentViewOnly(state.currentView);
 }
 
 async function saveAccounting(event) {
@@ -11567,7 +11628,7 @@ async function saveAccounting(event) {
     }),
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  render();
+  renderCurrentViewOnly(state.currentView);
 }
 
 async function saveSettings(event) {
@@ -12794,12 +12855,12 @@ bindEvent(ui.ordersClearManualButton, "click", clearManualOrders);
 bindEvent(ui.ordersSearch, "input", (event) => {
   state.search.orders = event.target.value;
   state.orderPage = 1;
-  renderOrders();
+  scheduleSearchRender("orders", renderOrders);
 });
 bindEvent(ui.salesRequestsSearch, "input", (event) => {
   state.search.salesRequests = event.target.value;
   state.salesRequestPage = 1;
-  renderSalesRequests();
+  scheduleSearchRender("sales-requests", renderSalesRequests);
 });
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
@@ -12843,20 +12904,16 @@ bindEvent(ui.salesGeneratorFrame, "load", () => {
 bindEvent(ui.salesContentSearch, "input", (event) => {
   state.search.salesContent = event.target.value;
   state.salesContentPage = 1;
-  if (salesContentSearchTimer) window.clearTimeout(salesContentSearchTimer);
-  salesContentSearchTimer = window.setTimeout(() => {
-    salesContentSearchTimer = 0;
-    renderSalesContent();
-  }, 120);
+  scheduleSearchRender("sales-content", renderSalesContent);
 });
 bindEvent(ui.salesContentSearchClear, "click", () => {
   if (!ui.salesContentSearch) return;
   ui.salesContentSearch.value = "";
   state.search.salesContent = "";
   state.salesContentPage = 1;
-  if (salesContentSearchTimer) {
-    window.clearTimeout(salesContentSearchTimer);
-    salesContentSearchTimer = 0;
+  if (searchRenderTimers["sales-content"]) {
+    window.clearTimeout(searchRenderTimers["sales-content"]);
+    searchRenderTimers["sales-content"] = 0;
   }
   renderSalesContent();
   ui.salesContentSearch.focus();
@@ -12865,8 +12922,14 @@ bindEvent(ui.salesContentForm, "submit", saveSalesContent);
 bindEvent(ui.salesContentNewButton, "click", createNewSalesContent);
 bindEvent(ui.salesContentDeleteButton, "click", deleteSalesContent);
 bindEvent(ui.salesContentAttachmentButton, "click", () => openAttachmentPicker("sales-content"));
-bindEvent(ui.warehouseSearch, "input", (event) => { state.search.warehouse = event.target.value; renderWarehouse(); });
-bindEvent(ui.accountingSearch, "input", (event) => { state.search.accounting = event.target.value; renderAccounting(); });
+bindEvent(ui.warehouseSearch, "input", (event) => {
+  state.search.warehouse = event.target.value;
+  scheduleSearchRender("warehouse", renderWarehouse);
+});
+bindEvent(ui.accountingSearch, "input", (event) => {
+  state.search.accounting = event.target.value;
+  scheduleSearchRender("accounting", renderAccounting);
+});
 bindEvent(ui.accountingAddPaymentButton, "click", () => {
   state.accountingMobilePane = "payments";
   addAccountingPaymentRow();
@@ -12892,7 +12955,7 @@ bindEvent(ui.orderImportText, "keydown", (event) => {
 if (ui.shippingSearch) {
   ui.shippingSearch.addEventListener("input", (event) => {
     state.search.shipping = event.target.value;
-    renderShipping();
+    scheduleSearchRender("shipping", renderShipping);
   });
 }
 ui.orderFilterTags.forEach((button) => button.addEventListener("click", () => {
@@ -13078,6 +13141,9 @@ window.addEventListener("resize", () => {
   });
 });
 document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    flushPendingCurrentViewRefresh();
+  }
   if (!state.currentUser || document.hidden) return;
   void keepSessionAlive({ silent: true });
   if (canAutoSyncShopify()) {
@@ -13088,6 +13154,7 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("focus", () => {
+  flushPendingCurrentViewRefresh();
   if (!state.currentUser) return;
   void keepSessionAlive({ silent: true });
   if (canAutoSyncShopify()) {
@@ -13098,6 +13165,7 @@ window.addEventListener("focus", () => {
   }
 });
 window.addEventListener("online", () => {
+  flushPendingCurrentViewRefresh();
   if (!state.currentUser) return;
   void keepSessionAlive({ silent: true });
   if (canAutoSyncShopify()) {
@@ -13111,6 +13179,11 @@ window.addEventListener("beforeunload", () => {
   stopSessionKeepalive();
   stopShopifyAutoSync();
   stopSalesRequestAutoSync();
+});
+document.addEventListener("focusout", () => {
+  window.setTimeout(() => {
+    flushPendingCurrentViewRefresh();
+  }, 0);
 });
 
 if (ui.authDemo && !/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
