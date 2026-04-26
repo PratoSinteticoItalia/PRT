@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260426-deep-debug-63";
+const APP_SHELL_VERSION = "20260426-order-hub-64";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1054,6 +1054,7 @@ const ui = {
   orderDetailBadge: document.getElementById("order-detail-badge"),
   orderDetailSummary: document.getElementById("order-detail-summary"),
   orderDetailSections: Array.from(document.querySelectorAll("#orders .order-detail-panel > .panel-subsection")),
+  orderJobHub: document.getElementById("order-job-hub"),
   orderOfficeSummary: document.getElementById("order-office-summary"),
   orderLineList: document.getElementById("order-line-list"),
   orderPrepList: document.getElementById("order-prep-list"),
@@ -1595,7 +1596,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260426-deep-debug-63&shell=20260426-deep-debug-63",
+    href: "./garden-planner.html?v=20260426-order-hub-64&shell=20260426-order-hub-64",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -7019,6 +7020,139 @@ function renderOrderCard(order) {
   `;
 }
 
+function getInstallationStatusLabel(status = "", hasInstallDate = false) {
+  const normalized = String(status || "").trim();
+  if (normalized === "programmata") return t("scheduled");
+  if (normalized === "in-corso") return t("inProgress");
+  if (normalized === "completata") return t("completed");
+  if (normalized === "problema") return t("issue");
+  if (normalized === "da-pianificare" && hasInstallDate) return t("scheduled");
+  return t("toPlan");
+}
+
+function getLatestIsoDateLabel(items = [], fieldName = "createdAt", emptyLabel = "—") {
+  const latest = items.reduce((current, item) => {
+    const candidate = String(item?.[fieldName] || "").trim();
+    return candidate && (!current || candidate > current) ? candidate : current;
+  }, "");
+  return latest ? formatDate(latest) : emptyLabel;
+}
+
+function renderOrderJobHub(order) {
+  const install = order.operations?.installation || {};
+  const attachments = Array.isArray(order.attachments) ? order.attachments : [];
+  const prepItems = getWarehousePrepItems(order);
+  const prepIncludedCount = prepItems.filter((item) => item.included !== false).length;
+  const travelExpenses = getTravelExpensesForOrder(order);
+  const travelTotal = travelExpenses.reduce((sum, expense) => sum + toNumber(expense.amount || 0), 0);
+  const openBalance = getOpenBalance(order);
+  const collectedAmount = getCollectedAmount(order);
+  const hasInstallFlow = Boolean(install.required || isRoutedToInstallation(order) || travelExpenses.length);
+  const installDateLabel = install.installDate
+    ? `${formatDate(install.installDate)}${install.installTime ? ` · ${escapeHtml(install.installTime)}` : ""}`
+    : (state.lang === "it" ? "Data da definire" : "Date to define");
+  const installValue = hasInstallFlow
+    ? escapeHtml(String(install.crew || "").trim() || (state.lang === "it" ? "Squadra da assegnare" : "Crew to assign"))
+    : (state.lang === "it" ? "Non richiesta" : "Not required");
+  const installMeta = hasInstallFlow
+    ? [
+        getInstallationStatusLabel(install.status, Boolean(install.installDate)),
+        installDateLabel,
+        travelExpenses.length
+          ? `${travelExpenses.length} ${state.lang === "it" ? "spese" : "expenses"} · ${formatCurrency(travelTotal)}`
+          : (state.lang === "it" ? "Nessuna spesa squadra registrata" : "No crew expenses recorded"),
+      ].join(" · ")
+    : (state.lang === "it" ? "Solo flusso logistico, nessuna uscita squadra pianificata." : "Logistics only, no crew dispatch planned.");
+  const invoiceState = order.accounting?.invoiceRequired
+    ? (order.accounting?.invoiceIssued
+      ? (state.lang === "it" ? "Fattura emessa" : "Invoice issued")
+      : (state.lang === "it" ? "Fattura da emettere" : "Invoice to issue"))
+    : (state.lang === "it" ? "Fattura non richiesta" : "Invoice not required");
+  const noteCount = [
+    order.note,
+    order.operations?.officeNote,
+    install.reportNote,
+    order.accounting?.accountingNote,
+  ].filter((item) => String(item || "").trim()).length;
+  const latestAttachmentLabel = getLatestIsoDateLabel(
+    attachments,
+    "createdAt",
+    state.lang === "it" ? "Nessun file caricato" : "No file uploaded",
+  );
+  const quickLinks = [];
+  const allowedViews = new Set(getAllowedViewsForRole());
+  if (allowedViews.has("warehouse")) {
+    quickLinks.push({
+      view: "warehouse",
+      label: state.lang === "it" ? "Apri Magazzino" : "Open Warehouse",
+    });
+  }
+  if (allowedViews.has("shipping") && isRoutedToWarehouse(order)) {
+    quickLinks.push({
+      view: "shipping",
+      label: state.lang === "it" ? "Apri Spedizioni" : "Open Shipping",
+    });
+  }
+  if (allowedViews.has("installations") && hasInstallFlow) {
+    quickLinks.push({
+      view: "installations",
+      label: state.lang === "it" ? "Apri Pose" : "Open Installations",
+    });
+  }
+  if (allowedViews.has("accounting")) {
+    quickLinks.push({
+      view: "accounting",
+      label: state.lang === "it" ? "Apri Contabilità" : "Open Accounting",
+    });
+  }
+  return `
+    <div class="info-card order-job-hub-note">
+      <strong>${state.lang === "it" ? "Vista commessa estesa" : "Extended job view"}</strong>
+      <p>${state.lang === "it"
+        ? "Questa sezione legge solo dati già salvati in posa, logistica, contabilità e allegati: nessun flusso esistente viene modificato."
+        : "This section only reads data already saved in installations, logistics, accounting, and attachments: no existing workflow is changed."}</p>
+    </div>
+    <div class="detail-grid detail-grid-tight order-job-hub-grid">
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Stato commessa" : "Job status",
+        value: getUnifiedOrderStage(order).label,
+        meta: getNextOrderAction(order),
+      })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Posa e squadra" : "Installation and crew",
+        value: installValue,
+        meta: installMeta,
+      })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Logistica" : "Logistics",
+        value: getShipmentStateLabel(order),
+        meta: [
+          getShippingModeLabel(order),
+          `${prepIncludedCount}/${prepItems.length} ${state.lang === "it" ? "righe pronte" : "prep lines"}`,
+          getShippingTargetLabel(order),
+        ].join(" · "),
+      })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Economico" : "Accounting",
+        value: openBalance > 0 ? formatCurrency(openBalance) : t("accountingOk"),
+        meta: `${state.lang === "it" ? "Incassato" : "Collected"} ${formatCurrency(collectedAmount)} · ${invoiceState}`,
+      })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Documenti e note" : "Documents and notes",
+        value: `${attachments.length} ${state.lang === "it" ? "allegati" : "attachments"}`,
+        meta: `${noteCount} ${state.lang === "it" ? "note attive" : "active notes"} · ${latestAttachmentLabel}`,
+      })}
+    </div>
+    ${quickLinks.length ? `
+      <div class="detail-actions order-job-hub-actions">
+        ${quickLinks.map((item) => `
+          <button class="btn" data-action="select-order" data-id="${escapeHtml(order.id)}" data-view="${escapeHtml(item.view)}">${escapeHtml(item.label)}</button>
+        `).join("")}
+      </div>
+    ` : ""}
+  `;
+}
+
 function renderOrders() {
   const orders = filterOrdersForView("order");
   const { pageItems, totalPages, totalItems } = paginateOrders(orders);
@@ -7046,6 +7180,7 @@ function renderOrders() {
     ui.orderDetailTitle.textContent = t("noSelection");
     ui.orderDetailBadge.innerHTML = "";
     ui.orderDetailSummary.innerHTML = `<div class="info-card"><strong>${state.lang === "it" ? "Nessun ordine nel filtro corrente" : "No orders in the current filter"}</strong><p>${state.lang === "it" ? "Rimuovi il filtro o cambia ricerca per tornare alla lista operativa." : "Clear the filter or change the search to restore the operational list."}</p></div>`;
+    if (ui.orderJobHub) ui.orderJobHub.innerHTML = "";
     ui.orderOfficeSummary.innerHTML = "";
     ui.orderLineList.innerHTML = "";
     if (ui.orderPrepList) ui.orderPrepList.innerHTML = "";
@@ -7111,6 +7246,7 @@ function renderOrders() {
       ${order.phone ? `<button class="btn" data-action="call-client" data-id="${order.id}">${state.lang === "it" ? "Chiama cliente" : "Call customer"}</button>` : ""}
     </div>
   `;
+  if (ui.orderJobHub) ui.orderJobHub.innerHTML = renderOrderJobHub(order);
   const orderNoteMarkup = order.note
     ? `<div class="detail-note-chip">${escapeHtml(order.note)}</div>`
     : "";
