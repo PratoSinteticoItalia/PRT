@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260426-profit-split-link-67" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260426-profit-split-link-67" />
+    <link rel="preload" href="./styles.css?v=20260426-planner-generator-bridge-68" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260426-planner-generator-bridge-68" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -109,7 +109,7 @@
         <div class="topbar-right">
           <button id="reload-button" class="topbar-btn primary">Ricarica dati</button>
           <button id="new-order-button" class="topbar-btn">Nuovo ordine</button>
-          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260426-profit-split-link-67&shell=20260426-profit-split-link-67" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
+          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260426-planner-generator-bridge-68&shell=20260426-planner-generator-bridge-68" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
           <div class="lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
             <button class="lang-btn" data-lang="en">EN</button>
@@ -132,7 +132,7 @@
             <button id="mobile-pill-new-order-button" class="mobile-pill-tool" type="button">Nuovo ordine</button>
             <a
               id="mobile-pill-garden-planner-link"
-              href="./garden-planner.html?v=20260426-profit-split-link-67&shell=20260426-profit-split-link-67"
+              href="./garden-planner.html?v=20260426-planner-generator-bridge-68&shell=20260426-planner-generator-bridge-68"
               class="mobile-pill-tool"
               style="text-decoration: none;"
             >
@@ -238,7 +238,7 @@
         </nav>
 
         <div class="sidebar-mobile-tools">
-          <a href="./garden-planner.html?v=20260426-profit-split-link-67&shell=20260426-profit-split-link-67" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
+          <a href="./garden-planner.html?v=20260426-planner-generator-bridge-68&shell=20260426-planner-generator-bridge-68" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
           <button id="mobile-reload-button" class="sidebar-quick-link" type="button">Ricarica dati</button>
           <div class="lang-switch sidebar-lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
@@ -273,42 +273,42 @@
           </div>
 
           <div class="kpi-grid">
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="orders" data-order-filter="all" role="button" tabindex="0">
+            <article class="kpi-card" data-action="open-dashboard-view" data-view="orders" data-dashboard-order-filter="all" role="button" tabindex="0">
               <div class="kpi-label">Ordini</div>
               <div id="ops-orders-value" class="kpi-value">0</div>
               <div id="ops-orders-text" class="kpi-sub">Ordini totali e bozze operative.</div>
             </article>
-            <article class="kpi-card kpi-card-accent" data-action="open-dashboard-view" data-view="orders" data-order-filter="all" role="button" tabindex="0">
+            <article class="kpi-card kpi-card-accent" data-action="open-dashboard-view" data-view="orders" data-dashboard-order-filter="all" role="button" tabindex="0">
               <div class="kpi-label">Mq venduti</div>
               <div id="ops-sold-sqm-value" class="kpi-value">0</div>
               <div id="ops-sold-sqm-text" class="kpi-sub">Stima dei metri quadri confermati sugli ordini acquisiti.</div>
             </article>
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="warehouse" data-warehouse-filter="all" role="button" tabindex="0">
+            <article class="kpi-card" data-action="open-dashboard-view" data-view="warehouse" data-dashboard-warehouse-filter="all" role="button" tabindex="0">
               <div class="kpi-label">Inventario</div>
               <div id="ops-warehouse-value" class="kpi-value">0</div>
               <div id="ops-warehouse-text" class="kpi-sub">Ordini da preparare, spedire o caricare.</div>
             </article>
-            <article class="kpi-card kpi-card-soft" data-action="open-dashboard-view" data-view="warehouse" data-warehouse-filter="all" role="button" tabindex="0">
+            <article class="kpi-card kpi-card-soft" data-action="open-dashboard-view" data-view="warehouse" data-dashboard-warehouse-filter="all" role="button" tabindex="0">
               <div class="kpi-label">Giacenza prato</div>
               <div id="ops-stock-value" class="kpi-value">0</div>
               <div id="ops-stock-text" class="kpi-sub">Disponibilità reale dei modelli prato caricati.</div>
             </article>
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="installations" data-installation-filter="all" role="button" tabindex="0">
+            <article class="kpi-card" data-action="open-dashboard-view" data-view="installations" data-dashboard-installation-filter="all" role="button" tabindex="0">
               <div class="kpi-label">Pose</div>
               <div id="ops-installations-value" class="kpi-value">0</div>
               <div id="ops-installations-text" class="kpi-sub">Installazioni da pianificare o in corso.</div>
             </article>
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="accounting" data-accounting-filter="all" role="button" tabindex="0">
+            <article class="kpi-card" data-action="open-dashboard-view" data-view="accounting" data-dashboard-accounting-filter="all" role="button" tabindex="0">
               <div class="kpi-label">Da incassare</div>
               <div id="ops-accounting-value" class="kpi-value">0</div>
               <div id="ops-accounting-text" class="kpi-sub">Ordini da verificare, saldare o fatturare.</div>
             </article>
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="shipping" data-shipping-filter="all" role="button" tabindex="0">
+            <article class="kpi-card" data-action="open-dashboard-view" data-view="shipping" data-dashboard-shipping-filter="all" role="button" tabindex="0">
               <div class="kpi-label">Logistica</div>
               <div id="ops-shipping-value" class="kpi-value">0</div>
               <div id="ops-shipping-text" class="kpi-sub">Corrieri, ritiri, furgoni e bancali.</div>
             </article>
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="orders" data-order-filter="fulfilled" role="button" tabindex="0">
+            <article class="kpi-card" data-action="open-dashboard-view" data-view="orders" data-dashboard-order-filter="fulfilled" role="button" tabindex="0">
               <div class="kpi-label">Chiusi</div>
               <div id="ops-closed-value" class="kpi-value">0</div>
               <div id="ops-closed-text" class="kpi-sub">Ordini completati e senza azioni aperte.</div>
@@ -1783,6 +1783,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260426-profit-split-link-67" type="module"></script>
+    <script src="./app.js?v=20260426-planner-generator-bridge-68" type="module"></script>
   </body>
 </html>

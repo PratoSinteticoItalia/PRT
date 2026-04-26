@@ -87,6 +87,8 @@ const DEFAULT_TRAVEL_SETTINGS = {
 };
 
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
+const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
+const APP_SHELL_VERSION = "20260426-planner-generator-bridge-68";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -110,6 +112,62 @@ const getLocalISODate = () => {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
+
+function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, installNeeds, borderType, borderMeters, decoItems }) {
+  const clientName = String(projectInfo.client || "").trim();
+  const [firstName = "", ...restName] = clientName.split(/\s+/).filter(Boolean);
+  const address = String(projectInfo.address || "").trim();
+  const city = address.split(",").map((item) => item.trim()).filter(Boolean).pop() || address;
+  const substrateSummary = [
+    substrate.scavoCm > 0 ? `Scavo ${substrate.scavoCm} cm` : "",
+    substrate.drenateCm > 0 ? `Drenante ${substrate.drenateCm} cm` : "",
+    substrate.sabbiaCm > 0 ? `Sabbia ${substrate.sabbiaCm} cm` : "",
+  ].filter(Boolean).join(" · ");
+  const borderLabel = borderType !== "nessuna" && borderMeters > 0 ? `Bordura ${fmt(borderMeters, 1)} m` : "";
+  const extraDecor = Object.entries(decoItems || {})
+    .filter(([, qty]) => Number(qty) > 0)
+    .map(([id, qty]) => {
+      const item = DECO_CATALOG.find((entry) => entry.id === id);
+      return item ? `${item.name} ${qty} ${item.unit}` : "";
+    })
+    .filter(Boolean);
+  return {
+    runId: Date.now(),
+    createdAt: new Date().toISOString(),
+    client: clientName,
+    address,
+    city,
+    sqmLabel: `${fmt(area, 1)} m²`,
+    serviceLabel: "Fornitura + posa",
+    surfaceLabel: substrateSummary || "Fondo da definire",
+    note: [
+      address ? `Cantiere: ${address}` : "",
+      substrateSummary ? `Fondo: ${substrateSummary}` : "",
+      travel?.departureBase ? `Partenza: ${travel.departureBase}` : "",
+      String(projectInfo.notes || "").trim(),
+    ].filter(Boolean).join(" · "),
+    materialHighlights: [
+      `Prato ${fmt(area, 1)} m²`,
+      `TNT ${fmt(installNeeds.geo, 1)} m²`,
+      installNeeds.tapeRolls > 0 ? `Banda ${fmt(installNeeds.jointMeters, 1)} m · ${installNeeds.tapeRolls} rot.` : "",
+      installNeeds.glueBuckets > 0 ? `Colla ${installNeeds.glueBuckets} secchi` : "",
+      borderLabel,
+      ...extraDecor.slice(0, 3),
+    ].filter(Boolean),
+    payload: {
+      nome: firstName,
+      cognome: restName.join(" "),
+      citta: city,
+      telefono: "",
+      email: "",
+      mq: Number(area).toFixed(1),
+      altezza: "",
+      servizio: "Fornitura + posa",
+      fondo: substrateSummary || "Fondo da definire",
+      whatsappTemplate: "",
+    },
+  };
+}
 
 function normalizeRegionName(raw) {
   const normalized = String(raw || "")
@@ -2181,6 +2239,38 @@ function GardenPlanner() {
     });
   };
 
+  const handleOpenQuoteGenerator = () => {
+    const technicalNode = document.getElementById("garden-planner-print-content");
+    const clientNode = document.getElementById("garden-planner-client-print-content");
+    const installNeeds = estimateInstallationNeeds(area, perimeter, manualRolls);
+    const plannerBridge = buildPlannerQuotePrefill({
+      projectInfo,
+      area,
+      substrate,
+      travel,
+      installNeeds,
+      borderType,
+      borderMeters: selectedBorderMeters,
+      decoItems,
+    });
+    plannerBridge.reportHtml = {
+      technical: technicalNode ? technicalNode.innerHTML : "",
+      client: clientNode ? clientNode.innerHTML : "",
+    };
+    try {
+      window.localStorage.setItem(GARDEN_PLANNER_PREFILL_STORAGE_KEY, JSON.stringify(plannerBridge));
+      window.localStorage.setItem("quote-generator-prefill", JSON.stringify({
+        runId: Date.now(),
+        payload: plannerBridge.payload,
+      }));
+    } catch {}
+    const targetUrl = new URL("./index.html", window.location.href);
+    targetUrl.searchParams.set("shell", APP_SHELL_VERSION);
+    targetUrl.searchParams.set("view", "sales-generator");
+    targetUrl.searchParams.set("planner", "1");
+    window.open(targetUrl.toString(), "_blank", "noopener,noreferrer");
+  };
+
   return (
     <div style={{ fontFamily: "'Manrope', 'Segoe UI', sans-serif", minHeight: "100vh", background: B.cream }}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -2332,6 +2422,7 @@ function GardenPlanner() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             <StepBadge n={5} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Riepilogo materiali e trasferta</span>
             <div style={{ flex: 1 }} />
+            <button disabled={area <= 0} onClick={handleOpenQuoteGenerator} style={{ ...btnPrim, whiteSpace: "nowrap", background: "#244033", opacity: area > 0 ? 1 : 0.55, cursor: area > 0 ? "pointer" : "not-allowed" }}>Apri nel generatore</button>
             <button onClick={() => handlePrintReport("technical")} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa report tecnico</button>
             <button onClick={() => handlePrintReport("client")} style={{ ...btnPrim, whiteSpace: "nowrap", background: B.white, color: B.primary, border: "1px solid " + B.primary }}>Stampa versione cliente</button>
           </div>
@@ -2378,7 +2469,7 @@ function GardenPlanner() {
         </div>
 
         <div style={{ textAlign: "center", padding: "8px 0 24px", fontSize: 11, color: B.textMuted }}>
-          Garden Planner v3.4 - Prato Sintetico Italia / VERTEX SRLS - Strumento interno
+          Garden Planner v3.5 - Prato Sintetico Italia / VERTEX SRLS - Strumento interno
         </div>
       </div>
     </div>

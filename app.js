@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260426-profit-split-link-67";
+const APP_SHELL_VERSION = "20260426-planner-generator-bridge-68";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -16,6 +16,7 @@ const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 60;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
+const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const SALES_GENERATOR_FRAME_MIN_HEIGHT = 680;
 const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 920;
 const SALES_GENERATOR_FRAME_MAX_HEIGHT = 1480;
@@ -848,6 +849,87 @@ function saveProfitSplitDraft(draft = state?.profitSplitLocalDraft || state?.pro
   } catch {}
 }
 
+function normalizeGardenPlannerQuoteBridge(input = {}) {
+  const payload = input && typeof input.payload === "object" ? input.payload : {};
+  const reportHtml = input && typeof input.reportHtml === "object" ? input.reportHtml : {};
+  const normalizeString = (value = "") => String(value ?? "").trim();
+  return {
+    runId: Number(input.runId || Date.now()),
+    createdAt: normalizeString(input.createdAt),
+    client: normalizeString(input.client || payload.nome),
+    address: normalizeString(input.address),
+    city: normalizeString(input.city || payload.citta),
+    sqmLabel: normalizeString(input.sqmLabel),
+    serviceLabel: normalizeString(input.serviceLabel || payload.servizio),
+    surfaceLabel: normalizeString(input.surfaceLabel || payload.fondo),
+    note: normalizeString(input.note),
+    materialHighlights: Array.isArray(input.materialHighlights)
+      ? input.materialHighlights.map((item) => normalizeString(item)).filter(Boolean).slice(0, 8)
+      : [],
+    reportHtml: {
+      technical: normalizeString(reportHtml.technical || input.technicalReportHtml),
+      client: normalizeString(reportHtml.client || input.clientReportHtml),
+    },
+    payload: {
+      nome: normalizeString(payload.nome),
+      cognome: normalizeString(payload.cognome),
+      citta: normalizeString(payload.citta),
+      telefono: normalizeString(payload.telefono),
+      email: normalizeString(payload.email),
+      mq: payload.mq != null && payload.mq !== "" ? String(payload.mq).trim() : "",
+      altezza: normalizeString(payload.altezza),
+      servizio: normalizeString(payload.servizio),
+      fondo: normalizeString(payload.fondo),
+      whatsappTemplate: normalizeString(payload.whatsappTemplate),
+    },
+  };
+}
+
+function loadGardenPlannerQuoteBridge() {
+  try {
+    const raw = window.localStorage.getItem(GARDEN_PLANNER_PREFILL_STORAGE_KEY);
+    if (!raw) return null;
+    return normalizeGardenPlannerQuoteBridge(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function getGardenPlannerQuoteBridge() {
+  const bridge = loadGardenPlannerQuoteBridge();
+  const payload = bridge?.payload || {};
+  if (!bridge) return null;
+  if (!Object.values(payload).some((value) => String(value || "").trim())) return null;
+  return bridge;
+}
+
+function readLaunchParams() {
+  const params = new URLSearchParams(window.location.search);
+  const requestedView = String(params.get("view") || "").trim();
+  const plannerFlag = String(params.get("planner") || params.get("prefill") || "").trim().toLowerCase();
+  return {
+    requestedView,
+    usePlannerPrefill: plannerFlag === "1" || plannerFlag === "true" || plannerFlag === "garden-planner",
+  };
+}
+
+const launchParams = readLaunchParams();
+let launchParamsApplied = false;
+
+function clearHandledLaunchParams() {
+  const url = new URL(window.location.href);
+  let changed = false;
+  ["view", "planner", "prefill"].forEach((key) => {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  });
+  if (changed) {
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+}
+
 const state = {
   currentUser: null,
   orders: [],
@@ -872,6 +954,7 @@ const state = {
   lastSalesGeneratorSignature: "",
   lastSalesGeneratorBrandingSignature: "",
   salesGeneratorFreeMode: false,
+  salesGeneratorPlannerMode: false,
   lastAccountsManagerSignature: "",
   lang: "it",
   filters: {
@@ -1610,7 +1693,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260426-profit-split-link-67&shell=20260426-profit-split-link-67",
+    href: `./garden-planner.html?v=${APP_SHELL_VERSION}&shell=${APP_SHELL_VERSION}`,
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -3146,6 +3229,130 @@ function buildSalesRequestPrefill(item = {}) {
   };
 }
 
+function pushPlannerPrefillToGenerator(force = false) {
+  const bridge = getGardenPlannerQuoteBridge();
+  const payload = bridge?.payload;
+  if (!payload) return false;
+  const signature = JSON.stringify({ source: "garden-planner", payload });
+  if (!force && state.lastSalesGeneratorSignature === signature) return true;
+  state.salesGeneratorPlannerMode = true;
+  state.salesGeneratorFreeMode = false;
+  state.lastSalesGeneratorSignature = signature;
+  try {
+    window.localStorage.setItem(SALES_PREFILL_STORAGE_KEY, JSON.stringify({
+      runId: Date.now(),
+      payload,
+    }));
+  } catch {}
+  try {
+    ui.salesGeneratorFrame?.contentWindow?.postMessage({
+      type: "quote-generator:prefill-request",
+      payload,
+      force,
+    }, "*");
+  } catch {}
+  return true;
+}
+
+function activatePlannerPrefill({ force = false, openView = false } = {}) {
+  const applied = pushPlannerPrefillToGenerator(force);
+  if (!applied) return false;
+  if (openView) {
+    setView("sales-generator");
+  } else if (state.currentView === "sales-generator") {
+    renderSalesGenerator();
+  }
+  return true;
+}
+
+function openPlannerReportPreview(variant = "technical") {
+  const bridge = getGardenPlannerQuoteBridge();
+  const reportHtml = variant === "client" ? bridge?.reportHtml?.client : bridge?.reportHtml?.technical;
+  if (!reportHtml) return false;
+  const reportTitle = variant === "client"
+    ? (state.lang === "it" ? "Report materiali Garden Planner" : "Garden Planner materials report")
+    : (state.lang === "it" ? "Report tecnico Garden Planner" : "Garden Planner technical report");
+  const printLabel = state.lang === "it" ? "Stampa report" : "Print report";
+  const preview = window.open("", "_blank");
+  if (!preview) return false;
+  preview.document.open();
+  preview.document.write(`<!DOCTYPE html>
+<html lang="${state.lang}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(reportTitle)}</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        background: #f4f6f5;
+        color: #182230;
+      }
+      .planner-report-shell {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 26px 20px 40px;
+      }
+      .planner-report-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        justify-content: flex-end;
+        padding: 16px 0 18px;
+        background: linear-gradient(180deg, rgba(244, 246, 245, 0.98), rgba(244, 246, 245, 0.9), rgba(244, 246, 245, 0));
+        backdrop-filter: blur(10px);
+      }
+      .planner-report-toolbar button {
+        border: 1px solid rgba(23, 51, 37, 0.14);
+        border-radius: 999px;
+        background: linear-gradient(180deg, #315c48, #1d3b2f);
+        color: #ffffff;
+        padding: 11px 18px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 12px 24px rgba(22, 46, 35, 0.16);
+      }
+      .planner-report-card {
+        border-radius: 28px;
+        background: #ffffff;
+        padding: 20px;
+        box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+      }
+      @media print {
+        body {
+          background: #ffffff;
+        }
+        .planner-report-shell {
+          max-width: none;
+          padding: 0;
+        }
+        .planner-report-toolbar {
+          display: none;
+        }
+        .planner-report-card {
+          box-shadow: none;
+          padding: 0;
+          border-radius: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="planner-report-shell">
+      <div class="planner-report-toolbar">
+        <button type="button" onclick="window.print()">${escapeHtml(printLabel)}</button>
+      </div>
+      <div class="planner-report-card">${reportHtml}</div>
+    </div>
+  </body>
+</html>`);
+  preview.document.close();
+  return true;
+}
+
 function parseWhatsAppHyperlinkFormulaUrl(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -3393,6 +3600,7 @@ function pushSalesGeneratorBranding(force = false) {
 
 function clearSalesRequestPrefillInGenerator({ keepFreeMode = true } = {}) {
   if (keepFreeMode) state.salesGeneratorFreeMode = true;
+  state.salesGeneratorPlannerMode = false;
   state.lastSalesGeneratorSignature = "";
   try {
     window.localStorage.removeItem(SALES_PREFILL_STORAGE_KEY);
@@ -3405,13 +3613,14 @@ function clearSalesRequestPrefillInGenerator({ keepFreeMode = true } = {}) {
 }
 
 function pushSalesRequestToGenerator(force = false) {
-  if (state.salesGeneratorFreeMode && !force) return;
+  if ((state.salesGeneratorFreeMode || state.salesGeneratorPlannerMode) && !force) return;
   const request = getSelectedSalesRequest();
   if (!request) return;
   const payload = buildSalesRequestPrefill(request);
   const signature = JSON.stringify(payload);
   if (!force && state.lastSalesGeneratorSignature === signature) return;
   state.salesGeneratorFreeMode = false;
+  state.salesGeneratorPlannerMode = false;
   state.lastSalesGeneratorSignature = signature;
   try {
     window.localStorage.setItem(SALES_PREFILL_STORAGE_KEY, JSON.stringify({
@@ -7430,26 +7639,26 @@ function openDashboardViewTarget(target) {
   const dataset = target?.dataset || {};
   const nextView = dataset.view || "orders";
   if (nextView === "orders") {
-    state.filters.order = dataset.orderFilter || "all";
+    state.filters.order = dataset.dashboardOrderFilter || dataset.orderFilter || "all";
     state.search.orders = "";
     state.orderPage = 1;
   }
   if (nextView === "warehouse") {
-    state.filters.warehouse = dataset.warehouseFilter || "all";
+    state.filters.warehouse = dataset.dashboardWarehouseFilter || dataset.warehouseFilter || "all";
     state.search.warehouse = "";
   }
   if (nextView === "installations") {
-    state.filters.installation = dataset.installationFilter || "all";
+    state.filters.installation = dataset.dashboardInstallationFilter || dataset.installationFilter || "all";
     if (state.filters.installation === "all") {
       state.selectedInstallationCrew = "";
     }
   }
   if (nextView === "accounting") {
-    state.filters.accounting = dataset.accountingFilter || "all";
+    state.filters.accounting = dataset.dashboardAccountingFilter || dataset.accountingFilter || "all";
     state.search.accounting = "";
   }
   if (nextView === "shipping") {
-    state.filters.shipping = dataset.shippingFilter || "all";
+    state.filters.shipping = dataset.dashboardShippingFilter || dataset.shippingFilter || "all";
     state.search.shipping = "";
   }
   setView(nextView);
@@ -7793,20 +8002,66 @@ function renderSalesRequests() {
 function renderSalesGenerator() {
   const generatorOnlyMode = state.currentUser?.role === "crew";
   const selected = ensureSelectedSalesRequest();
-  const freeMode = !generatorOnlyMode && state.salesGeneratorFreeMode;
+  const plannerBridge = !generatorOnlyMode ? getGardenPlannerQuoteBridge() : null;
+  const plannerMode = !generatorOnlyMode && state.salesGeneratorPlannerMode && Boolean(plannerBridge?.payload);
+  const freeMode = !generatorOnlyMode && state.salesGeneratorFreeMode && !plannerMode;
+  const contextEyebrow = document.getElementById("sales-generator-context-eyebrow");
+  const contextTitle = document.getElementById("sales-generator-context-title");
+  if (contextEyebrow) {
+    contextEyebrow.textContent = plannerMode
+      ? (state.lang === "it" ? "Planner collegato" : "Planner linked")
+      : freeMode
+        ? (state.lang === "it" ? "Preventivo libero" : "Free quote")
+        : (state.lang === "it" ? "Prefill attivo" : "Active prefill");
+  }
+  if (contextTitle) {
+    contextTitle.textContent = plannerMode
+      ? "Garden Planner"
+      : freeMode
+        ? (state.lang === "it" ? "Generatore manuale" : "Manual generator")
+        : (state.lang === "it" ? "Richiesta collegata" : "Linked request");
+  }
   if (ui.salesGeneratorRequestCard) {
     ui.salesGeneratorRequestCard.innerHTML = generatorOnlyMode
       ? (state.lang === "it"
           ? "Preventivatore attivo per la squadra. Le richieste commerciali restano riservate all'ufficio."
           : "Crew quote mode is active. Sales requests remain visible only to the office.")
+      : plannerMode && plannerBridge
+      ? `
+          <div class="sales-generator-card-head">
+            <strong>${state.lang === "it" ? "Dati importati dal Garden Planner" : "Imported from Garden Planner"}</strong>
+            <span class="sales-status-pill">${escapeHtml(plannerBridge.sqmLabel || (state.lang === "it" ? "Preventivo pronto" : "Quote ready"))}</span>
+          </div>
+          <div class="sales-generator-card-grid">
+            <span>${escapeHtml(plannerBridge.client || (state.lang === "it" ? "Cliente da definire" : "Customer pending"))}</span>
+            <span>${escapeHtml(plannerBridge.city || plannerBridge.address || (state.lang === "it" ? "Cantiere da definire" : "Site pending"))}</span>
+            <span>${escapeHtml(plannerBridge.serviceLabel || (state.lang === "it" ? "Fornitura + posa" : "Supply + installation"))}</span>
+            <span>${escapeHtml(plannerBridge.surfaceLabel || (state.lang === "it" ? "Fondo da definire" : "Surface pending"))}</span>
+          </div>
+          <p class="sales-generator-request-note" title="${escapeHtml(plannerBridge.note || plannerBridge.materialHighlights.join(" · ") || "")}">
+            ${escapeHtml(plannerBridge.note || plannerBridge.materialHighlights.join(" · ") || (state.lang === "it" ? "Riepilogo materiali e report pronti da affiancare al preventivo." : "Materials summary and report are ready to support the quote."))}
+          </p>
+          <div class="sales-generator-card-foot">
+            <button class="ghost-button small-button" type="button" data-action="use-planner-prefill">${state.lang === "it" ? "Aggiorna dati planner" : "Refresh planner data"}</button>
+            ${plannerBridge.reportHtml.technical ? `<button class="ghost-button small-button" type="button" data-action="open-planner-report" data-variant="technical">${state.lang === "it" ? "Apri report" : "Open report"}</button>` : ""}
+          </div>
+        `
       : freeMode
       ? `
           <div class="sales-generator-card-head">
             <strong>${escapeHtml(t("salesGeneratorFreeModeTitle"))}</strong>
           </div>
-          <p>${escapeHtml(t("salesGeneratorFreeModeCopy"))}</p>
+          <p class="sales-generator-request-note">${escapeHtml(t("salesGeneratorFreeModeCopy"))}</p>
           ${selected
             ? `<p class="panel-note">${state.lang === "it" ? "Richiesta attualmente selezionata:" : "Currently selected request:"} <strong>${escapeHtml(getSalesRequestDisplayName(selected))}</strong></p>`
+            : ""}
+          ${plannerBridge
+            ? `
+              <div class="sales-generator-card-foot">
+                <button class="ghost-button small-button" type="button" data-action="use-planner-prefill">${state.lang === "it" ? "Usa Garden Planner" : "Use Garden Planner"}</button>
+                ${plannerBridge.reportHtml.technical ? `<button class="ghost-button small-button" type="button" data-action="open-planner-report" data-variant="technical">${state.lang === "it" ? "Apri report" : "Open report"}</button>` : ""}
+              </div>
+            `
             : ""}
         `
       : selected
@@ -7822,7 +8077,25 @@ function renderSalesGenerator() {
             <span>${escapeHtml(getSalesRequestServiceLabel(selected.service))}</span>
             <span>${escapeHtml(getSalesRequestSurfaceLabel(selected.surface))}</span>
           </div>
-          <p>${escapeHtml(selected.note || (state.lang === "it" ? "Nessuna nota commerciale." : "No sales note."))}</p>
+          <p class="sales-generator-request-note" title="${escapeHtml(selected.note || "")}">${escapeHtml(selected.note || (state.lang === "it" ? "Nessuna nota commerciale." : "No sales note."))}</p>
+          ${plannerBridge
+            ? `
+              <div class="sales-generator-card-foot">
+                <button class="ghost-button small-button" type="button" data-action="use-planner-prefill">${state.lang === "it" ? "Usa Garden Planner" : "Use Garden Planner"}</button>
+                ${plannerBridge.reportHtml.technical ? `<button class="ghost-button small-button" type="button" data-action="open-planner-report" data-variant="technical">${state.lang === "it" ? "Apri report" : "Open report"}</button>` : ""}
+              </div>
+            `
+            : ""}
+        `
+      : plannerBridge
+      ? `
+          <p class="sales-generator-request-note">${state.lang === "it"
+            ? "Seleziona una richiesta oppure carica il riepilogo del Garden Planner per partire dai materiali già calcolati."
+            : "Select a request or load the Garden Planner summary to start from the calculated materials."}</p>
+          <div class="sales-generator-card-foot">
+            <button class="ghost-button small-button" type="button" data-action="use-planner-prefill">${state.lang === "it" ? "Usa Garden Planner" : "Use Garden Planner"}</button>
+            ${plannerBridge.reportHtml.technical ? `<button class="ghost-button small-button" type="button" data-action="open-planner-report" data-variant="technical">${state.lang === "it" ? "Apri report" : "Open report"}</button>` : ""}
+          </div>
         `
       : (state.lang === "it"
           ? "Seleziona una richiesta per precompilare automaticamente il generatore."
@@ -7834,11 +8107,13 @@ function renderSalesGenerator() {
     ui.salesGeneratorFreeQuoteButton.hidden = generatorOnlyMode;
     ui.salesGeneratorFreeQuoteButton.classList.toggle("hidden", generatorOnlyMode);
     ui.salesGeneratorFreeQuoteButton.disabled = freeMode && !selected;
-    ui.salesGeneratorFreeQuoteButton.textContent = freeMode
+    ui.salesGeneratorFreeQuoteButton.textContent = plannerMode
+      ? (selected ? t("salesGeneratorUseSelectedRequest") : t("salesGeneratorFreeModeTitle"))
+      : freeMode
       ? t("salesGeneratorUseSelectedRequest")
       : t("salesGeneratorFreeQuote");
-    ui.salesGeneratorFreeQuoteButton.classList.toggle("primary-button", !freeMode);
-    ui.salesGeneratorFreeQuoteButton.classList.toggle("ghost-button", freeMode);
+    ui.salesGeneratorFreeQuoteButton.classList.toggle("primary-button", !(freeMode || plannerMode));
+    ui.salesGeneratorFreeQuoteButton.classList.toggle("ghost-button", freeMode || plannerMode);
   }
   if (ui.salesGeneratorContactPanel) {
     const canShowContacts = !generatorOnlyMode && Boolean(selected);
@@ -7869,7 +8144,10 @@ function renderSalesGenerator() {
   if (state.currentView === "sales-generator") {
     window.setTimeout(() => pushSalesGeneratorBranding(false), 20);
   }
-  if (state.currentView === "sales-generator" && selected && !generatorOnlyMode && !freeMode) {
+  if (state.currentView === "sales-generator" && plannerMode) {
+    window.setTimeout(() => pushPlannerPrefillToGenerator(false), 40);
+  }
+  if (state.currentView === "sales-generator" && selected && !generatorOnlyMode && !freeMode && !plannerMode) {
     window.setTimeout(() => pushSalesRequestToGenerator(false), 40);
   }
 }
@@ -8265,12 +8543,25 @@ function useSelectedSalesRequestInGenerator() {
   const selected = getSelectedSalesRequest();
   if (!selected) return;
   state.salesGeneratorFreeMode = false;
+  state.salesGeneratorPlannerMode = false;
   pushSalesRequestToGenerator(true);
   setView("sales-generator");
 }
 
 function toggleSalesGeneratorFreeMode() {
   const selected = getSelectedSalesRequest();
+  if (state.salesGeneratorPlannerMode) {
+    if (selected) {
+      state.salesGeneratorPlannerMode = false;
+      state.salesGeneratorFreeMode = false;
+      pushSalesRequestToGenerator(true);
+      if (state.currentView === "sales-generator") renderSalesGenerator();
+      return;
+    }
+    clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
+    renderSalesGenerator();
+    return;
+  }
   if (state.salesGeneratorFreeMode) {
     if (!selected) return;
     state.salesGeneratorFreeMode = false;
@@ -10831,6 +11122,19 @@ function showApp() {
   setShellPending(false);
   state.mobileMenuOpen = false;
   updateMobileMenu();
+  if (!launchParamsApplied) {
+    const allowed = getAllowedViewsForRole();
+    if (launchParams.requestedView && allowed.includes(launchParams.requestedView)) {
+      state.currentView = launchParams.requestedView;
+    }
+    if (launchParams.usePlannerPrefill && allowed.includes("sales-generator") && getGardenPlannerQuoteBridge()) {
+      state.currentView = "sales-generator";
+      state.salesGeneratorPlannerMode = true;
+      state.salesGeneratorFreeMode = false;
+    }
+    launchParamsApplied = true;
+    clearHandledLaunchParams();
+  }
   ui.authScreen.classList.add("hidden");
   ui.appShell.classList.remove("hidden");
   renderCurrentViewOnly(state.currentView);
@@ -13007,6 +13311,14 @@ function handleGlobalClick(event) {
     openDashboardViewTarget({ dataset: { view: "orders", orderFilter: "all" } });
     return;
   }
+  if (action === "use-planner-prefill") {
+    activatePlannerPrefill({ force: true, openView: state.currentView !== "sales-generator" });
+    return;
+  }
+  if (action === "open-planner-report") {
+    openPlannerReportPreview(button.dataset.variant || "technical");
+    return;
+  }
   if (action === "open-dashboard-view") {
     openDashboardViewTarget(button);
     return;
@@ -13357,13 +13669,16 @@ bindEvent(ui.salesRequestOpenSheetButton, "click", openSalesRequestSourceSheet);
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
   state.salesGeneratorFreeMode = false;
+  state.salesGeneratorPlannerMode = false;
   pushSalesRequestToGenerator(true);
   renderSalesGenerator();
 });
 bindEvent(ui.salesGeneratorFreeQuoteButton, "click", toggleSalesGeneratorFreeMode);
 bindEvent(ui.salesGeneratorFrame, "load", () => {
   pushSalesGeneratorBranding(true);
-  if (state.salesGeneratorFreeMode) {
+  if (state.salesGeneratorPlannerMode) {
+    pushPlannerPrefillToGenerator(true);
+  } else if (state.salesGeneratorFreeMode) {
     clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
   } else {
     pushSalesRequestToGenerator(true);
