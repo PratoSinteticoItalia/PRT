@@ -1,16 +1,16 @@
-const CACHE_NAME = "psi-ops-shell-20260426-iphone-polish-65";
+const CACHE_NAME = "psi-ops-shell-20260426-dashboard-hub-topbar-66";
 const APP_SHELL = [
   "/",
-  "/?shell=20260426-iphone-polish-65",
+  "/?shell=20260426-dashboard-hub-topbar-66",
   "/index.html",
   "/garden-planner.html",
   "/garden-planner.html?shell=20260415-shell-reset-33",
-  "/garden-planner.html?v=20260426-iphone-polish-65&shell=20260426-iphone-polish-65",
+  "/garden-planner.html?v=20260426-dashboard-hub-topbar-66&shell=20260426-dashboard-hub-topbar-66",
   "/garden-photo-configurator.html?v=20260416-photo-loader-fix-34",
   "/garden-photo-configurator-v2.html?v=20260416-photo-loader-fix-34",
-  "/garden-planner-page.js?v=20260426-iphone-polish-65",
-  "/styles.css?v=20260426-iphone-polish-65",
-  "/app.js?v=20260426-iphone-polish-65",
+  "/garden-planner-page.js?v=20260426-dashboard-hub-topbar-66",
+  "/styles.css?v=20260426-dashboard-hub-topbar-66",
+  "/app.js?v=20260426-dashboard-hub-topbar-66",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",

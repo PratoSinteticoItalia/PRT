@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260426-iphone-polish-65";
+const APP_SHELL_VERSION = "20260426-dashboard-hub-topbar-66";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1596,7 +1596,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260426-iphone-polish-65&shell=20260426-iphone-polish-65",
+    href: "./garden-planner.html?v=20260426-dashboard-hub-topbar-66&shell=20260426-dashboard-hub-topbar-66",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -7107,10 +7107,17 @@ function renderOrderJobHub(order) {
   }
   return `
     <div class="info-card order-job-hub-note">
-      <strong>${state.lang === "it" ? "Vista commessa estesa" : "Extended job view"}</strong>
+      <strong>${state.lang === "it" ? "Commessa unificata: primo step" : "Unified job: first step"}</strong>
       <p>${state.lang === "it"
-        ? "Questa sezione legge solo dati già salvati in posa, logistica, contabilità e allegati: nessun flusso esistente viene modificato."
-        : "This section only reads data already saved in installations, logistics, accounting, and attachments: no existing workflow is changed."}</p>
+        ? "Qui l'ordine legge insieme i dati gia salvati in ufficio, logistica, posa, contabilita e allegati. I moduli restano dove sono: cambia la visibilita, non il flusso operativo."
+        : "Here the order reads together data already saved in office, logistics, installations, accounting and attachments. Modules stay where they are: visibility changes, not the workflow."}</p>
+      <div class="order-job-hub-pill-row" aria-label="${state.lang === "it" ? "Aree collegate alla commessa" : "Areas connected to the job"}">
+        <span class="order-job-hub-pill">${state.lang === "it" ? "Ufficio" : "Office"}</span>
+        <span class="order-job-hub-pill">${state.lang === "it" ? "Magazzino" : "Warehouse"}</span>
+        <span class="order-job-hub-pill">${state.lang === "it" ? "Posa" : "Installations"}</span>
+        <span class="order-job-hub-pill">${state.lang === "it" ? "Contabilita" : "Accounting"}</span>
+        <span class="order-job-hub-pill">${state.lang === "it" ? "Documenti" : "Documents"}</span>
+      </div>
     </div>
     <div class="detail-grid detail-grid-tight order-job-hub-grid">
       ${renderDetailBox({
@@ -7151,6 +7158,35 @@ function renderOrderJobHub(order) {
       </div>
     ` : ""}
   `;
+}
+
+function openDashboardViewTarget(target) {
+  const dataset = target?.dataset || {};
+  const nextView = dataset.view || "orders";
+  if (nextView === "orders") {
+    state.filters.order = dataset.orderFilter || "all";
+    state.search.orders = "";
+    state.orderPage = 1;
+  }
+  if (nextView === "warehouse") {
+    state.filters.warehouse = dataset.warehouseFilter || "all";
+    state.search.warehouse = "";
+  }
+  if (nextView === "installations") {
+    state.filters.installation = dataset.installationFilter || "all";
+    if (state.filters.installation === "all") {
+      state.selectedInstallationCrew = "";
+    }
+  }
+  if (nextView === "accounting") {
+    state.filters.accounting = dataset.accountingFilter || "all";
+    state.search.accounting = "";
+  }
+  if (nextView === "shipping") {
+    state.filters.shipping = dataset.shippingFilter || "all";
+    state.search.shipping = "";
+  }
+  setView(nextView);
 }
 
 function renderOrders() {
@@ -12699,11 +12735,11 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "open-sold-sqm") {
-    state.currentView = "orders";
-    state.filters.order = "all";
-    state.search.orders = "";
-    state.orderPage = 1;
-    setView("orders");
+    openDashboardViewTarget({ dataset: { view: "orders", orderFilter: "all" } });
+    return;
+  }
+  if (action === "open-dashboard-view") {
+    openDashboardViewTarget(button);
     return;
   }
   if (action === "toggle-crew-unavailable") {
