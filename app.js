@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260426-profit-split-lines-60";
+const APP_SHELL_VERSION = "20260426-profit-split-view-61";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -193,11 +193,11 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "shipping", "settings"],
+  office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "settings"],
   warehouse: ["warehouse", "shipping"],
   crew: ["installations", "sales-generator"],
 };
-const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "settings"]);
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "settings"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -231,6 +231,7 @@ const translations = {
     warehouse: "Inventario",
     installations: "Pose",
     accounting: "Contabilità",
+    "profit-split": "Conti posa",
     shipping: "Logistica",
     settings: "Impostazioni",
     office: "Ufficio",
@@ -476,6 +477,7 @@ const translations = {
     warehouse: "Inventory",
     installations: "Installations",
     accounting: "Accounting",
+    "profit-split": "Install splits",
     shipping: "Shipping",
     settings: "Settings",
     office: "Office",
@@ -762,6 +764,35 @@ function normalizeProfitSplitExpenseLines(lines = [], legacyInput = {}) {
     : getProfitSplitLegacyExpenseLines(legacyInput);
   const normalizedLines = sourceLines.map((line) => getDefaultProfitSplitExpenseLine(line));
   return normalizedLines.length ? normalizedLines : [getDefaultProfitSplitExpenseLine()];
+}
+
+function isProfitSplitExpenseLineBlank(line = {}) {
+  const label = String(line.label || "").trim();
+  const amount = Number(toNumber(line.amount || 0).toFixed(2));
+  return !label && Math.abs(amount) <= 0;
+}
+
+function addProfitSplitExpenseLine(lines = [], overrides = {}) {
+  const normalizedLines = normalizeProfitSplitExpenseLines(lines);
+  const nextLine = getDefaultProfitSplitExpenseLine(overrides);
+  const blankIndex = normalizedLines.findLastIndex
+    ? normalizedLines.findLastIndex((line) => isProfitSplitExpenseLineBlank(line))
+    : (() => {
+        for (let index = normalizedLines.length - 1; index >= 0; index -= 1) {
+          if (isProfitSplitExpenseLineBlank(normalizedLines[index])) return index;
+        }
+        return -1;
+      })();
+  if (blankIndex >= 0) {
+    normalizedLines[blankIndex] = {
+      ...normalizedLines[blankIndex],
+      ...nextLine,
+      id: normalizedLines[blankIndex].id,
+      amount: overrides.amount ?? normalizedLines[blankIndex].amount,
+    };
+    return normalizedLines;
+  }
+  return [...normalizedLines, nextLine];
 }
 
 function getDefaultProfitSplitDraft() {
@@ -1563,7 +1594,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260426-profit-split-lines-60&shell=20260426-profit-split-lines-60",
+    href: "./garden-planner.html?v=20260426-profit-split-view-61&shell=20260426-profit-split-view-61",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -9659,6 +9690,9 @@ function renderSettings() {
   renderSecurityCenter();
   renderAccountsManager();
   renderCrewExpenseMonthlyReport();
+}
+
+function renderProfitSplitWorkspace() {
   renderProfitSplitCalculator();
 }
 
@@ -10359,6 +10393,7 @@ function render() {
   renderWarehouse();
   renderInstallations();
   renderAccounting();
+  renderProfitSplitWorkspace();
   renderShipping();
   renderSettings();
 }
@@ -10395,6 +10430,9 @@ function renderCurrentViewOnly(view = state.currentView) {
       break;
     case "accounting":
       renderAccounting();
+      break;
+    case "profit-split":
+      renderProfitSplitWorkspace();
       break;
     case "shipping":
       renderShipping();
@@ -12986,19 +13024,26 @@ bindEvent(ui.accountingForm, "submit", saveAccounting);
 bindEvent(ui.settingsForm, "submit", saveSettings);
 bindEvent(ui.profitSplitForm, "click", (event) => {
   const addButton = event.target.closest("[data-profit-split-add-expense]");
+  const presetButton = event.target.closest("[data-profit-split-expense-preset]");
   const removeButton = event.target.closest("[data-profit-split-remove-expense]");
-  if (!addButton && !removeButton) return;
+  if (!addButton && !presetButton && !removeButton) return;
   event.preventDefault();
   const draft = readProfitSplitDraftFromForm();
   const expenseLines = [...draft.expenseLines];
   if (addButton) {
     expenseLines.push(getDefaultProfitSplitExpenseLine());
   }
+  if (presetButton) {
+    const presetLabel = String(presetButton.getAttribute("data-profit-split-expense-preset") || "").trim();
+    draft.expenseLines = presetLabel
+      ? addProfitSplitExpenseLine(expenseLines, { label: presetLabel })
+      : expenseLines;
+  }
   if (removeButton) {
     const lineId = removeButton.getAttribute("data-profit-split-remove-expense");
     const filteredLines = expenseLines.filter((line) => line.id !== lineId);
     draft.expenseLines = filteredLines.length ? filteredLines : [getDefaultProfitSplitExpenseLine()];
-  } else {
+  } else if (!presetButton) {
     draft.expenseLines = expenseLines;
   }
   state.profitSplitDraft = normalizeProfitSplitDraft(draft);

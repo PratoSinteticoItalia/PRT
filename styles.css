@@ -8619,6 +8619,16 @@ button:active,
   gap: 6px;
 }
 
+.profit-split-quick-adds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profit-split-quick-adds .tag {
+  cursor: pointer;
+}
+
 .profit-split-expense-lines {
   display: grid;
   gap: 10px;
@@ -8659,6 +8669,11 @@ button:active,
 
 .crew-expense-panel-subhead {
   margin-top: 4px;
+}
+
+.profit-split-note-card {
+  border: 1px solid rgba(45, 106, 79, 0.1);
+  background: linear-gradient(180deg, #f8fbf7 0%, #f2f7f3 100%);
 }
 
 .profit-split-breakdown {
@@ -8800,6 +8815,10 @@ button:active,
   .profit-split-expense-row > .text-input,
   .profit-split-expense-row > .ghost-button {
     grid-column: 2;
+  }
+
+  .profit-split-quick-adds {
+    gap: 6px;
   }
 }
 
