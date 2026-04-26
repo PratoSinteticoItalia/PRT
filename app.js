@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260426-order-hub-64";
+const APP_SHELL_VERSION = "20260426-iphone-polish-65";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1596,7 +1596,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260426-order-hub-64&shell=20260426-order-hub-64",
+    href: "./garden-planner.html?v=20260426-iphone-polish-65&shell=20260426-iphone-polish-65",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
