@@ -8650,6 +8650,27 @@ button:active,
   margin-top: 4px;
 }
 
+.profit-split-context-shell {
+  border: 1px solid rgba(45, 106, 79, 0.1);
+  background: linear-gradient(180deg, #f8fbf7 0%, #f3f8f4 100%);
+}
+
+.profit-split-context-card {
+  display: grid;
+  gap: 6px;
+}
+
+.profit-split-context-card strong {
+  display: block;
+}
+
+.profit-split-context-card p,
+.profit-split-context-card small {
+  margin: 0;
+  color: #516050;
+  line-height: 1.55;
+}
+
 .profit-split-expense-editor {
   display: grid;
   gap: 12px;

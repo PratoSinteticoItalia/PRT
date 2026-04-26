@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260426-dashboard-hub-topbar-66" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260426-dashboard-hub-topbar-66" />
+    <link rel="preload" href="./styles.css?v=20260426-profit-split-link-67" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260426-profit-split-link-67" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -109,7 +109,7 @@
         <div class="topbar-right">
           <button id="reload-button" class="topbar-btn primary">Ricarica dati</button>
           <button id="new-order-button" class="topbar-btn">Nuovo ordine</button>
-          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260426-dashboard-hub-topbar-66&shell=20260426-dashboard-hub-topbar-66" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
+          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260426-profit-split-link-67&shell=20260426-profit-split-link-67" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
           <div class="lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
             <button class="lang-btn" data-lang="en">EN</button>
@@ -132,7 +132,7 @@
             <button id="mobile-pill-new-order-button" class="mobile-pill-tool" type="button">Nuovo ordine</button>
             <a
               id="mobile-pill-garden-planner-link"
-              href="./garden-planner.html?v=20260426-dashboard-hub-topbar-66&shell=20260426-dashboard-hub-topbar-66"
+              href="./garden-planner.html?v=20260426-profit-split-link-67&shell=20260426-profit-split-link-67"
               class="mobile-pill-tool"
               style="text-decoration: none;"
             >
@@ -238,7 +238,7 @@
         </nav>
 
         <div class="sidebar-mobile-tools">
-          <a href="./garden-planner.html?v=20260426-dashboard-hub-topbar-66&shell=20260426-dashboard-hub-topbar-66" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
+          <a href="./garden-planner.html?v=20260426-profit-split-link-67&shell=20260426-profit-split-link-67" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
           <button id="mobile-reload-button" class="sidebar-quick-link" type="button">Ricarica dati</button>
           <div class="lang-switch sidebar-lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
@@ -1348,6 +1348,16 @@
                 <strong>Formula operativa.</strong>
                 <p>Il tool detrae dal ricavo le spese, i recuperi e il fisso del collaboratore; poi divide l'utile residuo e mostra quanto spetta a ciascuno.</p>
               </div>
+              <div class="info-card profit-split-context-shell" style="margin-top: 16px;">
+                <div id="profit-split-context-card" class="profit-split-context-card"></div>
+                <div id="profit-split-context-status" class="search-pill compact-pill hidden" style="margin-top: 12px;"></div>
+                <div class="inline-actions" style="margin-top: 14px;">
+                  <button type="button" id="profit-split-use-selected-order-button" class="ghost-button small-button">Usa ordine selezionato</button>
+                  <button type="button" id="profit-split-save-order-button" class="primary-button small-button">Salva su commessa</button>
+                  <button type="button" id="profit-split-open-order-button" class="ghost-button small-button">Apri ordine</button>
+                  <button type="button" id="profit-split-detach-order-button" class="ghost-button small-button">Bozza locale</button>
+                </div>
+              </div>
               <form id="profit-split-form" class="inline-form-grid" style="margin-top: 16px;">
                 <label class="field field-full">
                   <span>Commessa / nota</span>
@@ -1449,8 +1459,8 @@
                 </article>
               </div>
               <div class="info-card profit-split-note-card" style="margin-top: 16px;">
-                <strong>Bozza locale</strong>
-                <p>Per ora questo conto resta salvato sul dispositivo corrente. Il prossimo step naturale e collegarlo direttamente a ordini e commesse.</p>
+                <strong>Bozza locale + commessa collegata</strong>
+                <p>Ora puoi continuare a usare il tool in autonomia oppure salvarlo dentro la commessa selezionata. Il flusso separato resta disponibile come fallback sicuro.</p>
               </div>
             </section>
           </div>
@@ -1773,6 +1783,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260426-dashboard-hub-topbar-66" type="module"></script>
+    <script src="./app.js?v=20260426-profit-split-link-67" type="module"></script>
   </body>
 </html>

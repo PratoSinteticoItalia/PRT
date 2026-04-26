@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260426-dashboard-hub-topbar-66";
+const APP_SHELL_VERSION = "20260426-profit-split-link-67";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -797,6 +797,9 @@ function addProfitSplitExpenseLine(lines = [], overrides = {}) {
 
 function getDefaultProfitSplitDraft() {
   return {
+    linkedOrderId: "",
+    savedAt: "",
+    updatedBy: "",
     jobLabel: "",
     partnerName: "",
     revenue: "",
@@ -813,6 +816,9 @@ function getDefaultProfitSplitDraft() {
 function normalizeProfitSplitDraft(input = {}) {
   const defaults = getDefaultProfitSplitDraft();
   return {
+    linkedOrderId: String(input.linkedOrderId ?? defaults.linkedOrderId),
+    savedAt: String(input.savedAt ?? defaults.savedAt),
+    updatedBy: String(input.updatedBy ?? defaults.updatedBy),
     jobLabel: String(input.jobLabel ?? defaults.jobLabel),
     partnerName: String(input.partnerName ?? defaults.partnerName),
     revenue: String(input.revenue ?? defaults.revenue),
@@ -836,9 +842,9 @@ function loadProfitSplitDraft() {
   }
 }
 
-function saveProfitSplitDraft() {
+function saveProfitSplitDraft(draft = state?.profitSplitLocalDraft || state?.profitSplitDraft) {
   try {
-    window.localStorage.setItem(PROFIT_SPLIT_STORAGE_KEY, JSON.stringify(normalizeProfitSplitDraft(state.profitSplitDraft)));
+    window.localStorage.setItem(PROFIT_SPLIT_STORAGE_KEY, JSON.stringify(normalizeProfitSplitDraft(draft)));
   } catch {}
 }
 
@@ -899,7 +905,9 @@ const state = {
   selectedInstallationCrew: "",
   coveragePlanner: loadCoveragePlannerState(),
   coverageDrawing: { active: false, points: [] },
+  profitSplitLocalDraft: loadProfitSplitDraft(),
   profitSplitDraft: loadProfitSplitDraft(),
+  profitSplitContextOrderId: "",
   pendingCurrentViewRefresh: false,
 };
 
@@ -1165,6 +1173,12 @@ const ui = {
   accountCreateForm: document.getElementById("account-create-form"),
   accountsStatus: document.getElementById("accounts-status"),
   crewExpenseMonthlyReport: document.getElementById("crew-expense-monthly-report"),
+  profitSplitContextCard: document.getElementById("profit-split-context-card"),
+  profitSplitContextStatus: document.getElementById("profit-split-context-status"),
+  profitSplitUseSelectedOrderButton: document.getElementById("profit-split-use-selected-order-button"),
+  profitSplitSaveOrderButton: document.getElementById("profit-split-save-order-button"),
+  profitSplitDetachOrderButton: document.getElementById("profit-split-detach-order-button"),
+  profitSplitOpenOrderButton: document.getElementById("profit-split-open-order-button"),
   profitSplitForm: document.getElementById("profit-split-form"),
   profitSplitCrewOptions: document.getElementById("profit-split-crew-options"),
   profitSplitExpenseLines: document.getElementById("profit-split-expense-lines"),
@@ -1596,7 +1610,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260426-dashboard-hub-topbar-66&shell=20260426-dashboard-hub-topbar-66",
+    href: "./garden-planner.html?v=20260426-profit-split-link-67&shell=20260426-profit-split-link-67",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -1909,6 +1923,109 @@ function formatMonthKey(monthKey) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+function isProfitSplitOrderLinked() {
+  return Boolean(String(state.profitSplitContextOrderId || "").trim());
+}
+
+function getProfitSplitContextOrder() {
+  if (!isProfitSplitOrderLinked()) return null;
+  return state.orders.find((order) => order.id === state.profitSplitContextOrderId) || null;
+}
+
+function buildProfitSplitOrderLabel(order) {
+  if (!order) return "";
+  const parts = [getOrderNumber(order), composeClientName(order), order.city].filter((item) => String(item || "").trim());
+  return parts.join(" · ");
+}
+
+function getStoredProfitSplitForOrder(order) {
+  const raw = order?.operations?.installation?.profitSplit;
+  if (!raw || typeof raw !== "object") return null;
+  return normalizeProfitSplitDraft({
+    ...raw,
+    linkedOrderId: order.id,
+  });
+}
+
+function buildProfitSplitDraftForOrder(order, { preferStored = true } = {}) {
+  const stored = preferStored ? getStoredProfitSplitForOrder(order) : null;
+  if (stored) return stored;
+  const localDefaults = normalizeProfitSplitDraft(state.profitSplitLocalDraft);
+  return normalizeProfitSplitDraft({
+    linkedOrderId: order?.id || "",
+    jobLabel: buildProfitSplitOrderLabel(order),
+    partnerName: String(order?.operations?.installation?.crew || "").trim(),
+    partnerDailyFixed: localDefaults.partnerDailyFixed,
+    partnerSharePct: localDefaults.partnerSharePct,
+    partnerDays: localDefaults.partnerDays,
+  });
+}
+
+function persistProfitSplitDraftLocally(draft = state.profitSplitDraft) {
+  const normalized = normalizeProfitSplitDraft({
+    ...draft,
+    linkedOrderId: "",
+    savedAt: "",
+    updatedBy: "",
+  });
+  state.profitSplitLocalDraft = normalized;
+  saveProfitSplitDraft(normalized);
+}
+
+function setProfitSplitContextOrder(orderId, { preferStored = true } = {}) {
+  const order = state.orders.find((item) => item.id === orderId);
+  if (!order) return false;
+  state.selectedOrderId = order.id;
+  state.profitSplitContextOrderId = order.id;
+  state.profitSplitDraft = buildProfitSplitDraftForOrder(order, { preferStored });
+  return true;
+}
+
+function restoreProfitSplitLocalDraft() {
+  state.profitSplitContextOrderId = "";
+  state.profitSplitDraft = normalizeProfitSplitDraft({
+    ...state.profitSplitLocalDraft,
+    linkedOrderId: "",
+    savedAt: "",
+    updatedBy: "",
+  });
+}
+
+function syncProfitSplitDraftAfterInput(nextDraft) {
+  state.profitSplitDraft = normalizeProfitSplitDraft(nextDraft);
+  if (!isProfitSplitOrderLinked()) {
+    persistProfitSplitDraftLocally(state.profitSplitDraft);
+  }
+}
+
+function getProfitSplitComparablePayload(draft = {}) {
+  const normalized = normalizeProfitSplitDraft(draft);
+  return JSON.stringify({
+    jobLabel: normalized.jobLabel,
+    partnerName: normalized.partnerName,
+    revenue: normalized.revenue,
+    partnerDailyFixed: normalized.partnerDailyFixed,
+    partnerDays: normalized.partnerDays,
+    partnerSharePct: normalized.partnerSharePct,
+    expenseLines: normalizeProfitSplitExpenseLines(normalized.expenseLines).map((line) => ({
+      label: String(line.label || ""),
+      amount: String(line.amount || ""),
+      payer: String(line.payer || "owner"),
+    })),
+    ownerRecovery: normalized.ownerRecovery,
+    partnerRecovery: normalized.partnerRecovery,
+    note: normalized.note,
+  });
+}
+
+function isProfitSplitContextDirty() {
+  const order = getProfitSplitContextOrder();
+  if (!order) return false;
+  const stored = getStoredProfitSplitForOrder(order);
+  const baseline = stored || buildProfitSplitDraftForOrder(order, { preferStored: false });
+  return getProfitSplitComparablePayload(state.profitSplitDraft) !== getProfitSplitComparablePayload(baseline);
+}
+
 function computeProfitSplitScenario(draft = {}) {
   const partnerName = String(draft.partnerName || "").trim();
   const revenue = Number(toNumber(draft.revenue || 0).toFixed(2));
@@ -2037,6 +2154,7 @@ function renderProfitSplitExpenseList(lines = [], emptyText = "") {
 function readProfitSplitDraftFromForm() {
   if (!ui.profitSplitForm) return normalizeProfitSplitDraft(state.profitSplitDraft);
   const form = ui.profitSplitForm;
+  const currentDraft = normalizeProfitSplitDraft(state.profitSplitDraft);
   const expenseLines = Array.from(form.querySelectorAll("[data-profit-split-expense-row]")).map((row) => ({
     id: row.getAttribute("data-expense-id") || crypto.randomUUID(),
     label: row.querySelector('[data-expense-field="label"]')?.value || "",
@@ -2044,6 +2162,9 @@ function readProfitSplitDraftFromForm() {
     payer: row.querySelector('[data-expense-field="payer"]')?.value || "owner",
   }));
   return normalizeProfitSplitDraft({
+    linkedOrderId: state.profitSplitContextOrderId || currentDraft.linkedOrderId || "",
+    savedAt: currentDraft.savedAt || "",
+    updatedBy: currentDraft.updatedBy || "",
     jobLabel: form.jobLabel?.value || "",
     partnerName: form.partnerName?.value || "",
     revenue: form.revenue?.value || "",
@@ -2076,6 +2197,132 @@ function syncProfitSplitDraftFromState() {
   if (ui.profitSplitExpenseLines) ui.profitSplitExpenseLines.innerHTML = renderProfitSplitExpenseRows(draft.expenseLines);
 }
 
+function renderProfitSplitContextCard() {
+  if (!ui.profitSplitContextCard) return;
+  const linkedOrder = getProfitSplitContextOrder();
+  const selectedOrder = getSelectedOrder();
+  const orderLabel = linkedOrder
+    ? buildProfitSplitOrderLabel(linkedOrder)
+    : selectedOrder
+      ? buildProfitSplitOrderLabel(selectedOrder)
+      : "";
+  const linkedSaved = linkedOrder ? getStoredProfitSplitForOrder(linkedOrder) : null;
+  const dirty = linkedOrder ? isProfitSplitContextDirty() : false;
+  const savedLabel = linkedSaved?.savedAt
+    ? `${state.lang === "it" ? "Ultimo salvataggio" : "Last saved"} ${formatDate(linkedSaved.savedAt)}${linkedSaved.updatedBy ? ` · ${escapeHtml(linkedSaved.updatedBy)}` : ""}`
+    : (state.lang === "it" ? "Nessun conto posa ancora salvato su questa commessa." : "No profit split saved on this job yet.");
+
+  ui.profitSplitContextCard.innerHTML = linkedOrder
+    ? `
+      <strong>${state.lang === "it" ? "Commessa collegata" : "Linked job"}</strong>
+      <p>${escapeHtml(orderLabel || (state.lang === "it" ? "Ordine selezionato" : "Selected order"))}</p>
+      <small>${escapeHtml(savedLabel)}</small>
+    `
+    : selectedOrder
+      ? `
+        <strong>${state.lang === "it" ? "Bozza locale attiva" : "Local draft active"}</strong>
+        <p>${state.lang === "it"
+          ? `Puoi collegare questo conto all'ordine selezionato: ${escapeHtml(orderLabel)}.`
+          : `You can link this split to the selected order: ${escapeHtml(orderLabel)}.`}</p>
+        <small>${state.lang === "it"
+          ? "Il tool resta indipendente finche non lo salvi sulla commessa."
+          : "The tool stays independent until you save it to the job."}</small>
+      `
+      : `
+        <strong>${state.lang === "it" ? "Bozza locale attiva" : "Local draft active"}</strong>
+        <p>${state.lang === "it"
+          ? "Apri un ordine e poi torna qui per collegare il conto posa a una commessa reale."
+          : "Open an order and come back here to link this split to a real job."}</p>
+        <small>${state.lang === "it"
+          ? "La vista dedicata resta disponibile anche senza commessa collegata."
+          : "The dedicated workspace is still available without a linked job."}</small>
+      `;
+
+  if (ui.profitSplitContextStatus) {
+    ui.profitSplitContextStatus.classList.remove("hidden", "success", "error");
+    if (linkedOrder) {
+      ui.profitSplitContextStatus.classList.add(dirty ? "error" : "success");
+      ui.profitSplitContextStatus.textContent = dirty
+        ? (state.lang === "it" ? "Bozza collegata modificata: premi Salva su commessa per condividere gli ultimi cambi." : "Linked draft changed: save it to the job to share the latest changes.")
+        : (state.lang === "it" ? "Conto posa allineato alla commessa selezionata." : "Profit split is aligned with the selected job.");
+    } else {
+      ui.profitSplitContextStatus.classList.add("hidden");
+      ui.profitSplitContextStatus.textContent = "";
+    }
+  }
+
+  if (ui.profitSplitUseSelectedOrderButton) {
+    ui.profitSplitUseSelectedOrderButton.disabled = !selectedOrder;
+    ui.profitSplitUseSelectedOrderButton.textContent = linkedOrder && selectedOrder?.id === linkedOrder.id
+      ? (state.lang === "it" ? "Ricarica commessa" : "Reload job")
+      : (state.lang === "it" ? "Usa ordine selezionato" : "Use selected order");
+  }
+  if (ui.profitSplitSaveOrderButton) ui.profitSplitSaveOrderButton.disabled = !linkedOrder;
+  if (ui.profitSplitDetachOrderButton) ui.profitSplitDetachOrderButton.disabled = !linkedOrder;
+  if (ui.profitSplitOpenOrderButton) ui.profitSplitOpenOrderButton.disabled = !linkedOrder;
+}
+
+async function saveProfitSplitToLinkedOrder() {
+  const order = getProfitSplitContextOrder();
+  if (!order) return;
+  const nextDraft = readProfitSplitDraftFromForm();
+  const storedDraft = getStoredProfitSplitForOrder(order);
+  const baselineDraft = storedDraft || buildProfitSplitDraftForOrder(order, { preferStored: false });
+  const onlyPrefillValues = !storedDraft
+    && getProfitSplitComparablePayload(nextDraft) === getProfitSplitComparablePayload(baselineDraft);
+  if (onlyPrefillValues) {
+    if (ui.profitSplitContextStatus) {
+      setStatus(
+        ui.profitSplitContextStatus,
+        "error",
+        state.lang === "it" ? "Completa almeno ricavo, spese, recuperi o note prima di collegare questo conto alla commessa." : "Add revenue, expenses, recoveries, or notes before linking this split to the job.",
+      );
+    }
+    return;
+  }
+  const result = computeProfitSplitScenario(nextDraft);
+  const hasValues = [
+    result.revenue,
+    result.ownerPaidExpenses,
+    result.partnerPaidExpenses,
+    result.sharedJobCosts,
+    result.ownerRecovery,
+    result.partnerRecovery,
+    result.partnerFixedTotal,
+    result.expenseLineCount,
+  ].some((value) => Math.abs(value) > 0);
+  if (!hasValues) {
+    if (ui.profitSplitContextStatus) {
+      setStatus(
+        ui.profitSplitContextStatus,
+        "error",
+        state.lang === "it" ? "Inserisci almeno ricavo, spese o recuperi prima di salvare la commessa." : "Enter revenue, expenses, or recoveries before saving this job.",
+      );
+    }
+    return;
+  }
+  const savedAt = new Date().toISOString();
+  const updatedBy = state.currentUser?.name || state.currentUser?.email || "";
+  const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
+    method: "POST",
+    body: JSON.stringify({
+      installation: {
+        profitSplit: {
+          ...normalizeProfitSplitDraft(nextDraft),
+          linkedOrderId: order.id,
+          savedAt,
+          updatedBy,
+        },
+      },
+    }),
+  });
+  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  state.selectedOrderId = saved.id;
+  state.profitSplitContextOrderId = saved.id;
+  state.profitSplitDraft = buildProfitSplitDraftForOrder(saved, { preferStored: true });
+  renderCurrentViewOnly(state.currentView);
+}
+
 function renderProfitSplitCalculator({ syncForm = true } = {}) {
   if (!ui.profitSplitSummary || !ui.profitSplitBreakdown) return;
   if (ui.profitSplitCrewOptions) {
@@ -2092,6 +2339,7 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
   }
 
   if (syncForm) syncProfitSplitDraftFromState();
+  renderProfitSplitContextCard();
   const draft = normalizeProfitSplitDraft(state.profitSplitDraft);
   const result = computeProfitSplitScenario(draft);
   const partnerLabel = result.partnerName || (state.lang === "it" ? "Collaboratore" : "Partner");
@@ -7079,6 +7327,8 @@ function renderOrderJobHub(order) {
     "createdAt",
     state.lang === "it" ? "Nessun file caricato" : "No file uploaded",
   );
+  const savedProfitSplit = getStoredProfitSplitForOrder(order);
+  const profitSplitScenario = savedProfitSplit ? computeProfitSplitScenario(savedProfitSplit) : null;
   const quickLinks = [];
   const allowedViews = new Set(getAllowedViewsForRole());
   if (allowedViews.has("warehouse")) {
@@ -7103,6 +7353,13 @@ function renderOrderJobHub(order) {
     quickLinks.push({
       view: "accounting",
       label: state.lang === "it" ? "Apri Contabilità" : "Open Accounting",
+    });
+  }
+  if (allowedViews.has("profit-split")) {
+    quickLinks.push({
+      view: "profit-split",
+      label: state.lang === "it" ? "Apri Conti posa" : "Open Profit Split",
+      action: "open-profit-split-order",
     });
   }
   return `
@@ -7149,11 +7406,20 @@ function renderOrderJobHub(order) {
         value: `${attachments.length} ${state.lang === "it" ? "allegati" : "attachments"}`,
         meta: `${noteCount} ${state.lang === "it" ? "note attive" : "active notes"} · ${latestAttachmentLabel}`,
       })}
+      ${renderDetailBox({
+        label: state.lang === "it" ? "Conti posa" : "Profit split",
+        value: savedProfitSplit
+          ? (savedProfitSplit.partnerName || (state.lang === "it" ? "Conto collegato" : "Linked split"))
+          : (state.lang === "it" ? "Da collegare" : "To link"),
+        meta: savedProfitSplit
+          ? `${formatCurrency(profitSplitScenario?.revenue || 0)} · ${state.lang === "it" ? "saldo collaboratore" : "partner due"} ${formatCurrency(profitSplitScenario?.partnerDue || 0)}`
+          : (state.lang === "it" ? "Apri Conti posa da questa commessa per salvare un riparto condiviso." : "Open Profit Split from this job to save a shared settlement."),
+      })}
     </div>
     ${quickLinks.length ? `
       <div class="detail-actions order-job-hub-actions">
         ${quickLinks.map((item) => `
-          <button class="btn" data-action="select-order" data-id="${escapeHtml(order.id)}" data-view="${escapeHtml(item.view)}">${escapeHtml(item.label)}</button>
+          <button class="btn" data-action="${escapeHtml(item.action || "select-order")}" data-id="${escapeHtml(order.id)}" data-view="${escapeHtml(item.view)}">${escapeHtml(item.label)}</button>
         `).join("")}
       </div>
     ` : ""}
@@ -9876,6 +10142,9 @@ function renderSettings() {
 }
 
 function renderProfitSplitWorkspace() {
+  if (isProfitSplitOrderLinked() && !getProfitSplitContextOrder()) {
+    restoreProfitSplitLocalDraft();
+  }
   renderProfitSplitCalculator();
 }
 
@@ -12742,6 +13011,12 @@ function handleGlobalClick(event) {
     openDashboardViewTarget(button);
     return;
   }
+  if (action === "open-profit-split-order") {
+    if (!id) return;
+    if (!setProfitSplitContextOrder(id, { preferStored: true })) return;
+    setView("profit-split");
+    return;
+  }
   if (action === "toggle-crew-unavailable") {
     if (state.currentUser?.role !== "crew") return;
     const crewName = getCrewForCurrentUser();
@@ -13275,6 +13550,25 @@ bindEvent(ui.installationEmailButton, "click", () => {
 bindEvent(ui.installationAttachmentButton, "click", () => openAttachmentPicker("installation"));
 bindEvent(ui.accountingForm, "submit", saveAccounting);
 bindEvent(ui.settingsForm, "submit", saveSettings);
+bindEvent(ui.profitSplitUseSelectedOrderButton, "click", () => {
+  const order = getSelectedOrder();
+  if (!order) return;
+  setProfitSplitContextOrder(order.id, { preferStored: true });
+  renderProfitSplitWorkspace();
+});
+bindEvent(ui.profitSplitSaveOrderButton, "click", async () => {
+  await saveProfitSplitToLinkedOrder();
+});
+bindEvent(ui.profitSplitDetachOrderButton, "click", () => {
+  restoreProfitSplitLocalDraft();
+  renderProfitSplitWorkspace();
+});
+bindEvent(ui.profitSplitOpenOrderButton, "click", () => {
+  const order = getProfitSplitContextOrder();
+  if (!order) return;
+  state.selectedOrderId = order.id;
+  setView("orders");
+});
 bindEvent(ui.profitSplitForm, "click", (event) => {
   const addButton = event.target.closest("[data-profit-split-add-expense]");
   const presetButton = event.target.closest("[data-profit-split-expense-preset]");
@@ -13299,23 +13593,27 @@ bindEvent(ui.profitSplitForm, "click", (event) => {
   } else if (!presetButton) {
     draft.expenseLines = expenseLines;
   }
-  state.profitSplitDraft = normalizeProfitSplitDraft(draft);
-  saveProfitSplitDraft();
+  syncProfitSplitDraftAfterInput(draft);
   renderProfitSplitCalculator();
 });
 bindEvent(ui.profitSplitForm, "input", () => {
-  state.profitSplitDraft = readProfitSplitDraftFromForm();
-  saveProfitSplitDraft();
+  syncProfitSplitDraftAfterInput(readProfitSplitDraftFromForm());
   renderProfitSplitCalculator({ syncForm: false });
 });
 bindEvent(ui.profitSplitForm, "change", () => {
-  state.profitSplitDraft = readProfitSplitDraftFromForm();
-  saveProfitSplitDraft();
+  syncProfitSplitDraftAfterInput(readProfitSplitDraftFromForm());
   renderProfitSplitCalculator({ syncForm: false });
 });
 bindEvent(ui.profitSplitResetButton, "click", () => {
-  state.profitSplitDraft = normalizeProfitSplitDraft();
-  saveProfitSplitDraft();
+  if (isProfitSplitOrderLinked()) {
+    const linkedOrder = getProfitSplitContextOrder();
+    state.profitSplitDraft = linkedOrder
+      ? buildProfitSplitDraftForOrder(linkedOrder, { preferStored: true })
+      : normalizeProfitSplitDraft();
+  } else {
+    state.profitSplitDraft = normalizeProfitSplitDraft();
+    persistProfitSplitDraftLocally(state.profitSplitDraft);
+  }
   renderProfitSplitCalculator();
 });
 bindEvent(ui.connectShopifyButton, "click", connectShopify);

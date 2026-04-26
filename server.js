@@ -1534,6 +1534,54 @@ function normalizeTravelExpenses(items = [], fallbackCrew = "") {
     .filter((item) => item.amount > 0 && item.date);
 }
 
+function normalizeProfitSplitExpenseLines(items = []) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => {
+      const payer = ["owner", "partner", "shared"].includes(String(item?.payer || "").trim())
+        ? String(item?.payer || "").trim()
+        : "owner";
+      return {
+        id: String(item?.id || randomUUID()),
+        label: String(item?.label || "").trim(),
+        amount: String(item?.amount ?? "").trim(),
+        payer,
+      };
+    })
+    .filter((item) => item.label || Math.abs(toNumber(item.amount || 0)) > 0);
+}
+
+function normalizeProfitSplitRecord(input = null) {
+  if (!input || typeof input !== "object") return null;
+  const normalized = {
+    linkedOrderId: String(input.linkedOrderId || "").trim(),
+    savedAt: String(input.savedAt || "").trim(),
+    updatedBy: String(input.updatedBy || "").trim(),
+    jobLabel: String(input.jobLabel || "").trim(),
+    partnerName: String(input.partnerName || "").trim(),
+    revenue: String(input.revenue ?? "").trim(),
+    partnerDailyFixed: String(input.partnerDailyFixed ?? "").trim(),
+    partnerDays: String(input.partnerDays ?? "").trim(),
+    partnerSharePct: String(input.partnerSharePct ?? "").trim(),
+    expenseLines: normalizeProfitSplitExpenseLines(input.expenseLines),
+    ownerRecovery: String(input.ownerRecovery ?? "").trim(),
+    partnerRecovery: String(input.partnerRecovery ?? "").trim(),
+    note: String(input.note || "").trim(),
+  };
+  const hasData = [
+    normalized.partnerName,
+    normalized.revenue,
+    normalized.ownerRecovery,
+    normalized.partnerRecovery,
+    normalized.note,
+  ].some((value) => String(value || "").trim())
+    || normalized.expenseLines.length > 0
+    || Math.abs(toNumber(normalized.partnerDailyFixed || 0)) > 0
+    || Math.abs(toNumber(normalized.partnerDays || 0)) > 0
+    || Math.abs(toNumber(normalized.partnerSharePct || 0)) > 0;
+  return hasData ? normalized : null;
+}
+
 function normalizeCoveragePlanner(payload = {}) {
   const teams = payload?.teams && typeof payload.teams === "object" ? payload.teams : {};
   const availability = payload?.availability && typeof payload.availability === "object" ? payload.availability : {};
@@ -2960,6 +3008,7 @@ function buildDefaultOperations(order, linkedJob = null) {
       status: linkedJob?.installStatus || "da-pianificare",
       reportNote: "",
       travelExpenses: [],
+      profitSplit: null,
     },
   };
 }
@@ -3025,6 +3074,7 @@ function normalizeOperations(order, linkedJob = null) {
         current.installation?.travelExpenses,
         current.installation?.crew || defaults.installation.crew,
       ),
+      profitSplit: normalizeProfitSplitRecord(current.installation?.profitSplit),
     },
   };
 }
