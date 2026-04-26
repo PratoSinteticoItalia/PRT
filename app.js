@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260427-generator-layout-report-69";
+const APP_SHELL_VERSION = "20260427-planner-material-reference-70";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -850,6 +850,35 @@ function saveProfitSplitDraft(draft = state?.profitSplitLocalDraft || state?.pro
   } catch {}
 }
 
+function normalizeGardenPlannerMaterialsReference(input = {}) {
+  const normalizeString = (value = "") => String(value ?? "").trim();
+  const toAmount = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const sections = Array.isArray(input.sections)
+    ? input.sections.map((section, index) => ({
+        key: normalizeString(section.key) || `planner-materials-${index}`,
+        title: normalizeString(section.title || section.cat || section.label),
+        subtotal: toAmount(section.subtotal ?? section.sub),
+        items: Array.isArray(section.items)
+          ? section.items.map((item, itemIndex) => ({
+              id: normalizeString(item.id) || `planner-material-${index}-${itemIndex}`,
+              name: normalizeString(item.name),
+              qty: normalizeString(item.qty || item.qtyLabel || item.quantity),
+              cost: toAmount(item.cost),
+            })).filter((item) => item.name)
+          : [],
+      })).filter((section) => section.title && section.items.length)
+    : [];
+  return {
+    showCosts: Boolean(input.showCosts),
+    region: normalizeString(input.region || input.pricingRegionLabel),
+    totalCost: toAmount(input.totalCost ?? input.materialCostTotal),
+    sections,
+  };
+}
+
 function normalizeGardenPlannerQuoteBridge(input = {}) {
   const payload = input && typeof input.payload === "object" ? input.payload : {};
   const reportHtml = input && typeof input.reportHtml === "object" ? input.reportHtml : {};
@@ -871,6 +900,7 @@ function normalizeGardenPlannerQuoteBridge(input = {}) {
       technical: normalizeString(reportHtml.technical || input.technicalReportHtml),
       client: normalizeString(reportHtml.client || input.clientReportHtml),
     },
+    materialsReference: normalizeGardenPlannerMaterialsReference(input.materialsReference),
     payload: {
       nome: normalizeString(payload.nome),
       cognome: normalizeString(payload.cognome),
@@ -915,6 +945,7 @@ function buildSalesGeneratorPlannerReport(bridge = getGardenPlannerQuoteBridge()
     client: String(bridge.client || "").trim(),
     address: String(bridge.address || "").trim(),
     sqmLabel: String(bridge.sqmLabel || "").trim(),
+    materialsReference: bridge.materialsReference,
     reportHtml,
   };
 }
@@ -3250,7 +3281,7 @@ function pushPlannerPrefillToGenerator(force = false) {
   const payload = bridge?.payload;
   if (!payload) return false;
   const plannerReport = buildSalesGeneratorPlannerReport(bridge);
-  const signature = JSON.stringify({ source: "garden-planner", payload });
+  const signature = JSON.stringify({ source: "garden-planner", runId: Number(bridge?.runId || 0), payload });
   if (!force && state.lastSalesGeneratorSignature === signature) return true;
   state.salesGeneratorPlannerMode = true;
   state.salesGeneratorFreeMode = false;
@@ -8050,12 +8081,52 @@ function renderSalesRequests() {
   if (ui.salesRequestUseGeneratorButton) ui.salesRequestUseGeneratorButton.disabled = !selected;
 }
 
+function renderSalesGeneratorPlannerMaterials(reference) {
+  const sections = Array.isArray(reference?.sections) ? reference.sections.filter((section) => Array.isArray(section.items) && section.items.length) : [];
+  if (!sections.length) return "";
+  const showCosts = Boolean(reference?.showCosts);
+  const sectionsHtml = sections.map((section) => `
+    <div class="sales-generator-planner-material-section">
+      <div class="sales-generator-planner-material-section-head">
+        <span>${escapeHtml(section.title)}</span>
+        ${showCosts && section.subtotal > 0 ? `<strong>${escapeHtml(formatCurrency(section.subtotal))}</strong>` : ""}
+      </div>
+      <div class="sales-generator-planner-material-list">
+        ${section.items.map((item) => `
+          <div class="sales-generator-planner-material-line">
+            <span class="sales-generator-planner-material-name">${escapeHtml(item.name)}</span>
+            <span class="sales-generator-planner-material-qty">${escapeHtml(item.qty || "—")}</span>
+            ${showCosts ? `<strong class="sales-generator-planner-material-cost">${escapeHtml(item.cost > 0 ? formatCurrency(item.cost) : "—")}</strong>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `).join("");
+  return `
+    <div class="sales-generator-planner-materials">
+      <div class="sales-generator-planner-materials-head">
+        <strong>${state.lang === "it" ? "Materiali calcolati dal planner" : "Planner-calculated materials"}</strong>
+        ${showCosts && reference.totalCost > 0 ? `<span class="sales-status-pill">${escapeHtml(formatCurrency(reference.totalCost))}</span>` : ""}
+      </div>
+      <p class="sales-generator-planner-materials-copy">
+        ${escapeHtml(state.lang === "it"
+          ? `Riferimento interno importato dal Garden Planner${reference.region ? ` · listino ${reference.region}` : ""}.`
+          : `Internal reference imported from the Garden Planner${reference.region ? ` · ${reference.region} pricing` : ""}.`)}
+      </p>
+      <div class="sales-generator-planner-materials-scroll">
+        ${sectionsHtml}
+      </div>
+    </div>
+  `;
+}
+
 function renderSalesGenerator() {
   const generatorOnlyMode = state.currentUser?.role === "crew";
   const selected = ensureSelectedSalesRequest();
   const plannerBridge = !generatorOnlyMode ? getGardenPlannerQuoteBridge() : null;
   const plannerMode = !generatorOnlyMode && state.salesGeneratorPlannerMode && Boolean(plannerBridge?.payload);
   const freeMode = !generatorOnlyMode && state.salesGeneratorFreeMode && !plannerMode;
+  const plannerMaterialsHtml = plannerMode ? renderSalesGeneratorPlannerMaterials(plannerBridge?.materialsReference) : "";
   const contextEyebrow = document.getElementById("sales-generator-context-eyebrow");
   const contextTitle = document.getElementById("sales-generator-context-title");
   if (contextEyebrow) {
@@ -8090,8 +8161,9 @@ function renderSalesGenerator() {
             <span>${escapeHtml(plannerBridge.surfaceLabel || (state.lang === "it" ? "Fondo da definire" : "Surface pending"))}</span>
           </div>
           <p class="sales-generator-request-note" title="${escapeHtml(plannerBridge.note || plannerBridge.materialHighlights.join(" · ") || "")}">
-            ${escapeHtml(plannerBridge.note || plannerBridge.materialHighlights.join(" · ") || (state.lang === "it" ? "Riepilogo materiali pronto. Il report cliente viene allegato anche al PDF del preventivo." : "Materials summary is ready. The client report is also attached to the quote PDF."))}
+            ${escapeHtml(plannerBridge.note || plannerBridge.materialHighlights.join(" · ") || (state.lang === "it" ? "Riepilogo materiali pronto. Il report cliente viene allegato al PDF e qui sotto trovi il riferimento interno dei costi planner." : "Materials summary is ready. The client report is attached to the quote PDF and the internal planner cost reference is shown below."))}
           </p>
+          ${plannerMaterialsHtml}
           <div class="sales-generator-card-foot">
             <button class="ghost-button small-button" type="button" data-action="use-planner-prefill">${state.lang === "it" ? "Aggiorna dati planner" : "Refresh planner data"}</button>
             ${plannerBridge.reportHtml.technical ? `<button class="ghost-button small-button" type="button" data-action="open-planner-report" data-variant="technical">${state.lang === "it" ? "Apri report" : "Open report"}</button>` : ""}

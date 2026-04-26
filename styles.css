@@ -11864,6 +11864,89 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   gap: 8px;
 }
 
+.sales-generator-planner-materials {
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+  padding: 12px 12px 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(31, 70, 55, 0.1);
+  background: linear-gradient(180deg, rgba(247, 251, 248, 0.96), rgba(255, 255, 255, 0.98));
+}
+
+.sales-generator-planner-materials-head,
+.sales-generator-planner-material-section-head,
+.sales-generator-planner-material-line {
+  display: grid;
+  align-items: start;
+  gap: 8px;
+}
+
+.sales-generator-planner-materials-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.sales-generator-planner-materials-head strong {
+  font-size: 13px;
+  color: #1f2e26;
+}
+
+.sales-generator-planner-materials-copy {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #617082;
+}
+
+.sales-generator-planner-materials-scroll {
+  display: grid;
+  gap: 10px;
+  max-height: 240px;
+  padding-right: 4px;
+  overflow: auto;
+}
+
+.sales-generator-planner-material-section {
+  display: grid;
+  gap: 6px;
+}
+
+.sales-generator-planner-material-section-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(31, 70, 55, 0.08);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #466252;
+}
+
+.sales-generator-planner-material-list {
+  display: grid;
+  gap: 6px;
+}
+
+.sales-generator-planner-material-line {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  font-size: 12px;
+  color: #415063;
+}
+
+.sales-generator-planner-material-name {
+  color: #1f2e26;
+  font-weight: 600;
+}
+
+.sales-generator-planner-material-qty {
+  color: #617082;
+}
+
+.sales-generator-planner-material-cost {
+  color: #1f4637;
+  white-space: nowrap;
+}
+
 .sales-request-card,
 .sales-content-card {
   padding-left: 24px;
@@ -11883,6 +11966,10 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   }
 
   .sales-generator-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-generator-planner-material-line {
     grid-template-columns: 1fr;
   }
 }

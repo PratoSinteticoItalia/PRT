@@ -88,7 +88,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
-const APP_SHELL_VERSION = "20260427-generator-layout-report-69";
+const APP_SHELL_VERSION = "20260427-planner-material-reference-70";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -113,7 +113,155 @@ const getLocalISODate = () => {
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 
-function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, installNeeds, borderType, borderMeters, decoItems }) {
+function buildPlannerMaterialReferenceModel({
+  area,
+  substrate,
+  travel,
+  installNeeds,
+  borderType,
+  borderMeters,
+  decoItems,
+  regionalPricing,
+  viewerRole = "crew",
+  reportVariant = "technical",
+}) {
+  const isClientVariant = reportVariant === "client";
+  const canViewMaterialCosts = String(viewerRole || "").trim().toLowerCase() === "office" && !isClientVariant;
+  const stabilizedPerTon = Number(regionalPricing?.stabilizedPerTon) || Number(MATERIAL_COSTS.stabilizedPerTonFallback);
+  const sandPerTon = Number(regionalPricing?.sandPerTon) || Number(MATERIAL_COSTS.sandPerTonFallback);
+  const pricingRegionLabel = regionalPricing?.region || "Lazio (fallback)";
+  const scavoM3 = (area * substrate.scavoCm) / 100;
+  const drenateM3 = (area * substrate.drenateCm) / 100;
+  const drenateTon = (drenateM3 * 1600) / 1000;
+  const sabbiaM3 = (area * substrate.sabbiaCm) / 100;
+  const sabbiaKg = sabbiaM3 * 1500;
+  const sabbiaTon = sabbiaKg / 1000;
+  const border = BORDER_TYPES.find((entry) => entry.id === borderType);
+  const infillKg = area * INFILL_FO30.kgPerSqm;
+  const infillBags = Math.ceil(infillKg / INFILL_FO30.bagKg);
+  const substrateCost = (scavoM3 * MATERIAL_COSTS.scavoPerM3)
+    + (drenateTon * stabilizedPerTon)
+    + (sabbiaTon * sandPerTon);
+  const poseMaterialCost = (installNeeds.geo * MATERIAL_COSTS.geoPerSqm)
+    + (installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket)
+    + (installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll)
+    + (installNeeds.pins * MATERIAL_COSTS.pinPerUnit)
+    + (borderType !== "nessuna" ? borderMeters * Number(border?.price || 0) : 0);
+  const infillCost = (infillKg / 1000) * INFILL_FO30.pricePerTon;
+  const decoLines = Object.entries(decoItems || {})
+    .filter(([, qty]) => Number(qty) > 0)
+    .map(([id, qty]) => {
+      const item = DECO_CATALOG.find((entry) => entry.id === id);
+      return item
+        ? { name: item.name, qty: `${qty} ${item.unit}`, cost: Number(qty) * Number(item.pricePerUnit || 0) }
+        : null;
+    })
+    .filter(Boolean);
+  const decoCost = decoLines.reduce((sum, item) => sum + Number(item.cost || 0), 0);
+  const travelSummary = getTravelSummary(travel);
+  const travelCost = travelSummary.totalCost;
+
+  const sections = [
+    {
+      key: "substrate",
+      cat: "PREPARAZIONE FONDO",
+      meta: canViewMaterialCosts ? fmtE(substrateCost) : "Quantità da approvvigionare",
+      showCosts: canViewMaterialCosts,
+      items: [
+        substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + " kg", cost: scavoM3 * MATERIAL_COSTS.scavoPerM3 } : null,
+        substrate.drenateCm > 0 ? { name: "Stabilizzato drenante (" + substrate.drenateCm + "cm)", qty: canViewMaterialCosts ? `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t (${fmt(stabilizedPerTon, 1)} €/t)` : `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t`, cost: drenateTon * stabilizedPerTon } : null,
+        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento 0/4 (" + substrate.sabbiaCm + "cm)", qty: canViewMaterialCosts ? `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t (${fmt(sandPerTon, 1)} €/t)` : `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t`, cost: sabbiaTon * sandPerTon } : null,
+      ].filter(Boolean),
+      sub: substrateCost,
+    },
+    {
+      key: "pose-materials",
+      cat: "MATERIALI POSA",
+      meta: canViewMaterialCosts ? fmtE(poseMaterialCost) : "Quantità da ordinare",
+      showCosts: canViewMaterialCosts,
+      items: [
+        { name: "Tessuto non tessuto", qty: fmt(installNeeds.geo) + " m\u00B2", cost: installNeeds.geo * MATERIAL_COSTS.geoPerSqm },
+        {
+          name: "Colla bicomponente",
+          qty: installNeeds.calcMode === "layout"
+            ? `${installNeeds.glueBuckets} secch${installNeeds.glueBuckets === 1 ? "io" : "i"} da ${GLUE_BUCKET_KG} kg · 1 secchio per rotolo banda`
+            : `${fmt(installNeeds.glueKg, 1)} kg${installNeeds.glueBuckets > 0 ? ` · ${installNeeds.glueBuckets} secch${installNeeds.glueBuckets > 1 ? "i" : "io"} da ${GLUE_BUCKET_KG} kg` : ""} (${fmt(INSTALLATION_RULES.glueKgPerSqm, 1)} kg/m²)`,
+          cost: installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket,
+        },
+        installNeeds.jointMeters > 0 ? {
+          name: "Nastro giunzione",
+          qty: installNeeds.calcMode === "layout"
+            ? `${fmt(installNeeds.jointMeters, 1)} m reali${installNeeds.tapeRolls > 0 ? ` · ${installNeeds.tapeRolls} rotol${installNeeds.tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`
+            : `${Math.round(installNeeds.jointMeters)} m stimati${installNeeds.tapeRolls > 0 ? ` · ${installNeeds.tapeRolls} rotol${installNeeds.tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`,
+          cost: installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll,
+        } : null,
+        { name: "Chiodi a U", qty: installNeeds.pins + " pz", cost: installNeeds.pins * MATERIAL_COSTS.pinPerUnit },
+        borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m", cost: borderMeters * Number(border?.price || 0) } : null,
+      ].filter(Boolean),
+      sub: poseMaterialCost,
+    },
+    {
+      key: "infill",
+      cat: "INTASO",
+      meta: canViewMaterialCosts ? fmtE(infillCost) : "Quantità da ordinare",
+      showCosts: canViewMaterialCosts,
+      items: [
+        { name: INFILL_FO30.name, qty: `${Math.round(infillKg)} kg · ${infillBags} sacchi da ${INFILL_FO30.bagKg} kg`, cost: infillCost },
+      ],
+      sub: infillCost,
+    },
+  ];
+
+  if (decoLines.length > 0) {
+    sections.push({
+      key: "extras",
+      cat: "MATERIALI AGGIUNTIVI",
+      meta: canViewMaterialCosts ? fmtE(decoCost) : "Extra selezionati",
+      showCosts: canViewMaterialCosts,
+      items: decoLines,
+      sub: decoCost,
+    });
+  }
+
+  if (travelSummary.totalKm > 0 || travelSummary.tollCost > 0 || travel?.departureBase) {
+    sections.push({
+      key: "travel",
+      cat: "TRASFERTA E LOGISTICA",
+      meta: "Stima costi",
+      showCosts: !isClientVariant,
+      items: [
+        { name: "Sede di partenza", qty: travel?.departureBase || "Da definire", cost: null },
+        { name: "Modalità viaggio", qty: travelSummary.modeLabel, cost: null },
+        { name: "Km navigatore base", qty: `${fmt(travelSummary.routeKmTotal, 1)} km`, cost: null },
+        { name: "Tempo guida stimato", qty: travelSummary.driveMinutes > 0 ? `${Math.round(travelSummary.driveMinutes)} min` : "—", cost: null },
+        { name: "Carburante tratta base", qty: `${fmt(travelSummary.baseLiters, 1)} l`, cost: travelSummary.baseFuelCost },
+        { name: "Caselli", qty: travelSummary.tollCost > 0 ? fmtE(travelSummary.tollCost) : "—", cost: travelSummary.tollCost },
+        { name: "Costo base sede-cantiere", qty: `${fmt(travelSummary.routeKmTotal, 1)} km`, cost: travelSummary.baseTripCost },
+        travelSummary.extraKm > 0 ? { name: "Km extra operativi", qty: `${fmt(travelSummary.extraKm, 1)} km`, cost: null } : null,
+        travelSummary.extraKm > 0 ? { name: "Carburante km extra", qty: `${fmt(travelSummary.extraLiters, 1)} l`, cost: travelSummary.extraFuelCost } : null,
+        { name: "Percorrenza totale", qty: `${fmt(travelSummary.totalKm, 1)} km`, cost: null },
+        { name: "Costo trasferta totale", qty: travelSummary.extraKm > 0 ? "Base + extra" : "Solo tratta base", cost: travelSummary.totalCost },
+      ].filter(Boolean),
+      sub: travelCost,
+    });
+  }
+
+  const materialSections = sections.filter((section) => section.key !== "travel");
+  const materialCostTotal = materialSections.reduce((sum, section) => sum + (Number(section.sub) || 0), 0);
+
+  return {
+    canViewMaterialCosts,
+    pricingRegionLabel,
+    sections,
+    materialSections,
+    materialCostTotal,
+    travelSummary,
+    travelCost,
+    operationalCostTotal: materialCostTotal + travelCost,
+  };
+}
+
+function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, installNeeds, borderType, borderMeters, decoItems, regionalPricing, viewerRole = "crew" }) {
   const clientName = String(projectInfo.client || "").trim();
   const [firstName = "", ...restName] = clientName.split(/\s+/).filter(Boolean);
   const address = String(projectInfo.address || "").trim();
@@ -131,6 +279,18 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
       return item ? `${item.name} ${qty} ${item.unit}` : "";
     })
     .filter(Boolean);
+  const materialReferenceModel = buildPlannerMaterialReferenceModel({
+    area,
+    substrate,
+    travel,
+    installNeeds,
+    borderType,
+    borderMeters,
+    decoItems,
+    regionalPricing,
+    viewerRole,
+    reportVariant: "technical",
+  });
   return {
     runId: Date.now(),
     createdAt: new Date().toISOString(),
@@ -154,6 +314,21 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
       borderLabel,
       ...extraDecor.slice(0, 3),
     ].filter(Boolean),
+    materialsReference: {
+      showCosts: materialReferenceModel.canViewMaterialCosts,
+      region: materialReferenceModel.pricingRegionLabel,
+      totalCost: materialReferenceModel.canViewMaterialCosts ? materialReferenceModel.materialCostTotal : 0,
+      sections: materialReferenceModel.materialSections.map((section) => ({
+        key: section.key,
+        title: section.cat,
+        subtotal: materialReferenceModel.canViewMaterialCosts ? Number(section.sub || 0) : 0,
+        items: section.items.map((item) => ({
+          name: item.name,
+          qty: item.qty,
+          cost: materialReferenceModel.canViewMaterialCosts && Number.isFinite(Number(item.cost)) ? Number(item.cost) : 0,
+        })),
+      })),
+    },
     payload: {
       nome: firstName,
       cognome: restName.join(" "),
@@ -1811,38 +1986,27 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
   const installNeeds = estimateInstallationNeeds(area, perimeter, manualRolls);
-  const scavoM3 = (area * substrate.scavoCm) / 100;
-  const drenateM3 = (area * substrate.drenateCm) / 100;
-  const drenateTon = (drenateM3 * 1600) / 1000;
-  const sabbiaM3 = (area * substrate.sabbiaCm) / 100;
-  const sabbiaKg = sabbiaM3 * 1500;
-  const sabbiaTon = sabbiaKg / 1000;
-  const border = BORDER_TYPES.find(b => b.id === borderType);
-  const infillKg = area * INFILL_FO30.kgPerSqm;
-  const infillBags = Math.ceil(infillKg / INFILL_FO30.bagKg);
   const isClientVariant = reportVariant === "client";
-  const canViewMaterialCosts = String(viewerRole || "").trim().toLowerCase() === "office" && !isClientVariant;
-  const stabilizedPerTon = Number(regionalPricing?.stabilizedPerTon) || Number(MATERIAL_COSTS.stabilizedPerTonFallback);
-  const sandPerTon = Number(regionalPricing?.sandPerTon) || Number(MATERIAL_COSTS.sandPerTonFallback);
-  const pricingRegionLabel = regionalPricing?.region || "Lazio (fallback)";
-
-  const substrateCost = (scavoM3 * MATERIAL_COSTS.scavoPerM3)
-    + (drenateTon * stabilizedPerTon)
-    + (sabbiaTon * sandPerTon);
-  const poseMaterialCost = (installNeeds.geo * MATERIAL_COSTS.geoPerSqm)
-    + (installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket)
-    + (installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll)
-    + (installNeeds.pins * MATERIAL_COSTS.pinPerUnit)
-    + (borderType !== "nessuna" ? borderMeters * Number(border?.price || 0) : 0);
-  const infillCost = (infillKg / 1000) * INFILL_FO30.pricePerTon;
-
-  const decoLines = Object.entries(decoItems).filter(([, q]) => q > 0).map(([id, qty]) => {
-    const item = DECO_CATALOG.find(d => d.id === id);
-    return item ? { name: item.name, qty: qty + " " + item.unit, cost: Number(qty) * Number(item.pricePerUnit || 0) } : null;
-  }).filter(Boolean);
-  const decoCost = decoLines.reduce((sum, item) => sum + Number(item.cost || 0), 0);
-  const travelSummary = getTravelSummary(travel);
-  const travelCost = travelSummary.totalCost;
+  const {
+    canViewMaterialCosts,
+    pricingRegionLabel,
+    sections,
+    materialCostTotal,
+    travelSummary,
+    travelCost,
+    operationalCostTotal,
+  } = buildPlannerMaterialReferenceModel({
+    area,
+    substrate,
+    travel,
+    installNeeds,
+    borderType,
+    borderMeters,
+    decoItems,
+    regionalPricing,
+    viewerRole,
+    reportVariant,
+  });
   const rollCount = Array.isArray(manualRolls) ? manualRolls.length : 0;
   const rollLinearMeters = Array.isArray(manualRolls)
     ? manualRolls.reduce((sum, roll) => sum + (Number(roll.length) || 0), 0)
@@ -1856,95 +2020,6 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
     ? (manualRolls || []).reduce((count, roll) => (isRollInsidePolygon(roll, rollPolygon) ? count : count + 1), 0)
     : 0;
   const shapeLabel = getShapeLabel(shape, dims, customPts, customClosed);
-
-  const sections = [
-    {
-      key: "substrate",
-      cat: "PREPARAZIONE FONDO",
-      meta: canViewMaterialCosts ? fmtE(substrateCost) : "Quantità da approvvigionare",
-      showCosts: canViewMaterialCosts,
-      items: [
-        substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + " kg", cost: scavoM3 * MATERIAL_COSTS.scavoPerM3 } : null,
-        substrate.drenateCm > 0 ? { name: "Stabilizzato drenante (" + substrate.drenateCm + "cm)", qty: canViewMaterialCosts ? `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t (${fmt(stabilizedPerTon, 1)} €/t)` : `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t`, cost: drenateTon * stabilizedPerTon } : null,
-        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento 0/4 (" + substrate.sabbiaCm + "cm)", qty: canViewMaterialCosts ? `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t (${fmt(sandPerTon, 1)} €/t)` : `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t`, cost: sabbiaTon * sandPerTon } : null,
-      ].filter(Boolean),
-      sub: substrateCost,
-    },
-    {
-      key: "pose-materials",
-      cat: "MATERIALI POSA",
-      meta: canViewMaterialCosts ? fmtE(poseMaterialCost) : "Quantità da ordinare",
-      showCosts: canViewMaterialCosts,
-      items: [
-        { name: "Tessuto non tessuto", qty: fmt(installNeeds.geo) + " m\u00B2", cost: installNeeds.geo * MATERIAL_COSTS.geoPerSqm },
-        {
-          name: "Colla bicomponente",
-          qty: installNeeds.calcMode === "layout"
-            ? `${installNeeds.glueBuckets} secch${installNeeds.glueBuckets === 1 ? "io" : "i"} da ${GLUE_BUCKET_KG} kg · 1 secchio per rotolo banda`
-            : `${fmt(installNeeds.glueKg, 1)} kg${installNeeds.glueBuckets > 0 ? ` · ${installNeeds.glueBuckets} secch${installNeeds.glueBuckets > 1 ? "i" : "io"} da ${GLUE_BUCKET_KG} kg` : ""} (${fmt(INSTALLATION_RULES.glueKgPerSqm, 1)} kg/m²)`,
-          cost: installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket,
-        },
-        installNeeds.jointMeters > 0 ? {
-          name: "Nastro giunzione",
-          qty: installNeeds.calcMode === "layout"
-            ? `${fmt(installNeeds.jointMeters, 1)} m reali${installNeeds.tapeRolls > 0 ? ` · ${installNeeds.tapeRolls} rotol${installNeeds.tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`
-            : `${Math.round(installNeeds.jointMeters)} m stimati${installNeeds.tapeRolls > 0 ? ` · ${installNeeds.tapeRolls} rotol${installNeeds.tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`,
-          cost: installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll,
-        } : null,
-        { name: "Chiodi a U", qty: installNeeds.pins + " pz", cost: installNeeds.pins * MATERIAL_COSTS.pinPerUnit },
-        borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m", cost: borderMeters * Number(border?.price || 0) } : null,
-      ].filter(Boolean),
-      sub: poseMaterialCost,
-    },
-    {
-      key: "infill",
-      cat: "INTASO",
-      meta: canViewMaterialCosts ? fmtE(infillCost) : "Quantità da ordinare",
-      showCosts: canViewMaterialCosts,
-      items: [
-        { name: INFILL_FO30.name, qty: `${Math.round(infillKg)} kg · ${infillBags} sacchi da ${INFILL_FO30.bagKg} kg`, cost: infillCost },
-      ],
-      sub: infillCost,
-    },
-  ];
-  if (decoLines.length > 0) {
-    sections.push({
-      key: "extras",
-      cat: "MATERIALI AGGIUNTIVI",
-      meta: canViewMaterialCosts ? fmtE(decoCost) : "Extra selezionati",
-      showCosts: canViewMaterialCosts,
-      items: decoLines,
-      sub: decoCost,
-    });
-  }
-  if (travelSummary.totalKm > 0 || travelSummary.tollCost > 0 || travel?.departureBase) {
-    sections.push({
-      key: "travel",
-      cat: "TRASFERTA E LOGISTICA",
-      meta: "Stima costi",
-      showCosts: !isClientVariant,
-      items: [
-        { name: "Sede di partenza", qty: travel?.departureBase || "Da definire", cost: null },
-        { name: "Modalità viaggio", qty: travelSummary.modeLabel, cost: null },
-        { name: "Km navigatore base", qty: `${fmt(travelSummary.routeKmTotal, 1)} km`, cost: null },
-        { name: "Tempo guida stimato", qty: travelSummary.driveMinutes > 0 ? `${Math.round(travelSummary.driveMinutes)} min` : "—", cost: null },
-        { name: "Carburante tratta base", qty: `${fmt(travelSummary.baseLiters, 1)} l`, cost: travelSummary.baseFuelCost },
-        { name: "Caselli", qty: travelSummary.tollCost > 0 ? fmtE(travelSummary.tollCost) : "—", cost: travelSummary.tollCost },
-        { name: "Costo base sede-cantiere", qty: `${fmt(travelSummary.routeKmTotal, 1)} km`, cost: travelSummary.baseTripCost },
-        travelSummary.extraKm > 0 ? { name: "Km extra operativi", qty: `${fmt(travelSummary.extraKm, 1)} km`, cost: null } : null,
-        travelSummary.extraKm > 0 ? { name: "Carburante km extra", qty: `${fmt(travelSummary.extraLiters, 1)} l`, cost: travelSummary.extraFuelCost } : null,
-        { name: "Percorrenza totale", qty: `${fmt(travelSummary.totalKm, 1)} km`, cost: null },
-        { name: "Costo trasferta totale", qty: travelSummary.extraKm > 0 ? "Base + extra" : "Solo tratta base", cost: travelSummary.totalCost },
-      ].filter(Boolean),
-      sub: travelCost,
-    });
-  }
-  const materialCostTotal = canViewMaterialCosts
-    ? sections
-      .filter((sec) => sec.key && sec.key !== "travel")
-      .reduce((sum, sec) => sum + (Number(sec.sub) || 0), 0)
-    : 0;
-  const operationalCostTotal = materialCostTotal + travelCost;
   const visibleSections = isClientVariant ? sections.filter((section) => section.key !== "travel") : sections;
 
   return (
@@ -2252,6 +2327,8 @@ function GardenPlanner() {
       borderType,
       borderMeters: selectedBorderMeters,
       decoItems,
+      regionalPricing,
+      viewerRole,
     });
     plannerBridge.reportHtml = {
       technical: technicalNode ? technicalNode.innerHTML : "",
