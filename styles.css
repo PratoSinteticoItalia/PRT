@@ -11797,23 +11797,9 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   border-color: rgba(23, 51, 37, 0.08);
 }
 
-.sidebar {
-  padding-bottom: 26px;
-}
-
-.sidebar-card {
-  margin-top: auto;
-  margin-bottom: 8px;
-  flex-shrink: 0;
-}
-
-.sidebar-card p {
-  line-height: 1.55;
-}
-
 #sales-generator .page-header {
-  padding: 22px 26px 18px;
-  margin-bottom: 18px;
+  padding: 18px 24px 14px;
+  margin-bottom: 14px;
   min-height: 0;
 }
 
@@ -11823,27 +11809,14 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
 
 #sales-generator .sales-generator-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 390px) minmax(0, 1fr) !important;
-  grid-template-areas:
-    "context frame"
-    "contact frame";
+  grid-template-columns: minmax(0, 1fr) !important;
   align-items: start;
-  gap: 18px;
-}
-
-#sales-generator-context-panel {
-  grid-area: context;
-}
-
-#sales-generator-contact-panel {
-  grid-area: contact;
+  gap: 14px;
 }
 
 #sales-generator .sales-generator-frame-panel {
-  grid-area: frame;
-  grid-column: auto;
+  grid-column: 1 / -1;
   align-self: start;
-  min-height: 100%;
 }
 
 #sales-generator .sales-generator-grid > .panel:first-child {
@@ -11854,15 +11827,23 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   padding: 10px;
 }
 
-.sales-generator-request-card {
-  padding: 14px 16px;
+.sales-generator-contact-panel {
   gap: 10px;
+}
+
+.sales-generator-contact-panel .panel-head {
+  margin-bottom: 8px;
+}
+
+.sales-generator-request-card {
+  padding: 12px 14px;
+  gap: 8px;
 }
 
 .sales-generator-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 12px;
+  gap: 4px 12px;
   font-size: 13px;
   color: #617082;
 }
@@ -11883,14 +11864,17 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   gap: 8px;
 }
 
-@media (max-width: 1380px) {
-  #sales-generator .sales-generator-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
-    grid-template-areas:
-      "context"
-      "contact"
-      "frame";
-  }
+.sales-request-card,
+.sales-content-card {
+  padding-left: 24px;
+}
+
+.sales-request-card.is-active::before,
+.sales-content-card.is-active::before {
+  left: 12px;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
 }
 
 @media (max-width: 720px) {

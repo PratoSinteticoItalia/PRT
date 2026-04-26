@@ -1,13 +1,17 @@
 (function generatorBridge() {
   const PREFILL_STORAGE_KEY = "quote-generator-prefill";
   const BRANDING_STORAGE_KEY = "quote-generator-branding";
+  const PLANNER_REPORT_STORAGE_KEY = "quote-generator-planner-report";
   let lastUrlPrefill = "";
   let lastStoragePrefill = "";
   let scheduledPrefillRunId = 0;
   let lastAppliedPrefillSignature = "";
   let lastBrandingStorage = "";
+  let lastPlannerReportStorage = "";
   let activeBrandingPayload = { crewName: "", crewLogoDataUrl: "" };
+  let activePlannerReport = { title: "", client: "", address: "", sqmLabel: "", reportHtml: "" };
   let pdfDownloadInterceptionActive = false;
+  let plannerReportCleanupTimer = 0;
   let scheduledScrollTop = 0;
   let scheduledHeightReport = 0;
   let scheduledBridgeSync = 0;
@@ -82,6 +86,16 @@
     return JSON.stringify(normalized);
   }
 
+  function normalizePlannerReportPayload(payload) {
+    return {
+      title: String(payload?.title || "").trim(),
+      client: String(payload?.client || "").trim(),
+      address: String(payload?.address || "").trim(),
+      sqmLabel: String(payload?.sqmLabel || "").trim(),
+      reportHtml: String(payload?.reportHtml || "").trim(),
+    };
+  }
+
   function waitForAnimationFrame() {
     return new Promise((resolve) => {
       window.requestAnimationFrame(() => resolve());
@@ -152,6 +166,10 @@
         applyBrandingPayloadNow(brandingPayload);
       } else if (activeBrandingPayload.crewLogoDataUrl) {
         applyBrandingPayloadNow(activeBrandingPayload);
+      }
+      const plannerReportPayload = readPlannerReportFromStorage();
+      if (plannerReportPayload) {
+        applyPlannerReportPayloadNow(plannerReportPayload);
       }
       if (document.querySelector(".pdf-root")) {
         reportEmbeddedContentHeight();
@@ -423,6 +441,19 @@
       return normalizeBrandingPayload(parsed?.payload || parsed);
     } catch (error) {
       console.warn("Branding storage non valido:", error);
+      return null;
+    }
+  }
+
+  function readPlannerReportFromStorage() {
+    try {
+      const rawValue = window.localStorage.getItem(PLANNER_REPORT_STORAGE_KEY);
+      if (!rawValue || rawValue === lastPlannerReportStorage) return null;
+      const parsed = JSON.parse(rawValue);
+      lastPlannerReportStorage = rawValue;
+      return normalizePlannerReportPayload(parsed);
+    } catch (error) {
+      console.warn("Planner report storage non valido:", error);
       return null;
     }
   }
@@ -706,6 +737,99 @@
     return Array.from(root.children || []).find((child) => child instanceof Element) || null;
   }
 
+  function ensurePlannerReportStyles() {
+    if (document.getElementById("codex-planner-report-style")) return;
+    const style = document.createElement("style");
+    style.id = "codex-planner-report-style";
+    style.textContent = `
+      .codex-planner-report-appendix {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1.5px solid #d4ddd7;
+      }
+
+      .codex-planner-report-head {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 8px 16px;
+        margin-bottom: 10px;
+      }
+
+      .codex-planner-report-title {
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 1.2px;
+        text-transform: uppercase;
+        color: #315c48;
+      }
+
+      .codex-planner-report-meta {
+        font-size: 8.5px;
+        line-height: 1.45;
+        color: #627284;
+      }
+
+      .codex-planner-report-body {
+        border-radius: 12px;
+        background: #ffffff;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function clearInjectedPlannerReport() {
+    if (plannerReportCleanupTimer) {
+      window.clearTimeout(plannerReportCleanupTimer);
+      plannerReportCleanupTimer = 0;
+    }
+    document.querySelectorAll(".codex-planner-report-appendix").forEach((node) => node.remove());
+  }
+
+  function mountPlannerReportForExport() {
+    clearInjectedPlannerReport();
+    const normalized = normalizePlannerReportPayload(activePlannerReport);
+    if (!normalized.reportHtml) return false;
+    ensurePlannerReportStyles();
+    const pdfRoots = getPdfRoots();
+    if (!pdfRoots.length) return false;
+
+    pdfRoots.forEach((root) => {
+      const mount = getPdfRootContent(root) || root;
+      if (!(mount instanceof Element)) return;
+      const appendix = document.createElement("section");
+      appendix.className = "codex-planner-report-appendix";
+      appendix.innerHTML = `
+        <div class="codex-planner-report-head">
+          <div class="codex-planner-report-title">${normalized.title || "Allegato materiali Garden Planner"}</div>
+          <div class="codex-planner-report-meta">
+            ${(normalized.client || normalized.address || normalized.sqmLabel)
+              ? [normalized.client, normalized.address, normalized.sqmLabel].filter(Boolean).join(" · ")
+              : ""}
+          </div>
+        </div>
+        <div class="codex-planner-report-body">${normalized.reportHtml}</div>
+      `;
+      mount.appendChild(appendix);
+    });
+
+    reportEmbeddedContentHeight();
+    plannerReportCleanupTimer = window.setTimeout(() => {
+      clearInjectedPlannerReport();
+      reportEmbeddedContentHeight();
+    }, 9000);
+    return true;
+  }
+
+  function applyPlannerReportPayloadNow(payload) {
+    activePlannerReport = normalizePlannerReportPayload(payload);
+    if (!activePlannerReport.reportHtml) {
+      clearInjectedPlannerReport();
+      reportEmbeddedContentHeight();
+    }
+    return Boolean(activePlannerReport.reportHtml);
+  }
+
   function findQuoteHeaderBlocks(root) {
     const rootContent = getPdfRootContent(root);
     if (!(rootContent instanceof Element)) return null;
@@ -984,7 +1108,9 @@
         return;
       }
       if (!normalizeLabel(button.textContent).includes("scarica pdf")) return;
-      if (!activeBrandingPayload.crewLogoDataUrl) return;
+      const shouldDecorateBranding = Boolean(activeBrandingPayload.crewLogoDataUrl);
+      const shouldAttachPlannerReport = Boolean(activePlannerReport?.reportHtml);
+      if (!shouldDecorateBranding && !shouldAttachPlannerReport) return;
       if (pdfDownloadInterceptionActive) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -996,9 +1122,16 @@
       pdfDownloadInterceptionActive = true;
 
       Promise.resolve()
-        .then(() => preparePdfBrandingForExport())
+        .then(() => {
+          if (shouldAttachPlannerReport) {
+            mountPlannerReportForExport();
+          } else {
+            clearInjectedPlannerReport();
+          }
+        })
+        .then(() => (shouldDecorateBranding ? preparePdfBrandingForExport() : undefined))
         .catch((error) => {
-          console.warn("Preparazione branding PDF fallita:", error);
+          console.warn("Preparazione export PDF fallita:", error);
         })
         .finally(() => {
           pdfDownloadInterceptionActive = false;
@@ -1187,6 +1320,11 @@
     if (event.data?.type === "quote-generator:branding") {
       applyBrandingPayloadNow(event.data.payload);
       requestBridgeSyncBurst(3);
+      return;
+    }
+    if (event.data?.type === "quote-generator:planner-report") {
+      applyPlannerReportPayloadNow(event.data.payload);
+      requestBridgeSyncBurst(2);
     }
   });
 
@@ -1212,6 +1350,10 @@
     const brandingPayload = readBrandingFromStorage();
     if (brandingPayload) {
       applyBrandingPayloadNow(brandingPayload);
+    }
+    const plannerReportPayload = readPlannerReportFromStorage();
+    if (plannerReportPayload) {
+      applyPlannerReportPayloadNow(plannerReportPayload);
     }
     scrollGeneratorViewportToTop();
     requestBridgeSyncBurst(4);
