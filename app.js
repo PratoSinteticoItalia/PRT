@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260426-deep-debug-62";
+const APP_SHELL_VERSION = "20260426-deep-debug-63";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1595,7 +1595,7 @@ function ensureMobilePillShell() {
     id: "mobile-pill-garden-planner-link",
     label: "Garden Planner",
     type: "link",
-    href: "./garden-planner.html?v=20260426-deep-debug-62&shell=20260426-deep-debug-62",
+    href: "./garden-planner.html?v=20260426-deep-debug-63&shell=20260426-deep-debug-63",
     parent: actions,
   });
   ui.mobilePillReloadButton ||= ensureTool({
@@ -3779,16 +3779,18 @@ function loadCoveragePlannerState() {
 }
 
 function saveCoveragePlannerState() {
+  if (!canManageCoveragePlanner()) return false;
   try {
     const normalized = normalizeCoveragePlannerState(state.coveragePlanner);
     state.coveragePlanner = normalized;
     window.localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(normalized));
   } catch {}
   queueCoveragePlannerSync();
+  return true;
 }
 
 function queueCoveragePlannerSync() {
-  if (!state.currentUser) return;
+  if (!state.currentUser || !canManageCoveragePlanner()) return;
   window.clearTimeout(coverageSyncTimer);
   coverageSyncTimer = window.setTimeout(() => {
     void syncCoveragePlannerState();
@@ -3796,7 +3798,7 @@ function queueCoveragePlannerSync() {
 }
 
 async function syncCoveragePlannerState() {
-  if (!state.currentUser || coverageSyncInFlight) return;
+  if (!state.currentUser || !canManageCoveragePlanner() || coverageSyncInFlight) return;
   coverageSyncInFlight = true;
   try {
     const saved = await apiFetch("/api/coverage-planner", {
@@ -3812,6 +3814,10 @@ async function syncCoveragePlannerState() {
   } finally {
     coverageSyncInFlight = false;
   }
+}
+
+function canManageCoveragePlanner() {
+  return normalizeUserRole(state.currentUser?.role || "") === "office";
 }
 
 function getInstallationCrewNames() {
@@ -10366,6 +10372,7 @@ function showAuth() {
   stopSessionEvents();
   stopShopifyAutoSync();
   stopSalesRequestAutoSync();
+  clearAllSearchRenderTimers();
   clearPendingCurrentViewRefresh();
   setShellPending(false);
   state.mobileMenuOpen = false;
@@ -10505,13 +10512,24 @@ function scheduleSearchRender(key = "", renderFn = () => {}, delay = 120) {
     renderFn();
     return;
   }
-  if (searchRenderTimers[timerKey]) {
-    window.clearTimeout(searchRenderTimers[timerKey]);
-  }
+  clearSearchRenderTimer(timerKey);
   searchRenderTimers[timerKey] = window.setTimeout(() => {
     searchRenderTimers[timerKey] = 0;
     renderFn();
   }, delay);
+}
+
+function clearSearchRenderTimer(key = "") {
+  const timerKey = String(key || "").trim();
+  if (!timerKey || !searchRenderTimers[timerKey]) return;
+  window.clearTimeout(searchRenderTimers[timerKey]);
+  searchRenderTimers[timerKey] = 0;
+}
+
+function clearAllSearchRenderTimers() {
+  Object.keys(searchRenderTimers).forEach((key) => {
+    clearSearchRenderTimer(key);
+  });
 }
 
 function setView(view) {
@@ -10524,6 +10542,7 @@ function setView(view) {
   }
   if (nextView === "accounting") state.accountingMobilePane = "summary";
   if (nextView === "installations") state.installationMobilePane = "summary";
+  clearAllSearchRenderTimers();
   clearPendingCurrentViewRefresh();
   state.currentView = nextView;
   renderCurrentViewOnly(nextView);
@@ -11506,8 +11525,10 @@ async function saveInstallation(event) {
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   if (saved.operations?.installation?.crew) {
     state.selectedInstallationCrew = saved.operations.installation.crew;
-    ensureCoverageTeam(saved.operations.installation.crew);
-    saveCoveragePlannerState();
+    if (canManageCoveragePlanner()) {
+      ensureCoverageTeam(saved.operations.installation.crew);
+      saveCoveragePlannerState();
+    }
   }
   renderCurrentViewOnly(state.currentView);
   setStatus(
@@ -12911,10 +12932,7 @@ bindEvent(ui.salesContentSearchClear, "click", () => {
   ui.salesContentSearch.value = "";
   state.search.salesContent = "";
   state.salesContentPage = 1;
-  if (searchRenderTimers["sales-content"]) {
-    window.clearTimeout(searchRenderTimers["sales-content"]);
-    searchRenderTimers["sales-content"] = 0;
-  }
+  clearSearchRenderTimer("sales-content");
   renderSalesContent();
   ui.salesContentSearch.focus();
 });
@@ -13179,6 +13197,7 @@ window.addEventListener("beforeunload", () => {
   stopSessionKeepalive();
   stopShopifyAutoSync();
   stopSalesRequestAutoSync();
+  clearAllSearchRenderTimers();
 });
 document.addEventListener("focusout", () => {
   window.setTimeout(() => {

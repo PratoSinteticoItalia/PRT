@@ -4334,6 +4334,7 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/coverage-planner" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
     store.coveragePlanner = normalizeCoveragePlanner(body || {});
     await writeJson(STORE_PATH, store);
@@ -4571,6 +4572,7 @@ async function handleApi(req, res, url) {
 
   if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+\/attachments\/[^/]+\/file$/) && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const parts = url.pathname.split("/");
     const contentId = decodeURIComponent(parts[4]);
     const attachmentId = decodeURIComponent(parts[6]);
