@@ -119,7 +119,7 @@
           document.body?.scrollHeight || 0,
           document.documentElement?.scrollHeight || 0,
         );
-      const preferredHeight = Math.min(1480, Math.max(680, Number(documentHeight || 0) + 52));
+      const preferredHeight = Math.max(680, Number(documentHeight || 0) + 72);
       try {
         window.parent?.postMessage({ type: "quote-generator:content-height", height: preferredHeight }, "*");
       } catch {}

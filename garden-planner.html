@@ -75,12 +75,12 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260427-planner-material-reference-70"></script>
+    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260430-generator-page-scroll-71"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let reloaded = false;
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260427-planner-material-reference-70").then((registration) => {
+          navigator.serviceWorker.register("./sw.js?v=20260430-generator-page-scroll-71").then((registration) => {
             if (registration.waiting) {
               registration.waiting.postMessage({ type: "SKIP_WAITING" });
             }

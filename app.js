@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260427-planner-material-reference-70";
+const APP_SHELL_VERSION = "20260430-generator-page-scroll-71";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -20,7 +20,7 @@ const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const SALES_GENERATOR_PLANNER_REPORT_KEY = "quote-generator-planner-report";
 const SALES_GENERATOR_FRAME_MIN_HEIGHT = 680;
 const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 920;
-const SALES_GENERATOR_FRAME_MAX_HEIGHT = 1480;
+const SALES_GENERATOR_FRAME_MAX_HEIGHT = 24000;
 const SW_UPDATE_CHECK_INTERVAL_MS = 1000 * 60 * 10;
 const SHELL_PENDING_FAILSAFE_MS = 1000 * 15;
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
@@ -3721,11 +3721,9 @@ function pushSalesRequestToGenerator(force = false) {
 
 function applySalesGeneratorFrameHeight(rawHeight) {
   if (!ui.salesGeneratorFrame) return;
-  const viewportBasedMax = Math.max(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT, Math.round(window.innerHeight * 1.35));
-  const maxHeight = Math.min(SALES_GENERATOR_FRAME_MAX_HEIGHT, viewportBasedMax);
   const next = Math.max(
     SALES_GENERATOR_FRAME_MIN_HEIGHT,
-    Math.min(maxHeight, Number(rawHeight) || SALES_GENERATOR_FRAME_DEFAULT_HEIGHT),
+    Math.min(SALES_GENERATOR_FRAME_MAX_HEIGHT, Number(rawHeight) || SALES_GENERATOR_FRAME_DEFAULT_HEIGHT),
   );
   ui.salesGeneratorFrame.style.height = `${next}px`;
 }
