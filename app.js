@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260430-generator-page-scroll-71";
+const APP_SHELL_VERSION = "20260430-generator-pdf-polish-75";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -20,7 +20,7 @@ const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const SALES_GENERATOR_PLANNER_REPORT_KEY = "quote-generator-planner-report";
 const SALES_GENERATOR_FRAME_MIN_HEIGHT = 680;
 const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 920;
-const SALES_GENERATOR_FRAME_MAX_HEIGHT = 24000;
+const SALES_GENERATOR_FRAME_MAX_HEIGHT = 8000;
 const SW_UPDATE_CHECK_INTERVAL_MS = 1000 * 60 * 10;
 const SHELL_PENDING_FAILSAFE_MS = 1000 * 15;
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
@@ -3729,12 +3729,6 @@ function applySalesGeneratorFrameHeight(rawHeight) {
 }
 
 window.addEventListener("message", (event) => {
-  if (event.data?.type === "quote-generator:scroll-top") {
-    if (state.currentView !== "sales-generator") return;
-    scrollCurrentViewToTop();
-    requestAnimationFrame(() => focusViewTarget("sales-generator"));
-    return;
-  }
   if (event.data?.type === "quote-generator:content-height") {
     applySalesGeneratorFrameHeight(event.data?.height);
   }
@@ -9972,7 +9966,7 @@ function buildShippingEstimate(order) {
       <div class="ship-calc">
         <div class="ship-calc-title">${state.lang === "it" ? "Stima One Express" : "One Express estimate"}</div>
         <div class="ship-calc-grid">
-          <div class="ship-calc-item">
+          <div class="ship-calc-item ship-calc-item-destination${estimate.provinceCode ? "" : " is-missing"}">
             <span>${state.lang === "it" ? "Destinazione" : "Destination"}</span>
             <strong>${destinationLabel}</strong>
           </div>

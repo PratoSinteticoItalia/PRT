@@ -102,24 +102,57 @@
     });
   }
 
+  function ensureEmbeddedLayoutStyles() {
+    if (document.getElementById("codex-embedded-generator-style")) return;
+    const style = document.createElement("style");
+    style.id = "codex-embedded-generator-style";
+    style.textContent = `
+      #root > .min-h-screen {
+        padding: 10px 10px 14px !important;
+      }
+
+      #root > .min-h-screen > .max-w-4xl.mx-auto {
+        width: min(100%, 1560px) !important;
+        max-width: min(100%, 1560px) !important;
+      }
+
+      @media (max-width: 980px) {
+        #root > .min-h-screen {
+          padding: 10px 8px 14px !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function measureElementHeight(node) {
+    if (!(node instanceof HTMLElement)) return 0;
+    const rect = node.getBoundingClientRect();
+    return Math.max(
+      Math.ceil(rect.height || 0),
+      Math.ceil(node.scrollHeight || 0),
+      Math.ceil(node.offsetHeight || 0),
+    );
+  }
+
   function reportEmbeddedContentHeight() {
     if (scheduledHeightReport) {
       window.cancelAnimationFrame(scheduledHeightReport);
     }
     scheduledHeightReport = window.requestAnimationFrame(() => {
       scheduledHeightReport = 0;
-      let rootHeight = 0;
-      const root = document.querySelector(".pdf-root");
-      if (root instanceof HTMLElement) {
-        rootHeight = Math.ceil(root.getBoundingClientRect().height || root.offsetHeight || 0);
-      }
-      const documentHeight = rootHeight > 0
-        ? rootHeight
-        : Math.max(
-          document.body?.scrollHeight || 0,
-          document.documentElement?.scrollHeight || 0,
-        );
-      const preferredHeight = Math.max(680, Number(documentHeight || 0) + 72);
+      ensureEmbeddedLayoutStyles();
+      const rootHost = document.getElementById("root");
+      const shell = rootHost?.firstElementChild;
+      const pdfRoot = document.querySelector(".pdf-root");
+      const documentHeight = Math.max(
+        measureElementHeight(shell),
+        measureElementHeight(rootHost),
+        measureElementHeight(pdfRoot),
+        Number(document.body?.scrollHeight || 0),
+        Number(document.documentElement?.scrollHeight || 0),
+      );
+      const preferredHeight = Math.min(8000, Math.max(680, Number(documentHeight || 0) + 32));
       try {
         window.parent?.postMessage({ type: "quote-generator:content-height", height: preferredHeight }, "*");
       } catch {}
@@ -140,9 +173,6 @@
       if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
       document.documentElement.scrollTop = 0;
       document.body.scrollTop = 0;
-      try {
-        window.parent?.postMessage({ type: "quote-generator:scroll-top" }, "*");
-      } catch {}
       reportEmbeddedContentHeight();
     });
   }
@@ -157,6 +187,7 @@
     bridgeSyncQueued = true;
     window.requestAnimationFrame(() => {
       bridgeSyncQueued = false;
+      ensureEmbeddedLayoutStyles();
       hideInternalImportPanel();
       syncCustomAccessoryPriceEditors();
       const payload = readPrefillFromStorage() || readPrefillFromUrl();
@@ -171,9 +202,7 @@
       if (plannerReportPayload) {
         applyPlannerReportPayloadNow(plannerReportPayload);
       }
-      if (document.querySelector(".pdf-root")) {
-        reportEmbeddedContentHeight();
-      }
+      reportEmbeddedContentHeight();
       if (scheduledBridgeSync) {
         window.clearTimeout(scheduledBridgeSync);
         scheduledBridgeSync = 0;
@@ -1343,6 +1372,7 @@
   window.addEventListener("load", () => {
     installPdfDownloadInterceptor();
     startCustomAccessoryPriceBridge();
+    ensureEmbeddedLayoutStyles();
     const payload = readPrefillFromUrl() || readPrefillFromStorage();
     if (payload) {
       scheduleRequestPayload(payload);
@@ -1355,7 +1385,6 @@
     if (plannerReportPayload) {
       applyPlannerReportPayloadNow(plannerReportPayload);
     }
-    scrollGeneratorViewportToTop();
     requestBridgeSyncBurst(4);
     reportEmbeddedContentHeight();
   }, { once: true });

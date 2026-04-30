@@ -4306,6 +4306,20 @@ body {
   box-shadow: none;
 }
 
+#dashboard .dashboard-wide-stack {
+  display: grid;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+#dashboard .dashboard-wide-section {
+  margin-bottom: 0;
+}
+
+#dashboard .dashboard-wide-section .accounting-analysis {
+  margin-bottom: 0;
+}
+
 #dashboard .section-header {
   margin-bottom: 12px;
 }
@@ -4922,6 +4936,7 @@ body {
   padding: 12px;
   border-radius: 8px;
   background: var(--bg2);
+  min-width: 0;
 }
 
 .ship-calc-item span {
@@ -4932,7 +4947,11 @@ body {
 }
 
 .ship-calc-item strong {
+  display: block;
   font-size: 18px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .ship-calc-result {
@@ -6632,6 +6651,15 @@ body {
   border: 1px solid rgba(41, 84, 60, 0.1);
   background: linear-gradient(180deg, rgba(247, 251, 248, 0.92), rgba(255, 252, 248, 0.96));
   box-shadow: var(--shadow);
+}
+
+#shipping .ship-calc-item-destination strong {
+  font-size: clamp(15px, 1.1vw, 18px);
+}
+
+#shipping .ship-calc-item-destination.is-missing strong {
+  font-size: 16px;
+  line-height: 1.2;
 }
 
 #shipping .ship-calc-result {
@@ -11824,7 +11852,7 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
 }
 
 .sales-generator-frame-panel {
-  padding: 10px;
+  padding: 4px;
 }
 
 .sales-generator-contact-panel {
