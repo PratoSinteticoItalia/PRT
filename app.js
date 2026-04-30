@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260430-generator-pdf-polish-75";
+const APP_SHELL_VERSION = "20260430-generator-dashboard-fit-76";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -18,8 +18,8 @@ const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const SALES_GENERATOR_PLANNER_REPORT_KEY = "quote-generator-planner-report";
-const SALES_GENERATOR_FRAME_MIN_HEIGHT = 680;
-const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 920;
+const SALES_GENERATOR_FRAME_MIN_HEIGHT = 560;
+const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 760;
 const SALES_GENERATOR_FRAME_MAX_HEIGHT = 8000;
 const SW_UPDATE_CHECK_INTERVAL_MS = 1000 * 60 * 10;
 const SHELL_PENDING_FAILSAFE_MS = 1000 * 15;
@@ -3726,6 +3726,7 @@ function applySalesGeneratorFrameHeight(rawHeight) {
     Math.min(SALES_GENERATOR_FRAME_MAX_HEIGHT, Number(rawHeight) || SALES_GENERATOR_FRAME_DEFAULT_HEIGHT),
   );
   ui.salesGeneratorFrame.style.height = `${next}px`;
+  ui.salesGeneratorFrame.dataset.measuredHeight = String(next);
 }
 
 window.addEventListener("message", (event) => {
@@ -7335,24 +7336,43 @@ function renderDashboard() {
         value: formatCurrency(totalOpenBalance),
         meta: state.lang === "it" ? `${accountingOpenOrdersLabel()} da presidiare` : `${accountingOpenOrdersLabel()} to follow up`,
         accent: true,
+        view: "accounting",
+        filterKey: "dashboard-accounting-filter",
+        filterValue: "open",
       },
       {
         label: state.lang === "it" ? "Fatture da emettere" : "Invoices pending",
         value: String(invoicePending),
         meta: state.lang === "it" ? "Ordini con fattura richiesta e non ancora emessa." : "Orders requiring an invoice not issued yet.",
+        view: "accounting",
+        filterKey: "dashboard-accounting-filter",
+        filterValue: "invoice",
       },
       {
         label: state.lang === "it" ? "Incassi Shopify" : "Shopify collections",
         value: String(paidOnShopify),
         meta: state.lang === "it" ? "Ordini con pagamento online già acquisito." : "Orders already captured online.",
+        view: "accounting",
+        filterKey: "dashboard-accounting-filter",
+        filterValue: "all",
       },
       {
         label: state.lang === "it" ? "Da registrare internamente" : "Internal follow-up",
         value: String(internalPending),
         meta: state.lang === "it" ? "Ordini con saldo o registrazione ancora da completare." : "Orders still waiting for manual accounting follow-up.",
+        view: "accounting",
+        filterKey: "dashboard-accounting-filter",
+        filterValue: "open",
       },
     ].map((item) => `
-      <article class="accounting-analysis-card ${item.accent ? "accent" : ""}">
+      <article
+        class="kpi-card dashboard-snapshot-card ${item.accent ? "kpi-card-soft dashboard-snapshot-card-accent" : ""}"
+        data-action="open-dashboard-view"
+        data-view="${item.view}"
+        ${item.filterKey ? `${item.filterKey}="${item.filterValue}"` : ""}
+        role="button"
+        tabindex="0"
+      >
         <span class="panel-eyebrow">${item.label}</span>
         <strong>${item.value}</strong>
         <p>${item.meta}</p>
@@ -7368,11 +7388,17 @@ function renderDashboard() {
         value: `${Math.round(snapshot.totalStockSqm)} mq`,
         meta: state.lang === "it" ? `${Math.round(snapshot.totalAvailableSqm)} mq netti ancora disponibili` : `${Math.round(snapshot.totalAvailableSqm)} net sqm still available`,
         accent: true,
+        view: "warehouse",
+        filterKey: "dashboard-warehouse-filter",
+        filterValue: "all",
       },
       {
         label: state.lang === "it" ? "Impegnato ordini" : "Committed",
         value: `${Math.round(snapshot.totalCommittedSqm)} mq`,
         meta: state.lang === "it" ? "Metri quadri già assorbiti dagli ordini aperti." : "Square meters already reserved by open orders.",
+        view: "orders",
+        filterKey: "dashboard-order-filter",
+        filterValue: "all",
       },
       {
         label: state.lang === "it" ? "Valore immobilizzato" : "Immobilized value",
@@ -7380,19 +7406,35 @@ function renderDashboard() {
         meta: state.lang === "it"
           ? `Calcolato sul listino ivato per ${Math.round(snapshot.pricedAvailableSqm)} mq disponibili${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} mq senza prezzo configurato` : ""}`
           : `Calculated on gross price list for ${Math.round(snapshot.pricedAvailableSqm)} available sqm${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} sqm still missing a price` : ""}`,
+        view: "warehouse",
+        filterKey: "dashboard-warehouse-filter",
+        filterValue: "all",
       },
       {
         label: state.lang === "it" ? "Materiali accessori" : "Accessory stock",
         value: `${Math.round(snapshot.totalMaterialUnits)} u`,
         meta: state.lang === "it" ? "Unità caricate a magazzino tra colla, banda, telo e accessori." : "Units loaded in stock across glue, tape, membrane and accessories.",
+        view: "warehouse",
+        filterKey: "dashboard-warehouse-filter",
+        filterValue: "all",
       },
       {
         label: state.lang === "it" ? "Prodotti scoperti" : "Uncovered products",
         value: String(snapshot.uncovered),
         meta: state.lang === "it" ? "Referenze dove il fabbisogno supera la disponibilità reale." : "References where demand exceeds current availability.",
+        view: "warehouse",
+        filterKey: "dashboard-warehouse-filter",
+        filterValue: "demand",
       },
     ].map((item) => `
-      <article class="accounting-analysis-card ${item.accent ? "accent" : ""}">
+      <article
+        class="kpi-card dashboard-snapshot-card ${item.accent ? "kpi-card-soft dashboard-snapshot-card-accent" : ""}"
+        data-action="open-dashboard-view"
+        data-view="${item.view}"
+        ${item.filterKey ? `${item.filterKey}="${item.filterValue}"` : ""}
+        role="button"
+        tabindex="0"
+      >
         <span class="panel-eyebrow">${item.label}</span>
         <strong>${item.value}</strong>
         <p>${item.meta}</p>
@@ -8253,7 +8295,7 @@ function renderSalesGenerator() {
       ui.salesGeneratorEmailButton.setAttribute("aria-disabled", emailUrl ? "false" : "true");
     }
   }
-  if (state.currentView === "sales-generator") {
+  if (state.currentView === "sales-generator" && !ui.salesGeneratorFrame?.dataset.measuredHeight) {
     applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
   }
   if (state.currentView === "sales-generator") {

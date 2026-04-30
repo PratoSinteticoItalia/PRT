@@ -108,6 +108,8 @@
     style.id = "codex-embedded-generator-style";
     style.textContent = `
       #root > .min-h-screen {
+        min-height: 0 !important;
+        height: auto !important;
         padding: 10px 10px 14px !important;
       }
 
@@ -145,14 +147,27 @@
       const rootHost = document.getElementById("root");
       const shell = rootHost?.firstElementChild;
       const pdfRoot = document.querySelector(".pdf-root");
+      const shellRect = shell?.getBoundingClientRect();
+      let visibleContentHeight = 0;
+      if (shellRect) {
+        const visibleNodes = Array.from(shell.querySelectorAll("*"))
+          .filter((node) => node instanceof HTMLElement)
+          .filter((node) => {
+            const style = window.getComputedStyle(node);
+            return style.display !== "none" && style.visibility !== "hidden" && node.getClientRects().length > 0;
+          });
+        visibleContentHeight = visibleNodes.reduce((maxHeight, node) => {
+          const rect = node.getBoundingClientRect();
+          return Math.max(maxHeight, Math.ceil(rect.bottom - shellRect.top));
+        }, 0);
+      }
       const documentHeight = Math.max(
         measureElementHeight(shell),
         measureElementHeight(rootHost),
         measureElementHeight(pdfRoot),
-        Number(document.body?.scrollHeight || 0),
-        Number(document.documentElement?.scrollHeight || 0),
+        visibleContentHeight,
       );
-      const preferredHeight = Math.min(8000, Math.max(680, Number(documentHeight || 0) + 32));
+      const preferredHeight = Math.min(8000, Math.max(520, Number(documentHeight || 0) + 24));
       try {
         window.parent?.postMessage({ type: "quote-generator:content-height", height: preferredHeight }, "*");
       } catch {}
