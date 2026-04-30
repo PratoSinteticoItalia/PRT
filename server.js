@@ -3430,7 +3430,6 @@ function normalizeGraphqlOrder(node, index) {
         requiresShipping: item.requiresShipping,
         taxLines: item.taxLines,
         totalPrice: item.discountedTotalSet?.shopMoney?.amount,
-        taxAmount: item.totalTaxSet?.shopMoney?.amount,
       }))
     : [];
   const lineItems = lineDetails.map((item) => item.title);
@@ -3818,12 +3817,6 @@ function getShopifyOrderFields(lineLimit = 20) {
           taxable
           requiresShipping
           discountedTotalSet {
-            shopMoney {
-              amount
-              currencyCode
-            }
-          }
-          totalTaxSet {
             shopMoney {
               amount
               currencyCode
