@@ -12075,6 +12075,12 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   color: var(--brand);
 }
 
+.dashboard-snapshot-placeholder {
+  min-height: 168px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 #dashboard .feed,
 #dashboard .feed-alerts {
   max-height: none;

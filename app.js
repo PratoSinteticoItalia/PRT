@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260501-ux-scroll-dashboard-sync-78";
+const APP_SHELL_VERSION = "20260501-ux-scroll-dashboard-pdf-79";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -226,6 +226,7 @@ const SALES_REQUEST_FIRST_CONTACT_START_HOUR = 8;
 const SALES_REQUEST_FIRST_CONTACT_END_HOUR = 20;
 const SALES_REQUEST_FIRST_CONTACT_SENT_STATUS = "1° contatto";
 const SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS = "da richiamare";
+const DASHBOARD_SNAPSHOT_COLUMNS = 6;
 
 const translations = {
   it: {
@@ -7411,14 +7412,14 @@ function renderDashboard() {
     const invoicePending = state.orders.filter((order) => order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued).length;
     const paidOnShopify = state.orders.filter((order) => getShopifyPaidAmount(order) > 0).length;
     const internalPending = state.orders.filter((order) => !isShopifyPaid(order) && getOpenBalance(order) > 0).length;
-    ui.dashboardAccountingSnapshot.innerHTML = [
+    const items = [
       {
         label: state.lang === "it" ? "Residuo totale" : "Total open balance",
         value: formatCurrency(totalOpenBalance),
         meta: state.lang === "it" ? `${accountingOpenOrdersLabel()} da presidiare` : `${accountingOpenOrdersLabel()} to follow up`,
         accent: true,
         view: "accounting",
-        filterKey: "dashboard-accounting-filter",
+        filterKey: "data-dashboard-accounting-filter",
         filterValue: "open",
       },
       {
@@ -7426,7 +7427,7 @@ function renderDashboard() {
         value: String(invoicePending),
         meta: state.lang === "it" ? "Ordini con fattura da emettere." : "Orders still waiting for invoice issue.",
         view: "accounting",
-        filterKey: "dashboard-accounting-filter",
+        filterKey: "data-dashboard-accounting-filter",
         filterValue: "invoice",
       },
       {
@@ -7434,7 +7435,7 @@ function renderDashboard() {
         value: String(paidOnShopify),
         meta: state.lang === "it" ? "Pagamenti online già acquisiti." : "Online payments already captured.",
         view: "accounting",
-        filterKey: "dashboard-accounting-filter",
+        filterKey: "data-dashboard-accounting-filter",
         filterValue: "shopify",
       },
       {
@@ -7442,35 +7443,23 @@ function renderDashboard() {
         value: String(internalPending),
         meta: state.lang === "it" ? "Saldo o registrazione ancora da chiudere." : "Balance or manual registration still to close.",
         view: "accounting",
-        filterKey: "dashboard-accounting-filter",
+        filterKey: "data-dashboard-accounting-filter",
         filterValue: "internalPending",
       },
-    ].map((item) => `
-      <article
-        class="kpi-card dashboard-snapshot-card ${item.accent ? "kpi-card-soft dashboard-snapshot-card-accent" : ""}"
-        data-action="open-dashboard-view"
-        data-view="${item.view}"
-        ${item.filterKey ? `${item.filterKey}="${item.filterValue}"` : ""}
-        role="button"
-        tabindex="0"
-      >
-        <div class="kpi-label">${item.label}</div>
-        <div class="kpi-value">${item.value}</div>
-        <div class="kpi-sub">${item.meta}</div>
-      </article>
-    `).join("");
+    ];
+    ui.dashboardAccountingSnapshot.innerHTML = renderDashboardSnapshotCards(items);
   }
 
   if (ui.dashboardInventorySnapshot) {
     const snapshot = getDashboardInventorySnapshot();
-    ui.dashboardInventorySnapshot.innerHTML = [
+    const items = [
       {
         label: state.lang === "it" ? "Giacenza prato" : "Turf stock",
         value: `${Math.round(snapshot.totalStockSqm)} mq`,
         meta: state.lang === "it" ? `${Math.round(snapshot.totalAvailableSqm)} mq netti ancora disponibili` : `${Math.round(snapshot.totalAvailableSqm)} net sqm still available`,
         accent: true,
         view: "warehouse",
-        filterKey: "dashboard-warehouse-filter",
+        filterKey: "data-dashboard-warehouse-filter",
         filterValue: "turf",
       },
       {
@@ -7478,7 +7467,7 @@ function renderDashboard() {
         value: `${Math.round(snapshot.totalCommittedSqm)} mq`,
         meta: state.lang === "it" ? "Metri quadri già assorbiti dagli ordini aperti." : "Square meters already reserved by open orders.",
         view: "warehouse",
-        filterKey: "dashboard-warehouse-filter",
+        filterKey: "data-dashboard-warehouse-filter",
         filterValue: "committed",
       },
       {
@@ -7488,7 +7477,7 @@ function renderDashboard() {
           ? `Listino ivato applicato su ${Math.round(snapshot.pricedAvailableSqm)} mq disponibili${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} mq senza prezzo` : ""}`
           : `Gross price list applied to ${Math.round(snapshot.pricedAvailableSqm)} available sqm${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} sqm without price` : ""}`,
         view: "warehouse",
-        filterKey: "dashboard-warehouse-filter",
+        filterKey: "data-dashboard-warehouse-filter",
         filterValue: "valued",
       },
       {
@@ -7496,7 +7485,7 @@ function renderDashboard() {
         value: `${Math.round(snapshot.totalMaterialUnits)} u`,
         meta: state.lang === "it" ? "Colla, banda, telo e accessori caricati." : "Glue, tape, membrane and accessories currently loaded.",
         view: "warehouse",
-        filterKey: "dashboard-warehouse-filter",
+        filterKey: "data-dashboard-warehouse-filter",
         filterValue: "materials",
       },
       {
@@ -7504,29 +7493,40 @@ function renderDashboard() {
         value: String(snapshot.uncovered),
         meta: state.lang === "it" ? "Referenze dove il fabbisogno supera la disponibilità reale." : "References where demand exceeds current availability.",
         view: "warehouse",
-        filterKey: "dashboard-warehouse-filter",
+        filterKey: "data-dashboard-warehouse-filter",
         filterValue: "demand",
       },
-    ].map((item) => `
-      <article
-        class="kpi-card dashboard-snapshot-card ${item.accent ? "kpi-card-soft dashboard-snapshot-card-accent" : ""}"
-        data-action="open-dashboard-view"
-        data-view="${item.view}"
-        ${item.filterKey ? `${item.filterKey}="${item.filterValue}"` : ""}
-        role="button"
-        tabindex="0"
-      >
-        <div class="kpi-label">${item.label}</div>
-        <div class="kpi-value">${item.value}</div>
-        <div class="kpi-sub">${item.meta}</div>
-      </article>
-    `).join("");
+    ];
+    ui.dashboardInventorySnapshot.innerHTML = renderDashboardSnapshotCards(items);
   }
 }
 
 function accountingOpenOrdersLabel() {
   const count = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
   return `${count} ${state.lang === "it" ? "ordini" : "orders"}`;
+}
+
+function renderDashboardSnapshotCards(items = []) {
+  const cards = items.map((item) => `
+    <article
+      class="kpi-card dashboard-snapshot-card ${item.accent ? "kpi-card-soft dashboard-snapshot-card-accent" : ""}"
+      data-action="open-dashboard-view"
+      data-view="${item.view}"
+      ${item.filterKey ? `${item.filterKey}="${item.filterValue}"` : ""}
+      role="button"
+      tabindex="0"
+    >
+      <div class="kpi-label">${item.label}</div>
+      <div class="kpi-value">${item.value}</div>
+      <div class="kpi-sub">${item.meta}</div>
+    </article>
+  `);
+  const placeholderCount = Math.max(0, DASHBOARD_SNAPSHOT_COLUMNS - items.length);
+  const placeholders = Array.from(
+    { length: placeholderCount },
+    () => `<div class="dashboard-snapshot-placeholder" aria-hidden="true"></div>`,
+  );
+  return [...cards, ...placeholders].join("");
 }
 
 function buildActivityFeed() {
