@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260501-final-quote-planner-81";
+const APP_SHELL_VERSION = "20260502-export-regional-pricing-82";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -852,6 +852,33 @@ function saveProfitSplitDraft(draft = state?.profitSplitLocalDraft || state?.pro
   } catch {}
 }
 
+function sanitizeGardenPlannerReportHtml(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw || typeof document === "undefined") return raw;
+  const shell = document.createElement("div");
+  shell.innerHTML = raw;
+  shell.querySelectorAll("script, style, link[rel='stylesheet'], #codex-pdf-export-style").forEach((node) => node.remove());
+  const walker = document.createTreeWalker(shell, NodeFilter.SHOW_TEXT);
+  const staleNodes = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const text = String(node.textContent || "").trim();
+    if (
+      text.includes("@media print")
+      || text.includes(".pdf-root")
+      || text.includes(".pdf-no-break")
+      || text.includes("print-color-adjust")
+      || text.includes("page-break-inside")
+      || text.includes("break-inside")
+      || text.includes("@page")
+    ) {
+      staleNodes.push(node);
+    }
+  }
+  staleNodes.forEach((node) => node.remove());
+  return shell.innerHTML.trim();
+}
+
 function normalizeGardenPlannerMaterialsReference(input = {}) {
   const normalizeString = (value = "") => String(value ?? "").trim();
   const toAmount = (value) => {
@@ -901,8 +928,8 @@ function normalizeGardenPlannerQuoteBridge(input = {}) {
       ? input.materialHighlights.map((item) => normalizeString(item)).filter(Boolean).slice(0, 8)
       : [],
     reportHtml: {
-      technical: normalizeString(reportHtml.technical || input.technicalReportHtml),
-      client: normalizeString(reportHtml.client || input.clientReportHtml),
+      technical: sanitizeGardenPlannerReportHtml(reportHtml.technical || input.technicalReportHtml),
+      client: sanitizeGardenPlannerReportHtml(reportHtml.client || input.clientReportHtml),
     },
     materialsReference: normalizeGardenPlannerMaterialsReference(input.materialsReference),
     payload: {

@@ -92,8 +92,101 @@
       client: String(payload?.client || "").trim(),
       address: String(payload?.address || "").trim(),
       sqmLabel: String(payload?.sqmLabel || "").trim(),
-      reportHtml: String(payload?.reportHtml || "").trim(),
+      reportHtml: sanitizePlannerReportHtml(payload?.reportHtml),
     };
+  }
+
+  function isPdfArtifactText(text = "") {
+    const value = String(text || "").trim();
+    if (!value) return false;
+    return (
+      value.includes("@media print")
+      || value.includes(".pdf-root")
+      || value.includes(".pdf-no-break")
+      || value.includes("print-color-adjust")
+      || value.includes("page-break-inside")
+      || value.includes("break-inside")
+      || value.includes("@page")
+    );
+  }
+
+  function removePdfArtifactTextNodes(rootNode) {
+    if (!(rootNode instanceof Node)) return;
+    const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
+    const staleNodes = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (isPdfArtifactText(node.textContent || "")) {
+        staleNodes.push(node);
+      }
+    }
+    staleNodes.forEach((node) => node.remove());
+  }
+
+  function sanitizePlannerReportHtml(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const shell = document.createElement("div");
+    shell.innerHTML = raw;
+    shell.querySelectorAll("script, style, link[rel='stylesheet'], #codex-pdf-export-style").forEach((node) => node.remove());
+    removePdfArtifactTextNodes(shell);
+    return shell.innerHTML.trim();
+  }
+
+  const PDF_EXPORT_STYLE_TEXT = `
+    @media print {
+      body {
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background: #fff !important;
+      }
+
+      .print\\:hidden {
+        display: none !important;
+      }
+
+      @page {
+        size: A4;
+        margin: 3mm;
+      }
+    }
+
+    .pdf-root {
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .pdf-no-break {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+  `;
+
+  function ensurePdfExportStyles() {
+    if (document.getElementById("codex-pdf-export-style")) return;
+    const style = document.createElement("style");
+    style.id = "codex-pdf-export-style";
+    style.textContent = PDF_EXPORT_STYLE_TEXT;
+    document.head.appendChild(style);
+  }
+
+  function stripPdfStyleArtifacts(rootNode = document) {
+    const pdfRoots = rootNode instanceof Element && rootNode.matches(".pdf-root")
+      ? [rootNode]
+      : rootNode instanceof Element && rootNode.matches(".codex-planner-report-appendix")
+        ? [rootNode]
+        : Array.from(document.querySelectorAll(".pdf-root"));
+    pdfRoots.forEach((root) => {
+      root.querySelectorAll("style").forEach((styleNode) => {
+        const cssText = String(styleNode.textContent || "");
+        if (cssText.includes("@media print") || cssText.includes(".pdf-root")) {
+          styleNode.remove();
+        }
+      });
+      removePdfArtifactTextNodes(root);
+    });
   }
 
   function waitForAnimationFrame() {
@@ -139,6 +232,7 @@
       }
     `;
     document.head.appendChild(style);
+    ensurePdfExportStyles();
   }
 
   function isVisibleMeasureNode(node, { allowFixed = false } = {}) {
@@ -187,6 +281,7 @@
     scheduledHeightReport = window.requestAnimationFrame(() => {
       scheduledHeightReport = 0;
       ensureEmbeddedLayoutStyles();
+      stripPdfStyleArtifacts();
       const rootHost = document.getElementById("root");
       const shell = rootHost?.firstElementChild;
       const pdfRoot = document.querySelector(".pdf-root");
@@ -1117,6 +1212,8 @@
     const normalized = normalizePlannerReportPayload(activePlannerReport);
     if (!normalized.reportHtml) return false;
     ensurePlannerReportStyles();
+    ensurePdfExportStyles();
+    stripPdfStyleArtifacts();
     const pdfRoots = getPdfRoots();
     if (!pdfRoots.length) return false;
 
@@ -1136,6 +1233,7 @@
         </div>
         <div class="codex-planner-report-body">${normalized.reportHtml}</div>
       `;
+      stripPdfStyleArtifacts(appendix);
       mount.appendChild(appendix);
     });
 
@@ -1143,7 +1241,7 @@
     plannerReportCleanupTimer = window.setTimeout(() => {
       clearInjectedPlannerReport();
       reportEmbeddedContentHeight();
-    }, 9000);
+    }, 1800);
     return true;
   }
 
@@ -1374,6 +1472,8 @@
 
   async function preparePdfBrandingForExport() {
     polishQuotePreviewLayout(document);
+    ensurePdfExportStyles();
+    stripPdfStyleArtifacts();
     if (!activeBrandingPayload.crewLogoDataUrl) return;
     applyBrandingPayloadNow(activeBrandingPayload);
     const brandingImages = Array.from(document.querySelectorAll(".pdf-root .codex-crew-branding img"));

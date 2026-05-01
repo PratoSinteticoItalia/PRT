@@ -89,7 +89,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
-const APP_SHELL_VERSION = "20260501-final-quote-planner-81";
+const APP_SHELL_VERSION = "20260502-export-regional-pricing-82";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -113,6 +113,33 @@ const getLocalISODate = () => {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
+
+function sanitizeQuoteBridgeReportHtml(value) {
+  const raw = String(value || "").trim();
+  if (!raw || typeof document === "undefined") return raw;
+  const shell = document.createElement("div");
+  shell.innerHTML = raw;
+  shell.querySelectorAll("script, style, link[rel='stylesheet'], #codex-pdf-export-style").forEach((node) => node.remove());
+  const walker = document.createTreeWalker(shell, NodeFilter.SHOW_TEXT);
+  const staleNodes = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const text = String(node.textContent || "").trim();
+    if (
+      text.includes("@media print")
+      || text.includes(".pdf-root")
+      || text.includes(".pdf-no-break")
+      || text.includes("print-color-adjust")
+      || text.includes("page-break-inside")
+      || text.includes("break-inside")
+      || text.includes("@page")
+    ) {
+      staleNodes.push(node);
+    }
+  }
+  staleNodes.forEach((node) => node.remove());
+  return shell.innerHTML.trim();
+}
 
 function buildPlannerMaterialReferenceModel({
   area,
@@ -2338,8 +2365,8 @@ function GardenPlanner() {
       viewerRole,
     });
     plannerBridge.reportHtml = {
-      technical: technicalNode ? technicalNode.innerHTML : "",
-      client: clientNode ? clientNode.innerHTML : "",
+      technical: sanitizeQuoteBridgeReportHtml(technicalNode ? technicalNode.innerHTML : ""),
+      client: sanitizeQuoteBridgeReportHtml(clientNode ? clientNode.innerHTML : ""),
     };
     try {
       window.localStorage.setItem(GARDEN_PLANNER_PREFILL_STORAGE_KEY, JSON.stringify(plannerBridge));
@@ -2356,7 +2383,7 @@ function GardenPlanner() {
         address: String(plannerBridge.address || "").trim(),
         sqmLabel: String(plannerBridge.sqmLabel || "").trim(),
         materialsReference: plannerBridge.materialsReference,
-        reportHtml: String(plannerBridge.reportHtml?.client || plannerBridge.reportHtml?.technical || "").trim(),
+        reportHtml: sanitizeQuoteBridgeReportHtml(String(plannerBridge.reportHtml?.client || plannerBridge.reportHtml?.technical || "").trim()),
       }));
     } catch {}
     const targetUrl = new URL("./index.html", window.location.href);
