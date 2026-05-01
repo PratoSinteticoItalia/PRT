@@ -950,6 +950,12 @@
     return match;
   }
 
+  function getGeneratorMode() {
+    const hooks = findGeneratorHooks();
+    const mode = String(hooks?.[0]?.memoizedState || "").trim().toLowerCase();
+    return mode === "edit" || mode === "pdf" ? mode : "";
+  }
+
   function dispatchHookAction(hook, action) {
     if (!hook?.queue?.dispatch) return false;
     try {
@@ -959,6 +965,15 @@
       console.warn("Dispatch hook non riuscito:", error);
       return false;
     }
+  }
+
+  function forceGeneratorMode(mode = "edit") {
+    const normalizedMode = String(mode || "").trim().toLowerCase();
+    if (!["edit", "pdf"].includes(normalizedMode)) return false;
+    const hooks = findGeneratorHooks();
+    if (!hooks?.[0]) return false;
+    if (String(hooks[0]?.memoizedState || "").trim().toLowerCase() === normalizedMode) return false;
+    return dispatchHookAction(hooks[0], normalizedMode);
   }
 
   function applyReactStatePrefill(customerPayload, requestedMq, requestedServiceState, requestedSurface) {
@@ -1112,6 +1127,8 @@
         applyRequestPayloadNow(payload);
       }, delay);
     });
+
+    scrollGeneratorViewportToTop();
 
     return true;
   }
@@ -1564,6 +1581,14 @@
           pdfDownloadInterceptionActive = false;
           button.dataset.codexPdfBypass = "1";
           button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+          window.setTimeout(() => {
+            scrollGeneratorViewportToTop();
+            reportEmbeddedContentHeight();
+          }, 320);
+          window.setTimeout(() => {
+            scrollGeneratorViewportToTop();
+            reportEmbeddedContentHeight();
+          }, 1200);
         });
     }, true);
   }
@@ -1735,11 +1760,15 @@
 
   window.addEventListener("message", (event) => {
     if (event.data?.type === "quote-generator:prefill-request") {
+      forceGeneratorMode("edit");
+      scrollGeneratorViewportToTop();
       scheduleRequestPayload(event.data.payload, { force: Boolean(event.data?.force) });
       requestBridgeSyncBurst(4);
       return;
     }
     if (event.data?.type === "quote-generator:clear-prefill") {
+      forceGeneratorMode("edit");
+      scrollGeneratorViewportToTop();
       clearRequestPayloadNow();
       requestBridgeSyncBurst(2);
       return;
@@ -1773,6 +1802,7 @@
     ensureEmbeddedLayoutStyles();
     const payload = readPrefillFromUrl() || readPrefillFromStorage();
     if (payload) {
+      forceGeneratorMode("edit");
       scheduleRequestPayload(payload);
     }
     const brandingPayload = readBrandingFromStorage();
@@ -1783,6 +1813,7 @@
     if (plannerReportPayload) {
       applyPlannerReportPayloadNow(plannerReportPayload);
     }
+    scrollGeneratorViewportToTop();
     requestBridgeSyncBurst(4);
     reportEmbeddedContentHeight();
   }, { once: true });
