@@ -107,9 +107,23 @@
     const style = document.createElement("style");
     style.id = "codex-embedded-generator-style";
     style.textContent = `
+      html,
+      body,
+      #root {
+        min-height: 0 !important;
+        height: auto !important;
+        overflow: hidden !important;
+      }
+
+      body {
+        margin: 0 !important;
+        background: transparent !important;
+      }
+
       #root > .min-h-screen {
         min-height: 0 !important;
         height: auto !important;
+        overflow: visible !important;
         padding: 10px 10px 14px !important;
       }
 
@@ -127,14 +141,37 @@
     document.head.appendChild(style);
   }
 
+  function isVisibleMeasureNode(node, { allowFixed = false } = {}) {
+    if (!(node instanceof HTMLElement)) return false;
+    const style = window.getComputedStyle(node);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (!allowFixed && (style.position === "fixed" || style.position === "absolute")) return false;
+    return node.getClientRects().length > 0;
+  }
+
   function measureElementHeight(node) {
-    if (!(node instanceof HTMLElement)) return 0;
+    if (!isVisibleMeasureNode(node, { allowFixed: true })) return 0;
     const rect = node.getBoundingClientRect();
     return Math.max(
       Math.ceil(rect.height || 0),
       Math.ceil(node.scrollHeight || 0),
       Math.ceil(node.offsetHeight || 0),
     );
+  }
+
+  function measureVisibleContentHeight(rootNode) {
+    if (!(rootNode instanceof HTMLElement)) return 0;
+    const rootRect = rootNode.getBoundingClientRect();
+    const visibleNodes = Array.from(rootNode.querySelectorAll("*"))
+      .filter((node) => isVisibleMeasureNode(node))
+      .filter((node) => {
+        const style = window.getComputedStyle(node);
+        return style.position !== "sticky";
+      });
+    return visibleNodes.reduce((maxHeight, node) => {
+      const rect = node.getBoundingClientRect();
+      return Math.max(maxHeight, Math.ceil(rect.bottom - rootRect.top));
+    }, Math.ceil(rootRect.height || 0));
   }
 
   function reportEmbeddedContentHeight() {
@@ -147,27 +184,17 @@
       const rootHost = document.getElementById("root");
       const shell = rootHost?.firstElementChild;
       const pdfRoot = document.querySelector(".pdf-root");
-      const shellRect = shell?.getBoundingClientRect();
-      let visibleContentHeight = 0;
-      if (shellRect) {
-        const visibleNodes = Array.from(shell.querySelectorAll("*"))
-          .filter((node) => node instanceof HTMLElement)
-          .filter((node) => {
-            const style = window.getComputedStyle(node);
-            return style.display !== "none" && style.visibility !== "hidden" && node.getClientRects().length > 0;
-          });
-        visibleContentHeight = visibleNodes.reduce((maxHeight, node) => {
-          const rect = node.getBoundingClientRect();
-          return Math.max(maxHeight, Math.ceil(rect.bottom - shellRect.top));
-        }, 0);
-      }
+      const contentRoot = document.querySelector("#root > .min-h-screen > .max-w-4xl.mx-auto") || shell || rootHost;
+      const visibleContentHeight = measureVisibleContentHeight(contentRoot);
+      const pdfHeight = measureElementHeight(pdfRoot);
       const documentHeight = Math.max(
+        measureElementHeight(contentRoot),
         measureElementHeight(shell),
         measureElementHeight(rootHost),
-        measureElementHeight(pdfRoot),
+        pdfHeight,
         visibleContentHeight,
       );
-      const preferredHeight = Math.min(8000, Math.max(520, Number(documentHeight || 0) + 24));
+      const preferredHeight = Math.min(6000, Math.max(520, Number(documentHeight || 0) + 18));
       try {
         window.parent?.postMessage({ type: "quote-generator:content-height", height: preferredHeight }, "*");
       } catch {}

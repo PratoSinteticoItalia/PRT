@@ -12037,3 +12037,95 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
     grid-template-columns: 1fr;
   }
 }
+
+.dashboard-snapshot-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 0;
+  align-items: stretch;
+}
+
+.dashboard-snapshot-card {
+  min-height: 168px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 0;
+}
+
+.dashboard-snapshot-card .kpi-label {
+  margin-bottom: 10px;
+}
+
+.dashboard-snapshot-card .kpi-value {
+  margin-bottom: 10px;
+}
+
+.dashboard-snapshot-card .kpi-sub {
+  margin-top: 0;
+  min-height: 2.9em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.dashboard-snapshot-card.dashboard-snapshot-card-accent .kpi-value,
+.inventory-snapshot .dashboard-snapshot-card .kpi-value {
+  color: var(--brand);
+}
+
+#dashboard .feed,
+#dashboard .feed-alerts {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+#orders .detail-panel,
+#shipping .detail-panel,
+#accounting .detail-panel,
+#warehouse .detail-panel,
+#installations .detail-panel {
+  max-height: none;
+  overflow: visible;
+  padding-bottom: 26px;
+}
+
+#sales-requests .sales-request-list-panel,
+#sales-content .sales-content-list-panel {
+  max-height: none;
+}
+
+#sales-requests .sales-request-list,
+#sales-content .sales-content-list {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.sales-generator-frame-panel {
+  overflow: clip;
+}
+
+.main-content {
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 1380px) {
+  .dashboard-snapshot-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1120px) {
+  .dashboard-snapshot-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-snapshot-grid {
+    grid-template-columns: 1fr;
+  }
+}

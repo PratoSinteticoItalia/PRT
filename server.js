@@ -28,6 +28,7 @@ const USE_R2 = Boolean(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY
 const DEFAULT_SALES_REQUEST_SPREADSHEET = "https://docs.google.com/spreadsheets/d/15n7HIxhiX0U2EX28R9euiZfCqBNZPZ0AE8Hmb-p0vHw/edit";
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_FETCH_TIMEOUT_MS = 15_000;
 const MAX_CREW_LOGO_DATA_URL_LENGTH = 6_500_000;
 const SALES_REQUEST_FIRST_CONTACT_SENT_STATUS = "1° contatto";
 const SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS = "da richiamare";
@@ -990,6 +991,23 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = SHOPIFY_FETCH_TIM
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function normalizeGoogleFetchError(error, phase = "sheets") {
+  const rawMessage = String(error?.message || error || "").trim();
+  const normalizedPhase = phase === "token" ? "google_token" : "google_sheets";
+  const isTimeout = error?.name === "AbortError"
+    || rawMessage === "AbortError"
+    || /timeout|timed out|aborted/i.test(rawMessage);
+  if (isTimeout) {
+    return new Error(`${normalizedPhase}_timeout`);
+  }
+  const isNetwork = rawMessage === "fetch failed"
+    || /network|enotfound|econnreset|eai_again|socket|failed to fetch/i.test(rawMessage);
+  if (isNetwork) {
+    return new Error(`${normalizedPhase}_network_error`);
+  }
+  return error instanceof Error ? error : new Error(rawMessage || `${normalizedPhase}_failed`);
 }
 
 function isRetryableShopifyStatus(status) {
@@ -2411,16 +2429,21 @@ async function getGoogleAccessTokenForSheets(config) {
   }));
   const unsignedToken = `${header}.${claims}`;
   const assertion = `${unsignedToken}.${signJwt(unsignedToken, config.privateKey)}`;
-  const response = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion,
-    }).toString(),
-  });
+  let response;
+  try {
+    response = await fetchWithTimeout(GOOGLE_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion,
+      }).toString(),
+    }, GOOGLE_FETCH_TIMEOUT_MS);
+  } catch (error) {
+    throw normalizeGoogleFetchError(error, "token");
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload.access_token) {
     throw new Error(payload.error_description || payload.error || "google_token_failed");
@@ -2430,15 +2453,20 @@ async function getGoogleAccessTokenForSheets(config) {
 
 async function googleSheetsFetch(config, endpoint, options = {}) {
   const token = await getGoogleAccessTokenForSheets(config);
-  const response = await fetch(`https://sheets.googleapis.com/v4${endpoint}`, {
-    method: options.method || "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    body: options.body,
-  });
+  let response;
+  try {
+    response = await fetchWithTimeout(`https://sheets.googleapis.com/v4${endpoint}`, {
+      method: options.method || "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+      body: options.body,
+    }, GOOGLE_FETCH_TIMEOUT_MS);
+  } catch (error) {
+    throw normalizeGoogleFetchError(error, "sheets");
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload?.error?.message || payload?.error_description || payload?.error || "google_sheets_failed");

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260430-generator-dashboard-fit-76";
+const APP_SHELL_VERSION = "20260501-ux-scroll-dashboard-sync-78";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -13,6 +13,7 @@ const SESSION_EVENTS_RECONNECT_MAX_MS = 20_000;
 const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 900;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 60;
+const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 60 * 3;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
@@ -1055,6 +1056,7 @@ let shopifyAutoSyncTimer = 0;
 let shopifyAutoSyncInFlight = false;
 let salesRequestAutoSyncTimer = 0;
 let salesRequestSyncInFlight = false;
+let salesRequestAutoSyncLastAttemptAt = 0;
 let salesContentDeleteInFlightId = "";
 const salesContentAttachmentDeleteInFlight = new Set();
 let reloadAllInFlight = false;
@@ -3006,6 +3008,58 @@ function normalizeSalesRequestSourceConfig(config = {}) {
   };
 }
 
+function isTransientSalesRequestSyncError(error) {
+  const message = String(error?.message || "").trim().toLowerCase();
+  return [
+    "network_error",
+    "google_token_network_error",
+    "google_token_timeout",
+    "google_sheets_network_error",
+    "google_sheets_timeout",
+    "fetch failed",
+  ].includes(message);
+}
+
+function getSalesRequestSyncErrorMessage(error) {
+  const message = String(error?.message || "").trim();
+  if (message === "missing_service_account") {
+    return state.lang === "it" ? "Carica prima il service account Google." : "Upload the Google service account first.";
+  }
+  if (message === "missing_spreadsheet") {
+    return state.lang === "it" ? "Inserisci prima lo spreadsheet." : "Add the spreadsheet first.";
+  }
+  if (["network_error", "google_token_network_error", "google_sheets_network_error", "fetch failed"].includes(message)) {
+    return state.lang === "it"
+      ? "Google Sheets non raggiungibile in questo momento. Puoi riprovare manualmente tra poco."
+      : "Google Sheets is temporarily unreachable. You can retry manually in a moment.";
+  }
+  if (["google_token_timeout", "google_sheets_timeout"].includes(message)) {
+    return state.lang === "it"
+      ? "Google Sheets sta impiegando troppo tempo a rispondere. Riprova manualmente."
+      : "Google Sheets is taking too long to respond. Retry manually.";
+  }
+  return message && !["sales_request_source_sync_failed", "request_failed"].includes(message)
+    ? message
+    : (state.lang === "it" ? "Impossibile aggiornare le richieste dal foglio Google." : "Unable to update requests from Google Sheets.");
+}
+
+function clearTransientSalesRequestSyncStatus() {
+  const node = ui.salesRequestSourceStatus;
+  const text = String(node?.textContent || "").trim().toLowerCase();
+  if (!node || !node.classList.contains("error")) return;
+  if (
+    text.includes("auto-refresh richieste fallito")
+    || text.includes("requests auto-refresh failed")
+    || text.includes("fetch failed")
+    || text.includes("google sheets non raggiungibile")
+    || text.includes("google sheets is temporarily unreachable")
+    || text.includes("google sheets sta impiegando troppo tempo")
+    || text.includes("google sheets is taking too long")
+  ) {
+    clearStatus(node);
+  }
+}
+
 function normalizeSalesContentRecord(item = {}) {
   return {
     id: String(item.id || crypto.randomUUID()),
@@ -3725,6 +3779,8 @@ function applySalesGeneratorFrameHeight(rawHeight) {
     SALES_GENERATOR_FRAME_MIN_HEIGHT,
     Math.min(SALES_GENERATOR_FRAME_MAX_HEIGHT, Number(rawHeight) || SALES_GENERATOR_FRAME_DEFAULT_HEIGHT),
   );
+  const current = Number(ui.salesGeneratorFrame.dataset.measuredHeight || 0);
+  if (current && Math.abs(current - next) < 8) return;
   ui.salesGeneratorFrame.style.height = `${next}px`;
   ui.salesGeneratorFrame.dataset.measuredHeight = String(next);
 }
@@ -3884,6 +3940,8 @@ function getShippingTariffProfile() {
 function getAccountingFilterLabel(filter = state.filters.accounting) {
   if (filter === "open") return t("accountingOpen");
   if (filter === "invoice") return state.lang === "it" ? "Da fatturare" : "To invoice";
+  if (filter === "shopify") return state.lang === "it" ? "Incassi Shopify" : "Shopify collections";
+  if (filter === "internalPending") return state.lang === "it" ? "Registrazione interna" : "Internal follow-up";
   if (filter === "thisMonth") return state.lang === "it" ? "Questo mese" : "This month";
   if (filter === "lastMonth") return state.lang === "it" ? "Mese scorso" : "Last month";
   return t("all");
@@ -4257,16 +4315,17 @@ async function syncSalesRequestSource({ auto = false, silent = false } = {}) {
           ? `${Number(payload.importedCount || 0)} richieste aggiornate da Google Sheets.`
           : `${Number(payload.importedCount || 0)} requests updated from Google Sheets.`,
       );
+    } else if (auto) {
+      clearTransientSalesRequestSyncStatus();
     }
     return true;
   } catch (error) {
-    const message = error?.message === "missing_service_account"
-      ? (state.lang === "it" ? "Carica prima il service account Google." : "Upload the Google service account first.")
-      : error?.message === "missing_spreadsheet"
-        ? (state.lang === "it" ? "Inserisci prima lo spreadsheet." : "Add the spreadsheet first.")
-        : (error?.message && !["sales_request_source_sync_failed", "request_failed"].includes(error.message)
-            ? error.message
-            : (state.lang === "it" ? "Impossibile aggiornare le richieste dal foglio Google." : "Unable to update requests from Google Sheets."));
+    const message = getSalesRequestSyncErrorMessage(error);
+    if (auto && isTransientSalesRequestSyncError(error)) {
+      clearTransientSalesRequestSyncStatus();
+      console.warn("sales_request_auto_sync_transient_error", error);
+      return false;
+    }
     if (auto) {
       setStatus(
         ui.salesRequestSourceStatus,
@@ -6703,6 +6762,11 @@ function filterOrdersForView(kind) {
   const searchKey = kind === "order" ? "orders" : kind;
   const search = state.search[searchKey] || "";
   const filter = state.filters[kind === "order" ? "order" : kind];
+  const inventoryGroupByProduct = kind === "warehouse"
+    ? new Map(
+      getInventorySummary().map((group) => [normalizeProductName(group.product), group]),
+    )
+    : null;
   return state.orders.filter((order) => {
     if (kind === "warehouse" && !isRoutedToWarehouse(order)) return false;
     if (kind === "shipping" && !(isRoutedToWarehouse(order) || isRoutedToInstallation(order))) return false;
@@ -6726,11 +6790,28 @@ function filterOrdersForView(kind) {
       return !fulfilledOrClosed;
     }
     if (kind === "warehouse") {
-      return !isLogisticsOrderCompleted(order);
+      if (isLogisticsOrderCompleted(order)) return false;
+      const group = inventoryGroupByProduct?.get(normalizeProductName(getCatalogLabel(order.operations?.product || ""))) || null;
+      if (!group) return filter === "all";
+      if (filter === "turf") return group.isModel;
+      if (filter === "materials") return !group.isModel;
+      if (filter === "committed") return group.isModel ? group.demandSqm > 0 : group.demandUnits > 0;
+      if (filter === "valued") return group.isModel && group.grossPriceConfigured && group.availableGrossValue > 0;
+      if (filter === "full") return group.fullCount > 0;
+      if (filter === "residual") return group.residualCount > 0;
+      if (filter === "demand") return group.demandSqm > 0 || group.demandUnits > 0;
+      return true;
     }
     if (kind === "accounting") {
       if (filter === "open") return getOpenBalance(order) > 0;
       if (filter === "invoice") return Boolean(order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
+      if (filter === "shopify") return getShopifyPaidAmount(order) > 0;
+      if (filter === "internalPending") {
+        return !isShopifyPaid(order) && (
+          getOpenBalance(order) > 0
+          || Boolean(order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)
+        );
+      }
       if (filter === "thisMonth") {
         const now = new Date();
         const orderDate = new Date(order.createdAt || 0);
@@ -7343,7 +7424,7 @@ function renderDashboard() {
       {
         label: state.lang === "it" ? "Fatture da emettere" : "Invoices pending",
         value: String(invoicePending),
-        meta: state.lang === "it" ? "Ordini con fattura richiesta e non ancora emessa." : "Orders requiring an invoice not issued yet.",
+        meta: state.lang === "it" ? "Ordini con fattura da emettere." : "Orders still waiting for invoice issue.",
         view: "accounting",
         filterKey: "dashboard-accounting-filter",
         filterValue: "invoice",
@@ -7351,18 +7432,18 @@ function renderDashboard() {
       {
         label: state.lang === "it" ? "Incassi Shopify" : "Shopify collections",
         value: String(paidOnShopify),
-        meta: state.lang === "it" ? "Ordini con pagamento online già acquisito." : "Orders already captured online.",
+        meta: state.lang === "it" ? "Pagamenti online già acquisiti." : "Online payments already captured.",
         view: "accounting",
         filterKey: "dashboard-accounting-filter",
-        filterValue: "all",
+        filterValue: "shopify",
       },
       {
         label: state.lang === "it" ? "Da registrare internamente" : "Internal follow-up",
         value: String(internalPending),
-        meta: state.lang === "it" ? "Ordini con saldo o registrazione ancora da completare." : "Orders still waiting for manual accounting follow-up.",
+        meta: state.lang === "it" ? "Saldo o registrazione ancora da chiudere." : "Balance or manual registration still to close.",
         view: "accounting",
         filterKey: "dashboard-accounting-filter",
-        filterValue: "open",
+        filterValue: "internalPending",
       },
     ].map((item) => `
       <article
@@ -7373,9 +7454,9 @@ function renderDashboard() {
         role="button"
         tabindex="0"
       >
-        <span class="panel-eyebrow">${item.label}</span>
-        <strong>${item.value}</strong>
-        <p>${item.meta}</p>
+        <div class="kpi-label">${item.label}</div>
+        <div class="kpi-value">${item.value}</div>
+        <div class="kpi-sub">${item.meta}</div>
       </article>
     `).join("");
   }
@@ -7390,33 +7471,33 @@ function renderDashboard() {
         accent: true,
         view: "warehouse",
         filterKey: "dashboard-warehouse-filter",
-        filterValue: "all",
+        filterValue: "turf",
       },
       {
         label: state.lang === "it" ? "Impegnato ordini" : "Committed",
         value: `${Math.round(snapshot.totalCommittedSqm)} mq`,
         meta: state.lang === "it" ? "Metri quadri già assorbiti dagli ordini aperti." : "Square meters already reserved by open orders.",
-        view: "orders",
-        filterKey: "dashboard-order-filter",
-        filterValue: "all",
+        view: "warehouse",
+        filterKey: "dashboard-warehouse-filter",
+        filterValue: "committed",
       },
       {
         label: state.lang === "it" ? "Valore immobilizzato" : "Immobilized value",
         value: formatCurrency(snapshot.totalImmobilizedGrossValue),
         meta: state.lang === "it"
-          ? `Calcolato sul listino ivato per ${Math.round(snapshot.pricedAvailableSqm)} mq disponibili${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} mq senza prezzo configurato` : ""}`
-          : `Calculated on gross price list for ${Math.round(snapshot.pricedAvailableSqm)} available sqm${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} sqm still missing a price` : ""}`,
+          ? `Listino ivato applicato su ${Math.round(snapshot.pricedAvailableSqm)} mq disponibili${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} mq senza prezzo` : ""}`
+          : `Gross price list applied to ${Math.round(snapshot.pricedAvailableSqm)} available sqm${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} sqm without price` : ""}`,
         view: "warehouse",
         filterKey: "dashboard-warehouse-filter",
-        filterValue: "all",
+        filterValue: "valued",
       },
       {
         label: state.lang === "it" ? "Materiali accessori" : "Accessory stock",
         value: `${Math.round(snapshot.totalMaterialUnits)} u`,
-        meta: state.lang === "it" ? "Unità caricate a magazzino tra colla, banda, telo e accessori." : "Units loaded in stock across glue, tape, membrane and accessories.",
+        meta: state.lang === "it" ? "Colla, banda, telo e accessori caricati." : "Glue, tape, membrane and accessories currently loaded.",
         view: "warehouse",
         filterKey: "dashboard-warehouse-filter",
-        filterValue: "all",
+        filterValue: "materials",
       },
       {
         label: state.lang === "it" ? "Prodotti scoperti" : "Uncovered products",
@@ -7435,9 +7516,9 @@ function renderDashboard() {
         role="button"
         tabindex="0"
       >
-        <span class="panel-eyebrow">${item.label}</span>
-        <strong>${item.value}</strong>
-        <p>${item.meta}</p>
+        <div class="kpi-label">${item.label}</div>
+        <div class="kpi-value">${item.value}</div>
+        <div class="kpi-sub">${item.meta}</div>
       </article>
     `).join("");
   }
@@ -7758,10 +7839,12 @@ function openDashboardViewTarget(target) {
     state.filters.order = dataset.dashboardOrderFilter || dataset.orderFilter || "all";
     state.search.orders = "";
     state.orderPage = 1;
+    state.selectedOrderId = "";
   }
   if (nextView === "warehouse") {
     state.filters.warehouse = dataset.dashboardWarehouseFilter || dataset.warehouseFilter || "all";
     state.search.warehouse = "";
+    state.selectedOrderId = "";
   }
   if (nextView === "installations") {
     state.filters.installation = dataset.dashboardInstallationFilter || dataset.installationFilter || "all";
@@ -7772,10 +7855,12 @@ function openDashboardViewTarget(target) {
   if (nextView === "accounting") {
     state.filters.accounting = dataset.dashboardAccountingFilter || dataset.accountingFilter || "all";
     state.search.accounting = "";
+    state.selectedOrderId = "";
   }
   if (nextView === "shipping") {
     state.filters.shipping = dataset.dashboardShippingFilter || dataset.shippingFilter || "all";
     state.search.shipping = "";
+    state.selectedOrderId = "";
   }
   setView(nextView);
 }
@@ -8295,10 +8380,11 @@ function renderSalesGenerator() {
       ui.salesGeneratorEmailButton.setAttribute("aria-disabled", emailUrl ? "false" : "true");
     }
   }
-  if (state.currentView === "sales-generator" && !ui.salesGeneratorFrame?.dataset.measuredHeight) {
-    applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
-  }
   if (state.currentView === "sales-generator") {
+    const measuredHeight = Number(ui.salesGeneratorFrame?.dataset.measuredHeight || 0);
+    if (!measuredHeight || measuredHeight > 2400) {
+      applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
+    }
     window.setTimeout(() => pushSalesGeneratorBranding(false), 20);
   }
   if (state.currentView === "sales-generator" && plannerMode) {
@@ -9010,6 +9096,9 @@ function renderInventoryCard(group) {
 }
 
 function renderWarehouse() {
+  ui.warehouseFilterTags.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.warehouseFilter === state.filters.warehouse);
+  });
   const orders = filterOrdersForView("warehouse");
   const groups = getInventorySummary().filter((group) => {
     const search = (state.search.warehouse || "").toLowerCase();
@@ -9018,6 +9107,10 @@ function renderWarehouse() {
       ...group.pieces.map((item) => `${item.width}x${item.length}`),
     ].join(" ").toLowerCase().includes(search);
     if (!matchesSearch) return false;
+    if (state.filters.warehouse === "turf") return group.isModel;
+    if (state.filters.warehouse === "materials") return !group.isModel;
+    if (state.filters.warehouse === "committed") return group.isModel ? group.demandSqm > 0 : group.demandUnits > 0;
+    if (state.filters.warehouse === "valued") return group.isModel && group.grossPriceConfigured && group.availableGrossValue > 0;
     if (state.filters.warehouse === "full") return group.fullCount > 0;
     if (state.filters.warehouse === "residual") return group.residualCount > 0;
     if (state.filters.warehouse === "demand") return group.demandSqm > 0 || group.demandUnits > 0;
@@ -9773,6 +9866,9 @@ function renderInstallations() {
 }
 
 function renderAccounting() {
+  ui.accountingFilterTags.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.accountingFilter === state.filters.accounting);
+  });
   const orders = filterOrdersForView("accounting");
   renderAccountingModels();
   renderAccountingAnalysis(orders);
@@ -11191,8 +11287,20 @@ function canAutoRefreshSalesRequests() {
     && state.currentUser.role === "office"
     && config.hasServiceAccount
     && config.spreadsheetInput
+    && !document.hidden
     && navigator.onLine !== false,
   );
+}
+
+function triggerSalesRequestAutoSync({ force = false } = {}) {
+  if (!canAutoRefreshSalesRequests()) return false;
+  const now = Date.now();
+  if (!force && now - salesRequestAutoSyncLastAttemptAt < SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS) {
+    return false;
+  }
+  salesRequestAutoSyncLastAttemptAt = now;
+  void syncSalesRequestSource({ auto: true, silent: true });
+  return true;
 }
 
 function startShopifyAutoSync() {
@@ -11208,8 +11316,7 @@ function startSalesRequestAutoSync() {
   stopSalesRequestAutoSync();
   if (!state.currentUser || state.currentUser.role !== "office") return;
   salesRequestAutoSyncTimer = window.setInterval(() => {
-    if (!canAutoRefreshSalesRequests()) return;
-    void syncSalesRequestSource({ auto: true, silent: true });
+    triggerSalesRequestAutoSync({ force: true });
   }, SALES_REQUEST_AUTO_SYNC_INTERVAL_MS);
 }
 
@@ -13832,6 +13939,7 @@ bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
 });
 bindEvent(ui.salesGeneratorFreeQuoteButton, "click", toggleSalesGeneratorFreeMode);
 bindEvent(ui.salesGeneratorFrame, "load", () => {
+  applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
   pushSalesGeneratorBranding(true);
   if (state.salesGeneratorPlannerMode) {
     pushPlannerPrefillToGenerator(true);
@@ -14110,7 +14218,7 @@ document.addEventListener("visibilitychange", () => {
     void runShopifySync({ silent: true });
   }
   if (canAutoRefreshSalesRequests()) {
-    void syncSalesRequestSource({ auto: true, silent: true });
+    triggerSalesRequestAutoSync();
   }
 });
 window.addEventListener("focus", () => {
@@ -14121,7 +14229,7 @@ window.addEventListener("focus", () => {
     void runShopifySync({ silent: true });
   }
   if (canAutoRefreshSalesRequests()) {
-    void syncSalesRequestSource({ auto: true, silent: true });
+    triggerSalesRequestAutoSync();
   }
 });
 window.addEventListener("online", () => {
@@ -14132,7 +14240,7 @@ window.addEventListener("online", () => {
     void runShopifySync({ silent: true });
   }
   if (canAutoRefreshSalesRequests()) {
-    void syncSalesRequestSource({ auto: true, silent: true });
+    triggerSalesRequestAutoSync({ force: true });
   }
 });
 window.addEventListener("beforeunload", () => {
