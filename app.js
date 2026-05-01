@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260501-ux-scroll-dashboard-pdf-79";
+const APP_SHELL_VERSION = "20260501-final-quote-planner-81";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -876,6 +876,8 @@ function normalizeGardenPlannerMaterialsReference(input = {}) {
   return {
     showCosts: Boolean(input.showCosts),
     region: normalizeString(input.region || input.pricingRegionLabel),
+    stabilizedPerTon: toAmount(input.stabilizedPerTon),
+    sandPerTon: toAmount(input.sandPerTon),
     totalCost: toAmount(input.totalCost ?? input.materialCostTotal),
     sections,
   };
@@ -1255,6 +1257,9 @@ const ui = {
   installationEmailButton: document.getElementById("installation-email-button"),
   installationAttachmentButton: document.getElementById("installation-attachment-button"),
   installationAttachments: document.getElementById("installation-attachments"),
+  installationProfitSplitShell: document.getElementById("installation-profit-split-shell"),
+  installationProfitSplitSummary: document.getElementById("installation-profit-split-summary"),
+  installationProfitSplitBreakdown: document.getElementById("installation-profit-split-breakdown"),
   installationExpenseForm: document.getElementById("installation-expense-form"),
   installationExpenseStatus: document.getElementById("installation-expense-status"),
   installationExpenseSummary: document.getElementById("installation-expense-summary"),
@@ -2376,8 +2381,8 @@ function renderProfitSplitContextCard() {
     if (linkedOrder) {
       ui.profitSplitContextStatus.classList.add(dirty ? "error" : "success");
       ui.profitSplitContextStatus.textContent = dirty
-        ? (state.lang === "it" ? "Bozza collegata modificata: premi Salva su commessa per condividere gli ultimi cambi." : "Linked draft changed: save it to the job to share the latest changes.")
-        : (state.lang === "it" ? "Conto posa allineato alla commessa selezionata." : "Profit split is aligned with the selected job.");
+        ? (state.lang === "it" ? "Bozza collegata modificata: premi Salva conto nella commessa per condividere gli ultimi cambi anche con la squadra assegnata." : "Linked draft changed: save it to the job to share the latest changes with the assigned crew too.")
+        : (state.lang === "it" ? "Conto posa allineato alla commessa selezionata. Quando lo salvi, resta dentro l'ordine e la squadra assegnata puo vederlo in Pose." : "Profit split is aligned with the selected job. Once saved, it stays on the order and the assigned crew can see it in Installations.");
     } else {
       ui.profitSplitContextStatus.classList.add("hidden");
       ui.profitSplitContextStatus.textContent = "";
@@ -2390,7 +2395,12 @@ function renderProfitSplitContextCard() {
       ? (state.lang === "it" ? "Ricarica commessa" : "Reload job")
       : (state.lang === "it" ? "Usa ordine selezionato" : "Use selected order");
   }
-  if (ui.profitSplitSaveOrderButton) ui.profitSplitSaveOrderButton.disabled = !linkedOrder;
+  if (ui.profitSplitSaveOrderButton) {
+    ui.profitSplitSaveOrderButton.disabled = !linkedOrder;
+    ui.profitSplitSaveOrderButton.textContent = state.lang === "it"
+      ? "Salva conto nella commessa"
+      : "Save split to job";
+  }
   if (ui.profitSplitDetachOrderButton) ui.profitSplitDetachOrderButton.disabled = !linkedOrder;
   if (ui.profitSplitOpenOrderButton) ui.profitSplitOpenOrderButton.disabled = !linkedOrder;
 }
@@ -4322,20 +4332,17 @@ async function syncSalesRequestSource({ auto = false, silent = false } = {}) {
     return true;
   } catch (error) {
     const message = getSalesRequestSyncErrorMessage(error);
-    if (auto && isTransientSalesRequestSyncError(error)) {
+    if (auto) {
       clearTransientSalesRequestSyncStatus();
-      console.warn("sales_request_auto_sync_transient_error", error);
+      console.warn(
+        isTransientSalesRequestSyncError(error)
+          ? "sales_request_auto_sync_transient_error"
+          : "sales_request_auto_sync_failed",
+        error,
+      );
       return false;
     }
-    if (auto) {
-      setStatus(
-        ui.salesRequestSourceStatus,
-        "error",
-        state.lang === "it"
-          ? `Auto-refresh richieste fallito. ${message}`
-          : `Requests auto-refresh failed. ${message}`,
-      );
-    } else {
+    if (!auto) {
       setStatus(ui.salesRequestSourceStatus, "error", message);
     }
     return false;
@@ -9452,6 +9459,9 @@ function getPreferredCrewInstallationOrder(orders = []) {
 
 function clearInstallationDetail() {
   if (ui.installationDetailSummary) ui.installationDetailSummary.innerHTML = "";
+  if (ui.installationProfitSplitShell) ui.installationProfitSplitShell.hidden = true;
+  if (ui.installationProfitSplitSummary) ui.installationProfitSplitSummary.innerHTML = "";
+  if (ui.installationProfitSplitBreakdown) ui.installationProfitSplitBreakdown.innerHTML = "";
   if (ui.installationForm?.installDate) ui.installationForm.installDate.value = "";
   if (ui.installationForm?.installTime) ui.installationForm.installTime.value = "";
   if (ui.installationForm?.status) ui.installationForm.status.value = "da-pianificare";
@@ -9555,6 +9565,177 @@ function renderInstallationExpenseSection(order) {
       `).join("")
       : `<div class="info-card">${state.lang === "it" ? "Nessuna spesa registrata su questo ordine." : "No crew expenses registered for this order."}</div>`;
   }
+}
+
+function canCurrentUserSeeInstallationProfitSplit(order) {
+  if (!order) return false;
+  if (state.currentUser?.role !== "crew") return true;
+  return orderBelongsToCrew(order, getCrewForCurrentUser());
+}
+
+function renderInstallationProfitSplit(order) {
+  if (!ui.installationProfitSplitShell || !ui.installationProfitSplitSummary || !ui.installationProfitSplitBreakdown) return;
+  const visible = canCurrentUserSeeInstallationProfitSplit(order);
+  const storedDraft = getStoredProfitSplitForOrder(order);
+  ui.installationProfitSplitShell.hidden = !visible;
+  if (!visible) {
+    ui.installationProfitSplitSummary.innerHTML = "";
+    ui.installationProfitSplitBreakdown.innerHTML = "";
+    return;
+  }
+
+  const isCrewView = state.currentUser?.role === "crew";
+  const partnerLabel = String(storedDraft?.partnerName || order?.operations?.installation?.crew || "").trim()
+    || (state.lang === "it" ? "Squadra" : "Crew");
+  const copyNode = ui.installationProfitSplitShell.querySelector(".section-copy");
+  if (copyNode) {
+    copyNode.textContent = isCrewView
+      ? (state.lang === "it"
+        ? "Questo riepilogo viene salvato dall'ufficio nella commessa e ti mostra il saldo squadra collegato al lavoro."
+        : "This summary is saved by the office on the job and shows the crew settlement for the work.")
+      : (state.lang === "it"
+        ? "Riepilogo economico salvato sull'ordine, condiviso con la squadra assegnata."
+        : "Economic summary saved on the order and shared with the assigned crew.");
+  }
+
+  if (!storedDraft) {
+    ui.installationProfitSplitSummary.innerHTML = [
+      {
+        label: state.lang === "it" ? "Conto posa" : "Profit split",
+        value: state.lang === "it" ? "Non ancora salvato" : "Not saved yet",
+        meta: isCrewView
+          ? (state.lang === "it" ? "L'ufficio non ha ancora salvato un conto posa su questa commessa." : "Office has not saved a profit split on this job yet.")
+          : (state.lang === "it" ? "Salva il conto nella commessa da Conti posa per condividerlo con la squadra." : "Save the split to the job from Profit split to share it with the crew."),
+      },
+    ].map(renderDetailBox).join("");
+    ui.installationProfitSplitBreakdown.innerHTML = "";
+    return;
+  }
+
+  const result = computeProfitSplitScenario(storedDraft);
+  const savedStamp = storedDraft.savedAt
+    ? `${state.lang === "it" ? "Salvato" : "Saved"} ${formatDate(storedDraft.savedAt)}${storedDraft.updatedBy ? ` · ${escapeHtml(storedDraft.updatedBy)}` : ""}`
+    : (state.lang === "it" ? "Salvato nella commessa" : "Saved on the job");
+
+  ui.installationProfitSplitSummary.innerHTML = [
+    {
+      label: state.lang === "it" ? "Ricavo posa" : "Install revenue",
+      value: formatCurrency(result.revenue),
+      meta: storedDraft.jobLabel || savedStamp,
+    },
+    {
+      label: state.lang === "it" ? `Totale ${partnerLabel}` : `${partnerLabel} total`,
+      value: formatCurrency(result.partnerDue),
+      meta: state.lang === "it" ? "Spese, fisso e quota utile della squadra." : "Crew expenses, fixed pay, and profit share.",
+    },
+    {
+      label: state.lang === "it" ? "Totale ufficio" : "Office total",
+      value: formatCurrency(result.ownerDue),
+      meta: state.lang === "it" ? "Quota ufficio dopo recuperi e riparto." : "Office share after recoveries and split.",
+    },
+    {
+      label: state.lang === "it" ? "Costi dedotti" : "Deducted costs",
+      value: formatCurrency(result.deductibleCosts),
+      meta: `${result.expenseLineCount} ${state.lang === "it" ? "voci spesa" : "expense items"} · ${savedStamp}`,
+    },
+  ].map(renderDetailBox).join("");
+
+  ui.installationProfitSplitBreakdown.innerHTML = `
+    <div class="crew-expense-report-grid">
+      <section class="crew-expense-panel">
+        <div class="crew-expense-panel-head">
+          <div>
+            <p class="panel-eyebrow">${state.lang === "it" ? "Saldo squadra" : "Crew settlement"}</p>
+            <h4>${escapeHtml(partnerLabel)}</h4>
+          </div>
+          <span>${escapeHtml(formatCurrency(result.partnerDue))}</span>
+        </div>
+        <div class="detail-stack">
+          ${[
+            {
+              label: state.lang === "it" ? "Spese anticipate squadra" : "Crew-paid expenses",
+              value: formatCurrency(result.partnerPaidExpenses),
+              meta: state.lang === "it" ? "Rimborsi sulle spese inserite a carico squadra." : "Reimbursements for crew-paid expenses.",
+            },
+            {
+              label: state.lang === "it" ? "Fisso squadra" : "Crew fixed pay",
+              value: formatCurrency(result.partnerFixedTotal),
+              meta: `${result.partnerDays} ${state.lang === "it" ? "giorni" : "days"} × ${formatCurrency(result.partnerDailyFixed)}`,
+            },
+            {
+              label: state.lang === "it" ? "Quota utile squadra" : "Crew profit share",
+              value: formatCurrency(result.partnerProfitShare),
+              meta: `${result.partnerSharePct}%`,
+            },
+            {
+              label: state.lang === "it" ? "Recuperi squadra" : "Crew recoveries",
+              value: formatCurrency(result.partnerRecovery),
+              meta: state.lang === "it" ? "Extra da restituire alla squadra oltre alle spese." : "Extra recoveries owed to the crew.",
+            },
+          ].map((item) => `
+            <article class="detail-box crew-expense-report-card">
+              <span class="panel-eyebrow">${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(item.value)}</strong>
+              <p>${escapeHtml(item.meta || "—")}</p>
+            </article>
+          `).join("")}
+        </div>
+        ${renderProfitSplitExpenseList(
+          result.partnerExpenseLines,
+          state.lang === "it" ? "Nessuna spesa squadra registrata nel conto posa." : "No crew expenses saved in this split.",
+        )}
+      </section>
+      <section class="crew-expense-panel">
+        <div class="crew-expense-panel-head">
+          <div>
+            <p class="panel-eyebrow">${state.lang === "it" ? "Quadro commessa" : "Job overview"}</p>
+            <h4>${state.lang === "it" ? "Riepilogo riparto" : "Split summary"}</h4>
+          </div>
+          <span>${escapeHtml(formatCurrency(result.ownerDue))}</span>
+        </div>
+        <div class="detail-stack">
+          ${[
+            {
+              label: state.lang === "it" ? "Spese anticipate ufficio" : "Office-paid expenses",
+              value: formatCurrency(result.ownerPaidExpenses),
+              meta: state.lang === "it" ? "Spese sostenute lato ufficio/titolare." : "Expenses paid by the office/owner.",
+            },
+            {
+              label: state.lang === "it" ? "Recuperi ufficio" : "Office recoveries",
+              value: formatCurrency(result.ownerRecovery),
+              meta: state.lang === "it" ? "Budget e anticipi da recuperare prima del riparto." : "Budgets and advances to recover before splitting profit.",
+            },
+            {
+              label: state.lang === "it" ? "Costi condivisi" : "Shared costs",
+              value: formatCurrency(result.sharedJobCosts),
+              meta: state.lang === "it" ? "Detratti dalla commessa senza assegnazione diretta." : "Deducted from the job without direct assignment.",
+            },
+            {
+              label: state.lang === "it" ? "Quadratura" : "Reconciliation",
+              value: formatCurrency(result.reconciliationGap),
+              meta: Math.abs(result.reconciliationGap) <= 0.02
+                ? (state.lang === "it" ? "Conto posa quadrato correttamente." : "Split balances correctly.")
+                : (state.lang === "it" ? "Controlla i campi del conto posa: c'è una differenza da verificare." : "Check the split fields: there is a difference to review."),
+            },
+          ].map((item) => `
+            <article class="detail-box crew-expense-report-card">
+              <span class="panel-eyebrow">${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(item.value)}</strong>
+              <p>${escapeHtml(item.meta || "—")}</p>
+            </article>
+          `).join("")}
+        </div>
+        ${result.sharedExpenseLines.length ? `
+          <div class="crew-expense-panel-subhead">
+            <p class="panel-eyebrow">${state.lang === "it" ? "Voci condivise" : "Shared lines"}</p>
+          </div>
+          ${renderProfitSplitExpenseList(result.sharedExpenseLines)}
+        ` : `
+          <div class="info-card">${state.lang === "it" ? "Nessun costo condiviso registrato in questo conto posa." : "No shared costs recorded in this split."}</div>
+        `}
+      </section>
+    </div>
+  `;
 }
 
 function renderCrewExpenseMonthlyReport() {
@@ -9859,6 +10040,7 @@ function renderInstallations() {
       ? (state.lang === "it" ? "Accesso, arrivo squadra, avanzamento, problemi, fine lavori..." : "Access, crew arrival, progress, issues, completion...")
       : (state.lang === "it" ? "Accesso, riprogrammazione, note posa, report cantiere..." : "Access, rescheduling, install notes, site report...");
   }
+  renderInstallationProfitSplit(order);
   ui.installationAttachments.innerHTML = renderAttachmentGrid(mapAttachmentsForContext(order, "installation"), order.id);
   renderInstallationExpenseSection(order);
   clearStatus(ui.installationStatus);

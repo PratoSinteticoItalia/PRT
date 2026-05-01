@@ -8631,6 +8631,28 @@ button:active,
   margin-top: 14px;
 }
 
+.installation-profit-split-shell {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid rgba(45, 106, 79, 0.1);
+  border-radius: 22px;
+  background: linear-gradient(180deg, #fbfdfb 0%, #f5faf6 100%);
+}
+
+.installation-profit-split-shell[hidden] {
+  display: none !important;
+}
+
+.installation-profit-split-shell .detail-grid {
+  margin: 0;
+}
+
+.installation-profit-split-shell .info-card {
+  margin: 0;
+}
+
 .crew-expense-panel {
   display: grid;
   gap: 12px;
@@ -12040,11 +12062,13 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
 
 .dashboard-snapshot-grid {
   grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-auto-rows: minmax(168px, auto);
   gap: 12px;
   margin-bottom: 0;
   align-items: stretch;
 }
 
+.view#dashboard > .kpi-grid > .kpi-card,
 .dashboard-snapshot-card {
   min-height: 168px;
   display: flex;
@@ -12063,7 +12087,7 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
 
 .dashboard-snapshot-card .kpi-sub {
   margin-top: 0;
-  min-height: 2.9em;
+  min-height: 3.1em;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -12112,6 +12136,31 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
 
 .sales-generator-frame-panel {
   overflow: clip;
+}
+
+@media (min-width: 981px) {
+  #accounting .detail-panel,
+  #warehouse .detail-panel {
+    max-height: calc(100vh - 132px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding-bottom: 32px;
+  }
+
+  #warehouse .detail-panel {
+    max-height: calc(100vh - 118px);
+  }
+}
+
+#accounting .accounting-pane-group[data-accounting-pane="billing"] .inline-actions {
+  margin-top: 14px;
+  padding-top: 6px;
+}
+
+#accounting .accounting-pane-group[data-accounting-pane="billing"] .inline-actions > * {
+  margin-top: 0;
 }
 
 .main-content {

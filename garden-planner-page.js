@@ -1,4 +1,5 @@
 const { useState, useMemo, useRef, useEffect } = React;
+const SALES_GENERATOR_PLANNER_REPORT_KEY = "quote-generator-planner-report";
 
 /* ═══════════════════════════════════════════
    CONSTANTS & DATA
@@ -88,7 +89,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
-const APP_SHELL_VERSION = "20260501-ux-scroll-dashboard-pdf-79";
+const APP_SHELL_VERSION = "20260501-final-quote-planner-81";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -252,6 +253,8 @@ function buildPlannerMaterialReferenceModel({
   return {
     canViewMaterialCosts,
     pricingRegionLabel,
+    stabilizedPerTon,
+    sandPerTon,
     sections,
     materialSections,
     materialCostTotal,
@@ -317,6 +320,8 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
     materialsReference: {
       showCosts: materialReferenceModel.canViewMaterialCosts,
       region: materialReferenceModel.pricingRegionLabel,
+      stabilizedPerTon: Number(materialReferenceModel.stabilizedPerTon || 0),
+      sandPerTon: Number(materialReferenceModel.sandPerTon || 0),
       totalCost: materialReferenceModel.canViewMaterialCosts ? materialReferenceModel.materialCostTotal : 0,
       sections: materialReferenceModel.materialSections.map((section) => ({
         key: section.key,
@@ -1990,6 +1995,8 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
   const {
     canViewMaterialCosts,
     pricingRegionLabel,
+    stabilizedPerTon,
+    sandPerTon,
     sections,
     materialCostTotal,
     travelSummary,
@@ -2338,7 +2345,18 @@ function GardenPlanner() {
       window.localStorage.setItem(GARDEN_PLANNER_PREFILL_STORAGE_KEY, JSON.stringify(plannerBridge));
       window.localStorage.setItem("quote-generator-prefill", JSON.stringify({
         runId: Date.now(),
+        source: "garden-planner",
         payload: plannerBridge.payload,
+      }));
+      window.localStorage.setItem(SALES_GENERATOR_PLANNER_REPORT_KEY, JSON.stringify({
+        source: "garden-planner",
+        runId: Number(plannerBridge.runId || Date.now()),
+        title: "Allegato materiali Garden Planner",
+        client: String(plannerBridge.client || "").trim(),
+        address: String(plannerBridge.address || "").trim(),
+        sqmLabel: String(plannerBridge.sqmLabel || "").trim(),
+        materialsReference: plannerBridge.materialsReference,
+        reportHtml: String(plannerBridge.reportHtml?.client || plannerBridge.reportHtml?.technical || "").trim(),
       }));
     } catch {}
     const targetUrl = new URL("./index.html", window.location.href);

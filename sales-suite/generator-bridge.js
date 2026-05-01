@@ -159,14 +159,20 @@
     );
   }
 
-  function measureVisibleContentHeight(rootNode) {
+  function isEmbeddedEditModeActive(rootNode = document) {
+    return Array.from(rootNode.querySelectorAll("input, select, textarea"))
+      .some((node) => isVisibleMeasureNode(node, { allowFixed: true }));
+  }
+
+  function measureVisibleContentHeight(rootNode, { ignorePdfRoot = false } = {}) {
     if (!(rootNode instanceof HTMLElement)) return 0;
     const rootRect = rootNode.getBoundingClientRect();
     const visibleNodes = Array.from(rootNode.querySelectorAll("*"))
       .filter((node) => isVisibleMeasureNode(node))
+      .filter((node) => !(ignorePdfRoot && node.closest(".pdf-root")))
       .filter((node) => {
         const style = window.getComputedStyle(node);
-        return style.position !== "sticky";
+        return style.position !== "sticky" && style.opacity !== "0";
       });
     return visibleNodes.reduce((maxHeight, node) => {
       const rect = node.getBoundingClientRect();
@@ -185,16 +191,19 @@
       const shell = rootHost?.firstElementChild;
       const pdfRoot = document.querySelector(".pdf-root");
       const contentRoot = document.querySelector("#root > .min-h-screen > .max-w-4xl.mx-auto") || shell || rootHost;
-      const visibleContentHeight = measureVisibleContentHeight(contentRoot);
+      const editModeActive = isEmbeddedEditModeActive(document);
+      const visibleContentHeight = measureVisibleContentHeight(contentRoot, { ignorePdfRoot: editModeActive });
       const pdfHeight = measureElementHeight(pdfRoot);
-      const documentHeight = Math.max(
-        measureElementHeight(contentRoot),
-        measureElementHeight(shell),
-        measureElementHeight(rootHost),
-        pdfHeight,
-        visibleContentHeight,
-      );
-      const preferredHeight = Math.min(6000, Math.max(520, Number(documentHeight || 0) + 18));
+      const documentHeight = editModeActive
+        ? visibleContentHeight
+        : Math.max(
+          measureElementHeight(contentRoot),
+          measureElementHeight(shell),
+          measureElementHeight(rootHost),
+          pdfHeight,
+          visibleContentHeight,
+        );
+      const preferredHeight = Math.min(5200, Math.max(520, Number(documentHeight || 0) + 18));
       try {
         window.parent?.postMessage({ type: "quote-generator:content-height", height: preferredHeight }, "*");
       } catch {}
@@ -244,6 +253,7 @@
       if (plannerReportPayload) {
         applyPlannerReportPayloadNow(plannerReportPayload);
       }
+      polishQuotePreviewLayout(document);
       reportEmbeddedContentHeight();
       if (scheduledBridgeSync) {
         window.clearTimeout(scheduledBridgeSync);
@@ -433,6 +443,251 @@
   function findElementByText(selector, text) {
     const expected = normalizeLabel(text);
     return Array.from(document.querySelectorAll(selector)).find((element) => normalizeLabel(element.textContent).includes(expected)) || null;
+  }
+
+  function findElementByTextWithin(root, selector, text) {
+    if (!(root instanceof Element)) return null;
+    const expected = normalizeLabel(text);
+    return Array.from(root.querySelectorAll(selector)).find((element) => normalizeLabel(element.textContent).includes(expected)) || null;
+  }
+
+  function buildSvgDataUrl(svgMarkup) {
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(String(svgMarkup || "").trim())}`;
+  }
+
+  function getPaymentLogoDefinitions() {
+    return [
+      {
+        key: "visa",
+        alt: "Visa",
+        width: 56,
+        src: buildSvgDataUrl(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="112" height="36" viewBox="0 0 112 36">
+            <rect width="112" height="36" rx="9" fill="#ffffff"/>
+            <path d="M29 9h8l-5 18h-8l5-18Zm35 0-7 12-1-9c-.1-1.2-1-2-2.2-2h-13l-.2.9c2.7.6 5.8 1.6 7.7 2.7 1.2.7 1.5 1.3 1.9 2.7l5.9 10.7h8.3L77 9h-13Zm20.5 0c-2.8 0-4.9 1.4-6.1 3.6-2.4 4.5 1.6 7 4.5 8.4 3 .5 4.1 1.5 4.1 2.4 0 1.3-1.6 1.9-3.1 1.9-2.6 0-4-.4-6.1-1.3l-.9-.4-.9 6c1.5.6 4.3 1.2 7.2 1.2 3 0 5.6-1.4 6.8-3.8 2.5-4.7-1.5-7.3-4.4-8.6-1.8-.8-2.9-1.3-2.9-2.1 0-.7.8-1.4 2.6-1.4 1.5 0 2.7.3 3.5.7l.4.2.8-5.8c-1.1-.4-2.9-.9-5.4-.9Z" fill="#1a1f71"/>
+          </svg>
+        `),
+      },
+      {
+        key: "mastercard",
+        alt: "Mastercard",
+        width: 64,
+        src: buildSvgDataUrl(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="128" height="36" viewBox="0 0 128 36">
+            <rect width="128" height="36" rx="9" fill="#ffffff"/>
+            <circle cx="49" cy="18" r="10" fill="#eb001b"/>
+            <circle cx="63" cy="18" r="10" fill="#f79e1b"/>
+            <path d="M56 10a10 10 0 0 1 0 16 10 10 0 0 1 0-16Z" fill="#ff5f00"/>
+            <text x="79" y="22" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" fill="#1f2937">mastercard</text>
+          </svg>
+        `),
+      },
+      {
+        key: "paypal",
+        alt: "PayPal",
+        width: 62,
+        src: buildSvgDataUrl(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="124" height="36" viewBox="0 0 124 36">
+            <rect width="124" height="36" rx="9" fill="#ffffff"/>
+            <path d="M34 8h11.5c4.4 0 7.5 2.6 6.8 7-.7 4.3-4.3 6.8-8.8 6.8h-3.6L38.7 28H32L34 8Z" fill="#003087"/>
+            <path d="M42 8h9.8c4.2 0 6.7 2.7 6.1 6.6-.8 4.5-4 7.3-8.5 7.3h-3.1L45 28h-6.4L42 8Z" fill="#009cde" fill-opacity=".85"/>
+            <text x="61" y="22" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#003087">PayPal</text>
+          </svg>
+        `),
+      },
+      {
+        key: "bonifico",
+        alt: "Bonifico bancario",
+        width: 74,
+        src: buildSvgDataUrl(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="148" height="36" viewBox="0 0 148 36">
+            <rect width="148" height="36" rx="9" fill="#ffffff"/>
+            <path d="M16 24h20v3H16Zm2-3h4v-7l8-4 8 4v7h4v2H18v-2Zm6 0h8v-5h-8v5Z" fill="#2f4631"/>
+            <text x="48" y="22" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" fill="#1f2937">Bonifico</text>
+          </svg>
+        `),
+      },
+      {
+        key: "scalapay",
+        alt: "Scalapay",
+        width: 72,
+        src: buildSvgDataUrl(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="144" height="36" viewBox="0 0 144 36">
+            <rect width="144" height="36" rx="9" fill="#ffffff"/>
+            <text x="18" y="22" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#111827">SCALAPAY</text>
+            <circle cx="126" cy="18" r="5" fill="#7cf3e3"/>
+          </svg>
+        `),
+      },
+      {
+        key: "heylight",
+        alt: "HeyLight",
+        width: 70,
+        src: buildSvgDataUrl(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="140" height="36" viewBox="0 0 140 36">
+            <rect width="140" height="36" rx="9" fill="#ffffff"/>
+            <path d="M27 8h12l-7 8h8l-15 12 5-9h-8l5-11Z" fill="#8bc53f"/>
+            <text x="51" y="22" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#243726">HeyLight</text>
+          </svg>
+        `),
+      },
+    ];
+  }
+
+  function findPricingTable(root) {
+    if (!(root instanceof Element)) return null;
+    return Array.from(root.querySelectorAll("table")).find((table) => {
+      const headerText = normalizeLabel(table.querySelector("thead")?.textContent || "");
+      return headerText.includes("modello") && headerText.includes("sconto") && headerText.includes("materiali");
+    }) || null;
+  }
+
+  function appendDiscountLabelToProductDescriptions(root) {
+    const pricingTable = findPricingTable(root);
+    if (!pricingTable) return;
+    Array.from(pricingTable.querySelectorAll("tbody tr")).forEach((row) => {
+      const cells = Array.from(row.children || []);
+      if (cells.length < 3) return;
+      const firstCell = cells[0];
+      const descriptionNode = firstCell.querySelector("div:last-child");
+      const rawDiscount = String(cells[2]?.textContent || "").trim();
+      if (firstCell instanceof HTMLElement) {
+        firstCell.style.padding = "8px 6px 11px";
+        firstCell.style.verticalAlign = "top";
+      }
+      if (!(descriptionNode instanceof HTMLElement)) return;
+      descriptionNode.style.marginTop = "3px";
+      descriptionNode.style.lineHeight = "1.42";
+      descriptionNode.style.paddingBottom = "2px";
+      const hasDiscount = /\d/.test(rawDiscount);
+      if (!hasDiscount) return;
+      if (normalizeLabel(descriptionNode.textContent).includes("sconto")) return;
+      descriptionNode.textContent = `${String(descriptionNode.textContent || "").trim()} · sconto ${rawDiscount}`;
+    });
+  }
+
+  function centerFeatureCards(root) {
+    const labelNode = findElementByTextWithin(root, "div, span, p", "4,8 su Google");
+    const card = labelNode?.parentElement;
+    const grid = card?.parentElement;
+    if (!(grid instanceof HTMLElement) || !(card instanceof HTMLElement)) return;
+    Array.from(grid.children).forEach((item) => {
+      if (!(item instanceof HTMLElement)) return;
+      item.style.minHeight = "86px";
+      item.style.padding = "12px 10px";
+      item.style.display = "flex";
+      item.style.flexDirection = "column";
+      item.style.alignItems = "center";
+      item.style.justifyContent = "center";
+      item.style.gap = "6px";
+      const parts = Array.from(item.children);
+      if (parts[0] instanceof HTMLElement) {
+        parts[0].style.fontSize = "16px";
+        parts[0].style.lineHeight = "1";
+        parts[0].style.display = "flex";
+        parts[0].style.alignItems = "center";
+        parts[0].style.justifyContent = "center";
+        parts[0].style.minHeight = "18px";
+      }
+      if (parts[1] instanceof HTMLElement) {
+        parts[1].style.fontSize = "10px";
+        parts[1].style.lineHeight = "1.26";
+      }
+      if (parts[2] instanceof HTMLElement) {
+        parts[2].style.fontSize = "8.6px";
+        parts[2].style.lineHeight = "1.28";
+      }
+    });
+  }
+
+  function centerHeylightCards(root) {
+    const heading = findElementByTextWithin(root, "div, span, p", "Simulazione 5 rate HeyLight");
+    if (!(heading instanceof HTMLElement)) return;
+    heading.style.marginTop = "8px";
+    heading.style.marginBottom = "14px";
+    heading.style.lineHeight = "1.2";
+    const section = heading.parentElement;
+    const grid = Array.from(section?.children || []).find((child) => (
+      child instanceof HTMLElement
+      && child !== heading
+      && child.style.display === "grid"
+    ));
+    if (!(grid instanceof HTMLElement)) return;
+    Array.from(grid.children).forEach((item) => {
+      if (!(item instanceof HTMLElement)) return;
+      item.style.minHeight = "84px";
+      item.style.padding = "13px 12px";
+      item.style.display = "flex";
+      item.style.flexDirection = "column";
+      item.style.alignItems = "center";
+      item.style.justifyContent = "center";
+      item.style.textAlign = "center";
+      item.style.gap = "6px";
+      const parts = Array.from(item.children);
+      if (parts[0] instanceof HTMLElement) {
+        parts[0].style.fontSize = "10px";
+        parts[0].style.lineHeight = "1.24";
+      }
+      if (parts[1] instanceof HTMLElement) {
+        parts[1].style.fontSize = "11.2px";
+        parts[1].style.lineHeight = "1.34";
+        parts[1].style.display = "flex";
+        parts[1].style.alignItems = "center";
+        parts[1].style.justifyContent = "center";
+        parts[1].style.minHeight = "28px";
+      }
+    });
+  }
+
+  function replacePaymentBadgesWithLogos(root) {
+    const logoHost = Array.from(root.querySelectorAll("div")).find((element) => {
+      const text = normalizeLabel(element.textContent || "");
+      return text.includes("visa")
+        && text.includes("paypal")
+        && text.includes("scalapay")
+        && text.includes("heylight");
+    });
+    if (!(logoHost instanceof HTMLElement) || logoHost.dataset.codexPaymentLogos === "1") return;
+    logoHost.dataset.codexPaymentLogos = "1";
+    logoHost.innerHTML = "";
+    logoHost.style.display = "flex";
+    logoHost.style.alignItems = "center";
+    logoHost.style.justifyContent = "flex-end";
+    logoHost.style.flexWrap = "wrap";
+    logoHost.style.gap = "6px";
+    logoHost.style.opacity = "1";
+    getPaymentLogoDefinitions().forEach((definition) => {
+      const image = document.createElement("img");
+      image.src = definition.src;
+      image.alt = definition.alt;
+      image.width = definition.width;
+      image.height = 18;
+      image.decoding = "sync";
+      image.loading = "eager";
+      image.style.display = "block";
+      image.style.height = "18px";
+      image.style.width = "auto";
+      image.style.objectFit = "contain";
+      logoHost.appendChild(image);
+    });
+  }
+
+  function polishQuotePreviewLayout(root = document) {
+    const pdfRoot = root.querySelector?.(".pdf-root") || (root instanceof Element && root.matches(".pdf-root") ? root : null);
+    if (!(pdfRoot instanceof HTMLElement)) return false;
+    const offerHeading = findElementByTextWithin(pdfRoot, "div, span, p", "OFFERTA PER");
+    if (offerHeading instanceof HTMLElement) {
+      offerHeading.style.padding = "7px 18px 9px";
+      offerHeading.style.lineHeight = "1.08";
+      if (offerHeading.parentElement instanceof HTMLElement) {
+        offerHeading.parentElement.style.marginBottom = "14px";
+      }
+    }
+    appendDiscountLabelToProductDescriptions(pdfRoot);
+    centerFeatureCards(pdfRoot);
+    centerHeylightCards(pdfRoot);
+    replacePaymentBadgesWithLogos(pdfRoot);
+    return true;
   }
 
   function hideInternalImportPanel() {
@@ -1118,6 +1373,7 @@
   }
 
   async function preparePdfBrandingForExport() {
+    polishQuotePreviewLayout(document);
     if (!activeBrandingPayload.crewLogoDataUrl) return;
     applyBrandingPayloadNow(activeBrandingPayload);
     const brandingImages = Array.from(document.querySelectorAll(".pdf-root .codex-crew-branding img"));
