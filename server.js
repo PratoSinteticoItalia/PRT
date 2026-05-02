@@ -4540,6 +4540,53 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (url.pathname === "/api/sales/requests/bulk-assignment" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const assignment = normalizeSalesRequestAssignment(body.assignment || "");
+    if (!assignment) return sendJson(res, 400, { error: "invalid_assignment" });
+    const rawIds = Array.isArray(body.ids) ? body.ids : [];
+    const requestIds = Array.from(new Set(rawIds.map((item) => String(item || "").trim()).filter(Boolean))).slice(0, 200);
+    if (!requestIds.length) return sendJson(res, 400, { error: "missing_request_ids" });
+    const idSet = new Set(requestIds);
+    const now = new Date().toISOString();
+    const updatedRequests = [];
+    for (let index = 0; index < store.salesRequests.length; index += 1) {
+      const existingRequest = store.salesRequests[index];
+      if (!idSet.has(existingRequest.id)) continue;
+      const draftRecord = normalizeSalesRequestRecord({
+        ...existingRequest,
+        assignment,
+        firstContactBy: assignment,
+        updatedAt: now,
+      });
+      const automationResult = await applySalesRequestAutomationOnSave({
+        existingRequest,
+        requestRecord: draftRecord,
+        nowIso: now,
+      });
+      const requestRecord = normalizeSalesRequestRecord({
+        ...automationResult.record,
+        createdAt: existingRequest.createdAt || draftRecord.createdAt || now,
+        updatedAt: now,
+      });
+      store.salesRequests[index] = requestRecord;
+      updatedRequests.push({
+        ...requestRecord,
+        _automation: automationResult.automation || { action: "none" },
+      });
+    }
+    if (!updatedRequests.length) return sendJson(res, 404, { error: "requests_not_found" });
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, {
+      requests: updatedRequests,
+      updatedCount: updatedRequests.length,
+      skippedCount: Math.max(0, requestIds.length - updatedRequests.length),
+      assignment,
+    });
+  }
+
   if (url.pathname.match(/^\/api\/sales\/requests\/[^/]+$/) && req.method === "DELETE") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });

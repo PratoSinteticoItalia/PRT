@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-sales-request-status-97";
+const APP_SHELL_VERSION = "20260502-sales-request-bulk-assign-98";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1022,6 +1022,8 @@ const state = {
   currentView: "dashboard",
   selectedOrderId: null,
   selectedSalesRequestId: "",
+  selectedSalesRequestBulkIds: new Set(),
+  salesRequestBulkSaving: false,
   selectedSalesContentId: "",
   pendingSalesRequestServiceAccountJson: "",
   pendingSalesRequestServiceAccountEmail: "",
@@ -1187,6 +1189,7 @@ const ui = {
   salesRequestServiceAccountButton: document.getElementById("sales-request-service-account-button"),
   salesRequestClearServiceAccountButton: document.getElementById("sales-request-clear-service-account-button"),
   salesRequestOpenSheetButton: document.getElementById("sales-request-open-sheet-button"),
+  salesRequestBulkBar: document.getElementById("sales-request-bulk-bar"),
   salesRequestsStatus: document.getElementById("sales-requests-status"),
   salesRequestsList: document.getElementById("sales-requests-list"),
   salesRequestsPagination: document.getElementById("sales-requests-pagination"),
@@ -3186,6 +3189,83 @@ function getSalesRequestAssignmentTone(item = {}) {
   return normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "")
     ? "is-assigned"
     : "is-unassigned";
+}
+
+function getSalesRequestBulkSelectionSet() {
+  if (!(state.selectedSalesRequestBulkIds instanceof Set)) {
+    state.selectedSalesRequestBulkIds = new Set(Array.isArray(state.selectedSalesRequestBulkIds) ? state.selectedSalesRequestBulkIds : []);
+  }
+  return state.selectedSalesRequestBulkIds;
+}
+
+function getSalesRequestBulkSelectedIds() {
+  const availableIds = new Set(state.salesRequests.map((item) => item.id));
+  const selection = getSalesRequestBulkSelectionSet();
+  Array.from(selection).forEach((id) => {
+    if (!availableIds.has(id)) selection.delete(id);
+  });
+  return Array.from(selection);
+}
+
+function clearSalesRequestBulkSelection({ render = true } = {}) {
+  getSalesRequestBulkSelectionSet().clear();
+  if (render) renderSalesRequests();
+}
+
+function isSalesRequestBulkAssignable(item = {}) {
+  if (!item || isSalesRequestClosedStatus(item.status)) return false;
+  return !normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
+}
+
+function getSalesRequestCurrentPageItems() {
+  return paginateSalesRequests(getFilteredSalesRequests()).pageItems;
+}
+
+function selectVisibleAssignableSalesRequests() {
+  const selection = getSalesRequestBulkSelectionSet();
+  getSalesRequestCurrentPageItems()
+    .filter(isSalesRequestBulkAssignable)
+    .forEach((item) => selection.add(item.id));
+  renderSalesRequests();
+}
+
+function toggleSalesRequestBulkSelection(id = "") {
+  const safeId = String(id || "").trim();
+  if (!safeId) return;
+  const selection = getSalesRequestBulkSelectionSet();
+  if (selection.has(safeId)) {
+    selection.delete(safeId);
+  } else {
+    selection.add(safeId);
+  }
+  renderSalesRequests();
+}
+
+function renderSalesRequestBulkBar(pageItems = []) {
+  if (!ui.salesRequestBulkBar) return;
+  const selectedIds = getSalesRequestBulkSelectedIds();
+  const selectedCount = selectedIds.length;
+  const visibleAssignableCount = pageItems.filter(isSalesRequestBulkAssignable).length;
+  const hasSelection = selectedCount > 0;
+  const isSaving = Boolean(state.salesRequestBulkSaving);
+  ui.salesRequestBulkBar.innerHTML = `
+    <div class="sales-request-bulk-copy">
+      <strong>${hasSelection
+        ? `${selectedCount} ${state.lang === "it" ? "contatti selezionati" : "selected contacts"}`
+        : (state.lang === "it" ? "Assegnazione rapida" : "Quick assignment")}</strong>
+      <span>${hasSelection
+        ? (isSaving
+            ? (state.lang === "it" ? "Assegnazione in corso..." : "Assigning contacts...")
+            : (state.lang === "it" ? "Salva più contatti con una sola operazione." : "Save multiple contacts with one operation."))
+        : (state.lang === "it" ? `${visibleAssignableCount} contatti visibili ancora da assegnare.` : `${visibleAssignableCount} visible contacts still unassigned.`)}</span>
+    </div>
+    <div class="inline-actions sales-request-bulk-actions">
+      <button class="ghost-button small-button" type="button" data-action="select-visible-sales-requests" ${visibleAssignableCount && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Seleziona visibili" : "Select visible"}</button>
+      <button class="ghost-button small-button" type="button" data-action="clear-sales-request-bulk" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Pulisci" : "Clear"}</button>
+      <button class="primary-button small-button" type="button" data-action="bulk-assign-sales-requests" data-assignment="Gabriele" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Assegna a Gabriele" : "Assign to Gabriele"}</button>
+      <button class="primary-button small-button" type="button" data-action="bulk-assign-sales-requests" data-assignment="Ivan" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Assegna a Ivan" : "Assign to Ivan"}</button>
+    </div>
+  `;
 }
 
 function renderSalesRequestDetailMeta(item = {}) {
@@ -8301,6 +8381,7 @@ function getFilteredSalesContents({ ignoreCategory = false } = {}) {
 function renderSalesRequests() {
   const filtered = getFilteredSalesRequests();
   const { pageItems, totalPages, totalItems } = paginateSalesRequests(filtered);
+  const bulkSelectedIds = new Set(getSalesRequestBulkSelectedIds());
   let selected = ensureSelectedSalesRequest();
   if (selected && !filtered.some((item) => item.id === selected.id) && filtered.length) {
     selected = filtered[0];
@@ -8316,6 +8397,7 @@ function renderSalesRequests() {
   }
   updateSalesRequestImportPanel();
   updateSalesRequestSourcePanel();
+  renderSalesRequestBulkBar(pageItems);
   if (ui.salesRequestsList) {
     ui.salesRequestsList.innerHTML = pageItems.length
       ? pageItems.map((item) => {
@@ -8323,8 +8405,17 @@ function renderSalesRequests() {
         const assignmentLabel = getSalesRequestAssignmentLabel(item);
         const assignmentTone = getSalesRequestAssignmentTone(item);
         const statusTone = getSalesRequestStatusTone(item.status || "");
+        const isBulkSelected = bulkSelectedIds.has(item.id);
         return `
-          <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""}" data-action="select-sales-request" data-id="${item.id}" data-first-contact-state="${escapeHtml(normalizeSalesRequestFirstContactState(item.firstContactState || ""))}">
+          <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""} ${isBulkSelected ? "is-bulk-selected" : ""}" data-action="select-sales-request" data-id="${item.id}" data-first-contact-state="${escapeHtml(normalizeSalesRequestFirstContactState(item.firstContactState || ""))}">
+            <button
+              class="sales-request-select-toggle ${isBulkSelected ? "is-selected" : ""}"
+              type="button"
+              data-action="toggle-sales-request-bulk"
+              data-id="${item.id}"
+              aria-pressed="${isBulkSelected ? "true" : "false"}"
+              aria-label="${state.lang === "it" ? "Seleziona richiesta per assegnazione multipla" : "Select request for bulk assignment"}"
+            >${isBulkSelected ? "✓" : ""}</button>
             <div class="sales-request-card-head">
               <div>
                 <strong>${escapeHtml(getSalesRequestDisplayName(item))}</strong>
@@ -8887,6 +8978,82 @@ function getSalesRequestAutomationSaveMessage(automation = null) {
       : ` ${prefix} (${failureReason}).`;
   }
   return "";
+}
+
+function mergeSalesRequestRecords(records = []) {
+  const normalizedRecords = Array.isArray(records) ? records.map(normalizeSalesRequestRecord) : [];
+  if (!normalizedRecords.length) return;
+  const byId = new Map(normalizedRecords.map((item) => [item.id, item]));
+  state.salesRequests = state.salesRequests.map((item) => byId.get(item.id) || item);
+  const existingIds = new Set(state.salesRequests.map((item) => item.id));
+  normalizedRecords.forEach((item) => {
+    if (!existingIds.has(item.id)) {
+      state.salesRequests.unshift(item);
+      existingIds.add(item.id);
+    }
+  });
+}
+
+async function bulkAssignSalesRequests(assignmentValue = "") {
+  if (state.salesRequestBulkSaving) return;
+  const assignment = normalizeSalesRequestAssignment(assignmentValue);
+  const ids = getSalesRequestBulkSelectedIds();
+  if (!assignment || !ids.length) return;
+  const previousRequests = [...state.salesRequests];
+  const previousSelection = new Set(getSalesRequestBulkSelectionSet());
+  const previousSelectedSalesRequestId = state.selectedSalesRequestId;
+  const nowIso = new Date().toISOString();
+  state.salesRequestBulkSaving = true;
+  state.salesRequests = state.salesRequests.map((item) => (
+    ids.includes(item.id)
+      ? normalizeSalesRequestRecord({
+          ...item,
+          assignment,
+          firstContactBy: assignment,
+          updatedAt: nowIso,
+        })
+      : item
+  ));
+  renderOps();
+  renderSalesRequests();
+  setStatus(
+    ui.salesRequestsStatus,
+    "success",
+    state.lang === "it"
+      ? `Assegnazione di ${ids.length} contatti a ${assignment} in corso...`
+      : `Assigning ${ids.length} contacts to ${assignment}...`,
+  );
+  try {
+    const result = await apiFetch("/api/sales/requests/bulk-assignment", {
+      method: "POST",
+      body: JSON.stringify({ ids, assignment }),
+    });
+    const updatedRequests = Array.isArray(result?.requests) ? result.requests : [];
+    mergeSalesRequestRecords(updatedRequests);
+    clearSalesRequestBulkSelection({ render: false });
+    renderOps();
+    renderSalesRequests();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
+    const updatedCount = Number(result?.updatedCount || updatedRequests.length || ids.length);
+    setStatus(
+      ui.salesRequestsStatus,
+      "success",
+      state.lang === "it"
+        ? `${updatedCount} contatti assegnati a ${assignment}.`
+        : `${updatedCount} contacts assigned to ${assignment}.`,
+    );
+  } catch (error) {
+    state.salesRequests = previousRequests;
+    state.selectedSalesRequestBulkIds = previousSelection;
+    state.selectedSalesRequestId = previousSelectedSalesRequestId;
+    renderOps();
+    renderSalesRequests();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile assegnare i contatti selezionati." : "Unable to assign selected contacts.");
+  } finally {
+    state.salesRequestBulkSaving = false;
+    renderSalesRequests();
+  }
 }
 
 async function saveSalesRequest(event) {
@@ -14067,6 +14234,26 @@ function handleGlobalClick(event) {
     const expenseId = button.dataset.expenseId || "";
     if (!id || !expenseId) return;
     removeInstallationExpense(id, expenseId);
+    return;
+  }
+  if (action === "toggle-sales-request-bulk") {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleSalesRequestBulkSelection(id || "");
+    return;
+  }
+  if (action === "select-visible-sales-requests") {
+    selectVisibleAssignableSalesRequests();
+    return;
+  }
+  if (action === "clear-sales-request-bulk") {
+    clearSalesRequestBulkSelection();
+    return;
+  }
+  if (action === "bulk-assign-sales-requests") {
+    bulkAssignSalesRequests(button.dataset.assignment || "").catch(() => {
+      setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile assegnare i contatti selezionati." : "Unable to assign selected contacts.");
+    });
     return;
   }
   if (action === "select-sales-request") {
