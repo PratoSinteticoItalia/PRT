@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-action-badges-95";
+const APP_SHELL_VERSION = "20260502-sales-requests-sticky-save-96";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -8807,12 +8807,18 @@ function getSalesRequestAutomationSaveMessage(automation = null) {
 async function saveSalesRequest(event) {
   event.preventDefault();
   clearStatus(ui.salesRequestsStatus);
+  const previousRequests = [...state.salesRequests];
+  const previousSelectedSalesRequestId = state.selectedSalesRequestId;
+  const previousCreatingSalesRequest = state.creatingSalesRequest;
+  const submitButton = event.submitter || ui.salesRequestForm?.querySelector('button[type="submit"]');
+  const defaultSubmitLabel = submitButton?.textContent || "";
   const form = new FormData(ui.salesRequestForm);
   const requestId = String(form.get("id") || "").trim();
   const existingRequest = requestId
     ? (state.salesRequests.find((item) => item.id === requestId) || null)
     : null;
   const nextStatus = String(form.get("status") || "").trim() || "new";
+  const nowIso = new Date().toISOString();
   const draftRecord = normalizeSalesRequestRecord({
     ...(existingRequest || {}),
     id: requestId || undefined,
@@ -8835,14 +8841,23 @@ async function saveSalesRequest(event) {
     sourceSheetName: existingRequest?.sourceSheetName || "",
     sourceRowNumber: Number(existingRequest?.sourceRowNumber || 0),
     createdAt: existingRequest?.createdAt || undefined,
+    updatedAt: nowIso,
   });
+  upsertSalesRequest(draftRecord);
+  renderSalesRequests();
+  if (state.currentView === "sales-generator") renderSalesGenerator();
+  setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Salvataggio richiesta in corso..." : "Saving request...");
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = state.lang === "it" ? "Salvataggio..." : "Saving...";
+  }
   try {
     const saved = await apiFetch("/api/sales/requests", {
       method: "POST",
       body: JSON.stringify(buildSalesRequestPayloadFromRecord(draftRecord)),
     });
     const automationMessage = getSalesRequestAutomationSaveMessage(saved?._automation || null);
-    upsertSalesRequest(saved, { skipOpsRender: true });
+    upsertSalesRequest(saved);
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
     setStatus(
@@ -8851,7 +8866,18 @@ async function saveSalesRequest(event) {
       `${state.lang === "it" ? "Richiesta salvata." : "Request saved."}${automationMessage}`,
     );
   } catch (error) {
+    state.salesRequests = previousRequests;
+    state.selectedSalesRequestId = previousSelectedSalesRequestId;
+    state.creatingSalesRequest = previousCreatingSalesRequest;
+    renderOps();
+    renderSalesRequests();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
     setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta." : "Unable to save the request.");
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = defaultSubmitLabel || (state.lang === "it" ? "Salva richiesta" : "Save request");
+    }
   }
 }
 

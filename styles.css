@@ -12141,6 +12141,17 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   padding-right: 0;
 }
 
+@media (min-width: 981px) {
+  #sales-requests .sales-request-detail-panel {
+    position: sticky;
+    top: 18px;
+    max-height: calc(100dvh - 132px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
+
 .sales-generator-frame-panel {
   overflow: clip;
 }
