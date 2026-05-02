@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-generator-export-fix-93";
+const APP_SHELL_VERSION = "20260502-action-badges-94";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6400,6 +6400,73 @@ function isOrderClosed(order) {
   return Boolean(operationallyClosed && financiallyClosed);
 }
 
+function orderNeedsInboxAttention(order) {
+  if (!order || isOrderFulfilledOrClosed(order)) return false;
+  const ops = order.operations || {};
+  if (!order.address || !order.city) return true;
+  if (String(ops.officeStatus || "").trim() === "bozza") return true;
+  if (!isRoutedToWarehouse(order) && !isRoutedToInstallation(order)) return true;
+  if (isRoutedToWarehouse(order) && getWarehousePreparedLines(order).length === 0) return true;
+  return false;
+}
+
+function orderNeedsInstallationAction(order) {
+  if (!order || !isRoutedToInstallation(order) || isOrderClosed(order) || isInstallationOrderCompleted(order)) return false;
+  const install = order.operations?.installation || {};
+  const status = String(install.status || "").trim();
+  if (!install.installDate || !install.crew || !install.clientConfirmed) return true;
+  return ["da-pianificare", "in-corso", "problema"].includes(status);
+}
+
+function orderNeedsAccountingAction(order) {
+  if (!order) return false;
+  return getOpenBalance(order) > 0 || Boolean(order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
+}
+
+function orderNeedsShippingAction(order) {
+  if (!order || isLogisticsOrderCompleted(order) || isOrderClosed(order)) return false;
+  const warehouse = order.operations?.warehouse || {};
+  const mode = String(warehouse.fulfillmentMode || "").trim();
+  if (isSampleOrder(order)) {
+    return Boolean(
+      !hasSampleLdvAttachment(order)
+      || !String(warehouse.trackingNumber || "").trim()
+      || (!warehouse.shipped && !warehouse.shippedAt),
+    );
+  }
+  if (!["corriere", "ritiro", "furgone"].includes(mode)) return false;
+  if (getWarehousePreparedLines(order).length === 0) return true;
+  if (!warehouse.preparationDate || !warehouse.readyToShip) return true;
+  if (mode === "corriere") return !warehouse.carrierPassed;
+  return String(warehouse.status || "").trim() !== "ritirato";
+}
+
+function isSalesRequestNewContactUnassigned(item = {}) {
+  if (!item || isSalesRequestClosedStatus(item.status)) return false;
+  if (normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "")) return false;
+  const statusCode = getSalesRequestStatusCode(item.status || "");
+  const normalizedStatus = normalizeLooseString(item.status || "");
+  const firstContactState = normalizeSalesRequestFirstContactState(item.firstContactState || "");
+  const newContactStatuses = new Set([
+    "",
+    "new",
+    "nuova",
+    "nuovo",
+    "lead",
+    "nuovo contatto",
+    "nuova richiesta",
+    "richiesta nuova",
+  ]);
+  return (statusCode === "new" || newContactStatuses.has(normalizedStatus)) && firstContactState !== "sent";
+}
+
+function salesContentNeedsAction(item = {}) {
+  const hasTitle = String(item.title || "").trim().length > 0;
+  const hasLink = String(item.link || "").trim().length > 0;
+  const hasAttachments = Array.isArray(item.attachments) && item.attachments.length > 0;
+  return !hasTitle || (!hasLink && !hasAttachments);
+}
+
 function getUnifiedOrderStage(order) {
   const ops = order.operations || {};
   const officeStatus = String(ops.officeStatus || "").trim();
@@ -7289,20 +7356,17 @@ function getDashboardInventorySnapshot() {
 
 function renderOps() {
   const orders = state.orders.length;
-  const inboxOrders = state.orders.filter((order) => !isOrderFulfilledOrClosed(order)).length;
+  const inboxOrders = state.orders.filter(orderNeedsInboxAttention).length;
   const soldSqm = getSoldSqmEstimate();
-  const warehouse = state.orders.filter((order) => orderNeedsWarehouseWork(order)).length;
+  const warehouse = state.orders.filter(orderNeedsWarehouseWork).length;
   const inventorySnapshot = getDashboardInventorySnapshot();
-  const installations = state.orders.filter((order) => isRoutedToInstallation(order) && !["completata"].includes(String(order.operations?.installation?.status || "").trim())).length;
-  const accounting = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
-  const shipping = state.orders.filter((order) => {
-    if (isLogisticsOrderCompleted(order)) return false;
-    if (isSampleOrder(order)) return true;
-    return ["corriere", "ritiro", "furgone"].includes(order.operations?.warehouse?.fulfillmentMode);
-  }).length;
+  const inventory = inventorySnapshot.uncovered;
+  const installations = state.orders.filter(orderNeedsInstallationAction).length;
+  const accounting = state.orders.filter(orderNeedsAccountingAction).length;
+  const shipping = state.orders.filter(orderNeedsShippingAction).length;
   const closed = state.orders.filter((order) => isOrderClosed(order)).length;
-  const salesRequests = state.salesRequests.filter((item) => !isSalesRequestClosedStatus(item.status)).length;
-  const salesContents = state.salesContents.length;
+  const salesRequests = state.salesRequests.filter(isSalesRequestNewContactUnassigned).length;
+  const salesContents = state.salesContents.filter(salesContentNeedsAction).length;
   ui.opsOrdersValue.textContent = String(orders);
   if (ui.opsSoldSqmValue) ui.opsSoldSqmValue.textContent = `${Math.round(soldSqm)} mq`;
   ui.opsWarehouseValue.textContent = String(warehouse);
@@ -7314,7 +7378,7 @@ function renderOps() {
   if (opsClosedValue) opsClosedValue.textContent = String(closed);
   setNavCount("dashboard", "");
   setNavCount("orders", inboxOrders);
-  setNavCount("warehouse", warehouse);
+  setNavCount("warehouse", inventory);
   setNavCount("installations", installations);
   setNavCount("accounting", accounting);
   setNavCount("shipping", shipping);
@@ -7571,7 +7635,7 @@ function renderDashboard() {
 }
 
 function accountingOpenOrdersLabel() {
-  const count = state.orders.filter((order) => getOpenBalance(order) > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)).length;
+  const count = state.orders.filter(orderNeedsAccountingAction).length;
   return `${count} ${state.lang === "it" ? "ordini" : "orders"}`;
 }
 

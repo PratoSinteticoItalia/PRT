@@ -2636,6 +2636,11 @@ button.is-feedback,
   font-weight: 800;
   color: #12261a;
   margin-bottom: 10px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-sub {
@@ -12083,6 +12088,8 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
 
 .dashboard-snapshot-card .kpi-value {
   margin-bottom: 10px;
+  font-size: 34px;
+  line-height: 1.05;
 }
 
 .dashboard-snapshot-card .kpi-sub {
