@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-action-badges-94";
+const APP_SHELL_VERSION = "20260502-action-badges-95";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7639,6 +7639,10 @@ function accountingOpenOrdersLabel() {
   return `${count} ${state.lang === "it" ? "ordini" : "orders"}`;
 }
 
+function renderDashboardKpiValue(value = "") {
+  return escapeHtml(String(value ?? "")).replace(/\s+/g, "&nbsp;");
+}
+
 function renderDashboardSnapshotCards(items = []) {
   const cards = items.map((item) => `
     <article
@@ -7650,7 +7654,7 @@ function renderDashboardSnapshotCards(items = []) {
       tabindex="0"
     >
       <div class="kpi-label">${item.label}</div>
-      <div class="kpi-value">${item.value}</div>
+      <div class="kpi-value">${renderDashboardKpiValue(item.value)}</div>
       <div class="kpi-sub">${item.meta}</div>
     </article>
   `);
