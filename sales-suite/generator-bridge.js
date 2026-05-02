@@ -976,6 +976,25 @@
     return dispatchHookAction(hooks[0], normalizedMode);
   }
 
+  function findButtonByNormalizedLabel(label) {
+    const target = normalizeLabel(label);
+    return Array.from(document.querySelectorAll("button"))
+      .find((button) => normalizeLabel(button.textContent || "").includes(target));
+  }
+
+  function returnGeneratorToEditModeByUi() {
+    const mode = getGeneratorMode();
+    if (mode !== "pdf") return false;
+    const editButton = findButtonByNormalizedLabel("modifica");
+    if (!(editButton instanceof HTMLButtonElement)) return false;
+    try {
+      editButton.click();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function applyReactStatePrefill(customerPayload, requestedMq, requestedServiceState, requestedSurface) {
     const hooks = findGeneratorHooks();
     if (!hooks) return false;
@@ -1124,6 +1143,8 @@
     delays.forEach((delay) => {
       window.setTimeout(() => {
         if (runId !== scheduledPrefillRunId) return;
+        returnGeneratorToEditModeByUi();
+        forceGeneratorMode("edit");
         applyRequestPayloadNow(payload);
       }, delay);
     });
@@ -1760,12 +1781,14 @@
 
   window.addEventListener("message", (event) => {
     if (event.data?.type === "quote-generator:ensure-edit-mode") {
+      returnGeneratorToEditModeByUi();
       forceGeneratorMode("edit");
       scrollGeneratorViewportToTop();
       requestBridgeSyncBurst(2);
       return;
     }
     if (event.data?.type === "quote-generator:prefill-request") {
+      returnGeneratorToEditModeByUi();
       forceGeneratorMode("edit");
       scrollGeneratorViewportToTop();
       scheduleRequestPayload(event.data.payload, { force: Boolean(event.data?.force) });
@@ -1773,6 +1796,7 @@
       return;
     }
     if (event.data?.type === "quote-generator:clear-prefill") {
+      returnGeneratorToEditModeByUi();
       forceGeneratorMode("edit");
       scrollGeneratorViewportToTop();
       clearRequestPayloadNow();
@@ -1808,6 +1832,7 @@
     ensureEmbeddedLayoutStyles();
     const payload = readPrefillFromUrl() || readPrefillFromStorage();
     if (payload) {
+      returnGeneratorToEditModeByUi();
       forceGeneratorMode("edit");
       scheduleRequestPayload(payload);
     }
@@ -1819,6 +1844,16 @@
     if (plannerReportPayload) {
       applyPlannerReportPayloadNow(plannerReportPayload);
     }
+    window.setTimeout(() => {
+      returnGeneratorToEditModeByUi();
+      forceGeneratorMode("edit");
+      scrollGeneratorViewportToTop();
+    }, 120);
+    window.setTimeout(() => {
+      returnGeneratorToEditModeByUi();
+      forceGeneratorMode("edit");
+      scrollGeneratorViewportToTop();
+    }, 480);
     scrollGeneratorViewportToTop();
     requestBridgeSyncBurst(4);
     reportEmbeddedContentHeight();
