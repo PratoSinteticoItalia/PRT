@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-generator-bridge-safe-92";
+const APP_SHELL_VERSION = "20260502-generator-export-fix-93";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

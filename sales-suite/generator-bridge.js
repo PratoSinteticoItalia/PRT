@@ -319,14 +319,6 @@
       .find((node) => node instanceof Element && !isHtml2PdfArtifactNode(node)) || null;
   }
 
-  function cleanupHtml2PdfArtifacts() {
-    document.querySelectorAll(".html2pdf__overlay, .html2pdf__container").forEach((node) => {
-      if (node instanceof Element && !node.closest("#root")) {
-        node.remove();
-      }
-    });
-  }
-
   function reportEmbeddedContentHeight() {
     if (scheduledHeightReport) {
       window.cancelAnimationFrame(scheduledHeightReport);
@@ -334,7 +326,6 @@
     scheduledHeightReport = window.requestAnimationFrame(() => {
       scheduledHeightReport = 0;
       ensureEmbeddedLayoutStyles();
-      cleanupHtml2PdfArtifacts();
       const rootHost = document.getElementById("root");
       const shell = rootHost?.firstElementChild;
       const pdfRoot = getLivePdfRoot(document);
@@ -389,7 +380,6 @@
       ensureEmbeddedLayoutStyles();
       hideInternalImportPanel();
       syncCustomAccessoryPriceEditors();
-      cleanupHtml2PdfArtifacts();
       const payload = readPrefillFromStorage() || readPrefillFromUrl();
       if (payload) scheduleRequestPayload(payload);
       if (ENABLE_BRANDING_EXPORT) {
