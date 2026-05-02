@@ -23,6 +23,9 @@
   const brandingLogoExportCache = new Map();
   let plannerBridgeReadEnabled = URL_PARAMS.get("planner") === "1";
   const originalLocalStorageGetItem = window.localStorage?.getItem?.bind(window.localStorage);
+  const ENABLE_PREVIEW_POLISH = false;
+  const ENABLE_BRANDING_EXPORT = false;
+  const ENABLE_PLANNER_REPORT_EXPORT = false;
 
   function setPlannerBridgeReadEnabled(enabled) {
     plannerBridgeReadEnabled = Boolean(enabled);
@@ -31,7 +34,11 @@
 
   if (originalLocalStorageGetItem && window.localStorage) {
     window.localStorage.getItem = function patchedGetItem(key) {
-      if (String(key || "") === PLANNER_BRIDGE_STORAGE_KEY && !plannerBridgeReadEnabled) {
+      const normalizedKey = String(key || "");
+      if (
+        !plannerBridgeReadEnabled
+        && (normalizedKey === PLANNER_BRIDGE_STORAGE_KEY || normalizedKey === PLANNER_REPORT_STORAGE_KEY)
+      ) {
         return null;
       }
       return originalLocalStorageGetItem(key);
@@ -45,6 +52,15 @@
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, " ")
       .trim();
+  }
+
+  function labelMatchesField(labelValue, expectedValue) {
+    const label = normalizeLabel(labelValue);
+    const expected = normalizeLabel(expectedValue);
+    if (!label || !expected) return false;
+    if (label === expected) return true;
+    if (!label.includes(" ") && !expected.includes(" ")) return false;
+    return label.includes(expected) || expected.includes(label);
   }
 
   function splitFullName(fullName) {
@@ -249,7 +265,6 @@
       }
     `;
     document.head.appendChild(style);
-    ensurePdfExportStyles();
   }
 
   function isVisibleMeasureNode(node, { allowFixed = false } = {}) {
@@ -291,6 +306,27 @@
     }, Math.ceil(rootRect.height || 0));
   }
 
+  function isHtml2PdfArtifactNode(node) {
+    return node instanceof Element
+      && Boolean(node.closest(".html2pdf__overlay, .html2pdf__container"));
+  }
+
+  function getLivePdfRoot(rootNode = document) {
+    if (rootNode instanceof Element && rootNode.matches(".pdf-root") && !isHtml2PdfArtifactNode(rootNode)) {
+      return rootNode;
+    }
+    return Array.from(rootNode.querySelectorAll?.(".pdf-root") || [])
+      .find((node) => node instanceof Element && !isHtml2PdfArtifactNode(node)) || null;
+  }
+
+  function cleanupHtml2PdfArtifacts() {
+    document.querySelectorAll(".html2pdf__overlay, .html2pdf__container").forEach((node) => {
+      if (node instanceof Element && !node.closest("#root")) {
+        node.remove();
+      }
+    });
+  }
+
   function reportEmbeddedContentHeight() {
     if (scheduledHeightReport) {
       window.cancelAnimationFrame(scheduledHeightReport);
@@ -298,9 +334,10 @@
     scheduledHeightReport = window.requestAnimationFrame(() => {
       scheduledHeightReport = 0;
       ensureEmbeddedLayoutStyles();
+      cleanupHtml2PdfArtifacts();
       const rootHost = document.getElementById("root");
       const shell = rootHost?.firstElementChild;
-      const pdfRoot = document.querySelector(".pdf-root");
+      const pdfRoot = getLivePdfRoot(document);
       const contentRoot = document.querySelector("#root > .min-h-screen > .max-w-4xl.mx-auto") || shell || rootHost;
       const editModeActive = isEmbeddedEditModeActive(document);
       const visibleContentHeight = measureVisibleContentHeight(contentRoot, { ignorePdfRoot: editModeActive });
@@ -352,19 +389,26 @@
       ensureEmbeddedLayoutStyles();
       hideInternalImportPanel();
       syncCustomAccessoryPriceEditors();
+      cleanupHtml2PdfArtifacts();
       const payload = readPrefillFromStorage() || readPrefillFromUrl();
       if (payload) scheduleRequestPayload(payload);
-      const brandingPayload = readBrandingFromStorage();
-      if (brandingPayload) {
-        applyBrandingPayloadNow(brandingPayload);
-      } else if (activeBrandingPayload.crewLogoDataUrl) {
-        applyBrandingPayloadNow(activeBrandingPayload);
+      if (ENABLE_BRANDING_EXPORT) {
+        const brandingPayload = readBrandingFromStorage();
+        if (brandingPayload) {
+          applyBrandingPayloadNow(brandingPayload);
+        } else if (activeBrandingPayload.crewLogoDataUrl) {
+          applyBrandingPayloadNow(activeBrandingPayload);
+        }
       }
-      const plannerReportPayload = readPlannerReportFromStorage();
-      if (plannerReportPayload) {
-        applyPlannerReportPayloadNow(plannerReportPayload);
+      if (ENABLE_PLANNER_REPORT_EXPORT) {
+        const plannerReportPayload = readPlannerReportFromStorage();
+        if (plannerReportPayload) {
+          applyPlannerReportPayloadNow(plannerReportPayload);
+        }
+      } else {
+        clearInjectedPlannerReport();
       }
-      polishQuotePreviewLayout(document);
+      if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document);
       reportEmbeddedContentHeight();
       if (scheduledBridgeSync) {
         window.clearTimeout(scheduledBridgeSync);
@@ -466,8 +510,7 @@
     const expected = normalizeLabel(labelText);
     const labels = Array.from(document.querySelectorAll("label"));
     const match = labels.find((label) => {
-      const labelValue = normalizeLabel(label.textContent);
-      return labelValue === expected || labelValue.includes(expected) || expected.includes(labelValue);
+      return labelMatchesField(label.textContent, expected);
     });
     if (!match) return null;
     return match.parentElement?.querySelector("input, textarea, select") || null;
@@ -784,7 +827,8 @@
   }
 
   function polishQuotePreviewLayout(root = document) {
-    const pdfRoot = root.querySelector?.(".pdf-root") || (root instanceof Element && root.matches(".pdf-root") ? root : null);
+    if (!ENABLE_PREVIEW_POLISH) return false;
+    const pdfRoot = getLivePdfRoot(root);
     if (!(pdfRoot instanceof HTMLElement)) return false;
     const offerHeading = findElementByTextWithin(pdfRoot, "div, span, p", "OFFERTA PER");
     if (offerHeading instanceof HTMLElement) {
@@ -1061,6 +1105,10 @@
   function applyRequestPayloadNow(payload) {
     if (!payload || typeof payload !== "object") return false;
 
+    if (isPreviewModeVisible()) {
+      forceGeneratorEditState();
+    }
+
     const customer = buildCustomerPayload(payload);
     const requestedMq = payload.mq != null && payload.mq !== "" ? String(payload.mq).replace(",", ".") : "";
     const requestedHeight = String(payload.altezza || payload.height || payload.requestedHeight || "").trim();
@@ -1124,6 +1172,10 @@
     scheduledPrefillRunId += 1;
     lastAppliedPrefillSignature = "";
     hideInternalImportPanel();
+
+    if (isPreviewModeVisible()) {
+      forceGeneratorEditState();
+    }
 
     const emptyCustomer = {
       nome: "",
@@ -1273,6 +1325,7 @@
   }
 
   function mountPlannerReportForExport() {
+    if (!ENABLE_PLANNER_REPORT_EXPORT) return false;
     clearInjectedPlannerReport();
     const normalized = normalizePlannerReportPayload(activePlannerReport);
     if (!normalized.reportHtml) return false;
@@ -1310,6 +1363,12 @@
   }
 
   function applyPlannerReportPayloadNow(payload) {
+    if (!ENABLE_PLANNER_REPORT_EXPORT) {
+      activePlannerReport = { title: "", client: "", address: "", sqmLabel: "", reportHtml: "" };
+      clearInjectedPlannerReport();
+      reportEmbeddedContentHeight();
+      return false;
+    }
     activePlannerReport = normalizePlannerReportPayload(payload);
     if (!activePlannerReport.reportHtml) {
       clearInjectedPlannerReport();
@@ -1535,10 +1594,11 @@
   }
 
   async function preparePdfBrandingForExport() {
-    polishQuotePreviewLayout(document);
+    if (!ENABLE_BRANDING_EXPORT && !ENABLE_PLANNER_REPORT_EXPORT) return;
+    if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document);
     ensurePdfExportStyles();
     stripPdfStyleArtifacts();
-    if (!activeBrandingPayload.crewLogoDataUrl) return;
+    if (!ENABLE_BRANDING_EXPORT || !activeBrandingPayload.crewLogoDataUrl) return;
     applyBrandingPayloadNow(activeBrandingPayload);
     const brandingImages = Array.from(document.querySelectorAll(".pdf-root .codex-crew-branding img"));
     if (!brandingImages.length) return;
@@ -1550,7 +1610,7 @@
   }
 
   async function decoratePdfWithBranding(pdf, sourceElement) {
-    if (!pdf || !activeBrandingPayload.crewLogoDataUrl) return false;
+    if (!ENABLE_BRANDING_EXPORT || !pdf || !activeBrandingPayload.crewLogoDataUrl) return false;
 
     const sourceRoot = sourceElement instanceof Element ? sourceElement : null;
     if (sourceRoot?.querySelector(".codex-crew-branding img")) {
@@ -1589,6 +1649,7 @@
   }
 
   function installPdfDownloadInterceptor() {
+    if (!ENABLE_BRANDING_EXPORT && !ENABLE_PLANNER_REPORT_EXPORT) return;
     document.addEventListener("click", (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -1801,23 +1862,31 @@
     if (event.data?.type === "quote-generator:prefill-request") {
       setPlannerBridgeReadEnabled(String(event.data?.source || "").trim() === "garden-planner");
       scheduleRequestPayload(event.data.payload, { force: Boolean(event.data?.force) });
+      ensureEditModeActive(0);
       requestBridgeSyncBurst(4);
       return;
     }
     if (event.data?.type === "quote-generator:clear-prefill") {
       setPlannerBridgeReadEnabled(false);
       clearRequestPayloadNow();
+      ensureEditModeActive(0);
       requestBridgeSyncBurst(2);
       return;
     }
     if (event.data?.type === "quote-generator:branding") {
-      applyBrandingPayloadNow(event.data.payload);
-      requestBridgeSyncBurst(3);
+      if (ENABLE_BRANDING_EXPORT) {
+        applyBrandingPayloadNow(event.data.payload);
+        requestBridgeSyncBurst(3);
+      }
       return;
     }
     if (event.data?.type === "quote-generator:planner-report") {
-      applyPlannerReportPayloadNow(event.data.payload);
-      requestBridgeSyncBurst(2);
+      if (ENABLE_PLANNER_REPORT_EXPORT) {
+        applyPlannerReportPayloadNow(event.data.payload);
+        requestBridgeSyncBurst(2);
+      } else {
+        clearInjectedPlannerReport();
+      }
       return;
     }
     if (event.data?.type === "quote-generator:ensure-edit-mode") {
@@ -1845,13 +1914,19 @@
     if (payload) {
       scheduleRequestPayload(payload);
     }
-    const brandingPayload = readBrandingFromStorage();
-    if (brandingPayload) {
-      applyBrandingPayloadNow(brandingPayload);
+    if (ENABLE_BRANDING_EXPORT) {
+      const brandingPayload = readBrandingFromStorage();
+      if (brandingPayload) {
+        applyBrandingPayloadNow(brandingPayload);
+      }
     }
-    const plannerReportPayload = readPlannerReportFromStorage();
-    if (plannerReportPayload) {
-      applyPlannerReportPayloadNow(plannerReportPayload);
+    if (ENABLE_PLANNER_REPORT_EXPORT) {
+      const plannerReportPayload = readPlannerReportFromStorage();
+      if (plannerReportPayload) {
+        applyPlannerReportPayloadNow(plannerReportPayload);
+      }
+    } else {
+      clearInjectedPlannerReport();
     }
     requestBridgeSyncBurst(4);
     window.setTimeout(() => {
