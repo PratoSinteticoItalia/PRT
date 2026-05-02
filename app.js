@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-export-regional-pricing-82";
+const APP_SHELL_VERSION = "20260502-dashboard-inventory-alerts-87";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7586,49 +7586,57 @@ function buildActivityFeed() {
 }
 
 function buildWarehouseAlerts() {
-  const alerts = [];
-  const inventoryMap = {};
-  if (state.inventory) {
-    for (const [key, data] of Object.entries(state.inventory)) {
-      if (data && data.pieces) {
-        const totalMq = data.pieces.reduce((sum, p) => sum + toNumber(p.sqm || (toNumber(p.width) * toNumber(p.length)) || 0), 0);
-        inventoryMap[key] = totalMq;
+  return getInventorySummary()
+    .filter((group) => {
+      if (group.isModel) {
+        return toNumber(group.demandSqm) > 0 && toNumber(group.availableSqm) < 0;
       }
-    }
-  }
-  const demandMap = {};
-  for (const order of state.orders) {
-    const product = normalizeProductName(order.operations?.product);
-    if (product) {
-      const sqm = toNumber(order.operations?.sqm || 0);
-      const isOpen = !order.operations?.warehouse?.shipped && order.operations?.warehouse?.status !== "pronto";
-      if (isOpen && sqm > 0) {
-        demandMap[product] = (demandMap[product] || 0) + sqm;
+      return toNumber(group.demandUnits) > 0 && toNumber(group.availableUnits) < 0;
+    })
+    .map((group) => {
+      if (group.isModel) {
+        const totalSqm = Math.round(toNumber(group.totalSqm));
+        const demandSqm = Math.round(toNumber(group.demandSqm));
+        const deficitSqm = Math.round(Math.abs(toNumber(group.availableSqm)));
+        if (totalSqm <= 0) {
+          return {
+            title: `${group.product} — nessuna giacenza`,
+            detail: `Fabbisogno: ${demandSqm} mq · ${group.totalUnits} pezzi caricati`,
+            severity: "red",
+            sortValue: deficitSqm,
+          };
+        }
+        return {
+          title: `${group.product} sotto scorta`,
+          detail: `Disponibili: ${totalSqm} mq · Fabbisogno: ${demandSqm} mq · Mancano ${deficitSqm} mq`,
+          severity: "amber",
+          sortValue: deficitSqm,
+        };
       }
-    }
-  }
-  for (const [product, demand] of Object.entries(demandMap)) {
-    const available = inventoryMap[product] || 0;
-    if (available < demand) {
-      const catalogEntry = INVENTORY_CATALOG.find(c => c.key === product || c.label.toLowerCase() === product);
-      const label = catalogEntry ? catalogEntry.label : product;
-      const deficit = Math.round(demand - available);
-      if (available === 0) {
-        alerts.push({
-          title: `${label} — nessuna giacenza`,
-          detail: `Fabbisogno: ${Math.round(demand)} mq · 0 pezzi caricati`,
-          severity: "red"
-        });
-      } else {
-        alerts.push({
-          title: `${label} sotto scorta`,
-          detail: `Disponibili: ${Math.round(available)} mq · Fabbisogno: ${Math.round(demand)} mq · Mancano ${deficit} mq`,
-          severity: "amber"
-        });
+
+      const totalUnits = Math.round(toNumber(group.totalUnits));
+      const demandUnits = Math.round(toNumber(group.demandUnits));
+      const deficitUnits = Math.round(Math.abs(toNumber(group.availableUnits)));
+      if (totalUnits <= 0) {
+        return {
+          title: `${group.product} — nessuna giacenza`,
+          detail: `Fabbisogno: ${demandUnits} unità · 0 pezzi caricati`,
+          severity: "red",
+          sortValue: deficitUnits,
+        };
       }
-    }
-  }
-  return alerts;
+      return {
+        title: `${group.product} sotto scorta`,
+        detail: `Disponibili: ${totalUnits} unità · Fabbisogno: ${demandUnits} unità · Mancano ${deficitUnits} unità`,
+        severity: "amber",
+        sortValue: deficitUnits,
+      };
+    })
+    .sort((a, b) => {
+      if (a.severity !== b.severity) return a.severity === "red" ? -1 : 1;
+      return (b.sortValue || 0) - (a.sortValue || 0);
+    })
+    .map(({ sortValue, ...alert }) => alert);
 }
 
 function renderOrderStepper(order) {
