@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-export-regional-pricing-85";
+const APP_SHELL_VERSION = "20260502-export-regional-pricing-86";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -22,6 +22,7 @@ const SALES_GENERATOR_PLANNER_REPORT_KEY = "quote-generator-planner-report";
 const SALES_GENERATOR_FRAME_MIN_HEIGHT = 560;
 const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 760;
 const SALES_GENERATOR_FRAME_MAX_HEIGHT = 8000;
+const SALES_GENERATOR_FRAME_SRC_BASE = `./sales-suite/generator.html?embedded=1&v=${APP_SHELL_VERSION}&shell=${APP_SHELL_VERSION}`;
 const SW_UPDATE_CHECK_INTERVAL_MS = 1000 * 60 * 10;
 const SHELL_PENDING_FAILSAFE_MS = 1000 * 15;
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
@@ -3415,6 +3416,7 @@ function activatePlannerPrefill({ force = false, openView = false } = {}) {
   if (openView) {
     setView("sales-generator");
   } else if (state.currentView === "sales-generator") {
+    resetSalesGeneratorFrame("planner-prefill");
     renderSalesGenerator();
   }
   return true;
@@ -3821,6 +3823,22 @@ function applySalesGeneratorFrameHeight(rawHeight) {
   if (current && Math.abs(current - next) < 8) return;
   ui.salesGeneratorFrame.style.height = `${next}px`;
   ui.salesGeneratorFrame.dataset.measuredHeight = String(next);
+}
+
+function buildSalesGeneratorFrameSrc(sessionToken = "") {
+  const token = String(sessionToken || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  return `${SALES_GENERATOR_FRAME_SRC_BASE}&frame=${encodeURIComponent(token)}`;
+}
+
+function resetSalesGeneratorFrame(reason = "") {
+  if (!ui.salesGeneratorFrame) return false;
+  const nextSrc = buildSalesGeneratorFrameSrc();
+  ui.salesGeneratorFrame.dataset.measuredHeight = "";
+  ui.salesGeneratorFrame.dataset.reloadReason = String(reason || "");
+  ui.salesGeneratorFrame.style.height = `${SALES_GENERATOR_FRAME_DEFAULT_HEIGHT}px`;
+  if (ui.salesGeneratorFrame.getAttribute("src") === nextSrc) return false;
+  ui.salesGeneratorFrame.setAttribute("src", nextSrc);
+  return true;
 }
 
 function ensureSalesGeneratorFrameEditMode() {
@@ -8832,6 +8850,9 @@ function useSelectedSalesRequestInGenerator() {
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;
   pushSalesRequestToGenerator(true);
+  if (state.currentView === "sales-generator") {
+    resetSalesGeneratorFrame("selected-request");
+  }
   setView("sales-generator");
 }
 
@@ -8842,10 +8863,16 @@ function toggleSalesGeneratorFreeMode() {
       state.salesGeneratorPlannerMode = false;
       state.salesGeneratorFreeMode = false;
       pushSalesRequestToGenerator(true);
-      if (state.currentView === "sales-generator") renderSalesGenerator();
+      if (state.currentView === "sales-generator") {
+        resetSalesGeneratorFrame("planner-to-request");
+        renderSalesGenerator();
+      }
       return;
     }
     clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
+    if (state.currentView === "sales-generator") {
+      resetSalesGeneratorFrame("planner-to-free");
+    }
     renderSalesGenerator();
     return;
   }
@@ -8853,10 +8880,16 @@ function toggleSalesGeneratorFreeMode() {
     if (!selected) return;
     state.salesGeneratorFreeMode = false;
     pushSalesRequestToGenerator(true);
-    if (state.currentView === "sales-generator") renderSalesGenerator();
+    if (state.currentView === "sales-generator") {
+      resetSalesGeneratorFrame("free-to-request");
+      renderSalesGenerator();
+    }
     return;
   }
   clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
+  if (state.currentView === "sales-generator") {
+    resetSalesGeneratorFrame("request-to-free");
+  }
   renderSalesGenerator();
 }
 
@@ -11772,6 +11805,9 @@ function setView(view) {
   if (nextView === "installations") state.installationMobilePane = "summary";
   clearAllSearchRenderTimers();
   clearPendingCurrentViewRefresh();
+  if (nextView === "sales-generator" && previousView !== "sales-generator") {
+    resetSalesGeneratorFrame("view-enter");
+  }
   state.currentView = nextView;
   renderCurrentViewOnly(nextView);
   if (nextView !== previousView) {
@@ -14154,6 +14190,7 @@ bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;
   pushSalesRequestToGenerator(true);
+  resetSalesGeneratorFrame("manual-prefill");
   renderSalesGenerator();
 });
 bindEvent(ui.salesGeneratorFreeQuoteButton, "click", toggleSalesGeneratorFreeMode);
