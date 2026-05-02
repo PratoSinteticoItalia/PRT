@@ -1759,6 +1759,12 @@
   }
 
   window.addEventListener("message", (event) => {
+    if (event.data?.type === "quote-generator:ensure-edit-mode") {
+      forceGeneratorMode("edit");
+      scrollGeneratorViewportToTop();
+      requestBridgeSyncBurst(2);
+      return;
+    }
     if (event.data?.type === "quote-generator:prefill-request") {
       forceGeneratorMode("edit");
       scrollGeneratorViewportToTop();

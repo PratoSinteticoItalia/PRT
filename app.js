@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-export-regional-pricing-83";
+const APP_SHELL_VERSION = "20260502-export-regional-pricing-84";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3821,6 +3821,14 @@ function applySalesGeneratorFrameHeight(rawHeight) {
   if (current && Math.abs(current - next) < 8) return;
   ui.salesGeneratorFrame.style.height = `${next}px`;
   ui.salesGeneratorFrame.dataset.measuredHeight = String(next);
+}
+
+function ensureSalesGeneratorFrameEditMode() {
+  try {
+    ui.salesGeneratorFrame?.contentWindow?.postMessage({
+      type: "quote-generator:ensure-edit-mode",
+    }, "*");
+  } catch {}
 }
 
 window.addEventListener("message", (event) => {
@@ -8419,6 +8427,8 @@ function renderSalesGenerator() {
     if (!measuredHeight || measuredHeight > 2400) {
       applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
     }
+    window.setTimeout(() => ensureSalesGeneratorFrameEditMode(), 10);
+    window.setTimeout(() => ensureSalesGeneratorFrameEditMode(), 180);
     window.setTimeout(() => pushSalesGeneratorBranding(false), 20);
   }
   if (state.currentView === "sales-generator" && plannerMode) {
