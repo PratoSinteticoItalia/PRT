@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-sales-requests-sticky-save-96";
+const APP_SHELL_VERSION = "20260502-sales-request-status-97";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1195,6 +1195,7 @@ const ui = {
   salesRequestDeleteButton: document.getElementById("sales-request-delete-button"),
   salesRequestUseGeneratorButton: document.getElementById("sales-request-use-generator-button"),
   salesRequestDetailTitle: document.getElementById("sales-request-detail-title"),
+  salesRequestDetailMeta: document.getElementById("sales-request-detail-meta"),
   salesRequestWhatsAppButton: document.getElementById("sales-request-whatsapp-button"),
   salesRequestWhatsAppHint: document.getElementById("sales-request-whatsapp-hint"),
   salesGeneratorContextPanel: document.getElementById("sales-generator-context-panel"),
@@ -3132,6 +3133,78 @@ function getSalesRequestStatusLabel(status = "") {
   if (code === "closed") return state.lang === "it" ? "Chiusa" : "Closed";
   if (code === "custom") return raw || (state.lang === "it" ? "Senza stato" : "No status");
   return state.lang === "it" ? "Nuova" : "New";
+}
+
+function getSalesRequestStatusTone(status = "") {
+  const code = getSalesRequestStatusCode(status);
+  const normalized = normalizeLooseString(status || "");
+  if (code === "closed" || [
+    "declinata",
+    "lead non qualificato",
+    "perso",
+    "persa",
+    "chiuso",
+    "chiusa",
+  ].includes(normalized)) return "is-closed";
+  if (code === "quoted" || [
+    "preventivo confermato",
+    "preventivo inviato",
+    "preventivo da inviare",
+    "ordine eseguito",
+    "campione acquistato",
+  ].includes(normalized)) return "is-quoted";
+  if (
+    code === "followup"
+    || normalized.includes("follow")
+    || normalized.includes("richiam")
+    || normalized.includes("attesa")
+    || normalized.includes("risposta")
+    || normalized.includes("ricontatt")
+    || normalized.includes("chiamare")
+    || normalized.includes("email")
+    || (normalized.includes("contatto") && !normalized.includes("nuovo"))
+  ) return "is-followup";
+  if (code === "new" || [
+    "",
+    "new",
+    "nuova",
+    "nuovo",
+    "lead",
+    "nuovo contatto",
+    "nuova richiesta",
+    "richiesta nuova",
+  ].includes(normalized)) return "is-new";
+  return "is-custom";
+}
+
+function getSalesRequestAssignmentLabel(item = {}) {
+  const assignment = normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
+  return assignment || (state.lang === "it" ? "Da assegnare" : "Unassigned");
+}
+
+function getSalesRequestAssignmentTone(item = {}) {
+  return normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "")
+    ? "is-assigned"
+    : "is-unassigned";
+}
+
+function renderSalesRequestDetailMeta(item = {}) {
+  const statusLabel = getSalesRequestStatusLabel(item.status || "");
+  const assignmentLabel = getSalesRequestAssignmentLabel(item);
+  const automationBadge = getSalesRequestAutomationBadge(item);
+  return `
+    <span class="sales-request-detail-chip sales-assignment-chip ${getSalesRequestAssignmentTone(item)}">
+      <small>${state.lang === "it" ? "Assegnazione" : "Assignment"}</small>
+      <strong>${escapeHtml(assignmentLabel)}</strong>
+    </span>
+    <span class="sales-request-detail-chip sales-status-chip ${getSalesRequestStatusTone(item.status || "")}">
+      <small>${state.lang === "it" ? "Stato" : "Status"}</small>
+      <strong>${escapeHtml(statusLabel)}</strong>
+    </span>
+    ${automationBadge
+      ? `<span class="sales-request-detail-chip sales-contact-chip ${automationBadge.tone === "queued" ? "is-queued" : "is-sent"}"><small>${state.lang === "it" ? "Primo contatto" : "First contact"}</small><strong>${escapeHtml(automationBadge.label.replace(/^✓\s*/, ""))}</strong></span>`
+      : ""}
+  `;
 }
 
 function isSalesRequestClosedStatus(status = "") {
@@ -8247,6 +8320,9 @@ function renderSalesRequests() {
     ui.salesRequestsList.innerHTML = pageItems.length
       ? pageItems.map((item) => {
         const automationBadge = getSalesRequestAutomationBadge(item);
+        const assignmentLabel = getSalesRequestAssignmentLabel(item);
+        const assignmentTone = getSalesRequestAssignmentTone(item);
+        const statusTone = getSalesRequestStatusTone(item.status || "");
         return `
           <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""}" data-action="select-sales-request" data-id="${item.id}" data-first-contact-state="${escapeHtml(normalizeSalesRequestFirstContactState(item.firstContactState || ""))}">
             <div class="sales-request-card-head">
@@ -8255,7 +8331,7 @@ function renderSalesRequests() {
                 <p>${escapeHtml(item.city || (state.lang === "it" ? "Città da definire" : "City pending"))}</p>
               </div>
               <div class="sales-request-card-head-badges">
-                <span class="sales-status-pill">${escapeHtml(getSalesRequestStatusLabel(item.status))}</span>
+                <span class="sales-status-pill ${statusTone}">${escapeHtml(getSalesRequestStatusLabel(item.status))}</span>
                 ${automationBadge
                   ? `<span class="sales-automation-pill ${automationBadge.tone === "queued" ? "is-queued" : "is-sent"}" title="${escapeHtml(automationBadge.title)}">${escapeHtml(automationBadge.label)}</span>`
                   : ""}
@@ -8269,8 +8345,14 @@ function renderSalesRequests() {
               ].filter(Boolean).join(" · ")}</span>
             </div>
             <div class="sales-request-card-foot">
-              <span>${escapeHtml(item.assignment || (state.lang === "it" ? "non assegnato" : "Unassigned"))}</span>
-              <span>${item.updatedAt ? formatDate(item.updatedAt) : "—"}</span>
+              <span class="sales-assignment-pill ${assignmentTone}">
+                <small>${state.lang === "it" ? "Assegnazione" : "Assignment"}</small>
+                <strong>${escapeHtml(assignmentLabel)}</strong>
+              </span>
+              <span class="sales-card-date">
+                <small>${state.lang === "it" ? "Aggiornata" : "Updated"}</small>
+                <strong>${item.updatedAt ? formatDate(item.updatedAt) : "—"}</strong>
+              </span>
             </div>
           </article>
         `;
@@ -8340,6 +8422,9 @@ function renderSalesRequests() {
     ui.salesRequestDetailTitle.textContent = selected
       ? getSalesRequestDisplayName(selected)
       : (state.lang === "it" ? "Nuova richiesta" : "New request");
+  }
+  if (ui.salesRequestDetailMeta) {
+    ui.salesRequestDetailMeta.innerHTML = renderSalesRequestDetailMeta(selected || {});
   }
   if (ui.salesRequestDeleteButton) ui.salesRequestDeleteButton.disabled = !selected;
   if (ui.salesRequestUseGeneratorButton) ui.salesRequestUseGeneratorButton.disabled = !selected;
@@ -8455,7 +8540,7 @@ function renderSalesGenerator() {
       ? `
           <div class="sales-generator-card-head">
             <strong>${escapeHtml(getSalesRequestDisplayName(selected))}</strong>
-            <span class="sales-status-pill">${escapeHtml(getSalesRequestStatusLabel(selected.status))}</span>
+            <span class="sales-status-pill ${getSalesRequestStatusTone(selected.status || "")}">${escapeHtml(getSalesRequestStatusLabel(selected.status))}</span>
           </div>
           <div class="sales-generator-card-grid">
             <span>${escapeHtml(selected.city || (state.lang === "it" ? "Città da definire" : "City pending"))}</span>

@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260502-sales-requests-sticky-save-96" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260502-sales-requests-sticky-save-96" />
+    <link rel="preload" href="./styles.css?v=20260502-sales-request-status-97" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260502-sales-request-status-97" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -109,7 +109,7 @@
         <div class="topbar-right">
           <button id="reload-button" class="topbar-btn primary">Ricarica dati</button>
           <button id="new-order-button" class="topbar-btn">Nuovo ordine</button>
-          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260502-sales-requests-sticky-save-96&shell=20260502-sales-requests-sticky-save-96" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
+          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260502-sales-request-status-97&shell=20260502-sales-request-status-97" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
           <div class="lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
             <button class="lang-btn" data-lang="en">EN</button>
@@ -132,7 +132,7 @@
             <button id="mobile-pill-new-order-button" class="mobile-pill-tool" type="button">Nuovo ordine</button>
             <a
               id="mobile-pill-garden-planner-link"
-              href="./garden-planner.html?v=20260502-sales-requests-sticky-save-96&shell=20260502-sales-requests-sticky-save-96"
+              href="./garden-planner.html?v=20260502-sales-request-status-97&shell=20260502-sales-request-status-97"
               class="mobile-pill-tool"
               style="text-decoration: none;"
             >
@@ -238,7 +238,7 @@
         </nav>
 
         <div class="sidebar-mobile-tools">
-          <a href="./garden-planner.html?v=20260502-sales-requests-sticky-save-96&shell=20260502-sales-requests-sticky-save-96" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
+          <a href="./garden-planner.html?v=20260502-sales-request-status-97&shell=20260502-sales-request-status-97" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
           <button id="mobile-reload-button" class="sidebar-quick-link" type="button">Ricarica dati</button>
           <div class="lang-switch sidebar-lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
@@ -536,6 +536,7 @@
                 <div>
                   <p class="panel-eyebrow" id="sales-request-detail-eyebrow">Dettaglio richiesta</p>
                   <h3 id="sales-request-detail-title">Nuova richiesta</h3>
+                  <div id="sales-request-detail-meta" class="sales-request-detail-meta"></div>
                 </div>
                 <div class="inline-actions">
                   <button id="sales-request-delete-button" class="ghost-button small-button" type="button">Elimina</button>
@@ -588,13 +589,13 @@
                     <option value="pavimentazione">Pavimentazione</option>
                   </select>
                 </label>
-                <label class="field">
+                <label class="field sales-request-routing-field">
                   <span>Assegnazione</span>
                   <select class="text-input" name="assignment">
                     <option value="">non assegnato</option>
                   </select>
                 </label>
-                <label class="field">
+                <label class="field sales-request-routing-field">
                   <span>Stato</span>
                   <select class="text-input" name="status">
                     <option value="new">Nuova</option>
@@ -654,7 +655,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260502-sales-requests-sticky-save-96&shell=20260502-sales-requests-sticky-save-96"
+                src="./sales-suite/generator.html?embedded=1&v=20260502-sales-request-status-97&shell=20260502-sales-request-status-97"
                 scrolling="no"
               ></iframe>
             </section>
@@ -1797,6 +1798,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260502-sales-requests-sticky-save-96" type="module"></script>
+    <script src="./app.js?v=20260502-sales-request-status-97" type="module"></script>
   </body>
 </html>
