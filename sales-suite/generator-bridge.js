@@ -191,13 +191,11 @@
     document.head.appendChild(style);
   }
 
-  function stripPdfStyleArtifacts(rootNode = document) {
-    const pdfRoots = rootNode instanceof Element && rootNode.matches(".pdf-root")
+  function stripPdfStyleArtifacts(rootNode) {
+    const artifactRoots = rootNode instanceof Element && rootNode.matches(".codex-planner-report-appendix")
       ? [rootNode]
-      : rootNode instanceof Element && rootNode.matches(".codex-planner-report-appendix")
-        ? [rootNode]
-        : Array.from(document.querySelectorAll(".pdf-root"));
-    pdfRoots.forEach((root) => {
+      : Array.from(document.querySelectorAll(".codex-planner-report-appendix"));
+    artifactRoots.forEach((root) => {
       root.querySelectorAll("style").forEach((styleNode) => {
         const cssText = String(styleNode.textContent || "");
         if (cssText.includes("@media print") || cssText.includes(".pdf-root")) {
@@ -300,7 +298,6 @@
     scheduledHeightReport = window.requestAnimationFrame(() => {
       scheduledHeightReport = 0;
       ensureEmbeddedLayoutStyles();
-      stripPdfStyleArtifacts();
       const rootHost = document.getElementById("root");
       const shell = rootHost?.firstElementChild;
       const pdfRoot = document.querySelector(".pdf-root");
@@ -1281,7 +1278,6 @@
     if (!normalized.reportHtml) return false;
     ensurePlannerReportStyles();
     ensurePdfExportStyles();
-    stripPdfStyleArtifacts();
     const pdfRoots = getPdfRoots();
     if (!pdfRoots.length) return false;
 
