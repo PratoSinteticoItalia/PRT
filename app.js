@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-sales-request-bulk-assign-98";
+const APP_SHELL_VERSION = "20260502-sales-request-sheet-writeback-99";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -8980,6 +8980,23 @@ function getSalesRequestAutomationSaveMessage(automation = null) {
   return "";
 }
 
+function getSalesRequestSheetSyncMessage(sheetSync = null) {
+  if (!sheetSync || typeof sheetSync !== "object") return "";
+  const action = String(sheetSync.action || "").trim().toLowerCase();
+  const reason = String(sheetSync.reason || "").trim();
+  if (action === "failed") {
+    return state.lang === "it"
+      ? ` Attenzione: foglio Google non aggiornato${reason ? ` (${reason})` : ""}.`
+      : ` Warning: Google Sheet not updated${reason ? ` (${reason})` : ""}.`;
+  }
+  if (action === "skipped" && reason && reason !== "no_google_sheet_rows") {
+    return state.lang === "it"
+      ? ` Foglio Google non aggiornato (${reason}).`
+      : ` Google Sheet not updated (${reason}).`;
+  }
+  return "";
+}
+
 function mergeSalesRequestRecords(records = []) {
   const normalizedRecords = Array.isArray(records) ? records.map(normalizeSalesRequestRecord) : [];
   if (!normalizedRecords.length) return;
@@ -9035,12 +9052,13 @@ async function bulkAssignSalesRequests(assignmentValue = "") {
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
     const updatedCount = Number(result?.updatedCount || updatedRequests.length || ids.length);
+    const sheetSyncMessage = getSalesRequestSheetSyncMessage(result?.sheetSync || null);
     setStatus(
       ui.salesRequestsStatus,
-      "success",
+      sheetSyncMessage ? "error" : "success",
       state.lang === "it"
-        ? `${updatedCount} contatti assegnati a ${assignment}.`
-        : `${updatedCount} contacts assigned to ${assignment}.`,
+        ? `${updatedCount} contatti assegnati a ${assignment}.${sheetSyncMessage}`
+        : `${updatedCount} contacts assigned to ${assignment}.${sheetSyncMessage}`,
     );
   } catch (error) {
     state.salesRequests = previousRequests;
@@ -9109,13 +9127,14 @@ async function saveSalesRequest(event) {
       body: JSON.stringify(buildSalesRequestPayloadFromRecord(draftRecord)),
     });
     const automationMessage = getSalesRequestAutomationSaveMessage(saved?._automation || null);
+    const sheetSyncMessage = getSalesRequestSheetSyncMessage(saved?._sheetSync || null);
     upsertSalesRequest(saved);
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
     setStatus(
       ui.salesRequestsStatus,
-      "success",
-      `${state.lang === "it" ? "Richiesta salvata." : "Request saved."}${automationMessage}`,
+      sheetSyncMessage ? "error" : "success",
+      `${state.lang === "it" ? "Richiesta salvata." : "Request saved."}${automationMessage}${sheetSyncMessage}`,
     );
   } catch (error) {
     state.salesRequests = previousRequests;

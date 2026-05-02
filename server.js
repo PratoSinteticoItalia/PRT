@@ -2341,11 +2341,11 @@ function mapSheetSalesRequestField(target, header, rawValue, rawFormulaValue = "
     target.surface = value;
     return;
   }
-  if (["assegnazione", "assignment", "owner", "commerciale", "team", "assegnato a", "assegnato", "assegnazione preventivo"].includes(normalizedHeader)) {
+  if (isSalesRequestAssignmentHeader(normalizedHeader)) {
     target.assignment = value;
     return;
   }
-  if (["stato", "status", "stato preventivo"].includes(normalizedHeader)) {
+  if (isSalesRequestStatusHeader(normalizedHeader)) {
     target.status = value;
     return;
   }
@@ -2373,6 +2373,25 @@ function mapSheetSalesRequestField(target, header, rawValue, rawFormulaValue = "
   if (["note", "nota", "notes"].includes(normalizedHeader)) {
     target.note = value;
   }
+}
+
+function isSalesRequestAssignmentHeader(normalizedHeader = "") {
+  return ["assegnazione", "assignment", "owner", "commerciale", "team", "assegnato a", "assegnato", "assegnazione preventivo"].includes(normalizedHeader);
+}
+
+function isSalesRequestStatusHeader(normalizedHeader = "") {
+  return ["stato", "status", "stato preventivo"].includes(normalizedHeader);
+}
+
+function columnIndexToA1(index = 0) {
+  let column = Math.max(0, Number(index || 0)) + 1;
+  let label = "";
+  while (column > 0) {
+    const remainder = (column - 1) % 26;
+    label = `${String.fromCharCode(65 + remainder)}${label}`;
+    column = Math.floor((column - 1) / 26);
+  }
+  return label;
 }
 
 function normalizeSheetKey(value = "") {
@@ -2472,6 +2491,134 @@ async function googleSheetsFetch(config, endpoint, options = {}) {
     throw new Error(payload?.error?.message || payload?.error_description || payload?.error || "google_sheets_failed");
   }
   return payload;
+}
+
+function serializeSalesRequestAssignmentForSheet(value = "") {
+  return normalizeSalesRequestAssignment(value) || "non assegnato";
+}
+
+function serializeSalesRequestStatusForSheet(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "nuovo contatto";
+  const normalized = normalizeSalesRequestImportHeader(raw);
+  if (["new", "nuova", "nuovo", "lead", "richiesta nuova", "nuova richiesta"].includes(normalized)) return "nuovo contatto";
+  if (["quoted", "quote", "preventivo", "in preventivo", "offerta", "offerta inviata", "quotato"].includes(normalized)) return "Preventivo inviato";
+  if (["followup", "follow up", "follow-up", "richiamare", "richiamata", "recall", "attesa", "in lavorazione", "da seguire"].includes(normalized)) return "fare follow up";
+  if (["closed", "chiusa", "chiuso", "completata", "completato", "archiviata", "archiviato"].includes(normalized)) return "declinata";
+  return raw;
+}
+
+function getGoogleSheetRequestRecordKey(record = {}) {
+  const spreadsheetId = String(record.sourceSpreadsheetId || "").trim();
+  const sheetName = String(record.sourceSheetName || "").trim();
+  const rowNumber = Number(record.sourceRowNumber || 0);
+  if (String(record.source || "") !== "google-sheets" || !spreadsheetId || !sheetName || rowNumber < 2) return "";
+  return `${spreadsheetId}::${sheetName}`;
+}
+
+async function getSalesRequestSheetWriteColumns(config = {}, spreadsheetId = "", sheetName = "") {
+  const encodedHeaderRange = encodeURIComponent(`${quoteSheetName(sheetName)}!1:1`);
+  const headersPayload = await googleSheetsFetch(
+    config,
+    `/spreadsheets/${spreadsheetId}/values/${encodedHeaderRange}`,
+  );
+  const headers = Array.isArray(headersPayload?.values?.[0]) ? headersPayload.values[0] : [];
+  const columns = {
+    assignment: "",
+    status: "",
+  };
+  headers.forEach((header, index) => {
+    const normalizedHeader = normalizeSalesRequestImportHeader(header);
+    if (!columns.assignment && isSalesRequestAssignmentHeader(normalizedHeader)) {
+      columns.assignment = columnIndexToA1(index);
+    }
+    if (!columns.status && isSalesRequestStatusHeader(normalizedHeader)) {
+      columns.status = columnIndexToA1(index);
+    }
+  });
+  return columns;
+}
+
+async function syncSalesRequestsToGoogleSheet(config = {}, records = []) {
+  const normalizedConfig = normalizeSalesRequestSourceConfig(config);
+  if (!normalizedConfig.serviceAccountEmail || !normalizedConfig.privateKey) {
+    return { action: "skipped", reason: "missing_service_account", updatedCells: 0 };
+  }
+  const googleRecords = (Array.isArray(records) ? records : [])
+    .map(normalizeSalesRequestRecord)
+    .filter((record) => getGoogleSheetRequestRecordKey(record));
+  if (!googleRecords.length) {
+    return { action: "skipped", reason: "no_google_sheet_rows", updatedCells: 0 };
+  }
+  const dataBySpreadsheet = new Map();
+  const groups = new Map();
+  googleRecords.forEach((record) => {
+    const key = getGoogleSheetRequestRecordKey(record);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(record);
+  });
+  for (const recordsGroup of groups.values()) {
+    const firstRecord = recordsGroup[0];
+    const spreadsheetId = String(firstRecord.sourceSpreadsheetId || "").trim();
+    const sheetName = String(firstRecord.sourceSheetName || "").trim();
+    const columns = await getSalesRequestSheetWriteColumns(normalizedConfig, spreadsheetId, sheetName);
+    if (!dataBySpreadsheet.has(spreadsheetId)) dataBySpreadsheet.set(spreadsheetId, []);
+    const data = dataBySpreadsheet.get(spreadsheetId);
+    recordsGroup.forEach((record) => {
+      const rowNumber = Number(record.sourceRowNumber || 0);
+      if (columns.assignment) {
+        data.push({
+          range: `${quoteSheetName(sheetName)}!${columns.assignment}${rowNumber}`,
+          values: [[serializeSalesRequestAssignmentForSheet(record.assignment)]],
+        });
+      }
+      if (columns.status) {
+        data.push({
+          range: `${quoteSheetName(sheetName)}!${columns.status}${rowNumber}`,
+          values: [[serializeSalesRequestStatusForSheet(record.status)]],
+        });
+      }
+    });
+  }
+  const updateBatches = Array.from(dataBySpreadsheet.entries()).filter(([, data]) => data.length);
+  if (!updateBatches.length) {
+    return { action: "skipped", reason: "missing_sheet_columns", updatedCells: 0 };
+  }
+  let updatedCells = 0;
+  let updatedRows = 0;
+  for (const [spreadsheetId, data] of updateBatches) {
+    const payload = await googleSheetsFetch(
+      normalizedConfig,
+      `/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          valueInputOption: "USER_ENTERED",
+          data,
+        }),
+      },
+    );
+    updatedCells += Number(payload?.totalUpdatedCells || data.length);
+    updatedRows += Number(payload?.totalUpdatedRows || 0);
+  }
+  return {
+    action: "updated",
+    updatedCells,
+    updatedRows: updatedRows || googleRecords.length,
+  };
+}
+
+async function safeSyncSalesRequestsToGoogleSheet(config = {}, records = []) {
+  try {
+    return await syncSalesRequestsToGoogleSheet(config, records);
+  } catch (error) {
+    console.error("sales_request_google_sheet_sync_failed", error);
+    return {
+      action: "failed",
+      reason: String(error?.message || "google_sheet_sync_failed"),
+      updatedCells: 0,
+    };
+  }
 }
 
 async function loadGoogleSheetSalesRequests(config = {}) {
@@ -4534,9 +4681,11 @@ async function handleApi(req, res, url) {
       store.salesRequests.unshift(requestRecord);
     }
     await writeJson(STORE_PATH, store);
+    const sheetSync = await safeSyncSalesRequestsToGoogleSheet(store.salesRequestSource || {}, [requestRecord]);
     return sendJson(res, 200, {
       ...requestRecord,
       _automation: automationResult.automation || { action: "none" },
+      _sheetSync: sheetSync,
     });
   }
 
@@ -4579,11 +4728,13 @@ async function handleApi(req, res, url) {
     }
     if (!updatedRequests.length) return sendJson(res, 404, { error: "requests_not_found" });
     await writeJson(STORE_PATH, store);
+    const sheetSync = await safeSyncSalesRequestsToGoogleSheet(store.salesRequestSource || {}, updatedRequests);
     return sendJson(res, 200, {
       requests: updatedRequests,
       updatedCount: updatedRequests.length,
       skippedCount: Math.max(0, requestIds.length - updatedRequests.length),
       assignment,
+      sheetSync,
     });
   }
 
