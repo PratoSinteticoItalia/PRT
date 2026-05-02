@@ -2,6 +2,8 @@
   const PREFILL_STORAGE_KEY = "quote-generator-prefill";
   const BRANDING_STORAGE_KEY = "quote-generator-branding";
   const PLANNER_REPORT_STORAGE_KEY = "quote-generator-planner-report";
+  const PLANNER_BRIDGE_STORAGE_KEY = "garden-planner-quote-bridge-v1";
+  const URL_PARAMS = new URLSearchParams(window.location.search);
   let lastUrlPrefill = "";
   let lastStoragePrefill = "";
   let scheduledPrefillRunId = 0;
@@ -18,6 +20,22 @@
   let bridgeSyncQueued = false;
   let bridgeSyncBurstRuns = 0;
   const brandingLogoExportCache = new Map();
+  let plannerBridgeReadEnabled = URL_PARAMS.get("planner") === "1";
+  const originalLocalStorageGetItem = window.localStorage?.getItem?.bind(window.localStorage);
+
+  function setPlannerBridgeReadEnabled(enabled) {
+    plannerBridgeReadEnabled = Boolean(enabled);
+    document.documentElement.dataset.generatorPlannerBridgeMode = plannerBridgeReadEnabled ? "planner" : "standard";
+  }
+
+  if (originalLocalStorageGetItem && window.localStorage) {
+    window.localStorage.getItem = function patchedGetItem(key) {
+      if (String(key || "") === PLANNER_BRIDGE_STORAGE_KEY && !plannerBridgeReadEnabled) {
+        return null;
+      }
+      return originalLocalStorageGetItem(key);
+    };
+  }
 
   function normalizeLabel(value) {
     return String(value || "")
@@ -1735,11 +1753,13 @@
 
   window.addEventListener("message", (event) => {
     if (event.data?.type === "quote-generator:prefill-request") {
+      setPlannerBridgeReadEnabled(String(event.data?.source || "").trim() === "garden-planner");
       scheduleRequestPayload(event.data.payload, { force: Boolean(event.data?.force) });
       requestBridgeSyncBurst(4);
       return;
     }
     if (event.data?.type === "quote-generator:clear-prefill") {
+      setPlannerBridgeReadEnabled(false);
       clearRequestPayloadNow();
       requestBridgeSyncBurst(2);
       return;

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-dashboard-inventory-alerts-87";
+const APP_SHELL_VERSION = "20260502-generator-session-reset-88";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3368,6 +3368,35 @@ function buildSalesRequestPrefill(item = {}) {
   };
 }
 
+function getSalesGeneratorFrameBaseSrc() {
+  const frame = ui.salesGeneratorFrame;
+  if (!frame) return "";
+  if (!frame.dataset.baseSrc) {
+    const raw = frame.getAttribute("src") || frame.src || "";
+    frame.dataset.baseSrc = raw.replace(/([?&])session=[^&]*/g, "$1").replace(/([?&])planner=[^&]*/g, "$1").replace(/[?&]$/, "");
+  }
+  return frame.dataset.baseSrc || "";
+}
+
+function buildSalesGeneratorFrameSrc({ plannerMode = false } = {}) {
+  const base = getSalesGeneratorFrameBaseSrc();
+  if (!base) return "";
+  const targetUrl = new URL(base, window.location.href);
+  targetUrl.searchParams.set("session", String(Date.now()));
+  targetUrl.searchParams.set("planner", plannerMode ? "1" : "0");
+  return targetUrl.toString();
+}
+
+function reloadSalesGeneratorFrameSession({ plannerMode = false } = {}) {
+  if (!ui.salesGeneratorFrame) return false;
+  const nextSrc = buildSalesGeneratorFrameSrc({ plannerMode });
+  if (!nextSrc) return false;
+  state.lastSalesGeneratorSignature = "";
+  applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
+  ui.salesGeneratorFrame.src = nextSrc;
+  return true;
+}
+
 function pushPlannerPrefillToGenerator(force = false) {
   const bridge = getGardenPlannerQuoteBridge();
   const payload = bridge?.payload;
@@ -3396,6 +3425,7 @@ function pushPlannerPrefillToGenerator(force = false) {
     ui.salesGeneratorFrame?.contentWindow?.postMessage({
       type: "quote-generator:prefill-request",
       payload,
+      source: "garden-planner",
       force,
     }, "*");
   } catch {}
@@ -3412,6 +3442,9 @@ function pushPlannerPrefillToGenerator(force = false) {
 function activatePlannerPrefill({ force = false, openView = false } = {}) {
   const applied = pushPlannerPrefillToGenerator(force);
   if (!applied) return false;
+  if (state.currentView === "sales-generator" || openView) {
+    reloadSalesGeneratorFrameSession({ plannerMode: true });
+  }
   if (openView) {
     setView("sales-generator");
   } else if (state.currentView === "sales-generator") {
@@ -3766,6 +3799,7 @@ function clearSalesRequestPrefillInGenerator({ keepFreeMode = true } = {}) {
   try {
     ui.salesGeneratorFrame?.contentWindow?.postMessage({
       type: "quote-generator:clear-prefill",
+      source: "free-quote",
     }, "*");
   } catch {}
   try {
@@ -3800,6 +3834,7 @@ function pushSalesRequestToGenerator(force = false) {
     ui.salesGeneratorFrame?.contentWindow?.postMessage({
       type: "quote-generator:prefill-request",
       payload,
+      source: "sales-request",
       force,
     }, "*");
   } catch {}
@@ -8829,7 +8864,9 @@ function useSelectedSalesRequestInGenerator() {
   if (!selected) return;
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;
-  pushSalesRequestToGenerator(true);
+  if (state.currentView === "sales-generator") {
+    reloadSalesGeneratorFrameSession({ plannerMode: false });
+  }
   setView("sales-generator");
 }
 
@@ -8839,10 +8876,11 @@ function toggleSalesGeneratorFreeMode() {
     if (selected) {
       state.salesGeneratorPlannerMode = false;
       state.salesGeneratorFreeMode = false;
-      pushSalesRequestToGenerator(true);
+      reloadSalesGeneratorFrameSession({ plannerMode: false });
       if (state.currentView === "sales-generator") renderSalesGenerator();
       return;
     }
+    reloadSalesGeneratorFrameSession({ plannerMode: false });
     clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
     renderSalesGenerator();
     return;
@@ -8850,10 +8888,11 @@ function toggleSalesGeneratorFreeMode() {
   if (state.salesGeneratorFreeMode) {
     if (!selected) return;
     state.salesGeneratorFreeMode = false;
-    pushSalesRequestToGenerator(true);
+    reloadSalesGeneratorFrameSession({ plannerMode: false });
     if (state.currentView === "sales-generator") renderSalesGenerator();
     return;
   }
+  reloadSalesGeneratorFrameSession({ plannerMode: false });
   clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
   renderSalesGenerator();
 }
@@ -11768,6 +11807,9 @@ function setView(view) {
   }
   if (nextView === "accounting") state.accountingMobilePane = "summary";
   if (nextView === "installations") state.installationMobilePane = "summary";
+  if (nextView === "sales-generator" && nextView !== previousView) {
+    reloadSalesGeneratorFrameSession({ plannerMode: state.salesGeneratorPlannerMode });
+  }
   clearAllSearchRenderTimers();
   clearPendingCurrentViewRefresh();
   state.currentView = nextView;
@@ -14151,7 +14193,7 @@ bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requ
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;
-  pushSalesRequestToGenerator(true);
+  reloadSalesGeneratorFrameSession({ plannerMode: false });
   renderSalesGenerator();
 });
 bindEvent(ui.salesGeneratorFreeQuoteButton, "click", toggleSalesGeneratorFreeMode);
