@@ -17,6 +17,7 @@
   let scheduledScrollTop = 0;
   let scheduledHeightReport = 0;
   let scheduledBridgeSync = 0;
+  let scheduledEnsureEditTimer = 0;
   let bridgeSyncQueued = false;
   let bridgeSyncBurstRuns = 0;
   const brandingLogoExportCache = new Map();
@@ -799,7 +800,6 @@
     appendDiscountLabelToProductDescriptions(pdfRoot);
     centerFeatureCards(pdfRoot);
     centerHeylightCards(pdfRoot);
-    replacePaymentBadgesWithLogos(pdfRoot);
     return true;
   }
 
@@ -977,6 +977,56 @@
       console.warn("Dispatch hook non riuscito:", error);
       return false;
     }
+  }
+
+  function isPreviewModeVisible() {
+    const modifyButton = findElementByText("button, a, div, span", "Modifica");
+    const downloadButton = findElementByText("button, a, div, span", "Scarica PDF");
+    return Boolean(modifyButton && downloadButton);
+  }
+
+  function forceGeneratorEditState() {
+    const hooks = findGeneratorHooks();
+    let applied = false;
+    if (hooks?.[0]) {
+      applied = dispatchHookAction(hooks[0], "edit") || applied;
+    }
+    const modifyButton = Array.from(document.querySelectorAll("button"))
+      .find((button) => normalizeLabel(button.textContent).includes("modifica"));
+    if (modifyButton) {
+      applied = clickButton(modifyButton) || applied;
+    }
+    if (applied) {
+      scrollGeneratorViewportToTop();
+      reportEmbeddedContentHeight();
+    }
+    return applied;
+  }
+
+  function ensureEditModeActive(attempt = 0) {
+    if (scheduledEnsureEditTimer) {
+      window.clearTimeout(scheduledEnsureEditTimer);
+      scheduledEnsureEditTimer = 0;
+    }
+    if (isEmbeddedEditModeActive(document)) {
+      reportEmbeddedContentHeight();
+      return true;
+    }
+    if (!isPreviewModeVisible()) {
+      if (attempt < 8) {
+        scheduledEnsureEditTimer = window.setTimeout(() => {
+          ensureEditModeActive(attempt + 1);
+        }, attempt < 2 ? 80 : 160);
+      }
+      return false;
+    }
+    forceGeneratorEditState();
+    if (attempt < 10) {
+      scheduledEnsureEditTimer = window.setTimeout(() => {
+        ensureEditModeActive(attempt + 1);
+      }, attempt < 3 ? 90 : 180);
+    }
+    return false;
   }
 
   function applyReactStatePrefill(customerPayload, requestedMq, requestedServiceState, requestedSurface) {
@@ -1772,6 +1822,10 @@
     if (event.data?.type === "quote-generator:planner-report") {
       applyPlannerReportPayloadNow(event.data.payload);
       requestBridgeSyncBurst(2);
+      return;
+    }
+    if (event.data?.type === "quote-generator:ensure-edit-mode") {
+      ensureEditModeActive(0);
     }
   });
 
@@ -1804,6 +1858,9 @@
       applyPlannerReportPayloadNow(plannerReportPayload);
     }
     requestBridgeSyncBurst(4);
+    window.setTimeout(() => {
+      ensureEditModeActive(0);
+    }, 120);
     reportEmbeddedContentHeight();
   }, { once: true });
 

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-generator-session-reset-88";
+const APP_SHELL_VERSION = "20260502-generator-session-reset-89";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
