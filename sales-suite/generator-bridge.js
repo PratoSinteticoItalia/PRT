@@ -950,12 +950,6 @@
     return match;
   }
 
-  function getGeneratorMode() {
-    const hooks = findGeneratorHooks();
-    const mode = String(hooks?.[0]?.memoizedState || "").trim().toLowerCase();
-    return mode === "edit" || mode === "pdf" ? mode : "";
-  }
-
   function dispatchHookAction(hook, action) {
     if (!hook?.queue?.dispatch) return false;
     try {
@@ -963,34 +957,6 @@
       return true;
     } catch (error) {
       console.warn("Dispatch hook non riuscito:", error);
-      return false;
-    }
-  }
-
-  function forceGeneratorMode(mode = "edit") {
-    const normalizedMode = String(mode || "").trim().toLowerCase();
-    if (!["edit", "pdf"].includes(normalizedMode)) return false;
-    const hooks = findGeneratorHooks();
-    if (!hooks?.[0]) return false;
-    if (String(hooks[0]?.memoizedState || "").trim().toLowerCase() === normalizedMode) return false;
-    return dispatchHookAction(hooks[0], normalizedMode);
-  }
-
-  function findButtonByNormalizedLabel(label) {
-    const target = normalizeLabel(label);
-    return Array.from(document.querySelectorAll("button"))
-      .find((button) => normalizeLabel(button.textContent || "").includes(target));
-  }
-
-  function returnGeneratorToEditModeByUi() {
-    const mode = getGeneratorMode();
-    if (mode !== "pdf") return false;
-    const editButton = findButtonByNormalizedLabel("modifica");
-    if (!(editButton instanceof HTMLButtonElement)) return false;
-    try {
-      editButton.click();
-      return true;
-    } catch {
       return false;
     }
   }
@@ -1143,13 +1109,9 @@
     delays.forEach((delay) => {
       window.setTimeout(() => {
         if (runId !== scheduledPrefillRunId) return;
-        returnGeneratorToEditModeByUi();
-        forceGeneratorMode("edit");
         applyRequestPayloadNow(payload);
       }, delay);
     });
-
-    scrollGeneratorViewportToTop();
 
     return true;
   }
@@ -1602,14 +1564,6 @@
           pdfDownloadInterceptionActive = false;
           button.dataset.codexPdfBypass = "1";
           button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-          window.setTimeout(() => {
-            scrollGeneratorViewportToTop();
-            reportEmbeddedContentHeight();
-          }, 320);
-          window.setTimeout(() => {
-            scrollGeneratorViewportToTop();
-            reportEmbeddedContentHeight();
-          }, 1200);
         });
     }, true);
   }
@@ -1780,25 +1734,12 @@
   }
 
   window.addEventListener("message", (event) => {
-    if (event.data?.type === "quote-generator:ensure-edit-mode") {
-      returnGeneratorToEditModeByUi();
-      forceGeneratorMode("edit");
-      scrollGeneratorViewportToTop();
-      requestBridgeSyncBurst(2);
-      return;
-    }
     if (event.data?.type === "quote-generator:prefill-request") {
-      returnGeneratorToEditModeByUi();
-      forceGeneratorMode("edit");
-      scrollGeneratorViewportToTop();
       scheduleRequestPayload(event.data.payload, { force: Boolean(event.data?.force) });
       requestBridgeSyncBurst(4);
       return;
     }
     if (event.data?.type === "quote-generator:clear-prefill") {
-      returnGeneratorToEditModeByUi();
-      forceGeneratorMode("edit");
-      scrollGeneratorViewportToTop();
       clearRequestPayloadNow();
       requestBridgeSyncBurst(2);
       return;
@@ -1832,8 +1773,6 @@
     ensureEmbeddedLayoutStyles();
     const payload = readPrefillFromUrl() || readPrefillFromStorage();
     if (payload) {
-      returnGeneratorToEditModeByUi();
-      forceGeneratorMode("edit");
       scheduleRequestPayload(payload);
     }
     const brandingPayload = readBrandingFromStorage();
@@ -1844,17 +1783,6 @@
     if (plannerReportPayload) {
       applyPlannerReportPayloadNow(plannerReportPayload);
     }
-    window.setTimeout(() => {
-      returnGeneratorToEditModeByUi();
-      forceGeneratorMode("edit");
-      scrollGeneratorViewportToTop();
-    }, 120);
-    window.setTimeout(() => {
-      returnGeneratorToEditModeByUi();
-      forceGeneratorMode("edit");
-      scrollGeneratorViewportToTop();
-    }, 480);
-    scrollGeneratorViewportToTop();
     requestBridgeSyncBurst(4);
     reportEmbeddedContentHeight();
   }, { once: true });
