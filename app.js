@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260502-sales-request-sheet-writeback-99";
+const APP_SHELL_VERSION = "20260503-free-quote-gravel-price-100";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
