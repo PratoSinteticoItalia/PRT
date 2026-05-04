@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-fast-request-save-typography-110";
+const APP_SHELL_VERSION = "20260504-preserve-request-selection-111";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4160,7 +4160,7 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     method: "POST",
     body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, patch)),
   });
-  upsertSalesRequest(saved, { skipOpsRender: true });
+  upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
   renderSalesRequests();
   if (state.currentView === "sales-generator") renderSalesGenerator();
   return saved;
@@ -9249,7 +9249,9 @@ function renderSalesContent() {
   }
 }
 
-function upsertSalesRequest(saved, { skipOpsRender = false } = {}) {
+function upsertSalesRequest(saved, { skipOpsRender = false, preserveSelection = false } = {}) {
+  const previousSelectedSalesRequestId = state.selectedSalesRequestId;
+  const previousCreatingSalesRequest = state.creatingSalesRequest;
   const normalized = normalizeSalesRequestRecord(saved);
   const existingIndex = state.salesRequests.findIndex((item) => item.id === normalized.id);
   if (existingIndex >= 0) {
@@ -9258,8 +9260,13 @@ function upsertSalesRequest(saved, { skipOpsRender = false } = {}) {
     state.salesRequests = [normalized, ...state.salesRequests];
     state.salesRequestPage = 1;
   }
-  state.selectedSalesRequestId = normalized.id;
-  state.creatingSalesRequest = false;
+  if (preserveSelection) {
+    state.selectedSalesRequestId = previousSelectedSalesRequestId;
+    state.creatingSalesRequest = previousCreatingSalesRequest;
+  } else {
+    state.selectedSalesRequestId = normalized.id;
+    state.creatingSalesRequest = false;
+  }
   if (!skipOpsRender) renderOps();
 }
 
@@ -9496,7 +9503,7 @@ async function saveSalesRequest(event) {
     });
     const automationMessage = getSalesRequestAutomationSaveMessage(saved?._automation || null);
     const sheetSyncMessage = getSalesRequestSheetSyncMessage(saved?._sheetSync || null);
-    upsertSalesRequest(saved);
+    upsertSalesRequest(saved, { preserveSelection: true });
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
     setStatus(
