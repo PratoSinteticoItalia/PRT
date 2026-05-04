@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-sales-request-sqm-parser-104";
+const APP_SHELL_VERSION = "20260504-sales-request-sheet-sqm-105";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2803,14 +2803,27 @@ function isSalesRequestSqmHeader(normalizedHeader = "") {
     "m q",
     "m2",
     "m 2",
+    "m2 richiesti",
+    "m2 richiesto",
+    "m2 richiesta",
+    "m2 da preventivare",
     "sqm",
     "met",
+    "met 2",
+    "met2",
     "mtq",
+    "mt 2",
+    "mt2",
     "metri",
+    "metro",
     "metri quadri",
     "metri q",
+    "metri q richiesti",
     "metriquadrati",
+    "metri2",
     "metri quadrati",
+    "m quadri",
+    "m quadrati",
     "metratura",
     "metratura prato",
     "area",
@@ -2833,9 +2846,17 @@ function isSalesRequestSqmHeader(normalizedHeader = "") {
   ].includes(header)) return true;
   return (
     header.includes("mq")
+    || header.includes("m2")
+    || header.includes("mtq")
+    || header.includes("mt2")
+    || header.includes("sqm")
     || header.includes("metratura")
+    || header.includes("met2")
+    || header.includes("metri2")
     || header.includes("metri quadr")
     || header.includes("metri quad")
+    || /\bmet\b/.test(header)
+    || /\bmetri\b/.test(header)
   );
 }
 
@@ -3079,7 +3100,13 @@ function getSalesRequestStatusCode(status = "") {
 }
 
 function normalizeSalesRequestRecord(item = {}) {
-  const status = String(item.status ?? item.stato ?? "").trim() || "new";
+  const firstContactState = normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || "");
+  const rawStatus = String(item.status ?? item.stato ?? "").trim();
+  const status = firstContactState === "sent" && shouldPromoteSalesRequestToFirstContact(rawStatus)
+    ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS
+    : firstContactState === "queued" && shouldPromoteSalesRequestToFirstContact(rawStatus)
+      ? SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS
+      : rawStatus || "new";
   return {
     id: String(item.id || crypto.randomUUID()),
     name: String(item.name || item.nome || "").trim(),
@@ -3113,7 +3140,7 @@ function normalizeSalesRequestRecord(item = {}) {
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(item.sourceSheetName || "").trim(),
     sourceRowNumber: Number(item.sourceRowNumber || 0),
-    firstContactState: normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || ""),
+    firstContactState,
     firstContactScheduledAt: normalizeIsoDateTime(item.firstContactScheduledAt || item.firstContact?.scheduledAt || ""),
     firstContactSentAt: normalizeIsoDateTime(item.firstContactSentAt || item.firstContact?.sentAt || ""),
     firstContactBy: normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
@@ -14209,10 +14236,16 @@ async function reloadAll() {
   updateShell();
   try {
     const session = await apiFetch("/api/session");
-    return applyFetchedSessionSnapshot(session, {
+    const applied = await applyFetchedSessionSnapshot(session, {
       renderMode: "current",
       enforcePasswordResetView: false,
     });
+    if (canAutoRefreshSalesRequests()) {
+      await syncSalesRequestSource({ auto: true, silent: true }).catch((error) => {
+        console.warn("sales_request_reload_sync_failed", error);
+      });
+    }
+    return applied;
   } finally {
     reloadAllInFlight = false;
     state.syncInProgress = false;

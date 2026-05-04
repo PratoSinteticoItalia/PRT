@@ -1668,14 +1668,27 @@ function isSalesRequestSqmHeader(normalizedHeader = "") {
     "m q",
     "m2",
     "m 2",
+    "m2 richiesti",
+    "m2 richiesto",
+    "m2 richiesta",
+    "m2 da preventivare",
     "sqm",
     "met",
+    "met 2",
+    "met2",
     "mtq",
+    "mt 2",
+    "mt2",
     "metri",
+    "metro",
     "metri quadri",
     "metri q",
+    "metri q richiesti",
     "metriquadrati",
+    "metri2",
     "metri quadrati",
+    "m quadri",
+    "m quadrati",
     "metratura",
     "metratura prato",
     "area",
@@ -1698,9 +1711,17 @@ function isSalesRequestSqmHeader(normalizedHeader = "") {
   ].includes(header)) return true;
   return (
     header.includes("mq")
+    || header.includes("m2")
+    || header.includes("mtq")
+    || header.includes("mt2")
+    || header.includes("sqm")
     || header.includes("metratura")
+    || header.includes("met2")
+    || header.includes("metri2")
     || header.includes("metri quadr")
     || header.includes("metri quad")
+    || /\bmet\b/.test(header)
+    || /\bmetri\b/.test(header)
   );
 }
 
@@ -2795,6 +2816,12 @@ async function loadGoogleSheetSalesRequests(config = {}) {
 
 function normalizeSalesRequestRecord(item = {}) {
   const rawStatus = String(item.status ?? item.stato ?? "").trim();
+  const firstContactState = normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || "");
+  const status = firstContactState === "sent" && shouldPromoteSalesRequestToFirstContact(rawStatus)
+    ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS
+    : firstContactState === "queued" && shouldPromoteSalesRequestToFirstContact(rawStatus)
+      ? SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS
+      : rawStatus || "new";
   return {
     id: String(item.id || randomUUID()),
     name: String(item.name || item.nome || "").trim(),
@@ -2807,7 +2834,7 @@ function normalizeSalesRequestRecord(item = {}) {
     service: normalizeSalesRequestService(item.service || item.servizio || ""),
     surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),
     assignment: normalizeSalesRequestAssignment(item.assignment || item.assegnazione || ""),
-    status: rawStatus || "new",
+    status,
     note: String(item.note || "").trim(),
     whatsappTemplate: String(
       item.whatsappTemplate
@@ -2828,7 +2855,7 @@ function normalizeSalesRequestRecord(item = {}) {
     sourceSpreadsheetId: String(item.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(item.sourceSheetName || "").trim(),
     sourceRowNumber: Number(item.sourceRowNumber || 0),
-    firstContactState: normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || ""),
+    firstContactState,
     firstContactScheduledAt: normalizeIsoDateTime(item.firstContactScheduledAt || item.firstContact?.scheduledAt || ""),
     firstContactSentAt: normalizeIsoDateTime(item.firstContactSentAt || item.firstContact?.sentAt || ""),
     firstContactBy: normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
