@@ -1659,6 +1659,53 @@ function getSalesRequestRawHeightValue(item = {}) {
   return dynamicEntry ? String(dynamicEntry[1] ?? "").trim() : "";
 }
 
+function isSalesRequestSqmHeader(normalizedHeader = "") {
+  const header = String(normalizedHeader || "").trim().replace(/\s+/g, " ");
+  if (!header) return false;
+  if ([
+    "mq",
+    "m q",
+    "m2",
+    "m 2",
+    "sqm",
+    "met",
+    "metri",
+    "metri quadri",
+    "metriquadrati",
+    "metri quadrati",
+    "mq richiesti",
+    "mq richiesta",
+    "mq da preventivare",
+    "metri richiesti",
+    "metri da preventivare",
+    "metri quadri richiesti",
+    "metri quadrati richiesti",
+  ].includes(header)) return true;
+  return header.includes("mq") || header.includes("metri quadr");
+}
+
+function getSalesRequestRawSqmValue(item = {}) {
+  const directValue = (
+    item.sqm
+    ?? item.mq
+    ?? item.met
+    ?? item.metri
+    ?? item.metriQuadri
+    ?? item.metri_quadri
+    ?? item.mqRichiesti
+    ?? item.mq_richiesti
+    ?? ""
+  );
+  const directText = String(directValue ?? "").trim();
+  if (directText) return directText;
+  const dynamicEntry = Object.entries(item || {}).find(([key, raw]) => {
+    const keyText = normalizeSalesRequestImportHeader(key || "");
+    if (!isSalesRequestSqmHeader(keyText)) return false;
+    return String(raw ?? "").trim() !== "";
+  });
+  return dynamicEntry ? String(dynamicEntry[1] ?? "").trim() : "";
+}
+
 function normalizeSalesRequestAssignment(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -2103,6 +2150,7 @@ function normalizeSalesRequestStatus(value = "") {
     "nuova",
     "nuovo",
     "lead",
+    "nuovo contatto",
     "richiesta nuova",
     "nuova richiesta",
   ].includes(normalized)) return "new";
@@ -2325,7 +2373,7 @@ function mapSheetSalesRequestField(target, header, rawValue, rawFormulaValue = "
     target.email = value;
     return;
   }
-  if (["mq", "sqm", "metri quadri", "metriquadrati"].includes(normalizedHeader)) {
+  if (isSalesRequestSqmHeader(normalizedHeader)) {
     target.sqm = value;
     return;
   }
@@ -2705,7 +2753,7 @@ function normalizeSalesRequestRecord(item = {}) {
     city: String(item.city || item.citta || "").trim(),
     phone: String(item.phone || item.telefono || "").trim(),
     email: String(item.email || "").trim(),
-    sqm: Number(toNumber(item.sqm ?? item.mq ?? 0).toFixed(2)),
+    sqm: Number(toNumber(getSalesRequestRawSqmValue(item)).toFixed(2)),
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: normalizeSalesRequestService(item.service || item.servizio || ""),
     surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),

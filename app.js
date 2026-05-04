@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260503-free-quote-gravel-price-100";
+const APP_SHELL_VERSION = "20260504-ops-debug-hardening-101";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2709,6 +2709,7 @@ function normalizeSalesRequestStatus(value = "") {
     "nuova",
     "nuovo",
     "lead",
+    "nuovo contatto",
     "richiesta nuova",
     "nuova richiesta",
   ].includes(normalized)) return "new";
@@ -2788,6 +2789,53 @@ function getSalesRequestRawHeightValue(item = {}) {
   const dynamicEntry = Object.entries(item || {}).find(([key, raw]) => {
     const keyText = normalizeImportHeader(key || "");
     if (!isSalesRequestHeightHeader(keyText)) return false;
+    return String(raw ?? "").trim() !== "";
+  });
+  return dynamicEntry ? String(dynamicEntry[1] ?? "").trim() : "";
+}
+
+function isSalesRequestSqmHeader(normalizedHeader = "") {
+  const header = String(normalizedHeader || "").trim().replace(/\s+/g, " ");
+  if (!header) return false;
+  if ([
+    "mq",
+    "m q",
+    "m2",
+    "m 2",
+    "sqm",
+    "met",
+    "metri",
+    "metri quadri",
+    "metriquadrati",
+    "metri quadrati",
+    "mq richiesti",
+    "mq richiesta",
+    "mq da preventivare",
+    "metri richiesti",
+    "metri da preventivare",
+    "metri quadri richiesti",
+    "metri quadrati richiesti",
+  ].includes(header)) return true;
+  return header.includes("mq") || header.includes("metri quadr");
+}
+
+function getSalesRequestRawSqmValue(item = {}) {
+  const directValue = (
+    item.sqm
+    ?? item.mq
+    ?? item.met
+    ?? item.metri
+    ?? item.metriQuadri
+    ?? item.metri_quadri
+    ?? item.mqRichiesti
+    ?? item.mq_richiesti
+    ?? ""
+  );
+  const directText = String(directValue ?? "").trim();
+  if (directText) return directText;
+  const dynamicEntry = Object.entries(item || {}).find(([key, raw]) => {
+    const keyText = normalizeImportHeader(key || "");
+    if (!isSalesRequestSqmHeader(keyText)) return false;
     return String(raw ?? "").trim() !== "";
   });
   return dynamicEntry ? String(dynamicEntry[1] ?? "").trim() : "";
@@ -3005,7 +3053,7 @@ function normalizeSalesRequestRecord(item = {}) {
     city: String(item.city || item.citta || "").trim(),
     phone: String(item.phone || item.telefono || "").trim(),
     email: String(item.email || "").trim(),
-    sqm: Number(toNumber(item.sqm ?? item.mq ?? 0).toFixed(2)),
+    sqm: Number(toNumber(getSalesRequestRawSqmValue(item)).toFixed(2)),
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: String(item.service || item.servizio || "").trim().toLowerCase(),
     surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
@@ -4290,7 +4338,7 @@ function mapImportedSalesRequestField(target, header, rawValue) {
     target.email = value;
     return;
   }
-  if (["mq", "sqm", "metri quadri", "metriquadrati"].includes(normalizedHeader)) {
+  if (isSalesRequestSqmHeader(normalizedHeader)) {
     target.sqm = value;
     return;
   }
@@ -6480,7 +6528,8 @@ function getOrderProgress(order) {
   const openBalance = getOpenBalance(order);
   const logisticsCompleted = isLogisticsOrderCompleted(order);
   const closed = isOrderClosed(order);
-  const warehouseReady = [
+  const installCompleted = isInstallationOrderCompleted(order);
+  const warehouseReady = installCompleted || [
     "in-preparazione",
     "pronto",
     "in-attesa-di-ritiro",
@@ -6519,6 +6568,7 @@ function getPhysicalMaterialLines(order) {
 
 function orderNeedsWarehouseWork(order) {
   if (!isRoutedToWarehouse(order)) return false;
+  if (isOrderFulfilledOrClosed(order)) return false;
   if (isLogisticsOrderCompleted(order)) return false;
   return true;
 }
@@ -6577,7 +6627,7 @@ function orderNeedsAccountingAction(order) {
 }
 
 function orderNeedsShippingAction(order) {
-  if (!order || isLogisticsOrderCompleted(order) || isOrderClosed(order)) return false;
+  if (!order || isOrderFulfilledOrClosed(order)) return false;
   const warehouse = order.operations?.warehouse || {};
   const mode = String(warehouse.fulfillmentMode || "").trim();
   if (isSampleOrder(order)) {
@@ -7080,6 +7130,7 @@ function filterOrdersForView(kind) {
       return !fulfilledOrClosed;
     }
     if (kind === "warehouse") {
+      if (isOrderFulfilledOrClosed(order)) return false;
       if (isLogisticsOrderCompleted(order)) return false;
       const group = inventoryGroupByProduct?.get(normalizeProductName(getCatalogLabel(order.operations?.product || ""))) || null;
       if (!group) return filter === "all";
@@ -7118,8 +7169,9 @@ function filterOrdersForView(kind) {
     }
     if (kind === "shipping") {
       const sample = isSampleOrder(order);
-      if (filter === "completed") return isLogisticsOrderCompleted(order);
-      if (isLogisticsOrderCompleted(order)) return false;
+      const fulfilledOrClosed = isOrderFulfilledOrClosed(order);
+      if (filter === "completed") return fulfilledOrClosed;
+      if (fulfilledOrClosed) return false;
       if (filter === "sample") return sample;
       if (filter === "all") return true;
       if (sample) return false;
@@ -10823,6 +10875,9 @@ function getShippingQueueGroupMeta(mode) {
 }
 
 function getShippingNextAction(order) {
+  if (isOrderFulfilledOrClosed(order)) {
+    return state.lang === "it" ? "Ordine completato: nessuna azione logistica aperta" : "Order completed: no open logistics action";
+  }
   if (isLogisticsOrderCompleted(order)) {
     return state.lang === "it" ? "Uscita completata: resta solo verifica finale" : "Dispatch completed: only final verification remains";
   }
@@ -12588,10 +12643,22 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
 async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   const payload = patch || buildInboxOrderFlowPayload(orderId);
   if (!payload) return;
-  const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  let saved;
+  try {
+    saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    setStatus(
+      ui.ordersStatus,
+      "error",
+      state.lang === "it"
+        ? `Impossibile salvare il flusso ordine. ${String(error.message || "").trim()}`
+        : `Unable to save order flow. ${String(error.message || "").trim()}`,
+    );
+    return;
+  }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.selectedOrderId = saved.id;
   renderCurrentViewOnly(state.currentView);
@@ -12653,10 +12720,22 @@ async function saveShipping(event) {
       warehouseNote: form.get("warehouseNote"),
     },
   };
-  let saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  let saved;
+  try {
+    saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    setStatus(
+      ui.shippingStatus,
+      "error",
+      state.lang === "it"
+        ? `Impossibile salvare la logistica. ${String(error.message || "").trim()}`
+        : `Unable to save logistics. ${String(error.message || "").trim()}`,
+    );
+    return;
+  }
   let shopifyMessage = "";
   const shouldSyncTrackingToShopify = Boolean(
     nextShipped
@@ -12727,10 +12806,22 @@ async function saveSampleShipping(event) {
     },
   };
 
-  let saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  let saved;
+  try {
+    saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    setStatus(
+      sampleStatusNode,
+      "error",
+      state.lang === "it"
+        ? `Impossibile salvare la spedizione campione. ${String(error.message || "").trim()}`
+        : `Unable to save sample shipping. ${String(error.message || "").trim()}`,
+    );
+    return;
+  }
 
   let shopifyMessage = "";
   const shouldSyncTrackingToShopify = Boolean(
@@ -13143,18 +13234,30 @@ async function saveInstallation(event) {
   if (!order) return;
   const form = new FormData(ui.installationForm);
   clearStatus(ui.installationStatus);
-  const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
-    method: "POST",
-    body: JSON.stringify({
-      installation: {
-        installDate: form.get("installDate"),
-        installTime: form.get("installTime"),
-        status: form.get("status"),
-        crew: getCrewForCurrentUser() || form.get("crew") || activeCrewLabelFromFilter(),
-        reportNote: form.get("reportNote"),
-      },
-    }),
-  });
+  let saved;
+  try {
+    saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
+      method: "POST",
+      body: JSON.stringify({
+        installation: {
+          installDate: form.get("installDate"),
+          installTime: form.get("installTime"),
+          status: form.get("status"),
+          crew: getCrewForCurrentUser() || form.get("crew") || activeCrewLabelFromFilter(),
+          reportNote: form.get("reportNote"),
+        },
+      }),
+    });
+  } catch (error) {
+    setStatus(
+      ui.installationStatus,
+      "error",
+      state.lang === "it"
+        ? `Impossibile salvare la posa. ${String(error.message || "").trim()}`
+        : `Unable to save installation. ${String(error.message || "").trim()}`,
+    );
+    return;
+  }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   if (saved.operations?.installation?.crew) {
     state.selectedInstallationCrew = saved.operations.installation.crew;
