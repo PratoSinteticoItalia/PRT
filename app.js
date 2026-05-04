@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-sales-request-filters-quote-wa-108";
+const APP_SHELL_VERSION = "20260504-garden-request-service-wa-109";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -18,6 +18,7 @@ const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
+const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
 const SALES_GENERATOR_PLANNER_REPORT_KEY = "quote-generator-planner-report";
 const SALES_GENERATOR_FRAME_MIN_HEIGHT = 560;
 const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 760;
@@ -3724,6 +3725,61 @@ function buildSalesRequestPrefill(item = {}) {
   };
 }
 
+function buildGardenPlannerRequestPrefill(item = {}) {
+  const requestSqm = getSalesRequestSqm(item);
+  const serviceLabel = getSalesRequestServiceLabel(item.service || "");
+  const surfaceLabel = getSalesRequestSurfaceLabel(item.surface || "");
+  const details = [
+    requestSqm > 0 ? `${requestSqm} mq` : "",
+    getSalesRequestHeightLabel(item.requestedHeight || ""),
+    serviceLabel,
+    surfaceLabel,
+  ].filter((value) => {
+    const normalized = normalizeLooseString(value);
+    return value
+      && normalized !== "mq da definire"
+      && normalized !== "sqm pending"
+      && normalized !== "altezza da definire"
+      && normalized !== "height pending"
+      && normalized !== "da definire"
+      && normalized !== "to define";
+  });
+  return {
+    runId: Date.now(),
+    source: "sales-request",
+    requestId: String(item.id || "").trim(),
+    client: getSalesRequestDisplayName(item),
+    city: String(item.city || "").trim(),
+    address: String(item.city || "").trim(),
+    phone: String(item.phone || "").trim(),
+    email: String(item.email || "").trim(),
+    sqm: requestSqm > 0 ? requestSqm : "",
+    requestedHeight: String(item.requestedHeight || "").trim(),
+    service: String(item.service || "").trim(),
+    surface: String(item.surface || "").trim(),
+    note: [String(item.note || "").trim(), details.join(" · ")].filter(Boolean).join(" · "),
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function openSelectedSalesRequestInGardenPlanner() {
+  const request = getSelectedSalesRequest();
+  if (!request) {
+    window.alert(state.lang === "it" ? "Seleziona una richiesta da aprire nel Garden Planner." : "Select a request to open in Garden Planner.");
+    return false;
+  }
+  try {
+    window.localStorage.setItem(GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY, JSON.stringify(buildGardenPlannerRequestPrefill(request)));
+  } catch {}
+  const targetUrl = new URL("./garden-planner.html", window.location.href);
+  targetUrl.searchParams.set("v", APP_SHELL_VERSION);
+  targetUrl.searchParams.set("shell", APP_SHELL_VERSION);
+  targetUrl.searchParams.set("request", "1");
+  targetUrl.searchParams.set("source", "sales-request");
+  window.open(targetUrl.toString(), "_blank", "noopener,noreferrer");
+  return true;
+}
+
 function getSalesGeneratorFrameBaseSrc() {
   const frame = ui.salesGeneratorFrame;
   if (!frame) return "";
@@ -3989,6 +4045,7 @@ function isGenericSalesRequestWhatsAppTemplate(value = "") {
     || normalized === "first whatsapp contact"
     || normalized.includes("messaggio preimpostato")
     || normalized.includes("template whatsapp")
+    || (normalized.includes("prato sintetico italia") && normalized.includes("proposta mirata") && normalized.includes("misure"))
     || (normalized.includes("grazie per la richiesta") && normalized.includes("ti confermiamo disponibilita"))
     || (normalized.includes("thank you for your request") && normalized.includes("we can support"))
   );
@@ -4003,23 +4060,46 @@ function getSalesRequestTemplateText(item = {}) {
 function buildSalesRequestDefaultWhatsAppMessage(item = {}) {
   const recipient = getSalesRequestFirstName(item);
   const operatorName = getSalesRequestContactOperatorName(item);
+  const serviceIntent = getSalesRequestServiceIntent(item.service || item.servizio || "");
   if (state.lang === "it") {
+    if (serviceIntent === "supply-install") {
+      return [
+        `Ciao ${recipient}, buongiorno. Sono ${operatorName} di Prato Sintetico Italia.`,
+        "Per capire bene il lavoro di fornitura e posa mi mandi queste info?",
+        "- misure o mq dell'area",
+        "- superficie attuale",
+        "- zona del cantiere",
+        "- utilizzo previsto",
+        "Poi ti preparo una proposta mirata con il prato piu adatto e una prima indicazione sulla posa.",
+      ].join("\n");
+    }
     return [
       `Ciao ${recipient}, buongiorno. Sono ${operatorName} di Prato Sintetico Italia.`,
-      "Per capire quale prato consigliarti mi mandi queste tre info?",
+      "Per consigliarti il prato piu adatto mi mandi queste info?",
       "- misure o mq dell'area",
-      "- superficie dove andra posato",
+      "- dove andra posato",
       "- utilizzo previsto",
-      "Appena le ho ti preparo una proposta mirata.",
+      "Con queste ti preparo una proposta mirata con modelli e tempi di consegna.",
+    ].join("\n");
+  }
+  if (serviceIntent === "supply-install") {
+    return [
+      `Hello ${recipient}, good morning. This is ${operatorName} from Prato Sintetico Italia.`,
+      "To understand the supply and installation work, could you send me these details?",
+      "- area size or square meters",
+      "- current surface",
+      "- job location",
+      "- intended use",
+      "Then I will prepare a focused proposal with the most suitable turf and an initial installation note.",
     ].join("\n");
   }
   return [
     `Hello ${recipient}, good morning. This is ${operatorName} from Prato Sintetico Italia.`,
     "To suggest the right turf, could you send me three details?",
     "- area size or square meters",
-    "- surface where it will be installed",
+    "- where it will be installed",
     "- intended use",
-    "Once I have them, I will prepare a focused proposal.",
+    "With that I will prepare a focused proposal with models and delivery timing.",
   ].join("\n");
 }
 
@@ -4039,17 +4119,32 @@ function buildSalesRequestWhatsAppUrl(item = {}) {
 
 function buildSalesRequestQuoteWhatsAppMessage(item = {}) {
   const recipient = getSalesRequestFirstName(item);
+  const serviceIntent = getSalesRequestServiceIntent(item.service || item.servizio || "");
   if (state.lang !== "it") {
+    if (serviceIntent === "supply-install") {
+      return [
+        `Hello ${recipient}, I am sending you the quote for the synthetic turf supply and installation we discussed.`,
+        "I selected these models to give you a good balance of look and durability; the quote also includes the installation items linked to the job.",
+        "If you want, I can explain the technical details or compare them with alternatives.",
+      ].join("\n\n");
+    }
     return [
       `Hello ${recipient}, I am sending you the quote for the synthetic turf supply we discussed.`,
       "I selected these models because they fit the use you described and offer a good balance of look and durability.",
       "If you want, I can explain the technical details or compare them with alternatives.",
     ].join("\n\n");
   }
+  if (serviceIntent === "supply-install") {
+    return [
+      `Ciao ${recipient}, ti inoltro il preventivo per fornitura e posa del prato sintetico che abbiamo valutato.`,
+      "Ho scelto questi modelli per avere una buona resa estetica e durata; nel preventivo trovi anche posa e materiali collegati al lavoro.",
+      "Se vuoi ti spiego le caratteristiche tecniche o valutiamo insieme eventuali alternative.",
+    ].join("\n\n");
+  }
   return [
-    `Ciao ${recipient}, ti inoltro il preventivo per la fornitura del prato sintetico che abbiamo valutato 🌿`,
-    "Ho scelto questi modelli perché, per l'utilizzo che mi hai descritto, garantiscono una buona resa estetica e durata nel tempo.",
-    "Se vuoi posso spiegarti nel dettaglio le caratteristiche tecniche o confrontarli con delle alternative.",
+    `Ciao ${recipient}, ti inoltro il preventivo per la fornitura del prato sintetico che abbiamo valutato.`,
+    "Ho selezionato questi modelli per darti una buona resa estetica e durata in base all'utilizzo che mi hai indicato.",
+    "Se vuoi ti spiego le differenze tecniche o li confrontiamo con alternative.",
   ].join("\n\n");
 }
 
@@ -8917,14 +9012,11 @@ function renderSalesGenerator() {
             <span>${escapeHtml(getSalesRequestSurfaceLabel(selected.surface))}</span>
           </div>
           <p class="sales-generator-request-note" title="${escapeHtml(selected.note || "")}">${escapeHtml(selected.note || (state.lang === "it" ? "Nessuna nota commerciale." : "No sales note."))}</p>
-          ${plannerBridge
-            ? `
-              <div class="sales-generator-card-foot">
-                <button class="ghost-button small-button" type="button" data-action="use-planner-prefill">${state.lang === "it" ? "Usa Garden Planner" : "Use Garden Planner"}</button>
-                ${plannerBridge.reportHtml.technical ? `<button class="ghost-button small-button" type="button" data-action="open-planner-report" data-variant="technical">${state.lang === "it" ? "Apri report" : "Open report"}</button>` : ""}
-              </div>
-            `
-            : ""}
+          <div class="sales-generator-card-foot">
+            <button class="ghost-button small-button" type="button" data-action="open-request-garden-planner">${state.lang === "it" ? "Apri in Garden Planner" : "Open in Garden Planner"}</button>
+            ${plannerBridge ? `<button class="ghost-button small-button" type="button" data-action="use-planner-prefill">${state.lang === "it" ? "Usa dati planner" : "Use planner data"}</button>` : ""}
+            ${plannerBridge?.reportHtml?.technical ? `<button class="ghost-button small-button" type="button" data-action="open-planner-report" data-variant="technical">${state.lang === "it" ? "Apri report" : "Open report"}</button>` : ""}
+          </div>
         `
       : plannerBridge
       ? `
@@ -8961,7 +9053,7 @@ function renderSalesGenerator() {
     ui.salesGeneratorContactPanel.hidden = !canShowContacts;
     ui.salesGeneratorContactPanel.classList.toggle("hidden", !canShowContacts);
     if (ui.salesGeneratorContactSummary) {
-      const whatsappPreview = String(selected?.whatsappTemplate || "").trim();
+      const whatsappPreview = canShowContacts ? buildSalesRequestQuoteWhatsAppMessage(selected) : "";
       ui.salesGeneratorContactSummary.textContent = canShowContacts
         ? `${getSalesRequestDisplayName(selected)} · ${selected.phone || "—"} · ${selected.email || "—"}${whatsappPreview ? `\n${whatsappPreview}` : ""}`
         : "";
@@ -14536,6 +14628,10 @@ function handleGlobalClick(event) {
   }
   if (action === "use-planner-prefill") {
     activatePlannerPrefill({ force: true, openView: state.currentView !== "sales-generator" });
+    return;
+  }
+  if (action === "open-request-garden-planner") {
+    openSelectedSalesRequestInGardenPlanner();
     return;
   }
   if (action === "open-planner-report") {

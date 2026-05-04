@@ -89,7 +89,8 @@ const DEFAULT_TRAVEL_SETTINGS = {
 
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
-const APP_SHELL_VERSION = "20260504-sales-request-filters-quote-wa-108";
+const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
+const APP_SHELL_VERSION = "20260504-garden-request-service-wa-109";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -113,6 +114,43 @@ const getLocalISODate = () => {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
+
+function shouldUseSalesRequestPrefill() {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search || "");
+  const source = String(params.get("source") || "").trim().toLowerCase();
+  const requestFlag = String(params.get("request") || params.get("prefill") || "").trim().toLowerCase();
+  return source === "sales-request" || requestFlag === "1" || requestFlag === "sales-request";
+}
+
+function readGardenPlannerRequestPrefill() {
+  if (!shouldUseSalesRequestPrefill()) return null;
+  try {
+    const raw = window.localStorage.getItem(GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (String(parsed?.source || "").trim() !== "sales-request") return null;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function getInitialProjectInfo() {
+  const fallback = { client: "", address: "", date: getLocalISODate(), notes: "" };
+  const request = readGardenPlannerRequestPrefill();
+  if (!request) return fallback;
+  const client = String(request.client || request.name || "").trim();
+  const city = String(request.city || request.locality || "").trim();
+  const address = String(request.address || city || "").trim();
+  const notes = String(request.note || request.notes || "").trim();
+  return {
+    client,
+    address,
+    date: getLocalISODate(),
+    notes,
+  };
+}
 
 function sanitizeQuoteBridgeReportHtml(value) {
   const raw = String(value || "").trim();
@@ -2193,7 +2231,7 @@ const fieldInp = { width: "100%", padding: "10px 14px", border: "1.5px solid " +
    ═══════════════════════════════════════════ */
 function GardenPlanner() {
   const [viewerRole, setViewerRole] = useState("crew");
-  const [projectInfo, setProjectInfo] = useState({ client: "", address: "", date: getLocalISODate(), notes: "" });
+  const [projectInfo, setProjectInfo] = useState(getInitialProjectInfo);
   const [travel, setTravel] = useState(DEFAULT_TRAVEL_SETTINGS);
   const shape = "custom";
   const [customPts, setCustomPts] = useState([]);

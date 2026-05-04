@@ -1860,6 +1860,7 @@ function isGenericSalesRequestWhatsAppTemplate(value = "") {
     || normalized === "first whatsapp contact"
     || normalized.includes("messaggio preimpostato")
     || normalized.includes("template whatsapp")
+    || (normalized.includes("prato sintetico italia") && normalized.includes("proposta mirata") && normalized.includes("misure"))
     || (normalized.includes("grazie per la richiesta") && normalized.includes("ti confermiamo disponibilita"))
     || (normalized.includes("thank you for your request") && normalized.includes("we can support"))
   );
@@ -1891,13 +1892,25 @@ function getSalesRequestContactOperatorName(item = {}) {
 function buildSalesRequestDefaultWhatsAppMessage(item = {}) {
   const recipient = getSalesRequestFirstName(item);
   const operatorName = getSalesRequestContactOperatorName(item);
+  const serviceIntent = getSalesRequestServiceIntent(item.service || item.servizio || "");
+  if (serviceIntent === "supply-install") {
+    return [
+      `Ciao ${recipient}, buongiorno. Sono ${operatorName} di Prato Sintetico Italia.`,
+      "Per capire bene il lavoro di fornitura e posa mi mandi queste info?",
+      "- misure o mq dell'area",
+      "- superficie attuale",
+      "- zona del cantiere",
+      "- utilizzo previsto",
+      "Poi ti preparo una proposta mirata con il prato piu adatto e una prima indicazione sulla posa.",
+    ].join("\n");
+  }
   return [
     `Ciao ${recipient}, buongiorno. Sono ${operatorName} di Prato Sintetico Italia.`,
-    "Per capire quale prato consigliarti mi mandi queste tre info?",
+    "Per consigliarti il prato piu adatto mi mandi queste info?",
     "- misure o mq dell'area",
-    "- superficie dove andra posato",
+    "- dove andra posato",
     "- utilizzo previsto",
-    "Appena le ho ti preparo una proposta mirata.",
+    "Con queste ti preparo una proposta mirata con modelli e tempi di consegna.",
   ].join("\n");
 }
 
