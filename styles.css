@@ -10104,6 +10104,31 @@ body.mobile-safe-mode .nav-link.is-active {
   outline: none;
 }
 
+.sales-request-filter-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: -4px 0 16px;
+}
+
+.sales-request-filter-row .field {
+  margin: 0;
+}
+
+.sales-request-filter-row select {
+  min-height: 42px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #203425;
+}
+
+@media (max-width: 680px) {
+  .sales-request-filter-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .search-field-clear {
   position: absolute;
   top: 50%;

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-sales-generator-mailto-107";
+const APP_SHELL_VERSION = "20260504-sales-request-filters-quote-wa-108";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1043,6 +1043,8 @@ const state = {
     installation: "all",
     accounting: "all",
     shipping: "all",
+    salesRequestAssignment: "all",
+    salesRequestStatus: "all",
   },
   search: {
     orders: "",
@@ -1175,6 +1177,8 @@ const ui = {
   ordersPagination: document.getElementById("orders-pagination"),
   ordersStatus: document.getElementById("orders-status"),
   salesRequestsSearch: document.getElementById("sales-requests-search"),
+  salesRequestAssignmentFilter: document.getElementById("sales-request-assignment-filter"),
+  salesRequestStatusFilter: document.getElementById("sales-request-status-filter"),
   salesRequestImportButton: document.getElementById("sales-request-import-button"),
   salesRequestImportWrap: document.getElementById("sales-request-import-wrap"),
   salesRequestImportText: document.getElementById("sales-request-import-text"),
@@ -3467,6 +3471,80 @@ function getSalesRequestAssignmentOptions() {
   return [...SALES_REQUEST_ASSIGNMENT_REFERENCE];
 }
 
+function getSalesRequestAssignmentFilterOptions(items = state.salesRequests) {
+  const options = [
+    { value: "all", label: state.lang === "it" ? "Tutte" : "All" },
+    { value: "unassigned", label: state.lang === "it" ? "Da assegnare" : "Unassigned" },
+  ];
+  const seen = new Set(["all", "unassigned"]);
+  const append = (label = "") => {
+    const assignment = normalizeSalesRequestAssignment(label);
+    const key = normalizeLooseString(assignment);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    options.push({ value: key, label: assignment });
+  };
+  getSalesRequestAssignmentOptions().forEach(append);
+  items.forEach((item) => append(item.assignment || item.assegnazione || item.firstContactBy || ""));
+  return options.map((option) => ({
+    ...option,
+    count: items.filter((item) => {
+      const assignment = normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
+      if (option.value === "all") return true;
+      if (option.value === "unassigned") return !assignment;
+      return normalizeLooseString(assignment) === option.value;
+    }).length,
+  }));
+}
+
+function getSalesRequestStatusFilterOptions(items = state.salesRequests) {
+  const options = [{ value: "all", label: state.lang === "it" ? "Tutti" : "All" }];
+  const seen = new Set(["all"]);
+  const append = (status = "") => {
+    const label = String(status || "").trim();
+    if (!label) return;
+    const key = normalizeLooseString(label);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    options.push({ value: key, label });
+  };
+  getSalesRequestStatusOptions().forEach(append);
+  items.forEach((item) => append(item.status || ""));
+  return options
+    .map((option) => ({
+      ...option,
+      count: items.filter((item) => option.value === "all" || normalizeLooseString(item.status || "") === option.value).length,
+    }))
+    .filter((option) => option.value === "all" || option.count > 0);
+}
+
+function syncSalesRequestFilters() {
+  if (ui.salesRequestAssignmentFilter) {
+    const current = String(state.filters.salesRequestAssignment || "all");
+    ui.salesRequestAssignmentFilter.replaceChildren(...getSalesRequestAssignmentFilterOptions().map((item) => {
+      const option = document.createElement("option");
+      option.value = item.value;
+      option.textContent = `${item.label} (${item.count})`;
+      return option;
+    }));
+    const hasCurrent = Array.from(ui.salesRequestAssignmentFilter.options).some((option) => option.value === current);
+    ui.salesRequestAssignmentFilter.value = hasCurrent ? current : "all";
+    state.filters.salesRequestAssignment = ui.salesRequestAssignmentFilter.value || "all";
+  }
+  if (ui.salesRequestStatusFilter) {
+    const current = String(state.filters.salesRequestStatus || "all");
+    ui.salesRequestStatusFilter.replaceChildren(...getSalesRequestStatusFilterOptions().map((item) => {
+      const option = document.createElement("option");
+      option.value = item.value;
+      option.textContent = `${item.label} (${item.count})`;
+      return option;
+    }));
+    const hasCurrent = Array.from(ui.salesRequestStatusFilter.options).some((option) => option.value === current);
+    ui.salesRequestStatusFilter.value = hasCurrent ? current : "all";
+    state.filters.salesRequestStatus = ui.salesRequestStatusFilter.value || "all";
+  }
+}
+
 function getSalesRequestHeightLabel(value = "") {
   return String(value || "").trim() || (state.lang === "it" ? "Altezza da definire" : "Height pending");
 }
@@ -3957,6 +4035,29 @@ function buildSalesRequestWhatsAppUrl(item = {}) {
   if (!phone) return "";
   const waPhone = phone.replace(/[^\d]/g, "");
   return `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
+}
+
+function buildSalesRequestQuoteWhatsAppMessage(item = {}) {
+  const recipient = getSalesRequestFirstName(item);
+  if (state.lang !== "it") {
+    return [
+      `Hello ${recipient}, I am sending you the quote for the synthetic turf supply we discussed.`,
+      "I selected these models because they fit the use you described and offer a good balance of look and durability.",
+      "If you want, I can explain the technical details or compare them with alternatives.",
+    ].join("\n\n");
+  }
+  return [
+    `Ciao ${recipient}, ti inoltro il preventivo per la fornitura del prato sintetico che abbiamo valutato 🌿`,
+    "Ho scelto questi modelli perché, per l'utilizzo che mi hai descritto, garantiscono una buona resa estetica e durata nel tempo.",
+    "Se vuoi posso spiegarti nel dettaglio le caratteristiche tecniche o confrontarli con delle alternative.",
+  ].join("\n\n");
+}
+
+function buildSalesRequestQuoteWhatsAppUrl(item = {}) {
+  const phone = normalizePhoneForWhatsApp(item.phone);
+  if (!phone) return "";
+  const waPhone = phone.replace(/[^\d]/g, "");
+  return `https://wa.me/${waPhone}?text=${encodeURIComponent(buildSalesRequestQuoteWhatsAppMessage(item))}`;
 }
 
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
@@ -8492,6 +8593,8 @@ function renderOrders() {
 
 function getFilteredSalesRequests() {
   const query = String(state.search.salesRequests || "").trim().toLowerCase();
+  const assignmentFilter = String(state.filters.salesRequestAssignment || "all");
+  const statusFilter = String(state.filters.salesRequestStatus || "all");
   return [...state.salesRequests]
     .sort((left, right) => {
       const leftRow = Number(left.sourceRowNumber || 0);
@@ -8507,6 +8610,10 @@ function getFilteredSalesRequests() {
       return String(right.id || "").localeCompare(String(left.id || ""));
     })
     .filter((item) => {
+      const assignment = normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
+      if (assignmentFilter === "unassigned" && assignment) return false;
+      if (!["all", "unassigned"].includes(assignmentFilter) && normalizeLooseString(assignment) !== assignmentFilter) return false;
+      if (statusFilter !== "all" && normalizeLooseString(item.status || "") !== statusFilter) return false;
       if (!query) return true;
       const haystack = [
         getSalesRequestDisplayName(item),
@@ -8546,12 +8653,13 @@ function getFilteredSalesContents({ ignoreCategory = false } = {}) {
 }
 
 function renderSalesRequests() {
+  syncSalesRequestFilters();
   const filtered = getFilteredSalesRequests();
   const { pageItems, totalPages, totalItems } = paginateSalesRequests(filtered);
   const bulkSelectedIds = new Set(getSalesRequestBulkSelectedIds());
   let selected = ensureSelectedSalesRequest();
-  if (selected && !filtered.some((item) => item.id === selected.id) && filtered.length) {
-    selected = filtered[0];
+  if (selected && !filtered.some((item) => item.id === selected.id)) {
+    selected = filtered[0] || null;
   }
   if (!selected && filtered.length) {
     selected = filtered[0];
@@ -8616,7 +8724,7 @@ function renderSalesRequests() {
           </article>
         `;
       }).join("")
-      : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta disponibile." : "No requests available."}</div>`;
+      : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters."}</div>`;
   }
   if (ui.salesRequestsPagination) {
     const showPagination = totalItems > getSalesRequestsPageSize();
@@ -8848,7 +8956,7 @@ function renderSalesGenerator() {
   }
   if (ui.salesGeneratorContactPanel) {
     const canShowContacts = !generatorOnlyMode && Boolean(selected);
-    const whatsappUrl = canShowContacts ? buildSalesRequestWhatsAppUrl(selected) : "";
+    const whatsappUrl = canShowContacts ? buildSalesRequestQuoteWhatsAppUrl(selected) : "";
     const emailUrl = canShowContacts ? buildSalesRequestMailtoUrl(selected) : "";
     ui.salesGeneratorContactPanel.hidden = !canShowContacts;
     ui.salesGeneratorContactPanel.classList.toggle("hidden", !canShowContacts);
@@ -14776,6 +14884,18 @@ bindEvent(ui.salesRequestsSearch, "input", (event) => {
   state.search.salesRequests = event.target.value;
   state.salesRequestPage = 1;
   scheduleSearchRender("sales-requests", renderSalesRequests);
+});
+bindEvent(ui.salesRequestAssignmentFilter, "change", (event) => {
+  state.filters.salesRequestAssignment = event.target.value || "all";
+  state.salesRequestPage = 1;
+  clearSalesRequestBulkSelection({ render: false });
+  renderSalesRequests();
+});
+bindEvent(ui.salesRequestStatusFilter, "change", (event) => {
+  state.filters.salesRequestStatus = event.target.value || "all";
+  state.salesRequestPage = 1;
+  clearSalesRequestBulkSelection({ render: false });
+  renderSalesRequests();
 });
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
