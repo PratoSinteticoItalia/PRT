@@ -1805,6 +1805,8 @@ function isGenericSalesRequestWhatsAppTemplate(value = "") {
     || normalized === "first whatsapp contact"
     || normalized.includes("messaggio preimpostato")
     || normalized.includes("template whatsapp")
+    || (normalized.includes("grazie per la richiesta") && normalized.includes("ti confermiamo disponibilita"))
+    || (normalized.includes("thank you for your request") && normalized.includes("we can support"))
   );
 }
 
@@ -1819,23 +1821,36 @@ function getSalesRequestDisplayName(item = {}) {
   return `${item.name || ""} ${item.surname || ""}`.trim() || "cliente";
 }
 
+function getSalesRequestFirstName(item = {}) {
+  const direct = String(item.name || "").trim().replace(/\s+/g, " ");
+  if (direct) return direct.split(" ")[0];
+  const displayName = getSalesRequestDisplayName(item);
+  if (!displayName || displayName === "cliente") return "cliente";
+  return displayName.split(/\s+/)[0] || "cliente";
+}
+
+function getSalesRequestContactOperatorName(item = {}) {
+  return normalizeSalesRequestAssignment(item.assignment || item.firstContactBy || "") || "Gabriele";
+}
+
 function buildSalesRequestDefaultWhatsAppMessage(item = {}) {
-  const recipient = getSalesRequestDisplayName(item);
-  const serviceIntent = getSalesRequestServiceIntent(item.service);
-  if (serviceIntent === "supply-only") {
-    return `Ciao ${recipient}, grazie per la richiesta. Ti confermiamo disponibilita per la sola fornitura del prato sintetico. Se vuoi ti inviamo subito proposta e tempi di consegna.`;
-  }
-  if (serviceIntent === "supply-install") {
-    return `Ciao ${recipient}, grazie per la richiesta. Ti confermiamo disponibilita per fornitura e posa completa. Se vuoi ti inviamo proposta con materiali, posa e tempistiche.`;
-  }
-  return `Ciao ${recipient}, ti contattiamo in merito al tuo preventivo.`;
+  const recipient = getSalesRequestFirstName(item);
+  const operatorName = getSalesRequestContactOperatorName(item);
+  return [
+    `Ciao ${recipient}, buongiorno. Sono ${operatorName} di Prato Sintetico Italia.`,
+    "Per capire quale prato consigliarti mi mandi queste tre info?",
+    "- misure o mq dell'area",
+    "- superficie dove andra posato",
+    "- utilizzo previsto",
+    "Appena le ho ti preparo una proposta mirata.",
+  ].join("\n");
 }
 
 function getSalesRequestAutomatedWhatsAppMessage(item = {}) {
   const template = String(item.whatsappTemplate || "").trim();
   if (template && !isGenericSalesRequestWhatsAppTemplate(template)) return template;
   const fromUrl = extractSalesRequestMessageFromWhatsAppUrl(item.whatsappUrl || "");
-  if (fromUrl) return fromUrl;
+  if (fromUrl && !isGenericSalesRequestWhatsAppTemplate(fromUrl)) return fromUrl;
   return buildSalesRequestDefaultWhatsAppMessage(item);
 }
 

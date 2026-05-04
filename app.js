@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-ops-debug-hardening-101";
+const APP_SHELL_VERSION = "20260504-whatsapp-first-contact-102";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3173,6 +3173,21 @@ function getSalesRequestDisplayName(item = {}) {
   return `${item.name || ""} ${item.surname || ""}`.trim() || (state.lang === "it" ? "Richiesta senza nome" : "Unnamed request");
 }
 
+function getSalesRequestFirstName(item = {}) {
+  const direct = String(item.name || "").trim().replace(/\s+/g, " ");
+  if (direct) return direct.split(" ")[0];
+  const displayName = getSalesRequestDisplayName(item);
+  const fallbackName = state.lang === "it" ? "cliente" : "there";
+  if (!displayName || displayName === "Richiesta senza nome" || displayName === "Unnamed request") return fallbackName;
+  return displayName.split(/\s+/)[0] || fallbackName;
+}
+
+function getSalesRequestContactOperatorName(item = {}) {
+  return normalizeSalesRequestAssignment(item.assignment || item.firstContactBy || "")
+    || getSalesRequestOperatorFromCurrentUser()
+    || "Gabriele";
+}
+
 function getSalesRequestStatusLabel(status = "") {
   const raw = String(status || "").trim();
   if (raw && !["new", "quoted", "followup", "closed"].includes(raw)) {
@@ -3777,6 +3792,29 @@ function normalizeSalesRequestWhatsAppUrl(value = "") {
   return "";
 }
 
+function extractSalesRequestMessageFromWhatsAppUrl(value = "") {
+  const normalizedUrl = normalizeSalesRequestWhatsAppUrl(value);
+  if (!normalizedUrl) return "";
+  try {
+    const parsed = new URL(normalizedUrl);
+    return String(parsed.searchParams.get("text") || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function replaceSalesRequestWhatsAppUrlMessage(value = "", message = "") {
+  const normalizedUrl = normalizeSalesRequestWhatsAppUrl(value);
+  if (!normalizedUrl) return "";
+  try {
+    const parsed = new URL(normalizedUrl);
+    parsed.searchParams.set("text", message);
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
 function normalizePhoneForWhatsApp(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -3811,6 +3849,8 @@ function isGenericSalesRequestWhatsAppTemplate(value = "") {
     || normalized === "first whatsapp contact"
     || normalized.includes("messaggio preimpostato")
     || normalized.includes("template whatsapp")
+    || (normalized.includes("grazie per la richiesta") && normalized.includes("ti confermiamo disponibilita"))
+    || (normalized.includes("thank you for your request") && normalized.includes("we can support"))
   );
 }
 
@@ -3821,32 +3861,38 @@ function getSalesRequestTemplateText(item = {}) {
 }
 
 function buildSalesRequestDefaultWhatsAppMessage(item = {}) {
-  const recipient = getSalesRequestDisplayName(item);
-  const serviceIntent = getSalesRequestServiceIntent(item.service);
+  const recipient = getSalesRequestFirstName(item);
+  const operatorName = getSalesRequestContactOperatorName(item);
   if (state.lang === "it") {
-    if (serviceIntent === "supply-only") {
-      return `Ciao ${recipient}, grazie per la richiesta. Ti confermiamo disponibilita per la sola fornitura del prato sintetico. Se vuoi ti inviamo subito proposta e tempi di consegna.`;
-    }
-    if (serviceIntent === "supply-install") {
-      return `Ciao ${recipient}, grazie per la richiesta. Ti confermiamo disponibilita per fornitura e posa completa. Se vuoi ti inviamo proposta con materiali, posa e tempistiche.`;
-    }
-    return `Ciao ${recipient}, ti contattiamo in merito al tuo preventivo.`;
+    return [
+      `Ciao ${recipient}, buongiorno. Sono ${operatorName} di Prato Sintetico Italia.`,
+      "Per capire quale prato consigliarti mi mandi queste tre info?",
+      "- misure o mq dell'area",
+      "- superficie dove andra posato",
+      "- utilizzo previsto",
+      "Appena le ho ti preparo una proposta mirata.",
+    ].join("\n");
   }
-  if (serviceIntent === "supply-only") {
-    return `Hello ${recipient}, thank you for your request. We can support supply-only and share quote details with delivery timing.`;
-  }
-  if (serviceIntent === "supply-install") {
-    return `Hello ${recipient}, thank you for your request. We can support full supply and installation and share the complete quote details.`;
-  }
-  return `Hello ${recipient}, we are contacting you about your quote.`;
+  return [
+    `Hello ${recipient}, good morning. This is ${operatorName} from Prato Sintetico Italia.`,
+    "To suggest the right turf, could you send me three details?",
+    "- area size or square meters",
+    "- surface where it will be installed",
+    "- intended use",
+    "Once I have them, I will prepare a focused proposal.",
+  ].join("\n");
 }
 
 function buildSalesRequestWhatsAppUrl(item = {}) {
   const explicitUrl = normalizeSalesRequestWhatsAppUrl(item.whatsappUrl || item.whatsappTemplate || "");
-  if (explicitUrl) return explicitUrl;
+  const message = getSalesRequestTemplateText(item) || buildSalesRequestDefaultWhatsAppMessage(item);
+  if (explicitUrl) {
+    const explicitMessage = extractSalesRequestMessageFromWhatsAppUrl(explicitUrl);
+    if (!explicitMessage || !isGenericSalesRequestWhatsAppTemplate(explicitMessage)) return explicitUrl;
+    return replaceSalesRequestWhatsAppUrlMessage(explicitUrl, message) || explicitUrl;
+  }
   const phone = normalizePhoneForWhatsApp(item.phone);
   if (!phone) return "";
-  const message = getSalesRequestTemplateText(item) || buildSalesRequestDefaultWhatsAppMessage(item);
   const waPhone = phone.replace(/[^\d]/g, "");
   return `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
 }
@@ -3901,7 +3947,7 @@ function buildSalesRequestMailtoUrl(item = {}) {
   if (!email) return "";
   const subject = state.lang === "it" ? "Aggiornamento preventivo" : "Quote update";
   const body = getSalesRequestTemplateText(item)
-    || `${state.lang === "it" ? "Ciao" : "Hello"} ${getSalesRequestDisplayName(item)},`;
+    || `${state.lang === "it" ? "Ciao" : "Hello"} ${getSalesRequestFirstName(item)},`;
   return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
