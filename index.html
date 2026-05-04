@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260504-whatsapp-first-contact-102" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260504-whatsapp-first-contact-102" />
+    <link rel="preload" href="./styles.css?v=20260504-sales-request-empty-sqm-103" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260504-sales-request-empty-sqm-103" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -109,7 +109,7 @@
         <div class="topbar-right">
           <button id="reload-button" class="topbar-btn primary">Ricarica dati</button>
           <button id="new-order-button" class="topbar-btn">Nuovo ordine</button>
-          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260504-whatsapp-first-contact-102&shell=20260504-whatsapp-first-contact-102" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
+          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260504-sales-request-empty-sqm-103&shell=20260504-sales-request-empty-sqm-103" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
           <div class="lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
             <button class="lang-btn" data-lang="en">EN</button>
@@ -132,7 +132,7 @@
             <button id="mobile-pill-new-order-button" class="mobile-pill-tool" type="button">Nuovo ordine</button>
             <a
               id="mobile-pill-garden-planner-link"
-              href="./garden-planner.html?v=20260504-whatsapp-first-contact-102&shell=20260504-whatsapp-first-contact-102"
+              href="./garden-planner.html?v=20260504-sales-request-empty-sqm-103&shell=20260504-sales-request-empty-sqm-103"
               class="mobile-pill-tool"
               style="text-decoration: none;"
             >
@@ -238,7 +238,7 @@
         </nav>
 
         <div class="sidebar-mobile-tools">
-          <a href="./garden-planner.html?v=20260504-whatsapp-first-contact-102&shell=20260504-whatsapp-first-contact-102" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
+          <a href="./garden-planner.html?v=20260504-sales-request-empty-sqm-103&shell=20260504-sales-request-empty-sqm-103" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
           <button id="mobile-reload-button" class="sidebar-quick-link" type="button">Ricarica dati</button>
           <div class="lang-switch sidebar-lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
@@ -520,7 +520,7 @@
                 <p style="margin: 0 0 10px; color: var(--muted); font-size: 13px;">
                   Incolla un JSON oppure un CSV con intestazioni tipo: `nome`, `cognome`, `città`, `telefono`, `email`, `mq`, `servizio`, `fondo`, `assegnazione`, `stato`, `note`.
                 </p>
-                <textarea id="sales-request-import-text" class="text-input order-import-text" rows="6" placeholder='[{"nome":"Mario","cognome":"Rossi","città":"Roma","telefono":"+39 ...","mq":35,"servizio":"posa"}]'></textarea>
+                <textarea id="sales-request-import-text" class="text-input order-import-text" rows="6" placeholder='[{"nome":"Mario","cognome":"Rossi","città":"Roma","telefono":"+39 ...","mq":"","servizio":"posa"}]'></textarea>
                 <div class="inline-actions order-import-actions">
                   <button id="confirm-sales-request-import-button" type="button" class="primary-button small-button">Importa adesso</button>
                   <button id="clear-sales-request-import-button" type="button" class="ghost-button small-button">Svuota</button>
@@ -568,7 +568,7 @@
                 </label>
                 <label class="field">
                   <span>MQ richiesti</span>
-                  <input class="text-input" name="sqm" placeholder="35" />
+                  <input class="text-input" name="sqm" />
                 </label>
                 <label class="field">
                   <span>Altezza da preventivare</span>
@@ -656,7 +656,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260504-whatsapp-first-contact-102&shell=20260504-whatsapp-first-contact-102"
+                src="./sales-suite/generator.html?embedded=1&v=20260504-sales-request-empty-sqm-103&shell=20260504-sales-request-empty-sqm-103"
                 scrolling="no"
               ></iframe>
             </section>
@@ -1799,6 +1799,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260504-whatsapp-first-contact-102" type="module"></script>
+    <script src="./app.js?v=20260504-sales-request-empty-sqm-103" type="module"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-whatsapp-first-contact-102";
+const APP_SHELL_VERSION = "20260504-sales-request-empty-sqm-103";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
