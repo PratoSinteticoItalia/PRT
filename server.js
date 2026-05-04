@@ -2501,6 +2501,32 @@ function isSalesRequestStatusHeader(normalizedHeader = "") {
   return ["stato", "status", "stato preventivo"].includes(normalizedHeader);
 }
 
+function pickSalesRequestSqmFromSheetRow(headers = [], row = []) {
+  const normalizedHeaders = headers.map((header) => normalizeSalesRequestImportHeader(header));
+  const candidates = [];
+  normalizedHeaders.forEach((header, index) => {
+    const sqm = toSalesRequestSqmNumber(row[index] ?? "");
+    if (!sqm) return;
+    if (isSalesRequestHeightHeader(header) || isSalesRequestStatusHeader(header) || isSalesRequestAssignmentHeader(header)) return;
+    if (["telefono", "phone", "tel", "mobile", "cellulare", "email", "mail"].includes(header)) return;
+
+    const previousHeader = normalizedHeaders[index - 1] || "";
+    const nextHeader = normalizedHeaders[index + 1] || "";
+    const previousPreviousHeader = normalizedHeaders[index - 2] || "";
+    const nextNextHeader = normalizedHeaders[index + 2] || "";
+    let score = 0;
+    if (isSalesRequestSqmHeader(header)) score += 120;
+    if (isSalesRequestHeightHeader(nextHeader)) score += 90;
+    if (isSalesRequestHeightHeader(nextNextHeader)) score += 60;
+    if (isSalesRequestStatusHeader(previousHeader)) score += 45;
+    if (isSalesRequestStatusHeader(previousPreviousHeader)) score += 25;
+    if (header.includes("met") || header.includes("mq") || header.includes("m2") || header.includes("mtq")) score += 60;
+    if (score > 0) candidates.push({ sqm, score, index });
+  });
+  candidates.sort((left, right) => right.score - left.score || left.index - right.index);
+  return candidates[0]?.sqm || 0;
+}
+
 function columnIndexToA1(index = 0) {
   let column = Math.max(0, Number(index || 0)) + 1;
   let label = "";
@@ -2801,6 +2827,10 @@ async function loadGoogleSheetSalesRequests(config = {}) {
         row[columnIndex] || "",
         formulaRow[columnIndex] || "",
       ));
+      if (!getSalesRequestSqm(draft)) {
+        const fallbackSqm = pickSalesRequestSqmFromSheetRow(headers, row);
+        if (fallbackSqm) draft.sqm = fallbackSqm;
+      }
       return normalizeSalesRequestRecord(draft);
     })
     .filter((item) => item.name || item.surname || item.city || item.phone || item.email);

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-sales-request-sheet-sqm-105";
+const APP_SHELL_VERSION = "20260504-sales-request-sheet-position-106";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14240,7 +14240,9 @@ async function reloadAll() {
       renderMode: "current",
       enforcePasswordResetView: false,
     });
-    if (canAutoRefreshSalesRequests()) {
+    const salesRequestSourceConfig = normalizeSalesRequestSourceConfig(state.salesRequestSourceConfig || {});
+    const hasGoogleSalesRequests = state.salesRequests.some((item) => String(item.source || "") === "google-sheets");
+    if (state.currentUser?.role === "office" && (salesRequestSourceConfig.spreadsheetInput || hasGoogleSalesRequests)) {
       await syncSalesRequestSource({ auto: true, silent: true }).catch((error) => {
         console.warn("sales_request_reload_sync_failed", error);
       });

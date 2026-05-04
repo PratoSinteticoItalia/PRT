@@ -89,7 +89,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
-const APP_SHELL_VERSION = "20260504-sales-request-sheet-sqm-105";
+const APP_SHELL_VERSION = "20260504-sales-request-sheet-position-106";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
