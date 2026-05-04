@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-sales-request-empty-sqm-103";
+const APP_SHELL_VERSION = "20260504-sales-request-sqm-parser-104";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2798,47 +2798,81 @@ function isSalesRequestSqmHeader(normalizedHeader = "") {
   const header = String(normalizedHeader || "").trim().replace(/\s+/g, " ");
   if (!header) return false;
   if ([
+    "m",
     "mq",
     "m q",
     "m2",
     "m 2",
     "sqm",
     "met",
+    "mtq",
     "metri",
     "metri quadri",
+    "metri q",
     "metriquadrati",
     "metri quadrati",
+    "metratura",
+    "metratura prato",
+    "area",
+    "area mq",
+    "area m2",
+    "superficie mq",
+    "superficie m2",
     "mq richiesti",
+    "mq richiesto",
     "mq richiesta",
     "mq da preventivare",
+    "mq prato",
+    "mq area",
     "metri richiesti",
+    "metri richiesto",
     "metri da preventivare",
     "metri quadri richiesti",
+    "metri quadri richiesto",
     "metri quadrati richiesti",
   ].includes(header)) return true;
-  return header.includes("mq") || header.includes("metri quadr");
+  return (
+    header.includes("mq")
+    || header.includes("metratura")
+    || header.includes("metri quadr")
+    || header.includes("metri quad")
+  );
+}
+
+function toSalesRequestSqmNumber(value = "") {
+  const raw = String(value ?? "").trim();
+  if (!raw) return 0;
+  const normalized = normalizeLooseString(raw);
+  if (/(^|[^a-z])(mm|millimetri|millimetro|cm|centimetri|centimetro)([^a-z]|$)/.test(normalized)) return 0;
+  const amount = toNumber(raw);
+  return amount > 0 ? Number(amount.toFixed(2)) : 0;
 }
 
 function getSalesRequestRawSqmValue(item = {}) {
-  const directValue = (
-    item.sqm
-    ?? item.mq
-    ?? item.met
-    ?? item.metri
-    ?? item.metriQuadri
-    ?? item.metri_quadri
-    ?? item.mqRichiesti
-    ?? item.mq_richiesti
-    ?? ""
-  );
-  const directText = String(directValue ?? "").trim();
+  const directCandidates = [
+    item.sqm,
+    item.mq,
+    item.met,
+    item.metri,
+    item.metriQuadri,
+    item.metri_quadri,
+    item.mqRichiesti,
+    item.mq_richiesti,
+  ];
+  const directText = directCandidates
+    .map((value) => String(value ?? "").trim())
+    .find((value) => toSalesRequestSqmNumber(value) > 0);
   if (directText) return directText;
   const dynamicEntry = Object.entries(item || {}).find(([key, raw]) => {
     const keyText = normalizeImportHeader(key || "");
     if (!isSalesRequestSqmHeader(keyText)) return false;
-    return String(raw ?? "").trim() !== "";
+    return toSalesRequestSqmNumber(raw) > 0;
   });
   return dynamicEntry ? String(dynamicEntry[1] ?? "").trim() : "";
+}
+
+function getSalesRequestSqm(item = {}) {
+  return toSalesRequestSqmNumber(getSalesRequestRawSqmValue(item));
 }
 
 function normalizeSalesRequestAssignment(value = "") {
@@ -3053,7 +3087,7 @@ function normalizeSalesRequestRecord(item = {}) {
     city: String(item.city || item.citta || "").trim(),
     phone: String(item.phone || item.telefono || "").trim(),
     email: String(item.email || "").trim(),
-    sqm: Number(toNumber(getSalesRequestRawSqmValue(item)).toFixed(2)),
+    sqm: getSalesRequestSqm(item),
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: String(item.service || item.servizio || "").trim().toLowerCase(),
     surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
@@ -3570,13 +3604,14 @@ function ensureSelectedSalesContent() {
 }
 
 function buildSalesRequestPrefill(item = {}) {
+  const requestSqm = getSalesRequestSqm(item);
   return {
     nome: item.name || "",
     cognome: item.surname || "",
     citta: item.city || "",
     telefono: item.phone || "",
     email: item.email || "",
-    mq: item.sqm || "",
+    mq: requestSqm || "",
     altezza: item.requestedHeight || "",
     servizio: item.service || "",
     fondo: item.surface || "",
@@ -8504,6 +8539,7 @@ function renderSalesRequests() {
         const assignmentTone = getSalesRequestAssignmentTone(item);
         const statusTone = getSalesRequestStatusTone(item.status || "");
         const isBulkSelected = bulkSelectedIds.has(item.id);
+        const requestSqm = getSalesRequestSqm(item);
         return `
           <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""} ${isBulkSelected ? "is-bulk-selected" : ""}" data-action="select-sales-request" data-id="${item.id}" data-first-contact-state="${escapeHtml(normalizeSalesRequestFirstContactState(item.firstContactState || ""))}">
             <button
@@ -8529,7 +8565,7 @@ function renderSalesRequests() {
             <div class="sales-request-card-meta">
               <span>${escapeHtml(getSalesRequestServiceLabel(item.service))}</span>
               <span>${[
-                item.sqm > 0 ? `${Number(item.sqm)} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending"),
+                requestSqm > 0 ? `${requestSqm} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending"),
                 item.requestedHeight ? escapeHtml(item.requestedHeight) : "",
               ].filter(Boolean).join(" · ")}</span>
             </div>
@@ -8569,7 +8605,7 @@ function renderSalesRequests() {
   ui.salesRequestForm.city.value = selected?.city || "";
   ui.salesRequestForm.phone.value = selected?.phone || "";
   ui.salesRequestForm.email.value = selected?.email || "";
-  ui.salesRequestForm.sqm.value = selected?.sqm ? String(selected.sqm).replace(".", ",") : "";
+  ui.salesRequestForm.sqm.value = selected ? String(getSalesRequestSqm(selected) || "").replace(".", ",") : "";
   ui.salesRequestForm.requestedHeight.value = selected?.requestedHeight || "";
   ui.salesRequestForm.service.value = selected?.service || "";
   ui.salesRequestForm.surface.value = selected?.surface || "";
@@ -8733,7 +8769,7 @@ function renderSalesGenerator() {
           </div>
           <div class="sales-generator-card-grid">
             <span>${escapeHtml(selected.city || (state.lang === "it" ? "Città da definire" : "City pending"))}</span>
-            <span>${selected.sqm > 0 ? `${Number(selected.sqm)} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending")}</span>
+            <span>${getSalesRequestSqm(selected) > 0 ? `${getSalesRequestSqm(selected)} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending")}</span>
             <span>${escapeHtml(getSalesRequestHeightLabel(selected.requestedHeight))}</span>
             <span>${escapeHtml(getSalesRequestServiceLabel(selected.service))}</span>
             <span>${escapeHtml(getSalesRequestSurfaceLabel(selected.surface))}</span>

@@ -1663,47 +1663,81 @@ function isSalesRequestSqmHeader(normalizedHeader = "") {
   const header = String(normalizedHeader || "").trim().replace(/\s+/g, " ");
   if (!header) return false;
   if ([
+    "m",
     "mq",
     "m q",
     "m2",
     "m 2",
     "sqm",
     "met",
+    "mtq",
     "metri",
     "metri quadri",
+    "metri q",
     "metriquadrati",
     "metri quadrati",
+    "metratura",
+    "metratura prato",
+    "area",
+    "area mq",
+    "area m2",
+    "superficie mq",
+    "superficie m2",
     "mq richiesti",
+    "mq richiesto",
     "mq richiesta",
     "mq da preventivare",
+    "mq prato",
+    "mq area",
     "metri richiesti",
+    "metri richiesto",
     "metri da preventivare",
     "metri quadri richiesti",
+    "metri quadri richiesto",
     "metri quadrati richiesti",
   ].includes(header)) return true;
-  return header.includes("mq") || header.includes("metri quadr");
+  return (
+    header.includes("mq")
+    || header.includes("metratura")
+    || header.includes("metri quadr")
+    || header.includes("metri quad")
+  );
+}
+
+function toSalesRequestSqmNumber(value = "") {
+  const raw = String(value ?? "").trim();
+  if (!raw) return 0;
+  const normalized = normalizeSalesRequestImportHeader(raw);
+  if (/(^|[^a-z])(mm|millimetri|millimetro|cm|centimetri|centimetro)([^a-z]|$)/.test(normalized)) return 0;
+  const amount = toNumber(raw);
+  return amount > 0 ? Number(amount.toFixed(2)) : 0;
 }
 
 function getSalesRequestRawSqmValue(item = {}) {
-  const directValue = (
-    item.sqm
-    ?? item.mq
-    ?? item.met
-    ?? item.metri
-    ?? item.metriQuadri
-    ?? item.metri_quadri
-    ?? item.mqRichiesti
-    ?? item.mq_richiesti
-    ?? ""
-  );
-  const directText = String(directValue ?? "").trim();
+  const directCandidates = [
+    item.sqm,
+    item.mq,
+    item.met,
+    item.metri,
+    item.metriQuadri,
+    item.metri_quadri,
+    item.mqRichiesti,
+    item.mq_richiesti,
+  ];
+  const directText = directCandidates
+    .map((value) => String(value ?? "").trim())
+    .find((value) => toSalesRequestSqmNumber(value) > 0);
   if (directText) return directText;
   const dynamicEntry = Object.entries(item || {}).find(([key, raw]) => {
     const keyText = normalizeSalesRequestImportHeader(key || "");
     if (!isSalesRequestSqmHeader(keyText)) return false;
-    return String(raw ?? "").trim() !== "";
+    return toSalesRequestSqmNumber(raw) > 0;
   });
   return dynamicEntry ? String(dynamicEntry[1] ?? "").trim() : "";
+}
+
+function getSalesRequestSqm(item = {}) {
+  return toSalesRequestSqmNumber(getSalesRequestRawSqmValue(item));
 }
 
 function normalizeSalesRequestAssignment(value = "") {
@@ -2768,7 +2802,7 @@ function normalizeSalesRequestRecord(item = {}) {
     city: String(item.city || item.citta || "").trim(),
     phone: String(item.phone || item.telefono || "").trim(),
     email: String(item.email || "").trim(),
-    sqm: Number(toNumber(getSalesRequestRawSqmValue(item)).toFixed(2)),
+    sqm: getSalesRequestSqm(item),
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: normalizeSalesRequestService(item.service || item.servizio || ""),
     surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),
