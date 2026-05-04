@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-preserve-request-selection-111";
+const APP_SHELL_VERSION = "20260504-dashboard-kpi-fit-112";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

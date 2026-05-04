@@ -12521,8 +12521,15 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   letter-spacing: 0;
 }
 
+.view#dashboard > .kpi-grid > .kpi-card .kpi-value {
+  font-size: clamp(24px, 1.35vw, 30px);
+  line-height: 1.05;
+}
+
 .dashboard-snapshot-card .kpi-value {
-  font-size: 30px;
+  width: 100%;
+  font-size: clamp(22px, 1.25vw, 26px);
+  line-height: 1.08;
 }
 
 .view#dashboard > .kpi-grid > .kpi-card,
@@ -12601,15 +12608,16 @@ textarea.text-input {
 }
 
 @media (max-width: 1380px) {
+  .view#dashboard > .kpi-grid > .kpi-card .kpi-value,
   .dashboard-snapshot-card .kpi-value {
-    font-size: 28px;
+    font-size: 24px;
   }
 }
 
 @media (max-width: 720px) {
   .kpi-value,
   .dashboard-snapshot-card .kpi-value {
-    font-size: 28px;
+    font-size: 26px;
   }
 
   .sales-request-card-head-badges {
