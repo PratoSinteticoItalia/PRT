@@ -14,6 +14,11 @@ let STORE_PATH = join(DATA_DIR, "store.json");
 let SESSION_PATH = join(DATA_DIR, "session.json");
 let BACKUP_DIR = join(DATA_DIR, "backups");
 let LOCAL_ATTACHMENTS_DIR = join(DATA_DIR, "attachments");
+const salesRequestSheetColumnsCache = new Map();
+const pendingSalesRequestSheetSyncRecords = new Map();
+let pendingSalesRequestSheetSyncConfig = null;
+let salesRequestSheetSyncTimer = null;
+let salesRequestSheetSyncInFlight = false;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const R2_ACCOUNT_ID = String(process.env.R2_ACCOUNT_ID || "").trim();
 const R2_ACCESS_KEY_ID = String(process.env.R2_ACCESS_KEY_ID || "").trim();
@@ -29,6 +34,8 @@ const DEFAULT_SALES_REQUEST_SPREADSHEET = "https://docs.google.com/spreadsheets/
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_FETCH_TIMEOUT_MS = 15_000;
+const SALES_REQUEST_SHEET_SYNC_DEBOUNCE_MS = Math.max(300, Number(process.env.SALES_REQUEST_SHEET_SYNC_DEBOUNCE_MS || 1200));
+const SALES_REQUEST_SHEET_COLUMNS_CACHE_TTL_MS = Math.max(30_000, Number(process.env.SALES_REQUEST_SHEET_COLUMNS_CACHE_TTL_MS || 1000 * 60 * 10));
 const MAX_CREW_LOGO_DATA_URL_LENGTH = 6_500_000;
 const SALES_REQUEST_FIRST_CONTACT_SENT_STATUS = "1° contatto";
 const SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS = "da richiamare";
@@ -2674,6 +2681,11 @@ function getGoogleSheetRequestRecordKey(record = {}) {
 }
 
 async function getSalesRequestSheetWriteColumns(config = {}, spreadsheetId = "", sheetName = "") {
+  const cacheKey = `${spreadsheetId}::${normalizeSheetKey(sheetName)}`;
+  const cached = salesRequestSheetColumnsCache.get(cacheKey);
+  if (cached && Number(cached.expiresAt || 0) > Date.now()) {
+    return { ...cached.columns };
+  }
   const encodedHeaderRange = encodeURIComponent(`${quoteSheetName(sheetName)}!1:1`);
   const headersPayload = await googleSheetsFetch(
     config,
@@ -2692,6 +2704,10 @@ async function getSalesRequestSheetWriteColumns(config = {}, spreadsheetId = "",
     if (!columns.status && isSalesRequestStatusHeader(normalizedHeader)) {
       columns.status = columnIndexToA1(index);
     }
+  });
+  salesRequestSheetColumnsCache.set(cacheKey, {
+    columns: { ...columns },
+    expiresAt: Date.now() + SALES_REQUEST_SHEET_COLUMNS_CACHE_TTL_MS,
   });
   return columns;
 }
@@ -2775,6 +2791,66 @@ async function safeSyncSalesRequestsToGoogleSheet(config = {}, records = []) {
       reason: String(error?.message || "google_sheet_sync_failed"),
       updatedCells: 0,
     };
+  }
+}
+
+function getSalesRequestSheetSyncQueueKey(record = {}) {
+  return String(record.id || getGoogleSheetRequestRecordKey(record) || randomUUID()).trim();
+}
+
+function scheduleSalesRequestSheetSyncFlush() {
+  if (salesRequestSheetSyncTimer) return;
+  salesRequestSheetSyncTimer = setTimeout(() => {
+    salesRequestSheetSyncTimer = null;
+    flushSalesRequestSheetSyncQueue();
+  }, SALES_REQUEST_SHEET_SYNC_DEBOUNCE_MS);
+  salesRequestSheetSyncTimer.unref?.();
+}
+
+function enqueueSalesRequestsGoogleSheetSync(config = {}, records = []) {
+  const normalizedConfig = normalizeSalesRequestSourceConfig(config);
+  if (!normalizedConfig.serviceAccountEmail || !normalizedConfig.privateKey) {
+    return { action: "skipped", reason: "missing_service_account", updatedCells: 0 };
+  }
+  const googleRecords = (Array.isArray(records) ? records : [])
+    .map(normalizeSalesRequestRecord)
+    .filter((record) => getGoogleSheetRequestRecordKey(record));
+  if (!googleRecords.length) {
+    return { action: "skipped", reason: "no_google_sheet_rows", updatedCells: 0 };
+  }
+  pendingSalesRequestSheetSyncConfig = normalizedConfig;
+  googleRecords.forEach((record) => {
+    pendingSalesRequestSheetSyncRecords.set(getSalesRequestSheetSyncQueueKey(record), record);
+  });
+  scheduleSalesRequestSheetSyncFlush();
+  return {
+    action: "queued",
+    queuedRows: googleRecords.length,
+    pendingRows: pendingSalesRequestSheetSyncRecords.size,
+    updatedCells: 0,
+  };
+}
+
+async function flushSalesRequestSheetSyncQueue() {
+  if (salesRequestSheetSyncInFlight) {
+    scheduleSalesRequestSheetSyncFlush();
+    return;
+  }
+  const records = Array.from(pendingSalesRequestSheetSyncRecords.values());
+  const config = pendingSalesRequestSheetSyncConfig || {};
+  pendingSalesRequestSheetSyncRecords.clear();
+  if (!records.length) return;
+  salesRequestSheetSyncInFlight = true;
+  try {
+    const result = await safeSyncSalesRequestsToGoogleSheet(config, records);
+    if (result.action === "failed") {
+      console.error("sales_request_google_sheet_background_sync_failed", result);
+    }
+  } finally {
+    salesRequestSheetSyncInFlight = false;
+    if (pendingSalesRequestSheetSyncRecords.size) {
+      scheduleSalesRequestSheetSyncFlush();
+    }
   }
 }
 
@@ -4848,7 +4924,7 @@ async function handleApi(req, res, url) {
       store.salesRequests.unshift(requestRecord);
     }
     await writeJson(STORE_PATH, store);
-    const sheetSync = await safeSyncSalesRequestsToGoogleSheet(store.salesRequestSource || {}, [requestRecord]);
+    const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, [requestRecord]);
     return sendJson(res, 200, {
       ...requestRecord,
       _automation: automationResult.automation || { action: "none" },
@@ -4895,7 +4971,7 @@ async function handleApi(req, res, url) {
     }
     if (!updatedRequests.length) return sendJson(res, 404, { error: "requests_not_found" });
     await writeJson(STORE_PATH, store);
-    const sheetSync = await safeSyncSalesRequestsToGoogleSheet(store.salesRequestSource || {}, updatedRequests);
+    const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, updatedRequests);
     return sendJson(res, 200, {
       requests: updatedRequests,
       updatedCount: updatedRequests.length,

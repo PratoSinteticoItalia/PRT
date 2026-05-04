@@ -12484,3 +12484,137 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
     grid-template-columns: 1fr;
   }
 }
+
+/* Final typography and spacing pass: keep operational text readable inside dense cards. */
+.nav-label,
+.panel-head h3,
+.detail-title,
+.sales-request-card-head > div,
+.sales-generator-card-head > div {
+  min-width: 0;
+}
+
+.nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-count-badge,
+.action-badge,
+.sales-status-pill,
+.sales-automation-pill,
+.sales-category-pill {
+  flex-shrink: 0;
+  max-width: 100%;
+  line-height: 1.15;
+}
+
+.kpi-value,
+.dashboard-snapshot-card .kpi-value,
+.detail-box strong {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.dashboard-snapshot-card .kpi-value {
+  font-size: 30px;
+}
+
+.view#dashboard > .kpi-grid > .kpi-card,
+.dashboard-snapshot-card,
+.detail-box,
+.sales-request-card,
+.sales-content-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.kpi-sub,
+.detail-box p,
+.detail-row-value,
+.panel-note,
+.sales-request-card-meta,
+.sales-request-card-foot,
+.sales-generator-card-grid,
+.sales-generator-contact-panel .panel-note {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.sales-request-card-head {
+  align-items: flex-start;
+}
+
+.sales-request-card-head strong,
+.sales-content-card-head strong,
+.sales-generator-card-head strong {
+  display: block;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.sales-request-card-head p,
+.sales-content-card p,
+.sales-generator-frame-panel p,
+.sales-generator-request-card p {
+  line-height: 1.35;
+}
+
+.sales-request-card-head-badges {
+  max-width: 44%;
+}
+
+.sales-request-card-meta span,
+.sales-request-card-foot > span,
+.sales-generator-card-grid span {
+  min-width: 0;
+}
+
+.sales-assignment-pill,
+.sales-card-date,
+.sales-request-detail-chip {
+  overflow: hidden;
+}
+
+.sales-assignment-pill strong,
+.sales-card-date strong,
+.sales-request-detail-chip strong {
+  overflow-wrap: anywhere;
+}
+
+.inline-form-grid .field > span,
+.sales-request-filter-row .field > span,
+#sales-request-form .sales-request-routing-field > span {
+  line-height: 1.25;
+}
+
+.text-input,
+select.text-input,
+textarea.text-input {
+  min-width: 0;
+  line-height: 1.35;
+}
+
+@media (max-width: 1380px) {
+  .dashboard-snapshot-card .kpi-value {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 720px) {
+  .kpi-value,
+  .dashboard-snapshot-card .kpi-value {
+    font-size: 28px;
+  }
+
+  .sales-request-card-head-badges {
+    max-width: none;
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
