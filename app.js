@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-sales-request-sheet-position-106";
+const APP_SHELL_VERSION = "20260504-sales-generator-mailto-107";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4010,7 +4010,14 @@ function buildSalesRequestMailtoUrl(item = {}) {
   const subject = state.lang === "it" ? "Aggiornamento preventivo" : "Quote update";
   const body = getSalesRequestTemplateText(item)
     || `${state.lang === "it" ? "Ciao" : "Hello"} ${getSalesRequestFirstName(item)},`;
-  return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function openMailtoUrl(url = "") {
+  const mailtoUrl = String(url || "").trim();
+  if (!mailtoUrl || !mailtoUrl.toLowerCase().startsWith("mailto:")) return false;
+  window.location.href = mailtoUrl;
+  return true;
 }
 
 function ensureSalesRequestWhatsAppActionUi() {
@@ -14794,6 +14801,12 @@ bindEvent(ui.salesRequestClearServiceAccountButton, "click", () => saveSalesRequ
 bindEvent(ui.salesRequestSourceSaveButton, "click", () => saveSalesRequestSourceConfig());
 bindEvent(ui.salesRequestSourceSyncButton, "click", syncSalesRequestSource);
 bindEvent(ui.salesRequestOpenSheetButton, "click", openSalesRequestSourceSheet);
+bindEvent(ui.salesGeneratorEmailButton, "click", (event) => {
+  const href = ui.salesGeneratorEmailButton?.getAttribute("href") || "";
+  if (!href || href === "#") return;
+  event.preventDefault();
+  openMailtoUrl(href);
+});
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
   state.salesGeneratorFreeMode = false;
