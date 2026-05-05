@@ -906,6 +906,16 @@
     return String(value?.textContent || "").replace(/\s+/g, " ").trim();
   }
 
+  function getDirectNodeText(node) {
+    if (!(node instanceof HTMLElement)) return "";
+    return Array.from(node.childNodes || [])
+      .filter((child) => child.nodeType === Node.TEXT_NODE)
+      .map((child) => String(child.textContent || ""))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   function normalizeModelName(value) {
     return normalizeLabel(String(value || "").replace(/\s+/g, " ").trim());
   }
@@ -979,7 +989,7 @@
         const descriptionNode = cells[0].querySelectorAll("div")[1] || null;
         const totalCell = cells[cells.length - 1];
         const totalText = getNodeText(totalCell);
-        const name = getNodeText(titleNode);
+        const name = getDirectNodeText(titleNode) || getNodeText(titleNode);
         if (!name) return null;
         return {
           row,
@@ -2364,8 +2374,32 @@
     });
   }
 
+  function isRecommendationManagedNode(node) {
+    if (!(node instanceof Node)) return false;
+    if (node instanceof Element) {
+      return Boolean(
+        node.closest?.(".codex-quote-recommendation-toolbar, .codex-recommended-summary, .codex-recommended-badge")
+        || node.matches?.(".codex-quote-recommendation-toolbar, .codex-recommended-summary, .codex-recommended-badge")
+      );
+    }
+    return node.parentElement
+      ? isRecommendationManagedNode(node.parentElement)
+      : false;
+  }
+
+  function shouldIgnoreAccessoryBridgeMutations(mutations) {
+    return mutations.every((mutation) => {
+      if (!isRecommendationManagedNode(mutation.target)) return false;
+      const added = Array.from(mutation.addedNodes || []);
+      const removed = Array.from(mutation.removedNodes || []);
+      return added.every((node) => isRecommendationManagedNode(node))
+        && removed.every((node) => isRecommendationManagedNode(node));
+    });
+  }
+
   function startCustomAccessoryPriceBridge() {
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
+      if (shouldIgnoreAccessoryBridgeMutations(mutations)) return;
       requestBridgeSyncBurst(2);
     });
 
