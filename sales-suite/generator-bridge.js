@@ -334,43 +334,13 @@
 
       .pdf-root .codex-recommended-row td:first-child {
         box-shadow: inset 4px 0 0 #3d5a3f;
-        position: relative;
-      }
-
-      .pdf-root .codex-recommended-row td:first-child::after {
-        content: "Consigliato";
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        padding: 3px 8px;
-        border-radius: 999px;
-        background: #2f6f3f;
-        color: #ffffff;
-        font-size: 7px;
-        font-weight: 800;
-        letter-spacing: 0.8px;
-        text-transform: uppercase;
       }
 
       .pdf-root .codex-recommended-card {
         border-color: #2f4631 !important;
         box-shadow: 0 4px 12px rgba(47,70,49,0.14) !important;
         transform: translateY(-1px);
-      }
-
-      .pdf-root .codex-recommended-card::after {
-        content: "Consigliato";
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        padding: 3px 8px;
-        border-radius: 999px;
-        background: #2f6f3f;
-        color: #fff;
-        font-size: 7px;
-        font-weight: 800;
-        letter-spacing: 0.7px;
-        text-transform: uppercase;
+        background: linear-gradient(180deg, #ffffff 0%, #f4f8f4 100%) !important;
       }
 
       @media (max-width: 1280px) {
