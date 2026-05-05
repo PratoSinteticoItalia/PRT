@@ -3,6 +3,7 @@
   const BRANDING_STORAGE_KEY = "quote-generator-branding";
   const PLANNER_REPORT_STORAGE_KEY = "quote-generator-planner-report";
   const PLANNER_BRIDGE_STORAGE_KEY = "garden-planner-quote-bridge-v1";
+  const QUOTE_RECOMMENDATION_STORAGE_KEY = "quote-generator-recommendation-v1";
   const URL_PARAMS = new URLSearchParams(window.location.search);
   let lastUrlPrefill = "";
   let lastStoragePrefill = "";
@@ -26,6 +27,26 @@
   const ENABLE_PREVIEW_POLISH = false;
   const ENABLE_BRANDING_EXPORT = false;
   const ENABLE_PLANNER_REPORT_EXPORT = false;
+
+  function readJsonStorage(key, fallback = null) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeJsonStorage(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   function setPlannerBridgeReadEnabled(enabled) {
     plannerBridgeReadEnabled = Boolean(enabled);
@@ -267,6 +288,199 @@
     document.head.appendChild(style);
   }
 
+  function ensureRecommendationStyles() {
+    if (document.getElementById("codex-quote-recommendation-style")) return;
+    const style = document.createElement("style");
+    style.id = "codex-quote-recommendation-style";
+    style.textContent = `
+      .codex-quote-recommendation-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        margin-left: auto;
+        margin-right: 10px;
+      }
+
+      .codex-quote-recommendation-toolbar label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #e2e8f0;
+        white-space: nowrap;
+      }
+
+      .codex-quote-recommendation-toolbar select {
+        min-width: 220px;
+        max-width: 280px;
+        border: 1px solid rgba(226, 232, 240, 0.2);
+        border-radius: 10px;
+        background: rgba(15, 23, 42, 0.32);
+        color: #f8fafc;
+        padding: 7px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        outline: none;
+      }
+
+      .codex-quote-recommendation-toolbar option {
+        color: #0f172a;
+      }
+
+      .pdf-root .codex-recommended-row {
+        background: linear-gradient(90deg, rgba(238, 243, 237, 0.92) 0%, rgba(248, 250, 252, 1) 100%);
+      }
+
+      .pdf-root .codex-recommended-row td:first-child {
+        box-shadow: inset 4px 0 0 #3d5a3f;
+      }
+
+      .pdf-root .codex-recommended-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-left: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #2f6f3f;
+        color: #ffffff;
+        font-size: 8px;
+        font-weight: 800;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        vertical-align: middle;
+      }
+
+      .pdf-root .codex-recommended-summary {
+        margin: 10px 0 12px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid #c7d4c6;
+        background: linear-gradient(135deg, #f8faf8 0%, #eef3ed 100%);
+        box-shadow: 0 1px 0 rgba(31, 41, 55, 0.04);
+      }
+
+      .pdf-root .codex-recommended-summary-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 6px;
+      }
+
+      .pdf-root .codex-recommended-summary-label {
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 1.1px;
+        text-transform: uppercase;
+        color: #3d5a3f;
+      }
+
+      .pdf-root .codex-recommended-summary-name {
+        font-size: 16px;
+        font-weight: 900;
+        color: #0f172a;
+        line-height: 1.12;
+      }
+
+      .pdf-root .codex-recommended-summary-desc {
+        margin-top: 3px;
+        font-size: 9px;
+        line-height: 1.35;
+        color: #6b7280;
+      }
+
+      .pdf-root .codex-recommended-summary-total {
+        flex: 0 0 auto;
+        text-align: right;
+      }
+
+      .pdf-root .codex-recommended-summary-total-label {
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.7px;
+        text-transform: uppercase;
+        color: #6b7280;
+      }
+
+      .pdf-root .codex-recommended-summary-total-value {
+        font-size: 18px;
+        font-weight: 900;
+        color: #2f4631;
+        line-height: 1.08;
+        white-space: nowrap;
+      }
+
+      .pdf-root .codex-recommended-summary-meta {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .pdf-root .codex-recommended-summary-pill {
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid #dbe4da;
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .pdf-root .codex-recommended-summary-pill-label {
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.7px;
+        text-transform: uppercase;
+        color: #6b7280;
+      }
+
+      .pdf-root .codex-recommended-summary-pill-value {
+        margin-top: 2px;
+        font-size: 10px;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.25;
+      }
+
+      .pdf-root .codex-recommended-card {
+        border-color: #2f4631 !important;
+        box-shadow: 0 4px 12px rgba(47, 70, 49, 0.12) !important;
+        transform: translateY(-1px);
+      }
+
+      .pdf-root .codex-recommended-card::after {
+        content: "Consigliato";
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #2f6f3f;
+        color: #fff;
+        font-size: 7px;
+        font-weight: 800;
+        letter-spacing: 0.7px;
+        text-transform: uppercase;
+      }
+
+      .pdf-root .codex-muted-card {
+        opacity: 0.82;
+      }
+
+      @media (max-width: 1280px) {
+        .codex-quote-recommendation-toolbar {
+          margin-right: 0;
+        }
+
+        .codex-quote-recommendation-toolbar select {
+          min-width: 180px;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function isVisibleMeasureNode(node, { allowFixed = false } = {}) {
     if (!(node instanceof HTMLElement)) return false;
     const style = window.getComputedStyle(node);
@@ -380,6 +594,7 @@
       ensureEmbeddedLayoutStyles();
       hideInternalImportPanel();
       syncCustomAccessoryPriceEditors();
+      syncRecommendedQuoteLayout();
       const payload = readPrefillFromStorage() || readPrefillFromUrl();
       if (payload) scheduleRequestPayload(payload);
       if (ENABLE_BRANDING_EXPORT) {
@@ -684,6 +899,302 @@
       const headerText = normalizeLabel(table.querySelector("thead")?.textContent || "");
       return headerText.includes("modello") && headerText.includes("sconto") && headerText.includes("materiali");
     }) || null;
+  }
+
+  function getNodeText(value) {
+    return String(value?.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  function normalizeModelName(value) {
+    return normalizeLabel(String(value || "").replace(/\s+/g, " ").trim());
+  }
+
+  function parseCurrencyText(value) {
+    const normalized = String(value || "")
+      .replace(/\./g, "")
+      .replace(",", ".")
+      .replace(/[^\d.-]/g, "")
+      .trim();
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function formatEuro(value) {
+    const amount = Number(value || 0);
+    return `${amount.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  }
+
+  function getQuoteNumberFromPreview(root) {
+    const match = String(root?.textContent || "").match(/\bF[P]?-?\d{3,5}-\d{2,3}\b/);
+    return match ? match[0] : "";
+  }
+
+  function getCustomerNameFromPreview(root) {
+    const clientLabel = findElementByTextWithin(root, "div, span, p", "Nome:");
+    if (!(clientLabel instanceof HTMLElement)) return "";
+    return getNodeText(clientLabel).replace(/^nome:\s*/i, "").trim();
+  }
+
+  function buildRecommendationKey(root, modelNames = []) {
+    const quoteNumber = getQuoteNumberFromPreview(root);
+    const customerName = getCustomerNameFromPreview(root);
+    const names = modelNames.map((item) => normalizeModelName(item)).filter(Boolean).join("|");
+    return [quoteNumber, normalizeModelName(customerName), names].filter(Boolean).join("::");
+  }
+
+  function readRecommendationStore() {
+    return readJsonStorage(QUOTE_RECOMMENDATION_STORAGE_KEY, {});
+  }
+
+  function readRecommendedModel(root, modelNames = []) {
+    const key = buildRecommendationKey(root, modelNames);
+    if (!key) return "";
+    const store = readRecommendationStore();
+    const value = typeof store[key] === "string" ? store[key] : "";
+    return value;
+  }
+
+  function writeRecommendedModel(root, modelNames, value) {
+    const key = buildRecommendationKey(root, modelNames);
+    if (!key) return false;
+    const store = readRecommendationStore();
+    const nextValue = String(value || "").trim();
+    if (nextValue) {
+      store[key] = nextValue;
+    } else {
+      delete store[key];
+    }
+    return writeJsonStorage(QUOTE_RECOMMENDATION_STORAGE_KEY, store);
+  }
+
+  function collectQuoteModels(root) {
+    const table = findPricingTable(root);
+    if (!(table instanceof HTMLTableElement)) return [];
+    return Array.from(table.querySelectorAll("tbody tr"))
+      .map((row) => {
+        const cells = Array.from(row.children || []);
+        if (!cells.length) return null;
+        const titleNode = cells[0].querySelector("div");
+        const descriptionNode = cells[0].querySelectorAll("div")[1] || null;
+        const totalCell = cells[cells.length - 1];
+        const totalText = getNodeText(totalCell);
+        const name = getNodeText(titleNode);
+        if (!name) return null;
+        return {
+          row,
+          name,
+          normalizedName: normalizeModelName(name),
+          description: descriptionNode ? getNodeText(descriptionNode) : "",
+          totalText,
+          totalValue: parseCurrencyText(totalText),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function findPerSqmCard(root, normalizedModelName) {
+    const grids = Array.from(root.querySelectorAll("div")).filter((node) => (
+      node instanceof HTMLElement
+      && node.style.display === "grid"
+    ));
+    for (const grid of grids) {
+      for (const child of Array.from(grid.children || [])) {
+        const text = getNodeText(child);
+        if (!text || !normalizeLabel(text).includes(normalizedModelName) || !normalizeLabel(text).includes("al mq finale")) {
+          continue;
+        }
+        const valueNode = Array.from(child.querySelectorAll("div, span"))
+          .find((node) => /€/.test(getNodeText(node)));
+        return {
+          card: child,
+          valueText: valueNode ? getNodeText(valueNode) : "",
+        };
+      }
+    }
+    return null;
+  }
+
+  function findHeylightCard(root, normalizedModelName) {
+    const heading = findElementByTextWithin(root, "div, span, p", "Simulazione 5 rate HeyLight");
+    if (!(heading instanceof HTMLElement)) return null;
+    const section = heading.parentElement;
+    const grid = Array.from(section?.children || []).find((child) => (
+      child instanceof HTMLElement
+      && child !== heading
+      && child.style.display === "grid"
+    ));
+    if (!(grid instanceof HTMLElement)) return null;
+    for (const child of Array.from(grid.children || [])) {
+      const text = getNodeText(child);
+      if (!normalizeLabel(text).includes(normalizedModelName)) continue;
+      const valueNode = Array.from(child.querySelectorAll("div, span"))
+        .find((node) => normalizeLabel(getNodeText(node)).includes("heylight"));
+      return {
+        card: child,
+        valueText: valueNode ? getNodeText(valueNode) : "",
+      };
+    }
+    return null;
+  }
+
+  function upsertRecommendedBadge(titleNode) {
+    if (!(titleNode instanceof HTMLElement)) return;
+    let badge = titleNode.querySelector(".codex-recommended-badge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "codex-recommended-badge";
+      badge.textContent = "Consigliato";
+      titleNode.appendChild(badge);
+    }
+  }
+
+  function clearRecommendationDecorations(root) {
+    root.querySelectorAll(".codex-recommended-badge").forEach((node) => node.remove());
+    root.querySelectorAll(".codex-recommended-summary").forEach((node) => node.remove());
+    root.querySelectorAll(".codex-recommended-row").forEach((node) => node.classList.remove("codex-recommended-row"));
+    root.querySelectorAll(".codex-recommended-card").forEach((node) => node.classList.remove("codex-recommended-card"));
+    root.querySelectorAll(".codex-muted-card").forEach((node) => node.classList.remove("codex-muted-card"));
+  }
+
+  function insertAfter(referenceNode, nextNode) {
+    if (!referenceNode?.parentNode || !nextNode) return false;
+    referenceNode.parentNode.insertBefore(nextNode, referenceNode.nextSibling);
+    return true;
+  }
+
+  function renderRecommendedSummary(root, selectedModel) {
+    if (!(root instanceof HTMLElement) || !selectedModel) return;
+    const table = findPricingTable(root);
+    const wrapper = table?.parentElement;
+    if (!(wrapper instanceof HTMLElement)) return;
+    const perSqmInfo = findPerSqmCard(root, selectedModel.normalizedName);
+    const heylightInfo = findHeylightCard(root, selectedModel.normalizedName);
+
+    const summary = document.createElement("div");
+    summary.className = "codex-recommended-summary pdf-no-break";
+    summary.innerHTML = `
+      <div class="codex-recommended-summary-head">
+        <div>
+          <div class="codex-recommended-summary-label">Soluzione consigliata</div>
+          <div class="codex-recommended-summary-name">${selectedModel.name}</div>
+          <div class="codex-recommended-summary-desc">${selectedModel.description || "Opzione evidenziata per accompagnare il cliente nella scelta finale."}</div>
+        </div>
+        <div class="codex-recommended-summary-total">
+          <div class="codex-recommended-summary-total-label">Totale finale</div>
+          <div class="codex-recommended-summary-total-value">${selectedModel.totalText || formatEuro(selectedModel.totalValue)}</div>
+        </div>
+      </div>
+      <div class="codex-recommended-summary-meta">
+        <div class="codex-recommended-summary-pill">
+          <div class="codex-recommended-summary-pill-label">Prezzo finale al mq</div>
+          <div class="codex-recommended-summary-pill-value">${perSqmInfo?.valueText || "Disponibile nel confronto sotto"}</div>
+        </div>
+        <div class="codex-recommended-summary-pill">
+          <div class="codex-recommended-summary-pill-label">Rateizzazione</div>
+          <div class="codex-recommended-summary-pill-value">${heylightInfo?.valueText || "HeyLight disponibile su richiesta"}</div>
+        </div>
+        <div class="codex-recommended-summary-pill">
+          <div class="codex-recommended-summary-pill-label">Scelta guidata</div>
+          <div class="codex-recommended-summary-pill-value">Selezionata manualmente per questa proposta</div>
+        </div>
+      </div>
+    `;
+    insertAfter(wrapper, summary);
+  }
+
+  function applyRecommendedModelToPreview(root, selectedName) {
+    if (!(root instanceof HTMLElement)) return false;
+    clearRecommendationDecorations(root);
+    const models = collectQuoteModels(root);
+    if (!models.length || !selectedName) return false;
+    const selectedModel = models.find((item) => item.normalizedName === normalizeModelName(selectedName));
+    if (!selectedModel) return false;
+
+    selectedModel.row.classList.add("codex-recommended-row");
+    const titleNode = selectedModel.row.children?.[0]?.querySelector("div");
+    upsertRecommendedBadge(titleNode);
+    renderRecommendedSummary(root, selectedModel);
+
+    models.forEach((model) => {
+      const perSqmInfo = findPerSqmCard(root, model.normalizedName);
+      if (perSqmInfo?.card instanceof HTMLElement) {
+        perSqmInfo.card.classList.toggle("codex-recommended-card", model.normalizedName === selectedModel.normalizedName);
+        perSqmInfo.card.classList.toggle("codex-muted-card", model.normalizedName !== selectedModel.normalizedName);
+      }
+      const heylightInfo = findHeylightCard(root, model.normalizedName);
+      if (heylightInfo?.card instanceof HTMLElement) {
+        heylightInfo.card.classList.toggle("codex-recommended-card", model.normalizedName === selectedModel.normalizedName);
+        heylightInfo.card.classList.toggle("codex-muted-card", model.normalizedName !== selectedModel.normalizedName);
+      }
+    });
+    return true;
+  }
+
+  function syncRecommendedQuoteLayout() {
+    ensureRecommendationStyles();
+    const pdfRoot = getLivePdfRoot(document);
+    const toolbar = document.querySelector(".codex-quote-recommendation-toolbar");
+    if (!(pdfRoot instanceof HTMLElement) || !isPreviewModeVisible()) {
+      toolbar?.remove();
+      return false;
+    }
+
+    const models = collectQuoteModels(pdfRoot);
+    if (!models.length) {
+      toolbar?.remove();
+      clearRecommendationDecorations(pdfRoot);
+      return false;
+    }
+
+    const selectedName = readRecommendedModel(pdfRoot, models.map((model) => model.name));
+    const applied = applyRecommendedModelToPreview(pdfRoot, selectedName);
+    renderRecommendationToolbar(pdfRoot, models, selectedName);
+    return applied;
+  }
+
+  function renderRecommendationToolbar(root, models, selectedName) {
+    const previewButton = Array.from(document.querySelectorAll("button"))
+      .find((button) => normalizeLabel(button.textContent).includes("scarica pdf"));
+    const toolbarHost = previewButton?.parentElement;
+    if (!(toolbarHost instanceof HTMLElement)) return;
+
+    let toolbar = toolbarHost.querySelector(".codex-quote-recommendation-toolbar");
+    if (!toolbar) {
+      toolbar = document.createElement("div");
+      toolbar.className = "codex-quote-recommendation-toolbar";
+      toolbar.innerHTML = `
+        <label for="codex-quote-recommendation-select">Modello consigliato</label>
+        <select id="codex-quote-recommendation-select"></select>
+      `;
+      toolbarHost.insertBefore(toolbar, previewButton);
+    }
+
+    const select = toolbar.querySelector("select");
+    if (!(select instanceof HTMLSelectElement)) return;
+    const modelNames = models.map((model) => model.name);
+    if (select.dataset.optionsSignature !== modelNames.join("|")) {
+      select.innerHTML = "";
+      const blankOption = document.createElement("option");
+      blankOption.value = "";
+      blankOption.textContent = "Nessun consigliato";
+      select.appendChild(blankOption);
+      modelNames.forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+      });
+      select.dataset.optionsSignature = modelNames.join("|");
+    }
+    select.value = modelNames.includes(selectedName) ? selectedName : "";
+    if (!select.dataset.bound) {
+      select.addEventListener("change", () => {
+        writeRecommendedModel(root, modelNames, select.value);
+        applyRecommendedModelToPreview(root, select.value);
+        reportEmbeddedContentHeight();
+      });
+      select.dataset.bound = "1";
+    }
   }
 
   function appendDiscountLabelToProductDescriptions(root) {
