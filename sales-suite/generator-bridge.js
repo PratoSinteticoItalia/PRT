@@ -21,6 +21,7 @@
   let scheduledEnsureEditTimer = 0;
   let bridgeSyncQueued = false;
   let bridgeSyncBurstRuns = 0;
+  let lastRecommendedLayoutSignature = "";
   const brandingLogoExportCache = new Map();
   let plannerBridgeReadEnabled = URL_PARAMS.get("planner") === "1";
   const originalLocalStorageGetItem = window.localStorage?.getItem?.bind(window.localStorage);
@@ -1054,6 +1055,7 @@
     root.querySelectorAll(".codex-recommended-row").forEach((node) => node.classList.remove("codex-recommended-row"));
     root.querySelectorAll(".codex-recommended-card").forEach((node) => node.classList.remove("codex-recommended-card"));
     root.querySelectorAll(".codex-muted-card").forEach((node) => node.classList.remove("codex-muted-card"));
+    delete root.dataset.codexRecommendedSignature;
   }
 
   function insertAfter(referenceNode, nextNode) {
@@ -1136,6 +1138,7 @@
     const toolbar = document.querySelector(".codex-quote-recommendation-toolbar");
     if (!(pdfRoot instanceof HTMLElement) || !isPreviewModeVisible()) {
       toolbar?.remove();
+      lastRecommendedLayoutSignature = "";
       return false;
     }
 
@@ -1143,11 +1146,25 @@
     if (!models.length) {
       toolbar?.remove();
       clearRecommendationDecorations(pdfRoot);
+      lastRecommendedLayoutSignature = "";
       return false;
     }
 
     const selectedName = readRecommendedModel(pdfRoot, models.map((model) => model.name));
-    const applied = applyRecommendedModelToPreview(pdfRoot, selectedName);
+    const layoutSignature = `${buildRecommendationKey(pdfRoot, models.map((model) => model.name))}::${normalizeModelName(selectedName)}`;
+    let applied = false;
+    if (!selectedName) {
+      if (pdfRoot.dataset.codexRecommendedSignature || lastRecommendedLayoutSignature) {
+        clearRecommendationDecorations(pdfRoot);
+      }
+      lastRecommendedLayoutSignature = "";
+    } else if (pdfRoot.dataset.codexRecommendedSignature !== layoutSignature || lastRecommendedLayoutSignature !== layoutSignature) {
+      applied = applyRecommendedModelToPreview(pdfRoot, selectedName);
+      if (applied) {
+        pdfRoot.dataset.codexRecommendedSignature = layoutSignature;
+        lastRecommendedLayoutSignature = layoutSignature;
+      }
+    }
     renderRecommendationToolbar(pdfRoot, models, selectedName);
     return applied;
   }
