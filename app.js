@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260504-dashboard-kpi-fit-112";
+const APP_SHELL_VERSION = "20260505-sales-request-crm-toolbar-113";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1046,6 +1046,7 @@ const state = {
     shipping: "all",
     salesRequestAssignment: "all",
     salesRequestStatus: "all",
+    salesRequestQuick: "all",
   },
   search: {
     orders: "",
@@ -1063,6 +1064,7 @@ const state = {
   navCounts: {},
   orderPage: 1,
   salesRequestPage: 1,
+  salesRequestCompactMode: false,
   salesContentPage: 1,
   salesContentCategory: "all",
   sessionRevision: "",
@@ -1180,6 +1182,9 @@ const ui = {
   salesRequestsSearch: document.getElementById("sales-requests-search"),
   salesRequestAssignmentFilter: document.getElementById("sales-request-assignment-filter"),
   salesRequestStatusFilter: document.getElementById("sales-request-status-filter"),
+  salesRequestQuickFilters: document.getElementById("sales-request-quick-filters"),
+  salesRequestInsights: document.getElementById("sales-request-insights"),
+  salesRequestCompactToggle: document.getElementById("sales-request-compact-toggle"),
   salesRequestImportButton: document.getElementById("sales-request-import-button"),
   salesRequestImportWrap: document.getElementById("sales-request-import-wrap"),
   salesRequestImportText: document.getElementById("sales-request-import-text"),
@@ -3543,6 +3548,92 @@ function syncSalesRequestFilters() {
     const hasCurrent = Array.from(ui.salesRequestStatusFilter.options).some((option) => option.value === current);
     ui.salesRequestStatusFilter.value = hasCurrent ? current : "all";
     state.filters.salesRequestStatus = ui.salesRequestStatusFilter.value || "all";
+  }
+}
+
+function matchesSalesRequestQuickFilter(item = {}, filter = String(state.filters.salesRequestQuick || "all")) {
+  const quickFilter = String(filter || "all");
+  if (quickFilter === "all") return true;
+  const assignment = normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
+  const statusCode = getSalesRequestStatusCode(item.status || "");
+  const firstContactState = normalizeSalesRequestFirstContactState(item.firstContactState || "");
+  const currentOperator = getSalesRequestOperatorFromCurrentUser();
+  if (quickFilter === "mine") return Boolean(currentOperator && assignment === currentOperator);
+  if (quickFilter === "unassigned") return !assignment;
+  if (quickFilter === "to-contact") {
+    return !isSalesRequestClosedStatus(item.status || "") && !["queued", "sent"].includes(firstContactState);
+  }
+  if (quickFilter === "contacted") return ["queued", "sent"].includes(firstContactState);
+  if (quickFilter === "fornitura") return String(item.service || "").trim().toLowerCase() === "fornitura";
+  if (quickFilter === "posa") return String(item.service || "").trim().toLowerCase() === "posa";
+  if (quickFilter === "new") return statusCode === "new";
+  return true;
+}
+
+function getSalesRequestQuickFilterOptions(items = state.salesRequests) {
+  const currentOperator = getSalesRequestOperatorFromCurrentUser();
+  const options = [
+    { value: "all", label: state.lang === "it" ? "Tutte" : "All" },
+    { value: "mine", label: state.lang === "it" ? "Mie" : "Mine" },
+    { value: "unassigned", label: state.lang === "it" ? "Da assegnare" : "Unassigned" },
+    { value: "to-contact", label: state.lang === "it" ? "Da contattare" : "To contact" },
+    { value: "contacted", label: state.lang === "it" ? "Contattate" : "Contacted" },
+    { value: "fornitura", label: state.lang === "it" ? "Solo fornitura" : "Supply only" },
+    { value: "posa", label: state.lang === "it" ? "Fornitura + posa" : "Supply + install" },
+  ];
+  return options
+    .filter((option) => option.value !== "mine" || currentOperator)
+    .map((option) => ({
+      ...option,
+      count: items.filter((item) => matchesSalesRequestQuickFilter(item, option.value)).length,
+    }))
+    .filter((option) => option.value === "all" || option.count > 0);
+}
+
+function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
+  if (ui.salesRequestQuickFilters) {
+    const current = String(state.filters.salesRequestQuick || "all");
+    ui.salesRequestQuickFilters.innerHTML = getSalesRequestQuickFilterOptions(baseItems).map((option) => `
+      <button
+        type="button"
+        class="sales-request-quick-chip ${option.value === current ? "is-active" : ""}"
+        data-action="set-sales-request-quick-filter"
+        data-value="${escapeHtml(option.value)}"
+        aria-pressed="${option.value === current ? "true" : "false"}"
+      >
+        <span>${escapeHtml(option.label)}</span>
+        <strong>${option.count}</strong>
+      </button>
+    `).join("");
+  }
+  if (ui.salesRequestInsights) {
+    const visibleUnassigned = filteredItems.filter((item) => !normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "")).length;
+    const visibleToContact = filteredItems.filter((item) => matchesSalesRequestQuickFilter(item, "to-contact")).length;
+    const visibleMine = filteredItems.filter((item) => matchesSalesRequestQuickFilter(item, "mine")).length;
+    ui.salesRequestInsights.innerHTML = `
+      <article class="sales-request-kpi">
+        <strong>${filteredItems.length}</strong>
+        <span>${state.lang === "it" ? "richieste visibili" : "visible requests"}</span>
+      </article>
+      <article class="sales-request-kpi">
+        <strong>${visibleToContact}</strong>
+        <span>${state.lang === "it" ? "ancora da contattare" : "still to contact"}</span>
+      </article>
+      <article class="sales-request-kpi">
+        <strong>${visibleUnassigned}</strong>
+        <span>${state.lang === "it" ? "senza assegnazione" : "unassigned"}</span>
+      </article>
+      <article class="sales-request-kpi">
+        <strong>${visibleMine}</strong>
+        <span>${state.lang === "it" ? "nel mio carico" : "in my queue"}</span>
+      </article>
+    `;
+  }
+  if (ui.salesRequestCompactToggle) {
+    ui.salesRequestCompactToggle.classList.toggle("is-active", Boolean(state.salesRequestCompactMode));
+    ui.salesRequestCompactToggle.textContent = state.salesRequestCompactMode
+      ? (state.lang === "it" ? "Vista compatta attiva" : "Compact view on")
+      : (state.lang === "it" ? "Vista compatta" : "Compact view");
   }
 }
 
@@ -8686,10 +8777,11 @@ function renderOrders() {
   ui.orderAttachments.innerHTML = renderAttachmentGrid(order.attachments || [], order.id);
 }
 
-function getFilteredSalesRequests() {
+function getFilteredSalesRequests({ ignoreQuickFilter = false } = {}) {
   const query = String(state.search.salesRequests || "").trim().toLowerCase();
   const assignmentFilter = String(state.filters.salesRequestAssignment || "all");
   const statusFilter = String(state.filters.salesRequestStatus || "all");
+  const quickFilter = String(state.filters.salesRequestQuick || "all");
   return [...state.salesRequests]
     .sort((left, right) => {
       const leftRow = Number(left.sourceRowNumber || 0);
@@ -8709,6 +8801,7 @@ function getFilteredSalesRequests() {
       if (assignmentFilter === "unassigned" && assignment) return false;
       if (!["all", "unassigned"].includes(assignmentFilter) && normalizeLooseString(assignment) !== assignmentFilter) return false;
       if (statusFilter !== "all" && normalizeLooseString(item.status || "") !== statusFilter) return false;
+      if (!ignoreQuickFilter && !matchesSalesRequestQuickFilter(item, quickFilter)) return false;
       if (!query) return true;
       const haystack = [
         getSalesRequestDisplayName(item),
@@ -8749,6 +8842,7 @@ function getFilteredSalesContents({ ignoreCategory = false } = {}) {
 
 function renderSalesRequests() {
   syncSalesRequestFilters();
+  const baseItems = getFilteredSalesRequests({ ignoreQuickFilter: true });
   const filtered = getFilteredSalesRequests();
   const { pageItems, totalPages, totalItems } = paginateSalesRequests(filtered);
   const bulkSelectedIds = new Set(getSalesRequestBulkSelectedIds());
@@ -8767,8 +8861,10 @@ function renderSalesRequests() {
   }
   updateSalesRequestImportPanel();
   updateSalesRequestSourcePanel();
+  renderSalesRequestToolbar(baseItems, filtered);
   renderSalesRequestBulkBar(pageItems);
   if (ui.salesRequestsList) {
+    ui.salesRequestsList.classList.toggle("is-compact", Boolean(state.salesRequestCompactMode));
     ui.salesRequestsList.innerHTML = pageItems.length
       ? pageItems.map((item) => {
         const automationBadge = getSalesRequestAutomationBadge(item);
@@ -14998,6 +15094,18 @@ bindEvent(ui.salesRequestStatusFilter, "change", (event) => {
   state.filters.salesRequestStatus = event.target.value || "all";
   state.salesRequestPage = 1;
   clearSalesRequestBulkSelection({ render: false });
+  renderSalesRequests();
+});
+bindEvent(ui.salesRequestQuickFilters, "click", (event) => {
+  const button = event.target.closest("[data-action='set-sales-request-quick-filter']");
+  if (!button) return;
+  state.filters.salesRequestQuick = button.dataset.value || "all";
+  state.salesRequestPage = 1;
+  clearSalesRequestBulkSelection({ render: false });
+  renderSalesRequests();
+});
+bindEvent(ui.salesRequestCompactToggle, "click", () => {
+  state.salesRequestCompactMode = !state.salesRequestCompactMode;
   renderSalesRequests();
 });
 bindEvent(ui.salesRequestImportButton, "click", () => {

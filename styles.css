@@ -10215,6 +10215,102 @@ body.mobile-safe-mode .nav-link.is-active {
   gap: 10px;
 }
 
+.sales-request-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.sales-request-quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sales-request-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 24, 39, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+  color: #445466;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.sales-request-quick-chip:hover {
+  border-color: rgba(31, 70, 55, 0.28);
+  color: #1f4637;
+  transform: translateY(-1px);
+}
+
+.sales-request-quick-chip.is-active {
+  border-color: rgba(31, 70, 55, 0.45);
+  background: rgba(31, 70, 55, 0.1);
+  color: #1f4637;
+}
+
+.sales-request-quick-chip strong {
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-size: 11px;
+  background: rgba(31, 70, 55, 0.1);
+  color: inherit;
+}
+
+.sales-request-toolbar-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+#sales-request-compact-toggle.is-active {
+  border-color: rgba(31, 70, 55, 0.34);
+  background: rgba(31, 70, 55, 0.1);
+  color: #1f4637;
+}
+
+.sales-request-insights {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sales-request-kpi {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(16, 24, 39, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(246, 249, 251, 0.9));
+  display: grid;
+  gap: 4px;
+}
+
+.sales-request-kpi strong {
+  color: #102131;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.sales-request-kpi span {
+  color: #6c7b8c;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .sales-content-kpi {
   padding: 10px 12px;
   border-radius: 14px;
@@ -10537,6 +10633,12 @@ body.mobile-safe-mode .nav-link.is-active {
   margin-top: 12px;
 }
 
+#sales-requests .sales-request-detail-panel .panel-head {
+  padding-bottom: 14px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(16, 24, 39, 0.06);
+}
+
 .sales-request-detail-chip {
   display: grid;
   gap: 4px;
@@ -10618,6 +10720,33 @@ body.mobile-safe-mode .nav-link.is-active {
   overflow: hidden;
 }
 
+#sales-requests .sales-request-list.is-compact .sales-request-card {
+  gap: 9px;
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+
+#sales-requests .sales-request-list.is-compact .sales-request-card-head strong {
+  font-size: 14px;
+}
+
+#sales-requests .sales-request-list.is-compact .sales-request-card-head p {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+#sales-requests .sales-request-list.is-compact .sales-request-card-meta,
+#sales-requests .sales-request-list.is-compact .sales-request-card-foot {
+  gap: 8px 12px;
+  font-size: 12px;
+}
+
+#sales-requests .sales-request-list.is-compact .sales-assignment-pill,
+#sales-requests .sales-request-list.is-compact .sales-card-date {
+  min-height: 38px;
+  padding: 7px 9px;
+}
+
 .sales-generator-frame {
   display: block;
   width: 100%;
@@ -10676,6 +10805,15 @@ body.mobile-safe-mode .nav-link.is-active {
 
   .page-header h1 {
     font-size: 32px;
+  }
+
+  .sales-request-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sales-request-toolbar-actions {
+    justify-content: flex-start;
   }
 
   .kpi-card,
@@ -10740,6 +10878,10 @@ body.mobile-safe-mode .nav-link.is-active {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .sales-request-insights {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .sales-generator-frame {
     min-height: 560px;
     height: 760px;
@@ -10789,6 +10931,10 @@ body.mobile-safe-mode .nav-link.is-active {
   }
 
   .sales-content-insights {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-request-insights {
     grid-template-columns: 1fr;
   }
 
