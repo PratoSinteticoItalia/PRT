@@ -3,6 +3,7 @@
   const BRANDING_STORAGE_KEY = "quote-generator-branding";
   const PLANNER_REPORT_STORAGE_KEY = "quote-generator-planner-report";
   const PLANNER_BRIDGE_STORAGE_KEY = "garden-planner-quote-bridge-v1";
+  const QUOTE_RECOMMENDATION_STORAGE_KEY = "quote-generator-recommendation-v1";
   const URL_PARAMS = new URLSearchParams(window.location.search);
   let lastUrlPrefill = "";
   let lastStoragePrefill = "";
@@ -26,6 +27,26 @@
   const ENABLE_PREVIEW_POLISH = false;
   const ENABLE_BRANDING_EXPORT = false;
   const ENABLE_PLANNER_REPORT_EXPORT = false;
+
+  function readJsonStorage(key, fallback = null) {
+    try {
+      const rawValue = window.localStorage.getItem(key);
+      if (!rawValue) return fallback;
+      const parsed = JSON.parse(rawValue);
+      return parsed && typeof parsed === "object" ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeJsonStorage(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   function setPlannerBridgeReadEnabled(enabled) {
     plannerBridgeReadEnabled = Boolean(enabled);
@@ -267,6 +288,104 @@
     document.head.appendChild(style);
   }
 
+  function ensureRecommendationStyles() {
+    if (document.getElementById("codex-recommended-quote-style")) return;
+    const style = document.createElement("style");
+    style.id = "codex-recommended-quote-style";
+    style.textContent = `
+      .codex-quote-recommendation-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+        margin-right: 10px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.12);
+      }
+
+      .codex-quote-recommendation-toolbar label {
+        color: #e2e8f0;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .codex-quote-recommendation-toolbar select {
+        min-width: 220px;
+        border: 1px solid rgba(226,232,240,0.16);
+        border-radius: 10px;
+        background: rgba(15,23,42,0.28);
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 7px 10px;
+        outline: none;
+      }
+
+      .codex-quote-recommendation-toolbar option {
+        color: #0f172a;
+      }
+
+      .pdf-root .codex-recommended-row {
+        background: linear-gradient(90deg, rgba(238,243,237,0.96) 0%, rgba(255,255,255,1) 100%);
+      }
+
+      .pdf-root .codex-recommended-row td:first-child {
+        box-shadow: inset 4px 0 0 #3d5a3f;
+        position: relative;
+      }
+
+      .pdf-root .codex-recommended-row td:first-child::after {
+        content: "Consigliato";
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #2f6f3f;
+        color: #ffffff;
+        font-size: 7px;
+        font-weight: 800;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+      }
+
+      .pdf-root .codex-recommended-card {
+        border-color: #2f4631 !important;
+        box-shadow: 0 4px 12px rgba(47,70,49,0.14) !important;
+        transform: translateY(-1px);
+      }
+
+      .pdf-root .codex-recommended-card::after {
+        content: "Consigliato";
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #2f6f3f;
+        color: #fff;
+        font-size: 7px;
+        font-weight: 800;
+        letter-spacing: 0.7px;
+        text-transform: uppercase;
+      }
+
+      @media (max-width: 1280px) {
+        .codex-quote-recommendation-toolbar {
+          margin-right: 0;
+        }
+
+        .codex-quote-recommendation-toolbar select {
+          min-width: 180px;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function isVisibleMeasureNode(node, { allowFixed = false } = {}) {
     if (!(node instanceof HTMLElement)) return false;
     const style = window.getComputedStyle(node);
@@ -380,6 +499,7 @@
       ensureEmbeddedLayoutStyles();
       hideInternalImportPanel();
       syncCustomAccessoryPriceEditors();
+      syncRecommendedQuoteLayout();
       const payload = readPrefillFromStorage() || readPrefillFromUrl();
       if (payload) scheduleRequestPayload(payload);
       if (ENABLE_BRANDING_EXPORT) {
@@ -684,6 +804,219 @@
       const headerText = normalizeLabel(table.querySelector("thead")?.textContent || "");
       return headerText.includes("modello") && headerText.includes("sconto") && headerText.includes("materiali");
     }) || null;
+  }
+
+  function getNodeText(node) {
+    return String(node?.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  function getDirectNodeText(node) {
+    if (!(node instanceof HTMLElement)) return "";
+    return Array.from(node.childNodes || [])
+      .filter((child) => child.nodeType === Node.TEXT_NODE)
+      .map((child) => String(child.textContent || ""))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function normalizeModelName(value) {
+    return normalizeLabel(String(value || "").replace(/\s+/g, " ").trim());
+  }
+
+  function getQuoteNumberFromPreview(root) {
+    const match = String(root?.textContent || "").match(/\bF[P]?-?\d{3,5}-\d{2,3}\b/);
+    return match ? match[0] : "";
+  }
+
+  function getCustomerNameFromPreview(root) {
+    const labels = Array.from(root.querySelectorAll("div, span, p"));
+    for (const label of labels) {
+      const text = getNodeText(label);
+      if (!/^nome:/i.test(text)) continue;
+      return text.replace(/^nome:\s*/i, "").trim();
+    }
+    return "";
+  }
+
+  function buildRecommendationKey(root, modelNames = []) {
+    const quoteNumber = getQuoteNumberFromPreview(root);
+    const customerName = getCustomerNameFromPreview(root);
+    const models = modelNames.map((item) => normalizeModelName(item)).filter(Boolean).join("|");
+    return [quoteNumber, normalizeModelName(customerName), models].filter(Boolean).join("::");
+  }
+
+  function readRecommendedModel(root, modelNames = []) {
+    const key = buildRecommendationKey(root, modelNames);
+    if (!key) return "";
+    const store = readJsonStorage(QUOTE_RECOMMENDATION_STORAGE_KEY, {});
+    return typeof store[key] === "string" ? store[key] : "";
+  }
+
+  function writeRecommendedModel(root, modelNames, value) {
+    const key = buildRecommendationKey(root, modelNames);
+    if (!key) return false;
+    const store = readJsonStorage(QUOTE_RECOMMENDATION_STORAGE_KEY, {});
+    const nextValue = String(value || "").trim();
+    if (nextValue) store[key] = nextValue;
+    else delete store[key];
+    return writeJsonStorage(QUOTE_RECOMMENDATION_STORAGE_KEY, store);
+  }
+
+  function collectQuoteModels(root) {
+    const pricingTable = findPricingTable(root);
+    if (!(pricingTable instanceof HTMLTableElement)) return [];
+    return Array.from(pricingTable.querySelectorAll("tbody tr"))
+      .map((row) => {
+        const cells = Array.from(row.children || []);
+        if (!cells.length) return null;
+        const titleNode = cells[0].querySelector("div");
+        const name = getDirectNodeText(titleNode) || getNodeText(titleNode);
+        if (!name) return null;
+        return {
+          row,
+          name,
+          normalizedName: normalizeModelName(name),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function findPerMqCards(root) {
+    const cards = [];
+    Array.from(root.querySelectorAll("div")).forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      const text = getNodeText(node);
+      if (!text || !normalizeLabel(text).includes("al mq finale")) return;
+      const titleNode = Array.from(node.querySelectorAll("div, span, p")).find((child) => {
+        const childText = getNodeText(child);
+        return /mm/i.test(childText) && !normalizeLabel(childText).includes("al mq finale");
+      });
+      const name = getNodeText(titleNode);
+      if (!name) return;
+      cards.push({ card: node, normalizedName: normalizeModelName(name) });
+    });
+    return cards;
+  }
+
+  function findHeylightCards(root) {
+    const heading = findElementByTextWithin(root, "div, span, p", "Simulazione 5 rate HeyLight");
+    if (!(heading instanceof HTMLElement)) return [];
+    const section = heading.parentElement;
+    const grid = Array.from(section?.children || []).find((child) => (
+      child instanceof HTMLElement
+      && child !== heading
+      && child.style.display === "grid"
+    ));
+    if (!(grid instanceof HTMLElement)) return [];
+    return Array.from(grid.children || [])
+      .map((node) => {
+        const titleNode = Array.from(node.querySelectorAll("div, span, p")).find((child) => /mm/i.test(getNodeText(child)));
+        const name = getNodeText(titleNode);
+        if (!name) return null;
+        return { card: node, normalizedName: normalizeModelName(name) };
+      })
+      .filter(Boolean);
+  }
+
+  function clearRecommendationClasses(root) {
+    root.querySelectorAll(".codex-recommended-row").forEach((node) => node.classList.remove("codex-recommended-row"));
+    root.querySelectorAll(".codex-recommended-card").forEach((node) => node.classList.remove("codex-recommended-card"));
+  }
+
+  function applyRecommendedModelClasses(root, selectedName) {
+    if (!(root instanceof HTMLElement)) return false;
+    clearRecommendationClasses(root);
+    if (!selectedName) return false;
+    const normalizedSelected = normalizeModelName(selectedName);
+    let applied = false;
+    collectQuoteModels(root).forEach((model) => {
+      if (model.normalizedName !== normalizedSelected) return;
+      model.row.classList.add("codex-recommended-row");
+      applied = true;
+    });
+    findPerMqCards(root).forEach((item) => {
+      if (item.normalizedName === normalizedSelected) {
+        item.card.classList.add("codex-recommended-card");
+        applied = true;
+      }
+    });
+    findHeylightCards(root).forEach((item) => {
+      if (item.normalizedName === normalizedSelected) {
+        item.card.classList.add("codex-recommended-card");
+        applied = true;
+      }
+    });
+    return applied;
+  }
+
+  function renderRecommendationToolbar(root, models) {
+    const previewButton = Array.from(document.querySelectorAll("button"))
+      .find((button) => normalizeLabel(button.textContent).includes("scarica pdf"));
+    const toolbarHost = previewButton?.parentElement;
+    if (!(toolbarHost instanceof HTMLElement)) return;
+
+    let toolbar = toolbarHost.querySelector(".codex-quote-recommendation-toolbar");
+    if (!toolbar) {
+      toolbar = document.createElement("div");
+      toolbar.className = "codex-quote-recommendation-toolbar";
+      toolbar.innerHTML = `
+        <label for="codex-quote-recommendation-select">Modello consigliato</label>
+        <select id="codex-quote-recommendation-select"></select>
+      `;
+      toolbarHost.insertBefore(toolbar, previewButton);
+    }
+
+    const select = toolbar.querySelector("select");
+    if (!(select instanceof HTMLSelectElement)) return;
+    const names = models.map((item) => item.name);
+    const signature = names.join("|");
+    if (select.dataset.optionsSignature !== signature) {
+      select.innerHTML = "";
+      const blank = document.createElement("option");
+      blank.value = "";
+      blank.textContent = "Nessun consigliato";
+      select.appendChild(blank);
+      names.forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+      });
+      select.dataset.optionsSignature = signature;
+    }
+
+    const currentValue = readRecommendedModel(root, names);
+    select.value = names.includes(currentValue) ? currentValue : "";
+    if (!select.dataset.bound) {
+      select.addEventListener("change", () => {
+        writeRecommendedModel(root, names, select.value);
+        applyRecommendedModelClasses(root, select.value);
+        reportEmbeddedContentHeight();
+      });
+      select.dataset.bound = "1";
+    }
+  }
+
+  function syncRecommendedQuoteLayout() {
+    ensureRecommendationStyles();
+    const pdfRoot = getLivePdfRoot(document);
+    const toolbar = document.querySelector(".codex-quote-recommendation-toolbar");
+    if (!(pdfRoot instanceof HTMLElement) || !isPreviewModeVisible()) {
+      toolbar?.remove();
+      return false;
+    }
+
+    const models = collectQuoteModels(pdfRoot);
+    if (!models.length) {
+      toolbar?.remove();
+      clearRecommendationClasses(pdfRoot);
+      return false;
+    }
+
+    renderRecommendationToolbar(pdfRoot, models);
+    const selectedName = readRecommendedModel(pdfRoot, models.map((item) => item.name));
+    return applyRecommendedModelClasses(pdfRoot, selectedName);
   }
 
   function appendDiscountLabelToProductDescriptions(root) {
