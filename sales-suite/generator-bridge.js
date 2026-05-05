@@ -22,6 +22,7 @@
   let bridgeSyncQueued = false;
   let bridgeSyncBurstRuns = 0;
   let lastRecommendedLayoutSignature = "";
+  let recommendationLayoutApplying = false;
   const brandingLogoExportCache = new Map();
   let plannerBridgeReadEnabled = URL_PARAMS.get("planner") === "1";
   const originalLocalStorageGetItem = window.localStorage?.getItem?.bind(window.localStorage);
@@ -1116,30 +1117,37 @@
 
   function applyRecommendedModelToPreview(root, selectedName) {
     if (!(root instanceof HTMLElement)) return false;
-    clearRecommendationDecorations(root);
-    const models = collectQuoteModels(root);
-    if (!models.length || !selectedName) return false;
-    const selectedModel = models.find((item) => item.normalizedName === normalizeModelName(selectedName));
-    if (!selectedModel) return false;
+    recommendationLayoutApplying = true;
+    try {
+      clearRecommendationDecorations(root);
+      const models = collectQuoteModels(root);
+      if (!models.length || !selectedName) return false;
+      const selectedModel = models.find((item) => item.normalizedName === normalizeModelName(selectedName));
+      if (!selectedModel) return false;
 
-    selectedModel.row.classList.add("codex-recommended-row");
-    const titleNode = selectedModel.row.children?.[0]?.querySelector("div");
-    upsertRecommendedBadge(titleNode);
-    renderRecommendedSummary(root, selectedModel);
+      selectedModel.row.classList.add("codex-recommended-row");
+      const titleNode = selectedModel.row.children?.[0]?.querySelector("div");
+      upsertRecommendedBadge(titleNode);
+      renderRecommendedSummary(root, selectedModel);
 
-    models.forEach((model) => {
-      const perSqmInfo = findPerSqmCard(root, model.normalizedName);
-      if (perSqmInfo?.card instanceof HTMLElement) {
-        perSqmInfo.card.classList.toggle("codex-recommended-card", model.normalizedName === selectedModel.normalizedName);
-        perSqmInfo.card.classList.toggle("codex-muted-card", model.normalizedName !== selectedModel.normalizedName);
-      }
-      const heylightInfo = findHeylightCard(root, model.normalizedName);
-      if (heylightInfo?.card instanceof HTMLElement) {
-        heylightInfo.card.classList.toggle("codex-recommended-card", model.normalizedName === selectedModel.normalizedName);
-        heylightInfo.card.classList.toggle("codex-muted-card", model.normalizedName !== selectedModel.normalizedName);
-      }
-    });
-    return true;
+      models.forEach((model) => {
+        const perSqmInfo = findPerSqmCard(root, model.normalizedName);
+        if (perSqmInfo?.card instanceof HTMLElement) {
+          perSqmInfo.card.classList.toggle("codex-recommended-card", model.normalizedName === selectedModel.normalizedName);
+          perSqmInfo.card.classList.toggle("codex-muted-card", model.normalizedName !== selectedModel.normalizedName);
+        }
+        const heylightInfo = findHeylightCard(root, model.normalizedName);
+        if (heylightInfo?.card instanceof HTMLElement) {
+          heylightInfo.card.classList.toggle("codex-recommended-card", model.normalizedName === selectedModel.normalizedName);
+          heylightInfo.card.classList.toggle("codex-muted-card", model.normalizedName !== selectedModel.normalizedName);
+        }
+      });
+      return true;
+    } finally {
+      window.setTimeout(() => {
+        recommendationLayoutApplying = false;
+      }, 0);
+    }
   }
 
   function syncRecommendedQuoteLayout() {
@@ -2388,6 +2396,7 @@
   }
 
   function shouldIgnoreAccessoryBridgeMutations(mutations) {
+    if (recommendationLayoutApplying) return true;
     return mutations.every((mutation) => {
       if (!isRecommendationManagedNode(mutation.target)) return false;
       const added = Array.from(mutation.addedNodes || []);
