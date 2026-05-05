@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260505-sales-request-crm-toolbar-113";
+const APP_SHELL_VERSION = "20260505-sales-request-save-queue-114";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1025,6 +1025,8 @@ const state = {
   selectedSalesRequestId: "",
   selectedSalesRequestBulkIds: new Set(),
   salesRequestBulkSaving: false,
+  salesRequestSaveInFlight: false,
+  pendingSalesRequestSave: null,
   selectedSalesContentId: "",
   pendingSalesRequestServiceAccountJson: "",
   pendingSalesRequestServiceAccountEmail: "",
@@ -9482,6 +9484,111 @@ function mergeSalesRequestRecords(records = []) {
   });
 }
 
+function getSalesRequestSubmitButtons() {
+  return Array.from(ui.salesRequestForm?.querySelectorAll('button[type="submit"]') || []);
+}
+
+function syncSalesRequestSubmitButtons({ busy = false, queued = false } = {}) {
+  getSalesRequestSubmitButtons().forEach((button) => {
+    const defaultLabel = String(button.dataset.defaultLabel || button.textContent || "").trim()
+      || (state.lang === "it" ? "Salva richiesta" : "Save request");
+    if (!button.dataset.defaultLabel) button.dataset.defaultLabel = defaultLabel;
+    button.textContent = busy
+      ? (queued
+          ? (state.lang === "it" ? "Salvataggio + coda..." : "Saving + queued...")
+          : (state.lang === "it" ? "Salvataggio..." : "Saving..."))
+      : defaultLabel;
+    button.disabled = false;
+    button.setAttribute("aria-busy", busy ? "true" : "false");
+  });
+}
+
+function collectSalesRequestDraftFromForm() {
+  const form = new FormData(ui.salesRequestForm);
+  const requestId = String(form.get("id") || "").trim();
+  const existingRequest = requestId
+    ? (state.salesRequests.find((item) => item.id === requestId) || null)
+    : null;
+  const nextStatus = String(form.get("status") || "").trim() || "new";
+  const nowIso = new Date().toISOString();
+  return normalizeSalesRequestRecord({
+    ...(existingRequest || {}),
+    id: requestId || undefined,
+    name: form.get("name"),
+    surname: form.get("surname"),
+    city: form.get("city"),
+    phone: form.get("phone"),
+    email: form.get("email"),
+    sqm: form.get("sqm"),
+    requestedHeight: form.get("requestedHeight"),
+    service: form.get("service"),
+    surface: form.get("surface"),
+    assignment: normalizeSalesRequestAssignment(form.get("assignment")),
+    status: nextStatus,
+    note: form.get("note"),
+    whatsappTemplate: form.get("whatsappTemplate"),
+    whatsappUrl: form.get("whatsappUrl"),
+    source: existingRequest?.source || "manual",
+    sourceSpreadsheetId: existingRequest?.sourceSpreadsheetId || "",
+    sourceSheetName: existingRequest?.sourceSheetName || "",
+    sourceRowNumber: Number(existingRequest?.sourceRowNumber || 0),
+    createdAt: existingRequest?.createdAt || undefined,
+    updatedAt: nowIso,
+  });
+}
+
+async function processSalesRequestSave(draftRecord, {
+  previousRequests,
+  previousSelectedSalesRequestId,
+  previousCreatingSalesRequest,
+} = {}) {
+  state.salesRequestSaveInFlight = true;
+  syncSalesRequestSubmitButtons({ busy: true, queued: Boolean(state.pendingSalesRequestSave) });
+  try {
+    const saved = await apiFetch("/api/sales/requests", {
+      method: "POST",
+      body: JSON.stringify(buildSalesRequestPayloadFromRecord(draftRecord)),
+    });
+    const automationMessage = getSalesRequestAutomationSaveMessage(saved?._automation || null);
+    const sheetSyncMessage = getSalesRequestSheetSyncMessage(saved?._sheetSync || null);
+    upsertSalesRequest(saved, { preserveSelection: true });
+    renderSalesRequests();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
+    const hasQueuedSave = Boolean(state.pendingSalesRequestSave);
+    setStatus(
+      ui.salesRequestsStatus,
+      sheetSyncMessage ? "error" : "success",
+      `${state.lang === "it" ? "Richiesta salvata." : "Request saved."}${automationMessage}${sheetSyncMessage}${hasQueuedSave
+        ? (state.lang === "it" ? " Applico l'ultima modifica in coda..." : " Applying the latest queued change...")
+        : ""}`,
+    );
+  } catch (error) {
+    state.salesRequests = previousRequests;
+    state.selectedSalesRequestId = previousSelectedSalesRequestId;
+    state.creatingSalesRequest = previousCreatingSalesRequest;
+    state.pendingSalesRequestSave = null;
+    renderOps();
+    renderSalesRequests();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta." : "Unable to save the request.");
+  } finally {
+    state.salesRequestSaveInFlight = false;
+    const nextQueuedDraft = state.pendingSalesRequestSave;
+    state.pendingSalesRequestSave = null;
+    if (nextQueuedDraft) {
+      const rollbackSnapshot = {
+        previousRequests: [...state.salesRequests],
+        previousSelectedSalesRequestId: state.selectedSalesRequestId,
+        previousCreatingSalesRequest: state.creatingSalesRequest,
+      };
+      syncSalesRequestSubmitButtons({ busy: true, queued: false });
+      void processSalesRequestSave(nextQueuedDraft, rollbackSnapshot);
+      return;
+    }
+    syncSalesRequestSubmitButtons({ busy: false, queued: false });
+  }
+}
+
 async function bulkAssignSalesRequests(assignmentValue = "") {
   if (state.salesRequestBulkSaving) return;
   const assignment = normalizeSalesRequestAssignment(assignmentValue);
@@ -9551,76 +9658,29 @@ async function saveSalesRequest(event) {
   const previousRequests = [...state.salesRequests];
   const previousSelectedSalesRequestId = state.selectedSalesRequestId;
   const previousCreatingSalesRequest = state.creatingSalesRequest;
-  const submitButton = event.submitter || ui.salesRequestForm?.querySelector('button[type="submit"]');
-  const defaultSubmitLabel = submitButton?.textContent || "";
-  const form = new FormData(ui.salesRequestForm);
-  const requestId = String(form.get("id") || "").trim();
-  const existingRequest = requestId
-    ? (state.salesRequests.find((item) => item.id === requestId) || null)
-    : null;
-  const nextStatus = String(form.get("status") || "").trim() || "new";
-  const nowIso = new Date().toISOString();
-  const draftRecord = normalizeSalesRequestRecord({
-    ...(existingRequest || {}),
-    id: requestId || undefined,
-    name: form.get("name"),
-    surname: form.get("surname"),
-    city: form.get("city"),
-    phone: form.get("phone"),
-    email: form.get("email"),
-    sqm: form.get("sqm"),
-    requestedHeight: form.get("requestedHeight"),
-    service: form.get("service"),
-    surface: form.get("surface"),
-    assignment: normalizeSalesRequestAssignment(form.get("assignment")),
-    status: nextStatus,
-    note: form.get("note"),
-    whatsappTemplate: form.get("whatsappTemplate"),
-    whatsappUrl: form.get("whatsappUrl"),
-    source: existingRequest?.source || "manual",
-    sourceSpreadsheetId: existingRequest?.sourceSpreadsheetId || "",
-    sourceSheetName: existingRequest?.sourceSheetName || "",
-    sourceRowNumber: Number(existingRequest?.sourceRowNumber || 0),
-    createdAt: existingRequest?.createdAt || undefined,
-    updatedAt: nowIso,
-  });
+  const draftRecord = collectSalesRequestDraftFromForm();
   upsertSalesRequest(draftRecord);
   renderSalesRequests();
   if (state.currentView === "sales-generator") renderSalesGenerator();
-  setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Salvataggio richiesta in corso..." : "Saving request...");
-  if (submitButton) {
-    submitButton.disabled = true;
-    submitButton.textContent = state.lang === "it" ? "Salvataggio..." : "Saving...";
-  }
-  try {
-    const saved = await apiFetch("/api/sales/requests", {
-      method: "POST",
-      body: JSON.stringify(buildSalesRequestPayloadFromRecord(draftRecord)),
-    });
-    const automationMessage = getSalesRequestAutomationSaveMessage(saved?._automation || null);
-    const sheetSyncMessage = getSalesRequestSheetSyncMessage(saved?._sheetSync || null);
-    upsertSalesRequest(saved, { preserveSelection: true });
-    renderSalesRequests();
-    if (state.currentView === "sales-generator") renderSalesGenerator();
+  if (state.salesRequestSaveInFlight) {
+    state.pendingSalesRequestSave = draftRecord;
+    syncSalesRequestSubmitButtons({ busy: true, queued: true });
     setStatus(
       ui.salesRequestsStatus,
-      sheetSyncMessage ? "error" : "success",
-      `${state.lang === "it" ? "Richiesta salvata." : "Request saved."}${automationMessage}${sheetSyncMessage}`,
+      "success",
+      state.lang === "it"
+        ? "Salvataggio in corso, ultima modifica accodata."
+        : "Save in progress, latest change queued.",
     );
-  } catch (error) {
-    state.salesRequests = previousRequests;
-    state.selectedSalesRequestId = previousSelectedSalesRequestId;
-    state.creatingSalesRequest = previousCreatingSalesRequest;
-    renderOps();
-    renderSalesRequests();
-    if (state.currentView === "sales-generator") renderSalesGenerator();
-    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta." : "Unable to save the request.");
-  } finally {
-    if (submitButton) {
-      submitButton.disabled = false;
-      submitButton.textContent = defaultSubmitLabel || (state.lang === "it" ? "Salva richiesta" : "Save request");
-    }
+    return;
   }
+  setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Salvataggio richiesta in corso..." : "Saving request...");
+  syncSalesRequestSubmitButtons({ busy: true, queued: false });
+  await processSalesRequestSave(draftRecord, {
+    previousRequests,
+    previousSelectedSalesRequestId,
+    previousCreatingSalesRequest,
+  });
 }
 
 async function deleteSalesRequest() {
