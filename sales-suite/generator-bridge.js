@@ -336,6 +336,12 @@
         box-shadow: inset 4px 0 0 #3d5a3f;
       }
 
+      .pdf-root .codex-recommended-row td:first-child::after,
+      .pdf-root .codex-recommended-card::after {
+        content: none !important;
+        display: none !important;
+      }
+
       .pdf-root .codex-recommended-card {
         border-color: #2f4631 !important;
         box-shadow: 0 4px 12px rgba(47,70,49,0.14) !important;

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260505-safe-recommended-quote-117";
+const APP_SHELL_VERSION = "20260505-safe-recommended-quote-118";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
