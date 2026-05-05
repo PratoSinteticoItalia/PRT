@@ -10499,6 +10499,27 @@ body.mobile-safe-mode .nav-link.is-active {
   font-size: 13px;
 }
 
+.sales-request-card-service,
+.sales-request-card-request {
+  display: grid;
+  gap: 4px;
+}
+
+.sales-request-card-sqm {
+  color: #122032;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sales-request-card-height {
+  color: #667688;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .sales-request-card-foot,
 .sales-content-card-foot {
   font-size: 12px;
@@ -10695,6 +10716,48 @@ body.mobile-safe-mode .nav-link.is-active {
   font-weight: 800;
 }
 
+#sales-request-form .sales-request-sqm-field {
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(31, 70, 55, 0.14);
+  background: linear-gradient(180deg, rgba(245, 249, 246, 0.94), rgba(235, 244, 239, 0.76));
+}
+
+#sales-request-form .sales-request-sqm-field > span {
+  color: #263d32;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#sales-request-form .sales-request-sqm-field .text-input {
+  border-color: rgba(31, 70, 55, 0.18);
+  background: rgba(255, 255, 255, 0.94);
+  color: #163726;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+#sales-request-form .sales-request-note-field {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(16, 24, 39, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 251, 0.92));
+}
+
+#sales-request-form .sales-request-note-field > span {
+  color: #1f2f3f;
+  font-weight: 800;
+}
+
+#sales-request-form .sales-request-note-field textarea.text-input {
+  min-height: 112px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
 .sales-automation-pill {
   display: inline-flex;
   align-items: center;
@@ -10744,6 +10807,10 @@ body.mobile-safe-mode .nav-link.is-active {
 #sales-requests .sales-request-list.is-compact .sales-request-card-foot {
   gap: 8px 12px;
   font-size: 12px;
+}
+
+#sales-requests .sales-request-list.is-compact .sales-request-card-sqm {
+  font-size: 17px;
 }
 
 #sales-requests .sales-request-list.is-compact .sales-assignment-pill,

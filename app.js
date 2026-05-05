@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260505-sales-request-save-queue-114";
+const APP_SHELL_VERSION = "20260505-sales-request-sqm-notes-115";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1206,6 +1206,7 @@ const ui = {
   salesRequestsList: document.getElementById("sales-requests-list"),
   salesRequestsPagination: document.getElementById("sales-requests-pagination"),
   salesRequestForm: document.getElementById("sales-request-form"),
+  salesRequestNoteField: document.querySelector("#sales-request-form [name='note']"),
   salesRequestNewButton: document.getElementById("sales-request-new-button"),
   salesRequestDeleteButton: document.getElementById("sales-request-delete-button"),
   salesRequestUseGeneratorButton: document.getElementById("sales-request-use-generator-button"),
@@ -8898,11 +8899,11 @@ function renderSalesRequests() {
               </div>
             </div>
             <div class="sales-request-card-meta">
-              <span>${escapeHtml(getSalesRequestServiceLabel(item.service))}</span>
-              <span>${[
-                requestSqm > 0 ? `${requestSqm} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending"),
-                item.requestedHeight ? escapeHtml(item.requestedHeight) : "",
-              ].filter(Boolean).join(" · ")}</span>
+              <span class="sales-request-card-service">${escapeHtml(getSalesRequestServiceLabel(item.service))}</span>
+              <span class="sales-request-card-request">
+                <strong class="sales-request-card-sqm">${escapeHtml(requestSqm > 0 ? `${requestSqm} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending"))}</strong>
+                ${item.requestedHeight ? `<small class="sales-request-card-height">${escapeHtml(item.requestedHeight)}</small>` : ""}
+              </span>
             </div>
             <div class="sales-request-card-foot">
               <span class="sales-assignment-pill ${assignmentTone}">
@@ -8947,6 +8948,7 @@ function renderSalesRequests() {
   syncSalesRequestAssignmentField(selected?.assignment || "");
   syncSalesRequestStatusField(selected?.status || "");
   ui.salesRequestForm.note.value = selected?.note || "";
+  autosizeTextarea(ui.salesRequestNoteField);
   if (ui.salesRequestForm.whatsappTemplate) {
     ui.salesRequestForm.whatsappTemplate.value = selected?.whatsappTemplate || "";
   }
@@ -9486,6 +9488,13 @@ function mergeSalesRequestRecords(records = []) {
 
 function getSalesRequestSubmitButtons() {
   return Array.from(ui.salesRequestForm?.querySelectorAll('button[type="submit"]') || []);
+}
+
+function autosizeTextarea(textarea) {
+  if (!textarea) return;
+  textarea.style.height = "auto";
+  const nextHeight = Math.max(textarea.scrollHeight, 112);
+  textarea.style.height = `${nextHeight}px`;
 }
 
 function syncSalesRequestSubmitButtons({ busy = false, queued = false } = {}) {
@@ -15167,6 +15176,9 @@ bindEvent(ui.salesRequestQuickFilters, "click", (event) => {
 bindEvent(ui.salesRequestCompactToggle, "click", () => {
   state.salesRequestCompactMode = !state.salesRequestCompactMode;
   renderSalesRequests();
+});
+bindEvent(ui.salesRequestNoteField, "input", (event) => {
+  autosizeTextarea(event.target);
 });
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
