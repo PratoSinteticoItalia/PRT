@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260505-quote-recommended-template-116";
+const APP_SHELL_VERSION = "20260505-sales-request-sqm-notes-115";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
