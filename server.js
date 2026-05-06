@@ -4016,9 +4016,49 @@ async function syncOrdersFromShopify(store) {
     throw lastError || new Error(`shopify_sync_failed: ${batchLabel}`);
   }
 
+  async function fetchRecentRestOrders() {
+    let lastError = null;
+    const restEndpoint = `https://${storeDomain}/admin/api/2026-01/orders.json?status=any&limit=100&fields=id,admin_graphql_api_id,name,email,note,current_total_price,current_total_tax,current_subtotal_price,total_price,total_tax,subtotal_price,taxes_included,financial_status,fulfillment_status,payment_gateway_names,billing_address,customer,shipping_address,line_items,created_at,updated_at,processed_at,note_attributes,currency,presentment_currency`;
+    for (let attempt = 0; attempt <= SHOPIFY_MAX_RETRIES; attempt += 1) {
+      try {
+        const response = await fetchWithTimeout(restEndpoint, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": accessToken,
+          },
+        });
+
+        if (!response.ok) {
+          const payload = await parseShopifyResponse(response);
+          const responseText = payload?.rawText || payload?.errors?.map((item) => item.message || item).join(" | ") || "";
+          if (attempt < SHOPIFY_MAX_RETRIES && isRetryableShopifyStatus(response.status)) {
+            await wait(500 * (attempt + 1));
+            continue;
+          }
+          throw new Error(responseText ? `shopify_sync_failed: rest_recent_orders ${response.status} ${responseText}` : `shopify_sync_failed: rest_recent_orders ${response.status}`);
+        }
+
+        const payload = await response.json().catch(() => ({}));
+        return Array.isArray(payload?.orders)
+          ? payload.orders.map((order, index) => normalizeOrderPayload(order, index))
+          : [];
+      } catch (error) {
+        lastError = error;
+        const retryable = String(error?.name || "") === "AbortError" || /ECONNRESET|ETIMEDOUT|timeout/i.test(String(error?.message || ""));
+        if (attempt < SHOPIFY_MAX_RETRIES && retryable) {
+          await wait(500 * (attempt + 1));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError || new Error("shopify_sync_failed: rest_recent_orders");
+  }
+
   const recentQuery = `
     query VertexOpsRecentOrders {
-      orders(first: 50, sortKey: PROCESSED_AT, reverse: true) {
+      orders(first: 100, sortKey: PROCESSED_AT, reverse: true) {
         edges {
           node {
             createdAt
@@ -4034,7 +4074,7 @@ async function syncOrdersFromShopify(store) {
   const openOrdersQuery = `
     query VertexOpsOpenOrders {
       orders(
-        first: 100,
+        first: 150,
         sortKey: UPDATED_AT,
         reverse: true,
         query: "status:open OR fulfillment_status:unfulfilled OR fulfillment_status:partial OR financial_status:pending OR financial_status:authorized"
@@ -4053,11 +4093,21 @@ async function syncOrdersFromShopify(store) {
 
   const recentEdges = await fetchOrderBatch(recentQuery, "recent_orders");
   const openEdges = await fetchOrderBatch(openOrdersQuery, "open_orders");
+  const recentRestOrders = await fetchRecentRestOrders();
   const uniqueNodes = new Map();
   [...recentEdges, ...openEdges].forEach((edge) => {
     if (edge?.node?.id) uniqueNodes.set(edge.node.id, edge.node);
   });
-  const normalized = [...uniqueNodes.values()].map((node, index) => normalizeGraphqlOrder(node, index));
+  const normalizedGraphql = [...uniqueNodes.values()].map((node, index) => normalizeGraphqlOrder(node, index));
+  const normalizedByShopifyId = new Map();
+  [...normalizedGraphql, ...recentRestOrders].forEach((order) => {
+    const key = String(getNormalizedShopifyGraphqlId(order) || getNormalizedShopifyNumericId(order) || order.id || "").trim();
+    if (key) {
+      const existing = normalizedByShopifyId.get(key) || null;
+      normalizedByShopifyId.set(key, existing ? { ...existing, ...order } : order);
+    }
+  });
+  const normalized = [...normalizedByShopifyId.values()];
   store.shopifySettings.lastSyncAt = new Date().toISOString();
   store.shopifySettings.lastSyncStatus = "ok";
   store.shopifySettings.lastSyncMessage = "";
