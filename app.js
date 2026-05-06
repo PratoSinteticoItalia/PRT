@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260506-coverage-radar-profit-split-131";
+const APP_SHELL_VERSION = "20260507-coverage-map-calibration-132";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -54,6 +54,7 @@ const COVERAGE_REGIONS = [
 const COVERAGE_CITY_COORDINATES = {
   alessandria: { lat: 44.912, lng: 8.615 },
   ancona: { lat: 43.6158, lng: 13.5189 },
+  arenzano: { lat: 44.4055, lng: 8.6832 },
   arezzo: { lat: 43.4633, lng: 11.8796 },
   asti: { lat: 44.9008, lng: 8.2064 },
   aosta: { lat: 45.737, lng: 7.3201 },
@@ -125,6 +126,38 @@ const COVERAGE_CITY_COORDINATES = {
   venezia: { lat: 45.4408, lng: 12.3155 },
   verona: { lat: 45.4384, lng: 10.9916 },
   vicenza: { lat: 45.5455, lng: 11.5354 },
+};
+const COVERAGE_CITY_MAP_POINTS = {
+  alghero: { x: 0.171, y: 0.601 },
+  arenzano: { x: 0.2, y: 0.264 },
+  bari: { x: 0.678, y: 0.531 },
+  bologna: { x: 0.345, y: 0.26 },
+  brindisi: { x: 0.743, y: 0.565 },
+  cagliari: { x: 0.218, y: 0.718 },
+  catania: { x: 0.589, y: 0.857 },
+  chiavari: { x: 0.224, y: 0.279 },
+  firenze: { x: 0.341, y: 0.321 },
+  genova: { x: 0.209, y: 0.268 },
+  imperia: { x: 0.159, y: 0.267 },
+  "la spezia": { x: 0.25, y: 0.291 },
+  lecce: { x: 0.759, y: 0.589 },
+  marsala: { x: 0.43, y: 0.837 },
+  messina: { x: 0.617, y: 0.79 },
+  milano: { x: 0.223, y: 0.176 },
+  napoli: { x: 0.526, y: 0.556 },
+  olbia: { x: 0.241, y: 0.57 },
+  palermo: { x: 0.48, y: 0.806 },
+  parma: { x: 0.287, y: 0.232 },
+  pescara: { x: 0.516, y: 0.428 },
+  roma: { x: 0.417, y: 0.484 },
+  salerno: { x: 0.558, y: 0.58 },
+  sassari: { x: 0.185, y: 0.587 },
+  savona: { x: 0.191, y: 0.257 },
+  siracusa: { x: 0.604, y: 0.887 },
+  taranto: { x: 0.705, y: 0.586 },
+  torino: { x: 0.139, y: 0.209 },
+  venezia: { x: 0.398, y: 0.175 },
+  verona: { x: 0.325, y: 0.178 },
 };
 const INVENTORY_CATALOG = [
   { key: "tasso", label: "Tasso", type: "turf", grossPricePerSqm: 2.321 },
@@ -4560,12 +4593,17 @@ const PROVINCE_ALIAS_MAP = getProvinceAliasMap();
 const CITY_PROVINCE_MAP = {
   "anguillara sabazia": "RM",
   anzio: "RM",
+  arenzano: "GE",
   bardolino: "VR",
   casalmaggiore: "CR",
   caserta: "CE",
+  chiavari: "GE",
   feltre: "BL",
   fosso: "VE",
+  genova: "GE",
+  imperia: "IM",
   "la serra": "PO",
+  "la spezia": "SP",
   "lavinio lido di enea": "RM",
   napoli: "NA",
   "novi ligure": "AL",
@@ -4573,6 +4611,7 @@ const CITY_PROVINCE_MAP = {
   pontedera: "PI",
   roma: "RM",
   saltrio: "VA",
+  savona: "SV",
   "zola predosa": "BO",
 };
 const SEARCHABLE_PROVINCE_ENTRIES = Object.entries(PROVINCE_ALIAS_MAP)
@@ -5559,6 +5598,10 @@ function clampNumber(value, min, max) {
 function getCoveragePointFromText(value) {
   const normalized = normalizeLooseString(value);
   if (!normalized) return null;
+  if (COVERAGE_CITY_MAP_POINTS[normalized]) return COVERAGE_CITY_MAP_POINTS[normalized];
+  for (const [cityName, point] of Object.entries(COVERAGE_CITY_MAP_POINTS)) {
+    if (normalized.includes(cityName) || cityName.includes(normalized)) return point;
+  }
   if (COVERAGE_CITY_COORDINATES[normalized]) {
     const point = COVERAGE_CITY_COORDINATES[normalized];
     return projectCoverageLatLng(point.lat, point.lng);
@@ -5567,6 +5610,11 @@ function getCoveragePointFromText(value) {
     if (normalized.includes(cityName)) return projectCoverageLatLng(point.lat, point.lng);
   }
   return null;
+}
+
+function getCoveragePointForLocation(value, coords = null) {
+  return getCoveragePointFromText(value)
+    || (coords ? projectCoverageLatLng(coords.lat, coords.lng) : null);
 }
 
 function getCoverageCoordinatesFromText(value) {
@@ -5718,7 +5766,7 @@ async function buildCoverageNearestCrewSuggestions(cityName) {
   if (!normalizedCity) return [];
   const targetLocation = await geocodeCoverageLocation(cityName);
   const targetCoords = targetLocation?.coords || null;
-  const targetPoint = targetCoords ? projectCoverageLatLng(targetCoords.lat, targetCoords.lng) : null;
+  const targetPoint = getCoveragePointForLocation(cityName, targetCoords);
   const targetProvince = targetLocation?.provinceCode || extractProvinceCodeFromText(cityName);
   const targetRegion = normalizeLooseString(targetLocation?.regionName || getRegionNameForProvinceCode(targetProvince));
   const suggestions = await Promise.all(getCoverageManagedCrewNames()
