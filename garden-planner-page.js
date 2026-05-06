@@ -1,4 +1,4 @@
-const { useState, useMemo, useRef, useEffect } = React;
+const { useState, useMemo, useRef, useEffect, useCallback } = React;
 const SALES_GENERATOR_PLANNER_REPORT_KEY = "quote-generator-planner-report";
 
 /* ═══════════════════════════════════════════
@@ -1084,7 +1084,81 @@ function estimateInstallationNeeds(area, perimeter, manualRolls = []) {
 const GRID = 0.5;
 const BASE_PX = 36;
 
-function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setRolls }) {
+function createPlannerArea() {
+  return {
+    id: `area-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    points: [],
+    closed: false,
+    rolls: [],
+  };
+}
+
+function applyStateUpdate(currentValue, nextValueOrUpdater) {
+  return typeof nextValueOrUpdater === "function" ? nextValueOrUpdater(currentValue) : nextValueOrUpdater;
+}
+
+function getPlannerPolygons(customAreas = [], customPts = [], customClosed = false) {
+  if (Array.isArray(customAreas) && customAreas.length) {
+    return customAreas
+      .map((area, index) => ({
+        id: area.id || `area-${index + 1}`,
+        index: index + 1,
+        points: Array.isArray(area.points) ? area.points : [],
+        closed: Boolean(area.closed),
+        rolls: Array.isArray(area.rolls) ? area.rolls : [],
+      }))
+      .filter((area) => area.closed && area.points.length >= 3);
+  }
+  if (customClosed && Array.isArray(customPts) && customPts.length >= 3) {
+    return [{
+      id: "area-1",
+      index: 1,
+      points: customPts,
+      closed: true,
+      rolls: [],
+    }];
+  }
+  return [];
+}
+
+function getPlannerShapeLabel(shape, dims, customPts, customClosed, customAreas = []) {
+  const polygons = getPlannerPolygons(customAreas, customPts, customClosed);
+  if (polygons.length > 1) return `${polygons.length} aree separate`;
+  return getShapeLabel(shape, dims, customPts, customClosed);
+}
+
+function getPlannerBorderEdges(customAreas = [], shape = "custom", dims = {}) {
+  const polygons = getPlannerPolygons(customAreas);
+  if (!polygons.length) return [];
+  return polygons.flatMap((area, areaIndex) => {
+    const baseEdges = getShapeEdges(shape, dims, area.points, true);
+    return baseEdges.map((edge, edgeIndex) => ({
+      ...edge,
+      id: `${area.id}-${edgeIndex}`,
+      label: polygons.length > 1 ? `A${areaIndex + 1} · ${edge.label}` : edge.label,
+      areaId: area.id,
+      areaIndex: areaIndex + 1,
+    }));
+  });
+}
+
+function isRollInsideAnyPolygon(roll, polygons = []) {
+  return polygons.some((polygon) => Array.isArray(polygon?.points) && polygon.points.length >= 3 && isRollInsidePolygon(roll, polygon.points));
+}
+
+function FreeDrawCanvas({
+  points,
+  setPoints,
+  closed,
+  setClosed,
+  rolls = [],
+  setRolls,
+  areas = [],
+  activeAreaId = "",
+  onSelectArea = () => {},
+  onAddArea = () => {},
+  onRemoveArea = () => {},
+}) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const pointerStateRef = useRef({ pointerId: null, mode: "", start: null, moved: false });
@@ -1105,6 +1179,11 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
     () => (Array.isArray(rolls) ? rolls.reduce((sum, roll) => sum + (Number(roll.length) || 0), 0) : 0),
     [rolls],
   );
+  const areaEntries = Array.isArray(areas) ? areas : [];
+  const inactiveAreas = areaEntries.filter((area) => area.id !== activeAreaId && Array.isArray(area.points) && area.points.length);
+  const activeAreaIndex = Math.max(0, areaEntries.findIndex((area) => area.id === activeAreaId));
+  const canCreateSeparateArea = closed;
+  const canRemoveCurrentArea = areaEntries.length > 1 || points.length > 0 || rolls.length > 0;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1323,6 +1402,36 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
     for (let m = 1; m * PX < canvasH; m++) ctx.fillText(m + "m", 3, m * PX - 3);
 
     // Polygon
+    inactiveAreas.forEach((area, areaIndex) => {
+      const areaPoints = Array.isArray(area.points) ? area.points : [];
+      if (!areaPoints.length) return;
+      ctx.beginPath();
+      ctx.moveTo(toPx(areaPoints[0].x), toPx(areaPoints[0].y));
+      for (let i = 1; i < areaPoints.length; i++) ctx.lineTo(toPx(areaPoints[i].x), toPx(areaPoints[i].y));
+      if (area.closed) ctx.closePath();
+      if (area.closed) {
+        ctx.fillStyle = "rgba(29,107,53,0.05)";
+        ctx.fill();
+      }
+      ctx.strokeStyle = "rgba(61,90,63,0.45)";
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash(area.closed ? [] : [6, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (area.closed) {
+        const areaBb = polyBBox(areaPoints);
+        const labelX = toPx(areaBb.minX + (areaBb.w / 2));
+        const labelY = toPx(areaBb.minY + (areaBb.h / 2));
+        ctx.fillStyle = "rgba(255,255,255,0.94)";
+        ctx.fillRect(labelX - 30, labelY - 11, 60, 20);
+        ctx.fillStyle = "rgba(36,64,51,0.82)";
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`Area ${areaIndex + 1}`, labelX, labelY + 4);
+        ctx.textAlign = "start";
+      }
+    });
+
     if (points.length > 0) {
       ctx.beginPath();
       ctx.moveTo(toPx(points[0].x), toPx(points[0].y));
@@ -1541,8 +1650,59 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
             Azzera rotoli
           </button>
           <button onClick={reset} style={{ padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11, cursor: "pointer", color: B.text }}>Ricomincia</button>
+          <button
+            type="button"
+            onClick={onAddArea}
+            disabled={!canCreateSeparateArea}
+            style={{
+              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+              cursor: canCreateSeparateArea ? "pointer" : "not-allowed", color: canCreateSeparateArea ? B.text : B.textMuted, opacity: canCreateSeparateArea ? 1 : 0.55,
+            }}
+          >
+            Nuova area separata
+          </button>
+          <button
+            type="button"
+            onClick={onRemoveArea}
+            disabled={!canRemoveCurrentArea}
+            style={{
+              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+              cursor: canRemoveCurrentArea ? "pointer" : "not-allowed", color: canRemoveCurrentArea ? B.text : B.textMuted, opacity: canRemoveCurrentArea ? 1 : 0.55,
+            }}
+          >
+            Rimuovi area attiva
+          </button>
         </div>
       </div>
+      {areaEntries.length > 1 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          {areaEntries.map((area, index) => {
+            const areaPoints = Array.isArray(area.points) ? area.points : [];
+            const areaClosed = Boolean(area.closed);
+            const areaSqm = areaClosed && areaPoints.length >= 3 ? polyArea(areaPoints) : 0;
+            const active = area.id === activeAreaId;
+            return (
+              <button
+                key={area.id}
+                type="button"
+                onClick={() => onSelectArea(area.id)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 999,
+                  border: active ? "2px solid " + B.primary : "1px solid " + B.border,
+                  background: active ? B.light : B.white,
+                  color: active ? B.primary : B.text,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {`Area ${index + 1}${areaClosed ? ` · ${fmt(areaSqm, 1)} m²` : " · aperta"}`}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <canvas ref={canvasRef} width={canvasW} height={canvasH}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -1565,8 +1725,8 @@ function FreeDrawCanvas({ points, setPoints, closed, setClosed, rolls = [], setR
           {drawMode === "roll" && closed
             ? `${rolls.length} rotoli inseriti (${fmt(totalRollMeters, 2)} m lineari). ${canvasMessage || "I rotoli possono uscire dal perimetro per stimare lo scarto reale."}`
             : closed
-              ? `${points.length} vertici definiti. Per modificare il perimetro trascina i punti direttamente sul disegno.`
-              : `${points.length} vertici inseriti. Continua a cliccare sul disegno e chiudi il perimetro sul punto iniziale.`}
+              ? `${points.length} vertici definiti per Area ${activeAreaIndex + 1}. Per modificare il perimetro trascina i punti direttamente sul disegno.`
+              : `${points.length} vertici inseriti per Area ${activeAreaIndex + 1}. Continua a cliccare sul disegno e chiudi il perimetro sul punto iniziale.`}
         </div>
       )}
     </div>
@@ -1787,12 +1947,24 @@ function TravelPlanner({ travel, setTravel }) {
   );
 }
 
-function ShapeInput({ customPts, setCustomPts, customClosed, setCustomClosed, manualRolls, setManualRolls }) {
+function ShapeInput({
+  customPts,
+  setCustomPts,
+  customClosed,
+  setCustomClosed,
+  manualRolls,
+  setManualRolls,
+  plannerAreas = [],
+  activeAreaId = "",
+  onSelectArea = () => {},
+  onAddArea = () => {},
+  onRemoveArea = () => {},
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={secTitle}>Disegno libero tecnico</div>
       <div style={{ marginTop: -4, fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
-        Definisci il perimetro cliccando i vertici e chiudi sul punto iniziale. Poi usa <strong style={{ color: B.dark }}>Aggiungi rotolo</strong> per simulare la posa reale e gli scarti.
+        Definisci uno o più perimetri cliccando i vertici e chiudendo ogni area sul punto iniziale. Poi usa <strong style={{ color: B.dark }}>Aggiungi rotolo</strong> sull'area attiva per simulare la posa reale e gli scarti.
       </div>
       <FreeDrawCanvas
         points={customPts}
@@ -1801,14 +1973,21 @@ function ShapeInput({ customPts, setCustomPts, customClosed, setCustomClosed, ma
         setClosed={setCustomClosed}
         rolls={manualRolls}
         setRolls={setManualRolls}
+        areas={plannerAreas}
+        activeAreaId={activeAreaId}
+        onSelectArea={onSelectArea}
+        onAddArea={onAddArea}
+        onRemoveArea={onRemoveArea}
       />
     </div>
   );
 }
 
-function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [] }) {
-  const points = shape === "custom" ? (customClosed ? customPts : []) : getShapePolygon(shape, dims);
-  if (!points.length) {
+function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [], manualRolls = [] }) {
+  const polygons = shape === "custom"
+    ? getPlannerPolygons(customAreas, customPts, customClosed)
+    : [{ id: "shape-default", index: 1, points: getShapePolygon(shape, dims), closed: true, rolls: [] }].filter((item) => item.points.length);
+  if (!polygons.length) {
     return (
       <div style={{ padding: "18px 14px", borderRadius: 10, border: "1px dashed " + B.border, color: B.textMuted, fontSize: 12 }}>
         Completa il perimetro per vedere la tavola tecnica 2D.
@@ -1816,7 +1995,8 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
     );
   }
   const rollCornerPoints = (manualRolls || []).flatMap((roll) => getRollCorners(roll));
-  const drawingPoints = rollCornerPoints.length ? [...points, ...rollCornerPoints] : points;
+  const polygonPoints = polygons.flatMap((polygon) => polygon.points);
+  const drawingPoints = rollCornerPoints.length ? [...polygonPoints, ...rollCornerPoints] : polygonPoints;
   const bb = polyBBox(drawingPoints);
   const W = 328;
   const H = 214;
@@ -1826,10 +2006,17 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
   const scale = Math.min((W - pad * 2) / safeW, (H - pad * 2) / safeH);
   const ox = (W - safeW * scale) / 2 - bb.minX * scale;
   const oy = (H - safeH * scale) / 2 - bb.minY * scale;
-  const d = points.map((p, index) => `${index === 0 ? "M" : "L"}${(p.x * scale + ox).toFixed(2)},${(p.y * scale + oy).toFixed(2)}`).join(" ") + " Z";
   const occupiedLabels = [];
   const bounds = { width: W, height: H };
-  const vertexPoints = points.map((p) => ({ x: p.x * scale + ox, y: p.y * scale + oy }));
+  const polygonSketches = polygons.map((polygon) => {
+    const d = polygon.points.map((p, index) => `${index === 0 ? "M" : "L"}${(p.x * scale + ox).toFixed(2)},${(p.y * scale + oy).toFixed(2)}`).join(" ") + " Z";
+    const vertexPoints = polygon.points.map((p) => ({ x: p.x * scale + ox, y: p.y * scale + oy }));
+    return {
+      ...polygon,
+      d,
+      vertexPoints,
+    };
+  });
   const rollPaths = (manualRolls || []).map((roll, index) => {
     const corners = getRollCorners(roll);
     const svgCorners = corners.map(corner => ({
@@ -1846,13 +2033,16 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
       cy: (Number(roll.cy) || 0) * scale + oy,
     };
   });
-  vertexPoints.forEach((point) => registerOccupiedCircle(occupiedLabels, point.x, point.y, 6));
+  polygonSketches.forEach((polygon) => {
+    polygon.vertexPoints.forEach((point) => registerOccupiedCircle(occupiedLabels, point.x, point.y, 6));
+  });
   rollPaths.forEach((roll) => registerOccupiedCircle(occupiedLabels, roll.cx, roll.cy, 8.5));
-  const edges = points.map((point, index) => {
-    const next = points[(index + 1) % points.length];
-    const edgeNormal = getEdgeOutwardNormal(point, next, points);
-    const txt = `${fmt(Math.hypot(next.x - point.x, next.y - point.y), 2)}m`;
-    const chipW = Math.max(30, txt.length * 5.4 + 10);
+  const edges = polygonSketches.flatMap((polygon, polygonIndex) => polygon.points.map((point, index) => {
+    const next = polygon.points[(index + 1) % polygon.points.length];
+    const edgeNormal = getEdgeOutwardNormal(point, next, polygon.points);
+    const edgePrefix = polygonSketches.length > 1 ? `A${polygonIndex + 1}-` : "";
+    const txt = `${edgePrefix}${fmt(Math.hypot(next.x - point.x, next.y - point.y), 2)}m`;
+    const chipW = Math.max(36, txt.length * 5.6 + 12);
     const chipH = 16;
     const candidates = [];
     [14, 20, 28].forEach((offset) => {
@@ -1865,14 +2055,16 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
     });
     const labelRect = findAvailableLabelRect(candidates, chipW, chipH, occupiedLabels, bounds);
     return {
+      areaIndex: polygonIndex + 1,
+      edgeIndex: index + 1,
       length: Math.hypot(next.x - point.x, next.y - point.y),
       txt,
       chipW,
       chipH,
       labelRect,
     };
-  });
-  const vertexLabelRects = vertexPoints.map((point) => {
+  }));
+  const vertexLabels = polygonSketches.flatMap((polygon, polygonIndex) => polygon.vertexPoints.map((point, index) => {
     const candidates = [
       { x: point.x, y: point.y - 14 },
       { x: point.x + 14, y: point.y - 10 },
@@ -1881,14 +2073,20 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
       { x: point.x - 14, y: point.y + 12 },
       { x: point.x, y: point.y + 16 },
     ];
-    return findAvailableLabelRect(candidates, 24, 12, occupiedLabels, bounds);
-  });
+    return {
+      point,
+      label: polygonSketches.length > 1 ? `A${polygonIndex + 1}-V${index + 1}` : `V${index + 1}`,
+      rect: findAvailableLabelRect(candidates, polygonSketches.length > 1 ? 34 : 24, 12, occupiedLabels, bounds),
+    };
+  }));
 
   return (
     <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: 10 }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
         <rect x="1" y="1" width={W - 2} height={H - 2} rx="10" fill={B.cream} stroke={B.borderLight} />
-        <path d={d} fill={B.primary + "1c"} stroke={B.primary} strokeWidth="2.2" />
+        {polygonSketches.map((polygon) => (
+          <path key={`poly-${polygon.id}`} d={polygon.d} fill={B.primary + "1c"} stroke={B.primary} strokeWidth="2.2" />
+        ))}
         {rollPaths.map(roll => (
           <g key={roll.id}>
             <path d={roll.path} fill="rgba(21,101,192,0.2)" stroke="#1565c0" strokeWidth="1.35" />
@@ -1908,18 +2106,19 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
             </g>
           );
         })}
-        {vertexPoints.map((point, index) => (
+        {vertexLabels.map((item, index) => (
           <g key={`v-${index}`}>
-            <circle cx={point.x} cy={point.y} r="4.3" fill={B.primary} stroke="#fff" strokeWidth="1.6" />
-            <text x={vertexLabelRects[index].x + (vertexLabelRects[index].width / 2)} y={vertexLabelRects[index].y + 9} fontSize="8.2" textAnchor="middle" fill={B.dark} fontWeight="700">
-              V{index + 1}
+            <circle cx={item.point.x} cy={item.point.y} r="4.3" fill={B.primary} stroke="#fff" strokeWidth="1.6" />
+            <text x={item.rect.x + (item.rect.width / 2)} y={item.rect.y + 9} fontSize="8.2" textAnchor="middle" fill={B.dark} fontWeight="700">
+              {item.label}
             </text>
           </g>
         ))}
       </svg>
       <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
         <div style={{ fontSize: 11, color: B.textMuted }}>
-          Ingombro massimo: <strong style={{ color: B.dark }}>{fmt(bb.w, 2)} m × {fmt(bb.h, 2)} m</strong> · Vertici: <strong style={{ color: B.dark }}>{points.length}</strong>
+          Ingombro massimo: <strong style={{ color: B.dark }}>{fmt(bb.w, 2)} m × {fmt(bb.h, 2)} m</strong> · Vertici: <strong style={{ color: B.dark }}>{polygonPoints.length}</strong>{polygonSketches.length > 1 ? ` · Aree: ` : ""}
+          {polygonSketches.length > 1 ? <strong style={{ color: B.dark }}>{polygonSketches.length}</strong> : null}
         </div>
         {rollPaths.length > 0 ? (
           <div style={{ fontSize: 11, color: B.textMuted }}>
@@ -1960,7 +2159,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, manualRolls = [
                 fontWeight: 600,
               }}
             >
-              L{index + 1}: {fmt(edge.length, 2)} m
+              {polygonSketches.length > 1 ? `A${edge.areaIndex}-L${edge.edgeIndex}` : `L${index + 1}`}: {fmt(edge.length, 2)} m
             </span>
           ))}
         </div>
@@ -2052,7 +2251,7 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, reportVariant = "technical" }) {
+function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, customAreas = [], borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, reportVariant = "technical" }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
   const installNeeds = estimateInstallationNeeds(area, perimeter, manualRolls);
@@ -2085,13 +2284,13 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
     : 0;
   const rollVisualArea = rollLinearMeters * MANUAL_ROLL_WIDTH_M;
   const rollWasteArea = Math.max(0, rollVisualArea - area);
-  const rollPolygon = shape === "custom"
-    ? (customClosed ? customPts : [])
-    : getShapePolygon(shape, dims);
-  const outsideRollCount = rollPolygon.length >= 3
-    ? (manualRolls || []).reduce((count, roll) => (isRollInsidePolygon(roll, rollPolygon) ? count : count + 1), 0)
+  const rollPolygons = shape === "custom"
+    ? getPlannerPolygons(customAreas, customPts, customClosed)
+    : [{ points: getShapePolygon(shape, dims) }].filter((item) => item.points.length >= 3);
+  const outsideRollCount = rollPolygons.length
+    ? (manualRolls || []).reduce((count, roll) => (isRollInsideAnyPolygon(roll, rollPolygons) ? count : count + 1), 0)
     : 0;
-  const shapeLabel = getShapeLabel(shape, dims, customPts, customClosed);
+  const shapeLabel = getPlannerShapeLabel(shape, dims, customPts, customClosed, customAreas);
   const visibleSections = isClientVariant ? sections.filter((section) => section.key !== "travel") : sections;
 
   return (
@@ -2110,7 +2309,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
       )}
 
       <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10, marginBottom: 12 }}>
-        <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} manualRolls={manualRolls} />
+        <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} customAreas={customAreas} manualRolls={manualRolls} />
         <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: "10px 12px", display: "grid", gap: 7 }}>
           <div style={{ fontSize: 11, color: B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>Tavola tecnica 2D</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
@@ -2178,7 +2377,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
   );
 }
 
-function ReportShell({ id, variant = "technical", area, perimeter, shape, dims, customPts, customClosed, borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls }) {
+function ReportShell({ id, variant = "technical", area, perimeter, shape, dims, customPts, customClosed, customAreas = [], borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls }) {
   const isClientVariant = variant === "client";
   return (
     <div id={id}>
@@ -2202,6 +2401,7 @@ function ReportShell({ id, variant = "technical", area, perimeter, shape, dims, 
         dims={dims}
         customPts={customPts}
         customClosed={customClosed}
+        customAreas={customAreas}
         borderMeters={borderMeters}
         borderType={borderType}
         substrate={substrate}
@@ -2233,26 +2433,101 @@ function GardenPlanner() {
   const [viewerRole, setViewerRole] = useState("crew");
   const [projectInfo, setProjectInfo] = useState(getInitialProjectInfo);
   const [travel, setTravel] = useState(DEFAULT_TRAVEL_SETTINGS);
+  const initialArea = useMemo(() => createPlannerArea(), []);
   const shape = "custom";
-  const [customPts, setCustomPts] = useState([]);
-  const [customClosed, setCustomClosed] = useState(false);
-  const [manualRolls, setManualRolls] = useState([]);
+  const [plannerAreas, setPlannerAreas] = useState(() => [initialArea]);
+  const [activeAreaId, setActiveAreaId] = useState(() => initialArea.id);
   const [borderType, setBorderType] = useState("pvc");
   const [selectedBorderEdges, setSelectedBorderEdges] = useState([]);
   const [substrate, setSubstrate] = useState({ scavoCm: 10, drenateCm: 5, sabbiaCm: 3 });
   const [decoItems, setDecoItems] = useState({});
   const [regionalPricing, setRegionalPricing] = useState(() => getRegionalMaterialPricing(""));
   const safeDims = useMemo(() => ({ a: 0, b: 0, c: 0, d: 0 }), []);
-  const layoutKey = useMemo(() => JSON.stringify({ customPts, customClosed }), [customPts, customClosed]);
-
-  const area = useMemo(() => (customClosed ? polyArea(customPts) : 0), [customPts, customClosed]);
-  const perimeter = useMemo(() => (customClosed ? polyPerimeter(customPts) : 0), [customPts, customClosed]);
-  const borderEdges = useMemo(() => getShapeEdges(shape, safeDims, customPts, customClosed), [shape, safeDims, customPts, customClosed]);
+  const activeArea = useMemo(
+    () => plannerAreas.find((area) => area.id === activeAreaId) || plannerAreas[0] || createPlannerArea(),
+    [plannerAreas, activeAreaId],
+  );
+  const customPts = activeArea?.points || [];
+  const customClosed = Boolean(activeArea?.closed);
+  const manualRolls = activeArea?.rolls || [];
+  const layoutKey = useMemo(
+    () => JSON.stringify(plannerAreas.map((area) => ({ points: area.points, closed: area.closed }))),
+    [plannerAreas],
+  );
+  const completedAreas = useMemo(
+    () => plannerAreas.filter((area) => area.closed && Array.isArray(area.points) && area.points.length >= 3),
+    [plannerAreas],
+  );
+  const allManualRolls = useMemo(
+    () => plannerAreas.flatMap((area) => (Array.isArray(area.rolls) ? area.rolls : [])),
+    [plannerAreas],
+  );
+  const area = useMemo(
+    () => completedAreas.reduce((sum, areaItem) => sum + polyArea(areaItem.points), 0),
+    [completedAreas],
+  );
+  const perimeter = useMemo(
+    () => completedAreas.reduce((sum, areaItem) => sum + polyPerimeter(areaItem.points), 0),
+    [completedAreas],
+  );
+  const borderEdges = useMemo(() => getPlannerBorderEdges(completedAreas, shape, safeDims), [completedAreas, shape, safeDims]);
   const selectedBorderMeters = useMemo(() => (
     borderEdges
       .filter(edge => selectedBorderEdges.includes(edge.id))
       .reduce((sum, edge) => sum + edge.length, 0)
   ), [borderEdges, selectedBorderEdges]);
+
+  useEffect(() => {
+    if (!plannerAreas.some((areaItem) => areaItem.id === activeAreaId)) {
+      setActiveAreaId(plannerAreas[0]?.id || "");
+    }
+  }, [plannerAreas, activeAreaId]);
+
+  const updateActiveArea = useCallback((updater) => {
+    setPlannerAreas((prev) => prev.map((areaItem) => {
+      if (areaItem.id !== activeAreaId) return areaItem;
+      return updater(areaItem);
+    }));
+  }, [activeAreaId]);
+
+  const setCustomPts = useCallback((nextValueOrUpdater) => {
+    updateActiveArea((areaItem) => ({
+      ...areaItem,
+      points: applyStateUpdate(areaItem.points, nextValueOrUpdater),
+    }));
+  }, [updateActiveArea]);
+
+  const setCustomClosed = useCallback((nextValueOrUpdater) => {
+    updateActiveArea((areaItem) => ({
+      ...areaItem,
+      closed: Boolean(applyStateUpdate(areaItem.closed, nextValueOrUpdater)),
+    }));
+  }, [updateActiveArea]);
+
+  const setManualRolls = useCallback((nextValueOrUpdater) => {
+    updateActiveArea((areaItem) => ({
+      ...areaItem,
+      rolls: applyStateUpdate(areaItem.rolls, nextValueOrUpdater),
+    }));
+  }, [updateActiveArea]);
+
+  const addPlannerArea = useCallback(() => {
+    if (!activeArea?.closed) return;
+    const nextArea = createPlannerArea();
+    setPlannerAreas((prev) => [...prev, nextArea]);
+    setActiveAreaId(nextArea.id);
+  }, [activeArea]);
+
+  const removeActivePlannerArea = useCallback(() => {
+    if (plannerAreas.length <= 1) {
+      updateActiveArea((areaItem) => ({ ...areaItem, points: [], closed: false, rolls: [] }));
+      return;
+    }
+    const currentIndex = Math.max(0, plannerAreas.findIndex((areaItem) => areaItem.id === activeAreaId));
+    const nextAreas = plannerAreas.filter((areaItem) => areaItem.id !== activeAreaId);
+    setPlannerAreas(nextAreas);
+    setActiveAreaId(nextAreas[Math.max(0, currentIndex - 1)]?.id || nextAreas[0]?.id || "");
+  }, [plannerAreas, activeAreaId, updateActiveArea]);
 
   useEffect(() => {
     setSelectedBorderEdges(borderEdges.map(edge => edge.id));
@@ -2389,7 +2664,7 @@ function GardenPlanner() {
   const handleOpenQuoteGenerator = () => {
     const technicalNode = document.getElementById("garden-planner-print-content");
     const clientNode = document.getElementById("garden-planner-client-print-content");
-    const installNeeds = estimateInstallationNeeds(area, perimeter, manualRolls);
+    const installNeeds = estimateInstallationNeeds(area, perimeter, allManualRolls);
     const plannerBridge = buildPlannerQuotePrefill({
       projectInfo,
       area,
@@ -2457,20 +2732,25 @@ function GardenPlanner() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
             <StepBadge n={1} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Definisci l'area</span>
           </div>
-          <ShapeInput
-            customPts={customPts}
-            setCustomPts={setCustomPts}
-            customClosed={customClosed}
-            setCustomClosed={setCustomClosed}
-            manualRolls={manualRolls}
-            setManualRolls={setManualRolls}
-          />
+            <ShapeInput
+              customPts={customPts}
+              setCustomPts={setCustomPts}
+              customClosed={customClosed}
+              setCustomClosed={setCustomClosed}
+              manualRolls={manualRolls}
+              setManualRolls={setManualRolls}
+              plannerAreas={plannerAreas}
+              activeAreaId={activeAreaId}
+              onSelectArea={setActiveAreaId}
+              onAddArea={addPlannerArea}
+              onRemoveArea={removeActivePlannerArea}
+            />
           {area > 0 && (
             <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
               <MetricCard label="Superficie" value={fmt(area) + " m\u00B2"} accent />
               <MetricCard label="Perimetro" value={fmt(perimeter) + " m"} />
-              {shape === "custom" && customClosed
-                ? <MetricCard label="Vertici" value={`${customPts.length}`} sub="Punti del perimetro" />
+              {shape === "custom" && completedAreas.length
+                ? <MetricCard label="Aree separate" value={`${completedAreas.length}`} sub={`${completedAreas.reduce((sum, areaItem) => sum + areaItem.points.length, 0)} vertici complessivi`} />
                 : null}
               <MetricCard label="Lati rilevati" value={`${borderEdges.length}`} sub="Perimetro disponibile" />
             </div>
@@ -2566,7 +2846,7 @@ function GardenPlanner() {
               </div>
             </div>
           )}
-          <InstallationNeedsPanel area={area} perimeter={perimeter} borderType={borderType} borderMeters={selectedBorderMeters} manualRolls={manualRolls} />
+          <InstallationNeedsPanel area={area} perimeter={perimeter} borderType={borderType} borderMeters={selectedBorderMeters} manualRolls={allManualRolls} />
         </div>
 
         {/* STEP 4: DECORATIVE */}
@@ -2594,6 +2874,7 @@ function GardenPlanner() {
             dims={safeDims}
             customPts={customPts}
             customClosed={customClosed}
+            customAreas={completedAreas}
             borderMeters={selectedBorderMeters}
             borderType={borderType}
             substrate={substrate}
@@ -2602,7 +2883,7 @@ function GardenPlanner() {
             travel={travel}
             viewerRole={viewerRole}
             regionalPricing={regionalPricing}
-            manualRolls={manualRolls}
+            manualRolls={allManualRolls}
             variant="technical"
           />
           <div style={{ display: "none" }} aria-hidden="true">
@@ -2614,6 +2895,7 @@ function GardenPlanner() {
               dims={safeDims}
               customPts={customPts}
               customClosed={customClosed}
+              customAreas={completedAreas}
               borderMeters={selectedBorderMeters}
               borderType={borderType}
               substrate={substrate}
@@ -2622,7 +2904,7 @@ function GardenPlanner() {
               travel={travel}
               viewerRole={viewerRole}
               regionalPricing={regionalPricing}
-              manualRolls={manualRolls}
+              manualRolls={allManualRolls}
               variant="client"
             />
           </div>
