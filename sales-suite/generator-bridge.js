@@ -896,8 +896,25 @@
   }
 
   function clearRecommendationClasses(root) {
-    root.querySelectorAll(".codex-recommended-row").forEach((node) => node.classList.remove("codex-recommended-row"));
-    root.querySelectorAll(".codex-recommended-card").forEach((node) => node.classList.remove("codex-recommended-card"));
+    root.querySelectorAll(".codex-recommended-row").forEach((node) => {
+      node.classList.remove("codex-recommended-row");
+      if (node instanceof HTMLElement) {
+        node.style.background = "";
+      }
+      const firstCell = node.children?.[0];
+      if (firstCell instanceof HTMLElement) {
+        firstCell.style.boxShadow = "";
+      }
+    });
+    root.querySelectorAll(".codex-recommended-card").forEach((node) => {
+      node.classList.remove("codex-recommended-card");
+      if (node instanceof HTMLElement) {
+        node.style.borderColor = "";
+        node.style.boxShadow = "";
+        node.style.transform = "";
+        node.style.background = "";
+      }
+    });
   }
 
   function applyRecommendedModelClasses(root, selectedName) {
@@ -909,17 +926,36 @@
     collectQuoteModels(root).forEach((model) => {
       if (model.normalizedName !== normalizedSelected) return;
       model.row.classList.add("codex-recommended-row");
+      if (model.row instanceof HTMLElement) {
+        model.row.style.background = "linear-gradient(90deg, rgba(238,243,237,0.96) 0%, rgba(255,255,255,1) 100%)";
+      }
+      const firstCell = model.row.children?.[0];
+      if (firstCell instanceof HTMLElement) {
+        firstCell.style.boxShadow = "inset 4px 0 0 #3d5a3f";
+      }
       applied = true;
     });
     findPerMqCards(root).forEach((item) => {
       if (item.normalizedName === normalizedSelected) {
         item.card.classList.add("codex-recommended-card");
+        if (item.card instanceof HTMLElement) {
+          item.card.style.borderColor = "#2f4631";
+          item.card.style.boxShadow = "0 4px 12px rgba(47,70,49,0.14)";
+          item.card.style.transform = "translateY(-1px)";
+          item.card.style.background = "linear-gradient(180deg, #ffffff 0%, #f4f8f4 100%)";
+        }
         applied = true;
       }
     });
     findHeylightCards(root).forEach((item) => {
       if (item.normalizedName === normalizedSelected) {
         item.card.classList.add("codex-recommended-card");
+        if (item.card instanceof HTMLElement) {
+          item.card.style.borderColor = "#2f4631";
+          item.card.style.boxShadow = "0 4px 12px rgba(47,70,49,0.14)";
+          item.card.style.transform = "translateY(-1px)";
+          item.card.style.background = "linear-gradient(180deg, #324d35 0%, #243726 100%)";
+        }
         applied = true;
       }
     });
@@ -1948,7 +1984,6 @@
   }
 
   function installPdfDownloadInterceptor() {
-    if (!ENABLE_BRANDING_EXPORT && !ENABLE_PLANNER_REPORT_EXPORT) return;
     document.addEventListener("click", (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -1961,7 +1996,11 @@
       if (!normalizeLabel(button.textContent).includes("scarica pdf")) return;
       const shouldDecorateBranding = Boolean(activeBrandingPayload.crewLogoDataUrl);
       const shouldAttachPlannerReport = Boolean(activePlannerReport?.reportHtml);
-      if (!shouldDecorateBranding && !shouldAttachPlannerReport) return;
+      const pdfRoot = getLivePdfRoot(document);
+      const recommendationModels = pdfRoot ? collectQuoteModels(pdfRoot).map((item) => item.name) : [];
+      const selectedRecommendation = pdfRoot ? readRecommendedModel(pdfRoot, recommendationModels) : "";
+      const shouldApplyRecommendation = Boolean(pdfRoot && selectedRecommendation);
+      if (!shouldDecorateBranding && !shouldAttachPlannerReport && !shouldApplyRecommendation) return;
       if (pdfDownloadInterceptionActive) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -1978,6 +2017,13 @@
             mountPlannerReportForExport();
           } else {
             clearInjectedPlannerReport();
+          }
+        })
+        .then(async () => {
+          if (shouldApplyRecommendation && pdfRoot) {
+            applyRecommendedModelClasses(pdfRoot, selectedRecommendation);
+            await waitForAnimationFrame();
+            await waitForAnimationFrame();
           }
         })
         .then(() => (shouldDecorateBranding ? preparePdfBrandingForExport() : undefined))

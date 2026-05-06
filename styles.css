@@ -10258,6 +10258,24 @@ body.mobile-safe-mode .nav-link.is-active {
   color: #1f4637;
 }
 
+.sales-request-quick-chip.is-urgent {
+  border-color: rgba(185, 28, 28, 0.18);
+  color: #991b1b;
+  background: rgba(254, 242, 242, 0.95);
+}
+
+.sales-request-quick-chip.is-urgent:hover,
+.sales-request-quick-chip.is-urgent.is-active {
+  border-color: rgba(185, 28, 28, 0.3);
+  color: #991b1b;
+  background: rgba(254, 226, 226, 0.98);
+}
+
+.sales-request-quick-chip.is-urgent strong {
+  background: rgba(185, 28, 28, 0.12);
+  color: #991b1b;
+}
+
 .sales-request-quick-chip strong {
   min-width: 22px;
   height: 22px;

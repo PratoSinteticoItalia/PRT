@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260505-safe-recommended-quote-118";
+const APP_SHELL_VERSION = "20260506-quote-export-parity-119";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3599,7 +3599,7 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
     ui.salesRequestQuickFilters.innerHTML = getSalesRequestQuickFilterOptions(baseItems).map((option) => `
       <button
         type="button"
-        class="sales-request-quick-chip ${option.value === current ? "is-active" : ""}"
+        class="sales-request-quick-chip ${option.value === current ? "is-active" : ""} ${(option.value === "unassigned" && option.count > 0) ? "is-urgent" : ""}"
         data-action="set-sales-request-quick-filter"
         data-value="${escapeHtml(option.value)}"
         aria-pressed="${option.value === current ? "true" : "false"}"
