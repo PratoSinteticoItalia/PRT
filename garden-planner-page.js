@@ -90,7 +90,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260506-garden-report-clarity-124";
+const APP_SHELL_VERSION = "20260506-garden-report-clarity-125";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2022,11 +2022,13 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
     const d = polygon.points.map((p, index) => `${index === 0 ? "M" : "L"}${(p.x * scale + ox).toFixed(2)},${(p.y * scale + oy).toFixed(2)}`).join(" ") + " Z";
     const vertexPoints = polygon.points.map((p) => ({ x: p.x * scale + ox, y: p.y * scale + oy }));
     const center = polyCenter(polygon.points);
+    const box = polyBBox(vertexPoints);
     return {
       ...polygon,
       d,
       vertexPoints,
       center: { x: center.x * scale + ox, y: center.y * scale + oy },
+      box,
     };
   });
   const rollPaths = (manualRolls || []).map((roll, index) => {
@@ -2036,6 +2038,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
       y: corner.y * scale + oy,
     }));
     const path = svgCorners.map((corner, cornerIndex) => `${cornerIndex === 0 ? "M" : "L"}${corner.x.toFixed(2)},${corner.y.toFixed(2)}`).join(" ") + " Z";
+    const polygonMatch = polygons.find((polygon) => isRollInsidePolygon(roll, polygon.points));
     return {
       id: roll.id || `roll-${index}`,
       path,
@@ -2043,6 +2046,8 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
       length: Number(roll.length) || 0,
       cx: (Number(roll.cx) || 0) * scale + ox,
       cy: (Number(roll.cy) || 0) * scale + oy,
+      areaId: polygonMatch?.id || "",
+      areaIndex: Number(polygonMatch?.index || 0),
     };
   });
   polygonSketches.forEach((polygon) => {
@@ -2106,6 +2111,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
       edgeLengths,
       vertexCount: polygon.points.length,
       rollCount: rollPaths.filter((roll) => roll.areaId === polygon.id).length,
+      rollIndices: rollPaths.filter((roll) => roll.areaId === polygon.id).map((roll) => roll.rollIndex),
     };
   });
 
@@ -2118,8 +2124,23 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
             <path d={polygon.d} fill={B.primary + "1c"} stroke={B.primary} strokeWidth="2.2" />
             {hasMultipleAreas ? (
               <>
-                <circle cx={polygon.center.x} cy={polygon.center.y} r="12" fill={B.primary} opacity="0.96" />
-                <text x={polygon.center.x} y={polygon.center.y + 3.5} fontSize="9.4" textAnchor="middle" fill="#fff" fontWeight="800">
+                <rect
+                  x={clamp(polygon.box.minX + (polygon.box.w / 2) - 16, 8, W - 40)}
+                  y={clamp(polygon.box.minY - 18, 8, H - 24)}
+                  width="32"
+                  height="16"
+                  rx="8"
+                  fill={B.primary}
+                  opacity="0.96"
+                />
+                <text
+                  x={clamp(polygon.box.minX + (polygon.box.w / 2), 24, W - 24)}
+                  y={clamp(polygon.box.minY - 6.5, 19, H - 10)}
+                  fontSize="8.6"
+                  textAnchor="middle"
+                  fill="#fff"
+                  fontWeight="800"
+                >
                   {`A${polygon.index}`}
                 </text>
               </>
@@ -2164,7 +2185,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
             Rotoli posizionati nel layout: <strong style={{ color: B.dark }}>{rollPaths.length}</strong>
           </div>
         ) : null}
-        {rollPaths.length > 0 ? (
+        {rollPaths.length > 0 && !hasMultipleAreas ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 6 }}>
             {rollPaths.map((roll) => (
               <span
@@ -2204,6 +2225,10 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
                 </div>
                 <div style={{ fontSize: 10.5, color: B.textMuted }}>
                   Perimetro <strong style={{ color: B.dark }}>{fmt(areaItem.perimeter, 2)} m</strong> · {areaItem.vertexCount} vertici
+                </div>
+                <div style={{ fontSize: 10.5, color: B.textMuted }}>
+                  Rotoli assegnati <strong style={{ color: B.dark }}>{areaItem.rollCount}</strong>
+                  {areaItem.rollIndices.length ? ` · ${areaItem.rollIndices.map((index) => `R${index}`).join(", ")}` : ""}
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                   {areaItem.edgeLengths.map((length, edgeIndex) => (
