@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260506-garden-report-clarity-125";
+const APP_SHELL_VERSION = "20260506-garden-report-roll-clarity-126";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

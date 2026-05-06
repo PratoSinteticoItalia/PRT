@@ -90,7 +90,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260506-garden-report-clarity-125";
+const APP_SHELL_VERSION = "20260506-garden-report-roll-clarity-126";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2103,6 +2103,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
       const next = polygon.points[(index + 1) % polygon.points.length];
       return Math.hypot(next.x - point.x, next.y - point.y);
     });
+    const assignedRolls = rollPaths.filter((roll) => roll.areaId === polygon.id);
     return {
       id: polygon.id,
       label: `A${polygonIndex + 1}`,
@@ -2110,8 +2111,12 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
       perimeter: polyPerimeter(polygon.points),
       edgeLengths,
       vertexCount: polygon.points.length,
-      rollCount: rollPaths.filter((roll) => roll.areaId === polygon.id).length,
-      rollIndices: rollPaths.filter((roll) => roll.areaId === polygon.id).map((roll) => roll.rollIndex),
+      rollCount: assignedRolls.length,
+      rollIndices: assignedRolls.map((roll) => roll.rollIndex),
+      rolls: assignedRolls.map((roll) => ({
+        rollIndex: roll.rollIndex,
+        length: roll.length,
+      })),
     };
   });
 
@@ -2227,8 +2232,39 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
                   Perimetro <strong style={{ color: B.dark }}>{fmt(areaItem.perimeter, 2)} m</strong> · {areaItem.vertexCount} vertici
                 </div>
                 <div style={{ fontSize: 10.5, color: B.textMuted }}>
-                  Rotoli assegnati <strong style={{ color: B.dark }}>{areaItem.rollCount}</strong>
-                  {areaItem.rollIndices.length ? ` · ${areaItem.rollIndices.map((index) => `R${index}`).join(", ")}` : ""}
+                  Rotoli impiegati <strong style={{ color: B.dark }}>{areaItem.rollCount}</strong>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {areaItem.rolls.length ? areaItem.rolls.map((roll) => (
+                    <span
+                      key={`${areaItem.id}-roll-${roll.rollIndex}`}
+                      style={{
+                        fontSize: 9.5,
+                        padding: "3px 6px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(21,101,192,0.22)",
+                        background: "#eff6ff",
+                        color: "#0b4f8a",
+                        fontWeight: 700,
+                      }}
+                    >
+                      R{roll.rollIndex} · 2.00 × {fmt(roll.length, 2)} m
+                    </span>
+                  )) : (
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        padding: "3px 6px",
+                        borderRadius: 999,
+                        border: "1px solid " + B.borderLight,
+                        background: B.white,
+                        color: B.textMuted,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Nessun rotolo assegnato
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                   {areaItem.edgeLengths.map((length, edgeIndex) => (
