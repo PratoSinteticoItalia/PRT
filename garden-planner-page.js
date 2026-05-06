@@ -90,7 +90,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260504-dashboard-kpi-fit-112";
+const APP_SHELL_VERSION = "20260506-garden-report-clarity-124";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -567,6 +567,15 @@ function polyBBox(pts) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   pts.forEach(p => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });
   return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
+}
+function polyCenter(pts) {
+  if (!Array.isArray(pts) || !pts.length) return { x: 0, y: 0 };
+  const total = pts.reduce((acc, point) => {
+    acc.x += Number(point?.x || 0);
+    acc.y += Number(point?.y || 0);
+    return acc;
+  }, { x: 0, y: 0 });
+  return { x: total.x / pts.length, y: total.y / pts.length };
 }
 function getShapePolygon(shape, dims) {
   const { a = 0, b = 0, c = 0, d = 0 } = sanitizeDims(shape, dims);
@@ -2008,13 +2017,16 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
   const oy = (H - safeH * scale) / 2 - bb.minY * scale;
   const occupiedLabels = [];
   const bounds = { width: W, height: H };
+  const hasMultipleAreas = polygons.length > 1;
   const polygonSketches = polygons.map((polygon) => {
     const d = polygon.points.map((p, index) => `${index === 0 ? "M" : "L"}${(p.x * scale + ox).toFixed(2)},${(p.y * scale + oy).toFixed(2)}`).join(" ") + " Z";
     const vertexPoints = polygon.points.map((p) => ({ x: p.x * scale + ox, y: p.y * scale + oy }));
+    const center = polyCenter(polygon.points);
     return {
       ...polygon,
       d,
       vertexPoints,
+      center: { x: center.x * scale + ox, y: center.y * scale + oy },
     };
   });
   const rollPaths = (manualRolls || []).map((roll, index) => {
@@ -2034,10 +2046,12 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
     };
   });
   polygonSketches.forEach((polygon) => {
-    polygon.vertexPoints.forEach((point) => registerOccupiedCircle(occupiedLabels, point.x, point.y, 6));
+    if (!hasMultipleAreas) {
+      polygon.vertexPoints.forEach((point) => registerOccupiedCircle(occupiedLabels, point.x, point.y, 6));
+    }
   });
   rollPaths.forEach((roll) => registerOccupiedCircle(occupiedLabels, roll.cx, roll.cy, 8.5));
-  const edges = polygonSketches.flatMap((polygon, polygonIndex) => polygon.points.map((point, index) => {
+  const edges = !hasMultipleAreas ? polygonSketches.flatMap((polygon, polygonIndex) => polygon.points.map((point, index) => {
     const next = polygon.points[(index + 1) % polygon.points.length];
     const edgeNormal = getEdgeOutwardNormal(point, next, polygon.points);
     const edgePrefix = polygonSketches.length > 1 ? `A${polygonIndex + 1}-` : "";
@@ -2063,8 +2077,8 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
       chipH,
       labelRect,
     };
-  }));
-  const vertexLabels = polygonSketches.flatMap((polygon, polygonIndex) => polygon.vertexPoints.map((point, index) => {
+  })) : [];
+  const vertexLabels = !hasMultipleAreas ? polygonSketches.flatMap((polygon, polygonIndex) => polygon.vertexPoints.map((point, index) => {
     const candidates = [
       { x: point.x, y: point.y - 14 },
       { x: point.x + 14, y: point.y - 10 },
@@ -2078,14 +2092,39 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
       label: polygonSketches.length > 1 ? `A${polygonIndex + 1}-V${index + 1}` : `V${index + 1}`,
       rect: findAvailableLabelRect(candidates, polygonSketches.length > 1 ? 34 : 24, 12, occupiedLabels, bounds),
     };
-  }));
+  })) : [];
+  const areaSummaries = polygonSketches.map((polygon, polygonIndex) => {
+    const edgeLengths = polygon.points.map((point, index) => {
+      const next = polygon.points[(index + 1) % polygon.points.length];
+      return Math.hypot(next.x - point.x, next.y - point.y);
+    });
+    return {
+      id: polygon.id,
+      label: `A${polygonIndex + 1}`,
+      area: polyArea(polygon.points),
+      perimeter: polyPerimeter(polygon.points),
+      edgeLengths,
+      vertexCount: polygon.points.length,
+      rollCount: rollPaths.filter((roll) => roll.areaId === polygon.id).length,
+    };
+  });
 
   return (
     <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: 10 }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
         <rect x="1" y="1" width={W - 2} height={H - 2} rx="10" fill={B.cream} stroke={B.borderLight} />
         {polygonSketches.map((polygon) => (
-          <path key={`poly-${polygon.id}`} d={polygon.d} fill={B.primary + "1c"} stroke={B.primary} strokeWidth="2.2" />
+          <g key={`poly-${polygon.id}`}>
+            <path d={polygon.d} fill={B.primary + "1c"} stroke={B.primary} strokeWidth="2.2" />
+            {hasMultipleAreas ? (
+              <>
+                <circle cx={polygon.center.x} cy={polygon.center.y} r="12" fill={B.primary} opacity="0.96" />
+                <text x={polygon.center.x} y={polygon.center.y + 3.5} fontSize="9.4" textAnchor="middle" fill="#fff" fontWeight="800">
+                  {`A${polygon.index}`}
+                </text>
+              </>
+            ) : null}
+          </g>
         ))}
         {rollPaths.map(roll => (
           <g key={roll.id}>
@@ -2145,24 +2184,68 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
             ))}
           </div>
         ) : null}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {edges.map((edge, index) => (
-            <span
-              key={`edge-chip-${index}`}
-              style={{
-                fontSize: 10,
-                padding: "4px 7px",
-                borderRadius: 999,
-                border: "1px solid " + B.borderLight,
-                background: B.cream,
-                color: B.dark,
-                fontWeight: 600,
-              }}
-            >
-              {polygonSketches.length > 1 ? `A${edge.areaIndex}-L${edge.edgeIndex}` : `L${index + 1}`}: {fmt(edge.length, 2)} m
-            </span>
-          ))}
-        </div>
+        {hasMultipleAreas ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+            {areaSummaries.map((areaItem) => (
+              <div
+                key={`area-summary-${areaItem.id}`}
+                style={{
+                  border: "1px solid " + B.borderLight,
+                  borderRadius: 10,
+                  background: B.cream,
+                  padding: "8px 10px",
+                  display: "grid",
+                  gap: 5,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: B.primary }}>{areaItem.label}</span>
+                  <span style={{ fontSize: 10, color: B.textMuted }}>{fmt(areaItem.area, 1)} m²</span>
+                </div>
+                <div style={{ fontSize: 10.5, color: B.textMuted }}>
+                  Perimetro <strong style={{ color: B.dark }}>{fmt(areaItem.perimeter, 2)} m</strong> · {areaItem.vertexCount} vertici
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {areaItem.edgeLengths.map((length, edgeIndex) => (
+                    <span
+                      key={`${areaItem.id}-edge-${edgeIndex}`}
+                      style={{
+                        fontSize: 9.5,
+                        padding: "3px 6px",
+                        borderRadius: 999,
+                        border: "1px solid " + B.borderLight,
+                        background: B.white,
+                        color: B.dark,
+                        fontWeight: 700,
+                      }}
+                    >
+                      L{edgeIndex + 1} · {fmt(length, 2)} m
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {edges.map((edge, index) => (
+              <span
+                key={`edge-chip-${index}`}
+                style={{
+                  fontSize: 10,
+                  padding: "4px 7px",
+                  borderRadius: 999,
+                  border: "1px solid " + B.borderLight,
+                  background: B.cream,
+                  color: B.dark,
+                  fontWeight: 600,
+                }}
+              >
+                L{index + 1}: {fmt(edge.length, 2)} m
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

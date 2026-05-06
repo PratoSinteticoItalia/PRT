@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260506-coverage-nearest-city-123";
+const APP_SHELL_VERSION = "20260506-garden-report-clarity-124";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
