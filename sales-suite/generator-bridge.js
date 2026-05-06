@@ -1161,18 +1161,89 @@
     });
   }
 
+  function polishQuoteHeaderPanels(root) {
+    const clientLabel = findElementByTextWithin(root, "div, span, p", "Cliente")
+      || findElementByTextWithin(root, "div, span, p", "Rivenditore");
+    const validityLabel = findElementByTextWithin(root, "div, span, p", "Validità");
+    const clientPanel = clientLabel?.parentElement;
+    const validityPanel = validityLabel?.parentElement;
+    const panelGrid = clientPanel?.parentElement;
+
+    if (panelGrid instanceof HTMLElement) {
+      panelGrid.style.alignItems = "stretch";
+      panelGrid.style.gap = "10px";
+      panelGrid.style.marginBottom = "12px";
+    }
+
+    if (clientPanel instanceof HTMLElement) {
+      clientPanel.style.minHeight = "96px";
+      clientPanel.style.padding = "12px 16px 12px 18px";
+      clientPanel.style.display = "flex";
+      clientPanel.style.flexDirection = "column";
+      clientPanel.style.justifyContent = "center";
+      clientPanel.style.boxSizing = "border-box";
+
+      if (clientLabel instanceof HTMLElement) {
+        clientLabel.style.marginBottom = "8px";
+        clientLabel.style.paddingLeft = "4px";
+        clientLabel.style.lineHeight = "1";
+      }
+
+      const content = Array.from(clientPanel.children).find((child) => child !== clientLabel);
+      if (content instanceof HTMLElement) {
+        content.style.display = "grid";
+        content.style.gridTemplateColumns = "1fr 1fr";
+        content.style.gap = "4px 18px";
+        content.style.alignContent = "center";
+        content.style.fontSize = "10.2px";
+        content.style.lineHeight = "1.48";
+        Array.from(content.children).forEach((item) => {
+          if (!(item instanceof HTMLElement)) return;
+          item.style.lineHeight = "1.48";
+        });
+      }
+    }
+
+    if (validityPanel instanceof HTMLElement) {
+      validityPanel.style.minHeight = "96px";
+      validityPanel.style.padding = "12px 18px";
+      validityPanel.style.display = "flex";
+      validityPanel.style.flexDirection = "column";
+      validityPanel.style.justifyContent = "center";
+      validityPanel.style.alignItems = "center";
+      validityPanel.style.textAlign = "center";
+      validityPanel.style.boxSizing = "border-box";
+
+      if (validityLabel instanceof HTMLElement) {
+        validityLabel.style.marginBottom = "8px";
+        validityLabel.style.lineHeight = "1";
+      }
+
+      Array.from(validityPanel.children).forEach((item) => {
+        if (!(item instanceof HTMLElement) || item === validityLabel) return;
+        item.style.lineHeight = "1.42";
+        item.style.margin = "0";
+      });
+    }
+  }
+
   function polishQuotePreviewLayout(root = document) {
     if (!ENABLE_PREVIEW_POLISH) return false;
     const pdfRoot = getLivePdfRoot(root);
     if (!(pdfRoot instanceof HTMLElement)) return false;
     const offerHeading = findElementByTextWithin(pdfRoot, "div, span, p", "OFFERTA PER");
     if (offerHeading instanceof HTMLElement) {
-      offerHeading.style.padding = "7px 18px 9px";
-      offerHeading.style.lineHeight = "1.08";
+      offerHeading.style.display = "inline-flex";
+      offerHeading.style.alignItems = "center";
+      offerHeading.style.justifyContent = "center";
+      offerHeading.style.minHeight = "44px";
+      offerHeading.style.padding = "8px 22px 9px";
+      offerHeading.style.lineHeight = "1";
       if (offerHeading.parentElement instanceof HTMLElement) {
-        offerHeading.parentElement.style.marginBottom = "14px";
+        offerHeading.parentElement.style.marginBottom = "16px";
       }
     }
+    polishQuoteHeaderPanels(pdfRoot);
     appendDiscountLabelToProductDescriptions(pdfRoot);
     centerFeatureCards(pdfRoot);
     centerHeylightCards(pdfRoot);
