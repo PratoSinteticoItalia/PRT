@@ -1,9 +1,10 @@
-const APP_SHELL_VERSION = "20260506-garden-report-roll-clarity-126";
+const APP_SHELL_VERSION = "20260506-coverage-city-geocode-127";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
 const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
+const COVERAGE_GEOCODE_CACHE_KEY = "pose-coverage-geocode-v1";
 const PROFIT_SPLIT_STORAGE_KEY = "pose-profit-split-v1";
 const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 20;
 const SESSION_REVISION_ENDPOINT = "/api/session/revision";
@@ -1076,6 +1077,9 @@ const state = {
   coveragePlanner: loadCoveragePlannerState(),
   coverageDrawing: { active: false, points: [] },
   coverageNearestCity: "",
+  coverageNearestLoading: false,
+  coverageNearestSuggestions: [],
+  coverageNearestCityKnown: null,
   profitSplitLocalDraft: loadProfitSplitDraft(),
   profitSplitDraft: loadProfitSplitDraft(),
   profitSplitContextOrderId: "",
@@ -1093,6 +1097,7 @@ let sessionEventsStopped = false;
 let sessionEventsRefreshTimer = 0;
 let sessionEventsLastRefreshAt = 0;
 let shopifyAutoSyncTimer = 0;
+let coverageGeocodeCache = loadCoverageGeocodeCache();
 let shopifyAutoSyncInFlight = false;
 let salesRequestAutoSyncTimer = 0;
 let salesRequestSyncInFlight = false;
@@ -1365,6 +1370,7 @@ const ui = {
   profitSplitSaveOrderButton: document.getElementById("profit-split-save-order-button"),
   profitSplitDetachOrderButton: document.getElementById("profit-split-detach-order-button"),
   profitSplitOpenOrderButton: document.getElementById("profit-split-open-order-button"),
+  profitSplitOpenInstallationsButton: document.getElementById("profit-split-open-installations-button"),
   profitSplitForm: document.getElementById("profit-split-form"),
   profitSplitCrewOptions: document.getElementById("profit-split-crew-options"),
   profitSplitExpenseLines: document.getElementById("profit-split-expense-lines"),
@@ -5061,6 +5067,22 @@ function saveCoveragePlannerState() {
   return true;
 }
 
+function loadCoverageGeocodeCache() {
+  try {
+    const raw = window.localStorage.getItem(COVERAGE_GEOCODE_CACHE_KEY);
+    const parsed = JSON.parse(raw || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveCoverageGeocodeCache() {
+  try {
+    window.localStorage.setItem(COVERAGE_GEOCODE_CACHE_KEY, JSON.stringify(coverageGeocodeCache));
+  } catch {}
+}
+
 function queueCoveragePlannerSync() {
   if (!state.currentUser || !canManageCoveragePlanner()) return;
   window.clearTimeout(coverageSyncTimer);
@@ -5247,6 +5269,18 @@ function updateCoverageTeamForm() {
   ui.coverageTeamForm.teamNote.value = team?.note || "";
 }
 
+function isCoverageTeamMeaningful(teamName) {
+  if (!teamName) return false;
+  const team = state.coveragePlanner?.teams?.[teamName];
+  if (!team) return false;
+  const hasBase = Boolean(String(team.base || "").trim());
+  const hasNote = Boolean(String(team.note || "").trim());
+  const hasRegions = Array.isArray(team.regions) && team.regions.length > 0;
+  const hasPolygons = Array.isArray(team.polygons) && team.polygons.length > 0;
+  const hasAssignedOrders = state.orders.some((order) => orderBelongsToCrew(order, teamName));
+  return hasBase || hasNote || hasRegions || hasPolygons || hasAssignedOrders;
+}
+
 function saveCoverageTeamFromForm(event) {
   event.preventDefault();
   if (!ui.coverageTeamForm) return;
@@ -5257,6 +5291,13 @@ function saveCoverageTeamFromForm(event) {
     return;
   }
   const previousCrew = getSelectedInstallationCrew();
+  if (previousCrew && previousCrew !== teamName) {
+    const duplicateCrew = getInstallationCrewNames().find((crewName) => crewName !== previousCrew && isSameCrewName(crewName, teamName));
+    if (duplicateCrew) {
+      setStatus(ui.installationStatus, "error", state.lang === "it" ? "Esiste già una squadra con questo nome." : "A crew with this name already exists.");
+      return;
+    }
+  }
   const currentConfig = previousCrew && previousCrew !== teamName ? ensureCoverageTeam(previousCrew) : null;
   const existing = ensureCoverageTeam(teamName);
   if (currentConfig && !state.coveragePlanner.teams[teamName]?.base && !state.coveragePlanner.teams[teamName]?.regions?.length && !state.coveragePlanner.teams[teamName]?.polygons?.length) {
@@ -5292,6 +5333,7 @@ function saveCoverageTeamFromForm(event) {
   state.selectedInstallationCrew = teamName;
   saveCoveragePlannerState();
   renderInstallations();
+  if (state.coverageNearestCity) void runCoverageNearestCrewSearch(state.coverageNearestCity);
   setStatus(ui.installationStatus, "success", state.lang === "it" ? "Squadra aggiornata sulla cartina." : "Crew updated on the map.");
 }
 
@@ -5307,6 +5349,7 @@ function addCoverageTeam() {
   state.selectedInstallationCrew = candidate;
   saveCoveragePlannerState();
   renderInstallations();
+  setStatus(ui.installationStatus, "success", state.lang === "it" ? "Nuova squadra pronta: rinominala e aggiungi base o note operative." : "New crew ready: rename it and add a base or notes.");
   requestAnimationFrame(() => {
     ui.coverageTeamForm?.teamName?.focus();
     ui.coverageTeamForm?.teamName?.select();
@@ -5317,12 +5360,19 @@ function removeCoverageTeam() {
   const selectedCrew = getSelectedInstallationCrew();
   if (!selectedCrew || !state.coveragePlanner?.teams?.[selectedCrew]) return;
   const assignedOrders = state.orders.filter((order) => orderBelongsToCrew(order, selectedCrew));
-  const confirmed = window.confirm(
-    state.lang === "it"
-      ? `Rimuovere ${selectedCrew} dal radar e scollegarla da ${assignedOrders.length} ordini assegnati?`
-      : `Remove ${selectedCrew} from coverage and detach it from ${assignedOrders.length} assigned orders?`
-  );
-  if (!confirmed) return;
+  const needsConfirm = isCoverageTeamMeaningful(selectedCrew);
+  if (needsConfirm) {
+    const confirmed = window.confirm(
+      assignedOrders.length
+        ? (state.lang === "it"
+          ? `Rimuovere ${selectedCrew} dal radar e scollegarla da ${assignedOrders.length} ordini assegnati?`
+          : `Remove ${selectedCrew} from coverage and detach it from ${assignedOrders.length} assigned orders?`)
+        : (state.lang === "it"
+          ? `Rimuovere ${selectedCrew} dal radar?`
+          : `Remove ${selectedCrew} from coverage?`)
+    );
+    if (!confirmed) return;
+  }
   delete state.coveragePlanner.teams[selectedCrew];
   if (assignedOrders.length) {
     state.orders = state.orders.map((order) => {
@@ -5344,7 +5394,14 @@ function removeCoverageTeam() {
   state.coverageDrawing = { active: false, points: [] };
   saveCoveragePlannerState();
   renderInstallations();
-  setStatus(ui.installationStatus, "success", state.lang === "it" ? "Squadra rimossa dal radar." : "Crew removed from coverage.");
+  if (state.coverageNearestCity) void runCoverageNearestCrewSearch(state.coverageNearestCity);
+  setStatus(
+    ui.installationStatus,
+    "success",
+    state.lang === "it"
+      ? (needsConfirm ? "Squadra rimossa dal radar." : "Squadra vuota scartata.")
+      : (needsConfirm ? "Crew removed from coverage." : "Empty crew discarded."),
+  );
 }
 
 function getInstallationOrdersForCrew(teamName) {
@@ -5384,6 +5441,36 @@ function getCoverageCoordinatesFromText(value) {
   return null;
 }
 
+async function geocodeCoverageCoordinates(value) {
+  const normalized = normalizeLooseString(value);
+  if (!normalized) return null;
+  const staticPoint = getCoverageCoordinatesFromText(value);
+  if (staticPoint) return staticPoint;
+  if (coverageGeocodeCache[normalized]) return coverageGeocodeCache[normalized];
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=it&q=${encodeURIComponent(String(value || "").trim())}`;
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": "it",
+      },
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const first = Array.isArray(payload) ? payload[0] : null;
+    if (!first?.lat || !first?.lon) return null;
+    const point = { lat: Number(first.lat), lng: Number(first.lon) };
+    if (Number.isFinite(point.lat) && Number.isFinite(point.lng)) {
+      coverageGeocodeCache[normalized] = point;
+      saveCoverageGeocodeCache();
+      return point;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function coverageTextMatchesCity(value, cityName) {
   const normalizedValue = normalizeLooseString(value);
   const normalizedCity = normalizeLooseString(cityName);
@@ -5413,37 +5500,47 @@ function getAllInstallationOrdersForCrew(teamName) {
     .filter((order) => orderBelongsToCrew(order, teamName));
 }
 
-function buildCoverageNearestCrewSuggestions(cityName) {
+async function buildCoverageNearestCrewSuggestions(cityName) {
   const normalizedCity = normalizeLooseString(cityName);
   if (!normalizedCity) return [];
-  const targetCoords = getCoverageCoordinatesFromText(cityName);
-  return getInstallationCrewNames()
-    .map((crewName) => {
+  const targetCoords = await geocodeCoverageCoordinates(cityName);
+  const targetProvince = extractProvinceCodeFromText(cityName);
+  const suggestions = await Promise.all(getInstallationCrewNames()
+    .map(async (crewName) => {
       const team = ensureCoverageTeam(crewName) || {};
       const crewOrders = getAllInstallationOrdersForCrew(crewName);
       const baseMatches = coverageTextMatchesCity(team.base, cityName);
-      const baseCoords = getCoverageCoordinatesFromText(team.base);
+      const baseCoords = await geocodeCoverageCoordinates(team.base);
       const distanceKm = targetCoords && baseCoords ? getCoverageDistanceKm(baseCoords, targetCoords) : null;
       const cityJobs = crewOrders.filter((order) => coverageTextMatchesCity(order.city || composeAddress(order), cityName)).length;
+      const provinceJobs = targetProvince
+        ? crewOrders.filter((order) => extractProvinceCodeFromText(order.city || composeAddress(order)) === targetProvince).length
+        : 0;
+      const baseProvinceMatch = targetProvince && extractProvinceCodeFromText(team.base) === targetProvince;
       const totalJobs = crewOrders.length;
-      const hasSignal = baseMatches || cityJobs > 0 || distanceKm != null;
+      const hasSignal = baseMatches || cityJobs > 0 || distanceKm != null || baseProvinceMatch || provinceJobs > 0;
       return {
         crewName,
         team,
         baseMatches,
         distanceKm,
         cityJobs,
+        provinceJobs,
+        baseProvinceMatch,
         totalJobs,
         hasSignal,
       };
-    })
+    }));
+  return suggestions
     .filter((item) => item.hasSignal)
     .sort((left, right) => {
       if (left.baseMatches !== right.baseMatches) return left.baseMatches ? -1 : 1;
+      if (left.cityJobs !== right.cityJobs) return right.cityJobs - left.cityJobs;
+      if (left.baseProvinceMatch !== right.baseProvinceMatch) return left.baseProvinceMatch ? -1 : 1;
       const leftDistance = Number.isFinite(left.distanceKm) ? left.distanceKm : Number.POSITIVE_INFINITY;
       const rightDistance = Number.isFinite(right.distanceKm) ? right.distanceKm : Number.POSITIVE_INFINITY;
       if (leftDistance !== rightDistance) return leftDistance - rightDistance;
-      if (left.cityJobs !== right.cityJobs) return right.cityJobs - left.cityJobs;
+      if (left.provinceJobs !== right.provinceJobs) return right.provinceJobs - left.provinceJobs;
       if (left.totalJobs !== right.totalJobs) return left.totalJobs - right.totalJobs;
       return left.crewName.localeCompare(right.crewName, "it");
     });
@@ -5460,14 +5557,18 @@ function renderCoverageNearestCrewResult() {
     ui.coverageNearestResult.innerHTML = `<div class="coverage-empty">${state.lang === "it" ? "Inserisci una città per trovare la squadra più vicina." : "Enter a city to find the nearest crew."}</div>`;
     return;
   }
-  const suggestions = buildCoverageNearestCrewSuggestions(query);
-  const cityKnown = Boolean(getCoverageCoordinatesFromText(query));
+  if (state.coverageNearestLoading) {
+    ui.coverageNearestResult.innerHTML = `<div class="coverage-empty">${state.lang === "it" ? "Sto cercando la località e confrontando le squadre..." : "Looking up the location and comparing crews..."}</div>`;
+    return;
+  }
+  const suggestions = Array.isArray(state.coverageNearestSuggestions) ? state.coverageNearestSuggestions : [];
+  const cityKnown = Boolean(state.coverageNearestCityKnown);
   if (!suggestions.length) {
     ui.coverageNearestResult.innerHTML = `
       <div class="coverage-empty">
         ${cityKnown
           ? (state.lang === "it" ? "Nessuna squadra con base o storico utile su questa città." : "No crew has a useful base or city history for this location.")
-          : (state.lang === "it" ? "Città non riconosciuta nella mappa interna. Prova con il capoluogo o con una forma più semplice del nome." : "City not recognized in the internal map. Try the main city name or a simpler spelling.")}
+          : (state.lang === "it" ? "Località non riconosciuta. Prova con una forma più semplice del nome o con il comune completo." : "Location not recognized. Try a simpler spelling or the full municipality name.")}
       </div>
     `;
     return;
@@ -5478,9 +5579,13 @@ function renderCoverageNearestCrewResult() {
       : (state.lang === "it" ? "distanza non disponibile" : "distance unavailable");
     const historyLabel = item.cityJobs
       ? `${item.cityJobs} ${state.lang === "it" ? "cantieri già in città" : "jobs already in city"}`
-      : (state.lang === "it" ? "nessuno storico in città" : "no city history");
+      : item.provinceJobs
+        ? `${item.provinceJobs} ${state.lang === "it" ? "cantieri nella stessa provincia" : "jobs in same province"}`
+        : (state.lang === "it" ? "nessuno storico in città" : "no city history");
     const reasonLabel = item.baseMatches
       ? (state.lang === "it" ? `Base operativa su ${safeQuery}` : `Base located in ${safeQuery}`)
+      : item.baseProvinceMatch && item.team.base
+        ? `${state.lang === "it" ? "Base nella stessa provincia" : "Base in same province"} · ${escapeHtml(item.team.base)}`
       : item.team.base
         ? `${state.lang === "it" ? "Base" : "Base"} ${escapeHtml(item.team.base)} · ${distanceLabel}`
         : `${state.lang === "it" ? "Base non indicata" : "Base missing"} · ${historyLabel}`;
@@ -5511,10 +5616,31 @@ function renderCoverageNearestCrewResult() {
   }).join("");
 }
 
+async function runCoverageNearestCrewSearch(query = state.coverageNearestCity) {
+  const trimmedQuery = String(query || "").trim();
+  state.coverageNearestCity = trimmedQuery;
+  state.coverageNearestLoading = Boolean(trimmedQuery);
+  if (!trimmedQuery) {
+    state.coverageNearestSuggestions = [];
+    state.coverageNearestCityKnown = null;
+    renderCoverageNearestCrewResult();
+    return;
+  }
+  renderCoverageNearestCrewResult();
+  const [coords, suggestions] = await Promise.all([
+    geocodeCoverageCoordinates(trimmedQuery),
+    buildCoverageNearestCrewSuggestions(trimmedQuery),
+  ]);
+  if (state.coverageNearestCity !== trimmedQuery) return;
+  state.coverageNearestLoading = false;
+  state.coverageNearestCityKnown = Boolean(coords);
+  state.coverageNearestSuggestions = suggestions;
+  renderCoverageNearestCrewResult();
+}
+
 function handleCoverageNearestFormSubmit(event) {
   event?.preventDefault();
-  state.coverageNearestCity = String(ui.coverageNearestCityInput?.value || "").trim();
-  renderCoverageNearestCrewResult();
+  void runCoverageNearestCrewSearch(String(ui.coverageNearestCityInput?.value || "").trim());
 }
 
 function getCoveragePointForOrder(order) {
@@ -5764,7 +5890,13 @@ function updateCoverageControls() {
   if (ui.coverageUndoPointButton) ui.coverageUndoPointButton.disabled = !state.coverageDrawing?.active || !(state.coverageDrawing?.points || []).length;
   if (ui.coverageClosePolygonButton) ui.coverageClosePolygonButton.disabled = !state.coverageDrawing?.active || (state.coverageDrawing?.points || []).length < 3;
   if (ui.coverageClearPolygonsButton) ui.coverageClearPolygonsButton.disabled = !(ensureCoverageTeam(getSelectedInstallationCrew())?.polygons || []).length;
-  if (ui.coverageRemoveTeamButton) ui.coverageRemoveTeamButton.disabled = !getSelectedInstallationCrew();
+  if (ui.coverageRemoveTeamButton) {
+    const selectedCrew = getSelectedInstallationCrew();
+    ui.coverageRemoveTeamButton.disabled = !selectedCrew;
+    ui.coverageRemoveTeamButton.textContent = selectedCrew && !isCoverageTeamMeaningful(selectedCrew)
+      ? (state.lang === "it" ? "Scarta squadra" : "Discard crew")
+      : (state.lang === "it" ? "Rimuovi squadra" : "Remove crew");
+  }
 }
 
 function getOrderNumber(order) {
@@ -15578,6 +15710,9 @@ bindEvent(ui.profitSplitOpenOrderButton, "click", () => {
   if (!order) return;
   state.selectedOrderId = order.id;
   setView("orders");
+});
+bindEvent(ui.profitSplitOpenInstallationsButton, "click", () => {
+  setView("installations");
 });
 bindEvent(ui.profitSplitForm, "click", (event) => {
   const addButton = event.target.closest("[data-profit-split-add-expense]");
