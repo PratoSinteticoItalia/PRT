@@ -896,25 +896,26 @@
   }
 
   function clearRecommendationClasses(root) {
-    root.querySelectorAll(".codex-recommended-row").forEach((node) => {
+    collectQuoteModels(root).forEach((model) => {
+      const node = model?.row;
+      if (!(node instanceof HTMLElement)) return;
       node.classList.remove("codex-recommended-row");
-      if (node instanceof HTMLElement) {
-        node.style.background = "";
-      }
+      node.style.background = "";
       const firstCell = node.children?.[0];
       if (firstCell instanceof HTMLElement) {
         firstCell.style.boxShadow = "";
       }
     });
-    root.querySelectorAll(".codex-recommended-card").forEach((node) => {
+    const resetCard = (node, isHeylight = false) => {
+      if (!(node instanceof HTMLElement)) return;
       node.classList.remove("codex-recommended-card");
-      if (node instanceof HTMLElement) {
-        node.style.borderColor = "";
-        node.style.boxShadow = "";
-        node.style.transform = "";
-        node.style.background = "";
-      }
-    });
+      node.style.borderColor = "";
+      node.style.boxShadow = "";
+      node.style.transform = "";
+      node.style.background = isHeylight ? "" : "";
+    };
+    findPerMqCards(root).forEach((item) => resetCard(item.card, false));
+    findHeylightCards(root).forEach((item) => resetCard(item.card, true));
   }
 
   function applyRecommendedModelClasses(root, selectedName) {
