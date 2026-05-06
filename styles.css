@@ -1658,6 +1658,16 @@ button.is-feedback,
   color: var(--amber);
 }
 
+.type-fornitura {
+  background: #ebf7ef;
+  color: #2d9a54;
+}
+
+.type-fornitura-posa {
+  background: #fff2d9;
+  color: #d28b22;
+}
+
 .order-amount {
   font-weight: 700;
   font-size: 13px;
@@ -2916,6 +2926,8 @@ button.is-feedback,
 .type-posa { background: #fff2d9; color: #d28b22; }
 .type-spedizione { background: #e9f1ff; color: #4a72f0; }
 .type-ritiro { background: #ebf7ef; color: #2d9a54; }
+.type-fornitura { background: #ebf7ef; color: #2d9a54; }
+.type-fornitura-posa { background: #fff2d9; color: #d28b22; }
 
 .order-amount {
   font-size: 28px;
@@ -4668,6 +4680,16 @@ body {
 .type-posa {
   background: var(--amber-soft);
   color: var(--amber);
+}
+
+.type-fornitura {
+  background: #ebf7ef;
+  color: #2d9a54;
+}
+
+.type-fornitura-posa {
+  background: #fff2d9;
+  color: #d28b22;
 }
 
 .order-amount {

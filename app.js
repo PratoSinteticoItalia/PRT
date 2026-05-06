@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260506-coverage-city-geocode-127";
+const APP_SHELL_VERSION = "20260506-inbox-supply-badges-128";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7197,6 +7197,19 @@ function getOrderType(order) {
   return { label: state.lang === "it" ? "Operativo" : "Operational", tone: "status-slate" };
 }
 
+function getInboxCommercialType(order) {
+  if (order.operations?.installation?.required) {
+    return {
+      label: state.lang === "it" ? "Fornitura + posa" : "Supply + install",
+      className: "type-fornitura-posa",
+    };
+  }
+  return {
+    label: state.lang === "it" ? "Solo fornitura" : "Supply only",
+    className: "type-fornitura",
+  };
+}
+
 function getActionMeta(kind) {
   if (kind === "material") return { icon: state.lang === "it" ? "Urgente" : "Urgent", tone: "status-red" };
   if (kind === "address") return { icon: state.lang === "it" ? "Da completare" : "To complete", tone: "status-amber" };
@@ -8655,7 +8668,7 @@ function renderOrderStepper(order) {
 
 function renderOrderRow(order, view = "orders") {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
-  const orderType = getOrderType(order);
+  const orderType = view === "orders" ? getInboxCommercialType(order) : getOrderType(order);
   const stage = getUnifiedOrderStage(order);
   const nextAction = getNextOrderAction(order);
   const stageChipTone = stage.tone === "green"
@@ -8675,7 +8688,7 @@ function renderOrderRow(order, view = "orders") {
           <strong>${nextAction}</strong>
         </div>
       </div>
-      <div class="order-type-badge ${orderType.tone === "status-amber" ? "type-posa" : orderType.tone === "status-blue" ? "type-spedizione" : "type-ritiro"}">${orderType.label}</div>
+      <div class="order-type-badge ${view === "orders" ? orderType.className : (orderType.tone === "status-amber" ? "type-posa" : orderType.tone === "status-blue" ? "type-spedizione" : "type-ritiro")}">${orderType.label}</div>
       <div class="order-amount">${formatCurrency(order.total)}</div>
       <div class="action-badge ${stageChipTone}">${stage.label}</div>
     </article>
