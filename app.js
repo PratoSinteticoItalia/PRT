@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260506-sample-coverage-locality-129";
+const APP_SHELL_VERSION = "20260506-coverage-radar-profit-split-130";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1268,7 +1268,7 @@ const ui = {
   createDdtButton: document.getElementById("create-ddt-button"),
   warehouseDdtStatus: document.getElementById("warehouse-ddt-status"),
   installationFilterTags: Array.from(document.querySelectorAll(".installation-filter-tag")),
-  coveragePanel: document.querySelector("#installations .coverage-panel"),
+  coveragePanel: document.querySelector(".coverage-panel"),
   coverageTeamList: document.getElementById("coverage-team-list"),
   coverageRegionGrid: document.getElementById("coverage-region-grid"),
   coverageRegionCount: document.getElementById("coverage-region-count"),
@@ -1371,6 +1371,7 @@ const ui = {
   profitSplitDetachOrderButton: document.getElementById("profit-split-detach-order-button"),
   profitSplitOpenOrderButton: document.getElementById("profit-split-open-order-button"),
   profitSplitOpenInstallationsButton: document.getElementById("profit-split-open-installations-button"),
+  profitSplitCoverageMount: document.getElementById("profit-split-coverage-mount"),
   profitSplitForm: document.getElementById("profit-split-form"),
   profitSplitCrewOptions: document.getElementById("profit-split-crew-options"),
   profitSplitExpenseLines: document.getElementById("profit-split-expense-lines"),
@@ -1387,6 +1388,10 @@ const ui = {
   salesRequestServiceAccountInput: document.getElementById("sales-request-service-account-input"),
   dashboardSubtitle: document.getElementById("dashboard-subtitle"),
 };
+
+if (ui.coveragePanel && ui.profitSplitCoverageMount && ui.coveragePanel.parentElement !== ui.profitSplitCoverageMount) {
+  ui.profitSplitCoverageMount.appendChild(ui.coveragePanel);
+}
 
 function t(key) {
   return translations[state.lang]?.[key] || translations.it[key] || key;
@@ -5047,7 +5052,16 @@ function composeAddress(order) {
 function normalizeCoveragePlannerState(payload) {
   const teams = payload?.teams && typeof payload.teams === "object" ? payload.teams : {};
   const availability = payload?.availability && typeof payload.availability === "object" ? payload.availability : {};
-  return { teams, availability };
+  const archivedTeams = Array.isArray(payload?.archivedTeams)
+    ? Array.from(
+        new Set(
+          payload.archivedTeams
+            .map((item) => String(item || "").trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  return { teams, availability, archivedTeams };
 }
 
 function loadCoveragePlannerState() {
@@ -5187,6 +5201,7 @@ function ensureCoverageTeam(teamName) {
   if (!key) return null;
   if (!state.coveragePlanner?.teams) state.coveragePlanner = { teams: {} };
   if (!state.coveragePlanner.availability) state.coveragePlanner.availability = {};
+  unarchiveCoverageCrew(key);
   if (!state.coveragePlanner.teams[key]) {
     const index = getInstallationCrewNames().indexOf(key);
     state.coveragePlanner.teams[key] = {
@@ -5244,14 +5259,17 @@ function getSelectedInstallationCrew() {
 
 function getCoverageManagedCrewNames() {
   const forcedCrew = getCrewForCurrentUser();
+  const archivedCrews = Array.isArray(state.coveragePlanner?.archivedTeams) ? state.coveragePlanner.archivedTeams : [];
+  const isArchivedCrew = (crewName = "") => archivedCrews.some((item) => isSameCrewName(item, crewName));
   const storedCrews = Object.keys(state.coveragePlanner?.teams || {}).filter(Boolean);
   const orderCrews = state.orders
     .map((order) => String(order.operations?.installation?.crew || "").trim())
-    .filter(Boolean);
+    .filter((crewName) => crewName && !isArchivedCrew(crewName));
   const accountCrews = getCrewAccounts()
     .map((user) => getCrewLabelForUser(user))
     .filter((crewName) => {
       if (!crewName) return false;
+      if (isArchivedCrew(crewName)) return false;
       const hasStoredConfig = Object.keys(state.coveragePlanner?.teams || {}).some((key) => isSameCrewName(key, crewName));
       const hasAssignedOrders = state.orders.some((order) => orderBelongsToCrew(order, crewName));
       return hasStoredConfig || hasAssignedOrders;
@@ -5262,8 +5280,25 @@ function getCoverageManagedCrewNames() {
     ...accountCrews,
     ...(forcedCrew ? [forcedCrew] : []),
   ]))
-    .filter(Boolean)
+    .filter((crewName) => crewName && !isArchivedCrew(crewName))
     .sort((left, right) => left.localeCompare(right, "it"));
+}
+
+function unarchiveCoverageCrew(teamName = "") {
+  const normalized = String(teamName || "").trim();
+  if (!normalized || !Array.isArray(state.coveragePlanner?.archivedTeams)) return;
+  state.coveragePlanner.archivedTeams = state.coveragePlanner.archivedTeams.filter((item) => !isSameCrewName(item, normalized));
+}
+
+function archiveCoverageCrew(teamName = "") {
+  const normalized = String(teamName || "").trim();
+  if (!normalized) return;
+  if (!Array.isArray(state.coveragePlanner?.archivedTeams)) {
+    state.coveragePlanner.archivedTeams = [];
+  }
+  if (!state.coveragePlanner.archivedTeams.some((item) => isSameCrewName(item, normalized))) {
+    state.coveragePlanner.archivedTeams.push(normalized);
+  }
 }
 
 function getCoverageSelectedCrew() {
@@ -5290,7 +5325,7 @@ function getCoverageSelectedCrew() {
 
 function selectInstallationCrew(teamName) {
   if (!teamName) return;
-  const crewsAvailable = getInstallationCrewNames();
+  const crewsAvailable = getCoverageManagedCrewNames();
   const resolved = crewsAvailable.find((crewName) => isSameCrewName(crewName, teamName)) || teamName;
   state.selectedInstallationCrew = resolved;
   ensureCoverageTeam(resolved);
@@ -5349,6 +5384,7 @@ function saveCoverageTeamFromForm(event) {
       return;
     }
   }
+  unarchiveCoverageCrew(teamName);
   const currentConfig = previousCrew && previousCrew !== teamName ? ensureCoverageTeam(previousCrew) : null;
   const existing = ensureCoverageTeam(teamName);
   if (currentConfig && !state.coveragePlanner.teams[teamName]?.base && !state.coveragePlanner.teams[teamName]?.regions?.length && !state.coveragePlanner.teams[teamName]?.polygons?.length) {
@@ -5367,6 +5403,7 @@ function saveCoverageTeamFromForm(event) {
   };
   if (currentConfig && previousCrew && previousCrew !== teamName) {
     delete state.coveragePlanner.teams[previousCrew];
+    archiveCoverageCrew(previousCrew);
     state.orders = state.orders.map((order) => {
       if (!orderBelongsToCrew(order, previousCrew)) return order;
       return {
@@ -5397,6 +5434,7 @@ function addCoverageTeam() {
     candidate = `${state.lang === "it" ? "Nuova squadra" : "New crew"} ${attempt}`;
   }
   ensureCoverageTeam(candidate);
+  unarchiveCoverageCrew(candidate);
   state.selectedInstallationCrew = candidate;
   saveCoveragePlannerState();
   renderInstallations();
@@ -5430,6 +5468,7 @@ function removeCoverageTeam() {
   Object.keys(state.coveragePlanner?.availability || {}).forEach((key) => {
     if (isSameCrewName(key, selectedCrew)) delete state.coveragePlanner.availability[key];
   });
+  archiveCoverageCrew(selectedCrew);
   if (assignedOrders.length) {
     state.orders = state.orders.map((order) => {
       if (!orderBelongsToCrew(order, selectedCrew)) return order;
@@ -5596,6 +5635,21 @@ function coverageTextMatchesCity(value, cityName) {
     || normalizedCity.includes(normalizedValue);
 }
 
+function isCoveragePointInsidePolygon(point, polygon = []) {
+  if (!point || !Array.isArray(polygon) || polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const xi = Number(polygon[i]?.x || 0);
+    const yi = Number(polygon[i]?.y || 0);
+    const xj = Number(polygon[j]?.x || 0);
+    const yj = Number(polygon[j]?.y || 0);
+    const intersects = ((yi > point.y) !== (yj > point.y))
+      && (point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 0.000001) + xi);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
 function getCoverageDistanceKm(fromPoint, toPoint) {
   if (!fromPoint || !toPoint) return null;
   const toRadians = (value) => value * (Math.PI / 180);
@@ -5621,6 +5675,7 @@ async function buildCoverageNearestCrewSuggestions(cityName) {
   if (!normalizedCity) return [];
   const targetLocation = await geocodeCoverageLocation(cityName);
   const targetCoords = targetLocation?.coords || null;
+  const targetPoint = targetCoords ? projectCoverageLatLng(targetCoords.lat, targetCoords.lng) : null;
   const targetProvince = targetLocation?.provinceCode || extractProvinceCodeFromText(cityName);
   const targetRegion = normalizeLooseString(targetLocation?.regionName || getRegionNameForProvinceCode(targetProvince));
   const suggestions = await Promise.all(getCoverageManagedCrewNames()
@@ -5631,6 +5686,9 @@ async function buildCoverageNearestCrewSuggestions(cityName) {
       const baseLocation = await geocodeCoverageLocation(team.base);
       const baseCoords = baseLocation?.coords || null;
       const distanceKm = targetCoords && baseCoords ? getCoverageDistanceKm(baseCoords, targetCoords) : null;
+      const polygonMatch = targetPoint
+        ? (team.polygons || []).some((polygon) => isCoveragePointInsidePolygon(targetPoint, polygon))
+        : false;
       const cityJobs = crewOrders.filter((order) => coverageTextMatchesCity(order.city || composeAddress(order), cityName)).length;
       const provinceJobs = targetProvince
         ? crewOrders.filter((order) => extractProvinceCodeFromText(order.city || composeAddress(order)) === targetProvince).length
@@ -5644,17 +5702,20 @@ async function buildCoverageNearestCrewSuggestions(cityName) {
         || (team.regions || []).some((regionName) => normalizeLooseString(regionName) === targetRegion)
       );
       const totalJobs = crewOrders.length;
-      const hasSignal = baseMatches || cityJobs > 0 || distanceKm != null || baseProvinceMatch || provinceJobs > 0 || regionMatch || regionJobs > 0;
+      const explicitCoverage = baseMatches || polygonMatch || baseProvinceMatch || regionMatch;
+      const hasSignal = explicitCoverage || cityJobs > 0 || distanceKm != null || provinceJobs > 0 || regionJobs > 0;
       return {
         crewName,
         team,
         baseMatches,
+        polygonMatch,
         distanceKm,
         cityJobs,
         provinceJobs,
         regionJobs,
         baseProvinceMatch,
         regionMatch,
+        explicitCoverage,
         totalJobs,
         hasSignal,
       };
@@ -5663,9 +5724,10 @@ async function buildCoverageNearestCrewSuggestions(cityName) {
     .filter((item) => item.hasSignal)
     .sort((left, right) => {
       if (left.baseMatches !== right.baseMatches) return left.baseMatches ? -1 : 1;
-      if (left.cityJobs !== right.cityJobs) return right.cityJobs - left.cityJobs;
+      if (left.polygonMatch !== right.polygonMatch) return left.polygonMatch ? -1 : 1;
       if (left.baseProvinceMatch !== right.baseProvinceMatch) return left.baseProvinceMatch ? -1 : 1;
       if (left.regionMatch !== right.regionMatch) return left.regionMatch ? -1 : 1;
+      if (left.cityJobs !== right.cityJobs) return right.cityJobs - left.cityJobs;
       const leftDistance = Number.isFinite(left.distanceKm) ? left.distanceKm : Number.POSITIVE_INFINITY;
       const rightDistance = Number.isFinite(right.distanceKm) ? right.distanceKm : Number.POSITIVE_INFINITY;
       if (leftDistance !== rightDistance) return leftDistance - rightDistance;
@@ -5716,10 +5778,16 @@ function renderCoverageNearestCrewResult() {
         : (state.lang === "it" ? "nessuno storico in città" : "no city history");
     const reasonLabel = item.baseMatches
       ? (state.lang === "it" ? `Base operativa su ${safeQuery}` : `Base located in ${safeQuery}`)
-      : item.baseProvinceMatch && item.team.base
-        ? `${state.lang === "it" ? "Base nella stessa provincia" : "Base in same province"} · ${escapeHtml(item.team.base)}`
-      : item.regionMatch && item.team.base
-        ? `${state.lang === "it" ? "Copertura nella stessa regione" : "Coverage in same region"} · ${escapeHtml(item.team.base)}`
+      : item.polygonMatch
+        ? (state.lang === "it" ? "Area disegnata che copre la località" : "Drawn area covers this location")
+      : item.baseProvinceMatch
+        ? item.team.base
+          ? `${state.lang === "it" ? "Base nella stessa provincia" : "Base in same province"} · ${escapeHtml(item.team.base)}`
+          : (state.lang === "it" ? "Copertura nella stessa provincia" : "Coverage in same province")
+      : item.regionMatch
+        ? item.team.base
+          ? `${state.lang === "it" ? "Copertura nella stessa regione" : "Coverage in same region"} · ${escapeHtml(item.team.base)}`
+          : (state.lang === "it" ? "Copertura nella stessa regione" : "Coverage in same region")
       : item.team.base
         ? `${state.lang === "it" ? "Base" : "Base"} ${escapeHtml(item.team.base)} · ${distanceLabel}`
         : `${state.lang === "it" ? "Base non indicata" : "Base missing"} · ${historyLabel}`;
@@ -6816,10 +6884,7 @@ function setAccountingPane(pane = "summary") {
 
 function updateInstallationPaneVisibility() {
   const isMobile = window.innerWidth <= 980;
-  const isCrewView = state.currentUser?.role === "crew";
-  const allowed = isCrewView
-    ? new Set(["summary", "expenses"])
-    : new Set(["summary", "expenses", "coverage"]);
+  const allowed = new Set(["summary", "expenses"]);
   if (!allowed.has(state.installationMobilePane)) {
     state.installationMobilePane = "summary";
   }
@@ -6838,8 +6903,7 @@ function updateInstallationPaneVisibility() {
 }
 
 function setInstallationPane(pane = "summary") {
-  const isCrewView = state.currentUser?.role === "crew";
-  const allowed = new Set(isCrewView ? ["summary", "expenses"] : ["summary", "expenses", "coverage"]);
+  const allowed = new Set(["summary", "expenses"]);
   state.installationMobilePane = allowed.has(pane) ? pane : "summary";
   updateInstallationPaneVisibility();
 }
@@ -12288,6 +12352,7 @@ function renderProfitSplitWorkspace() {
     restoreProfitSplitLocalDraft();
   }
   renderProfitSplitCalculator();
+  renderInstallationsCoverage();
 }
 
 function renderSecurityCenter() {
@@ -15865,9 +15930,10 @@ bindEvent(ui.profitSplitOpenOrderButton, "click", () => {
   setView("orders");
 });
 bindEvent(ui.profitSplitOpenInstallationsButton, "click", () => {
-  setView("installations");
-  setInstallationPane("coverage");
-  renderInstallations();
+  setView("profit-split");
+  requestAnimationFrame(() => {
+    ui.coveragePanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 });
 bindEvent(ui.profitSplitForm, "click", (event) => {
   const addButton = event.target.closest("[data-profit-split-add-expense]");

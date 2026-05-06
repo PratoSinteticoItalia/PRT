@@ -7979,6 +7979,18 @@ button:active,
   margin-bottom: 8px;
 }
 
+.profit-split-coverage-mount {
+  margin-top: 22px;
+}
+
+.profit-split-coverage-mount:empty {
+  display: none;
+}
+
+.profit-split-coverage-mount .coverage-panel {
+  margin-top: 0;
+}
+
 .coverage-shell {
   display: grid;
   grid-template-columns: 360px minmax(0, 1fr);

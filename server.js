@@ -771,6 +771,7 @@ function buildDefaultStore() {
     coveragePlanner: {
       teams: {},
       availability: {},
+      archivedTeams: [],
     },
     securityEvents: [],
     shopifySettings: {
@@ -1610,9 +1611,13 @@ function normalizeProfitSplitRecord(input = null) {
 function normalizeCoveragePlanner(payload = {}) {
   const teams = payload?.teams && typeof payload.teams === "object" ? payload.teams : {};
   const availability = payload?.availability && typeof payload.availability === "object" ? payload.availability : {};
+  const archivedTeams = Array.isArray(payload?.archivedTeams)
+    ? Array.from(new Set(payload.archivedTeams.map((item) => String(item || "").trim()).filter(Boolean)))
+    : [];
   return {
     teams,
     availability,
+    archivedTeams,
   };
 }
 
