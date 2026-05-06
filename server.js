@@ -1614,9 +1614,16 @@ function normalizeCoveragePlanner(payload = {}) {
   const archivedTeams = Array.isArray(payload?.archivedTeams)
     ? Array.from(new Set(payload.archivedTeams.map((item) => String(item || "").trim()).filter(Boolean)))
     : [];
+  const isArchivedTeam = (teamName = "") => archivedTeams.some((item) => item.localeCompare(String(teamName || "").trim(), "it", { sensitivity: "accent" }) === 0);
+  const activeTeams = Object.fromEntries(
+    Object.entries(teams).filter(([teamName]) => teamName && !isArchivedTeam(teamName)),
+  );
+  const activeAvailability = Object.fromEntries(
+    Object.entries(availability).filter(([teamName]) => teamName && !isArchivedTeam(teamName)),
+  );
   return {
-    teams,
-    availability,
+    teams: activeTeams,
+    availability: activeAvailability,
     archivedTeams,
   };
 }

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260506-coverage-radar-profit-split-130";
+const APP_SHELL_VERSION = "20260506-coverage-radar-profit-split-131";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1107,6 +1107,7 @@ const salesContentAttachmentDeleteInFlight = new Set();
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
+let coverageSyncQueued = false;
 let currentViewRenderFrame = 0;
 const searchRenderTimers = Object.create(null);
 const shopifyOrderRefreshInFlight = new Set();
@@ -5064,6 +5065,37 @@ function normalizeCoveragePlannerState(payload) {
   return { teams, availability, archivedTeams };
 }
 
+function isCoverageCrewArchived(crewName = "", planner = state.coveragePlanner) {
+  const normalized = String(crewName || "").trim();
+  if (!normalized) return false;
+  const archivedTeams = Array.isArray(planner?.archivedTeams) ? planner.archivedTeams : [];
+  return archivedTeams.some((item) => isSameCrewName(item, normalized));
+}
+
+function mergeCoveragePlannerState(incomingPayload, localPayload = state.coveragePlanner) {
+  const incoming = normalizeCoveragePlannerState(incomingPayload);
+  const local = normalizeCoveragePlannerState(localPayload);
+  const localTeamNames = Object.keys(local.teams || {});
+  const archivedTeams = Array.from(new Set([
+    ...incoming.archivedTeams,
+    ...local.archivedTeams.filter((crewName) => !localTeamNames.some((teamName) => isSameCrewName(teamName, crewName))),
+  ].filter(Boolean)));
+  const merged = {
+    teams: { ...(incoming.teams || {}) },
+    availability: { ...(incoming.availability || {}) },
+    archivedTeams,
+  };
+  archivedTeams.forEach((archivedCrew) => {
+    Object.keys(merged.teams).forEach((teamName) => {
+      if (isSameCrewName(teamName, archivedCrew)) delete merged.teams[teamName];
+    });
+    Object.keys(merged.availability).forEach((teamName) => {
+      if (isSameCrewName(teamName, archivedCrew)) delete merged.availability[teamName];
+    });
+  });
+  return merged;
+}
+
 function loadCoveragePlannerState() {
   try {
     const raw = window.localStorage.getItem(COVERAGE_STORAGE_KEY);
@@ -5104,6 +5136,7 @@ function saveCoverageGeocodeCache() {
 
 function queueCoveragePlannerSync() {
   if (!state.currentUser || !canManageCoveragePlanner()) return;
+  coverageSyncQueued = true;
   window.clearTimeout(coverageSyncTimer);
   coverageSyncTimer = window.setTimeout(() => {
     void syncCoveragePlannerState();
@@ -5111,14 +5144,19 @@ function queueCoveragePlannerSync() {
 }
 
 async function syncCoveragePlannerState() {
-  if (!state.currentUser || !canManageCoveragePlanner() || coverageSyncInFlight) return;
+  if (!state.currentUser || !canManageCoveragePlanner()) return;
+  if (coverageSyncInFlight) {
+    coverageSyncQueued = true;
+    return;
+  }
   coverageSyncInFlight = true;
+  coverageSyncQueued = false;
   try {
     const saved = await apiFetch("/api/coverage-planner", {
       method: "POST",
       body: JSON.stringify(normalizeCoveragePlannerState(state.coveragePlanner)),
     });
-    state.coveragePlanner = normalizeCoveragePlannerState(saved);
+    state.coveragePlanner = mergeCoveragePlannerState(saved, state.coveragePlanner);
     try {
       window.localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(state.coveragePlanner));
     } catch {}
@@ -5126,6 +5164,12 @@ async function syncCoveragePlannerState() {
     console.error("coverage_planner_sync_failed", error);
   } finally {
     coverageSyncInFlight = false;
+    if (coverageSyncQueued) {
+      window.clearTimeout(coverageSyncTimer);
+      coverageSyncTimer = window.setTimeout(() => {
+        void syncCoveragePlannerState();
+      }, COVERAGE_SYNC_DEBOUNCE_MS);
+    }
   }
 }
 
@@ -5196,12 +5240,12 @@ function getCoverageDefaultColor(index = 0) {
   return COVERAGE_DEFAULT_COLORS[index % COVERAGE_DEFAULT_COLORS.length];
 }
 
-function ensureCoverageTeam(teamName) {
+function ensureCoverageTeam(teamName, options = {}) {
   const key = String(teamName || "").trim();
   if (!key) return null;
   if (!state.coveragePlanner?.teams) state.coveragePlanner = { teams: {} };
   if (!state.coveragePlanner.availability) state.coveragePlanner.availability = {};
-  unarchiveCoverageCrew(key);
+  if (options.unarchive) unarchiveCoverageCrew(key);
   if (!state.coveragePlanner.teams[key]) {
     const index = getInstallationCrewNames().indexOf(key);
     state.coveragePlanner.teams[key] = {
@@ -5259,17 +5303,16 @@ function getSelectedInstallationCrew() {
 
 function getCoverageManagedCrewNames() {
   const forcedCrew = getCrewForCurrentUser();
-  const archivedCrews = Array.isArray(state.coveragePlanner?.archivedTeams) ? state.coveragePlanner.archivedTeams : [];
-  const isArchivedCrew = (crewName = "") => archivedCrews.some((item) => isSameCrewName(item, crewName));
-  const storedCrews = Object.keys(state.coveragePlanner?.teams || {}).filter(Boolean);
+  const storedCrews = Object.keys(state.coveragePlanner?.teams || {})
+    .filter((crewName) => crewName && !isCoverageCrewArchived(crewName));
   const orderCrews = state.orders
     .map((order) => String(order.operations?.installation?.crew || "").trim())
-    .filter((crewName) => crewName && !isArchivedCrew(crewName));
+    .filter((crewName) => crewName && !isCoverageCrewArchived(crewName));
   const accountCrews = getCrewAccounts()
     .map((user) => getCrewLabelForUser(user))
     .filter((crewName) => {
       if (!crewName) return false;
-      if (isArchivedCrew(crewName)) return false;
+      if (isCoverageCrewArchived(crewName)) return false;
       const hasStoredConfig = Object.keys(state.coveragePlanner?.teams || {}).some((key) => isSameCrewName(key, crewName));
       const hasAssignedOrders = state.orders.some((order) => orderBelongsToCrew(order, crewName));
       return hasStoredConfig || hasAssignedOrders;
@@ -5280,7 +5323,7 @@ function getCoverageManagedCrewNames() {
     ...accountCrews,
     ...(forcedCrew ? [forcedCrew] : []),
   ]))
-    .filter((crewName) => crewName && !isArchivedCrew(crewName))
+    .filter((crewName) => crewName && !isCoverageCrewArchived(crewName))
     .sort((left, right) => left.localeCompare(right, "it"));
 }
 
@@ -5386,7 +5429,7 @@ function saveCoverageTeamFromForm(event) {
   }
   unarchiveCoverageCrew(teamName);
   const currentConfig = previousCrew && previousCrew !== teamName ? ensureCoverageTeam(previousCrew) : null;
-  const existing = ensureCoverageTeam(teamName);
+  const existing = ensureCoverageTeam(teamName, { unarchive: true });
   if (currentConfig && !state.coveragePlanner.teams[teamName]?.base && !state.coveragePlanner.teams[teamName]?.regions?.length && !state.coveragePlanner.teams[teamName]?.polygons?.length) {
     state.coveragePlanner.teams[teamName] = {
       ...currentConfig,
@@ -5433,7 +5476,7 @@ function addCoverageTeam() {
     attempt += 1;
     candidate = `${state.lang === "it" ? "Nuova squadra" : "New crew"} ${attempt}`;
   }
-  ensureCoverageTeam(candidate);
+  ensureCoverageTeam(candidate, { unarchive: true });
   unarchiveCoverageCrew(candidate);
   state.selectedInstallationCrew = candidate;
   saveCoveragePlannerState();
@@ -6034,6 +6077,7 @@ function renderCoverageOverlay(selectedCrew, team, jobs) {
   ];
 
   Object.entries(state.coveragePlanner?.teams || {}).forEach(([crewName, config]) => {
+    if (isCoverageCrewArchived(crewName)) return;
     const color = config?.color || getCoverageDefaultColor(0);
     (config?.polygons || []).forEach((polygon) => {
       const center = polygonCenter(polygon);
@@ -12698,7 +12742,7 @@ function applySessionPayload(session = {}) {
     state.salesGeneratorFreeMode = false;
     state.pendingCurrentViewRefresh = false;
   }
-  state.coveragePlanner = normalizeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner);
+  state.coveragePlanner = mergeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner, state.coveragePlanner);
   state.settings = session.shopifySettings || {};
   state.users = Array.isArray(session.users) ? session.users.map((user) => normalizeUserRecord(user)).filter(Boolean) : [];
   state.securityEvents = session.securityEvents || [];
@@ -14249,7 +14293,7 @@ async function saveInstallation(event) {
   if (saved.operations?.installation?.crew) {
     state.selectedInstallationCrew = saved.operations.installation.crew;
     if (canManageCoveragePlanner()) {
-      ensureCoverageTeam(saved.operations.installation.crew);
+      ensureCoverageTeam(saved.operations.installation.crew, { unarchive: true });
       saveCoveragePlannerState();
     }
   }
@@ -14536,7 +14580,7 @@ async function createManagedAccount(event) {
     updateAccountCrewFieldVisibility(ui.accountCreateForm);
     setAccountCrewLogoPreview(ui.accountCreateForm, "");
     if (created.role === "crew" && created.crewName) {
-      ensureCoverageTeam(created.crewName);
+      ensureCoverageTeam(created.crewName, { unarchive: true });
       saveCoveragePlannerState();
     }
     await reloadAll();
