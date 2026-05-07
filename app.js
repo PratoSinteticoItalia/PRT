@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260507-coverage-layout-balance-135";
+const APP_SHELL_VERSION = "20260507-whatsapp-web-reuse-136";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4154,6 +4154,22 @@ function replaceSalesRequestWhatsAppUrlMessage(value = "", message = "") {
   }
 }
 
+function extractSalesRequestPhoneFromWhatsAppUrl(value = "") {
+  const normalizedUrl = normalizeSalesRequestWhatsAppUrl(value);
+  if (!normalizedUrl) return "";
+  try {
+    const parsed = new URL(normalizedUrl);
+    const host = parsed.hostname.toLowerCase();
+    const phoneParam = String(parsed.searchParams.get("phone") || "").trim();
+    if (phoneParam) return normalizePhoneForWhatsApp(phoneParam);
+    if (host === "wa.me") {
+      const pathPhone = decodeURIComponent(parsed.pathname || "").replace(/[^\d+]/g, "");
+      return normalizePhoneForWhatsApp(pathPhone);
+    }
+  } catch {}
+  return "";
+}
+
 function normalizePhoneForWhatsApp(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -4166,6 +4182,16 @@ function normalizePhoneForWhatsApp(value = "") {
   if (digits.startsWith("00")) return `+${digits.slice(2)}`;
   if (digits.startsWith("39")) return `+${digits}`;
   return `+39${digits}`;
+}
+
+function buildWhatsAppWebSendUrl(phone = "", message = "") {
+  const normalizedPhone = normalizePhoneForWhatsApp(phone);
+  if (!normalizedPhone) return "";
+  const waPhone = normalizedPhone.replace(/[^\d]/g, "");
+  const targetUrl = new URL("https://web.whatsapp.com/send");
+  targetUrl.searchParams.set("phone", waPhone);
+  if (message) targetUrl.searchParams.set("text", message);
+  return targetUrl.toString();
 }
 
 function getSalesRequestServiceIntent(value = "") {
@@ -4251,13 +4277,15 @@ function buildSalesRequestWhatsAppUrl(item = {}) {
   const message = getSalesRequestTemplateText(item) || buildSalesRequestDefaultWhatsAppMessage(item);
   if (explicitUrl) {
     const explicitMessage = extractSalesRequestMessageFromWhatsAppUrl(explicitUrl);
-    if (!explicitMessage || !isGenericSalesRequestWhatsAppTemplate(explicitMessage)) return explicitUrl;
-    return replaceSalesRequestWhatsAppUrlMessage(explicitUrl, message) || explicitUrl;
+    const finalMessage = explicitMessage && !isGenericSalesRequestWhatsAppTemplate(explicitMessage)
+      ? explicitMessage
+      : message;
+    const explicitPhone = extractSalesRequestPhoneFromWhatsAppUrl(explicitUrl) || item.phone;
+    return buildWhatsAppWebSendUrl(explicitPhone, finalMessage)
+      || replaceSalesRequestWhatsAppUrlMessage(explicitUrl, finalMessage)
+      || explicitUrl;
   }
-  const phone = normalizePhoneForWhatsApp(item.phone);
-  if (!phone) return "";
-  const waPhone = phone.replace(/[^\d]/g, "");
-  return `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`;
+  return buildWhatsAppWebSendUrl(item.phone, message);
 }
 
 function buildSalesRequestQuoteWhatsAppMessage(item = {}) {
@@ -4292,10 +4320,7 @@ function buildSalesRequestQuoteWhatsAppMessage(item = {}) {
 }
 
 function buildSalesRequestQuoteWhatsAppUrl(item = {}) {
-  const phone = normalizePhoneForWhatsApp(item.phone);
-  if (!phone) return "";
-  const waPhone = phone.replace(/[^\d]/g, "");
-  return `https://wa.me/${waPhone}?text=${encodeURIComponent(buildSalesRequestQuoteWhatsAppMessage(item))}`;
+  return buildWhatsAppWebSendUrl(item.phone, buildSalesRequestQuoteWhatsAppMessage(item));
 }
 
 function openSalesRequestWhatsAppTab(url = "") {
@@ -4401,8 +4426,7 @@ function ensureSalesRequestWhatsAppActionUi() {
   actionButton.id = "sales-request-whatsapp-button";
   actionButton.className = "primary-button small-button hidden";
   actionButton.href = "#";
-  actionButton.target = "_blank";
-  actionButton.rel = "noreferrer";
+  actionButton.target = "psi_sales_request_whatsapp";
   actionButton.textContent = state.lang === "it" ? "Primo contatto WhatsApp" : "First WhatsApp contact";
   actionsRow.append(actionButton);
 
@@ -9760,6 +9784,7 @@ function renderSalesGenerator() {
       ui.salesGeneratorWhatsAppButton.href = whatsappUrl || "#";
       ui.salesGeneratorWhatsAppButton.classList.toggle("hidden", !whatsappUrl);
       ui.salesGeneratorWhatsAppButton.setAttribute("aria-disabled", whatsappUrl ? "false" : "true");
+      ui.salesGeneratorWhatsAppButton.dataset.action = "open-sales-generator-whatsapp";
     }
     if (ui.salesGeneratorEmailButton) {
       ui.salesGeneratorEmailButton.href = emailUrl || "#";
@@ -15318,6 +15343,13 @@ function handleGlobalClick(event) {
         state.lang === "it" ? "Impossibile aprire il contatto WhatsApp." : "Unable to open WhatsApp contact.",
       );
     });
+    return;
+  }
+  if (action === "open-sales-generator-whatsapp") {
+    event.preventDefault();
+    event.stopPropagation();
+    const target = event.target.closest("[href]");
+    openSalesRequestWhatsAppTab(target?.getAttribute("href") || "");
     return;
   }
   if (action === "delete-inventory-piece") {
