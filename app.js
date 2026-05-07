@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260507-abete-rivenditore-price-133";
+const APP_SHELL_VERSION = "20260507-reuse-whatsapp-tab-134";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4298,6 +4298,14 @@ function buildSalesRequestQuoteWhatsAppUrl(item = {}) {
   return `https://wa.me/${waPhone}?text=${encodeURIComponent(buildSalesRequestQuoteWhatsAppMessage(item))}`;
 }
 
+function openSalesRequestWhatsAppTab(url = "") {
+  const normalizedUrl = normalizeSalesRequestWhatsAppUrl(url);
+  if (!normalizedUrl) return null;
+  const tab = window.open(normalizedUrl, "psi_sales_request_whatsapp");
+  if (tab) tab.focus();
+  return tab;
+}
+
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
   const saved = await apiFetch("/api/sales/requests", {
     method: "POST",
@@ -4323,7 +4331,7 @@ async function openSalesRequestWhatsAppContact(record = {}, { markAsSent = true 
     return null;
   }
 
-  window.open(url, "_blank", "noopener,noreferrer");
+  openSalesRequestWhatsAppTab(url);
 
   if (!markAsSent) return request;
 
