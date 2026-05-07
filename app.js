@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260507-pdf-one-page-137";
+const APP_SHELL_VERSION = "20260507-requests-page-anchor-138";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3820,6 +3820,41 @@ function paginateSalesRequests(items = []) {
   };
 }
 
+function getSalesRequestsTotalPages(items = getFilteredSalesRequests()) {
+  const pageSize = getSalesRequestsPageSize();
+  return Math.max(1, Math.ceil(items.length / pageSize));
+}
+
+function getCurrentSalesRequestPageAnchorId() {
+  const filtered = getFilteredSalesRequests();
+  const pageSize = getSalesRequestsPageSize();
+  const totalPages = getSalesRequestsTotalPages(filtered);
+  const page = Math.min(Math.max(1, Number(state.salesRequestPage || 1)), totalPages);
+  return filtered[(page - 1) * pageSize]?.id || "";
+}
+
+function restoreSalesRequestPageAnchor(anchorId = "") {
+  const filtered = getFilteredSalesRequests();
+  const pageSize = getSalesRequestsPageSize();
+  const totalPages = getSalesRequestsTotalPages(filtered);
+  const safeAnchorId = String(anchorId || "").trim();
+  if (safeAnchorId) {
+    const anchorIndex = filtered.findIndex((item) => item.id === safeAnchorId);
+    if (anchorIndex >= 0) {
+      state.salesRequestPage = Math.min(totalPages, Math.max(1, Math.floor(anchorIndex / pageSize) + 1));
+      return;
+    }
+  }
+  state.salesRequestPage = Math.min(Math.max(1, Number(state.salesRequestPage || 1)), totalPages);
+}
+
+function setSalesRequestPage(page) {
+  const totalPages = getSalesRequestsTotalPages();
+  state.salesRequestPage = Math.min(Math.max(1, Number(page || 1)), totalPages);
+  renderSalesRequests();
+  ui.salesRequestsList?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function getSalesContentPageSize() {
   return window.innerWidth <= 980 ? 10 : 18;
 }
@@ -5069,12 +5104,13 @@ async function syncSalesRequestSource({ auto = false, silent = false } = {}) {
   if (salesRequestSyncInFlight) return false;
   salesRequestSyncInFlight = true;
   if (!silent) clearStatus(ui.salesRequestSourceStatus);
+  const pageAnchorId = getCurrentSalesRequestPageAnchorId();
   try {
     const payload = await apiFetch("/api/sales/request-source/sync", { method: "POST" });
     state.salesRequests = Array.isArray(payload.requests) ? payload.requests.map(normalizeSalesRequestRecord) : [];
     state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(payload.config || state.salesRequestSourceConfig || {});
     state.creatingSalesRequest = false;
-    state.salesRequestPage = 1;
+    restoreSalesRequestPageAnchor(pageAnchorId);
     renderOps();
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
@@ -9549,8 +9585,14 @@ function renderSalesRequests() {
       ? `
         <div class="list-pagination-copy">${state.lang === "it" ? `Pagina ${state.salesRequestPage} di ${totalPages} · ${totalItems} richieste` : `Page ${state.salesRequestPage} of ${totalPages} · ${totalItems} requests`}</div>
         <div class="list-pagination-actions">
+          <button class="btn" data-action="sales-requests-first-page" ${state.salesRequestPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prima" : "First"}</button>
           <button class="btn" data-action="sales-requests-prev-page" ${state.salesRequestPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prec." : "Prev"}</button>
+          <label class="list-pagination-jump">
+            <span>${state.lang === "it" ? "Vai a" : "Go to"}</span>
+            <input class="list-pagination-page-input" data-sales-requests-page-input type="number" min="1" max="${totalPages}" value="${state.salesRequestPage}" inputmode="numeric" aria-label="${state.lang === "it" ? "Vai alla pagina richieste" : "Go to requests page"}" />
+          </label>
           <button class="btn" data-action="sales-requests-next-page" ${state.salesRequestPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Succ." : "Next"}</button>
+          <button class="btn" data-action="sales-requests-last-page" ${state.salesRequestPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Ultima" : "Last"}</button>
         </div>
       `
       : "";
@@ -9975,13 +10017,14 @@ function renderSalesContent() {
 function upsertSalesRequest(saved, { skipOpsRender = false, preserveSelection = false } = {}) {
   const previousSelectedSalesRequestId = state.selectedSalesRequestId;
   const previousCreatingSalesRequest = state.creatingSalesRequest;
+  const pageAnchorId = getCurrentSalesRequestPageAnchorId();
   const normalized = normalizeSalesRequestRecord(saved);
   const existingIndex = state.salesRequests.findIndex((item) => item.id === normalized.id);
   if (existingIndex >= 0) {
     state.salesRequests = state.salesRequests.map((item, index) => (index === existingIndex ? normalized : item));
   } else {
     state.salesRequests = [normalized, ...state.salesRequests];
-    state.salesRequestPage = 1;
+    restoreSalesRequestPageAnchor(pageAnchorId);
   }
   if (preserveSelection) {
     state.selectedSalesRequestId = previousSelectedSalesRequestId;
@@ -10098,6 +10141,7 @@ function getSalesRequestSheetSyncMessage(sheetSync = null) {
 function mergeSalesRequestRecords(records = []) {
   const normalizedRecords = Array.isArray(records) ? records.map(normalizeSalesRequestRecord) : [];
   if (!normalizedRecords.length) return;
+  const pageAnchorId = getCurrentSalesRequestPageAnchorId();
   const byId = new Map(normalizedRecords.map((item) => [item.id, item]));
   state.salesRequests = state.salesRequests.map((item) => byId.get(item.id) || item);
   const existingIds = new Set(state.salesRequests.map((item) => item.id));
@@ -10107,6 +10151,7 @@ function mergeSalesRequestRecords(records = []) {
       existingIds.add(item.id);
     }
   });
+  restoreSalesRequestPageAnchor(pageAnchorId);
 }
 
 function getSalesRequestSubmitButtons() {
@@ -10320,11 +10365,12 @@ async function deleteSalesRequest() {
   if (!selected) return;
   const confirmed = window.confirm(state.lang === "it" ? "Vuoi eliminare questa richiesta?" : "Do you want to delete this request?");
   if (!confirmed) return;
+  const pageAnchorId = getCurrentSalesRequestPageAnchorId();
   try {
     await apiFetch(`/api/sales/requests/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
     state.salesRequests = state.salesRequests.filter((item) => item.id !== selected.id);
     state.selectedSalesRequestId = "";
-    state.salesRequestPage = 1;
+    restoreSalesRequestPageAnchor(pageAnchorId);
     state.creatingSalesRequest = false;
     state.lastSalesGeneratorSignature = "";
     renderOps();
@@ -12799,6 +12845,7 @@ function applySessionPayload(session = {}) {
   const userChanged = previousUserId !== nextUserId;
   const nextSessionRevision = String(session.revision || "").trim();
   const preserveEditingState = !userChanged;
+  const salesRequestPageAnchorId = preserveEditingState ? getCurrentSalesRequestPageAnchorId() : "";
   state.currentUser = nextUser;
   state.sessionRevision = nextUser ? nextSessionRevision : "";
   state.orders = session.orders || [];
@@ -12812,7 +12859,11 @@ function applySessionPayload(session = {}) {
   state.creatingSalesContent = preserveEditingState ? state.creatingSalesContent : false;
   state.accountingMobilePane = preserveEditingState ? state.accountingMobilePane : "summary";
   state.installationMobilePane = preserveEditingState ? state.installationMobilePane : "summary";
-  state.salesRequestPage = preserveEditingState ? Math.max(1, Number(state.salesRequestPage || 1)) : 1;
+  if (preserveEditingState) {
+    restoreSalesRequestPageAnchor(salesRequestPageAnchorId);
+  } else {
+    state.salesRequestPage = 1;
+  }
   state.salesContentPage = preserveEditingState ? Math.max(1, Number(state.salesContentPage || 1)) : 1;
   state.salesContentCategory = preserveEditingState
     ? normalizeSalesContentCategoryFilter(state.salesContentCategory || "all")
@@ -15320,15 +15371,19 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "sales-requests-prev-page") {
-    state.salesRequestPage = Math.max(1, (state.salesRequestPage || 1) - 1);
-    renderSalesRequests();
-    ui.salesRequestsList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setSalesRequestPage((state.salesRequestPage || 1) - 1);
     return;
   }
   if (action === "sales-requests-next-page") {
-    state.salesRequestPage = (state.salesRequestPage || 1) + 1;
-    renderSalesRequests();
-    ui.salesRequestsList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setSalesRequestPage((state.salesRequestPage || 1) + 1);
+    return;
+  }
+  if (action === "sales-requests-first-page") {
+    setSalesRequestPage(1);
+    return;
+  }
+  if (action === "sales-requests-last-page") {
+    setSalesRequestPage(getSalesRequestsTotalPages());
     return;
   }
   if (action === "open-sales-request-whatsapp") {
@@ -15803,6 +15858,17 @@ bindEvent(ui.salesRequestQuickFilters, "click", (event) => {
   state.salesRequestPage = 1;
   clearSalesRequestBulkSelection({ render: false });
   renderSalesRequests();
+});
+bindEvent(ui.salesRequestsPagination, "change", (event) => {
+  const input = event.target.closest("[data-sales-requests-page-input]");
+  if (!input) return;
+  setSalesRequestPage(input.value);
+});
+bindEvent(ui.salesRequestsPagination, "keydown", (event) => {
+  const input = event.target.closest("[data-sales-requests-page-input]");
+  if (!input || event.key !== "Enter") return;
+  event.preventDefault();
+  setSalesRequestPage(input.value);
 });
 bindEvent(ui.salesRequestCompactToggle, "click", () => {
   state.salesRequestCompactMode = !state.salesRequestCompactMode;
