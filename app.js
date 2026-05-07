@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260507-reuse-whatsapp-tab-134";
+const APP_SHELL_VERSION = "20260507-coverage-layout-balance-135";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

@@ -8044,6 +8044,17 @@ button:active,
   justify-content: flex-start;
 }
 
+.coverage-operations-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.coverage-operations-grid .coverage-card {
+  height: 100%;
+}
+
 .coverage-nearest-result {
   display: grid;
   gap: 10px;
@@ -8351,6 +8362,12 @@ button:active,
 
 @media (max-width: 1220px) {
   .coverage-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .coverage-operations-grid {
     grid-template-columns: 1fr;
   }
 }
