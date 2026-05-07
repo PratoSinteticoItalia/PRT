@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260507-whatsapp-web-reuse-136";
+const APP_SHELL_VERSION = "20260507-pdf-one-page-137";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

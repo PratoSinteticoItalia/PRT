@@ -14,6 +14,7 @@
   let activeBrandingPayload = { crewName: "", crewLogoDataUrl: "" };
   let activePlannerReport = { title: "", client: "", address: "", sqmLabel: "", reportHtml: "" };
   let pdfDownloadInterceptionActive = false;
+  let pdfCompactExportCleanupTimer = 0;
   let plannerReportCleanupTimer = 0;
   let scheduledScrollTop = 0;
   let scheduledHeightReport = 0;
@@ -218,6 +219,134 @@
       break-inside: avoid;
       page-break-inside: avoid;
     }
+
+    .pdf-root.codex-pdf-export-compact {
+      overflow: hidden !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact > div {
+      padding: 10px 18px 4px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .pdf-no-break {
+      break-inside: auto !important;
+      page-break-inside: auto !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-header-grid {
+      gap: 6px !important;
+      margin-bottom: 6px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-header-panel {
+      padding: 7px 10px !important;
+      border-radius: 8px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading-wrap {
+      margin-bottom: 6px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading {
+      padding: 4px 14px 5px !important;
+      font-size: 16px !important;
+      line-height: 1.04 !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table th {
+      padding-top: 5px !important;
+      padding-bottom: 5px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table td {
+      padding-top: 5px !important;
+      padding-bottom: 5px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table tbody td:first-child {
+      padding-top: 6px !important;
+      padding-bottom: 7px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-material-panel {
+      padding: 7px 10px !important;
+      margin-bottom: 6px !important;
+      line-height: 1.34 !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-material-panel p {
+      margin-top: 0 !important;
+      margin-bottom: 3px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-material-panel [style*="margin-top"] {
+      margin-top: 4px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-feature-grid {
+      gap: 5px !important;
+      margin-bottom: 7px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-feature-grid > * {
+      min-height: 58px !important;
+      padding: 7px 8px !important;
+      gap: 3px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-feature-grid > * > *:first-child {
+      min-height: 14px !important;
+      font-size: 13px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-feature-grid > * > * {
+      line-height: 1.18 !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-permq-grid {
+      gap: 5px !important;
+      margin-bottom: 6px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-permq-grid > * {
+      padding: 7px 5px !important;
+      border-radius: 8px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-permq-grid > * [style*="font-size: 20"] {
+      font-size: 18px !important;
+      margin-top: 2px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-payment-panel {
+      padding: 8px 10px !important;
+      margin-bottom: 5px !important;
+      border-radius: 8px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-heading {
+      margin-top: 4px !important;
+      margin-bottom: 6px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-grid {
+      gap: 5px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-grid > * {
+      min-height: 55px !important;
+      padding: 7px 9px !important;
+      gap: 3px !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-grid > * > * {
+      line-height: 1.18 !important;
+      min-height: 0 !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-signature-row {
+      margin-top: 2px !important;
+    }
   `;
 
   function ensurePdfExportStyles() {
@@ -226,6 +355,119 @@
     style.id = "codex-pdf-export-style";
     style.textContent = PDF_EXPORT_STYLE_TEXT;
     document.head.appendChild(style);
+  }
+
+  function addExportClass(element, className, cleanup) {
+    if (!(element instanceof HTMLElement) || element.classList.contains(className)) return;
+    element.classList.add(className);
+    cleanup.push(() => element.classList.remove(className));
+  }
+
+  function findGridAncestor(element, stopAt) {
+    let current = element;
+    while (current && current !== stopAt && current !== document.body) {
+      if (current instanceof HTMLElement) {
+        const display = window.getComputedStyle(current).display;
+        if (display.includes("grid")) return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  function findPanelAncestor(element, stopAt, maxDepth = 6) {
+    let current = element;
+    let depth = 0;
+    while (current && current !== stopAt && current !== document.body && depth < maxDepth) {
+      if (current instanceof HTMLElement) {
+        const style = window.getComputedStyle(current);
+        const hasPanelShape = parseFloat(style.borderRadius || "0") >= 6
+          || style.borderStyle !== "none"
+          || normalizeLabel(current.getAttribute("class") || "").includes("pdf no break");
+        if (hasPanelShape) return current;
+      }
+      current = current.parentElement;
+      depth += 1;
+    }
+    return null;
+  }
+
+  function prepareCompactQuoteForPdfExport(pdfRoot) {
+    ensurePdfExportStyles();
+    const cleanup = [];
+    addExportClass(pdfRoot, "codex-pdf-export-compact", cleanup);
+
+    const offerHeading = findElementByTextWithin(pdfRoot, "div, span, p", "OFFERTA PER");
+    if (offerHeading instanceof HTMLElement) {
+      addExportClass(offerHeading, "codex-pdf-offer-heading", cleanup);
+      addExportClass(offerHeading.parentElement, "codex-pdf-offer-heading-wrap", cleanup);
+    }
+
+    const pricingTable = findPricingTable(pdfRoot);
+    if (pricingTable instanceof HTMLElement) {
+      addExportClass(pricingTable, "codex-pdf-pricing-table", cleanup);
+    }
+
+    const clientLabel = findElementByTextWithin(pdfRoot, "div, span, p", "Cliente")
+      || findElementByTextWithin(pdfRoot, "div, span, p", "Rivenditore");
+    const validityLabel = findElementByTextWithin(pdfRoot, "div, span, p", "Validità");
+    const clientPanel = clientLabel instanceof HTMLElement ? findPanelAncestor(clientLabel, pdfRoot, 5) : null;
+    const validityPanel = validityLabel instanceof HTMLElement ? findPanelAncestor(validityLabel, pdfRoot, 5) : null;
+    const headerGrid = clientPanel ? findGridAncestor(clientPanel, pdfRoot) : null;
+    addExportClass(headerGrid, "codex-pdf-header-grid", cleanup);
+    addExportClass(clientPanel, "codex-pdf-header-panel", cleanup);
+    addExportClass(validityPanel, "codex-pdf-header-panel", cleanup);
+
+    const materialMarker = findElementByTextWithin(pdfRoot, "strong, p, div, span", "Dettagli materiali")
+      || findElementByTextWithin(pdfRoot, "p, div, span", "La posa")
+      || findElementByTextWithin(pdfRoot, "p, div, span", "La fornitura");
+    const materialPanel = materialMarker instanceof HTMLElement ? findPanelAncestor(materialMarker, pdfRoot, 5) : null;
+    addExportClass(materialPanel, "codex-pdf-material-panel", cleanup);
+
+    const featureMarker = findElementByTextWithin(pdfRoot, "div, span, p", "4,8 su Google");
+    const featureGrid = featureMarker instanceof HTMLElement ? findGridAncestor(featureMarker, pdfRoot) : null;
+    addExportClass(featureGrid, "codex-pdf-feature-grid", cleanup);
+
+    const perMqMarker = findElementByTextWithin(pdfRoot, "div, span, p", "al mq finale");
+    const perMqGrid = perMqMarker instanceof HTMLElement ? findGridAncestor(perMqMarker, pdfRoot) : null;
+    addExportClass(perMqGrid, "codex-pdf-permq-grid", cleanup);
+
+    const paymentMarker = findElementByTextWithin(pdfRoot, "div, span, p", "Metodi di pagamento");
+    const paymentPanel = paymentMarker instanceof HTMLElement ? findPanelAncestor(paymentMarker, pdfRoot, 5) : null;
+    addExportClass(paymentPanel, "codex-pdf-payment-panel", cleanup);
+
+    const heylightHeading = findElementByTextWithin(pdfRoot, "div, span, p", "Simulazione 5 rate HeyLight");
+    if (heylightHeading instanceof HTMLElement) {
+      addExportClass(heylightHeading, "codex-pdf-heylight-heading", cleanup);
+      const heylightGrid = findGridAncestor(heylightHeading.nextElementSibling, pdfRoot)
+        || findGridAncestor(heylightHeading, pdfRoot);
+      addExportClass(heylightGrid, "codex-pdf-heylight-grid", cleanup);
+    }
+
+    const signatureMarker = findElementByTextWithin(pdfRoot, "div, span, p", "Firma per accettazione");
+    const signatureRow = signatureMarker instanceof HTMLElement ? signatureMarker.closest(".pdf-no-break") : null;
+    addExportClass(signatureRow, "codex-pdf-signature-row", cleanup);
+
+    return () => {
+      while (cleanup.length) {
+        const removeClass = cleanup.pop();
+        try {
+          removeClass();
+        } catch {
+          // Best-effort cleanup: the PDF clone may already have been removed.
+        }
+      }
+    };
+  }
+
+  function scheduleCompactQuoteExportCleanup(cleanup) {
+    if (pdfCompactExportCleanupTimer) {
+      window.clearTimeout(pdfCompactExportCleanupTimer);
+    }
+    pdfCompactExportCleanupTimer = window.setTimeout(() => {
+      pdfCompactExportCleanupTimer = 0;
+      cleanup?.();
+    }, 9000);
   }
 
   function stripPdfStyleArtifacts(rootNode) {
@@ -2072,7 +2314,8 @@
       const recommendationModels = pdfRoot ? collectQuoteModels(pdfRoot).map((item) => item.name) : [];
       const selectedRecommendation = pdfRoot ? readRecommendedModel(pdfRoot, recommendationModels) : "";
       const shouldApplyRecommendation = Boolean(pdfRoot && selectedRecommendation);
-      if (!shouldDecorateBranding && !shouldAttachPlannerReport && !shouldApplyRecommendation) return;
+      const shouldCompactQuoteExport = Boolean(pdfRoot);
+      if (!shouldDecorateBranding && !shouldAttachPlannerReport && !shouldApplyRecommendation && !shouldCompactQuoteExport) return;
       if (pdfDownloadInterceptionActive) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -2082,6 +2325,7 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       pdfDownloadInterceptionActive = true;
+      let compactExportCleanup = null;
 
       Promise.resolve()
         .then(() => {
@@ -2098,6 +2342,13 @@
             await waitForAnimationFrame();
           }
         })
+        .then(async () => {
+          if (shouldCompactQuoteExport && pdfRoot) {
+            compactExportCleanup = prepareCompactQuoteForPdfExport(pdfRoot);
+            await waitForAnimationFrame();
+            await waitForAnimationFrame();
+          }
+        })
         .then(() => (shouldDecorateBranding ? preparePdfBrandingForExport() : undefined))
         .catch((error) => {
           console.warn("Preparazione export PDF fallita:", error);
@@ -2106,6 +2357,9 @@
           pdfDownloadInterceptionActive = false;
           button.dataset.codexPdfBypass = "1";
           button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+          if (compactExportCleanup) {
+            scheduleCompactQuoteExportCleanup(compactExportCleanup);
+          }
         });
     }, true);
   }
