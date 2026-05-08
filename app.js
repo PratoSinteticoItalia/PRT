@@ -3523,6 +3523,7 @@ function bulkOpenSalesRequestFollowUpWhatsApp() {
     if (!confirmed) return;
   }
   let opened = 0;
+  const opened_items = [];
   candidates.forEach((item, index) => {
     const url = buildSalesRequestFollowUpWhatsAppUrl(item);
     if (!url) return;
@@ -3530,6 +3531,12 @@ function bulkOpenSalesRequestFollowUpWhatsApp() {
     if (tab) {
       tab.focus();
       opened += 1;
+      opened_items.push(item);
+    }
+  });
+  opened_items.forEach((item) => {
+    if (String(item.status || "").trim().toLowerCase() !== "follow up eseguito") {
+      persistSalesRequestRecordPatch(item, { status: "follow up eseguito" }).catch(() => {});
     }
   });
   setStatus(
@@ -15749,6 +15756,9 @@ function handleGlobalClick(event) {
       return;
     }
     openSalesRequestWhatsAppTab(url);
+    if (String(request.status || "").trim().toLowerCase() !== "follow up eseguito") {
+      persistSalesRequestRecordPatch(request, { status: "follow up eseguito" }).catch(() => {});
+    }
     return;
   }
   if (action === "delete-inventory-piece") {
