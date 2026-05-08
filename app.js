@@ -10413,6 +10413,7 @@ async function processSalesRequestSave(draftRecord, {
     upsertSalesRequest(saved, { preserveSelection: true });
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
+    trackUsageEvent("sales_request_modified", { requestId: saved?.id || "" });
     const hasQueuedSave = Boolean(state.pendingSalesRequestSave);
     setStatus(
       ui.salesRequestsStatus,
@@ -13400,11 +13401,22 @@ function showAuth() {
   ui.appShell.classList.add("hidden");
 }
 
+let usageHeartbeatTimer = 0;
+function startUsageHeartbeat() {
+  if (usageHeartbeatTimer) window.clearInterval(usageHeartbeatTimer);
+  usageHeartbeatTimer = window.setInterval(() => {
+    if (document.visibilityState === "visible" && state.currentUser) {
+      trackUsageEvent("session_heartbeat", { view: state.currentView });
+    }
+  }, 10 * 60 * 1000);
+}
+
 function showApp() {
   startSessionKeepalive();
   startSessionEvents();
   startShopifyAutoSync();
   startSalesRequestAutoSync();
+  startUsageHeartbeat();
   clearPendingCurrentViewRefresh();
   setShellPending(false);
   state.mobileMenuOpen = false;
@@ -13509,8 +13521,9 @@ function renderResellerReport() {
   const dominantDevice = getDominantUsageDevice(deviceTotals);
   const summaryCards = [
     ["Utenti attivi 7g", totals.activeUsers7d || 0, "Account con almeno un'attività recente."],
-    ["Aperture generatore", totals.generatorOpens30d || 0, "Ultimi 30 giorni."],
-    ["PDF generati", totals.quoteExports30d || 0, "Export monitorati dal preventivatore."],
+    ["PDF generati", totals.quoteExports30d || 0, "Export monitorati dal preventivatore (ultimi 30 giorni)."],
+    ["DDT emessi", totals.ddtGenerated30d || 0, "Ultimi 30 giorni."],
+    ["Errori sistema", totals.systemErrors30d || 0, "Eventi di errore tracciati."],
     ["Device prevalente", getDeviceLabel(dominantDevice), `${deviceTotals[dominantDevice] || 0} eventi negli ultimi 30 giorni.`],
   ];
   ui.usageReportSummary.innerHTML = summaryCards.map(([label, value, copy]) => `
@@ -13531,13 +13544,68 @@ function renderResellerReport() {
     ui.usageReportList.innerHTML = `<div class="empty-state">Nessun account monitorato.</div>`;
     return;
   }
-  ui.usageReportList.innerHTML = rows.map((row) => {
+
+  const groupedByRole = { office: [], crew: [], warehouse: [], other: [] };
+  rows.forEach((row) => {
+    const role = normalizeUserRole(row.user?.role || "");
+    if (groupedByRole[role]) groupedByRole[role].push(row);
+    else groupedByRole.other.push(row);
+  });
+
+  const renderHeartbeatTime = (row) => {
+    const minutes = Number(row.heartbeats30d || 0) * 10;
+    if (!minutes) return "—";
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+  };
+
+  const renderRow = (row, role) => {
     const user = row.user || {};
     const device = getDominantUsageDevice(row.devices30d || {});
     const deviceBreakdown = Object.entries(row.devices30d || {})
       .filter(([, count]) => Number(count || 0) > 0)
       .map(([key, count]) => `${getDeviceLabel(key)} ${count}`)
       .join(" · ") || "Nessun dato device";
+    const assignedInstallations = role === "crew" && state.orders
+      ? state.orders.filter((order) => {
+          const crew = String(order.operations?.installation?.crew || "").trim().toLowerCase();
+          const userName = String(user.name || "").trim().toLowerCase();
+          return crew && userName && crew === userName;
+        }).length
+      : 0;
+    let metricsHtml = "";
+    if (role === "office") {
+      metricsHtml = `
+        <span><b>${Number(row.orderModifications30d || 0)}</b> modifiche ordini</span>
+        <span><b>${Number(row.salesRequestModifications30d || 0)}</b> modifiche richieste</span>
+        <span><b>${Number(row.generatorOpens30d || 0)}</b> aperture generatore</span>
+        <span><b>${Number(row.quoteExports30d || 0)}</b> PDF preventivi</span>
+        <span><b>${Number(row.contactActions30d || 0)}</b> contatti WhatsApp</span>
+      `;
+    } else if (role === "crew") {
+      metricsHtml = `
+        <span><b>${Number(row.sessionLogins30d || 0)}</b> accessi</span>
+        <span><b>${escapeHtml(renderHeartbeatTime(row))}</b> tempo attivo</span>
+        <span><b>${Number(row.quoteExports30d || 0)}</b> PDF generati</span>
+        <span><b>${assignedInstallations}</b> pose assegnate</span>
+        <span><b>${Number(row.attachmentsUploaded30d || 0)}</b> foto cantiere</span>
+      `;
+    } else if (role === "warehouse") {
+      metricsHtml = `
+        <span><b>${Number(row.inventoryAdds30d || 0)}</b> aggiunte giacenza</span>
+        <span><b>${Number(row.inventoryEdits30d || 0)}</b> modifiche giacenza</span>
+        <span><b>${Number(row.attachmentsUploaded30d || 0)}</b> allegati</span>
+        <span><b>${Number(row.ddtGenerated30d || 0)}</b> DDT emessi</span>
+        <span class="${Number(row.systemErrors30d || 0) ? "is-warning" : ""}"><b>${Number(row.systemErrors30d || 0)}</b> errori</span>
+      `;
+    } else {
+      metricsHtml = `
+        <span><b>${Number(row.events30d || 0)}</b> eventi 30g</span>
+        <span><b>${Number(row.quoteExports30d || 0)}</b> PDF</span>
+      `;
+    }
     return `
       <article class="usage-account-row">
         <div class="usage-account-main">
@@ -13545,16 +13613,33 @@ function renderResellerReport() {
           <span>${escapeHtml(user.email || "")}</span>
           <small>${escapeHtml(roleLabel(user.role))} · ultimo uso ${escapeHtml(formatUsageDate(row.lastActivityAt))}</small>
         </div>
-        <div class="usage-account-metrics">
-          <span><b>${Number(row.generatorOpens30d || 0)}</b> aperture</span>
-          <span><b>${Number(row.quoteExports30d || 0)}</b> PDF</span>
-          <span><b>${Number(row.contactActions30d || 0)}</b> contatti</span>
-          <span class="${Number(row.exportErrors30d || 0) ? "is-warning" : ""}"><b>${Number(row.exportErrors30d || 0)}</b> errori</span>
-        </div>
+        <div class="usage-account-metrics">${metricsHtml}</div>
         <div class="usage-device-chip" title="${escapeHtml(deviceBreakdown)}">${escapeHtml(getDeviceLabel(device))}</div>
       </article>
     `;
-  }).join("");
+  };
+
+  const renderSection = (title, role, rowsForRole, emptyText) => {
+    const body = rowsForRole.length
+      ? rowsForRole.map((row) => renderRow(row, role)).join("")
+      : `<div class="empty-state">${escapeHtml(emptyText)}</div>`;
+    return `
+      <section class="usage-role-section">
+        <h3>${escapeHtml(title)}</h3>
+        ${body}
+      </section>
+    `;
+  };
+
+  const sections = [
+    renderSection("Ufficio", "office", groupedByRole.office, "Nessun account ufficio attivo."),
+    renderSection("Posatori", "crew", groupedByRole.crew, "Nessun posatore attivo."),
+    renderSection("Magazzino / Logistica", "warehouse", groupedByRole.warehouse, "Nessun account magazzino attivo."),
+  ];
+  if (groupedByRole.other.length) {
+    sections.push(renderSection("Altri", "other", groupedByRole.other, ""));
+  }
+  ui.usageReportList.innerHTML = sections.join("");
 }
 
 function render() {
@@ -13897,6 +13982,7 @@ async function saveOrder(event) {
   state.selectedOrderId = saved.id;
   closeOrderModal();
   renderCurrentViewOnly(state.currentView);
+  trackUsageEvent("order_modified", { orderId: saved.id, isNew: !form.get("id") });
 
   // Only auto-update on new order creation, not edits
   if (!form.get("id")) {
@@ -13946,6 +14032,7 @@ async function saveWarehouse(event) {
   });
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   renderCurrentViewOnly(state.currentView);
+  trackUsageEvent("order_modified", { orderId: saved.id, area: "warehouse" });
 }
 
 async function saveInventory(event) {
@@ -13973,6 +14060,7 @@ async function saveInventory(event) {
   ui.inventoryForm.reset();
   updateInventoryFormUI();
   renderWarehouse();
+  trackUsageEvent("inventory_added", { product: String(form.get("product") || "") });
 }
 
 function getInventoryItemsByProductName(product = "") {
@@ -14395,7 +14483,9 @@ async function createDdt() {
     if (ui.warehouseDdtStatus) {
       ui.warehouseDdtStatus.textContent = `DDT ${saved.operations?.warehouse?.ddt?.number || ""} ${state.lang === "it" ? "creato e scaricato in PDF." : "created and downloaded as PDF."}`;
     }
+    trackUsageEvent("ddt_generated", { orderId: saved.id, ddtNumber: saved.operations?.warehouse?.ddt?.number || "" });
   } catch (error) {
+    trackUsageEvent("system_error", { area: "ddt", message: String(error?.message || "").slice(0, 120) });
     if (ui.warehouseDdtStatus) {
       ui.warehouseDdtStatus.textContent = state.lang === "it"
         ? `Errore generazione DDT: ${String(error?.message || "riprovare").trim()}`
@@ -14744,6 +14834,7 @@ async function saveInstallation(event) {
       }),
     });
   } catch (error) {
+    trackUsageEvent("system_error", { area: "installation", message: String(error?.message || "").slice(0, 120) });
     setStatus(
       ui.installationStatus,
       "error",
@@ -14754,6 +14845,13 @@ async function saveInstallation(event) {
     return;
   }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  const previousCrew = String(order.operations?.installation?.crew || "").trim();
+  const nextCrew = String(saved.operations?.installation?.crew || "").trim();
+  if (nextCrew && nextCrew !== previousCrew) {
+    trackUsageEvent("installation_assigned", { orderId: saved.id, crew: nextCrew });
+  } else {
+    trackUsageEvent("order_modified", { orderId: saved.id, area: "installation" });
+  }
   if (saved.operations?.installation?.crew) {
     state.selectedInstallationCrew = saved.operations.installation.crew;
     if (canManageCoveragePlanner()) {
@@ -15427,6 +15525,7 @@ async function handleAttachmentChange(event) {
     });
     state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
     renderCurrentViewOnly(state.currentView);
+    trackUsageEvent("attachment_uploaded", { orderId: saved.id, context: resolvedTarget.type });
     setStatus(
       targetStatus,
       "success",

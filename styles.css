@@ -13185,6 +13185,31 @@ textarea.text-input {
   gap: 12px;
 }
 
+.usage-role-section {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.usage-role-section h3 {
+  color: var(--ink, #111827);
+  font-size: 16px;
+  font-weight: 800;
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(17, 24, 39, 0.1);
+}
+
+.usage-role-section .empty-state {
+  color: var(--muted, #7b8794);
+  font-size: 13px;
+  padding: 12px;
+}
+
+.usage-account-metrics span {
+  font-size: 12px;
+}
+
 .usage-account-row {
   align-items: center;
   background: linear-gradient(180deg, #fff, #fbfcfb);

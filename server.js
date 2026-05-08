@@ -925,6 +925,15 @@ const USAGE_EVENT_TYPES = new Set([
   "quote_export_failed",
   "quote_whatsapp_opened",
   "quote_email_opened",
+  "order_modified",
+  "sales_request_modified",
+  "inventory_added",
+  "inventory_modified",
+  "attachment_uploaded",
+  "ddt_generated",
+  "installation_assigned",
+  "session_heartbeat",
+  "system_error",
 ]);
 
 function normalizeUsageEventType(type = "") {
@@ -1010,7 +1019,7 @@ function buildUsageReport(store) {
   const dayMs = 24 * 60 * 60 * 1000;
   const since7 = now - (7 * dayMs);
   const since30 = now - (30 * dayMs);
-  const byUser = new Map(users.map((user) => [String(user.id), {
+  const buildUserRow = (user) => ({
     user,
     lastActivityAt: "",
     events7d: 0,
@@ -1019,8 +1028,20 @@ function buildUsageReport(store) {
     quoteExports30d: 0,
     contactActions30d: 0,
     exportErrors30d: 0,
+    orderModifications30d: 0,
+    salesRequestModifications30d: 0,
+    inventoryAdds30d: 0,
+    inventoryEdits30d: 0,
+    attachmentsUploaded30d: 0,
+    ddtGenerated30d: 0,
+    installationsAssigned30d: 0,
+    systemErrors30d: 0,
+    sessionLogins30d: 0,
+    heartbeats30d: 0,
     devices30d: { desktop: 0, mobile: 0, tablet: 0, unknown: 0 },
-  }]));
+  });
+
+  const byUser = new Map(users.map((user) => [String(user.id), buildUserRow(user)]));
 
   const totals = {
     activeUsers7d: 0,
@@ -1029,6 +1050,14 @@ function buildUsageReport(store) {
     quoteExports30d: 0,
     contactActions30d: 0,
     exportErrors30d: 0,
+    orderModifications30d: 0,
+    salesRequestModifications30d: 0,
+    inventoryAdds30d: 0,
+    inventoryEdits30d: 0,
+    attachmentsUploaded30d: 0,
+    ddtGenerated30d: 0,
+    installationsAssigned30d: 0,
+    systemErrors30d: 0,
     device30d: { desktop: 0, mobile: 0, tablet: 0, unknown: 0 },
   };
   const active7 = new Set();
@@ -1039,22 +1068,12 @@ function buildUsageReport(store) {
     if (!Number.isFinite(timestamp)) return;
     const userId = String(event.userId || "");
     if (!byUser.has(userId)) {
-      byUser.set(userId, {
-        user: {
-          id: userId || "unknown",
-          name: event.userName || "Account non trovato",
-          email: event.userEmail || "",
-          role: event.userRole || "office",
-        },
-        lastActivityAt: "",
-        events7d: 0,
-        events30d: 0,
-        generatorOpens30d: 0,
-        quoteExports30d: 0,
-        contactActions30d: 0,
-        exportErrors30d: 0,
-        devices30d: { desktop: 0, mobile: 0, tablet: 0, unknown: 0 },
-      });
+      byUser.set(userId, buildUserRow({
+        id: userId || "unknown",
+        name: event.userName || "Account non trovato",
+        email: event.userEmail || "",
+        role: event.userRole || "office",
+      }));
     }
     const row = byUser.get(userId);
     if (!row.lastActivityAt || timestamp > new Date(row.lastActivityAt).getTime()) row.lastActivityAt = event.createdAt;
@@ -1083,6 +1102,44 @@ function buildUsageReport(store) {
     if (event.type === "quote_export_failed") {
       row.exportErrors30d += 1;
       totals.exportErrors30d += 1;
+    }
+    if (event.type === "order_modified") {
+      row.orderModifications30d += 1;
+      totals.orderModifications30d += 1;
+    }
+    if (event.type === "sales_request_modified") {
+      row.salesRequestModifications30d += 1;
+      totals.salesRequestModifications30d += 1;
+    }
+    if (event.type === "inventory_added") {
+      row.inventoryAdds30d += 1;
+      totals.inventoryAdds30d += 1;
+    }
+    if (event.type === "inventory_modified") {
+      row.inventoryEdits30d += 1;
+      totals.inventoryEdits30d += 1;
+    }
+    if (event.type === "attachment_uploaded") {
+      row.attachmentsUploaded30d += 1;
+      totals.attachmentsUploaded30d += 1;
+    }
+    if (event.type === "ddt_generated") {
+      row.ddtGenerated30d += 1;
+      totals.ddtGenerated30d += 1;
+    }
+    if (event.type === "installation_assigned") {
+      row.installationsAssigned30d += 1;
+      totals.installationsAssigned30d += 1;
+    }
+    if (event.type === "system_error") {
+      row.systemErrors30d += 1;
+      totals.systemErrors30d += 1;
+    }
+    if (event.type === "portal_login") {
+      row.sessionLogins30d += 1;
+    }
+    if (event.type === "session_heartbeat") {
+      row.heartbeats30d += 1;
     }
   });
 
