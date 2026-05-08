@@ -1259,6 +1259,7 @@ const ui = {
   salesRequestDetailMeta: document.getElementById("sales-request-detail-meta"),
   salesRequestWhatsAppButton: document.getElementById("sales-request-whatsapp-button"),
   salesRequestWhatsAppHint: document.getElementById("sales-request-whatsapp-hint"),
+  salesRequestFollowUpButton: document.getElementById("sales-request-followup-button"),
   salesGeneratorContextPanel: document.getElementById("sales-generator-context-panel"),
   salesGeneratorFrame: document.getElementById("sales-generator-frame"),
   salesGeneratorRequestCard: document.getElementById("sales-generator-request-card"),
@@ -9653,6 +9654,10 @@ function renderSalesRequests() {
       `
       : "";
   }
+  renderSalesRequestsDetailPanel(selected);
+}
+
+function renderSalesRequestsDetailPanel(selected = null) {
   if (!ui.salesRequestForm) return;
   ensureSalesRequestWhatsAppActionUi();
   ui.salesRequestForm.id.value = selected?.id || "";
@@ -9692,6 +9697,11 @@ function renderSalesRequests() {
     ui.salesRequestWhatsAppButton.textContent = queuedDueForCurrentOperator
       ? (state.lang === "it" ? "Invia primo contatto (in coda)" : "Send queued first contact")
       : (state.lang === "it" ? "Primo contatto WhatsApp" : "First WhatsApp contact");
+  }
+  if (ui.salesRequestFollowUpButton) {
+    const showFollowUp = Boolean(selected && getSalesRequestStatusCode(selected.status || "") === "quoted");
+    ui.salesRequestFollowUpButton.classList.toggle("hidden", !showFollowUp);
+    ui.salesRequestFollowUpButton.dataset.id = selected?.id || "";
   }
   if (ui.salesRequestWhatsAppHint) {
     ui.salesRequestWhatsAppHint.textContent = selected
@@ -10274,17 +10284,35 @@ function collectSalesRequestDraftFromForm() {
   });
 }
 
+function mergeFirstContactStateFromLive(draft, live) {
+  if (!live) return draft;
+  const liveState = normalizeSalesRequestFirstContactState(live.firstContactState || "");
+  const draftState = normalizeSalesRequestFirstContactState(draft.firstContactState || "");
+  if (liveState === "sent" && draftState !== "sent") {
+    return {
+      ...draft,
+      firstContactState: live.firstContactState,
+      firstContactSentAt: live.firstContactSentAt || draft.firstContactSentAt,
+      firstContactScheduledAt: live.firstContactScheduledAt || draft.firstContactScheduledAt,
+      firstContactBy: live.firstContactBy || draft.firstContactBy,
+    };
+  }
+  return draft;
+}
+
 async function processSalesRequestSave(draftRecord, {
   previousRequests,
   previousSelectedSalesRequestId,
   previousCreatingSalesRequest,
 } = {}) {
+  const liveRecord = state.salesRequests.find((r) => r.id === draftRecord.id) || null;
+  const refreshedDraft = mergeFirstContactStateFromLive(draftRecord, liveRecord);
   state.salesRequestSaveInFlight = true;
   syncSalesRequestSubmitButtons({ busy: true, queued: Boolean(state.pendingSalesRequestSave) });
   try {
     const saved = await apiFetch("/api/sales/requests", {
       method: "POST",
-      body: JSON.stringify(buildSalesRequestPayloadFromRecord(draftRecord)),
+      body: JSON.stringify(buildSalesRequestPayloadFromRecord(refreshedDraft)),
     });
     const automationMessage = getSalesRequestAutomationSaveMessage(saved?._automation || null);
     const sheetSyncMessage = getSalesRequestSheetSyncMessage(saved?._sheetSync || null);
@@ -13775,6 +13803,21 @@ async function saveOrder(event) {
   state.selectedOrderId = saved.id;
   closeOrderModal();
   renderCurrentViewOnly(state.currentView);
+
+  // Only auto-update on new order creation, not edits
+  if (!form.get("id")) {
+    const orderPhone = String(saved.phone || "").trim().replace(/\D/g, "");
+    if (orderPhone.length >= 6) {
+      const match = state.salesRequests.find((req) => {
+        const reqPhone = String(req.phone || "").trim().replace(/\D/g, "");
+        return reqPhone.length >= 6 && reqPhone === orderPhone
+          && String(req.status || "").toLowerCase() !== "ordine eseguito";
+      });
+      if (match) {
+        persistSalesRequestRecordPatch(match, { status: "ordine eseguito" }).catch(() => {});
+      }
+    }
+  }
 }
 
 async function deleteSelectedOrder() {
@@ -15761,9 +15804,15 @@ function handleGlobalClick(event) {
   }
   if (action === "select-sales-request") {
     state.creatingSalesRequest = false;
+    const prevSelectedId = state.selectedSalesRequestId;
     state.selectedSalesRequestId = id || "";
-    renderSalesRequests();
-    if (state.currentView === "sales-generator") renderSalesGenerator();
+    if (prevSelectedId !== state.selectedSalesRequestId) {
+      ui.salesRequestsList?.querySelectorAll("[data-action='select-sales-request']").forEach((card) => {
+        card.classList.toggle("is-active", card.dataset.id === state.selectedSalesRequestId);
+      });
+      renderSalesRequestsDetailPanel(getSelectedSalesRequest());
+      if (state.currentView === "sales-generator") renderSalesGenerator();
+    }
     if (window.innerWidth <= 980) {
       requestAnimationFrame(() => ui.salesRequestDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
@@ -16090,6 +16139,14 @@ bindEvent(ui.salesRequestForm, "submit", saveSalesRequest);
 bindEvent(ui.salesRequestNewButton, "click", createNewSalesRequest);
 bindEvent(ui.salesRequestDeleteButton, "click", deleteSalesRequest);
 bindEvent(ui.salesRequestUseGeneratorButton, "click", useSelectedSalesRequestInGenerator);
+bindEvent(ui.salesRequestFollowUpButton, "click", () => {
+  const id = ui.salesRequestFollowUpButton?.dataset.id || "";
+  const request = state.salesRequests.find((item) => item.id === id) || getSelectedSalesRequest();
+  if (!request) return;
+  persistSalesRequestRecordPatch(request, { status: "fare follow up" }).catch(() => {
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare il follow-up." : "Unable to save follow-up.");
+  });
+});
 bindEvent(ui.salesRequestServiceAccountButton, "click", () => ui.salesRequestServiceAccountInput?.click());
 bindEvent(ui.salesRequestServiceAccountInput, "change", handleSalesRequestServiceAccountSelection);
 bindEvent(ui.salesRequestClearServiceAccountButton, "click", () => saveSalesRequestSourceConfig({ clearServiceAccount: true }));
