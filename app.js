@@ -7241,7 +7241,8 @@ function getMobileDetailTarget(view) {
 }
 
 function revealMobileDetailTarget(view) {
-  if (window.innerWidth > 980) return;
+  const collapseBreakpoint = (view === "orders" || view === "accounting") ? 1150 : 1380;
+  if (window.innerWidth > collapseBreakpoint) return;
   const target = getMobileDetailTarget(view);
   if (!target) return;
   window.setTimeout(() => {

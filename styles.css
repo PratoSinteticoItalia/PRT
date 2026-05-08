@@ -5576,10 +5576,15 @@ body {
 }
 
 @media (max-width: 1380px) {
-  #orders .order-grid,
   #shipping .order-grid,
-  #accounting .order-grid,
   #warehouse .two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1150px) {
+  #orders .order-grid,
+  #accounting .order-grid {
     grid-template-columns: 1fr;
   }
 
@@ -7369,9 +7374,25 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  #orders .order-grid,
   #shipping .order-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1320px) and (min-width: 1151px) {
+  #orders .order-grid {
+    grid-template-columns: minmax(0, 1.18fr) minmax(280px, 0.82fr);
+  }
+
+  #accounting .order-grid {
+    grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.92fr);
+  }
+
+  .detail-panel,
+  .order-detail-panel,
+  .install-detail-panel {
+    max-height: calc(100vh - 84px);
+    overflow: auto;
   }
 }
 
