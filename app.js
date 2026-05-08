@@ -1104,6 +1104,7 @@ const state = {
   syncInProgress: false,
   navCounts: {},
   orderPage: 1,
+  accountingPage: 1,
   salesRequestPage: 1,
   salesRequestCompactMode: false,
   salesContentPage: 1,
@@ -1361,6 +1362,7 @@ const ui = {
   installationExpenseStatus: document.getElementById("installation-expense-status"),
   installationExpenseSummary: document.getElementById("installation-expense-summary"),
   installationExpenseList: document.getElementById("installation-expense-list"),
+  accountingPagination: document.getElementById("accounting-pagination"),
   accountingSearch: document.getElementById("accounting-search"),
   accountingFilterTags: Array.from(document.querySelectorAll(".accounting-filter-tag")),
   accountingList: document.getElementById("accounting-list"),
@@ -4567,14 +4569,28 @@ function openSalesRequestWhatsAppTab(url = "") {
 }
 
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
-  const saved = await apiFetch("/api/sales/requests", {
-    method: "POST",
-    body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, patch)),
-  });
-  upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
-  renderSalesRequests();
-  if (state.currentView === "sales-generator") renderSalesGenerator();
-  return saved;
+  const previousRecord = state.salesRequests.find((r) => r.id === record.id) || null;
+  try {
+    const saved = await apiFetch("/api/sales/requests", {
+      method: "POST",
+      body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, patch)),
+    });
+    upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
+    renderSalesRequests();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
+    return saved;
+  } catch (error) {
+    if (previousRecord) {
+      state.salesRequests = state.salesRequests.map((r) => r.id === previousRecord.id ? previousRecord : r);
+      renderSalesRequests();
+    }
+    setStatus(
+      ui.salesRequestsStatus,
+      "error",
+      state.lang === "it" ? "Aggiornamento stato fallito. Riprova salvando la richiesta." : "Status update failed. Retry by saving the request.",
+    );
+    throw error;
+  }
 }
 
 async function openSalesRequestWhatsAppContact(record = {}, { markAsSent = true } = {}) {
@@ -6316,6 +6332,12 @@ function handleCoverageMapClick(event) {
   renderInstallationsCoverage();
 }
 
+let coverageRenderTimer = 0;
+function scheduleCoverageRender() {
+  clearTimeout(coverageRenderTimer);
+  coverageRenderTimer = setTimeout(renderInstallationsCoverage, 120);
+}
+
 function renderInstallationsCoverage() {
   const crewNames = getCoverageManagedCrewNames();
   if (ui.coverageTeamList) {
@@ -6531,6 +6553,18 @@ function paginateOrders(items) {
   return {
     pageItems: items.slice(start, start + pageSize),
     pageSize,
+    totalPages,
+    totalItems: items.length,
+  };
+}
+
+const ACCOUNTING_PAGE_SIZE = 15;
+function paginateAccounting(items) {
+  const totalPages = Math.max(1, Math.ceil(items.length / ACCOUNTING_PAGE_SIZE));
+  state.accountingPage = Math.min(Math.max(1, state.accountingPage || 1), totalPages);
+  const start = (state.accountingPage - 1) * ACCOUNTING_PAGE_SIZE;
+  return {
+    pageItems: items.slice(start, start + ACCOUNTING_PAGE_SIZE),
     totalPages,
     totalItems: items.length,
   };
@@ -9242,6 +9276,44 @@ function renderOrderStepper(order) {
   `;
 }
 
+function buildOrderInboxStatusTrack(order) {
+  const chips = [];
+
+  // Warehouse chip
+  if (!isRoutedToWarehouse(order)) {
+    chips.push({ label: state.lang === "it" ? "Non instradato" : "Not routed", tone: "is-idle" });
+  } else if (isLogisticsOrderCompleted(order)) {
+    const wh = order.operations?.warehouse || {};
+    const doneLabel = wh.shipped ? (state.lang === "it" ? "Spedito" : "Shipped") : (state.lang === "it" ? "Ritirato" : "Collected");
+    chips.push({ label: doneLabel, tone: "is-ok", icon: "📦" });
+  } else if (getWarehousePreparedLines(order).length === 0) {
+    chips.push({ label: state.lang === "it" ? "Prep. mancante" : "Prep. missing", tone: "is-warn", icon: "📦" });
+  } else {
+    chips.push({ label: state.lang === "it" ? "Pronto" : "Ready", tone: "is-info", icon: "📦" });
+  }
+
+  // Installation chip
+  if (!isRoutedToInstallation(order)) {
+    chips.push({ label: state.lang === "it" ? "Solo fornitura" : "Supply only", tone: "is-idle" });
+  } else if (isInstallationOrderCompleted(order)) {
+    chips.push({ label: state.lang === "it" ? "Posa ok" : "Install done", tone: "is-ok", icon: "🔧" });
+  } else if (order.operations?.installation?.installDate) {
+    chips.push({ label: formatDate(order.operations.installation.installDate), tone: "is-info", icon: "🔧" });
+  } else {
+    chips.push({ label: state.lang === "it" ? "Data mancante" : "No date", tone: "is-warn", icon: "🔧" });
+  }
+
+  // Payment chip
+  const openBalance = getOpenBalance(order);
+  if (openBalance <= 0) {
+    chips.push({ label: state.lang === "it" ? "Saldato" : "Paid", tone: "is-ok", icon: "€" });
+  } else {
+    chips.push({ label: formatCurrency(openBalance), tone: "is-warn", icon: "€" });
+  }
+
+  return `<div class="inbox-status-track">${chips.map((c) => `<span class="inbox-status-chip ${c.tone}">${c.icon ? `<span class="inbox-status-chip-icon" aria-hidden="true">${c.icon}</span>` : ""}<span>${escapeHtml(c.label)}</span></span>`).join("")}</div>`;
+}
+
 function renderOrderRow(order, view = "orders") {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const orderType = view === "orders" ? getInboxCommercialType(order) : getOrderType(order);
@@ -9254,13 +9326,14 @@ function renderOrderRow(order, view = "orders") {
       : stage.tone === "blue"
         ? "badge-info"
         : "badge-warning";
+  const statusTrack = view === "orders" ? buildOrderInboxStatusTrack(order) : "";
   return `
     <article class="order-row inbox-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="${view}">
       <div class="inbox-row-main">
         <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
         <div class="order-meta">${order.operations?.product || undefinedText()} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || addressIncompleteText()}</div>
+        ${statusTrack}
         <div class="inbox-row-next-step">
-          <span class="panel-eyebrow">${state.lang === "it" ? "Prossimo passo" : "Next step"}</span>
           <strong>${nextAction}</strong>
         </div>
       </div>
@@ -10460,6 +10533,15 @@ function mergeFirstContactStateFromLive(draft, live) {
   return draft;
 }
 
+let salesRequestStatusAutoClearTimer = 0;
+function setSalesRequestStatusWithAutoClear(kind, text, delayMs = 4000) {
+  clearTimeout(salesRequestStatusAutoClearTimer);
+  setStatus(ui.salesRequestsStatus, kind, text);
+  if (kind === "success") {
+    salesRequestStatusAutoClearTimer = setTimeout(() => clearStatus(ui.salesRequestsStatus), delayMs);
+  }
+}
+
 async function processSalesRequestSave(draftRecord, {
   previousRequests,
   previousSelectedSalesRequestId,
@@ -10481,8 +10563,7 @@ async function processSalesRequestSave(draftRecord, {
     if (state.currentView === "sales-generator") renderSalesGenerator();
     trackUsageEvent("sales_request_modified", { requestId: saved?.id || "" });
     const hasQueuedSave = Boolean(state.pendingSalesRequestSave);
-    setStatus(
-      ui.salesRequestsStatus,
+    setSalesRequestStatusWithAutoClear(
       sheetSyncMessage ? "error" : "success",
       `${state.lang === "it" ? "Richiesta salvata." : "Request saved."}${automationMessage}${sheetSyncMessage}${hasQueuedSave
         ? (state.lang === "it" ? " Applico l'ultima modifica in coda..." : " Applying the latest queued change...")
@@ -10496,7 +10577,7 @@ async function processSalesRequestSave(draftRecord, {
     renderOps();
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta." : "Unable to save the request.");
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta. Riprova." : "Unable to save the request. Please retry.");
   } finally {
     state.salesRequestSaveInFlight = false;
     const nextQueuedDraft = state.pendingSalesRequestSave;
@@ -10600,7 +10681,7 @@ async function saveSalesRequest(event) {
     );
     return;
   }
-  setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Salvataggio richiesta in corso..." : "Saving request...");
+  setSalesRequestStatusWithAutoClear("success", state.lang === "it" ? "Salvataggio in corso..." : "Saving...", 8000);
   syncSalesRequestSubmitButtons({ busy: true, queued: false });
   await processSalesRequestSave(draftRecord, {
     previousRequests,
@@ -11839,7 +11920,7 @@ function renderInstallations() {
       : (state.lang === "it" ? "Da pianificare (backlog)" : "To schedule (backlog)");
   }
   getSelectedInstallationCrew();
-  renderInstallationsCoverage();
+  scheduleCoverageRender();
   if (ui.installationCalendar) {
     ui.installationCalendar.innerHTML = buildInstallationCalendar(orders, calendarCrewScope);
   }
@@ -11897,7 +11978,7 @@ function renderInstallations() {
   if (!state.selectedInstallationCrew && order.operations?.installation?.crew) {
     state.selectedInstallationCrew = order.operations.installation.crew;
   }
-  renderInstallationsCoverage();
+  scheduleCoverageRender();
   ui.installationDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
   if (ui.installationDetailMeta) {
     ui.installationDetailMeta.textContent = isCrewView
@@ -11948,11 +12029,12 @@ function renderAccounting() {
   ui.accountingFilterTags.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.accountingFilter === state.filters.accounting);
   });
-  const orders = filterOrdersForView("accounting");
+  const allOrders = filterOrdersForView("accounting");
   renderAccountingModels();
-  renderAccountingAnalysis(orders);
-  ui.accountingList.innerHTML = orders.length
-    ? orders.map((order) => {
+  renderAccountingAnalysis(allOrders);
+  const { pageItems, totalPages, totalItems } = paginateAccounting(allOrders);
+  ui.accountingList.innerHTML = pageItems.length
+    ? pageItems.map((order) => {
         const selected = order.id === state.selectedOrderId ? "selected" : "";
         const openBalance = getOpenBalance(order);
         const billingHealth = getBillingCompleteness(order);
@@ -11978,6 +12060,18 @@ function renderAccounting() {
         `;
       }).join("")
     : `<div class="info-card">${state.lang === "it" ? "Nessun ordine in contabilità con questo filtro." : "No accounting orders for this filter."}</div>`;
+
+  if (ui.accountingPagination) {
+    ui.accountingPagination.innerHTML = totalItems > ACCOUNTING_PAGE_SIZE
+      ? `<div class="list-pagination-copy">${state.lang === "it" ? `Pagina ${state.accountingPage} di ${totalPages} · ${totalItems} ordini` : `Page ${state.accountingPage} of ${totalPages} · ${totalItems} orders`}</div>
+         <div class="list-pagination-actions">
+           <button class="btn" data-action="accounting-prev-page" ${state.accountingPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prec." : "Prev"}</button>
+           <button class="btn" data-action="accounting-next-page" ${state.accountingPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Succ." : "Next"}</button>
+         </div>`
+      : "";
+  }
+
+  const orders = allOrders;
 
   const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
   if (state.currentView === "accounting" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
@@ -12772,7 +12866,7 @@ function renderProfitSplitWorkspace() {
     restoreProfitSplitLocalDraft();
   }
   renderProfitSplitCalculator();
-  renderInstallationsCoverage();
+  scheduleCoverageRender();
 }
 
 function renderSecurityCenter() {
@@ -15867,6 +15961,18 @@ function handleGlobalClick(event) {
     ui.ordersList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
+  if (action === "accounting-prev-page") {
+    state.accountingPage = Math.max(1, (state.accountingPage || 1) - 1);
+    renderAccounting();
+    ui.accountingList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "accounting-next-page") {
+    state.accountingPage = (state.accountingPage || 1) + 1;
+    renderAccounting();
+    ui.accountingList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   if (action === "sales-requests-prev-page") {
     setSalesRequestPage((state.salesRequestPage || 1) - 1);
     return;
@@ -16679,6 +16785,7 @@ bindEvent(ui.warehouseSearch, "input", (event) => {
 });
 bindEvent(ui.accountingSearch, "input", (event) => {
   state.search.accounting = event.target.value;
+  state.accountingPage = 1;
   scheduleSearchRender("accounting", renderAccounting);
 });
 bindEvent(ui.accountingAddPaymentButton, "click", () => {
@@ -16727,6 +16834,7 @@ ui.installationFilterTags.forEach((button) => button.addEventListener("click", (
 }));
 ui.accountingFilterTags.forEach((button) => button.addEventListener("click", () => {
   state.filters.accounting = button.dataset.accountingFilter;
+  state.accountingPage = 1;
   ui.accountingFilterTags.forEach((item) => item.classList.toggle("is-active", item === button));
   renderAccounting();
 }));
