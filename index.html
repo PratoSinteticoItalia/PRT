@@ -1407,19 +1407,9 @@
             </div>
           </div>
 
-          <div class="dashboard-grid">
-            <section class="panel panel-large">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow">Ripartizione utili</p>
-                  <h3>Calcolatore collaboratori posa</h3>
-                </div>
-              </div>
-              <div class="info-card profit-split-intro">
-                <strong>Formula operativa.</strong>
-                <p>Il tool detrae dal ricavo le spese, i recuperi e il fisso del collaboratore; poi divide l'utile residuo e mostra quanto spetta a ciascuno.</p>
-              </div>
-              <div class="info-card profit-split-context-shell" style="margin-top: 16px;">
+          <div class="profit-split-workspace">
+            <section class="panel panel-large profit-split-form-panel">
+              <div class="info-card profit-split-context-shell">
                 <div id="profit-split-context-card" class="profit-split-context-card"></div>
                 <div id="profit-split-context-status" class="search-pill compact-pill hidden" style="margin-top: 12px;"></div>
                 <div class="inline-actions" style="margin-top: 14px;">
@@ -1429,112 +1419,143 @@
                   <button type="button" id="profit-split-detach-order-button" class="ghost-button small-button">Bozza locale</button>
                 </div>
               </div>
-              <form id="profit-split-form" class="inline-form-grid" style="margin-top: 16px;">
-                <label class="field field-full">
-                  <span>Commessa / nota</span>
-                  <input class="text-input" name="jobLabel" placeholder="Es. Firenze · posa 3 giorni" />
-                </label>
-                <label class="field">
-                  <span>Collaboratore</span>
-                  <input class="text-input" name="partnerName" list="profit-split-crew-options" placeholder="Es. Luigi" />
-                  <datalist id="profit-split-crew-options"></datalist>
-                </label>
-                <label class="field">
-                  <span>Ricavo posa</span>
-                  <input class="text-input" name="revenue" type="text" inputmode="decimal" placeholder="0,00" />
-                </label>
-                <label class="field">
-                  <span>Fisso giornaliero collaboratore</span>
-                  <input class="text-input" name="partnerDailyFixed" type="text" inputmode="decimal" placeholder="100,00" />
-                </label>
-                <label class="field">
-                  <span>Giornate collaboratore</span>
-                  <input class="text-input" name="partnerDays" type="text" inputmode="decimal" placeholder="3" />
-                </label>
-                <label class="field">
-                  <span>Quota utile collaboratore %</span>
-                  <input class="text-input" name="partnerSharePct" type="text" inputmode="decimal" placeholder="50" />
-                  <small class="field-hint">La tua quota è il complemento a 100.</small>
-                </label>
-                <div class="field field-full profit-split-expense-editor">
-                  <div class="profit-split-expense-editor-head">
+
+              <nav class="profit-split-stepper" aria-label="Passi conto posa">
+                <a href="#profit-split-step-1" class="profit-split-step-pill"><span class="profit-split-step-num">1</span> Ricavo</a>
+                <a href="#profit-split-step-2" class="profit-split-step-pill"><span class="profit-split-step-num">2</span> Costi</a>
+                <a href="#profit-split-step-3" class="profit-split-step-pill"><span class="profit-split-step-num">3</span> Recuperi & note</a>
+              </nav>
+
+              <form id="profit-split-form">
+                <section id="profit-split-step-1" class="profit-split-step">
+                  <header class="profit-split-step-head">
+                    <span class="profit-split-step-num">1</span>
                     <div>
-                      <span>Spese della commessa</span>
-                      <small class="field-hint">Inserisci una voce per volta o usa i preset rapidi qui sotto.</small>
+                      <h4>Ricavo & collaboratore</h4>
+                      <p>Il valore della posa venduta e i parametri base del collaboratore.</p>
                     </div>
-                    <button type="button" class="ghost-button small-button" data-profit-split-add-expense>Aggiungi spesa</button>
+                  </header>
+                  <div class="inline-form-grid">
+                    <label class="field field-full">
+                      <span>Commessa / nota</span>
+                      <input class="text-input" name="jobLabel" placeholder="Es. Firenze · posa 3 giorni" />
+                    </label>
+                    <label class="field">
+                      <span>Collaboratore</span>
+                      <input class="text-input" name="partnerName" list="profit-split-crew-options" placeholder="Es. Luigi" />
+                      <datalist id="profit-split-crew-options"></datalist>
+                    </label>
+                    <label class="field">
+                      <span>Ricavo posa</span>
+                      <input class="text-input" name="revenue" type="text" inputmode="decimal" placeholder="0,00" />
+                    </label>
+                    <label class="field">
+                      <span>Fisso giornaliero collaboratore</span>
+                      <input class="text-input" name="partnerDailyFixed" type="text" inputmode="decimal" placeholder="100,00" />
+                    </label>
+                    <label class="field">
+                      <span>Giornate collaboratore</span>
+                      <input class="text-input" name="partnerDays" type="text" inputmode="decimal" placeholder="3" />
+                    </label>
+                    <label class="field">
+                      <span>Quota utile collaboratore %</span>
+                      <input class="text-input" name="partnerSharePct" type="text" inputmode="decimal" placeholder="50" />
+                      <small class="field-hint">La tua quota è il complemento a 100.</small>
+                    </label>
                   </div>
-                  <div class="profit-split-quick-adds">
-                    <button type="button" class="tag" data-profit-split-expense-preset="Benzina">+ Benzina</button>
-                    <button type="button" class="tag" data-profit-split-expense-preset="Caselli">+ Caselli</button>
-                    <button type="button" class="tag" data-profit-split-expense-preset="Biglietto treno">+ Treno</button>
-                    <button type="button" class="tag" data-profit-split-expense-preset="Alloggio">+ Alloggio</button>
-                    <button type="button" class="tag" data-profit-split-expense-preset="Mangiare">+ Mangiare</button>
-                    <button type="button" class="tag" data-profit-split-expense-preset="Dipendenti">+ Dipendenti</button>
-                    <button type="button" class="tag" data-profit-split-expense-preset="Materiali extra">+ Materiali</button>
-                    <button type="button" class="tag" data-profit-split-expense-preset="Nolo attrezzatura">+ Nolo</button>
+                </section>
+
+                <section id="profit-split-step-2" class="profit-split-step">
+                  <header class="profit-split-step-head">
+                    <span class="profit-split-step-num">2</span>
+                    <div>
+                      <h4>Spese & costi</h4>
+                      <p>Una riga per voce. Indica chi ha pagato (te, il collaboratore o costo condiviso).</p>
+                    </div>
+                  </header>
+                  <div class="profit-split-expense-editor">
+                    <div class="profit-split-expense-editor-head">
+                      <div>
+                        <span>Spese della commessa</span>
+                        <small class="field-hint">Inserisci una voce per volta o usa i preset rapidi qui sotto.</small>
+                      </div>
+                      <button type="button" class="ghost-button small-button" data-profit-split-add-expense>Aggiungi spesa</button>
+                    </div>
+                    <div class="profit-split-quick-adds">
+                      <button type="button" class="tag" data-profit-split-expense-preset="Benzina">+ Benzina</button>
+                      <button type="button" class="tag" data-profit-split-expense-preset="Caselli">+ Caselli</button>
+                      <button type="button" class="tag" data-profit-split-expense-preset="Biglietto treno">+ Treno</button>
+                      <button type="button" class="tag" data-profit-split-expense-preset="Alloggio">+ Alloggio</button>
+                      <button type="button" class="tag" data-profit-split-expense-preset="Mangiare">+ Mangiare</button>
+                      <button type="button" class="tag" data-profit-split-expense-preset="Dipendenti">+ Dipendenti</button>
+                      <button type="button" class="tag" data-profit-split-expense-preset="Materiali extra">+ Materiali</button>
+                      <button type="button" class="tag" data-profit-split-expense-preset="Nolo attrezzatura">+ Nolo</button>
+                    </div>
+                    <div id="profit-split-expense-lines" class="profit-split-expense-lines"></div>
+                    <datalist id="profit-split-expense-label-options">
+                      <option value="Benzina"></option>
+                      <option value="Caselli"></option>
+                      <option value="Biglietto treno"></option>
+                      <option value="Alloggio"></option>
+                      <option value="Mangiare"></option>
+                      <option value="Dipendenti"></option>
+                      <option value="Materiali extra"></option>
+                      <option value="Nolo attrezzatura"></option>
+                    </datalist>
                   </div>
-                  <div id="profit-split-expense-lines" class="profit-split-expense-lines"></div>
-                  <datalist id="profit-split-expense-label-options">
-                    <option value="Benzina"></option>
-                    <option value="Caselli"></option>
-                    <option value="Biglietto treno"></option>
-                    <option value="Alloggio"></option>
-                    <option value="Mangiare"></option>
-                    <option value="Dipendenti"></option>
-                    <option value="Materiali extra"></option>
-                    <option value="Nolo attrezzatura"></option>
-                  </datalist>
-                </div>
-                <label class="field">
-                  <span>Recuperi tuoi</span>
-                  <input class="text-input" name="ownerRecovery" type="text" inputmode="decimal" placeholder="0,00" />
-                  <small class="field-hint">Anticipi o budget che devono tornare a te prima del riparto.</small>
-                </label>
-                <label class="field">
-                  <span>Recuperi collaboratore</span>
-                  <input class="text-input" name="partnerRecovery" type="text" inputmode="decimal" placeholder="0,00" />
-                  <small class="field-hint">Usalo solo se anche lui deve recuperare extra fuori dalle spese vive.</small>
-                </label>
-                <label class="field field-full">
-                  <span>Note di quadratura</span>
-                  <textarea class="text-input" name="note" rows="3" placeholder="Es. 200 euro budget furgone da recuperare da me, alloggio pagato da Luigi..."></textarea>
-                </label>
-                <div class="inline-actions field-full">
-                  <button type="button" id="profit-split-reset-button" class="ghost-button small-button">Azzera calcolo</button>
-                </div>
+                </section>
+
+                <section id="profit-split-step-3" class="profit-split-step">
+                  <header class="profit-split-step-head">
+                    <span class="profit-split-step-num">3</span>
+                    <div>
+                      <h4>Recuperi & note</h4>
+                      <p>Anticipi o budget da rimborsare prima del riparto utili e appunti di chiusura.</p>
+                    </div>
+                  </header>
+                  <div class="inline-form-grid">
+                    <label class="field">
+                      <span>Recuperi tuoi</span>
+                      <input class="text-input" name="ownerRecovery" type="text" inputmode="decimal" placeholder="0,00" />
+                      <small class="field-hint">Anticipi o budget che devono tornare a te prima del riparto.</small>
+                    </label>
+                    <label class="field">
+                      <span>Recuperi collaboratore</span>
+                      <input class="text-input" name="partnerRecovery" type="text" inputmode="decimal" placeholder="0,00" />
+                      <small class="field-hint">Usalo solo se anche lui deve recuperare extra fuori dalle spese vive.</small>
+                    </label>
+                    <label class="field field-full">
+                      <span>Note di quadratura</span>
+                      <textarea class="text-input" name="note" rows="3" placeholder="Es. 200 euro budget furgone da recuperare da me, alloggio pagato da Luigi..."></textarea>
+                    </label>
+                    <div class="inline-actions field-full">
+                      <button type="button" id="profit-split-reset-button" class="ghost-button small-button">Azzera calcolo</button>
+                    </div>
+                  </div>
+                </section>
               </form>
-              <div id="profit-split-summary" class="crew-expense-summary-grid" style="margin-top: 16px;"></div>
-              <div id="profit-split-breakdown" class="profit-split-breakdown"></div>
             </section>
 
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow">Metodo</p>
-                  <h3>Uso consigliato</h3>
-                </div>
+            <aside class="panel profit-split-live-panel">
+              <div class="profit-split-live-head">
+                <p class="panel-eyebrow">Riepilogo live</p>
+                <h3 id="profit-split-live-revenue">€ 0,00</h3>
+                <span id="profit-split-live-job-label" class="profit-split-live-job-label">Inizia inserendo il ricavo</span>
               </div>
-              <div class="detail-stack">
-                <article class="detail-box">
-                  <strong>1. Inserisci il ricavo</strong>
-                  <p>Parti dal valore della posa venduta, poi imposta fisso giornaliero, giornate e quota utile del collaboratore.</p>
-                </article>
-                <article class="detail-box">
-                  <strong>2. Registra le spese una per una</strong>
-                  <p>Benzina, caselli, hotel, vitto, dipendenti o materiali extra: ogni voce ha il suo pagatore e viene sommata in automatico.</p>
-                </article>
-                <article class="detail-box">
-                  <strong>3. Chiudi i recuperi</strong>
-                  <p>Usa i recuperi per budget, anticipi o costi che devono tornare prima del riparto utile.</p>
-                </article>
-              </div>
-              <div class="info-card profit-split-note-card" style="margin-top: 16px;">
-                <strong>Bozza locale + commessa collegata</strong>
-                <p>Ora puoi continuare a usare il tool in autonomia oppure salvarlo dentro la commessa selezionata. Il flusso separato resta disponibile come fallback sicuro.</p>
-              </div>
-            </section>
+              <div id="profit-split-distribution-bar" class="profit-split-distribution-bar"></div>
+              <div id="profit-split-summary" class="profit-split-live-summary"></div>
+            </aside>
           </div>
+
+          <section class="panel profit-split-breakdown-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">Dettaglio per parte</p>
+                <h3>Saldo collaboratore e titolare</h3>
+              </div>
+            </div>
+            <div id="profit-split-breakdown" class="profit-split-breakdown"></div>
+          </section>
 
           <section id="profit-split-coverage-mount" class="profit-split-coverage-mount"></section>
         </section>

@@ -1422,6 +1422,9 @@ const ui = {
   profitSplitSummary: document.getElementById("profit-split-summary"),
   profitSplitBreakdown: document.getElementById("profit-split-breakdown"),
   profitSplitResetButton: document.getElementById("profit-split-reset-button"),
+  profitSplitDistributionBar: document.getElementById("profit-split-distribution-bar"),
+  profitSplitLiveRevenue: document.getElementById("profit-split-live-revenue"),
+  profitSplitLiveJobLabel: document.getElementById("profit-split-live-job-label"),
   authDemo: document.getElementById("auth-demo"),
   orderModal: document.getElementById("order-modal"),
   orderModalTitle: document.getElementById("order-modal-title"),
@@ -2604,6 +2607,52 @@ async function saveProfitSplitToLinkedOrder() {
   renderCurrentViewOnly(state.currentView);
 }
 
+function renderProfitSplitDistributionBar(result, hasValues) {
+  if (!ui.profitSplitDistributionBar) return;
+  const partnerName = result.partnerName || (state.lang === "it" ? "Collaboratore" : "Partner");
+  const ownerLabel = state.lang === "it" ? "Tu" : "You";
+  const baseTotal = Math.max(0, Number(result.revenue) || 0);
+  const liveSegments = [
+    { key: "expenses", label: state.lang === "it" ? "Costi vivi" : "Costs", value: result.ownerPaidExpenses + result.partnerPaidExpenses + result.sharedJobCosts },
+    { key: "fixed", label: state.lang === "it" ? "Fisso collab." : "Partner fixed", value: result.partnerFixedTotal },
+    { key: "recovery", label: state.lang === "it" ? "Recuperi" : "Recoveries", value: result.ownerRecovery + result.partnerRecovery },
+    { key: "partner", label: `${partnerName} ${state.lang === "it" ? "utile" : "profit"}`, value: Math.max(0, result.partnerProfitShare) },
+    { key: "owner", label: `${ownerLabel} ${state.lang === "it" ? "utile" : "profit"}`, value: Math.max(0, result.ownerProfitShare) },
+  ].map((segment) => ({
+    ...segment,
+    value: Math.max(0, Number(segment.value) || 0),
+  })).filter((segment) => segment.value > 0);
+  const computedTotal = liveSegments.reduce((sum, segment) => sum + segment.value, 0);
+  const total = Math.max(baseTotal, computedTotal);
+  if (!hasValues || total <= 0) {
+    ui.profitSplitDistributionBar.innerHTML = `
+      <div class="profit-split-distribution-empty">${escapeHtml(state.lang === "it" ? "La barra si popola appena inserisci ricavo e spese." : "Bar fills as you enter revenue and costs.")}</div>
+    `;
+    return;
+  }
+  const negativeProfit = result.divisibleProfit < 0;
+  const segmentMarkup = liveSegments.map((segment) => {
+    const pct = Math.max(0, (segment.value / total) * 100);
+    return `
+      <span class="profit-split-distribution-segment is-${segment.key}" style="width: ${pct.toFixed(2)}%" title="${escapeHtml(`${segment.label} · ${formatCurrency(segment.value)}`)}"></span>
+    `;
+  }).join("");
+  const legendMarkup = liveSegments.map((segment) => `
+    <li class="profit-split-distribution-legend-item">
+      <span class="profit-split-distribution-dot is-${segment.key}"></span>
+      <span class="profit-split-distribution-legend-label">${escapeHtml(segment.label)}</span>
+      <strong class="profit-split-distribution-legend-value">${escapeHtml(formatCurrency(segment.value))}</strong>
+    </li>
+  `).join("");
+  ui.profitSplitDistributionBar.innerHTML = `
+    <div class="profit-split-distribution-track" role="img" aria-label="${escapeHtml(state.lang === "it" ? "Distribuzione del ricavo" : "Revenue distribution")}">
+      ${segmentMarkup}
+    </div>
+    <ul class="profit-split-distribution-legend">${legendMarkup}</ul>
+    ${negativeProfit ? `<p class="profit-split-distribution-warning">${escapeHtml(state.lang === "it" ? "Utile divisibile negativo: i costi superano il ricavo." : "Distributable profit is negative: costs exceed revenue.")}</p>` : ""}
+  `;
+}
+
 function renderProfitSplitCalculator({ syncForm = true } = {}) {
   if (!ui.profitSplitSummary || !ui.profitSplitBreakdown) return;
   if (ui.profitSplitCrewOptions) {
@@ -2634,6 +2683,18 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
     result.partnerFixedTotal,
     result.expenseLineCount,
   ].some((value) => Math.abs(value) > 0);
+
+  if (ui.profitSplitLiveRevenue) {
+    ui.profitSplitLiveRevenue.textContent = formatCurrency(result.revenue || 0);
+  }
+  if (ui.profitSplitLiveJobLabel) {
+    const jobLabel = String(draft.jobLabel || "").trim();
+    ui.profitSplitLiveJobLabel.textContent = jobLabel
+      || (hasValues
+        ? (state.lang === "it" ? "Commessa senza nota" : "Job without note")
+        : (state.lang === "it" ? "Inizia inserendo il ricavo" : "Start by entering revenue"));
+  }
+  renderProfitSplitDistributionBar(result, hasValues);
 
   if (!hasValues) {
     ui.profitSplitSummary.innerHTML = [
