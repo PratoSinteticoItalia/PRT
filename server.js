@@ -5125,8 +5125,8 @@ async function handleApi(req, res, url) {
         return normalizeSalesRequestRecord({
           ...item,
           requestedHeight: item.requestedHeight,
-          assignment: item.assignment || existing?.assignment || "",
-          status: item.status || existing?.status || "new",
+          assignment: item.assignment,
+          status: item.status || "new",
           note: item.note || existing?.note || "",
           whatsappTemplate: item.whatsappTemplate || existing?.whatsappTemplate || "",
           whatsappUrl: item.whatsappUrl || existing?.whatsappUrl || "",

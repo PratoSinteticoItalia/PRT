@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260507-reseller-usage-report-139";
+const APP_SHELL_VERSION = "20260508-sheets-bidirectional-sync-140";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -13,7 +13,7 @@ const SESSION_EVENTS_RECONNECT_BASE_MS = 1200;
 const SESSION_EVENTS_RECONNECT_MAX_MS = 20_000;
 const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 900;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
-const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 60;
+const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 60 * 3;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
@@ -13589,6 +13589,9 @@ function setView(view) {
   clearPendingCurrentViewRefresh();
   state.currentView = nextView;
   renderCurrentViewOnly(nextView);
+  if (nextView === "sales-requests" && nextView !== previousView && canAutoRefreshSalesRequests()) {
+    triggerSalesRequestAutoSync({ force: true });
+  }
   if (nextView !== previousView) {
     requestAnimationFrame(() => {
       scrollCurrentViewToTop();
@@ -16401,7 +16404,7 @@ document.addEventListener("visibilitychange", () => {
     void runShopifySync({ silent: true });
   }
   if (canAutoRefreshSalesRequests()) {
-    triggerSalesRequestAutoSync();
+    triggerSalesRequestAutoSync({ force: state.currentView === "sales-requests" });
   }
 });
 window.addEventListener("focus", () => {
@@ -16412,7 +16415,7 @@ window.addEventListener("focus", () => {
     void runShopifySync({ silent: true });
   }
   if (canAutoRefreshSalesRequests()) {
-    triggerSalesRequestAutoSync();
+    triggerSalesRequestAutoSync({ force: state.currentView === "sales-requests" });
   }
 });
 window.addEventListener("online", () => {
