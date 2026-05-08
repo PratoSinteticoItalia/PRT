@@ -4403,6 +4403,26 @@ function buildSalesRequestQuoteWhatsAppUrl(item = {}) {
   return buildWhatsAppWebSendUrl(item.phone, buildSalesRequestQuoteWhatsAppMessage(item));
 }
 
+function buildSalesRequestFollowUpWhatsAppMessage(item = {}) {
+  const recipient = getSalesRequestFirstName(item);
+  if (state.lang !== "it") {
+    return [
+      `Hello ${recipient}, I am following up on the quote we sent you for the synthetic turf.`,
+      "Did you have a chance to review it? I am here if you need any clarification or want to compare alternatives.",
+      "Let me know how you would like to proceed.",
+    ].join("\n\n");
+  }
+  return [
+    `Ciao ${recipient}, ti ricontatto in merito al preventivo che ti abbiamo inviato per il prato sintetico.`,
+    "Hai avuto modo di valutarlo? Resto a disposizione per eventuali chiarimenti o per confrontare insieme alternative.",
+    "Fammi sapere come preferisci procedere.",
+  ].join("\n\n");
+}
+
+function buildSalesRequestFollowUpWhatsAppUrl(item = {}) {
+  return buildWhatsAppWebSendUrl(item.phone, buildSalesRequestFollowUpWhatsAppMessage(item));
+}
+
 function openSalesRequestWhatsAppTab(url = "") {
   const normalizedUrl = normalizeSalesRequestWhatsAppUrl(url);
   if (!normalizedUrl) return null;
@@ -9700,8 +9720,12 @@ function renderSalesRequestsDetailPanel(selected = null) {
   }
   if (ui.salesRequestFollowUpButton) {
     const showFollowUp = Boolean(selected && getSalesRequestStatusCode(selected.status || "") === "quoted");
-    ui.salesRequestFollowUpButton.classList.toggle("hidden", !showFollowUp);
+    const followUpUrl = showFollowUp ? buildSalesRequestFollowUpWhatsAppUrl(selected) : "";
+    ui.salesRequestFollowUpButton.classList.toggle("hidden", !showFollowUp || !followUpUrl);
+    ui.salesRequestFollowUpButton.href = followUpUrl || "#";
+    ui.salesRequestFollowUpButton.setAttribute("aria-disabled", followUpUrl ? "false" : "true");
     ui.salesRequestFollowUpButton.dataset.id = selected?.id || "";
+    ui.salesRequestFollowUpButton.dataset.action = "open-sales-request-followup-whatsapp";
   }
   if (ui.salesRequestWhatsAppHint) {
     ui.salesRequestWhatsAppHint.textContent = selected
@@ -15645,6 +15669,25 @@ function handleGlobalClick(event) {
     openSalesRequestWhatsAppTab(target?.getAttribute("href") || "");
     return;
   }
+  if (action === "open-sales-request-followup-whatsapp") {
+    event.preventDefault();
+    event.stopPropagation();
+    const request = state.salesRequests.find((item) => item.id === id) || getSelectedSalesRequest();
+    if (!request) return;
+    const url = buildSalesRequestFollowUpWhatsAppUrl(request);
+    if (!url) {
+      setStatus(
+        ui.salesRequestsStatus,
+        "error",
+        state.lang === "it"
+          ? "Numero cliente non disponibile: impossibile aprire WhatsApp."
+          : "Customer phone is missing: unable to open WhatsApp.",
+      );
+      return;
+    }
+    openSalesRequestWhatsAppTab(url);
+    return;
+  }
   if (action === "delete-inventory-piece") {
     removeInventoryPieceById(id).catch(() => {
       setStatus(
@@ -16139,14 +16182,6 @@ bindEvent(ui.salesRequestForm, "submit", saveSalesRequest);
 bindEvent(ui.salesRequestNewButton, "click", createNewSalesRequest);
 bindEvent(ui.salesRequestDeleteButton, "click", deleteSalesRequest);
 bindEvent(ui.salesRequestUseGeneratorButton, "click", useSelectedSalesRequestInGenerator);
-bindEvent(ui.salesRequestFollowUpButton, "click", () => {
-  const id = ui.salesRequestFollowUpButton?.dataset.id || "";
-  const request = state.salesRequests.find((item) => item.id === id) || getSelectedSalesRequest();
-  if (!request) return;
-  persistSalesRequestRecordPatch(request, { status: "fare follow up" }).catch(() => {
-    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare il follow-up." : "Unable to save follow-up.");
-  });
-});
 bindEvent(ui.salesRequestServiceAccountButton, "click", () => ui.salesRequestServiceAccountInput?.click());
 bindEvent(ui.salesRequestServiceAccountInput, "change", handleSalesRequestServiceAccountSelection);
 bindEvent(ui.salesRequestClearServiceAccountButton, "click", () => saveSalesRequestSourceConfig({ clearServiceAccount: true }));
