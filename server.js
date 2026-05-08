@@ -5179,11 +5179,14 @@ async function handleApi(req, res, url) {
       );
       const importedRequests = sourcePayload.requests.map((item) => {
         const existing = existingById.get(item.id) || null;
+        // For records already in the store, the portal is the authoritative status owner.
+        // Preserve the existing status so a pending async sheet-write cannot race-overwrite it.
+        const status = existing?.status || item.status || "new";
         return normalizeSalesRequestRecord({
           ...item,
           requestedHeight: item.requestedHeight,
           assignment: item.assignment,
-          status: item.status || "new",
+          status,
           note: item.note || existing?.note || "",
           whatsappTemplate: item.whatsappTemplate || existing?.whatsappTemplate || "",
           whatsappUrl: item.whatsappUrl || existing?.whatsappUrl || "",
