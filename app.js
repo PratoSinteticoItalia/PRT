@@ -4569,14 +4569,28 @@ function openSalesRequestWhatsAppTab(url = "") {
 }
 
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
-  const saved = await apiFetch("/api/sales/requests", {
-    method: "POST",
-    body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, patch)),
-  });
-  upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
-  renderSalesRequests();
-  if (state.currentView === "sales-generator") renderSalesGenerator();
-  return saved;
+  const previousRecord = state.salesRequests.find((r) => r.id === record.id) || null;
+  try {
+    const saved = await apiFetch("/api/sales/requests", {
+      method: "POST",
+      body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, patch)),
+    });
+    upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
+    renderSalesRequests();
+    if (state.currentView === "sales-generator") renderSalesGenerator();
+    return saved;
+  } catch (error) {
+    if (previousRecord) {
+      state.salesRequests = state.salesRequests.map((r) => r.id === previousRecord.id ? previousRecord : r);
+      renderSalesRequests();
+    }
+    setStatus(
+      ui.salesRequestsStatus,
+      "error",
+      state.lang === "it" ? "Aggiornamento stato fallito. Riprova salvando la richiesta." : "Status update failed. Retry by saving the request.",
+    );
+    throw error;
+  }
 }
 
 async function openSalesRequestWhatsAppContact(record = {}, { markAsSent = true } = {}) {
@@ -10519,6 +10533,15 @@ function mergeFirstContactStateFromLive(draft, live) {
   return draft;
 }
 
+let salesRequestStatusAutoClearTimer = 0;
+function setSalesRequestStatusWithAutoClear(kind, text, delayMs = 4000) {
+  clearTimeout(salesRequestStatusAutoClearTimer);
+  setStatus(ui.salesRequestsStatus, kind, text);
+  if (kind === "success") {
+    salesRequestStatusAutoClearTimer = setTimeout(() => clearStatus(ui.salesRequestsStatus), delayMs);
+  }
+}
+
 async function processSalesRequestSave(draftRecord, {
   previousRequests,
   previousSelectedSalesRequestId,
@@ -10540,8 +10563,7 @@ async function processSalesRequestSave(draftRecord, {
     if (state.currentView === "sales-generator") renderSalesGenerator();
     trackUsageEvent("sales_request_modified", { requestId: saved?.id || "" });
     const hasQueuedSave = Boolean(state.pendingSalesRequestSave);
-    setStatus(
-      ui.salesRequestsStatus,
+    setSalesRequestStatusWithAutoClear(
       sheetSyncMessage ? "error" : "success",
       `${state.lang === "it" ? "Richiesta salvata." : "Request saved."}${automationMessage}${sheetSyncMessage}${hasQueuedSave
         ? (state.lang === "it" ? " Applico l'ultima modifica in coda..." : " Applying the latest queued change...")
@@ -10555,7 +10577,7 @@ async function processSalesRequestSave(draftRecord, {
     renderOps();
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta." : "Unable to save the request.");
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta. Riprova." : "Unable to save the request. Please retry.");
   } finally {
     state.salesRequestSaveInFlight = false;
     const nextQueuedDraft = state.pendingSalesRequestSave;
@@ -10659,7 +10681,7 @@ async function saveSalesRequest(event) {
     );
     return;
   }
-  setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Salvataggio richiesta in corso..." : "Saving request...");
+  setSalesRequestStatusWithAutoClear("success", state.lang === "it" ? "Salvataggio in corso..." : "Saving...", 8000);
   syncSalesRequestSubmitButtons({ busy: true, queued: false });
   await processSalesRequestSave(draftRecord, {
     previousRequests,
