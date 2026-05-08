@@ -102,7 +102,7 @@
           </div>
           <label class="topbar-search">
             <span class="search-icon" aria-hidden="true">⌕</span>
-            <input type="text" placeholder="Cerca ordini, clienti, prodotti..." />
+            <input id="topbar-search-input" type="text" placeholder="Cerca ordini, clienti... ⌘K" readonly />
           </label>
         </div>
 
@@ -1893,6 +1893,24 @@
             <button type="submit" class="primary-button">Salva ordine</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="cmd-k-overlay" class="cmd-k-overlay hidden" role="dialog" aria-modal="true" aria-label="Ricerca rapida">
+      <div class="cmd-k-backdrop"></div>
+      <div class="cmd-k-box">
+        <div class="cmd-k-input-row">
+          <span class="cmd-k-search-icon" aria-hidden="true">⌕</span>
+          <input id="cmd-k-input" class="cmd-k-input" type="text" placeholder="Cerca ordini, clienti, richieste, città..." autocomplete="off" spellcheck="false" />
+          <kbd class="cmd-k-esc-hint">esc</kbd>
+        </div>
+        <div id="cmd-k-results" class="cmd-k-results" role="listbox"></div>
+        <div id="cmd-k-empty" class="cmd-k-empty hidden">Nessun risultato</div>
+        <div class="cmd-k-footer">
+          <span><kbd>↑↓</kbd> naviga</span>
+          <span><kbd>↵</kbd> apri</span>
+          <span><kbd>esc</kbd> chiudi</span>
+        </div>
       </div>
     </div>
 

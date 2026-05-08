@@ -1426,6 +1426,11 @@ const ui = {
   profitSplitLiveRevenue: document.getElementById("profit-split-live-revenue"),
   profitSplitLiveJobLabel: document.getElementById("profit-split-live-job-label"),
   authDemo: document.getElementById("auth-demo"),
+  cmdKOverlay: document.getElementById("cmd-k-overlay"),
+  cmdKInput: document.getElementById("cmd-k-input"),
+  cmdKResults: document.getElementById("cmd-k-results"),
+  cmdKEmpty: document.getElementById("cmd-k-empty"),
+  topbarSearchInput: document.getElementById("topbar-search-input"),
   orderModal: document.getElementById("order-modal"),
   orderModalTitle: document.getElementById("order-modal-title"),
   orderForm: document.getElementById("order-form"),
@@ -16196,7 +16201,192 @@ function handleGlobalClick(event) {
   }
 }
 
+// ── Cmd+K global search ────────────────────────────────────────────────────
+
+let cmdKActiveIndex = -1;
+
+function openGlobalSearch() {
+  if (!ui.cmdKOverlay) return;
+  ui.cmdKOverlay.classList.remove("hidden");
+  if (ui.cmdKInput) {
+    ui.cmdKInput.value = "";
+    ui.cmdKInput.focus();
+  }
+  cmdKActiveIndex = -1;
+  renderCmdKResults("");
+}
+
+function closeGlobalSearch() {
+  if (!ui.cmdKOverlay) return;
+  ui.cmdKOverlay.classList.add("hidden");
+  if (ui.topbarSearchInput) ui.topbarSearchInput.blur();
+}
+
+function searchGlobalData(query) {
+  const q = normalizeLooseString(query);
+  const results = [];
+
+  const orders = state.orders || [];
+  for (const order of orders) {
+    if (results.filter((r) => r.type === "order").length >= 6) break;
+    const haystack = normalizeLooseString([
+      getOrderNumber(order),
+      composeClientName(order),
+      order.city,
+      order.address,
+      order.phone,
+      order.email,
+    ].join(" "));
+    if (haystack.includes(q)) {
+      results.push({
+        type: "order",
+        id: order.id,
+        title: composeClientName(order),
+        meta: [getOrderNumber(order), order.city].filter(Boolean).join(" · "),
+        badge: getOrderNumber(order),
+      });
+    }
+  }
+
+  const requests = state.salesRequests || [];
+  for (const req of requests) {
+    if (results.filter((r) => r.type === "request").length >= 6) break;
+    const fullName = `${req.name} ${req.surname}`.trim();
+    const haystack = normalizeLooseString([
+      fullName,
+      req.city,
+      req.phone,
+      req.email,
+    ].join(" "));
+    if (haystack.includes(q)) {
+      results.push({
+        type: "request",
+        id: req.id,
+        title: fullName || req.phone || req.email || "—",
+        meta: [req.city, req.status].filter(Boolean).join(" · "),
+        badge: req.status,
+      });
+    }
+  }
+
+  return results;
+}
+
+function renderCmdKResults(query) {
+  if (!ui.cmdKResults || !ui.cmdKEmpty) return;
+  if (!query.trim()) {
+    ui.cmdKResults.innerHTML = "";
+    ui.cmdKEmpty.classList.add("hidden");
+    cmdKActiveIndex = -1;
+    return;
+  }
+  const results = searchGlobalData(query);
+  if (!results.length) {
+    ui.cmdKResults.innerHTML = "";
+    ui.cmdKEmpty.classList.remove("hidden");
+    cmdKActiveIndex = -1;
+    return;
+  }
+  ui.cmdKEmpty.classList.add("hidden");
+  const orders = results.filter((r) => r.type === "order");
+  const requests = results.filter((r) => r.type === "request");
+  let html = "";
+  if (orders.length) {
+    html += `<div class="cmd-k-result-group-label">Ordini</div>`;
+    for (const item of orders) {
+      html += buildCmdKResultItemHtml(item);
+    }
+  }
+  if (requests.length) {
+    html += `<div class="cmd-k-result-group-label">Richieste</div>`;
+    for (const item of requests) {
+      html += buildCmdKResultItemHtml(item);
+    }
+  }
+  ui.cmdKResults.innerHTML = html;
+  cmdKActiveIndex = -1;
+}
+
+function buildCmdKResultItemHtml(item) {
+  const icon = item.type === "order" ? "📦" : "💬";
+  const iconClass = item.type === "order" ? "is-order" : "is-request";
+  return `<div class="cmd-k-result-item" data-cmdk-type="${escapeHtml(item.type)}" data-cmdk-id="${escapeHtml(item.id)}" role="option">
+    <div class="cmd-k-result-icon ${iconClass}">${icon}</div>
+    <div class="cmd-k-result-body">
+      <div class="cmd-k-result-title">${escapeHtml(item.title)}</div>
+      <div class="cmd-k-result-meta">${escapeHtml(item.meta)}</div>
+    </div>
+    <div class="cmd-k-result-badge">${escapeHtml(item.badge)}</div>
+  </div>`;
+}
+
+function activateCmdKResult(item) {
+  if (!item) return;
+  const type = item.dataset.cmdkType;
+  const id = item.dataset.cmdkId;
+  closeGlobalSearch();
+  if (type === "order") {
+    state.selectedOrderId = id;
+    setView("orders");
+  } else if (type === "request") {
+    state.selectedSalesRequestId = id;
+    setView("sales-requests");
+  }
+}
+
+function moveCmdKSelection(delta) {
+  const items = ui.cmdKResults?.querySelectorAll(".cmd-k-result-item") || [];
+  if (!items.length) return;
+  items[cmdKActiveIndex]?.classList.remove("is-active");
+  cmdKActiveIndex = Math.max(0, Math.min(items.length - 1, cmdKActiveIndex + delta));
+  const active = items[cmdKActiveIndex];
+  active?.classList.add("is-active");
+  active?.scrollIntoView({ block: "nearest" });
+}
+
+if (ui.cmdKInput) {
+  ui.cmdKInput.addEventListener("input", (e) => {
+    renderCmdKResults(e.target.value);
+  });
+  ui.cmdKInput.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); moveCmdKSelection(1); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); moveCmdKSelection(-1); return; }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const items = ui.cmdKResults?.querySelectorAll(".cmd-k-result-item") || [];
+      const active = cmdKActiveIndex >= 0 ? items[cmdKActiveIndex] : items[0];
+      activateCmdKResult(active);
+      return;
+    }
+    if (e.key === "Escape") { e.preventDefault(); closeGlobalSearch(); }
+  });
+}
+
+if (ui.cmdKOverlay) {
+  ui.cmdKOverlay.querySelector(".cmd-k-backdrop")?.addEventListener("click", closeGlobalSearch);
+  ui.cmdKResults?.addEventListener("click", (e) => {
+    const item = e.target.closest(".cmd-k-result-item");
+    if (item) activateCmdKResult(item);
+  });
+}
+
+if (ui.topbarSearchInput) {
+  ui.topbarSearchInput.addEventListener("focus", openGlobalSearch);
+  ui.topbarSearchInput.addEventListener("click", openGlobalSearch);
+}
+
+// ── /Cmd+K global search ───────────────────────────────────────────────────
+
 function handleGlobalActionKeydown(event) {
+  if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+    event.preventDefault();
+    openGlobalSearch();
+    return;
+  }
+  if (event.key === "Escape" && !ui.cmdKOverlay?.classList.contains("hidden")) {
+    closeGlobalSearch();
+    return;
+  }
   if (event.key !== "Enter" && event.key !== " ") return;
   const trigger = event.target.closest("[data-action][role='button']");
   if (!trigger) return;
