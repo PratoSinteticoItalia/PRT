@@ -3472,6 +3472,16 @@ function toggleSalesRequestBulkSelection(id = "") {
   renderSalesRequests();
 }
 
+function getSalesRequestBulkFollowUpCandidates() {
+  const ids = new Set(getSalesRequestBulkSelectedIds());
+  if (!ids.size) return [];
+  return state.salesRequests.filter((item) => (
+    ids.has(item.id)
+    && getSalesRequestStatusCode(item.status || "") === "quoted"
+    && Boolean(buildSalesRequestFollowUpWhatsAppUrl(item))
+  ));
+}
+
 function renderSalesRequestBulkBar(pageItems = []) {
   if (!ui.salesRequestBulkBar) return;
   const selectedIds = getSalesRequestBulkSelectedIds();
@@ -3479,6 +3489,8 @@ function renderSalesRequestBulkBar(pageItems = []) {
   const visibleAssignableCount = pageItems.filter(isSalesRequestBulkAssignable).length;
   const hasSelection = selectedCount > 0;
   const isSaving = Boolean(state.salesRequestBulkSaving);
+  const followUpCandidates = getSalesRequestBulkFollowUpCandidates();
+  const followUpCount = followUpCandidates.length;
   ui.salesRequestBulkBar.innerHTML = `
     <div class="sales-request-bulk-copy">
       <strong>${hasSelection
@@ -3495,8 +3507,38 @@ function renderSalesRequestBulkBar(pageItems = []) {
       <button class="ghost-button small-button" type="button" data-action="clear-sales-request-bulk" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Pulisci" : "Clear"}</button>
       <button class="primary-button small-button" type="button" data-action="bulk-assign-sales-requests" data-assignment="Gabriele" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Assegna a Gabriele" : "Assign to Gabriele"}</button>
       <button class="primary-button small-button" type="button" data-action="bulk-assign-sales-requests" data-assignment="Ivan" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Assegna a Ivan" : "Assign to Ivan"}</button>
+      <button class="primary-button small-button" type="button" data-action="bulk-followup-sales-requests" ${followUpCount && !isSaving ? "" : "disabled"} title="${state.lang === "it" ? "Apre WhatsApp per ogni preventivo inviato selezionato" : "Open WhatsApp for each selected sent quote"}">${state.lang === "it" ? `Follow-up WhatsApp (${followUpCount})` : `Follow-up WhatsApp (${followUpCount})`}</button>
     </div>
   `;
+}
+
+function bulkOpenSalesRequestFollowUpWhatsApp() {
+  const candidates = getSalesRequestBulkFollowUpCandidates();
+  if (!candidates.length) return;
+  const total = candidates.length;
+  if (total > 5) {
+    const confirmed = window.confirm(state.lang === "it"
+      ? `Stanno per essere aperte ${total} schede WhatsApp. Assicurati che il blocco popup sia disattivato. Procedere?`
+      : `${total} WhatsApp tabs are about to open. Make sure popup blocker is disabled. Continue?`);
+    if (!confirmed) return;
+  }
+  let opened = 0;
+  candidates.forEach((item, index) => {
+    const url = buildSalesRequestFollowUpWhatsAppUrl(item);
+    if (!url) return;
+    const tab = window.open(url, `psi_sales_followup_${item.id}_${index}`);
+    if (tab) {
+      tab.focus();
+      opened += 1;
+    }
+  });
+  setStatus(
+    ui.salesRequestsStatus,
+    opened === total ? "success" : "error",
+    state.lang === "it"
+      ? `Aperte ${opened}/${total} schede WhatsApp di follow-up.`
+      : `Opened ${opened}/${total} follow-up WhatsApp tabs.`,
+  );
 }
 
 function renderSalesRequestDetailMeta(item = {}) {
@@ -4421,6 +4463,26 @@ function buildSalesRequestFollowUpWhatsAppMessage(item = {}) {
 
 function buildSalesRequestFollowUpWhatsAppUrl(item = {}) {
   return buildWhatsAppWebSendUrl(item.phone, buildSalesRequestFollowUpWhatsAppMessage(item));
+}
+
+function buildOrderReviewWhatsAppMessage(order = {}) {
+  const firstName = String(order.firstName || "").trim() || (state.lang === "it" ? "ciao" : "hello");
+  if (state.lang !== "it") {
+    return [
+      `Hello ${firstName}, thank you for choosing Prato Sintetico Italia.`,
+      "We hope you are happy with the synthetic turf delivered. If you have a moment, a short Google review would help us a lot.",
+      "Of course, if there is anything we can improve please let us know — we are at your service.",
+    ].join("\n\n");
+  }
+  return [
+    `Ciao ${firstName}, grazie per aver scelto Prato Sintetico Italia.`,
+    "Speriamo tu sia soddisfatto del prato sintetico consegnato. Se hai un minuto, una breve recensione su Google ci aiuterebbe molto.",
+    "Naturalmente, se c'è qualcosa che possiamo migliorare faccelo sapere: siamo a tua disposizione.",
+  ].join("\n\n");
+}
+
+function buildOrderReviewWhatsAppUrl(order = {}) {
+  return buildWhatsAppWebSendUrl(order.phone, buildOrderReviewWhatsAppMessage(order));
 }
 
 function openSalesRequestWhatsAppTab(url = "") {
@@ -9446,6 +9508,7 @@ function renderOrders() {
     <div class="detail-actions detail-actions-primary">
       ${composeAddress(order) ? `<button class="btn" data-action="open-maps" data-id="${order.id}">${state.lang === "it" ? "Apri Maps" : "Open Maps"}</button>` : ""}
       ${order.phone ? `<button class="btn" data-action="call-client" data-id="${order.id}">${state.lang === "it" ? "Chiama cliente" : "Call customer"}</button>` : ""}
+      ${order.phone && isOrderFulfilledOrClosed(order) ? `<button class="btn" data-action="request-order-review" data-id="${order.id}">${state.lang === "it" ? "Chiedi recensione" : "Request review"}</button>` : ""}
     </div>
   `;
   if (ui.orderJobHub) ui.orderJobHub.innerHTML = renderOrderJobHub(order);
@@ -15845,6 +15908,10 @@ function handleGlobalClick(event) {
     });
     return;
   }
+  if (action === "bulk-followup-sales-requests") {
+    bulkOpenSalesRequestFollowUpWhatsApp();
+    return;
+  }
   if (action === "select-sales-request") {
     state.creatingSalesRequest = false;
     const prevSelectedId = state.selectedSalesRequestId;
@@ -15947,6 +16014,14 @@ function handleGlobalClick(event) {
   }
   if (action === "call-client") {
     if (order.phone) window.open(`tel:${order.phone}`);
+    return;
+  }
+  if (action === "request-order-review") {
+    if (!order.phone) return;
+    const url = buildOrderReviewWhatsAppUrl(order);
+    if (!url) return;
+    const tab = window.open(url, `psi_order_review_${order.id}`);
+    if (tab) tab.focus();
     return;
   }
 }
