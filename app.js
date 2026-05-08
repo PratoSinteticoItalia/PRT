@@ -9242,6 +9242,44 @@ function renderOrderStepper(order) {
   `;
 }
 
+function buildOrderInboxStatusTrack(order) {
+  const chips = [];
+
+  // Warehouse chip
+  if (!isRoutedToWarehouse(order)) {
+    chips.push({ label: state.lang === "it" ? "Non instradato" : "Not routed", tone: "is-idle" });
+  } else if (isLogisticsOrderCompleted(order)) {
+    const wh = order.operations?.warehouse || {};
+    const doneLabel = wh.shipped ? (state.lang === "it" ? "Spedito" : "Shipped") : (state.lang === "it" ? "Ritirato" : "Collected");
+    chips.push({ label: doneLabel, tone: "is-ok", icon: "📦" });
+  } else if (getWarehousePreparedLines(order).length === 0) {
+    chips.push({ label: state.lang === "it" ? "Prep. mancante" : "Prep. missing", tone: "is-warn", icon: "📦" });
+  } else {
+    chips.push({ label: state.lang === "it" ? "Pronto" : "Ready", tone: "is-info", icon: "📦" });
+  }
+
+  // Installation chip
+  if (!isRoutedToInstallation(order)) {
+    chips.push({ label: state.lang === "it" ? "Solo fornitura" : "Supply only", tone: "is-idle" });
+  } else if (isInstallationOrderCompleted(order)) {
+    chips.push({ label: state.lang === "it" ? "Posa ok" : "Install done", tone: "is-ok", icon: "🔧" });
+  } else if (order.operations?.installation?.installDate) {
+    chips.push({ label: formatDate(order.operations.installation.installDate), tone: "is-info", icon: "🔧" });
+  } else {
+    chips.push({ label: state.lang === "it" ? "Data mancante" : "No date", tone: "is-warn", icon: "🔧" });
+  }
+
+  // Payment chip
+  const openBalance = getOpenBalance(order);
+  if (openBalance <= 0) {
+    chips.push({ label: state.lang === "it" ? "Saldato" : "Paid", tone: "is-ok", icon: "€" });
+  } else {
+    chips.push({ label: formatCurrency(openBalance), tone: "is-warn", icon: "€" });
+  }
+
+  return `<div class="inbox-status-track">${chips.map((c) => `<span class="inbox-status-chip ${c.tone}">${c.icon ? `<span class="inbox-status-chip-icon" aria-hidden="true">${c.icon}</span>` : ""}<span>${escapeHtml(c.label)}</span></span>`).join("")}</div>`;
+}
+
 function renderOrderRow(order, view = "orders") {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const orderType = view === "orders" ? getInboxCommercialType(order) : getOrderType(order);
@@ -9254,13 +9292,14 @@ function renderOrderRow(order, view = "orders") {
       : stage.tone === "blue"
         ? "badge-info"
         : "badge-warning";
+  const statusTrack = view === "orders" ? buildOrderInboxStatusTrack(order) : "";
   return `
     <article class="order-row inbox-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="${view}">
       <div class="inbox-row-main">
         <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
         <div class="order-meta">${order.operations?.product || undefinedText()} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || addressIncompleteText()}</div>
+        ${statusTrack}
         <div class="inbox-row-next-step">
-          <span class="panel-eyebrow">${state.lang === "it" ? "Prossimo passo" : "Next step"}</span>
           <strong>${nextAction}</strong>
         </div>
       </div>
