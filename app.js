@@ -1104,6 +1104,7 @@ const state = {
   syncInProgress: false,
   navCounts: {},
   orderPage: 1,
+  accountingPage: 1,
   salesRequestPage: 1,
   salesRequestCompactMode: false,
   salesContentPage: 1,
@@ -1361,6 +1362,7 @@ const ui = {
   installationExpenseStatus: document.getElementById("installation-expense-status"),
   installationExpenseSummary: document.getElementById("installation-expense-summary"),
   installationExpenseList: document.getElementById("installation-expense-list"),
+  accountingPagination: document.getElementById("accounting-pagination"),
   accountingSearch: document.getElementById("accounting-search"),
   accountingFilterTags: Array.from(document.querySelectorAll(".accounting-filter-tag")),
   accountingList: document.getElementById("accounting-list"),
@@ -6531,6 +6533,18 @@ function paginateOrders(items) {
   return {
     pageItems: items.slice(start, start + pageSize),
     pageSize,
+    totalPages,
+    totalItems: items.length,
+  };
+}
+
+const ACCOUNTING_PAGE_SIZE = 15;
+function paginateAccounting(items) {
+  const totalPages = Math.max(1, Math.ceil(items.length / ACCOUNTING_PAGE_SIZE));
+  state.accountingPage = Math.min(Math.max(1, state.accountingPage || 1), totalPages);
+  const start = (state.accountingPage - 1) * ACCOUNTING_PAGE_SIZE;
+  return {
+    pageItems: items.slice(start, start + ACCOUNTING_PAGE_SIZE),
     totalPages,
     totalItems: items.length,
   };
@@ -11987,11 +12001,12 @@ function renderAccounting() {
   ui.accountingFilterTags.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.accountingFilter === state.filters.accounting);
   });
-  const orders = filterOrdersForView("accounting");
+  const allOrders = filterOrdersForView("accounting");
   renderAccountingModels();
-  renderAccountingAnalysis(orders);
-  ui.accountingList.innerHTML = orders.length
-    ? orders.map((order) => {
+  renderAccountingAnalysis(allOrders);
+  const { pageItems, totalPages, totalItems } = paginateAccounting(allOrders);
+  ui.accountingList.innerHTML = pageItems.length
+    ? pageItems.map((order) => {
         const selected = order.id === state.selectedOrderId ? "selected" : "";
         const openBalance = getOpenBalance(order);
         const billingHealth = getBillingCompleteness(order);
@@ -12017,6 +12032,18 @@ function renderAccounting() {
         `;
       }).join("")
     : `<div class="info-card">${state.lang === "it" ? "Nessun ordine in contabilità con questo filtro." : "No accounting orders for this filter."}</div>`;
+
+  if (ui.accountingPagination) {
+    ui.accountingPagination.innerHTML = totalItems > ACCOUNTING_PAGE_SIZE
+      ? `<div class="list-pagination-copy">${state.lang === "it" ? `Pagina ${state.accountingPage} di ${totalPages} · ${totalItems} ordini` : `Page ${state.accountingPage} of ${totalPages} · ${totalItems} orders`}</div>
+         <div class="list-pagination-actions">
+           <button class="btn" data-action="accounting-prev-page" ${state.accountingPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prec." : "Prev"}</button>
+           <button class="btn" data-action="accounting-next-page" ${state.accountingPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Succ." : "Next"}</button>
+         </div>`
+      : "";
+  }
+
+  const orders = allOrders;
 
   const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
   if (state.currentView === "accounting" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
@@ -15906,6 +15933,18 @@ function handleGlobalClick(event) {
     ui.ordersList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
+  if (action === "accounting-prev-page") {
+    state.accountingPage = Math.max(1, (state.accountingPage || 1) - 1);
+    renderAccounting();
+    ui.accountingList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "accounting-next-page") {
+    state.accountingPage = (state.accountingPage || 1) + 1;
+    renderAccounting();
+    ui.accountingList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   if (action === "sales-requests-prev-page") {
     setSalesRequestPage((state.salesRequestPage || 1) - 1);
     return;
@@ -16718,6 +16757,7 @@ bindEvent(ui.warehouseSearch, "input", (event) => {
 });
 bindEvent(ui.accountingSearch, "input", (event) => {
   state.search.accounting = event.target.value;
+  state.accountingPage = 1;
   scheduleSearchRender("accounting", renderAccounting);
 });
 bindEvent(ui.accountingAddPaymentButton, "click", () => {
@@ -16766,6 +16806,7 @@ ui.installationFilterTags.forEach((button) => button.addEventListener("click", (
 }));
 ui.accountingFilterTags.forEach((button) => button.addEventListener("click", () => {
   state.filters.accounting = button.dataset.accountingFilter;
+  state.accountingPage = 1;
   ui.accountingFilterTags.forEach((item) => item.classList.toggle("is-active", item === button));
   renderAccounting();
 }));
