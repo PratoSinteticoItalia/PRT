@@ -68,6 +68,22 @@ body.shell-loading::after {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.22s ease;
+  background-color: #e8e4da;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 31px,
+      rgba(90, 80, 60, 0.09) 31px,
+      rgba(90, 80, 60, 0.09) 32px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 31px,
+      rgba(90, 80, 60, 0.09) 31px,
+      rgba(90, 80, 60, 0.09) 32px
+    );
 }
 
 body.shell-loading .shell-launch {
@@ -75,15 +91,18 @@ body.shell-loading .shell-launch {
 }
 
 .shell-launch-card {
-  width: min(560px, 100%);
-  padding: 24px;
+  width: min(520px, 100%);
+  padding: 26px;
   border-radius: 26px;
-  border: 1px solid rgba(28, 55, 41, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.72);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 249, 246, 0.9)),
-    linear-gradient(135deg, rgba(45, 106, 79, 0.12), transparent 42%);
-  box-shadow: 0 30px 88px rgba(16, 24, 20, 0.18);
-  backdrop-filter: blur(22px);
+    linear-gradient(160deg, rgba(255, 255, 255, 0.94) 0%, rgba(247, 249, 246, 0.9) 100%),
+    linear-gradient(135deg, rgba(45, 106, 79, 0.1), transparent 42%);
+  box-shadow:
+    0 2px 0 rgba(255,255,255,0.8) inset,
+    0 30px 80px rgba(16, 24, 20, 0.2),
+    0 4px 12px rgba(16, 24, 20, 0.08);
+  backdrop-filter: blur(24px);
   display: grid;
   gap: 16px;
 }
@@ -175,7 +194,7 @@ body.shell-loading .shell-launch {
 }
 
 .shell-launch-progress {
-  height: 10px;
+  height: 8px;
   border-radius: 999px;
   background: rgba(26, 46, 35, 0.09);
   overflow: hidden;
@@ -5297,6 +5316,16 @@ body {
 
 #orders .order-grid {
   grid-template-columns: minmax(0, 1.18fr) minmax(300px, 0.82fr);
+  align-items: start;
+}
+
+#orders .order-grid > div:first-child,
+#accounting .order-grid > div:first-child {
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 84px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 #shipping .order-grid,
@@ -5680,6 +5709,13 @@ body {
   #orders .order-grid,
   #accounting .order-grid {
     grid-template-columns: 1fr;
+  }
+
+  #orders .order-grid > div:first-child,
+  #accounting .order-grid > div:first-child {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
   }
 
   .detail-panel,
