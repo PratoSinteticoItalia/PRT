@@ -762,6 +762,7 @@ function buildDefaultStore() {
     inventory: [],
     salesRequests: [],
     salesContents: [],
+    usageEvents: [],
     salesRequestSource: {
       spreadsheetInput: DEFAULT_SALES_REQUEST_SPREADSHEET,
       sheetName: "",
@@ -914,6 +915,190 @@ function requireOffice(res, currentUser) {
   if (currentUser?.role === "office") return false;
   sendJson(res, 403, { error: "forbidden" });
   return true;
+}
+
+const USAGE_EVENT_TYPES = new Set([
+  "portal_login",
+  "quote_generator_opened",
+  "quote_prefill_applied",
+  "quote_pdf_exported",
+  "quote_export_failed",
+  "quote_whatsapp_opened",
+  "quote_email_opened",
+]);
+
+function normalizeUsageEventType(type = "") {
+  const normalized = String(type || "").trim().toLowerCase().replace(/[^a-z0-9_:-]+/g, "_");
+  return USAGE_EVENT_TYPES.has(normalized) ? normalized : "";
+}
+
+function normalizeUsageDeviceType(userAgent = "", clientDevice = "") {
+  const explicit = String(clientDevice || "").trim().toLowerCase();
+  if (["mobile", "tablet", "desktop"].includes(explicit)) return explicit;
+  const ua = String(userAgent || "").toLowerCase();
+  if (/ipad|tablet|kindle/.test(ua)) return "tablet";
+  if (/mobile|iphone|android.*mobile|windows phone/.test(ua)) return "mobile";
+  if (ua) return "desktop";
+  return "unknown";
+}
+
+function sanitizeUsageMeta(meta = {}) {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return {};
+  return Object.entries(meta).slice(0, 12).reduce((acc, [key, value]) => {
+    const safeKey = String(key || "").trim().replace(/[^a-zA-Z0-9_-]+/g, "").slice(0, 40);
+    if (!safeKey) return acc;
+    if (typeof value === "boolean") {
+      acc[safeKey] = value;
+      return acc;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      acc[safeKey] = value;
+      return acc;
+    }
+    const text = String(value ?? "").trim();
+    if (text) acc[safeKey] = text.slice(0, 160);
+    return acc;
+  }, {});
+}
+
+function normalizeUsageEventRecord(event = {}) {
+  const type = normalizeUsageEventType(event.type);
+  if (!type) return null;
+  const createdAt = new Date(event.createdAt || Date.now());
+  return {
+    id: String(event.id || randomUUID()),
+    type,
+    userId: String(event.userId || ""),
+    userName: String(event.userName || ""),
+    userEmail: String(event.userEmail || ""),
+    userRole: normalizeUserRole(event.userRole || "") || "office",
+    deviceType: normalizeUsageDeviceType("", event.deviceType),
+    sourceView: String(event.sourceView || "").trim().slice(0, 80),
+    meta: sanitizeUsageMeta(event.meta || {}),
+    createdAt: Number.isNaN(createdAt.getTime()) ? new Date().toISOString() : createdAt.toISOString(),
+  };
+}
+
+function recordUsageEvent(store, currentUser, req, body = {}) {
+  const type = normalizeUsageEventType(body.type);
+  if (!type || !currentUser) return null;
+  store.usageEvents = Array.isArray(store.usageEvents) ? store.usageEvents : [];
+  const event = normalizeUsageEventRecord({
+    id: randomUUID(),
+    type,
+    userId: currentUser.id,
+    userName: currentUser.name,
+    userEmail: currentUser.email,
+    userRole: currentUser.role,
+    deviceType: normalizeUsageDeviceType(req.headers["user-agent"], body.deviceType),
+    sourceView: body.sourceView,
+    meta: sanitizeUsageMeta(body.meta || {}),
+    createdAt: new Date().toISOString(),
+  });
+  if (!event) return null;
+  store.usageEvents.unshift(event);
+  store.usageEvents = store.usageEvents.slice(0, 5000);
+  return event;
+}
+
+function buildUsageReport(store) {
+  const users = Array.isArray(store.users) ? store.users.map(sanitizeUser).filter(Boolean) : [];
+  const events = Array.isArray(store.usageEvents)
+    ? store.usageEvents.map(normalizeUsageEventRecord).filter(Boolean)
+    : [];
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const since7 = now - (7 * dayMs);
+  const since30 = now - (30 * dayMs);
+  const byUser = new Map(users.map((user) => [String(user.id), {
+    user,
+    lastActivityAt: "",
+    events7d: 0,
+    events30d: 0,
+    generatorOpens30d: 0,
+    quoteExports30d: 0,
+    contactActions30d: 0,
+    exportErrors30d: 0,
+    devices30d: { desktop: 0, mobile: 0, tablet: 0, unknown: 0 },
+  }]));
+
+  const totals = {
+    activeUsers7d: 0,
+    activeUsers30d: 0,
+    generatorOpens30d: 0,
+    quoteExports30d: 0,
+    contactActions30d: 0,
+    exportErrors30d: 0,
+    device30d: { desktop: 0, mobile: 0, tablet: 0, unknown: 0 },
+  };
+  const active7 = new Set();
+  const active30 = new Set();
+
+  events.forEach((event) => {
+    const timestamp = new Date(event.createdAt).getTime();
+    if (!Number.isFinite(timestamp)) return;
+    const userId = String(event.userId || "");
+    if (!byUser.has(userId)) {
+      byUser.set(userId, {
+        user: {
+          id: userId || "unknown",
+          name: event.userName || "Account non trovato",
+          email: event.userEmail || "",
+          role: event.userRole || "office",
+        },
+        lastActivityAt: "",
+        events7d: 0,
+        events30d: 0,
+        generatorOpens30d: 0,
+        quoteExports30d: 0,
+        contactActions30d: 0,
+        exportErrors30d: 0,
+        devices30d: { desktop: 0, mobile: 0, tablet: 0, unknown: 0 },
+      });
+    }
+    const row = byUser.get(userId);
+    if (!row.lastActivityAt || timestamp > new Date(row.lastActivityAt).getTime()) row.lastActivityAt = event.createdAt;
+    if (timestamp >= since7) {
+      row.events7d += 1;
+      active7.add(userId);
+    }
+    if (timestamp < since30) return;
+    row.events30d += 1;
+    active30.add(userId);
+    const device = ["desktop", "mobile", "tablet"].includes(event.deviceType) ? event.deviceType : "unknown";
+    row.devices30d[device] += 1;
+    totals.device30d[device] += 1;
+    if (event.type === "quote_generator_opened") {
+      row.generatorOpens30d += 1;
+      totals.generatorOpens30d += 1;
+    }
+    if (event.type === "quote_pdf_exported") {
+      row.quoteExports30d += 1;
+      totals.quoteExports30d += 1;
+    }
+    if (event.type === "quote_whatsapp_opened" || event.type === "quote_email_opened") {
+      row.contactActions30d += 1;
+      totals.contactActions30d += 1;
+    }
+    if (event.type === "quote_export_failed") {
+      row.exportErrors30d += 1;
+      totals.exportErrors30d += 1;
+    }
+  });
+
+  totals.activeUsers7d = active7.size;
+  totals.activeUsers30d = active30.size;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    totals,
+    users: Array.from(byUser.values())
+      .sort((left, right) => {
+        const rightTime = new Date(right.lastActivityAt || 0).getTime();
+        const leftTime = new Date(left.lastActivityAt || 0).getTime();
+        return rightTime - leftTime;
+      }),
+  };
 }
 
 function parseCookies(cookieHeader = "") {
@@ -3580,7 +3765,11 @@ function reconcileStoreData(store) {
           ...normalized,
           attachments: attachmentResult.attachments,
         };
-      })
+    })
+    : [];
+
+  store.usageEvents = Array.isArray(store.usageEvents)
+    ? store.usageEvents.map(normalizeUsageEventRecord).filter(Boolean).slice(0, 5000)
     : [];
 
   store.salesRequestSource = normalizeSalesRequestSourceConfig(store.salesRequestSource || defaults.salesRequestSource);
@@ -4808,6 +4997,7 @@ async function handleApi(req, res, url) {
       expiresAt: Date.now() + SESSION_TTL_MS,
     });
     pushSecurityEvent(store, "login_success", user.email, "Login effettuato.", { ip: getClientIp(req) });
+    recordUsageEvent(store, user, req, { type: "portal_login", sourceView: "login" });
     await writeJson(STORE_PATH, store);
 
     return sendJson(
@@ -4862,6 +5052,21 @@ async function handleApi(req, res, url) {
     store.coveragePlanner = normalizeCoveragePlanner(body || {});
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.coveragePlanner);
+  }
+
+  if (url.pathname === "/api/usage/events" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const body = await readBody(req);
+    const event = recordUsageEvent(store, currentUser, req, body || {});
+    if (!event) return sendJson(res, 400, { error: "invalid_usage_event" });
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (url.pathname === "/api/usage/report" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    return sendJson(res, 200, buildUsageReport(store));
   }
 
   if (url.pathname === "/api/sales/request-source" && req.method === "POST") {

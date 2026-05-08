@@ -13141,10 +13141,113 @@ textarea.text-input {
   line-height: 1.35;
 }
 
+.usage-report-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.usage-kpi-card {
+  background: #fff;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-left: 5px solid var(--primary, #2d6a4f);
+  border-radius: 18px;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  min-height: 142px;
+  padding: 22px;
+}
+
+.usage-kpi-card span,
+.usage-account-main small {
+  color: var(--muted, #7b8794);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.usage-kpi-card strong {
+  color: var(--ink, #111827);
+  display: block;
+  font-size: 32px;
+  line-height: 1.05;
+  margin-top: 12px;
+}
+
+.usage-kpi-card p {
+  color: var(--muted, #7b8794);
+  line-height: 1.35;
+  margin: 10px 0 0;
+}
+
+.usage-report-list {
+  display: grid;
+  gap: 12px;
+}
+
+.usage-account-row {
+  align-items: center;
+  background: linear-gradient(180deg, #fff, #fbfcfb);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 18px;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(360px, 2fr) auto;
+  padding: 18px;
+}
+
+.usage-account-main strong,
+.usage-account-main span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.usage-account-main span {
+  color: var(--muted, #7b8794);
+  margin-top: 4px;
+}
+
+.usage-account-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.usage-account-metrics span,
+.usage-device-chip {
+  background: #f5f7f4;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 999px;
+  color: var(--ink, #111827);
+  font-weight: 800;
+  padding: 9px 12px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.usage-account-metrics .is-warning {
+  background: #fff6ed;
+  color: #a14818;
+}
+
+.usage-device-chip {
+  background: #eaf5ef;
+  color: #25543d;
+}
+
 @media (max-width: 1380px) {
   .view#dashboard > .kpi-grid > .kpi-card .kpi-value,
   .dashboard-snapshot-card .kpi-value {
     font-size: 24px;
+  }
+
+  .usage-report-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-account-row {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -13158,5 +13261,10 @@ textarea.text-input {
     max-width: none;
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .usage-report-summary,
+  .usage-account-metrics {
+    grid-template-columns: 1fr;
   }
 }

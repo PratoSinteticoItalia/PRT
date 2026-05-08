@@ -29,6 +29,16 @@
   const ENABLE_BRANDING_EXPORT = false;
   const ENABLE_PLANNER_REPORT_EXPORT = false;
 
+  function notifyPortalUsage(eventType, meta = {}) {
+    try {
+      window.parent?.postMessage({
+        type: "quote-generator:usage-event",
+        eventType,
+        meta,
+      }, "*");
+    } catch {}
+  }
+
   function readJsonStorage(key, fallback = null) {
     try {
       const rawValue = window.localStorage.getItem(key);
@@ -2326,6 +2336,11 @@
       event.stopImmediatePropagation();
       pdfDownloadInterceptionActive = true;
       let compactExportCleanup = null;
+      notifyPortalUsage("quote_pdf_exported", {
+        recommendedModel: selectedRecommendation || "",
+        compactExport: shouldCompactQuoteExport,
+        plannerReport: shouldAttachPlannerReport,
+      });
 
       Promise.resolve()
         .then(() => {
@@ -2352,6 +2367,7 @@
         .then(() => (shouldDecorateBranding ? preparePdfBrandingForExport() : undefined))
         .catch((error) => {
           console.warn("Preparazione export PDF fallita:", error);
+          notifyPortalUsage("quote_export_failed", { stage: "prepare_pdf_export" });
         })
         .finally(() => {
           pdfDownloadInterceptionActive = false;

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260507-requests-page-anchor-138";
+const APP_SHELL_VERSION = "20260507-reseller-usage-report-139";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -231,11 +231,11 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "settings"],
+  office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings"],
   warehouse: ["warehouse", "shipping"],
   crew: ["installations", "sales-generator"],
 };
-const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "settings"]);
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -272,6 +272,7 @@ const translations = {
     accounting: "Contabilità",
     "profit-split": "Conti posa",
     shipping: "Logistica",
+    "reseller-report": "Report rivenditori",
     settings: "Impostazioni",
     office: "Ufficio",
     warehouseRole: "Inventario",
@@ -518,6 +519,7 @@ const translations = {
     accounting: "Accounting",
     "profit-split": "Install splits",
     shipping: "Shipping",
+    "reseller-report": "Reseller report",
     settings: "Settings",
     office: "Office",
     warehouseRole: "Inventory",
@@ -1053,6 +1055,9 @@ const state = {
   users: [],
   securityEvents: [],
   securityPolicy: {},
+  usageReport: null,
+  usageReportLoading: false,
+  usageEventSessionKeys: new Set(),
   settings: {},
   currentView: "dashboard",
   selectedOrderId: null,
@@ -1277,6 +1282,10 @@ const ui = {
   salesContentAttachmentButton: document.getElementById("sales-content-attachment-button"),
   salesContentDetailTitle: document.getElementById("sales-content-detail-title"),
   salesContentAttachments: document.getElementById("sales-content-attachments"),
+  usageReportRefreshButton: document.getElementById("usage-report-refresh-button"),
+  usageReportSummary: document.getElementById("usage-report-summary"),
+  usageReportList: document.getElementById("usage-report-list"),
+  usageReportStatus: document.getElementById("usage-report-status"),
   orderDetailTitle: document.getElementById("order-detail-title"),
   orderDetailBadge: document.getElementById("order-detail-badge"),
   orderDetailSummary: document.getElementById("order-detail-summary"),
@@ -1617,6 +1626,41 @@ function buildVersionedUrl(pathname = window.location.pathname, version = APP_SH
   url.pathname = pathname;
   url.searchParams.set("shell", version);
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function getClientDeviceType() {
+  const ua = String(navigator.userAgent || "").toLowerCase();
+  if (/ipad|tablet|kindle/.test(ua)) return "tablet";
+  if (/mobile|iphone|android.*mobile|windows phone/.test(ua)) return "mobile";
+  return "desktop";
+}
+
+function trackUsageEvent(type, meta = {}, options = {}) {
+  if (!state.currentUser) return;
+  const safeType = String(type || "").trim();
+  if (!safeType) return;
+  const key = String(options.key || safeType);
+  if (options.oncePerSession) {
+    if (state.usageEventSessionKeys.has(key)) return;
+    state.usageEventSessionKeys.add(key);
+  }
+  const payload = JSON.stringify({
+    type: safeType,
+    sourceView: state.currentView,
+    deviceType: getClientDeviceType(),
+    meta,
+  });
+  if (navigator.sendBeacon) {
+    const blob = new Blob([payload], { type: "application/json" });
+    if (navigator.sendBeacon("/api/usage/events", blob)) return;
+  }
+  fetch("/api/usage/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    keepalive: true,
+    body: payload,
+  }).catch(() => {});
 }
 
 async function ensureFreshShellVersion() {
@@ -4566,6 +4610,14 @@ function pushSalesRequestToGenerator(force = false) {
       payload: null,
     }, "*");
   } catch {}
+  trackUsageEvent("quote_prefill_applied", {
+    source: "sales-request",
+    requestId: payload?.requestId || payload?.id || "",
+    service: payload?.service || "",
+  }, {
+    oncePerSession: true,
+    key: `quote-prefill:${payload?.requestId || payload?.id || "selected"}`,
+  });
 }
 
 function applySalesGeneratorFrameHeight(rawHeight) {
@@ -4583,6 +4635,10 @@ function applySalesGeneratorFrameHeight(rawHeight) {
 window.addEventListener("message", (event) => {
   if (event.data?.type === "quote-generator:content-height") {
     applySalesGeneratorFrameHeight(event.data?.height);
+    return;
+  }
+  if (event.data?.type === "quote-generator:usage-event") {
+    trackUsageEvent(event.data.eventType, event.data.meta || {});
   }
 });
 
@@ -9835,6 +9891,10 @@ function renderSalesGenerator() {
     }
   }
   if (state.currentView === "sales-generator") {
+    trackUsageEvent("quote_generator_opened", {
+      mode: plannerMode ? "planner" : freeMode ? "free" : "sales-request",
+      hasRequest: Boolean(selected),
+    }, { oncePerSession: true, key: "quote-generator-opened" });
     const measuredHeight = Number(ui.salesGeneratorFrame?.dataset.measuredHeight || 0);
     if (!measuredHeight || measuredHeight > 2400) {
       applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
@@ -12872,6 +12932,8 @@ function applySessionPayload(session = {}) {
     state.lastSalesGeneratorSignature = "";
     state.lastSalesGeneratorBrandingSignature = "";
     state.salesGeneratorFreeMode = false;
+    state.usageReport = null;
+    state.usageEventSessionKeys = new Set();
     state.pendingCurrentViewRefresh = false;
   }
   state.coveragePlanner = mergeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner, state.coveragePlanner);
@@ -13247,6 +13309,132 @@ function showApp() {
   });
 }
 
+function getUsageEventLabel(type = "") {
+  const labels = {
+    portal_login: "Login",
+    quote_generator_opened: "Apertura generatore",
+    quote_prefill_applied: "Prefill richiesta",
+    quote_pdf_exported: "PDF generati",
+    quote_export_failed: "Errori export",
+    quote_whatsapp_opened: "WhatsApp",
+    quote_email_opened: "Email",
+  };
+  return labels[type] || type || "Evento";
+}
+
+function getDeviceLabel(device = "") {
+  const labels = {
+    desktop: "Desktop",
+    mobile: "Mobile",
+    tablet: "Tablet",
+    unknown: "N/D",
+  };
+  return labels[device] || "N/D";
+}
+
+function getDominantUsageDevice(devices = {}) {
+  return Object.entries(devices || {})
+    .sort((left, right) => Number(right[1] || 0) - Number(left[1] || 0))[0]?.[0] || "unknown";
+}
+
+function formatUsageDate(value) {
+  if (!value) return "Mai";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Mai";
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+async function loadUsageReport(options = {}) {
+  if (normalizeUserRole(state.currentUser?.role) !== "office") return;
+  if (state.usageReportLoading) return;
+  state.usageReportLoading = true;
+  if (!options.silent) renderResellerReport();
+  try {
+    state.usageReport = await apiFetch("/api/usage/report");
+  } catch (error) {
+    console.error("usage_report_load_failed", error);
+    state.usageReport = { error: true, totals: {}, users: [] };
+  } finally {
+    state.usageReportLoading = false;
+    renderResellerReport();
+  }
+}
+
+function renderResellerReport() {
+  if (!ui.usageReportSummary || !ui.usageReportList) return;
+  if (normalizeUserRole(state.currentUser?.role) !== "office") {
+    ui.usageReportSummary.innerHTML = "";
+    ui.usageReportList.innerHTML = `<div class="empty-state">Report disponibile solo per l'ufficio.</div>`;
+    return;
+  }
+  if (state.currentView === "reseller-report" && !state.usageReport && !state.usageReportLoading) {
+    loadUsageReport({ silent: true });
+  }
+  if (state.usageReportLoading && !state.usageReport) {
+    ui.usageReportSummary.innerHTML = "";
+    ui.usageReportList.innerHTML = `<div class="empty-state">Caricamento report...</div>`;
+    if (ui.usageReportStatus) ui.usageReportStatus.textContent = "Aggiornamento in corso";
+    return;
+  }
+
+  const totals = state.usageReport?.totals || {};
+  const deviceTotals = totals.device30d || {};
+  const dominantDevice = getDominantUsageDevice(deviceTotals);
+  const summaryCards = [
+    ["Utenti attivi 7g", totals.activeUsers7d || 0, "Account con almeno un'attività recente."],
+    ["Aperture generatore", totals.generatorOpens30d || 0, "Ultimi 30 giorni."],
+    ["PDF generati", totals.quoteExports30d || 0, "Export monitorati dal preventivatore."],
+    ["Device prevalente", getDeviceLabel(dominantDevice), `${deviceTotals[dominantDevice] || 0} eventi negli ultimi 30 giorni.`],
+  ];
+  ui.usageReportSummary.innerHTML = summaryCards.map(([label, value, copy]) => `
+    <article class="usage-kpi-card">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <p>${escapeHtml(copy)}</p>
+    </article>
+  `).join("");
+
+  const rows = Array.isArray(state.usageReport?.users) ? state.usageReport.users : [];
+  if (ui.usageReportStatus) {
+    ui.usageReportStatus.textContent = state.usageReport?.generatedAt
+      ? `Aggiornato ${formatUsageDate(state.usageReport.generatedAt)}`
+      : "Dati interni portale";
+  }
+  if (!rows.length) {
+    ui.usageReportList.innerHTML = `<div class="empty-state">Nessun account monitorato.</div>`;
+    return;
+  }
+  ui.usageReportList.innerHTML = rows.map((row) => {
+    const user = row.user || {};
+    const device = getDominantUsageDevice(row.devices30d || {});
+    const deviceBreakdown = Object.entries(row.devices30d || {})
+      .filter(([, count]) => Number(count || 0) > 0)
+      .map(([key, count]) => `${getDeviceLabel(key)} ${count}`)
+      .join(" · ") || "Nessun dato device";
+    return `
+      <article class="usage-account-row">
+        <div class="usage-account-main">
+          <strong>${escapeHtml(user.name || user.email || "Account")}</strong>
+          <span>${escapeHtml(user.email || "")}</span>
+          <small>${escapeHtml(roleLabel(user.role))} · ultimo uso ${escapeHtml(formatUsageDate(row.lastActivityAt))}</small>
+        </div>
+        <div class="usage-account-metrics">
+          <span><b>${Number(row.generatorOpens30d || 0)}</b> aperture</span>
+          <span><b>${Number(row.quoteExports30d || 0)}</b> PDF</span>
+          <span><b>${Number(row.contactActions30d || 0)}</b> contatti</span>
+          <span class="${Number(row.exportErrors30d || 0) ? "is-warning" : ""}"><b>${Number(row.exportErrors30d || 0)}</b> errori</span>
+        </div>
+        <div class="usage-device-chip" title="${escapeHtml(deviceBreakdown)}">${escapeHtml(getDeviceLabel(device))}</div>
+      </article>
+    `;
+  }).join("");
+}
+
 function render() {
   if (state.currentUser && state.shellPending) {
     setShellPending(false);
@@ -13265,6 +13453,7 @@ function render() {
   renderAccounting();
   renderProfitSplitWorkspace();
   renderShipping();
+  renderResellerReport();
   renderSettings();
 }
 
@@ -13306,6 +13495,9 @@ function renderCurrentViewOnly(view = state.currentView) {
       break;
     case "shipping":
       renderShipping();
+      break;
+    case "reseller-report":
+      renderResellerReport();
       break;
     case "settings":
       renderSettings();
@@ -15905,8 +16097,15 @@ bindEvent(ui.salesGeneratorEmailButton, "click", (event) => {
   const href = ui.salesGeneratorEmailButton?.getAttribute("href") || "";
   if (!href || href === "#") return;
   event.preventDefault();
+  trackUsageEvent("quote_email_opened", { requestId: state.selectedSalesRequestId || "" });
   openMailtoUrl(href);
 });
+bindEvent(ui.salesGeneratorWhatsAppButton, "click", () => {
+  const href = ui.salesGeneratorWhatsAppButton?.getAttribute("href") || "";
+  if (!href || href === "#") return;
+  trackUsageEvent("quote_whatsapp_opened", { requestId: state.selectedSalesRequestId || "" });
+});
+bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
   state.salesGeneratorFreeMode = false;
