@@ -6318,6 +6318,12 @@ function handleCoverageMapClick(event) {
   renderInstallationsCoverage();
 }
 
+let coverageRenderTimer = 0;
+function scheduleCoverageRender() {
+  clearTimeout(coverageRenderTimer);
+  coverageRenderTimer = setTimeout(renderInstallationsCoverage, 120);
+}
+
 function renderInstallationsCoverage() {
   const crewNames = getCoverageManagedCrewNames();
   if (ui.coverageTeamList) {
@@ -11892,7 +11898,7 @@ function renderInstallations() {
       : (state.lang === "it" ? "Da pianificare (backlog)" : "To schedule (backlog)");
   }
   getSelectedInstallationCrew();
-  renderInstallationsCoverage();
+  scheduleCoverageRender();
   if (ui.installationCalendar) {
     ui.installationCalendar.innerHTML = buildInstallationCalendar(orders, calendarCrewScope);
   }
@@ -11950,7 +11956,7 @@ function renderInstallations() {
   if (!state.selectedInstallationCrew && order.operations?.installation?.crew) {
     state.selectedInstallationCrew = order.operations.installation.crew;
   }
-  renderInstallationsCoverage();
+  scheduleCoverageRender();
   ui.installationDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
   if (ui.installationDetailMeta) {
     ui.installationDetailMeta.textContent = isCrewView
@@ -12838,7 +12844,7 @@ function renderProfitSplitWorkspace() {
     restoreProfitSplitLocalDraft();
   }
   renderProfitSplitCalculator();
-  renderInstallationsCoverage();
+  scheduleCoverageRender();
 }
 
 function renderSecurityCenter() {
