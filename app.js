@@ -1422,7 +1422,15 @@ const ui = {
   profitSplitSummary: document.getElementById("profit-split-summary"),
   profitSplitBreakdown: document.getElementById("profit-split-breakdown"),
   profitSplitResetButton: document.getElementById("profit-split-reset-button"),
+  profitSplitDistributionBar: document.getElementById("profit-split-distribution-bar"),
+  profitSplitLiveRevenue: document.getElementById("profit-split-live-revenue"),
+  profitSplitLiveJobLabel: document.getElementById("profit-split-live-job-label"),
   authDemo: document.getElementById("auth-demo"),
+  cmdKOverlay: document.getElementById("cmd-k-overlay"),
+  cmdKInput: document.getElementById("cmd-k-input"),
+  cmdKResults: document.getElementById("cmd-k-results"),
+  cmdKEmpty: document.getElementById("cmd-k-empty"),
+  topbarSearchInput: document.getElementById("topbar-search-input"),
   orderModal: document.getElementById("order-modal"),
   orderModalTitle: document.getElementById("order-modal-title"),
   orderForm: document.getElementById("order-form"),
@@ -2604,6 +2612,52 @@ async function saveProfitSplitToLinkedOrder() {
   renderCurrentViewOnly(state.currentView);
 }
 
+function renderProfitSplitDistributionBar(result, hasValues) {
+  if (!ui.profitSplitDistributionBar) return;
+  const partnerName = result.partnerName || (state.lang === "it" ? "Collaboratore" : "Partner");
+  const ownerLabel = state.lang === "it" ? "Tu" : "You";
+  const baseTotal = Math.max(0, Number(result.revenue) || 0);
+  const liveSegments = [
+    { key: "expenses", label: state.lang === "it" ? "Costi vivi" : "Costs", value: result.ownerPaidExpenses + result.partnerPaidExpenses + result.sharedJobCosts },
+    { key: "fixed", label: state.lang === "it" ? "Fisso collab." : "Partner fixed", value: result.partnerFixedTotal },
+    { key: "recovery", label: state.lang === "it" ? "Recuperi" : "Recoveries", value: result.ownerRecovery + result.partnerRecovery },
+    { key: "partner", label: `${partnerName} ${state.lang === "it" ? "utile" : "profit"}`, value: Math.max(0, result.partnerProfitShare) },
+    { key: "owner", label: `${ownerLabel} ${state.lang === "it" ? "utile" : "profit"}`, value: Math.max(0, result.ownerProfitShare) },
+  ].map((segment) => ({
+    ...segment,
+    value: Math.max(0, Number(segment.value) || 0),
+  })).filter((segment) => segment.value > 0);
+  const computedTotal = liveSegments.reduce((sum, segment) => sum + segment.value, 0);
+  const total = Math.max(baseTotal, computedTotal);
+  if (!hasValues || total <= 0) {
+    ui.profitSplitDistributionBar.innerHTML = `
+      <div class="profit-split-distribution-empty">${escapeHtml(state.lang === "it" ? "La barra si popola appena inserisci ricavo e spese." : "Bar fills as you enter revenue and costs.")}</div>
+    `;
+    return;
+  }
+  const negativeProfit = result.divisibleProfit < 0;
+  const segmentMarkup = liveSegments.map((segment) => {
+    const pct = Math.max(0, (segment.value / total) * 100);
+    return `
+      <span class="profit-split-distribution-segment is-${segment.key}" style="width: ${pct.toFixed(2)}%" title="${escapeHtml(`${segment.label} · ${formatCurrency(segment.value)}`)}"></span>
+    `;
+  }).join("");
+  const legendMarkup = liveSegments.map((segment) => `
+    <li class="profit-split-distribution-legend-item">
+      <span class="profit-split-distribution-dot is-${segment.key}"></span>
+      <span class="profit-split-distribution-legend-label">${escapeHtml(segment.label)}</span>
+      <strong class="profit-split-distribution-legend-value">${escapeHtml(formatCurrency(segment.value))}</strong>
+    </li>
+  `).join("");
+  ui.profitSplitDistributionBar.innerHTML = `
+    <div class="profit-split-distribution-track" role="img" aria-label="${escapeHtml(state.lang === "it" ? "Distribuzione del ricavo" : "Revenue distribution")}">
+      ${segmentMarkup}
+    </div>
+    <ul class="profit-split-distribution-legend">${legendMarkup}</ul>
+    ${negativeProfit ? `<p class="profit-split-distribution-warning">${escapeHtml(state.lang === "it" ? "Utile divisibile negativo: i costi superano il ricavo." : "Distributable profit is negative: costs exceed revenue.")}</p>` : ""}
+  `;
+}
+
 function renderProfitSplitCalculator({ syncForm = true } = {}) {
   if (!ui.profitSplitSummary || !ui.profitSplitBreakdown) return;
   if (ui.profitSplitCrewOptions) {
@@ -2634,6 +2688,18 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
     result.partnerFixedTotal,
     result.expenseLineCount,
   ].some((value) => Math.abs(value) > 0);
+
+  if (ui.profitSplitLiveRevenue) {
+    ui.profitSplitLiveRevenue.textContent = formatCurrency(result.revenue || 0);
+  }
+  if (ui.profitSplitLiveJobLabel) {
+    const jobLabel = String(draft.jobLabel || "").trim();
+    ui.profitSplitLiveJobLabel.textContent = jobLabel
+      || (hasValues
+        ? (state.lang === "it" ? "Commessa senza nota" : "Job without note")
+        : (state.lang === "it" ? "Inizia inserendo il ricavo" : "Start by entering revenue"));
+  }
+  renderProfitSplitDistributionBar(result, hasValues);
 
   if (!hasValues) {
     ui.profitSplitSummary.innerHTML = [
@@ -16135,7 +16201,192 @@ function handleGlobalClick(event) {
   }
 }
 
+// ── Cmd+K global search ────────────────────────────────────────────────────
+
+let cmdKActiveIndex = -1;
+
+function openGlobalSearch() {
+  if (!ui.cmdKOverlay) return;
+  ui.cmdKOverlay.classList.remove("hidden");
+  if (ui.cmdKInput) {
+    ui.cmdKInput.value = "";
+    ui.cmdKInput.focus();
+  }
+  cmdKActiveIndex = -1;
+  renderCmdKResults("");
+}
+
+function closeGlobalSearch() {
+  if (!ui.cmdKOverlay) return;
+  ui.cmdKOverlay.classList.add("hidden");
+  if (ui.topbarSearchInput) ui.topbarSearchInput.blur();
+}
+
+function searchGlobalData(query) {
+  const q = normalizeLooseString(query);
+  const results = [];
+
+  const orders = state.orders || [];
+  for (const order of orders) {
+    if (results.filter((r) => r.type === "order").length >= 6) break;
+    const haystack = normalizeLooseString([
+      getOrderNumber(order),
+      composeClientName(order),
+      order.city,
+      order.address,
+      order.phone,
+      order.email,
+    ].join(" "));
+    if (haystack.includes(q)) {
+      results.push({
+        type: "order",
+        id: order.id,
+        title: composeClientName(order),
+        meta: [getOrderNumber(order), order.city].filter(Boolean).join(" · "),
+        badge: getOrderNumber(order),
+      });
+    }
+  }
+
+  const requests = state.salesRequests || [];
+  for (const req of requests) {
+    if (results.filter((r) => r.type === "request").length >= 6) break;
+    const fullName = `${req.name} ${req.surname}`.trim();
+    const haystack = normalizeLooseString([
+      fullName,
+      req.city,
+      req.phone,
+      req.email,
+    ].join(" "));
+    if (haystack.includes(q)) {
+      results.push({
+        type: "request",
+        id: req.id,
+        title: fullName || req.phone || req.email || "—",
+        meta: [req.city, req.status].filter(Boolean).join(" · "),
+        badge: req.status,
+      });
+    }
+  }
+
+  return results;
+}
+
+function renderCmdKResults(query) {
+  if (!ui.cmdKResults || !ui.cmdKEmpty) return;
+  if (!query.trim()) {
+    ui.cmdKResults.innerHTML = "";
+    ui.cmdKEmpty.classList.add("hidden");
+    cmdKActiveIndex = -1;
+    return;
+  }
+  const results = searchGlobalData(query);
+  if (!results.length) {
+    ui.cmdKResults.innerHTML = "";
+    ui.cmdKEmpty.classList.remove("hidden");
+    cmdKActiveIndex = -1;
+    return;
+  }
+  ui.cmdKEmpty.classList.add("hidden");
+  const orders = results.filter((r) => r.type === "order");
+  const requests = results.filter((r) => r.type === "request");
+  let html = "";
+  if (orders.length) {
+    html += `<div class="cmd-k-result-group-label">Ordini</div>`;
+    for (const item of orders) {
+      html += buildCmdKResultItemHtml(item);
+    }
+  }
+  if (requests.length) {
+    html += `<div class="cmd-k-result-group-label">Richieste</div>`;
+    for (const item of requests) {
+      html += buildCmdKResultItemHtml(item);
+    }
+  }
+  ui.cmdKResults.innerHTML = html;
+  cmdKActiveIndex = -1;
+}
+
+function buildCmdKResultItemHtml(item) {
+  const icon = item.type === "order" ? "📦" : "💬";
+  const iconClass = item.type === "order" ? "is-order" : "is-request";
+  return `<div class="cmd-k-result-item" data-cmdk-type="${escapeHtml(item.type)}" data-cmdk-id="${escapeHtml(item.id)}" role="option">
+    <div class="cmd-k-result-icon ${iconClass}">${icon}</div>
+    <div class="cmd-k-result-body">
+      <div class="cmd-k-result-title">${escapeHtml(item.title)}</div>
+      <div class="cmd-k-result-meta">${escapeHtml(item.meta)}</div>
+    </div>
+    <div class="cmd-k-result-badge">${escapeHtml(item.badge)}</div>
+  </div>`;
+}
+
+function activateCmdKResult(item) {
+  if (!item) return;
+  const type = item.dataset.cmdkType;
+  const id = item.dataset.cmdkId;
+  closeGlobalSearch();
+  if (type === "order") {
+    state.selectedOrderId = id;
+    setView("orders");
+  } else if (type === "request") {
+    state.selectedSalesRequestId = id;
+    setView("sales-requests");
+  }
+}
+
+function moveCmdKSelection(delta) {
+  const items = ui.cmdKResults?.querySelectorAll(".cmd-k-result-item") || [];
+  if (!items.length) return;
+  items[cmdKActiveIndex]?.classList.remove("is-active");
+  cmdKActiveIndex = Math.max(0, Math.min(items.length - 1, cmdKActiveIndex + delta));
+  const active = items[cmdKActiveIndex];
+  active?.classList.add("is-active");
+  active?.scrollIntoView({ block: "nearest" });
+}
+
+if (ui.cmdKInput) {
+  ui.cmdKInput.addEventListener("input", (e) => {
+    renderCmdKResults(e.target.value);
+  });
+  ui.cmdKInput.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); moveCmdKSelection(1); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); moveCmdKSelection(-1); return; }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const items = ui.cmdKResults?.querySelectorAll(".cmd-k-result-item") || [];
+      const active = cmdKActiveIndex >= 0 ? items[cmdKActiveIndex] : items[0];
+      activateCmdKResult(active);
+      return;
+    }
+    if (e.key === "Escape") { e.preventDefault(); closeGlobalSearch(); }
+  });
+}
+
+if (ui.cmdKOverlay) {
+  ui.cmdKOverlay.querySelector(".cmd-k-backdrop")?.addEventListener("click", closeGlobalSearch);
+  ui.cmdKResults?.addEventListener("click", (e) => {
+    const item = e.target.closest(".cmd-k-result-item");
+    if (item) activateCmdKResult(item);
+  });
+}
+
+if (ui.topbarSearchInput) {
+  ui.topbarSearchInput.addEventListener("focus", openGlobalSearch);
+  ui.topbarSearchInput.addEventListener("click", openGlobalSearch);
+}
+
+// ── /Cmd+K global search ───────────────────────────────────────────────────
+
 function handleGlobalActionKeydown(event) {
+  if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+    event.preventDefault();
+    openGlobalSearch();
+    return;
+  }
+  if (event.key === "Escape" && !ui.cmdKOverlay?.classList.contains("hidden")) {
+    closeGlobalSearch();
+    return;
+  }
   if (event.key !== "Enter" && event.key !== " ") return;
   const trigger = event.target.closest("[data-action][role='button']");
   if (!trigger) return;
