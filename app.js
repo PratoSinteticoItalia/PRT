@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-logout-shopify-link-content-share-146";
+const APP_SHELL_VERSION = "20260509-inbox-sort-date-prominent-147";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9432,22 +9432,29 @@ function getShopifyAdminOrderUrl(order) {
 }
 
 function formatOrderRelativeDate(isoString) {
-  if (!isoString) return "";
+  if (!isoString) return { label: "", tone: "" };
   const orderDate = new Date(isoString);
-  if (Number.isNaN(orderDate.getTime())) return "";
+  if (Number.isNaN(orderDate.getTime())) return { label: "", tone: "" };
   const now = new Date();
   const diffMs = now - orderDate;
   const diffDays = Math.floor(diffMs / 86400000);
   const lang = state.lang;
-  if (diffDays < 0) return formatDate(isoString);
-  if (diffDays === 0) return lang === "it" ? "Oggi" : "Today";
-  if (diffDays === 1) return lang === "it" ? "Ieri" : "Yesterday";
-  if (diffDays < 7) return lang === "it" ? `${diffDays} giorni fa` : `${diffDays} days ago`;
-  if (diffDays < 30) {
+  let label;
+  if (diffDays < 0) label = formatDate(isoString);
+  else if (diffDays === 0) label = lang === "it" ? "Oggi" : "Today";
+  else if (diffDays === 1) label = lang === "it" ? "Ieri" : "Yesterday";
+  else if (diffDays < 7) label = lang === "it" ? `${diffDays} giorni fa` : `${diffDays} days ago`;
+  else if (diffDays < 30) {
     const weeks = Math.floor(diffDays / 7);
-    return lang === "it" ? `${weeks} sett. fa` : `${weeks}w ago`;
-  }
-  return formatDate(isoString);
+    label = lang === "it" ? `${weeks} sett. fa` : `${weeks}w ago`;
+  } else label = formatDate(isoString);
+  // Tone reflects how stale the order is (only relevant for non-closed ones)
+  let tone = "";
+  if (diffDays <= 2) tone = "is-fresh";
+  else if (diffDays <= 7) tone = "";
+  else if (diffDays <= 21) tone = "is-aging";
+  else tone = "is-stale";
+  return { label, tone };
 }
 
 function renderOrderRow(order, view = "orders") {
@@ -9467,7 +9474,7 @@ function renderOrderRow(order, view = "orders") {
   return `
     <article class="order-row inbox-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="${view}">
       <div class="inbox-row-main">
-        <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small>${relativeDate ? `<span class="order-row-date" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(relativeDate)}</span>` : ""}</div>
+        <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small>${relativeDate.label ? `<span class="order-row-date ${relativeDate.tone}" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(relativeDate.label)}</span>` : ""}</div>
         <div class="order-meta">${order.operations?.product || undefinedText()} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || addressIncompleteText()}</div>
         ${statusTrack}
         <div class="inbox-row-next-step">
@@ -9646,7 +9653,11 @@ function openDashboardViewTarget(target) {
 }
 
 function renderOrders() {
-  const orders = filterOrdersForView("order");
+  const orders = filterOrdersForView("order").sort((a, b) => {
+    const aTime = new Date(a.createdAt || a.processedAt || 0).getTime();
+    const bTime = new Date(b.createdAt || b.processedAt || 0).getTime();
+    return bTime - aTime;
+  });
   const { pageItems, totalPages, totalItems } = paginateOrders(orders);
   const ordersGrid = ui.ordersList?.closest(".order-grid");
   if (ordersGrid) ordersGrid.classList.toggle("is-empty", orders.length === 0);

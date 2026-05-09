@@ -5344,15 +5344,32 @@ body {
 }
 
 .order-row-date {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text3, #687467);
-  background: rgba(35, 49, 33, 0.06);
-  padding: 1px 7px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
   border-radius: 999px;
-  margin-left: 6px;
+  margin-left: 8px;
   white-space: nowrap;
   vertical-align: middle;
+  background: #e8f4ec;
+  color: #1f5c39;
+  border: 1px solid #c8e3d2;
+}
+.order-row-date.is-fresh {
+  background: #d8efe1;
+  color: #14532d;
+  border-color: #92c4a3;
+}
+.order-row-date.is-aging {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.order-row-date.is-stale {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
 }
 
 #sales-content .dashboard-grid > .sales-content-list-panel {
