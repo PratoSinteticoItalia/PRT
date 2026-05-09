@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-shopify-sync-fix-142";
+const APP_SHELL_VERSION = "20260509-shopify-done-filter-143";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7910,7 +7910,17 @@ function isInstallationOrderCompleted(order) {
   return String(order.operations?.installation?.status || "").trim() === "completata";
 }
 
+function isShopifyFullyDone(order) {
+  // Trust Shopify when an order is both fulfilled AND paid as ground truth that
+  // the order is closed for inbox/shipping purposes (installation tracking
+  // remains independent on the Pose page via isOrderClosed).
+  const fulfilled = String(order.fulfillmentStatus || "").toLowerCase() === "fulfilled";
+  const paid = String(order.financialStatus || "").toLowerCase() === "paid";
+  return fulfilled && paid;
+}
+
 function isOrderFulfilledOrClosed(order) {
+  if (isShopifyFullyDone(order)) return true;
   const installRequired = Boolean(order.operations?.installation?.required);
   if (installRequired) return isInstallationOrderCompleted(order) || isOrderClosed(order);
   return isLogisticsOrderCompleted(order) || isOrderClosed(order);
@@ -9555,68 +9565,13 @@ function renderOrderJobHub(order) {
       action: "open-profit-split-order",
     });
   }
-  return `
-    <div class="info-card order-job-hub-note">
-      <strong>${state.lang === "it" ? "Commessa unificata: primo step" : "Unified job: first step"}</strong>
-      <p>${state.lang === "it"
-        ? "Qui l'ordine legge insieme i dati gia salvati in ufficio, logistica, posa, contabilita e allegati. I moduli restano dove sono: cambia la visibilita, non il flusso operativo."
-        : "Here the order reads together data already saved in office, logistics, installations, accounting and attachments. Modules stay where they are: visibility changes, not the workflow."}</p>
-      <div class="order-job-hub-pill-row" aria-label="${state.lang === "it" ? "Aree collegate alla commessa" : "Areas connected to the job"}">
-        <span class="order-job-hub-pill">${state.lang === "it" ? "Ufficio" : "Office"}</span>
-        <span class="order-job-hub-pill">${state.lang === "it" ? "Magazzino" : "Warehouse"}</span>
-        <span class="order-job-hub-pill">${state.lang === "it" ? "Posa" : "Installations"}</span>
-        <span class="order-job-hub-pill">${state.lang === "it" ? "Contabilita" : "Accounting"}</span>
-        <span class="order-job-hub-pill">${state.lang === "it" ? "Documenti" : "Documents"}</span>
-      </div>
-    </div>
-    <div class="detail-grid detail-grid-tight order-job-hub-grid">
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Stato commessa" : "Job status",
-        value: getUnifiedOrderStage(order).label,
-        meta: getNextOrderAction(order),
-      })}
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Posa e squadra" : "Installation and crew",
-        value: installValue,
-        meta: installMeta,
-      })}
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Logistica" : "Logistics",
-        value: getShipmentStateLabel(order),
-        meta: [
-          getShippingModeLabel(order),
-          `${prepIncludedCount}/${prepItems.length} ${state.lang === "it" ? "righe pronte" : "prep lines"}`,
-          getShippingTargetLabel(order),
-        ].join(" · "),
-      })}
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Economico" : "Accounting",
-        value: openBalance > 0 ? formatCurrency(openBalance) : t("accountingOk"),
-        meta: `${state.lang === "it" ? "Incassato" : "Collected"} ${formatCurrency(collectedAmount)} · ${invoiceState}`,
-      })}
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Documenti e note" : "Documents and notes",
-        value: `${attachments.length} ${state.lang === "it" ? "allegati" : "attachments"}`,
-        meta: `${noteCount} ${state.lang === "it" ? "note attive" : "active notes"} · ${latestAttachmentLabel}`,
-      })}
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Conti posa" : "Profit split",
-        value: savedProfitSplit
-          ? (savedProfitSplit.partnerName || (state.lang === "it" ? "Conto collegato" : "Linked split"))
-          : (state.lang === "it" ? "Da collegare" : "To link"),
-        meta: savedProfitSplit
-          ? `${formatCurrency(profitSplitScenario?.revenue || 0)} · ${state.lang === "it" ? "saldo collaboratore" : "partner due"} ${formatCurrency(profitSplitScenario?.partnerDue || 0)}`
-          : (state.lang === "it" ? "Apri Conti posa da questa commessa per salvare un riparto condiviso." : "Open Profit Split from this job to save a shared settlement."),
-      })}
-    </div>
-    ${quickLinks.length ? `
-      <div class="detail-actions order-job-hub-actions">
+  return quickLinks.length
+    ? `<div class="detail-actions order-job-hub-actions">
         ${quickLinks.map((item) => `
           <button class="btn" data-action="${escapeHtml(item.action || "select-order")}" data-id="${escapeHtml(order.id)}" data-view="${escapeHtml(item.view)}">${escapeHtml(item.label)}</button>
         `).join("")}
-      </div>
-    ` : ""}
-  `;
+      </div>`
+    : "";
 }
 
 function openDashboardViewTarget(target) {
