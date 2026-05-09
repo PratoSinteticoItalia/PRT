@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-revert-sticky-toolbar-150";
+const APP_SHELL_VERSION = "20260509-richieste-style-everywhere-151";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12945,6 +12945,51 @@ function renderSettings() {
   renderSecurityCenter();
   renderAccountsManager();
   renderCrewExpenseMonthlyReport();
+  renderSyncControlPanel();
+}
+
+function renderSyncControlPanel() {
+  if (!ui.syncControlPanel) return;
+  const lastSyncAt = state.settings?.lastSyncAt || "";
+  const lastStatus = String(state.settings?.lastSyncStatus || "").toLowerCase();
+  const lastMessage = String(state.settings?.lastSyncMessage || "").trim();
+  const hasShopifyToken = Boolean(state.settings?.hasAdminAccessToken);
+  const orderCount = state.orders?.length || 0;
+  const requestsCount = state.salesRequests?.length || 0;
+
+  const statusTone = lastStatus === "ok" ? "is-ok" : lastStatus === "error" ? "is-warn" : "is-idle";
+  const statusLabel = lastStatus === "ok"
+    ? (state.lang === "it" ? "Ultimo sync riuscito" : "Last sync succeeded")
+    : lastStatus === "error"
+      ? (state.lang === "it" ? "Ultimo sync fallito" : "Last sync failed")
+      : (state.lang === "it" ? "Mai sincronizzato" : "Never synced");
+  const lastSyncLabel = lastSyncAt
+    ? `${formatDate(lastSyncAt)} ${new Date(lastSyncAt).toLocaleTimeString(state.lang === "it" ? "it-IT" : "en-US", { hour: "2-digit", minute: "2-digit" })}`
+    : "—";
+  const tokenLabel = hasShopifyToken
+    ? (state.lang === "it" ? "Token configurato" : "Token configured")
+    : (state.lang === "it" ? "Token mancante" : "Token missing");
+
+  ui.syncControlPanel.innerHTML = `
+    <div class="sync-control-row">
+      <div class="sync-control-cell">
+        <span class="panel-eyebrow">Shopify</span>
+        <strong>${escapeHtml(lastSyncLabel)}</strong>
+        <span class="inbox-status-chip ${statusTone}">${escapeHtml(statusLabel)}</span>
+        ${lastMessage ? `<small class="sync-control-error">${escapeHtml(lastMessage.slice(0, 240))}</small>` : ""}
+      </div>
+      <div class="sync-control-cell">
+        <span class="panel-eyebrow">${state.lang === "it" ? "Ordini sincronizzati" : "Orders synced"}</span>
+        <strong>${orderCount}</strong>
+        <span class="sync-control-meta">${escapeHtml(tokenLabel)}</span>
+      </div>
+      <div class="sync-control-cell">
+        <span class="panel-eyebrow">${state.lang === "it" ? "Richieste vendita" : "Sales requests"}</span>
+        <strong>${requestsCount}</strong>
+        <span class="sync-control-meta">${state.lang === "it" ? "Auto-sync attivo" : "Auto-sync active"}</span>
+      </div>
+    </div>
+  `;
 }
 
 function renderProfitSplitWorkspace() {
@@ -16448,16 +16493,13 @@ function handleGlobalClick(event) {
       focusViewTarget(state.currentView);
     }
     revealMobileDetailTarget(nextView);
-    // Reset detail-panel scroll AND scroll the page back so the user always
-    // sees the header of the newly-selected order. Sticky panels still need
-    // the page near top to be visible when the user clicked a far-down row.
+    // Reset only the detail-panel internal scroll. List column has its own
+    // max-height + overflow so the page itself doesn't scroll, matching the
+    // Richieste UX the user wants everywhere.
     requestAnimationFrame(() => {
       document.querySelectorAll(`#${nextView} .detail-panel, #${nextView} .order-detail-panel, #${nextView} .install-detail-panel`).forEach((panel) => {
         if (panel.scrollTop > 0) panel.scrollTop = 0;
       });
-      const main = document.querySelector(".main-content") || document.scrollingElement || document.documentElement;
-      if (main && main.scrollTop > 80) main.scrollTo({ top: 0, behavior: "smooth" });
-      if (window.scrollY > 80) window.scrollTo({ top: 0, behavior: "smooth" });
     });
     return;
   }
