@@ -5367,12 +5367,6 @@ body {
   padding-right: 4px;
 }
 
-/* Skip rendering off-screen cards during fast scroll to prevent flicker.
-   contain-intrinsic-size reserves space so the scrollbar doesn't jump. */
-.order-row {
-  content-visibility: auto;
-  contain-intrinsic-size: 0 92px;
-}
 
 .order-row-date {
   display: inline-block;
