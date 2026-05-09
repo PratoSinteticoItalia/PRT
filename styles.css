@@ -5376,16 +5376,18 @@ body {
 }
 
 /* Sticky toolbar inside #orders — sits right under the topbar so there's no
-   blank gap above the list when the page header scrolls out. */
+   blank gap above the list when the page header scrolls out. Opaque
+   background with a soft bottom shadow so the rows below don't bleed through. */
 #orders .view-toolbar,
 #accounting .view-toolbar,
 #shipping .view-toolbar {
   position: sticky;
   top: 76px;
   z-index: 4;
-  background: linear-gradient(180deg, var(--bg, #f0ede5) 0%, var(--bg, #f0ede5) 70%, transparent 100%);
-  padding-bottom: 8px;
+  background: var(--bg, #f0ede5);
+  padding: 12px 0 12px;
   margin-bottom: 0;
+  box-shadow: 0 6px 12px -8px rgba(16, 24, 20, 0.12);
 }
 .order-row-date.is-fresh {
   background: #d8efe1;

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-inbox-cleaner-chips-sticky-148";
+const APP_SHELL_VERSION = "20260509-material-chip-toolbar-opaque-149";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9386,10 +9386,34 @@ function renderOrderStepper(order) {
   `;
 }
 
+function getOrderMaterialAvailability(order) {
+  // Match the order's main turf product against the inventory and return a
+  // simple availability indicator for the inbox row chip.
+  const productLabel = getCatalogLabel(order.operations?.product || "");
+  if (!productLabel) return null;
+  const requestedSqm = toNumber(order.operations?.sqm || 0);
+  if (requestedSqm <= 0) return null;
+  const summary = getInventorySummary();
+  const target = normalizeProductName(productLabel);
+  const group = summary.find((g) => normalizeProductName(g.product) === target);
+  if (!group) return { tone: "is-warn", label: state.lang === "it" ? "Materiale assente" : "No stock" };
+  const available = Number(group.availableSqm || 0);
+  if (available >= requestedSqm) return { tone: "is-ok", label: state.lang === "it" ? "Materiale OK" : "Stock OK", icon: "✓" };
+  if (available > 0) return { tone: "is-warn", label: state.lang === "it" ? `Stock parziale ${available} mq` : `Partial ${available} sqm`, icon: "⚠" };
+  return { tone: "is-warn", label: state.lang === "it" ? "Stock esaurito" : "Out of stock", icon: "⚠" };
+}
+
 function buildOrderInboxStatusTrack(order) {
   const chips = [];
   const stage = getUnifiedOrderStage(order);
   const stageIsActionable = stage.key === "warehouse-work" || stage.key === "office-review";
+
+  // Material availability — most useful operational signal: do we have
+  // enough stock for this order, or is it blocking?
+  if (!isLogisticsOrderCompleted(order)) {
+    const material = getOrderMaterialAvailability(order);
+    if (material) chips.push(material);
+  }
 
   // Warehouse / logistics signals — only show actionable states
   if (isLogisticsOrderCompleted(order)) {
@@ -16424,12 +16448,16 @@ function handleGlobalClick(event) {
       focusViewTarget(state.currentView);
     }
     revealMobileDetailTarget(nextView);
-    // Reset detail-panel scroll so the user always sees the top of the
-    // newly-selected order, not wherever the previous one was scrolled to.
+    // Reset detail-panel scroll AND scroll the page back so the user always
+    // sees the header of the newly-selected order. Sticky panels still need
+    // the page near top to be visible when the user clicked a far-down row.
     requestAnimationFrame(() => {
       document.querySelectorAll(`#${nextView} .detail-panel, #${nextView} .order-detail-panel, #${nextView} .install-detail-panel`).forEach((panel) => {
         if (panel.scrollTop > 0) panel.scrollTop = 0;
       });
+      const main = document.querySelector(".main-content") || document.scrollingElement || document.documentElement;
+      if (main && main.scrollTop > 80) main.scrollTo({ top: 0, behavior: "smooth" });
+      if (window.scrollY > 80) window.scrollTo({ top: 0, behavior: "smooth" });
     });
     return;
   }
