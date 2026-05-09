@@ -5375,20 +5375,9 @@ body {
   font-size: 12px;
 }
 
-/* Sticky toolbar inside #orders — sits right under the topbar so there's no
-   blank gap above the list when the page header scrolls out. Opaque
-   background with a soft bottom shadow so the rows below don't bleed through. */
-#orders .view-toolbar,
-#accounting .view-toolbar,
-#shipping .view-toolbar {
-  position: sticky;
-  top: 76px;
-  z-index: 4;
-  background: var(--bg, #f0ede5);
-  padding: 12px 0 12px;
-  margin-bottom: 0;
-  box-shadow: 0 6px 12px -8px rgba(16, 24, 20, 0.12);
-}
+/* Toolbar reverted from sticky: sticky version overlapped the cards as they
+   scrolled under it, which read as a visual bug. Keep it as a normal block
+   that scrolls with the page. */
 .order-row-date.is-fresh {
   background: #d8efe1;
   color: #14532d;
