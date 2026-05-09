@@ -5320,8 +5320,12 @@ body {
 }
 
 #orders .order-grid > div:first-child,
-#accounting .order-grid > div:first-child {
-  contain: layout style;
+#accounting .order-grid > div:first-child,
+#shipping .order-grid > div:first-child {
+  align-self: start;
+}
+
+#sales-content .dashboard-grid > .sales-content-list-panel {
   align-self: start;
 }
 
