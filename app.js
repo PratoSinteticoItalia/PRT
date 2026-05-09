@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-richieste-style-everywhere-151";
+const APP_SHELL_VERSION = "20260509-equal-height-cols-152";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
