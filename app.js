@@ -1102,6 +1102,9 @@ const state = {
   showSalesRequestImport: false,
   shellPending: true,
   syncInProgress: false,
+  ordersScrollActive: false,
+  ordersPendingRender: false,
+  ordersListSignature: "",
   navCounts: {},
   orderPage: 1,
   accountingPage: 1,
@@ -1141,6 +1144,8 @@ let shopifyAutoSyncInFlight = false;
 let salesRequestAutoSyncTimer = 0;
 let salesRequestSyncInFlight = false;
 let salesRequestAutoSyncLastAttemptAt = 0;
+let ordersScrollIdleTimer = 0;
+let ordersDeferredRenderTimer = 0;
 let salesContentDeleteInFlightId = "";
 const salesContentAttachmentDeleteInFlight = new Set();
 let reloadAllInFlight = false;
@@ -1397,6 +1402,7 @@ const ui = {
   sampleUploadLdvButton: document.getElementById("sample-upload-ldv-button"),
   settingsForm: document.getElementById("shopify-settings-form"),
   settingsStatus: document.getElementById("settings-status"),
+  syncControlPanel: document.getElementById("sync-control-panel"),
   topbarGardenPlannerLink: document.getElementById("topbar-garden-planner-link"),
   connectShopifyButton: document.getElementById("connect-shopify-button"),
   mobileGardenPlannerLink: document.getElementById("mobile-garden-planner-link"),
