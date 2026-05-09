@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-shopify-done-filter-143";
+const APP_SHELL_VERSION = "20260509-sticky-list-flicker-fix-144";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7911,12 +7911,18 @@ function isInstallationOrderCompleted(order) {
 }
 
 function isShopifyFullyDone(order) {
-  // Trust Shopify when an order is both fulfilled AND paid as ground truth that
-  // the order is closed for inbox/shipping purposes (installation tracking
-  // remains independent on the Pose page via isOrderClosed).
-  const fulfilled = String(order.fulfillmentStatus || "").toLowerCase() === "fulfilled";
-  const paid = String(order.financialStatus || "").toLowerCase() === "paid";
-  return fulfilled && paid;
+  // Trust Shopify as ground truth that the order is closed for inbox/shipping.
+  // (Pose page keeps its own isOrderClosed for installation tracking.)
+  // Shopify GraphQL returns UPPERCASE enums (FULFILLED, PAID, REFUNDED...),
+  // REST returns lowercase — normalize both.
+  const fulfillment = String(order.fulfillmentStatus || "").toLowerCase().trim();
+  const financial = String(order.financialStatus || "").toLowerCase().trim();
+  // Refunded/voided: nothing more to do.
+  if (financial === "refunded" || financial === "voided") return true;
+  // Fulfilled + (paid OR partially_refunded — partial refunds still settle).
+  const fulfilled = fulfillment === "fulfilled";
+  const paidLike = financial === "paid" || financial === "partially_refunded";
+  return fulfilled && paidLike;
 }
 
 function isOrderFulfilledOrClosed(order) {

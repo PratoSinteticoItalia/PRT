@@ -5323,6 +5323,15 @@ body {
 #accounting .order-grid > div:first-child,
 #shipping .order-grid > div:first-child {
   align-self: start;
+  position: sticky;
+  top: 84px;
+}
+
+/* Skip rendering off-screen cards during fast scroll to prevent flicker.
+   contain-intrinsic-size reserves space so the scrollbar doesn't jump. */
+.order-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 92px;
 }
 
 #sales-content .dashboard-grid > .sales-content-list-panel {

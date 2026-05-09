@@ -6,6 +6,13 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
       "port": 4178
+    },
+    {
+      "name": "kanban-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "port": 4179,
+      "cwd": ".claude/worktrees/ecstatic-pike-75c837"
     }
   ]
 }

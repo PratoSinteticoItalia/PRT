@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kanban Richieste — Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f0ede5;
+  --panel: rgba(255,251,245,0.94);
+  --card: #fff;
+  --line: rgba(35,49,33,0.1);
+  --brand: #29543c;
+  --brand-light: #e8f4ec;
+  --text: #152018;
+  --text2: #3f4a3f;
+  --text3: #687467;
+  --shadow: 0 2px 8px rgba(16,24,20,0.07);
+  --shadow-lg: 0 8px 28px rgba(16,24,20,0.12);
+}
+
+body {
+  font-family: "DM Sans", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 24px;
+}
+
+/* ── Header ────────────────────────────────────────────────── */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.page-header h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.03em; }
+.page-header p  { font-size: 13px; color: var(--text3); margin-top: 2px; }
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text);
+  transition: border-color .12s, box-shadow .12s;
+}
+.btn:hover { border-color: var(--brand); box-shadow: var(--shadow); }
+.btn.primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+.btn.primary:hover { background: #1f3e2c; }
+
+.view-toggle { display: flex; gap: 6px; }
+.view-toggle button {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  font: 600 12px/1 "DM Sans", sans-serif;
+  cursor: pointer;
+  color: var(--text3);
+  transition: all .12s;
+}
+.view-toggle button.active {
+  background: var(--card);
+  color: var(--text);
+  border-color: var(--brand);
+  box-shadow: var(--shadow);
+}
+
+/* ── Board layout ──────────────────────────────────────────── */
+.kanban-board {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  align-items: flex-start;
+}
+
+.kanban-col {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kanban-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.col-label {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.col-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text3);
+  background: rgba(17,24,39,0.07);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* Column accent colors */
+.col-nuovo .col-label    { color: #4b6584; }
+.col-trattativa .col-label { color: #d97706; }
+.col-offerta .col-label  { color: #2563eb; }
+.col-declinata .col-label { color: #dc2626; }
+.col-chiusa .col-label   { color: #059669; }
+
+/* ── Cards ─────────────────────────────────────────────────── */
+.kanban-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 13px 14px 11px;
+  box-shadow: var(--shadow);
+  cursor: grab;
+  user-select: none;
+  transition: border-color .12s, box-shadow .12s, transform .12s;
+}
+.kanban-card:hover {
+  border-color: rgba(45,106,79,0.35);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+.kanban-card.dragging {
+  opacity: 0.45;
+  transform: scale(0.97);
+}
+.kanban-card.drag-over {
+  border-color: var(--brand);
+  background: var(--brand-light);
+}
+
+.card-client {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+.card-product {
+  font-size: 12px;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.card-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(17,24,39,0.06);
+  color: var(--text2);
+}
+.card-chip.green  { background: #dcfce7; color: #15803d; }
+.card-chip.amber  { background: #fef3c7; color: #d97706; }
+.card-chip.blue   { background: #dbeafe; color: #1d4ed8; }
+.card-chip.red    { background: #fee2e2; color: #dc2626; }
+
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+.card-date { font-size: 11px; color: var(--text3); }
+.card-value { font-size: 13px; font-weight: 800; color: var(--brand); }
+
+/* ── Drop zone ─────────────────────────────────────────────── */
+.kanban-col-body {
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background .15s;
+  border-radius: 10px;
+  padding: 2px;
+}
+.kanban-col-body.drag-target {
+  background: rgba(41,84,60,0.07);
+  outline: 2px dashed rgba(41,84,60,0.3);
+  outline-offset: -2px;
+}
+
+/* ── Toast ─────────────────────────────────────────────────── */
+.toast-container {
+  position: fixed; top: 18px; right: 18px; z-index: 999;
+  display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 16px 10px 12px;
+  border-radius: 12px; font-size: 13px; font-weight: 600;
+  background: #1e3d2f; color: #a8e6bf;
+  border: 1px solid rgba(168,230,191,0.2);
+  box-shadow: 0 8px 24px rgba(16,24,20,0.18);
+  opacity: 0; transform: translateX(14px);
+  transition: opacity .2s, transform .2s;
+  pointer-events: auto; cursor: pointer;
+}
+.toast.visible { opacity: 1; transform: translateX(0); }
+
+/* ── Empty col ─────────────────────────────────────────────── */
+.col-empty {
+  font-size: 12px; color: var(--text3); text-align: center;
+  padding: 20px 12px; font-style: italic;
+}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div>
+    <h1>Richieste vendite</h1>
+    <p>Trascina le card tra le colonne per aggiornare lo stato</p>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <div class="view-toggle">
+      <button onclick="setView('list')">☰ Lista</button>
+      <button class="active" onclick="setView('kanban')">⊞ Kanban</button>
+    </div>
+    <button class="btn primary">+ Nuova richiesta</button>
+  </div>
+</div>
+
+<div class="kanban-board" id="board"></div>
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const COLUMNS = [
+  { id: "nuovo",     label: "Nuovo contatto",  cls: "col-nuovo" },
+  { id: "trattativa",label: "In trattativa",   cls: "col-trattativa" },
+  { id: "offerta",   label: "Offerta inviata",  cls: "col-offerta" },
+  { id: "declinata", label: "Declinata",        cls: "col-declinata" },
+  { id: "chiusa",    label: "Chiusa / Vinta",   cls: "col-chiusa" },
+];
+
+const CARDS = [
+  { id:1, client:"Mario Rossi",      product:"Prato Bermuda 25mm · 120 mq", status:"nuovo",      value:"4 200 €", date:"09 mag", chips:[{l:"Shopify",c:"blue"},{l:"120 mq",c:""}] },
+  { id:2, client:"Laura Conti",      product:"Elite Natura 40mm · 80 mq",   status:"nuovo",      value:"3 600 €", date:"08 mag", chips:[{l:"Lead web",c:""},{l:"80 mq",c:""}] },
+  { id:3, client:"Studio Arch. Venn",product:"Tivano 35mm · 210 mq",        status:"nuovo",      value:"9 800 €", date:"07 mag", chips:[{l:"Preventivo",c:"amber"},{l:"Urgente",c:"red"}] },
+  { id:4, client:"Edil Lux srl",     product:"Bermuda Pro · 350 mq",        status:"trattativa", value:"14 000 €",date:"06 mag", chips:[{l:"Sopralluogo",c:"amber"},{l:"350 mq",c:""}] },
+  { id:5, client:"Famiglia Bianchi", product:"Naturale 30mm · 95 mq",       status:"trattativa", value:"4 100 €", date:"05 mag", chips:[{l:"Residenza",c:""},{l:"95 mq",c:""}] },
+  { id:6, client:"Resort La Pineta", product:"Bermuda 25mm · 1 200 mq",     status:"offerta",    value:"48 000 €",date:"03 mag", chips:[{l:"Contratto",c:"green"},{l:"1.2k mq",c:""}] },
+  { id:7, client:"Andrea Ferri",     product:"Elite 40mm · 60 mq",          status:"offerta",    value:"2 800 €", date:"02 mag", chips:[{l:"Follow-up",c:"amber"},{l:"60 mq",c:""}] },
+  { id:8, client:"Palazzina Centro", product:"Tivano 35mm · 180 mq",        status:"declinata",  value:"8 100 €", date:"28 apr", chips:[{l:"Declinata",c:"red"},{l:"Budget",c:"red"}] },
+  { id:9, client:"Condominio Verde", product:"Bermuda 25mm · 450 mq",       status:"chiusa",     value:"18 000 €",date:"22 apr", chips:[{l:"Vinta ✓",c:"green"},{l:"450 mq",c:""}] },
+  { id:10,client:"Villa Manzoni",    product:"Elite Natura 40mm · 300 mq",  status:"chiusa",     value:"13 500 €",date:"18 apr", chips:[{l:"Vinta ✓",c:"green"},{l:"300 mq",c:""}] },
+];
+
+let cards = CARDS.map(c => ({...c}));
+let draggingId = null;
+
+function renderBoard() {
+  const board = document.getElementById("board");
+  board.innerHTML = COLUMNS.map(col => {
+    const colCards = cards.filter(c => c.status === col.id);
+    return `
+      <div class="kanban-col">
+        <div class="kanban-col-head ${col.cls}">
+          <span class="col-label">${col.label}</span>
+          <span class="col-count">${colCards.length}</span>
+        </div>
+        <div class="kanban-col-body" data-col="${col.id}"
+          ondragover="onDragOver(event)"
+          ondragleave="onDragLeave(event)"
+          ondrop="onDrop(event,'${col.id}')">
+          ${colCards.length === 0
+            ? `<div class="col-empty">Nessuna richiesta</div>`
+            : colCards.map(card => `
+              <div class="kanban-card" id="card-${card.id}"
+                draggable="true"
+                ondragstart="onDragStart(event,${card.id})"
+                ondragend="onDragEnd(event)">
+                <div class="card-client">${card.client}</div>
+                <div class="card-product">${card.product}</div>
+                <div class="card-meta">
+                  ${card.chips.map(ch => `<span class="card-chip ${ch.c}">${ch.l}</span>`).join("")}
+                </div>
+                <div class="card-footer">
+                  <span class="card-date">${card.date}</span>
+                  <span class="card-value">${card.value}</span>
+                </div>
+              </div>
+            `).join("")}
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function onDragStart(e, id) {
+  draggingId = id;
+  e.dataTransfer.effectAllowed = "move";
+  setTimeout(() => document.getElementById("card-"+id)?.classList.add("dragging"), 0);
+}
+function onDragEnd(e) {
+  document.querySelectorAll(".kanban-card").forEach(c => c.classList.remove("dragging"));
+  document.querySelectorAll(".kanban-col-body").forEach(c => c.classList.remove("drag-target"));
+}
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  e.currentTarget.classList.add("drag-target");
+}
+function onDragLeave(e) {
+  e.currentTarget.classList.remove("drag-target");
+}
+function onDrop(e, colId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove("drag-target");
+  if (!draggingId) return;
+  const card = cards.find(c => c.id === draggingId);
+  if (!card || card.status === colId) return;
+  const oldStatus = card.status;
+  card.status = colId;
+  draggingId = null;
+  renderBoard();
+  const colLabel = COLUMNS.find(c => c.id === colId)?.label || colId;
+  showToast(`"${card.client}" → ${colLabel}  ✓ salvato`);
+}
+
+function showToast(msg) {
+  const tc = document.getElementById("toasts");
+  const div = document.createElement("div");
+  div.className = "toast";
+  div.textContent = "✓  " + msg;
+  tc.appendChild(div);
+  requestAnimationFrame(() => requestAnimationFrame(() => div.classList.add("visible")));
+  setTimeout(() => {
+    div.classList.remove("visible");
+    setTimeout(() => div.remove(), 250);
+  }, 3000);
+}
+
+function setView(v) {
+  document.querySelectorAll(".view-toggle button").forEach(b => b.classList.remove("active"));
+  event.target.classList.add("active");
+  if (v === "list") showToast("Vista lista — non implementata in questa demo");
+}
+
+renderBoard();
+</script>
+</body>
+</html>
