@@ -961,7 +961,7 @@ button.is-feedback,
   grid-column: 2;
   grid-row: 2;
   overflow-y: auto;
-  background: var(--bg);
+  /* Background removed — body grid texture shows through. */
   padding: 24px;
 }
 
@@ -4496,7 +4496,7 @@ body {
 }
 
 .main-content {
-  background: var(--bg);
+  /* Background removed — body grid texture shows through. */
   padding: 24px;
 }
 
