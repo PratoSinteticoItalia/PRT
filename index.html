@@ -338,6 +338,12 @@
               </div>
               <div id="dashboard-inventory-snapshot" class="kpi-grid dashboard-snapshot-grid inventory-snapshot"></div>
             </div>
+            <div class="section dashboard-wide-section">
+              <div class="section-header">
+                <div class="section-title">Trend ricavi ultimi 6 mesi</div>
+              </div>
+              <div id="dashboard-trend"></div>
+            </div>
           </div>
 
           <div class="two-col">
@@ -801,7 +807,10 @@
               <h1>Inventario</h1>
               <div class="page-header-sub">Inventario fisico · Giacenze, residui e fabbisogni</div>
             </div>
-            <button class="btn primary" id="inventory-jump-button" type="button">+ Carica giacenza</button>
+            <div class="inline-actions">
+              <button class="btn" id="warehouse-export-btn" type="button" title="Esporta CSV inventario">↓ CSV</button>
+              <button class="btn primary" id="inventory-jump-button" type="button">+ Carica giacenza</button>
+            </div>
           </div>
 
           <div class="view-toolbar">
@@ -1912,6 +1921,7 @@
       </div>
     </div>
 
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="false"></div>
     <div id="cmd-k-overlay" class="cmd-k-overlay hidden" role="dialog" aria-modal="true" aria-label="Ricerca rapida">
       <div class="cmd-k-backdrop"></div>
       <div class="cmd-k-box">
