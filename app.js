@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-main-content-bg-transparent-154";
+const APP_SHELL_VERSION = "20260509-uncap-detail-panel-155";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

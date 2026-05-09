@@ -5353,36 +5353,18 @@ body {
   align-items: start;
 }
 
-/* Match the Richieste page UX: BOTH columns of the order-grid have the
-   same capped height + their own internal scroll. The page itself doesn't
-   scroll at all once the layout settles — both panels stay in view. */
-#orders .order-grid,
-#accounting .order-grid,
-#shipping .order-grid {
-  align-items: stretch;
-}
+/* Richieste UX pattern: LEFT list column has a capped height + internal
+   scroll. RIGHT detail panel flows naturally and uses its own existing
+   sticky behaviour (top:98px) so it stays in view while the page scrolls.
+   Capping both columns hid sub-section content below the fold. */
 #orders .order-grid > div:first-child,
 #accounting .order-grid > div:first-child,
-#shipping .order-grid > div:first-child,
-#orders .order-grid > .detail-panel,
-#orders .order-grid > .order-detail-panel,
-#accounting .order-grid > .detail-panel,
-#accounting .order-grid > .order-detail-panel,
-#shipping .order-grid > .detail-panel,
-#shipping .order-grid > .order-detail-panel {
-  max-height: min(78vh, 980px);
+#shipping .order-grid > div:first-child {
+  align-self: start;
+  max-height: min(80vh, 1100px);
   overflow-y: auto;
   scrollbar-gutter: stable;
-}
-/* Inside #orders/#accounting/#shipping, the detail panel must NOT be sticky
-   anymore — it has its own internal scroll matching the list column. */
-#orders .order-grid > .detail-panel,
-#orders .order-grid > .order-detail-panel,
-#accounting .order-grid > .detail-panel,
-#accounting .order-grid > .order-detail-panel,
-#shipping .order-grid > .detail-panel,
-#shipping .order-grid > .order-detail-panel {
-  position: static;
+  padding-right: 4px;
 }
 
 /* Skip rendering off-screen cards during fast scroll to prevent flicker.
