@@ -9710,14 +9710,8 @@ function renderOrders() {
   ui.orderDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
   ui.orderDetailBadge.innerHTML = statusChip(label, tone);
   ui.orderDetailSummary.innerHTML = `
-    <div class="detail-header">
-      <div>
-        <div class="detail-title">${composeClientName(order)}</div>
-        <div class="detail-id">${getOrderNumber(order)} &middot; ${order.source} &middot; ${formatDate(order.createdAt)}</div>
-      </div>
-      ${statusChip(getPaymentLabel(order.financialStatus), tone)}
-    </div>
     ${renderOrderStepper(order)}
+    ${renderInboxFlowControls(order)}
     <div class="detail-grid detail-grid-tight order-summary-grid">
       ${renderDetailBox({
         label: state.lang === "it" ? "Situazione ordine" : "Order status",
@@ -9728,11 +9722,6 @@ function renderOrders() {
         label: state.lang === "it" ? "Cliente e cantiere" : "Customer and site",
         value: composeAddress(order) || addressIncompleteText(),
         meta: order.phone || order.email || (state.lang === "it" ? "Contatti da verificare" : "Contacts to verify"),
-      })}
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Materiale e percorso" : "Materials and route",
-        value: `${order.operations?.product || t("undefined")} · ${order.operations?.sqm || 0} mq`,
-        meta: `${routeLabel} · ${shippingModeLabel}`,
       })}
       ${renderDetailBox({
         label: state.lang === "it" ? "Pagamento" : "Payment",
@@ -9751,24 +9740,6 @@ function renderOrders() {
     ? `<div class="detail-note-chip">${escapeHtml(order.note)}</div>`
     : "";
   ui.orderOfficeSummary.innerHTML = `
-    ${renderInboxFlowControls(order)}
-    <div class="detail-grid detail-grid-tight order-office-grid">
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Decisione ufficio" : "Office decision",
-        value: visibilityLabel,
-        meta: `${routeLabel} · ${order.operations?.installation?.required ? t("supplyInstall") : t("supply")}`,
-      })}
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Preparazione reale" : "Actual preparation",
-        value: getShippingTargetLabel(order),
-        meta: prepSummary,
-      })}
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Presidio amministrativo" : "Administrative follow-up",
-        value: getEffectivePaymentMethod(order),
-        meta: `${(order.attachments || []).length} ${state.lang === "it" ? "allegati" : "attachments"} · ${paymentSummary}`,
-      })}
-    </div>
     ${orderNoteMarkup}
   `;
   ui.orderLineList.innerHTML = (order.lineDetails || []).length
@@ -12521,17 +12492,7 @@ function renderShippingQueueCard(order) {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const sampleOrder = isSampleOrder(order);
   const mode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
-  const preparedLines = getWarehousePreparedLines(order);
-  const prepSummary = preparedLines.length
-    ? preparedLines.slice(0, 2).map((item) => `${item.title} x${item.quantity}`).join(" · ")
-    : (state.lang === "it" ? "Preparazione ufficio da completare" : "Office prep still incomplete");
-  const hiddenCount = Math.max(0, preparedLines.length - 2);
-  const prepMeta = hiddenCount > 0
-    ? `${prepSummary} · +${hiddenCount} ${state.lang === "it" ? "righe" : "lines"}`
-    : prepSummary;
-  const shipmentState = getShipmentStateLabel(order);
   const stage = getUnifiedOrderStage(order);
-  const nextAction = getShippingNextAction(order);
   const routeLabel = getShippingModeLabel(order);
   const targetLabel = getShippingTargetLabel(order);
   const destination = composeAddress(order) || addressIncompleteText();
@@ -12540,44 +12501,26 @@ function renderShippingQueueCard(order) {
       ? (state.lang === "it" ? "LDV allegata" : "Waybill attached")
       : (state.lang === "it" ? "LDV da caricare" : "Upload waybill"))
     : (order.operations?.warehouse?.ddt?.number || (state.lang === "it" ? "DDT da creare" : "DDT to create"));
-  const badgeTone = stage.tone === "green"
-    ? "badge-success"
-    : stage.tone === "red"
-      ? "badge-urgent"
-      : stage.tone === "blue"
-        ? "badge-info"
-        : "badge-warning";
+  const badgeTone = stage.tone === "green" ? "badge-success"
+    : stage.tone === "red" ? "badge-urgent"
+    : stage.tone === "blue" ? "badge-info"
+    : "badge-warning";
+  const modeTone = mode === "corriere" ? "type-spedizione"
+    : mode === "ritiro" ? "type-ritiro"
+    : "type-posa";
   return `
-    <article class="shipping-queue-card ${selected} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping">
-      <div class="shipping-queue-head">
-        <div>
-          <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-          <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${destination}</div>
-        </div>
-        <div class="shipping-queue-badges">
-          ${sampleOrder ? `<div class="order-type-badge type-sample-box">${state.lang === "it" ? "Box campioni" : "Sample box"}</div>` : ""}
-          <div class="order-type-badge ${mode === "corriere" ? "type-spedizione" : mode === "ritiro" ? "type-ritiro" : "type-posa"}">${routeLabel}</div>
-          <div class="action-badge ${badgeTone}">${stage.label}</div>
-        </div>
+    <article class="order-row shipping-row ${selected} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping">
+      <div>
+        <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
+        <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${destination}</div>
       </div>
-      <div class="shipping-queue-body">
-        <div class="shipping-queue-line">
-          <span>${state.lang === "it" ? "Prossimo passo" : "Next step"}</span>
-          <strong>${nextAction}</strong>
-        </div>
-        <div class="shipping-queue-line">
-          <span>${state.lang === "it" ? "Stato uscita" : "Dispatch state"}</span>
-          <strong>${shipmentState}</strong>
-        </div>
-        <div class="shipping-queue-line">
-          <span>${state.lang === "it" ? "Righe da preparare" : "Lines to prepare"}</span>
-          <strong>${preparedLines.length} ${state.lang === "it" ? "righe" : "lines"}</strong>
-        </div>
-        <div class="shipping-queue-copy">${prepMeta}</div>
+      <div class="order-badges-stack">
+        <div class="order-type-badge ${modeTone}">${routeLabel}</div>
+        <div class="action-badge ${badgeTone}">${stage.label}</div>
       </div>
-      <div class="shipping-queue-footer">
-        <span class="shipping-prep-date ${String(getShippingTargetDate(order) || "") === new Date().toISOString().slice(0, 10) ? "is-today" : ""}">${targetLabel}</span>
-        <strong>${ddtOrSampleLabel}</strong>
+      <div class="shipping-row-footer">
+        <span class="shipping-prep-date">${targetLabel}</span>
+        <span>${ddtOrSampleLabel}</span>
       </div>
     </article>
   `;
