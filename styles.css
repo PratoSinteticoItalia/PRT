@@ -23,7 +23,25 @@ body {
   margin: 0;
   font-family: "DM Sans", sans-serif;
   color: var(--text);
-  background: linear-gradient(180deg, #fafaf8 0%, #f2f1ed 100%);
+  /* Soft grid texture (Carhartt-cargo style) tinted slightly cooler/greyer
+     than the loading screen so the working portal reads as a different
+     surface from the splash. */
+  background-color: #ecedea;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 31px,
+      rgba(70, 80, 75, 0.07) 31px,
+      rgba(70, 80, 75, 0.07) 32px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 31px,
+      rgba(70, 80, 75, 0.07) 31px,
+      rgba(70, 80, 75, 0.07) 32px
+    );
   font-size: 14px;
   line-height: 1.5;
   overflow: hidden;
@@ -3788,10 +3806,9 @@ button.is-feedback,
   }
 }
 
-/* Final shell overrides to match reference */
+/* Final shell overrides to match reference (background is set once in
+   the top body{} with the grid-texture pattern — don't override here). */
 body {
-  background:
-    linear-gradient(180deg, #f7f6f2 0%, #f3f4ee 100%);
   color: #13261a;
 }
 
@@ -4126,8 +4143,9 @@ body {
   --purple-bg: #f5f3ff;
 }
 
+/* Body background is set up-top with the grid texture pattern — don't
+   override it here. Just make sure the font-size is consistent. */
 body {
-  background: var(--bg);
   font-size: 14px;
 }
 
@@ -5410,6 +5428,13 @@ body {
    scrolled under it, which read as a visual bug. Keep it as a normal block
    that scrolls with the page. */
 
+/* Hide the "Operatività ufficio" subsection when there is no order note
+   to show — after the recent simplification it often renders empty and
+   leaves a heading with nothing below. */
+.panel-subsection-office:has(> #order-office-summary:empty) {
+  display: none;
+}
+
 /* Sync control panel (Settings page): three quick stats so the panel
    doesn't sit empty under "Stato sincronizzazioni". */
 .sync-control-grid {
@@ -5951,12 +5976,7 @@ body {
   --shadow-lg: 0 28px 70px rgba(28, 39, 28, 0.12), 0 10px 20px rgba(28, 39, 28, 0.06);
 }
 
-body {
-  background:
-    radial-gradient(circle at top left, rgba(95, 138, 108, 0.18), transparent 26%),
-    radial-gradient(circle at 85% 8%, rgba(185, 135, 61, 0.16), transparent 18%),
-    linear-gradient(180deg, #f6f2ea 0%, #efebe2 45%, #ece7de 100%);
-}
+/* Old body-background override removed — single grid-texture body{} at top wins. */
 
 .auth-screen,
 .app-shell {
@@ -10523,12 +10543,7 @@ button:active,
   --shadow-lg: 0 26px 70px rgba(15, 23, 32, 0.12), 0 10px 24px rgba(15, 23, 32, 0.06);
 }
 
-body {
-  background:
-    radial-gradient(circle at top left, rgba(73, 105, 148, 0.09), transparent 24%),
-    radial-gradient(circle at 85% 0%, rgba(31, 70, 55, 0.1), transparent 18%),
-    linear-gradient(180deg, #f4f6f8 0%, #eef2f5 48%, #e9edf2 100%);
-}
+/* Old body-background override removed — single grid-texture body{} at top wins. */
 
 .topbar {
   min-height: 68px;

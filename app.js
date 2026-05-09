@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-equal-height-cols-152";
+const APP_SHELL_VERSION = "20260509-debug-pass-bg-grid-153";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1566,7 +1566,11 @@ function staticLabels() {
     ["[data-order-filter='fulfilled']", state.lang === "it" ? "Evasi / chiusi" : "Completed / closed"],
     ["#orders .route-subsection h4", t("routeOffice")],
     ["#orders .route-subsection .subsection-copy", t("routeOfficeCopy")],
-    ["#orders .panel-subsection h4", t("officeOperations")],
+    ["#orders .panel-subsection-office h4", t("officeOperations")],
+    ["#orders .panel-subsection-items h4", state.lang === "it" ? "Articoli ordine" : "Order items"],
+    ["#orders .panel-subsection-prep h4", state.lang === "it" ? "Preparazione ufficio" : "Office preparation"],
+    ["#orders .panel-subsection-docs h4", state.lang === "it" ? "Allegati ordine" : "Order attachments"],
+    ["#orders .panel-subsection-job-hub h4", state.lang === "it" ? "Commessa unificata" : "Unified job"],
     ["#save-prep-list-button", t("savePreparation")],
     ["#order-attachment-button", t("uploadAttachment")],
     ["#installations .toolbar-row .search-pill", t("crewViewCopy")],
@@ -8659,12 +8663,12 @@ function applyStaticTranslations() {
   setText("sidebar-operational-label", t("operationsSection"));
   setText("sidebar-sales-label", t("salesSection"));
   setText("sidebar-admin-label", t("adminSection"));
-  setSubheading("#orders .panel-subsection:nth-of-type(1) h4", t("officeOperations"));
-  setSubheading("#orders .panel-subsection:nth-of-type(2) h4", t("orderItems"));
-  setSubheading("#orders .panel-subsection:nth-of-type(3) h4", t("officePreparation"));
-  setSubheading("#orders .panel-subsection:nth-of-type(4) h4", t("orderAttachments"));
+  setSubheading("#orders .panel-subsection-office h4", t("officeOperations"));
+  setSubheading("#orders .panel-subsection-items h4", t("orderItems"));
+  setSubheading("#orders .panel-subsection-prep h4", t("officePreparation"));
+  setSubheading("#orders .panel-subsection-docs h4", t("orderAttachments"));
   setSubheading("#accounting .panel-head h3", t("accounting"));
-  setSubheading("#accounting .panel-subsection h4", t("accountingSummary"));
+  // Removed: #accounting has no matching .panel-subsection h4 — selector was a silent no-op.
   setSubheading("#warehouse .panel-head h3", t("stockFlowTitle"));
   setSubheading("#shipping .panel-head h3", t("shippingTitle"));
   setSubheading("#installations .panel-head h3", t("installations"));
