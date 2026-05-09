@@ -4,3 +4,5 @@ data/backups/
 .DS_Store
 .env
 node_modules/
+.claude/worktrees/
+kanban-demo.html
