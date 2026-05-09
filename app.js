@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-inbox-sort-date-prominent-147";
+const APP_SHELL_VERSION = "20260509-inbox-cleaner-chips-sticky-148";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9388,32 +9388,36 @@ function renderOrderStepper(order) {
 
 function buildOrderInboxStatusTrack(order) {
   const chips = [];
+  const stage = getUnifiedOrderStage(order);
+  const stageIsActionable = stage.key === "warehouse-work" || stage.key === "office-review";
 
-  // Warehouse chip
-  if (!isRoutedToWarehouse(order)) {
-    chips.push({ label: state.lang === "it" ? "Non instradato" : "Not routed", tone: "is-idle" });
-  } else if (isLogisticsOrderCompleted(order)) {
+  // Warehouse / logistics signals — only show actionable states
+  if (isLogisticsOrderCompleted(order)) {
     const wh = order.operations?.warehouse || {};
     const doneLabel = wh.shipped ? (state.lang === "it" ? "Spedito" : "Shipped") : (state.lang === "it" ? "Ritirato" : "Collected");
     chips.push({ label: doneLabel, tone: "is-ok", icon: "📦" });
-  } else if (getWarehousePreparedLines(order).length === 0) {
+  } else if (isRoutedToWarehouse(order) && getWarehousePreparedLines(order).length === 0) {
     chips.push({ label: state.lang === "it" ? "Prep. mancante" : "Prep. missing", tone: "is-warn", icon: "📦" });
-  } else {
+  } else if (isRoutedToWarehouse(order) && !stageIsActionable) {
+    // Only show "Pronto" when the stage badge is also positive — avoids
+    // the confusing "Pronto" + "DA PREPARARE" combo on the same row.
     chips.push({ label: state.lang === "it" ? "Pronto" : "Ready", tone: "is-info", icon: "📦" });
   }
 
-  // Installation chip
-  if (!isRoutedToInstallation(order)) {
-    chips.push({ label: state.lang === "it" ? "Solo fornitura" : "Supply only", tone: "is-idle" });
-  } else if (isInstallationOrderCompleted(order)) {
-    chips.push({ label: state.lang === "it" ? "Posa ok" : "Install done", tone: "is-ok", icon: "🔧" });
-  } else if (order.operations?.installation?.installDate) {
-    chips.push({ label: formatDate(order.operations.installation.installDate), tone: "is-info", icon: "🔧" });
-  } else {
-    chips.push({ label: state.lang === "it" ? "Data mancante" : "No date", tone: "is-warn", icon: "🔧" });
+  // Installation signals — only when relevant (skip "Solo fornitura" since
+  // the type-badge in the row already shows it).
+  if (isRoutedToInstallation(order)) {
+    if (isInstallationOrderCompleted(order)) {
+      chips.push({ label: state.lang === "it" ? "Posa ok" : "Install done", tone: "is-ok", icon: "🔧" });
+    } else if (order.operations?.installation?.installDate) {
+      chips.push({ label: formatDate(order.operations.installation.installDate), tone: "is-info", icon: "🔧" });
+    } else {
+      chips.push({ label: state.lang === "it" ? "Data mancante" : "No date", tone: "is-warn", icon: "🔧" });
+    }
   }
 
-  // Payment chip
+  // Payment chip — only show if there's something to highlight (saldato in
+  // green, residuo in amber). Skip for not-yet-due cases to reduce noise.
   const openBalance = getOpenBalance(order);
   if (openBalance <= 0) {
     chips.push({ label: state.lang === "it" ? "Saldato" : "Paid", tone: "is-ok", icon: "€" });
@@ -9421,6 +9425,7 @@ function buildOrderInboxStatusTrack(order) {
     chips.push({ label: formatCurrency(openBalance), tone: "is-warn", icon: "€" });
   }
 
+  if (chips.length === 0) return "";
   return `<div class="inbox-status-track">${chips.map((c) => `<span class="inbox-status-chip ${c.tone}">${c.icon ? `<span class="inbox-status-chip-icon" aria-hidden="true">${c.icon}</span>` : ""}<span>${escapeHtml(c.label)}</span></span>`).join("")}</div>`;
 }
 
@@ -16419,6 +16424,13 @@ function handleGlobalClick(event) {
       focusViewTarget(state.currentView);
     }
     revealMobileDetailTarget(nextView);
+    // Reset detail-panel scroll so the user always sees the top of the
+    // newly-selected order, not wherever the previous one was scrolled to.
+    requestAnimationFrame(() => {
+      document.querySelectorAll(`#${nextView} .detail-panel, #${nextView} .order-detail-panel, #${nextView} .install-detail-panel`).forEach((panel) => {
+        if (panel.scrollTop > 0) panel.scrollTop = 0;
+      });
+    });
     return;
   }
   if (action === "open-modal") {

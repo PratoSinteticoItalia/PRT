@@ -5356,6 +5356,37 @@ body {
   color: #1f5c39;
   border: 1px solid #c8e3d2;
 }
+
+/* Stage badge (DA PREPARARE, RITIRATO/EVASO, etc.) — give the most common
+   actionable state stronger visual weight so it reads as a status, not a chip. */
+.order-row .action-badge.badge-warning {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 5px 12px;
+  font-size: 12px;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.order-row .action-badge.badge-urgent {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+/* Sticky toolbar inside #orders — sits right under the topbar so there's no
+   blank gap above the list when the page header scrolls out. */
+#orders .view-toolbar,
+#accounting .view-toolbar,
+#shipping .view-toolbar {
+  position: sticky;
+  top: 76px;
+  z-index: 4;
+  background: linear-gradient(180deg, var(--bg, #f0ede5) 0%, var(--bg, #f0ede5) 70%, transparent 100%);
+  padding-bottom: 8px;
+  margin-bottom: 0;
+}
 .order-row-date.is-fresh {
   background: #d8efe1;
   color: #14532d;
