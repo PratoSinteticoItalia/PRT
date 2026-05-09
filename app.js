@@ -7896,10 +7896,13 @@ function isLogisticsOrderCompleted(order) {
   const warehouse = order.operations?.warehouse || {};
   const status = String(warehouse.status || "").trim();
   const mode = String(warehouse.fulfillmentMode || "").trim();
+  // Trust Shopify fulfillment_status: "fulfilled" as ground truth
+  const shopifyFulfilled = String(order.fulfillmentStatus || "").toLowerCase() === "fulfilled";
   return Boolean(
     warehouse.shipped
     || status === "ritirato"
-    || (mode === "corriere" && warehouse.carrierPassed),
+    || (mode === "corriere" && warehouse.carrierPassed)
+    || shopifyFulfilled,
   );
 }
 

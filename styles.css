@@ -5322,6 +5322,9 @@ body {
 #orders .order-grid > div:first-child,
 #accounting .order-grid > div:first-child {
   contain: layout style;
+  align-self: start;
+  position: sticky;
+  top: 84px;
 }
 
 #shipping .order-grid,
