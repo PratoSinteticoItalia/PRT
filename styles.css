@@ -5410,10 +5410,11 @@ body {
    scrolled under it, which read as a visual bug. Keep it as a normal block
    that scrolls with the page. */
 
-/* Hide the "Operatività ufficio" subsection when there is no order note
-   to show — after the recent simplification it often renders empty and
-   leaves a heading with nothing below. */
-.panel-subsection-office:has(> #order-office-summary:empty) {
+/* Hide subsections that have no content to show. The :empty check works
+   because JS now sets innerHTML to "" (no whitespace) when there is nothing
+   to render, which satisfies the CSS :empty pseudo-class. */
+.panel-subsection-office:has(> #order-office-summary:empty),
+.panel-subsection-job-hub:has(> #order-job-hub:empty) {
   display: none;
 }
 

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-uncap-detail-panel-155";
+const APP_SHELL_VERSION = "20260509-fix-empty-sections-156";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9774,12 +9774,9 @@ function renderOrders() {
     </div>
   `;
   if (ui.orderJobHub) ui.orderJobHub.innerHTML = renderOrderJobHub(order);
-  const orderNoteMarkup = order.note
+  ui.orderOfficeSummary.innerHTML = order.note
     ? `<div class="detail-note-chip">${escapeHtml(order.note)}</div>`
     : "";
-  ui.orderOfficeSummary.innerHTML = `
-    ${orderNoteMarkup}
-  `;
   ui.orderLineList.innerHTML = (order.lineDetails || []).length
     ? order.lineDetails.map((item) => {
       const dims = extractDimensions(item.title);
