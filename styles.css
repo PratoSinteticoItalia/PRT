@@ -1489,6 +1489,15 @@ button.is-feedback,
 
 .order-flow-card {
   gap: 12px;
+  border-left: 4px solid var(--brand, #29543c);
+  background: linear-gradient(180deg, #f1f8f1 0%, #ffffff 60%);
+}
+.order-flow-card .panel-eyebrow {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--brand, #29543c);
+  text-transform: uppercase;
 }
 
 .route-visibility-grid {
@@ -5336,6 +5345,8 @@ body {
 
 #sales-content .dashboard-grid > .sales-content-list-panel {
   align-self: start;
+  position: sticky;
+  top: 84px;
 }
 
 #shipping .order-grid,
