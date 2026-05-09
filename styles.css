@@ -13635,6 +13635,151 @@ textarea.text-input {
   }
 }
 
+/* ── Toast notifications ──────────────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  max-width: 340px;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(16, 24, 20, 0.16), 0 2px 6px rgba(16, 24, 20, 0.08);
+  opacity: 0;
+  transform: translateX(16px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  will-change: opacity, transform;
+}
+
+.toast.is-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.toast-success { background: #1e3d2f; color: #a8e6bf; border: 1px solid rgba(168,230,191,0.2); }
+.toast-error   { background: #3d1e1e; color: #f4a1a1; border: 1px solid rgba(244,161,161,0.2); }
+.toast-warning { background: #3d2e1e; color: #f4cfa1; border: 1px solid rgba(244,207,161,0.2); }
+.toast-info    { background: #1e2d3d; color: #a1caf4; border: 1px solid rgba(161,202,244,0.2); }
+
+.toast-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  font-style: normal;
+}
+
+/* ── Inventory stock bar ──────────────────────────────────────────────────── */
+.wh-stock-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.07);
+  margin: 10px 0 4px;
+  overflow: visible;
+}
+
+.wh-stock-bar-committed,
+.wh-stock-bar-available {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.wh-stock-bar-committed {
+  left: 0;
+  background: var(--amber, #d97706);
+  opacity: 0.85;
+}
+
+.wh-stock-bar-available {
+  background: #2d6a4f;
+  opacity: 0.9;
+}
+
+/* ── Dashboard trend chart ────────────────────────────────────────────────── */
+.trend-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 100px;
+  padding: 0 4px;
+}
+
+.trend-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+}
+
+.trend-bars {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  width: 100%;
+}
+
+.trend-bar {
+  flex: 1;
+  border-radius: 4px 4px 0 0;
+  min-height: 3px;
+  transition: height 0.5s ease;
+}
+
+.trend-bar-revenue  { background: rgba(45, 106, 79, 0.7); }
+.trend-bar-collected { background: rgba(45, 106, 79, 0.25); }
+
+.trend-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text3);
+  letter-spacing: 0.02em;
+}
+
+.trend-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  padding: 0 4px;
+}
+
+.trend-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.trend-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.trend-dot-revenue  { background: rgba(45, 106, 79, 0.7); }
+.trend-dot-collected { background: rgba(45, 106, 79, 0.25); }
+
 /* ── Cmd+K global search overlay ─────────────────────────────────────────── */
 .cmd-k-overlay {
   position: fixed;

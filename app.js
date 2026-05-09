@@ -1433,6 +1433,9 @@ const ui = {
   cmdKResults: document.getElementById("cmd-k-results"),
   cmdKEmpty: document.getElementById("cmd-k-empty"),
   topbarSearchInput: document.getElementById("topbar-search-input"),
+  toastContainer: document.getElementById("toast-container"),
+  dashboardTrend: document.getElementById("dashboard-trend"),
+  warehouseExportBtn: document.getElementById("warehouse-export-btn"),
   orderModal: document.getElementById("order-modal"),
   orderModalTitle: document.getElementById("order-modal-title"),
   orderForm: document.getElementById("order-form"),
@@ -9147,6 +9150,7 @@ function renderDashboard() {
     ];
     ui.dashboardInventorySnapshot.innerHTML = renderDashboardSnapshotCards(items);
   }
+  renderDashboardTrend();
 }
 
 function accountingOpenOrdersLabel() {
@@ -9179,6 +9183,81 @@ function renderDashboardSnapshotCards(items = []) {
     () => `<div class="dashboard-snapshot-placeholder" aria-hidden="true"></div>`,
   );
   return [...cards, ...placeholders].join("");
+}
+
+// ── Monthly revenue trend (dashboard) ────────────────────────────────────────
+
+function buildMonthlyTrend(monthsBack = 6) {
+  const now = new Date();
+  const months = [];
+  for (let i = monthsBack - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = new Intl.DateTimeFormat(state.lang === "it" ? "it-IT" : "en-GB", { month: "short" }).format(d);
+    months.push({ key, label: label.charAt(0).toUpperCase() + label.slice(1), revenue: 0, collected: 0 });
+  }
+  for (const order of state.orders) {
+    const raw = order.createdAt || order.updatedAt || "";
+    const key = String(raw).slice(0, 7);
+    const slot = months.find((m) => m.key === key);
+    if (!slot) continue;
+    slot.revenue += toNumber(order.total || 0);
+    slot.collected += getCollectedAmount(order);
+  }
+  return months;
+}
+
+function renderDashboardTrend() {
+  if (!ui.dashboardTrend) return;
+  const months = buildMonthlyTrend();
+  const maxVal = Math.max(...months.map((m) => m.revenue), 1);
+  ui.dashboardTrend.innerHTML = `
+    <div class="trend-chart">
+      ${months.map((m) => {
+        const revPct = Math.round((m.revenue / maxVal) * 100);
+        const colPct = Math.round((m.collected / maxVal) * 100);
+        return `
+          <div class="trend-col">
+            <div class="trend-bars">
+              <div class="trend-bar trend-bar-revenue" style="height:${revPct}%" title="${formatCurrency(m.revenue)}"></div>
+              <div class="trend-bar trend-bar-collected" style="height:${colPct}%" title="${formatCurrency(m.collected)}"></div>
+            </div>
+            <div class="trend-label">${m.label}</div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+    <div class="trend-legend">
+      <span class="trend-legend-item"><span class="trend-legend-dot trend-dot-revenue"></span>${state.lang === "it" ? "Ricavi" : "Revenue"}</span>
+      <span class="trend-legend-item"><span class="trend-legend-dot trend-dot-collected"></span>${state.lang === "it" ? "Incassato" : "Collected"}</span>
+    </div>
+  `;
+}
+
+// ── Inventory CSV export ──────────────────────────────────────────────────────
+
+function exportInventoryCSV() {
+  const groups = getInventorySummary();
+  const rows = [
+    ["Prodotto", "Tipo", "Totale (mq/u)", "Impegnato", "Disponibile", "Valore disponibile", "Deficit", "N. pezzi"],
+  ];
+  for (const g of groups) {
+    const total = g.isModel ? `${Math.round(g.totalSqm)} mq` : `${g.totalUnits} u`;
+    const committed = g.isModel ? `${Math.round(g.demandSqm)} mq` : `${g.demandUnits} u`;
+    const available = g.isModel ? `${Math.round(Math.max(0, g.availableSqm))} mq` : `${Math.max(0, g.availableUnits)} u`;
+    const value = g.isModel && g.grossPriceConfigured ? formatCurrency(g.availableGrossValue) : "—";
+    const deficit = (g.isModel ? g.availableSqm : g.availableUnits) < 0 ? "SÌ" : "no";
+    rows.push([g.product, g.isModel ? "Prato" : "Materiale", total, committed, available, value, deficit, g.pieces.length]);
+  }
+  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `inventario-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(state.lang === "it" ? "CSV inventario scaricato" : "Inventory CSV downloaded", "success");
 }
 
 function buildActivityFeed() {
@@ -10983,6 +11062,16 @@ function renderInventoryCard(group) {
       </div>`
     : "";
 
+  // stock bar segments
+  const totalForBar = group.isModel ? group.totalSqm : group.totalUnits;
+  const committedBarPct = totalForBar > 0 ? Math.min(100, Math.round((group.isModel ? group.demandSqm : group.demandUnits) / totalForBar * 100)) : 0;
+  const availableBarPct = totalForBar > 0 ? Math.min(100 - committedBarPct, Math.round(Math.max(0, group.isModel ? group.availableSqm : group.availableUnits) / totalForBar * 100)) : 0;
+  const stockBarHtml = `
+    <div class="wh-stock-bar" title="${state.lang === "it" ? "Impegnato" : "Committed"}: ${committedBarPct}% · ${state.lang === "it" ? "Disponibile" : "Available"}: ${availableBarPct}%">
+      <div class="wh-stock-bar-committed" style="width:${committedBarPct}%"></div>
+      <div class="wh-stock-bar-available" style="width:${availableBarPct}%; left:${committedBarPct}%"></div>
+    </div>`;
+
   return `
     <article class="wh-product">
       <div class="wh-product-header">
@@ -10997,6 +11086,7 @@ function renderInventoryCard(group) {
           <button class="btn" data-action="prefill-inventory" data-product="${group.product}">${state.lang === "it" ? "Carica giacenza" : "Load stock"}</button>
         </div>
       </div>
+      ${stockBarHtml}
       ${deficitAlert}
       ${linkedDemandOrders.length ? `
         <div class="wh-demand-orders">
@@ -13940,7 +14030,7 @@ function clearAllSearchRenderTimers() {
   });
 }
 
-function setView(view) {
+function setView(view, { pushHistory = true } = {}) {
   const allowed = getAllowedViewsForRole();
   const nextView = allowed.includes(view) ? view : (allowed[0] || "dashboard");
   const previousView = state.currentView;
@@ -13961,6 +14051,9 @@ function setView(view) {
     triggerSalesRequestAutoSync({ force: true });
   }
   if (nextView !== previousView) {
+    if (pushHistory) {
+      window.history.pushState({ view: nextView }, "", `#${nextView}`);
+    }
     requestAnimationFrame(() => {
       scrollCurrentViewToTop();
       focusViewTarget(nextView);
@@ -13969,6 +14062,30 @@ function setView(view) {
   }
   focusViewTarget(nextView);
 }
+
+// ── Toast notification system ─────────────────────────────────────────────────
+
+function showToast(text, kind = "success", durationMs = 3800) {
+  if (!ui.toastContainer) return;
+  const icons = { success: "✓", error: "✕", warning: "⚠", info: "ℹ" };
+  const div = document.createElement("div");
+  div.className = `toast toast-${kind}`;
+  div.innerHTML = `<span class="toast-icon" aria-hidden="true">${icons[kind] || icons.info}</span><span class="toast-text">${escapeHtml(text)}</span>`;
+  ui.toastContainer.appendChild(div);
+  requestAnimationFrame(() => requestAnimationFrame(() => div.classList.add("is-visible")));
+  const timer = window.setTimeout(() => dismissToast(div), durationMs);
+  div.addEventListener("click", () => { clearTimeout(timer); dismissToast(div); }, { once: true });
+}
+
+function dismissToast(div) {
+  div.classList.remove("is-visible");
+  div.addEventListener("transitionend", () => div.remove(), { once: true });
+}
+
+window.addEventListener("popstate", (event) => {
+  const view = event.state?.view || "dashboard";
+  setView(view, { pushHistory: false });
+});
 
 function setStatus(node, kind, text) {
   if (!node) return;
@@ -16784,6 +16901,7 @@ bindEvent(ui.warehouseSearch, "input", (event) => {
   state.search.warehouse = event.target.value;
   scheduleSearchRender("warehouse", renderWarehouse);
 });
+bindEvent(ui.warehouseExportBtn, "click", () => exportInventoryCSV());
 bindEvent(ui.accountingSearch, "input", (event) => {
   state.search.accounting = event.target.value;
   state.accountingPage = 1;
