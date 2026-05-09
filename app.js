@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-content-sticky-flow-emphasis-145";
+const APP_SHELL_VERSION = "20260509-logout-shopify-link-content-share-146";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1594,6 +1594,11 @@ function staticLabels() {
     ["#accounting .panel-head .panel-eyebrow", state.lang === "it" ? "Controllo economico" : "Financial control"],
     ["#accounting-search", null, t("searchOrderPayment")],
     ["#import-shopify-payment-button", t("importShopifyPayment")],
+    ["#dashboard-quick-accounting-title", state.lang === "it" ? "Contabilità rapida" : "Quick accounting"],
+    ["#dashboard-stock-summary-title", state.lang === "it" ? "Riepilogo giacenza" : "Stock summary"],
+    ["#dashboard-trend-title", state.lang === "it" ? "Trend ricavi ultimi 6 mesi" : "Revenue trend (last 6 months)"],
+    ["#dashboard-actions-title", state.lang === "it" ? "Le tue azioni adesso" : "Your actions now"],
+    ["#dashboard-week-installations-title", state.lang === "it" ? "Pose questa settimana" : "Installations this week"],
   ];
 }
 
@@ -9419,6 +9424,32 @@ function buildOrderInboxStatusTrack(order) {
   return `<div class="inbox-status-track">${chips.map((c) => `<span class="inbox-status-chip ${c.tone}">${c.icon ? `<span class="inbox-status-chip-icon" aria-hidden="true">${c.icon}</span>` : ""}<span>${escapeHtml(c.label)}</span></span>`).join("")}</div>`;
 }
 
+function getShopifyAdminOrderUrl(order) {
+  const shop = String(state.settings?.storeDomain || "").trim();
+  const numericId = String(order?.shopifyNumericId || "").trim();
+  if (!shop || !numericId) return "";
+  return `https://${shop}/admin/orders/${numericId}`;
+}
+
+function formatOrderRelativeDate(isoString) {
+  if (!isoString) return "";
+  const orderDate = new Date(isoString);
+  if (Number.isNaN(orderDate.getTime())) return "";
+  const now = new Date();
+  const diffMs = now - orderDate;
+  const diffDays = Math.floor(diffMs / 86400000);
+  const lang = state.lang;
+  if (diffDays < 0) return formatDate(isoString);
+  if (diffDays === 0) return lang === "it" ? "Oggi" : "Today";
+  if (diffDays === 1) return lang === "it" ? "Ieri" : "Yesterday";
+  if (diffDays < 7) return lang === "it" ? `${diffDays} giorni fa` : `${diffDays} days ago`;
+  if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return lang === "it" ? `${weeks} sett. fa` : `${weeks}w ago`;
+  }
+  return formatDate(isoString);
+}
+
 function renderOrderRow(order, view = "orders") {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const orderType = view === "orders" ? getInboxCommercialType(order) : getOrderType(order);
@@ -9432,10 +9463,11 @@ function renderOrderRow(order, view = "orders") {
         ? "badge-info"
         : "badge-warning";
   const statusTrack = view === "orders" ? buildOrderInboxStatusTrack(order) : "";
+  const relativeDate = formatOrderRelativeDate(order.createdAt);
   return `
     <article class="order-row inbox-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="${view}">
       <div class="inbox-row-main">
-        <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
+        <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small>${relativeDate ? `<span class="order-row-date" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(relativeDate)}</span>` : ""}</div>
         <div class="order-meta">${order.operations?.product || undefinedText()} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || addressIncompleteText()}</div>
         ${statusTrack}
         <div class="inbox-row-next-step">
@@ -9691,6 +9723,7 @@ function renderOrders() {
       })}
     </div>
     <div class="detail-actions detail-actions-primary">
+      ${getShopifyAdminOrderUrl(order) ? `<a class="btn" href="${escapeHtml(getShopifyAdminOrderUrl(order))}" target="_blank" rel="noopener">${state.lang === "it" ? "Apri su Shopify ↗" : "Open in Shopify ↗"}</a>` : ""}
       ${composeAddress(order) ? `<button class="btn" data-action="open-maps" data-id="${order.id}">${state.lang === "it" ? "Apri Maps" : "Open Maps"}</button>` : ""}
       ${order.phone ? `<button class="btn" data-action="call-client" data-id="${order.id}">${state.lang === "it" ? "Chiama cliente" : "Call customer"}</button>` : ""}
       ${order.phone && isOrderFulfilledOrClosed(order) ? `<button class="btn" data-action="request-order-review" data-id="${order.id}">${state.lang === "it" ? "Chiedi recensione" : "Request review"}</button>` : ""}
@@ -10198,6 +10231,15 @@ function renderSalesContentAttachments(items = [], contentId = "") {
       <strong>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.name || "Attachment")}</a>` : escapeHtml(item.name || "Attachment")}</strong>
       <div class="attachment-copy">${escapeHtml(getAttachmentContextLabel("sales-content"))}</div>
       <div>${item.createdAt ? formatDate(item.createdAt) : "—"}</div>
+      ${item.url
+        ? `<button
+            class="ghost-button small-button attachment-copy-link"
+            type="button"
+            data-action="copy-content-link"
+            data-url="${escapeHtml(item.url)}"
+            data-name="${escapeHtml(item.name || "")}"
+          >${state.lang === "it" ? "Copia link" : "Copy link"}</button>`
+        : ""}
     </article>
   `;
   }).join("");
@@ -13995,6 +14037,48 @@ function dismissToast(div) {
   div.addEventListener("transitionend", () => div.remove(), { once: true });
 }
 
+async function copyContentLink(url, title = "") {
+  if (!url) return;
+  const successMsg = state.lang === "it" ? "Link copiato negli appunti" : "Link copied to clipboard";
+  const errorMsg = state.lang === "it" ? "Copia link fallita" : "Copy link failed";
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      await navigator.clipboard.writeText(url);
+      showToast(successMsg, "success");
+      return;
+    }
+  } catch {
+    // fall through to fallback
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "absolute";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (ok) {
+      showToast(successMsg, "success");
+      return;
+    }
+  } catch {
+    // fall through
+  }
+  if (navigator.share) {
+    try {
+      await navigator.share({ url, title: title || url });
+      showToast(successMsg, "success");
+      return;
+    } catch {
+      // user cancelled or unsupported
+    }
+  }
+  showToast(errorMsg, "error");
+}
+
 window.addEventListener("popstate", (event) => {
   const view = event.state?.view || "dashboard";
   setView(view, { pushHistory: false });
@@ -16278,6 +16362,17 @@ function handleGlobalClick(event) {
     });
     return;
   }
+  if (action === "copy-content-link") {
+    event.preventDefault();
+    event.stopPropagation();
+    const rawUrl = button.dataset.url || "";
+    if (!rawUrl) return;
+    const absoluteUrl = /^https?:\/\//i.test(rawUrl)
+      ? rawUrl
+      : `${window.location.origin}${rawUrl.startsWith("/") ? "" : "/"}${rawUrl}`;
+    copyContentLink(absoluteUrl, button.dataset.name || "");
+    return;
+  }
   if (action === "add-accounting-payment") {
     state.accountingMobilePane = "payments";
     addAccountingPaymentRow();
@@ -16640,23 +16735,20 @@ ui.langButtons.forEach((button) => {
   button.dataset.boundLang = "true";
 });
 ui.quickViewButtons.forEach((button) => button.addEventListener("click", () => setView(button.dataset.quickView)));
-bindEvent(ui.logoutButton, "click", async () => {
-  await apiFetch("/api/logout", { method: "POST" });
+function performOptimisticLogout({ closeMobileMenu = false } = {}) {
+  // Optimistic: tear down the UI immediately, send the API call in the
+  // background. The cookie is HttpOnly so the server still owns the source
+  // of truth — even if the request lags, the next reload will redirect.
+  if (closeMobileMenu) state.mobileMenuOpen = false;
   applySessionPayload({});
   showAuth();
-});
-bindEvent(ui.mobileLogoutButton, "click", async () => {
-  await apiFetch("/api/logout", { method: "POST" });
-  state.mobileMenuOpen = false;
-  applySessionPayload({});
-  showAuth();
-});
-bindEvent(ui.mobileLogoutInlineButton, "click", async () => {
-  await apiFetch("/api/logout", { method: "POST" });
-  state.mobileMenuOpen = false;
-  applySessionPayload({});
-  showAuth();
-});
+  apiFetch("/api/logout", { method: "POST" }).catch((error) => {
+    console.warn("logout_request_failed", error);
+  });
+}
+bindEvent(ui.logoutButton, "click", () => performOptimisticLogout());
+bindEvent(ui.mobileLogoutButton, "click", () => performOptimisticLogout({ closeMobileMenu: true }));
+bindEvent(ui.mobileLogoutInlineButton, "click", () => performOptimisticLogout({ closeMobileMenu: true }));
 bindEvent(ui.reloadButton, "click", reloadAll);
 bindEvent(ui.mobileReloadButton, "click", reloadAll);
 bindEvent(ui.newOrderButton, "click", () => openOrderModal(null));
