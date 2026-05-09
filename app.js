@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260508-loading-character-141";
+const APP_SHELL_VERSION = "20260509-shopify-sync-fix-142";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
