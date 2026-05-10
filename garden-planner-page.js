@@ -2851,7 +2851,7 @@ function GardenPlanner() {
   };
 
   return (
-    <div style={{ fontFamily: "'Manrope', 'Segoe UI', sans-serif", minHeight: "100vh", background: B.cream }}>
+    <div style={{ fontFamily: "'Manrope', 'Segoe UI', sans-serif", minHeight: "100vh", background: "transparent" }}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
       <Header />
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 16px", display: "flex", flexDirection: "column", gap: 22 }}>

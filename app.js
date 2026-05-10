@@ -1185,6 +1185,9 @@ const ui = {
   sidebarAdminDivider: document.getElementById("sidebar-admin-divider"),
   sidebarAdminLabel: document.getElementById("sidebar-admin-label"),
   sidebarAdminNav: document.getElementById("sidebar-admin-nav"),
+  sidebarToolsDivider: document.getElementById("sidebar-tools-divider"),
+  sidebarToolsLabel: document.getElementById("sidebar-tools-label"),
+  sidebarToolsNav: document.getElementById("sidebar-tools-nav"),
   navLinks: Array.from(document.querySelectorAll(".nav-link")),
   views: Array.from(document.querySelectorAll(".view")),
   viewTitle: document.getElementById("view-title"),
@@ -1609,7 +1612,7 @@ function staticLabels() {
     ["#dashboard-quick-accounting-title", state.lang === "it" ? "Contabilità rapida" : "Quick accounting"],
     ["#dashboard-stock-summary-title", state.lang === "it" ? "Riepilogo giacenza" : "Stock summary"],
     ["#dashboard-trend-title", state.lang === "it" ? "Trend ricavi ultimi 6 mesi" : "Revenue trend (last 6 months)"],
-    ["#dashboard-actions-title", state.lang === "it" ? "Le tue azioni adesso" : "Your actions now"],
+    ["#dashboard-actions-title", state.lang === "it" ? "Priorità operative" : "Priority actions"],
     ["#dashboard-week-installations-title", state.lang === "it" ? "Pose questa settimana" : "Installations this week"],
   ];
 }
@@ -2142,6 +2145,9 @@ function syncSidebarLayout(role = state.currentUser?.role || "office") {
     ui.sidebarAdminDivider,
     ui.sidebarAdminLabel,
     ui.sidebarAdminNav,
+    ui.sidebarToolsDivider,
+    ui.sidebarToolsLabel,
+    ui.sidebarToolsNav,
     ui.sidebarMobileTools,
     ui.sidebarCard,
   ];
@@ -2157,6 +2163,9 @@ function syncSidebarLayout(role = state.currentUser?.role || "office") {
     ui.sidebarAdminDivider,
     ui.sidebarAdminLabel,
     ui.sidebarAdminNav,
+    ui.sidebarToolsDivider,
+    ui.sidebarToolsLabel,
+    ui.sidebarToolsNav,
     ui.sidebarMobileTools,
     ui.sidebarCard,
   ];
@@ -7417,9 +7426,9 @@ function buildDashboardActions() {
       }
       return { order, title, reason, score, kind, urgency };
     })
-    .filter(a => a.score > 10)
+    .filter(a => a.score > 10 && a.kind !== "address")
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    .slice(0, 6);
 
   const grouped = {};
   for (const action of raw) {
