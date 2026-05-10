@@ -6081,9 +6081,22 @@ body {
 }
 
 .main-content {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.1), transparent 16%),
-    transparent;
+  background-color: #ecedea;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 31px,
+      rgba(70, 80, 75, 0.10) 31px,
+      rgba(70, 80, 75, 0.10) 32px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 31px,
+      rgba(70, 80, 75, 0.10) 31px,
+      rgba(70, 80, 75, 0.10) 32px
+    );
 }
 
 .page-header {

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260509-fix-list-visibility-157";
+const APP_SHELL_VERSION = "20260510-grid-texture-on-maincontent-158";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
