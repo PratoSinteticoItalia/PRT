@@ -59,8 +59,6 @@ const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const META_MARKETING_ACCESS_TOKEN = String(process.env.META_MARKETING_ACCESS_TOKEN || WHATSAPP_DEFAULT_ACCESS_TOKEN).trim();
 const META_PAGE_ID = String(process.env.META_PAGE_ID || "").trim();
 const META_INSTAGRAM_BUSINESS_ACCOUNT_ID = String(process.env.META_INSTAGRAM_BUSINESS_ACCOUNT_ID || "").trim();
-const GOOGLE_ADS_DEVELOPER_TOKEN = String(process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "").trim();
-const GOOGLE_ADS_CUSTOMER_ID = String(process.env.GOOGLE_ADS_CUSTOMER_ID || "").trim();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -2639,23 +2637,13 @@ async function publishMarketingItem(item = {}, mode = "publish") {
     if (channel === "WhatsApp") return { ok: false, reason: "whatsapp_schedule_not_supported" };
     if (channel === "Instagram") return publishInstagramMarketingItem(item, publishMode);
     if (channel === "Facebook") return publishFacebookMarketingItem(item, publishMode);
-    if (channel === "Google Ads") {
-      if (!GOOGLE_ADS_DEVELOPER_TOKEN || !GOOGLE_ADS_CUSTOMER_ID) {
-        return { ok: false, reason: "missing_google_ads_config" };
-      }
-      return { ok: false, reason: "google_ads_schedule_not_configured", scheduledAt };
-    }
+    if (channel === "TikTok") return { ok: false, reason: "tiktok_schedule_not_configured", scheduledAt };
     return { ok: false, reason: "unsupported_channel" };
   }
   if (channel === "WhatsApp") return sendMarketingWhatsAppMessage(item);
   if (channel === "Instagram") return publishInstagramMarketingItem(item, publishMode);
   if (channel === "Facebook") return publishFacebookMarketingItem(item, publishMode);
-  if (channel === "Google Ads") {
-    if (!GOOGLE_ADS_DEVELOPER_TOKEN || !GOOGLE_ADS_CUSTOMER_ID) {
-      return { ok: false, reason: "missing_google_ads_config" };
-    }
-    return { ok: false, reason: "google_ads_publish_not_configured" };
-  }
+  if (channel === "TikTok") return { ok: false, reason: "tiktok_publish_not_configured" };
   if (channel === "Email") {
     if (!RESEND_API_KEY || !isValidEmailAddress(SALES_REQUEST_EMAIL_FROM)) {
       return { ok: false, reason: "missing_email_config" };

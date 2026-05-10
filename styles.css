@@ -14840,8 +14840,8 @@ textarea.text-input {
 .marketing-platform-preview.is-whatsapp {
   border-color: rgba(37, 211, 102, 0.28);
 }
-.marketing-platform-preview.is-google-ads {
-  border-color: rgba(66, 133, 244, 0.24);
+.marketing-platform-preview.is-tiktok {
+  border-color: rgba(0, 0, 0, 0.18);
 }
 .marketing-preview-top {
   display: flex;

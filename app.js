@@ -14170,7 +14170,7 @@ function marketingChannelToolUrl(channel, item = {}) {
     Instagram: "https://business.facebook.com/latest/composer",
     Facebook: "https://business.facebook.com/latest/composer",
     WhatsApp: "https://web.whatsapp.com/",
-    "Google Ads": "https://ads.google.com/",
+    TikTok: "https://www.tiktok.com/upload",
     Email: "https://mail.google.com/mail/u/0/#inbox?compose=new",
     Altro: "https://business.facebook.com/latest/home",
   };
@@ -14182,7 +14182,7 @@ function marketingChannelToolLabel(channel) {
     Instagram: "Apri Meta Business Suite",
     Facebook: "Apri Meta Business Suite",
     WhatsApp: "Apri WhatsApp Business",
-    "Google Ads": "Apri Google Ads",
+    TikTok: "Apri TikTok Studio",
     Email: "Prepara email",
     Altro: "Apri strumenti marketing",
   };
@@ -14260,7 +14260,7 @@ function renderMarketing() {
   if (!container) return;
 
   const items = state.marketingItems || [];
-  const channels = ["Tutti", "Instagram", "Facebook", "WhatsApp", "Google Ads", "Email", "Altro"];
+  const channels = ["Tutti", "Instagram", "Facebook", "WhatsApp", "TikTok", "Email", "Altro"];
   const activeChannel = state.marketingChannelFilter || "Tutti";
   const statusColors = { bozza: "badge-slate", programmato: "badge-info", pubblicato: "badge-success", archiviato: "badge-slate" };
   const statusLabels = { bozza: "Bozza", programmato: "Programmato", pubblicato: "Pubblicato", archiviato: "Archiviato" };
@@ -14302,7 +14302,7 @@ function renderMarketing() {
   };
 
   const channelIcon = (ch) => {
-    const icons = { Instagram: "📸", Facebook: "👥", WhatsApp: "💬", "Google Ads": "🔍", Email: "📧", Altro: "📌" };
+    const icons = { Instagram: "📸", Facebook: "👥", WhatsApp: "💬", TikTok: "🎵", Email: "📧", Altro: "📌" };
     return icons[ch] || "📌";
   };
 
@@ -14466,7 +14466,7 @@ function renderMarketing() {
         <div class="marketing-empty-visual">📅</div>
         <div>
           <h3>Nessun contenuto pianificato</h3>
-          <p>Prepara post, caption, foto/asset, CTA e poi passa alla programmazione su Meta Business Suite, WhatsApp Business, Google Ads o calendario.</p>
+          <p>Prepara post, caption, foto/asset, CTA e poi passa alla programmazione su Meta Business Suite, WhatsApp Business, TikTok, email o calendario.</p>
           <div class="marketing-empty-steps">
             <span>1. Idea</span>
             <span>2. Foto</span>
@@ -14517,7 +14517,7 @@ function renderMarketing() {
             <span>Canale</span>
             <select class="text-input" name="channel">
               <option value="">Seleziona canale</option>
-              ${["Instagram","Facebook","WhatsApp","Google Ads","Email","Altro"].map((ch) => `<option value="${ch}">${ch}</option>`).join("")}
+              ${["Instagram","Facebook","WhatsApp","TikTok","Email","Altro"].map((ch) => `<option value="${ch}">${ch}</option>`).join("")}
             </select>
           </label>
           <label class="field">
@@ -14602,7 +14602,7 @@ function renderMarketing() {
             <strong>Programmazione:</strong> salva il contenuto e usa le azioni rapide sulla scheda per aprire lo strumento corretto. Per una programmazione API automatica servono token Business, account collegati e asset raggiungibili via URL pubblico.
           </div>
           <div class="marketing-api-note field-full">
-            <strong>API-ready:</strong> Meta e Google Ads non permettono una programmazione sicura solo da browser senza credenziali server. Questa scheda raccoglie già copy, asset, data, ora e canale per una futura integrazione backend.
+            <strong>API-ready:</strong> Meta, TikTok ed email non permettono una programmazione sicura solo da browser senza credenziali server. Questa scheda raccoglie già copy, asset, data, ora e canale per una futura integrazione backend.
           </div>
           <div class="field field-full">
             <span>Preview piattaforma</span>
@@ -14875,9 +14875,8 @@ function marketingApiErrorMessage(reason = "") {
     missing_meta_page_config: "Mancano token Meta o Page ID Facebook.",
     facebook_page_publish_not_configured: "Facebook API predisposta: serve completare pubblicazione pagina con asset URL pubblico.",
     facebook_schedule_not_configured: "Programmazione Facebook predisposta: serve completare scheduled_publish_time sulla pagina.",
-    missing_google_ads_config: "Mancano Developer Token o Customer ID Google Ads.",
-    google_ads_publish_not_configured: "Google Ads API predisposta: serve configurare OAuth e campagna/ad group.",
-    google_ads_schedule_not_configured: "Programmazione Google Ads predisposta: serve configurare campagna, ad group e date.",
+    tiktok_publish_not_configured: "TikTok API predisposta: serve configurare OAuth Content Posting API.",
+    tiktok_schedule_not_configured: "Programmazione TikTok predisposta: serve configurare OAuth Content Posting API e regole di scheduling.",
     missing_email_config: "Manca configurazione email server.",
     email_recipient_not_configured: "Per email serve aggiungere destinatario/campagna.",
     whatsapp_schedule_not_supported: "WhatsApp API non programma post: usa invio immediato o Calendario.",
