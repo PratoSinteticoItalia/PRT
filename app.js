@@ -14866,6 +14866,7 @@ function marketingApiErrorMessage(reason = "") {
     missing_phone: "Inserisci il numero WhatsApp destinatario.",
     missing_message: "Inserisci una caption o un testo da inviare.",
     missing_schedule_datetime: "Inserisci data e ora per programmare via API.",
+    missing_public_asset_url: "Serve un URL immagine pubblico HTTPS: i file caricati dal PC non sono raggiungibili dalle API Meta.",
     provider_error: "Il provider ha rifiutato la richiesta. Controlla token, permessi e destinatario.",
     network_error: "Errore di rete verso il provider API.",
     missing_meta_instagram_config: "Mancano token Meta o Instagram Business Account ID.",

@@ -2429,6 +2429,65 @@ function getMarketingScheduleIso(item = {}) {
   return scheduled.toISOString();
 }
 
+function getMarketingScheduleUnix(item = {}) {
+  const iso = getMarketingScheduleIso(item);
+  if (!iso) return 0;
+  return Math.floor(new Date(iso).getTime() / 1000);
+}
+
+function normalizePublicMarketingAssetUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+    if (parsed.protocol !== "https:") return "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+async function callMetaGraphApi(path = "", params = {}, accessToken = META_MARKETING_ACCESS_TOKEN) {
+  const normalizedPath = String(path || "").replace(/^\/+/, "");
+  const endpoint = new URL(`https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${normalizedPath}`);
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value) !== "") endpoint.searchParams.set(key, String(value));
+  });
+  endpoint.searchParams.set("access_token", accessToken);
+  try {
+    const response = await fetchWithTimeout(
+      endpoint.toString(),
+      { method: "POST" },
+      WHATSAPP_GRAPH_TIMEOUT_MS,
+    );
+    const rawResponse = await response.text().catch(() => "");
+    let parsed = {};
+    if (rawResponse) {
+      try {
+        parsed = JSON.parse(rawResponse);
+      } catch {
+        parsed = { raw: rawResponse };
+      }
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: "provider_error",
+        statusCode: Number(response.status || 0),
+        details: String(parsed?.error?.message || parsed?.raw || "").trim(),
+      };
+    }
+    return { ok: true, payload: parsed };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "network_error",
+      details: String(error?.message || "network_error"),
+    };
+  }
+}
+
 async function sendMarketingWhatsAppMessage(item = {}) {
   if (!WHATSAPP_AUTOMATION_ENABLED) {
     return { ok: false, reason: "automation_disabled" };
@@ -2498,6 +2557,79 @@ async function sendMarketingWhatsAppMessage(item = {}) {
   }
 }
 
+async function publishFacebookMarketingItem(item = {}, mode = "publish") {
+  if (!META_MARKETING_ACCESS_TOKEN || !META_PAGE_ID) {
+    return { ok: false, reason: "missing_meta_page_config" };
+  }
+  const message = buildMarketingPublishText(item);
+  if (!message) return { ok: false, reason: "missing_message" };
+  const assetUrl = normalizePublicMarketingAssetUrl(item.assetUrl || "");
+  const scheduledAt = mode === "schedule" ? getMarketingScheduleIso(item) : "";
+  const scheduledUnix = mode === "schedule" ? getMarketingScheduleUnix(item) : 0;
+  if (mode === "schedule" && !scheduledUnix) return { ok: false, reason: "missing_schedule_datetime" };
+  const path = assetUrl ? `${META_PAGE_ID}/photos` : `${META_PAGE_ID}/feed`;
+  const params = assetUrl
+    ? {
+        url: assetUrl,
+        caption: message,
+        published: mode === "schedule" ? "false" : "true",
+        scheduled_publish_time: scheduledUnix || undefined,
+      }
+    : {
+        message,
+        published: mode === "schedule" ? "false" : "true",
+        scheduled_publish_time: scheduledUnix || undefined,
+      };
+  const result = await callMetaGraphApi(path, params);
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    provider: "facebook",
+    messageId: String(result.payload?.post_id || result.payload?.id || "").trim(),
+    scheduleId: String(result.payload?.post_id || result.payload?.id || "").trim(),
+    scheduledAt,
+  };
+}
+
+async function publishInstagramMarketingItem(item = {}, mode = "publish") {
+  if (!META_MARKETING_ACCESS_TOKEN || !META_INSTAGRAM_BUSINESS_ACCOUNT_ID) {
+    return { ok: false, reason: "missing_meta_instagram_config" };
+  }
+  const assetUrl = normalizePublicMarketingAssetUrl(item.assetUrl || "");
+  if (!assetUrl) return { ok: false, reason: "missing_public_asset_url" };
+  const caption = buildMarketingPublishText(item);
+  if (!caption) return { ok: false, reason: "missing_message" };
+  const scheduledAt = mode === "schedule" ? getMarketingScheduleIso(item) : "";
+  const scheduledUnix = mode === "schedule" ? getMarketingScheduleUnix(item) : 0;
+  if (mode === "schedule" && !scheduledUnix) return { ok: false, reason: "missing_schedule_datetime" };
+  const createResult = await callMetaGraphApi(`${META_INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`, {
+    image_url: assetUrl,
+    caption,
+    published: mode === "schedule" ? "false" : undefined,
+    scheduled_publish_time: scheduledUnix || undefined,
+  });
+  if (!createResult.ok) return createResult;
+  const creationId = String(createResult.payload?.id || "").trim();
+  if (!creationId) return { ok: false, reason: "provider_error", details: "Missing Instagram creation id" };
+  if (mode === "schedule") {
+    return {
+      ok: true,
+      provider: "instagram",
+      scheduleId: creationId,
+      scheduledAt,
+    };
+  }
+  const publishResult = await callMetaGraphApi(`${META_INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish`, {
+    creation_id: creationId,
+  });
+  if (!publishResult.ok) return publishResult;
+  return {
+    ok: true,
+    provider: "instagram",
+    messageId: String(publishResult.payload?.id || creationId).trim(),
+  };
+}
+
 async function publishMarketingItem(item = {}, mode = "publish") {
   const channel = String(item.channel || "").trim();
   const publishMode = mode === "schedule" ? "schedule" : "publish";
@@ -2505,18 +2637,8 @@ async function publishMarketingItem(item = {}, mode = "publish") {
     const scheduledAt = getMarketingScheduleIso(item);
     if (!scheduledAt) return { ok: false, reason: "missing_schedule_datetime" };
     if (channel === "WhatsApp") return { ok: false, reason: "whatsapp_schedule_not_supported" };
-    if (channel === "Instagram") {
-      if (!META_MARKETING_ACCESS_TOKEN || !META_INSTAGRAM_BUSINESS_ACCOUNT_ID) {
-        return { ok: false, reason: "missing_meta_instagram_config" };
-      }
-      return { ok: false, reason: "instagram_schedule_not_configured", scheduledAt };
-    }
-    if (channel === "Facebook") {
-      if (!META_MARKETING_ACCESS_TOKEN || !META_PAGE_ID) {
-        return { ok: false, reason: "missing_meta_page_config" };
-      }
-      return { ok: false, reason: "facebook_schedule_not_configured", scheduledAt };
-    }
+    if (channel === "Instagram") return publishInstagramMarketingItem(item, publishMode);
+    if (channel === "Facebook") return publishFacebookMarketingItem(item, publishMode);
     if (channel === "Google Ads") {
       if (!GOOGLE_ADS_DEVELOPER_TOKEN || !GOOGLE_ADS_CUSTOMER_ID) {
         return { ok: false, reason: "missing_google_ads_config" };
@@ -2526,18 +2648,8 @@ async function publishMarketingItem(item = {}, mode = "publish") {
     return { ok: false, reason: "unsupported_channel" };
   }
   if (channel === "WhatsApp") return sendMarketingWhatsAppMessage(item);
-  if (channel === "Instagram") {
-    if (!META_MARKETING_ACCESS_TOKEN || !META_INSTAGRAM_BUSINESS_ACCOUNT_ID) {
-      return { ok: false, reason: "missing_meta_instagram_config" };
-    }
-    return { ok: false, reason: "instagram_media_publish_not_configured" };
-  }
-  if (channel === "Facebook") {
-    if (!META_MARKETING_ACCESS_TOKEN || !META_PAGE_ID) {
-      return { ok: false, reason: "missing_meta_page_config" };
-    }
-    return { ok: false, reason: "facebook_page_publish_not_configured" };
-  }
+  if (channel === "Instagram") return publishInstagramMarketingItem(item, publishMode);
+  if (channel === "Facebook") return publishFacebookMarketingItem(item, publishMode);
   if (channel === "Google Ads") {
     if (!GOOGLE_ADS_DEVELOPER_TOKEN || !GOOGLE_ADS_CUSTOMER_ID) {
       return { ok: false, reason: "missing_google_ads_config" };
