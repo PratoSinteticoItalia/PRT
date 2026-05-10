@@ -26,7 +26,7 @@
   let plannerBridgeReadEnabled = URL_PARAMS.get("planner") === "1";
   const originalLocalStorageGetItem = window.localStorage?.getItem?.bind(window.localStorage);
   const ENABLE_PREVIEW_POLISH = false;
-  const ENABLE_BRANDING_EXPORT = false;
+  const ENABLE_BRANDING_EXPORT = true;
   const ENABLE_PLANNER_REPORT_EXPORT = false;
 
   function notifyPortalUsage(eventType, meta = {}) {
@@ -2037,19 +2037,55 @@
   }
 
   function findQuoteHeaderBlocks(root) {
-    const rootContent = getPdfRootContent(root);
-    if (!(rootContent instanceof Element)) return null;
+    if (!(root instanceof Element)) return null;
 
-    const headerRow = Array.from(rootContent.children || []).find((child) => (
-      child instanceof Element
-      && child.classList.contains("pdf-no-break")
-      && child.querySelector('img[alt="Logo"]')
-    ));
+    const rows = Array.from(root.querySelectorAll(".pdf-no-break")).filter((row) => {
+      if (!row.querySelector("img")) return false;
+      const label = normalizeLabel(row.textContent || "");
+      return label.includes("preventivo nr") || label.includes("preventivo n.");
+    });
+    const headerRow = rows[0] || null;
     if (!(headerRow instanceof Element)) return null;
 
-    const children = Array.from(headerRow.children || []).filter((child) => child instanceof Element);
-    const quoteBlock = children.find((child) => normalizeLabel(child.textContent).includes("preventivo nr")) || null;
-    const brandAnchor = children.find((child) => child !== quoteBlock && child.querySelector('img[alt="Logo"]')) || null;
+    const collectColumns = (row) => {
+      let cols = Array.from(row.children || []).filter((child) => child instanceof Element);
+      if (cols.length === 1) {
+        const only = cols[0];
+        const inner = Array.from(only.children || []).filter((child) => child instanceof Element);
+        const looksSplit = inner.some((c) => c.querySelector?.("img"))
+          && inner.some((c) => normalizeLabel(c.textContent || "").includes("preventivo nr"));
+        if (looksSplit) cols = inner;
+      }
+      return cols;
+    };
+
+    const columns = collectColumns(headerRow);
+    let quoteBlock = columns.find((child) => normalizeLabel(child.textContent || "").includes("preventivo nr")) || null;
+    if (!quoteBlock) {
+      const hits = Array.from(headerRow.querySelectorAll("*")).filter((el) => (
+        el instanceof Element && normalizeLabel(el.textContent || "").includes("preventivo nr")
+      ));
+      hits.sort((a, b) => (a.textContent || "").length - (b.textContent || "").length);
+      quoteBlock = hits[0] || null;
+    }
+
+    let brandAnchor = columns.find((child) => (
+      child !== quoteBlock
+      && child.querySelector("img")
+      && !normalizeLabel(child.textContent || "").includes("preventivo nr")
+    )) || null;
+
+    if (!brandAnchor) {
+      const imgs = Array.from(headerRow.querySelectorAll("img"));
+      const preferred = imgs.find((img) => (
+        !(quoteBlock instanceof Element) || !quoteBlock.contains(img)
+      ));
+      const anchorImg = preferred || imgs[0];
+      brandAnchor = anchorImg instanceof Element ? anchorImg.parentElement : null;
+    }
+
+    if (!(quoteBlock instanceof Element) || !(brandAnchor instanceof Element)) return null;
+    if (quoteBlock === brandAnchor) return null;
 
     return { headerRow, quoteBlock, brandAnchor };
   }
@@ -2561,8 +2597,14 @@
       return;
     }
     if (event.data?.type === "quote-generator:branding") {
-      applyBrandingPayloadNow(event.data.payload);
-      requestBridgeSyncBurst(3);
+      const payload = event.data.payload;
+      const run = () => {
+        applyBrandingPayloadNow(payload);
+        requestBridgeSyncBurst(3);
+      };
+      run();
+      window.setTimeout(run, 320);
+      window.setTimeout(run, 900);
       return;
     }
     if (event.data?.type === "quote-generator:planner-report") {
