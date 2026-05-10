@@ -14428,3 +14428,257 @@ textarea.text-input {
 .sales-request-detail-chip.is-queued strong { color: var(--tok-blue-text); }
 .sales-request-detail-chip.is-sent { border-color: var(--tok-green-border); background: var(--tok-green-bg); }
 .sales-request-detail-chip.is-sent strong { color: var(--tok-green-text); }
+
+/* —— Marketing planner —— */
+.marketing-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.marketing-kpi-card {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.marketing-kpi-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #6f7c8e);
+}
+.marketing-kpi-value {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.marketing-kpi-hint {
+  font-size: 12px;
+  color: var(--muted, #6f7c8e);
+}
+.marketing-toolbar-cluster {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+@media (min-width: 900px) {
+  .marketing-toolbar-cluster {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .marketing-toolbar-cluster .filter-bar {
+    flex-wrap: wrap;
+  }
+}
+.marketing-view-toggle .filter-btn.is-active {
+  box-shadow: inset 0 0 0 1px rgba(45, 106, 79, 0.35);
+}
+.marketing-month-block {
+  margin-bottom: 28px;
+}
+.marketing-list-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.marketing-list-card {
+  cursor: pointer;
+  padding: 16px 18px;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.marketing-list-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow, 0 8px 24px rgba(20, 38, 24, 0.08));
+}
+.marketing-list-card-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.marketing-list-icon {
+  font-size: 20px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+.marketing-list-main {
+  flex: 1;
+  min-width: 0;
+}
+.marketing-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.marketing-list-head strong {
+  font-size: 14px;
+}
+.marketing-list-notes {
+  font-size: 13px;
+  color: var(--muted, #6f7c8e);
+  margin: 0;
+  line-height: 1.45;
+}
+.marketing-list-date {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted, #6f7c8e);
+  text-align: right;
+  min-width: 72px;
+}
+.marketing-calendar-panel {
+  overflow-x: auto;
+}
+.marketing-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.marketing-cal-title {
+  margin: 0;
+  font-size: clamp(18px, 2vw, 22px);
+  font-weight: 800;
+}
+.marketing-cal-dow-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(72px, 1fr));
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.marketing-cal-dow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #6f7c8e);
+  text-align: center;
+  padding: 4px 0;
+}
+.marketing-cal-weeks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.marketing-cal-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(72px, 1fr));
+  gap: 4px;
+  min-height: 108px;
+}
+.marketing-cal-cell {
+  border: 1px solid rgba(32, 49, 36, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 253, 249, 0.65);
+  padding: 6px 6px 8px;
+  min-height: 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.marketing-cal-cell.is-pad {
+  border-color: transparent;
+  background: transparent;
+  min-height: 0;
+  padding: 0;
+}
+.marketing-cal-cell-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.marketing-cal-daynum {
+  font-size: 12px;
+  font-weight: 800;
+  color: #315c48;
+}
+.marketing-cal-add {
+  border: 0;
+  background: rgba(45, 106, 79, 0.1);
+  color: #1e4a36;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.marketing-cal-add:hover {
+  background: rgba(45, 106, 79, 0.18);
+}
+.marketing-cal-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.marketing-cal-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  border: 0;
+  border-radius: 8px;
+  padding: 3px 5px;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 0 rgba(20, 36, 24, 0.06);
+  cursor: pointer;
+  text-align: left;
+  font-size: 10px;
+  line-height: 1.25;
+  color: #1a2d1d;
+}
+.marketing-cal-chip:hover {
+  background: #fff;
+  box-shadow: 0 3px 10px rgba(20, 36, 24, 0.08);
+}
+.marketing-cal-chip-icon {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+}
+.marketing-cal-chip-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.marketing-cal-more {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted, #6f7c8e);
+  padding: 2px 4px;
+}
+.marketing-undated {
+  margin-top: 16px;
+  padding: 16px 18px;
+}
+.marketing-undated-hint {
+  font-size: 13px;
+  color: var(--muted, #6f7c8e);
+  margin: 0 0 12px;
+}
+@media (max-width: 720px) {
+  .marketing-kpi-row {
+    grid-template-columns: 1fr;
+  }
+  .marketing-cal-week {
+    min-width: 560px;
+  }
+}

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260510-crew-logo-generator-162";
+const APP_SHELL_VERSION = "20260510-marketing-planner-163";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1132,6 +1132,9 @@ const state = {
   pendingCurrentViewRefresh: false,
   marketingItems: [],
   marketingChannelFilter: "Tutti",
+  marketingViewMode: "list",
+  marketingStatusFilter: "tutti",
+  marketingCalendarMonth: "",
 };
 
 let sessionKeepaliveTimer = 0;
@@ -14093,6 +14096,71 @@ function renderCurrentViewOnly(view = state.currentView) {
   }
 }
 
+function getMarketingMonthKey() {
+  const raw = String(state.marketingCalendarMonth || "").trim();
+  if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+  return new Date().toISOString().slice(0, 7);
+}
+
+function shiftMarketingMonth(delta) {
+  const key = getMarketingMonthKey();
+  const [y, m] = key.split("-").map((n) => Number(n));
+  const next = new Date(y, m - 1 + delta, 1);
+  state.marketingCalendarMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMarketingCalendarTitle(monthKey) {
+  const [y, m] = monthKey.split("-").map((n) => Number(n));
+  const months = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
+  return `${months[m - 1] || ""} ${y}`;
+}
+
+function buildMarketingCalendarWeeks(monthKey) {
+  const [y, m] = monthKey.split("-").map((n) => Number(n));
+  const first = new Date(y, m - 1, 1);
+  const last = new Date(y, m, 0);
+  const mondayIndex = (first.getDay() + 6) % 7;
+  const daysInMonth = last.getDate();
+  const cells = [];
+  for (let i = 0; i < mondayIndex; i += 1) cells.push({ type: "pad", dateKey: "", day: 0 });
+  for (let d = 1; d <= daysInMonth; d += 1) {
+    cells.push({
+      type: "day",
+      dateKey: `${monthKey}-${String(d).padStart(2, "0")}`,
+      day: d,
+    });
+  }
+  while (cells.length % 7 !== 0) cells.push({ type: "pad", dateKey: "", day: 0 });
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}
+
+function isDateInCurrentWeek(dateStr) {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const t = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(t.getTime())) return false;
+  const now = new Date();
+  const d = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  const dayNum = (x) => Math.floor(d(x).getTime() / 864e5);
+  const tDay = dayNum(t);
+  const start = new Date(now);
+  start.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const weekStart = dayNum(start);
+  return tDay >= weekStart && tDay < weekStart + 7;
+}
+
+function marketingObjectiveLabel(code) {
+  const labels = {
+    awareness: "Awareness",
+    lead: "Lead / contatti",
+    vendita: "Vendita / promo",
+    community: "Community",
+    altro: "Altro",
+  };
+  return labels[code] || "";
+}
+
 function renderMarketing() {
   const container = document.getElementById("marketing-content");
   if (!container) return;
@@ -14103,8 +14171,25 @@ function renderMarketing() {
   const statusColors = { bozza: "badge-slate", programmato: "badge-info", pubblicato: "badge-success", archiviato: "badge-slate" };
   const statusLabels = { bozza: "Bozza", programmato: "Programmato", pubblicato: "Pubblicato", archiviato: "Archiviato" };
 
-  const filtered = activeChannel === "Tutti" ? items : items.filter(i => i.channel === activeChannel);
+  let filtered = activeChannel === "Tutti" ? items : items.filter((i) => i.channel === activeChannel);
+  const sf = state.marketingStatusFilter || "tutti";
+  if (sf !== "tutti") {
+    filtered = filtered.filter((i) => (i.status || "bozza") === sf);
+  }
   const sorted = [...filtered].sort((a, b) => (a.date || "9999") < (b.date || "9999") ? -1 : 1);
+
+  const monthKey = getMarketingMonthKey();
+  const itemsByDate = {};
+  filtered.forEach((item) => {
+    const dk = item.date && /^\d{4}-\d{2}-\d{2}$/.test(item.date) ? item.date : "";
+    if (!dk) return;
+    if (!itemsByDate[dk]) itemsByDate[dk] = [];
+    itemsByDate[dk].push(item);
+  });
+
+  const kpiTotal = filtered.length;
+  const kpiWeek = filtered.filter((i) => isDateInCurrentWeek(i.date)).length;
+  const kpiBozza = filtered.filter((i) => (i.status || "bozza") === "bozza").length;
 
   // Group by month
   const byMonth = {};
@@ -14126,55 +14211,172 @@ function renderMarketing() {
     return icons[ch] || "📌";
   };
 
-  container.innerHTML = `
-    <div class="page-header">
-      <div>
-        <h1>Marketing</h1>
-        <div class="page-header-sub">Pianificazione contenuti e calendario editoriale</div>
-      </div>
-      <button class="primary-button small-button" data-action="open-marketing-form">+ Nuovo contenuto</button>
-    </div>
+  const viewMode = state.marketingViewMode === "calendar" ? "calendar" : "list";
+  const activeStatus = state.marketingStatusFilter || "tutti";
+  const statusFilterOptions = [
+    { key: "tutti", label: "Tutti gli stati" },
+    { key: "bozza", label: "Bozza" },
+    { key: "programmato", label: "Programmato" },
+    { key: "pubblicato", label: "Pubblicato" },
+    { key: "archiviato", label: "Archiviato" },
+  ];
+  const calendarWeeks = buildMarketingCalendarWeeks(monthKey);
+  const undatedItems = sorted.filter((i) => !i.date || !/^\d{4}-\d{2}-\d{2}$/.test(String(i.date)));
 
-    <div class="view-toolbar">
-      <div class="filter-bar">
-        ${channels.map(ch => `<button class="filter-btn${activeChannel === ch ? " is-active" : ""}" data-action="marketing-filter" data-channel="${escapeHtml(ch)}">${escapeHtml(ch)}</button>`).join("")}
-      </div>
+  const calendarWeeksHtml = calendarWeeks.map((week) => `
+    <div class="marketing-cal-week" role="row">
+      ${week.map((cell) => {
+        if (cell.type === "pad") return `<div class="marketing-cal-cell is-pad" aria-hidden="true"></div>`;
+        const dayItems = (itemsByDate[cell.dateKey] || []).slice().sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "it"));
+        const maxShow = 3;
+        const shown = dayItems.slice(0, maxShow);
+        const more = Math.max(0, dayItems.length - shown.length);
+        return `
+          <div class="marketing-cal-cell">
+            <div class="marketing-cal-cell-top">
+              <span class="marketing-cal-daynum">${cell.day}</span>
+              <button type="button" class="marketing-cal-add" data-action="open-marketing-new-date" data-date="${cell.dateKey}" title="Nuovo post in questa data">+</button>
+            </div>
+            <div class="marketing-cal-chips">
+              ${shown.map((it) => {
+                const t = String(it.title || "Senza titolo");
+                const short = t.length > 22 ? `${t.slice(0, 22)}…` : t;
+                return `
+                <button type="button" class="marketing-cal-chip" data-action="open-marketing-item" data-id="${escapeHtml(it.id)}">
+                  <span class="marketing-cal-chip-icon">${channelIcon(it.channel)}</span>
+                  <span class="marketing-cal-chip-title">${escapeHtml(short)}</span>
+                </button>`;
+              }).join("")}
+              ${more > 0 ? `<span class="marketing-cal-more">+${more}</span>` : ""}
+            </div>
+          </div>`;
+      }).join("")}
     </div>
+  `).join("");
 
-    ${items.length === 0 ? `
-      <div class="panel" style="margin-top:16px;text-align:center;padding:40px 20px;">
-        <div style="font-size:32px;margin-bottom:12px;">📅</div>
-        <h3 style="margin-bottom:8px;">Nessun contenuto pianificato</h3>
-        <p style="color:var(--muted);margin-bottom:20px;">Inizia aggiungendo il primo contenuto al calendario editoriale.</p>
-        <button class="primary-button small-button" data-action="open-marketing-form">+ Aggiungi contenuto</button>
-      </div>
-    ` : filtered.length === 0 ? `
-      <div class="info-card" style="margin-top:16px;">Nessun contenuto per il canale selezionato.</div>
-    ` : Object.entries(byMonth).map(([month, monthItems]) => `
-      <div style="margin-top:24px;">
-        <div class="section-title" style="margin-bottom:12px;">${monthLabel(month)} <span class="section-badge">${monthItems.length}</span></div>
-        <div style="display:grid;gap:10px;">
-          ${monthItems.map(item => `
-            <article class="panel" style="padding:16px 20px;cursor:pointer;" data-action="open-marketing-item" data-id="${escapeHtml(item.id)}">
-              <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-                <span style="font-size:20px;line-height:1.2;">${channelIcon(item.channel)}</span>
-                <div style="flex:1;min-width:0;">
-                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-                    <strong style="font-size:14px;">${escapeHtml(item.title || "Senza titolo")}</strong>
+  const listByMonthHtml = Object.entries(byMonth).map(([mkey, monthItems]) => `
+      <div class="marketing-month-block">
+        <div class="section-title">${monthLabel(mkey)} <span class="section-badge">${monthItems.length}</span></div>
+        <div class="marketing-list-grid">
+          ${monthItems.map((item) => `
+            <article class="panel marketing-list-card" data-action="open-marketing-item" data-id="${escapeHtml(item.id)}">
+              <div class="marketing-list-card-inner">
+                <span class="marketing-list-icon">${channelIcon(item.channel)}</span>
+                <div class="marketing-list-main">
+                  <div class="marketing-list-head">
+                    <strong>${escapeHtml(item.title || "Senza titolo")}</strong>
                     <span class="action-badge ${statusColors[item.status] || "badge-slate"}">${statusLabels[item.status] || item.status}</span>
                     ${item.channel ? `<span class="action-badge badge-slate">${escapeHtml(item.channel)}</span>` : ""}
+                    ${item.objective && marketingObjectiveLabel(item.objective)
+                      ? `<span class="action-badge badge-slate">${escapeHtml(marketingObjectiveLabel(item.objective))}</span>`
+                      : ""}
                   </div>
-                  ${item.notes ? `<p style="color:var(--muted);font-size:13px;margin:0;line-height:1.4;">${escapeHtml(item.notes)}</p>` : ""}
+                  ${item.notes ? `<p class="marketing-list-notes">${escapeHtml(item.notes)}</p>` : ""}
                 </div>
-                <div style="text-align:right;flex-shrink:0;">
-                  ${item.date ? `<div style="font-size:12px;color:var(--muted);">${formatDateShort(item.date)}</div>` : ""}
+                <div class="marketing-list-date">
+                  ${item.date ? formatDateShort(item.date) : "—"}
                 </div>
               </div>
             </article>
           `).join("")}
         </div>
       </div>
-    `).join("")}
+    `).join("");
+
+  const undatedBlockHtml = undatedItems.length && viewMode === "calendar" ? `
+    <div class="marketing-undated panel">
+      <div class="section-title">Senza data <span class="section-badge">${undatedItems.length}</span></div>
+      <p class="marketing-undated-hint">Assegna una data per visualizzarli nel calendario.</p>
+      <div class="marketing-list-grid">
+        ${undatedItems.map((item) => `
+          <article class="panel marketing-list-card" data-action="open-marketing-item" data-id="${escapeHtml(item.id)}">
+            <div class="marketing-list-card-inner">
+              <span class="marketing-list-icon">${channelIcon(item.channel)}</span>
+              <div class="marketing-list-main">
+                <div class="marketing-list-head">
+                  <strong>${escapeHtml(item.title || "Senza titolo")}</strong>
+                  <span class="action-badge ${statusColors[item.status] || "badge-slate"}">${statusLabels[item.status] || item.status}</span>
+                </div>
+              </div>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </div>
+  ` : "";
+
+  container.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1>Marketing</h1>
+        <div class="page-header-sub">Pianificazione contenuti, calendario editoriale e obiettivi</div>
+      </div>
+      <button class="primary-button small-button" data-action="open-marketing-form">+ Nuovo contenuto</button>
+    </div>
+
+    <div class="marketing-kpi-row">
+      <div class="marketing-kpi-card panel">
+        <span class="marketing-kpi-label">Nel piano (filtri)</span>
+        <strong class="marketing-kpi-value">${kpiTotal}</strong>
+        <span class="marketing-kpi-hint">contenuti visibili</span>
+      </div>
+      <div class="marketing-kpi-card panel">
+        <span class="marketing-kpi-label">Questa settimana</span>
+        <strong class="marketing-kpi-value">${kpiWeek}</strong>
+        <span class="marketing-kpi-hint">data nella settimana corrente</span>
+      </div>
+      <div class="marketing-kpi-card panel">
+        <span class="marketing-kpi-label">In bozza</span>
+        <strong class="marketing-kpi-value">${kpiBozza}</strong>
+        <span class="marketing-kpi-hint">da completare</span>
+      </div>
+    </div>
+
+    <div class="view-toolbar marketing-toolbar-cluster">
+      <div class="filter-bar marketing-view-toggle" role="tablist" aria-label="Vista marketing">
+        <button type="button" class="filter-btn${viewMode === "list" ? " is-active" : ""}" data-action="marketing-view" data-view="list">Elenco</button>
+        <button type="button" class="filter-btn${viewMode === "calendar" ? " is-active" : ""}" data-action="marketing-view" data-view="calendar">Calendario</button>
+      </div>
+      <div class="filter-bar marketing-status-bar">
+        ${statusFilterOptions.map((o) => `<button type="button" class="filter-btn${activeStatus === o.key ? " is-active" : ""}" data-action="marketing-status-filter" data-status="${escapeHtml(o.key)}">${escapeHtml(o.label)}</button>`).join("")}
+      </div>
+    </div>
+
+    <div class="view-toolbar">
+      <div class="filter-bar">
+        ${channels.map((ch) => `<button type="button" class="filter-btn${activeChannel === ch ? " is-active" : ""}" data-action="marketing-filter" data-channel="${escapeHtml(ch)}">${escapeHtml(ch)}</button>`).join("")}
+      </div>
+    </div>
+
+    ${items.length === 0 ? `
+      <div class="panel marketing-empty" style="margin-top:16px;text-align:center;padding:40px 20px;">
+        <div style="font-size:32px;margin-bottom:12px;">📅</div>
+        <h3 style="margin-bottom:8px;">Nessun contenuto pianificato</h3>
+        <p style="color:var(--muted);margin-bottom:20px;">Inizia aggiungendo il primo contenuto al calendario editoriale.</p>
+        <button class="primary-button small-button" data-action="open-marketing-form">+ Aggiungi contenuto</button>
+      </div>
+    ` : filtered.length === 0 ? `
+      <div class="info-card" style="margin-top:16px;">Nessun contenuto con i filtri attuali. Modifica canale o stato.</div>
+    ` : viewMode === "calendar" ? `
+      <section class="panel marketing-calendar-panel" style="margin-top:16px;">
+        <div class="marketing-cal-nav">
+          <button type="button" class="ghost-button small-button" data-action="marketing-cal-prev" aria-label="Mese precedente">←</button>
+          <h2 class="marketing-cal-title">${formatMarketingCalendarTitle(monthKey)}</h2>
+          <button type="button" class="ghost-button small-button" data-action="marketing-cal-next" aria-label="Mese successivo">→</button>
+        </div>
+        <div class="marketing-cal-dow-grid" aria-hidden="true">
+          ${["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((d) => `<div class="marketing-cal-dow">${d}</div>`).join("")}
+        </div>
+        <div class="marketing-cal-weeks">
+          ${calendarWeeksHtml}
+        </div>
+      </section>
+      ${undatedBlockHtml}
+    ` : `
+      <div class="marketing-list-wrap" style="margin-top:16px;">
+        ${listByMonthHtml}
+      </div>
+    `}
 
     <div id="marketing-form-shell" class="hidden" style="margin-top:24px;">
       <section class="panel panel-large">
@@ -14194,7 +14396,18 @@ function renderMarketing() {
             <span>Canale</span>
             <select class="text-input" name="channel">
               <option value="">Seleziona canale</option>
-              ${["Instagram","Facebook","WhatsApp","Google Ads","Email","Altro"].map(ch => `<option value="${ch}">${ch}</option>`).join("")}
+              ${["Instagram","Facebook","WhatsApp","Google Ads","Email","Altro"].map((ch) => `<option value="${ch}">${ch}</option>`).join("")}
+            </select>
+          </label>
+          <label class="field">
+            <span>Obiettivo</span>
+            <select class="text-input" name="objective">
+              <option value="">—</option>
+              <option value="awareness">Awareness</option>
+              <option value="lead">Lead / contatti</option>
+              <option value="vendita">Vendita / promo</option>
+              <option value="community">Community</option>
+              <option value="altro">Altro</option>
             </select>
           </label>
           <label class="field">
@@ -14212,7 +14425,7 @@ function renderMarketing() {
           </label>
           <label class="field field-full">
             <span>Note / testo del post</span>
-            <textarea class="text-input" name="notes" rows="3" placeholder="Testo, link, hashtag..."></textarea>
+            <textarea class="text-input" name="notes" rows="3" placeholder="Testo, link, hashtag, CTA..."></textarea>
           </label>
           <div class="inline-actions field-full">
             <button type="submit" class="primary-button small-button">Salva</button>
@@ -14229,6 +14442,41 @@ function renderMarketing() {
     btn.addEventListener("click", () => {
       state.marketingChannelFilter = btn.dataset.channel;
       renderMarketing();
+    });
+  });
+
+  container.querySelectorAll("[data-action='marketing-view']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.marketingViewMode = btn.dataset.view === "calendar" ? "calendar" : "list";
+      renderMarketing();
+    });
+  });
+
+  container.querySelectorAll("[data-action='marketing-status-filter']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.marketingStatusFilter = btn.dataset.status || "tutti";
+      renderMarketing();
+    });
+  });
+
+  container.querySelectorAll("[data-action='marketing-cal-prev']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      shiftMarketingMonth(-1);
+      renderMarketing();
+    });
+  });
+
+  container.querySelectorAll("[data-action='marketing-cal-next']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      shiftMarketingMonth(1);
+      renderMarketing();
+    });
+  });
+
+  container.querySelectorAll("[data-action='open-marketing-new-date']").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openMarketingForm(null, { defaultDate: String(btn.dataset.date || "").trim() });
     });
   });
 
@@ -14274,6 +14522,7 @@ function renderMarketing() {
         id,
         title: fd.get("title") || "",
         channel: fd.get("channel") || "",
+        objective: fd.get("objective") || "",
         date: fd.get("date") || "",
         status: fd.get("status") || "bozza",
         notes: fd.get("notes") || "",
@@ -14290,7 +14539,7 @@ function renderMarketing() {
   }
 }
 
-function openMarketingForm(item) {
+function openMarketingForm(item, options = {}) {
   const shell = document.getElementById("marketing-form-shell");
   const form = document.getElementById("marketing-item-form");
   const title = document.getElementById("marketing-form-title");
@@ -14305,11 +14554,15 @@ function openMarketingForm(item) {
     form.elements.id.value = item.id || "";
     form.elements.title.value = item.title || "";
     form.elements.channel.value = item.channel || "";
+    if (form.elements.objective) form.elements.objective.value = item.objective || "";
     form.elements.date.value = item.date || "";
     form.elements.status.value = item.status || "bozza";
     form.elements.notes.value = item.notes || "";
   } else {
     form.elements.id.value = "";
+    const def = String(options.defaultDate || "").trim();
+    if (def && form.elements.date) form.elements.date.value = def;
+    if (form.elements.objective) form.elements.objective.value = "";
   }
 }
 
