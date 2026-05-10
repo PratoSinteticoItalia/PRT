@@ -14815,6 +14815,88 @@ textarea.text-input {
   border-radius: 16px;
   line-height: 1.45;
 }
+.marketing-api-note {
+  border-radius: 16px;
+  background: rgba(32, 120, 191, 0.08);
+  color: #24506f;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 10px 12px;
+}
+.marketing-platform-preview {
+  max-width: 440px;
+  border: 1px solid rgba(32, 49, 36, 0.1);
+  border-radius: 24px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(20, 36, 24, 0.08);
+}
+.marketing-platform-preview.is-instagram {
+  border-color: rgba(193, 53, 132, 0.22);
+}
+.marketing-platform-preview.is-facebook {
+  border-color: rgba(24, 119, 242, 0.22);
+}
+.marketing-platform-preview.is-whatsapp {
+  border-color: rgba(37, 211, 102, 0.28);
+}
+.marketing-platform-preview.is-google-ads {
+  border-color: rgba(66, 133, 244, 0.24);
+}
+.marketing-preview-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(248,250,247,0.95), rgba(255,255,255,0.92));
+  font-size: 12px;
+}
+.marketing-preview-top strong {
+  font-size: 13px;
+}
+.marketing-preview-top span {
+  color: var(--muted, #6f7c8e);
+}
+.marketing-preview-media {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.35 / 1;
+  object-fit: cover;
+  background: rgba(45, 106, 79, 0.07);
+}
+.marketing-preview-media.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted, #6f7c8e);
+  font-size: 13px;
+  font-weight: 700;
+}
+.marketing-preview-body {
+  padding: 14px;
+}
+.marketing-preview-body p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.marketing-preview-body small {
+  display: block;
+  color: #315c48;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.marketing-preview-body button {
+  border: 0;
+  border-radius: 999px;
+  background: rgba(45, 106, 79, 0.1);
+  color: #1e4a36;
+  padding: 8px 12px;
+  font-weight: 800;
+  font-size: 12px;
+}
 @media (max-width: 1100px) {
   .marketing-kpi-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));

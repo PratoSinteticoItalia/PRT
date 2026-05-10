@@ -14161,11 +14161,15 @@ function marketingObjectiveLabel(code) {
   return labels[code] || "";
 }
 
-function marketingChannelToolUrl(channel) {
+function marketingChannelToolUrl(channel, item = {}) {
+  if (channel === "WhatsApp") {
+    const message = [item.caption, item.cta, item.assetUrl].filter(Boolean).join("\n\n");
+    return buildWhatsAppWebSendUrl(item.recipientPhone || "", message) || `https://web.whatsapp.com/send?text=${encodeURIComponent(message || item.title || "")}`;
+  }
   const urls = {
     Instagram: "https://business.facebook.com/latest/composer",
     Facebook: "https://business.facebook.com/latest/composer",
-    WhatsApp: "https://business.whatsapp.com/",
+    WhatsApp: "https://web.whatsapp.com/",
     "Google Ads": "https://ads.google.com/",
     Email: "https://mail.google.com/mail/u/0/#inbox?compose=new",
     Altro: "https://business.facebook.com/latest/home",
@@ -14199,8 +14203,35 @@ function buildMarketingCalendarUrl(item) {
 }
 
 function openMarketingExternalTool(item, tool = "channel") {
-  const url = tool === "calendar" ? buildMarketingCalendarUrl(item || {}) : marketingChannelToolUrl(item?.channel || "");
+  const url = tool === "calendar" ? buildMarketingCalendarUrl(item || {}) : marketingChannelToolUrl(item?.channel || "", item || {});
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function getMarketingPreviewClass(channel = "") {
+  const key = String(channel || "").toLowerCase().replace(/\s+/g, "-");
+  return `marketing-platform-preview is-${key || "generic"}`;
+}
+
+function renderMarketingPlatformPreview(item = {}) {
+  const channel = item.channel || "Piattaforma";
+  const caption = item.caption || item.notes || "Scrivi una caption per vedere l'anteprima del contenuto.";
+  const asset = item.assetDataUrl || item.assetUrl || "";
+  const meta = [item.format, item.date, item.time].filter(Boolean).join(" · ");
+  const hashtags = item.hashtags || "";
+  return `
+    <div class="${getMarketingPreviewClass(channel)}">
+      <div class="marketing-preview-top">
+        <strong>${escapeHtml(channel)}</strong>
+        <span>${escapeHtml(meta || "Preview contenuto")}</span>
+      </div>
+      ${asset ? `<img class="marketing-preview-media" src="${escapeHtml(asset)}" alt="">` : `<div class="marketing-preview-media is-empty">Anteprima foto / asset</div>`}
+      <div class="marketing-preview-body">
+        <p>${escapeHtml(caption)}</p>
+        ${hashtags ? `<small>${escapeHtml(hashtags)}</small>` : ""}
+        ${item.cta ? `<button type="button">${escapeHtml(item.cta)}</button>` : ""}
+      </div>
+    </div>
+  `;
 }
 
 function readMarketingAssetFile(file) {
@@ -14527,6 +14558,10 @@ function renderMarketing() {
             <input class="text-input" name="time" type="time" />
           </label>
           <label class="field">
+            <span>Numero WhatsApp destinatario</span>
+            <input class="text-input" name="recipientPhone" placeholder="Es. 3471234567 o +393471234567" />
+          </label>
+          <label class="field">
             <span>URL foto / asset</span>
             <input class="text-input" name="assetUrl" placeholder="Link immagine, Drive, Canva..." />
           </label>
@@ -14562,7 +14597,14 @@ function renderMarketing() {
             <textarea class="text-input" name="notes" rows="3" placeholder="Promemoria, varianti, link utili, indicazioni grafiche..."></textarea>
           </label>
           <div class="marketing-form-helper field-full">
-            <strong>Programmazione:</strong> salva il contenuto e usa le azioni rapide sulla scheda per aprire lo strumento corretto.
+            <strong>Programmazione:</strong> salva il contenuto e usa le azioni rapide sulla scheda per aprire lo strumento corretto. Per una programmazione API automatica servono token Business, account collegati e asset raggiungibili via URL pubblico.
+          </div>
+          <div class="marketing-api-note field-full">
+            <strong>API-ready:</strong> Meta e Google Ads non permettono una programmazione sicura solo da browser senza credenziali server. Questa scheda raccoglie già copy, asset, data, ora e canale per una futura integrazione backend.
+          </div>
+          <div class="field field-full">
+            <span>Preview piattaforma</span>
+            <div id="marketing-platform-preview"></div>
           </div>
           <div class="inline-actions field-full">
             <button type="submit" class="primary-button small-button">Salva</button>
@@ -14660,6 +14702,10 @@ function renderMarketing() {
   // submit form
   const form = document.getElementById("marketing-item-form");
   if (form) {
+    form.querySelectorAll("input, textarea, select").forEach((field) => {
+      field.addEventListener("input", () => updateMarketingLivePreview(form));
+      field.addEventListener("change", () => updateMarketingLivePreview(form));
+    });
     const fileInput = form.elements.assetFile;
     if (fileInput) {
       fileInput.addEventListener("change", async () => {
@@ -14669,6 +14715,7 @@ function renderMarketing() {
           form.elements.assetDataUrl.value = dataUrl;
           if (file && form.elements.assetName && !form.elements.assetName.value) form.elements.assetName.value = file.name;
           updateMarketingAssetPreview(dataUrl, file?.name || form.elements.assetName?.value || "");
+          updateMarketingLivePreview(form);
         } catch (error) {
           fileInput.value = "";
           form.elements.assetDataUrl.value = "";
@@ -14700,6 +14747,7 @@ function renderMarketing() {
         status: fd.get("status") || "bozza",
         format: fd.get("format") || "",
         time: fd.get("time") || "",
+        recipientPhone: fd.get("recipientPhone") || "",
         assetUrl: fd.get("assetUrl") || "",
         assetName: fd.get("assetName") || "",
         assetDataUrl,
@@ -14741,6 +14789,7 @@ function openMarketingForm(item, options = {}) {
     form.elements.status.value = item.status || "bozza";
     if (form.elements.format) form.elements.format.value = item.format || "";
     if (form.elements.time) form.elements.time.value = item.time || "";
+    if (form.elements.recipientPhone) form.elements.recipientPhone.value = item.recipientPhone || "";
     if (form.elements.assetUrl) form.elements.assetUrl.value = item.assetUrl || "";
     if (form.elements.assetName) form.elements.assetName.value = item.assetName || "";
     if (form.elements.assetDataUrl) form.elements.assetDataUrl.value = item.assetDataUrl || "";
@@ -14750,6 +14799,7 @@ function openMarketingForm(item, options = {}) {
     if (form.elements.target) form.elements.target.value = item.target || "";
     form.elements.notes.value = item.notes || "";
     updateMarketingAssetPreview(item.assetDataUrl || item.assetUrl || "", item.assetName || "");
+    updateMarketingLivePreview(form);
   } else {
     form.elements.id.value = "";
     const def = String(options.defaultDate || "").trim();
@@ -14757,7 +14807,34 @@ function openMarketingForm(item, options = {}) {
     if (form.elements.objective) form.elements.objective.value = "";
     if (form.elements.assetDataUrl) form.elements.assetDataUrl.value = "";
     updateMarketingAssetPreview("", "");
+    updateMarketingLivePreview(form);
   }
+}
+
+function getMarketingFormDraft(form) {
+  if (!form) return {};
+  return {
+    title: form.elements.title?.value || "",
+    channel: form.elements.channel?.value || "",
+    date: form.elements.date?.value || "",
+    status: form.elements.status?.value || "bozza",
+    format: form.elements.format?.value || "",
+    time: form.elements.time?.value || "",
+    recipientPhone: form.elements.recipientPhone?.value || "",
+    assetUrl: form.elements.assetUrl?.value || "",
+    assetName: form.elements.assetName?.value || "",
+    assetDataUrl: form.elements.assetDataUrl?.value || "",
+    caption: form.elements.caption?.value || "",
+    cta: form.elements.cta?.value || "",
+    hashtags: form.elements.hashtags?.value || "",
+    notes: form.elements.notes?.value || "",
+  };
+}
+
+function updateMarketingLivePreview(form) {
+  const preview = document.getElementById("marketing-platform-preview");
+  if (!preview) return;
+  preview.innerHTML = renderMarketingPlatformPreview(getMarketingFormDraft(form));
 }
 
 function updateMarketingAssetPreview(src = "", label = "") {
