@@ -694,6 +694,7 @@ button.is-feedback,
 .sidebar {
   grid-column: 1;
   grid-row: 2;
+  min-height: 0;
   padding: 16px 12px 40px;
   background: #fff;
   border-right: 1px solid var(--line);
