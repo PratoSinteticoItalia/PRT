@@ -233,7 +233,7 @@ const TRAVEL_EXPENSE_TYPES = {
 const roleViews = {
   office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner"],
   warehouse: ["warehouse", "shipping"],
-  crew: ["installations", "sales-generator"],
+  crew: ["installations", "sales-generator", "garden-planner"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
@@ -2200,6 +2200,9 @@ function syncSidebarLayout(role = state.currentUser?.role || "office") {
     [ui.sidebarSalesDivider, "block"],
     [ui.sidebarSalesLabel, "block"],
     [ui.sidebarSalesNav, "grid"],
+    [ui.sidebarToolsDivider, "block"],
+    [ui.sidebarToolsLabel, "block"],
+    [ui.sidebarToolsNav, "grid"],
     [ui.sidebarMobileTools, "grid"],
   ].forEach(([node, displayValue]) => {
     if (!node) return;

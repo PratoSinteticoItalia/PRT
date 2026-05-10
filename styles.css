@@ -6075,7 +6075,8 @@ body {
     linear-gradient(135deg, rgba(255,255,255,0.36), transparent 42%);
   border-right: 1px solid rgba(26, 49, 35, 0.08);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .sidebar::before {
