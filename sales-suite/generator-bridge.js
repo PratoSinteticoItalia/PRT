@@ -730,7 +730,7 @@
       syncRecommendedQuoteLayout();
       const payload = readPrefillFromStorage() || readPrefillFromUrl();
       if (payload) scheduleRequestPayload(payload);
-      if (ENABLE_BRANDING_EXPORT) {
+      {
         const brandingPayload = readBrandingFromStorage();
         if (brandingPayload) {
           applyBrandingPayloadNow(brandingPayload);
@@ -2561,10 +2561,8 @@
       return;
     }
     if (event.data?.type === "quote-generator:branding") {
-      if (ENABLE_BRANDING_EXPORT) {
-        applyBrandingPayloadNow(event.data.payload);
-        requestBridgeSyncBurst(3);
-      }
+      applyBrandingPayloadNow(event.data.payload);
+      requestBridgeSyncBurst(3);
       return;
     }
     if (event.data?.type === "quote-generator:planner-report") {
@@ -2601,7 +2599,7 @@
     if (payload) {
       scheduleRequestPayload(payload);
     }
-    if (ENABLE_BRANDING_EXPORT) {
+    {
       const brandingPayload = readBrandingFromStorage();
       if (brandingPayload) {
         applyBrandingPayloadNow(brandingPayload);
