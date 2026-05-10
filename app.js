@@ -14161,6 +14161,48 @@ function marketingObjectiveLabel(code) {
   return labels[code] || "";
 }
 
+function marketingChannelToolUrl(channel) {
+  const urls = {
+    Instagram: "https://business.facebook.com/latest/composer",
+    Facebook: "https://business.facebook.com/latest/composer",
+    WhatsApp: "https://business.whatsapp.com/",
+    "Google Ads": "https://ads.google.com/",
+    Email: "https://mail.google.com/mail/u/0/#inbox?compose=new",
+    Altro: "https://business.facebook.com/latest/home",
+  };
+  return urls[channel] || "https://business.facebook.com/latest/home";
+}
+
+function marketingChannelToolLabel(channel) {
+  const labels = {
+    Instagram: "Apri Meta Business Suite",
+    Facebook: "Apri Meta Business Suite",
+    WhatsApp: "Apri WhatsApp Business",
+    "Google Ads": "Apri Google Ads",
+    Email: "Prepara email",
+    Altro: "Apri strumenti marketing",
+  };
+  return labels[channel] || "Apri strumenti marketing";
+}
+
+function buildMarketingCalendarUrl(item) {
+  const title = item?.title || "Contenuto marketing";
+  const notes = [item?.caption, item?.cta, item?.hashtags, item?.assetUrl, item?.notes].filter(Boolean).join("\n\n");
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(item?.date || "")) ? item.date.replaceAll("-", "") : new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: title,
+    dates: `${date}/${date}`,
+    details: notes,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function openMarketingExternalTool(item, tool = "channel") {
+  const url = tool === "calendar" ? buildMarketingCalendarUrl(item || {}) : marketingChannelToolUrl(item?.channel || "");
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 function renderMarketing() {
   const container = document.getElementById("marketing-content");
   if (!container) return;
@@ -14190,6 +14232,7 @@ function renderMarketing() {
   const kpiTotal = filtered.length;
   const kpiWeek = filtered.filter((i) => isDateInCurrentWeek(i.date)).length;
   const kpiBozza = filtered.filter((i) => (i.status || "bozza") === "bozza").length;
+  const kpiAssets = filtered.filter((i) => i.assetUrl || i.assetName).length;
 
   // Group by month
   const byMonth = {};
@@ -14261,7 +14304,9 @@ function renderMarketing() {
           ${monthItems.map((item) => `
             <article class="panel marketing-list-card" data-action="open-marketing-item" data-id="${escapeHtml(item.id)}">
               <div class="marketing-list-card-inner">
-                <span class="marketing-list-icon">${channelIcon(item.channel)}</span>
+                <div class="marketing-list-asset">
+                  ${item.assetUrl ? `<img src="${escapeHtml(item.assetUrl)}" alt="">` : `<span>${channelIcon(item.channel)}</span>`}
+                </div>
                 <div class="marketing-list-main">
                   <div class="marketing-list-head">
                     <strong>${escapeHtml(item.title || "Senza titolo")}</strong>
@@ -14271,7 +14316,16 @@ function renderMarketing() {
                       ? `<span class="action-badge badge-slate">${escapeHtml(marketingObjectiveLabel(item.objective))}</span>`
                       : ""}
                   </div>
-                  ${item.notes ? `<p class="marketing-list-notes">${escapeHtml(item.notes)}</p>` : ""}
+                  ${item.caption ? `<p class="marketing-list-notes">${escapeHtml(item.caption)}</p>` : item.notes ? `<p class="marketing-list-notes">${escapeHtml(item.notes)}</p>` : ""}
+                  <div class="marketing-list-meta">
+                    ${item.assetName || item.assetUrl ? `<span>Asset: ${escapeHtml(item.assetName || item.assetUrl)}</span>` : ""}
+                    ${item.cta ? `<span>CTA: ${escapeHtml(item.cta)}</span>` : ""}
+                    ${item.hashtags ? `<span>${escapeHtml(item.hashtags)}</span>` : ""}
+                  </div>
+                  <div class="marketing-list-actions">
+                    <button type="button" class="ghost-button small-button" data-action="marketing-open-tool" data-id="${escapeHtml(item.id)}">${escapeHtml(marketingChannelToolLabel(item.channel))}</button>
+                    <button type="button" class="ghost-button small-button" data-action="marketing-open-calendar" data-id="${escapeHtml(item.id)}">Programma in calendario</button>
+                  </div>
                 </div>
                 <div class="marketing-list-date">
                   ${item.date ? formatDateShort(item.date) : "—"}
@@ -14330,6 +14384,11 @@ function renderMarketing() {
         <strong class="marketing-kpi-value">${kpiBozza}</strong>
         <span class="marketing-kpi-hint">da completare</span>
       </div>
+      <div class="marketing-kpi-card panel">
+        <span class="marketing-kpi-label">Con foto / asset</span>
+        <strong class="marketing-kpi-value">${kpiAssets}</strong>
+        <span class="marketing-kpi-hint">pronti per pubblicazione</span>
+      </div>
     </div>
 
     <div class="view-toolbar marketing-toolbar-cluster">
@@ -14349,11 +14408,19 @@ function renderMarketing() {
     </div>
 
     ${items.length === 0 ? `
-      <div class="panel marketing-empty" style="margin-top:16px;text-align:center;padding:40px 20px;">
-        <div style="font-size:32px;margin-bottom:12px;">📅</div>
-        <h3 style="margin-bottom:8px;">Nessun contenuto pianificato</h3>
-        <p style="color:var(--muted);margin-bottom:20px;">Inizia aggiungendo il primo contenuto al calendario editoriale.</p>
-        <button class="primary-button small-button" data-action="open-marketing-form">+ Aggiungi contenuto</button>
+      <div class="panel marketing-empty">
+        <div class="marketing-empty-visual">📅</div>
+        <div>
+          <h3>Nessun contenuto pianificato</h3>
+          <p>Prepara post, caption, foto/asset, CTA e poi passa alla programmazione su Meta Business Suite, WhatsApp Business, Google Ads o calendario.</p>
+          <div class="marketing-empty-steps">
+            <span>1. Idea</span>
+            <span>2. Foto</span>
+            <span>3. Copy</span>
+            <span>4. Programmazione</span>
+          </div>
+          <button class="primary-button small-button" data-action="open-marketing-form">+ Crea primo contenuto</button>
+        </div>
       </div>
     ` : filtered.length === 0 ? `
       <div class="info-card" style="margin-top:16px;">Nessun contenuto con i filtri attuali. Modifica canale o stato.</div>
@@ -14423,10 +14490,52 @@ function renderMarketing() {
               <option value="archiviato">Archiviato</option>
             </select>
           </label>
-          <label class="field field-full">
-            <span>Note / testo del post</span>
-            <textarea class="text-input" name="notes" rows="3" placeholder="Testo, link, hashtag, CTA..."></textarea>
+          <label class="field">
+            <span>Formato</span>
+            <select class="text-input" name="format">
+              <option value="">—</option>
+              <option value="post">Post</option>
+              <option value="reel">Reel / video breve</option>
+              <option value="story">Story</option>
+              <option value="ads">Annuncio</option>
+              <option value="email">Email</option>
+            </select>
           </label>
+          <label class="field">
+            <span>Ora indicativa</span>
+            <input class="text-input" name="time" type="time" />
+          </label>
+          <label class="field">
+            <span>URL foto / asset</span>
+            <input class="text-input" name="assetUrl" placeholder="Link immagine, Drive, Canva..." />
+          </label>
+          <label class="field">
+            <span>Nome file asset</span>
+            <input class="text-input" name="assetName" placeholder="Es. prato-sintetico-promo.jpg" />
+          </label>
+          <label class="field field-full">
+            <span>Caption pronta</span>
+            <textarea class="text-input" name="caption" rows="4" placeholder="Testo finale da copiare nel canale scelto..."></textarea>
+          </label>
+          <label class="field">
+            <span>CTA</span>
+            <input class="text-input" name="cta" placeholder="Es. Richiedi preventivo gratuito" />
+          </label>
+          <label class="field">
+            <span>Hashtag / keyword</span>
+            <input class="text-input" name="hashtags" placeholder="#pratosintetico #giardino" />
+          </label>
+          <label class="field field-full">
+            <span>Target / pubblico</span>
+            <input class="text-input" name="target" placeholder="Es. proprietari casa, aree Lombardia, lead freddi..." />
+          </label>
+          <label class="field field-full">
+            <span>Note operative</span>
+            <textarea class="text-input" name="notes" rows="3" placeholder="Promemoria, varianti, link utili, indicazioni grafiche..."></textarea>
+          </label>
+          <div class="marketing-form-helper field-full">
+            <strong>Programmazione:</strong> salva il contenuto e usa le azioni rapide sulla scheda per aprire lo strumento corretto.
+          </div>
           <div class="inline-actions field-full">
             <button type="submit" class="primary-button small-button">Salva</button>
             <button type="button" class="ghost-button small-button" data-action="close-marketing-form">Annulla</button>
@@ -14493,6 +14602,15 @@ function renderMarketing() {
     });
   });
 
+  container.querySelectorAll("[data-action='marketing-open-tool'], [data-action='marketing-open-calendar']").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const item = (state.marketingItems || []).find((i) => i.id === btn.dataset.id);
+      if (!item) return;
+      openMarketingExternalTool(item, btn.dataset.action === "marketing-open-calendar" ? "calendar" : "channel");
+    });
+  });
+
   // close form
   const closeBtn = container.querySelector("[data-action='close-marketing-form']");
   if (closeBtn) closeBtn.addEventListener("click", () => {
@@ -14525,6 +14643,14 @@ function renderMarketing() {
         objective: fd.get("objective") || "",
         date: fd.get("date") || "",
         status: fd.get("status") || "bozza",
+        format: fd.get("format") || "",
+        time: fd.get("time") || "",
+        assetUrl: fd.get("assetUrl") || "",
+        assetName: fd.get("assetName") || "",
+        caption: fd.get("caption") || "",
+        cta: fd.get("cta") || "",
+        hashtags: fd.get("hashtags") || "",
+        target: fd.get("target") || "",
         notes: fd.get("notes") || "",
         updatedAt: new Date().toISOString(),
       };
@@ -14557,6 +14683,14 @@ function openMarketingForm(item, options = {}) {
     if (form.elements.objective) form.elements.objective.value = item.objective || "";
     form.elements.date.value = item.date || "";
     form.elements.status.value = item.status || "bozza";
+    if (form.elements.format) form.elements.format.value = item.format || "";
+    if (form.elements.time) form.elements.time.value = item.time || "";
+    if (form.elements.assetUrl) form.elements.assetUrl.value = item.assetUrl || "";
+    if (form.elements.assetName) form.elements.assetName.value = item.assetName || "";
+    if (form.elements.caption) form.elements.caption.value = item.caption || "";
+    if (form.elements.cta) form.elements.cta.value = item.cta || "";
+    if (form.elements.hashtags) form.elements.hashtags.value = item.hashtags || "";
+    if (form.elements.target) form.elements.target.value = item.target || "";
     form.elements.notes.value = item.notes || "";
   } else {
     form.elements.id.value = "";
