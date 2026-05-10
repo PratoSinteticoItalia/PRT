@@ -122,7 +122,6 @@
         <div class="topbar-right">
           <button id="reload-button" class="topbar-btn primary">Ricarica dati</button>
           <button id="new-order-button" class="topbar-btn">Nuovo ordine</button>
-          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260510-grid-texture-on-maincontent-158&shell=20260510-grid-texture-on-maincontent-158" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
           <div class="lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
             <button class="lang-btn" data-lang="en">EN</button>
@@ -143,14 +142,6 @@
         <div class="mobile-pill-tools mobile-pill-utility" aria-label="Azioni rapide mobile">
           <div class="mobile-pill-actions">
             <button id="mobile-pill-new-order-button" class="mobile-pill-tool" type="button">Nuovo ordine</button>
-            <a
-              id="mobile-pill-garden-planner-link"
-                href="./garden-planner.html?v=20260510-grid-texture-on-maincontent-158&shell=20260510-grid-texture-on-maincontent-158"
-              class="mobile-pill-tool"
-              style="text-decoration: none;"
-            >
-              Garden Planner
-            </a>
             <button id="mobile-pill-reload-button" class="mobile-pill-tool" type="button">Ricarica dati</button>
           </div>
           <div class="mobile-pill-meta">
@@ -254,8 +245,17 @@
           </button>
         </nav>
 
+        <div class="sidebar-divider-line"></div>
+
+        <div class="sidebar-section-label">Strumenti</div>
+        <nav class="nav nav-secondary">
+          <button class="nav-link" data-view="garden-planner">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V12"></path><path d="M5 3a7 7 0 0 0 14 0"></path><path d="M5 3c0 3.866 3.134 7 7 7s7-3.134 7-7"></path><path d="M5 3H3"></path><path d="M19 3h2"></path></svg></span>
+            <span class="nav-label">Garden Planner</span>
+          </button>
+        </nav>
+
         <div class="sidebar-mobile-tools">
-          <a href="./garden-planner.html?v=20260510-grid-texture-on-maincontent-158&shell=20260510-grid-texture-on-maincontent-158" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
           <button id="mobile-reload-button" class="sidebar-quick-link" type="button">Ricarica dati</button>
           <div class="lang-switch sidebar-lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
@@ -354,6 +354,13 @@
                   <div id="dashboard-actions-badge" class="section-badge">0 azioni</div>
                 </div>
                 <div id="dashboard-actions" class="action-list"></div>
+              </div>
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Follow-up preventivi in attesa</div>
+                  <div id="dashboard-followup-badge" class="section-badge">0</div>
+                </div>
+                <div id="dashboard-followup" class="action-list"></div>
               </div>
               <div class="section">
                 <div class="section-header">
@@ -1609,235 +1616,232 @@
         </section>
 
         <section class="view" id="settings">
-          <div class="dashboard-grid">
-            <section class="panel panel-large">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow">Centro controllo</p>
-                  <h3>Stato sincronizzazioni</h3>
-                </div>
-              </div>
-              <div id="sync-control-panel" class="sync-control-grid"></div>
-            </section>
+          <div class="settings-grid">
 
-            <section class="panel panel-large">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow">Collegamenti</p>
-                  <h3>Impostazioni Shopify</h3>
-                </div>
-              </div>
-
-              <form id="shopify-settings-form" class="inline-form-grid">
-                <label class="field">
-                  <span>Dominio Shopify</span>
-                  <input class="text-input" name="storeDomain" placeholder="nome-store.myshopify.com" />
-                </label>
-                <label class="field">
-                  <span>Client ID</span>
-                  <input class="text-input" name="clientId" placeholder="42e7de..." />
-                </label>
-                <label class="field">
-                  <span>Client secret</span>
-                  <input class="text-input" name="clientSecret" placeholder="••••••••" />
-                </label>
-                <label class="field field-full">
-                  <span>Admin API access token</span>
-                  <input class="text-input" name="adminAccessToken" placeholder="shpat_... oppure shpca_..." />
-                </label>
-                <label class="field">
-                  <span>Deposito / location</span>
-                  <input class="text-input" name="locationName" placeholder="Marcianise" />
-                </label>
-                <label class="field">
-                  <span>Vettore di riferimento</span>
-                  <input class="text-input" name="carrierName" placeholder="SDA, BRT, GLS..." />
-                </label>
-                <label class="field">
-                  <span>Modalità tariffa spedizione</span>
-                  <select class="text-input" name="shippingRateMode">
-                    <option value="oneexpress-auto">One Express automatico</option>
-                    <option value="manual-weight">Manuale per fasce peso</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Profilo tariffario</span>
-                  <select class="text-input" name="shippingTariffProfile">
-                    <option value="silver">Silver</option>
-                    <option value="gold">Gold</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Divisore peso volumetrico</span>
-                  <input class="text-input" name="volumetricDivisor" placeholder="5000" />
-                </label>
-                <label class="field">
-                  <span>Nolo fino a 80 kg</span>
-                  <input class="text-input" name="rate80" placeholder="0,00" />
-                </label>
-                <label class="field">
-                  <span>Nolo fino a 150 kg</span>
-                  <input class="text-input" name="rate150" placeholder="0,00" />
-                </label>
-                <label class="field">
-                  <span>Nolo fino a 300 kg</span>
-                  <input class="text-input" name="rate300" placeholder="0,00" />
-                </label>
-                <label class="field">
-                  <span>Nolo fino a 500 kg</span>
-                  <input class="text-input" name="rate500" placeholder="0,00" />
-                </label>
-                <label class="field">
-                  <span>Nolo fino a 1000 kg</span>
-                  <input class="text-input" name="rate1000" placeholder="0,00" />
-                </label>
-                <label class="field">
-                  <span>Extra €/kg oltre 1000 kg</span>
-                  <input class="text-input" name="extraKgRate" placeholder="0,00" />
-                </label>
-                <div class="inline-actions field-full">
-                  <button type="submit" class="primary-button small-button">Salva impostazioni</button>
-                  <button type="button" id="connect-shopify-button" class="ghost-button small-button">Connect Shopify</button>
-                </div>
-              </form>
-              <div id="settings-status" class="panel-note hidden"></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow">Sicurezza</p>
-                  <h3>Password accesso</h3>
-                </div>
-              </div>
-              <form id="security-form" class="inline-form-grid">
-                <label class="field">
-                  <span>Password attuale</span>
-                  <input class="text-input" name="currentPassword" type="password" placeholder="••••••••••••" />
-                </label>
-                <label class="field">
-                  <span>Nuova password</span>
-                  <input class="text-input" name="newPassword" type="password" placeholder="Almeno 12 caratteri" />
-                </label>
-                <label class="field">
-                  <span>Conferma nuova password</span>
-                  <input class="text-input" name="confirmPassword" type="password" placeholder="Ripeti la nuova password" />
-                </label>
-                <div class="inline-actions field-full">
-                  <button type="submit" class="primary-button small-button">Aggiorna password</button>
-                </div>
-              </form>
-              <div id="security-status" class="panel-note hidden"></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow">Security Center</p>
-                  <h3>Recupero e audit</h3>
-                </div>
-              </div>
-              <div id="security-policy-note" class="info-card">
-                Le password devono rispettare la policy di sicurezza del portale.
-              </div>
-              <div id="security-events" class="detail-stack" style="margin-top: 16px;"></div>
-            </section>
-
-            <section class="panel panel-large">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow">Utenti</p>
-                  <h3>Gestione account e squadre</h3>
-                </div>
-              </div>
-              <div class="info-card" style="margin-bottom: 16px;">
-                Per gli account squadra puoi definire nome squadra operativo e capacita giornaliera. La rinomina aggiorna anche le pose gia assegnate.
-              </div>
-              <div id="accounts-list" class="detail-stack"></div>
-              <form id="account-create-form" class="inline-form-grid" style="margin-top: 16px;" data-persisted-crew-logo="">
-                <label class="field">
-                  <span>Nome utente</span>
-                  <input class="text-input" name="name" placeholder="Mario Rossi" />
-                </label>
-                <label class="field">
-                  <span>Email accesso</span>
-                  <input class="text-input" name="email" type="email" placeholder="mario@azienda.it" />
-                </label>
-                <label class="field">
-                  <span>Ruolo</span>
-                  <select class="text-input" name="role">
-                    <option value="office">Office</option>
-                    <option value="warehouse">Inventario</option>
-                    <option value="crew">Squadra</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Stato account</span>
-                  <select class="text-input" name="status">
-                    <option value="active">Attivo</option>
-                    <option value="suspended">Sospeso</option>
-                  </select>
-                </label>
-                <label class="field field-full">
-                  <span>Password iniziale</span>
-                  <input class="text-input" name="password" type="password" placeholder="Almeno 12 caratteri" />
-                </label>
-                <label class="field field-full crew-account-field hidden" data-crew-field>
-                  <span>Nome squadra</span>
-                  <input class="text-input" name="crewName" placeholder="Alpha" />
-                </label>
-                <label class="field crew-account-field hidden" data-crew-field>
-                  <span>Capacita giornaliera (mq)</span>
-                  <input class="text-input" name="dailyCapacity" placeholder="120" />
-                </label>
-                <label class="field field-full crew-account-field hidden" data-crew-field>
-                  <span>Logo squadra (opzionale)</span>
-                  <div class="crew-logo-preview is-empty">
-                    <span>Nessun logo squadra caricato.</span>
+            <!-- COL SINISTRA: account e accesso -->
+            <div class="settings-col">
+              <section class="panel panel-large">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow">Utenti</p>
+                    <h3>Gestione account e squadre</h3>
                   </div>
-                  <input class="text-input" name="crewLogoFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" />
-                  <small class="field-hint">PNG, JPG, WebP o SVG. Comparira nel PDF del generatore squadra accanto al logo PSI.</small>
-                </label>
-                <label class="checkline field-full">
-                  <input type="checkbox" name="mustChangePassword" />
-                  <span>Richiedi cambio password al primo accesso</span>
-                </label>
-                <div class="inline-actions field-full">
-                  <button type="submit" class="primary-button small-button">Crea account</button>
                 </div>
-              </form>
-              <div id="accounts-status" class="panel-note hidden"></div>
-            </section>
+                <div class="info-card" style="margin-bottom: 16px;">
+                  Per gli account squadra puoi definire nome squadra operativo e capacita giornaliera. La rinomina aggiorna anche le pose gia assegnate.
+                </div>
+                <div id="accounts-list" class="detail-stack settings-accounts-list"></div>
+                <form id="account-create-form" class="inline-form-grid" style="margin-top: 16px;" data-persisted-crew-logo="">
+                  <label class="field">
+                    <span>Nome utente</span>
+                    <input class="text-input" name="name" placeholder="Mario Rossi" />
+                  </label>
+                  <label class="field">
+                    <span>Email accesso</span>
+                    <input class="text-input" name="email" type="email" placeholder="mario@azienda.it" />
+                  </label>
+                  <label class="field">
+                    <span>Ruolo</span>
+                    <select class="text-input" name="role">
+                      <option value="office">Office</option>
+                      <option value="warehouse">Inventario</option>
+                      <option value="crew">Squadra</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Stato account</span>
+                    <select class="text-input" name="status">
+                      <option value="active">Attivo</option>
+                      <option value="suspended">Sospeso</option>
+                    </select>
+                  </label>
+                  <label class="field field-full">
+                    <span>Password iniziale</span>
+                    <input class="text-input" name="password" type="password" placeholder="Almeno 12 caratteri" />
+                  </label>
+                  <label class="field field-full crew-account-field hidden" data-crew-field>
+                    <span>Nome squadra</span>
+                    <input class="text-input" name="crewName" placeholder="Alpha" />
+                  </label>
+                  <label class="field crew-account-field hidden" data-crew-field>
+                    <span>Capacita giornaliera (mq)</span>
+                    <input class="text-input" name="dailyCapacity" placeholder="120" />
+                  </label>
+                  <label class="field field-full crew-account-field hidden" data-crew-field>
+                    <span>Logo squadra (opzionale)</span>
+                    <div class="crew-logo-preview is-empty">
+                      <span>Nessun logo squadra caricato.</span>
+                    </div>
+                    <input class="text-input" name="crewLogoFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" />
+                    <small class="field-hint">PNG, JPG, WebP o SVG. Comparira nel PDF del generatore squadra accanto al logo PSI.</small>
+                  </label>
+                  <label class="checkline field-full">
+                    <input type="checkbox" name="mustChangePassword" />
+                    <span>Richiedi cambio password al primo accesso</span>
+                  </label>
+                  <div class="inline-actions field-full">
+                    <button type="submit" class="primary-button small-button">Crea account</button>
+                  </div>
+                </form>
+                <div id="accounts-status" class="panel-note hidden"></div>
+              </section>
 
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow">Trasferte</p>
-                  <h3>Report costi squadre</h3>
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow">Sicurezza</p>
+                    <h3>Password accesso</h3>
+                  </div>
                 </div>
-              </div>
-              <div id="crew-expense-monthly-report" class="detail-stack"></div>
-            </section>
+                <form id="security-form" class="inline-form-grid">
+                  <label class="field">
+                    <span>Password attuale</span>
+                    <input class="text-input" name="currentPassword" type="password" placeholder="••••••••••••" />
+                  </label>
+                  <label class="field">
+                    <span>Nuova password</span>
+                    <input class="text-input" name="newPassword" type="password" placeholder="Almeno 12 caratteri" />
+                  </label>
+                  <label class="field">
+                    <span>Conferma nuova password</span>
+                    <input class="text-input" name="confirmPassword" type="password" placeholder="Ripeti la nuova password" />
+                  </label>
+                  <div class="inline-actions field-full">
+                    <button type="submit" class="primary-button small-button">Aggiorna password</button>
+                  </div>
+                </form>
+                <div id="security-status" class="panel-note hidden"></div>
+              </section>
+            </div>
 
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-eyebrow">Direzione scelta</p>
-                  <h3>Sync manuale Shopify</h3>
+            <!-- COL DESTRA: integrazioni + log + report -->
+            <div class="settings-col">
+              <section class="panel panel-large">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow">Collegamenti</p>
+                    <h3>Impostazioni Shopify</h3>
+                  </div>
                 </div>
-              </div>
-              <div class="info-stack">
-                <div class="info-card">
-                  <strong>Niente webhook per ora.</strong>
-                  <p>Gli ordini entrano cliccando “Sincronizza Shopify”, così restiamo semplici, senza hosting pubblico e senza perdere il collegamento col negozio.</p>
+                <form id="shopify-settings-form" class="inline-form-grid">
+                  <label class="field">
+                    <span>Dominio Shopify</span>
+                    <input class="text-input" name="storeDomain" placeholder="nome-store.myshopify.com" />
+                  </label>
+                  <label class="field">
+                    <span>Client ID</span>
+                    <input class="text-input" name="clientId" placeholder="42e7de..." />
+                  </label>
+                  <label class="field">
+                    <span>Client secret</span>
+                    <input class="text-input" name="clientSecret" placeholder="••••••••" />
+                  </label>
+                  <label class="field field-full">
+                    <span>Admin API access token</span>
+                    <input class="text-input" name="adminAccessToken" placeholder="shpat_... oppure shpca_..." />
+                  </label>
+                  <label class="field">
+                    <span>Deposito / location</span>
+                    <input class="text-input" name="locationName" placeholder="Marcianise" />
+                  </label>
+                  <label class="field">
+                    <span>Vettore di riferimento</span>
+                    <input class="text-input" name="carrierName" placeholder="SDA, BRT, GLS..." />
+                  </label>
+                  <label class="field">
+                    <span>Modalità tariffa spedizione</span>
+                    <select class="text-input" name="shippingRateMode">
+                      <option value="oneexpress-auto">One Express automatico</option>
+                      <option value="manual-weight">Manuale per fasce peso</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Profilo tariffario</span>
+                    <select class="text-input" name="shippingTariffProfile">
+                      <option value="silver">Silver</option>
+                      <option value="gold">Gold</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Divisore peso volumetrico</span>
+                    <input class="text-input" name="volumetricDivisor" placeholder="5000" />
+                  </label>
+                  <label class="field">
+                    <span>Nolo fino a 80 kg</span>
+                    <input class="text-input" name="rate80" placeholder="0,00" />
+                  </label>
+                  <label class="field">
+                    <span>Nolo fino a 150 kg</span>
+                    <input class="text-input" name="rate150" placeholder="0,00" />
+                  </label>
+                  <label class="field">
+                    <span>Nolo fino a 300 kg</span>
+                    <input class="text-input" name="rate300" placeholder="0,00" />
+                  </label>
+                  <label class="field">
+                    <span>Nolo fino a 500 kg</span>
+                    <input class="text-input" name="rate500" placeholder="0,00" />
+                  </label>
+                  <label class="field">
+                    <span>Nolo fino a 1000 kg</span>
+                    <input class="text-input" name="rate1000" placeholder="0,00" />
+                  </label>
+                  <label class="field">
+                    <span>Extra €/kg oltre 1000 kg</span>
+                    <input class="text-input" name="extraKgRate" placeholder="0,00" />
+                  </label>
+                  <div class="inline-actions field-full">
+                    <button type="submit" class="primary-button small-button">Salva impostazioni</button>
+                    <button type="button" id="connect-shopify-button" class="ghost-button small-button">Connect Shopify</button>
+                  </div>
+                </form>
+                <div id="settings-status" class="panel-note hidden"></div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow">Centro controllo</p>
+                    <h3>Stato sincronizzazioni</h3>
+                  </div>
                 </div>
-                <div class="info-card">
-                  <strong>Ordine come centro.</strong>
-                  <p>Non esiste più una commessa separata: lo stesso ordine evolve in operatività ufficio, magazzino, posa e contabilità.</p>
+                <div id="sync-control-panel" class="sync-control-grid"></div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow">Security Center</p>
+                    <h3>Audit accessi</h3>
+                  </div>
                 </div>
-              </div>
-            </section>
+                <div id="security-policy-note" class="info-card">
+                  Le password devono rispettare la policy di sicurezza del portale.
+                </div>
+                <div id="security-events" class="detail-stack settings-security-events"></div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow">Trasferte</p>
+                    <h3>Report costi squadre</h3>
+                  </div>
+                </div>
+                <div id="crew-expense-monthly-report" class="detail-stack"></div>
+              </section>
+            </div>
+
           </div>
+        </section>
+
+        <section class="view" id="garden-planner">
+          <iframe
+            id="garden-planner-iframe"
+            title="Garden Planner"
+            style="display:block;width:100%;height:100%;border:none;flex:1 1 auto;"
+            allowfullscreen
+          ></iframe>
         </section>
       </main>
     </div>
