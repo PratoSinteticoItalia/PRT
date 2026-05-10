@@ -2419,6 +2419,16 @@ function buildMarketingPublishText(item = {}) {
   ].map((part) => String(part || "").trim()).filter(Boolean).join("\n\n");
 }
 
+function getMarketingScheduleIso(item = {}) {
+  const date = String(item.date || "").trim();
+  const time = String(item.time || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return "";
+  const scheduled = new Date(`${date}T${time}:00`);
+  if (!Number.isFinite(scheduled.getTime())) return "";
+  if (scheduled.getTime() <= Date.now() + 60_000) return "";
+  return scheduled.toISOString();
+}
+
 async function sendMarketingWhatsAppMessage(item = {}) {
   if (!WHATSAPP_AUTOMATION_ENABLED) {
     return { ok: false, reason: "automation_disabled" };
@@ -2488,8 +2498,33 @@ async function sendMarketingWhatsAppMessage(item = {}) {
   }
 }
 
-async function publishMarketingItem(item = {}) {
+async function publishMarketingItem(item = {}, mode = "publish") {
   const channel = String(item.channel || "").trim();
+  const publishMode = mode === "schedule" ? "schedule" : "publish";
+  if (publishMode === "schedule") {
+    const scheduledAt = getMarketingScheduleIso(item);
+    if (!scheduledAt) return { ok: false, reason: "missing_schedule_datetime" };
+    if (channel === "WhatsApp") return { ok: false, reason: "whatsapp_schedule_not_supported" };
+    if (channel === "Instagram") {
+      if (!META_MARKETING_ACCESS_TOKEN || !META_INSTAGRAM_BUSINESS_ACCOUNT_ID) {
+        return { ok: false, reason: "missing_meta_instagram_config" };
+      }
+      return { ok: false, reason: "instagram_schedule_not_configured", scheduledAt };
+    }
+    if (channel === "Facebook") {
+      if (!META_MARKETING_ACCESS_TOKEN || !META_PAGE_ID) {
+        return { ok: false, reason: "missing_meta_page_config" };
+      }
+      return { ok: false, reason: "facebook_schedule_not_configured", scheduledAt };
+    }
+    if (channel === "Google Ads") {
+      if (!GOOGLE_ADS_DEVELOPER_TOKEN || !GOOGLE_ADS_CUSTOMER_ID) {
+        return { ok: false, reason: "missing_google_ads_config" };
+      }
+      return { ok: false, reason: "google_ads_schedule_not_configured", scheduledAt };
+    }
+    return { ok: false, reason: "unsupported_channel" };
+  }
   if (channel === "WhatsApp") return sendMarketingWhatsAppMessage(item);
   if (channel === "Instagram") {
     if (!META_MARKETING_ACCESS_TOKEN || !META_INSTAGRAM_BUSINESS_ACCOUNT_ID) {
@@ -5244,12 +5279,15 @@ async function handleApi(req, res, url) {
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
     const item = body?.item || body || {};
-    const result = await publishMarketingItem(item);
+    const mode = body?.mode === "schedule" ? "schedule" : "publish";
+    const result = await publishMarketingItem(item, mode);
     const status = result.ok ? 200 : 400;
     return sendJson(res, status, {
       ...result,
+      mode,
       channel: String(item.channel || "").trim(),
       publishedAt: result.ok ? new Date().toISOString() : "",
+      scheduledAt: result.scheduledAt || "",
     });
   }
 

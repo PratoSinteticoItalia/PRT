@@ -14376,7 +14376,8 @@ function renderMarketing() {
                   </div>
                   <div class="marketing-list-actions">
                     <button type="button" class="ghost-button small-button" data-action="marketing-open-tool" data-id="${escapeHtml(item.id)}">${escapeHtml(marketingChannelToolLabel(item.channel))}</button>
-                    <button type="button" class="ghost-button small-button" data-action="marketing-publish-api" data-id="${escapeHtml(item.id)}">Invia via API</button>
+                    <button type="button" class="ghost-button small-button" data-action="marketing-publish-api" data-mode="publish" data-id="${escapeHtml(item.id)}">Pubblica ora via API</button>
+                    <button type="button" class="ghost-button small-button" data-action="marketing-publish-api" data-mode="schedule" data-id="${escapeHtml(item.id)}">Programma via API</button>
                     <button type="button" class="ghost-button small-button" data-action="marketing-open-calendar" data-id="${escapeHtml(item.id)}">Programma in calendario</button>
                   </div>
                 </div>
@@ -14687,7 +14688,7 @@ function renderMarketing() {
       event.stopPropagation();
       const item = (state.marketingItems || []).find((i) => i.id === btn.dataset.id);
       if (!item) return;
-      await publishMarketingItemViaApi(item, btn);
+      await publishMarketingItemViaApi(item, btn, btn.dataset.mode === "schedule" ? "schedule" : "publish");
     });
   });
 
@@ -14864,38 +14865,49 @@ function marketingApiErrorMessage(reason = "") {
     missing_whatsapp_config: "Mancano token WhatsApp o Phone Number ID nelle variabili ambiente.",
     missing_phone: "Inserisci il numero WhatsApp destinatario.",
     missing_message: "Inserisci una caption o un testo da inviare.",
+    missing_schedule_datetime: "Inserisci data e ora per programmare via API.",
     provider_error: "Il provider ha rifiutato la richiesta. Controlla token, permessi e destinatario.",
     network_error: "Errore di rete verso il provider API.",
     missing_meta_instagram_config: "Mancano token Meta o Instagram Business Account ID.",
     instagram_media_publish_not_configured: "Instagram API predisposta: serve completare upload media e publish container con asset URL pubblico.",
+    instagram_schedule_not_configured: "Programmazione Instagram predisposta: serve completare container media con published=false e publish a orario.",
     missing_meta_page_config: "Mancano token Meta o Page ID Facebook.",
     facebook_page_publish_not_configured: "Facebook API predisposta: serve completare pubblicazione pagina con asset URL pubblico.",
+    facebook_schedule_not_configured: "Programmazione Facebook predisposta: serve completare scheduled_publish_time sulla pagina.",
     missing_google_ads_config: "Mancano Developer Token o Customer ID Google Ads.",
     google_ads_publish_not_configured: "Google Ads API predisposta: serve configurare OAuth e campagna/ad group.",
+    google_ads_schedule_not_configured: "Programmazione Google Ads predisposta: serve configurare campagna, ad group e date.",
     missing_email_config: "Manca configurazione email server.",
     email_recipient_not_configured: "Per email serve aggiungere destinatario/campagna.",
+    whatsapp_schedule_not_supported: "WhatsApp API non programma post: usa invio immediato o Calendario.",
     unsupported_channel: "Canale non supportato per invio API.",
   };
   return messages[reason] || reason || "Invio API non riuscito.";
 }
 
-async function publishMarketingItemViaApi(item, button = null) {
+async function publishMarketingItemViaApi(item, button = null, mode = "publish") {
   const originalLabel = button?.textContent || "";
   if (button) {
     button.disabled = true;
-    button.textContent = "Invio...";
+    button.textContent = mode === "schedule" ? "Programmo..." : "Invio...";
   }
   try {
     const result = await apiFetch("/api/marketing/publish", {
       method: "POST",
-      body: JSON.stringify({ item }),
+      body: JSON.stringify({ item, mode }),
     });
     const nextItems = (state.marketingItems || []).map((entry) => entry.id === item.id
-      ? { ...entry, status: "pubblicato", apiPublishedAt: result.publishedAt || new Date().toISOString(), apiProviderId: result.messageId || "" }
+      ? {
+          ...entry,
+          status: mode === "schedule" ? "programmato" : "pubblicato",
+          apiPublishedAt: result.publishedAt || entry.apiPublishedAt || "",
+          apiScheduledAt: result.scheduledAt || entry.apiScheduledAt || "",
+          apiProviderId: result.messageId || result.scheduleId || "",
+        }
       : entry);
     state.marketingItems = nextItems;
     saveMarketingItems();
-    showToast("Contenuto inviato via API", "success");
+    showToast(mode === "schedule" ? "Contenuto programmato via API" : "Contenuto inviato via API", "success");
     renderMarketing();
   } catch (error) {
     const reason = error?.payload?.reason || error?.payload?.error || error?.message || "";
