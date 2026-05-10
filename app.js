@@ -14203,6 +14203,27 @@ function openMarketingExternalTool(item, tool = "channel") {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+function readMarketingAssetFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve("");
+      return;
+    }
+    if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type || "")) {
+      reject(new Error("Formato immagine non supportato. Usa PNG, JPG, WebP o GIF."));
+      return;
+    }
+    if (file.size > 1500 * 1024) {
+      reject(new Error("Immagine troppo pesante. Usa un link oppure comprimi il file sotto 1,5 MB."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Impossibile leggere il file immagine."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function renderMarketing() {
   const container = document.getElementById("marketing-content");
   if (!container) return;
@@ -14232,7 +14253,7 @@ function renderMarketing() {
   const kpiTotal = filtered.length;
   const kpiWeek = filtered.filter((i) => isDateInCurrentWeek(i.date)).length;
   const kpiBozza = filtered.filter((i) => (i.status || "bozza") === "bozza").length;
-  const kpiAssets = filtered.filter((i) => i.assetUrl || i.assetName).length;
+  const kpiAssets = filtered.filter((i) => i.assetDataUrl || i.assetUrl || i.assetName).length;
 
   // Group by month
   const byMonth = {};
@@ -14305,7 +14326,7 @@ function renderMarketing() {
             <article class="panel marketing-list-card" data-action="open-marketing-item" data-id="${escapeHtml(item.id)}">
               <div class="marketing-list-card-inner">
                 <div class="marketing-list-asset">
-                  ${item.assetUrl ? `<img src="${escapeHtml(item.assetUrl)}" alt="">` : `<span>${channelIcon(item.channel)}</span>`}
+                  ${item.assetDataUrl || item.assetUrl ? `<img src="${escapeHtml(item.assetDataUrl || item.assetUrl)}" alt="">` : `<span>${channelIcon(item.channel)}</span>`}
                 </div>
                 <div class="marketing-list-main">
                   <div class="marketing-list-head">
@@ -14318,7 +14339,7 @@ function renderMarketing() {
                   </div>
                   ${item.caption ? `<p class="marketing-list-notes">${escapeHtml(item.caption)}</p>` : item.notes ? `<p class="marketing-list-notes">${escapeHtml(item.notes)}</p>` : ""}
                   <div class="marketing-list-meta">
-                    ${item.assetName || item.assetUrl ? `<span>Asset: ${escapeHtml(item.assetName || item.assetUrl)}</span>` : ""}
+                    ${item.assetName || item.assetUrl || item.assetDataUrl ? `<span>Asset: ${escapeHtml(item.assetName || item.assetUrl || "file caricato")}</span>` : ""}
                     ${item.cta ? `<span>CTA: ${escapeHtml(item.cta)}</span>` : ""}
                     ${item.hashtags ? `<span>${escapeHtml(item.hashtags)}</span>` : ""}
                   </div>
@@ -14391,7 +14412,7 @@ function renderMarketing() {
       </div>
     </div>
 
-    <div class="view-toolbar marketing-toolbar-cluster">
+    <div class="view-toolbar marketing-toolbar-cluster marketing-toolbar-primary">
       <div class="filter-bar marketing-view-toggle" role="tablist" aria-label="Vista marketing">
         <button type="button" class="filter-btn${viewMode === "list" ? " is-active" : ""}" data-action="marketing-view" data-view="list">Elenco</button>
         <button type="button" class="filter-btn${viewMode === "calendar" ? " is-active" : ""}" data-action="marketing-view" data-view="calendar">Calendario</button>
@@ -14401,7 +14422,7 @@ function renderMarketing() {
       </div>
     </div>
 
-    <div class="view-toolbar">
+    <div class="view-toolbar marketing-channel-toolbar">
       <div class="filter-bar">
         ${channels.map((ch) => `<button type="button" class="filter-btn${activeChannel === ch ? " is-active" : ""}" data-action="marketing-filter" data-channel="${escapeHtml(ch)}">${escapeHtml(ch)}</button>`).join("")}
       </div>
@@ -14513,6 +14534,13 @@ function renderMarketing() {
             <span>Nome file asset</span>
             <input class="text-input" name="assetName" placeholder="Es. prato-sintetico-promo.jpg" />
           </label>
+          <label class="field field-full">
+            <span>Carica file dal PC</span>
+            <input class="text-input" name="assetFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+            <input type="hidden" name="assetDataUrl" />
+            <small class="marketing-field-hint">Consigliato: usa un link Drive/Canva per file definitivi. Il caricamento locale salva una copia nel browser, max 1,5 MB.</small>
+          </label>
+          <div class="marketing-asset-preview field-full" id="marketing-asset-preview"></div>
           <label class="field field-full">
             <span>Caption pronta</span>
             <textarea class="text-input" name="caption" rows="4" placeholder="Testo finale da copiare nel canale scelto..."></textarea>
@@ -14632,9 +14660,36 @@ function renderMarketing() {
   // submit form
   const form = document.getElementById("marketing-item-form");
   if (form) {
-    form.addEventListener("submit", (e) => {
+    const fileInput = form.elements.assetFile;
+    if (fileInput) {
+      fileInput.addEventListener("change", async () => {
+        try {
+          const file = fileInput.files?.[0];
+          const dataUrl = await readMarketingAssetFile(file);
+          form.elements.assetDataUrl.value = dataUrl;
+          if (file && form.elements.assetName && !form.elements.assetName.value) form.elements.assetName.value = file.name;
+          updateMarketingAssetPreview(dataUrl, file?.name || form.elements.assetName?.value || "");
+        } catch (error) {
+          fileInput.value = "";
+          form.elements.assetDataUrl.value = "";
+          updateMarketingAssetPreview("", "");
+          showToast(error?.message || "File immagine non valido", "warning");
+        }
+      });
+    }
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(form);
+      let assetDataUrl = fd.get("assetDataUrl") || "";
+      const file = form.elements.assetFile?.files?.[0];
+      if (file) {
+        try {
+          assetDataUrl = await readMarketingAssetFile(file);
+        } catch (error) {
+          showToast(error?.message || "File immagine non valido", "warning");
+          return;
+        }
+      }
       const id = fd.get("id") || crypto.randomUUID();
       const item = {
         id,
@@ -14647,6 +14702,7 @@ function renderMarketing() {
         time: fd.get("time") || "",
         assetUrl: fd.get("assetUrl") || "",
         assetName: fd.get("assetName") || "",
+        assetDataUrl,
         caption: fd.get("caption") || "",
         cta: fd.get("cta") || "",
         hashtags: fd.get("hashtags") || "",
@@ -14687,17 +14743,32 @@ function openMarketingForm(item, options = {}) {
     if (form.elements.time) form.elements.time.value = item.time || "";
     if (form.elements.assetUrl) form.elements.assetUrl.value = item.assetUrl || "";
     if (form.elements.assetName) form.elements.assetName.value = item.assetName || "";
+    if (form.elements.assetDataUrl) form.elements.assetDataUrl.value = item.assetDataUrl || "";
     if (form.elements.caption) form.elements.caption.value = item.caption || "";
     if (form.elements.cta) form.elements.cta.value = item.cta || "";
     if (form.elements.hashtags) form.elements.hashtags.value = item.hashtags || "";
     if (form.elements.target) form.elements.target.value = item.target || "";
     form.elements.notes.value = item.notes || "";
+    updateMarketingAssetPreview(item.assetDataUrl || item.assetUrl || "", item.assetName || "");
   } else {
     form.elements.id.value = "";
     const def = String(options.defaultDate || "").trim();
     if (def && form.elements.date) form.elements.date.value = def;
     if (form.elements.objective) form.elements.objective.value = "";
+    if (form.elements.assetDataUrl) form.elements.assetDataUrl.value = "";
+    updateMarketingAssetPreview("", "");
   }
+}
+
+function updateMarketingAssetPreview(src = "", label = "") {
+  const preview = document.getElementById("marketing-asset-preview");
+  if (!preview) return;
+  preview.innerHTML = src ? `
+    <div class="marketing-asset-preview-card">
+      <img src="${escapeHtml(src)}" alt="">
+      <span>${escapeHtml(label || "Anteprima immagine")}</span>
+    </div>
+  ` : "";
 }
 
 function saveMarketingItems() {

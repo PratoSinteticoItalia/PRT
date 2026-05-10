@@ -14433,8 +14433,9 @@ textarea.text-input {
 .marketing-kpi-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
+  gap: 18px;
+  margin-top: 24px;
+  margin-bottom: 18px;
 }
 .marketing-kpi-card {
   padding: 16px 18px;
@@ -14464,7 +14465,17 @@ textarea.text-input {
 .marketing-toolbar-cluster {
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: 14px;
+}
+.marketing-toolbar-primary,
+.marketing-channel-toolbar {
+  margin-top: 0;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 24px;
+}
+.marketing-channel-toolbar {
+  margin-bottom: 20px;
 }
 @media (min-width: 900px) {
   .marketing-toolbar-cluster {
@@ -14580,6 +14591,8 @@ textarea.text-input {
 }
 .marketing-calendar-panel {
   overflow-x: auto;
+  margin-top: 22px !important;
+  padding: 18px;
 }
 .marketing-cal-nav {
   display: flex;
@@ -14611,20 +14624,20 @@ textarea.text-input {
 .marketing-cal-weeks {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 .marketing-cal-week {
   display: grid;
   grid-template-columns: repeat(7, minmax(72px, 1fr));
-  gap: 4px;
-  min-height: 108px;
+  gap: 8px;
+  min-height: 120px;
 }
 .marketing-cal-cell {
   border: 1px solid rgba(32, 49, 36, 0.1);
   border-radius: 12px;
   background: rgba(255, 253, 249, 0.65);
-  padding: 6px 6px 8px;
-  min-height: 104px;
+  padding: 10px 10px 12px;
+  min-height: 116px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -14718,6 +14731,38 @@ textarea.text-input {
   font-size: 13px;
   color: var(--muted, #6f7c8e);
   margin: 0 0 12px;
+}
+.marketing-field-hint {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted, #6f7c8e);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.marketing-asset-preview {
+  min-height: 0;
+}
+.marketing-asset-preview-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid rgba(32, 49, 36, 0.1);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.72);
+}
+.marketing-asset-preview-card img {
+  width: 72px;
+  height: 72px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: rgba(45, 106, 79, 0.08);
+}
+.marketing-asset-preview-card span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #315c48;
+  overflow-wrap: anywhere;
 }
 .marketing-empty {
   margin-top: 16px;
