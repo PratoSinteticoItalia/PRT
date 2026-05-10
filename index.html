@@ -249,10 +249,10 @@
           </button>
         </nav>
 
-        <div class="sidebar-divider-line"></div>
+        <div id="sidebar-tools-divider" class="sidebar-divider-line"></div>
 
-        <div class="sidebar-section-label">Strumenti</div>
-        <nav class="nav nav-secondary">
+        <div id="sidebar-tools-label" class="sidebar-section-label">Strumenti</div>
+        <nav id="sidebar-tools-nav" class="nav nav-secondary">
           <button class="nav-link" data-view="garden-planner">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V12"></path><path d="M5 3a7 7 0 0 0 14 0"></path><path d="M5 3c0 3.866 3.134 7 7 7s7-3.134 7-7"></path><path d="M5 3H3"></path><path d="M19 3h2"></path></svg></span>
             <span class="nav-label">Garden Planner</span>
@@ -354,23 +354,17 @@
             <div>
               <div class="section">
                 <div class="section-header">
-                  <div class="section-title" id="dashboard-actions-title">Le tue azioni adesso</div>
-                  <div id="dashboard-actions-badge" class="section-badge">0 azioni</div>
+                  <div class="section-title" id="dashboard-actions-title">Priorità operative</div>
+                  <div id="dashboard-actions-badge" class="section-badge">0</div>
                 </div>
                 <div id="dashboard-actions" class="action-list"></div>
               </div>
               <div class="section">
                 <div class="section-header">
-                  <div class="section-title">Follow-up preventivi in attesa</div>
+                  <div class="section-title">Follow-up preventivi</div>
                   <div id="dashboard-followup-badge" class="section-badge">0</div>
                 </div>
                 <div id="dashboard-followup" class="action-list"></div>
-              </div>
-              <div class="section">
-                <div class="section-header">
-                  <div class="section-title">Attività recente</div>
-                </div>
-                <div id="dashboard-activity" class="feed"></div>
               </div>
             </div>
             <div>
@@ -382,9 +376,15 @@
               </div>
               <div class="section">
                 <div class="section-header">
-                  <div class="section-title">Inventario — alert</div>
+                  <div class="section-title">Situazioni bloccanti</div>
                 </div>
                 <div id="dashboard-alerts" class="feed feed-alerts"></div>
+              </div>
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Attività recente</div>
+                </div>
+                <div id="dashboard-activity" class="feed"></div>
               </div>
             </div>
           </div>
