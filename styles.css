@@ -14241,3 +14241,56 @@ textarea.text-input {
   border: none;
   background: #e2e2de;
 }
+
+/* ── Badge / action-badge colour tokens ──────────────────────────────────────
+   Global semantic colours for badge-* modifiers. These apply everywhere the
+   action-badge class is used (orders, installations, accounting, sales, etc.)
+   so that identical semantic states look identical across all views.          */
+
+.action-badge.badge-success,
+.tranche-status.badge-success {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-color: rgba(45, 106, 79, 0.18);
+}
+
+.action-badge.badge-info,
+.tranche-status.badge-info {
+  background: var(--blue-soft);
+  color: var(--blue);
+  border-color: rgba(62, 116, 216, 0.18);
+}
+
+.action-badge.badge-warning,
+.tranche-status.badge-warning {
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-color: rgba(217, 119, 6, 0.2);
+}
+
+.action-badge.badge-urgent,
+.tranche-status.badge-urgent {
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: rgba(167, 75, 75, 0.2);
+}
+
+.action-badge.badge-slate,
+.tranche-status.badge-slate {
+  background: #eef2f6;
+  color: #637487;
+  border-color: rgba(100, 116, 139, 0.16);
+}
+
+/* Override: order-row badges keep stronger padding but inherit colour tokens */
+.order-row .action-badge.badge-warning {
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-color: rgba(217, 119, 6, 0.2);
+}
+
+.order-row .action-badge.badge-urgent {
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: rgba(167, 75, 75, 0.2);
+}
