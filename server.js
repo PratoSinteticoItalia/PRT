@@ -56,6 +56,11 @@ const SALES_REQUEST_EMAIL_REPLY_TO = cleanEmail(process.env.SALES_REQUEST_EMAIL_
 const SALES_REQUEST_EMAIL_SUBJECT_PREFIX = String(process.env.SALES_REQUEST_EMAIL_SUBJECT_PREFIX || "Prato Sintetico Italia").trim();
 const SALES_REQUEST_EMAIL_TIMEOUT_MS = Math.max(5_000, Number(process.env.SALES_REQUEST_EMAIL_TIMEOUT_MS || 15_000));
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
+const META_MARKETING_ACCESS_TOKEN = String(process.env.META_MARKETING_ACCESS_TOKEN || WHATSAPP_DEFAULT_ACCESS_TOKEN).trim();
+const META_PAGE_ID = String(process.env.META_PAGE_ID || "").trim();
+const META_INSTAGRAM_BUSINESS_ACCOUNT_ID = String(process.env.META_INSTAGRAM_BUSINESS_ACCOUNT_ID || "").trim();
+const GOOGLE_ADS_DEVELOPER_TOKEN = String(process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "").trim();
+const GOOGLE_ADS_CUSTOMER_ID = String(process.env.GOOGLE_ADS_CUSTOMER_ID || "").trim();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -2403,6 +2408,114 @@ async function sendSalesRequestFirstContactWhatsApp({ requestRecord = {}, assign
       details: String(error?.message || "network_error"),
     };
   }
+}
+
+function buildMarketingPublishText(item = {}) {
+  return [
+    item.caption || item.title || "",
+    item.cta || "",
+    item.hashtags || "",
+    item.assetUrl || "",
+  ].map((part) => String(part || "").trim()).filter(Boolean).join("\n\n");
+}
+
+async function sendMarketingWhatsAppMessage(item = {}) {
+  if (!WHATSAPP_AUTOMATION_ENABLED) {
+    return { ok: false, reason: "automation_disabled" };
+  }
+  if (!WHATSAPP_DEFAULT_ACCESS_TOKEN || !WHATSAPP_DEFAULT_PHONE_NUMBER_ID) {
+    return { ok: false, reason: "missing_whatsapp_config" };
+  }
+  const to = normalizePhoneForWhatsApp(item.recipientPhone || "");
+  if (!to) {
+    return { ok: false, reason: "missing_phone" };
+  }
+  const message = buildMarketingPublishText(item);
+  if (!message) {
+    return { ok: false, reason: "missing_message" };
+  }
+  const endpoint = `https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${WHATSAPP_DEFAULT_PHONE_NUMBER_ID}/messages`;
+  const payload = {
+    messaging_product: "whatsapp",
+    to,
+    type: "text",
+    text: {
+      preview_url: true,
+      body: message,
+    },
+  };
+  try {
+    const response = await fetchWithTimeout(
+      endpoint,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_DEFAULT_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+      WHATSAPP_GRAPH_TIMEOUT_MS,
+    );
+    const rawResponse = await response.text().catch(() => "");
+    let parsed = {};
+    if (rawResponse) {
+      try {
+        parsed = JSON.parse(rawResponse);
+      } catch {
+        parsed = { raw: rawResponse };
+      }
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: "provider_error",
+        statusCode: Number(response.status || 0),
+        details: String(parsed?.error?.message || parsed?.raw || "").trim(),
+      };
+    }
+    return {
+      ok: true,
+      provider: "whatsapp",
+      messageId: String(parsed?.messages?.[0]?.id || "").trim(),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "network_error",
+      details: String(error?.message || "network_error"),
+    };
+  }
+}
+
+async function publishMarketingItem(item = {}) {
+  const channel = String(item.channel || "").trim();
+  if (channel === "WhatsApp") return sendMarketingWhatsAppMessage(item);
+  if (channel === "Instagram") {
+    if (!META_MARKETING_ACCESS_TOKEN || !META_INSTAGRAM_BUSINESS_ACCOUNT_ID) {
+      return { ok: false, reason: "missing_meta_instagram_config" };
+    }
+    return { ok: false, reason: "instagram_media_publish_not_configured" };
+  }
+  if (channel === "Facebook") {
+    if (!META_MARKETING_ACCESS_TOKEN || !META_PAGE_ID) {
+      return { ok: false, reason: "missing_meta_page_config" };
+    }
+    return { ok: false, reason: "facebook_page_publish_not_configured" };
+  }
+  if (channel === "Google Ads") {
+    if (!GOOGLE_ADS_DEVELOPER_TOKEN || !GOOGLE_ADS_CUSTOMER_ID) {
+      return { ok: false, reason: "missing_google_ads_config" };
+    }
+    return { ok: false, reason: "google_ads_publish_not_configured" };
+  }
+  if (channel === "Email") {
+    if (!RESEND_API_KEY || !isValidEmailAddress(SALES_REQUEST_EMAIL_FROM)) {
+      return { ok: false, reason: "missing_email_config" };
+    }
+    return { ok: false, reason: "email_recipient_not_configured" };
+  }
+  return { ok: false, reason: "unsupported_channel" };
 }
 
 async function applySalesRequestAutomationOnSave({ existingRequest = null, requestRecord = {}, nowIso = new Date().toISOString() } = {}) {
@@ -5124,6 +5237,20 @@ async function handleApi(req, res, url) {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     return sendJson(res, 200, buildUsageReport(store));
+  }
+
+  if (url.pathname === "/api/marketing/publish" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const item = body?.item || body || {};
+    const result = await publishMarketingItem(item);
+    const status = result.ok ? 200 : 400;
+    return sendJson(res, status, {
+      ...result,
+      channel: String(item.channel || "").trim(),
+      publishedAt: result.ok ? new Date().toISOString() : "",
+    });
   }
 
   if (url.pathname === "/api/sales/request-source" && req.method === "POST") {

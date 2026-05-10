@@ -14376,6 +14376,7 @@ function renderMarketing() {
                   </div>
                   <div class="marketing-list-actions">
                     <button type="button" class="ghost-button small-button" data-action="marketing-open-tool" data-id="${escapeHtml(item.id)}">${escapeHtml(marketingChannelToolLabel(item.channel))}</button>
+                    <button type="button" class="ghost-button small-button" data-action="marketing-publish-api" data-id="${escapeHtml(item.id)}">Invia via API</button>
                     <button type="button" class="ghost-button small-button" data-action="marketing-open-calendar" data-id="${escapeHtml(item.id)}">Programma in calendario</button>
                   </div>
                 </div>
@@ -14681,6 +14682,15 @@ function renderMarketing() {
     });
   });
 
+  container.querySelectorAll("[data-action='marketing-publish-api']").forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const item = (state.marketingItems || []).find((i) => i.id === btn.dataset.id);
+      if (!item) return;
+      await publishMarketingItemViaApi(item, btn);
+    });
+  });
+
   // close form
   const closeBtn = container.querySelector("[data-action='close-marketing-form']");
   if (closeBtn) closeBtn.addEventListener("click", () => {
@@ -14846,6 +14856,56 @@ function updateMarketingAssetPreview(src = "", label = "") {
       <span>${escapeHtml(label || "Anteprima immagine")}</span>
     </div>
   ` : "";
+}
+
+function marketingApiErrorMessage(reason = "") {
+  const messages = {
+    automation_disabled: "Automazione WhatsApp disattivata sul server.",
+    missing_whatsapp_config: "Mancano token WhatsApp o Phone Number ID nelle variabili ambiente.",
+    missing_phone: "Inserisci il numero WhatsApp destinatario.",
+    missing_message: "Inserisci una caption o un testo da inviare.",
+    provider_error: "Il provider ha rifiutato la richiesta. Controlla token, permessi e destinatario.",
+    network_error: "Errore di rete verso il provider API.",
+    missing_meta_instagram_config: "Mancano token Meta o Instagram Business Account ID.",
+    instagram_media_publish_not_configured: "Instagram API predisposta: serve completare upload media e publish container con asset URL pubblico.",
+    missing_meta_page_config: "Mancano token Meta o Page ID Facebook.",
+    facebook_page_publish_not_configured: "Facebook API predisposta: serve completare pubblicazione pagina con asset URL pubblico.",
+    missing_google_ads_config: "Mancano Developer Token o Customer ID Google Ads.",
+    google_ads_publish_not_configured: "Google Ads API predisposta: serve configurare OAuth e campagna/ad group.",
+    missing_email_config: "Manca configurazione email server.",
+    email_recipient_not_configured: "Per email serve aggiungere destinatario/campagna.",
+    unsupported_channel: "Canale non supportato per invio API.",
+  };
+  return messages[reason] || reason || "Invio API non riuscito.";
+}
+
+async function publishMarketingItemViaApi(item, button = null) {
+  const originalLabel = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Invio...";
+  }
+  try {
+    const result = await apiFetch("/api/marketing/publish", {
+      method: "POST",
+      body: JSON.stringify({ item }),
+    });
+    const nextItems = (state.marketingItems || []).map((entry) => entry.id === item.id
+      ? { ...entry, status: "pubblicato", apiPublishedAt: result.publishedAt || new Date().toISOString(), apiProviderId: result.messageId || "" }
+      : entry);
+    state.marketingItems = nextItems;
+    saveMarketingItems();
+    showToast("Contenuto inviato via API", "success");
+    renderMarketing();
+  } catch (error) {
+    const reason = error?.payload?.reason || error?.payload?.error || error?.message || "";
+    showToast(marketingApiErrorMessage(reason), "warning");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  }
 }
 
 function saveMarketingItems() {
