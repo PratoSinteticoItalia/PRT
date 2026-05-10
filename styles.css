@@ -5461,6 +5461,38 @@ body {
 #settings .dashboard-grid {
   align-items: start;
 }
+
+/* Settings: two equal columns, each an independent stack */
+.settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.settings-col {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+/* Cap the accounts list so edit forms don't balloon the column */
+.settings-accounts-list {
+  max-height: 420px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+}
+
+/* Cap the security events log — no need to show 50 login entries */
+.settings-security-events {
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  margin-top: 16px;
+  padding-right: 2px;
+}
 .order-row-date.is-fresh {
   background: #d8efe1;
   color: #14532d;
