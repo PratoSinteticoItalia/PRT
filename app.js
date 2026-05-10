@@ -231,11 +231,11 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "garden-planner"],
+  office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner"],
   warehouse: ["warehouse", "shipping"],
   crew: ["installations", "sales-generator"],
 };
-const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "garden-planner"]);
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -274,6 +274,7 @@ const translations = {
     shipping: "Logistica",
     "reseller-report": "Report rivenditori",
     settings: "Impostazioni",
+    marketing: "Marketing",
     "garden-planner": "Garden Planner",
     office: "Ufficio",
     warehouseRole: "Inventario",
@@ -522,6 +523,7 @@ const translations = {
     shipping: "Shipping",
     "reseller-report": "Reseller report",
     settings: "Settings",
+    marketing: "Marketing",
     "garden-planner": "Garden Planner",
     office: "Office",
     warehouseRole: "Inventory",
@@ -1128,6 +1130,8 @@ const state = {
   profitSplitDraft: loadProfitSplitDraft(),
   profitSplitContextOrderId: "",
   pendingCurrentViewRefresh: false,
+  marketingItems: [],
+  marketingChannelFilter: "Tutti",
 };
 
 let sessionKeepaliveTimer = 0;
@@ -2218,6 +2222,13 @@ function formatDate(value) {
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+function formatDateShort(dateStr) {
+  if (!dateStr) return "";
+  const [y, m, d] = dateStr.split("-");
+  const months = ["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"];
+  return `${parseInt(d,10)} ${months[parseInt(m,10)-1]} ${y}`;
 }
 
 function formatMonthKey(monthKey) {
@@ -13760,6 +13771,7 @@ function startUsageHeartbeat() {
 }
 
 function showApp() {
+  state.marketingItems = loadMarketingItems();
   startSessionKeepalive();
   startSessionEvents();
   startShopifyAutoSync();
@@ -14057,6 +14069,9 @@ function renderCurrentViewOnly(view = state.currentView) {
     case "settings":
       renderSettings();
       break;
+    case "marketing":
+      renderMarketing();
+      break;
     case "garden-planner":
       renderGardenPlannerView();
       break;
@@ -14064,6 +14079,234 @@ function renderCurrentViewOnly(view = state.currentView) {
       renderDashboard();
       break;
   }
+}
+
+function renderMarketing() {
+  const container = document.getElementById("marketing-content");
+  if (!container) return;
+
+  const items = state.marketingItems || [];
+  const channels = ["Tutti", "Instagram", "Facebook", "WhatsApp", "Google Ads", "Email", "Altro"];
+  const activeChannel = state.marketingChannelFilter || "Tutti";
+  const statusColors = { bozza: "badge-slate", programmato: "badge-info", pubblicato: "badge-success", archiviato: "badge-slate" };
+  const statusLabels = { bozza: "Bozza", programmato: "Programmato", pubblicato: "Pubblicato", archiviato: "Archiviato" };
+
+  const filtered = activeChannel === "Tutti" ? items : items.filter(i => i.channel === activeChannel);
+  const sorted = [...filtered].sort((a, b) => (a.date || "9999") < (b.date || "9999") ? -1 : 1);
+
+  // Group by month
+  const byMonth = {};
+  sorted.forEach(item => {
+    const month = item.date ? item.date.slice(0, 7) : "senza-data";
+    if (!byMonth[month]) byMonth[month] = [];
+    byMonth[month].push(item);
+  });
+
+  const monthLabel = (key) => {
+    if (key === "senza-data") return "Senza data";
+    const [y, m] = key.split("-");
+    const months = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
+    return `${months[parseInt(m,10)-1]} ${y}`;
+  };
+
+  const channelIcon = (ch) => {
+    const icons = { Instagram: "📸", Facebook: "👥", WhatsApp: "💬", "Google Ads": "🔍", Email: "📧", Altro: "📌" };
+    return icons[ch] || "📌";
+  };
+
+  container.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1>Marketing</h1>
+        <div class="page-header-sub">Pianificazione contenuti e calendario editoriale</div>
+      </div>
+      <button class="primary-button small-button" data-action="open-marketing-form">+ Nuovo contenuto</button>
+    </div>
+
+    <div class="view-toolbar">
+      <div class="filter-bar">
+        ${channels.map(ch => `<button class="filter-btn${activeChannel === ch ? " is-active" : ""}" data-action="marketing-filter" data-channel="${escapeHtml(ch)}">${escapeHtml(ch)}</button>`).join("")}
+      </div>
+    </div>
+
+    ${items.length === 0 ? `
+      <div class="panel" style="margin-top:16px;text-align:center;padding:40px 20px;">
+        <div style="font-size:32px;margin-bottom:12px;">📅</div>
+        <h3 style="margin-bottom:8px;">Nessun contenuto pianificato</h3>
+        <p style="color:var(--muted);margin-bottom:20px;">Inizia aggiungendo il primo contenuto al calendario editoriale.</p>
+        <button class="primary-button small-button" data-action="open-marketing-form">+ Aggiungi contenuto</button>
+      </div>
+    ` : filtered.length === 0 ? `
+      <div class="info-card" style="margin-top:16px;">Nessun contenuto per il canale selezionato.</div>
+    ` : Object.entries(byMonth).map(([month, monthItems]) => `
+      <div style="margin-top:24px;">
+        <div class="section-title" style="margin-bottom:12px;">${monthLabel(month)} <span class="section-badge">${monthItems.length}</span></div>
+        <div style="display:grid;gap:10px;">
+          ${monthItems.map(item => `
+            <article class="panel" style="padding:16px 20px;cursor:pointer;" data-action="open-marketing-item" data-id="${escapeHtml(item.id)}">
+              <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+                <span style="font-size:20px;line-height:1.2;">${channelIcon(item.channel)}</span>
+                <div style="flex:1;min-width:0;">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+                    <strong style="font-size:14px;">${escapeHtml(item.title || "Senza titolo")}</strong>
+                    <span class="action-badge ${statusColors[item.status] || "badge-slate"}">${statusLabels[item.status] || item.status}</span>
+                    ${item.channel ? `<span class="action-badge badge-slate">${escapeHtml(item.channel)}</span>` : ""}
+                  </div>
+                  ${item.notes ? `<p style="color:var(--muted);font-size:13px;margin:0;line-height:1.4;">${escapeHtml(item.notes)}</p>` : ""}
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                  ${item.date ? `<div style="font-size:12px;color:var(--muted);">${formatDateShort(item.date)}</div>` : ""}
+                </div>
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      </div>
+    `).join("")}
+
+    <div id="marketing-form-shell" class="hidden" style="margin-top:24px;">
+      <section class="panel panel-large">
+        <div class="panel-head">
+          <div>
+            <p class="panel-eyebrow">Calendario editoriale</p>
+            <h3 id="marketing-form-title">Nuovo contenuto</h3>
+          </div>
+        </div>
+        <form id="marketing-item-form" class="inline-form-grid">
+          <input type="hidden" name="id" />
+          <label class="field field-full">
+            <span>Titolo / descrizione</span>
+            <input class="text-input" name="title" placeholder="Es. Post Instagram lancio promozione primavera" />
+          </label>
+          <label class="field">
+            <span>Canale</span>
+            <select class="text-input" name="channel">
+              <option value="">Seleziona canale</option>
+              ${["Instagram","Facebook","WhatsApp","Google Ads","Email","Altro"].map(ch => `<option value="${ch}">${ch}</option>`).join("")}
+            </select>
+          </label>
+          <label class="field">
+            <span>Data pubblicazione</span>
+            <input class="text-input" name="date" type="date" />
+          </label>
+          <label class="field">
+            <span>Stato</span>
+            <select class="text-input" name="status">
+              <option value="bozza">Bozza</option>
+              <option value="programmato">Programmato</option>
+              <option value="pubblicato">Pubblicato</option>
+              <option value="archiviato">Archiviato</option>
+            </select>
+          </label>
+          <label class="field field-full">
+            <span>Note / testo del post</span>
+            <textarea class="text-input" name="notes" rows="3" placeholder="Testo, link, hashtag..."></textarea>
+          </label>
+          <div class="inline-actions field-full">
+            <button type="submit" class="primary-button small-button">Salva</button>
+            <button type="button" class="ghost-button small-button" data-action="close-marketing-form">Annulla</button>
+            <button type="button" class="ghost-button small-button" id="marketing-delete-btn" style="margin-left:auto;color:var(--red);display:none;" data-action="delete-marketing-item">Elimina</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+
+  // bind filter buttons
+  container.querySelectorAll("[data-action='marketing-filter']").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.marketingChannelFilter = btn.dataset.channel;
+      renderMarketing();
+    });
+  });
+
+  // open form for new
+  container.querySelectorAll("[data-action='open-marketing-form']").forEach(btn => {
+    btn.addEventListener("click", () => openMarketingForm(null));
+  });
+
+  // open form for existing item
+  container.querySelectorAll("[data-action='open-marketing-item']").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const item = (state.marketingItems || []).find(i => i.id === btn.dataset.id);
+      if (item) openMarketingForm(item);
+    });
+  });
+
+  // close form
+  const closeBtn = container.querySelector("[data-action='close-marketing-form']");
+  if (closeBtn) closeBtn.addEventListener("click", () => {
+    const shell = document.getElementById("marketing-form-shell");
+    if (shell) shell.classList.add("hidden");
+  });
+
+  // delete
+  const deleteBtn = container.querySelector("[data-action='delete-marketing-item']");
+  if (deleteBtn) deleteBtn.addEventListener("click", () => {
+    const form = document.getElementById("marketing-item-form");
+    const id = form?.elements?.id?.value;
+    if (!id) return;
+    state.marketingItems = (state.marketingItems || []).filter(i => i.id !== id);
+    saveMarketingItems();
+    renderMarketing();
+  });
+
+  // submit form
+  const form = document.getElementById("marketing-item-form");
+  if (form) {
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const id = fd.get("id") || crypto.randomUUID();
+      const item = {
+        id,
+        title: fd.get("title") || "",
+        channel: fd.get("channel") || "",
+        date: fd.get("date") || "",
+        status: fd.get("status") || "bozza",
+        notes: fd.get("notes") || "",
+        updatedAt: new Date().toISOString(),
+      };
+      const existing = state.marketingItems || [];
+      const idx = existing.findIndex(i => i.id === id);
+      if (idx >= 0) existing[idx] = item;
+      else existing.push(item);
+      state.marketingItems = existing;
+      saveMarketingItems();
+      renderMarketing();
+    });
+  }
+}
+
+function openMarketingForm(item) {
+  const shell = document.getElementById("marketing-form-shell");
+  const form = document.getElementById("marketing-item-form");
+  const title = document.getElementById("marketing-form-title");
+  const deleteBtn = document.getElementById("marketing-delete-btn");
+  if (!shell || !form) return;
+  shell.classList.remove("hidden");
+  shell.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  if (title) title.textContent = item ? "Modifica contenuto" : "Nuovo contenuto";
+  if (deleteBtn) deleteBtn.style.display = item ? "" : "none";
+  form.reset();
+  if (item) {
+    form.elements.id.value = item.id || "";
+    form.elements.title.value = item.title || "";
+    form.elements.channel.value = item.channel || "";
+    form.elements.date.value = item.date || "";
+    form.elements.status.value = item.status || "bozza";
+    form.elements.notes.value = item.notes || "";
+  } else {
+    form.elements.id.value = "";
+  }
+}
+
+function saveMarketingItems() {
+  try { localStorage.setItem("psi-marketing-items-v1", JSON.stringify(state.marketingItems || [])); } catch {}
+}
+
+function loadMarketingItems() {
+  try { return JSON.parse(localStorage.getItem("psi-marketing-items-v1") || "[]"); } catch { return []; }
 }
 
 function renderGardenPlannerView() {

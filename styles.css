@@ -694,7 +694,7 @@ button.is-feedback,
 .sidebar {
   grid-column: 1;
   grid-row: 2;
-  padding: 16px 12px;
+  padding: 16px 12px 40px;
   background: #fff;
   border-right: 1px solid var(--line);
   overflow-y: auto;
@@ -14294,3 +14294,135 @@ textarea.text-input {
   color: var(--red);
   border-color: rgba(167, 75, 75, 0.2);
 }
+
+/* ── Palette unificata: token semantici per badge, pill, chip ────────────────
+   Un solo set di colori per ogni stato semantico, usato da tutti i
+   componenti: action-badge, sales-status-pill, order-type-badge, status-chip. */
+
+:root {
+  /* Verde — confermato, ok, assegnato, pubblicato */
+  --tok-green-bg:     rgba(31, 70, 55, 0.09);
+  --tok-green-border: rgba(31, 70, 55, 0.20);
+  --tok-green-text:   #1f4637;
+
+  /* Blu — nuovo, pianificato, info */
+  --tok-blue-bg:      rgba(62, 116, 216, 0.10);
+  --tok-blue-border:  rgba(62, 116, 216, 0.20);
+  --tok-blue-text:    #2563c8;
+
+  /* Ambra — in attesa, follow-up, da fare */
+  --tok-amber-bg:     rgba(217, 119, 6, 0.09);
+  --tok-amber-border: rgba(217, 119, 6, 0.22);
+  --tok-amber-text:   #92400e;
+
+  /* Rosso — urgente, bloccato, da incassare */
+  --tok-red-bg:       rgba(167, 75, 75, 0.09);
+  --tok-red-border:   rgba(167, 75, 75, 0.20);
+  --tok-red-text:     #a74b4b;
+
+  /* Teal — preventivo inviato (stato specifico vendite) */
+  --tok-teal-bg:      rgba(6, 182, 212, 0.10);
+  --tok-teal-border:  rgba(14, 116, 144, 0.22);
+  --tok-teal-text:    #0e7490;
+
+  /* Slate — neutro, chiuso, archiviato */
+  --tok-slate-bg:     rgba(100, 116, 139, 0.10);
+  --tok-slate-border: rgba(100, 116, 139, 0.18);
+  --tok-slate-text:   #475569;
+
+  /* Viola — personalizzato */
+  --tok-purple-bg:    rgba(79, 70, 229, 0.09);
+  --tok-purple-border:rgba(79, 70, 229, 0.18);
+  --tok-purple-text:  #4338ca;
+}
+
+/* action-badge variants */
+.action-badge.badge-success, .tranche-status.badge-success {
+  background: var(--tok-green-bg); border-color: var(--tok-green-border); color: var(--tok-green-text);
+}
+.action-badge.badge-info, .tranche-status.badge-info {
+  background: var(--tok-blue-bg); border-color: var(--tok-blue-border); color: var(--tok-blue-text);
+}
+.action-badge.badge-warning, .tranche-status.badge-warning {
+  background: var(--tok-amber-bg); border-color: var(--tok-amber-border); color: var(--tok-amber-text);
+}
+.action-badge.badge-urgent, .tranche-status.badge-urgent {
+  background: var(--tok-red-bg); border-color: var(--tok-red-border); color: var(--tok-red-text);
+}
+.action-badge.badge-slate, .tranche-status.badge-slate {
+  background: var(--tok-slate-bg); border-color: var(--tok-slate-border); color: var(--tok-slate-text);
+}
+.order-row .action-badge.badge-warning {
+  background: var(--tok-amber-bg); border-color: var(--tok-amber-border); color: var(--tok-amber-text);
+}
+.order-row .action-badge.badge-urgent {
+  background: var(--tok-red-bg); border-color: var(--tok-red-border); color: var(--tok-red-text);
+}
+
+/* order-type-badge — allineati ai token */
+.type-fornitura       { background: var(--tok-green-bg); color: var(--tok-green-text); border-color: var(--tok-green-border); }
+.type-fornitura-posa  { background: var(--tok-amber-bg); color: var(--tok-amber-text); border-color: var(--tok-amber-border); }
+.type-posa            { background: var(--tok-amber-bg); color: var(--tok-amber-text); border-color: var(--tok-amber-border); }
+.type-spedizione      { background: var(--tok-blue-bg);  color: var(--tok-blue-text);  border-color: var(--tok-blue-border); }
+.type-ritiro          { background: var(--tok-purple-bg); color: var(--tok-purple-text); border-color: var(--tok-purple-border); }
+
+/* status-chip — già abbastanza coerente, allinea solo i valori esatti */
+.status-chip.status-green  { background: var(--tok-green-bg);  color: var(--tok-green-text);  border-color: var(--tok-green-border); }
+.status-chip.status-blue   { background: var(--tok-blue-bg);   color: var(--tok-blue-text);   border-color: var(--tok-blue-border); }
+.status-chip.status-amber  { background: var(--tok-amber-bg);  color: var(--tok-amber-text);  border-color: var(--tok-amber-border); }
+.status-chip.status-red    { background: var(--tok-red-bg);    color: var(--tok-red-text);    border-color: var(--tok-red-border); }
+.status-chip.status-slate  { background: var(--tok-slate-bg);  color: var(--tok-slate-text);  border-color: var(--tok-slate-border); }
+
+/* sales-status-pill e sales-request-detail-chip — ora allineati */
+.sales-status-pill.is-new,
+.sales-request-detail-chip.is-new {
+  border-color: var(--tok-blue-border); background: var(--tok-blue-bg); color: var(--tok-blue-text);
+}
+.sales-request-detail-chip.is-new strong { color: var(--tok-blue-text); }
+
+.sales-status-pill.is-followup,
+.sales-request-detail-chip.is-followup {
+  border-color: var(--tok-amber-border); background: var(--tok-amber-bg); color: var(--tok-amber-text);
+}
+.sales-request-detail-chip.is-followup strong { color: var(--tok-amber-text); }
+
+.sales-status-pill.is-quoted,
+.sales-request-detail-chip.is-quoted {
+  border-color: var(--tok-teal-border); background: var(--tok-teal-bg); color: var(--tok-teal-text);
+}
+.sales-request-detail-chip.is-quoted strong { color: var(--tok-teal-text); }
+
+.sales-status-pill.is-closed,
+.sales-request-detail-chip.is-closed {
+  border-color: var(--tok-slate-border); background: var(--tok-slate-bg); color: var(--tok-slate-text);
+}
+.sales-request-detail-chip.is-closed strong { color: var(--tok-slate-text); }
+
+.sales-status-pill.is-custom,
+.sales-request-detail-chip.is-custom {
+  border-color: var(--tok-purple-border); background: var(--tok-purple-bg); color: var(--tok-purple-text);
+}
+.sales-request-detail-chip.is-custom strong { color: var(--tok-purple-text); }
+
+/* sales-assignment-pill */
+.sales-assignment-pill.is-unassigned,
+.sales-request-detail-chip.is-unassigned {
+  border-color: var(--tok-amber-border);
+  background: var(--tok-amber-bg);
+}
+.sales-assignment-pill.is-unassigned strong,
+.sales-request-detail-chip.is-unassigned strong { color: var(--tok-amber-text); }
+
+.sales-assignment-pill.is-assigned,
+.sales-request-detail-chip.is-assigned {
+  border-color: var(--tok-green-border);
+  background: var(--tok-green-bg);
+}
+.sales-assignment-pill.is-assigned strong,
+.sales-request-detail-chip.is-assigned strong { color: var(--tok-green-text); }
+
+/* detail-chip automation states */
+.sales-request-detail-chip.is-queued { border-color: var(--tok-blue-border); background: var(--tok-blue-bg); }
+.sales-request-detail-chip.is-queued strong { color: var(--tok-blue-text); }
+.sales-request-detail-chip.is-sent { border-color: var(--tok-green-border); background: var(--tok-green-bg); }
+.sales-request-detail-chip.is-sent strong { color: var(--tok-green-text); }
