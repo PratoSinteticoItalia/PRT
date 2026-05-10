@@ -14222,3 +14222,22 @@ textarea.text-input {
 
 .topbar-search input { cursor: pointer; }
 .topbar-search input:focus { cursor: text; }
+
+/* ── Garden Planner embedded view ─────────────────────────────────────────── */
+
+#garden-planner.view.is-active {
+  display: flex;
+  flex-direction: column;
+  /* Cancel main-content padding so the iframe goes edge-to-edge */
+  margin: -24px;
+  height: calc(100vh - 56px);
+  overflow: hidden;
+}
+
+#garden-planner-iframe {
+  flex: 1 1 auto;
+  display: block;
+  width: 100%;
+  border: none;
+  background: #e2e2de;
+}

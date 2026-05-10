@@ -231,11 +231,11 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings"],
+  office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "garden-planner"],
   warehouse: ["warehouse", "shipping"],
   crew: ["installations", "sales-generator"],
 };
-const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings"]);
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "garden-planner"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -274,6 +274,7 @@ const translations = {
     shipping: "Logistica",
     "reseller-report": "Report rivenditori",
     settings: "Impostazioni",
+    "garden-planner": "Garden Planner",
     office: "Ufficio",
     warehouseRole: "Inventario",
     crewRole: "Squadra",
@@ -521,6 +522,7 @@ const translations = {
     shipping: "Shipping",
     "reseller-report": "Reseller report",
     settings: "Settings",
+    "garden-planner": "Garden Planner",
     office: "Office",
     warehouseRole: "Inventory",
     crewRole: "Crew",
@@ -14055,9 +14057,19 @@ function renderCurrentViewOnly(view = state.currentView) {
     case "settings":
       renderSettings();
       break;
+    case "garden-planner":
+      renderGardenPlannerView();
+      break;
     default:
       renderDashboard();
       break;
+  }
+}
+
+function renderGardenPlannerView() {
+  const iframe = document.getElementById("garden-planner-iframe");
+  if (iframe && !iframe.src) {
+    iframe.src = "./garden-planner.html";
   }
 }
 

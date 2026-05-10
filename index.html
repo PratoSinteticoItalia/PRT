@@ -122,7 +122,6 @@
         <div class="topbar-right">
           <button id="reload-button" class="topbar-btn primary">Ricarica dati</button>
           <button id="new-order-button" class="topbar-btn">Nuovo ordine</button>
-          <a id="topbar-garden-planner-link" href="./garden-planner.html?v=20260510-grid-texture-on-maincontent-158&shell=20260510-grid-texture-on-maincontent-158" class="topbar-btn" style="text-decoration: none;">Garden Planner</a>
           <div class="lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
             <button class="lang-btn" data-lang="en">EN</button>
@@ -143,14 +142,6 @@
         <div class="mobile-pill-tools mobile-pill-utility" aria-label="Azioni rapide mobile">
           <div class="mobile-pill-actions">
             <button id="mobile-pill-new-order-button" class="mobile-pill-tool" type="button">Nuovo ordine</button>
-            <a
-              id="mobile-pill-garden-planner-link"
-                href="./garden-planner.html?v=20260510-grid-texture-on-maincontent-158&shell=20260510-grid-texture-on-maincontent-158"
-              class="mobile-pill-tool"
-              style="text-decoration: none;"
-            >
-              Garden Planner
-            </a>
             <button id="mobile-pill-reload-button" class="mobile-pill-tool" type="button">Ricarica dati</button>
           </div>
           <div class="mobile-pill-meta">
@@ -254,8 +245,17 @@
           </button>
         </nav>
 
+        <div class="sidebar-divider-line"></div>
+
+        <div class="sidebar-section-label">Strumenti</div>
+        <nav class="nav nav-secondary">
+          <button class="nav-link" data-view="garden-planner">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V12"></path><path d="M5 3a7 7 0 0 0 14 0"></path><path d="M5 3c0 3.866 3.134 7 7 7s7-3.134 7-7"></path><path d="M5 3H3"></path><path d="M19 3h2"></path></svg></span>
+            <span class="nav-label">Garden Planner</span>
+          </button>
+        </nav>
+
         <div class="sidebar-mobile-tools">
-          <a href="./garden-planner.html?v=20260510-grid-texture-on-maincontent-158&shell=20260510-grid-texture-on-maincontent-158" id="mobile-garden-planner-link" class="sidebar-quick-link">Garden Planner</a>
           <button id="mobile-reload-button" class="sidebar-quick-link" type="button">Ricarica dati</button>
           <div class="lang-switch sidebar-lang-switch" aria-label="Language switcher">
             <button class="lang-btn is-active" data-lang="it">IT</button>
@@ -1833,6 +1833,15 @@
             </div>
 
           </div>
+        </section>
+
+        <section class="view" id="garden-planner">
+          <iframe
+            id="garden-planner-iframe"
+            title="Garden Planner"
+            style="display:block;width:100%;height:100%;border:none;flex:1 1 auto;"
+            allowfullscreen
+          ></iframe>
         </section>
       </main>
     </div>
