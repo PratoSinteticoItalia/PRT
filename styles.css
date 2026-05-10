@@ -23,24 +23,22 @@ body {
   margin: 0;
   font-family: "DM Sans", sans-serif;
   color: var(--text);
-  /* Soft grid texture (Carhartt-cargo style) tinted slightly cooler/greyer
-     than the loading screen so the working portal reads as a different
-     surface from the splash. */
-  background-color: #ecedea;
+  /* Grid texture — grigio tortora sabbia */
+  background-color: #e2e2de;
   background-image:
     repeating-linear-gradient(
       0deg,
       transparent,
       transparent 31px,
-      rgba(70, 80, 75, 0.07) 31px,
-      rgba(70, 80, 75, 0.07) 32px
+      rgba(65, 68, 72, 0.07) 31px,
+      rgba(65, 68, 72, 0.07) 32px
     ),
     repeating-linear-gradient(
       90deg,
       transparent,
       transparent 31px,
-      rgba(70, 80, 75, 0.07) 31px,
-      rgba(70, 80, 75, 0.07) 32px
+      rgba(65, 68, 72, 0.07) 31px,
+      rgba(65, 68, 72, 0.07) 32px
     );
   font-size: 14px;
   line-height: 1.5;
@@ -86,21 +84,21 @@ body.shell-loading::after {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.22s ease;
-  background-color: #e8e4da;
+  background-color: #e2e2de;
   background-image:
     repeating-linear-gradient(
       0deg,
       transparent,
       transparent 31px,
-      rgba(90, 80, 60, 0.09) 31px,
-      rgba(90, 80, 60, 0.09) 32px
+      rgba(65, 68, 72, 0.08) 31px,
+      rgba(65, 68, 72, 0.08) 32px
     ),
     repeating-linear-gradient(
       90deg,
       transparent,
       transparent 31px,
-      rgba(90, 80, 60, 0.09) 31px,
-      rgba(90, 80, 60, 0.09) 32px
+      rgba(65, 68, 72, 0.08) 31px,
+      rgba(65, 68, 72, 0.08) 32px
     );
 }
 
@@ -12654,10 +12652,6 @@ textarea {
 body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  background:
-    radial-gradient(circle at top left, rgba(10, 132, 255, 0.08), transparent 24%),
-    radial-gradient(circle at 88% 4%, rgba(52, 199, 89, 0.08), transparent 18%),
-    linear-gradient(180deg, #f7f8fb 0%, #f1f3f7 48%, #eceff5 100%);
 }
 
 .topbar,
@@ -13498,10 +13492,23 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   padding-right: 0;
 }
 
+/* Right-panel heights: cap to match the left list column so both columns
+   stay the same visual length. Installations uses a different layout so
+   it keeps its natural height. */
 #orders .detail-panel,
-#shipping .detail-panel,
+#shipping .detail-panel {
+  max-height: min(80vh, 1100px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-bottom: 26px;
+}
+
 #accounting .detail-panel,
-#warehouse .detail-panel,
+#warehouse .detail-panel {
+  padding-bottom: 26px;
+}
+
 #installations .detail-panel {
   max-height: none;
   overflow: visible;
@@ -13521,7 +13528,8 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
 }
 
 @media (min-width: 981px) {
-  #sales-requests .sales-request-detail-panel {
+  #sales-requests .sales-request-detail-panel,
+  #sales-content .sales-content-detail-panel {
     position: sticky;
     top: 18px;
     max-height: calc(100dvh - 132px);
