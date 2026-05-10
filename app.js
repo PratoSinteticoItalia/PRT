@@ -1214,6 +1214,8 @@ const ui = {
   opsAccountingValue: document.getElementById("ops-accounting-value"),
   opsShippingValue: document.getElementById("ops-shipping-value"),
   dashboardActions: document.getElementById("dashboard-actions"),
+  dashboardFollowup: document.getElementById("dashboard-followup"),
+  dashboardFollowupBadge: document.getElementById("dashboard-followup-badge"),
   dashboardAlerts: document.getElementById("dashboard-alerts"),
   dashboardActivity: document.getElementById("dashboard-activity"),
   dashboardWeekSummary: document.getElementById("dashboard-week-summary"),
@@ -3337,6 +3339,7 @@ function normalizeSalesRequestRecord(item = {}) {
     firstContactScheduledAt: normalizeIsoDateTime(item.firstContactScheduledAt || item.firstContact?.scheduledAt || ""),
     firstContactSentAt: normalizeIsoDateTime(item.firstContactSentAt || item.firstContact?.sentAt || ""),
     firstContactBy: normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
+    quotedAt: normalizeIsoDateTime(item.quotedAt || ""),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
   };
@@ -8973,6 +8976,19 @@ function renderOps() {
   setText("ops-closed-text", opsTexts.closed);
 }
 
+function buildFollowupReminders() {
+  const THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  return (state.salesRequests || [])
+    .filter(item => {
+      if (getSalesRequestStatusCode(item.status || "") !== "quoted") return false;
+      const ref = item.quotedAt || item.updatedAt || "";
+      return ref && (now - new Date(ref).getTime()) >= THRESHOLD_MS;
+    })
+    .sort((a, b) => new Date(a.quotedAt || a.updatedAt) - new Date(b.quotedAt || b.updatedAt))
+    .slice(0, 8);
+}
+
 function renderDashboard() {
   const actions = buildDashboardActions();
   if (ui.dashboardSubtitle) ui.dashboardSubtitle.textContent = getDashboardSubtitle();
@@ -9013,6 +9029,37 @@ function renderDashboard() {
         `;
       }).join("")
       : `<div class="info-card">${state.lang === "it" ? "Nessuna priorità critica al momento." : "No critical priorities right now."}</div>`;
+  }
+
+  if (ui.dashboardFollowup) {
+    const reminders = buildFollowupReminders();
+    if (ui.dashboardFollowupBadge) {
+      ui.dashboardFollowupBadge.textContent = String(reminders.length);
+    }
+    ui.dashboardFollowup.innerHTML = reminders.length
+      ? reminders.map((item, idx) => {
+          const refDate = item.quotedAt || item.updatedAt || "";
+          const daysAgo = refDate
+            ? Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)
+            : 0;
+          const name = [item.name, item.surname].filter(Boolean).join(" ") || "—";
+          const city = item.city ? ` · ${item.city}` : "";
+          const sqm = item.sqm ? ` · ${item.sqm} mq` : "";
+          return `
+            <article class="action-card" style="animation-delay:${idx * 0.05}s">
+              <div class="action-dot address"></div>
+              <div class="action-content">
+                <div class="action-title">${name}${city}</div>
+                <div class="action-sub">Preventivo inviato ${daysAgo} giorni fa${sqm}</div>
+              </div>
+              <div class="action-tail">
+                <span class="action-badge badge-warning">${daysAgo}g</span>
+                <button class="btn primary" data-action="select-sales-request" data-id="${item.id}" data-view="sales-requests">Apri</button>
+              </div>
+            </article>
+          `;
+        }).join("")
+      : `<div class="info-card">Nessun preventivo in attesa di follow-up.</div>`;
   }
 
   if (ui.dashboardActivity) {
@@ -10595,6 +10642,12 @@ function collectSalesRequestDraftFromForm() {
     : null;
   const nextStatus = String(form.get("status") || "").trim() || "new";
   const nowIso = new Date().toISOString();
+  const prevStatusCode = getSalesRequestStatusCode(existingRequest?.status || "");
+  const nextStatusCode = getSalesRequestStatusCode(nextStatus);
+  // Stamp quotedAt once when the status first enters "quoted" — never overwrite
+  const quotedAt = nextStatusCode === "quoted" && prevStatusCode !== "quoted"
+    ? nowIso
+    : (existingRequest?.quotedAt || "");
   return normalizeSalesRequestRecord({
     ...(existingRequest || {}),
     id: requestId || undefined,
@@ -10616,6 +10669,7 @@ function collectSalesRequestDraftFromForm() {
     sourceSpreadsheetId: existingRequest?.sourceSpreadsheetId || "",
     sourceSheetName: existingRequest?.sourceSheetName || "",
     sourceRowNumber: Number(existingRequest?.sourceRowNumber || 0),
+    quotedAt,
     createdAt: existingRequest?.createdAt || undefined,
     updatedAt: nowIso,
   });
@@ -16396,17 +16450,18 @@ function handleGlobalClick(event) {
   }
   if (action === "select-sales-request") {
     state.creatingSalesRequest = false;
-    const prevSelectedId = state.selectedSalesRequestId;
     state.selectedSalesRequestId = id || "";
-    if (prevSelectedId !== state.selectedSalesRequestId) {
+    if (button.dataset.view && button.dataset.view !== state.currentView) {
+      setView(button.dataset.view);
+    } else {
       ui.salesRequestsList?.querySelectorAll("[data-action='select-sales-request']").forEach((card) => {
         card.classList.toggle("is-active", card.dataset.id === state.selectedSalesRequestId);
       });
       renderSalesRequestsDetailPanel(getSelectedSalesRequest());
       if (state.currentView === "sales-generator") renderSalesGenerator();
-    }
-    if (window.innerWidth <= 980) {
-      requestAnimationFrame(() => ui.salesRequestDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      if (window.innerWidth <= 980) {
+        requestAnimationFrame(() => ui.salesRequestDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      }
     }
     return;
   }
