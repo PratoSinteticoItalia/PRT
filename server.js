@@ -3580,9 +3580,10 @@ function normalizeSalesRequestRecord(item = {}) {
   const firstContactState = normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || "");
   const hasExplicitAssignment = Object.prototype.hasOwnProperty.call(item, "assignment");
   const assignment = normalizeSalesRequestAssignment(hasExplicitAssignment ? item.assignment : (item.assegnazione || item.firstContactBy || item.firstContact?.by || ""));
-  const status = firstContactState === "sent" && shouldPromoteSalesRequestToFirstContact(rawStatus)
+  const statusIsUnset = !rawStatus || rawStatus === "new";
+  const status = firstContactState === "sent" && statusIsUnset
     ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS
-    : firstContactState === "queued" && shouldPromoteSalesRequestToFirstContact(rawStatus)
+    : firstContactState === "queued" && statusIsUnset
       ? SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS
       : rawStatus || "new";
   return {

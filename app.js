@@ -3389,9 +3389,10 @@ function getSalesRequestStatusCode(status = "") {
 function normalizeSalesRequestRecord(item = {}) {
   const firstContactState = normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || "");
   const rawStatus = String(item.status ?? item.stato ?? "").trim();
-  const status = firstContactState === "sent" && shouldPromoteSalesRequestToFirstContact(rawStatus)
+  const statusIsUnset = !rawStatus || rawStatus === "new";
+  const status = firstContactState === "sent" && statusIsUnset
     ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS
-    : firstContactState === "queued" && shouldPromoteSalesRequestToFirstContact(rawStatus)
+    : firstContactState === "queued" && statusIsUnset
       ? SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS
       : rawStatus || "new";
   return {
@@ -4732,7 +4733,7 @@ async function openSalesRequestWhatsAppContact(record = {}, { markAsSent = true 
     || String(request.status || "").trim() !== SALES_REQUEST_FIRST_CONTACT_SENT_STATUS;
   if (!shouldPersistSent) return request;
 
-  return persistSalesRequestRecordPatch(request, {
+  const patch = {
     firstContactState: "sent",
     firstContactScheduledAt: request.firstContactScheduledAt || nowIso,
     firstContactSentAt: nowIso,
@@ -4740,6 +4741,17 @@ async function openSalesRequestWhatsAppContact(record = {}, { markAsSent = true 
     status: shouldPromoteSalesRequestToFirstContact(request.status)
       ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS
       : request.status,
+  };
+  const previousRecord = state.salesRequests.find((r) => r.id === request.id) || null;
+  const optimisticRecord = normalizeSalesRequestRecord({ ...(previousRecord || request), ...patch });
+  upsertSalesRequest(optimisticRecord, { skipOpsRender: true, preserveSelection: true });
+  renderSalesRequests();
+  return persistSalesRequestRecordPatch(request, patch).catch((err) => {
+    if (previousRecord) {
+      state.salesRequests = state.salesRequests.map((r) => (r.id === previousRecord.id ? previousRecord : r));
+      renderSalesRequests();
+    }
+    throw err;
   });
 }
 
@@ -10766,7 +10778,7 @@ function shouldPreserveSalesRequestFormValues(selected = null) {
   const currentFormId = String(ui.salesRequestForm.id?.value || "").trim();
   const selectedId = String(selected?.id || "").trim();
   if (currentFormId && selectedId && currentFormId !== selectedId) return false;
-  return isSalesRequestFormFocused() || state.salesRequestSaveInFlight || Boolean(state.pendingSalesRequestSave);
+  return state.salesRequestFormDirty || isSalesRequestFormFocused() || state.salesRequestSaveInFlight || Boolean(state.pendingSalesRequestSave);
 }
 
 function isSalesRequestInteractionLocked() {
@@ -17667,6 +17679,10 @@ function handleGlobalClick(event) {
     event.stopPropagation();
     const target = event.target.closest("[href]");
     openSalesRequestWhatsAppTab(target?.getAttribute("href") || "");
+    const generatorRequest = getSelectedSalesRequest();
+    if (generatorRequest && getSalesRequestStatusCode(generatorRequest.status || "") !== "quoted") {
+      persistSalesRequestRecordPatch(generatorRequest, { status: "Preventivo inviato" }).catch(() => {});
+    }
     return;
   }
   if (action === "open-sales-request-followup-whatsapp") {
