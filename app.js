@@ -14173,6 +14173,20 @@ async function loadCommunicationMessages(threadId = state.selectedCommunicationT
   }
 }
 
+function upsertCommunicationThread(thread = {}) {
+  if (!thread?.id) return;
+  const nextThread = {
+    ...thread,
+    unreadCount: Number(thread.unreadCount || 0),
+  };
+  const existingIndex = (state.communicationThreads || []).findIndex((item) => item.id === nextThread.id);
+  if (existingIndex >= 0) {
+    state.communicationThreads = state.communicationThreads.map((item) => item.id === nextThread.id ? { ...item, ...nextThread } : item);
+  } else {
+    state.communicationThreads = [nextThread, ...(state.communicationThreads || [])];
+  }
+}
+
 async function sendCommunicationMessage(form) {
   if (!form) return;
   const body = String(new FormData(form).get("body") || "").trim();
@@ -14184,13 +14198,20 @@ async function sendCommunicationMessage(form) {
   const button = form.querySelector("button[type='submit']");
   if (button) button.disabled = true;
   try {
-    await apiFetch(`/api/communications/threads/${encodeURIComponent(threadId)}/messages`, {
+    const message = await apiFetch(`/api/communications/threads/${encodeURIComponent(threadId)}/messages`, {
       method: "POST",
       body: JSON.stringify({ body }),
     });
     form.reset();
-    await loadCommunicationMessages(threadId, { render: false, markRead: true });
-    await loadCommunicationThreads({ render: true });
+    if (message?.id) {
+      state.communicationMessages = [...(state.communicationMessages || []).filter((item) => item.id !== message.id), message];
+      state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === threadId
+        ? { ...thread, lastMessagePreview: message.body, updatedAt: message.createdAt, unreadCount: 0 }
+        : thread);
+      if (state.currentView === "communications") renderCommunications();
+    }
+    void loadCommunicationMessages(threadId, { render: true, markRead: true });
+    void loadCommunicationThreads({ render: false });
   } catch (error) {
     const reason = error?.payload?.error || error?.message || "";
     showToast(reason === "thread_not_found" ? "Chat non trovata. Riapri la conversazione." : reason === "unauthorized" ? "Sessione scaduta. Effettua di nuovo l'accesso." : "Messaggio non inviato. Riprova.", "warning");
@@ -14308,7 +14329,12 @@ function renderCommunications() {
           body: JSON.stringify({ targetUserId }),
         });
         state.selectedCommunicationThreadId = thread.id;
-        await loadCommunicationThreads({ render: true });
+        upsertCommunicationThread(thread);
+        state.communicationMessages = [];
+        state.communicationParticipants = [state.currentUser, thread.otherUser].filter(Boolean);
+        renderCommunications();
+        await loadCommunicationMessages(thread.id, { render: true, markRead: true });
+        void loadCommunicationThreads({ render: false });
       } catch (error) {
         showToast(error?.message === "communication_target_forbidden" ? "Non puoi aprire una chat con questo account." : "Impossibile aprire la chat.", "warning");
       } finally {
