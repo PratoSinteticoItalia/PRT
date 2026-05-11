@@ -5518,6 +5518,13 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (url.pathname === "/api/communications/targets" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    return sendJson(res, 200, {
+      targets: getAllowedCommunicationTargets(store, currentUser),
+    });
+  }
+
   if (url.pathname === "/api/communications/threads" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     const body = await readBody(req);

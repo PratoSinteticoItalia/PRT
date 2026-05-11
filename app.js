@@ -14102,6 +14102,21 @@ function formatCommunicationTime(value = "") {
   }).format(date);
 }
 
+async function loadCommunicationTargets({ render = true } = {}) {
+  if (!state.currentUser) return;
+  try {
+    const payload = await apiFetch("/api/communications/targets");
+    const targets = Array.isArray(payload.targets) ? payload.targets : [];
+    state.communicationTargets = targets.length ? targets : getCommunicationTargetFallback();
+  } catch (error) {
+    console.error("communications_targets_load_failed", error);
+    const fallbackTargets = getCommunicationTargetFallback();
+    if (fallbackTargets.length) state.communicationTargets = fallbackTargets;
+  } finally {
+    if (render && state.currentView === "communications") renderCommunications();
+  }
+}
+
 async function loadCommunicationThreads({ render = true } = {}) {
   if (!state.currentUser) return;
   state.communicationsLoading = true;
@@ -14111,6 +14126,9 @@ async function loadCommunicationThreads({ render = true } = {}) {
     const apiTargets = Array.isArray(payload.targets) ? payload.targets : [];
     const fallbackTargets = getCommunicationTargetFallback();
     state.communicationTargets = apiTargets.length ? apiTargets : fallbackTargets.length ? fallbackTargets : state.communicationTargets;
+    if (!state.communicationTargets.length) {
+      void loadCommunicationTargets({ render });
+    }
     state.communicationsUnreadCount = Number(payload.unreadCount || 0);
     setNavCount("communications", state.communicationsUnreadCount);
     if (!state.selectedCommunicationThreadId && state.communicationThreads.length) {
@@ -14219,11 +14237,11 @@ function renderCommunications() {
           <label class="field">
             <span>Nuova chat privata</span>
             <select class="text-input" name="targetUserId">
-              <option value="">Seleziona account</option>
+              <option value="">${targets.length ? "Seleziona account" : "Caricamento account..."}</option>
               ${targets.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(communicationUserLabel(user))} · ${escapeHtml(communicationRoleLabel(user.role))}</option>`).join("")}
             </select>
           </label>
-          <button type="submit" class="primary-button small-button">Apri chat</button>
+          <button type="submit" class="primary-button small-button" ${targets.length ? "" : "disabled"}>Apri chat</button>
         </form>
         <div class="communications-thread-list">
           ${threads.length ? threads.map((thread) => `
@@ -14377,6 +14395,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       break;
     case "communications":
       renderCommunications();
+      void loadCommunicationTargets({ render: true });
       void loadCommunicationThreads({ render: true });
       break;
     case "garden-planner":
