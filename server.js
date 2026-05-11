@@ -5685,12 +5685,13 @@ async function handleApi(req, res, url) {
       const importedRequests = sourcePayload.requests.map((item) => {
         const existing = existingById.get(item.id) || null;
         // For records already in the store, the portal is the authoritative status owner.
-        // Preserve the existing status so a pending async sheet-write cannot race-overwrite it.
+        // Preserve app-edited fields so a pending async sheet-write cannot race-overwrite them.
+        const assignment = existing?.assignment || item.assignment || "";
         const status = existing?.status || item.status || "new";
         return normalizeSalesRequestRecord({
           ...item,
           requestedHeight: item.requestedHeight,
-          assignment: item.assignment,
+          assignment,
           status,
           note: item.note || existing?.note || "",
           whatsappTemplate: item.whatsappTemplate || existing?.whatsappTemplate || "",
@@ -5698,7 +5699,7 @@ async function handleApi(req, res, url) {
           firstContactState: existing?.firstContactState || "",
           firstContactScheduledAt: existing?.firstContactScheduledAt || "",
           firstContactSentAt: existing?.firstContactSentAt || "",
-          firstContactBy: existing?.firstContactBy || "",
+          firstContactBy: existing?.firstContactBy || assignment,
           createdAt: existing?.createdAt || item.createdAt || now,
           updatedAt: now,
         });
