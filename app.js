@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260511-sales-request-unassign-166";
+const APP_SHELL_VERSION = "20260511-sales-request-clear-assignee-167";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3336,6 +3336,8 @@ function getSalesRequestStatusCode(status = "") {
 function normalizeSalesRequestRecord(item = {}) {
   const firstContactState = normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || "");
   const rawStatus = String(item.status ?? item.stato ?? "").trim();
+  const hasExplicitAssignment = Object.prototype.hasOwnProperty.call(item, "assignment");
+  const assignment = normalizeSalesRequestAssignment(hasExplicitAssignment ? item.assignment : (item.assegnazione || item.firstContactBy || item.firstContact?.by || ""));
   const status = firstContactState === "sent" && shouldPromoteSalesRequestToFirstContact(rawStatus)
     ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS
     : firstContactState === "queued" && shouldPromoteSalesRequestToFirstContact(rawStatus)
@@ -3352,7 +3354,7 @@ function normalizeSalesRequestRecord(item = {}) {
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: String(item.service || item.servizio || "").trim().toLowerCase(),
     surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
-    assignment: normalizeSalesRequestAssignment(Object.prototype.hasOwnProperty.call(item, "assignment") ? item.assignment : (item.assegnazione || item.firstContactBy || item.firstContact?.by || "")),
+    assignment,
     status,
     note: String(item.note || "").trim(),
     whatsappTemplate: String(
@@ -3377,7 +3379,7 @@ function normalizeSalesRequestRecord(item = {}) {
     firstContactState,
     firstContactScheduledAt: normalizeIsoDateTime(item.firstContactScheduledAt || item.firstContact?.scheduledAt || ""),
     firstContactSentAt: normalizeIsoDateTime(item.firstContactSentAt || item.firstContact?.sentAt || ""),
-    firstContactBy: normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
+    firstContactBy: hasExplicitAssignment && !assignment ? "" : normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
     quotedAt: normalizeIsoDateTime(item.quotedAt || ""),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),

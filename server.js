@@ -3546,6 +3546,8 @@ async function loadGoogleSheetSalesRequests(config = {}) {
 function normalizeSalesRequestRecord(item = {}) {
   const rawStatus = String(item.status ?? item.stato ?? "").trim();
   const firstContactState = normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || "");
+  const hasExplicitAssignment = Object.prototype.hasOwnProperty.call(item, "assignment");
+  const assignment = normalizeSalesRequestAssignment(hasExplicitAssignment ? item.assignment : (item.assegnazione || item.firstContactBy || item.firstContact?.by || ""));
   const status = firstContactState === "sent" && shouldPromoteSalesRequestToFirstContact(rawStatus)
     ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS
     : firstContactState === "queued" && shouldPromoteSalesRequestToFirstContact(rawStatus)
@@ -3562,7 +3564,7 @@ function normalizeSalesRequestRecord(item = {}) {
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: normalizeSalesRequestService(item.service || item.servizio || ""),
     surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),
-    assignment: normalizeSalesRequestAssignment(Object.prototype.hasOwnProperty.call(item, "assignment") ? item.assignment : (item.assegnazione || item.firstContactBy || item.firstContact?.by || "")),
+    assignment,
     status,
     note: String(item.note || "").trim(),
     whatsappTemplate: String(
@@ -3587,7 +3589,7 @@ function normalizeSalesRequestRecord(item = {}) {
     firstContactState,
     firstContactScheduledAt: normalizeIsoDateTime(item.firstContactScheduledAt || item.firstContact?.scheduledAt || ""),
     firstContactSentAt: normalizeIsoDateTime(item.firstContactSentAt || item.firstContact?.sentAt || ""),
-    firstContactBy: normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
+    firstContactBy: hasExplicitAssignment && !assignment ? "" : normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || new Date().toISOString()),
   };
