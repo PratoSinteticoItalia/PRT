@@ -13353,6 +13353,7 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   line-height: 1.45;
   color: #415063;
   display: -webkit-box;
+  line-clamp: 3;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -13506,6 +13507,7 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   min-height: 3.1em;
   display: -webkit-box;
   -webkit-box-orient: vertical;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
@@ -14842,6 +14844,200 @@ textarea.text-input {
 }
 .marketing-platform-preview.is-tiktok {
   border-color: rgba(0, 0, 0, 0.18);
+}
+
+/* ── Comunicazioni private ────────────────────────────────────────────────── */
+.communications-shell {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 16px;
+  min-height: min(720px, calc(100vh - 220px));
+}
+.communications-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  border-right: 1px solid rgba(35, 49, 33, 0.08);
+  padding-right: 16px;
+}
+.communications-new {
+  display: grid;
+  gap: 10px;
+}
+.communications-thread-list {
+  display: grid;
+  gap: 8px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.communications-thread {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid rgba(35, 49, 33, 0.08);
+  border-radius: 18px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.communications-thread.is-active {
+  border-color: rgba(76, 118, 93, 0.34);
+  background: rgba(238, 247, 239, 0.9);
+}
+.communications-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(31, 70, 55, 0.14), rgba(76, 118, 93, 0.18));
+  color: #163726;
+  font-weight: 900;
+  font-size: 13px;
+}
+.communications-thread-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.communications-thread-copy strong,
+.communications-thread-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.communications-thread-copy small {
+  color: var(--text2);
+  font-size: 12px;
+}
+.communications-unread {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+.communications-chat {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+}
+.communications-chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 14px;
+  border-bottom: 1px solid rgba(35, 49, 33, 0.08);
+}
+.communications-chat-head div {
+  display: grid;
+  gap: 3px;
+}
+.communications-chat-head span {
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.communications-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 4px 18px 0;
+}
+.communications-message {
+  display: flex;
+  justify-content: flex-start;
+}
+.communications-message.is-mine {
+  justify-content: flex-end;
+}
+.communications-message-bubble {
+  max-width: min(620px, 82%);
+  border: 1px solid rgba(35, 49, 33, 0.08);
+  border-radius: 20px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 18px rgba(20, 36, 24, 0.05);
+}
+.communications-message.is-mine .communications-message-bubble {
+  background: rgba(238, 247, 239, 0.95);
+  border-color: rgba(76, 118, 93, 0.22);
+}
+.communications-message-bubble strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--text2);
+}
+.communications-message-bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+.communications-message-bubble small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text3);
+  font-size: 11px;
+}
+.communications-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(35, 49, 33, 0.08);
+}
+.communications-composer textarea {
+  resize: vertical;
+  min-height: 54px;
+}
+.communications-empty,
+.communications-chat-placeholder {
+  padding: 18px;
+  border: 1px dashed rgba(35, 49, 33, 0.14);
+  border-radius: 18px;
+  color: var(--text2);
+  background: rgba(255, 255, 255, 0.54);
+}
+.communications-chat-placeholder {
+  align-self: center;
+  justify-self: center;
+  max-width: 360px;
+  text-align: center;
+}
+@media (max-width: 900px) {
+  .communications-shell {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+  .communications-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid rgba(35, 49, 33, 0.08);
+    padding-right: 0;
+    padding-bottom: 14px;
+  }
+  .communications-chat {
+    min-height: 520px;
+  }
+  .communications-composer {
+    grid-template-columns: 1fr;
+  }
 }
 .marketing-preview-top {
   display: flex;
