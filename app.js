@@ -2991,19 +2991,31 @@ function normalizeSalesRequestStatus(value = "") {
     "preventivo",
     "in preventivo",
     "preventivo inviato",
+    "preventivo da inviare",
+    "preventivo confermato",
     "offerta",
     "offerta inviata",
     "quotato",
+    "campione acquistato",
   ].includes(normalized)) return "quoted";
   if ([
     "followup",
     "follow up",
     "follow-up",
+    "1 contatto",
+    "1 contatto whatsapp",
     "da richiamare",
     "richiamare",
     "richiamata",
     "recall",
     "attesa",
+    "in attesa di risposta",
+    "nessuna risposta",
+    "ricontattato",
+    "chiamare",
+    "email",
+    "email inviata",
+    "fare follow up",
     "in lavorazione",
     "da seguire",
   ].includes(normalized)) return "followup";
@@ -3015,6 +3027,9 @@ function normalizeSalesRequestStatus(value = "") {
     "vinto",
     "persa",
     "perso",
+    "declinata",
+    "lead non qualificato",
+    "ordine eseguito",
     "completata",
     "completato",
     "archiviata",
@@ -10112,6 +10127,7 @@ function renderSalesRequestsDetailPanel(selected = null) {
   if (!ui.salesRequestForm) return;
   ensureSalesRequestWhatsAppActionUi();
   const preserveFormValues = shouldPreserveSalesRequestFormValues(selected);
+  const effectiveSelected = getSalesRequestUiDraftOrSelected(selected);
   if (!preserveFormValues) {
     ui.salesRequestForm.id.value = selected?.id || "";
     ui.salesRequestForm.name.value = selected?.name || "";
@@ -10134,50 +10150,50 @@ function renderSalesRequestsDetailPanel(selected = null) {
     }
   }
   autosizeTextarea(ui.salesRequestNoteField);
-  const salesRequestWhatsAppUrl = selected ? buildSalesRequestWhatsAppUrl(selected) : "";
+  const salesRequestWhatsAppUrl = effectiveSelected ? buildSalesRequestWhatsAppUrl(effectiveSelected) : "";
   const queuedDueForCurrentOperator = Boolean(
-    selected
-    && normalizeSalesRequestFirstContactState(selected.firstContactState || "") === "queued"
-    && isSalesRequestFirstContactDue(selected)
-    && normalizeSalesRequestAssignment(selected.assignment || selected.firstContactBy || "")
-      && normalizeSalesRequestAssignment(selected.assignment || selected.firstContactBy || "") === getSalesRequestOperatorFromCurrentUser(),
+    effectiveSelected
+    && normalizeSalesRequestFirstContactState(effectiveSelected.firstContactState || "") === "queued"
+    && isSalesRequestFirstContactDue(effectiveSelected)
+    && normalizeSalesRequestAssignment(effectiveSelected.assignment || effectiveSelected.firstContactBy || "")
+      && normalizeSalesRequestAssignment(effectiveSelected.assignment || effectiveSelected.firstContactBy || "") === getSalesRequestOperatorFromCurrentUser(),
   );
   if (ui.salesRequestWhatsAppButton) {
     ui.salesRequestWhatsAppButton.href = salesRequestWhatsAppUrl || "#";
     ui.salesRequestWhatsAppButton.classList.toggle("hidden", !salesRequestWhatsAppUrl);
     ui.salesRequestWhatsAppButton.setAttribute("aria-disabled", salesRequestWhatsAppUrl ? "false" : "true");
     ui.salesRequestWhatsAppButton.dataset.action = "open-sales-request-whatsapp";
-    ui.salesRequestWhatsAppButton.dataset.id = selected?.id || "";
+    ui.salesRequestWhatsAppButton.dataset.id = effectiveSelected?.id || selected?.id || "";
     ui.salesRequestWhatsAppButton.textContent = queuedDueForCurrentOperator
       ? (state.lang === "it" ? "Invia primo contatto (in coda)" : "Send queued first contact")
       : (state.lang === "it" ? "Primo contatto WhatsApp" : "First WhatsApp contact");
   }
   if (ui.salesRequestFollowUpButton) {
-    const showFollowUp = Boolean(selected && getSalesRequestStatusCode(selected.status || "") === "quoted");
-    const followUpUrl = showFollowUp ? buildSalesRequestFollowUpWhatsAppUrl(selected) : "";
+    const showFollowUp = Boolean(effectiveSelected && getSalesRequestStatusCode(effectiveSelected.status || "") === "quoted");
+    const followUpUrl = showFollowUp ? buildSalesRequestFollowUpWhatsAppUrl(effectiveSelected) : "";
     ui.salesRequestFollowUpButton.classList.toggle("hidden", !showFollowUp || !followUpUrl);
     ui.salesRequestFollowUpButton.href = followUpUrl || "#";
     ui.salesRequestFollowUpButton.setAttribute("aria-disabled", followUpUrl ? "false" : "true");
-    ui.salesRequestFollowUpButton.dataset.id = selected?.id || "";
+    ui.salesRequestFollowUpButton.dataset.id = effectiveSelected?.id || selected?.id || "";
     ui.salesRequestFollowUpButton.dataset.action = "open-sales-request-followup-whatsapp";
   }
   if (ui.salesRequestWhatsAppHint) {
-    ui.salesRequestWhatsAppHint.textContent = selected
-      ? getSalesRequestFirstContactHint(selected)
+    ui.salesRequestWhatsAppHint.textContent = effectiveSelected
+      ? getSalesRequestFirstContactHint(effectiveSelected)
       : (state.lang === "it"
         ? "Usa lo stesso link rapido del foglio Google quando disponibile, altrimenti viene creato dal numero cliente."
         : "Uses the Google Sheet quick link when available, otherwise it is built from the client phone number.");
   }
   if (ui.salesRequestDetailTitle) {
-    ui.salesRequestDetailTitle.textContent = selected
-      ? getSalesRequestDisplayName(selected)
+    ui.salesRequestDetailTitle.textContent = effectiveSelected
+      ? getSalesRequestDisplayName(effectiveSelected)
       : (state.lang === "it" ? "Nuova richiesta" : "New request");
   }
   if (ui.salesRequestDetailMeta) {
-    ui.salesRequestDetailMeta.innerHTML = renderSalesRequestDetailMeta(selected || {});
+    ui.salesRequestDetailMeta.innerHTML = renderSalesRequestDetailMeta(effectiveSelected || {});
   }
-  if (ui.salesRequestDeleteButton) ui.salesRequestDeleteButton.disabled = !selected;
-  if (ui.salesRequestUseGeneratorButton) ui.salesRequestUseGeneratorButton.disabled = !selected;
+  if (ui.salesRequestDeleteButton) ui.salesRequestDeleteButton.disabled = !effectiveSelected;
+  if (ui.salesRequestUseGeneratorButton) ui.salesRequestUseGeneratorButton.disabled = !effectiveSelected;
 }
 
 function renderSalesGeneratorPlannerMaterials(reference) {
@@ -10753,6 +10769,27 @@ function shouldPreserveSalesRequestFormValues(selected = null) {
   return isSalesRequestFormFocused() || state.salesRequestSaveInFlight || Boolean(state.pendingSalesRequestSave);
 }
 
+function isSalesRequestInteractionLocked() {
+  return Boolean(
+    state.currentView === "sales-requests"
+    && (
+      state.salesRequestSaveInFlight
+      || state.pendingSalesRequestSave
+      || state.salesRequestBulkSaving
+      || state.salesRequestFormDirty
+    )
+  );
+}
+
+function getSalesRequestUiDraftOrSelected(selected = null) {
+  if (!selected || !shouldPreserveSalesRequestFormValues(selected)) return selected;
+  const draft = collectSalesRequestDraftFromForm();
+  return normalizeSalesRequestRecord({
+    ...selected,
+    ...draft,
+  });
+}
+
 function syncSalesRequestSubmitButtons({ busy = false, queued = false } = {}) {
   getSalesRequestSubmitButtons().forEach((button) => {
     const defaultLabel = String(button.dataset.defaultLabel || button.textContent || "").trim()
@@ -10763,7 +10800,7 @@ function syncSalesRequestSubmitButtons({ busy = false, queued = false } = {}) {
           ? (state.lang === "it" ? "Salvataggio + coda..." : "Saving + queued...")
           : (state.lang === "it" ? "Salvataggio..." : "Saving..."))
       : defaultLabel;
-    button.disabled = false;
+    button.disabled = busy;
     button.setAttribute("aria-busy", busy ? "true" : "false");
   });
 }
@@ -10903,6 +10940,7 @@ async function processSalesRequestSave(draftRecord, {
       return;
     }
     syncSalesRequestSubmitButtons({ busy: false, queued: false });
+    flushPendingCurrentViewRefresh();
   }
 }
 
@@ -15449,14 +15487,14 @@ function clearPendingCurrentViewRefresh() {
 
 function flushPendingCurrentViewRefresh({ force = false } = {}) {
   if (!state.pendingCurrentViewRefresh) return false;
-  if (!force && isActiveElementInsideCurrentViewForm()) return false;
+  if (!force && (isActiveElementInsideCurrentViewForm() || isSalesRequestInteractionLocked())) return false;
   clearPendingCurrentViewRefresh();
   scheduleCurrentViewRender();
   return true;
 }
 
 function refreshCurrentView({ allowDefer = false } = {}) {
-  if (allowDefer && isActiveElementInsideCurrentViewForm()) {
+  if (allowDefer && (isActiveElementInsideCurrentViewForm() || isSalesRequestInteractionLocked())) {
     state.pendingCurrentViewRefresh = true;
     return false;
   }
