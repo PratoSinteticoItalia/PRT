@@ -13447,6 +13447,7 @@ function applySessionPayload(session = {}) {
   state.coveragePlanner = mergeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner, state.coveragePlanner);
   state.settings = session.shopifySettings || {};
   state.users = Array.isArray(session.users) ? session.users.map((user) => normalizeUserRecord(user)).filter(Boolean) : [];
+  state.communicationTargets = Array.isArray(session.communicationTargets) ? session.communicationTargets : [];
   state.securityEvents = session.securityEvents || [];
   state.securityPolicy = session.securityPolicy || {};
   try {
@@ -14108,7 +14109,8 @@ async function loadCommunicationThreads({ render = true } = {}) {
     const payload = await apiFetch("/api/communications/threads");
     state.communicationThreads = Array.isArray(payload.threads) ? payload.threads : [];
     const apiTargets = Array.isArray(payload.targets) ? payload.targets : [];
-    state.communicationTargets = apiTargets.length ? apiTargets : getCommunicationTargetFallback();
+    const fallbackTargets = getCommunicationTargetFallback();
+    state.communicationTargets = apiTargets.length ? apiTargets : fallbackTargets.length ? fallbackTargets : state.communicationTargets;
     state.communicationsUnreadCount = Number(payload.unreadCount || 0);
     setNavCount("communications", state.communicationsUnreadCount);
     if (!state.selectedCommunicationThreadId && state.communicationThreads.length) {

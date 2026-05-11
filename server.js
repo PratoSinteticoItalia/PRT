@@ -5355,6 +5355,7 @@ async function handleApi(req, res, url) {
       coveragePlanner: currentUser ? store.coveragePlanner : normalizeCoveragePlanner(),
       shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
       users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
+      communicationTargets: currentUser ? getAllowedCommunicationTargets(store, currentUser) : [],
       securityEvents: currentUser?.role === "office" ? store.securityEvents : [],
       securityPolicy: currentUser?.role === "office"
         ? {
@@ -5430,6 +5431,7 @@ async function handleApi(req, res, url) {
         coveragePlanner: store.coveragePlanner,
         shopifySettings: serializeShopifySettings(store.shopifySettings),
         users: user.role === "office" ? store.users.map(sanitizeUser) : [],
+        communicationTargets: getAllowedCommunicationTargets(store, user),
         securityEvents: user.role === "office" ? store.securityEvents : [],
         securityPolicy: user.role === "office"
           ? {
@@ -6094,6 +6096,7 @@ async function handleApi(req, res, url) {
       salesRequestSource: currentUser?.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
       shopifySettings: serializeShopifySettings(store.shopifySettings),
       users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
+      communicationTargets: getAllowedCommunicationTargets(store, currentUser),
       securityEvents: currentUser?.role === "office" ? store.securityEvents : [],
       securityPolicy: currentUser?.role === "office"
         ? {
