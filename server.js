@@ -2775,17 +2775,27 @@ async function applySalesRequestAutomationOnSave({ existingRequest = null, reque
 
   const baseStatus = String(normalized.status || "").trim() || "new";
   const shouldPromoteStatus = shouldPromoteSalesRequestToFirstContact(baseStatus);
-  const sendResult = mode === "email"
-    ? await sendSalesRequestFirstContactEmail({
-      requestRecord: normalized,
-      assignment: nextAssignment,
-    })
-    : await sendSalesRequestFirstContactWhatsApp({
-      requestRecord: normalized,
-      assignment: nextAssignment,
-    });
+  let sendResult = null;
+  try {
+    sendResult = mode === "email"
+      ? await sendSalesRequestFirstContactEmail({
+        requestRecord: normalized,
+        assignment: nextAssignment,
+      })
+      : await sendSalesRequestFirstContactWhatsApp({
+        requestRecord: normalized,
+        assignment: nextAssignment,
+      });
+  } catch (error) {
+    console.error("sales_request_first_contact_automation_failed", error);
+    sendResult = {
+      ok: false,
+      reason: "automation_error",
+      details: String(error?.message || "automation_error"),
+    };
+  }
 
-  if (sendResult.ok) {
+  if (sendResult?.ok) {
     return {
       record: normalizeSalesRequestRecord({
         ...normalized,
@@ -2819,8 +2829,8 @@ async function applySalesRequestAutomationOnSave({ existingRequest = null, reque
       channel: mode,
       operator: nextAssignment,
       scheduledAt: nowIso,
-      reason: String(sendResult.reason || "send_failed"),
-      details: String(sendResult.details || ""),
+      reason: String(sendResult?.reason || "send_failed"),
+      details: String(sendResult?.details || ""),
     },
   };
 }
