@@ -4636,18 +4636,10 @@ function openSalesRequestWhatsAppTab(url = "") {
 
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
   const previousRecord = state.salesRequests.find((r) => r.id === record.id) || null;
-  const optimisticRecord = normalizeSalesRequestRecord({
-    ...(previousRecord || record),
-    ...patch,
-    updatedAt: patch.updatedAt || new Date().toISOString(),
-  });
-  upsertSalesRequest(optimisticRecord, { skipOpsRender: true, preserveSelection: true });
-  renderSalesRequests();
-  if (state.currentView === "sales-generator") renderSalesGenerator();
   try {
     const saved = await apiFetch("/api/sales/requests", {
       method: "POST",
-      body: JSON.stringify(buildSalesRequestPayloadFromRecord(optimisticRecord)),
+      body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, patch)),
     });
     upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
     renderSalesRequests();
@@ -4656,11 +4648,8 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
   } catch (error) {
     if (previousRecord) {
       state.salesRequests = state.salesRequests.map((r) => r.id === previousRecord.id ? previousRecord : r);
-    } else {
-      state.salesRequests = state.salesRequests.filter((r) => r.id !== optimisticRecord.id);
+      renderSalesRequests();
     }
-    renderSalesRequests();
-    if (state.currentView === "sales-generator") renderSalesGenerator();
     setStatus(
       ui.salesRequestsStatus,
       "error",
@@ -10729,16 +10718,6 @@ function collectSalesRequestDraftFromForm() {
     createdAt: existingRequest?.createdAt || undefined,
     updatedAt: nowIso,
   });
-}
-
-function getSalesRequestActionRecord(id = "") {
-  const normalizedId = String(id || "").trim();
-  const selectedId = String(state.selectedSalesRequestId || "").trim();
-  const formId = String(ui.salesRequestForm?.id?.value || "").trim();
-  if (ui.salesRequestForm && normalizedId && normalizedId === selectedId && normalizedId === formId) {
-    return collectSalesRequestDraftFromForm();
-  }
-  return state.salesRequests.find((item) => item.id === normalizedId) || getSelectedSalesRequest();
 }
 
 function mergeFirstContactStateFromLive(draft, live) {
@@ -17506,7 +17485,7 @@ function handleGlobalClick(event) {
   if (action === "open-sales-request-whatsapp") {
     event.preventDefault();
     event.stopPropagation();
-    const request = getSalesRequestActionRecord(id);
+    const request = state.salesRequests.find((item) => item.id === id) || getSelectedSalesRequest();
     if (!request) return;
     openSalesRequestWhatsAppContact(request).catch(() => {
       setStatus(
@@ -17527,7 +17506,7 @@ function handleGlobalClick(event) {
   if (action === "open-sales-request-followup-whatsapp") {
     event.preventDefault();
     event.stopPropagation();
-    const request = getSalesRequestActionRecord(id);
+    const request = state.salesRequests.find((item) => item.id === id) || getSelectedSalesRequest();
     if (!request) return;
     const url = buildSalesRequestFollowUpWhatsAppUrl(request);
     if (!url) {
