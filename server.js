@@ -878,6 +878,103 @@ function sanitizeUser(user) {
   };
 }
 
+function getCommunicationUserLabel(user = {}) {
+  return String(user.name || user.email || user.id || "").trim();
+}
+
+function sanitizeCommunicationUser(user) {
+  const sanitized = sanitizeUser(user);
+  if (!sanitized) return null;
+  return {
+    id: sanitized.id,
+    name: sanitized.name,
+    email: sanitized.email,
+    role: sanitized.role,
+    crewName: sanitized.crewName,
+  };
+}
+
+function canStartPrivateCommunication(currentUser = null, targetUser = null) {
+  if (!currentUser || !targetUser) return false;
+  if (String(currentUser.id || "") === String(targetUser.id || "")) return false;
+  if (targetUser.status === "suspended") return false;
+  const currentRole = normalizeUserRole(currentUser.role) || "office";
+  const targetRole = normalizeUserRole(targetUser.role) || "office";
+  if (currentRole === "office") return true;
+  if (currentRole === "warehouse") return ["office", "crew"].includes(targetRole);
+  if (currentRole === "crew") return targetRole === "office";
+  return false;
+}
+
+function normalizeCommunicationThread(thread = {}) {
+  const participants = Array.isArray(thread.participantIds)
+    ? thread.participantIds.map((id) => String(id || "").trim()).filter(Boolean)
+    : [];
+  const uniqueParticipants = Array.from(new Set(participants)).slice(0, 2);
+  if (uniqueParticipants.length !== 2) return null;
+  return {
+    id: String(thread.id || randomUUID()),
+    type: "private",
+    participantIds: uniqueParticipants,
+    createdAt: String(thread.createdAt || new Date().toISOString()),
+    updatedAt: String(thread.updatedAt || thread.createdAt || new Date().toISOString()),
+    lastMessagePreview: String(thread.lastMessagePreview || "").slice(0, 160),
+  };
+}
+
+function normalizeCommunicationMessage(message = {}) {
+  const body = String(message.body || "").trim();
+  if (!body) return null;
+  return {
+    id: String(message.id || randomUUID()),
+    threadId: String(message.threadId || "").trim(),
+    authorId: String(message.authorId || "").trim(),
+    body: body.slice(0, 2000),
+    createdAt: String(message.createdAt || new Date().toISOString()),
+    readBy: Array.isArray(message.readBy)
+      ? Array.from(new Set(message.readBy.map((id) => String(id || "").trim()).filter(Boolean)))
+      : [],
+  };
+}
+
+function normalizeCommunicationsStore(value = {}) {
+  return {
+    threads: Array.isArray(value.threads) ? value.threads.map(normalizeCommunicationThread).filter(Boolean) : [],
+    messages: Array.isArray(value.messages) ? value.messages.map(normalizeCommunicationMessage).filter(Boolean) : [],
+  };
+}
+
+function getCommunicationThreadForUser(store, currentUser, threadId = "") {
+  const communications = normalizeCommunicationsStore(store.communications || {});
+  const userId = String(currentUser?.id || "");
+  return communications.threads.find((thread) => thread.id === String(threadId || "") && thread.participantIds.includes(userId)) || null;
+}
+
+function serializeCommunicationThread(store, currentUser, thread = {}) {
+  const communications = normalizeCommunicationsStore(store.communications || {});
+  const userId = String(currentUser?.id || "");
+  const otherUserId = (thread.participantIds || []).find((id) => id !== userId) || "";
+  const otherUser = store.users.find((user) => String(user.id || "") === otherUserId) || null;
+  const messages = communications.messages.filter((message) => message.threadId === thread.id);
+  const unreadCount = messages.filter((message) => message.authorId !== userId && !message.readBy.includes(userId)).length;
+  const lastMessage = messages.slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).at(-1) || null;
+  return {
+    ...thread,
+    otherUser: sanitizeCommunicationUser(otherUser),
+    unreadCount,
+    lastMessagePreview: String(lastMessage?.body || thread.lastMessagePreview || "").slice(0, 160),
+    updatedAt: String(lastMessage?.createdAt || thread.updatedAt || ""),
+  };
+}
+
+function getAllowedCommunicationTargets(store, currentUser) {
+  return (Array.isArray(store.users) ? store.users : [])
+    .filter((user) => canStartPrivateCommunication(currentUser, user))
+    .map(sanitizeCommunicationUser)
+    .filter(Boolean)
+    .sort((a, b) => getCommunicationUserLabel(a).localeCompare(getCommunicationUserLabel(b), "it"));
+}
+
 function isValidRole(role = "") {
   return Boolean(normalizeUserRole(role));
 }
@@ -4077,6 +4174,18 @@ function reconcileStoreData(store) {
     ? store.usageEvents.map(normalizeUsageEventRecord).filter(Boolean).slice(0, 5000)
     : [];
 
+  const normalizedCommunications = normalizeCommunicationsStore(store.communications || {});
+  if (!store.communications || typeof store.communications !== "object") changed = true;
+  if (
+    !Array.isArray(store.communications?.threads)
+    || !Array.isArray(store.communications?.messages)
+    || normalizedCommunications.threads.length !== (store.communications?.threads || []).length
+    || normalizedCommunications.messages.length !== (store.communications?.messages || []).length
+  ) {
+    changed = true;
+  }
+  store.communications = normalizedCommunications;
+
   store.salesRequestSource = normalizeSalesRequestSourceConfig(store.salesRequestSource || defaults.salesRequestSource);
 
   store.jobs = Array.isArray(store.jobs) ? store.jobs : [];
@@ -5389,6 +5498,115 @@ async function handleApi(req, res, url) {
       publishedAt: result.ok ? new Date().toISOString() : "",
       scheduledAt: result.scheduledAt || "",
     });
+  }
+
+  if (url.pathname === "/api/communications/threads" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    store.communications = normalizeCommunicationsStore(store.communications || {});
+    const userId = String(currentUser.id || "");
+    const threads = store.communications.threads
+      .filter((thread) => thread.participantIds.includes(userId))
+      .map((thread) => serializeCommunicationThread(store, currentUser, thread))
+      .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+    return sendJson(res, 200, {
+      threads,
+      targets: getAllowedCommunicationTargets(store, currentUser),
+      unreadCount: threads.reduce((sum, thread) => sum + Number(thread.unreadCount || 0), 0),
+    });
+  }
+
+  if (url.pathname === "/api/communications/threads" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const body = await readBody(req);
+    const targetId = String(body?.targetUserId || "").trim();
+    const targetUser = store.users.find((user) => String(user.id || "") === targetId) || null;
+    if (!canStartPrivateCommunication(currentUser, targetUser)) {
+      return sendJson(res, 403, { error: "communication_target_forbidden" });
+    }
+    store.communications = normalizeCommunicationsStore(store.communications || {});
+    const participantIds = [String(currentUser.id || ""), targetId].sort();
+    let thread = store.communications.threads.find((item) => {
+      const ids = [...(item.participantIds || [])].sort();
+      return ids.length === 2 && ids[0] === participantIds[0] && ids[1] === participantIds[1];
+    });
+    if (!thread) {
+      const nowIso = new Date().toISOString();
+      thread = {
+        id: randomUUID(),
+        type: "private",
+        participantIds,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        lastMessagePreview: "",
+      };
+      store.communications.threads.push(thread);
+      await writeJson(STORE_PATH, store);
+    }
+    return sendJson(res, 200, serializeCommunicationThread(store, currentUser, thread));
+  }
+
+  const messagesMatch = url.pathname.match(/^\/api\/communications\/threads\/([^/]+)\/messages$/);
+  if (messagesMatch && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const thread = getCommunicationThreadForUser(store, currentUser, messagesMatch[1]);
+    if (!thread) return sendJson(res, 404, { error: "thread_not_found" });
+    const participantUsers = thread.participantIds
+      .map((id) => store.users.find((user) => String(user.id || "") === id))
+      .map(sanitizeCommunicationUser)
+      .filter(Boolean);
+    const messages = normalizeCommunicationsStore(store.communications || {}).messages
+      .filter((message) => message.threadId === thread.id)
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    return sendJson(res, 200, {
+      thread: serializeCommunicationThread(store, currentUser, thread),
+      participants: participantUsers,
+      messages,
+    });
+  }
+
+  if (messagesMatch && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const thread = getCommunicationThreadForUser(store, currentUser, messagesMatch[1]);
+    if (!thread) return sendJson(res, 404, { error: "thread_not_found" });
+    const body = await readBody(req);
+    const text = String(body?.body || "").trim();
+    if (!text) return sendJson(res, 400, { error: "missing_message" });
+    store.communications = normalizeCommunicationsStore(store.communications || {});
+    const nowIso = new Date().toISOString();
+    const message = {
+      id: randomUUID(),
+      threadId: thread.id,
+      authorId: String(currentUser.id || ""),
+      body: text.slice(0, 2000),
+      createdAt: nowIso,
+      readBy: [String(currentUser.id || "")],
+    };
+    store.communications.messages.push(message);
+    store.communications.messages = store.communications.messages.slice(-5000);
+    store.communications.threads = store.communications.threads.map((item) => item.id === thread.id
+      ? { ...item, updatedAt: nowIso, lastMessagePreview: message.body.slice(0, 160) }
+      : item);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, message);
+  }
+
+  const readMatch = url.pathname.match(/^\/api\/communications\/threads\/([^/]+)\/read$/);
+  if (readMatch && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const thread = getCommunicationThreadForUser(store, currentUser, readMatch[1]);
+    if (!thread) return sendJson(res, 404, { error: "thread_not_found" });
+    const userId = String(currentUser.id || "");
+    store.communications = normalizeCommunicationsStore(store.communications || {});
+    let changed = false;
+    store.communications.messages = store.communications.messages.map((message) => {
+      if (message.threadId !== thread.id || message.readBy.includes(userId)) return message;
+      changed = true;
+      return { ...message, readBy: [...message.readBy, userId] };
+    });
+    if (changed) {
+      await writeJson(STORE_PATH, store);
+    }
+    return sendJson(res, 200, { ok: true });
   }
 
   if (url.pathname === "/api/sales/request-source" && req.method === "POST") {
