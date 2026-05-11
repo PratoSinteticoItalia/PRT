@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260511-private-chat-164";
+const APP_SHELL_VERSION = "20260510-marketing-planner-163";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7,7 +7,6 @@ const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
 const COVERAGE_GEOCODE_CACHE_KEY = "pose-coverage-geocode-v1";
 const PROFIT_SPLIT_STORAGE_KEY = "pose-profit-split-v1";
 const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 20;
-const COMMUNICATIONS_POLL_INTERVAL_MS = 5000;
 const SESSION_REVISION_ENDPOINT = "/api/session/revision";
 const SESSION_EVENTS_ENDPOINT = "/api/events";
 const SESSION_EVENTS_RECONNECT_BASE_MS = 1200;
@@ -232,9 +231,9 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner"],
-  warehouse: ["warehouse", "shipping", "communications"],
-  crew: ["installations", "sales-generator", "communications", "garden-planner"],
+  office: ["dashboard", "orders", "warehouse", "installations", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner"],
+  warehouse: ["warehouse", "shipping"],
+  crew: ["installations", "sales-generator", "garden-planner"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
@@ -270,7 +269,6 @@ const translations = {
     orders: "Inbox Ordini",
     warehouse: "Inventario",
     installations: "Pose",
-    communications: "Comunicazioni",
     accounting: "Contabilità",
     "profit-split": "Conti posa",
     shipping: "Logistica",
@@ -520,7 +518,6 @@ const translations = {
     orders: "Order Inbox",
     warehouse: "Inventory",
     installations: "Installations",
-    communications: "Communications",
     accounting: "Accounting",
     "profit-split": "Install splits",
     shipping: "Shipping",
@@ -1060,13 +1057,6 @@ const state = {
   salesContents: [],
   salesRequestSourceConfig: null,
   users: [],
-  communicationThreads: [],
-  communicationTargets: [],
-  communicationMessages: [],
-  communicationParticipants: [],
-  selectedCommunicationThreadId: "",
-  communicationsUnreadCount: 0,
-  communicationsLoading: false,
   securityEvents: [],
   securityPolicy: {},
   usageReport: null,
@@ -1172,7 +1162,6 @@ let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
 let coverageSyncQueued = false;
 let currentViewRenderFrame = 0;
-let communicationsPollTimer = 0;
 const searchRenderTimers = Object.create(null);
 const shopifyOrderRefreshInFlight = new Set();
 const shopifyOrderRefreshAttempted = new Set();
@@ -13777,7 +13766,6 @@ function showAuth() {
   stopSessionEvents();
   stopShopifyAutoSync();
   stopSalesRequestAutoSync();
-  stopCommunicationsPolling();
   clearAllSearchRenderTimers();
   clearPendingCurrentViewRefresh();
   setShellPending(false);
@@ -13803,8 +13791,6 @@ function showApp() {
   startSessionEvents();
   startShopifyAutoSync();
   startSalesRequestAutoSync();
-  startCommunicationsPolling();
-  void loadCommunicationThreads({ render: false });
   startUsageHeartbeat();
   clearPendingCurrentViewRefresh();
   setShellPending(false);
@@ -14053,232 +14039,6 @@ function render() {
   renderSettings();
 }
 
-function communicationUserLabel(user = {}) {
-  return String(user.name || user.crewName || user.email || "Account").trim();
-}
-
-function communicationRoleLabel(role = "") {
-  const normalized = normalizeUserRole(role);
-  if (normalized === "warehouse") return "Magazzino";
-  if (normalized === "crew") return "Squadra";
-  return "Ufficio/Admin";
-}
-
-function formatCommunicationTime(value = "") {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
-async function loadCommunicationThreads({ render = true } = {}) {
-  if (!state.currentUser) return;
-  state.communicationsLoading = true;
-  try {
-    const payload = await apiFetch("/api/communications/threads");
-    state.communicationThreads = Array.isArray(payload.threads) ? payload.threads : [];
-    state.communicationTargets = Array.isArray(payload.targets) ? payload.targets : [];
-    state.communicationsUnreadCount = Number(payload.unreadCount || 0);
-    setNavCount("communications", state.communicationsUnreadCount);
-    if (!state.selectedCommunicationThreadId && state.communicationThreads.length) {
-      state.selectedCommunicationThreadId = state.communicationThreads[0].id;
-    }
-    if (state.selectedCommunicationThreadId && state.currentView === "communications") {
-      await loadCommunicationMessages(state.selectedCommunicationThreadId, { render: false, markRead: true });
-    }
-  } catch (error) {
-    console.error("communications_threads_load_failed", error);
-  } finally {
-    state.communicationsLoading = false;
-    if (render && state.currentView === "communications") renderCommunications();
-  }
-}
-
-async function loadCommunicationMessages(threadId = state.selectedCommunicationThreadId, { render = true, markRead = false } = {}) {
-  const normalizedThreadId = String(threadId || "").trim();
-  if (!normalizedThreadId) {
-    state.communicationMessages = [];
-    state.communicationParticipants = [];
-    if (render && state.currentView === "communications") renderCommunications();
-    return;
-  }
-  try {
-    const payload = await apiFetch(`/api/communications/threads/${encodeURIComponent(normalizedThreadId)}/messages`);
-    state.selectedCommunicationThreadId = normalizedThreadId;
-    state.communicationMessages = Array.isArray(payload.messages) ? payload.messages : [];
-    state.communicationParticipants = Array.isArray(payload.participants) ? payload.participants : [];
-    if (markRead) {
-      await apiFetch(`/api/communications/threads/${encodeURIComponent(normalizedThreadId)}/read`, { method: "POST", body: "{}" }).catch(() => null);
-      state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === normalizedThreadId ? { ...thread, unreadCount: 0 } : thread);
-      state.communicationsUnreadCount = state.communicationThreads.reduce((sum, thread) => sum + Number(thread.unreadCount || 0), 0);
-      setNavCount("communications", state.communicationsUnreadCount);
-    }
-  } catch (error) {
-    console.error("communications_messages_load_failed", error);
-  } finally {
-    if (render && state.currentView === "communications") renderCommunications();
-  }
-}
-
-function startCommunicationsPolling() {
-  if (communicationsPollTimer) window.clearInterval(communicationsPollTimer);
-  if (!state.currentUser) return;
-  communicationsPollTimer = window.setInterval(() => {
-    if (!state.currentUser || document.hidden) return;
-    void loadCommunicationThreads({ render: state.currentView === "communications" });
-  }, COMMUNICATIONS_POLL_INTERVAL_MS);
-}
-
-function stopCommunicationsPolling() {
-  if (communicationsPollTimer) {
-    window.clearInterval(communicationsPollTimer);
-    communicationsPollTimer = 0;
-  }
-}
-
-function renderCommunications() {
-  const container = document.getElementById("communications-content");
-  if (!container) return;
-  const threads = state.communicationThreads || [];
-  const targets = state.communicationTargets || [];
-  const selectedThread = threads.find((thread) => thread.id === state.selectedCommunicationThreadId) || null;
-  const selectedOther = selectedThread?.otherUser || null;
-  const participantById = new Map((state.communicationParticipants || []).map((user) => [String(user.id), user]));
-  container.innerHTML = `
-    <div class="page-header">
-      <div>
-        <h1>Comunicazioni</h1>
-        <div class="page-header-sub">Chat private tra account autorizzati. Le squadre non vedono altre squadre.</div>
-      </div>
-      <button type="button" class="ghost-button small-button" data-action="communications-refresh">Aggiorna</button>
-    </div>
-    <section class="communications-shell panel">
-      <aside class="communications-sidebar">
-        <form class="communications-new" id="communications-new-form">
-          <label class="field">
-            <span>Nuova chat privata</span>
-            <select class="text-input" name="targetUserId">
-              <option value="">Seleziona account</option>
-              ${targets.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(communicationUserLabel(user))} · ${escapeHtml(communicationRoleLabel(user.role))}</option>`).join("")}
-            </select>
-          </label>
-          <button type="submit" class="primary-button small-button">Apri chat</button>
-        </form>
-        <div class="communications-thread-list">
-          ${threads.length ? threads.map((thread) => `
-            <button type="button" class="communications-thread ${thread.id === state.selectedCommunicationThreadId ? "is-active" : ""}" data-action="communications-select-thread" data-id="${escapeHtml(thread.id)}">
-              <span class="communications-avatar">${escapeHtml(getUserInitials(communicationUserLabel(thread.otherUser || {})))}</span>
-              <span class="communications-thread-copy">
-                <strong>${escapeHtml(communicationUserLabel(thread.otherUser || {}))}</strong>
-                <small>${escapeHtml(thread.lastMessagePreview || "Nessun messaggio")}</small>
-              </span>
-              ${Number(thread.unreadCount || 0) > 0 ? `<span class="communications-unread">${Number(thread.unreadCount || 0)}</span>` : ""}
-            </button>
-          `).join("") : `<div class="communications-empty">Nessuna chat privata. Aprine una scegliendo un account autorizzato.</div>`}
-        </div>
-      </aside>
-      <div class="communications-chat">
-        ${selectedThread ? `
-          <div class="communications-chat-head">
-            <div>
-              <strong>${escapeHtml(communicationUserLabel(selectedOther || {}))}</strong>
-              <span>${escapeHtml(communicationRoleLabel(selectedOther?.role || ""))}</span>
-            </div>
-          </div>
-          <div class="communications-messages" id="communications-messages">
-            ${(state.communicationMessages || []).map((message) => {
-              const author = participantById.get(String(message.authorId)) || {};
-              const mine = String(message.authorId) === String(state.currentUser?.id || "");
-              return `
-                <div class="communications-message ${mine ? "is-mine" : ""}">
-                  <div class="communications-message-bubble">
-                    <strong>${escapeHtml(mine ? "Tu" : communicationUserLabel(author))}</strong>
-                    <p>${escapeHtml(message.body)}</p>
-                    <small>${escapeHtml(formatCommunicationTime(message.createdAt))}</small>
-                  </div>
-                </div>
-              `;
-            }).join("") || `<div class="communications-empty">Scrivi il primo messaggio.</div>`}
-          </div>
-          <form class="communications-composer" id="communications-message-form">
-            <textarea class="text-input" name="body" rows="2" maxlength="2000" placeholder="Scrivi un messaggio privato..."></textarea>
-            <button type="submit" class="primary-button small-button">Invia</button>
-          </form>
-        ` : `
-          <div class="communications-chat-placeholder">
-            <h3>Seleziona o apri una chat</h3>
-            <p>Le conversazioni sono private e visibili solo ai partecipanti.</p>
-          </div>
-        `}
-      </div>
-    </section>
-  `;
-  const messages = document.getElementById("communications-messages");
-  if (messages) messages.scrollTop = messages.scrollHeight;
-  const newForm = document.getElementById("communications-new-form");
-  if (newForm) {
-    newForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const targetUserId = String(new FormData(newForm).get("targetUserId") || "").trim();
-      if (!targetUserId) return;
-      const button = newForm.querySelector("button[type='submit']");
-      if (button) button.disabled = true;
-      try {
-        const thread = await apiFetch("/api/communications/threads", {
-          method: "POST",
-          body: JSON.stringify({ targetUserId }),
-        });
-        state.selectedCommunicationThreadId = thread.id;
-        await loadCommunicationThreads({ render: true });
-      } catch (error) {
-        showToast(error?.message === "communication_target_forbidden" ? "Non puoi aprire una chat con questo account." : "Impossibile aprire la chat.", "warning");
-      } finally {
-        if (button) button.disabled = false;
-      }
-    });
-  }
-  container.querySelectorAll("[data-action='communications-select-thread']").forEach((button) => {
-    button.addEventListener("click", async () => {
-      state.selectedCommunicationThreadId = button.dataset.id || "";
-      await loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
-      await loadCommunicationThreads({ render: true });
-    });
-  });
-  const refreshButton = container.querySelector("[data-action='communications-refresh']");
-  if (refreshButton) {
-    refreshButton.addEventListener("click", () => {
-      void loadCommunicationThreads({ render: true });
-    });
-  }
-  const messageForm = document.getElementById("communications-message-form");
-  if (messageForm) {
-    messageForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const body = String(new FormData(messageForm).get("body") || "").trim();
-      const threadId = String(state.selectedCommunicationThreadId || "").trim();
-      if (!body || !threadId) return;
-      const button = messageForm.querySelector("button[type='submit']");
-      if (button) button.disabled = true;
-      try {
-        await apiFetch(`/api/communications/threads/${encodeURIComponent(threadId)}/messages`, {
-          method: "POST",
-          body: JSON.stringify({ body }),
-        });
-        messageForm.reset();
-        await loadCommunicationThreads({ render: true });
-      } catch (error) {
-        showToast(error?.message === "missing_message" ? "Scrivi un messaggio prima di inviare." : "Messaggio non inviato.", "warning");
-      } finally {
-        if (button) button.disabled = false;
-      }
-    });
-  }
-}
-
 function renderCurrentViewOnly(view = state.currentView) {
   if (state.currentUser && state.shellPending) {
     setShellPending(false);
@@ -14326,10 +14086,6 @@ function renderCurrentViewOnly(view = state.currentView) {
       break;
     case "marketing":
       renderMarketing();
-      break;
-    case "communications":
-      renderCommunications();
-      void loadCommunicationThreads({ render: true });
       break;
     case "garden-planner":
       renderGardenPlannerView();
