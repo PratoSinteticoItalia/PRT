@@ -14153,6 +14153,32 @@ async function loadCommunicationMessages(threadId = state.selectedCommunicationT
   }
 }
 
+async function sendCommunicationMessage(form) {
+  if (!form) return;
+  const body = String(new FormData(form).get("body") || "").trim();
+  const threadId = String(state.selectedCommunicationThreadId || "").trim();
+  if (!body || !threadId) {
+    showToast(!threadId ? "Seleziona una chat prima di inviare." : "Scrivi un messaggio prima di inviare.", "warning");
+    return;
+  }
+  const button = form.querySelector("button[type='submit']");
+  if (button) button.disabled = true;
+  try {
+    await apiFetch(`/api/communications/threads/${encodeURIComponent(threadId)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    });
+    form.reset();
+    await loadCommunicationMessages(threadId, { render: false, markRead: true });
+    await loadCommunicationThreads({ render: true });
+  } catch (error) {
+    const reason = error?.payload?.error || error?.message || "";
+    showToast(reason === "thread_not_found" ? "Chat non trovata. Riapri la conversazione." : reason === "unauthorized" ? "Sessione scaduta. Effettua di nuovo l'accesso." : "Messaggio non inviato. Riprova.", "warning");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function startCommunicationsPolling() {
   if (communicationsPollTimer) window.clearInterval(communicationsPollTimer);
   if (!state.currentUser) return;
@@ -14235,7 +14261,7 @@ function renderCommunications() {
           </div>
           <form class="communications-composer" id="communications-message-form">
             <textarea class="text-input" name="body" rows="2" maxlength="2000" placeholder="Scrivi un messaggio privato..."></textarea>
-            <button type="submit" class="primary-button small-button">Invia</button>
+            <button type="submit" class="primary-button small-button" data-action="communications-send-message">Invia</button>
           </form>
         ` : `
           <div class="communications-chat-placeholder">
@@ -14287,24 +14313,15 @@ function renderCommunications() {
   if (messageForm) {
     messageForm.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const body = String(new FormData(messageForm).get("body") || "").trim();
-      const threadId = String(state.selectedCommunicationThreadId || "").trim();
-      if (!body || !threadId) return;
-      const button = messageForm.querySelector("button[type='submit']");
-      if (button) button.disabled = true;
-      try {
-        await apiFetch(`/api/communications/threads/${encodeURIComponent(threadId)}/messages`, {
-          method: "POST",
-          body: JSON.stringify({ body }),
-        });
-        messageForm.reset();
-        await loadCommunicationThreads({ render: true });
-      } catch (error) {
-        showToast(error?.message === "missing_message" ? "Scrivi un messaggio prima di inviare." : "Messaggio non inviato.", "warning");
-      } finally {
-        if (button) button.disabled = false;
-      }
+      await sendCommunicationMessage(messageForm);
     });
+    const sendButton = messageForm.querySelector("[data-action='communications-send-message']");
+    if (sendButton) {
+      sendButton.addEventListener("click", async (event) => {
+        event.preventDefault();
+        await sendCommunicationMessage(messageForm);
+      });
+    }
   }
 }
 
