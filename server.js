@@ -3562,7 +3562,7 @@ function normalizeSalesRequestRecord(item = {}) {
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: normalizeSalesRequestService(item.service || item.servizio || ""),
     surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),
-    assignment: normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || item.firstContact?.by || ""),
+    assignment: normalizeSalesRequestAssignment(Object.prototype.hasOwnProperty.call(item, "assignment") ? item.assignment : (item.assegnazione || item.firstContactBy || item.firstContact?.by || "")),
     status,
     note: String(item.note || "").trim(),
     whatsappTemplate: String(
@@ -5686,7 +5686,7 @@ async function handleApi(req, res, url) {
         const existing = existingById.get(item.id) || null;
         // For records already in the store, the portal is the authoritative status owner.
         // Preserve app-edited fields so a pending async sheet-write cannot race-overwrite them.
-        const assignment = existing?.assignment || item.assignment || "";
+        const assignment = existing ? existing.assignment : (item.assignment || "");
         const status = existing?.status || item.status || "new";
         return normalizeSalesRequestRecord({
           ...item,
@@ -5699,7 +5699,7 @@ async function handleApi(req, res, url) {
           firstContactState: existing?.firstContactState || "",
           firstContactScheduledAt: existing?.firstContactScheduledAt || "",
           firstContactSentAt: existing?.firstContactSentAt || "",
-          firstContactBy: existing?.firstContactBy || assignment,
+          firstContactBy: existing ? existing.firstContactBy : assignment,
           createdAt: existing?.createdAt || item.createdAt || now,
           updatedAt: now,
         });

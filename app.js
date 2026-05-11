@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260511-garden-roll-overhang-165";
+const APP_SHELL_VERSION = "20260511-sales-request-unassign-166";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3221,7 +3221,7 @@ function buildSalesRequestPayloadFromRecord(record = {}, patch = {}) {
     firstContactState: normalizeSalesRequestFirstContactState(merged.firstContactState),
     firstContactScheduledAt: normalizeIsoDateTime(merged.firstContactScheduledAt),
     firstContactSentAt: normalizeIsoDateTime(merged.firstContactSentAt),
-    firstContactBy: normalizeSalesRequestAssignment(merged.firstContactBy || merged.assignment),
+    firstContactBy: normalizeSalesRequestAssignment(merged.assignment),
     source: String(merged.source || "manual").trim() || "manual",
     sourceSpreadsheetId: String(merged.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(merged.sourceSheetName || "").trim(),
@@ -3352,7 +3352,7 @@ function normalizeSalesRequestRecord(item = {}) {
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: String(item.service || item.servizio || "").trim().toLowerCase(),
     surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
-    assignment: normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || item.firstContact?.by || ""),
+    assignment: normalizeSalesRequestAssignment(Object.prototype.hasOwnProperty.call(item, "assignment") ? item.assignment : (item.assegnazione || item.firstContactBy || item.firstContact?.by || "")),
     status,
     note: String(item.note || "").trim(),
     whatsappTemplate: String(
