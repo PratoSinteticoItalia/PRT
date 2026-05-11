@@ -6960,6 +6960,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) {
       const method = String(req.method || "GET").toUpperCase();
       const shouldLockState = !["/api/healthz", "/api/events", "/api/session/revision"].includes(url.pathname)
+        && method !== "GET"
         && method !== "HEAD"
         && method !== "OPTIONS";
       if (!shouldLockState) {

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260511-sales-request-clear-assignee-167";
+const APP_SHELL_VERSION = "20260511-fast-save-chat-168";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7,7 +7,7 @@ const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
 const COVERAGE_GEOCODE_CACHE_KEY = "pose-coverage-geocode-v1";
 const PROFIT_SPLIT_STORAGE_KEY = "pose-profit-split-v1";
 const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 20;
-const COMMUNICATIONS_POLL_INTERVAL_MS = 5000;
+const COMMUNICATIONS_POLL_INTERVAL_MS = 15000;
 const SESSION_REVISION_ENDPOINT = "/api/session/revision";
 const SESSION_EVENTS_ENDPOINT = "/api/events";
 const SESSION_EVENTS_RECONNECT_BASE_MS = 1200;
@@ -14136,8 +14136,8 @@ async function loadCommunicationThreads({ render = true } = {}) {
     if (!state.selectedCommunicationThreadId && state.communicationThreads.length) {
       state.selectedCommunicationThreadId = state.communicationThreads[0].id;
     }
-    if (state.selectedCommunicationThreadId && state.currentView === "communications") {
-      await loadCommunicationMessages(state.selectedCommunicationThreadId, { render: false, markRead: true });
+    if (state.selectedCommunicationThreadId && state.currentView === "communications" && !(state.communicationMessages || []).length) {
+      void loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
     }
   } catch (error) {
     console.error("communications_threads_load_failed", error);
@@ -14163,7 +14163,7 @@ async function loadCommunicationMessages(threadId = state.selectedCommunicationT
     state.communicationMessages = Array.isArray(payload.messages) ? payload.messages : [];
     state.communicationParticipants = Array.isArray(payload.participants) ? payload.participants : [];
     if (markRead) {
-      await apiFetch(`/api/communications/threads/${encodeURIComponent(normalizedThreadId)}/read`, { method: "POST", body: "{}" }).catch(() => null);
+      void apiFetch(`/api/communications/threads/${encodeURIComponent(normalizedThreadId)}/read`, { method: "POST", body: "{}" }).catch(() => null);
       state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === normalizedThreadId ? { ...thread, unreadCount: 0 } : thread);
       state.communicationsUnreadCount = state.communicationThreads.reduce((sum, thread) => sum + Number(thread.unreadCount || 0), 0);
       setNavCount("communications", state.communicationsUnreadCount);
@@ -14212,8 +14212,6 @@ async function sendCommunicationMessage(form) {
         : thread);
       if (state.currentView === "communications") renderCommunications();
     }
-    void loadCommunicationMessages(threadId, { render: true, markRead: true });
-    void loadCommunicationThreads({ render: false });
   } catch (error) {
     const reason = error?.payload?.error || error?.message || "";
     showToast(reason === "thread_not_found" ? "Chat non trovata. Riapri la conversazione." : reason === "unauthorized" ? "Sessione scaduta. Effettua di nuovo l'accesso." : "Messaggio non inviato. Riprova.", "warning");
@@ -14348,7 +14346,6 @@ function renderCommunications() {
     button.addEventListener("click", async () => {
       state.selectedCommunicationThreadId = button.dataset.id || "";
       await loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
-      await loadCommunicationThreads({ render: true });
     });
   });
   const refreshButton = container.querySelector("[data-action='communications-refresh']");
@@ -14359,6 +14356,14 @@ function renderCommunications() {
   }
   const messageForm = document.getElementById("communications-message-form");
   if (messageForm) {
+    const textarea = messageForm.querySelector("textarea[name='body']");
+    if (textarea) {
+      textarea.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+        event.preventDefault();
+        messageForm.requestSubmit();
+      });
+    }
     messageForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       await sendCommunicationMessage(messageForm);
