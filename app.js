@@ -1065,8 +1065,10 @@ const state = {
   communicationMessages: [],
   communicationParticipants: [],
   selectedCommunicationThreadId: "",
+  loadedCommunicationThreadId: "",
   communicationsUnreadCount: 0,
   communicationsLoading: false,
+  communicationsInitialized: false,
   securityEvents: [],
   securityPolicy: {},
   usageReport: null,
@@ -1173,6 +1175,8 @@ let coverageSyncInFlight = false;
 let coverageSyncQueued = false;
 let currentViewRenderFrame = 0;
 let communicationsPollTimer = 0;
+let communicationsThreadsRequestSeq = 0;
+let communicationsMessagesRequestSeq = 0;
 const searchRenderTimers = Object.create(null);
 const shopifyOrderRefreshInFlight = new Set();
 const shopifyOrderRefreshAttempted = new Set();
@@ -14121,9 +14125,11 @@ async function loadCommunicationTargets({ render = true } = {}) {
 
 async function loadCommunicationThreads({ render = true } = {}) {
   if (!state.currentUser) return;
+  const requestSeq = ++communicationsThreadsRequestSeq;
   state.communicationsLoading = true;
   try {
     const payload = await apiFetch("/api/communications/threads");
+    if (requestSeq !== communicationsThreadsRequestSeq) return;
     state.communicationThreads = Array.isArray(payload.threads) ? payload.threads : [];
     const apiTargets = Array.isArray(payload.targets) ? payload.targets : [];
     const fallbackTargets = getCommunicationTargetFallback();
@@ -14136,7 +14142,8 @@ async function loadCommunicationThreads({ render = true } = {}) {
     if (!state.selectedCommunicationThreadId && state.communicationThreads.length) {
       state.selectedCommunicationThreadId = state.communicationThreads[0].id;
     }
-    if (state.selectedCommunicationThreadId && state.currentView === "communications" && !(state.communicationMessages || []).length) {
+    state.communicationsInitialized = true;
+    if (state.selectedCommunicationThreadId && state.currentView === "communications" && state.loadedCommunicationThreadId !== state.selectedCommunicationThreadId) {
       void loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
     }
   } catch (error) {
@@ -14144,6 +14151,7 @@ async function loadCommunicationThreads({ render = true } = {}) {
     state.communicationTargets = getCommunicationTargetFallback();
     if (state.currentView === "communications") showToast("Chat non aggiornata dal server. Riprova con Aggiorna.", "warning");
   } finally {
+    if (requestSeq !== communicationsThreadsRequestSeq) return;
     state.communicationsLoading = false;
     if (render && state.currentView === "communications") renderCommunications();
   }
@@ -14154,14 +14162,18 @@ async function loadCommunicationMessages(threadId = state.selectedCommunicationT
   if (!normalizedThreadId) {
     state.communicationMessages = [];
     state.communicationParticipants = [];
+    state.loadedCommunicationThreadId = "";
     if (render && state.currentView === "communications") renderCommunications();
     return;
   }
+  const requestSeq = ++communicationsMessagesRequestSeq;
   try {
     const payload = await apiFetch(`/api/communications/threads/${encodeURIComponent(normalizedThreadId)}/messages`);
+    if (requestSeq !== communicationsMessagesRequestSeq || state.selectedCommunicationThreadId !== normalizedThreadId) return;
     state.selectedCommunicationThreadId = normalizedThreadId;
     state.communicationMessages = Array.isArray(payload.messages) ? payload.messages : [];
     state.communicationParticipants = Array.isArray(payload.participants) ? payload.participants : [];
+    state.loadedCommunicationThreadId = normalizedThreadId;
     if (markRead) {
       void apiFetch(`/api/communications/threads/${encodeURIComponent(normalizedThreadId)}/read`, { method: "POST", body: "{}" }).catch(() => null);
       state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === normalizedThreadId ? { ...thread, unreadCount: 0 } : thread);
@@ -14171,6 +14183,7 @@ async function loadCommunicationMessages(threadId = state.selectedCommunicationT
   } catch (error) {
     console.error("communications_messages_load_failed", error);
   } finally {
+    if (requestSeq !== communicationsMessagesRequestSeq || state.selectedCommunicationThreadId !== normalizedThreadId) return;
     if (render && state.currentView === "communications") renderCommunications();
   }
 }
@@ -14243,7 +14256,8 @@ function renderCommunications() {
   const targets = state.communicationTargets || [];
   const selectedThread = threads.find((thread) => thread.id === state.selectedCommunicationThreadId) || null;
   const selectedOther = selectedThread?.otherUser || null;
-  const participantById = new Map((state.communicationParticipants || []).map((user) => [String(user.id), user]));
+  const messagesForSelectedThread = state.loadedCommunicationThreadId === state.selectedCommunicationThreadId ? state.communicationMessages || [] : [];
+  const participantById = new Map((state.loadedCommunicationThreadId === state.selectedCommunicationThreadId ? state.communicationParticipants || [] : []).map((user) => [String(user.id), user]));
   container.innerHTML = `
     <div class="page-header">
       <div>
@@ -14286,7 +14300,7 @@ function renderCommunications() {
             </div>
           </div>
           <div class="communications-messages" id="communications-messages">
-            ${(state.communicationMessages || []).map((message) => {
+            ${messagesForSelectedThread.map((message) => {
               const author = participantById.get(String(message.authorId)) || {};
               const mine = String(message.authorId) === String(state.currentUser?.id || "");
               return `
@@ -14329,6 +14343,7 @@ function renderCommunications() {
           body: JSON.stringify({ targetUserId }),
         });
         state.selectedCommunicationThreadId = thread.id;
+        state.loadedCommunicationThreadId = "";
         upsertCommunicationThread(thread);
         state.communicationMessages = [];
         state.communicationParticipants = [state.currentUser, thread.otherUser].filter(Boolean);
@@ -14344,8 +14359,14 @@ function renderCommunications() {
   }
   container.querySelectorAll("[data-action='communications-select-thread']").forEach((button) => {
     button.addEventListener("click", async () => {
-      state.selectedCommunicationThreadId = button.dataset.id || "";
-      await loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
+      const threadId = button.dataset.id || "";
+      if (!threadId || threadId === state.selectedCommunicationThreadId) return;
+      state.selectedCommunicationThreadId = threadId;
+      state.loadedCommunicationThreadId = "";
+      state.communicationMessages = [];
+      state.communicationParticipants = [];
+      renderCommunications();
+      await loadCommunicationMessages(threadId, { render: true, markRead: true });
     });
   });
   const refreshButton = container.querySelector("[data-action='communications-refresh']");
@@ -14421,8 +14442,14 @@ function renderCurrentViewOnly(view = state.currentView) {
       break;
     case "communications":
       renderCommunications();
-      void loadCommunicationTargets({ render: true });
-      void loadCommunicationThreads({ render: true });
+      if (state.communicationsInitialized) {
+        if (state.selectedCommunicationThreadId && state.loadedCommunicationThreadId !== state.selectedCommunicationThreadId) {
+          void loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
+        }
+      } else {
+        void loadCommunicationTargets({ render: true });
+        void loadCommunicationThreads({ render: true });
+      }
       break;
     case "garden-planner":
       renderGardenPlannerView();
