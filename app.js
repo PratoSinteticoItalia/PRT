@@ -3352,7 +3352,7 @@ function normalizeSalesRequestRecord(item = {}) {
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: String(item.service || item.servizio || "").trim().toLowerCase(),
     surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
-    assignment: normalizeSalesRequestAssignment(item.assignment || item.assegnazione || ""),
+    assignment: normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || item.firstContact?.by || ""),
     status,
     note: String(item.note || "").trim(),
     whatsappTemplate: String(
@@ -10080,7 +10080,7 @@ function renderSalesRequestsDetailPanel(selected = null) {
   ui.salesRequestForm.requestedHeight.value = selected?.requestedHeight || "";
   ui.salesRequestForm.service.value = selected?.service || "";
   ui.salesRequestForm.surface.value = selected?.surface || "";
-  syncSalesRequestAssignmentField(selected?.assignment || "");
+  syncSalesRequestAssignmentField(selected?.assignment || selected?.firstContactBy || "");
   syncSalesRequestStatusField(selected?.status || "");
   ui.salesRequestForm.note.value = selected?.note || "";
   autosizeTextarea(ui.salesRequestNoteField);

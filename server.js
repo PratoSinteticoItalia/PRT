@@ -3562,7 +3562,7 @@ function normalizeSalesRequestRecord(item = {}) {
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: normalizeSalesRequestService(item.service || item.servizio || ""),
     surface: normalizeSalesRequestSurface(item.surface || item.fondo || ""),
-    assignment: normalizeSalesRequestAssignment(item.assignment || item.assegnazione || ""),
+    assignment: normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || item.firstContact?.by || ""),
     status,
     note: String(item.note || "").trim(),
     whatsappTemplate: String(
