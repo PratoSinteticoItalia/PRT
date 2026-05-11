@@ -14966,6 +14966,9 @@ textarea.text-input {
 .communications-message.is-mine {
   justify-content: flex-end;
 }
+.communications-message.is-pending {
+  opacity: 0.72;
+}
 .communications-message-bubble {
   max-width: min(620px, 82%);
   border: 1px solid rgba(35, 49, 33, 0.08);

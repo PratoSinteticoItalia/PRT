@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260511-sales-request-save-hardening-169";
+const APP_SHELL_VERSION = "20260512-communications-generator-fixes-170";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -16,8 +16,8 @@ const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 900;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 60 * 3;
-const SALES_REQUEST_SAVE_TIMEOUT_MS = 90_000;
-const SALES_REQUEST_SAVE_MAX_RETRIES = 2;
+const SALES_REQUEST_SAVE_TIMEOUT_MS = 20_000;
+const SALES_REQUEST_SAVE_MAX_RETRIES = 1;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
@@ -1180,6 +1180,7 @@ let currentViewRenderFrame = 0;
 let communicationsPollTimer = 0;
 let communicationsThreadsRequestSeq = 0;
 let communicationsMessagesRequestSeq = 0;
+const salesGeneratorQuoteStatusInFlight = new Set();
 const searchRenderTimers = Object.create(null);
 const shopifyOrderRefreshInFlight = new Set();
 const shopifyOrderRefreshAttempted = new Set();
@@ -4253,8 +4254,10 @@ function buildSalesGeneratorFrameSrc({ plannerMode = false } = {}) {
   return targetUrl.toString();
 }
 
-function reloadSalesGeneratorFrameSession({ plannerMode = false } = {}) {
+function reloadSalesGeneratorFrameSession({ plannerMode = false, force = false } = {}) {
   if (!ui.salesGeneratorFrame) return false;
+  const currentSrc = ui.salesGeneratorFrame.getAttribute("src") || ui.salesGeneratorFrame.src || "";
+  if (currentSrc && !force) return true;
   const nextSrc = buildSalesGeneratorFrameSrc({ plannerMode });
   if (!nextSrc) return false;
   state.lastSalesGeneratorSignature = "";
@@ -4308,9 +4311,6 @@ function pushPlannerPrefillToGenerator(force = false) {
 function activatePlannerPrefill({ force = false, openView = false } = {}) {
   const applied = pushPlannerPrefillToGenerator(force);
   if (!applied) return false;
-  if (state.currentView === "sales-generator" || openView) {
-    reloadSalesGeneratorFrameSession({ plannerMode: true });
-  }
   if (openView) {
     setView("sales-generator");
   } else if (state.currentView === "sales-generator") {
@@ -4680,6 +4680,32 @@ function openSalesRequestWhatsAppTab(url = "") {
   const tab = window.open(normalizedUrl, "psi_sales_request_whatsapp");
   if (tab) tab.focus();
   return tab;
+}
+
+function markSelectedSalesRequestQuoteSent() {
+  const request = getSelectedSalesRequest();
+  const requestId = String(request?.id || "").trim();
+  if (!request || !requestId || salesGeneratorQuoteStatusInFlight.has(requestId)) return;
+  const previousRecord = state.salesRequests.find((item) => item.id === requestId) || request;
+  const nowIso = new Date().toISOString();
+  const patch = {
+    status: "Preventivo inviato",
+    updatedAt: nowIso,
+  };
+  const optimisticRecord = normalizeSalesRequestRecord({ ...previousRecord, ...patch });
+  salesGeneratorQuoteStatusInFlight.add(requestId);
+  upsertSalesRequest(optimisticRecord, { skipOpsRender: true, preserveSelection: true });
+  renderSalesRequests();
+  if (state.currentView === "sales-generator") renderSalesGenerator();
+  persistSalesRequestRecordPatch(previousRecord, patch)
+    .catch(() => {
+      state.salesRequests = state.salesRequests.map((item) => item.id === requestId ? previousRecord : item);
+      renderSalesRequests();
+      if (state.currentView === "sales-generator") renderSalesGenerator();
+    })
+    .finally(() => {
+      salesGeneratorQuoteStatusInFlight.delete(requestId);
+    });
 }
 
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
@@ -11135,8 +11161,11 @@ function useSelectedSalesRequestInGenerator() {
   if (!selected) return;
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;
+  state.lastSalesGeneratorSignature = "";
   if (state.currentView === "sales-generator") {
-    reloadSalesGeneratorFrameSession({ plannerMode: false });
+    pushSalesRequestToGenerator(true);
+    renderSalesGenerator();
+    return;
   }
   setView("sales-generator");
 }
@@ -11147,11 +11176,10 @@ function toggleSalesGeneratorFreeMode() {
     if (selected) {
       state.salesGeneratorPlannerMode = false;
       state.salesGeneratorFreeMode = false;
-      reloadSalesGeneratorFrameSession({ plannerMode: false });
+      pushSalesRequestToGenerator(true);
       if (state.currentView === "sales-generator") renderSalesGenerator();
       return;
     }
-    reloadSalesGeneratorFrameSession({ plannerMode: false });
     clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
     renderSalesGenerator();
     return;
@@ -11159,11 +11187,10 @@ function toggleSalesGeneratorFreeMode() {
   if (state.salesGeneratorFreeMode) {
     if (!selected) return;
     state.salesGeneratorFreeMode = false;
-    reloadSalesGeneratorFrameSession({ plannerMode: false });
+    pushSalesRequestToGenerator(true);
     if (state.currentView === "sales-generator") renderSalesGenerator();
     return;
   }
-  reloadSalesGeneratorFrameSession({ plannerMode: false });
   clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
   renderSalesGenerator();
 }
@@ -14286,6 +14313,258 @@ function formatCommunicationTime(value = "") {
   }).format(date);
 }
 
+function getSelectedCommunicationThread() {
+  return (state.communicationThreads || []).find((thread) => thread.id === state.selectedCommunicationThreadId) || null;
+}
+
+function getCommunicationMessagesForSelectedThread() {
+  return state.loadedCommunicationThreadId === state.selectedCommunicationThreadId
+    ? (state.communicationMessages || [])
+    : [];
+}
+
+function getCommunicationParticipantMap() {
+  return new Map((state.loadedCommunicationThreadId === state.selectedCommunicationThreadId ? state.communicationParticipants || [] : [])
+    .map((user) => [String(user.id), user]));
+}
+
+function sortCommunicationMessages(messages = []) {
+  return [...messages].sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+}
+
+function mergeCommunicationMessagesForThread(threadId = "", incomingMessages = []) {
+  const normalizedThreadId = String(threadId || "").trim();
+  const pendingMessages = (state.communicationMessages || [])
+    .filter((message) => message.threadId === normalizedThreadId && message.pending);
+  const byId = new Map();
+  [...incomingMessages, ...pendingMessages].forEach((message) => {
+    if (message?.id) byId.set(String(message.id), message);
+  });
+  return sortCommunicationMessages(Array.from(byId.values()));
+}
+
+function getCommunicationMessagesSignature(messages = []) {
+  return messages
+    .map((message) => [
+      message.id,
+      message.authorId,
+      message.createdAt,
+      message.body,
+      message.pending ? "pending" : "",
+    ].map((value) => String(value || "").replace(/\|/g, " ")).join("|"))
+    .join("::");
+}
+
+function getCommunicationThreadsSignature(threads = []) {
+  return threads
+    .map((thread) => [
+      thread.id,
+      thread.updatedAt,
+      thread.lastMessagePreview,
+      thread.unreadCount,
+      thread.id === state.selectedCommunicationThreadId ? "active" : "",
+    ].map((value) => String(value || "").replace(/\|/g, " ")).join("|"))
+    .join("::");
+}
+
+function renderCommunicationThreadListHtml(threads = state.communicationThreads || []) {
+  return threads.length ? threads.map((thread) => `
+    <button type="button" class="communications-thread ${thread.id === state.selectedCommunicationThreadId ? "is-active" : ""}" data-action="communications-select-thread" data-id="${escapeHtml(thread.id)}">
+      <span class="communications-avatar">${escapeHtml(getUserInitials(communicationUserLabel(thread.otherUser || {})))}</span>
+      <span class="communications-thread-copy">
+        <strong>${escapeHtml(communicationUserLabel(thread.otherUser || {}))}</strong>
+        <small>${escapeHtml(thread.lastMessagePreview || "Nessun messaggio")}</small>
+      </span>
+      ${Number(thread.unreadCount || 0) > 0 ? `<span class="communications-unread">${Number(thread.unreadCount || 0)}</span>` : ""}
+    </button>
+  `).join("") : `<div class="communications-empty">Nessuna chat privata. Aprine una scegliendo un account autorizzato.</div>`;
+}
+
+function renderCommunicationMessagesHtml(messages = getCommunicationMessagesForSelectedThread(), participantById = getCommunicationParticipantMap()) {
+  return messages.map((message) => {
+    const author = participantById.get(String(message.authorId)) || {};
+    const mine = String(message.authorId) === String(state.currentUser?.id || "");
+    const pendingLabel = message.pending ? (state.lang === "it" ? " · invio..." : " · sending...") : "";
+    return `
+      <div class="communications-message ${mine ? "is-mine" : ""}${message.pending ? " is-pending" : ""}">
+        <div class="communications-message-bubble">
+          <strong>${escapeHtml(mine ? "Tu" : communicationUserLabel(author))}</strong>
+          <p>${escapeHtml(message.body)}</p>
+          <small>${escapeHtml(formatCommunicationTime(message.createdAt))}${pendingLabel}</small>
+        </div>
+      </div>
+    `;
+  }).join("") || `<div class="communications-empty">Scrivi il primo messaggio.</div>`;
+}
+
+function renderCommunicationsChatBodyHtml() {
+  const selectedThread = getSelectedCommunicationThread();
+  const selectedOther = selectedThread?.otherUser || null;
+  const messagesForSelectedThread = getCommunicationMessagesForSelectedThread();
+  const participantById = getCommunicationParticipantMap();
+  return selectedThread ? `
+    <div class="communications-chat-head">
+      <div>
+        <strong>${escapeHtml(communicationUserLabel(selectedOther || {}))}</strong>
+        <span>${escapeHtml(communicationRoleLabel(selectedOther?.role || ""))}</span>
+      </div>
+    </div>
+    <div class="communications-messages" id="communications-messages" data-signature="${escapeHtml(getCommunicationMessagesSignature(messagesForSelectedThread))}">
+      ${renderCommunicationMessagesHtml(messagesForSelectedThread, participantById)}
+    </div>
+    <form class="communications-composer" id="communications-message-form">
+      <textarea class="text-input" name="body" rows="2" maxlength="2000" placeholder="Scrivi un messaggio privato..."></textarea>
+      <button type="submit" class="primary-button small-button" data-action="communications-send-message">Invia</button>
+    </form>
+  ` : `
+    <div class="communications-chat-placeholder">
+      <h3>Seleziona o apri una chat</h3>
+      <p>Le conversazioni sono private e visibili solo ai partecipanti.</p>
+    </div>
+  `;
+}
+
+function isCommunicationsViewMounted() {
+  const container = document.getElementById("communications-content");
+  return Boolean(container?.querySelector(".communications-shell"));
+}
+
+function bindCommunicationThreadSelectActions(container = document) {
+  container.querySelectorAll("[data-action='communications-select-thread']").forEach((button) => {
+    if (button.dataset.bound === "true") return;
+    button.dataset.bound = "true";
+    button.addEventListener("click", async () => {
+      const threadId = button.dataset.id || "";
+      if (!threadId || threadId === state.selectedCommunicationThreadId) return;
+      state.selectedCommunicationThreadId = threadId;
+      state.loadedCommunicationThreadId = "";
+      state.communicationMessages = [];
+      state.communicationParticipants = [];
+      renderCommunications();
+      await loadCommunicationMessages(threadId, { render: true, markRead: true });
+    });
+  });
+}
+
+function bindCommunicationsNewThreadForm(container = document) {
+  const newForm = container.querySelector("#communications-new-form");
+  if (!newForm || newForm.dataset.bound === "true") return;
+  newForm.dataset.bound = "true";
+  newForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const targetUserId = String(new FormData(newForm).get("targetUserId") || "").trim();
+    if (!targetUserId) return;
+    const button = newForm.querySelector("button[type='submit']");
+    if (button) button.disabled = true;
+    try {
+      const thread = await apiFetch("/api/communications/threads", {
+        method: "POST",
+        body: JSON.stringify({ targetUserId }),
+      });
+      state.selectedCommunicationThreadId = thread.id;
+      state.loadedCommunicationThreadId = "";
+      upsertCommunicationThread(thread);
+      state.communicationMessages = [];
+      state.communicationParticipants = [state.currentUser, thread.otherUser].filter(Boolean);
+      renderCommunications();
+      await loadCommunicationMessages(thread.id, { render: true, markRead: true });
+      void loadCommunicationThreads({ render: false });
+    } catch (error) {
+      showToast(error?.message === "communication_target_forbidden" ? "Non puoi aprire una chat con questo account." : "Impossibile aprire la chat.", "warning");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+}
+
+function bindCommunicationsRefreshAction(container = document) {
+  const refreshButton = container.querySelector("[data-action='communications-refresh']");
+  if (!refreshButton || refreshButton.dataset.bound === "true") return;
+  refreshButton.dataset.bound = "true";
+  refreshButton.addEventListener("click", () => {
+    void loadCommunicationThreads({ render: true });
+    if (state.selectedCommunicationThreadId) {
+      void loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
+    }
+  });
+}
+
+function bindCommunicationsMessageForm(container = document) {
+  const messageForm = container.querySelector("#communications-message-form");
+  if (!messageForm) return;
+  const textarea = messageForm.querySelector("textarea[name='body']");
+  if (textarea && textarea.dataset.bound !== "true") {
+    textarea.dataset.bound = "true";
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+      event.preventDefault();
+      if (messageForm.requestSubmit) {
+        messageForm.requestSubmit();
+      } else {
+        messageForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      }
+    });
+  }
+  if (messageForm.dataset.bound === "true") return;
+  messageForm.dataset.bound = "true";
+  messageForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await sendCommunicationMessage(messageForm);
+  });
+}
+
+function bindCommunicationsActions(container = document) {
+  bindCommunicationsNewThreadForm(container);
+  bindCommunicationThreadSelectActions(container);
+  bindCommunicationsRefreshAction(container);
+  bindCommunicationsMessageForm(container);
+}
+
+function updateCommunicationThreadsDom() {
+  const container = document.getElementById("communications-content");
+  const list = container?.querySelector(".communications-thread-list");
+  if (!list) return false;
+  const signature = getCommunicationThreadsSignature(state.communicationThreads || []);
+  if (list.dataset.signature === signature) return true;
+  list.innerHTML = renderCommunicationThreadListHtml(state.communicationThreads || []);
+  list.dataset.signature = signature;
+  bindCommunicationThreadSelectActions(container);
+  return true;
+}
+
+function updateCommunicationMessagesDom({ force = false, scroll = true } = {}) {
+  const messagesNode = document.getElementById("communications-messages");
+  if (!messagesNode) return false;
+  const messages = getCommunicationMessagesForSelectedThread();
+  const signature = getCommunicationMessagesSignature(messages);
+  if (!force && messagesNode.dataset.signature === signature) return true;
+  const distanceFromBottom = messagesNode.scrollHeight - messagesNode.scrollTop - messagesNode.clientHeight;
+  const shouldStickToBottom = distanceFromBottom < 96;
+  messagesNode.innerHTML = renderCommunicationMessagesHtml(messages, getCommunicationParticipantMap());
+  messagesNode.dataset.signature = signature;
+  if (scroll && shouldStickToBottom) messagesNode.scrollTop = messagesNode.scrollHeight;
+  return true;
+}
+
+function refreshCommunicationsDom({ updateThreads = true, updateMessages = true, forceMessages = false } = {}) {
+  if (!isCommunicationsViewMounted()) {
+    renderCommunications();
+    return;
+  }
+  const container = document.getElementById("communications-content");
+  const chat = container?.querySelector(".communications-chat");
+  const selectedThreadId = state.selectedCommunicationThreadId || "";
+  if (chat && (chat.dataset.threadId || "") !== selectedThreadId) {
+    chat.dataset.threadId = selectedThreadId;
+    chat.innerHTML = renderCommunicationsChatBodyHtml();
+    const messages = document.getElementById("communications-messages");
+    if (messages) messages.scrollTop = messages.scrollHeight;
+    bindCommunicationsMessageForm(container);
+  }
+  if (updateThreads) updateCommunicationThreadsDom();
+  if (updateMessages) updateCommunicationMessagesDom({ force: forceMessages, scroll: true });
+}
+
 async function loadCommunicationTargets({ render = true } = {}) {
   if (!state.currentUser) return;
   try {
@@ -14317,6 +14596,12 @@ async function loadCommunicationThreads({ render = true } = {}) {
     }
     state.communicationsUnreadCount = Number(payload.unreadCount || 0);
     setNavCount("communications", state.communicationsUnreadCount);
+    if (state.selectedCommunicationThreadId && !state.communicationThreads.some((thread) => thread.id === state.selectedCommunicationThreadId)) {
+      state.selectedCommunicationThreadId = state.communicationThreads[0]?.id || "";
+      state.loadedCommunicationThreadId = "";
+      state.communicationMessages = [];
+      state.communicationParticipants = [];
+    }
     if (!state.selectedCommunicationThreadId && state.communicationThreads.length) {
       state.selectedCommunicationThreadId = state.communicationThreads[0].id;
     }
@@ -14331,7 +14616,9 @@ async function loadCommunicationThreads({ render = true } = {}) {
   } finally {
     if (requestSeq !== communicationsThreadsRequestSeq) return;
     state.communicationsLoading = false;
-    if (render && state.currentView === "communications") renderCommunications();
+    if (render && state.currentView === "communications") {
+      refreshCommunicationsDom({ updateThreads: true, updateMessages: false });
+    }
   }
 }
 
@@ -14341,7 +14628,7 @@ async function loadCommunicationMessages(threadId = state.selectedCommunicationT
     state.communicationMessages = [];
     state.communicationParticipants = [];
     state.loadedCommunicationThreadId = "";
-    if (render && state.currentView === "communications") renderCommunications();
+    if (render && state.currentView === "communications") refreshCommunicationsDom({ updateThreads: false, updateMessages: true, forceMessages: true });
     return;
   }
   const requestSeq = ++communicationsMessagesRequestSeq;
@@ -14349,7 +14636,8 @@ async function loadCommunicationMessages(threadId = state.selectedCommunicationT
     const payload = await apiFetch(`/api/communications/threads/${encodeURIComponent(normalizedThreadId)}/messages`);
     if (requestSeq !== communicationsMessagesRequestSeq || state.selectedCommunicationThreadId !== normalizedThreadId) return;
     state.selectedCommunicationThreadId = normalizedThreadId;
-    state.communicationMessages = Array.isArray(payload.messages) ? payload.messages : [];
+    if (payload.thread?.id) upsertCommunicationThread(payload.thread);
+    state.communicationMessages = mergeCommunicationMessagesForThread(normalizedThreadId, Array.isArray(payload.messages) ? payload.messages : []);
     state.communicationParticipants = Array.isArray(payload.participants) ? payload.participants : [];
     state.loadedCommunicationThreadId = normalizedThreadId;
     if (markRead) {
@@ -14362,7 +14650,9 @@ async function loadCommunicationMessages(threadId = state.selectedCommunicationT
     console.error("communications_messages_load_failed", error);
   } finally {
     if (requestSeq !== communicationsMessagesRequestSeq || state.selectedCommunicationThreadId !== normalizedThreadId) return;
-    if (render && state.currentView === "communications") renderCommunications();
+    if (render && state.currentView === "communications") {
+      refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: true });
+    }
   }
 }
 
@@ -14389,21 +14679,48 @@ async function sendCommunicationMessage(form) {
     return;
   }
   const button = form.querySelector("button[type='submit']");
+  const textarea = form.querySelector("textarea[name='body']");
   if (button) button.disabled = true;
+  const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const nowIso = new Date().toISOString();
+  const optimisticMessage = {
+    id: optimisticId,
+    threadId,
+    authorId: String(state.currentUser?.id || ""),
+    body,
+    createdAt: nowIso,
+    readBy: [String(state.currentUser?.id || "")].filter(Boolean),
+    pending: true,
+  };
+  state.loadedCommunicationThreadId = threadId;
+  state.communicationMessages = sortCommunicationMessages([
+    ...(state.communicationMessages || []).filter((item) => item.id !== optimisticId),
+    optimisticMessage,
+  ]);
+  state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === threadId
+    ? { ...thread, lastMessagePreview: body, updatedAt: nowIso, unreadCount: 0 }
+    : thread);
+  form.reset();
+  refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: true });
   try {
     const message = await apiFetch(`/api/communications/threads/${encodeURIComponent(threadId)}/messages`, {
       method: "POST",
       body: JSON.stringify({ body }),
     });
-    form.reset();
     if (message?.id) {
-      state.communicationMessages = [...(state.communicationMessages || []).filter((item) => item.id !== message.id), message];
+      state.communicationMessages = sortCommunicationMessages([
+        ...(state.communicationMessages || []).filter((item) => item.id !== optimisticId && item.id !== message.id),
+        message,
+      ]);
       state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === threadId
         ? { ...thread, lastMessagePreview: message.body, updatedAt: message.createdAt, unreadCount: 0 }
         : thread);
-      if (state.currentView === "communications") renderCommunications();
+      if (state.currentView === "communications") refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: true });
     }
   } catch (error) {
+    state.communicationMessages = (state.communicationMessages || []).filter((item) => item.id !== optimisticId);
+    if (textarea && !String(textarea.value || "").trim()) textarea.value = body;
+    if (state.currentView === "communications") refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: true });
     const reason = error?.payload?.error || error?.message || "";
     showToast(reason === "thread_not_found" ? "Chat non trovata. Riapri la conversazione." : reason === "unauthorized" ? "Sessione scaduta. Effettua di nuovo l'accesso." : "Messaggio non inviato. Riprova.", "warning");
   } finally {
@@ -14416,7 +14733,11 @@ function startCommunicationsPolling() {
   if (!state.currentUser) return;
   communicationsPollTimer = window.setInterval(() => {
     if (!state.currentUser || document.hidden) return;
-    void loadCommunicationThreads({ render: state.currentView === "communications" });
+    void loadCommunicationThreads({ render: state.currentView === "communications" }).then(() => {
+      if (state.currentView === "communications" && state.selectedCommunicationThreadId) {
+        void loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
+      }
+    });
   }, COMMUNICATIONS_POLL_INTERVAL_MS);
 }
 
@@ -14432,10 +14753,6 @@ function renderCommunications() {
   if (!container) return;
   const threads = state.communicationThreads || [];
   const targets = state.communicationTargets || [];
-  const selectedThread = threads.find((thread) => thread.id === state.selectedCommunicationThreadId) || null;
-  const selectedOther = selectedThread?.otherUser || null;
-  const messagesForSelectedThread = state.loadedCommunicationThreadId === state.selectedCommunicationThreadId ? state.communicationMessages || [] : [];
-  const participantById = new Map((state.loadedCommunicationThreadId === state.selectedCommunicationThreadId ? state.communicationParticipants || [] : []).map((user) => [String(user.id), user]));
   container.innerHTML = `
     <div class="page-header">
       <div>
@@ -14456,118 +14773,18 @@ function renderCommunications() {
           </label>
           <button type="submit" class="primary-button small-button" ${targets.length ? "" : "disabled"}>Apri chat</button>
         </form>
-        <div class="communications-thread-list">
-          ${threads.length ? threads.map((thread) => `
-            <button type="button" class="communications-thread ${thread.id === state.selectedCommunicationThreadId ? "is-active" : ""}" data-action="communications-select-thread" data-id="${escapeHtml(thread.id)}">
-              <span class="communications-avatar">${escapeHtml(getUserInitials(communicationUserLabel(thread.otherUser || {})))}</span>
-              <span class="communications-thread-copy">
-                <strong>${escapeHtml(communicationUserLabel(thread.otherUser || {}))}</strong>
-                <small>${escapeHtml(thread.lastMessagePreview || "Nessun messaggio")}</small>
-              </span>
-              ${Number(thread.unreadCount || 0) > 0 ? `<span class="communications-unread">${Number(thread.unreadCount || 0)}</span>` : ""}
-            </button>
-          `).join("") : `<div class="communications-empty">Nessuna chat privata. Aprine una scegliendo un account autorizzato.</div>`}
+        <div class="communications-thread-list" data-signature="${escapeHtml(getCommunicationThreadsSignature(threads))}">
+          ${renderCommunicationThreadListHtml(threads)}
         </div>
       </aside>
-      <div class="communications-chat">
-        ${selectedThread ? `
-          <div class="communications-chat-head">
-            <div>
-              <strong>${escapeHtml(communicationUserLabel(selectedOther || {}))}</strong>
-              <span>${escapeHtml(communicationRoleLabel(selectedOther?.role || ""))}</span>
-            </div>
-          </div>
-          <div class="communications-messages" id="communications-messages">
-            ${messagesForSelectedThread.map((message) => {
-              const author = participantById.get(String(message.authorId)) || {};
-              const mine = String(message.authorId) === String(state.currentUser?.id || "");
-              return `
-                <div class="communications-message ${mine ? "is-mine" : ""}">
-                  <div class="communications-message-bubble">
-                    <strong>${escapeHtml(mine ? "Tu" : communicationUserLabel(author))}</strong>
-                    <p>${escapeHtml(message.body)}</p>
-                    <small>${escapeHtml(formatCommunicationTime(message.createdAt))}</small>
-                  </div>
-                </div>
-              `;
-            }).join("") || `<div class="communications-empty">Scrivi il primo messaggio.</div>`}
-          </div>
-          <form class="communications-composer" id="communications-message-form">
-            <textarea class="text-input" name="body" rows="2" maxlength="2000" placeholder="Scrivi un messaggio privato..."></textarea>
-            <button type="submit" class="primary-button small-button" data-action="communications-send-message">Invia</button>
-          </form>
-        ` : `
-          <div class="communications-chat-placeholder">
-            <h3>Seleziona o apri una chat</h3>
-            <p>Le conversazioni sono private e visibili solo ai partecipanti.</p>
-          </div>
-        `}
+      <div class="communications-chat" data-thread-id="${escapeHtml(state.selectedCommunicationThreadId || "")}">
+        ${renderCommunicationsChatBodyHtml()}
       </div>
     </section>
   `;
   const messages = document.getElementById("communications-messages");
   if (messages) messages.scrollTop = messages.scrollHeight;
-  const newForm = document.getElementById("communications-new-form");
-  if (newForm) {
-    newForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const targetUserId = String(new FormData(newForm).get("targetUserId") || "").trim();
-      if (!targetUserId) return;
-      const button = newForm.querySelector("button[type='submit']");
-      if (button) button.disabled = true;
-      try {
-        const thread = await apiFetch("/api/communications/threads", {
-          method: "POST",
-          body: JSON.stringify({ targetUserId }),
-        });
-        state.selectedCommunicationThreadId = thread.id;
-        state.loadedCommunicationThreadId = "";
-        upsertCommunicationThread(thread);
-        state.communicationMessages = [];
-        state.communicationParticipants = [state.currentUser, thread.otherUser].filter(Boolean);
-        renderCommunications();
-        await loadCommunicationMessages(thread.id, { render: true, markRead: true });
-        void loadCommunicationThreads({ render: false });
-      } catch (error) {
-        showToast(error?.message === "communication_target_forbidden" ? "Non puoi aprire una chat con questo account." : "Impossibile aprire la chat.", "warning");
-      } finally {
-        if (button) button.disabled = false;
-      }
-    });
-  }
-  container.querySelectorAll("[data-action='communications-select-thread']").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const threadId = button.dataset.id || "";
-      if (!threadId || threadId === state.selectedCommunicationThreadId) return;
-      state.selectedCommunicationThreadId = threadId;
-      state.loadedCommunicationThreadId = "";
-      state.communicationMessages = [];
-      state.communicationParticipants = [];
-      renderCommunications();
-      await loadCommunicationMessages(threadId, { render: true, markRead: true });
-    });
-  });
-  const refreshButton = container.querySelector("[data-action='communications-refresh']");
-  if (refreshButton) {
-    refreshButton.addEventListener("click", () => {
-      void loadCommunicationThreads({ render: true });
-    });
-  }
-  const messageForm = document.getElementById("communications-message-form");
-  if (messageForm) {
-    const textarea = messageForm.querySelector("textarea[name='body']");
-    if (textarea) {
-      textarea.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
-        event.preventDefault();
-        messageForm.requestSubmit();
-      });
-    }
-    messageForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      await sendCommunicationMessage(messageForm);
-    });
-  }
+  bindCommunicationsActions(container);
 }
 
 function renderCurrentViewOnly(view = state.currentView) {
@@ -15551,9 +15768,6 @@ function setView(view, { pushHistory = true } = {}) {
   }
   if (nextView === "accounting") state.accountingMobilePane = "summary";
   if (nextView === "installations") state.installationMobilePane = "summary";
-  if (nextView === "sales-generator" && nextView !== previousView) {
-    reloadSalesGeneratorFrameSession({ plannerMode: state.salesGeneratorPlannerMode });
-  }
   clearAllSearchRenderTimers();
   clearPendingCurrentViewRefresh();
   state.currentView = nextView;
@@ -17679,10 +17893,7 @@ function handleGlobalClick(event) {
     event.stopPropagation();
     const target = event.target.closest("[href]");
     openSalesRequestWhatsAppTab(target?.getAttribute("href") || "");
-    const generatorRequest = getSelectedSalesRequest();
-    if (generatorRequest && getSalesRequestStatusCode(generatorRequest.status || "") !== "quoted") {
-      persistSalesRequestRecordPatch(generatorRequest, { status: "Preventivo inviato" }).catch(() => {});
-    }
+    markSelectedSalesRequestQuoteSent();
     return;
   }
   if (action === "open-sales-request-followup-whatsapp") {
@@ -18439,13 +18650,15 @@ bindEvent(ui.salesGeneratorWhatsAppButton, "click", () => {
   const href = ui.salesGeneratorWhatsAppButton?.getAttribute("href") || "";
   if (!href || href === "#") return;
   trackUsageEvent("quote_whatsapp_opened", { requestId: state.selectedSalesRequestId || "" });
+  markSelectedSalesRequestQuoteSent();
 });
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;
-  reloadSalesGeneratorFrameSession({ plannerMode: false });
+  state.lastSalesGeneratorSignature = "";
+  pushSalesRequestToGenerator(true);
   renderSalesGenerator();
 });
 bindEvent(ui.salesGeneratorFreeQuoteButton, "click", toggleSalesGeneratorFreeMode);

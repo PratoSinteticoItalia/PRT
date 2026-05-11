@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
-import { readFile, rename, writeFile } from "node:fs/promises";
-import { createReadStream, existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, dirname, join, resolve, sep } from "node:path";
 import { createHmac, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -100,7 +100,7 @@ const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const BOOTSTRAP_OFFICE_EMAIL = String(process.env.BOOTSTRAP_OFFICE_EMAIL || "office@vertex.local").trim().toLowerCase();
 const BOOTSTRAP_OFFICE_PASSWORD = String(process.env.BOOTSTRAP_OFFICE_PASSWORD || "");
 const API_STATE_LOCK_KEY = 41051721;
-const API_STATE_LOCK_TIMEOUT_MS = 60_000;
+const API_STATE_LOCK_TIMEOUT_MS = 15_000;
 const API_STATE_LOCK_POLL_MS = 40;
 const STORE_BACKUP_MIN_INTERVAL_MS = 1000 * 60 * 2;
 const loginAttempts = new Map();
@@ -109,6 +109,8 @@ let pgPool = null;
 let r2ClientPromise = null;
 let runtimeStoreRevision = "";
 let lastStoreBackupSnapshotAt = 0;
+let storeBackupQueue = Promise.resolve();
+let postgresMirrorWriteQueue = Promise.resolve();
 let processApiWriteQueue = Promise.resolve();
 let processSessionWriteQueue = Promise.resolve();
 const STORE_EVENTS_HEARTBEAT_MS = 25_000;
@@ -381,37 +383,56 @@ async function readLocalJson(path, fallback) {
   }
 }
 
-async function writeLocalJson(path, value) {
-  const serialized = JSON.stringify(value, null, 2);
+function queueStoreBackup(serialized) {
+  const snapshot = String(serialized || "");
+  storeBackupQueue = storeBackupQueue.catch(() => {}).then(async () => {
+    try {
+      await mkdir(BACKUP_DIR, { recursive: true });
+      await writeFile(join(BACKUP_DIR, "store-latest.json"), snapshot, "utf8");
+      const now = Date.now();
+      const shouldCreateTimestampSnapshot = !lastStoreBackupSnapshotAt
+        || (now - lastStoreBackupSnapshotAt) >= STORE_BACKUP_MIN_INTERVAL_MS;
+      if (!shouldCreateTimestampSnapshot) return;
+      lastStoreBackupSnapshotAt = now;
+      const timestamp = new Date(now).toISOString().replace(/[:.]/g, "-");
+      await writeFile(join(BACKUP_DIR, `store-${timestamp}.json`), snapshot, "utf8");
+      const snapshots = (await readdir(BACKUP_DIR))
+        .filter((file) => /^store-\d{4}-\d{2}-\d{2}T/.test(file))
+        .sort()
+        .reverse();
+      await Promise.all(snapshots.slice(30).map(async (file) => {
+        try {
+          await unlink(join(BACKUP_DIR, file));
+        } catch {}
+      }));
+    } catch (error) {
+      console.error("store_backup_failed", error);
+    }
+  });
+}
+
+async function writeLocalJsonSerialized(path, serialized) {
   const resolvedPath = resolve(path);
   const tempPath = `${resolvedPath}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tempPath, serialized, "utf8");
   await rename(tempPath, resolvedPath);
   if (resolve(path) === resolve(STORE_PATH)) {
-    try {
-      mkdirSync(BACKUP_DIR, { recursive: true });
-      writeFileSync(join(BACKUP_DIR, "store-latest.json"), serialized, "utf8");
-      const now = Date.now();
-      const shouldCreateTimestampSnapshot = !lastStoreBackupSnapshotAt
-        || (now - lastStoreBackupSnapshotAt) >= STORE_BACKUP_MIN_INTERVAL_MS;
-      if (shouldCreateTimestampSnapshot) {
-        lastStoreBackupSnapshotAt = now;
-        const timestamp = new Date(now).toISOString().replace(/[:.]/g, "-");
-        writeFileSync(join(BACKUP_DIR, `store-${timestamp}.json`), serialized, "utf8");
-        const snapshots = readdirSync(BACKUP_DIR)
-          .filter((file) => /^store-\d{4}-\d{2}-\d{2}T/.test(file))
-          .sort()
-          .reverse();
-        snapshots.slice(30).forEach((file) => {
-          try {
-            unlinkSync(join(BACKUP_DIR, file));
-          } catch {}
-        });
-      }
-    } catch (error) {
-      console.error("store_backup_failed", error);
-    }
+    queueStoreBackup(serialized);
   }
+}
+
+async function writeLocalJson(path, value) {
+  return writeLocalJsonSerialized(path, JSON.stringify(value, null, 2));
+}
+
+function queuePostgresMirrorWrite(path, value) {
+  const serialized = JSON.stringify(value, null, 2);
+  postgresMirrorWriteQueue = postgresMirrorWriteQueue
+    .catch(() => {})
+    .then(() => writeLocalJsonSerialized(path, serialized))
+    .catch((error) => {
+      console.error("store_mirror_write_failed", error);
+    });
 }
 
 async function getPgPool() {
@@ -566,11 +587,7 @@ async function writeJson(path, value) {
   }
   if (USE_POSTGRES && resolvedPath === resolve(STORE_PATH)) {
     await writeDatabaseDocument(STORE_DOC_KEY, value);
-    try {
-      await writeLocalJson(path, value);
-    } catch (error) {
-      console.error("store_mirror_write_failed", error);
-    }
+    queuePostgresMirrorWrite(path, value);
     if (isStorePayload) {
       broadcastStoreRevision(getStoreRevision(value));
     }
