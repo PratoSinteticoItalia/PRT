@@ -89,6 +89,10 @@ const LOGIN_WINDOW_MS = 1000 * 60 * 2;
 const LOGIN_MAX_ATTEMPTS = 20;
 const SHOPIFY_FETCH_TIMEOUT_MS = 15_000;
 const SHOPIFY_MAX_RETRIES = 2;
+const CONFIGURED_MAX_JSON_BODY_BYTES = Number(process.env.MAX_JSON_BODY_BYTES || 25 * 1024 * 1024);
+const MAX_JSON_BODY_BYTES = Number.isFinite(CONFIGURED_MAX_JSON_BODY_BYTES)
+  ? Math.max(1024 * 1024, CONFIGURED_MAX_JSON_BODY_BYTES)
+  : 25 * 1024 * 1024;
 const IS_PUBLIC_DEPLOY = Boolean(process.env.RENDER || process.env.NODE_ENV === "production");
 const ALLOW_DEMO_FALLBACK = process.env.ALLOW_DEMO_FALLBACK === "true" || !IS_PUBLIC_DEPLOY;
 const PASSWORD_MIN_LENGTH = 12;
@@ -1379,15 +1383,28 @@ function getShopifyRedirectUri(req) {
   return `${getRequestBaseUrl(req)}/api/shopify/oauth/callback`;
 }
 
-async function readBody(req) {
+function createHttpError(status = 500, message = "server_error") {
+  const error = new Error(message);
+  error.status = Number(status || 500);
+  return error;
+}
+
+async function readBody(req, { maxBytes = MAX_JSON_BODY_BYTES } = {}) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let receivedBytes = 0;
+  for await (const chunk of req) {
+    receivedBytes += chunk.length;
+    if (receivedBytes > maxBytes) {
+      throw createHttpError(413, "payload_too_large");
+    }
+    chunks.push(chunk);
+  }
   const raw = Buffer.concat(chunks).toString("utf8");
   if (!raw) return {};
   try {
     return JSON.parse(raw);
   } catch {
-    return {};
+    throw createHttpError(400, "invalid_json");
   }
 }
 
@@ -5735,9 +5752,13 @@ async function handleApi(req, res, url) {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return sendJson(res, 400, { error: "invalid_sales_request_payload" });
+    }
     const now = new Date().toISOString();
     const existingRequest = store.salesRequests.find((item) => item.id === String(body.id || "")) || null;
     const draftRecord = normalizeSalesRequestRecord({
+      ...(existingRequest || {}),
       ...body,
       createdAt: existingRequest?.createdAt || body.createdAt || now,
       updatedAt: now,
@@ -5771,6 +5792,9 @@ async function handleApi(req, res, url) {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return sendJson(res, 400, { error: "invalid_sales_request_payload" });
+    }
     const assignment = normalizeSalesRequestAssignment(body.assignment || "");
     if (!assignment) return sendJson(res, 400, { error: "invalid_assignment" });
     const rawIds = Array.isArray(body.ids) ? body.ids : [];
@@ -7000,6 +7024,13 @@ const server = createServer(async (req, res) => {
     res.end(content);
   } catch (error) {
     if (url.pathname.startsWith("/api/")) {
+      const status = Number(error?.status || 0);
+      if (status >= 400 && status < 600) {
+        return sendJson(res, status, {
+          error: String(error?.message || "request_failed"),
+          maxBytes: status === 413 ? MAX_JSON_BODY_BYTES : undefined,
+        });
+      }
       return sendJson(res, 500, { error: "server_error", message: error.message });
     }
 

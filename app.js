@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260511-fast-save-chat-168";
+const APP_SHELL_VERSION = "20260511-sales-request-save-hardening-169";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -16,6 +16,8 @@ const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 900;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
 const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 60 * 3;
+const SALES_REQUEST_SAVE_TIMEOUT_MS = 90_000;
+const SALES_REQUEST_SAVE_MAX_RETRIES = 2;
 const COVERAGE_SYNC_DEBOUNCE_MS = 900;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
@@ -1082,6 +1084,7 @@ const state = {
   salesRequestBulkSaving: false,
   salesRequestSaveInFlight: false,
   pendingSalesRequestSave: null,
+  salesRequestFormDirty: false,
   selectedSalesContentId: "",
   pendingSalesRequestServiceAccountJson: "",
   pendingSalesRequestServiceAccountEmail: "",
@@ -1655,12 +1658,18 @@ function waitMs(ms = 0) {
 }
 
 function apiFetch(path, options = {}) {
+  const { timeoutMs = 0, ...fetchOptions } = options || {};
+  const controller = timeoutMs > 0 && !fetchOptions.signal ? new AbortController() : null;
+  const timeoutId = controller
+    ? window.setTimeout(() => controller.abort(), timeoutMs)
+    : 0;
   return fetch(path, {
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...(fetchOptions.headers || {}),
     },
-    ...options,
+    ...fetchOptions,
+    ...(controller ? { signal: controller.signal } : {}),
   }).then(async (response) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -1676,7 +1685,32 @@ function apiFetch(path, options = {}) {
     networkError.status = 0;
     networkError.cause = error;
     throw networkError;
+  }).finally(() => {
+    if (timeoutId) window.clearTimeout(timeoutId);
   });
+}
+
+function isTransientApiError(error) {
+  const status = Number(error?.status || 0);
+  return status === 0 || [408, 409, 425, 429, 500, 502, 503, 504].includes(status);
+}
+
+async function apiFetchWithRetry(path, options = {}, {
+  retries = 1,
+  baseDelayMs = 450,
+  shouldRetry = isTransientApiError,
+} = {}) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await apiFetch(path, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries || !shouldRetry(error)) throw error;
+      await waitMs(baseDelayMs * (attempt + 1));
+    }
+  }
+  throw lastError || new Error("request_failed");
 }
 
 function buildVersionedUrl(pathname = window.location.pathname, version = APP_SHELL_VERSION) {
@@ -3225,7 +3259,7 @@ function buildSalesRequestPayloadFromRecord(record = {}, patch = {}) {
     firstContactState: normalizeSalesRequestFirstContactState(merged.firstContactState),
     firstContactScheduledAt: normalizeIsoDateTime(merged.firstContactScheduledAt),
     firstContactSentAt: normalizeIsoDateTime(merged.firstContactSentAt),
-    firstContactBy: normalizeSalesRequestAssignment(merged.assignment),
+    firstContactBy: normalizeSalesRequestAssignment(merged.firstContactBy || merged.assignment),
     source: String(merged.source || "manual").trim() || "manual",
     sourceSpreadsheetId: String(merged.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(merged.sourceSheetName || "").trim(),
@@ -3340,8 +3374,6 @@ function getSalesRequestStatusCode(status = "") {
 function normalizeSalesRequestRecord(item = {}) {
   const firstContactState = normalizeSalesRequestFirstContactState(item.firstContactState || item.firstContact?.state || "");
   const rawStatus = String(item.status ?? item.stato ?? "").trim();
-  const hasExplicitAssignment = Object.prototype.hasOwnProperty.call(item, "assignment");
-  const assignment = normalizeSalesRequestAssignment(hasExplicitAssignment ? item.assignment : (item.assegnazione || item.firstContactBy || item.firstContact?.by || ""));
   const status = firstContactState === "sent" && shouldPromoteSalesRequestToFirstContact(rawStatus)
     ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS
     : firstContactState === "queued" && shouldPromoteSalesRequestToFirstContact(rawStatus)
@@ -3358,7 +3390,7 @@ function normalizeSalesRequestRecord(item = {}) {
     requestedHeight: normalizeSalesRequestHeight(getSalesRequestRawHeightValue(item)),
     service: String(item.service || item.servizio || "").trim().toLowerCase(),
     surface: String(item.surface || item.fondo || "").trim().toLowerCase(),
-    assignment,
+    assignment: normalizeSalesRequestAssignment(item.assignment || item.assegnazione || ""),
     status,
     note: String(item.note || "").trim(),
     whatsappTemplate: String(
@@ -3383,7 +3415,7 @@ function normalizeSalesRequestRecord(item = {}) {
     firstContactState,
     firstContactScheduledAt: normalizeIsoDateTime(item.firstContactScheduledAt || item.firstContact?.scheduledAt || ""),
     firstContactSentAt: normalizeIsoDateTime(item.firstContactSentAt || item.firstContact?.sentAt || ""),
-    firstContactBy: hasExplicitAssignment && !assignment ? "" : normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
+    firstContactBy: normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
     quotedAt: normalizeIsoDateTime(item.quotedAt || ""),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
@@ -4637,9 +4669,12 @@ function openSalesRequestWhatsAppTab(url = "") {
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
   const previousRecord = state.salesRequests.find((r) => r.id === record.id) || null;
   try {
-    const saved = await apiFetch("/api/sales/requests", {
+    const saved = await apiFetchWithRetry("/api/sales/requests", {
       method: "POST",
+      timeoutMs: SALES_REQUEST_SAVE_TIMEOUT_MS,
       body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, patch)),
+    }, {
+      retries: SALES_REQUEST_SAVE_MAX_RETRIES,
     });
     upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
     renderSalesRequests();
@@ -4653,7 +4688,7 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     setStatus(
       ui.salesRequestsStatus,
       "error",
-      state.lang === "it" ? "Aggiornamento stato fallito. Riprova salvando la richiesta." : "Status update failed. Retry by saving the request.",
+      getSalesRequestSaveErrorMessage(error),
     );
     throw error;
   }
@@ -10076,26 +10111,29 @@ function renderSalesRequests() {
 function renderSalesRequestsDetailPanel(selected = null) {
   if (!ui.salesRequestForm) return;
   ensureSalesRequestWhatsAppActionUi();
-  ui.salesRequestForm.id.value = selected?.id || "";
-  ui.salesRequestForm.name.value = selected?.name || "";
-  ui.salesRequestForm.surname.value = selected?.surname || "";
-  ui.salesRequestForm.city.value = selected?.city || "";
-  ui.salesRequestForm.phone.value = selected?.phone || "";
-  ui.salesRequestForm.email.value = selected?.email || "";
-  ui.salesRequestForm.sqm.value = selected ? String(getSalesRequestSqm(selected) || "").replace(".", ",") : "";
-  ui.salesRequestForm.requestedHeight.value = selected?.requestedHeight || "";
-  ui.salesRequestForm.service.value = selected?.service || "";
-  ui.salesRequestForm.surface.value = selected?.surface || "";
-  syncSalesRequestAssignmentField(selected?.assignment || selected?.firstContactBy || "");
-  syncSalesRequestStatusField(selected?.status || "");
-  ui.salesRequestForm.note.value = selected?.note || "";
+  const preserveFormValues = shouldPreserveSalesRequestFormValues(selected);
+  if (!preserveFormValues) {
+    ui.salesRequestForm.id.value = selected?.id || "";
+    ui.salesRequestForm.name.value = selected?.name || "";
+    ui.salesRequestForm.surname.value = selected?.surname || "";
+    ui.salesRequestForm.city.value = selected?.city || "";
+    ui.salesRequestForm.phone.value = selected?.phone || "";
+    ui.salesRequestForm.email.value = selected?.email || "";
+    ui.salesRequestForm.sqm.value = selected ? String(getSalesRequestSqm(selected) || "").replace(".", ",") : "";
+    ui.salesRequestForm.requestedHeight.value = selected?.requestedHeight || "";
+    ui.salesRequestForm.service.value = selected?.service || "";
+    ui.salesRequestForm.surface.value = selected?.surface || "";
+    syncSalesRequestAssignmentField(selected?.assignment || "");
+    syncSalesRequestStatusField(selected?.status || "");
+    ui.salesRequestForm.note.value = selected?.note || "";
+    if (ui.salesRequestForm.whatsappTemplate) {
+      ui.salesRequestForm.whatsappTemplate.value = selected?.whatsappTemplate || "";
+    }
+    if (ui.salesRequestForm.whatsappUrl) {
+      ui.salesRequestForm.whatsappUrl.value = selected?.whatsappUrl || "";
+    }
+  }
   autosizeTextarea(ui.salesRequestNoteField);
-  if (ui.salesRequestForm.whatsappTemplate) {
-    ui.salesRequestForm.whatsappTemplate.value = selected?.whatsappTemplate || "";
-  }
-  if (ui.salesRequestForm.whatsappUrl) {
-    ui.salesRequestForm.whatsappUrl.value = selected?.whatsappUrl || "";
-  }
   const salesRequestWhatsAppUrl = selected ? buildSalesRequestWhatsAppUrl(selected) : "";
   const queuedDueForCurrentOperator = Boolean(
     selected
@@ -10551,6 +10589,7 @@ function createNewSalesRequest() {
   state.creatingSalesRequest = true;
   state.selectedSalesRequestId = "";
   state.salesRequestPage = 1;
+  state.salesRequestFormDirty = false;
   renderSalesRequests();
   clearStatus(ui.salesRequestsStatus);
   requestAnimationFrame(() => {
@@ -10637,6 +10676,39 @@ function getSalesRequestSheetSyncMessage(sheetSync = null) {
   return "";
 }
 
+function getSalesRequestSaveErrorMessage(error = null) {
+  const status = Number(error?.status || 0);
+  const code = String(error?.message || error?.payload?.error || "").trim();
+  if (status === 413 || code === "payload_too_large") {
+    return state.lang === "it"
+      ? "La richiesta è troppo grande per questo server. Riduci allegati/testo incollato e riprova."
+      : "This request is too large for the server. Reduce pasted content and retry.";
+  }
+  if (status === 400 || code === "invalid_json" || code === "invalid_sales_request_payload") {
+    return state.lang === "it"
+      ? "Dati richiesta non validi: le modifiche sono rimaste sullo schermo, correggi e riprova."
+      : "Invalid request data: your edits stayed on screen, fix them and retry.";
+  }
+  if (status === 401 || status === 403) {
+    return state.lang === "it"
+      ? "Sessione non autorizzata: accedi di nuovo e riprova il salvataggio."
+      : "Unauthorized session: sign in again and retry saving.";
+  }
+  if (status === 503 || code === "busy") {
+    return state.lang === "it"
+      ? "Archivio occupato: il sistema ha ritentato, riprova tra pochi secondi."
+      : "Store is busy: the system retried, try again in a few seconds.";
+  }
+  if (status === 0 || code === "network_error") {
+    return state.lang === "it"
+      ? "Rete instabile o timeout: le modifiche sono rimaste qui, premi di nuovo Salva."
+      : "Network or timeout issue: your edits stayed here, press Save again.";
+  }
+  return state.lang === "it"
+    ? "Impossibile salvare la richiesta. Le modifiche sono rimaste qui, riprova."
+    : "Unable to save the request. Your edits stayed here, please retry.";
+}
+
 function mergeSalesRequestRecords(records = []) {
   const normalizedRecords = Array.isArray(records) ? records.map(normalizeSalesRequestRecord) : [];
   if (!normalizedRecords.length) return;
@@ -10654,7 +10726,11 @@ function mergeSalesRequestRecords(records = []) {
 }
 
 function getSalesRequestSubmitButtons() {
-  return Array.from(ui.salesRequestForm?.querySelectorAll('button[type="submit"]') || []);
+  const buttons = [
+    ...Array.from(ui.salesRequestForm?.querySelectorAll('button[type="submit"]') || []),
+    ...Array.from(document.querySelectorAll('button[type="submit"][form="sales-request-form"]') || []),
+  ];
+  return Array.from(new Set(buttons));
 }
 
 function autosizeTextarea(textarea) {
@@ -10662,6 +10738,19 @@ function autosizeTextarea(textarea) {
   textarea.style.height = "auto";
   const nextHeight = Math.max(textarea.scrollHeight, 112);
   textarea.style.height = `${nextHeight}px`;
+}
+
+function isSalesRequestFormFocused() {
+  return Boolean(ui.salesRequestForm && ui.salesRequestForm.contains(document.activeElement));
+}
+
+function shouldPreserveSalesRequestFormValues(selected = null) {
+  if (!ui.salesRequestForm || state.currentView !== "sales-requests") return false;
+  if (!state.salesRequestFormDirty && !state.salesRequestSaveInFlight && !state.pendingSalesRequestSave) return false;
+  const currentFormId = String(ui.salesRequestForm.id?.value || "").trim();
+  const selectedId = String(selected?.id || "").trim();
+  if (currentFormId && selectedId && currentFormId !== selectedId) return false;
+  return isSalesRequestFormFocused() || state.salesRequestSaveInFlight || Boolean(state.pendingSalesRequestSave);
 }
 
 function syncSalesRequestSubmitButtons({ busy = false, queued = false } = {}) {
@@ -10752,16 +10841,27 @@ async function processSalesRequestSave(draftRecord, {
 } = {}) {
   const liveRecord = state.salesRequests.find((r) => r.id === draftRecord.id) || null;
   const refreshedDraft = mergeFirstContactStateFromLive(draftRecord, liveRecord);
+  const submittedPayload = buildSalesRequestPayloadFromRecord(refreshedDraft);
+  const submittedSignature = JSON.stringify(submittedPayload);
   state.salesRequestSaveInFlight = true;
   syncSalesRequestSubmitButtons({ busy: true, queued: Boolean(state.pendingSalesRequestSave) });
   try {
-    const saved = await apiFetch("/api/sales/requests", {
+    const saved = await apiFetchWithRetry("/api/sales/requests", {
       method: "POST",
-      body: JSON.stringify(buildSalesRequestPayloadFromRecord(refreshedDraft)),
+      timeoutMs: SALES_REQUEST_SAVE_TIMEOUT_MS,
+      body: submittedSignature,
+    }, {
+      retries: SALES_REQUEST_SAVE_MAX_RETRIES,
     });
     const automationMessage = getSalesRequestAutomationSaveMessage(saved?._automation || null);
     const sheetSyncMessage = getSalesRequestSheetSyncMessage(saved?._sheetSync || null);
     upsertSalesRequest(saved, { preserveSelection: true });
+    const currentFormSignature = ui.salesRequestForm
+      ? JSON.stringify(buildSalesRequestPayloadFromRecord(collectSalesRequestDraftFromForm()))
+      : submittedSignature;
+    if (!state.pendingSalesRequestSave && currentFormSignature === submittedSignature) {
+      state.salesRequestFormDirty = false;
+    }
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
     trackUsageEvent("sales_request_modified", { requestId: saved?.id || "" });
@@ -10773,14 +10873,21 @@ async function processSalesRequestSave(draftRecord, {
         : ""}`,
     );
   } catch (error) {
-    state.salesRequests = previousRequests;
-    state.selectedSalesRequestId = previousSelectedSalesRequestId;
-    state.creatingSalesRequest = previousCreatingSalesRequest;
-    state.pendingSalesRequestSave = null;
+    const authFailed = [401, 403].includes(Number(error?.status || 0));
+    if (authFailed) {
+      state.salesRequests = previousRequests;
+      state.selectedSalesRequestId = previousSelectedSalesRequestId;
+      state.creatingSalesRequest = previousCreatingSalesRequest;
+    } else {
+      upsertSalesRequest(refreshedDraft, { skipOpsRender: true, preserveSelection: true });
+      state.selectedSalesRequestId = refreshedDraft.id;
+      state.creatingSalesRequest = false;
+      state.salesRequestFormDirty = true;
+    }
     renderOps();
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile salvare la richiesta. Riprova." : "Unable to save the request. Please retry.");
+    setStatus(ui.salesRequestsStatus, "error", getSalesRequestSaveErrorMessage(error));
   } finally {
     state.salesRequestSaveInFlight = false;
     const nextQueuedDraft = state.pendingSalesRequestSave;
@@ -10829,9 +10936,12 @@ async function bulkAssignSalesRequests(assignmentValue = "") {
       : `Assigning ${ids.length} contacts to ${assignment}...`,
   );
   try {
-    const result = await apiFetch("/api/sales/requests/bulk-assignment", {
+    const result = await apiFetchWithRetry("/api/sales/requests/bulk-assignment", {
       method: "POST",
+      timeoutMs: SALES_REQUEST_SAVE_TIMEOUT_MS,
       body: JSON.stringify({ ids, assignment }),
+    }, {
+      retries: SALES_REQUEST_SAVE_MAX_RETRIES,
     });
     const updatedRequests = Array.isArray(result?.requests) ? result.requests : [];
     mergeSalesRequestRecords(updatedRequests);
@@ -10855,7 +10965,7 @@ async function bulkAssignSalesRequests(assignmentValue = "") {
     renderOps();
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile assegnare i contatti selezionati." : "Unable to assign selected contacts.");
+    setStatus(ui.salesRequestsStatus, "error", getSalesRequestSaveErrorMessage(error));
   } finally {
     state.salesRequestBulkSaving = false;
     renderSalesRequests();
@@ -10869,6 +10979,7 @@ async function saveSalesRequest(event) {
   const previousSelectedSalesRequestId = state.selectedSalesRequestId;
   const previousCreatingSalesRequest = state.creatingSalesRequest;
   const draftRecord = collectSalesRequestDraftFromForm();
+  state.salesRequestFormDirty = false;
   upsertSalesRequest(draftRecord);
   renderSalesRequests();
   if (state.currentView === "sales-generator") renderSalesGenerator();
@@ -10931,8 +11042,9 @@ async function importSalesRequests() {
 
   try {
     for (const item of parsedItems) {
-      const saved = await apiFetch("/api/sales/requests", {
+      const saved = await apiFetchWithRetry("/api/sales/requests", {
         method: "POST",
+        timeoutMs: SALES_REQUEST_SAVE_TIMEOUT_MS,
         body: JSON.stringify({
           name: item.name,
           surname: item.surname,
@@ -10950,6 +11062,8 @@ async function importSalesRequests() {
           whatsappUrl: item.whatsappUrl,
           source: "import",
         }),
+      }, {
+        retries: SALES_REQUEST_SAVE_MAX_RETRIES,
       });
       upsertSalesRequest(saved, { skipOpsRender: true });
     }
@@ -10962,7 +11076,7 @@ async function importSalesRequests() {
     setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? `${parsedItems.length} richieste importate correttamente.` : `${parsedItems.length} requests imported successfully.`);
   } catch (error) {
     renderOps();
-    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile importare le richieste." : "Unable to import the requests.");
+    setStatus(ui.salesRequestsStatus, "error", getSalesRequestSaveErrorMessage(error));
   }
 }
 
@@ -13420,11 +13534,25 @@ function applySessionPayload(session = {}) {
   const nextSessionRevision = String(session.revision || "").trim();
   const preserveEditingState = !userChanged;
   const salesRequestPageAnchorId = preserveEditingState ? getCurrentSalesRequestPageAnchorId() : "";
+  const activeSalesRequestDraft = preserveEditingState && shouldPreserveSalesRequestFormValues(getSelectedSalesRequest())
+    ? collectSalesRequestDraftFromForm()
+    : null;
   state.currentUser = nextUser;
   state.sessionRevision = nextUser ? nextSessionRevision : "";
   state.orders = session.orders || [];
   state.inventory = session.inventory || [];
   state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
+  if (activeSalesRequestDraft?.id) {
+    const draft = normalizeSalesRequestRecord(activeSalesRequestDraft);
+    const existingIndex = state.salesRequests.findIndex((item) => item.id === draft.id);
+    if (existingIndex >= 0) {
+      state.salesRequests = state.salesRequests.map((item, index) => (index === existingIndex ? { ...item, ...draft } : item));
+    } else {
+      state.salesRequests = [draft, ...state.salesRequests];
+    }
+    state.selectedSalesRequestId = draft.id;
+    state.creatingSalesRequest = false;
+  }
   state.salesContents = Array.isArray(session.salesContents) ? session.salesContents.map(normalizeSalesContentRecord) : [];
   state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(session.salesRequestSource || {});
   state.pendingSalesRequestServiceAccountJson = preserveEditingState ? state.pendingSalesRequestServiceAccountJson : "";
@@ -17689,6 +17817,7 @@ function handleGlobalClick(event) {
   if (action === "select-sales-request") {
     state.creatingSalesRequest = false;
     state.selectedSalesRequestId = id || "";
+    state.salesRequestFormDirty = false;
     if (button.dataset.view && button.dataset.view !== state.currentView) {
       setView(button.dataset.view);
     } else {
@@ -18214,6 +18343,12 @@ bindEvent(ui.salesRequestCompactToggle, "click", () => {
 });
 bindEvent(ui.salesRequestNoteField, "input", (event) => {
   autosizeTextarea(event.target);
+});
+bindEvent(ui.salesRequestForm, "input", () => {
+  state.salesRequestFormDirty = true;
+});
+bindEvent(ui.salesRequestForm, "change", () => {
+  state.salesRequestFormDirty = true;
 });
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
