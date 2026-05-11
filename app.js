@@ -14064,6 +14064,32 @@ function communicationRoleLabel(role = "") {
   return "Ufficio/Admin";
 }
 
+function canStartPrivateCommunicationClient(currentUser = null, targetUser = null) {
+  if (!currentUser || !targetUser) return false;
+  if (String(currentUser.id || "") === String(targetUser.id || "")) return false;
+  if (targetUser.status === "suspended") return false;
+  const currentRole = normalizeUserRole(currentUser.role);
+  const targetRole = normalizeUserRole(targetUser.role);
+  if (currentRole === "office") return true;
+  if (currentRole === "warehouse") return ["office", "crew"].includes(targetRole);
+  if (currentRole === "crew") return targetRole === "office";
+  return false;
+}
+
+function getCommunicationTargetFallback() {
+  return (state.users || [])
+    .filter((user) => canStartPrivateCommunicationClient(state.currentUser, user))
+    .map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      crewName: user.crewName,
+      status: user.status,
+    }))
+    .sort((a, b) => communicationUserLabel(a).localeCompare(communicationUserLabel(b), "it"));
+}
+
 function formatCommunicationTime(value = "") {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -14081,7 +14107,8 @@ async function loadCommunicationThreads({ render = true } = {}) {
   try {
     const payload = await apiFetch("/api/communications/threads");
     state.communicationThreads = Array.isArray(payload.threads) ? payload.threads : [];
-    state.communicationTargets = Array.isArray(payload.targets) ? payload.targets : [];
+    const apiTargets = Array.isArray(payload.targets) ? payload.targets : [];
+    state.communicationTargets = apiTargets.length ? apiTargets : getCommunicationTargetFallback();
     state.communicationsUnreadCount = Number(payload.unreadCount || 0);
     setNavCount("communications", state.communicationsUnreadCount);
     if (!state.selectedCommunicationThreadId && state.communicationThreads.length) {
@@ -14092,6 +14119,8 @@ async function loadCommunicationThreads({ render = true } = {}) {
     }
   } catch (error) {
     console.error("communications_threads_load_failed", error);
+    state.communicationTargets = getCommunicationTargetFallback();
+    if (state.currentView === "communications") showToast("Chat non aggiornata dal server. Riprova con Aggiorna.", "warning");
   } finally {
     state.communicationsLoading = false;
     if (render && state.currentView === "communications") renderCommunications();
