@@ -1,5 +1,6 @@
 data/*.json
 data/backups/
+data/attachments/
 !data/.gitkeep
 .DS_Store
 .env
