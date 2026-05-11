@@ -72,6 +72,7 @@ const INSTALLATION_RULES = {
 const MANUAL_ROLL_WIDTH_M = 2;
 const MANUAL_ROLL_MAX_LENGTH_M = 25;
 const MANUAL_ROLL_MIN_LENGTH_M = 1;
+const PLANNER_GRID_STEP_M = 0.1;
 
 const DEFAULT_TRAVEL_SETTINGS = {
   departureBase: "Orta di Atella",
@@ -90,7 +91,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260506-garden-report-roll-clarity-126";
+const APP_SHELL_VERSION = "20260511-garden-roll-overhang-165";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -1058,6 +1059,7 @@ function estimateInstallationNeeds(area, perimeter, manualRolls = []) {
   const safePerimeter = Math.max(0, Number(perimeter) || 0);
   const geo = safeArea * INSTALLATION_RULES.geoCoverageFactor;
   const layoutMetrics = estimateRollLayoutMetrics(manualRolls);
+  const rollMaterialArea = layoutMetrics.coverageArea;
   const layoutCoverageRatio = safeArea > 0 ? layoutMetrics.coverageArea / safeArea : 0;
   const useLayoutDrivenPose = layoutMetrics.rollCount > 0 && layoutCoverageRatio >= INSTALLATION_RULES.layoutCoverageMin;
   const fallbackGlueKg = safeArea * INSTALLATION_RULES.glueKgPerSqm;
@@ -1078,6 +1080,8 @@ function estimateInstallationNeeds(area, perimeter, manualRolls = []) {
     calcMode: useLayoutDrivenPose ? "layout" : "area",
     layoutCoverageRatio,
     layoutCoverageArea: layoutMetrics.coverageArea,
+    rollMaterialArea,
+    rollWasteArea: Math.max(0, rollMaterialArea - safeArea),
     layoutJointMeters: layoutMetrics.jointMeters,
     sideJointMeters: layoutMetrics.sideJointMeters,
     endJointMeters: layoutMetrics.endJointMeters,
@@ -1090,7 +1094,7 @@ function estimateInstallationNeeds(area, perimeter, manualRolls = []) {
 /* ═══════════════════════════════════════════
    CANVAS
    ═══════════════════════════════════════════ */
-const GRID = 0.5;
+const GRID = PLANNER_GRID_STEP_M;
 const BASE_PX = 36;
 
 function createPlannerArea() {
@@ -1153,6 +1157,12 @@ function getPlannerBorderEdges(customAreas = [], shape = "custom", dims = {}) {
 
 function isRollInsideAnyPolygon(roll, polygons = []) {
   return polygons.some((polygon) => Array.isArray(polygon?.points) && polygon.points.length >= 3 && isRollInsidePolygon(roll, polygon.points));
+}
+
+function doesRollTouchPolygon(roll, polygon = []) {
+  if (!Array.isArray(polygon) || polygon.length < 3) return true;
+  const corners = getRollCorners(roll);
+  return pointInPolygon({ x: roll.cx, y: roll.cy }, polygon) || corners.some(point => pointInPolygon(point, polygon));
 }
 
 function FreeDrawCanvas({
@@ -1464,7 +1474,7 @@ function FreeDrawCanvas({
       const drawRoll = (roll, index, options = {}) => {
         const corners = getRollCorners(roll);
         if (!corners.length) return;
-        const valid = isRollInsidePolygon(roll, points);
+        const valid = doesRollTouchPolygon(roll, points);
         ctx.beginPath();
         ctx.moveTo(toPx(corners[0].x), toPx(corners[0].y));
         for (let i = 1; i < corners.length; i++) ctx.lineTo(toPx(corners[i].x), toPx(corners[i].y));
@@ -1535,7 +1545,7 @@ function FreeDrawCanvas({
       ctx.fillStyle = B.textMuted; ctx.font = "14px sans-serif"; ctx.textAlign = "center";
       ctx.fillText("Clicca per posizionare i vertici del giardino", canvasW / 2, canvasH / 2 - 10);
       ctx.font = "12px sans-serif";
-      ctx.fillText("Griglia = 0.5m · Clicca vicino al punto 1 per chiudere", canvasW / 2, canvasH / 2 + 14);
+      ctx.fillText(`Griglia = ${fmt(GRID, 2)}m · Clicca vicino al punto 1 per chiudere`, canvasW / 2, canvasH / 2 + 14);
       ctx.textAlign = "start";
     }
   }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart]);
@@ -2426,8 +2436,8 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
   const rollLinearMeters = Array.isArray(manualRolls)
     ? manualRolls.reduce((sum, roll) => sum + (Number(roll.length) || 0), 0)
     : 0;
-  const rollVisualArea = rollLinearMeters * MANUAL_ROLL_WIDTH_M;
-  const rollWasteArea = Math.max(0, rollVisualArea - area);
+  const rollMaterialArea = installNeeds.rollMaterialArea || (rollLinearMeters * MANUAL_ROLL_WIDTH_M);
+  const rollWasteArea = installNeeds.rollWasteArea || Math.max(0, rollMaterialArea - area);
   const rollPolygons = shape === "custom"
     ? getPlannerPolygons(customAreas, customPts, customClosed)
     : [{ points: getShapePolygon(shape, dims) }].filter((item) => item.points.length >= 3);
@@ -2476,7 +2486,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
             <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Layout rotoli</div>
               <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{rollCount} rotoli</div>
-              <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>{fmt(rollLinearMeters, 2)} m lineari · {fmt(rollVisualArea, 1)} m² coperti</div>
+              <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>{fmt(rollLinearMeters, 2)} m lineari · {fmt(rollMaterialArea, 1)} m² da ordinare</div>
               <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>
                 Scarto stimato: <strong style={{ color: B.dark }}>{fmt(rollWasteArea, 1)} m²</strong>
                 {outsideRollCount > 0 ? ` · ${outsideRollCount} rotol${outsideRollCount > 1 ? "i" : "o"} oltre bordo` : ""}

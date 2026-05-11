@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260511-private-chat-164";
+const APP_SHELL_VERSION = "20260511-garden-roll-overhang-165";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14361,13 +14361,6 @@ function renderCommunications() {
       event.preventDefault();
       await sendCommunicationMessage(messageForm);
     });
-    const sendButton = messageForm.querySelector("[data-action='communications-send-message']");
-    if (sendButton) {
-      sendButton.addEventListener("click", async (event) => {
-        event.preventDefault();
-        await sendCommunicationMessage(messageForm);
-      });
-    }
   }
 }
 

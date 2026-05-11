@@ -6956,8 +6956,9 @@ const server = createServer(async (req, res) => {
   try {
     if (url.pathname.startsWith("/api/")) {
       const method = String(req.method || "GET").toUpperCase();
-      const readOnlyRequest = method === "GET" || method === "HEAD" || method === "OPTIONS";
-      const shouldLockState = !readOnlyRequest && url.pathname !== "/api/healthz";
+      const shouldLockState = !["/api/healthz", "/api/events", "/api/session/revision"].includes(url.pathname)
+        && method !== "HEAD"
+        && method !== "OPTIONS";
       if (!shouldLockState) {
         return await handleApi(req, res, url);
       }
