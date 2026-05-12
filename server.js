@@ -4700,9 +4700,17 @@ async function syncOrdersFromShopify(store) {
     throw lastError || new Error(`shopify_sync_failed: ${batchLabel}`);
   }
 
+  // Build incremental sync filter: fetch orders updated since last successful sync
+  // (with a 10-minute buffer to avoid missing orders near the sync boundary).
+  // Falls back to 30 days ago on the first sync so we don't attempt to pull all-time history.
+  const lastSyncIso = store.shopifySettings?.lastSyncAt
+    ? new Date(Math.max(0, new Date(store.shopifySettings.lastSyncAt).getTime() - 10 * 60 * 1000)).toISOString()
+    : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const updatedAtFilter = `updated_at:>=${lastSyncIso.slice(0, 10)}`;
+
   async function fetchRecentRestOrders() {
     let lastError = null;
-    const restEndpoint = `https://${storeDomain}/admin/api/2026-01/orders.json?status=any&limit=100&fields=id,admin_graphql_api_id,name,email,note,current_total_price,current_total_tax,current_subtotal_price,total_price,total_tax,subtotal_price,taxes_included,financial_status,fulfillment_status,payment_gateway_names,billing_address,customer,shipping_address,line_items,created_at,updated_at,processed_at,note_attributes,currency,presentment_currency`;
+    const restEndpoint = `https://${storeDomain}/admin/api/2026-01/orders.json?status=any&limit=250&updated_at_min=${encodeURIComponent(lastSyncIso)}&fields=id,admin_graphql_api_id,name,email,note,current_total_price,current_total_tax,current_subtotal_price,total_price,total_tax,subtotal_price,taxes_included,financial_status,fulfillment_status,payment_gateway_names,billing_address,customer,shipping_address,line_items,created_at,updated_at,processed_at,note_attributes,currency,presentment_currency`;
     for (let attempt = 0; attempt <= SHOPIFY_MAX_RETRIES; attempt += 1) {
       try {
         const response = await fetchWithTimeout(restEndpoint, {
@@ -4742,7 +4750,7 @@ async function syncOrdersFromShopify(store) {
 
   const recentQuery = `
     query VertexOpsRecentOrders {
-      orders(first: 100, sortKey: PROCESSED_AT, reverse: true) {
+      orders(first: 250, sortKey: UPDATED_AT, reverse: true, query: "${updatedAtFilter}") {
         edges {
           node {
             createdAt
@@ -4758,7 +4766,7 @@ async function syncOrdersFromShopify(store) {
   const openOrdersQuery = `
     query VertexOpsOpenOrders {
       orders(
-        first: 150,
+        first: 250,
         sortKey: UPDATED_AT,
         reverse: true,
         query: "status:open OR fulfillment_status:unfulfilled OR fulfillment_status:partial OR financial_status:pending OR financial_status:authorized"

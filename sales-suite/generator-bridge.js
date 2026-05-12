@@ -255,9 +255,7 @@
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading-wrap {
       margin-bottom: 6px !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
+      text-align: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading {
@@ -954,7 +952,14 @@
   function findElementByTextWithin(root, selector, text) {
     if (!(root instanceof Element)) return null;
     const expected = normalizeLabel(text);
-    return Array.from(root.querySelectorAll(selector)).find((element) => normalizeLabel(element.textContent).includes(expected)) || null;
+    const candidates = Array.from(root.querySelectorAll(selector)).filter(
+      (element) => normalizeLabel(element.textContent).includes(expected),
+    );
+    if (!candidates.length) return null;
+    // Prefer the most specific match (shortest textContent = closest to the actual text node).
+    // querySelectorAll returns in DOM tree order (parent before children), so the first match
+    // is the outermost ancestor — we want the innermost instead.
+    return candidates.reduce((best, el) => el.textContent.length < best.textContent.length ? el : best);
   }
 
   function buildSvgDataUrl(svgMarkup) {
