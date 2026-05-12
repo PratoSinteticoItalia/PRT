@@ -4775,9 +4775,11 @@ async function syncOrdersFromShopify(store) {
     }
   `;
 
-  const recentEdges = await fetchOrderBatch(recentQuery, "recent_orders");
-  const openEdges = await fetchOrderBatch(openOrdersQuery, "open_orders");
-  const recentRestOrders = await fetchRecentRestOrders();
+  const [recentEdges, openEdges, recentRestOrders] = await Promise.all([
+    fetchOrderBatch(recentQuery, "recent_orders"),
+    fetchOrderBatch(openOrdersQuery, "open_orders"),
+    fetchRecentRestOrders(),
+  ]);
   const uniqueNodes = new Map();
   [...recentEdges, ...openEdges].forEach((edge) => {
     if (edge?.node?.id) uniqueNodes.set(edge.node.id, edge.node);
@@ -7145,9 +7147,10 @@ const server = createServer(async (req, res) => {
       }
       try {
         const isInventoryCreate = url.pathname === "/api/inventory/items" && method === "POST";
+        const isCommunicationsWrite = /^\/api\/communications\//.test(url.pathname);
         return await withApiStateLock(() => handleApi(req, res, url), {
-          timeoutMs: isInventoryCreate ? 12_000 : API_STATE_LOCK_TIMEOUT_MS,
-          queue: !isInventoryCreate,
+          timeoutMs: isInventoryCreate ? 12_000 : isCommunicationsWrite ? 8_000 : API_STATE_LOCK_TIMEOUT_MS,
+          queue: !isInventoryCreate && !isCommunicationsWrite,
         });
       } catch (error) {
         if (error?.code === "state_lock_timeout") {

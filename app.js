@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-stability-audit-178";
+const APP_SHELL_VERSION = "20260512-stability-audit-179";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -16025,11 +16025,18 @@ function formatShopifySyncError(rawMessage = "") {
 async function runShopifySync({ silent = false } = {}) {
   if (state.syncInProgress || shopifyAutoSyncInFlight) return false;
   shopifyAutoSyncInFlight = true;
+  const safetyTimer = window.setTimeout(() => {
+    if (shopifyAutoSyncInFlight) {
+      shopifyAutoSyncInFlight = false;
+      state.syncInProgress = false;
+      updateShell();
+    }
+  }, 55_000);
   try {
     state.syncInProgress = true;
     updateShell();
     if (!silent) clearStatus(ui.ordersStatus);
-    state.orders = await apiFetch("/api/orders/sync-shopify", { method: "POST" });
+    state.orders = await apiFetch("/api/orders/sync-shopify", { method: "POST", timeoutMs: 45_000 });
     shopifyOrderRefreshAttempted.clear();
     shopifyOrderRefreshInFlight.clear();
     shopifyOrderRefreshErrors.clear();
@@ -16048,6 +16055,7 @@ async function runShopifySync({ silent = false } = {}) {
     }
     return false;
   } finally {
+    window.clearTimeout(safetyTimer);
     state.syncInProgress = false;
     shopifyAutoSyncInFlight = false;
     updateShell();
@@ -17987,8 +17995,15 @@ async function reloadAll() {
   reloadAllInFlight = true;
   state.syncInProgress = true;
   updateShell();
+  const safetyTimer = window.setTimeout(() => {
+    if (reloadAllInFlight) {
+      reloadAllInFlight = false;
+      state.syncInProgress = false;
+      updateShell();
+    }
+  }, 30_000);
   try {
-    const session = await apiFetch("/api/session");
+    const session = await apiFetch("/api/session", { timeoutMs: 20_000 });
     const applied = await applyFetchedSessionSnapshot(session, {
       renderMode: "current",
       enforcePasswordResetView: false,
@@ -18002,6 +18017,7 @@ async function reloadAll() {
     }
     return applied;
   } finally {
+    window.clearTimeout(safetyTimer);
     reloadAllInFlight = false;
     state.syncInProgress = false;
     updateShell();
