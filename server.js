@@ -703,8 +703,8 @@ async function deleteSessionEntry(sessionId = "") {
   });
 }
 
-async function withApiStateLock(task) {
-  return runExclusiveApiWrite(async () => {
+async function withApiStateLock(task, { timeoutMs = API_STATE_LOCK_TIMEOUT_MS, queue = true } = {}) {
+  const runWithDatabaseLock = async () => {
     if (!USE_POSTGRES) {
       return task();
     }
@@ -712,7 +712,8 @@ async function withApiStateLock(task) {
     const lockClient = await pool.connect();
     let locked = false;
     try {
-      const deadline = Date.now() + API_STATE_LOCK_TIMEOUT_MS;
+      const normalizedTimeoutMs = Math.max(API_STATE_LOCK_POLL_MS, Number(timeoutMs || API_STATE_LOCK_TIMEOUT_MS));
+      const deadline = Date.now() + normalizedTimeoutMs;
       while (Date.now() < deadline) {
         const attempt = await lockClient.query("SELECT pg_try_advisory_lock($1) AS locked", [API_STATE_LOCK_KEY]);
         if (attempt.rows?.[0]?.locked) {
@@ -735,7 +736,11 @@ async function withApiStateLock(task) {
       }
       lockClient.release();
     }
-  });
+  };
+  if (queue || !USE_POSTGRES) {
+    return runExclusiveApiWrite(runWithDatabaseLock);
+  }
+  return runWithDatabaseLock();
 }
 
 function buildDefaultStore() {
@@ -5323,6 +5328,137 @@ async function getSessionContext(req, store) {
   return { user, sessionId, refreshed };
 }
 
+async function getSessionContextFromUsers(req, users = []) {
+  const cookies = parseCookies(req.headers.cookie);
+  if (!cookies.vertex_session) return { user: null, sessionId: "", refreshed: false };
+  const sessionId = String(cookies.vertex_session || "");
+  const entry = await readSessionEntry(sessionId);
+  const userId = entry?.userId || "";
+  const version = Number(entry?.version || 1);
+  const expiresAt = Number(entry?.expiresAt || 0);
+  if (expiresAt && expiresAt < Date.now()) {
+    await deleteSessionEntry(sessionId);
+    return { user: null, sessionId: "", refreshed: false };
+  }
+  if (!userId) return { user: null, sessionId: "", refreshed: false };
+  const user = Array.isArray(users) ? users.find((item) => item.id === userId) || null : null;
+  if (!user) return { user: null, sessionId: "", refreshed: false };
+  if (Number(user.sessionVersion || 1) !== version || user.status === "suspended") {
+    await deleteSessionEntry(sessionId);
+    return { user: null, sessionId: "", refreshed: false };
+  }
+  let refreshed = false;
+  if (!expiresAt || expiresAt - Date.now() <= SESSION_REFRESH_BUFFER_MS) {
+    await writeSessionEntry(sessionId, {
+      userId,
+      version,
+      expiresAt: Date.now() + SESSION_TTL_MS,
+    });
+    refreshed = true;
+  }
+  return { user, sessionId, refreshed };
+}
+
+function buildInventoryItemsFromBody(body = {}) {
+  const quantity = Math.max(1, Math.round(toNumber(body.quantity || 1)));
+  const product = String(body.product || "").trim();
+  const width = toNumber(body.width || 0);
+  const length = toNumber(body.length || 0);
+  const note = String(body.note || "");
+  const status = body.status === "residuo" ? "residuo" : "intero";
+  const measured = body.measured !== false && body.measured !== "false";
+  if (!product) {
+    return { error: "invalid_inventory_payload", created: [] };
+  }
+  const created = measured
+    ? Array.from({ length: quantity }, () => ({
+      id: randomUUID(),
+      product,
+      width,
+      length,
+      sqm: width && length ? Number((width * length).toFixed(2)) : 0,
+      variant: String(body.variant || ""),
+      status,
+      note,
+      units: 1,
+      createdAt: new Date().toISOString(),
+    }))
+    : [{
+      id: randomUUID(),
+      product,
+      width,
+      length,
+      sqm: 0,
+      variant: String(body.variant || ""),
+      status,
+      note,
+      units: quantity,
+      createdAt: new Date().toISOString(),
+    }];
+  return { error: "", created };
+}
+
+async function readStoreFieldFromDatabase(field, fallback) {
+  if (!USE_POSTGRES) return fallback;
+  await ensureDatabaseStorage();
+  const pool = await getPgPool();
+  const result = await pool.query(
+    "SELECT jsonb_extract_path(payload, $2::text) AS value FROM app_documents WHERE key = $1 LIMIT 1",
+    [STORE_DOC_KEY, field],
+  );
+  return result.rows?.[0]?.value ?? fallback;
+}
+
+async function handleFastInventoryItemsPost(req, res) {
+  if (!USE_POSTGRES) return false;
+  const users = await readStoreFieldFromDatabase("users", []);
+  const sessionContext = await getSessionContextFromUsers(req, users);
+  if (!sessionContext.user) {
+    return sendJson(
+      res,
+      401,
+      { error: "unauthorized" },
+      { "Set-Cookie": buildExpiredSessionCookie() },
+    );
+  }
+  const body = await readBody(req);
+  const payload = buildInventoryItemsFromBody(body);
+  if (payload.error) {
+    return sendJson(res, 400, { error: payload.error });
+  }
+  const revision = buildStoreRevisionToken();
+  await ensureDatabaseStorage();
+  const pool = await getPgPool();
+  const result = await pool.query(
+    `
+      UPDATE app_documents
+      SET payload = jsonb_set(
+        jsonb_set(
+          payload,
+          '{inventory}',
+          $2::jsonb || COALESCE(payload->'inventory', '[]'::jsonb),
+          true
+        ),
+        '{_storeRevision}',
+        to_jsonb($3::text),
+        true
+      ),
+      updated_at = NOW()
+      WHERE key = $1
+      RETURNING payload->'inventory' AS inventory
+    `,
+    [STORE_DOC_KEY, JSON.stringify(payload.created), revision],
+  );
+  runtimeStoreRevision = revision;
+  broadcastStoreRevision(revision);
+  return sendJson(
+    res,
+    200,
+    result.rows?.[0]?.inventory || payload.created,
+    sessionContext.sessionId ? { "Set-Cookie": buildSessionCookie(sessionContext.sessionId) } : {},
+  );
+}
+
 async function handleApi(req, res, url) {
   if (url.pathname === "/api/healthz" && req.method === "GET") {
     return sendJson(res, 200, {
@@ -5394,6 +5530,10 @@ async function handleApi(req, res, url) {
       },
       userId && sessionId ? { "Set-Cookie": buildSessionCookie(sessionId) } : {},
     );
+  }
+
+  if (url.pathname === "/api/inventory/items" && req.method === "POST" && USE_POSTGRES) {
+    return handleFastInventoryItemsPost(req, res);
   }
 
   await ensureStore();
@@ -6383,42 +6523,11 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/inventory/items" && req.method === "POST") {
     const body = await readBody(req);
-    const quantity = Math.max(1, Math.round(toNumber(body.quantity || 1)));
-    const product = String(body.product || "").trim();
-    const width = toNumber(body.width || 0);
-    const length = toNumber(body.length || 0);
-    const note = String(body.note || "");
-    const status = body.status === "residuo" ? "residuo" : "intero";
-    const measured = body.measured !== false && body.measured !== "false";
-    if (!product) {
-      return sendJson(res, 400, { error: "invalid_inventory_payload" });
+    const payload = buildInventoryItemsFromBody(body);
+    if (payload.error) {
+      return sendJson(res, 400, { error: payload.error });
     }
-    const created = measured
-      ? Array.from({ length: quantity }, () => ({
-        id: randomUUID(),
-        product,
-        width,
-        length,
-        sqm: width && length ? Number((width * length).toFixed(2)) : 0,
-        variant: String(body.variant || ""),
-        status,
-        note,
-        units: 1,
-        createdAt: new Date().toISOString(),
-      }))
-      : [{
-        id: randomUUID(),
-        product,
-        width,
-        length,
-        sqm: 0,
-        variant: String(body.variant || ""),
-        status,
-        note,
-        units: quantity,
-        createdAt: new Date().toISOString(),
-      }];
-    store.inventory.unshift(...created);
+    store.inventory.unshift(...payload.created);
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.inventory);
   }
@@ -7025,7 +7134,11 @@ const server = createServer(async (req, res) => {
         return await handleApi(req, res, url);
       }
       try {
-        return await withApiStateLock(() => handleApi(req, res, url));
+        const isInventoryCreate = url.pathname === "/api/inventory/items" && method === "POST";
+        return await withApiStateLock(() => handleApi(req, res, url), {
+          timeoutMs: isInventoryCreate ? 12_000 : API_STATE_LOCK_TIMEOUT_MS,
+          queue: !isInventoryCreate,
+        });
       } catch (error) {
         if (error?.code === "state_lock_timeout") {
           return sendJson(res, 503, {
