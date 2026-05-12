@@ -14858,6 +14858,7 @@ textarea.text-input {
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+  max-height: min(720px, calc(100vh - 220px));
   border-right: 1px solid rgba(35, 49, 33, 0.08);
   padding-right: 16px;
 }
@@ -14868,8 +14869,10 @@ textarea.text-input {
 .communications-thread-list {
   display: grid;
   gap: 8px;
-  overflow: auto;
+  overflow-y: auto;
   padding-right: 4px;
+  flex: 1 1 0;
+  min-height: 0;
 }
 .communications-thread {
   display: grid;

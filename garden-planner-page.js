@@ -1094,7 +1094,8 @@ function estimateInstallationNeeds(area, perimeter, manualRolls = []) {
 /* ═══════════════════════════════════════════
    CANVAS
    ═══════════════════════════════════════════ */
-const GRID = PLANNER_GRID_STEP_M;
+const GRID_STEPS = [0.10, 0.25, 0.50, 1.00];
+const DEFAULT_GRID_STEP = 0.25;
 const BASE_PX = 36;
 
 function createPlannerArea() {
@@ -1188,8 +1189,10 @@ function FreeDrawCanvas({
   const [drawMode, setDrawMode] = useState("shape");
   const [rollStart, setRollStart] = useState(null);
   const [canvasMessage, setCanvasMessage] = useState("");
+  const [gridStep, setGridStep] = useState(DEFAULT_GRID_STEP);
   const canvasH = 420;
   const PX = BASE_PX * zoom;
+  const GRID = gridStep;
 
   const snap = v => Math.round(v / GRID) * GRID;
   const toM = px => snap(px / PX);
@@ -1400,6 +1403,31 @@ function FreeDrawCanvas({
     setCanvasMessage("Perimetro riaperto per nuove modifiche.");
   };
 
+  const smoothCorners = () => {
+    if (points.length < 3) return;
+    const radius = GRID * 3;
+    const smoothed = [];
+    const n = points.length;
+    for (let i = 0; i < n; i++) {
+      const prev = points[(i - 1 + n) % n];
+      const curr = points[i];
+      const next = points[(i + 1) % n];
+      const d1 = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+      const d2 = Math.hypot(next.x - curr.x, next.y - curr.y);
+      const offset = Math.min(radius, d1 / 3, d2 / 3);
+      if (offset < GRID * 0.5) { smoothed.push(curr); continue; }
+      const ux1 = (prev.x - curr.x) / d1, uy1 = (prev.y - curr.y) / d1;
+      const ux2 = (next.x - curr.x) / d2, uy2 = (next.y - curr.y) / d2;
+      const p1 = { x: snap(curr.x + ux1 * offset), y: snap(curr.y + uy1 * offset) };
+      const p2 = { x: snap(curr.x + ux2 * offset), y: snap(curr.y + uy2 * offset) };
+      const mid = { x: snap((p1.x + p2.x) / 2 + (curr.x - (p1.x + p2.x) / 2) * 0.3), y: snap((p1.y + p2.y) / 2 + (curr.y - (p1.y + p2.y) / 2) * 0.3) };
+      smoothed.push(p1, mid, p2);
+    }
+    setPoints(smoothed);
+    if (!closed && smoothed.length >= 3) setClosed(true);
+    setCanvasMessage(`Angoli smussati: ${n} vertici → ${smoothed.length} vertici.`);
+  };
+
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
@@ -1548,7 +1576,7 @@ function FreeDrawCanvas({
       ctx.fillText(`Griglia = ${fmt(GRID, 2)}m · Clicca vicino al punto 1 per chiudere`, canvasW / 2, canvasH / 2 + 14);
       ctx.textAlign = "start";
     }
-  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart]);
+  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep]);
 
   return (
     <div ref={containerRef}>
@@ -1627,6 +1655,17 @@ function FreeDrawCanvas({
           >
             Modifica profilo
           </button>
+          <button
+            type="button"
+            onClick={smoothCorners}
+            disabled={points.length < 3}
+            style={{
+              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+              cursor: points.length >= 3 ? "pointer" : "not-allowed", color: points.length >= 3 ? B.text : B.textMuted, opacity: points.length >= 3 ? 1 : 0.55,
+            }}
+          >
+            Smussa angoli
+          </button>
           <span style={{ fontSize: 11, color: B.textMuted }}>Zoom:</span>
           {[0.6, 0.8, 1, 1.3, 1.6].map(z => (
             <button key={z} onClick={() => setZoom(z)} style={{
@@ -1634,6 +1673,14 @@ function FreeDrawCanvas({
               border: zoom === z ? "1.5px solid " + B.primary : "1px solid " + B.border,
               background: zoom === z ? B.light : B.white, color: zoom === z ? B.primary : B.text, fontWeight: zoom === z ? 600 : 400,
             }}>{Math.round(z * 100)}%</button>
+          ))}
+          <span style={{ fontSize: 11, color: B.textMuted, marginLeft: 4 }}>Griglia:</span>
+          {GRID_STEPS.map(s => (
+            <button key={s} onClick={() => setGridStep(s)} style={{
+              padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+              border: gridStep === s ? "1.5px solid " + B.primary : "1px solid " + B.border,
+              background: gridStep === s ? B.light : B.white, color: gridStep === s ? B.primary : B.text, fontWeight: gridStep === s ? 600 : 400,
+            }}>{s.toFixed(2)}m</button>
           ))}
           <button
             type="button"

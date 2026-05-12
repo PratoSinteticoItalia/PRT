@@ -1171,6 +1171,7 @@ let salesRequestAutoSyncLastAttemptAt = 0;
 let ordersScrollIdleTimer = 0;
 let ordersDeferredRenderTimer = 0;
 let salesContentDeleteInFlightId = "";
+const salesRequestPendingPatchIds = new Set();
 const salesContentAttachmentDeleteInFlight = new Set();
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
@@ -4709,7 +4710,13 @@ function markSelectedSalesRequestQuoteSent() {
 }
 
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
-  const previousRecord = state.salesRequests.find((r) => r.id === record.id) || null;
+  const recordId = String(record.id || "");
+  const previousRecord = state.salesRequests.find((r) => r.id === recordId) || null;
+  const optimisticRecord = normalizeSalesRequestRecord({ ...(previousRecord || record), ...patch });
+  upsertSalesRequest(optimisticRecord, { skipOpsRender: true, preserveSelection: true });
+  renderSalesRequests();
+  if (state.currentView === "sales-generator") renderSalesGenerator();
+  if (recordId) salesRequestPendingPatchIds.add(recordId);
   try {
     const saved = await apiFetchWithRetry("/api/sales/requests", {
       method: "POST",
@@ -4733,6 +4740,8 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
       getSalesRequestSaveErrorMessage(error),
     );
     throw error;
+  } finally {
+    if (recordId) salesRequestPendingPatchIds.delete(recordId);
   }
 }
 
@@ -12346,9 +12355,9 @@ function renderInstallations() {
         const detailLabel = install.installDate
           ? `${formatDate(install.installDate)}${install.installTime ? ` · ${install.installTime}` : ""}`
           : (state.lang === "it" ? "Da pianificare" : "To schedule");
-        const badgeLabel = install.installDate
-          ? (state.lang === "it" ? "Programmato" : "Scheduled")
-          : t("toPlan");
+        const installStatus = String(install.status || "").trim();
+        const badgeLabel = getInstallationStatusLabel(installStatus, Boolean(install.installDate));
+        const badgeClass = installStatus === "in-corso" ? "badge-warning" : installStatus === "completata" ? "badge-success" : installStatus === "problema" ? "badge-danger" : install.installDate ? "badge-info" : "badge-warning";
         const crewBadge = install.crew || (state.lang === "it" ? "Squadra da assegnare" : "Crew to assign");
         return `
           <article class="order-row installation-row ${selected} ${!isCrewView ? "is-draggable" : ""}" data-action="select-order" data-id="${order.id}" data-view="installations" ${!isCrewView ? `draggable="true" data-installation-drag-id="${order.id}"` : ""}>
@@ -12358,7 +12367,7 @@ function renderInstallations() {
             </div>
             <div class="order-type-badge type-posa">${escapeHtml(crewBadge)}</div>
             <div class="order-amount">${detailLabel}</div>
-            <div class="action-badge ${install.installDate ? "badge-info" : "badge-warning"}">${badgeLabel}</div>
+            <div class="action-badge ${badgeClass}">${badgeLabel}</div>
           </article>
         `;
       }).join("")
@@ -13610,6 +13619,7 @@ function applySessionPayload(session = {}) {
   const userChanged = previousUserId !== nextUserId;
   const nextSessionRevision = String(session.revision || "").trim();
   const preserveEditingState = !userChanged;
+  const previousSalesRequests = preserveEditingState ? state.salesRequests : null;
   const salesRequestPageAnchorId = preserveEditingState ? getCurrentSalesRequestPageAnchorId() : "";
   const activeSalesRequestDraft = preserveEditingState && shouldPreserveSalesRequestFormValues(getSelectedSalesRequest())
     ? collectSalesRequestDraftFromForm()
@@ -13619,6 +13629,13 @@ function applySessionPayload(session = {}) {
   state.orders = session.orders || [];
   state.inventory = session.inventory || [];
   state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
+  if (salesRequestPendingPatchIds.size) {
+    const previousById = new Map((previousSalesRequests || []).map((r) => [r.id, r]));
+    state.salesRequests = state.salesRequests.map((r) => {
+      const pending = previousById.get(r.id);
+      return pending && salesRequestPendingPatchIds.has(r.id) ? pending : r;
+    });
+  }
   if (activeSalesRequestDraft?.id) {
     const draft = normalizeSalesRequestRecord(activeSalesRequestDraft);
     const existingIndex = state.salesRequests.findIndex((item) => item.id === draft.id);
@@ -14656,6 +14673,25 @@ async function loadCommunicationMessages(threadId = state.selectedCommunicationT
   }
 }
 
+async function refreshCommunicationMessages() {
+  const threadId = String(state.selectedCommunicationThreadId || "").trim();
+  if (!threadId || threadId !== state.loadedCommunicationThreadId) return;
+  try {
+    const payload = await apiFetch(`/api/communications/threads/${encodeURIComponent(threadId)}/messages`);
+    if (state.selectedCommunicationThreadId !== threadId || state.loadedCommunicationThreadId !== threadId) return;
+    const serverMessages = Array.isArray(payload.messages) ? payload.messages : [];
+    const optimistic = (state.communicationMessages || []).filter((m) => m._optimistic);
+    const serverIds = new Set(serverMessages.map((m) => m.id));
+    const pendingOptimistic = optimistic.filter((m) => !serverIds.has(m.id));
+    const merged = [...serverMessages, ...pendingOptimistic];
+    if (JSON.stringify(merged.map((m) => m.id)) !== JSON.stringify((state.communicationMessages || []).map((m) => m.id))) {
+      state.communicationMessages = merged;
+      state.communicationParticipants = Array.isArray(payload.participants) ? payload.participants : state.communicationParticipants;
+      if (state.currentView === "communications") renderCommunications();
+    }
+  } catch {}
+}
+
 function upsertCommunicationThread(thread = {}) {
   if (!thread?.id) return;
   const nextThread = {
@@ -14836,12 +14872,13 @@ function renderCurrentViewOnly(view = state.currentView) {
       renderMarketing();
       break;
     case "communications":
-      renderCommunications();
       if (state.communicationsInitialized) {
         if (state.selectedCommunicationThreadId && state.loadedCommunicationThreadId !== state.selectedCommunicationThreadId) {
+          renderCommunications();
           void loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
         }
       } else {
+        renderCommunications();
         void loadCommunicationTargets({ render: true });
         void loadCommunicationThreads({ render: true });
       }
