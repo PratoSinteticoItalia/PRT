@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-marketing-public-assets-180";
+const APP_SHELL_VERSION = "20260512-api-shopify-pdf-fix-181";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15810,7 +15810,9 @@ async function publishMarketingItemViaApi(item, button = null, mode = "publish")
     renderMarketing();
   } catch (error) {
     const reason = error?.payload?.reason || error?.payload?.error || error?.message || "";
-    showToast(marketingApiErrorMessage(reason), "warning");
+    const detail = String(error?.payload?.details || "").trim();
+    const detailText = detail ? ` ${detail.slice(0, 220)}` : "";
+    showToast(`${marketingApiErrorMessage(reason)}${detailText}`, "warning");
   } finally {
     if (button) {
       button.disabled = false;
@@ -16033,12 +16035,12 @@ async function runShopifySync({ silent = false } = {}) {
       state.syncInProgress = false;
       updateShell();
     }
-  }, 55_000);
+  }, 85_000);
   try {
     state.syncInProgress = true;
     updateShell();
     if (!silent) clearStatus(ui.ordersStatus);
-    state.orders = await apiFetch("/api/orders/sync-shopify", { method: "POST", timeoutMs: 45_000 });
+    state.orders = await apiFetch("/api/orders/sync-shopify", { method: "POST", timeoutMs: 75_000 });
     shopifyOrderRefreshAttempted.clear();
     shopifyOrderRefreshInFlight.clear();
     shopifyOrderRefreshErrors.clear();

@@ -48,7 +48,7 @@ const WHATSAPP_GABRIELE_ACCESS_TOKEN = String(process.env.WHATSAPP_GABRIELE_ACCE
 const WHATSAPP_IVAN_PHONE_NUMBER_ID = String(process.env.WHATSAPP_IVAN_PHONE_NUMBER_ID || WHATSAPP_DEFAULT_PHONE_NUMBER_ID).trim();
 const WHATSAPP_GABRIELE_PHONE_NUMBER_ID = String(process.env.WHATSAPP_GABRIELE_PHONE_NUMBER_ID || WHATSAPP_DEFAULT_PHONE_NUMBER_ID).trim();
 const WHATSAPP_DEFAULT_COUNTRY_CODE = String(process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || "39").replace(/\D+/g, "") || "39";
-const WHATSAPP_GRAPH_TIMEOUT_MS = Math.max(5_000, Number(process.env.WHATSAPP_GRAPH_TIMEOUT_MS || 10_000));
+const WHATSAPP_GRAPH_TIMEOUT_MS = Math.max(10_000, Number(process.env.WHATSAPP_GRAPH_TIMEOUT_MS || 30_000));
 const SALES_REQUEST_AUTOMATION_MODE = String(process.env.SALES_REQUEST_AUTOMATION_MODE || "none").trim().toLowerCase();
 const SALES_REQUEST_EMAIL_PROVIDER = String(process.env.SALES_REQUEST_EMAIL_PROVIDER || "resend").trim().toLowerCase();
 const SALES_REQUEST_EMAIL_FROM = String(process.env.SALES_REQUEST_EMAIL_FROM || "").trim();
@@ -1371,6 +1371,17 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = SHOPIFY_FETCH_TIM
   }
 }
 
+function getNextShopifyPageUrl(response) {
+  const linkHeader = String(response?.headers?.get?.("link") || "").trim();
+  if (!linkHeader) return "";
+  const nextPart = linkHeader
+    .split(",")
+    .map((part) => part.trim())
+    .find((part) => /rel="?next"?/i.test(part));
+  const match = nextPart?.match(/<([^>]+)>/);
+  return match ? match[1] : "";
+}
+
 function normalizeGoogleFetchError(error, phase = "sheets") {
   const rawMessage = String(error?.message || error || "").trim();
   const normalizedPhase = phase === "token" ? "google_token" : "google_sheets";
@@ -2656,14 +2667,19 @@ async function prepareMarketingItemForPublish(store, item = {}, req) {
 async function callMetaGraphApi(path = "", params = {}, accessToken = META_MARKETING_ACCESS_TOKEN) {
   const normalizedPath = String(path || "").replace(/^\/+/, "");
   const endpoint = new URL(`https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${normalizedPath}`);
+  const body = new URLSearchParams();
   Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && String(value) !== "") endpoint.searchParams.set(key, String(value));
+    if (value !== undefined && value !== null && String(value) !== "") body.set(key, String(value));
   });
-  endpoint.searchParams.set("access_token", accessToken);
+  body.set("access_token", accessToken);
   try {
     const response = await fetchWithTimeout(
       endpoint.toString(),
-      { method: "POST" },
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      },
       WHATSAPP_GRAPH_TIMEOUT_MS,
     );
     const rawResponse = await response.text().catch(() => "");
@@ -2685,10 +2701,11 @@ async function callMetaGraphApi(path = "", params = {}, accessToken = META_MARKE
     }
     return { ok: true, payload: parsed };
   } catch (error) {
+    console.error("meta_graph_api_network_error", normalizedPath, error);
     return {
       ok: false,
       reason: "network_error",
-      details: String(error?.message || "network_error"),
+      details: [error?.name, error?.message].filter(Boolean).join(": ") || "network_error",
     };
   }
 }
@@ -4802,42 +4819,86 @@ async function syncOrdersFromShopify(store) {
 
   async function fetchRecentRestOrders() {
     let lastError = null;
-    const restEndpoint = `https://${storeDomain}/admin/api/2026-01/orders.json?status=any&limit=100&fields=id,admin_graphql_api_id,name,email,note,current_total_price,current_total_tax,current_subtotal_price,total_price,total_tax,subtotal_price,taxes_included,financial_status,fulfillment_status,payment_gateway_names,billing_address,customer,shipping_address,line_items,created_at,updated_at,processed_at,note_attributes,currency,presentment_currency`;
-    for (let attempt = 0; attempt <= SHOPIFY_MAX_RETRIES; attempt += 1) {
-      try {
-        const response = await fetchWithTimeout(restEndpoint, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Shopify-Access-Token": accessToken,
-          },
-        });
+    const fields = [
+      "id",
+      "admin_graphql_api_id",
+      "name",
+      "email",
+      "note",
+      "current_total_price",
+      "current_total_tax",
+      "current_subtotal_price",
+      "total_price",
+      "total_tax",
+      "subtotal_price",
+      "taxes_included",
+      "financial_status",
+      "fulfillment_status",
+      "payment_gateway_names",
+      "billing_address",
+      "customer",
+      "shipping_address",
+      "line_items",
+      "created_at",
+      "updated_at",
+      "processed_at",
+      "note_attributes",
+      "currency",
+      "presentment_currency",
+    ].join(",");
+    const firstPage = new URL(`https://${storeDomain}/admin/api/2026-01/orders.json`);
+    firstPage.searchParams.set("status", "any");
+    firstPage.searchParams.set("limit", "250");
+    firstPage.searchParams.set("order", "created_at desc");
+    firstPage.searchParams.set("fields", fields);
 
-        if (!response.ok) {
-          const payload = await parseShopifyResponse(response);
-          const responseText = payload?.rawText || payload?.errors?.map((item) => item.message || item).join(" | ") || "";
-          if (attempt < SHOPIFY_MAX_RETRIES && isRetryableShopifyStatus(response.status)) {
+    async function fetchRestPage(pageUrl, pageLabel) {
+      for (let attempt = 0; attempt <= SHOPIFY_MAX_RETRIES; attempt += 1) {
+        try {
+          const response = await fetchWithTimeout(pageUrl, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": accessToken,
+            },
+          });
+
+          if (!response.ok) {
+            const payload = await parseShopifyResponse(response);
+            const responseText = payload?.rawText || payload?.errors?.map((item) => item.message || item).join(" | ") || "";
+            if (attempt < SHOPIFY_MAX_RETRIES && isRetryableShopifyStatus(response.status)) {
+              await wait(500 * (attempt + 1));
+              continue;
+            }
+            throw new Error(responseText ? `shopify_sync_failed: ${pageLabel} ${response.status} ${responseText}` : `shopify_sync_failed: ${pageLabel} ${response.status}`);
+          }
+
+          const payload = await response.json().catch(() => ({}));
+          return {
+            orders: Array.isArray(payload?.orders) ? payload.orders : [],
+            nextPageUrl: getNextShopifyPageUrl(response),
+          };
+        } catch (error) {
+          lastError = error;
+          const retryable = String(error?.name || "") === "AbortError" || /ECONNRESET|ETIMEDOUT|timeout/i.test(String(error?.message || ""));
+          if (attempt < SHOPIFY_MAX_RETRIES && retryable) {
             await wait(500 * (attempt + 1));
             continue;
           }
-          throw new Error(responseText ? `shopify_sync_failed: rest_recent_orders ${response.status} ${responseText}` : `shopify_sync_failed: rest_recent_orders ${response.status}`);
+          throw error;
         }
-
-        const payload = await response.json().catch(() => ({}));
-        return Array.isArray(payload?.orders)
-          ? payload.orders.map((order, index) => normalizeOrderPayload(order, index))
-          : [];
-      } catch (error) {
-        lastError = error;
-        const retryable = String(error?.name || "") === "AbortError" || /ECONNRESET|ETIMEDOUT|timeout/i.test(String(error?.message || ""));
-        if (attempt < SHOPIFY_MAX_RETRIES && retryable) {
-          await wait(500 * (attempt + 1));
-          continue;
-        }
-        throw error;
       }
+      throw lastError || new Error(`shopify_sync_failed: ${pageLabel}`);
     }
-    throw lastError || new Error("shopify_sync_failed: rest_recent_orders");
+
+    const orders = [];
+    let nextPageUrl = firstPage.toString();
+    for (let page = 0; page < 4 && nextPageUrl; page += 1) {
+      const pageResult = await fetchRestPage(nextPageUrl, `rest_orders_page_${page + 1}`);
+      orders.push(...pageResult.orders);
+      nextPageUrl = pageResult.nextPageUrl;
+    }
+    return orders.map((order, index) => normalizeOrderPayload(order, index));
   }
 
   const recentQuery = `
@@ -4875,11 +4936,23 @@ async function syncOrdersFromShopify(store) {
     }
   `;
 
-  const [recentEdges, openEdges, recentRestOrders] = await Promise.all([
+  const [recentResult, openResult, restResult] = await Promise.allSettled([
     fetchOrderBatch(recentQuery, "recent_orders"),
     fetchOrderBatch(openOrdersQuery, "open_orders"),
     fetchRecentRestOrders(),
   ]);
+  const recentEdges = recentResult.status === "fulfilled" ? recentResult.value : [];
+  const openEdges = openResult.status === "fulfilled" ? openResult.value : [];
+  const recentRestOrders = restResult.status === "fulfilled" ? restResult.value : [];
+  const syncErrors = [recentResult, openResult, restResult]
+    .filter((result) => result.status === "rejected")
+    .map((result) => result.reason);
+  if (!recentEdges.length && !openEdges.length && !recentRestOrders.length && syncErrors.length) {
+    throw syncErrors[0];
+  }
+  syncErrors.forEach((error) => {
+    console.warn("shopify_sync_partial_failure", error?.message || error);
+  });
   const uniqueNodes = new Map();
   [...recentEdges, ...openEdges].forEach((edge) => {
     if (edge?.node?.id) uniqueNodes.set(edge.node.id, edge.node);
@@ -4896,7 +4969,9 @@ async function syncOrdersFromShopify(store) {
   const normalized = [...normalizedByShopifyId.values()];
   store.shopifySettings.lastSyncAt = new Date().toISOString();
   store.shopifySettings.lastSyncStatus = "ok";
-  store.shopifySettings.lastSyncMessage = "";
+  store.shopifySettings.lastSyncMessage = syncErrors.length
+    ? `Sincronizzati ${normalized.length} ordini con fallback REST. ${syncErrors.length} chiamate Shopify non essenziali fallite.`
+    : `Sincronizzati ${normalized.length} ordini Shopify.`;
   return normalized;
 }
 

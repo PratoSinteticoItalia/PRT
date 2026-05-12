@@ -232,6 +232,10 @@
 
     .pdf-root.codex-pdf-export-compact {
       overflow: hidden !important;
+      width: 204mm !important;
+      max-width: 204mm !important;
+      margin: 0 auto !important;
+      transform: none !important;
     }
 
     .pdf-root.codex-pdf-export-compact > div {
