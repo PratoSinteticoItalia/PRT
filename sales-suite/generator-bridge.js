@@ -255,27 +255,41 @@
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading-wrap {
       margin-bottom: 6px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading {
       padding: 4px 14px 5px !important;
       font-size: 16px !important;
       line-height: 1.04 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table th {
       padding-top: 5px !important;
       padding-bottom: 5px !important;
+      vertical-align: middle !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table td {
       padding-top: 5px !important;
       padding-bottom: 5px !important;
+      vertical-align: middle !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table tbody td:first-child {
       padding-top: 6px !important;
       padding-bottom: 7px !important;
+      vertical-align: middle !important;
+    }
+
+    .pdf-root .codex-pdf-pricing-table td,
+    .pdf-root .codex-pdf-pricing-table th {
+      vertical-align: middle !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-material-panel {
@@ -1230,6 +1244,7 @@
         <select id="codex-quote-recommendation-select"></select>
       `;
       toolbarHost.insertBefore(toolbar, previewButton);
+      previewButton.style.marginLeft = "10px";
     }
 
     const select = toolbar.querySelector("select");
@@ -1494,6 +1509,9 @@
       offerHeading.style.lineHeight = "1";
       if (offerHeading.parentElement instanceof HTMLElement) {
         offerHeading.parentElement.style.marginBottom = "16px";
+        offerHeading.parentElement.style.display = "flex";
+        offerHeading.parentElement.style.alignItems = "center";
+        offerHeading.parentElement.style.justifyContent = "center";
       }
     }
     polishQuoteHeaderPanels(pdfRoot);

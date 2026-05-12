@@ -3,35 +3,47 @@
   "short_name": "PSI Ops",
   "description": "Portale operativo per ordini, logistica, pose e contabilita.",
   "lang": "it-IT",
-  "start_url": "/?shell=20260414-shell-reset-06",
+  "start_url": "/?shell=20260512-stability-audit-177",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#eef1f4",
+  "background_color": "#ffffff",
   "theme_color": "#18241f",
   "icons": [
     {
-      "src": "/pwa-icon-192.png",
+      "src": "/pwa-icon-192.png?v=177",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/pwa-icon-512.png",
+      "src": "/pwa-icon-512.png?v=177",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon-192.png?v=177",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/pwa-icon-512.png?v=177",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "shortcuts": [
     {
       "name": "Portale operativo",
       "short_name": "Ops",
-      "url": "/?shell=20260414-shell-reset-06"
+      "url": "/?shell=20260512-stability-audit-177"
     },
     {
       "name": "Garden Planner",
       "short_name": "Planner",
-      "url": "/garden-planner.html?shell=20260414-shell-reset-06"
+      "url": "/garden-planner.html?shell=20260512-stability-audit-177"
     }
   ]
 }
