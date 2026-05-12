@@ -3938,6 +3938,7 @@ async function getR2Client() {
         accessKeyId: R2_ACCESS_KEY_ID,
         secretAccessKey: R2_SECRET_ACCESS_KEY,
       },
+      requestTimeout: 20000,
     });
   }
   return getR2Client.client;
@@ -4959,7 +4960,7 @@ async function syncOrdersFromShopify(store) {
   });
   const normalizedGraphql = [...uniqueNodes.values()].map((node, index) => normalizeGraphqlOrder(node, index));
   const normalizedByShopifyId = new Map();
-  [...normalizedGraphql, ...recentRestOrders].forEach((order) => {
+  [...recentRestOrders, ...normalizedGraphql].forEach((order) => {
     const key = String(getNormalizedShopifyGraphqlId(order) || getNormalizedShopifyNumericId(order) || order.id || "").trim();
     if (key) {
       const existing = normalizedByShopifyId.get(key) || null;

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-api-shopify-pdf-fix-181";
+const APP_SHELL_VERSION = "20260512-inbox-orders-pdf-fix-182";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -8656,6 +8656,7 @@ function filterOrdersForView(kind) {
       if (filter === "installation") return !fulfilledOrClosed && (["install-planned", "install-progress"].includes(stage.key) || isRoutedToInstallation(order));
       if (filter === "shipping") return !fulfilledOrClosed && (isRoutedToWarehouse(order) || isRoutedToInstallation(order));
       if (filter === "fulfilled") return fulfilledOrClosed;
+      if (filter === "all") return true;
       return !fulfilledOrClosed;
     }
     if (kind === "warehouse") {
@@ -9704,10 +9705,11 @@ function formatOrderRelativeDate(isoString) {
   const diffMs = now - orderDate;
   const diffDays = Math.floor(diffMs / 86400000);
   const lang = state.lang;
+  const timeStr = orderDate.toLocaleTimeString(lang === "it" ? "it-IT" : "en-GB", { hour: "2-digit", minute: "2-digit" });
   let label;
   if (diffDays < 0) label = formatDate(isoString);
-  else if (diffDays === 0) label = lang === "it" ? "Oggi" : "Today";
-  else if (diffDays === 1) label = lang === "it" ? "Ieri" : "Yesterday";
+  else if (diffDays === 0) label = lang === "it" ? `Oggi ${timeStr}` : `Today ${timeStr}`;
+  else if (diffDays === 1) label = lang === "it" ? `Ieri ${timeStr}` : `Yesterday ${timeStr}`;
   else if (diffDays < 7) label = lang === "it" ? `${diffDays} giorni fa` : `${diffDays} days ago`;
   else if (diffDays < 30) {
     const weeks = Math.floor(diffDays / 7);

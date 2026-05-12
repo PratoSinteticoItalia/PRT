@@ -257,11 +257,9 @@
       border-radius: 8px !important;
     }
 
-    .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading-wrap {
+    .pdf-root .codex-pdf-offer-heading-wrap {
       margin-bottom: 6px !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
+      text-align: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading {
@@ -958,7 +956,13 @@
   function findElementByTextWithin(root, selector, text) {
     if (!(root instanceof Element)) return null;
     const expected = normalizeLabel(text);
-    return Array.from(root.querySelectorAll(selector)).find((element) => normalizeLabel(element.textContent).includes(expected)) || null;
+    const candidates = Array.from(root.querySelectorAll(selector)).filter(
+      (element) => normalizeLabel(element.textContent).includes(expected),
+    );
+    if (!candidates.length) return null;
+    // querySelectorAll returns DOM tree order (outermost first) — pick innermost (shortest textContent)
+    // so we target the actual text node rather than a section wrapper containing many elements.
+    return candidates.reduce((best, el) => el.textContent.length < best.textContent.length ? el : best);
   }
 
   function buildSvgDataUrl(svgMarkup) {
