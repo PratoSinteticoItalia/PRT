@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-stability-audit-179";
+const APP_SHELL_VERSION = "20260512-marketing-public-assets-180";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15496,7 +15496,7 @@ function renderMarketing() {
             <textarea class="text-input" name="notes" rows="3" placeholder="Promemoria, varianti, link utili, indicazioni grafiche..."></textarea>
           </label>
           <div class="marketing-form-helper field-full">
-            <strong>Programmazione:</strong> salva il contenuto e usa le azioni rapide sulla scheda per aprire lo strumento corretto. Per una programmazione API automatica servono token Business, account collegati e asset raggiungibili via URL pubblico.
+            <strong>Programmazione:</strong> salva il contenuto e usa le azioni rapide sulla scheda. Se carichi una foto dal PC, il server prepara automaticamente un link pubblico per Meta al momento della pubblicazione API.
           </div>
           <div class="marketing-api-note field-full">
             <strong>API-ready:</strong> Meta, TikTok ed email non permettono una programmazione sicura solo da browser senza credenziali server. Questa scheda raccoglie già copy, asset, data, ora e canale per una futura integrazione backend.
@@ -15763,7 +15763,8 @@ function marketingApiErrorMessage(reason = "") {
     missing_phone: "Inserisci il numero WhatsApp destinatario.",
     missing_message: "Inserisci una caption o un testo da inviare.",
     missing_schedule_datetime: "Inserisci data e ora per programmare via API.",
-    missing_public_asset_url: "Serve un URL immagine pubblico HTTPS: i file caricati dal PC non sono raggiungibili dalle API Meta.",
+    missing_public_asset_url: "Serve un'immagine pubblica HTTPS oppure una foto caricata dal PC da convertire in link pubblico.",
+    invalid_marketing_asset_type: "Formato immagine non supportato per la pubblicazione API. Usa PNG, JPG, WebP o GIF.",
     provider_error: "Il provider ha rifiutato la richiesta. Controlla token, permessi e destinatario.",
     network_error: "Errore di rete verso il provider API.",
     missing_meta_instagram_config: "Mancano token Meta o Instagram Business Account ID.",
@@ -15800,6 +15801,7 @@ async function publishMarketingItemViaApi(item, button = null, mode = "publish")
           apiPublishedAt: result.publishedAt || entry.apiPublishedAt || "",
           apiScheduledAt: result.scheduledAt || entry.apiScheduledAt || "",
           apiProviderId: result.messageId || result.scheduleId || "",
+          publicAssetUrl: result.publicAssetUrl || entry.publicAssetUrl || "",
         }
       : entry);
     state.marketingItems = nextItems;

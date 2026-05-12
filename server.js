@@ -791,6 +791,7 @@ function buildDefaultStore() {
     inventory: [],
     salesRequests: [],
     salesContents: [],
+    marketingPublicAssets: [],
     usageEvents: [],
     salesRequestSource: {
       spreadsheetInput: DEFAULT_SALES_REQUEST_SPREADSHEET,
@@ -2583,6 +2584,75 @@ function normalizePublicMarketingAssetUrl(value = "") {
   }
 }
 
+function getMarketingPublishAssetUrl(item = {}) {
+  return normalizePublicMarketingAssetUrl(item.publicAssetUrl || item.assetUrl || "");
+}
+
+function buildMarketingPublicAssetUrl(req, assetId = "") {
+  const normalizedAssetId = String(assetId || "").trim();
+  if (!normalizedAssetId) return "";
+  const baseUrl = getRequestBaseUrl(req);
+  return new URL(`/api/public/marketing-assets/${encodeURIComponent(normalizedAssetId)}`, baseUrl).toString();
+}
+
+async function prepareMarketingItemForPublish(store, item = {}, req) {
+  const channel = String(item.channel || "").trim();
+  if (!["Facebook", "Instagram"].includes(channel)) {
+    return { item, changed: false, publicAssetUrl: getMarketingPublishAssetUrl(item) };
+  }
+
+  const existingPublicUrl = normalizePublicMarketingAssetUrl(item.publicAssetUrl || "")
+    || (String(item.assetDataUrl || "").trim() ? "" : normalizePublicMarketingAssetUrl(item.assetUrl || ""));
+  if (existingPublicUrl) {
+    return {
+      item: { ...item, publicAssetUrl: existingPublicUrl },
+      changed: false,
+      publicAssetUrl: existingPublicUrl,
+    };
+  }
+
+  const parsed = parseDataUrl(item.assetDataUrl || "");
+  if (!parsed?.buffer?.length) {
+    return { item, changed: false, publicAssetUrl: "" };
+  }
+
+  const contentType = String(parsed.contentType || "").trim().toLowerCase();
+  if (!/^image\/(png|jpe?g|webp|gif)$/.test(contentType)) {
+    return { item, changed: false, publicAssetUrl: "", error: "invalid_marketing_asset_type" };
+  }
+
+  const assetId = randomUUID();
+  const savedAttachment = await storeAttachmentBuffer(
+    assetId,
+    {
+      id: assetId,
+      name: String(item.assetName || item.title || "marketing-image").trim() || "marketing-image",
+      type: contentType,
+      size: parsed.buffer.length,
+      context: "marketing-public",
+      createdAt: new Date().toISOString(),
+    },
+    parsed.buffer,
+    "marketing-public",
+  );
+  const publicRecord = normalizeMarketingPublicAssetRecord({
+    id: assetId,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 90).toISOString(),
+    attachment: savedAttachment,
+  });
+  store.marketingPublicAssets = [
+    publicRecord,
+    ...normalizeMarketingPublicAssets(store.marketingPublicAssets),
+  ].slice(0, 200);
+  const publicAssetUrl = buildMarketingPublicAssetUrl(req, assetId);
+  return {
+    item: { ...item, publicAssetUrl },
+    changed: true,
+    publicAssetUrl,
+  };
+}
+
 async function callMetaGraphApi(path = "", params = {}, accessToken = META_MARKETING_ACCESS_TOKEN) {
   const normalizedPath = String(path || "").replace(/^\/+/, "");
   const endpoint = new URL(`https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${normalizedPath}`);
@@ -2698,7 +2768,7 @@ async function publishFacebookMarketingItem(item = {}, mode = "publish") {
   }
   const message = buildMarketingPublishText(item);
   if (!message) return { ok: false, reason: "missing_message" };
-  const assetUrl = normalizePublicMarketingAssetUrl(item.assetUrl || "");
+  const assetUrl = getMarketingPublishAssetUrl(item);
   const scheduledAt = mode === "schedule" ? getMarketingScheduleIso(item) : "";
   const scheduledUnix = mode === "schedule" ? getMarketingScheduleUnix(item) : 0;
   if (mode === "schedule" && !scheduledUnix) return { ok: false, reason: "missing_schedule_datetime" };
@@ -2730,7 +2800,7 @@ async function publishInstagramMarketingItem(item = {}, mode = "publish") {
   if (!META_MARKETING_ACCESS_TOKEN || !META_INSTAGRAM_BUSINESS_ACCOUNT_ID) {
     return { ok: false, reason: "missing_meta_instagram_config" };
   }
-  const assetUrl = normalizePublicMarketingAssetUrl(item.assetUrl || "");
+  const assetUrl = getMarketingPublishAssetUrl(item);
   if (!assetUrl) return { ok: false, reason: "missing_public_asset_url" };
   const caption = buildMarketingPublishText(item);
   if (!caption) return { ok: false, reason: "missing_message" };
@@ -3707,7 +3777,9 @@ function buildLocalAttachmentRecord(ownerId = "", attachment = {}, parsed = null
   const contentType = String(attachment.type || parsed.contentType || "application/octet-stream").trim();
   const fallbackExtension = getMimeTypeExtension(contentType);
   const safeName = sanitizeAttachmentName(attachment.name, fallbackExtension);
-  const bucketPrefix = resource === "sales-content" ? "sales-content" : "orders";
+  const bucketPrefix = resource === "sales-content"
+    ? "sales-content"
+    : (resource === "marketing-public" ? "marketing-public" : "orders");
   const ownerSegment = String(ownerId || resource).replace(/[^\w.-]+/g, "_");
   const relativePath = normalizeAttachmentLocalPath(`${bucketPrefix}/${ownerSegment}/${attachmentId}-${safeName}`);
   const absolutePath = resolveAttachmentLocalPath(relativePath);
@@ -3806,6 +3878,30 @@ function serializeSalesContentsForClient(items = []) {
   return items.map((item) => serializeSalesContentForClient(item));
 }
 
+function normalizeMarketingPublicAssetRecord(item = {}) {
+  const assetId = String(item.id || randomUUID()).trim();
+  const createdAt = String(item.createdAt || new Date().toISOString());
+  const expiresAt = String(item.expiresAt || new Date(Date.now() + 1000 * 60 * 60 * 24 * 90).toISOString());
+  return {
+    id: assetId,
+    createdAt,
+    expiresAt,
+    attachment: normalizeAttachmentRecord(item.attachment || item, assetId, "marketing-public"),
+  };
+}
+
+function normalizeMarketingPublicAssets(items = []) {
+  if (!Array.isArray(items)) return [];
+  const now = Date.now();
+  return items
+    .map(normalizeMarketingPublicAssetRecord)
+    .filter((item) => {
+      const expires = new Date(item.expiresAt || 0).getTime();
+      return !Number.isFinite(expires) || expires > now;
+    })
+    .slice(0, 200);
+}
+
 async function getR2Sdk() {
   if (!USE_R2) return null;
   if (!r2ClientPromise) {
@@ -3881,7 +3977,9 @@ async function storeAttachmentBuffer(ownerId, attachment = {}, buffer = Buffer.a
   const sdk = await getR2Sdk();
   const fallbackExtension = getMimeTypeExtension(contentType);
   const safeName = sanitizeAttachmentName(attachment.name, fallbackExtension);
-  const bucketPrefix = resource === "sales-content" ? "sales-content" : "orders";
+  const bucketPrefix = resource === "sales-content"
+    ? "sales-content"
+    : (resource === "marketing-public" ? "marketing-public" : "orders");
   const objectKey = `${bucketPrefix}/${String(ownerId || resource).replace(/[^\w.-]+/g, "_")}/${attachmentId}-${safeName}`;
 
   await client.send(new sdk.PutObjectCommand({
@@ -3967,7 +4065,7 @@ function scheduleAttachmentAssetRemoval(items = [], logLabel = "attachment_delet
   }, 0);
 }
 
-async function streamAttachmentAsset(res, attachment = {}) {
+async function streamAttachmentAsset(res, attachment = {}, { cacheControl = "private, max-age=300" } = {}) {
   const storageType = String(attachment.storage || "").trim();
   if (storageType === "file") {
     const absolutePath = resolveAttachmentLocalPath(attachment.localPath || "");
@@ -3978,7 +4076,7 @@ async function streamAttachmentAsset(res, attachment = {}) {
       const stream = createReadStream(absolutePath);
       res.writeHead(200, {
         "Content-Type": attachment.type || "application/octet-stream",
-        "Cache-Control": "private, max-age=300",
+        "Cache-Control": cacheControl,
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "strict-origin-when-cross-origin",
       });
@@ -4003,7 +4101,7 @@ async function streamAttachmentAsset(res, attachment = {}) {
     res.writeHead(200, {
       "Content-Type": attachment.type || inlineData.contentType || "application/octet-stream",
       "Content-Length": inlineData.buffer.length,
-      "Cache-Control": "private, max-age=300",
+      "Cache-Control": cacheControl,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "strict-origin-when-cross-origin",
     });
@@ -4022,7 +4120,7 @@ async function streamAttachmentAsset(res, attachment = {}) {
 
   res.writeHead(200, {
     "Content-Type": object.ContentType || attachment.type || "application/octet-stream",
-    "Cache-Control": "private, max-age=300",
+    "Cache-Control": cacheControl,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
   });
@@ -4238,6 +4336,8 @@ function reconcileStoreData(store) {
         };
     })
     : [];
+
+  store.marketingPublicAssets = normalizeMarketingPublicAssets(store.marketingPublicAssets);
 
   store.usageEvents = Array.isArray(store.usageEvents)
     ? store.usageEvents.map(normalizeUsageEventRecord).filter(Boolean).slice(0, 5000)
@@ -5470,6 +5570,18 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (url.pathname.match(/^\/api\/public\/marketing-assets\/[^/]+$/) && req.method === "GET") {
+    await ensureStore();
+    const publicStore = await readJson(STORE_PATH, { marketingPublicAssets: [] });
+    const assetId = decodeURIComponent(url.pathname.split("/")[4] || "");
+    const asset = normalizeMarketingPublicAssets(publicStore.marketingPublicAssets)
+      .find((item) => String(item.id || "") === assetId);
+    if (!asset?.attachment) {
+      return sendJson(res, 404, { error: "asset_not_found" });
+    }
+    return streamAttachmentAsset(res, asset.attachment, { cacheControl: "public, max-age=86400" });
+  }
+
   if (url.pathname === "/api/events" && req.method === "GET") {
     await ensureStore();
     const store = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
@@ -5707,12 +5819,25 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const item = body?.item || body || {};
     const mode = body?.mode === "schedule" ? "schedule" : "publish";
-    const result = await publishMarketingItem(item, mode);
+    const prepared = await prepareMarketingItemForPublish(store, item, req);
+    if (prepared.error) {
+      return sendJson(res, 400, {
+        ok: false,
+        reason: prepared.error,
+        mode,
+        channel: String(item.channel || "").trim(),
+      });
+    }
+    if (prepared.changed) {
+      await writeJson(STORE_PATH, store);
+    }
+    const result = await publishMarketingItem(prepared.item, mode);
     const status = result.ok ? 200 : 400;
     return sendJson(res, status, {
       ...result,
       mode,
       channel: String(item.channel || "").trim(),
+      publicAssetUrl: prepared.publicAssetUrl || prepared.item.publicAssetUrl || "",
       publishedAt: result.ok ? new Date().toISOString() : "",
       scheduledAt: result.scheduledAt || "",
     });
