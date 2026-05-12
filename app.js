@@ -13756,6 +13756,10 @@ function applySessionPayload(session = {}) {
   state.settings = session.shopifySettings || {};
   state.users = Array.isArray(session.users) ? session.users.map((user) => normalizeUserRecord(user)).filter(Boolean) : [];
   state.communicationTargets = Array.isArray(session.communicationTargets) ? session.communicationTargets : [];
+  if (typeof session.communicationsUnreadCount === "number") {
+    state.communicationsUnreadCount = session.communicationsUnreadCount;
+    setNavCount("communications", state.communicationsUnreadCount);
+  }
   state.securityEvents = session.securityEvents || [];
   state.securityPolicy = session.securityPolicy || {};
   try {

@@ -5546,9 +5546,19 @@ async function handleApi(req, res, url) {
   const currentUser = sessionContext.user;
 
   if (url.pathname === "/api/session" && req.method === "GET") {
+    const sessionUserId = String(currentUser?.id || "");
+    const sessionCommUnread = currentUser ? (() => {
+      const comm = normalizeCommunicationsStore(store.communications || {});
+      return comm.threads.reduce((sum, thread) => {
+        if (!thread.participantIds.includes(sessionUserId)) return sum;
+        const msgs = comm.messages.filter((m) => m.threadId === thread.id && m.authorId !== sessionUserId && !m.readBy.includes(sessionUserId));
+        return sum + msgs.length;
+      }, 0);
+    })() : 0;
     return sendJson(res, 200, {
       revision: getStoreRevision(store),
       user: sanitizeUser(currentUser),
+      communicationsUnreadCount: sessionCommUnread,
       jobs: currentUser ? store.jobs : [],
       orders: currentUser ? store.orders : [],
       inventory: currentUser ? store.inventory : [],
