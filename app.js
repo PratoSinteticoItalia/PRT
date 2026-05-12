@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-state-stability-fixes-172";
+const APP_SHELL_VERSION = "20260512-fix-save-storm-173";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9965,11 +9965,9 @@ function renderOrders() {
       ${order.phone && isOrderFulfilledOrClosed(order) ? `<button class="btn" data-action="request-order-review" data-id="${order.id}">${state.lang === "it" ? "Chiedi recensione" : "Request review"}</button>` : ""}
     </div>
   `;
-  const flowControls = ui.orderDetailSummary.querySelectorAll("[data-order-flow-warehouse], [data-order-flow-installation], [data-order-flow-status], [data-order-flow-mode], [data-order-flow-date]");
-  flowControls.forEach((control) => {
-    control.addEventListener("change", () => {
-      const oid = control.dataset.orderFlowWarehouse || control.dataset.orderFlowInstallation || control.dataset.orderFlowStatus || control.dataset.orderFlowMode || control.dataset.orderFlowDate || order.id;
-      saveInboxOrderFlow(order.id);
+  ui.orderDetailSummary.querySelectorAll("[data-order-flow-warehouse], [data-order-flow-installation]").forEach((toggle) => {
+    toggle.addEventListener("change", () => {
+      debouncedSaveInboxOrderFlow(order.id);
     });
   });
   if (ui.orderJobHub) ui.orderJobHub.innerHTML = renderOrderJobHub(order);
@@ -16327,9 +16325,21 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
   };
 }
 
+let _inboxFlowSaveTimer = 0;
+const _inboxFlowSaveInFlight = new Set();
+
+function debouncedSaveInboxOrderFlow(orderId) {
+  clearTimeout(_inboxFlowSaveTimer);
+  _inboxFlowSaveTimer = setTimeout(() => {
+    saveInboxOrderFlow(orderId);
+  }, 400);
+}
+
 async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   const payload = patch || buildInboxOrderFlowPayload(orderId);
   if (!payload) return;
+  if (_inboxFlowSaveInFlight.has(orderId)) return;
+  _inboxFlowSaveInFlight.add(orderId);
   const previousOrder = state.orders.find((item) => item.id === orderId) || null;
   if (previousOrder) {
     const optimistic = {
@@ -16341,7 +16351,6 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
       },
     };
     state.orders = state.orders.map((item) => (item.id === orderId ? optimistic : item));
-    renderCurrentViewOnly(state.currentView);
   }
   if (orderId) orderPendingPatchIds.add(orderId);
   let saved;
@@ -16369,9 +16378,11 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
         : `Unable to save order flow. ${String(error.message || "").trim()}`,
     );
     if (orderId) orderPendingPatchIds.delete(orderId);
+    _inboxFlowSaveInFlight.delete(orderId);
     return;
   }
   if (orderId) orderPendingPatchIds.delete(orderId);
+  _inboxFlowSaveInFlight.delete(orderId);
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.selectedOrderId = saved.id;
   renderCurrentViewOnly(state.currentView);
