@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-communications-generator-fixes-170";
+const APP_SHELL_VERSION = "20260512-global-speed-boost-171";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6,19 +6,19 @@ const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
 const COVERAGE_GEOCODE_CACHE_KEY = "pose-coverage-geocode-v1";
 const PROFIT_SPLIT_STORAGE_KEY = "pose-profit-split-v1";
-const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 20;
-const COMMUNICATIONS_POLL_INTERVAL_MS = 15000;
+const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 10;
+const COMMUNICATIONS_POLL_INTERVAL_MS = 6000;
 const SESSION_REVISION_ENDPOINT = "/api/session/revision";
 const SESSION_EVENTS_ENDPOINT = "/api/events";
-const SESSION_EVENTS_RECONNECT_BASE_MS = 1200;
-const SESSION_EVENTS_RECONNECT_MAX_MS = 20_000;
-const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 900;
-const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
-const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5;
-const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 60 * 3;
-const SALES_REQUEST_SAVE_TIMEOUT_MS = 20_000;
+const SESSION_EVENTS_RECONNECT_BASE_MS = 500;
+const SESSION_EVENTS_RECONNECT_MAX_MS = 10_000;
+const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 300;
+const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 2;
+const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 2;
+const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 45;
+const SALES_REQUEST_SAVE_TIMEOUT_MS = 12_000;
 const SALES_REQUEST_SAVE_MAX_RETRIES = 1;
-const COVERAGE_SYNC_DEBOUNCE_MS = 900;
+const COVERAGE_SYNC_DEBOUNCE_MS = 350;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
@@ -1699,7 +1699,7 @@ function isTransientApiError(error) {
 
 async function apiFetchWithRetry(path, options = {}, {
   retries = 1,
-  baseDelayMs = 450,
+  baseDelayMs = 200,
   shouldRetry = isTransientApiError,
 } = {}) {
   let lastError = null;
@@ -9962,6 +9962,13 @@ function renderOrders() {
       ${order.phone && isOrderFulfilledOrClosed(order) ? `<button class="btn" data-action="request-order-review" data-id="${order.id}">${state.lang === "it" ? "Chiedi recensione" : "Request review"}</button>` : ""}
     </div>
   `;
+  const flowControls = ui.orderDetailSummary.querySelectorAll("[data-order-flow-warehouse], [data-order-flow-installation], [data-order-flow-status], [data-order-flow-mode], [data-order-flow-date]");
+  flowControls.forEach((control) => {
+    control.addEventListener("change", () => {
+      const oid = control.dataset.orderFlowWarehouse || control.dataset.orderFlowInstallation || control.dataset.orderFlowStatus || control.dataset.orderFlowMode || control.dataset.orderFlowDate || order.id;
+      saveInboxOrderFlow(order.id);
+    });
+  });
   if (ui.orderJobHub) ui.orderJobHub.innerHTML = renderOrderJobHub(order);
   ui.orderOfficeSummary.innerHTML = order.note
     ? `<div class="detail-note-chip">${escapeHtml(order.note)}</div>`
@@ -16308,6 +16315,19 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
 async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   const payload = patch || buildInboxOrderFlowPayload(orderId);
   if (!payload) return;
+  const previousOrder = state.orders.find((item) => item.id === orderId) || null;
+  if (previousOrder) {
+    const optimistic = {
+      ...previousOrder,
+      operations: {
+        ...previousOrder.operations,
+        warehouse: { ...(previousOrder.operations?.warehouse || {}), ...(payload.warehouse || {}) },
+        installation: { ...(previousOrder.operations?.installation || {}), ...(payload.installation || {}) },
+      },
+    };
+    state.orders = state.orders.map((item) => (item.id === orderId ? optimistic : item));
+    renderCurrentViewOnly(state.currentView);
+  }
   let saved;
   try {
     saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
@@ -16315,6 +16335,10 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
       body: JSON.stringify(payload),
     });
   } catch (error) {
+    if (previousOrder) {
+      state.orders = state.orders.map((item) => (item.id === orderId ? previousOrder : item));
+      renderCurrentViewOnly(state.currentView);
+    }
     setStatus(
       ui.ordersStatus,
       "error",
