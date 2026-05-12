@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-fast-inventory-telo-176";
+const APP_SHELL_VERSION = "20260512-stability-audit-177";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1173,6 +1173,7 @@ let ordersDeferredRenderTimer = 0;
 let salesContentDeleteInFlightId = "";
 const salesRequestPendingPatchIds = new Set();
 const orderPendingPatchIds = new Set();
+const inventoryPendingOps = new Set();
 const salesContentAttachmentDeleteInFlight = new Set();
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
@@ -1180,6 +1181,28 @@ let coverageSyncInFlight = false;
 let coverageSyncQueued = false;
 let currentViewRenderFrame = 0;
 let inventorySaveInFlight = false;
+const _pendingRenders = new Set();
+let _renderBatchFrame = 0;
+function scheduleRender(view = "") {
+  _pendingRenders.add(view || state.currentView);
+  if (_renderBatchFrame) return;
+  _renderBatchFrame = requestAnimationFrame(() => {
+    _renderBatchFrame = 0;
+    const views = new Set(_pendingRenders);
+    _pendingRenders.clear();
+    if (views.has("all")) { renderCurrentViewOnly(state.currentView); return; }
+    for (const v of views) {
+      switch (v) {
+        case "warehouse": renderWarehouse(); break;
+        case "orders": renderOrders(); break;
+        case "sales-requests": renderSalesRequests(); break;
+        case "sales-generator": renderSalesGenerator(); break;
+        case "communications": renderCommunications(); break;
+        default: renderCurrentViewOnly(v); break;
+      }
+    }
+  });
+}
 let communicationsPollTimer = 0;
 let communicationsPollInFlight = false;
 let communicationsThreadsRequestSeq = 0;
@@ -9066,7 +9089,11 @@ function getDashboardInventorySnapshot() {
   };
 }
 
+let _lastRenderOpsTime = 0;
 function renderOps() {
+  const now = performance.now();
+  if (now - _lastRenderOpsTime < 80) return;
+  _lastRenderOpsTime = now;
   const orders = state.orders.length;
   const inboxOrders = state.orders.filter(orderNeedsInboxAttention).length;
   const soldSqm = getSoldSqmEstimate();
@@ -13676,7 +13703,11 @@ function applySessionPayload(session = {}) {
       return pending && orderPendingPatchIds.has(o.id) ? pending : o;
     });
   }
-  state.inventory = session.inventory || [];
+  if (inventoryPendingOps.size && preserveEditingState) {
+    // skip overwrite while inventory add/delete is in flight
+  } else {
+    state.inventory = session.inventory || [];
+  }
   state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
   if (salesRequestPendingPatchIds.size) {
     const previousById = new Map((previousSalesRequests || []).map((r) => [r.id, r]));
@@ -16205,6 +16236,8 @@ async function saveInventory(event) {
     ui.inventorySubmitButton.disabled = true;
     ui.inventorySubmitButton.textContent = state.lang === "it" ? "Aggiungo..." : "Adding...";
   }
+  const _invOpKey = `add-${Date.now()}`;
+  inventoryPendingOps.add(_invOpKey);
   try {
     state.inventory = await apiFetch("/api/inventory/items", {
       method: "POST",
@@ -16241,6 +16274,7 @@ async function saveInventory(event) {
     console.error("inventory_save_failed", error);
     showToast(state.lang === "it" ? "Giacenza non salvata. Riprova tra qualche secondo." : "Stock was not saved. Try again in a few seconds.", "warning");
   } finally {
+    inventoryPendingOps.delete(_invOpKey);
     inventorySaveInFlight = false;
     if (ui.inventorySubmitButton) {
       ui.inventorySubmitButton.disabled = false;
@@ -16263,15 +16297,19 @@ async function removeInventoryPieceById(itemId = "") {
   if (!normalizedId) return false;
   const previousInventory = [...state.inventory];
   state.inventory = state.inventory.filter((item) => String(item.id || "") !== normalizedId);
-  renderWarehouse();
+  scheduleRender("warehouse");
+  const _invOpKey = `del-${normalizedId}`;
+  inventoryPendingOps.add(_invOpKey);
   try {
     const nextInventory = await apiFetch(`/api/inventory/items/${encodeURIComponent(normalizedId)}`, { method: "DELETE" });
     state.inventory = nextInventory;
-    renderWarehouse();
+    scheduleRender("warehouse");
   } catch (error) {
     state.inventory = previousInventory;
-    renderWarehouse();
+    scheduleRender("warehouse");
     throw error;
+  } finally {
+    inventoryPendingOps.delete(_invOpKey);
   }
   return true;
 }
@@ -16309,15 +16347,19 @@ async function clearInventoryProductStock(product = "") {
   const productKey = normalizeProductName(productLabel);
   const previousInventory = [...state.inventory];
   state.inventory = state.inventory.filter((item) => normalizeProductName(getCatalogLabel(item.product || "")) !== productKey);
-  renderWarehouse();
+  scheduleRender("warehouse");
+  const _invOpKey = `clear-${productKey}`;
+  inventoryPendingOps.add(_invOpKey);
   try {
     const nextInventory = await apiFetch(`/api/inventory/items/by-product/${encodeURIComponent(productLabel)}`, { method: "DELETE" });
     state.inventory = nextInventory;
-    renderWarehouse();
+    scheduleRender("warehouse");
   } catch (error) {
     state.inventory = previousInventory;
-    renderWarehouse();
+    scheduleRender("warehouse");
     throw error;
+  } finally {
+    inventoryPendingOps.delete(_invOpKey);
   }
   return true;
 }

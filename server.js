@@ -627,13 +627,13 @@ function normalizeInventoryProductKey(value = "") {
 
 function runExclusiveApiWrite(task) {
   const nextRun = processApiWriteQueue.catch(() => {}).then(task);
-  processApiWriteQueue = nextRun.catch(() => {});
+  processApiWriteQueue = nextRun.catch((err) => { console.error("[api-write-queue]", err?.message || err); });
   return nextRun;
 }
 
 function runExclusiveSessionWrite(task) {
   const nextRun = processSessionWriteQueue.catch(() => {}).then(task);
-  processSessionWriteQueue = nextRun.catch(() => {});
+  processSessionWriteQueue = nextRun.catch((err) => { console.error("[session-write-queue]", err?.message || err); });
   return nextRun;
 }
 
