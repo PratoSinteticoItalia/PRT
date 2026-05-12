@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-inbox-orders-pdf-fix-182";
+const APP_SHELL_VERSION = "20260512-marketing-publish-confirm-184";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1150,6 +1150,8 @@ const state = {
   marketingViewMode: "list",
   marketingStatusFilter: "tutti",
   marketingCalendarMonth: "",
+  marketingPublishingId: "",
+  marketingPublishingMode: "",
 };
 
 let sessionKeepaliveTimer = 0;
@@ -8810,7 +8812,7 @@ function getActiveInstallationCrewFilter() {
 function filterInstallations() {
   const activeCrewFilter = getActiveInstallationCrewFilter();
   return state.orders
-    .filter((order) => isRoutedToInstallation(order))
+    .filter((order) => isRoutedToInstallation(order) && !isOrderFulfilledOrClosed(order))
     .filter((order) => {
       if (!activeCrewFilter) return true;
       return orderBelongsToCrew(order, activeCrewFilter);
@@ -15252,8 +15254,12 @@ function renderMarketing() {
       <div class="marketing-month-block">
         <div class="section-title">${monthLabel(mkey)} <span class="section-badge">${monthItems.length}</span></div>
         <div class="marketing-list-grid">
-          ${monthItems.map((item) => `
-            <article class="panel marketing-list-card" data-action="open-marketing-item" data-id="${escapeHtml(item.id)}">
+          ${monthItems.map((item) => {
+            const isPublishing = state.marketingPublishingId === item.id;
+            const publishModeLabel = state.marketingPublishingMode === "schedule" ? "Programmazione in corso" : "Pubblicazione in corso";
+            const publishDisabled = isPublishing ? " disabled" : "";
+            return `
+            <article class="panel marketing-list-card${isPublishing ? " is-publishing" : ""}" data-action="open-marketing-item" data-id="${escapeHtml(item.id)}">
               <div class="marketing-list-card-inner">
                 <div class="marketing-list-asset">
                   ${item.assetDataUrl || item.assetUrl ? `<img src="${escapeHtml(item.assetDataUrl || item.assetUrl)}" alt="">` : `<span>${channelIcon(item.channel)}</span>`}
@@ -15273,10 +15279,16 @@ function renderMarketing() {
                     ${item.cta ? `<span>CTA: ${escapeHtml(item.cta)}</span>` : ""}
                     ${item.hashtags ? `<span>${escapeHtml(item.hashtags)}</span>` : ""}
                   </div>
+                  ${isPublishing ? `
+                    <div class="marketing-publish-progress" role="status" aria-live="polite">
+                      <span>${escapeHtml(publishModeLabel)} su ${escapeHtml(item.channel || "API")}...</span>
+                      <div class="marketing-publish-progress-track"><i></i></div>
+                    </div>
+                  ` : ""}
                   <div class="marketing-list-actions">
                     <button type="button" class="ghost-button small-button" data-action="marketing-open-tool" data-id="${escapeHtml(item.id)}">${escapeHtml(marketingChannelToolLabel(item.channel))}</button>
-                    <button type="button" class="ghost-button small-button" data-action="marketing-publish-api" data-mode="publish" data-id="${escapeHtml(item.id)}">Pubblica ora via API</button>
-                    <button type="button" class="ghost-button small-button" data-action="marketing-publish-api" data-mode="schedule" data-id="${escapeHtml(item.id)}">Programma via API</button>
+                    <button type="button" class="ghost-button small-button${isPublishing ? " is-busy" : ""}" data-action="marketing-publish-api" data-mode="publish" data-id="${escapeHtml(item.id)}"${publishDisabled}>${isPublishing && state.marketingPublishingMode !== "schedule" ? "Pubblico..." : "Pubblica ora via API"}</button>
+                    <button type="button" class="ghost-button small-button${isPublishing ? " is-busy" : ""}" data-action="marketing-publish-api" data-mode="schedule" data-id="${escapeHtml(item.id)}"${publishDisabled}>${isPublishing && state.marketingPublishingMode === "schedule" ? "Programmo..." : "Programma via API"}</button>
                     <button type="button" class="ghost-button small-button" data-action="marketing-open-calendar" data-id="${escapeHtml(item.id)}">Programma in calendario</button>
                   </div>
                 </div>
@@ -15285,7 +15297,8 @@ function renderMarketing() {
                 </div>
               </div>
             </article>
-          `).join("")}
+          `;
+          }).join("")}
         </div>
       </div>
     `).join("");
@@ -15768,6 +15781,7 @@ function marketingApiErrorMessage(reason = "") {
     missing_public_asset_url: "Serve un'immagine pubblica HTTPS oppure una foto caricata dal PC da convertire in link pubblico.",
     invalid_marketing_asset_type: "Formato immagine non supportato per la pubblicazione API. Usa PNG, JPG, WebP o GIF.",
     provider_error: "Il provider ha rifiutato la richiesta. Controlla token, permessi e destinatario.",
+    provider_missing_confirmation: "Il provider non ha confermato la pubblicazione finale. Non marco il contenuto come pubblicato.",
     network_error: "Errore di rete verso il provider API.",
     missing_meta_instagram_config: "Mancano token Meta o Instagram Business Account ID.",
     instagram_media_publish_not_configured: "Instagram API predisposta: serve completare upload media e publish container con asset URL pubblico.",
@@ -15789,13 +15803,28 @@ async function publishMarketingItemViaApi(item, button = null, mode = "publish")
   const originalLabel = button?.textContent || "";
   if (button) {
     button.disabled = true;
+    button.classList.add("is-busy");
     button.textContent = mode === "schedule" ? "Programmo..." : "Invio...";
   }
+  state.marketingPublishingId = item.id || "";
+  state.marketingPublishingMode = mode === "schedule" ? "schedule" : "publish";
+  renderMarketing();
   try {
     const result = await apiFetch("/api/marketing/publish", {
       method: "POST",
       body: JSON.stringify({ item, mode }),
     });
+    if (!result?.ok) {
+      const error = new Error(result?.reason || "provider_missing_confirmation");
+      error.payload = result || {};
+      throw error;
+    }
+    const providerId = String(result.messageId || result.scheduleId || "").trim();
+    if (!providerId) {
+      const error = new Error("provider_missing_confirmation");
+      error.payload = { reason: "provider_missing_confirmation", details: "Risposta API senza ID provider finale." };
+      throw error;
+    }
     const nextItems = (state.marketingItems || []).map((entry) => entry.id === item.id
       ? {
           ...entry,
@@ -15803,12 +15832,13 @@ async function publishMarketingItemViaApi(item, button = null, mode = "publish")
           apiPublishedAt: result.publishedAt || entry.apiPublishedAt || "",
           apiScheduledAt: result.scheduledAt || entry.apiScheduledAt || "",
           apiProviderId: result.messageId || result.scheduleId || "",
+          apiProviderUrl: result.providerUrl || entry.apiProviderUrl || "",
           publicAssetUrl: result.publicAssetUrl || entry.publicAssetUrl || "",
         }
       : entry);
     state.marketingItems = nextItems;
     saveMarketingItems();
-    showToast(mode === "schedule" ? "Contenuto programmato via API" : "Contenuto inviato via API", "success");
+    showToast(mode === "schedule" ? "Contenuto programmato via API" : `Pubblicazione confermata da ${result.provider || "provider API"}`, "success");
     renderMarketing();
   } catch (error) {
     const reason = error?.payload?.reason || error?.payload?.error || error?.message || "";
@@ -15816,10 +15846,14 @@ async function publishMarketingItemViaApi(item, button = null, mode = "publish")
     const detailText = detail ? ` ${detail.slice(0, 220)}` : "";
     showToast(`${marketingApiErrorMessage(reason)}${detailText}`, "warning");
   } finally {
+    state.marketingPublishingId = "";
+    state.marketingPublishingMode = "";
     if (button) {
       button.disabled = false;
+      button.classList.remove("is-busy");
       button.textContent = originalLabel;
     }
+    renderMarketing();
   }
 }
 

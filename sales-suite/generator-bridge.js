@@ -275,6 +275,7 @@
       padding-top: 5px !important;
       padding-bottom: 5px !important;
       vertical-align: middle !important;
+      text-align: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table td {

@@ -2710,6 +2710,71 @@ async function callMetaGraphApi(path = "", params = {}, accessToken = META_MARKE
   }
 }
 
+async function readMetaGraphApi(path = "", params = {}, accessToken = META_MARKETING_ACCESS_TOKEN) {
+  const normalizedPath = String(path || "").replace(/^\/+/, "");
+  const endpoint = new URL(`https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${normalizedPath}`);
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value) !== "") endpoint.searchParams.set(key, String(value));
+  });
+  endpoint.searchParams.set("access_token", accessToken);
+  try {
+    const response = await fetchWithTimeout(endpoint.toString(), { method: "GET" }, WHATSAPP_GRAPH_TIMEOUT_MS);
+    const rawResponse = await response.text().catch(() => "");
+    let parsed = {};
+    if (rawResponse) {
+      try {
+        parsed = JSON.parse(rawResponse);
+      } catch {
+        parsed = { raw: rawResponse };
+      }
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: "provider_error",
+        statusCode: Number(response.status || 0),
+        details: String(parsed?.error?.message || parsed?.raw || "").trim(),
+      };
+    }
+    return { ok: true, payload: parsed };
+  } catch (error) {
+    console.error("meta_graph_api_read_network_error", normalizedPath, error);
+    return {
+      ok: false,
+      reason: "network_error",
+      details: [error?.name, error?.message].filter(Boolean).join(": ") || "network_error",
+    };
+  }
+}
+
+async function verifyMetaPublishedObject(objectId = "", fields = "id", label = "Meta") {
+  const normalizedObjectId = String(objectId || "").trim();
+  if (!normalizedObjectId) {
+    return { ok: false, reason: "provider_missing_confirmation", details: `${label}: missing provider object id` };
+  }
+  let lastResult = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt) await wait(900 * attempt);
+    const result = await readMetaGraphApi(normalizedObjectId, { fields });
+    if (result.ok && String(result.payload?.id || "").trim()) {
+      return {
+        ok: true,
+        payload: result.payload,
+        verifiedId: String(result.payload.id || "").trim(),
+      };
+    }
+    lastResult = result.ok
+      ? { ok: false, reason: "provider_missing_confirmation", details: `${label}: Graph API did not return a confirmed object id.` }
+      : result;
+  }
+  return {
+    ok: false,
+    reason: lastResult?.reason || "provider_missing_confirmation",
+    statusCode: lastResult?.statusCode,
+    details: String(lastResult?.details || `${label}: provider object was not verifiable after publish.`).trim(),
+  };
+}
+
 async function sendMarketingWhatsAppMessage(item = {}) {
   if (!WHATSAPP_AUTOMATION_ENABLED) {
     return { ok: false, reason: "automation_disabled" };
@@ -2765,10 +2830,14 @@ async function sendMarketingWhatsAppMessage(item = {}) {
         details: String(parsed?.error?.message || parsed?.raw || "").trim(),
       };
     }
+    const messageId = String(parsed?.messages?.[0]?.id || "").trim();
+    if (!messageId) {
+      return { ok: false, reason: "provider_missing_confirmation", details: "WhatsApp API response missing message id." };
+    }
     return {
       ok: true,
       provider: "whatsapp",
-      messageId: String(parsed?.messages?.[0]?.id || "").trim(),
+      messageId,
     };
   } catch (error) {
     return {
@@ -2801,14 +2870,31 @@ async function publishFacebookMarketingItem(item = {}, mode = "publish") {
         message,
         published: mode === "schedule" ? "false" : "true",
         scheduled_publish_time: scheduledUnix || undefined,
-      };
+  };
   const result = await callMetaGraphApi(path, params);
   if (!result.ok) return result;
+  const providerId = String(result.payload?.post_id || result.payload?.id || "").trim();
+  if (!providerId) {
+    return { ok: false, reason: "provider_missing_confirmation", details: "Meta response missing Facebook post id." };
+  }
+  let providerUrl = "";
+  if (mode === "publish") {
+    const verification = await verifyMetaPublishedObject(providerId, "id,permalink_url,created_time", "Facebook");
+    if (!verification.ok) {
+      return {
+        ...verification,
+        details: `Meta ha risposto al publish ma non riesco a verificare il post Facebook finale (${providerId}). ${verification.details || ""}`.trim(),
+      };
+    }
+    providerUrl = String(verification.payload?.permalink_url || "").trim();
+  }
   return {
     ok: true,
     provider: "facebook",
-    messageId: String(result.payload?.post_id || result.payload?.id || "").trim(),
-    scheduleId: String(result.payload?.post_id || result.payload?.id || "").trim(),
+    messageId: mode === "publish" ? providerId : "",
+    scheduleId: mode === "schedule" ? providerId : "",
+    providerUrl,
+    verified: mode === "publish",
     scheduledAt,
   };
 }
@@ -2845,10 +2931,23 @@ async function publishInstagramMarketingItem(item = {}, mode = "publish") {
     creation_id: creationId,
   });
   if (!publishResult.ok) return publishResult;
+  const mediaId = String(publishResult.payload?.id || "").trim();
+  if (!mediaId) {
+    return { ok: false, reason: "provider_missing_confirmation", details: "Meta response missing Instagram media id." };
+  }
+  const verification = await verifyMetaPublishedObject(mediaId, "id,permalink,timestamp,media_type", "Instagram");
+  if (!verification.ok) {
+    return {
+      ...verification,
+      details: `Meta ha risposto al publish ma non riesco a verificare il post Instagram finale (${mediaId}). ${verification.details || ""}`.trim(),
+    };
+  }
   return {
     ok: true,
     provider: "instagram",
-    messageId: String(publishResult.payload?.id || creationId).trim(),
+    messageId: mediaId,
+    providerUrl: String(verification.payload?.permalink || "").trim(),
+    verified: true,
   };
 }
 

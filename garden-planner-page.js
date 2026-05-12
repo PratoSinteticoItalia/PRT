@@ -91,7 +91,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260511-fast-save-chat-168";
+const APP_SHELL_VERSION = "20260512-marketing-publish-confirm-184";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -1416,10 +1416,14 @@ function FreeDrawCanvas({
 
   const smoothCorners = () => {
     if (points.length < 3) return;
+    if (selectedVertices.size === 0) {
+      setCanvasMessage("Seleziona un vertice prima di smussare l'angolo.");
+      return;
+    }
     const radius = GRID * 3;
     const smoothed = [];
     const n = points.length;
-    const targets = selectedVertices.size > 0 ? selectedVertices : null;
+    const targets = selectedVertices;
     let smoothedCount = 0;
     for (let i = 0; i < n; i++) {
       if (targets && !targets.has(i)) { smoothed.push(points[i]); continue; }
