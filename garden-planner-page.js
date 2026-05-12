@@ -1184,6 +1184,7 @@ function FreeDrawCanvas({
   const pointerStateRef = useRef({ pointerId: null, mode: "", start: null, moved: false });
   const [hoverPt, setHoverPt] = useState(null);
   const [dragging, setDragging] = useState(null);
+  const [selectedVertices, setSelectedVertices] = useState(new Set());
   const [canvasW, setCanvasW] = useState(760);
   const [zoom, setZoom] = useState(1);
   const [drawMode, setDrawMode] = useState("shape");
@@ -1311,7 +1312,16 @@ function FreeDrawCanvas({
     const pointerState = pointerStateRef.current;
     if (pointerState.pointerId !== e.pointerId) return;
     const { mx, my } = getPos(e);
-    if (pointerState.mode === "tap") {
+    if (pointerState.mode === "drag" && !pointerState.moved && closed && drawMode === "shape") {
+      const idx = points.findIndex(p => Math.hypot(p.x - mx, p.y - my) < 0.6);
+      if (idx >= 0) {
+        setSelectedVertices(prev => {
+          const next = new Set(prev);
+          if (next.has(idx)) next.delete(idx); else next.add(idx);
+          return next;
+        });
+      }
+    } else if (pointerState.mode === "tap") {
       handleCanvasTap({ x: mx, y: my });
     }
     setDragging(null);
@@ -1332,6 +1342,7 @@ function FreeDrawCanvas({
     setPoints([]);
     setClosed(false);
     setDragging(null);
+    setSelectedVertices(new Set());
     setRollStart(null);
     setDrawMode("shape");
     setCanvasMessage("");
@@ -1408,7 +1419,10 @@ function FreeDrawCanvas({
     const radius = GRID * 3;
     const smoothed = [];
     const n = points.length;
+    const targets = selectedVertices.size > 0 ? selectedVertices : null;
+    let smoothedCount = 0;
     for (let i = 0; i < n; i++) {
+      if (targets && !targets.has(i)) { smoothed.push(points[i]); continue; }
       const prev = points[(i - 1 + n) % n];
       const curr = points[i];
       const next = points[(i + 1) % n];
@@ -1422,10 +1436,14 @@ function FreeDrawCanvas({
       const p2 = { x: snap(curr.x + ux2 * offset), y: snap(curr.y + uy2 * offset) };
       const mid = { x: snap((p1.x + p2.x) / 2 + (curr.x - (p1.x + p2.x) / 2) * 0.3), y: snap((p1.y + p2.y) / 2 + (curr.y - (p1.y + p2.y) / 2) * 0.3) };
       smoothed.push(p1, mid, p2);
+      smoothedCount++;
     }
     setPoints(smoothed);
+    setSelectedVertices(new Set());
     if (!closed && smoothed.length >= 3) setClosed(true);
-    setCanvasMessage(`Angoli smussati: ${n} vertici → ${smoothed.length} vertici.`);
+    setCanvasMessage(targets
+      ? `${smoothedCount} angoli smussati su ${targets.size} selezionati.`
+      : `Tutti gli angoli smussati: ${n} vertici → ${smoothed.length} vertici.`);
   };
 
   useEffect(() => {
@@ -1554,9 +1572,14 @@ function FreeDrawCanvas({
       // Vertices
       points.forEach((p, i) => {
         const px = toPx(p.x), py = toPx(p.y);
+        const isSelected = selectedVertices.has(i);
         ctx.beginPath(); ctx.arc(px, py, closed ? 8 : 5, 0, Math.PI * 2);
-        ctx.fillStyle = i === 0 && !closed ? B.accent : B.primary; ctx.fill();
-        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = isSelected ? B.accent : (i === 0 && !closed ? B.accent : B.primary); ctx.fill();
+        ctx.strokeStyle = isSelected ? "#ffd600" : "#fff"; ctx.lineWidth = isSelected ? 3 : 2; ctx.stroke();
+        if (isSelected) {
+          ctx.beginPath(); ctx.arc(px, py, 12, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(255,214,0,0.5)"; ctx.lineWidth = 2; ctx.stroke();
+        }
         if (closed) { ctx.fillStyle = "#fff"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center"; ctx.fillText("" + (i + 1), px, py + 3); ctx.textAlign = "start"; }
       });
 
@@ -1576,7 +1599,7 @@ function FreeDrawCanvas({
       ctx.fillText(`Griglia = ${fmt(GRID, 2)}m · Clicca vicino al punto 1 per chiudere`, canvasW / 2, canvasH / 2 + 14);
       ctx.textAlign = "start";
     }
-  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep]);
+  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices]);
 
   return (
     <div ref={containerRef}>
@@ -1585,7 +1608,9 @@ function FreeDrawCanvas({
           {drawMode === "roll"
             ? `Modalità rotoli: click inizio + click fine. Larghezza fissa ${MANUAL_ROLL_WIDTH_M}m, lunghezza max ${MANUAL_ROLL_MAX_LENGTH_M}m.`
             : closed
-              ? "Area chiusa — trascina i vertici per modificare il perimetro"
+              ? (selectedVertices.size > 0
+                ? `${selectedVertices.size} vertici selezionati — clicca Smussa per arrotondare solo questi angoli`
+                : "Area chiusa — trascina i vertici per spostare, clicca per selezionare e smussare")
               : points.length === 0
                 ? "Clicca per posizionare il primo vertice"
                 : "Clicca per aggiungere vertici · Chiudi sul punto 1"}
@@ -1660,11 +1685,16 @@ function FreeDrawCanvas({
             onClick={smoothCorners}
             disabled={points.length < 3}
             style={{
-              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
-              cursor: points.length >= 3 ? "pointer" : "not-allowed", color: points.length >= 3 ? B.text : B.textMuted, opacity: points.length >= 3 ? 1 : 0.55,
+              padding: "3px 10px", borderRadius: 4, fontSize: 11,
+              cursor: points.length >= 3 ? "pointer" : "not-allowed",
+              border: selectedVertices.size > 0 ? "1.5px solid " + B.accent : "1px solid " + B.border,
+              background: selectedVertices.size > 0 ? "#fffde7" : B.white,
+              color: points.length >= 3 ? B.text : B.textMuted,
+              opacity: points.length >= 3 ? 1 : 0.55,
+              fontWeight: selectedVertices.size > 0 ? 700 : 500,
             }}
           >
-            Smussa angoli
+            {selectedVertices.size > 0 ? `Smussa ${selectedVertices.size} punti` : "Smussa angoli"}
           </button>
           <span style={{ fontSize: 11, color: B.textMuted }}>Zoom:</span>
           {[0.6, 0.8, 1, 1.3, 1.6].map(z => (

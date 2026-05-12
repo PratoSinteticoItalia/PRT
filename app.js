@@ -10467,20 +10467,25 @@ function renderSalesContentAttachments(items = [], contentId = "") {
         ${isDeleting ? "disabled" : ""}
       >${isDeleting ? "…" : "×"}</button>
       ${isImageAttachment(item) && (item.url || item.dataUrl)
-        ? `<img src="${escapeHtml(item.url || item.dataUrl)}" alt="${escapeHtml(item.name || "Attachment")}" loading="lazy" decoding="async" fetchpriority="low" />`
-        : `<div class="attachment-file-badge">${escapeHtml(String(item.type || "file").split("/").pop()?.toUpperCase() || "FILE")}</div>`}
+        ? `<a href="${escapeHtml(item.url || item.dataUrl)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(item.url || item.dataUrl)}" alt="${escapeHtml(item.name || "Attachment")}" loading="lazy" decoding="async" fetchpriority="low" /></a>`
+        : /^application\/pdf/i.test(String(item.type || "")) && item.url
+          ? `<iframe class="attachment-pdf-preview" src="${escapeHtml(item.url)}" title="${escapeHtml(item.name || "PDF")}"></iframe>`
+          : `<div class="attachment-file-badge">${escapeHtml(String(item.type || "file").split("/").pop()?.toUpperCase() || "FILE")}</div>`}
       <strong>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.name || "Attachment")}</a>` : escapeHtml(item.name || "Attachment")}</strong>
       <div class="attachment-copy">${escapeHtml(getAttachmentContextLabel("sales-content"))}</div>
       <div>${item.createdAt ? formatDate(item.createdAt) : "—"}</div>
-      ${item.url
-        ? `<button
-            class="ghost-button small-button attachment-copy-link"
-            type="button"
-            data-action="copy-content-link"
-            data-url="${escapeHtml(item.url)}"
-            data-name="${escapeHtml(item.name || "")}"
-          >${state.lang === "it" ? "Copia link" : "Copy link"}</button>`
-        : ""}
+      <div class="attachment-actions">
+        ${item.url
+          ? `<button
+              class="ghost-button small-button attachment-copy-link"
+              type="button"
+              data-action="copy-content-link"
+              data-url="${escapeHtml(item.url)}"
+              data-name="${escapeHtml(item.name || "")}"
+            >${state.lang === "it" ? "Copia link" : "Copy link"}</button>
+            <a class="ghost-button small-button" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${state.lang === "it" ? "Apri file" : "Open file"}</a>`
+          : ""}
+      </div>
     </article>
   `;
   }).join("");
@@ -16377,20 +16382,14 @@ async function saveShipping(event) {
     if (fulfillmentMode === "corriere") nextCarrierPassed = true;
   }
   const shippingProofAttachments = mapAttachmentsForContext(order, "shipping");
-  const requiresDeparturePhoto = Boolean(
-    !isSampleOrder(order)
-    && fulfillmentMode === "corriere"
-    && nextShipped,
-  );
-  if (requiresDeparturePhoto && !shippingProofAttachments.length) {
+  if (!isSampleOrder(order) && fulfillmentMode === "corriere" && nextShipped && !shippingProofAttachments.length) {
     setStatus(
       ui.shippingStatus,
-      "error",
+      "warning",
       state.lang === "it"
-        ? "Per segnare l'ordine come evaso carica prima la foto di partenza."
-        : "Upload the departure photo before marking the order as shipped.",
+        ? "Foto di partenza non caricata — l'ordine verrà evaso comunque."
+        : "Departure photo not uploaded — the order will be shipped anyway.",
     );
-    return;
   }
   const destinationProvinceCode = normalizeProvinceCode(form.get("destinationProvinceCode"));
   const destinationProvinceRecord = getProvinceRecord(destinationProvinceCode);
