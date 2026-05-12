@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-fix-save-storm-173";
+const APP_SHELL_VERSION = "20260512-save-communications-hotfix-174";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -16,8 +16,8 @@ const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 300;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 2;
 const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 2;
 const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 45;
-const SALES_REQUEST_SAVE_TIMEOUT_MS = 20_000;
-const SALES_REQUEST_SAVE_MAX_RETRIES = 3;
+const SALES_REQUEST_SAVE_TIMEOUT_MS = 90_000;
+const SALES_REQUEST_SAVE_MAX_RETRIES = 2;
 const COVERAGE_SYNC_DEBOUNCE_MS = 350;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
@@ -1180,6 +1180,7 @@ let coverageSyncInFlight = false;
 let coverageSyncQueued = false;
 let currentViewRenderFrame = 0;
 let communicationsPollTimer = 0;
+let communicationsPollInFlight = false;
 let communicationsThreadsRequestSeq = 0;
 let communicationsMessagesRequestSeq = 0;
 const salesGeneratorQuoteStatusInFlight = new Set();
@@ -14053,8 +14054,6 @@ function showApp() {
   startSessionEvents();
   startShopifyAutoSync();
   startSalesRequestAutoSync();
-  startCommunicationsPolling();
-  void loadCommunicationThreads({ render: false });
   startUsageHeartbeat();
   clearPendingCurrentViewRefresh();
   setShellPending(false);
@@ -14678,7 +14677,9 @@ async function loadCommunicationMessages(threadId = state.selectedCommunicationT
     state.communicationMessages = mergeCommunicationMessagesForThread(normalizedThreadId, Array.isArray(payload.messages) ? payload.messages : []);
     state.communicationParticipants = Array.isArray(payload.participants) ? payload.participants : [];
     state.loadedCommunicationThreadId = normalizedThreadId;
-    if (markRead) {
+    const loadedThread = (state.communicationThreads || []).find((thread) => thread.id === normalizedThreadId);
+    const shouldMarkRead = markRead && Number(loadedThread?.unreadCount || 0) > 0;
+    if (shouldMarkRead) {
       void apiFetch(`/api/communications/threads/${encodeURIComponent(normalizedThreadId)}/read`, { method: "POST", body: "{}" }).catch(() => null);
       state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === normalizedThreadId ? { ...thread, unreadCount: 0 } : thread);
       state.communicationsUnreadCount = state.communicationThreads.reduce((sum, thread) => sum + Number(thread.unreadCount || 0), 0);
@@ -14785,16 +14786,30 @@ async function sendCommunicationMessage(form) {
   }
 }
 
+async function pollCommunications({ render = true } = {}) {
+  if (!state.currentUser || state.currentView !== "communications" || document.hidden || communicationsPollInFlight) return;
+  communicationsPollInFlight = true;
+  try {
+    await loadCommunicationThreads({ render });
+    if (state.currentView === "communications" && state.selectedCommunicationThreadId && state.loadedCommunicationThreadId === state.selectedCommunicationThreadId) {
+      const selectedThread = (state.communicationThreads || []).find((thread) => thread.id === state.selectedCommunicationThreadId);
+      await loadCommunicationMessages(state.selectedCommunicationThreadId, {
+        render: true,
+        markRead: Number(selectedThread?.unreadCount || 0) > 0,
+      });
+    }
+  } catch (error) {
+    console.error("communications_poll_failed", error);
+  } finally {
+    communicationsPollInFlight = false;
+  }
+}
+
 function startCommunicationsPolling() {
-  if (communicationsPollTimer) window.clearInterval(communicationsPollTimer);
-  if (!state.currentUser) return;
+  if (!state.currentUser || state.currentView !== "communications") return;
+  if (communicationsPollTimer) return;
   communicationsPollTimer = window.setInterval(() => {
-    if (!state.currentUser || document.hidden) return;
-    void loadCommunicationThreads({ render: state.currentView === "communications" }).then(() => {
-      if (state.currentView === "communications" && state.selectedCommunicationThreadId) {
-        void loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
-      }
-    });
+    void pollCommunications({ render: true });
   }, COMMUNICATIONS_POLL_INTERVAL_MS);
 }
 
@@ -14852,6 +14867,9 @@ function renderCurrentViewOnly(view = state.currentView) {
   populateInventoryOptions();
   updateShell();
   renderOps();
+  if (view !== "communications") {
+    stopCommunicationsPolling();
+  }
   switch (view) {
     case "dashboard":
       renderDashboard();
@@ -14893,6 +14911,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       renderMarketing();
       break;
     case "communications":
+      startCommunicationsPolling();
       renderCommunications();
       if (state.communicationsInitialized) {
         if (state.selectedCommunicationThreadId) {
