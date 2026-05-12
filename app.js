@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-global-speed-boost-171";
+const APP_SHELL_VERSION = "20260512-state-stability-fixes-172";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6,8 +6,8 @@ const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
 const COVERAGE_GEOCODE_CACHE_KEY = "pose-coverage-geocode-v1";
 const PROFIT_SPLIT_STORAGE_KEY = "pose-profit-split-v1";
-const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 10;
-const COMMUNICATIONS_POLL_INTERVAL_MS = 6000;
+const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 15;
+const COMMUNICATIONS_POLL_INTERVAL_MS = 8000;
 const SESSION_REVISION_ENDPOINT = "/api/session/revision";
 const SESSION_EVENTS_ENDPOINT = "/api/events";
 const SESSION_EVENTS_RECONNECT_BASE_MS = 500;
@@ -16,8 +16,8 @@ const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 300;
 const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 2;
 const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 2;
 const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 45;
-const SALES_REQUEST_SAVE_TIMEOUT_MS = 12_000;
-const SALES_REQUEST_SAVE_MAX_RETRIES = 1;
+const SALES_REQUEST_SAVE_TIMEOUT_MS = 20_000;
+const SALES_REQUEST_SAVE_MAX_RETRIES = 3;
 const COVERAGE_SYNC_DEBOUNCE_MS = 350;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
@@ -1172,6 +1172,7 @@ let ordersScrollIdleTimer = 0;
 let ordersDeferredRenderTimer = 0;
 let salesContentDeleteInFlightId = "";
 const salesRequestPendingPatchIds = new Set();
+const orderPendingPatchIds = new Set();
 const salesContentAttachmentDeleteInFlight = new Set();
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
@@ -4730,10 +4731,12 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     if (state.currentView === "sales-generator") renderSalesGenerator();
     return saved;
   } catch (error) {
-    if (previousRecord) {
-      state.salesRequests = state.salesRequests.map((r) => r.id === previousRecord.id ? previousRecord : r);
-      renderSalesRequests();
-    }
+    showToast(
+      state.lang === "it"
+        ? "Salvataggio richiesta non riuscito — le modifiche potrebbero non essere state salvate. Riprova."
+        : "Request save failed — changes may not have been saved. Please retry.",
+      "error",
+    );
     setStatus(
       ui.salesRequestsStatus,
       "error",
@@ -13638,7 +13641,15 @@ function applySessionPayload(session = {}) {
     : null;
   state.currentUser = nextUser;
   state.sessionRevision = nextUser ? nextSessionRevision : "";
+  const previousOrders = preserveEditingState ? state.orders : null;
   state.orders = session.orders || [];
+  if (orderPendingPatchIds.size && previousOrders) {
+    const previousOrdersById = new Map(previousOrders.map((o) => [o.id, o]));
+    state.orders = state.orders.map((o) => {
+      const pending = previousOrdersById.get(o.id);
+      return pending && orderPendingPatchIds.has(o.id) ? pending : o;
+    });
+  }
   state.inventory = session.inventory || [];
   state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
   if (salesRequestPendingPatchIds.size) {
@@ -14884,13 +14895,12 @@ function renderCurrentViewOnly(view = state.currentView) {
       renderMarketing();
       break;
     case "communications":
+      renderCommunications();
       if (state.communicationsInitialized) {
-        if (state.selectedCommunicationThreadId && state.loadedCommunicationThreadId !== state.selectedCommunicationThreadId) {
-          renderCommunications();
+        if (state.selectedCommunicationThreadId) {
           void loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
         }
       } else {
-        renderCommunications();
         void loadCommunicationTargets({ render: true });
         void loadCommunicationThreads({ render: true });
       }
@@ -16333,6 +16343,7 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
     state.orders = state.orders.map((item) => (item.id === orderId ? optimistic : item));
     renderCurrentViewOnly(state.currentView);
   }
+  if (orderId) orderPendingPatchIds.add(orderId);
   let saved;
   try {
     saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
@@ -16344,6 +16355,12 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
       state.orders = state.orders.map((item) => (item.id === orderId ? previousOrder : item));
       renderCurrentViewOnly(state.currentView);
     }
+    showToast(
+      state.lang === "it"
+        ? "Salvataggio flusso ordine non riuscito. Riprova."
+        : "Order flow save failed. Please retry.",
+      "error",
+    );
     setStatus(
       ui.ordersStatus,
       "error",
@@ -16351,8 +16368,10 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
         ? `Impossibile salvare il flusso ordine. ${String(error.message || "").trim()}`
         : `Unable to save order flow. ${String(error.message || "").trim()}`,
     );
+    if (orderId) orderPendingPatchIds.delete(orderId);
     return;
   }
+  if (orderId) orderPendingPatchIds.delete(orderId);
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.selectedOrderId = saved.id;
   renderCurrentViewOnly(state.currentView);
@@ -16408,6 +16427,7 @@ async function saveShipping(event) {
       warehouseNote: form.get("warehouseNote"),
     },
   };
+  if (order.id) orderPendingPatchIds.add(order.id);
   let saved;
   try {
     saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
@@ -16415,6 +16435,7 @@ async function saveShipping(event) {
       body: JSON.stringify(payload),
     });
   } catch (error) {
+    if (order.id) orderPendingPatchIds.delete(order.id);
     setStatus(
       ui.shippingStatus,
       "error",
@@ -16424,6 +16445,7 @@ async function saveShipping(event) {
     );
     return;
   }
+  if (order.id) orderPendingPatchIds.delete(order.id);
   let shopifyMessage = "";
   const shouldSyncTrackingToShopify = Boolean(
     nextShipped
