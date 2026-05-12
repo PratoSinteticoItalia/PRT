@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-save-communications-hotfix-174";
+const APP_SHELL_VERSION = "20260512-inventory-material-stock-175";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1179,6 +1179,7 @@ let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
 let coverageSyncQueued = false;
 let currentViewRenderFrame = 0;
+let inventorySaveInFlight = false;
 let communicationsPollTimer = 0;
 let communicationsPollInFlight = false;
 let communicationsThreadsRequestSeq = 0;
@@ -1347,6 +1348,7 @@ const ui = {
   warehouseDetailFields: document.getElementById("warehouse-detail-fields"),
   inventorySummary: document.getElementById("inventory-summary"),
   inventoryForm: document.getElementById("inventory-form"),
+  inventorySubmitButton: document.getElementById("inventory-submit-button"),
   inventoryJumpButton: document.getElementById("inventory-jump-button"),
   inventoryProductOptions: document.getElementById("inventory-product-options"),
   ddtForm: document.getElementById("ddt-form"),
@@ -11508,6 +11510,18 @@ function renderInventoryCard(group) {
   `;
 }
 
+function matchesWarehouseInventoryFilter(group, filter = state.filters.warehouse) {
+  if (!group) return false;
+  if (filter === "turf") return group.isModel;
+  if (filter === "materials") return !group.isModel;
+  if (filter === "committed") return group.isModel ? group.demandSqm > 0 : group.demandUnits > 0;
+  if (filter === "valued") return group.isModel && group.grossPriceConfigured && group.availableGrossValue > 0;
+  if (filter === "full") return group.fullCount > 0;
+  if (filter === "residual") return group.residualCount > 0;
+  if (filter === "demand") return group.demandSqm > 0 || group.demandUnits > 0;
+  return true;
+}
+
 function renderWarehouse() {
   ui.warehouseFilterTags.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.warehouseFilter === state.filters.warehouse);
@@ -11520,14 +11534,7 @@ function renderWarehouse() {
       ...group.pieces.map((item) => `${item.width}x${item.length}`),
     ].join(" ").toLowerCase().includes(search);
     if (!matchesSearch) return false;
-    if (state.filters.warehouse === "turf") return group.isModel;
-    if (state.filters.warehouse === "materials") return !group.isModel;
-    if (state.filters.warehouse === "committed") return group.isModel ? group.demandSqm > 0 : group.demandUnits > 0;
-    if (state.filters.warehouse === "valued") return group.isModel && group.grossPriceConfigured && group.availableGrossValue > 0;
-    if (state.filters.warehouse === "full") return group.fullCount > 0;
-    if (state.filters.warehouse === "residual") return group.residualCount > 0;
-    if (state.filters.warehouse === "demand") return group.demandSqm > 0 || group.demandUnits > 0;
-    return true;
+    return matchesWarehouseInventoryFilter(group, state.filters.warehouse);
   });
 
   ui.warehouseList.innerHTML = orders.length
@@ -16158,30 +16165,67 @@ async function saveWarehouse(event) {
 
 async function saveInventory(event) {
   event.preventDefault();
+  if (inventorySaveInFlight) return;
   const form = new FormData(ui.inventoryForm);
-  const config = getInventoryProductConfig(form.get("product"));
+  const product = String(form.get("product") || "").trim();
+  if (!product) {
+    showToast(state.lang === "it" ? "Inserisci un prodotto prima di aggiungere la giacenza." : "Enter a product before adding stock.", "warning");
+    ui.inventoryForm.product?.focus();
+    return;
+  }
+  const config = getInventoryProductConfig(product);
   const variantOptions = config.variantOptions || [];
   const variantValue = String(form.get("variant") || config.defaultVariant || "").trim();
   const variantLabel = variantOptions.find((option) => option.value === variantValue)?.label
     || ui.inventoryForm.variant?.selectedOptions?.[0]?.textContent?.trim()
     || "";
-  state.inventory = await apiFetch("/api/inventory/items", {
-    method: "POST",
-    body: JSON.stringify({
-      product: form.get("product"),
-      quantity: form.get("quantity"),
-      measured: config.isMeasured,
-      width: config.isMeasured ? form.get("width") : (config.preset?.width || ""),
-      length: config.isMeasured ? form.get("length") : (config.preset?.length || ""),
-      status: config.isMeasured ? form.get("status") : "intero",
-      variant: variantLabel,
-      note: form.get("note"),
-    }),
-  });
-  ui.inventoryForm.reset();
-  updateInventoryFormUI();
-  renderWarehouse();
-  trackUsageEvent("inventory_added", { product: String(form.get("product") || "") });
+  const originalButtonLabel = ui.inventorySubmitButton?.textContent || "";
+  inventorySaveInFlight = true;
+  if (ui.inventorySubmitButton) {
+    ui.inventorySubmitButton.disabled = true;
+    ui.inventorySubmitButton.textContent = state.lang === "it" ? "Aggiungo..." : "Adding...";
+  }
+  try {
+    state.inventory = await apiFetch("/api/inventory/items", {
+      method: "POST",
+      body: JSON.stringify({
+        product,
+        quantity: form.get("quantity"),
+        measured: config.isMeasured,
+        width: config.isMeasured ? form.get("width") : (config.preset?.width || ""),
+        length: config.isMeasured ? form.get("length") : (config.preset?.length || ""),
+        status: config.isMeasured ? form.get("status") : "intero",
+        variant: variantLabel,
+        note: form.get("note"),
+      }),
+    });
+    const savedGroup = getInventorySummary().find((group) => normalizeProductName(group.product) === normalizeProductName(getCatalogLabel(product)));
+    const warehouseSearch = String(state.search.warehouse || "").trim().toLowerCase();
+    const savedGroupSearchText = savedGroup
+      ? [savedGroup.product, ...savedGroup.pieces.map((item) => `${item.width}x${item.length} ${item.variant || ""} ${item.note || ""}`)].join(" ").toLowerCase()
+      : "";
+    if (warehouseSearch && savedGroupSearchText && !savedGroupSearchText.includes(warehouseSearch)) {
+      state.search.warehouse = "";
+      if (ui.warehouseSearch) ui.warehouseSearch.value = "";
+    }
+    if (savedGroup && !matchesWarehouseInventoryFilter(savedGroup, state.filters.warehouse)) {
+      state.filters.warehouse = savedGroup.isModel ? "turf" : "materials";
+    }
+    ui.inventoryForm.reset();
+    updateInventoryFormUI();
+    renderWarehouse();
+    showToast(state.lang === "it" ? "Giacenza aggiunta a magazzino." : "Stock added to warehouse.", "success");
+    trackUsageEvent("inventory_added", { product });
+  } catch (error) {
+    console.error("inventory_save_failed", error);
+    showToast(state.lang === "it" ? "Giacenza non salvata. Riprova tra qualche secondo." : "Stock was not saved. Try again in a few seconds.", "warning");
+  } finally {
+    inventorySaveInFlight = false;
+    if (ui.inventorySubmitButton) {
+      ui.inventorySubmitButton.disabled = false;
+      ui.inventorySubmitButton.textContent = originalButtonLabel || (state.lang === "it" ? "Aggiungi a magazzino" : "Add to warehouse");
+    }
+  }
 }
 
 function getInventoryItemsByProductName(product = "") {
@@ -18882,6 +18926,14 @@ if (ui.savePrepListButton) {
   ui.savePrepListButton.addEventListener("click", savePrepList);
 }
 bindEvent(ui.inventoryForm, "submit", saveInventory);
+bindEvent(ui.inventorySubmitButton, "click", () => {
+  if (!ui.inventoryForm) return;
+  if (typeof ui.inventoryForm.requestSubmit === "function") {
+    ui.inventoryForm.requestSubmit();
+    return;
+  }
+  ui.inventoryForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+});
 if (ui.inventoryForm) {
   ui.inventoryForm.product?.addEventListener("input", updateInventoryFormUI);
   ui.inventoryForm.variant?.addEventListener("change", updateInventoryFormUI);

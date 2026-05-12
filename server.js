@@ -4213,6 +4213,7 @@ function reconcileStoreData(store) {
         variant: String(item.variant || ""),
         status: item.status === "residuo" ? "residuo" : "intero",
         note: String(item.note || ""),
+        units: Math.max(1, Math.round(toNumber(item.units || 1))),
         createdAt: item.createdAt || new Date().toISOString(),
       }))
     : [];
