@@ -202,11 +202,14 @@
 
   const PDF_EXPORT_STYLE_TEXT = `
     @media print {
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
       body {
         margin: 0 !important;
         padding: 0 !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
         background: #fff !important;
       }
 
@@ -364,6 +367,11 @@
       min-height: 55px !important;
       padding: 7px 9px !important;
       gap: 3px !important;
+      color: #1a3d24 !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-grid > * * {
+      color: #1a3d24 !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-grid > * > * {

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260513-garden-planner-visual-186";
+const APP_SHELL_VERSION = "20260513-sketch-heylight-fix-187";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

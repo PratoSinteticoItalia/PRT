@@ -91,7 +91,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260513-garden-planner-visual-186";
+const APP_SHELL_VERSION = "20260513-sketch-heylight-fix-187";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2118,7 +2118,7 @@ function ShapeInput({
   );
 }
 
-function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [], manualRolls = [] }) {
+function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [], manualRolls = [], isClientVariant = false }) {
   const polygons = shape === "custom"
     ? getPlannerPolygons(customAreas, customPts, customClosed)
     : [{ id: "shape-default", index: 1, points: getShapePolygon(shape, dims), closed: true, rolls: [] }].filter((item) => item.points.length);
@@ -2246,13 +2246,35 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
     };
   });
 
+  // Visual tokens differ by variant
+  const sketchBg = isClientVariant ? "#eef3ec" : B.cream;
+  const areaFill = isClientVariant ? "rgba(34,100,50,0.22)" : (B.primary + "1c");
+  const areaStroke = isClientVariant ? "#1a5e2f" : B.primary;
+  const areaStrokeW = isClientVariant ? "2.5" : "2.2";
+  const rollFill = isClientVariant ? "rgba(255,255,255,0.55)" : "rgba(21,101,192,0.2)";
+  const rollStroke = isClientVariant ? "#1a5e2f" : "#1565c0";
+  const rollDashArray = isClientVariant ? "4 3" : "none";
+  const grassPatternId = `grass-fill-${W}`;
+
   return (
-    <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: 10 }}>
+    <div style={{ border: "1px solid " + (isClientVariant ? "#c8dfc4" : B.borderLight), borderRadius: 12, background: B.white, padding: 10 }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
-        <rect x="1" y="1" width={W - 2} height={H - 2} rx="10" fill={B.cream} stroke={B.borderLight} />
+        <defs>
+          {isClientVariant && (
+            <pattern id={grassPatternId} patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(34,100,50,0.12)" strokeWidth="2" />
+            </pattern>
+          )}
+        </defs>
+        <rect x="1" y="1" width={W - 2} height={H - 2} rx="10" fill={sketchBg} stroke={isClientVariant ? "#c8dfc4" : B.borderLight} />
         {polygonSketches.map((polygon) => (
           <g key={`poly-${polygon.id}`}>
-            <path d={polygon.d} fill={B.primary + "1c"} stroke={B.primary} strokeWidth="2.2" />
+            {/* Base fill */}
+            <path d={polygon.d} fill={areaFill} stroke={areaStroke} strokeWidth={areaStrokeW} />
+            {/* Grass texture overlay for client variant */}
+            {isClientVariant && (
+              <path d={polygon.d} fill={`url(#${grassPatternId})`} stroke="none" />
+            )}
             {hasMultipleAreas ? (
               <>
                 <rect
@@ -2261,7 +2283,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
                   width="32"
                   height="16"
                   rx="8"
-                  fill={B.primary}
+                  fill={areaStroke}
                   opacity="0.96"
                 />
                 <text
@@ -2280,24 +2302,39 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
         ))}
         {rollPaths.map(roll => (
           <g key={roll.id}>
-            <path d={roll.path} fill="rgba(21,101,192,0.2)" stroke="#1565c0" strokeWidth="1.35" />
-            <circle cx={roll.cx} cy={roll.cy} r="5.2" fill="#1565c0" stroke="#fff" strokeWidth="1.2" />
-            <text x={roll.cx} y={roll.cy + 2.9} fontSize="7.4" textAnchor="middle" fill="#fff" fontWeight="700">
-              {roll.rollIndex}
-            </text>
+            <path d={roll.path} fill={rollFill} stroke={rollStroke} strokeWidth={isClientVariant ? "1.6" : "1.35"} strokeDasharray={isClientVariant ? rollDashArray : undefined} />
+            {!isClientVariant && (
+              <>
+                <circle cx={roll.cx} cy={roll.cy} r="5.2" fill="#1565c0" stroke="#fff" strokeWidth="1.2" />
+                <text x={roll.cx} y={roll.cy + 2.9} fontSize="7.4" textAnchor="middle" fill="#fff" fontWeight="700">
+                  {roll.rollIndex}
+                </text>
+              </>
+            )}
+            {isClientVariant && (
+              <>
+                <rect
+                  x={roll.cx - 15} y={roll.cy - 7} width="30" height="14" rx="4"
+                  fill="rgba(255,255,255,0.88)" stroke="rgba(26,94,47,0.3)" strokeWidth="0.8"
+                />
+                <text x={roll.cx} y={roll.cy + 4} fontSize="7.6" textAnchor="middle" fill="#1a5e2f" fontWeight="700">
+                  {`R${roll.rollIndex}`}
+                </text>
+              </>
+            )}
           </g>
         ))}
         {edges.map((edge, index) => {
           return (
             <g key={index}>
-              <rect x={edge.labelRect.x} y={edge.labelRect.y} width={edge.chipW} height={edge.chipH} rx={6} fill="rgba(255,255,255,0.96)" stroke={B.borderLight} />
-              <text x={edge.labelRect.x + edge.chipW / 2} y={edge.labelRect.y + 10.6} fontSize="8.7" textAnchor="middle" fill={B.dark} fontWeight="700">
+              <rect x={edge.labelRect.x} y={edge.labelRect.y} width={edge.chipW} height={edge.chipH} rx={6} fill="rgba(255,255,255,0.96)" stroke={isClientVariant ? "rgba(26,94,47,0.25)" : B.borderLight} />
+              <text x={edge.labelRect.x + edge.chipW / 2} y={edge.labelRect.y + 10.6} fontSize="8.7" textAnchor="middle" fill={isClientVariant ? "#1a3d24" : B.dark} fontWeight="700">
                 {edge.txt}
               </text>
             </g>
           );
         })}
-        {vertexLabels.map((item, index) => (
+        {!isClientVariant && vertexLabels.map((item, index) => (
           <g key={`v-${index}`}>
             <circle cx={item.point.x} cy={item.point.y} r="4.3" fill={B.primary} stroke="#fff" strokeWidth="1.6" />
             <text x={item.rect.x + (item.rect.width / 2)} y={item.rect.y + 9} fontSize="8.2" textAnchor="middle" fill={B.dark} fontWeight="700">
@@ -2305,6 +2342,9 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
             </text>
           </g>
         ))}
+        {isClientVariant && polygonSketches.map((polygon) => polygon.vertexPoints.map((pt, vi) => (
+          <circle key={`vc-${polygon.id}-${vi}`} cx={pt.x} cy={pt.y} r="3" fill="#1a5e2f" stroke="rgba(255,255,255,0.9)" strokeWidth="1.4" />
+        )))}
       </svg>
       <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
         <div style={{ fontSize: 11, color: B.textMuted }}>
@@ -2579,9 +2619,9 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
       )}
 
       <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10, marginBottom: 12 }}>
-        <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} customAreas={customAreas} manualRolls={manualRolls} />
+        <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} customAreas={customAreas} manualRolls={manualRolls} isClientVariant={isClientVariant} />
         <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: "10px 12px", display: "grid", gap: 7 }}>
-          <div style={{ fontSize: 11, color: B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>Tavola tecnica 2D</div>
+          <div style={{ fontSize: 11, color: B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>{isClientVariant ? "Layout giardino" : "Tavola tecnica 2D"}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
             <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Superficie</div>
