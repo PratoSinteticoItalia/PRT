@@ -2942,11 +2942,19 @@ async function publishInstagramMarketingItem(item = {}, mode = "publish") {
       details: `Meta ha risposto al publish ma non riesco a verificare il post Instagram finale (${mediaId}). ${verification.details || ""}`.trim(),
     };
   }
+  const providerUrl = String(verification.payload?.permalink || "").trim();
+  if (!providerUrl) {
+    return {
+      ok: false,
+      reason: "provider_missing_confirmation",
+      details: `Meta ha restituito l'ID Instagram ${mediaId}, ma non un permalink verificabile al post pubblicato.`,
+    };
+  }
   return {
     ok: true,
     provider: "instagram",
     messageId: mediaId,
-    providerUrl: String(verification.payload?.permalink || "").trim(),
+    providerUrl,
     verified: true,
   };
 }

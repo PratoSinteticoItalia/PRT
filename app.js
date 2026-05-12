@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260512-marketing-publish-confirm-184";
+const APP_SHELL_VERSION = "20260513-garden-planner-visual-186";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -8142,7 +8142,7 @@ function orderNeedsInboxAttention(order) {
 }
 
 function orderNeedsInstallationAction(order) {
-  if (!order || !isRoutedToInstallation(order) || isOrderClosed(order) || isInstallationOrderCompleted(order)) return false;
+  if (!order || !isRoutedToInstallation(order) || isShopifyFullyDone(order) || isOrderClosed(order) || isInstallationOrderCompleted(order)) return false;
   const install = order.operations?.installation || {};
   const status = String(install.status || "").trim();
   if (!install.installDate || !install.crew || !install.clientConfirmed) return true;
@@ -15258,6 +15258,9 @@ function renderMarketing() {
             const isPublishing = state.marketingPublishingId === item.id;
             const publishModeLabel = state.marketingPublishingMode === "schedule" ? "Programmazione in corso" : "Pubblicazione in corso";
             const publishDisabled = isPublishing ? " disabled" : "";
+            const needsProviderVerification = (item.status || "") === "pubblicato" && item.apiPublishedAt && !item.apiVerifiedAt;
+            const statusClass = needsProviderVerification ? "badge-warning" : (statusColors[item.status] || "badge-slate");
+            const statusText = needsProviderVerification ? "Da verificare" : (statusLabels[item.status] || item.status);
             return `
             <article class="panel marketing-list-card${isPublishing ? " is-publishing" : ""}" data-action="open-marketing-item" data-id="${escapeHtml(item.id)}">
               <div class="marketing-list-card-inner">
@@ -15267,7 +15270,7 @@ function renderMarketing() {
                 <div class="marketing-list-main">
                   <div class="marketing-list-head">
                     <strong>${escapeHtml(item.title || "Senza titolo")}</strong>
-                    <span class="action-badge ${statusColors[item.status] || "badge-slate"}">${statusLabels[item.status] || item.status}</span>
+                    <span class="action-badge ${statusClass}">${escapeHtml(statusText)}</span>
                     ${item.channel ? `<span class="action-badge badge-slate">${escapeHtml(item.channel)}</span>` : ""}
                     ${item.objective && marketingObjectiveLabel(item.objective)
                       ? `<span class="action-badge badge-slate">${escapeHtml(marketingObjectiveLabel(item.objective))}</span>`
@@ -15278,6 +15281,7 @@ function renderMarketing() {
                     ${item.assetName || item.assetUrl || item.assetDataUrl ? `<span>Asset: ${escapeHtml(item.assetName || item.assetUrl || "file caricato")}</span>` : ""}
                     ${item.cta ? `<span>CTA: ${escapeHtml(item.cta)}</span>` : ""}
                     ${item.hashtags ? `<span>${escapeHtml(item.hashtags)}</span>` : ""}
+                    ${item.apiProviderUrl ? `<span><a href="${escapeHtml(item.apiProviderUrl)}" target="_blank" rel="noreferrer" data-action="marketing-provider-link">Apri post pubblicato</a></span>` : ""}
                   </div>
                   ${isPublishing ? `
                     <div class="marketing-publish-progress" role="status" aria-live="polite">
@@ -15595,6 +15599,10 @@ function renderMarketing() {
     });
   });
 
+  container.querySelectorAll("[data-action='marketing-provider-link']").forEach((link) => {
+    link.addEventListener("click", (event) => event.stopPropagation());
+  });
+
   container.querySelectorAll("[data-action='marketing-publish-api']").forEach((btn) => {
     btn.addEventListener("click", async (event) => {
       event.stopPropagation();
@@ -15833,6 +15841,7 @@ async function publishMarketingItemViaApi(item, button = null, mode = "publish")
           apiScheduledAt: result.scheduledAt || entry.apiScheduledAt || "",
           apiProviderId: result.messageId || result.scheduleId || "",
           apiProviderUrl: result.providerUrl || entry.apiProviderUrl || "",
+          apiVerifiedAt: result.verified ? (result.publishedAt || new Date().toISOString()) : (entry.apiVerifiedAt || ""),
           publicAssetUrl: result.publicAssetUrl || entry.publicAssetUrl || "",
         }
       : entry);

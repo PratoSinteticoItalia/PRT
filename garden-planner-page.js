@@ -91,7 +91,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260512-marketing-publish-confirm-184";
+const APP_SHELL_VERSION = "20260513-garden-planner-visual-186";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -1455,20 +1455,40 @@ function FreeDrawCanvas({
     if (!c) return;
     const ctx = c.getContext("2d");
     ctx.clearRect(0, 0, canvasW, canvasH);
-    ctx.fillStyle = "#fafaf7"; ctx.fillRect(0, 0, canvasW, canvasH);
+    ctx.fillStyle = "#f2f5f1"; ctx.fillRect(0, 0, canvasW, canvasH);
 
     // Sub-grid
-    ctx.strokeStyle = "#eceae2"; ctx.lineWidth = 0.5;
+    ctx.strokeStyle = "rgba(180,195,178,0.45)"; ctx.lineWidth = 0.5;
     for (let x = 0; x < canvasW; x += GRID * PX) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); ctx.stroke(); }
     for (let y = 0; y < canvasH; y += GRID * PX) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasW, y); ctx.stroke(); }
     // Meter grid
-    ctx.strokeStyle = "#d8d7cf"; ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(140,165,138,0.55)"; ctx.lineWidth = 1;
     for (let x = 0; x < canvasW; x += PX) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); ctx.stroke(); }
     for (let y = 0; y < canvasH; y += PX) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasW, y); ctx.stroke(); }
     // Labels
-    ctx.fillStyle = B.textMuted; ctx.font = "10px sans-serif";
+    ctx.fillStyle = "rgba(80,100,80,0.7)"; ctx.font = "10px sans-serif";
     for (let m = 1; m * PX < canvasW; m++) ctx.fillText(m + "m", m * PX + 2, 11);
     for (let m = 1; m * PX < canvasH; m++) ctx.fillText(m + "m", 3, m * PX - 3);
+
+    // Rounded label helper (for all labels)
+    const drawLabelPill = (text, cx, cy, opts = {}) => {
+      const { font = "bold 10px sans-serif", textColor = "#1a3d24", bg = "rgba(255,255,255,0.93)", r = 5, px: px2 = 6, py: py2 = 4 } = opts;
+      ctx.font = font;
+      const tw = ctx.measureText(text).width;
+      const bw = tw + px2 * 2, bh = 14 + py2;
+      const bx = cx - bw / 2, by = cy - bh / 2;
+      ctx.beginPath();
+      if (ctx.roundRect) { ctx.roundRect(bx, by, bw, bh, r); }
+      else {
+        ctx.moveTo(bx + r, by); ctx.lineTo(bx + bw - r, by); ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + r);
+        ctx.lineTo(bx + bw, by + bh - r); ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - r, by + bh);
+        ctx.lineTo(bx + r, by + bh); ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - r);
+        ctx.lineTo(bx, by + r); ctx.quadraticCurveTo(bx, by, bx + r, by); ctx.closePath();
+      }
+      ctx.fillStyle = bg; ctx.fill();
+      ctx.strokeStyle = "rgba(40,90,50,0.18)"; ctx.lineWidth = 0.8; ctx.stroke();
+      ctx.fillStyle = textColor; ctx.textAlign = "center"; ctx.fillText(text, cx, cy + 5); ctx.textAlign = "start";
+    };
 
     // Polygon
     inactiveAreas.forEach((area, areaIndex) => {
@@ -1479,11 +1499,11 @@ function FreeDrawCanvas({
       for (let i = 1; i < areaPoints.length; i++) ctx.lineTo(toPx(areaPoints[i].x), toPx(areaPoints[i].y));
       if (area.closed) ctx.closePath();
       if (area.closed) {
-        ctx.fillStyle = "rgba(29,107,53,0.05)";
+        ctx.fillStyle = "rgba(34,120,55,0.18)";
         ctx.fill();
       }
-      ctx.strokeStyle = "rgba(61,90,63,0.45)";
-      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = area.closed ? "#2d7040" : "rgba(61,90,63,0.5)";
+      ctx.lineWidth = area.closed ? 2 : 1.5;
       ctx.setLineDash(area.closed ? [] : [6, 5]);
       ctx.stroke();
       ctx.setLineDash([]);
@@ -1491,13 +1511,7 @@ function FreeDrawCanvas({
         const areaBb = polyBBox(areaPoints);
         const labelX = toPx(areaBb.minX + (areaBb.w / 2));
         const labelY = toPx(areaBb.minY + (areaBb.h / 2));
-        ctx.fillStyle = "rgba(255,255,255,0.94)";
-        ctx.fillRect(labelX - 30, labelY - 11, 60, 20);
-        ctx.fillStyle = "rgba(36,64,51,0.82)";
-        ctx.font = "bold 10px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(`Area ${areaIndex + 1}`, labelX, labelY + 4);
-        ctx.textAlign = "start";
+        drawLabelPill(`Area ${areaIndex + 1}`, labelX, labelY);
       }
     });
 
@@ -1506,8 +1520,8 @@ function FreeDrawCanvas({
       ctx.moveTo(toPx(points[0].x), toPx(points[0].y));
       for (let i = 1; i < points.length; i++) ctx.lineTo(toPx(points[i].x), toPx(points[i].y));
       if (!closed && hoverPt) ctx.lineTo(toPx(hoverPt.x), toPx(hoverPt.y));
-      if (closed) { ctx.closePath(); ctx.fillStyle = "rgba(29,107,53,0.1)"; ctx.fill(); }
-      ctx.strokeStyle = B.primary; ctx.lineWidth = 2.5; ctx.stroke();
+      if (closed) { ctx.closePath(); ctx.fillStyle = "rgba(34,120,55,0.26)"; ctx.fill(); }
+      ctx.strokeStyle = "#1a5e2f"; ctx.lineWidth = 2.5; ctx.stroke();
 
       // Edge lengths
       const all = [...points]; if (closed) all.push(all[0]);
@@ -1515,48 +1529,51 @@ function FreeDrawCanvas({
         const ax = toPx(all[i].x), ay = toPx(all[i].y), bx = toPx(all[i + 1].x), by = toPx(all[i + 1].y);
         const len = Math.hypot(all[i + 1].x - all[i].x, all[i + 1].y - all[i].y);
         if (len < 0.3) continue;
-        const mx2 = (ax + bx) / 2, my2 = (ay + by) / 2, txt = fmt(len, 2) + "m";
-        ctx.font = "bold 11px sans-serif"; const tw = ctx.measureText(txt).width;
-        ctx.fillStyle = "rgba(255,255,255,0.92)"; ctx.fillRect(mx2 - tw / 2 - 3, my2 - 9, tw + 6, 18);
-        ctx.fillStyle = B.dark; ctx.textAlign = "center"; ctx.fillText(txt, mx2, my2 + 4); ctx.textAlign = "start";
+        const mx2 = (ax + bx) / 2, my2 = (ay + by) / 2;
+        drawLabelPill(fmt(len, 2) + "m", mx2, my2, { font: "bold 10px sans-serif", px: 5, py: 3 });
       }
 
       const drawRoll = (roll, index, options = {}) => {
         const corners = getRollCorners(roll);
         if (!corners.length) return;
         const valid = doesRollTouchPolygon(roll, points);
+        const fillColor = valid ? (options.preview ? "rgba(21,101,192,0.12)" : "rgba(21,101,192,0.16)") : "rgba(198,40,40,0.14)";
+        const strokeColor = valid ? "#1565c0" : B.danger;
+        ctx.save();
         ctx.beginPath();
         ctx.moveTo(toPx(corners[0].x), toPx(corners[0].y));
         for (let i = 1; i < corners.length; i++) ctx.lineTo(toPx(corners[i].x), toPx(corners[i].y));
         ctx.closePath();
-        if (options.preview) {
-          ctx.fillStyle = valid ? "rgba(21, 101, 192, 0.18)" : "rgba(198, 40, 40, 0.18)";
-          ctx.strokeStyle = valid ? "#1565c0" : B.danger;
-          ctx.setLineDash([6, 5]);
-          ctx.lineWidth = 2;
-        } else {
-          ctx.fillStyle = valid ? "rgba(21, 101, 192, 0.20)" : "rgba(198, 40, 40, 0.18)";
-          ctx.strokeStyle = valid ? "#1565c0" : B.danger;
-          ctx.setLineDash([]);
-          ctx.lineWidth = 1.8;
+        ctx.fillStyle = fillColor; ctx.fill();
+        // Diagonal stripe texture on rolls
+        ctx.clip();
+        ctx.strokeStyle = valid ? "rgba(21,101,192,0.22)" : "rgba(198,40,40,0.22)";
+        ctx.lineWidth = 1; ctx.setLineDash([]);
+        const step = 8;
+        const [mnX, mnY, mxX, mxY] = [
+          Math.min(...corners.map(c => toPx(c.x))), Math.min(...corners.map(c => toPx(c.y))),
+          Math.max(...corners.map(c => toPx(c.x))), Math.max(...corners.map(c => toPx(c.y))),
+        ];
+        for (let s = mnX - (mxY - mnY); s < mxX + (mxY - mnY); s += step) {
+          ctx.beginPath(); ctx.moveTo(s, mnY); ctx.lineTo(s + (mxY - mnY), mxY); ctx.stroke();
         }
-        ctx.stroke();
-        ctx.fill();
-        ctx.setLineDash([]);
+        ctx.restore();
+        ctx.beginPath();
+        ctx.moveTo(toPx(corners[0].x), toPx(corners[0].y));
+        for (let i = 1; i < corners.length; i++) ctx.lineTo(toPx(corners[i].x), toPx(corners[i].y));
+        ctx.closePath();
+        ctx.strokeStyle = strokeColor;
+        ctx.setLineDash(options.preview ? [5, 4] : []);
+        ctx.lineWidth = options.preview ? 1.8 : 2;
+        ctx.stroke(); ctx.setLineDash([]);
 
         const labelText = options.preview
           ? `Preview ${fmt(roll.length, 2)}m`
-          : `R${index + 1} · 2m × ${fmt(roll.length, 2)}m`;
-        const labelX = toPx(roll.cx);
-        const labelY = toPx(roll.cy);
-        ctx.font = "bold 10px sans-serif";
-        const tw = ctx.measureText(labelText).width;
-        ctx.fillStyle = "rgba(255,255,255,0.94)";
-        ctx.fillRect(labelX - tw / 2 - 4, labelY - 8, tw + 8, 16);
-        ctx.fillStyle = valid ? "#0d2f16" : B.danger;
-        ctx.textAlign = "center";
-        ctx.fillText(labelText, labelX, labelY + 3);
-        ctx.textAlign = "start";
+          : `R${index + 1} · 2×${fmt(roll.length, 2)}m`;
+        drawLabelPill(labelText, toPx(roll.cx), toPx(roll.cy), {
+          textColor: valid ? "#0d47a1" : B.danger,
+          bg: valid ? "rgba(235,244,255,0.96)" : "rgba(255,235,235,0.96)",
+        });
       };
 
       (rolls || []).forEach((roll, index) => drawRoll(roll, index));
@@ -1577,30 +1594,48 @@ function FreeDrawCanvas({
       points.forEach((p, i) => {
         const px = toPx(p.x), py = toPx(p.y);
         const isSelected = selectedVertices.has(i);
-        ctx.beginPath(); ctx.arc(px, py, closed ? 8 : 5, 0, Math.PI * 2);
-        ctx.fillStyle = isSelected ? B.accent : (i === 0 && !closed ? B.accent : B.primary); ctx.fill();
-        ctx.strokeStyle = isSelected ? "#ffd600" : "#fff"; ctx.lineWidth = isSelected ? 3 : 2; ctx.stroke();
+        const isFirst = i === 0;
+        const r = closed ? 7 : (isFirst ? 7 : 5);
+        // Outer glow for selected
         if (isSelected) {
-          ctx.beginPath(); ctx.arc(px, py, 12, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(255,214,0,0.5)"; ctx.lineWidth = 2; ctx.stroke();
+          ctx.beginPath(); ctx.arc(px, py, r + 6, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(255,214,0,0.18)"; ctx.fill();
         }
-        if (closed) { ctx.fillStyle = "#fff"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center"; ctx.fillText("" + (i + 1), px, py + 3); ctx.textAlign = "start"; }
+        // First-point pulse ring when open (invite to close)
+        if (!closed && isFirst && points.length > 2 && hoverPt && Math.hypot(hoverPt.x - points[0].x, hoverPt.y - points[0].y) < 0.7) {
+          ctx.beginPath(); ctx.arc(px, py, r + 8, 0, Math.PI * 2);
+          ctx.strokeStyle = B.accent; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+        }
+        // Main dot
+        ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fillStyle = isSelected ? "#ffd600" : (isFirst && !closed ? B.accent : "#1a5e2f"); ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 2; ctx.stroke();
+        // Vertex number pill (closed state)
+        if (closed) {
+          drawLabelPill("" + (i + 1), px, py, {
+            font: "bold 9px sans-serif",
+            textColor: isSelected ? "#5d4000" : "#fff",
+            bg: isSelected ? "#ffd600" : "#1a5e2f",
+            r: 4, px: 4, py: 2,
+          });
+        }
       });
-
-      // Close hint
-      if (!closed && hoverPt && points.length > 2) {
-        if (Math.hypot(hoverPt.x - points[0].x, hoverPt.y - points[0].y) < 0.7) {
-          ctx.beginPath(); ctx.arc(toPx(points[0].x), toPx(points[0].y), 14, 0, Math.PI * 2);
-          ctx.strokeStyle = B.accent; ctx.lineWidth = 2.5; ctx.stroke();
-        }
-      }
     }
 
     if (points.length === 0) {
-      ctx.fillStyle = B.textMuted; ctx.font = "14px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText("Clicca per posizionare i vertici del giardino", canvasW / 2, canvasH / 2 - 10);
-      ctx.font = "12px sans-serif";
-      ctx.fillText(`Griglia = ${fmt(GRID, 2)}m · Clicca vicino al punto 1 per chiudere`, canvasW / 2, canvasH / 2 + 14);
+      // Empty state hint
+      const cx = canvasW / 2, cy = canvasH / 2;
+      ctx.save();
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(cx - 170, cy - 30, 340, 56, 10);
+      else ctx.rect(cx - 170, cy - 30, 340, 56);
+      ctx.fillStyle = "rgba(255,255,255,0.82)"; ctx.fill();
+      ctx.strokeStyle = "rgba(40,90,50,0.15)"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = "#1a3d24"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("Clicca per posizionare i vertici del giardino", cx, cy - 8);
+      ctx.fillStyle = "#5a7a5a"; ctx.font = "11px sans-serif";
+      ctx.fillText(`Griglia = ${fmt(GRID, 2)} m  ·  Chiudi l'area sul punto 1`, cx, cy + 14);
       ctx.textAlign = "start";
     }
   }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices]);

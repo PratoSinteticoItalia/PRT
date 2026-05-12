@@ -14612,6 +14612,13 @@ textarea.text-input {
   font-weight: 650;
   padding: 4px 8px;
 }
+.marketing-list-meta a {
+  color: inherit;
+  text-decoration: none;
+}
+.marketing-list-meta a:hover {
+  text-decoration: underline;
+}
 .marketing-publish-progress {
   margin-top: 10px;
   display: grid;
