@@ -3447,6 +3447,20 @@ button.is-feedback,
   border-color: rgba(153, 94, 21, 0.3);
 }
 
+.wh-piece.is-committed {
+  border-style: solid;
+  border-color: #6b8f71;
+  background: #e7f1e8;
+  color: #214b2d;
+}
+
+.wh-piece.is-fulfilled {
+  opacity: 0.56;
+  border-color: #d5d9d2;
+  background: #f2f2ee;
+  color: #71796f;
+}
+
 .wh-piece strong {
   pointer-events: none;
   display: block;
@@ -3553,6 +3567,96 @@ button.is-feedback,
 .wh-stat-sub {
   color: #718073;
   font-size: 14px;
+}
+
+.warehouse-allocation-card {
+  grid-column: 1 / -1;
+  border: 1px solid rgba(217, 226, 234, 0.92);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.warehouse-allocation-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.warehouse-allocation-head strong,
+.inventory-allocation-row strong,
+.inventory-suggestion-row strong {
+  display: block;
+  color: var(--ink);
+}
+
+.warehouse-allocation-head span,
+.inventory-allocation-row span,
+.inventory-suggestion-row span,
+.inventory-suggestion-row em,
+.inventory-allocation-empty,
+.inventory-allocation-warning {
+  color: #6e7b70;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.warehouse-allocation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.inventory-allocation-row,
+.inventory-suggestion-row {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.inventory-suggestion-list {
+  display: grid;
+  gap: 8px;
+}
+
+.inventory-suggestion-row em {
+  display: block;
+  font-style: normal;
+  margin-top: 3px;
+}
+
+.inventory-allocation-row small,
+.inventory-suggestion-row small {
+  border-radius: 999px;
+  background: #edf4ee;
+  color: #31583a;
+  padding: 5px 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.inventory-suggestion-row.is-missing {
+  border-color: rgba(180, 35, 35, 0.25);
+  background: #fff7f6;
+}
+
+.inventory-suggestion-row.is-missing small {
+  background: #fde8e6;
+  color: #b42323;
+}
+
+.inventory-allocation-warning {
+  margin: 0;
+  color: #995e15;
 }
 
 .cal-grid {

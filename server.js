@@ -620,9 +620,97 @@ function normalizeSessionEntry(entry = null) {
 function normalizeInventoryProductKey(value = "") {
   return String(value || "")
     .replace(/\s+/g, " ")
+    .replace(/\s*-\s*\d+(?:[.,]\d+)?\s*m\s*[/x]\s*\d+(?:[.,]\d+)?\s*m?\s*$/i, "")
     .replace(/\s*-\s*\d+\s*(?:m|mq|cm)?\s*$/i, "")
     .trim()
     .toLowerCase();
+}
+
+const INVENTORY_PIECE_STATES = new Set(["disponibile", "impegnato", "evaso"]);
+
+function normalizeInventoryFamilyKey(value = "") {
+  return normalizeInventoryProductKey(value)
+    .replace(/\b\d+(?:[.,]\d+)?\s*mm\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeInventoryPieceType(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "residuo") return "residuo";
+  if (normalized === "taglio") return "taglio";
+  return "intero";
+}
+
+function normalizeInventoryPieceState(value = "", fallback = "disponibile") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (INVENTORY_PIECE_STATES.has(normalized)) return normalized;
+  if (["available", "free", "libero"].includes(normalized)) return "disponibile";
+  if (["committed", "reserved", "allocated", "prenotato"].includes(normalized)) return "impegnato";
+  if (["fulfilled", "consumed", "used", "scaricato"].includes(normalized)) return "evaso";
+  return INVENTORY_PIECE_STATES.has(fallback) ? fallback : "disponibile";
+}
+
+function buildInventoryPieceLabel(piece = {}) {
+  const width = toNumber(piece.width || 0);
+  const length = toNumber(piece.length || 0);
+  if (width && length) return `${width} x ${length}`;
+  if (piece.variant) return String(piece.variant);
+  return String(piece.product || "Pezzo");
+}
+
+function normalizeInventoryPieceRecord(item = {}) {
+  const pieceType = normalizeInventoryPieceType(item.pieceType || item.status);
+  const width = toNumber(item.width || 0);
+  const length = toNumber(item.length || 0);
+  const sqm = toNumber(item.sqm || (width * length));
+  const units = Math.max(1, Math.round(toNumber(item.units || 1)));
+  return {
+    id: item.id || randomUUID(),
+    product: String(item.product || "").trim(),
+    width,
+    length,
+    sqm: Number(sqm.toFixed ? sqm.toFixed(2) : sqm),
+    variant: String(item.variant || ""),
+    status: pieceType === "taglio" ? "residuo" : pieceType,
+    pieceType,
+    pieceState: normalizeInventoryPieceState(item.pieceState || item.availability || item.stockState, "disponibile"),
+    committedOrderId: String(item.committedOrderId || item.orderId || ""),
+    committedOrderNumber: String(item.committedOrderNumber || ""),
+    allocationId: String(item.allocationId || ""),
+    parentPieceId: String(item.parentPieceId || ""),
+    residueFromPieceId: String(item.residueFromPieceId || ""),
+    fulfilledAt: String(item.fulfilledAt || ""),
+    committedAt: String(item.committedAt || ""),
+    note: String(item.note || ""),
+    units,
+    createdAt: item.createdAt || new Date().toISOString(),
+  };
+}
+
+function normalizeInventoryAllocationRecord(item = {}) {
+  const width = toNumber(item.width || 0);
+  const length = toNumber(item.length || 0);
+  const units = Math.max(1, Math.round(toNumber(item.units || 1)));
+  const sqm = toNumber(item.sqm || (width * length));
+  return {
+    id: String(item.id || randomUUID()),
+    pieceId: String(item.pieceId || ""),
+    sourcePieceId: String(item.sourcePieceId || item.pieceId || ""),
+    residuePieceId: String(item.residuePieceId || ""),
+    product: String(item.product || "").trim(),
+    width,
+    length,
+    sqm: Number(sqm.toFixed ? sqm.toFixed(2) : sqm),
+    units,
+    pieceType: normalizeInventoryPieceType(item.pieceType || item.status),
+    action: ["use", "cut", "partial-units"].includes(String(item.action || "")) ? String(item.action) : "use",
+    status: normalizeInventoryPieceState(item.status || item.pieceState, "impegnato"),
+    note: String(item.note || ""),
+    createdAt: String(item.createdAt || new Date().toISOString()),
+    committedAt: String(item.committedAt || item.createdAt || new Date().toISOString()),
+    fulfilledAt: String(item.fulfilledAt || ""),
+  };
 }
 
 function runExclusiveApiWrite(task) {
@@ -1495,6 +1583,477 @@ function parseSquareMeters(title, quantity = 1) {
   if (mqMatch) return toNumber(mqMatch[1]) * quantity;
 
   return 0;
+}
+
+function extractInventoryDimensions(label = "") {
+  const normalized = String(label || "").replace(/,/g, ".");
+  if (/mm/i.test(normalized) && !/\b2\s*m\s*[/x]\s*\d+/i.test(normalized)) return null;
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*(?:m)?\s*[x/]\s*(\d+(?:\.\d+)?)\s*m?/i);
+  if (!match) return null;
+  const width = toNumber(match[1]);
+  const length = toNumber(match[2]);
+  if (!width || !length) return null;
+  return { width, length, sqm: Number((width * length).toFixed(2)) };
+}
+
+function getOrderPhysicalLines(order = {}) {
+  const details = Array.isArray(order.lineDetails) && order.lineDetails.length
+    ? order.lineDetails
+    : normalizeStringLineDetails(order.lineItems || []);
+  const persistedPrep = Array.isArray(order.operations?.warehouse?.prepItems)
+    ? order.operations.warehouse.prepItems
+    : [];
+  const source = persistedPrep.length
+    ? persistedPrep.filter((item) => item?.included !== false).map((item) => ({
+        title: String(item.title || "").trim(),
+        quantity: Math.max(1, Number(item.quantity || 1)),
+        note: String(item.note || "").trim(),
+      }))
+    : details.filter((item) => item?.title && classifyOrderLine(item.title) !== "service").map((item) => ({
+        title: String(item.title || "").trim(),
+        quantity: Math.max(1, Number(item.quantity || 1)),
+        note: String(item.note || "").trim(),
+      }));
+  return source.filter((item) => item.title);
+}
+
+function getInventoryProductAliases(title = "") {
+  const raw = String(title || "");
+  const aliases = [raw, normalizeInventoryProductKey(raw), normalizeInventoryFamilyKey(raw)].filter(Boolean);
+  if (/telo|pacciamatura|isolante/i.test(raw)) aliases.push("telo");
+  if (/banda|giunzione/i.test(raw)) aliases.push("banda");
+  if (/colla/i.test(raw)) aliases.push("colla");
+  if (/picchetti/i.test(raw)) aliases.push("picchetti");
+  return [...new Set(aliases.map((item) => normalizeInventoryFamilyKey(item)).filter(Boolean))];
+}
+
+function resolveInventoryProductForLine(line = {}, order = {}, inventory = []) {
+  const title = String(line.title || "").trim();
+  const aliases = getInventoryProductAliases(title);
+  const inventoryProducts = [...new Set((inventory || []).map((item) => String(item.product || "").trim()).filter(Boolean))];
+  const matched = inventoryProducts.find((product) => {
+    const productKey = normalizeInventoryFamilyKey(product);
+    if (!productKey) return false;
+    return aliases.some((alias) => alias === productKey || alias.includes(productKey) || productKey.includes(alias));
+  });
+  if (matched) return matched;
+  if (classifyOrderLine(title) === "product") {
+    const explicit = String(order.operations?.product || "").trim();
+    return explicit || title.replace(/\s*-\s*\d+(?:[.,]\d+)?\s*m\s*[/x]\s*\d+(?:[.,]\d+)?\s*m?\s*$/i, "").trim();
+  }
+  if (/telo|pacciamatura|isolante/i.test(title)) return "Telo isolante";
+  if (/banda|giunzione/i.test(title)) return "Banda di giunzione";
+  if (/colla/i.test(title)) return "Colla";
+  if (/picchetti/i.test(title)) return "Picchetti";
+  return title;
+}
+
+function isMeasuredInventoryRequirement(line = {}, product = "") {
+  const title = `${line.title || ""} ${product || ""}`;
+  if (extractInventoryDimensions(title)) return true;
+  if (/telo|pacciamatura|isolante/i.test(title)) return true;
+  return classifyOrderLine(title) === "product";
+}
+
+function buildOrderInventoryRequirements(order = {}, inventory = []) {
+  const lines = getOrderPhysicalLines(order);
+  const requirements = [];
+  const fallbackSqm = toNumber(order.operations?.sqm || 0);
+  lines.forEach((line, lineIndex) => {
+    const product = resolveInventoryProductForLine(line, order, inventory);
+    const quantity = Math.max(1, Number(line.quantity || 1));
+    const dimensions = extractInventoryDimensions(line.title);
+    const measured = isMeasuredInventoryRequirement(line, product);
+    if (measured) {
+      const width = dimensions?.width || 2;
+      let length = dimensions?.length || 0;
+      if (!length) {
+        const lineSqm = /telo|pacciamatura|isolante/i.test(line.title)
+          ? quantity
+          : fallbackSqm;
+        length = width ? Number((toNumber(lineSqm || quantity) / width).toFixed(2)) : 0;
+      }
+      const pieces = dimensions ? quantity : 1;
+      for (let index = 0; index < pieces; index += 1) {
+        const reqLength = Number(length.toFixed ? length.toFixed(2) : length);
+        if (reqLength <= 0) continue;
+        requirements.push({
+          id: `req-${lineIndex}-${index}`,
+          product,
+          title: line.title,
+          measured: true,
+          width,
+          length: reqLength,
+          sqm: Number((width * reqLength).toFixed(2)),
+          units: 1,
+          note: line.note || "",
+        });
+      }
+      return;
+    }
+    requirements.push({
+      id: `req-${lineIndex}-0`,
+      product,
+      title: line.title,
+      measured: false,
+      width: 0,
+      length: 0,
+      sqm: 0,
+      units: quantity,
+      note: line.note || "",
+    });
+  });
+  return requirements;
+}
+
+function inventoryPiecesMatchRequirement(piece = {}, requirement = {}) {
+  const pieceKey = normalizeInventoryFamilyKey(piece.product || "");
+  const requirementKey = normalizeInventoryFamilyKey(requirement.product || "");
+  if (!pieceKey || !requirementKey) return false;
+  return pieceKey === requirementKey || pieceKey.includes(requirementKey) || requirementKey.includes(pieceKey);
+}
+
+function sortMeasuredInventoryCandidates(left = {}, right = {}, requiredLength = 0) {
+  const leftType = normalizeInventoryPieceType(left.pieceType || left.status);
+  const rightType = normalizeInventoryPieceType(right.pieceType || right.status);
+  if (leftType !== rightType) {
+    if (leftType === "residuo") return -1;
+    if (rightType === "residuo") return 1;
+  }
+  const leftWaste = Math.max(0, toNumber(left.length || 0) - requiredLength);
+  const rightWaste = Math.max(0, toNumber(right.length || 0) - requiredLength);
+  if (leftWaste !== rightWaste) return leftWaste - rightWaste;
+  return toNumber(left.length || 0) - toNumber(right.length || 0);
+}
+
+function buildInventorySuggestionsForOrder(store = {}, order = {}) {
+  const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
+  const requirements = buildOrderInventoryRequirements(order, inventory);
+  const usedPieceIds = new Set();
+  const suggestions = [];
+  const missing = [];
+
+  requirements.forEach((requirement) => {
+    if (requirement.measured) {
+      let remainingLength = Number(requirement.length || 0);
+      const requiredWidth = toNumber(requirement.width || 0);
+      while (remainingLength > 0.01) {
+        const compatible = inventory
+          .filter((piece) => (
+            !usedPieceIds.has(piece.id)
+            && normalizeInventoryPieceState(piece.pieceState) === "disponibile"
+            && inventoryPiecesMatchRequirement(piece, requirement)
+            && toNumber(piece.length || 0) > 0
+            && (!requiredWidth || Math.abs(toNumber(piece.width || requiredWidth) - requiredWidth) <= 0.08)
+          ))
+          .sort((a, b) => sortMeasuredInventoryCandidates(a, b, remainingLength));
+        if (!compatible.length) {
+          missing.push({
+            requirementId: requirement.id,
+            product: requirement.product,
+            width: requiredWidth,
+            length: Number(remainingLength.toFixed(2)),
+            sqm: Number((requiredWidth * remainingLength).toFixed(2)),
+            reason: "stock_unavailable",
+          });
+          break;
+        }
+        const best = compatible[0];
+        const pieceLength = toNumber(best.length || 0);
+        const allocatedLength = Math.min(pieceLength, remainingLength);
+        const residueLength = Number(Math.max(0, pieceLength - allocatedLength).toFixed(2));
+        const width = requiredWidth || toNumber(best.width || 0);
+        const action = residueLength > 0.05 ? "cut" : "use";
+        const allocationId = randomUUID();
+        suggestions.push({
+          id: allocationId,
+          requirementId: requirement.id,
+          product: best.product || requirement.product,
+          pieceId: best.id,
+          sourcePieceId: best.id,
+          pieceLabel: buildInventoryPieceLabel(best),
+          pieceType: normalizeInventoryPieceType(best.pieceType || best.status),
+          action,
+          width,
+          length: Number(allocatedLength.toFixed(2)),
+          sqm: Number((width * allocatedLength).toFixed(2)),
+          units: 1,
+          residue: action === "cut"
+            ? {
+                width,
+                length: residueLength,
+                sqm: Number((width * residueLength).toFixed(2)),
+              }
+            : null,
+        });
+        usedPieceIds.add(best.id);
+        remainingLength = Number((remainingLength - allocatedLength).toFixed(2));
+      }
+      return;
+    }
+
+    let remainingUnits = Math.max(1, Number(requirement.units || 1));
+    const compatible = inventory
+      .filter((piece) => (
+        !usedPieceIds.has(piece.id)
+        && normalizeInventoryPieceState(piece.pieceState) === "disponibile"
+        && inventoryPiecesMatchRequirement(piece, requirement)
+      ))
+      .sort((a, b) => toNumber(a.units || 1) - toNumber(b.units || 1));
+    for (const piece of compatible) {
+      if (remainingUnits <= 0) break;
+      const pieceUnits = Math.max(1, Number(piece.units || 1));
+      const units = Math.min(pieceUnits, remainingUnits);
+      suggestions.push({
+        id: randomUUID(),
+        requirementId: requirement.id,
+        product: piece.product || requirement.product,
+        pieceId: piece.id,
+        sourcePieceId: piece.id,
+        pieceLabel: piece.variant || buildInventoryPieceLabel(piece),
+        pieceType: normalizeInventoryPieceType(piece.pieceType || piece.status),
+        action: units < pieceUnits ? "partial-units" : "use",
+        width: toNumber(piece.width || 0),
+        length: toNumber(piece.length || 0),
+        sqm: 0,
+        units,
+        residue: null,
+      });
+      usedPieceIds.add(piece.id);
+      remainingUnits -= units;
+    }
+    if (remainingUnits > 0) {
+      missing.push({
+        requirementId: requirement.id,
+        product: requirement.product,
+        units: remainingUnits,
+        reason: "stock_unavailable",
+      });
+    }
+  });
+
+  return { orderId: order.id, requirements, suggestions, missing };
+}
+
+function orderNumberForInventory(order = {}) {
+  return String(order.orderNumber || order.name || order.id || "").trim();
+}
+
+function applyInventoryCommitment(store = {}, order = {}, rawSuggestions = []) {
+  const now = new Date().toISOString();
+  const orderNumber = orderNumberForInventory(order);
+  const suggestions = Array.isArray(rawSuggestions) && rawSuggestions.length
+    ? rawSuggestions
+    : buildInventorySuggestionsForOrder(store, order).suggestions;
+  if (!suggestions.length) return { ok: false, error: "no_inventory_suggestions" };
+  const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
+  const allocations = [];
+  const unavailable = [];
+
+  for (const suggestion of suggestions) {
+    const sourceId = String(suggestion.sourcePieceId || suggestion.pieceId || "");
+    const sourceIndex = inventory.findIndex((piece) => piece.id === sourceId);
+    if (sourceIndex < 0 || normalizeInventoryPieceState(inventory[sourceIndex].pieceState) !== "disponibile") {
+      unavailable.push(sourceId);
+      continue;
+    }
+    const sourcePiece = inventory[sourceIndex];
+    const allocationId = String(suggestion.id || randomUUID());
+    const action = ["use", "cut", "partial-units"].includes(String(suggestion.action || "")) ? String(suggestion.action) : "use";
+    const allocationLength = toNumber(suggestion.length || sourcePiece.length || 0);
+    const allocationWidth = toNumber(suggestion.width || sourcePiece.width || 0);
+    const allocationUnits = Math.max(1, Math.round(toNumber(suggestion.units || 1)));
+    const allocationSqm = allocationWidth && allocationLength ? Number((allocationWidth * allocationLength).toFixed(2)) : 0;
+    let committedPieceId = sourcePiece.id;
+    let residuePieceId = "";
+
+    if (action === "partial-units" && Math.max(1, Number(sourcePiece.units || 1)) > allocationUnits) {
+      sourcePiece.units = Math.max(1, Number(sourcePiece.units || 1)) - allocationUnits;
+      const committedPiece = {
+        ...sourcePiece,
+        id: randomUUID(),
+        units: allocationUnits,
+        pieceState: "impegnato",
+        committedOrderId: order.id,
+        committedOrderNumber: orderNumber,
+        committedAt: now,
+        allocationId,
+        note: sourcePiece.note || `Impegnato per ordine ${orderNumber}`,
+        createdAt: now,
+      };
+      inventory.unshift(committedPiece);
+      committedPieceId = committedPiece.id;
+    } else {
+      const residueLength = toNumber(suggestion.residue?.length || 0);
+      if (action === "cut" && residueLength > 0.05) {
+        const residuePiece = {
+          ...sourcePiece,
+          id: randomUUID(),
+          length: residueLength,
+          sqm: allocationWidth && residueLength ? Number((allocationWidth * residueLength).toFixed(2)) : 0,
+          status: "residuo",
+          pieceType: "residuo",
+          pieceState: "disponibile",
+          committedOrderId: "",
+          committedOrderNumber: "",
+          allocationId: "",
+          parentPieceId: sourcePiece.id,
+          residueFromPieceId: sourcePiece.id,
+          note: `Residuo generato da taglio ordine ${orderNumber}`,
+          createdAt: now,
+        };
+        inventory.unshift(residuePiece);
+        residuePieceId = residuePiece.id;
+        sourcePiece.length = allocationLength;
+        sourcePiece.sqm = allocationSqm;
+        sourcePiece.pieceType = "taglio";
+        sourcePiece.status = normalizeInventoryPieceType(sourcePiece.status) === "residuo" ? "residuo" : "intero";
+      }
+      sourcePiece.pieceState = "impegnato";
+      sourcePiece.committedOrderId = order.id;
+      sourcePiece.committedOrderNumber = orderNumber;
+      sourcePiece.committedAt = now;
+      sourcePiece.allocationId = allocationId;
+      sourcePiece.units = allocationUnits;
+    }
+
+    allocations.push(normalizeInventoryAllocationRecord({
+      id: allocationId,
+      pieceId: committedPieceId,
+      sourcePieceId: sourceId,
+      residuePieceId,
+      product: suggestion.product || sourcePiece.product,
+      width: allocationWidth,
+      length: allocationLength,
+      sqm: allocationSqm,
+      units: allocationUnits,
+      pieceType: sourcePiece.pieceType || sourcePiece.status,
+      action,
+      status: "impegnato",
+      committedAt: now,
+      createdAt: now,
+      note: suggestion.note || "",
+    }));
+  }
+
+  if (unavailable.length) {
+    return { ok: false, error: "inventory_piece_unavailable", unavailable };
+  }
+  const existingAllocations = Array.isArray(order.operations?.warehouse?.inventoryAllocations)
+    ? order.operations.warehouse.inventoryAllocations.map((item) => normalizeInventoryAllocationRecord(item))
+    : [];
+  const nextOrder = {
+    ...order,
+    operations: normalizeOperations({
+      ...order,
+      operations: {
+        ...(order.operations || {}),
+        warehouse: {
+          ...(order.operations?.warehouse || {}),
+          selected: true,
+          inventoryAllocations: [...existingAllocations, ...allocations],
+        },
+      },
+    }),
+  };
+  store.inventory = inventory;
+  const orderIndex = store.orders.findIndex((item) => item.id === order.id);
+  if (orderIndex >= 0) store.orders[orderIndex] = nextOrder;
+  return { ok: true, order: nextOrder, inventory, allocations };
+}
+
+function releaseInventoryCommitmentsForOrder(store = {}, order = {}) {
+  const now = new Date().toISOString();
+  const allocations = Array.isArray(order.operations?.warehouse?.inventoryAllocations)
+    ? order.operations.warehouse.inventoryAllocations.map((item) => normalizeInventoryAllocationRecord(item))
+    : [];
+  if (!allocations.some((item) => item.status === "impegnato")) return { order, inventory: store.inventory || [] };
+  const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
+  const releasedAllocations = allocations.map((allocation) => {
+    if (allocation.status !== "impegnato") return allocation;
+    const piece = inventory.find((item) => item.id === allocation.pieceId);
+    if (piece && piece.committedOrderId === order.id) {
+      piece.pieceState = "disponibile";
+      piece.committedOrderId = "";
+      piece.committedOrderNumber = "";
+      piece.allocationId = "";
+      piece.committedAt = "";
+    }
+    return {
+      ...allocation,
+      status: "disponibile",
+      fulfilledAt: "",
+      note: allocation.note || `Impegno liberato ${now}`,
+    };
+  });
+  const nextOrder = {
+    ...order,
+    operations: normalizeOperations({
+      ...order,
+      operations: {
+        ...(order.operations || {}),
+        warehouse: {
+          ...(order.operations?.warehouse || {}),
+          inventoryAllocations: releasedAllocations,
+        },
+      },
+    }),
+  };
+  store.inventory = inventory;
+  const orderIndex = store.orders.findIndex((item) => item.id === order.id);
+  if (orderIndex >= 0) store.orders[orderIndex] = nextOrder;
+  return { order: nextOrder, inventory };
+}
+
+function shouldFulfillInventoryForOrder(order = {}) {
+  const warehouse = order.operations?.warehouse || {};
+  const status = String(warehouse.status || "").trim();
+  const mode = String(warehouse.fulfillmentMode || "").trim();
+  return Boolean(
+    warehouse.shipped
+    || status === "ritirato"
+    || (mode === "corriere" && warehouse.carrierPassed)
+    || String(order.fulfillmentStatus || "").toLowerCase() === "fulfilled"
+  );
+}
+
+function fulfillInventoryCommitmentsForOrder(store = {}, order = {}) {
+  const allocations = Array.isArray(order.operations?.warehouse?.inventoryAllocations)
+    ? order.operations.warehouse.inventoryAllocations.map((item) => normalizeInventoryAllocationRecord(item))
+    : [];
+  if (!allocations.some((item) => item.status === "impegnato")) return { order, inventory: store.inventory || [], changed: false };
+  const now = new Date().toISOString();
+  const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
+  const fulfilledAllocations = allocations.map((allocation) => {
+    if (allocation.status !== "impegnato") return allocation;
+    const piece = inventory.find((item) => item.id === allocation.pieceId);
+    if (piece && piece.committedOrderId === order.id) {
+      piece.pieceState = "evaso";
+      piece.fulfilledAt = now;
+    }
+    return {
+      ...allocation,
+      status: "evaso",
+      fulfilledAt: now,
+    };
+  });
+  const nextOrder = {
+    ...order,
+    operations: normalizeOperations({
+      ...order,
+      operations: {
+        ...(order.operations || {}),
+        warehouse: {
+          ...(order.operations?.warehouse || {}),
+          inventoryAllocations: fulfilledAllocations,
+        },
+      },
+    }),
+  };
+  store.inventory = inventory;
+  const orderIndex = store.orders.findIndex((item) => item.id === order.id);
+  if (orderIndex >= 0) store.orders[orderIndex] = nextOrder;
+  return { order: nextOrder, inventory, changed: true };
 }
 
 function classifyOrderLine(title = "") {
@@ -4291,6 +4850,7 @@ function buildDefaultOperations(order, linkedJob = null) {
       pickupLabel: "",
       vanLoadLabel: "",
       warehouseNote: "",
+      inventoryAllocations: [],
       destination: {
         provinceCode: order.provinceCode || "",
         province: order.province || "",
@@ -4346,6 +4906,9 @@ function normalizeOperations(order, linkedJob = null) {
       pickupLabel: current.warehouse?.pickupLabel || defaults.warehouse.pickupLabel,
       vanLoadLabel: current.warehouse?.vanLoadLabel || defaults.warehouse.vanLoadLabel,
       warehouseNote: current.warehouse?.warehouseNote || defaults.warehouse.warehouseNote,
+      inventoryAllocations: Array.isArray(current.warehouse?.inventoryAllocations)
+        ? current.warehouse.inventoryAllocations.map((item) => normalizeInventoryAllocationRecord(item)).filter((item) => item.pieceId || item.product)
+        : [],
       destination: {
         provinceCode: String(current.warehouse?.destination?.provinceCode || defaults.warehouse.destination.provinceCode || "").trim().toUpperCase(),
         province: String(current.warehouse?.destination?.province || defaults.warehouse.destination.province || "").trim(),
@@ -4432,18 +4995,7 @@ function reconcileStoreData(store) {
       });
 
   store.inventory = Array.isArray(store.inventory)
-    ? store.inventory.map((item) => ({
-        id: item.id || randomUUID(),
-        product: String(item.product || "").trim(),
-        width: toNumber(item.width || 0),
-        length: toNumber(item.length || 0),
-        sqm: toNumber(item.sqm || (toNumber(item.width || 0) * toNumber(item.length || 0))),
-        variant: String(item.variant || ""),
-        status: item.status === "residuo" ? "residuo" : "intero",
-        note: String(item.note || ""),
-        units: Math.max(1, Math.round(toNumber(item.units || 1))),
-        createdAt: item.createdAt || new Date().toISOString(),
-      }))
+    ? store.inventory.map((item) => normalizeInventoryPieceRecord(item))
     : [];
 
   store.salesRequests = Array.isArray(store.salesRequests)
@@ -5650,7 +6202,7 @@ function buildInventoryItemsFromBody(body = {}) {
   const width = toNumber(body.width || 0);
   const length = toNumber(body.length || 0);
   const note = String(body.note || "");
-  const status = body.status === "residuo" ? "residuo" : "intero";
+  const status = normalizeInventoryPieceType(body.pieceType || body.status);
   const measured = body.measured !== false && body.measured !== "false";
   if (!product) {
     return { error: "invalid_inventory_payload", created: [] };
@@ -5663,7 +6215,12 @@ function buildInventoryItemsFromBody(body = {}) {
       length,
       sqm: width && length ? Number((width * length).toFixed(2)) : 0,
       variant: String(body.variant || ""),
-      status,
+      status: status === "taglio" ? "residuo" : status,
+      pieceType: status,
+      pieceState: "disponibile",
+      committedOrderId: "",
+      committedOrderNumber: "",
+      allocationId: "",
       note,
       units: 1,
       createdAt: new Date().toISOString(),
@@ -5675,7 +6232,12 @@ function buildInventoryItemsFromBody(body = {}) {
       length,
       sqm: 0,
       variant: String(body.variant || ""),
-      status,
+      status: status === "taglio" ? "residuo" : status,
+      pieceType: status,
+      pieceState: "disponibile",
+      committedOrderId: "",
+      committedOrderNumber: "",
+      allocationId: "",
       note,
       units: quantity,
       createdAt: new Date().toISOString(),
@@ -6858,16 +7420,76 @@ async function handleApi(req, res, url) {
     if (!productKey) {
       return sendJson(res, 400, { error: "invalid_inventory_product" });
     }
-    store.inventory = (store.inventory || []).filter((item) => normalizeInventoryProductKey(item.product || "") !== productKey);
+    store.inventory = (store.inventory || []).filter((item) => (
+      normalizeInventoryProductKey(item.product || "") !== productKey
+      || normalizeInventoryPieceState(item.pieceState) !== "disponibile"
+    ));
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.inventory);
   }
 
   if (url.pathname.match(/^\/api\/inventory\/items\/[^/]+$/) && req.method === "DELETE") {
     const itemId = decodeURIComponent(url.pathname.split("/")[4]);
+    const targetItem = store.inventory.find((item) => item.id === itemId);
+    if (targetItem && normalizeInventoryPieceState(targetItem.pieceState) !== "disponibile") {
+      return sendJson(res, 409, { error: "inventory_piece_not_available" });
+    }
     store.inventory = store.inventory.filter((item) => item.id !== itemId);
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.inventory);
+  }
+
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/inventory\/suggest$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const order = store.orders.find((item) => item.id === orderId);
+    if (!order) return sendJson(res, 404, { error: "order_not_found" });
+    return sendJson(res, 200, buildInventorySuggestionsForOrder(store, order));
+  }
+
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/inventory\/commit$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const body = await readBody(req);
+    const order = store.orders.find((item) => item.id === orderId);
+    if (!order) return sendJson(res, 404, { error: "order_not_found" });
+    const suggestions = Array.isArray(body.suggestions) ? body.suggestions : buildInventorySuggestionsForOrder(store, order).suggestions;
+    const result = applyInventoryCommitment(store, order, suggestions);
+    if (!result.ok) {
+      return sendJson(res, result.error === "inventory_piece_unavailable" ? 409 : 400, {
+        error: result.error || "inventory_commit_failed",
+        unavailable: result.unavailable || [],
+      });
+    }
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, {
+      order: result.order,
+      inventory: store.inventory,
+      allocations: result.allocations || [],
+    });
+  }
+
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/inventory\/release$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const order = store.orders.find((item) => item.id === orderId);
+    if (!order) return sendJson(res, 404, { error: "order_not_found" });
+    const result = releaseInventoryCommitmentsForOrder(store, order);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, {
+      order: result.order,
+      inventory: store.inventory,
+    });
+  }
+
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/inventory\/fulfill$/) && req.method === "POST") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const order = store.orders.find((item) => item.id === orderId);
+    if (!order) return sendJson(res, 404, { error: "order_not_found" });
+    const result = fulfillInventoryCommitmentsForOrder(store, order);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, {
+      order: result.order,
+      inventory: store.inventory,
+      changed: Boolean(result.changed),
+    });
   }
 
   if (url.pathname === "/api/jobs" && req.method === "GET") {
@@ -7147,6 +7769,10 @@ async function handleApi(req, res, url) {
         store.jobs.find((job) => job.sourceOrderId === current.id) || null,
       ),
     };
+    if (shouldFulfillInventoryForOrder(store.orders[orderIndex])) {
+      const fulfillmentResult = fulfillInventoryCommitmentsForOrder(store, store.orders[orderIndex]);
+      store.orders[orderIndex] = fulfillmentResult.order;
+    }
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.orders[orderIndex]);
   }
@@ -7254,6 +7880,8 @@ async function handleApi(req, res, url) {
           linkedJob,
         ),
       };
+      const fulfillmentResult = fulfillInventoryCommitmentsForOrder(store, store.orders[orderIndex]);
+      store.orders[orderIndex] = fulfillmentResult.order;
       await writeJson(STORE_PATH, store);
       return sendJson(res, 200, {
         ok: true,
