@@ -3309,10 +3309,11 @@ button.is-feedback,
 }
 
 .wh-pieces {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
+  align-items: stretch;
 }
 
 .wh-piece-tools {
@@ -3392,14 +3393,19 @@ button.is-feedback,
 
 .wh-piece {
   position: relative;
-  overflow: visible;
-  min-width: 90px;
-  padding: 24px 12px 10px;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 108px;
+  padding: 24px 12px 12px;
   border-radius: 14px;
   border: 1px solid #d6ead9;
   background: #effaf2;
   text-align: center;
   color: #2a5935;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
 }
 
 .wh-piece-remove {
@@ -3465,7 +3471,9 @@ button.is-feedback,
   pointer-events: none;
   display: block;
   font-size: 18px;
-  margin-bottom: 4px;
+  line-height: 1.08;
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
 }
 
 .wh-piece span,
@@ -3473,6 +3481,8 @@ button.is-feedback,
   pointer-events: none;
   display: block;
   font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .wh-piece.material-slot {
@@ -5167,14 +5177,16 @@ body {
 }
 
 .wh-pieces {
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 8px;
 }
 
 .wh-piece {
-  width: 72px;
-  min-width: 72px;
-  padding: 18px 4px 8px;
-  border-radius: 6px;
+  width: auto;
+  min-width: 0;
+  min-height: 98px;
+  padding: 22px 8px 10px;
+  border-radius: 10px;
   font-size: 11px;
 }
 
@@ -5187,7 +5199,7 @@ body {
 }
 
 .wh-piece strong {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .wh-stats {

@@ -651,9 +651,37 @@ function normalizeInventoryPieceState(value = "", fallback = "disponibile") {
   return INVENTORY_PIECE_STATES.has(fallback) ? fallback : "disponibile";
 }
 
+function inferInventoryPieceDimensions(item = {}) {
+  const width = toNumber(item.width || 0);
+  const length = toNumber(item.length || 0);
+  const sqm = toNumber(item.sqm || (width * length));
+  if (width && length) {
+    return { width, length, sqm: sqm || Number((width * length).toFixed(2)) };
+  }
+
+  const text = [item.product, item.variant, item.note].filter(Boolean).join(" ");
+  const explicitDimensions = extractInventoryDimensions(text);
+  if (explicitDimensions) return explicitDimensions;
+
+  const looksLikeMeasuredRoll = /telo|pacciamatura|isolante|tasso|bonsai|faggio|betulla|acero|cedro|rovere|palma|cipresso|abete|ginepro|mogano/i.test(text);
+  const fallbackWidth = /banda|giunzione/i.test(text)
+    ? 0.3
+    : (sqm > 0 || looksLikeMeasuredRoll ? 2 : 0);
+  if (sqm > 0 && fallbackWidth) {
+    return {
+      width: fallbackWidth,
+      length: Number((sqm / fallbackWidth).toFixed(2)),
+      sqm: Number(sqm.toFixed(2)),
+    };
+  }
+
+  if (/telo|pacciamatura|isolante/i.test(text)) return { width: 2, length: 50, sqm: 100 };
+  if (/banda|giunzione/i.test(text)) return { width: 0.3, length: 25, sqm: 7.5 };
+  return { width: 0, length: 0, sqm };
+}
+
 function buildInventoryPieceLabel(piece = {}) {
-  const width = toNumber(piece.width || 0);
-  const length = toNumber(piece.length || 0);
+  const { width, length } = inferInventoryPieceDimensions(piece);
   if (width && length) return `${width} x ${length}`;
   if (piece.variant) return String(piece.variant);
   return String(piece.product || "Pezzo");
@@ -661,9 +689,7 @@ function buildInventoryPieceLabel(piece = {}) {
 
 function normalizeInventoryPieceRecord(item = {}) {
   const pieceType = normalizeInventoryPieceType(item.pieceType || item.status);
-  const width = toNumber(item.width || 0);
-  const length = toNumber(item.length || 0);
-  const sqm = toNumber(item.sqm || (width * length));
+  const { width, length, sqm } = inferInventoryPieceDimensions(item);
   const units = Math.max(1, Math.round(toNumber(item.units || 1)));
   return {
     id: item.id || randomUUID(),
@@ -689,10 +715,8 @@ function normalizeInventoryPieceRecord(item = {}) {
 }
 
 function normalizeInventoryAllocationRecord(item = {}) {
-  const width = toNumber(item.width || 0);
-  const length = toNumber(item.length || 0);
+  const { width, length, sqm } = inferInventoryPieceDimensions(item);
   const units = Math.max(1, Math.round(toNumber(item.units || 1)));
-  const sqm = toNumber(item.sqm || (width * length));
   return {
     id: String(item.id || randomUUID()),
     pieceId: String(item.pieceId || ""),
