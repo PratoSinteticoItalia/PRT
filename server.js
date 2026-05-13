@@ -717,6 +717,8 @@ function normalizeInventoryPieceRecord(item = {}) {
 function normalizeInventoryAllocationRecord(item = {}) {
   const { width, length, sqm } = inferInventoryPieceDimensions(item);
   const units = Math.max(1, Math.round(toNumber(item.units || 1)));
+  const requiredPieceCount = Math.max(1, Math.round(toNumber(item.requiredPieceCount || item.pieceCount || 1)));
+  const requiredPieceLength = toNumber(item.requiredPieceLength || item.pieceLength || length);
   return {
     id: String(item.id || randomUUID()),
     pieceId: String(item.pieceId || ""),
@@ -727,6 +729,11 @@ function normalizeInventoryAllocationRecord(item = {}) {
     length,
     sqm: Number(sqm.toFixed ? sqm.toFixed(2) : sqm),
     units,
+    requiredPieceCount,
+    requiredPieceLength,
+    requiredPieceSqm: Number(toNumber(item.requiredPieceSqm || (width * requiredPieceLength)).toFixed(2)),
+    requestLabel: String(item.requestLabel || ""),
+    sourcePieceLabel: String(item.sourcePieceLabel || item.pieceLabel || ""),
     pieceType: normalizeInventoryPieceType(item.pieceType || item.status),
     action: ["use", "cut", "partial-units"].includes(String(item.action || "")) ? String(item.action) : "use",
     status: normalizeInventoryPieceState(item.status || item.pieceState, "impegnato"),
@@ -1703,6 +1710,9 @@ function buildOrderInventoryRequirements(order = {}, inventory = []) {
         if (reqLength <= 0) continue;
         requirements.push({
           id: `req-${lineIndex}-${index}`,
+          lineIndex,
+          pieceIndex: index,
+          lineQuantity: pieces,
           product,
           title: line.title,
           measured: true,
@@ -1717,6 +1727,9 @@ function buildOrderInventoryRequirements(order = {}, inventory = []) {
     }
     requirements.push({
       id: `req-${lineIndex}-0`,
+      lineIndex,
+      pieceIndex: 0,
+      lineQuantity: quantity,
       product,
       title: line.title,
       measured: false,
@@ -1750,28 +1763,193 @@ function sortMeasuredInventoryCandidates(left = {}, right = {}, requiredLength =
   return toNumber(left.length || 0) - toNumber(right.length || 0);
 }
 
+function formatInventoryDimensionLabel(width = 0, length = 0) {
+  const fmt = (value) => {
+    const number = toNumber(value);
+    return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(2))).replace(".", ",");
+  };
+  return `${fmt(width)} x ${fmt(length)} m`;
+}
+
+function buildMeasuredRequirementBundles(requirements = []) {
+  const bundles = [];
+  const byKey = new Map();
+  requirements.forEach((requirement) => {
+    if (!requirement.measured) return;
+    const key = [
+      requirement.lineIndex,
+      normalizeInventoryFamilyKey(requirement.product || ""),
+      toNumber(requirement.width || 0),
+      toNumber(requirement.length || 0),
+      String(requirement.title || "").trim(),
+    ].join("|");
+    let bundle = byKey.get(key);
+    if (!bundle) {
+      bundle = {
+        id: key,
+        requirementIds: [],
+        product: requirement.product,
+        title: requirement.title,
+        measured: true,
+        width: toNumber(requirement.width || 0),
+        pieceLength: toNumber(requirement.length || 0),
+        pieceSqm: toNumber(requirement.sqm || 0),
+        pieceCount: 0,
+        lineIndex: requirement.lineIndex,
+      };
+      byKey.set(key, bundle);
+      bundles.push(bundle);
+    }
+    bundle.requirementIds.push(requirement.id);
+    bundle.pieceCount += 1;
+  });
+  return bundles.map((bundle) => ({
+    ...bundle,
+    totalLength: Number((bundle.pieceLength * bundle.pieceCount).toFixed(2)),
+    sqm: Number((bundle.width * bundle.pieceLength * bundle.pieceCount).toFixed(2)),
+  }));
+}
+
+function scoreMeasuredCandidate(piece = {}, plan = {}) {
+  const pieceType = normalizeInventoryPieceType(piece.pieceType || piece.status);
+  const sourceLength = toNumber(piece.length || 0);
+  const requiredLength = toNumber(plan.totalLength || plan.length || 0);
+  const waste = Math.max(0, sourceLength - requiredLength);
+  const exact = waste <= 0.05;
+  if (Number(plan.pieceCount || 1) > 1) {
+    if (exact) return -2000;
+    if (pieceType === "intero") return -1000 + waste;
+    return waste + (waste < 3 ? 80 : 0);
+  }
+  if (exact) return -2000;
+  if (pieceType === "residuo") return -1000 + waste;
+  return waste;
+}
+
+function buildMeasuredCandidateOption(piece = {}, plan = {}) {
+  const sourceLength = toNumber(piece.length || 0);
+  const width = toNumber(plan.width || piece.width || 0);
+  const requiredLength = toNumber(plan.totalLength || plan.length || 0);
+  if (!width || !requiredLength || sourceLength + 0.01 < requiredLength) return null;
+  const residueLength = Number(Math.max(0, sourceLength - requiredLength).toFixed(2));
+  const action = residueLength > 0.05 ? "cut" : "use";
+  const sourceSqm = width && sourceLength ? Number((width * sourceLength).toFixed(2)) : toNumber(piece.sqm || 0);
+  return {
+    pieceId: piece.id,
+    sourcePieceId: piece.id,
+    pieceLabel: buildInventoryPieceLabel(piece),
+    sourcePieceLabel: buildInventoryPieceLabel(piece),
+    pieceType: normalizeInventoryPieceType(piece.pieceType || piece.status),
+    action,
+    width,
+    length: Number(requiredLength.toFixed(2)),
+    sqm: Number((width * requiredLength).toFixed(2)),
+    units: 1,
+    sourceLength,
+    sourceSqm,
+    optionLabel: `${buildInventoryPieceLabel(piece)} · ${sourceSqm} mq`,
+    residue: action === "cut"
+      ? {
+          width,
+          length: residueLength,
+          sqm: Number((width * residueLength).toFixed(2)),
+        }
+      : null,
+    score: scoreMeasuredCandidate(piece, plan),
+  };
+}
+
+function getMeasuredCandidateOptions(inventory = [], plan = {}, usedPieceIds = new Set()) {
+  const requiredWidth = toNumber(plan.width || 0);
+  return inventory
+    .filter((piece) => (
+      !usedPieceIds.has(piece.id)
+      && normalizeInventoryPieceState(piece.pieceState) === "disponibile"
+      && inventoryPiecesMatchRequirement(piece, plan)
+      && toNumber(piece.length || 0) > 0
+      && (!requiredWidth || Math.abs(toNumber(piece.width || requiredWidth) - requiredWidth) <= 0.08)
+    ))
+    .map((piece) => buildMeasuredCandidateOption(piece, plan))
+    .filter(Boolean)
+    .sort((a, b) => a.score - b.score || a.sourceLength - b.sourceLength);
+}
+
+function createMeasuredSuggestionFromCandidate(plan = {}, candidate = {}) {
+  const pieceCount = Math.max(1, Number(plan.pieceCount || 1));
+  const requiredPieceLength = toNumber(plan.pieceLength || plan.length || candidate.length || 0);
+  const width = toNumber(plan.width || candidate.width || 0);
+  const product = candidate.product || plan.product;
+  const requestLabel = pieceCount > 1
+    ? `${pieceCount} pezzi da ${formatInventoryDimensionLabel(width, requiredPieceLength)}`
+    : formatInventoryDimensionLabel(width, requiredPieceLength);
+  return {
+    id: randomUUID(),
+    requirementId: Array.isArray(plan.requirementIds) ? plan.requirementIds[0] : plan.id,
+    requirementIds: Array.isArray(plan.requirementIds) ? plan.requirementIds : [plan.id].filter(Boolean),
+    product,
+    title: plan.title || "",
+    requestLabel,
+    requiredPieceCount: pieceCount,
+    requiredPieceLength,
+    requiredPieceSqm: Number((width * requiredPieceLength).toFixed(2)),
+    ...candidate,
+    candidates: [],
+  };
+}
+
 function buildInventorySuggestionsForOrder(store = {}, order = {}) {
   const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
   const requirements = buildOrderInventoryRequirements(order, inventory);
   const usedPieceIds = new Set();
   const suggestions = [];
   const missing = [];
+  const bundledRequirementIds = new Set();
+
+  buildMeasuredRequirementBundles(requirements).forEach((bundle) => {
+    const plan = {
+      ...bundle,
+      length: bundle.totalLength,
+      totalLength: bundle.totalLength,
+    };
+    const options = getMeasuredCandidateOptions(inventory, plan, usedPieceIds);
+    if (!options.length && bundle.pieceCount > 1) return;
+    if (!options.length) {
+      missing.push({
+        requirementId: bundle.requirementIds[0],
+        requirementIds: bundle.requirementIds,
+        product: bundle.product,
+        width: bundle.width,
+        length: bundle.totalLength,
+        sqm: bundle.sqm,
+        reason: "stock_unavailable",
+      });
+      bundle.requirementIds.forEach((id) => bundledRequirementIds.add(id));
+      return;
+    }
+    const selected = options[0];
+    const suggestion = createMeasuredSuggestionFromCandidate(bundle, selected);
+    suggestion.candidates = options.slice(0, 12).map(({ score, ...option }) => option);
+    suggestions.push(suggestion);
+    usedPieceIds.add(selected.sourcePieceId);
+    bundle.requirementIds.forEach((id) => bundledRequirementIds.add(id));
+  });
 
   requirements.forEach((requirement) => {
+    if (bundledRequirementIds.has(requirement.id)) return;
     if (requirement.measured) {
       let remainingLength = Number(requirement.length || 0);
       const requiredWidth = toNumber(requirement.width || 0);
       while (remainingLength > 0.01) {
-        const compatible = inventory
-          .filter((piece) => (
-            !usedPieceIds.has(piece.id)
-            && normalizeInventoryPieceState(piece.pieceState) === "disponibile"
-            && inventoryPiecesMatchRequirement(piece, requirement)
-            && toNumber(piece.length || 0) > 0
-            && (!requiredWidth || Math.abs(toNumber(piece.width || requiredWidth) - requiredWidth) <= 0.08)
-          ))
-          .sort((a, b) => sortMeasuredInventoryCandidates(a, b, remainingLength));
-        if (!compatible.length) {
+        const plan = {
+          ...requirement,
+          length: remainingLength,
+          totalLength: remainingLength,
+          pieceLength: remainingLength,
+          pieceCount: 1,
+          requirementIds: [requirement.id],
+        };
+        const options = getMeasuredCandidateOptions(inventory, plan, usedPieceIds);
+        if (!options.length) {
           missing.push({
             requirementId: requirement.id,
             product: requirement.product,
@@ -1782,36 +1960,12 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
           });
           break;
         }
-        const best = compatible[0];
-        const pieceLength = toNumber(best.length || 0);
-        const allocatedLength = Math.min(pieceLength, remainingLength);
-        const residueLength = Number(Math.max(0, pieceLength - allocatedLength).toFixed(2));
-        const width = requiredWidth || toNumber(best.width || 0);
-        const action = residueLength > 0.05 ? "cut" : "use";
-        const allocationId = randomUUID();
-        suggestions.push({
-          id: allocationId,
-          requirementId: requirement.id,
-          product: best.product || requirement.product,
-          pieceId: best.id,
-          sourcePieceId: best.id,
-          pieceLabel: buildInventoryPieceLabel(best),
-          pieceType: normalizeInventoryPieceType(best.pieceType || best.status),
-          action,
-          width,
-          length: Number(allocatedLength.toFixed(2)),
-          sqm: Number((width * allocatedLength).toFixed(2)),
-          units: 1,
-          residue: action === "cut"
-            ? {
-                width,
-                length: residueLength,
-                sqm: Number((width * residueLength).toFixed(2)),
-              }
-            : null,
-        });
-        usedPieceIds.add(best.id);
-        remainingLength = Number((remainingLength - allocatedLength).toFixed(2));
+        const selected = options[0];
+        const suggestion = createMeasuredSuggestionFromCandidate(plan, selected);
+        suggestion.candidates = options.slice(0, 12).map(({ score, ...option }) => option);
+        suggestions.push(suggestion);
+        usedPieceIds.add(selected.sourcePieceId);
+        remainingLength = Number((remainingLength - selected.length).toFixed(2));
       }
       return;
     }
@@ -1951,6 +2105,11 @@ function applyInventoryCommitment(store = {}, order = {}, rawSuggestions = []) {
       length: allocationLength,
       sqm: allocationSqm,
       units: allocationUnits,
+      requiredPieceCount: suggestion.requiredPieceCount,
+      requiredPieceLength: suggestion.requiredPieceLength,
+      requiredPieceSqm: suggestion.requiredPieceSqm,
+      requestLabel: suggestion.requestLabel,
+      sourcePieceLabel: suggestion.sourcePieceLabel || suggestion.pieceLabel,
       pieceType: sourcePiece.pieceType || sourcePiece.status,
       action,
       status: "impegnato",

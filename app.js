@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260513-inventory-dimensions-196";
+const APP_SHELL_VERSION = "20260513-inventory-allocation-197";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7746,6 +7746,22 @@ function formatInventoryAllocationMeasure(item = {}) {
   return `${units} ${state.lang === "it" ? "u" : "u"}`;
 }
 
+function formatInventorySuggestionMeasure(item = {}) {
+  const width = toNumber(item.width || 0);
+  const requiredPieceLength = toNumber(item.requiredPieceLength || 0);
+  const requiredPieceCount = Math.max(1, Number(item.requiredPieceCount || 1));
+  if (width && requiredPieceLength && requiredPieceCount > 1) {
+    return `${requiredPieceCount} pezzi da ${formatInventoryNumber(width)} x ${formatInventoryNumber(requiredPieceLength)} m · taglio ${formatInventoryNumber(item.length || 0)} m`;
+  }
+  return item.requestLabel || formatInventoryAllocationMeasure(item);
+}
+
+function formatInventorySuggestionSourceLabel(item = {}) {
+  const sourceLabel = item.sourcePieceLabel || item.pieceLabel || "";
+  const sourceSqm = toNumber(item.sourceSqm || 0);
+  return `${sourceLabel || formatInventoryAllocationMeasure(item)}${sourceSqm ? ` · ${formatInventoryNumber(sourceSqm)} mq` : ""}`;
+}
+
 function getInventorySuggestionForOrder(orderId = "") {
   return state.inventorySuggestions?.[orderId] || null;
 }
@@ -7755,6 +7771,31 @@ function setInventorySuggestionForOrder(orderId = "", suggestion = null) {
   state.inventorySuggestions = { ...(state.inventorySuggestions || {}) };
   if (suggestion) state.inventorySuggestions[orderId] = suggestion;
   else delete state.inventorySuggestions[orderId];
+}
+
+function changeInventorySuggestionSource(orderId = "", suggestionId = "", sourcePieceId = "") {
+  const suggestion = getInventorySuggestionForOrder(orderId);
+  if (!suggestion || !Array.isArray(suggestion.suggestions)) return;
+  const nextRows = suggestion.suggestions.map((row) => {
+    if (String(row.id || "") !== String(suggestionId || "")) return row;
+    const candidate = (row.candidates || []).find((item) => String(item.sourcePieceId || item.pieceId || "") === String(sourcePieceId || ""));
+    if (!candidate) return row;
+    return {
+      ...row,
+      ...candidate,
+      id: row.id,
+      requirementId: row.requirementId,
+      requirementIds: row.requirementIds,
+      title: row.title,
+      requestLabel: row.requestLabel,
+      requiredPieceCount: row.requiredPieceCount,
+      requiredPieceLength: row.requiredPieceLength,
+      requiredPieceSqm: row.requiredPieceSqm,
+      candidates: row.candidates,
+    };
+  });
+  setInventorySuggestionForOrder(orderId, { ...suggestion, suggestions: nextRows });
+  renderWarehouse();
 }
 
 function formatPalletDimensions(ddt = {}) {
@@ -11568,7 +11609,7 @@ function renderInventoryCard(group) {
         : "badge-success";
 
   const dimensionsSummary = isMeasured ? getInventoryPieceDimensionSummary(group.pieces) : "";
-  const stockLabel = isMeasured ? `${totalPieces} ${state.lang === "it" ? "pezzi" : "pieces"}` : `${group.totalUnits} u`;
+  const stockLabel = isMeasured ? `${Math.round(group.totalSqm)} mq` : `${group.totalUnits} u`;
   const stockMeasureLabel = isMeasured ? `${Math.round(group.totalSqm)} mq` : `${group.totalUnits} u`;
   const demandLabel = isMeasured ? `${Math.round(planningDemandValue)} mq` : `${planningDemandValue} u`;
   const availableMeasureLabel = isMeasured ? `${Math.round(Math.max(0, stockValue))} mq` : `${Math.max(0, stockValue)} u`;
@@ -11576,7 +11617,7 @@ function renderInventoryCard(group) {
     ? `${Math.round(Math.max(0, pendingDemandValue - stockValue))} mq`
     : `${Math.max(0, pendingDemandValue - stockValue)} u`;
   const netValue = isMeasured ? group.availableSqm : stockValue;
-  const netLabel = isMeasured ? `${availablePieces} ${state.lang === "it" ? "pezzi" : "pieces"}` : `${Math.max(0, stockValue)} u`;
+  const netLabel = isMeasured ? `${Math.round(Math.max(0, group.availableSqm))} mq` : `${Math.max(0, stockValue)} u`;
   const immobilizedValueLabel = group.isModel && group.grossPriceConfigured
     ? formatCurrency(group.availableGrossValue)
     : "—";
@@ -11590,7 +11631,7 @@ function renderInventoryCard(group) {
     .filter(Boolean)
     .slice(0, 3);
   const remainingDemandCount = Math.max(0, group.demandOrders.length - linkedDemandOrders.length);
-  const committedLabel = isMeasured ? `${committedPieces} ${state.lang === "it" ? "pezzi" : "pieces"}` : `${committedPhysicalValue} u`;
+  const committedLabel = isMeasured ? `${Math.round(committedPhysicalValue)} mq` : `${committedPhysicalValue} u`;
   const materialSlots = isMeasured ? [] : buildMaterialInventorySlots(group);
 
   const deficitAlert = hasDeficit || (!hasStock && hasDemand)
@@ -11663,8 +11704,7 @@ function renderInventoryCard(group) {
               aria-label="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}"
             >×</button>` : ""}
             <strong>${formatPieceLabel(item)}</strong>
-            <span>${formatInventoryPieceTypeLabel(pieceType)}${item.variant ? ` · ${escapeHtml(item.variant)}` : ""}</span>
-            <small>${getInventoryPieceStateLabel(pieceState)} · ${formatInventoryNumber(item.sqm)} mq</small>
+            <small>${formatInventoryNumber(item.sqm)} mq</small>
           </div>
         `; }).join("") : !isMeasured && materialSlots.length ? materialSlots.map((slot) => `
           <div class="wh-piece material-slot ${slot.status === "residuo" ? "residuo" : "intero"}">
@@ -11697,7 +11737,7 @@ function renderInventoryCard(group) {
         <div class="wh-stat soft">
           <div class="wh-stat-label">${state.lang === "it" ? "Giacenza reale" : "Physical stock"}</div>
           <div class="wh-stat-value">${stockLabel}</div>
-          <div class="wh-stat-sub">${isMeasured ? `${stockMeasureLabel} totali · ${dimensionsSummary || (state.lang === "it" ? "dimensioni sui pezzi" : "dimensions on pieces")}` : `${materialSlots.length} ${state.lang === "it" ? "slot" : "slots"} · ${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "fisicamente caricati" : "physically loaded"}`}</div>
+          <div class="wh-stat-sub">${isMeasured ? `${totalPieces} pezzi fisici · ${dimensionsSummary || (state.lang === "it" ? "dimensioni sui pezzi" : "dimensions on pieces")}` : `${materialSlots.length} ${state.lang === "it" ? "slot" : "slots"} · ${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "fisicamente caricati" : "physically loaded"}`}</div>
         </div>
         <div class="wh-stat ${hasDemand ? "danger" : "soft"}" ${demandActionAttrs}>
           <div class="wh-stat-label">${state.lang === "it" ? "Impegnato su ordini" : "Committed to orders"}</div>
@@ -11738,6 +11778,7 @@ function renderOrderInventoryAllocationPanel(order) {
   const pending = inventoryAllocationPendingOrderIds.has(order.id);
   const suggestionRows = Array.isArray(suggestion?.suggestions) ? suggestion.suggestions : [];
   const missingRows = Array.isArray(suggestion?.missing) ? suggestion.missing : [];
+  const selectedSuggestionSourceIds = suggestionRows.map((item) => String(item.sourcePieceId || item.pieceId || ""));
   const canCommit = suggestionRows.length > 0 && missingRows.length === 0 && !pending;
   const logisticsCompleted = isLogisticsOrderCompleted(order);
   const allocationSummary = activeAllocations.length
@@ -11752,7 +11793,8 @@ function renderOrderInventoryAllocationPanel(order) {
       <div class="inventory-allocation-row">
         <div>
           <strong>${escapeHtml(item.product || t("product"))}</strong>
-          <span>${escapeHtml(formatInventoryAllocationMeasure(item))}</span>
+          <span>${escapeHtml(formatInventorySuggestionMeasure(item))}</span>
+          ${item.sourcePieceLabel ? `<em>${escapeHtml(item.sourcePieceLabel)}</em>` : ""}
         </div>
         <small>${escapeHtml(getInventoryAllocationStatusLabel(item.status))}</small>
       </div>
@@ -11761,16 +11803,39 @@ function renderOrderInventoryAllocationPanel(order) {
 
   const suggestionList = suggestionRows.length || missingRows.length
     ? `<div class="inventory-suggestion-list">
-        ${suggestionRows.map((item) => `
+        ${suggestionRows.map((item, rowIndex) => {
+          const candidates = Array.isArray(item.candidates) ? item.candidates : [];
+          const selectedSourceId = String(item.sourcePieceId || item.pieceId || "");
+          const sourcePicker = candidates.length > 1
+            ? `<label class="inventory-source-picker">
+                <span>${state.lang === "it" ? "Preleva da" : "Take from"}</span>
+                <select
+                  class="text-input"
+                  data-action="change-inventory-suggestion-source"
+                  data-id="${escapeHtml(order.id)}"
+                  data-suggestion-id="${escapeHtml(item.id || "")}"
+                >
+                  ${candidates.map((candidate) => {
+                    const candidateId = String(candidate.sourcePieceId || candidate.pieceId || "");
+                    const usedByOtherRow = candidateId && selectedSuggestionSourceIds.some((sourceId, sourceIndex) => sourceIndex !== rowIndex && sourceId === candidateId);
+                    const optionLabel = `${formatInventorySuggestionSourceLabel(candidate)}${usedByOtherRow ? (state.lang === "it" ? " · gia usato" : " · already used") : ""}`;
+                    return `<option value="${escapeHtml(candidateId)}" ${candidateId === selectedSourceId ? "selected" : ""} ${usedByOtherRow ? "disabled" : ""}>${escapeHtml(optionLabel)}</option>`;
+                  }).join("")}
+                </select>
+              </label>`
+            : "";
+          return `
           <div class="inventory-suggestion-row">
             <div>
               <strong>${escapeHtml(item.product || t("product"))}</strong>
-              <span>${escapeHtml(item.pieceLabel || "")} → ${escapeHtml(formatInventoryAllocationMeasure(item))}</span>
+              <span>${escapeHtml(formatInventorySuggestionMeasure(item))}</span>
+              <em>${escapeHtml(formatInventorySuggestionSourceLabel(item))}</em>
               ${item.residue ? `<em>${state.lang === "it" ? "Residuo generato" : "Generated residual"}: ${escapeHtml(formatInventoryAllocationMeasure(item.residue))}</em>` : ""}
+              ${sourcePicker}
             </div>
             <small>${item.action === "cut" ? (state.lang === "it" ? "Taglio" : "Cut") : (state.lang === "it" ? "Uso intero" : "Use")}</small>
           </div>
-        `).join("")}
+        `; }).join("")}
         ${missingRows.map((item) => `
           <div class="inventory-suggestion-row is-missing">
             <div>
@@ -19402,6 +19467,11 @@ bindEvent(ui.salesContentAttachmentButton, "click", () => openAttachmentPicker("
 bindEvent(ui.warehouseSearch, "input", (event) => {
   state.search.warehouse = event.target.value;
   scheduleSearchRender("warehouse", renderWarehouse);
+});
+bindEvent(ui.warehouseDetailFields, "change", (event) => {
+  const control = event.target.closest("[data-action='change-inventory-suggestion-source']");
+  if (!control) return;
+  changeInventorySuggestionSource(control.dataset.id || "", control.dataset.suggestionId || "", control.value || "");
 });
 bindEvent(ui.warehouseExportBtn, "click", () => exportInventoryCSV());
 bindEvent(ui.accountingSearch, "input", (event) => {

@@ -3395,8 +3395,8 @@ button.is-feedback,
   position: relative;
   overflow: hidden;
   min-width: 0;
-  min-height: 108px;
-  padding: 24px 12px 12px;
+  min-height: 82px;
+  padding: 22px 10px 10px;
   border-radius: 14px;
   border: 1px solid #d6ead9;
   background: #effaf2;
@@ -3605,6 +3605,7 @@ button.is-feedback,
 
 .warehouse-allocation-head span,
 .inventory-allocation-row span,
+.inventory-allocation-row em,
 .inventory-suggestion-row span,
 .inventory-suggestion-row em,
 .inventory-allocation-empty,
@@ -3638,10 +3639,32 @@ button.is-feedback,
   gap: 8px;
 }
 
+.inventory-allocation-row em,
 .inventory-suggestion-row em {
   display: block;
   font-style: normal;
   margin-top: 3px;
+}
+
+.inventory-source-picker {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.inventory-source-picker span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #8a958d;
+  font-weight: 800;
+}
+
+.inventory-source-picker .text-input {
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 13px;
 }
 
 .inventory-allocation-row small,
@@ -5184,8 +5207,8 @@ body {
 .wh-piece {
   width: auto;
   min-width: 0;
-  min-height: 98px;
-  padding: 22px 8px 10px;
+  min-height: 76px;
+  padding: 20px 8px 9px;
   border-radius: 10px;
   font-size: 11px;
 }
@@ -8195,8 +8218,8 @@ body {
 }
 
 #warehouse .detail-panel {
-  top: 92px;
-  max-height: calc(100vh - 118px);
+  top: 82px;
+  max-height: calc(100dvh - 92px);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -13738,7 +13761,8 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   }
 
   #warehouse .detail-panel {
-    max-height: calc(100vh - 118px);
+    top: 82px;
+    max-height: calc(100dvh - 92px);
   }
 }
 
