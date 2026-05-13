@@ -91,7 +91,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260513-sketch-heylight-fix-187";
+const APP_SHELL_VERSION = "20260513-sketch-pro-visual-188";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2246,105 +2246,115 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
     };
   });
 
-  // Visual tokens differ by variant
-  const sketchBg = isClientVariant ? "#eef3ec" : B.cream;
-  const areaFill = isClientVariant ? "rgba(34,100,50,0.22)" : (B.primary + "1c");
-  const areaStroke = isClientVariant ? "#1a5e2f" : B.primary;
-  const areaStrokeW = isClientVariant ? "2.5" : "2.2";
-  const rollFill = isClientVariant ? "rgba(255,255,255,0.55)" : "rgba(21,101,192,0.2)";
-  const rollStroke = isClientVariant ? "#1a5e2f" : "#1565c0";
-  const rollDashArray = isClientVariant ? "4 3" : "none";
-  const grassPatternId = `grass-fill-${W}`;
+  const uid = `sk-${W}`;
 
   return (
-    <div style={{ border: "1px solid " + (isClientVariant ? "#c8dfc4" : B.borderLight), borderRadius: 12, background: B.white, padding: 10 }}>
+    <div style={{ border: "1px solid " + (isClientVariant ? "#b8d4b4" : B.borderLight), borderRadius: 12, background: B.white, padding: 10 }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
         <defs>
+          {/* Architectural dot grid for background */}
+          <pattern id={`${uid}-bg`} patternUnits="userSpaceOnUse" width="20" height="20">
+            <circle cx="10" cy="10" r="0.7" fill={isClientVariant ? "rgba(90,130,95,0.22)" : "rgba(150,170,150,0.18)"} />
+          </pattern>
+          {/* Grass gradient fill */}
+          <radialGradient id={`${uid}-grad`} cx="50%" cy="45%" r="65%">
+            <stop offset="0%" stopColor={isClientVariant ? "rgba(52,130,68,0.38)" : "rgba(52,130,68,0.18)"} />
+            <stop offset="100%" stopColor={isClientVariant ? "rgba(22,78,38,0.52)" : "rgba(22,78,38,0.28)"} />
+          </radialGradient>
+          {/* Drop shadow for polygon */}
           {isClientVariant && (
-            <pattern id={grassPatternId} patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
-              <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(34,100,50,0.12)" strokeWidth="2" />
+            <filter id={`${uid}-shadow`} x="-10%" y="-10%" width="120%" height="120%">
+              <feDropShadow dx="1.5" dy="2.5" stdDeviation="3" floodColor="rgba(10,50,15,0.22)" />
+            </filter>
+          )}
+          {/* Grass stipple texture */}
+          {isClientVariant && (
+            <pattern id={`${uid}-stipple`} patternUnits="userSpaceOnUse" width="10" height="10">
+              <circle cx="2.5" cy="2.5" r="0.6" fill="rgba(255,255,255,0.1)" />
+              <circle cx="7.5" cy="7.5" r="0.5" fill="rgba(255,255,255,0.08)" />
             </pattern>
           )}
         </defs>
-        <rect x="1" y="1" width={W - 2} height={H - 2} rx="10" fill={sketchBg} stroke={isClientVariant ? "#c8dfc4" : B.borderLight} />
+
+        {/* Background */}
+        <rect x="1" y="1" width={W - 2} height={H - 2} rx="10"
+          fill={isClientVariant ? "#f2f5f0" : B.cream}
+          stroke={isClientVariant ? "#b8d4b4" : B.borderLight} />
+        <rect x="1" y="1" width={W - 2} height={H - 2} rx="10"
+          fill={`url(#${uid}-bg)`} stroke="none" />
+
+        {/* Polygons */}
         {polygonSketches.map((polygon) => (
-          <g key={`poly-${polygon.id}`}>
-            {/* Base fill */}
-            <path d={polygon.d} fill={areaFill} stroke={areaStroke} strokeWidth={areaStrokeW} />
-            {/* Grass texture overlay for client variant */}
-            {isClientVariant && (
-              <path d={polygon.d} fill={`url(#${grassPatternId})`} stroke="none" />
-            )}
-            {hasMultipleAreas ? (
+          <g key={`poly-${polygon.id}`} filter={isClientVariant ? `url(#${uid}-shadow)` : undefined}>
+            <path d={polygon.d} fill={`url(#${uid}-grad)`} stroke={isClientVariant ? "#1a5e2f" : B.primary} strokeWidth={isClientVariant ? "2.2" : "2.2"} strokeLinejoin="round" />
+            {isClientVariant && <path d={polygon.d} fill={`url(#${uid}-stipple)`} stroke="none" />}
+            {hasMultipleAreas && (
               <>
-                <rect
-                  x={clamp(polygon.box.minX + (polygon.box.w / 2) - 16, 8, W - 40)}
-                  y={clamp(polygon.box.minY - 18, 8, H - 24)}
-                  width="32"
-                  height="16"
-                  rx="8"
-                  fill={areaStroke}
-                  opacity="0.96"
-                />
-                <text
-                  x={clamp(polygon.box.minX + (polygon.box.w / 2), 24, W - 24)}
-                  y={clamp(polygon.box.minY - 6.5, 19, H - 10)}
-                  fontSize="8.6"
-                  textAnchor="middle"
-                  fill="#fff"
-                  fontWeight="800"
-                >
-                  {`A${polygon.index}`}
-                </text>
+                <rect x={clamp(polygon.box.minX + polygon.box.w / 2 - 16, 8, W - 40)} y={clamp(polygon.box.minY - 18, 8, H - 24)} width="32" height="16" rx="8" fill={isClientVariant ? "#1a5e2f" : B.primary} opacity="0.96" />
+                <text x={clamp(polygon.box.minX + polygon.box.w / 2, 24, W - 24)} y={clamp(polygon.box.minY - 6.5, 19, H - 10)} fontSize="8.6" textAnchor="middle" fill="#fff" fontWeight="800">{`A${polygon.index}`}</text>
               </>
-            ) : null}
+            )}
           </g>
         ))}
+
+        {/* Rolls */}
         {rollPaths.map(roll => (
           <g key={roll.id}>
-            <path d={roll.path} fill={rollFill} stroke={rollStroke} strokeWidth={isClientVariant ? "1.6" : "1.35"} strokeDasharray={isClientVariant ? rollDashArray : undefined} />
-            {!isClientVariant && (
+            {isClientVariant ? (
+              /* Client: dashed seam lines only, no filled box */
               <>
-                <circle cx={roll.cx} cy={roll.cy} r="5.2" fill="#1565c0" stroke="#fff" strokeWidth="1.2" />
-                <text x={roll.cx} y={roll.cy + 2.9} fontSize="7.4" textAnchor="middle" fill="#fff" fontWeight="700">
-                  {roll.rollIndex}
-                </text>
+                <path d={roll.path} fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.4" strokeDasharray="5 3" />
+                <rect x={roll.cx - 13} y={roll.cy - 6.5} width="26" height="13" rx="3.5"
+                  fill="rgba(255,255,255,0.82)" stroke="rgba(26,94,47,0.28)" strokeWidth="0.7" />
+                <text x={roll.cx} y={roll.cy + 4} fontSize="7.4" textAnchor="middle" fill="#1a3d24" fontWeight="700">{`R${roll.rollIndex}`}</text>
               </>
-            )}
-            {isClientVariant && (
+            ) : (
+              /* Technical: filled box with numbered center dot */
               <>
-                <rect
-                  x={roll.cx - 15} y={roll.cy - 7} width="30" height="14" rx="4"
-                  fill="rgba(255,255,255,0.88)" stroke="rgba(26,94,47,0.3)" strokeWidth="0.8"
-                />
-                <text x={roll.cx} y={roll.cy + 4} fontSize="7.6" textAnchor="middle" fill="#1a5e2f" fontWeight="700">
-                  {`R${roll.rollIndex}`}
-                </text>
+                <path d={roll.path} fill="rgba(21,101,192,0.2)" stroke="#1565c0" strokeWidth="1.35" />
+                <circle cx={roll.cx} cy={roll.cy} r="5.2" fill="#1565c0" stroke="#fff" strokeWidth="1.2" />
+                <text x={roll.cx} y={roll.cy + 2.9} fontSize="7.4" textAnchor="middle" fill="#fff" fontWeight="700">{roll.rollIndex}</text>
               </>
             )}
           </g>
         ))}
-        {edges.map((edge, index) => {
-          return (
-            <g key={index}>
-              <rect x={edge.labelRect.x} y={edge.labelRect.y} width={edge.chipW} height={edge.chipH} rx={6} fill="rgba(255,255,255,0.96)" stroke={isClientVariant ? "rgba(26,94,47,0.25)" : B.borderLight} />
-              <text x={edge.labelRect.x + edge.chipW / 2} y={edge.labelRect.y + 10.6} fontSize="8.7" textAnchor="middle" fill={isClientVariant ? "#1a3d24" : B.dark} fontWeight="700">
-                {edge.txt}
-              </text>
-            </g>
-          );
-        })}
-        {!isClientVariant && vertexLabels.map((item, index) => (
-          <g key={`v-${index}`}>
-            <circle cx={item.point.x} cy={item.point.y} r="4.3" fill={B.primary} stroke="#fff" strokeWidth="1.6" />
-            <text x={item.rect.x + (item.rect.width / 2)} y={item.rect.y + 9} fontSize="8.2" textAnchor="middle" fill={B.dark} fontWeight="700">
-              {item.label}
+
+        {/* Edge measurement labels */}
+        {edges.map((edge, index) => (
+          <g key={index}>
+            <rect x={edge.labelRect.x} y={edge.labelRect.y} width={edge.chipW} height={edge.chipH} rx={isClientVariant ? 4 : 6}
+              fill={isClientVariant ? "rgba(255,255,255,0.94)" : "rgba(255,255,255,0.96)"}
+              stroke={isClientVariant ? "rgba(26,94,47,0.2)" : B.borderLight}
+              strokeWidth={isClientVariant ? "0.8" : "1"} />
+            <text x={edge.labelRect.x + edge.chipW / 2} y={edge.labelRect.y + 10.6} fontSize="8.4" textAnchor="middle"
+              fill={isClientVariant ? "#1a3d24" : B.dark} fontWeight="700" letterSpacing={isClientVariant ? "0.2" : "0"}>
+              {edge.txt}
             </text>
           </g>
         ))}
+
+        {/* Vertex labels — technical only */}
+        {!isClientVariant && vertexLabels.map((item, index) => (
+          <g key={`v-${index}`}>
+            <circle cx={item.point.x} cy={item.point.y} r="4.3" fill={B.primary} stroke="#fff" strokeWidth="1.6" />
+            <text x={item.rect.x + item.rect.width / 2} y={item.rect.y + 9} fontSize="8.2" textAnchor="middle" fill={B.dark} fontWeight="700">{item.label}</text>
+          </g>
+        ))}
+
+        {/* Client vertex dots — small, clean */}
         {isClientVariant && polygonSketches.map((polygon) => polygon.vertexPoints.map((pt, vi) => (
-          <circle key={`vc-${polygon.id}-${vi}`} cx={pt.x} cy={pt.y} r="3" fill="#1a5e2f" stroke="rgba(255,255,255,0.9)" strokeWidth="1.4" />
+          <circle key={`vc-${polygon.id}-${vi}`} cx={pt.x} cy={pt.y} r="2.6" fill="#1a5e2f" stroke="rgba(255,255,255,0.85)" strokeWidth="1.2" />
         )))}
+
+        {/* North indicator — client only */}
+        {isClientVariant && (
+          <g transform={`translate(${W - 20}, 18)`}>
+            <circle cx="0" cy="0" r="8" fill="rgba(255,255,255,0.82)" stroke="rgba(26,94,47,0.3)" strokeWidth="0.8" />
+            <polygon points="0,-6 2.5,2 0,0 -2.5,2" fill="#1a5e2f" />
+            <polygon points="0,6 2.5,-2 0,0 -2.5,-2" fill="rgba(26,94,47,0.25)" />
+            <text x="0" y="-7.5" fontSize="5.5" textAnchor="middle" fill="#1a3d24" fontWeight="800" letterSpacing="0.5">N</text>
+          </g>
+        )}
       </svg>
       <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
         <div style={{ fontSize: 11, color: B.textMuted }}>

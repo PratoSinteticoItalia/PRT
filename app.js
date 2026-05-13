@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260513-sketch-heylight-fix-187";
+const APP_SHELL_VERSION = "20260513-sketch-pro-visual-188";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1152,6 +1152,7 @@ const state = {
   marketingCalendarMonth: "",
   marketingPublishingId: "",
   marketingPublishingMode: "",
+  inventorySuggestions: {},
 };
 
 let sessionKeepaliveTimer = 0;
@@ -1176,6 +1177,7 @@ let salesContentDeleteInFlightId = "";
 const salesRequestPendingPatchIds = new Set();
 const orderPendingPatchIds = new Set();
 const inventoryPendingOps = new Set();
+const inventoryAllocationPendingOrderIds = new Set();
 const salesContentAttachmentDeleteInFlight = new Set();
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
@@ -7643,6 +7645,67 @@ function formatPieceLabel(item) {
   return "1 unità";
 }
 
+function getInventoryPieceState(item = {}) {
+  const raw = String(item.pieceState || item.availability || item.stockState || "").trim().toLowerCase();
+  if (["disponibile", "impegnato", "evaso"].includes(raw)) return raw;
+  if (["available", "free", "libero"].includes(raw)) return "disponibile";
+  if (["committed", "reserved", "allocated", "prenotato"].includes(raw)) return "impegnato";
+  if (["fulfilled", "consumed", "used", "scaricato"].includes(raw)) return "evaso";
+  return "disponibile";
+}
+
+function getInventoryPieceType(item = {}) {
+  const raw = String(item.pieceType || item.status || "").trim().toLowerCase();
+  if (raw === "residuo") return "residuo";
+  if (raw === "taglio") return "taglio";
+  return "intero";
+}
+
+function getInventoryPieceStateLabel(pieceState = "") {
+  const normalized = getInventoryPieceState({ pieceState });
+  if (normalized === "impegnato") return state.lang === "it" ? "IMPEGNATO" : "COMMITTED";
+  if (normalized === "evaso") return state.lang === "it" ? "EVASO" : "FULFILLED";
+  return state.lang === "it" ? "DISPONIBILE" : "AVAILABLE";
+}
+
+function getInventoryAllocationStatusLabel(status = "") {
+  const normalized = getInventoryPieceState({ pieceState: status });
+  if (normalized === "impegnato") return state.lang === "it" ? "Impegnato" : "Committed";
+  if (normalized === "evaso") return state.lang === "it" ? "Evaso" : "Fulfilled";
+  return state.lang === "it" ? "Disponibile" : "Available";
+}
+
+function formatInventoryNumber(value = 0) {
+  const number = toNumber(value);
+  return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(2))).replace(".", ",");
+}
+
+function getOrderInventoryAllocations(order = {}) {
+  return Array.isArray(order.operations?.warehouse?.inventoryAllocations)
+    ? order.operations.warehouse.inventoryAllocations
+    : [];
+}
+
+function formatInventoryAllocationMeasure(item = {}) {
+  const units = Math.max(1, Number(item.units || 1));
+  const width = toNumber(item.width || 0);
+  const length = toNumber(item.length || 0);
+  const sqm = toNumber(item.sqm || (width * length));
+  if (sqm > 0) return `${formatInventoryNumber(width)} x ${formatInventoryNumber(length)} · ${formatInventoryNumber(sqm)} mq`;
+  return `${units} ${state.lang === "it" ? "u" : "u"}`;
+}
+
+function getInventorySuggestionForOrder(orderId = "") {
+  return state.inventorySuggestions?.[orderId] || null;
+}
+
+function setInventorySuggestionForOrder(orderId = "", suggestion = null) {
+  if (!orderId) return;
+  state.inventorySuggestions = { ...(state.inventorySuggestions || {}) };
+  if (suggestion) state.inventorySuggestions[orderId] = suggestion;
+  else delete state.inventorySuggestions[orderId];
+}
+
 function formatPalletDimensions(ddt = {}) {
   const parts = [ddt.palletWidth, ddt.palletLength, ddt.palletHeight]
     .map((item) => String(item || "").replace(/\s*cm$/i, "").trim())
@@ -8520,16 +8583,41 @@ function buildInventoryGroups() {
       totalUnits: 0,
       fullCount: 0,
       residualCount: 0,
+      availablePhysicalSqm: 0,
+      availablePhysicalUnits: 0,
+      committedSqm: 0,
+      committedUnits: 0,
+      fulfilledSqm: 0,
+      fulfilledUnits: 0,
       demandSqm: demandMap.get(key)?.demandSqm || 0,
       demandUnits: demandMap.get(key)?.demandUnits || 0,
       demandOrders: [...(demandMap.get(key)?.demandOrders || [])],
     };
-    existing.pieces.push(item);
-    existing.totalSqm += toNumber(item.sqm);
+    const pieceState = getInventoryPieceState(item);
+    const pieceType = getInventoryPieceType(item);
+    const normalizedPiece = { ...item, pieceState, pieceType };
+    existing.pieces.push(normalizedPiece);
     const units = Math.max(1, Number(item.units || 1));
-    existing.totalUnits += units;
-    if (item.status === "residuo") existing.residualCount += units;
-    else existing.fullCount += units;
+    const sqm = toNumber(item.sqm);
+    if (pieceState !== "evaso") {
+      existing.totalSqm += sqm;
+      existing.totalUnits += units;
+      if (pieceType === "residuo") existing.residualCount += units;
+      else existing.fullCount += units;
+    } else {
+      existing.fulfilledSqm += sqm;
+      existing.fulfilledUnits += units;
+    }
+    if (pieceState === "disponibile") {
+      existing.availablePhysicalSqm += sqm;
+      existing.availablePhysicalUnits += units;
+    } else if (pieceState === "impegnato") {
+      existing.committedSqm += sqm;
+      existing.committedUnits += units;
+      if (item.committedOrderId && !existing.demandOrders.includes(item.committedOrderId)) {
+        existing.demandOrders.push(item.committedOrderId);
+      }
+    }
     groups.set(key, existing);
   });
 
@@ -8545,6 +8633,12 @@ function buildInventoryGroups() {
         totalUnits: 0,
         fullCount: 0,
         residualCount: 0,
+        availablePhysicalSqm: 0,
+        availablePhysicalUnits: 0,
+        committedSqm: 0,
+        committedUnits: 0,
+        fulfilledSqm: 0,
+        fulfilledUnits: 0,
         demandSqm: demandMap.get(key)?.demandSqm || 0,
         demandUnits: demandMap.get(key)?.demandUnits || 0,
         demandOrders: [...(demandMap.get(key)?.demandOrders || [])],
@@ -8563,6 +8657,12 @@ function buildInventoryGroups() {
         totalUnits: 0,
         fullCount: 0,
         residualCount: 0,
+        availablePhysicalSqm: 0,
+        availablePhysicalUnits: 0,
+        committedSqm: 0,
+        committedUnits: 0,
+        fulfilledSqm: 0,
+        fulfilledUnits: 0,
         demandSqm: value.demandSqm,
         demandUnits: value.demandUnits,
         demandOrders: [...value.demandOrders],
@@ -8572,8 +8672,8 @@ function buildInventoryGroups() {
 
   return [...groups.values()]
     .map((group) => {
-      const availableSqm = Number((group.totalSqm - group.demandSqm).toFixed(2));
-      const availableUnits = group.totalUnits - group.demandUnits;
+      const availableSqm = Number((group.availablePhysicalSqm || 0).toFixed(2));
+      const availableUnits = group.availablePhysicalUnits || 0;
       const catalogEntry = inferCatalogEntry(group.product);
       const isModel = group.type === "turf";
       const isMeasured = isModel || isMeasuredInventoryEntry(catalogEntry);
@@ -8592,7 +8692,10 @@ function buildInventoryGroups() {
         grossPriceConfigured,
         availableGrossValue,
         pieces: [...group.pieces].sort((a, b) => {
-          if (a.status !== b.status) return a.status === "intero" ? -1 : 1;
+          const stateOrder = { disponibile: 0, impegnato: 1, evaso: 2 };
+          const stateDelta = (stateOrder[getInventoryPieceState(a)] ?? 0) - (stateOrder[getInventoryPieceState(b)] ?? 0);
+          if (stateDelta) return stateDelta;
+          if (getInventoryPieceType(a) !== getInventoryPieceType(b)) return getInventoryPieceType(a) === "intero" ? -1 : 1;
           if (isMeasured) return (b.sqm || 0) - (a.sqm || 0);
           return String(a.variant || a.note || "").localeCompare(String(b.variant || b.note || ""), "it");
         }),
@@ -8607,6 +8710,7 @@ function buildInventoryGroups() {
 function buildMaterialInventorySlots(group) {
   const slots = new Map();
   group.pieces.forEach((item) => {
+    if (getInventoryPieceState(item) === "evaso") return;
     const slotKey = [
       item.status || "intero",
       item.variant || "",
@@ -8669,11 +8773,11 @@ function filterOrdersForView(kind) {
       const isMeasured = Boolean(group.isMeasured || group.isModel);
       if (filter === "turf") return group.isModel;
       if (filter === "materials") return !group.isModel;
-      if (filter === "committed") return isMeasured ? group.demandSqm > 0 : group.demandUnits > 0;
+      if (filter === "committed") return isMeasured ? (group.committedSqm || 0) > 0 : (group.committedUnits || 0) > 0;
       if (filter === "valued") return group.isModel && group.grossPriceConfigured && group.availableGrossValue > 0;
       if (filter === "full") return group.fullCount > 0;
       if (filter === "residual") return group.residualCount > 0;
-      if (filter === "demand") return group.demandSqm > 0 || group.demandUnits > 0;
+      if (filter === "demand") return group.demandSqm > 0 || group.demandUnits > 0 || group.committedSqm > 0 || group.committedUnits > 0;
       return true;
     }
     if (kind === "accounting") {
@@ -9074,12 +9178,18 @@ function getDashboardInventorySnapshot() {
   const materialGroups = groups.filter((group) => !group.isModel);
   const totalStockSqm = turfGroups.reduce((sum, group) => sum + toNumber(group.totalSqm), 0);
   const totalAvailableSqm = turfGroups.reduce((sum, group) => sum + Math.max(0, toNumber(group.availableSqm)), 0);
-  const totalCommittedSqm = turfGroups.reduce((sum, group) => sum + toNumber(group.demandSqm), 0);
+  const totalCommittedSqm = turfGroups.reduce((sum, group) => sum + toNumber(group.committedSqm || 0), 0);
   const totalImmobilizedGrossValue = turfGroups.reduce((sum, group) => sum + toNumber(group.availableGrossValue), 0);
   const pricedAvailableSqm = turfGroups.reduce((sum, group) => sum + (group.grossPriceConfigured ? Math.max(0, toNumber(group.availableSqm)) : 0), 0);
   const unpricedAvailableSqm = turfGroups.reduce((sum, group) => sum + (!group.grossPriceConfigured ? Math.max(0, toNumber(group.availableSqm)) : 0), 0);
   const totalMaterialUnits = materialGroups.reduce((sum, group) => sum + toNumber(group.totalUnits), 0);
-  const uncovered = groups.filter((group) => ((group.isMeasured || group.isModel) ? toNumber(group.availableSqm) < 0 : toNumber(group.availableUnits) < 0)).length;
+  const uncovered = groups.filter((group) => {
+    const isMeasured = Boolean(group.isMeasured || group.isModel);
+    const available = isMeasured ? toNumber(group.availableSqm) : toNumber(group.availableUnits);
+    const committed = isMeasured ? toNumber(group.committedSqm || 0) : toNumber(group.committedUnits || 0);
+    const demand = isMeasured ? toNumber(group.demandSqm || 0) : toNumber(group.demandUnits || 0);
+    return Math.max(0, demand - committed) > available;
+  }).length;
   return {
     totalStockSqm,
     totalAvailableSqm,
@@ -9512,10 +9622,11 @@ function exportInventoryCSV() {
   for (const g of groups) {
     const isMeasured = Boolean(g.isMeasured || g.isModel);
     const total = isMeasured ? `${Math.round(g.totalSqm)} mq` : `${g.totalUnits} u`;
-    const committed = isMeasured ? `${Math.round(g.demandSqm)} mq` : `${g.demandUnits} u`;
+    const committed = isMeasured ? `${Math.round(g.committedSqm || 0)} mq` : `${g.committedUnits || 0} u`;
     const available = isMeasured ? `${Math.round(Math.max(0, g.availableSqm))} mq` : `${Math.max(0, g.availableUnits)} u`;
     const value = g.isModel && g.grossPriceConfigured ? formatCurrency(g.availableGrossValue) : "—";
-    const deficit = (isMeasured ? g.availableSqm : g.availableUnits) < 0 ? "SÌ" : "no";
+    const pendingDemand = Math.max(0, (isMeasured ? g.demandSqm || 0 : g.demandUnits || 0) - (isMeasured ? g.committedSqm || 0 : g.committedUnits || 0));
+    const deficit = pendingDemand > (isMeasured ? g.availableSqm : g.availableUnits) ? "SÌ" : "no";
     rows.push([g.product, g.isModel ? "Prato" : "Materiale", total, committed, available, value, deficit, g.pieces.length]);
   }
   const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -9555,15 +9666,15 @@ function buildWarehouseAlerts() {
   return getInventorySummary()
     .filter((group) => {
       if (group.isModel) {
-        return toNumber(group.demandSqm) > 0 && toNumber(group.availableSqm) < 0;
+        return Math.max(0, toNumber(group.demandSqm) - toNumber(group.committedSqm || 0)) > toNumber(group.availableSqm);
       }
-      return toNumber(group.demandUnits) > 0 && toNumber(group.availableUnits) < 0;
+      return Math.max(0, toNumber(group.demandUnits) - toNumber(group.committedUnits || 0)) > toNumber(group.availableUnits);
     })
     .map((group) => {
       if (group.isModel) {
         const totalSqm = Math.round(toNumber(group.totalSqm));
         const demandSqm = Math.round(toNumber(group.demandSqm));
-        const deficitSqm = Math.round(Math.abs(toNumber(group.availableSqm)));
+        const deficitSqm = Math.round(Math.max(0, toNumber(group.demandSqm) - toNumber(group.committedSqm || 0) - toNumber(group.availableSqm)));
         if (totalSqm <= 0) {
           return {
             title: `${group.product} — nessuna giacenza`,
@@ -9574,7 +9685,7 @@ function buildWarehouseAlerts() {
         }
         return {
           title: `${group.product} sotto scorta`,
-          detail: `Disponibili: ${totalSqm} mq · Fabbisogno: ${demandSqm} mq · Mancano ${deficitSqm} mq`,
+          detail: `Disponibili: ${Math.round(toNumber(group.availableSqm))} mq · Fabbisogno: ${demandSqm} mq · Mancano ${deficitSqm} mq`,
           severity: "amber",
           sortValue: deficitSqm,
         };
@@ -9582,7 +9693,7 @@ function buildWarehouseAlerts() {
 
       const totalUnits = Math.round(toNumber(group.totalUnits));
       const demandUnits = Math.round(toNumber(group.demandUnits));
-      const deficitUnits = Math.round(Math.abs(toNumber(group.availableUnits)));
+      const deficitUnits = Math.round(Math.max(0, toNumber(group.demandUnits) - toNumber(group.committedUnits || 0) - toNumber(group.availableUnits)));
       if (totalUnits <= 0) {
         return {
           title: `${group.product} — nessuna giacenza`,
@@ -9593,7 +9704,7 @@ function buildWarehouseAlerts() {
       }
       return {
         title: `${group.product} sotto scorta`,
-        detail: `Disponibili: ${totalUnits} unità · Fabbisogno: ${demandUnits} unità · Mancano ${deficitUnits} unità`,
+        detail: `Disponibili: ${Math.round(toNumber(group.availableUnits))} unità · Fabbisogno: ${demandUnits} unità · Mancano ${deficitUnits} unità`,
         severity: "amber",
         sortValue: deficitUnits,
       };
@@ -11388,12 +11499,15 @@ async function removeSalesContentAttachment(contentId, attachmentIndex, attachme
 }
 
 function renderInventoryCard(group) {
-  const totalPieces = group.pieces.length;
+  const totalPieces = group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso").length;
   const isMeasured = Boolean(group.isMeasured || group.isModel);
   const stockValue = isMeasured ? group.availableSqm : group.availableUnits;
-  const hasDeficit = stockValue < 0;
+  const committedPhysicalValue = isMeasured ? group.committedSqm || 0 : group.committedUnits || 0;
+  const planningDemandValue = isMeasured ? group.demandSqm || 0 : group.demandUnits || 0;
+  const pendingDemandValue = Math.max(0, planningDemandValue - committedPhysicalValue);
+  const hasDeficit = pendingDemandValue > stockValue;
   const hasStock = isMeasured ? group.totalSqm > 0 : group.totalUnits > 0;
-  const hasDemand = isMeasured ? group.demandSqm > 0 : group.demandUnits > 0;
+  const hasDemand = planningDemandValue > 0 || committedPhysicalValue > 0;
 
   const stockState = hasDeficit
     ? (state.lang === "it" ? "Fabbisogno non coperto" : "Unmet demand")
@@ -11414,7 +11528,7 @@ function renderInventoryCard(group) {
         : "badge-success";
 
   const stockLabel = isMeasured ? `${Math.round(group.totalSqm)} mq` : `${group.totalUnits} u`;
-  const demandLabel = isMeasured ? `${Math.round(group.demandSqm)} mq` : `${group.demandUnits} u`;
+  const demandLabel = isMeasured ? `${Math.round(planningDemandValue)} mq` : `${planningDemandValue} u`;
   const netValue = isMeasured ? group.availableSqm : stockValue;
   const netLabel = isMeasured ? `${Math.round(Math.max(0, group.availableSqm))} mq` : `${Math.max(0, stockValue)} u`;
   const immobilizedValueLabel = group.isModel && group.grossPriceConfigured
@@ -11430,12 +11544,12 @@ function renderInventoryCard(group) {
     .filter(Boolean)
     .slice(0, 3);
   const remainingDemandCount = Math.max(0, group.demandOrders.length - linkedDemandOrders.length);
-  const committedLabel = isMeasured ? `${Math.round(group.demandSqm)} mq` : `${group.demandUnits} u`;
+  const committedLabel = isMeasured ? `${Math.round(committedPhysicalValue)} mq` : `${committedPhysicalValue} u`;
   const materialSlots = isMeasured ? [] : buildMaterialInventorySlots(group);
 
   const deficitAlert = hasDeficit || (!hasStock && hasDemand)
     ? `<div class="wh-deficit-alert">
-        <strong>${state.lang === "it" ? "Fabbisogno non coperto" : "Unmet demand"}: ${isMeasured ? `${Math.round(Math.abs(netValue))} mq` : `${Math.abs(netValue)} u`}</strong>
+        <strong>${state.lang === "it" ? "Fabbisogno non coperto" : "Unmet demand"}: ${isMeasured ? `${Math.round(Math.max(0, pendingDemandValue - stockValue))} mq` : `${Math.max(0, pendingDemandValue - stockValue)} u`}</strong>
         <p>${group.demandOrders.length} ${state.lang === "it"
           ? `ordini aperti richiedono ${demandLabel} ma ${hasStock ? `sono disponibili solo ${stockLabel}` : "non ci sono pezzi in magazzino"}.`
           : `open orders require ${demandLabel} but ${hasStock ? `only ${stockLabel} available` : "no pieces in warehouse"}.`
@@ -11445,7 +11559,7 @@ function renderInventoryCard(group) {
 
   // stock bar segments
   const totalForBar = isMeasured ? group.totalSqm : group.totalUnits;
-  const committedBarPct = totalForBar > 0 ? Math.min(100, Math.round((isMeasured ? group.demandSqm : group.demandUnits) / totalForBar * 100)) : 0;
+  const committedBarPct = totalForBar > 0 ? Math.min(100, Math.round(committedPhysicalValue / totalForBar * 100)) : 0;
   const availableBarPct = totalForBar > 0 ? Math.min(100 - committedBarPct, Math.round(Math.max(0, isMeasured ? group.availableSqm : group.availableUnits) / totalForBar * 100)) : 0;
   const stockBarHtml = `
     <div class="wh-stock-bar" title="${state.lang === "it" ? "Impegnato" : "Committed"}: ${committedBarPct}% · ${state.lang === "it" ? "Disponibile" : "Available"}: ${availableBarPct}%">
@@ -11488,21 +11602,25 @@ function renderInventoryCard(group) {
         </div>
       ` : ""}
       <div class="wh-pieces">
-        ${isMeasured && group.pieces.length ? group.pieces.map((item) => `
-          <div class="wh-piece ${item.status === "residuo" ? "residuo" : "intero"}">
-            <button
+        ${isMeasured && group.pieces.length ? group.pieces.map((item) => {
+          const pieceState = getInventoryPieceState(item);
+          const pieceType = getInventoryPieceType(item);
+          const canDeletePiece = pieceState === "disponibile";
+          return `
+          <div class="wh-piece ${pieceType === "residuo" ? "residuo" : "intero"} ${pieceState === "impegnato" ? "is-committed" : ""} ${pieceState === "evaso" ? "is-fulfilled" : ""}">
+            ${canDeletePiece ? `<button
               class="wh-piece-remove"
               type="button"
               data-action="delete-inventory-piece"
               data-id="${item.id}"
               title="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}"
               aria-label="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}"
-            >×</button>
+            >×</button>` : ""}
             <strong>${formatPieceLabel(item)}</strong>
             <span>${Math.round(item.sqm)} mq</span>
-            <small>${item.status === "residuo" ? "RESIDUO" : "INTERO"}</small>
+            <small>${pieceType === "residuo" ? "RESIDUO" : pieceType === "taglio" ? "TAGLIO" : "INTERO"} · ${getInventoryPieceStateLabel(pieceState)}</small>
           </div>
-        `).join("") : !isMeasured && materialSlots.length ? materialSlots.map((slot) => `
+        `; }).join("") : !isMeasured && materialSlots.length ? materialSlots.map((slot) => `
           <div class="wh-piece material-slot ${slot.status === "residuo" ? "residuo" : "intero"}">
             <button
               class="wh-piece-remove"
@@ -11524,7 +11642,7 @@ function renderInventoryCard(group) {
           type="button"
           data-action="clear-inventory-product"
           data-product="${escapeHtml(group.product)}"
-          ${group.pieces.length ? "" : "disabled"}
+          ${group.pieces.some((item) => getInventoryPieceState(item) === "disponibile") ? "" : "disabled"}
         >
           ${state.lang === "it" ? "Azzera giacenza" : "Clear stock"}
         </button>
@@ -11533,7 +11651,7 @@ function renderInventoryCard(group) {
         <div class="wh-stat soft">
           <div class="wh-stat-label">${state.lang === "it" ? "Giacenza reale" : "Physical stock"}</div>
           <div class="wh-stat-value">${stockLabel}</div>
-          <div class="wh-stat-sub">${isMeasured ? `${totalPieces} ${state.lang === "it" ? "pezzi fisici caricati" : "physical pieces loaded"}` : `${materialSlots.length} ${state.lang === "it" ? "slot" : "slots"} · ${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "fisicamente caricati" : "physically loaded"}`}</div>
+          <div class="wh-stat-sub">${isMeasured ? `${totalPieces} ${state.lang === "it" ? "pezzi fisici attivi" : "active physical pieces"}` : `${materialSlots.length} ${state.lang === "it" ? "slot" : "slots"} · ${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "fisicamente caricati" : "physically loaded"}`}</div>
         </div>
         <div class="wh-stat ${hasDemand ? "danger" : "soft"}" ${demandActionAttrs}>
           <div class="wh-stat-label">${state.lang === "it" ? "Impegnato su ordini" : "Committed to orders"}</div>
@@ -11557,12 +11675,94 @@ function matchesWarehouseInventoryFilter(group, filter = state.filters.warehouse
   const isMeasured = Boolean(group.isMeasured || group.isModel);
   if (filter === "turf") return group.isModel;
   if (filter === "materials") return !group.isModel;
-  if (filter === "committed") return isMeasured ? group.demandSqm > 0 : group.demandUnits > 0;
+  if (filter === "committed") return isMeasured ? (group.committedSqm || 0) > 0 : (group.committedUnits || 0) > 0;
   if (filter === "valued") return group.isModel && group.grossPriceConfigured && group.availableGrossValue > 0;
   if (filter === "full") return group.fullCount > 0;
   if (filter === "residual") return group.residualCount > 0;
-  if (filter === "demand") return group.demandSqm > 0 || group.demandUnits > 0;
+  if (filter === "demand") return group.demandSqm > 0 || group.demandUnits > 0 || group.committedSqm > 0 || group.committedUnits > 0;
   return true;
+}
+
+function renderOrderInventoryAllocationPanel(order) {
+  if (!order) return "";
+  const allocations = getOrderInventoryAllocations(order);
+  const activeAllocations = allocations.filter((item) => getInventoryPieceState({ pieceState: item.status }) !== "disponibile");
+  const committedAllocations = allocations.filter((item) => getInventoryPieceState({ pieceState: item.status }) === "impegnato");
+  const suggestion = getInventorySuggestionForOrder(order.id);
+  const pending = inventoryAllocationPendingOrderIds.has(order.id);
+  const suggestionRows = Array.isArray(suggestion?.suggestions) ? suggestion.suggestions : [];
+  const missingRows = Array.isArray(suggestion?.missing) ? suggestion.missing : [];
+  const canCommit = suggestionRows.length > 0 && missingRows.length === 0 && !pending;
+  const logisticsCompleted = isLogisticsOrderCompleted(order);
+  const allocationSummary = activeAllocations.length
+    ? activeAllocations.reduce((sum, item) => sum + toNumber(item.sqm || 0), 0)
+    : 0;
+
+  const allocationList = activeAllocations.length
+    ? activeAllocations.map((item) => `
+      <div class="inventory-allocation-row">
+        <div>
+          <strong>${escapeHtml(item.product || t("product"))}</strong>
+          <span>${escapeHtml(formatInventoryAllocationMeasure(item))}</span>
+        </div>
+        <small>${escapeHtml(getInventoryAllocationStatusLabel(item.status))}</small>
+      </div>
+    `).join("")
+    : `<div class="inventory-allocation-empty">${state.lang === "it" ? "Nessun pezzo fisico ancora assegnato a questo ordine." : "No physical pieces assigned to this order yet."}</div>`;
+
+  const suggestionList = suggestionRows.length || missingRows.length
+    ? `<div class="inventory-suggestion-list">
+        ${suggestionRows.map((item) => `
+          <div class="inventory-suggestion-row">
+            <div>
+              <strong>${escapeHtml(item.product || t("product"))}</strong>
+              <span>${escapeHtml(item.pieceLabel || "")} → ${escapeHtml(formatInventoryAllocationMeasure(item))}</span>
+              ${item.residue ? `<em>${state.lang === "it" ? "Residuo generato" : "Generated residual"}: ${escapeHtml(formatInventoryAllocationMeasure(item.residue))}</em>` : ""}
+            </div>
+            <small>${item.action === "cut" ? (state.lang === "it" ? "Taglio" : "Cut") : (state.lang === "it" ? "Uso intero" : "Use")}</small>
+          </div>
+        `).join("")}
+        ${missingRows.map((item) => `
+          <div class="inventory-suggestion-row is-missing">
+            <div>
+              <strong>${escapeHtml(item.product || t("product"))}</strong>
+              <span>${item.sqm ? `${escapeHtml(formatInventoryAllocationMeasure(item))}` : `${Number(item.units || 0)} u`}</span>
+            </div>
+            <small>${state.lang === "it" ? "Mancante" : "Missing"}</small>
+          </div>
+        `).join("")}
+      </div>`
+    : "";
+
+  return `
+    <div class="warehouse-allocation-card">
+      <div class="warehouse-allocation-head">
+        <div>
+          <strong>${state.lang === "it" ? "Pezzi assegnati all'ordine" : "Assigned physical pieces"}</strong>
+          <span>${activeAllocations.length
+            ? `${activeAllocations.length} ${state.lang === "it" ? "pezzi" : "pieces"} · ${Math.round(allocationSummary)} mq`
+            : (state.lang === "it" ? "Da calcolare e confermare" : "To calculate and confirm")}</span>
+        </div>
+        <div class="warehouse-allocation-actions">
+          <button class="ghost-button small-button${pending ? " is-busy" : ""}" type="button" data-action="suggest-inventory-order" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>
+            ${pending ? (state.lang === "it" ? "Calcolo..." : "Calculating...") : (state.lang === "it" ? "Calcola proposta" : "Suggest pieces")}
+          </button>
+          <button class="primary-button small-button${pending ? " is-busy" : ""}" type="button" data-action="commit-inventory-order" data-id="${escapeHtml(order.id)}" ${canCommit ? "" : "disabled"}>
+            ${state.lang === "it" ? "Impegna proposta" : "Commit suggestion"}
+          </button>
+          <button class="ghost-button small-button" type="button" data-action="release-inventory-order" data-id="${escapeHtml(order.id)}" ${committedAllocations.length && !pending ? "" : "disabled"}>
+            ${state.lang === "it" ? "Libera impegni" : "Release"}
+          </button>
+          <button class="ghost-button small-button" type="button" data-action="fulfill-inventory-order" data-id="${escapeHtml(order.id)}" ${committedAllocations.length && logisticsCompleted && !pending ? "" : "disabled"}>
+            ${state.lang === "it" ? "Scarica ora" : "Fulfill now"}
+          </button>
+        </div>
+      </div>
+      ${allocationList}
+      ${suggestionList}
+      ${missingRows.length ? `<p class="inventory-allocation-warning">${state.lang === "it" ? "La proposta non puo essere impegnata finche ci sono pezzi mancanti." : "The suggestion cannot be committed while pieces are missing."}</p>` : ""}
+    </div>
+  `;
 }
 
 function renderWarehouse() {
@@ -11624,7 +11824,7 @@ function renderWarehouse() {
   if (state.currentView === "warehouse" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Inventario operativo" : "Inventory operations";
   ui.warehouseDetailFields.innerHTML = order
-    ? [
+    ? `${[
         { label: t("selectedOrder"), value: `${composeClientName(order)} · ${getOrderNumber(order)}`, meta: composeAddress(order) || addressIncompleteText() },
         { label: t("primaryProduct"), value: order.operations?.product || undefinedText(), meta: `${order.operations?.sqm || 0} mq · ${order.phone || (state.lang === "it" ? "Telefono non disponibile" : "Phone unavailable")}` },
         {
@@ -11637,7 +11837,7 @@ function renderWarehouse() {
           value: groups.find((group) => normalizeProductName(group.product) === normalizeProductName(getCatalogLabel(order.operations?.product)))?.isModel ? `${Math.round(groups.find((group) => normalizeProductName(group.product) === normalizeProductName(getCatalogLabel(order.operations?.product)))?.availableSqm || 0)} mq` : "—",
           meta: state.lang === "it" ? "Calcolato sui pezzi caricati a magazzino" : "Calculated from loaded warehouse pieces",
         },
-      ].map(renderDetailBox).join("")
+      ].map(renderDetailBox).join("")}${renderOrderInventoryAllocationPanel(order)}`
     : [
         { label: t("selectedOrder"), value: state.lang === "it" ? "Nessun ordine selezionato" : "No order selected", meta: state.lang === "it" ? "Scegli un ordine dalla lista di preparazione." : "Pick an order from the preparation list." },
         { label: t("gettingStarted"), value: t("loadStartingStock"), meta: t("startingStockExample") },
@@ -16314,6 +16514,7 @@ async function saveInventory(event) {
         note: form.get("note"),
       }),
     });
+    state.inventorySuggestions = {};
     const savedGroup = getInventorySummary().find((group) => normalizeProductName(group.product) === normalizeProductName(getCatalogLabel(product)));
     const warehouseSearch = String(state.search.warehouse || "").trim().toLowerCase();
     const savedGroupSearchText = savedGroup
@@ -16344,12 +16545,149 @@ async function saveInventory(event) {
   }
 }
 
+async function suggestInventoryForOrder(orderId = "") {
+  const normalizedId = String(orderId || "").trim();
+  if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
+  inventoryAllocationPendingOrderIds.add(normalizedId);
+  scheduleRender("warehouse");
+  try {
+    const suggestion = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/suggest`, {
+      method: "POST",
+      timeoutMs: 15_000,
+      body: JSON.stringify({}),
+    });
+    setInventorySuggestionForOrder(normalizedId, suggestion);
+    renderWarehouse();
+    const missingCount = Array.isArray(suggestion.missing) ? suggestion.missing.length : 0;
+    showToast(
+      missingCount
+        ? (state.lang === "it" ? `Proposta calcolata, ma mancano ${missingCount} pezzi.` : `Suggestion calculated, but ${missingCount} pieces are missing.`)
+        : (state.lang === "it" ? "Proposta pezzi pronta da confermare." : "Piece suggestion ready to confirm."),
+      missingCount ? "warning" : "success",
+    );
+  } catch (error) {
+    console.error("inventory_suggestion_failed", error);
+    showToast(state.lang === "it" ? "Impossibile calcolare i pezzi disponibili." : "Unable to suggest available pieces.", "warning");
+  } finally {
+    inventoryAllocationPendingOrderIds.delete(normalizedId);
+    scheduleRender("warehouse");
+  }
+}
+
+async function commitInventoryForOrder(orderId = "") {
+  const normalizedId = String(orderId || "").trim();
+  if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
+  const suggestion = getInventorySuggestionForOrder(normalizedId);
+  inventoryAllocationPendingOrderIds.add(normalizedId);
+  scheduleRender("warehouse");
+  try {
+    const result = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/commit`, {
+      method: "POST",
+      timeoutMs: 20_000,
+      body: JSON.stringify({
+        suggestions: Array.isArray(suggestion?.suggestions) ? suggestion.suggestions : undefined,
+      }),
+    });
+    if (Array.isArray(result.inventory)) state.inventory = result.inventory;
+    state.inventorySuggestions = {};
+    if (result.order) {
+      state.orders = state.orders.map((item) => (item.id === result.order.id ? result.order : item));
+      state.selectedOrderId = result.order.id;
+    }
+    setInventorySuggestionForOrder(normalizedId, null);
+    renderCurrentViewOnly(state.currentView);
+    showToast(state.lang === "it" ? "Pezzi impegnati sull'ordine." : "Pieces committed to the order.", "success");
+  } catch (error) {
+    console.error("inventory_commit_failed", error);
+    showToast(state.lang === "it" ? "Impegno non riuscito: ricalcola la proposta e riprova." : "Commit failed: recalculate and retry.", "warning");
+  } finally {
+    inventoryAllocationPendingOrderIds.delete(normalizedId);
+    scheduleRender("warehouse");
+  }
+}
+
+async function releaseInventoryForOrder(orderId = "") {
+  const normalizedId = String(orderId || "").trim();
+  if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
+  const confirmed = window.confirm(state.lang === "it"
+    ? "Liberare i pezzi impegnati per questo ordine?"
+    : "Release the pieces committed to this order?");
+  if (!confirmed) return;
+  inventoryAllocationPendingOrderIds.add(normalizedId);
+  scheduleRender("warehouse");
+  try {
+    const result = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/release`, {
+      method: "POST",
+      timeoutMs: 15_000,
+      body: JSON.stringify({}),
+    });
+    if (Array.isArray(result.inventory)) state.inventory = result.inventory;
+    state.inventorySuggestions = {};
+    if (result.order) {
+      state.orders = state.orders.map((item) => (item.id === result.order.id ? result.order : item));
+      state.selectedOrderId = result.order.id;
+    }
+    setInventorySuggestionForOrder(normalizedId, null);
+    renderCurrentViewOnly(state.currentView);
+    showToast(state.lang === "it" ? "Impegni liberati." : "Commitments released.", "success");
+  } catch (error) {
+    console.error("inventory_release_failed", error);
+    showToast(state.lang === "it" ? "Impossibile liberare gli impegni." : "Unable to release commitments.", "warning");
+  } finally {
+    inventoryAllocationPendingOrderIds.delete(normalizedId);
+    scheduleRender("warehouse");
+  }
+}
+
+async function fulfillInventoryForOrder(orderId = "") {
+  const normalizedId = String(orderId || "").trim();
+  if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
+  inventoryAllocationPendingOrderIds.add(normalizedId);
+  scheduleRender("warehouse");
+  try {
+    const result = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/fulfill`, {
+      method: "POST",
+      timeoutMs: 15_000,
+      body: JSON.stringify({}),
+    });
+    if (Array.isArray(result.inventory)) state.inventory = result.inventory;
+    state.inventorySuggestions = {};
+    if (result.order) {
+      state.orders = state.orders.map((item) => (item.id === result.order.id ? result.order : item));
+      state.selectedOrderId = result.order.id;
+    }
+    renderCurrentViewOnly(state.currentView);
+    showToast(state.lang === "it" ? "Inventario scaricato per l'ordine." : "Inventory fulfilled for the order.", "success");
+  } catch (error) {
+    console.error("inventory_fulfill_failed", error);
+    showToast(state.lang === "it" ? "Impossibile scaricare l'inventario." : "Unable to fulfill inventory.", "warning");
+  } finally {
+    inventoryAllocationPendingOrderIds.delete(normalizedId);
+    scheduleRender("warehouse");
+  }
+}
+
+async function syncInventoryFulfillmentForOrder(order = null) {
+  if (!order?.id || !getOrderInventoryAllocations(order).length || !isLogisticsOrderCompleted(order)) return order;
+  const result = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/inventory/fulfill`, {
+    method: "POST",
+    timeoutMs: 15_000,
+    body: JSON.stringify({}),
+  });
+  if (Array.isArray(result.inventory)) state.inventory = result.inventory;
+  if (result.order) {
+    state.orders = state.orders.map((item) => (item.id === result.order.id ? result.order : item));
+    return result.order;
+  }
+  return order;
+}
+
 function getInventoryItemsByProductName(product = "") {
   const productKey = normalizeProductName(product);
   if (!productKey) return [];
   return state.inventory.filter((item) => {
     const itemLabel = getCatalogLabel(item.product || "");
-    return normalizeProductName(itemLabel) === productKey;
+    return normalizeProductName(itemLabel) === productKey && getInventoryPieceState(item) === "disponibile";
   });
 }
 
@@ -16364,6 +16702,7 @@ async function removeInventoryPieceById(itemId = "") {
   try {
     const nextInventory = await apiFetch(`/api/inventory/items/${encodeURIComponent(normalizedId)}`, { method: "DELETE" });
     state.inventory = nextInventory;
+    state.inventorySuggestions = {};
     scheduleRender("warehouse");
   } catch (error) {
     state.inventory = previousInventory;
@@ -16407,13 +16746,17 @@ async function clearInventoryProductStock(product = "") {
   if (!confirmed) return false;
   const productKey = normalizeProductName(productLabel);
   const previousInventory = [...state.inventory];
-  state.inventory = state.inventory.filter((item) => normalizeProductName(getCatalogLabel(item.product || "")) !== productKey);
+  state.inventory = state.inventory.filter((item) => (
+    normalizeProductName(getCatalogLabel(item.product || "")) !== productKey
+    || getInventoryPieceState(item) !== "disponibile"
+  ));
   scheduleRender("warehouse");
   const _invOpKey = `clear-${productKey}`;
   inventoryPendingOps.add(_invOpKey);
   try {
     const nextInventory = await apiFetch(`/api/inventory/items/by-product/${encodeURIComponent(productLabel)}`, { method: "DELETE" });
     state.inventory = nextInventory;
+    state.inventorySuggestions = {};
     scheduleRender("warehouse");
   } catch (error) {
     state.inventory = previousInventory;
@@ -16457,6 +16800,7 @@ async function savePrepList() {
     method: "POST",
     body: JSON.stringify(payload),
   });
+  setInventorySuggestionForOrder(order.id, null);
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   renderCurrentViewOnly(state.currentView);
 }
@@ -18242,6 +18586,22 @@ function handleGlobalClick(event) {
   }
   if (action === "prefill-inventory") {
     prefillInventoryForm(button.dataset.product || "");
+    return;
+  }
+  if (action === "suggest-inventory-order") {
+    suggestInventoryForOrder(id);
+    return;
+  }
+  if (action === "commit-inventory-order") {
+    commitInventoryForOrder(id);
+    return;
+  }
+  if (action === "release-inventory-order") {
+    releaseInventoryForOrder(id);
+    return;
+  }
+  if (action === "fulfill-inventory-order") {
+    fulfillInventoryForOrder(id);
     return;
   }
   if (action === "remove-attachment") {
