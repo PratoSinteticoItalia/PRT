@@ -264,15 +264,12 @@
       margin-top: 8px !important;
       margin-bottom: 8px !important;
       text-align: center !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading {
-      padding: 5px 18px 6px !important;
+      padding: 4px 14px 5px !important;
       font-size: 16px !important;
-      line-height: 1.1 !important;
+      line-height: 1.04 !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
