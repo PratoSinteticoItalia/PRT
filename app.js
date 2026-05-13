@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260513-layout-fix-193";
+const APP_SHELL_VERSION = "20260513-live-preview-fix-194";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7638,10 +7638,10 @@ function normalizeProductName(value) {
 }
 
 function formatPieceLabel(item) {
-  if (item.variant) return item.variant;
   const width = toNumber(item.width);
   const length = toNumber(item.length);
-  if (width && length) return `${width} x ${length}`;
+  if (width && length) return `${formatInventoryNumber(width)} x ${formatInventoryNumber(length)} m`;
+  if (item.variant) return item.variant;
   return "1 unità";
 }
 
@@ -7680,6 +7680,25 @@ function formatInventoryNumber(value = 0) {
   return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(2))).replace(".", ",");
 }
 
+function formatInventoryPieceTypeLabel(pieceType = "") {
+  const normalized = getInventoryPieceType({ pieceType });
+  if (normalized === "residuo") return state.lang === "it" ? "Residuo" : "Offcut";
+  if (normalized === "taglio") return state.lang === "it" ? "Taglio ordine" : "Order cut";
+  return state.lang === "it" ? "Rotolo intero" : "Full roll";
+}
+
+function getInventoryPieceDimensionSummary(pieces = [], limit = 4) {
+  const labels = pieces
+    .filter((item) => getInventoryPieceState(item) !== "evaso")
+    .map((item) => formatPieceLabel(item))
+    .filter(Boolean);
+  const uniqueLabels = [...new Set(labels)];
+  if (!uniqueLabels.length) return "";
+  const shown = uniqueLabels.slice(0, limit).join(" · ");
+  const hiddenCount = Math.max(0, uniqueLabels.length - limit);
+  return hiddenCount > 0 ? `${shown} · +${hiddenCount}` : shown;
+}
+
 function getOrderInventoryAllocations(order = {}) {
   return Array.isArray(order.operations?.warehouse?.inventoryAllocations)
     ? order.operations.warehouse.inventoryAllocations
@@ -7691,7 +7710,7 @@ function formatInventoryAllocationMeasure(item = {}) {
   const width = toNumber(item.width || 0);
   const length = toNumber(item.length || 0);
   const sqm = toNumber(item.sqm || (width * length));
-  if (sqm > 0) return `${formatInventoryNumber(width)} x ${formatInventoryNumber(length)} · ${formatInventoryNumber(sqm)} mq`;
+  if (width && length) return `${formatInventoryNumber(width)} x ${formatInventoryNumber(length)} m · ${formatInventoryNumber(sqm)} mq`;
   return `${units} ${state.lang === "it" ? "u" : "u"}`;
 }
 
@@ -8139,10 +8158,13 @@ function getPhysicalMaterialLines(order) {
 }
 
 function orderNeedsWarehouseWork(order) {
-  if (!isRoutedToWarehouse(order)) return false;
   if (isOrderFulfilledOrClosed(order)) return false;
   if (isLogisticsOrderCompleted(order)) return false;
-  return true;
+  return Boolean(
+    isRoutedToWarehouse(order)
+    || getPhysicalOrderLines(order).length
+    || toNumber(order.operations?.sqm || 0) > 0
+  );
 }
 
 function isLogisticsOrderCompleted(order) {
@@ -8737,13 +8759,8 @@ function filterOrdersForView(kind) {
   const searchKey = kind === "order" ? "orders" : kind;
   const search = state.search[searchKey] || "";
   const filter = state.filters[kind === "order" ? "order" : kind];
-  const inventoryGroupByProduct = kind === "warehouse"
-    ? new Map(
-      getInventorySummary().map((group) => [normalizeProductName(group.product), group]),
-    )
-    : null;
   return state.orders.filter((order) => {
-    if (kind === "warehouse" && !isRoutedToWarehouse(order)) return false;
+    if (kind === "warehouse" && !orderNeedsWarehouseWork(order)) return false;
     if (kind === "shipping" && !(isRoutedToWarehouse(order) || isRoutedToInstallation(order))) return false;
     if (state.currentUser?.role === "warehouse" && kind === "order") return false;
     const haystack = [
@@ -8766,18 +8783,6 @@ function filterOrdersForView(kind) {
       return !fulfilledOrClosed;
     }
     if (kind === "warehouse") {
-      if (isOrderFulfilledOrClosed(order)) return false;
-      if (isLogisticsOrderCompleted(order)) return false;
-      const group = inventoryGroupByProduct?.get(normalizeProductName(getCatalogLabel(order.operations?.product || ""))) || null;
-      if (!group) return filter === "all";
-      const isMeasured = Boolean(group.isMeasured || group.isModel);
-      if (filter === "turf") return group.isModel;
-      if (filter === "materials") return !group.isModel;
-      if (filter === "committed") return isMeasured ? (group.committedSqm || 0) > 0 : (group.committedUnits || 0) > 0;
-      if (filter === "valued") return group.isModel && group.grossPriceConfigured && group.availableGrossValue > 0;
-      if (filter === "full") return group.fullCount > 0;
-      if (filter === "residual") return group.residualCount > 0;
-      if (filter === "demand") return group.demandSqm > 0 || group.demandUnits > 0 || group.committedSqm > 0 || group.committedUnits > 0;
       return true;
     }
     if (kind === "accounting") {
@@ -11500,6 +11505,8 @@ async function removeSalesContentAttachment(contentId, attachmentIndex, attachme
 
 function renderInventoryCard(group) {
   const totalPieces = group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso").length;
+  const availablePieces = group.pieces.filter((item) => getInventoryPieceState(item) === "disponibile").length;
+  const committedPieces = group.pieces.filter((item) => getInventoryPieceState(item) === "impegnato").length;
   const isMeasured = Boolean(group.isMeasured || group.isModel);
   const stockValue = isMeasured ? group.availableSqm : group.availableUnits;
   const committedPhysicalValue = isMeasured ? group.committedSqm || 0 : group.committedUnits || 0;
@@ -11527,10 +11534,12 @@ function renderInventoryCard(group) {
         ? "badge-warning"
         : "badge-success";
 
-  const stockLabel = isMeasured ? `${Math.round(group.totalSqm)} mq` : `${group.totalUnits} u`;
+  const dimensionsSummary = isMeasured ? getInventoryPieceDimensionSummary(group.pieces) : "";
+  const stockLabel = isMeasured ? `${totalPieces} ${state.lang === "it" ? "pezzi" : "pieces"}` : `${group.totalUnits} u`;
+  const stockMeasureLabel = isMeasured ? `${Math.round(group.totalSqm)} mq` : `${group.totalUnits} u`;
   const demandLabel = isMeasured ? `${Math.round(planningDemandValue)} mq` : `${planningDemandValue} u`;
   const netValue = isMeasured ? group.availableSqm : stockValue;
-  const netLabel = isMeasured ? `${Math.round(Math.max(0, group.availableSqm))} mq` : `${Math.max(0, stockValue)} u`;
+  const netLabel = isMeasured ? `${availablePieces} ${state.lang === "it" ? "pezzi" : "pieces"}` : `${Math.max(0, stockValue)} u`;
   const immobilizedValueLabel = group.isModel && group.grossPriceConfigured
     ? formatCurrency(group.availableGrossValue)
     : "—";
@@ -11544,7 +11553,7 @@ function renderInventoryCard(group) {
     .filter(Boolean)
     .slice(0, 3);
   const remainingDemandCount = Math.max(0, group.demandOrders.length - linkedDemandOrders.length);
-  const committedLabel = isMeasured ? `${Math.round(committedPhysicalValue)} mq` : `${committedPhysicalValue} u`;
+  const committedLabel = isMeasured ? `${committedPieces} ${state.lang === "it" ? "pezzi" : "pieces"}` : `${committedPhysicalValue} u`;
   const materialSlots = isMeasured ? [] : buildMaterialInventorySlots(group);
 
   const deficitAlert = hasDeficit || (!hasStock && hasDemand)
@@ -11573,7 +11582,7 @@ function renderInventoryCard(group) {
         <div>
           <div class="wh-product-name">${group.product}</div>
           <div class="wh-product-total">${isMeasured
-            ? `${Math.round(group.totalSqm)} mq in ${totalPieces} pezzi · ${group.fullCount} interi, ${group.residualCount} residui${group.isModel ? (group.grossPriceConfigured ? ` · ${state.lang === "it" ? "immobilizzato" : "immobilized"} ${immobilizedValueLabel}` : ` · ${state.lang === "it" ? "listino ivato non configurato" : "gross price not configured"}`) : ""}`
+            ? `${totalPieces} pezzi fisici · ${dimensionsSummary || `${Math.round(group.totalSqm)} mq totali`} · ${group.fullCount} interi, ${group.residualCount} residui${group.isModel ? (group.grossPriceConfigured ? ` · ${state.lang === "it" ? "immobilizzato" : "immobilized"} ${immobilizedValueLabel}` : ` · ${state.lang === "it" ? "listino ivato non configurato" : "gross price not configured"}`) : ""}`
             : `${group.totalUnits} unità caricate`}</div>
         </div>
         <div class="wh-actions">
@@ -11617,8 +11626,8 @@ function renderInventoryCard(group) {
               aria-label="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}"
             >×</button>` : ""}
             <strong>${formatPieceLabel(item)}</strong>
-            <span>${Math.round(item.sqm)} mq</span>
-            <small>${pieceType === "residuo" ? "RESIDUO" : pieceType === "taglio" ? "TAGLIO" : "INTERO"} · ${getInventoryPieceStateLabel(pieceState)}</small>
+            <span>${formatInventoryPieceTypeLabel(pieceType)}${item.variant ? ` · ${escapeHtml(item.variant)}` : ""}</span>
+            <small>${getInventoryPieceStateLabel(pieceState)} · ${formatInventoryNumber(item.sqm)} mq</small>
           </div>
         `; }).join("") : !isMeasured && materialSlots.length ? materialSlots.map((slot) => `
           <div class="wh-piece material-slot ${slot.status === "residuo" ? "residuo" : "intero"}">
@@ -11651,18 +11660,18 @@ function renderInventoryCard(group) {
         <div class="wh-stat soft">
           <div class="wh-stat-label">${state.lang === "it" ? "Giacenza reale" : "Physical stock"}</div>
           <div class="wh-stat-value">${stockLabel}</div>
-          <div class="wh-stat-sub">${isMeasured ? `${totalPieces} ${state.lang === "it" ? "pezzi fisici attivi" : "active physical pieces"}` : `${materialSlots.length} ${state.lang === "it" ? "slot" : "slots"} · ${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "fisicamente caricati" : "physically loaded"}`}</div>
+          <div class="wh-stat-sub">${isMeasured ? `${stockMeasureLabel} totali · ${dimensionsSummary || (state.lang === "it" ? "dimensioni sui pezzi" : "dimensions on pieces")}` : `${materialSlots.length} ${state.lang === "it" ? "slot" : "slots"} · ${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "fisicamente caricati" : "physically loaded"}`}</div>
         </div>
         <div class="wh-stat ${hasDemand ? "danger" : "soft"}" ${demandActionAttrs}>
           <div class="wh-stat-label">${state.lang === "it" ? "Impegnato su ordini" : "Committed to orders"}</div>
           <div class="wh-stat-value" ${hasDemand && hasDeficit ? 'style="color:#dc2626"' : ""}>${committedLabel}</div>
-          <div class="wh-stat-sub">${group.demandOrders.length} ${state.lang === "it" ? "ordini aperti" : "open orders"}${firstDemandOrderId ? ` · ${state.lang === "it" ? "clicca per aprire" : "click to open"}` : ""}</div>
+          <div class="wh-stat-sub">${isMeasured ? `${Math.round(committedPhysicalValue)} mq impegnati · ` : ""}${group.demandOrders.length} ${state.lang === "it" ? "ordini aperti" : "open orders"}${firstDemandOrderId ? ` · ${state.lang === "it" ? "clicca per aprire" : "click to open"}` : ""}</div>
         </div>
         <div class="wh-stat ${hasDeficit ? "danger" : "neutral"}">
           <div class="wh-stat-label">${state.lang === "it" ? "Disponibile per nuovi ordini" : "Available for new orders"}</div>
           <div class="wh-stat-value" ${hasDeficit ? 'style="color:#dc2626"' : netValue > 0 ? 'style="color:#16a34a"' : ""}>${hasDeficit ? (isMeasured ? (state.lang === "it" ? `Mancano ${Math.round(Math.abs(netValue))} mq` : `Missing ${Math.round(Math.abs(netValue))} sq`) : (state.lang === "it" ? `Mancano ${Math.abs(netValue)} u` : `Missing ${Math.abs(netValue)} u`)) : netLabel}</div>
           <div class="wh-stat-sub">${isMeasured
-            ? `${group.fullCount} ${state.lang === "it" ? "interi" : "full"} · ${group.residualCount} ${state.lang === "it" ? "residui" : "residual"}${group.isModel ? (group.grossPriceConfigured ? ` · ${immobilizedValueLabel}` : ` · ${state.lang === "it" ? "prezzo ivato mancante" : "gross price missing"}`) : ""}`
+            ? `${Math.round(Math.max(0, group.availableSqm))} mq disponibili · ${group.fullCount} ${state.lang === "it" ? "interi" : "full"} · ${group.residualCount} ${state.lang === "it" ? "residui" : "residual"}${group.isModel ? (group.grossPriceConfigured ? ` · ${immobilizedValueLabel}` : ` · ${state.lang === "it" ? "prezzo ivato mancante" : "gross price missing"}`) : ""}`
             : `${group.totalUnits} ${unitDetailLabel}`}</div>
         </div>
       </div>
@@ -11697,6 +11706,9 @@ function renderOrderInventoryAllocationPanel(order) {
   const allocationSummary = activeAllocations.length
     ? activeAllocations.reduce((sum, item) => sum + toNumber(item.sqm || 0), 0)
     : 0;
+  const allocationSummaryLabel = activeAllocations.length
+    ? `${activeAllocations.length} ${state.lang === "it" ? "pezzi fisici" : "physical pieces"} · ${Math.round(allocationSummary)} mq`
+    : (state.lang === "it" ? "Da calcolare e confermare" : "To calculate and confirm");
 
   const allocationList = activeAllocations.length
     ? activeAllocations.map((item) => `
@@ -11739,9 +11751,7 @@ function renderOrderInventoryAllocationPanel(order) {
       <div class="warehouse-allocation-head">
         <div>
           <strong>${state.lang === "it" ? "Pezzi assegnati all'ordine" : "Assigned physical pieces"}</strong>
-          <span>${activeAllocations.length
-            ? `${activeAllocations.length} ${state.lang === "it" ? "pezzi" : "pieces"} · ${Math.round(allocationSummary)} mq`
-            : (state.lang === "it" ? "Da calcolare e confermare" : "To calculate and confirm")}</span>
+          <span>${allocationSummaryLabel}</span>
         </div>
         <div class="warehouse-allocation-actions">
           <button class="ghost-button small-button${pending ? " is-busy" : ""}" type="button" data-action="suggest-inventory-order" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>

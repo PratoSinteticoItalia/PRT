@@ -775,8 +775,9 @@
       } else {
         clearInjectedPlannerReport();
       }
-      fixHeylightReadability(document);
-      if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document);
+      fixHeylightReadability(document.body);
+      applyLivePreviewNorm(document.body);
+      if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document.body);
       reportEmbeddedContentHeight();
       if (scheduledBridgeSync) {
         window.clearTimeout(scheduledBridgeSync);
@@ -1395,6 +1396,59 @@
       }
     `;
     document.head.appendChild(style);
+  }
+
+  function ensureLivePreviewNormStyle() {
+    const id = "codex-live-preview-norm";
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent = `
+      [data-cpanel="1"] {
+        padding: 7px 10px !important;
+        border-radius: 8px !important;
+      }
+      [data-cofferwrap="1"] {
+        margin-top: 8px !important;
+        margin-bottom: 8px !important;
+        text-align: center !important;
+      }
+      [data-coffer="1"] {
+        padding: 5px 14px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+      [data-chlhead="1"] {
+        margin-top: 6px !important;
+        margin-bottom: 10px !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function applyLivePreviewNorm(root) {
+    if (!(root instanceof Element)) return;
+    ensureLivePreviewNormStyle();
+
+    const clientLabel = findElementByTextWithin(root, "div, span, p", "Cliente")
+      || findElementByTextWithin(root, "div, span, p", "Rivenditore");
+    const validityLabel = findElementByTextWithin(root, "div, span, p", "Validità");
+    const clientPanel = clientLabel instanceof HTMLElement ? findPanelAncestor(clientLabel, root, 5) : null;
+    const validityPanel = validityLabel instanceof HTMLElement ? findPanelAncestor(validityLabel, root, 5) : null;
+    if (clientPanel instanceof HTMLElement) clientPanel.dataset.cpanel = "1";
+    if (validityPanel instanceof HTMLElement) validityPanel.dataset.cpanel = "1";
+
+    const offerHeading = findElementByTextWithin(root, "div, span, p", "OFFERTA PER");
+    if (offerHeading instanceof HTMLElement) {
+      offerHeading.dataset.coffer = "1";
+      if (offerHeading.parentElement instanceof HTMLElement) {
+        offerHeading.parentElement.dataset.cofferwrap = "1";
+      }
+    }
+
+    const hlHeading = findElementByTextWithin(root, "div, span, p", "Simulazione 5 rate HeyLight");
+    if (hlHeading instanceof HTMLElement) hlHeading.dataset.chlhead = "1";
   }
 
   function fixHeylightReadability(root) {
@@ -2374,8 +2428,8 @@
 
   async function preparePdfBrandingForExport() {
     if (!ENABLE_BRANDING_EXPORT && !ENABLE_PLANNER_REPORT_EXPORT) return;
-    fixHeylightReadability(document);
-    if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document);
+    fixHeylightReadability(document.body);
+    if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document.body);
     ensurePdfExportStyles();
     stripPdfStyleArtifacts();
     if (!ENABLE_BRANDING_EXPORT || !activeBrandingPayload.crewLogoDataUrl) return;
