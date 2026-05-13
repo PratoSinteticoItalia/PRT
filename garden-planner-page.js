@@ -91,7 +91,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260513-sketch-solid-fill-189";
+const APP_SHELL_VERSION = "20260513-sketch-area-labels-190";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2256,21 +2256,32 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
           stroke={isClientVariant ? "#b8d4b4" : B.borderLight} />
 
         {/* Polygons */}
-        {polygonSketches.map((polygon) => (
-          <g key={`poly-${polygon.id}`}>
-            {/* Faux drop-shadow: offset duplicate path */}
-            {isClientVariant && <path d={polygon.d} fill="rgba(10,50,15,0.1)" stroke="none" transform="translate(2,3)" />}
-            <path d={polygon.d} fill={isClientVariant ? "rgba(42,115,58,0.42)" : (B.primary + "1c")} stroke={isClientVariant ? "#1a5e2f" : B.primary} strokeWidth="2.2" strokeLinejoin="round" />
-            {/* Subtle inner highlight */}
-            {isClientVariant && <path d={polygon.d} fill="rgba(255,255,255,0.06)" stroke="none" />}
-            {hasMultipleAreas && (
-              <>
-                <rect x={clamp(polygon.box.minX + polygon.box.w / 2 - 16, 8, W - 40)} y={clamp(polygon.box.minY - 18, 8, H - 24)} width="32" height="16" rx="8" fill={isClientVariant ? "#1a5e2f" : B.primary} opacity="0.96" />
-                <text x={clamp(polygon.box.minX + polygon.box.w / 2, 24, W - 24)} y={clamp(polygon.box.minY - 6.5, 19, H - 10)} fontSize="8.6" textAnchor="middle" fill="#fff" fontWeight="800">{`A${polygon.index}`}</text>
-              </>
-            )}
-          </g>
-        ))}
+        {polygonSketches.map((polygon, pi) => {
+          const fillOpacity = isClientVariant ? (pi % 2 === 0 ? 0.34 : 0.26) : 1;
+          const fillColor = isClientVariant ? `rgba(42,115,58,${fillOpacity})` : (B.primary + "1c");
+          const labelText = `A${polygon.index}`;
+          const lw = labelText.length * 6.2 + 14;
+          const lx = clamp(polygon.center.x - lw / 2, 4, W - lw - 4);
+          const ly = clamp(polygon.center.y - 8, 6, H - 20);
+          return (
+            <g key={`poly-${polygon.id}`}>
+              {isClientVariant && <path d={polygon.d} fill="rgba(10,50,15,0.08)" stroke="none" transform="translate(1.5,2.5)" />}
+              <path d={polygon.d} fill={fillColor} stroke={isClientVariant ? "#1a5e2f" : B.primary} strokeWidth="2" strokeLinejoin="round" />
+              {hasMultipleAreas && isClientVariant && (
+                <>
+                  <rect x={lx} y={ly} width={lw} height="16" rx="4" fill="rgba(255,255,255,0.92)" stroke="rgba(26,94,47,0.3)" strokeWidth="0.8" />
+                  <text x={lx + lw / 2} y={ly + 11} fontSize="8.6" textAnchor="middle" fill="#1a3d24" fontWeight="800">{labelText}</text>
+                </>
+              )}
+              {hasMultipleAreas && !isClientVariant && (
+                <>
+                  <rect x={clamp(polygon.box.minX + polygon.box.w / 2 - 16, 8, W - 40)} y={clamp(polygon.box.minY - 18, 8, H - 24)} width="32" height="16" rx="8" fill={B.primary} opacity="0.96" />
+                  <text x={clamp(polygon.box.minX + polygon.box.w / 2, 24, W - 24)} y={clamp(polygon.box.minY - 6.5, 19, H - 10)} fontSize="8.6" textAnchor="middle" fill="#fff" fontWeight="800">{labelText}</text>
+                </>
+              )}
+            </g>
+          );
+        })}
 
         {/* Rolls */}
         {rollPaths.map(roll => (
