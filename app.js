@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260513-sketch-pro-visual-188";
+const APP_SHELL_VERSION = "20260513-sketch-solid-fill-189";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -16466,10 +16466,15 @@ async function saveWarehouse(event) {
       warehouseNote: form.get("warehouseNote"),
     },
   };
-  const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
+  let saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
+  try {
+    saved = await syncInventoryFulfillmentForOrder(saved);
+  } catch (error) {
+    console.warn("inventory_fulfillment_after_warehouse_save_failed", error);
+  }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   renderCurrentViewOnly(state.currentView);
   trackUsageEvent("order_modified", { orderId: saved.id, area: "warehouse" });
@@ -17023,6 +17028,14 @@ async function saveShipping(event) {
       );
       return;
     }
+  }
+  try {
+    saved = await syncInventoryFulfillmentForOrder(saved);
+  } catch (error) {
+    console.warn("inventory_fulfillment_after_shipping_save_failed", error);
+    shopifyMessage += state.lang === "it"
+      ? " Inventario non aggiornato automaticamente: usa Scarica ora dall'inventario."
+      : " Inventory was not auto-updated: use Fulfill now in inventory.";
   }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   renderCurrentViewOnly(state.currentView);

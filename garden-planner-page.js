@@ -91,7 +91,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260513-sketch-pro-visual-188";
+const APP_SHELL_VERSION = "20260513-sketch-solid-fill-189";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2246,48 +2246,23 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
     };
   });
 
-  const uid = `sk-${W}`;
-
   return (
     <div style={{ border: "1px solid " + (isClientVariant ? "#b8d4b4" : B.borderLight), borderRadius: 12, background: B.white, padding: 10 }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
-        <defs>
-          {/* Architectural dot grid for background */}
-          <pattern id={`${uid}-bg`} patternUnits="userSpaceOnUse" width="20" height="20">
-            <circle cx="10" cy="10" r="0.7" fill={isClientVariant ? "rgba(90,130,95,0.22)" : "rgba(150,170,150,0.18)"} />
-          </pattern>
-          {/* Grass gradient fill */}
-          <radialGradient id={`${uid}-grad`} cx="50%" cy="45%" r="65%">
-            <stop offset="0%" stopColor={isClientVariant ? "rgba(52,130,68,0.38)" : "rgba(52,130,68,0.18)"} />
-            <stop offset="100%" stopColor={isClientVariant ? "rgba(22,78,38,0.52)" : "rgba(22,78,38,0.28)"} />
-          </radialGradient>
-          {/* Drop shadow for polygon */}
-          {isClientVariant && (
-            <filter id={`${uid}-shadow`} x="-10%" y="-10%" width="120%" height="120%">
-              <feDropShadow dx="1.5" dy="2.5" stdDeviation="3" floodColor="rgba(10,50,15,0.22)" />
-            </filter>
-          )}
-          {/* Grass stipple texture */}
-          {isClientVariant && (
-            <pattern id={`${uid}-stipple`} patternUnits="userSpaceOnUse" width="10" height="10">
-              <circle cx="2.5" cy="2.5" r="0.6" fill="rgba(255,255,255,0.1)" />
-              <circle cx="7.5" cy="7.5" r="0.5" fill="rgba(255,255,255,0.08)" />
-            </pattern>
-          )}
-        </defs>
 
         {/* Background */}
         <rect x="1" y="1" width={W - 2} height={H - 2} rx="10"
           fill={isClientVariant ? "#f2f5f0" : B.cream}
           stroke={isClientVariant ? "#b8d4b4" : B.borderLight} />
-        <rect x="1" y="1" width={W - 2} height={H - 2} rx="10"
-          fill={`url(#${uid}-bg)`} stroke="none" />
 
         {/* Polygons */}
         {polygonSketches.map((polygon) => (
-          <g key={`poly-${polygon.id}`} filter={isClientVariant ? `url(#${uid}-shadow)` : undefined}>
-            <path d={polygon.d} fill={`url(#${uid}-grad)`} stroke={isClientVariant ? "#1a5e2f" : B.primary} strokeWidth={isClientVariant ? "2.2" : "2.2"} strokeLinejoin="round" />
-            {isClientVariant && <path d={polygon.d} fill={`url(#${uid}-stipple)`} stroke="none" />}
+          <g key={`poly-${polygon.id}`}>
+            {/* Faux drop-shadow: offset duplicate path */}
+            {isClientVariant && <path d={polygon.d} fill="rgba(10,50,15,0.1)" stroke="none" transform="translate(2,3)" />}
+            <path d={polygon.d} fill={isClientVariant ? "rgba(42,115,58,0.42)" : (B.primary + "1c")} stroke={isClientVariant ? "#1a5e2f" : B.primary} strokeWidth="2.2" strokeLinejoin="round" />
+            {/* Subtle inner highlight */}
+            {isClientVariant && <path d={polygon.d} fill="rgba(255,255,255,0.06)" stroke="none" />}
             {hasMultipleAreas && (
               <>
                 <rect x={clamp(polygon.box.minX + polygon.box.w / 2 - 16, 8, W - 40)} y={clamp(polygon.box.minY - 18, 8, H - 24)} width="32" height="16" rx="8" fill={isClientVariant ? "#1a5e2f" : B.primary} opacity="0.96" />
