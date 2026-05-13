@@ -483,6 +483,8 @@
     const signatureRow = signatureMarker instanceof HTMLElement ? signatureMarker.closest(".pdf-no-break") : null;
     addExportClass(signatureRow, "codex-pdf-signature-row", cleanup);
 
+    fixHeylightReadability(pdfRoot);
+
     return () => {
       while (cleanup.length) {
         const removeClass = cleanup.pop();
@@ -771,6 +773,7 @@
       } else {
         clearInjectedPlannerReport();
       }
+      fixHeylightReadability(document);
       if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document);
       reportEmbeddedContentHeight();
       if (scheduledBridgeSync) {
@@ -1374,6 +1377,28 @@
     });
   }
 
+  function fixHeylightReadability(root) {
+    const heading = findElementByTextWithin(root, "div, span, p", "Simulazione 5 rate HeyLight");
+    if (!(heading instanceof HTMLElement)) return;
+    const section = heading.parentElement;
+    if (!(section instanceof HTMLElement)) return;
+    const grid = Array.from(section.children).find((child) => (
+      child instanceof HTMLElement
+      && child !== heading
+      && (child.style.display === "grid" || window.getComputedStyle(child).display === "grid")
+    ));
+    if (!(grid instanceof HTMLElement)) return;
+    Array.from(grid.children).forEach((card) => {
+      if (!(card instanceof HTMLElement)) return;
+      card.style.background = "#f4f8f4";
+      card.style.borderColor = "rgba(26,94,47,0.2)";
+      Array.from(card.querySelectorAll("*")).forEach((el) => {
+        if (el instanceof HTMLElement) el.style.color = "#1a3d24";
+      });
+      card.style.color = "#1a3d24";
+    });
+  }
+
   function centerHeylightCards(root) {
     const heading = findElementByTextWithin(root, "div, span, p", "Simulazione 5 rate HeyLight");
     if (!(heading instanceof HTMLElement)) return;
@@ -1384,7 +1409,7 @@
     const grid = Array.from(section?.children || []).find((child) => (
       child instanceof HTMLElement
       && child !== heading
-      && child.style.display === "grid"
+      && (child.style.display === "grid" || window.getComputedStyle(child).display === "grid")
     ));
     if (!(grid instanceof HTMLElement)) return;
     Array.from(grid.children).forEach((item) => {
@@ -2325,6 +2350,7 @@
 
   async function preparePdfBrandingForExport() {
     if (!ENABLE_BRANDING_EXPORT && !ENABLE_PLANNER_REPORT_EXPORT) return;
+    fixHeylightReadability(document);
     if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document);
     ensurePdfExportStyles();
     stripPdfStyleArtifacts();
