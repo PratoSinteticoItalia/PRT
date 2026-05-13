@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260513-live-preview-fix-194";
+const APP_SHELL_VERSION = "20260513-pdf-polish-195";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7629,6 +7629,41 @@ function parseSquareMetersFromTitle(label, quantity = 1) {
   return 0;
 }
 
+function inferInventoryPieceDimensions(item = {}) {
+  const width = toNumber(item.width || 0);
+  const length = toNumber(item.length || 0);
+  const sqm = toNumber(item.sqm || (width * length));
+  if (width && length) {
+    return { width, length, sqm: sqm || Number((width * length).toFixed(2)) };
+  }
+
+  const text = [item.product, item.variant, item.note].filter(Boolean).join(" ");
+  const explicitDimensions = extractDimensions(text);
+  if (explicitDimensions) return explicitDimensions;
+
+  const entry = inferCatalogEntry(item.product || text);
+  const fallbackWidth = /banda|giunzione/i.test(text)
+    ? 0.3
+    : (sqm > 0 || isMeasuredInventoryEntry(entry) ? 2 : 0);
+  if (sqm > 0 && fallbackWidth) {
+    return {
+      width: fallbackWidth,
+      length: Number((sqm / fallbackWidth).toFixed(2)),
+      sqm: Number(sqm.toFixed(2)),
+    };
+  }
+
+  if (entry?.preset?.width && entry?.preset?.length) {
+    return {
+      width: entry.preset.width,
+      length: entry.preset.length,
+      sqm: Number((entry.preset.width * entry.preset.length).toFixed(2)),
+    };
+  }
+
+  return { width: 0, length: 0, sqm };
+}
+
 function normalizeProductName(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
@@ -7638,8 +7673,7 @@ function normalizeProductName(value) {
 }
 
 function formatPieceLabel(item) {
-  const width = toNumber(item.width);
-  const length = toNumber(item.length);
+  const { width, length } = inferInventoryPieceDimensions(item);
   if (width && length) return `${formatInventoryNumber(width)} x ${formatInventoryNumber(length)} m`;
   if (item.variant) return item.variant;
   return "1 unità";
@@ -7707,9 +7741,7 @@ function getOrderInventoryAllocations(order = {}) {
 
 function formatInventoryAllocationMeasure(item = {}) {
   const units = Math.max(1, Number(item.units || 1));
-  const width = toNumber(item.width || 0);
-  const length = toNumber(item.length || 0);
-  const sqm = toNumber(item.sqm || (width * length));
+  const { width, length, sqm } = inferInventoryPieceDimensions(item);
   if (width && length) return `${formatInventoryNumber(width)} x ${formatInventoryNumber(length)} m · ${formatInventoryNumber(sqm)} mq`;
   return `${units} ${state.lang === "it" ? "u" : "u"}`;
 }
@@ -8617,10 +8649,11 @@ function buildInventoryGroups() {
     };
     const pieceState = getInventoryPieceState(item);
     const pieceType = getInventoryPieceType(item);
-    const normalizedPiece = { ...item, pieceState, pieceType };
+    const pieceDimensions = inferInventoryPieceDimensions(item);
+    const normalizedPiece = { ...item, ...pieceDimensions, pieceState, pieceType };
     existing.pieces.push(normalizedPiece);
     const units = Math.max(1, Number(item.units || 1));
-    const sqm = toNumber(item.sqm);
+    const sqm = toNumber(normalizedPiece.sqm);
     if (pieceState !== "evaso") {
       existing.totalSqm += sqm;
       existing.totalUnits += units;
@@ -11538,6 +11571,10 @@ function renderInventoryCard(group) {
   const stockLabel = isMeasured ? `${totalPieces} ${state.lang === "it" ? "pezzi" : "pieces"}` : `${group.totalUnits} u`;
   const stockMeasureLabel = isMeasured ? `${Math.round(group.totalSqm)} mq` : `${group.totalUnits} u`;
   const demandLabel = isMeasured ? `${Math.round(planningDemandValue)} mq` : `${planningDemandValue} u`;
+  const availableMeasureLabel = isMeasured ? `${Math.round(Math.max(0, stockValue))} mq` : `${Math.max(0, stockValue)} u`;
+  const deficitMeasureLabel = isMeasured
+    ? `${Math.round(Math.max(0, pendingDemandValue - stockValue))} mq`
+    : `${Math.max(0, pendingDemandValue - stockValue)} u`;
   const netValue = isMeasured ? group.availableSqm : stockValue;
   const netLabel = isMeasured ? `${availablePieces} ${state.lang === "it" ? "pezzi" : "pieces"}` : `${Math.max(0, stockValue)} u`;
   const immobilizedValueLabel = group.isModel && group.grossPriceConfigured
@@ -11558,10 +11595,10 @@ function renderInventoryCard(group) {
 
   const deficitAlert = hasDeficit || (!hasStock && hasDemand)
     ? `<div class="wh-deficit-alert">
-        <strong>${state.lang === "it" ? "Fabbisogno non coperto" : "Unmet demand"}: ${isMeasured ? `${Math.round(Math.max(0, pendingDemandValue - stockValue))} mq` : `${Math.max(0, pendingDemandValue - stockValue)} u`}</strong>
+        <strong>${state.lang === "it" ? "Fabbisogno non coperto" : "Unmet demand"}: ${deficitMeasureLabel}</strong>
         <p>${group.demandOrders.length} ${state.lang === "it"
-          ? `ordini aperti richiedono ${demandLabel} ma ${hasStock ? `sono disponibili solo ${stockLabel}` : "non ci sono pezzi in magazzino"}.`
-          : `open orders require ${demandLabel} but ${hasStock ? `only ${stockLabel} available` : "no pieces in warehouse"}.`
+          ? `ordini aperti richiedono ${demandLabel} ma ${hasStock ? `sono disponibili solo ${availableMeasureLabel}` : "non ci sono pezzi in magazzino"}.`
+          : `open orders require ${demandLabel} but ${hasStock ? `only ${availableMeasureLabel} available` : "no pieces in warehouse"}.`
         }</p>
       </div>`
     : "";
@@ -11669,7 +11706,7 @@ function renderInventoryCard(group) {
         </div>
         <div class="wh-stat ${hasDeficit ? "danger" : "neutral"}">
           <div class="wh-stat-label">${state.lang === "it" ? "Disponibile per nuovi ordini" : "Available for new orders"}</div>
-          <div class="wh-stat-value" ${hasDeficit ? 'style="color:#dc2626"' : netValue > 0 ? 'style="color:#16a34a"' : ""}>${hasDeficit ? (isMeasured ? (state.lang === "it" ? `Mancano ${Math.round(Math.abs(netValue))} mq` : `Missing ${Math.round(Math.abs(netValue))} sq`) : (state.lang === "it" ? `Mancano ${Math.abs(netValue)} u` : `Missing ${Math.abs(netValue)} u`)) : netLabel}</div>
+          <div class="wh-stat-value" ${hasDeficit ? 'style="color:#dc2626"' : netValue > 0 ? 'style="color:#16a34a"' : ""}>${hasDeficit ? (state.lang === "it" ? `Mancano ${deficitMeasureLabel}` : `Missing ${deficitMeasureLabel}`) : netLabel}</div>
           <div class="wh-stat-sub">${isMeasured
             ? `${Math.round(Math.max(0, group.availableSqm))} mq disponibili · ${group.fullCount} ${state.lang === "it" ? "interi" : "full"} · ${group.residualCount} ${state.lang === "it" ? "residui" : "residual"}${group.isModel ? (group.grossPriceConfigured ? ` · ${immobilizedValueLabel}` : ` · ${state.lang === "it" ? "prezzo ivato mancante" : "gross price missing"}`) : ""}`
             : `${group.totalUnits} ${unitDetailLabel}`}</div>

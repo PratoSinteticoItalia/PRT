@@ -253,34 +253,44 @@
     .pdf-root.codex-pdf-export-compact .codex-pdf-header-grid {
       gap: 6px !important;
       margin-bottom: 6px !important;
+      align-items: stretch !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-header-panel {
       padding: 7px 10px !important;
       border-radius: 8px !important;
+      display: flex !important;
+      flex-direction: column !important;
     }
 
     .pdf-root .codex-pdf-offer-heading-wrap {
-      margin-top: 8px !important;
-      margin-bottom: 8px !important;
+      margin-top: 10px !important;
+      margin-bottom: 10px !important;
       text-align: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading {
-      padding: 4px 14px 5px !important;
+      padding: 6px 14px !important;
       font-size: 16px !important;
-      line-height: 1.04 !important;
+      line-height: 1.1 !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table th {
-      padding-top: 7px !important;
-      padding-bottom: 7px !important;
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
       vertical-align: middle !important;
       text-align: center !important;
       line-height: 1.2 !important;
+    }
+
+    .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table th > * {
+      display: inline-flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table td {
@@ -337,7 +347,7 @@
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-permq-grid {
       gap: 5px !important;
-      margin-bottom: 6px !important;
+      margin-bottom: 10px !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-permq-grid > * {
@@ -357,8 +367,8 @@
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-heading {
-      margin-top: 4px !important;
-      margin-bottom: 6px !important;
+      margin-top: 6px !important;
+      margin-bottom: 8px !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-grid {
@@ -367,18 +377,19 @@
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-grid > * {
       min-height: 55px !important;
-      padding: 7px 9px !important;
-      gap: 3px !important;
-      color: #1a3d24 !important;
-    }
-
-    .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-grid > * * {
-      color: #1a3d24 !important;
+      padding: 8px 9px !important;
+      gap: 4px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      text-align: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-heylight-grid > * > * {
       line-height: 1.18 !important;
       min-height: 0 !important;
+      text-align: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-signature-row {
