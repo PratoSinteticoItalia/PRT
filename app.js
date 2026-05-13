@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260513-heylight-inline-fix-191";
+const APP_SHELL_VERSION = "20260513-heylight-dark-cards-192";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

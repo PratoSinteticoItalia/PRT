@@ -261,24 +261,29 @@
     }
 
     .pdf-root .codex-pdf-offer-heading-wrap {
-      margin-bottom: 6px !important;
+      margin-top: 8px !important;
+      margin-bottom: 8px !important;
       text-align: center !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading {
-      padding: 4px 14px 5px !important;
+      padding: 5px 18px 6px !important;
       font-size: 16px !important;
-      line-height: 1.04 !important;
+      line-height: 1.1 !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table th {
-      padding-top: 5px !important;
-      padding-bottom: 5px !important;
+      padding-top: 7px !important;
+      padding-bottom: 7px !important;
       vertical-align: middle !important;
       text-align: center !important;
+      line-height: 1.2 !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table td {
@@ -1377,6 +1382,24 @@
     });
   }
 
+  function ensureHeylightLiveStyle() {
+    const id = "codex-heylight-color-fix";
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent = `
+      [data-chl="1"] > * {
+        background: #1e3a28 !important;
+        border-color: rgba(30,58,40,0.5) !important;
+        color: #ffffff !important;
+      }
+      [data-chl="1"] > * * {
+        color: #ffffff !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function fixHeylightReadability(root) {
     const heading = findElementByTextWithin(root, "div, span, p", "Simulazione 5 rate HeyLight");
     if (!(heading instanceof HTMLElement)) return;
@@ -1388,14 +1411,18 @@
       && (child.style.display === "grid" || window.getComputedStyle(child).display === "grid")
     ));
     if (!(grid instanceof HTMLElement)) return;
+    // Mark the grid so the persistent <style> can target it
+    grid.dataset.chl = "1";
+    ensureHeylightLiveStyle();
+    // Also apply inline styles with !important for PDF export context
     Array.from(grid.children).forEach((card) => {
       if (!(card instanceof HTMLElement)) return;
-      card.style.background = "#f4f8f4";
-      card.style.borderColor = "rgba(26,94,47,0.2)";
+      card.style.setProperty("background", "#1e3a28", "important");
+      card.style.setProperty("border-color", "rgba(30,58,40,0.5)", "important");
+      card.style.setProperty("color", "#ffffff", "important");
       Array.from(card.querySelectorAll("*")).forEach((el) => {
-        if (el instanceof HTMLElement) el.style.color = "#1a3d24";
+        if (el instanceof HTMLElement) el.style.setProperty("color", "#ffffff", "important");
       });
-      card.style.color = "#1a3d24";
     });
   }
 
