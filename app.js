@@ -10336,8 +10336,10 @@ function renderOrders() {
       ${order.phone && isOrderFulfilledOrClosed(order) ? `<button class="btn" data-action="request-order-review" data-id="${order.id}">${state.lang === "it" ? "Chiedi recensione" : "Request review"}</button>` : ""}
     </div>
   `;
-  ui.orderDetailSummary.querySelectorAll("[data-order-flow-warehouse], [data-order-flow-installation]").forEach((toggle) => {
-    toggle.addEventListener("change", () => {
+  ui.orderDetailSummary.querySelectorAll(
+    "[data-order-flow-warehouse], [data-order-flow-installation], [data-order-flow-status], [data-order-flow-mode], [data-order-flow-date]"
+  ).forEach((input) => {
+    input.addEventListener("change", () => {
       debouncedSaveInboxOrderFlow(order.id);
     });
   });
@@ -17333,6 +17335,20 @@ async function saveShipping(event) {
       : " Inventory was not auto-updated: use Fulfill now in inventory.";
   }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  const needsInventory = isLogisticsOrderCompleted(saved)
+    && !getOrderInventoryAllocations(saved).length
+    && (toNumber(saved.operations?.sqm || 0) > 0 || getPhysicalOrderLines(saved).length > 0);
+  if (needsInventory) {
+    state.selectedOrderId = saved.id;
+    setView("warehouse");
+    showToast(
+      state.lang === "it"
+        ? "Ordine evaso. Seleziona i rotoli da scaricare e clicca Scarica ora."
+        : "Order fulfilled. Select rolls to dispatch and click Fulfill now.",
+      "info",
+    );
+    return;
+  }
   renderCurrentViewOnly(state.currentView);
   setStatus(
     ui.shippingStatus,
