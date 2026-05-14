@@ -8345,12 +8345,15 @@ function getPhysicalMaterialLines(order) {
 
 function orderNeedsWarehouseWork(order) {
   if (isOrderFulfilledOrClosed(order)) return false;
-  if (isLogisticsOrderCompleted(order)) return false;
-  return Boolean(
+  const hasPhysical = Boolean(
     isRoutedToWarehouse(order)
     || getPhysicalOrderLines(order).length
     || toNumber(order.operations?.sqm || 0) > 0
   );
+  if (isLogisticsOrderCompleted(order)) {
+    return hasPhysical && getOrderInventoryAllocations(order).length === 0;
+  }
+  return hasPhysical;
 }
 
 function isLogisticsOrderCompleted(order) {
@@ -17200,6 +17203,19 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   _inboxFlowSaveInFlight.delete(orderId);
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.selectedOrderId = saved.id;
+  const justMarkedRitirato = payload?.warehouse?.status === "ritirato"
+    && !getOrderInventoryAllocations(saved).length
+    && (toNumber(saved.operations?.sqm || 0) > 0 || getPhysicalOrderLines(saved).length > 0);
+  if (justMarkedRitirato) {
+    setView("warehouse");
+    showToast(
+      state.lang === "it"
+        ? "Ordine impostato come ritirato. Seleziona i rotoli da scaricare e clicca Scarica ora."
+        : "Order marked as collected. Select rolls to dispatch and click Fulfill now.",
+      "info",
+    );
+    return;
+  }
   renderCurrentViewOnly(state.currentView);
   flashButtonFeedback(triggerButton);
 }
