@@ -6712,6 +6712,14 @@ async function handleApi(req, res, url) {
       ok: true,
       service: "vertex-ops-pose-system",
       timestamp: new Date().toISOString(),
+      buildTag: "inv-commit-2026-05-14-d",
+      fixes: [
+        "reconcileStoreData-persists-missing-piece-ids",
+        "backfillInventoryIds-writes-on-change",
+        "dropdown-no-auto-resuggest",
+        "sqm-no-quantity-fallback",
+        "iva-pavidrain-classified-non-product",
+      ],
     });
   }
 
