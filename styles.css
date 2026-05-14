@@ -537,6 +537,19 @@ button {
   box-shadow: none;
 }
 
+.primary-button:disabled,
+.ghost-button:disabled,
+.action-button:disabled,
+.mini-action:disabled,
+.lang-btn:disabled,
+.btn:disabled,
+.topbar-btn:disabled,
+.filter-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 button.is-feedback,
 .btn.is-feedback,
 .topbar-btn.is-feedback,
@@ -3615,11 +3628,19 @@ button.is-feedback,
 .inventory-allocation-row em,
 .inventory-suggestion-row span,
 .inventory-suggestion-row em,
-.inventory-allocation-empty,
-.inventory-allocation-warning {
+.inventory-allocation-empty {
   color: #6e7b70;
   font-size: 13px;
   line-height: 1.35;
+}
+
+.inventory-allocation-warning {
+  color: #b45309;
+  font-size: 13px;
+  line-height: 1.35;
+  background: #fef3c7;
+  border-radius: 8px;
+  padding: 8px 10px;
 }
 
 .warehouse-allocation-actions {
@@ -3696,7 +3717,10 @@ button.is-feedback,
 
 .inventory-allocation-warning {
   margin: 0;
-  color: #995e15;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 8px;
+  padding: 8px 10px;
 }
 
 .cal-grid {
