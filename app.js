@@ -16873,7 +16873,14 @@ async function commitInventoryForOrder(orderId = "") {
     showToast(state.lang === "it" ? "Pezzi impegnati sull'ordine." : "Pieces committed to the order.", "success");
   } catch (error) {
     console.error("inventory_commit_failed", error);
-    if (error?.payload) console.error("[inventory_commit_debug]", error.payload);
+    if (error?.payload) {
+      const p = error.payload;
+      console.error("[commit] error:", p.error, "| unavailable IDs:", JSON.stringify(p.unavailable));
+      console.error("[commit] first fail:", JSON.stringify(p.debug?.firstAttemptFailure));
+      console.error("[commit] retry fail:", JSON.stringify(p.debug?.retryFailure));
+      console.error("[commit] client suggestions:", JSON.stringify(p.debug?.clientSuggestionsSample));
+      console.error("[commit] store sample:", JSON.stringify(p.debug?.storeInventorySample));
+    }
     const isStale = error?.status === 409 || error?.payload?.error === "inventory_piece_unavailable"
       || error?.payload?.error === "no_inventory_suggestions";
     if (isStale) {
