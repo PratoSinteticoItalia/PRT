@@ -8252,7 +8252,7 @@ body {
   position: sticky;
   top: 82px;
   align-self: start;
-  max-height: calc(100dvh - 92px);
+  max-height: calc(100dvh - 154px);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -13795,7 +13795,7 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
 
   #warehouse .detail-panel {
     top: 82px;
-    max-height: calc(100dvh - 92px);
+    max-height: calc(100dvh - 176px);
   }
 }
 
