@@ -740,6 +740,12 @@ function normalizeInventoryPieceRecord(item = {}) {
   };
 }
 
+function backfillInventoryIds(store = {}) {
+  for (const piece of (store.inventory || [])) {
+    if (!piece.id) piece.id = randomUUID();
+  }
+}
+
 function normalizeInventoryAllocationRecord(item = {}) {
   const { width, length, sqm } = inferInventoryPieceDimensions(item);
   const units = Math.max(1, Math.round(toNumber(item.units || 1)));
@@ -7835,6 +7841,7 @@ async function handleApi(req, res, url) {
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
     try {
+      backfillInventoryIds(store);
       return sendJson(res, 200, buildInventorySuggestionsForOrder(store, order));
     } catch (err) {
       console.error("[inventory/suggest] unexpected error:", err);
@@ -7848,6 +7855,7 @@ async function handleApi(req, res, url) {
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
     try {
+      backfillInventoryIds(store);
       const clientSupplied = Array.isArray(body.suggestions);
       let suggestions = clientSupplied ? body.suggestions : buildInventorySuggestionsForOrder(store, order).suggestions;
       let result = applyInventoryCommitment(store, order, suggestions);
