@@ -6712,7 +6712,7 @@ async function handleApi(req, res, url) {
       ok: true,
       service: "vertex-ops-pose-system",
       timestamp: new Date().toISOString(),
-      buildTag: "inv-commit-2026-05-14-e",
+      buildTag: "inv-commit-2026-05-14-f",
       fixes: [
         "reconcileStoreData-persists-missing-piece-ids",
         "backfillInventoryIds-writes-on-change",
@@ -6720,6 +6720,7 @@ async function handleApi(req, res, url) {
         "sqm-no-quantity-fallback",
         "iva-pavidrain-classified-non-product",
         "external-sync-bypasses-fifo-write-queue",
+        "commit-response-includes-full-debug-snapshot",
       ],
     });
   }
@@ -7866,31 +7867,61 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
-    const buildTag = "inv-commit-2026-05-14-d";
+    const buildTag = "inv-commit-2026-05-14-f";
     try {
       if (backfillInventoryIds(store)) await writeJson(STORE_PATH, store);
       const clientSupplied = Array.isArray(body.suggestions);
-      const inventoryIdsSummary = (store.inventory || []).slice(0, 20).map((p) => `${(p.id || "").slice(0, 8)}:${p.product || ""}:${p.pieceState || ""}`).join(" | ");
-      console.warn(`[inventory/commit] build=${buildTag} order=${orderId} clientSupplied=${clientSupplied} clientSuggestionCount=${clientSupplied ? body.suggestions.length : 0} storeInventoryCount=${(store.inventory || []).length}`);
-      console.warn(`[inventory/commit] storeInventorySample: ${inventoryIdsSummary}`);
-      if (clientSupplied) {
-        const clientSample = body.suggestions.slice(0, 10).map((s) => `${(s.sourcePieceId || s.pieceId || "").slice(0, 8)}:${s.product || ""}:${s.action || ""}`).join(" | ");
-        console.warn(`[inventory/commit] clientSuggestionsSample: ${clientSample}`);
-      }
+      const debugSnapshot = {
+        clientSupplied,
+        clientSuggestionCount: clientSupplied ? body.suggestions.length : 0,
+        storeInventoryCount: (store.inventory || []).length,
+        storeInventorySample: (store.inventory || []).slice(0, 30).map((p) => ({
+          id: (p.id || "").slice(0, 8),
+          product: p.product,
+          state: p.pieceState,
+          type: p.pieceType,
+          w: p.width,
+          l: p.length,
+          units: p.units,
+        })),
+        clientSuggestionsSample: clientSupplied
+          ? body.suggestions.map((s) => ({
+              srcId: (s.sourcePieceId || s.pieceId || "").slice(0, 8),
+              product: s.product,
+              action: s.action,
+              w: s.width,
+              l: s.length,
+              units: s.units,
+            }))
+          : [],
+      };
+      console.warn(`[inventory/commit] build=${buildTag} order=${orderId} debug=${JSON.stringify(debugSnapshot)}`);
       let suggestions = clientSupplied ? body.suggestions : buildInventorySuggestionsForOrder(store, order).suggestions;
       let result = applyInventoryCommitment(store, order, suggestions);
+      let firstAttemptFailure = null;
       if (!result.ok) {
-        console.warn(`[inventory/commit] first attempt failed: error=${result.error} unavailable=${JSON.stringify(result.unavailable || [])}`);
+        firstAttemptFailure = { error: result.error, unavailable: result.unavailable || [] };
+        console.warn(`[inventory/commit] first attempt failed: ${JSON.stringify(firstAttemptFailure)}`);
       }
+      let retrySuggestionsSample = null;
+      let retryFailure = null;
       // If client-supplied suggestions are stale, rebuild fresh and retry once
       if (!result.ok && result.error === "inventory_piece_unavailable" && clientSupplied) {
         console.warn("[inventory/commit] client suggestions unavailable, retrying with fresh suggestions for order", orderId);
         suggestions = buildInventorySuggestionsForOrder(store, order).suggestions;
-        const freshSample = suggestions.slice(0, 10).map((s) => `${(s.sourcePieceId || s.pieceId || "").slice(0, 8)}:${s.product || ""}:${s.action || ""}`).join(" | ");
-        console.warn(`[inventory/commit] freshSuggestionsSample: ${freshSample}`);
+        retrySuggestionsSample = suggestions.map((s) => ({
+          srcId: (s.sourcePieceId || s.pieceId || "").slice(0, 8),
+          product: s.product,
+          action: s.action,
+          w: s.width,
+          l: s.length,
+          units: s.units,
+        }));
+        console.warn(`[inventory/commit] freshSuggestionsSample: ${JSON.stringify(retrySuggestionsSample)}`);
         result = applyInventoryCommitment(store, order, suggestions);
         if (!result.ok) {
-          console.warn(`[inventory/commit] retry failed: error=${result.error} unavailable=${JSON.stringify(result.unavailable || [])}`);
+          retryFailure = { error: result.error, unavailable: result.unavailable || [] };
+          console.warn(`[inventory/commit] retry failed: ${JSON.stringify(retryFailure)}`);
         }
       }
       if (!result.ok) {
@@ -7899,6 +7930,12 @@ async function handleApi(req, res, url) {
           error: result.error || "inventory_commit_failed",
           unavailable: result.unavailable || [],
           buildTag,
+          debug: {
+            ...debugSnapshot,
+            firstAttemptFailure,
+            retrySuggestionsSample,
+            retryFailure,
+          },
         });
       }
       // Persist — non-fatal: in-memory state is already correct
