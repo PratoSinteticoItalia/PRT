@@ -11951,7 +11951,7 @@ function renderOrderInventoryAllocationPanel(order) {
                 sqm: Number((toNumber(item.width || currentUsage?.width || 0) * finalResidueLength).toFixed(2)),
               }
             : null;
-          const sourcePicker = candidates.length > 1
+          const sourcePicker = candidates.length >= 1
             ? `<label class="inventory-source-picker">
                 <span>${state.lang === "it" ? "Preleva da" : "Take from"}</span>
                 <select
@@ -11987,7 +11987,6 @@ function renderOrderInventoryAllocationPanel(order) {
               ${finalResidue ? `<em>${state.lang === "it" ? "Residuo finale" : "Final residual"}: ${escapeHtml(formatInventoryAllocationMeasure(finalResidue))}</em>` : ""}
               ${sourcePicker}
             </div>
-            <small>${item.action === "cut" ? (state.lang === "it" ? "Taglio" : "Cut") : (state.lang === "it" ? "Uso intero" : "Use")}</small>
           </div>
         `; }).join("")}
         ${missingRows.map((item) => `
@@ -12010,11 +12009,8 @@ function renderOrderInventoryAllocationPanel(order) {
           <span>${allocationSummaryLabel}</span>
         </div>
         <div class="warehouse-allocation-actions">
-          <button class="ghost-button small-button${pending ? " is-busy" : ""}" type="button" data-action="suggest-inventory-order" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>
-            ${pending ? (state.lang === "it" ? "Calcolo..." : "Calculating...") : (state.lang === "it" ? "Calcola proposta" : "Suggest pieces")}
-          </button>
           <button class="primary-button small-button${pending ? " is-busy" : ""}" type="button" data-action="commit-inventory-order" data-id="${escapeHtml(order.id)}" ${canCommit ? "" : "disabled"}>
-            ${state.lang === "it" ? "Impegna proposta" : "Commit suggestion"}
+            ${pending ? (state.lang === "it" ? "Caricamento..." : "Loading...") : (state.lang === "it" ? "Impegna" : "Commit")}
           </button>
           <button class="ghost-button small-button" type="button" data-action="release-inventory-order" data-id="${escapeHtml(order.id)}" ${committedAllocations.length && !pending ? "" : "disabled"}>
             ${state.lang === "it" ? "Libera impegni" : "Release"}
@@ -12088,6 +12084,13 @@ function renderWarehouse() {
 
   const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
   if (state.currentView === "warehouse" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
+  if (order) {
+    const orderAllocations = getOrderInventoryAllocations(order);
+    const hasActiveAllocations = orderAllocations.some((item) => getInventoryPieceState({ pieceState: item.status }) !== "disponibile");
+    if (!hasActiveAllocations && !getInventorySuggestionForOrder(order.id) && !inventoryAllocationPendingOrderIds.has(order.id)) {
+      setTimeout(() => suggestInventoryForOrder(order.id), 0);
+    }
+  }
   ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Inventario operativo" : "Inventory operations";
   ui.warehouseDetailFields.innerHTML = order
     ? `${[
@@ -16873,12 +16876,11 @@ async function commitInventoryForOrder(orderId = "") {
     const isStale = error?.status === 409 || error?.payload?.error === "inventory_piece_unavailable"
       || error?.payload?.error === "no_inventory_suggestions";
     if (isStale) {
-      showToast(state.lang === "it" ? "Proposta non aggiornata, ricalcolo…" : "Suggestion outdated, recalculating…", "info");
-      inventoryAllocationPendingOrderIds.delete(normalizedId);
-      await suggestInventoryForOrder(normalizedId);
-      return;
+      setInventorySuggestionForOrder(normalizedId, null);
+      showToast(state.lang === "it" ? "Giacenza aggiornata, riseleziona i pezzi e riprova." : "Stock updated, reselect pieces and retry.", "info");
+    } else {
+      showToast(state.lang === "it" ? "Impegno non riuscito, riprova." : "Commit failed, please retry.", "warning");
     }
-    showToast(state.lang === "it" ? "Impegno non riuscito: ricalcola la proposta e riprova." : "Commit failed: recalculate and retry.", "warning");
   } finally {
     inventoryAllocationPendingOrderIds.delete(normalizedId);
     scheduleRender("warehouse");
