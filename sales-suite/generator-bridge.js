@@ -1316,6 +1316,9 @@
     ensureRecommendationStyles();
     const pdfRoot = getLivePdfRoot(document);
     const toolbar = document.querySelector(".codex-quote-recommendation-toolbar");
+
+    syncCustomTurfEditModeUI();
+
     if (!(pdfRoot instanceof HTMLElement) || !isPreviewModeVisible()) {
       toolbar?.remove();
       document.querySelector(".codex-custom-turf-panel")?.remove();
@@ -1335,6 +1338,73 @@
     renderRecommendationToolbar(pdfRoot, models);
     const selectedName = readRecommendedModel(pdfRoot, models.map((item) => item.name));
     return applyRecommendedModelClasses(pdfRoot, selectedName);
+  }
+
+  function findModelDropdownContainer() {
+    const allNodes = Array.from(document.querySelectorAll("li, div, label, span"))
+      .filter((el) => {
+        if (!(el instanceof HTMLElement)) return false;
+        if (el.querySelector(".codex-custom-turf-edit-option")) return false;
+        const text = el.textContent || "";
+        return /\d+\s*mm\b/i.test(text) && /€\/mq/i.test(text) && el.children.length <= 5;
+      });
+    if (allNodes.length < 3) return null;
+    const parent = allNodes[0].parentElement;
+    if (!parent) return null;
+    const inSameParent = allNodes.filter((el) => el.parentElement === parent);
+    return inSameParent.length >= 3 ? parent : null;
+  }
+
+  function syncCustomTurfEditModeUI() {
+    const container = findModelDropdownContainer();
+
+    const stale = document.querySelector(".codex-custom-turf-edit-option");
+    if (!container) {
+      stale?.remove();
+      return;
+    }
+    if (stale && stale.parentElement !== container) stale.remove();
+    if (container.querySelector(".codex-custom-turf-edit-option")) return;
+
+    const row = document.createElement("div");
+    row.className = "codex-custom-turf-edit-option";
+    row.style.cssText = "display:flex;align-items:center;gap:6px;padding:8px 12px;border-top:1px solid rgba(255,255,255,0.1);";
+
+    const label = document.createElement("span");
+    label.textContent = "Altro:";
+    label.style.cssText = "font-size:13px;white-space:nowrap;opacity:0.7;min-width:38px;";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.placeholder = "Modello personalizzato…";
+    nameInput.className = "codex-custom-turf-name";
+    nameInput.style.cssText = "flex:1;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:6px;padding:5px 8px;font-size:13px;color:inherit;outline:none;min-width:0;";
+
+    const priceInput = document.createElement("input");
+    priceInput.type = "number";
+    priceInput.min = "0";
+    priceInput.step = "0.01";
+    priceInput.placeholder = "€/mq";
+    priceInput.className = "codex-custom-turf-price";
+    priceInput.style.cssText = "width:76px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:6px;padding:5px 8px;font-size:13px;color:inherit;text-align:center;outline:none;";
+
+    const current = readCustomTurfModel();
+    if (current?.name) nameInput.value = current.name;
+    if (current?.price) priceInput.value = formatPriceInputValue(current.price);
+
+    const commit = () => {
+      writeCustomTurfModel(nameInput.value.trim(), priceInput.value);
+      requestBridgeSyncBurst(2);
+    };
+    nameInput.addEventListener("change", commit);
+    nameInput.addEventListener("blur", commit);
+    priceInput.addEventListener("change", commit);
+    priceInput.addEventListener("blur", commit);
+
+    row.appendChild(label);
+    row.appendChild(nameInput);
+    row.appendChild(priceInput);
+    container.appendChild(row);
   }
 
   function readCustomTurfModel() {

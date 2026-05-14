@@ -5650,17 +5650,19 @@ function normalizeGraphqlOrder(node, index) {
     address: [shipping.address1, shipping.address2].filter(Boolean).join(" "),
   }, billingMetadata);
   const lineDetails = Array.isArray(node.lineItems?.edges)
-    ? node.lineItems.edges.map(({ node: item }) => normalizeLineDetailRecord({
-        title: item.name || "Prodotto",
-        quantity: Number(item.currentQuantity || 1),
-        sku: item.sku,
-        variantTitle: item.variantTitle,
-        customAttributes: item.customAttributes,
-        taxable: item.taxable,
-        requiresShipping: item.requiresShipping,
-        taxLines: item.taxLines,
-        totalPrice: item.discountedTotalSet?.shopMoney?.amount,
-      }))
+    ? node.lineItems.edges
+        .filter(({ node: item }) => Number(item.currentQuantity || 0) > 0)
+        .map(({ node: item }) => normalizeLineDetailRecord({
+          title: item.name || "Prodotto",
+          quantity: Number(item.currentQuantity || 1),
+          sku: item.sku,
+          variantTitle: item.variantTitle,
+          customAttributes: item.customAttributes,
+          taxable: item.taxable,
+          requiresShipping: item.requiresShipping,
+          taxLines: item.taxLines,
+          totalPrice: item.discountedTotalSet?.shopMoney?.amount,
+        }))
     : [];
   const lineItems = lineDetails.map((item) => item.title);
   const totals = normalizeOrderTotals({

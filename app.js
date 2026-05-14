@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260514-custom-turf-199";
+const APP_SHELL_VERSION = "20260514-inventory-colors-200";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11925,7 +11925,7 @@ function renderOrderInventoryAllocationPanel(order) {
           <button class="ghost-button small-button" type="button" data-action="release-inventory-order" data-id="${escapeHtml(order.id)}" ${committedAllocations.length && !pending ? "" : "disabled"}>
             ${state.lang === "it" ? "Libera impegni" : "Release"}
           </button>
-          <button class="ghost-button small-button" type="button" data-action="fulfill-inventory-order" data-id="${escapeHtml(order.id)}" ${committedAllocations.length && logisticsCompleted && !pending ? "" : "disabled"}>
+          <button class="ghost-button small-button" type="button" data-action="fulfill-inventory-order" data-id="${escapeHtml(order.id)}" ${committedAllocations.length && !pending ? "" : "disabled"}>
             ${state.lang === "it" ? "Scarica ora" : "Fulfill now"}
           </button>
         </div>

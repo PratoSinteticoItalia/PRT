@@ -3460,6 +3460,13 @@ button.is-feedback,
   color: #214b2d;
 }
 
+.wh-piece.residuo.is-committed {
+  border-style: dashed;
+  border-color: #c8883a;
+  background: #fff0d9;
+  color: #7a4a10;
+}
+
 .wh-piece.is-fulfilled {
   opacity: 0.56;
   border-color: #d5d9d2;
