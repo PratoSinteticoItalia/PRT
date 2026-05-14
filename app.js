@@ -7813,6 +7813,10 @@ function getOrderInventoryAllocations(order = {}) {
 
 function formatInventoryAllocationMeasure(item = {}) {
   const units = Math.max(1, Number(item.units || 1));
+  const entry = inferCatalogEntry(item.product || "");
+  if (entry && !isMeasuredInventoryEntry(entry)) {
+    return `${units} ${state.lang === "it" ? "u" : "u"}`;
+  }
   const { width, length, sqm } = inferInventoryPieceDimensions(item);
   if (width && length) return `${formatInventoryNumber(width)} x ${formatInventoryNumber(length)} m · ${formatInventoryNumber(sqm)} mq`;
   return `${units} ${state.lang === "it" ? "u" : "u"}`;
