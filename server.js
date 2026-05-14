@@ -1645,10 +1645,12 @@ function parseSquareMeters(title, quantity = 1) {
 function extractInventoryDimensions(label = "") {
   const normalized = String(label || "").replace(/,/g, ".");
   if (/mm/i.test(normalized) && !/\b2\s*m\s*[/x]\s*\d+/i.test(normalized)) return null;
-  const match = normalized.match(/(\d+(?:\.\d+)?)\s*(?:m)?\s*[x/]\s*(\d+(?:\.\d+)?)\s*m?/i);
+  // Require an explicit "m" unit on at least one side so "25/40" (granulometry)
+  // or other bare ratios are not mistaken for dimensions.
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*m\s*[x/]\s*(\d+(?:\.\d+)?)\s*m?|(\d+(?:\.\d+)?)\s*[x/]\s*(\d+(?:\.\d+)?)\s*m\b/i);
   if (!match) return null;
-  const width = toNumber(match[1]);
-  const length = toNumber(match[2]);
+  const width = toNumber(match[1] || match[3]);
+  const length = toNumber(match[2] || match[4]);
   if (!width || !length) return null;
   return { width, length, sqm: Number((width * length).toFixed(2)) };
 }

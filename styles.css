@@ -8249,7 +8249,9 @@ body {
 }
 
 #warehouse .detail-panel {
+  position: sticky;
   top: 82px;
+  align-self: start;
   max-height: calc(100dvh - 92px);
   overflow: auto;
   overscroll-behavior: contain;
