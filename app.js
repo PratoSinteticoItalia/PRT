@@ -8351,7 +8351,9 @@ function orderNeedsWarehouseWork(order) {
     || toNumber(order.operations?.sqm || 0) > 0
   );
   if (isLogisticsOrderCompleted(order)) {
-    return hasPhysical && getOrderInventoryAllocations(order).length === 0;
+    const allocations = getOrderInventoryAllocations(order);
+    const hasPending = allocations.some((a) => getInventoryPieceState({ pieceState: a.status }) === "impegnato");
+    return hasPhysical && (allocations.length === 0 || hasPending);
   }
   return hasPhysical;
 }
@@ -9044,6 +9046,16 @@ function renderInboxFlowControls(order) {
   const installSelected = isRoutedToInstallation(order) || jobNeedsInstall;
   const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
+  const allocations = getOrderInventoryAllocations(order);
+  const hasPendingAllocations = allocations.some((a) => getInventoryPieceState({ pieceState: a.status }) === "impegnato");
+  const needsInventoryWork = orderNeedsWarehouseWork(order) && (allocations.length === 0 || hasPendingAllocations);
+  const inventoryCta = needsInventoryWork
+    ? `<button class="primary-button small-button" type="button" data-action="open-inventory-for-order" data-id="${escapeHtml(order.id)}">
+        ${allocations.length === 0
+          ? (state.lang === "it" ? "→ Seleziona rotoli da scaricare" : "→ Select rolls to dispatch")
+          : (state.lang === "it" ? "→ Completa scarico inventario" : "→ Complete inventory discharge")}
+      </button>`
+    : "";
   const preparationDate = getShippingTargetDate(order);
   const stage = getUnifiedOrderStage(order);
   const nextAction = getNextOrderAction(order);
@@ -9112,6 +9124,7 @@ function renderInboxFlowControls(order) {
           <input class="text-input" type="date" data-order-flow-date="${order.id}" value="${preparationDate || ""}" />
         </label>
       </div>
+      ${inventoryCta ? `<div class="order-flow-inventory-cta">${inventoryCta}</div>` : ""}
       <div class="flow-helper-note">
         ${state.lang === "it"
           ? "Sede centrale Orta di Atella: la merce da spedire parte su pallet per corrieri o ritiro cliente, la merce da posare viene preparata e caricata sul furgone."
@@ -17205,19 +17218,6 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   _inboxFlowSaveInFlight.delete(orderId);
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.selectedOrderId = saved.id;
-  const justMarkedRitirato = payload?.warehouse?.status === "ritirato"
-    && !getOrderInventoryAllocations(saved).length
-    && (toNumber(saved.operations?.sqm || 0) > 0 || getPhysicalOrderLines(saved).length > 0);
-  if (justMarkedRitirato) {
-    setView("warehouse");
-    showToast(
-      state.lang === "it"
-        ? "Ordine impostato come ritirato. Seleziona i rotoli da scaricare e clicca Scarica ora."
-        : "Order marked as collected. Select rolls to dispatch and click Fulfill now.",
-      "info",
-    );
-    return;
-  }
   renderCurrentViewOnly(state.currentView);
   flashButtonFeedback(triggerButton);
 }
@@ -17335,20 +17335,6 @@ async function saveShipping(event) {
       : " Inventory was not auto-updated: use Fulfill now in inventory.";
   }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  const needsInventory = isLogisticsOrderCompleted(saved)
-    && !getOrderInventoryAllocations(saved).length
-    && (toNumber(saved.operations?.sqm || 0) > 0 || getPhysicalOrderLines(saved).length > 0);
-  if (needsInventory) {
-    state.selectedOrderId = saved.id;
-    setView("warehouse");
-    showToast(
-      state.lang === "it"
-        ? "Ordine evaso. Seleziona i rotoli da scaricare e clicca Scarica ora."
-        : "Order fulfilled. Select rolls to dispatch and click Fulfill now.",
-      "info",
-    );
-    return;
-  }
   renderCurrentViewOnly(state.currentView);
   setStatus(
     ui.shippingStatus,
@@ -18957,6 +18943,11 @@ function handleGlobalClick(event) {
     const targetOrder = state.orders.find((item) => item.id === id) || getSelectedOrder();
     if (!targetOrder) return;
     openSampleLdvFile(targetOrder);
+    return;
+  }
+  if (action === "open-inventory-for-order") {
+    state.selectedOrderId = id;
+    setView("warehouse");
     return;
   }
   if (action === "save-inbox-flow") {
