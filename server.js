@@ -635,22 +635,27 @@ function normalizeInventoryFamilyKey(value = "") {
     .trim();
 }
 
-// Returns a coarse material family key so that e.g. "CIOTTOLO BIANCO 2 KG"
-// matches "Ciottolo bianco 25/40 - 25 lt". Returns null for non-materials.
+// Returns a material family key for fuzzy matching between inventory and order
+// product names (e.g. "CIOTTOLO BIANCO 2 KG" → "ciottolo-bianco" matches
+// "Ciottolo bianco 25/40 - 25 lt"). Returns null for non-material names.
 function normalizeMaterialFamily(value = "") {
   const s = String(value || "").toLowerCase();
-  if (/ciottol/.test(s)) return "ciottolo";
-  if (/lapillo/.test(s)) return "lapillo";
+  if (/ciottol/.test(s) && /nero/.test(s)) return "ciottolo-nero";
+  if (/ciottol/.test(s) && /rosso/.test(s)) return "ciottolo-rosso";
+  if (/ciottol/.test(s)) return "ciottolo-bianco";
+  if (/lapillo/.test(s)) return "lapillo-rosso";
   if (/pietrisco/.test(s)) return "pietrisco";
   if (/sabbia/.test(s)) return "sabbia";
   if (/graniglia/.test(s)) return "graniglia";
-  if (/bordura/.test(s)) return "bordura";
+  if (/bordura/.test(s)) return "bordura-pvc";
   if (/banda|giunzione/.test(s)) return "banda";
-  if (/colla|monocomponente|mono.?component|bi.?component/.test(s)) return "colla";
+  if (/monocomponente/.test(s)) return "monocomponente";
+  if (/colla|bi.?component/.test(s)) return "colla";
   if (/telo/.test(s)) return "telo";
   if (/picchetti/.test(s)) return "picchetti";
   if (/detergente/.test(s)) return "detergente";
-  if (/spazzolatri|spazzola/.test(s)) return "spazzola";
+  if (/spazzolatri/.test(s)) return "spazzolatrice";
+  if (/spazzola/.test(s)) return "spazzola";
   if (/mattonella/.test(s)) return "mattonella";
   if (/profumo/.test(s)) return "profumo";
   return null;
@@ -2435,7 +2440,7 @@ function fulfillInventoryCommitmentsForOrder(store = {}, order = {}) {
 
 function classifyOrderLine(title = "") {
   if (/(installazione|posa)/i.test(title)) return "service";
-  if (/(banda|giunzione|telo|colla|picchetti|pietrisco|bordura|ciottol|lapillo|sabbia|kit|profumo|detergente|spazzolatrice|spazzola|mattonella|campionatura|box campionatura)/i.test(title)) {
+  if (/(banda|giunzione|telo|colla|monocomponente|picchetti|pietrisco|bordura|ciottol|lapillo|sabbia|graniglia|kit|profumo|detergente|spazzolatrice|spazzola|mattonella|campionatura|box campionatura)/i.test(title)) {
     return "material";
   }
   return "product";
