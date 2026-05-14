@@ -16857,7 +16857,7 @@ async function commitInventoryForOrder(orderId = "") {
   try {
     const result = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/commit`, {
       method: "POST",
-      timeoutMs: 20_000,
+      timeoutMs: 50_000,
       body: JSON.stringify({
         suggestions: Array.isArray(suggestion?.suggestions) ? suggestion.suggestions : undefined,
       }),
