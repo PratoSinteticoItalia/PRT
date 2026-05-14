@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260514-inventory-colors-200";
+const APP_SHELL_VERSION = "20260514-commit-fix-201";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -16776,6 +16776,14 @@ async function commitInventoryForOrder(orderId = "") {
     showToast(state.lang === "it" ? "Pezzi impegnati sull'ordine." : "Pieces committed to the order.", "success");
   } catch (error) {
     console.error("inventory_commit_failed", error);
+    const isStale = error?.status === 409 || error?.payload?.error === "inventory_piece_unavailable"
+      || error?.payload?.error === "no_inventory_suggestions";
+    if (isStale) {
+      showToast(state.lang === "it" ? "Proposta non aggiornata, ricalcolo…" : "Suggestion outdated, recalculating…", "info");
+      inventoryAllocationPendingOrderIds.delete(normalizedId);
+      await suggestInventoryForOrder(normalizedId);
+      return;
+    }
     showToast(state.lang === "it" ? "Impegno non riuscito: ricalcola la proposta e riprova." : "Commit failed: recalculate and retry.", "warning");
   } finally {
     inventoryAllocationPendingOrderIds.delete(normalizedId);

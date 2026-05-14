@@ -7820,6 +7820,7 @@ async function handleApi(req, res, url) {
         result = applyInventoryCommitment(store, order, suggestions);
       }
       if (!result.ok) {
+        console.warn("[inventory/commit] commit failed for order", orderId, "error:", result.error, "unavailable:", result.unavailable?.length || 0);
         return sendJson(res, result.error === "inventory_piece_unavailable" ? 409 : 400, {
           error: result.error || "inventory_commit_failed",
           unavailable: result.unavailable || [],
