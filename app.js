@@ -16873,11 +16873,11 @@ async function commitInventoryForOrder(orderId = "") {
     showToast(state.lang === "it" ? "Pezzi impegnati sull'ordine." : "Pieces committed to the order.", "success");
   } catch (error) {
     console.error("inventory_commit_failed", error);
+    if (error?.payload) console.error("[inventory_commit_debug]", error.payload);
     const isStale = error?.status === 409 || error?.payload?.error === "inventory_piece_unavailable"
       || error?.payload?.error === "no_inventory_suggestions";
     if (isStale) {
-      setInventorySuggestionForOrder(normalizedId, null);
-      showToast(state.lang === "it" ? "Giacenza aggiornata, riseleziona i pezzi e riprova." : "Stock updated, reselect pieces and retry.", "info");
+      showToast(state.lang === "it" ? "Pezzo non disponibile: prova a scegliere un altro rotolo." : "Piece unavailable: try selecting a different roll.", "warning");
     } else {
       showToast(state.lang === "it" ? "Impegno non riuscito, riprova." : "Commit failed, please retry.", "warning");
     }
