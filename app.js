@@ -11840,7 +11840,7 @@ function renderInventoryCard(group) {
           </div>
         </div>
       ` : ""}
-      <div class="wh-pieces">
+      <div class="wh-pieces${!isMeasured ? " wh-pieces-material" : ""}">
         ${isMeasured && group.pieces.length ? group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso").map((item) => {
           const pieceState = getInventoryPieceState(item);
           const pieceType = getInventoryPieceType(item);

@@ -442,14 +442,17 @@ async function getPgPool() {
   pgPool = new Pool({
     connectionString: DATABASE_URL,
     max: 4,
-    idleTimeoutMillis: 30_000,
+    // Render.com (and most managed PG hosts) kill idle TCP connections after
+    // ~20 s. If the pool holds a connection longer than that, the next use
+    // emits an unhandled 'error' on the Client and crashes Node.  Keep the
+    // idle timeout well below the host's kill window.
+    idleTimeoutMillis: 8_000,
+    connectionTimeoutMillis: 10_000,
   });
-  // Without this listener, an idle-client error (e.g. the DB server closed an
-  // idle TCP connection) bubbles up as an unhandled 'error' event and crashes
-  // the entire Node process. Log it and let the pool transparently replace
-  // the bad client on the next checkout.
-  pgPool.on("error", (err, client) => {
-    console.error("[pg-pool] idle client error:", err?.message || err);
+  // Pool-level error handler: covers idle-client TCP resets so they don't
+  // bubble up as unhandled process exceptions.
+  pgPool.on("error", (err) => {
+    console.error("[pg-pool] client error (handled):", err?.message || err);
   });
   return pgPool;
 }
