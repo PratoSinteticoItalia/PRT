@@ -7823,7 +7823,10 @@ async function handleApi(req, res, url) {
           unavailable: result.unavailable || [],
         });
       }
-      await writeJson(STORE_PATH, store);
+      // Persist — non-fatal: in-memory state is already correct
+      writeJson(STORE_PATH, store).catch((writeErr) => {
+        console.error("[inventory/commit] persist failed:", writeErr?.message || writeErr);
+      });
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
@@ -7840,7 +7843,9 @@ async function handleApi(req, res, url) {
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
     const result = releaseInventoryCommitmentsForOrder(store, order);
-    await writeJson(STORE_PATH, store);
+    writeJson(STORE_PATH, store).catch((writeErr) => {
+      console.error("[inventory/release] persist failed:", writeErr?.message || writeErr);
+    });
     return sendJson(res, 200, {
       order: result.order,
       inventory: store.inventory,
@@ -7852,7 +7857,9 @@ async function handleApi(req, res, url) {
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
     const result = fulfillInventoryCommitmentsForOrder(store, order);
-    await writeJson(STORE_PATH, store);
+    writeJson(STORE_PATH, store).catch((writeErr) => {
+      console.error("[inventory/fulfill] persist failed:", writeErr?.message || writeErr);
+    });
     return sendJson(res, 200, {
       order: result.order,
       inventory: store.inventory,

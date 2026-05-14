@@ -1318,8 +1318,12 @@
     const toolbar = document.querySelector(".codex-quote-recommendation-toolbar");
     if (!(pdfRoot instanceof HTMLElement) || !isPreviewModeVisible()) {
       toolbar?.remove();
+      document.querySelector(".codex-custom-turf-panel")?.remove();
       return false;
     }
+
+    syncCustomTurfModelUI(pdfRoot);
+    injectCustomTurfModelRow(pdfRoot);
 
     const models = collectQuoteModels(pdfRoot);
     if (!models.length) {
@@ -1331,6 +1335,156 @@
     renderRecommendationToolbar(pdfRoot, models);
     const selectedName = readRecommendedModel(pdfRoot, models.map((item) => item.name));
     return applyRecommendedModelClasses(pdfRoot, selectedName);
+  }
+
+  function readCustomTurfModel() {
+    try {
+      const raw = localStorage.getItem("codex_custom_turf_v1");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed.name === "string" ? parsed : null;
+    } catch { return null; }
+  }
+
+  function writeCustomTurfModel(name, price) {
+    try {
+      if (!name) {
+        localStorage.removeItem("codex_custom_turf_v1");
+      } else {
+        localStorage.setItem("codex_custom_turf_v1", JSON.stringify({ name: String(name), price: Number(price) || 0 }));
+      }
+    } catch {}
+  }
+
+  function syncCustomTurfModelUI(pdfRoot) {
+    const previewButton = Array.from(document.querySelectorAll("button"))
+      .find((button) => normalizeLabel(button.textContent).includes("scarica pdf"));
+    const toolbarHost = previewButton?.parentElement;
+    if (!(toolbarHost instanceof HTMLElement)) return;
+
+    let panel = toolbarHost.querySelector(".codex-custom-turf-panel");
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.className = "codex-custom-turf-panel";
+      panel.style.cssText = "display:flex;align-items:flex-end;gap:8px;margin-right:6px;";
+
+      const nameWrap = document.createElement("label");
+      nameWrap.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+      const nameLabel = document.createElement("span");
+      nameLabel.textContent = "Modello libero";
+      nameLabel.style.cssText = "font-size:10px;color:#9ca3af;font-weight:600;white-space:nowrap;";
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.placeholder = "Es. Sportgreen Plus 45mm";
+      nameInput.className = "codex-custom-turf-name";
+      nameInput.style.cssText = "width:180px;border:1px solid #d1d5db;border-radius:8px;padding:6px 8px;font-size:13px;outline:none;background:#fff;color:#1f2937;";
+      nameWrap.appendChild(nameLabel);
+      nameWrap.appendChild(nameInput);
+
+      const priceWrap = document.createElement("label");
+      priceWrap.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+      const priceLabel = document.createElement("span");
+      priceLabel.textContent = "Prezzo €/mq";
+      priceLabel.style.cssText = "font-size:10px;color:#9ca3af;font-weight:600;white-space:nowrap;";
+      const priceInput = document.createElement("input");
+      priceInput.type = "number";
+      priceInput.min = "0";
+      priceInput.step = "0.01";
+      priceInput.placeholder = "0";
+      priceInput.className = "codex-custom-turf-price";
+      priceInput.style.cssText = "width:84px;border:1px solid #d1d5db;border-radius:8px;padding:6px 8px;font-size:13px;outline:none;background:#fff;color:#1f2937;text-align:center;";
+      priceWrap.appendChild(priceLabel);
+      priceWrap.appendChild(priceInput);
+
+      panel.appendChild(nameWrap);
+      panel.appendChild(priceWrap);
+
+      const commit = () => {
+        writeCustomTurfModel(nameInput.value.trim(), priceInput.value);
+        injectCustomTurfModelRow(pdfRoot);
+        requestBridgeSyncBurst(2);
+      };
+      nameInput.addEventListener("change", commit);
+      nameInput.addEventListener("blur", commit);
+      priceInput.addEventListener("change", commit);
+      priceInput.addEventListener("blur", commit);
+
+      const recToolbar = toolbarHost.querySelector(".codex-quote-recommendation-toolbar");
+      toolbarHost.insertBefore(panel, recToolbar || previewButton);
+    }
+
+    const nameInput = panel.querySelector(".codex-custom-turf-name");
+    const priceInput = panel.querySelector(".codex-custom-turf-price");
+    const current = readCustomTurfModel();
+    if (nameInput instanceof HTMLInputElement && document.activeElement !== nameInput) {
+      nameInput.value = current?.name || "";
+    }
+    if (priceInput instanceof HTMLInputElement && document.activeElement !== priceInput) {
+      priceInput.value = current?.price ? formatPriceInputValue(current.price) : "";
+    }
+  }
+
+  function injectCustomTurfModelRow(root) {
+    const pricingTable = findPricingTable(root);
+    if (!(pricingTable instanceof HTMLTableElement)) return;
+    const tbody = pricingTable.querySelector("tbody");
+    if (!(tbody instanceof HTMLElement)) return;
+
+    const existing = tbody.querySelector("tr[data-codex-custom='1']");
+    const customModel = readCustomTurfModel();
+
+    if (!customModel?.name) {
+      existing?.remove();
+      return;
+    }
+
+    if (existing) {
+      const nameDiv = existing.querySelector("div");
+      if (nameDiv) nameDiv.textContent = customModel.name;
+      const cells = Array.from(existing.children);
+      const lastCell = cells[cells.length - 1];
+      if (lastCell instanceof HTMLElement && customModel.price > 0) {
+        lastCell.textContent = `€ ${customModel.price.toFixed(2)}`;
+      }
+      return;
+    }
+
+    const colCount = Math.max(pricingTable.querySelectorAll("thead tr th").length || 0, 4);
+    const firstRow = tbody.querySelector("tr:not([data-codex-custom])");
+
+    const tr = document.createElement("tr");
+    tr.setAttribute("data-codex-custom", "1");
+
+    for (let i = 0; i < colCount; i++) {
+      const td = document.createElement("td");
+      const refCell = firstRow?.children?.[i];
+      if (refCell instanceof HTMLElement) {
+        td.style.padding = refCell.style.padding || "5px 6px";
+        td.style.fontSize = refCell.style.fontSize || "inherit";
+      } else {
+        td.style.padding = "5px 6px";
+      }
+
+      if (i === 0) {
+        const nameDiv = document.createElement("div");
+        nameDiv.textContent = customModel.name;
+        nameDiv.style.fontWeight = "600";
+        const descDiv = document.createElement("div");
+        descDiv.textContent = "Modello personalizzato";
+        descDiv.style.cssText = "font-size:11px;color:#6b7280;margin-top:2px;";
+        td.appendChild(nameDiv);
+        td.appendChild(descDiv);
+      } else if (i === colCount - 1 && customModel.price > 0) {
+        td.textContent = `€ ${customModel.price.toFixed(2)}`;
+        td.style.textAlign = "center";
+      } else {
+        td.textContent = "—";
+        td.style.cssText += ";text-align:center;color:#9ca3af;";
+      }
+      tr.appendChild(td);
+    }
+
+    tbody.appendChild(tr);
   }
 
   function appendDiscountLabelToProductDescriptions(root) {

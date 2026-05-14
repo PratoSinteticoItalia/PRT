@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260513-inventory-multicut-198";
+const APP_SHELL_VERSION = "20260514-custom-turf-199";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11876,7 +11876,7 @@ function renderOrderInventoryAllocationPanel(order) {
                     const wouldExceed = candidateSourceLength && otherLength + candidateLength > candidateSourceLength + 0.01;
                     const optionLabel = [
                       formatInventorySuggestionSourceLabel(candidate),
-                      otherLength > 0.01 ? `${state.lang === "it" ? "gia scelti" : "already chosen"} ${formatInventoryNumber(otherLength)} m` : "",
+                      otherLength > 0.01 ? `${state.lang === "it" ? "altre righe" : "other rows"}: ${formatInventoryNumber(otherLength)} m` : "",
                       wouldExceed ? (state.lang === "it" ? "non ci sta" : "does not fit") : "",
                     ].filter(Boolean).join(" · ");
                     return `<option value="${escapeHtml(candidateId)}" ${candidateId === selectedSourceId ? "selected" : ""} ${wouldExceed ? "disabled" : ""}>${escapeHtml(optionLabel)}</option>`;
