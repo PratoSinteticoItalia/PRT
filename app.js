@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260513-inventory-allocation-197";
+const APP_SHELL_VERSION = "20260513-inventory-multicut-198";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7798,6 +7798,33 @@ function changeInventorySuggestionSource(orderId = "", suggestionId = "", source
   renderWarehouse();
 }
 
+function getInventorySuggestionSourceUsage(rows = []) {
+  const usage = new Map();
+  rows.forEach((row, rowIndex) => {
+    const sourceId = String(row.sourcePieceId || row.pieceId || "");
+    if (!sourceId) return;
+    const length = toNumber(row.length || 0);
+    const sourceLength = toNumber(row.sourceLength || 0);
+    const width = toNumber(row.width || 0);
+    const current = usage.get(sourceId) || {
+      sourceId,
+      totalLength: 0,
+      sourceLength,
+      width,
+      firstIndex: rowIndex,
+      lastIndex: rowIndex,
+      count: 0,
+    };
+    current.totalLength = Number((current.totalLength + length).toFixed(2));
+    current.sourceLength = current.sourceLength || sourceLength;
+    current.width = current.width || width;
+    current.lastIndex = rowIndex;
+    current.count += 1;
+    usage.set(sourceId, current);
+  });
+  return usage;
+}
+
 function formatPalletDimensions(ddt = {}) {
   const parts = [ddt.palletWidth, ddt.palletLength, ddt.palletHeight]
     .map((item) => String(item || "").replace(/\s*cm$/i, "").trim())
@@ -11778,7 +11805,7 @@ function renderOrderInventoryAllocationPanel(order) {
   const pending = inventoryAllocationPendingOrderIds.has(order.id);
   const suggestionRows = Array.isArray(suggestion?.suggestions) ? suggestion.suggestions : [];
   const missingRows = Array.isArray(suggestion?.missing) ? suggestion.missing : [];
-  const selectedSuggestionSourceIds = suggestionRows.map((item) => String(item.sourcePieceId || item.pieceId || ""));
+  const selectedSuggestionSourceUsage = getInventorySuggestionSourceUsage(suggestionRows);
   const canCommit = suggestionRows.length > 0 && missingRows.length === 0 && !pending;
   const logisticsCompleted = isLogisticsOrderCompleted(order);
   const allocationSummary = activeAllocations.length
@@ -11806,6 +11833,17 @@ function renderOrderInventoryAllocationPanel(order) {
         ${suggestionRows.map((item, rowIndex) => {
           const candidates = Array.isArray(item.candidates) ? item.candidates : [];
           const selectedSourceId = String(item.sourcePieceId || item.pieceId || "");
+          const currentUsage = selectedSuggestionSourceUsage.get(selectedSourceId);
+          const finalResidueLength = currentUsage && currentUsage.lastIndex === rowIndex
+            ? Number(Math.max(0, toNumber(currentUsage.sourceLength || item.sourceLength || 0) - toNumber(currentUsage.totalLength || 0)).toFixed(2))
+            : 0;
+          const finalResidue = finalResidueLength > 0.05
+            ? {
+                width: toNumber(item.width || currentUsage?.width || 0),
+                length: finalResidueLength,
+                sqm: Number((toNumber(item.width || currentUsage?.width || 0) * finalResidueLength).toFixed(2)),
+              }
+            : null;
           const sourcePicker = candidates.length > 1
             ? `<label class="inventory-source-picker">
                 <span>${state.lang === "it" ? "Preleva da" : "Take from"}</span>
@@ -11817,9 +11855,18 @@ function renderOrderInventoryAllocationPanel(order) {
                 >
                   ${candidates.map((candidate) => {
                     const candidateId = String(candidate.sourcePieceId || candidate.pieceId || "");
-                    const usedByOtherRow = candidateId && selectedSuggestionSourceIds.some((sourceId, sourceIndex) => sourceIndex !== rowIndex && sourceId === candidateId);
-                    const optionLabel = `${formatInventorySuggestionSourceLabel(candidate)}${usedByOtherRow ? (state.lang === "it" ? " · gia usato" : " · already used") : ""}`;
-                    return `<option value="${escapeHtml(candidateId)}" ${candidateId === selectedSourceId ? "selected" : ""} ${usedByOtherRow ? "disabled" : ""}>${escapeHtml(optionLabel)}</option>`;
+                    const usage = selectedSuggestionSourceUsage.get(candidateId);
+                    const currentRowLength = candidateId === selectedSourceId ? toNumber(item.length || 0) : 0;
+                    const otherLength = Math.max(0, toNumber(usage?.totalLength || 0) - currentRowLength);
+                    const candidateLength = toNumber(candidate.length || item.length || 0);
+                    const candidateSourceLength = toNumber(candidate.sourceLength || usage?.sourceLength || 0);
+                    const wouldExceed = candidateSourceLength && otherLength + candidateLength > candidateSourceLength + 0.01;
+                    const optionLabel = [
+                      formatInventorySuggestionSourceLabel(candidate),
+                      otherLength > 0.01 ? `${state.lang === "it" ? "gia scelti" : "already chosen"} ${formatInventoryNumber(otherLength)} m` : "",
+                      wouldExceed ? (state.lang === "it" ? "non ci sta" : "does not fit") : "",
+                    ].filter(Boolean).join(" · ");
+                    return `<option value="${escapeHtml(candidateId)}" ${candidateId === selectedSourceId ? "selected" : ""} ${wouldExceed ? "disabled" : ""}>${escapeHtml(optionLabel)}</option>`;
                   }).join("")}
                 </select>
               </label>`
@@ -11830,7 +11877,7 @@ function renderOrderInventoryAllocationPanel(order) {
               <strong>${escapeHtml(item.product || t("product"))}</strong>
               <span>${escapeHtml(formatInventorySuggestionMeasure(item))}</span>
               <em>${escapeHtml(formatInventorySuggestionSourceLabel(item))}</em>
-              ${item.residue ? `<em>${state.lang === "it" ? "Residuo generato" : "Generated residual"}: ${escapeHtml(formatInventoryAllocationMeasure(item.residue))}</em>` : ""}
+              ${finalResidue ? `<em>${state.lang === "it" ? "Residuo finale" : "Final residual"}: ${escapeHtml(formatInventoryAllocationMeasure(finalResidue))}</em>` : ""}
               ${sourcePicker}
             </div>
             <small>${item.action === "cut" ? (state.lang === "it" ? "Taglio" : "Cut") : (state.lang === "it" ? "Uso intero" : "Use")}</small>

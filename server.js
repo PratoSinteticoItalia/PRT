@@ -1810,12 +1810,59 @@ function buildMeasuredRequirementBundles(requirements = []) {
   }));
 }
 
-function scoreMeasuredCandidate(piece = {}, plan = {}) {
+function findMeasuredFutureFitLength(plan = {}, piece = {}, sourceUsedLength = 0, pendingPlans = []) {
+  const sourceLength = toNumber(piece.length || 0);
+  const currentLength = toNumber(plan.totalLength || plan.length || 0);
+  const target = Number((sourceLength - sourceUsedLength - currentLength).toFixed(2));
+  if (target <= 0.05) return { length: 0, count: 0 };
+  const productKey = normalizeInventoryFamilyKey(plan.product || "");
+  const width = toNumber(plan.width || 0);
+  const currentIndex = Number(plan.bundleIndex ?? plan.lineIndex ?? 0);
+  const futurePlans = pendingPlans
+    .filter((item) => (
+      Number(item.bundleIndex ?? item.lineIndex ?? 0) > currentIndex
+      && normalizeInventoryFamilyKey(item.product || "") === productKey
+      && Math.abs(toNumber(item.width || 0) - width) <= 0.08
+    ))
+    .slice(0, 14);
+  let best = { length: 0, count: 0 };
+  const visit = (index, length, count) => {
+    if (length > target + 0.01) return;
+    const bestWaste = target - best.length;
+    const waste = target - length;
+    if (length > 0 && (waste < bestWaste - 0.01 || (Math.abs(waste - bestWaste) <= 0.01 && count > best.count))) {
+      best = { length: Number(length.toFixed(2)), count };
+    }
+    if (index >= futurePlans.length || waste <= 0.01) return;
+    for (let nextIndex = index; nextIndex < futurePlans.length; nextIndex += 1) {
+      const nextLength = toNumber(futurePlans[nextIndex].totalLength || futurePlans[nextIndex].length || 0);
+      if (!nextLength || length + nextLength > target + 0.01) continue;
+      visit(nextIndex + 1, Number((length + nextLength).toFixed(2)), count + 1);
+    }
+  };
+  visit(0, 0, 0);
+  return best;
+}
+
+function scoreMeasuredCandidate(piece = {}, plan = {}, context = {}) {
   const pieceType = normalizeInventoryPieceType(piece.pieceType || piece.status);
   const sourceLength = toNumber(piece.length || 0);
+  const sourceUsedLength = toNumber(context.sourceUsedLength || 0);
   const requiredLength = toNumber(plan.totalLength || plan.length || 0);
-  const waste = Math.max(0, sourceLength - requiredLength);
+  const availableLength = Math.max(0, sourceLength - sourceUsedLength);
+  const waste = Math.max(0, availableLength - requiredLength);
+  const futureFitLength = toNumber(context.futureFitLength || 0);
+  const futureFitCount = Math.max(0, Number(context.futureFitCount || 0));
+  const finalWaste = Math.max(0, waste - futureFitLength);
   const exact = waste <= 0.05;
+  if (sourceUsedLength > 0.01) {
+    if (finalWaste <= 0.05) return -2600 - futureFitCount;
+    return -2200 + finalWaste;
+  }
+  if (futureFitCount > 0) {
+    if (finalWaste <= 0.05) return -2500 - futureFitCount;
+    if (finalWaste <= 2) return -1800 + finalWaste - futureFitCount;
+  }
   if (Number(plan.pieceCount || 1) > 1) {
     if (exact) return -2000;
     if (pieceType === "intero") return -1000 + waste;
@@ -1826,12 +1873,15 @@ function scoreMeasuredCandidate(piece = {}, plan = {}) {
   return waste;
 }
 
-function buildMeasuredCandidateOption(piece = {}, plan = {}) {
+function buildMeasuredCandidateOption(piece = {}, plan = {}, context = {}) {
   const sourceLength = toNumber(piece.length || 0);
+  const sourceUsedLength = toNumber(context.sourceUsedLength || 0);
+  const availableLength = Number(Math.max(0, sourceLength - sourceUsedLength).toFixed(2));
   const width = toNumber(plan.width || piece.width || 0);
   const requiredLength = toNumber(plan.totalLength || plan.length || 0);
-  if (!width || !requiredLength || sourceLength + 0.01 < requiredLength) return null;
-  const residueLength = Number(Math.max(0, sourceLength - requiredLength).toFixed(2));
+  if (!width || !requiredLength || availableLength + 0.01 < requiredLength) return null;
+  const futureFit = findMeasuredFutureFitLength(plan, piece, sourceUsedLength, context.pendingPlans || []);
+  const residueLength = Number(Math.max(0, availableLength - requiredLength).toFixed(2));
   const action = residueLength > 0.05 ? "cut" : "use";
   const sourceSqm = width && sourceLength ? Number((width * sourceLength).toFixed(2)) : toNumber(piece.sqm || 0);
   return {
@@ -1847,6 +1897,10 @@ function buildMeasuredCandidateOption(piece = {}, plan = {}) {
     units: 1,
     sourceLength,
     sourceSqm,
+    sourceUsedLength,
+    sourceRemainingLength: availableLength,
+    futureFitLength: futureFit.length,
+    futureFitCount: futureFit.count,
     optionLabel: `${buildInventoryPieceLabel(piece)} · ${sourceSqm} mq`,
     residue: action === "cut"
       ? {
@@ -1855,11 +1909,15 @@ function buildMeasuredCandidateOption(piece = {}, plan = {}) {
           sqm: Number((width * residueLength).toFixed(2)),
         }
       : null,
-    score: scoreMeasuredCandidate(piece, plan),
+    score: scoreMeasuredCandidate(piece, plan, {
+      sourceUsedLength,
+      futureFitLength: futureFit.length,
+      futureFitCount: futureFit.count,
+    }),
   };
 }
 
-function getMeasuredCandidateOptions(inventory = [], plan = {}, usedPieceIds = new Set()) {
+function getMeasuredCandidateOptions(inventory = [], plan = {}, usedPieceIds = new Set(), sourceUsage = new Map(), pendingPlans = []) {
   const requiredWidth = toNumber(plan.width || 0);
   return inventory
     .filter((piece) => (
@@ -1869,7 +1927,10 @@ function getMeasuredCandidateOptions(inventory = [], plan = {}, usedPieceIds = n
       && toNumber(piece.length || 0) > 0
       && (!requiredWidth || Math.abs(toNumber(piece.width || requiredWidth) - requiredWidth) <= 0.08)
     ))
-    .map((piece) => buildMeasuredCandidateOption(piece, plan))
+    .map((piece) => buildMeasuredCandidateOption(piece, plan, {
+      sourceUsedLength: toNumber(sourceUsage.get(piece.id) || 0),
+      pendingPlans,
+    }))
     .filter(Boolean)
     .sort((a, b) => a.score - b.score || a.sourceLength - b.sourceLength);
 }
@@ -1901,17 +1962,22 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
   const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
   const requirements = buildOrderInventoryRequirements(order, inventory);
   const usedPieceIds = new Set();
+  const measuredSourceUsage = new Map();
   const suggestions = [];
   const missing = [];
   const bundledRequirementIds = new Set();
+  const measuredBundles = buildMeasuredRequirementBundles(requirements).map((bundle, bundleIndex) => ({
+    ...bundle,
+    bundleIndex,
+  }));
 
-  buildMeasuredRequirementBundles(requirements).forEach((bundle) => {
+  measuredBundles.forEach((bundle) => {
     const plan = {
       ...bundle,
       length: bundle.totalLength,
       totalLength: bundle.totalLength,
     };
-    const options = getMeasuredCandidateOptions(inventory, plan, usedPieceIds);
+    const options = getMeasuredCandidateOptions(inventory, plan, usedPieceIds, measuredSourceUsage, measuredBundles);
     if (!options.length && bundle.pieceCount > 1) return;
     if (!options.length) {
       missing.push({
@@ -1930,7 +1996,10 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
     const suggestion = createMeasuredSuggestionFromCandidate(bundle, selected);
     suggestion.candidates = options.slice(0, 12).map(({ score, ...option }) => option);
     suggestions.push(suggestion);
-    usedPieceIds.add(selected.sourcePieceId);
+    measuredSourceUsage.set(
+      selected.sourcePieceId,
+      Number((toNumber(measuredSourceUsage.get(selected.sourcePieceId) || 0) + toNumber(selected.length || 0)).toFixed(2)),
+    );
     bundle.requirementIds.forEach((id) => bundledRequirementIds.add(id));
   });
 
@@ -1948,7 +2017,7 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
           pieceCount: 1,
           requirementIds: [requirement.id],
         };
-        const options = getMeasuredCandidateOptions(inventory, plan, usedPieceIds);
+        const options = getMeasuredCandidateOptions(inventory, plan, usedPieceIds, measuredSourceUsage, measuredBundles);
         if (!options.length) {
           missing.push({
             requirementId: requirement.id,
@@ -1964,7 +2033,10 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
         const suggestion = createMeasuredSuggestionFromCandidate(plan, selected);
         suggestion.candidates = options.slice(0, 12).map(({ score, ...option }) => option);
         suggestions.push(suggestion);
-        usedPieceIds.add(selected.sourcePieceId);
+        measuredSourceUsage.set(
+          selected.sourcePieceId,
+          Number((toNumber(measuredSourceUsage.get(selected.sourcePieceId) || 0) + toNumber(selected.length || 0)).toFixed(2)),
+        );
         remainingLength = Number((remainingLength - selected.length).toFixed(2));
       }
       return;
@@ -2027,6 +2099,7 @@ function applyInventoryCommitment(store = {}, order = {}, rawSuggestions = []) {
   const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
   const allocations = [];
   const unavailable = [];
+  const sourceGroups = new Map();
 
   for (const suggestion of suggestions) {
     const sourceId = String(suggestion.sourcePieceId || suggestion.pieceId || "");
@@ -2035,88 +2108,183 @@ function applyInventoryCommitment(store = {}, order = {}, rawSuggestions = []) {
       unavailable.push(sourceId);
       continue;
     }
-    const sourcePiece = inventory[sourceIndex];
-    const allocationId = String(suggestion.id || randomUUID());
-    const action = ["use", "cut", "partial-units"].includes(String(suggestion.action || "")) ? String(suggestion.action) : "use";
-    const allocationLength = toNumber(suggestion.length || sourcePiece.length || 0);
-    const allocationWidth = toNumber(suggestion.width || sourcePiece.width || 0);
-    const allocationUnits = Math.max(1, Math.round(toNumber(suggestion.units || 1)));
-    const allocationSqm = allocationWidth && allocationLength ? Number((allocationWidth * allocationLength).toFixed(2)) : 0;
-    let committedPieceId = sourcePiece.id;
-    let residuePieceId = "";
+    if (!sourceGroups.has(sourceId)) {
+      sourceGroups.set(sourceId, {
+        sourceId,
+        sourcePiece: inventory[sourceIndex],
+        suggestions: [],
+      });
+    }
+    sourceGroups.get(sourceId).suggestions.push(suggestion);
+  }
 
-    if (action === "partial-units" && Math.max(1, Number(sourcePiece.units || 1)) > allocationUnits) {
-      sourcePiece.units = Math.max(1, Number(sourcePiece.units || 1)) - allocationUnits;
-      const committedPiece = {
-        ...sourcePiece,
+  for (const group of sourceGroups.values()) {
+    const sourcePiece = group.sourcePiece;
+    const sourceSnapshot = { ...sourcePiece };
+    const measuredSuggestions = group.suggestions.filter((suggestion) => String(suggestion.action || "") !== "partial-units");
+    const unitSuggestions = group.suggestions.filter((suggestion) => String(suggestion.action || "") === "partial-units");
+    if (measuredSuggestions.length && unitSuggestions.length) {
+      unavailable.push(group.sourceId);
+      continue;
+    }
+
+    if (unitSuggestions.length) {
+      let remainingSourceUnits = Math.max(1, Number(sourcePiece.units || 1));
+      for (const suggestion of unitSuggestions) {
+        const allocationId = String(suggestion.id || randomUUID());
+        const allocationUnits = Math.max(1, Math.round(toNumber(suggestion.units || 1)));
+        if (remainingSourceUnits < allocationUnits) {
+          unavailable.push(group.sourceId);
+          break;
+        }
+        let committedPieceId = sourcePiece.id;
+        if (remainingSourceUnits > allocationUnits) {
+          remainingSourceUnits -= allocationUnits;
+          sourcePiece.units = remainingSourceUnits;
+          const committedPiece = {
+            ...sourceSnapshot,
+            id: randomUUID(),
+            units: allocationUnits,
+            pieceState: "impegnato",
+            committedOrderId: order.id,
+            committedOrderNumber: orderNumber,
+            committedAt: now,
+            allocationId,
+            note: sourceSnapshot.note || `Impegnato per ordine ${orderNumber}`,
+            createdAt: now,
+          };
+          inventory.unshift(committedPiece);
+          committedPieceId = committedPiece.id;
+        } else {
+          remainingSourceUnits = 0;
+          sourcePiece.pieceState = "impegnato";
+          sourcePiece.committedOrderId = order.id;
+          sourcePiece.committedOrderNumber = orderNumber;
+          sourcePiece.committedAt = now;
+          sourcePiece.allocationId = allocationId;
+          sourcePiece.units = allocationUnits;
+        }
+        allocations.push(normalizeInventoryAllocationRecord({
+          id: allocationId,
+          pieceId: committedPieceId,
+          sourcePieceId: group.sourceId,
+          product: suggestion.product || sourceSnapshot.product,
+          width: toNumber(sourceSnapshot.width || 0),
+          length: toNumber(sourceSnapshot.length || 0),
+          sqm: 0,
+          units: allocationUnits,
+          requiredPieceCount: suggestion.requiredPieceCount,
+          requiredPieceLength: suggestion.requiredPieceLength,
+          requiredPieceSqm: suggestion.requiredPieceSqm,
+          requestLabel: suggestion.requestLabel,
+          sourcePieceLabel: suggestion.sourcePieceLabel || suggestion.pieceLabel || buildInventoryPieceLabel(sourceSnapshot),
+          pieceType: sourceSnapshot.pieceType || sourceSnapshot.status,
+          action: "partial-units",
+          status: "impegnato",
+          committedAt: now,
+          createdAt: now,
+          note: suggestion.note || "",
+        }));
+      }
+      continue;
+    }
+
+    const sourceLength = toNumber(sourceSnapshot.length || 0);
+    const sourceWidth = toNumber(sourceSnapshot.width || 0);
+    const totalAllocationLength = Number(measuredSuggestions
+      .reduce((sum, suggestion) => sum + toNumber(suggestion.length || sourceLength || 0), 0)
+      .toFixed(2));
+    if (!sourceLength || totalAllocationLength > sourceLength + 0.01) {
+      unavailable.push(group.sourceId);
+      continue;
+    }
+    const residueLength = Number(Math.max(0, sourceLength - totalAllocationLength).toFixed(2));
+    let residuePieceId = "";
+    if (residueLength > 0.05) {
+      const residuePiece = {
+        ...sourceSnapshot,
         id: randomUUID(),
+        length: residueLength,
+        sqm: sourceWidth && residueLength ? Number((sourceWidth * residueLength).toFixed(2)) : 0,
+        status: "residuo",
+        pieceType: "residuo",
+        pieceState: "disponibile",
+        committedOrderId: "",
+        committedOrderNumber: "",
+        allocationId: "",
+        parentPieceId: sourceSnapshot.id,
+        residueFromPieceId: sourceSnapshot.id,
+        note: `Residuo generato da taglio ordine ${orderNumber}`,
+        createdAt: now,
+      };
+      inventory.unshift(residuePiece);
+      residuePieceId = residuePiece.id;
+    }
+
+    measuredSuggestions.forEach((suggestion, index) => {
+      const allocationId = String(suggestion.id || randomUUID());
+      const allocationLength = toNumber(suggestion.length || sourceLength || 0);
+      const allocationWidth = toNumber(suggestion.width || sourceWidth || 0);
+      const allocationUnits = Math.max(1, Math.round(toNumber(suggestion.units || 1)));
+      const allocationSqm = allocationWidth && allocationLength ? Number((allocationWidth * allocationLength).toFixed(2)) : 0;
+      const allocationAction = measuredSuggestions.length > 1 || residueLength > 0.05 ? "cut" : "use";
+      let committedPieceId = sourcePiece.id;
+      const committedFields = {
+        length: allocationLength,
+        sqm: allocationSqm,
         units: allocationUnits,
         pieceState: "impegnato",
         committedOrderId: order.id,
         committedOrderNumber: orderNumber,
         committedAt: now,
         allocationId,
-        note: sourcePiece.note || `Impegnato per ordine ${orderNumber}`,
-        createdAt: now,
       };
-      inventory.unshift(committedPiece);
-      committedPieceId = committedPiece.id;
-    } else {
-      const residueLength = toNumber(suggestion.residue?.length || 0);
-      if (action === "cut" && residueLength > 0.05) {
-        const residuePiece = {
-          ...sourcePiece,
+      if (index === 0) {
+        Object.assign(sourcePiece, committedFields, {
+          pieceType: allocationAction === "cut" ? "taglio" : sourceSnapshot.pieceType,
+          status: allocationAction === "cut"
+            ? (normalizeInventoryPieceType(sourceSnapshot.status) === "residuo" ? "residuo" : "intero")
+            : sourceSnapshot.status,
+        });
+      } else {
+        const committedPiece = {
+          ...sourceSnapshot,
+          ...committedFields,
           id: randomUUID(),
-          length: residueLength,
-          sqm: allocationWidth && residueLength ? Number((allocationWidth * residueLength).toFixed(2)) : 0,
-          status: "residuo",
-          pieceType: "residuo",
-          pieceState: "disponibile",
-          committedOrderId: "",
-          committedOrderNumber: "",
-          allocationId: "",
-          parentPieceId: sourcePiece.id,
-          residueFromPieceId: sourcePiece.id,
-          note: `Residuo generato da taglio ordine ${orderNumber}`,
+          pieceType: "taglio",
+          status: normalizeInventoryPieceType(sourceSnapshot.status) === "residuo" ? "residuo" : "intero",
+          parentPieceId: sourceSnapshot.id,
+          residueFromPieceId: "",
+          note: sourceSnapshot.note || `Taglio ordine ${orderNumber}`,
           createdAt: now,
         };
-        inventory.unshift(residuePiece);
-        residuePieceId = residuePiece.id;
-        sourcePiece.length = allocationLength;
-        sourcePiece.sqm = allocationSqm;
-        sourcePiece.pieceType = "taglio";
-        sourcePiece.status = normalizeInventoryPieceType(sourcePiece.status) === "residuo" ? "residuo" : "intero";
+        inventory.unshift(committedPiece);
+        committedPieceId = committedPiece.id;
       }
-      sourcePiece.pieceState = "impegnato";
-      sourcePiece.committedOrderId = order.id;
-      sourcePiece.committedOrderNumber = orderNumber;
-      sourcePiece.committedAt = now;
-      sourcePiece.allocationId = allocationId;
-      sourcePiece.units = allocationUnits;
-    }
 
-    allocations.push(normalizeInventoryAllocationRecord({
-      id: allocationId,
-      pieceId: committedPieceId,
-      sourcePieceId: sourceId,
-      residuePieceId,
-      product: suggestion.product || sourcePiece.product,
-      width: allocationWidth,
-      length: allocationLength,
-      sqm: allocationSqm,
-      units: allocationUnits,
-      requiredPieceCount: suggestion.requiredPieceCount,
-      requiredPieceLength: suggestion.requiredPieceLength,
-      requiredPieceSqm: suggestion.requiredPieceSqm,
-      requestLabel: suggestion.requestLabel,
-      sourcePieceLabel: suggestion.sourcePieceLabel || suggestion.pieceLabel,
-      pieceType: sourcePiece.pieceType || sourcePiece.status,
-      action,
-      status: "impegnato",
-      committedAt: now,
-      createdAt: now,
-      note: suggestion.note || "",
-    }));
+      allocations.push(normalizeInventoryAllocationRecord({
+        id: allocationId,
+        pieceId: committedPieceId,
+        sourcePieceId: group.sourceId,
+        residuePieceId: index === measuredSuggestions.length - 1 ? residuePieceId : "",
+        product: suggestion.product || sourceSnapshot.product,
+        width: allocationWidth,
+        length: allocationLength,
+        sqm: allocationSqm,
+        units: allocationUnits,
+        requiredPieceCount: suggestion.requiredPieceCount,
+        requiredPieceLength: suggestion.requiredPieceLength,
+        requiredPieceSqm: suggestion.requiredPieceSqm,
+        requestLabel: suggestion.requestLabel,
+        sourcePieceLabel: suggestion.sourcePieceLabel || suggestion.pieceLabel || buildInventoryPieceLabel(sourceSnapshot),
+        pieceType: allocationAction === "cut" ? "taglio" : sourceSnapshot.pieceType || sourceSnapshot.status,
+        action: allocationAction,
+        status: "impegnato",
+        committedAt: now,
+        createdAt: now,
+        note: suggestion.note || "",
+      }));
+    });
   }
 
   if (unavailable.length) {
