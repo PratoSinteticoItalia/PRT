@@ -635,6 +635,27 @@ function normalizeInventoryFamilyKey(value = "") {
     .trim();
 }
 
+// Returns a coarse material family key so that e.g. "CIOTTOLO BIANCO 2 KG"
+// matches "Ciottolo bianco 25/40 - 25 lt". Returns null for non-materials.
+function normalizeMaterialFamily(value = "") {
+  const s = String(value || "").toLowerCase();
+  if (/ciottol/.test(s)) return "ciottolo";
+  if (/lapillo/.test(s)) return "lapillo";
+  if (/pietrisco/.test(s)) return "pietrisco";
+  if (/sabbia/.test(s)) return "sabbia";
+  if (/graniglia/.test(s)) return "graniglia";
+  if (/bordura/.test(s)) return "bordura";
+  if (/banda|giunzione/.test(s)) return "banda";
+  if (/colla|monocomponente|mono.?component|bi.?component/.test(s)) return "colla";
+  if (/telo/.test(s)) return "telo";
+  if (/picchetti/.test(s)) return "picchetti";
+  if (/detergente/.test(s)) return "detergente";
+  if (/spazzolatri|spazzola/.test(s)) return "spazzola";
+  if (/mattonella/.test(s)) return "mattonella";
+  if (/profumo/.test(s)) return "profumo";
+  return null;
+}
+
 function normalizeInventoryPieceType(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "residuo") return "residuo";
@@ -1747,7 +1768,12 @@ function inventoryPiecesMatchRequirement(piece = {}, requirement = {}) {
   const pieceKey = normalizeInventoryFamilyKey(piece.product || "");
   const requirementKey = normalizeInventoryFamilyKey(requirement.product || "");
   if (!pieceKey || !requirementKey) return false;
-  return pieceKey === requirementKey || pieceKey.includes(requirementKey) || requirementKey.includes(pieceKey);
+  if (pieceKey === requirementKey || pieceKey.includes(requirementKey) || requirementKey.includes(pieceKey)) return true;
+  // Fall back to coarse material-family matching so "CIOTTOLO BIANCO 2 KG"
+  // matches "Ciottolo bianco 25/40 - 25 lt", etc.
+  const pieceFamily = normalizeMaterialFamily(piece.product || "");
+  const requirementFamily = normalizeMaterialFamily(requirement.product || "");
+  return pieceFamily !== null && pieceFamily === requirementFamily;
 }
 
 function sortMeasuredInventoryCandidates(left = {}, right = {}, requiredLength = 0) {
