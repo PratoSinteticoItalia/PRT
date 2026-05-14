@@ -2450,7 +2450,8 @@ function fulfillInventoryCommitmentsForOrder(store = {}, order = {}) {
 
 function classifyOrderLine(title = "") {
   if (/(installazione|posa)/i.test(title)) return "service";
-  if (/(banda|giunzione|telo|colla|monocomponente|picchetti|pietrisco|bordura|ciottol|lapillo|sabbia|graniglia|kit|profumo|detergente|spazzolatrice|spazzola|mattonella|campionatura|box campionatura)/i.test(title)) {
+  if (/^\s*iva\b|\b(iva|vat|tax|imposta)\b/i.test(title)) return "service";
+  if (/(banda|giunzione|telo|colla|monocomponente|picchetti|pietrisco|bordura|ciottol|lapillo|sabbia|graniglia|kit|profumo|detergente|spazzolatrice|spazzola|mattonella|campionatura|box campionatura|pavidrain|drenaggio|geotessile|tappetino|sottofondo)/i.test(title)) {
     return "material";
   }
   return "product";
@@ -2863,9 +2864,6 @@ function deriveOrderData(order) {
     let itemSqm = parseSquareMeters(title, quantity);
     if (!itemSqm && variant) {
       itemSqm = parseSquareMeters(variant, quantity);
-    }
-    if (!itemSqm && quantity > 0) {
-      itemSqm = quantity;
     }
     sqm += itemSqm;
     products.push({ title, sqm: itemSqm });
