@@ -8486,6 +8486,17 @@ function buildWarehouseDemandMap() {
   state.orders
     .filter(orderNeedsWarehouseWork)
     .forEach((order) => {
+      // Build per-product sqm/units already fulfilled (evaso) for this order
+      const evasedSqmByProduct = new Map();
+      const evasedUnitsByProduct = new Map();
+      (order.operations?.warehouse?.inventoryAllocations || []).forEach((alloc) => {
+        if (String(alloc.status || "") !== "evaso") return;
+        const key = normalizeProductName(getCatalogLabel(alloc.product || ""));
+        if (!key) return;
+        evasedSqmByProduct.set(key, (evasedSqmByProduct.get(key) || 0) + toNumber(alloc.sqm || 0));
+        evasedUnitsByProduct.set(key, (evasedUnitsByProduct.get(key) || 0) + toNumber(alloc.units || 0));
+      });
+
       const preparedProducts = getPreparedProductLines(order);
       const hasMeasuredProducts = preparedProducts.some((line) => line.dimensions?.sqm);
 
@@ -8503,9 +8514,12 @@ function buildWarehouseDemandMap() {
         const sqm = line.dimensions?.sqm
           ? line.dimensions.sqm * Number(line.quantity || 1)
           : 0;
-        current.demandSqm += sqm;
-        current.demandOrders.add(order.id);
-        demandMap.set(key, current);
+        const netSqm = Math.max(0, sqm - (evasedSqmByProduct.get(key) || 0));
+        if (netSqm > 0) {
+          current.demandSqm += netSqm;
+          current.demandOrders.add(order.id);
+          demandMap.set(key, current);
+        }
       });
 
       if (!hasMeasuredProducts) {
@@ -8521,9 +8535,12 @@ function buildWarehouseDemandMap() {
             demandUnits: 0,
             demandOrders: new Set(),
           };
-          current.demandSqm += fallbackSqm;
-          current.demandOrders.add(order.id);
-          demandMap.set(key, current);
+          const netSqm = Math.max(0, fallbackSqm - (evasedSqmByProduct.get(key) || 0));
+          if (netSqm > 0) {
+            current.demandSqm += netSqm;
+            current.demandOrders.add(order.id);
+            demandMap.set(key, current);
+          }
         }
       }
 
@@ -8540,9 +8557,13 @@ function buildWarehouseDemandMap() {
             demandUnits: 0,
             demandOrders: new Set(),
           };
-          current.demandUnits += Number(line.quantity || 1);
-          current.demandOrders.add(order.id);
-          demandMap.set(key, current);
+          const units = Number(line.quantity || 1);
+          const netUnits = Math.max(0, units - (evasedUnitsByProduct.get(key) || 0));
+          if (netUnits > 0) {
+            current.demandUnits += netUnits;
+            current.demandOrders.add(order.id);
+            demandMap.set(key, current);
+          }
         });
     });
 
