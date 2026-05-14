@@ -187,7 +187,7 @@ const INVENTORY_CATALOG = [
   },
   {
     key: "colla",
-    label: "Colla",
+    label: "Colla bicomponente",
     type: "material",
     stockMode: "piece",
     unitLabel: "secchi",
@@ -7307,6 +7307,7 @@ function inferCatalogEntry(value) {
   if (label.includes("ginepro")) return INVENTORY_CATALOG.find((item) => item.key === "ginepro-35");
   if (label.includes("mogano")) return INVENTORY_CATALOG.find((item) => item.key === "mogano");
   if (label.includes("banda")) return INVENTORY_CATALOG.find((item) => item.key === "banda");
+  if (/monocomponente/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "monocomponente");
   if (label.includes("colla")) return INVENTORY_CATALOG.find((item) => item.key === "colla");
   if (label.includes("telo")) return INVENTORY_CATALOG.find((item) => item.key === "telo");
   if (label.includes("picchetti")) return INVENTORY_CATALOG.find((item) => item.key === "picchetti");
@@ -7315,7 +7316,6 @@ function inferCatalogEntry(value) {
   if (/ciottol/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "ciottolo-bianco");
   if (/lapillo/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "lapillo-rosso");
   if (/bordura/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "bordura-pvc");
-  if (/monocomponente/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "monocomponente");
   if (/detergente/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "detergente");
   if (/spazzolatrice/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "spazzolatrice");
   return null;

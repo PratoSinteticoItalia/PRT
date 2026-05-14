@@ -6658,36 +6658,41 @@ async function handleFastInventoryItemsPost(req, res) {
     return sendJson(res, 400, { error: payload.error });
   }
   const revision = buildStoreRevisionToken();
-  await ensureDatabaseStorage();
-  const pool = await getPgPool();
-  const result = await pool.query(
-    `
-      UPDATE app_documents
-      SET payload = jsonb_set(
-        jsonb_set(
-          payload,
-          '{inventory}',
-          $2::jsonb || COALESCE(payload->'inventory', '[]'::jsonb),
+  try {
+    await ensureDatabaseStorage();
+    const pool = await getPgPool();
+    const result = await pool.query(
+      `
+        UPDATE app_documents
+        SET payload = jsonb_set(
+          jsonb_set(
+            payload,
+            '{inventory}',
+            $2::jsonb || COALESCE(payload->'inventory', '[]'::jsonb),
+            true
+          ),
+          '{_storeRevision}',
+          to_jsonb($3::text),
           true
         ),
-        '{_storeRevision}',
-        to_jsonb($3::text),
-        true
-      ),
-      updated_at = NOW()
-      WHERE key = $1
-      RETURNING payload->'inventory' AS inventory
-    `,
-    [STORE_DOC_KEY, JSON.stringify(payload.created), revision],
-  );
-  runtimeStoreRevision = revision;
-  broadcastStoreRevision(revision);
-  return sendJson(
-    res,
-    200,
-    result.rows?.[0]?.inventory || payload.created,
-    sessionContext.sessionId ? { "Set-Cookie": buildSessionCookie(sessionContext.sessionId) } : {},
-  );
+        updated_at = NOW()
+        WHERE key = $1
+        RETURNING payload->'inventory' AS inventory
+      `,
+      [STORE_DOC_KEY, JSON.stringify(payload.created), revision],
+    );
+    runtimeStoreRevision = revision;
+    broadcastStoreRevision(revision);
+    return sendJson(
+      res,
+      200,
+      result.rows?.[0]?.inventory || payload.created,
+      sessionContext.sessionId ? { "Set-Cookie": buildSessionCookie(sessionContext.sessionId) } : {},
+    );
+  } catch (err) {
+    console.error("[inventory/fast-add] db error:", err?.message || err);
+    return sendJson(res, 500, { error: "inventory_save_failed" });
+  }
 }
 
 async function handleApi(req, res, url) {
