@@ -11823,7 +11823,7 @@ function renderInventoryCard(group) {
         </div>
       ` : ""}
       <div class="wh-pieces">
-        ${isMeasured && group.pieces.length ? group.pieces.map((item) => {
+        ${isMeasured && group.pieces.length ? group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso").map((item) => {
           const pieceState = getInventoryPieceState(item);
           const pieceType = getInventoryPieceType(item);
           const canDeletePiece = pieceState === "disponibile";
@@ -11923,7 +11923,7 @@ function renderOrderInventoryAllocationPanel(order) {
     : (state.lang === "it" ? "Da calcolare e confermare" : "To calculate and confirm");
 
   const allocationList = activeAllocations.length
-    ? activeAllocations.map((item) => `
+    ? `<div class="inventory-suggestion-list">${activeAllocations.map((item) => `
       <div class="inventory-allocation-row">
         <div>
           <strong>${escapeHtml(item.product || t("product"))}</strong>
@@ -11932,7 +11932,7 @@ function renderOrderInventoryAllocationPanel(order) {
         </div>
         <small>${escapeHtml(getInventoryAllocationStatusLabel(item.status))}</small>
       </div>
-    `).join("")
+    `).join("")}</div>`
     : `<div class="inventory-allocation-empty">${state.lang === "it" ? "Nessun pezzo fisico ancora assegnato a questo ordine." : "No physical pieces assigned to this order yet."}</div>`;
 
   const suggestionList = suggestionRows.length || missingRows.length
@@ -16897,10 +16897,6 @@ async function commitInventoryForOrder(orderId = "") {
 async function releaseInventoryForOrder(orderId = "") {
   const normalizedId = String(orderId || "").trim();
   if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
-  const confirmed = window.confirm(state.lang === "it"
-    ? "Liberare i pezzi impegnati per questo ordine?"
-    : "Release the pieces committed to this order?");
-  if (!confirmed) return;
   inventoryAllocationPendingOrderIds.add(normalizedId);
   scheduleRender("warehouse");
   try {

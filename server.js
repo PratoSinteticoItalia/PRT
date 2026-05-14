@@ -2446,6 +2446,8 @@ function fulfillInventoryCommitmentsForOrder(store = {}, order = {}) {
         warehouse: {
           ...(order.operations?.warehouse || {}),
           inventoryAllocations: fulfilledAllocations,
+          shipped: true,
+          shippedAt: order.operations?.warehouse?.shippedAt || now,
         },
       },
     }),
