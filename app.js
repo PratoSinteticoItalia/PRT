@@ -7860,10 +7860,7 @@ function changeInventorySuggestionSource(orderId = "", suggestionId = "", source
     const candidateFound = (targetRow.candidates || []).some(
       (item) => String(item.sourcePieceId || item.pieceId || "") === String(sourcePieceId || "")
     );
-    if (!candidateFound) {
-      suggestInventoryForOrder(orderId);
-      return;
-    }
+    if (!candidateFound) return;
   }
   const nextRows = suggestion.suggestions.map((row) => {
     if (String(row.id || "") !== String(suggestionId || "")) return row;
