@@ -7794,7 +7794,12 @@ async function handleApi(req, res, url) {
     const orderId = decodeURIComponent(url.pathname.split("/")[3]);
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
-    return sendJson(res, 200, buildInventorySuggestionsForOrder(store, order));
+    try {
+      return sendJson(res, 200, buildInventorySuggestionsForOrder(store, order));
+    } catch (err) {
+      console.error("[inventory/suggest] unexpected error:", err);
+      return sendJson(res, 500, { error: "inventory_suggest_failed" });
+    }
   }
 
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/inventory\/commit$/) && req.method === "POST") {
@@ -7802,20 +7807,32 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
-    const suggestions = Array.isArray(body.suggestions) ? body.suggestions : buildInventorySuggestionsForOrder(store, order).suggestions;
-    const result = applyInventoryCommitment(store, order, suggestions);
-    if (!result.ok) {
-      return sendJson(res, result.error === "inventory_piece_unavailable" ? 409 : 400, {
-        error: result.error || "inventory_commit_failed",
-        unavailable: result.unavailable || [],
+    try {
+      const clientSupplied = Array.isArray(body.suggestions);
+      let suggestions = clientSupplied ? body.suggestions : buildInventorySuggestionsForOrder(store, order).suggestions;
+      let result = applyInventoryCommitment(store, order, suggestions);
+      // If client-supplied suggestions are stale, rebuild fresh and retry once
+      if (!result.ok && result.error === "inventory_piece_unavailable" && clientSupplied) {
+        console.warn("[inventory/commit] client suggestions unavailable, retrying with fresh suggestions for order", orderId);
+        suggestions = buildInventorySuggestionsForOrder(store, order).suggestions;
+        result = applyInventoryCommitment(store, order, suggestions);
+      }
+      if (!result.ok) {
+        return sendJson(res, result.error === "inventory_piece_unavailable" ? 409 : 400, {
+          error: result.error || "inventory_commit_failed",
+          unavailable: result.unavailable || [],
+        });
+      }
+      await writeJson(STORE_PATH, store);
+      return sendJson(res, 200, {
+        order: result.order,
+        inventory: store.inventory,
+        allocations: result.allocations || [],
       });
+    } catch (err) {
+      console.error("[inventory/commit] unexpected error:", err);
+      return sendJson(res, 500, { error: "inventory_commit_failed" });
     }
-    await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, {
-      order: result.order,
-      inventory: store.inventory,
-      allocations: result.allocations || [],
-    });
   }
 
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/inventory\/release$/) && req.method === "POST") {

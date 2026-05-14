@@ -7776,6 +7776,19 @@ function setInventorySuggestionForOrder(orderId = "", suggestion = null) {
 function changeInventorySuggestionSource(orderId = "", suggestionId = "", sourcePieceId = "") {
   const suggestion = getInventorySuggestionForOrder(orderId);
   if (!suggestion || !Array.isArray(suggestion.suggestions)) return;
+  // Check whether the requested source piece exists in the target row's candidates.
+  // If it doesn't (e.g. it was freed by another row change after the last suggest call),
+  // refresh the whole suggestion set so the user gets up-to-date candidates.
+  const targetRow = suggestion.suggestions.find((row) => String(row.id || "") === String(suggestionId || ""));
+  if (targetRow) {
+    const candidateFound = (targetRow.candidates || []).some(
+      (item) => String(item.sourcePieceId || item.pieceId || "") === String(sourcePieceId || "")
+    );
+    if (!candidateFound) {
+      suggestInventoryForOrder(orderId);
+      return;
+    }
+  }
   const nextRows = suggestion.suggestions.map((row) => {
     if (String(row.id || "") !== String(suggestionId || "")) return row;
     const candidate = (row.candidates || []).find((item) => String(item.sourcePieceId || item.pieceId || "") === String(sourcePieceId || ""));
