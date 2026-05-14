@@ -444,6 +444,13 @@ async function getPgPool() {
     max: 4,
     idleTimeoutMillis: 30_000,
   });
+  // Without this listener, an idle-client error (e.g. the DB server closed an
+  // idle TCP connection) bubbles up as an unhandled 'error' event and crashes
+  // the entire Node process. Log it and let the pool transparently replace
+  // the bad client on the next checkout.
+  pgPool.on("error", (err, client) => {
+    console.error("[pg-pool] idle client error:", err?.message || err);
+  });
   return pgPool;
 }
 
@@ -6712,7 +6719,7 @@ async function handleApi(req, res, url) {
       ok: true,
       service: "vertex-ops-pose-system",
       timestamp: new Date().toISOString(),
-      buildTag: "inv-commit-2026-05-14-f",
+      buildTag: "inv-commit-2026-05-14-g",
       fixes: [
         "reconcileStoreData-persists-missing-piece-ids",
         "backfillInventoryIds-writes-on-change",
@@ -6721,6 +6728,7 @@ async function handleApi(req, res, url) {
         "iva-pavidrain-classified-non-product",
         "external-sync-bypasses-fifo-write-queue",
         "commit-response-includes-full-debug-snapshot",
+        "pg-pool-idle-error-no-longer-crashes",
       ],
     });
   }
@@ -7867,7 +7875,7 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
-    const buildTag = "inv-commit-2026-05-14-f";
+    const buildTag = "inv-commit-2026-05-14-g";
     try {
       if (backfillInventoryIds(store)) await writeJson(STORE_PATH, store);
       const clientSupplied = Array.isArray(body.suggestions);
