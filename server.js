@@ -6712,13 +6712,14 @@ async function handleApi(req, res, url) {
       ok: true,
       service: "vertex-ops-pose-system",
       timestamp: new Date().toISOString(),
-      buildTag: "inv-commit-2026-05-14-d",
+      buildTag: "inv-commit-2026-05-14-e",
       fixes: [
         "reconcileStoreData-persists-missing-piece-ids",
         "backfillInventoryIds-writes-on-change",
         "dropdown-no-auto-resuggest",
         "sqm-no-quantity-fallback",
         "iva-pavidrain-classified-non-product",
+        "external-sync-bypasses-fifo-write-queue",
       ],
     });
   }
@@ -8536,9 +8537,15 @@ const server = createServer(async (req, res) => {
       try {
         const isInventoryCreate = url.pathname === "/api/inventory/items" && method === "POST";
         const isCommunicationsWrite = /^\/api\/communications\//.test(url.pathname);
+        // Slow external-API syncs (Google Sheets, Shopify) must not sit in the same FIFO
+        // queue as local state mutations. Otherwise an external API hanging or timing out
+        // blocks unrelated user writes (e.g. inventory commit) for tens of seconds. The
+        // advisory lock alone keeps state writes atomic.
+        const isSlowExternalSync = url.pathname === "/api/sales/request-source/sync"
+          || url.pathname === "/api/orders/sync-shopify";
         return await withApiStateLock(() => handleApi(req, res, url), {
-          timeoutMs: isInventoryCreate ? 12_000 : isCommunicationsWrite ? 8_000 : API_STATE_LOCK_TIMEOUT_MS,
-          queue: !isInventoryCreate && !isCommunicationsWrite,
+          timeoutMs: isInventoryCreate ? 12_000 : isCommunicationsWrite ? 8_000 : isSlowExternalSync ? 30_000 : API_STATE_LOCK_TIMEOUT_MS,
+          queue: !isInventoryCreate && !isCommunicationsWrite && !isSlowExternalSync,
         });
       } catch (error) {
         if (error?.code === "state_lock_timeout") {
