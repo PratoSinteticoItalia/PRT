@@ -2169,8 +2169,9 @@ function applyInventoryCommitment(store = {}, order = {}, rawSuggestions = []) {
   for (const group of sourceGroups.values()) {
     const sourcePiece = group.sourcePiece;
     const sourceSnapshot = { ...sourcePiece };
-    const measuredSuggestions = group.suggestions.filter((suggestion) => String(suggestion.action || "") !== "partial-units");
-    const unitSuggestions = group.suggestions.filter((suggestion) => String(suggestion.action || "") === "partial-units");
+    const isUnitItem = !toNumber(sourcePiece.length || 0);
+    const measuredSuggestions = isUnitItem ? [] : group.suggestions.filter((suggestion) => String(suggestion.action || "") !== "partial-units");
+    const unitSuggestions = isUnitItem ? group.suggestions : group.suggestions.filter((suggestion) => String(suggestion.action || "") === "partial-units");
     if (measuredSuggestions.length && unitSuggestions.length) {
       unavailable.push(group.sourceId);
       continue;
