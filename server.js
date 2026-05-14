@@ -5387,7 +5387,10 @@ function reconcileStoreData(store) {
       });
 
   store.inventory = Array.isArray(store.inventory)
-    ? store.inventory.map((item) => normalizeInventoryPieceRecord(item))
+    ? store.inventory.map((item) => {
+        if (!item || !item.id) changed = true;
+        return normalizeInventoryPieceRecord(item);
+      })
     : [];
 
   store.salesRequests = Array.isArray(store.salesRequests)
