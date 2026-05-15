@@ -580,6 +580,85 @@ async function ensureDatabaseStorage() {
   return dbBootstrapPromise;
 }
 
+let relationalSchemaBootstrapPromise = null;
+async function ensureRelationalSchema() {
+  if (!USE_POSTGRES) return;
+  if (relationalSchemaBootstrapPromise) return relationalSchemaBootstrapPromise;
+  relationalSchemaBootstrapPromise = (async () => {
+    await ensureDatabaseStorage();
+    const pool = await getPgPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY,
+        shopify_numeric_id TEXT, shopify_graphql_id TEXT, order_number TEXT,
+        first_name TEXT, last_name TEXT, email TEXT, phone TEXT,
+        city TEXT, address TEXT, postal_code TEXT, province_code TEXT, province TEXT, country_code TEXT,
+        financial_status TEXT, fulfillment_status TEXT, payment_method TEXT,
+        source TEXT, note TEXT, total TEXT,
+        totals JSONB DEFAULT '{}', billing JSONB DEFAULT '{}',
+        warehouse JSONB DEFAULT '{}', installation JSONB DEFAULT '{}', accounting JSONB DEFAULT '{}',
+        line_items JSONB DEFAULT '[]', line_details JSONB DEFAULT '[]',
+        attachments JSONB DEFAULT '[]', converted_job_id TEXT, shopify_raw JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS inventory_items (
+        id TEXT PRIMARY KEY, product TEXT, family TEXT,
+        piece_type TEXT, piece_state TEXT, width NUMERIC, length NUMERIC, units TEXT, label TEXT,
+        allocated_to_order_id TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS jobs (
+        id TEXT PRIMARY KEY,
+        first_name TEXT, last_name TEXT, city TEXT, phone TEXT, email TEXT, address TEXT,
+        job_type TEXT, surface TEXT, product TEXT, sqm NUMERIC,
+        install_date TEXT, install_time TEXT, crew TEXT,
+        priority TEXT, warehouse_status TEXT, install_status TEXT,
+        materials JSONB DEFAULT '[]', notes TEXT, attachments JSONB DEFAULT '[]',
+        source_order_id TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS sales_requests (
+        id TEXT PRIMARY KEY,
+        first_name TEXT, last_name TEXT, email TEXT, phone TEXT,
+        city TEXT, address TEXT, postal_code TEXT, province_code TEXT, province TEXT, country_code TEXT,
+        company TEXT, job_type TEXT, surface TEXT, sqm NUMERIC, note TEXT,
+        status TEXT, assignment TEXT, first_contact_by TEXT, first_contact_at TIMESTAMPTZ,
+        source TEXT, source_row_number INTEGER, attachments JSONB DEFAULT '[]', whatsapp_thread_id TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY, value JSONB NOT NULL DEFAULT '{}', updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS catalog_items (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+        category TEXT NOT NULL, value TEXT NOT NULL, label TEXT,
+        position INTEGER DEFAULT 0, metadata JSONB DEFAULT '{}', active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (category, value)
+      );
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id BIGSERIAL PRIMARY KEY, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+        user_id TEXT, action TEXT NOT NULL, diff JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS orders_shopify_id_idx       ON orders (shopify_numeric_id);
+      CREATE INDEX IF NOT EXISTS orders_updated_at_idx       ON orders (updated_at DESC);
+      CREATE INDEX IF NOT EXISTS orders_financial_status_idx ON orders (financial_status);
+      CREATE INDEX IF NOT EXISTS inventory_state_idx         ON inventory_items (piece_state);
+      CREATE INDEX IF NOT EXISTS inventory_order_idx         ON inventory_items (allocated_to_order_id);
+      CREATE INDEX IF NOT EXISTS sales_requests_status_idx   ON sales_requests (status);
+      CREATE INDEX IF NOT EXISTS sales_requests_phone_idx    ON sales_requests (phone);
+      CREATE INDEX IF NOT EXISTS audit_log_entity_idx        ON audit_log (entity_type, entity_id);
+      CREATE INDEX IF NOT EXISTS audit_log_created_idx       ON audit_log (created_at DESC);
+    `);
+    console.log("[db] schema relazionale verificato");
+  })().catch((err) => {
+    relationalSchemaBootstrapPromise = null;
+    console.error("[db] ensureRelationalSchema failed:", err?.message);
+    throw err;
+  });
+  return relationalSchemaBootstrapPromise;
+}
+
 async function readDatabaseDocument(key, fallback) {
   await ensureDatabaseStorage();
   const pool = await getPgPool();
@@ -8778,6 +8857,8 @@ server.listen(PORT, HOST, () => {
   // Pre-carica file statici e store in RAM all'avvio — la prima richiesta è già veloce
   preloadStaticFiles().catch((err) => console.error("[static-cache] preload failed", err));
   if (USE_POSTGRES) {
+    // Crea le tabelle relazionali se non esistono (idempotente)
+    ensureRelationalSchema().catch((err) => console.error("[db] relational schema init failed", err));
     readJson(STORE_PATH, {}).catch((err) => console.error("[store-cache] warm-up failed", err));
   }
 });
