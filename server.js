@@ -2398,6 +2398,8 @@ function releaseInventoryCommitmentsForOrder(store = {}, order = {}) {
         warehouse: {
           ...(order.operations?.warehouse || {}),
           inventoryAllocations: releasedAllocations,
+          shipped: false,
+          shippedAt: "",
         },
       },
     }),
@@ -2412,11 +2414,12 @@ function shouldFulfillInventoryForOrder(order = {}) {
   const warehouse = order.operations?.warehouse || {};
   const status = String(warehouse.status || "").trim();
   const mode = String(warehouse.fulfillmentMode || "").trim();
+  // Only trigger on explicit local signals — Shopify fulfillmentStatus alone
+  // must not auto-discharge inventory (it can be set automatically by webhooks)
   return Boolean(
     warehouse.shipped
     || status === "ritirato"
     || (mode === "corriere" && warehouse.carrierPassed)
-    || String(order.fulfillmentStatus || "").toLowerCase() === "fulfilled"
   );
 }
 
@@ -8607,7 +8610,8 @@ const server = createServer(async (req, res) => {
         // blocks unrelated user writes (e.g. inventory commit) for tens of seconds. The
         // advisory lock alone keeps state writes atomic.
         const isSlowExternalSync = url.pathname === "/api/sales/request-source/sync"
-          || url.pathname === "/api/orders/sync-shopify";
+          || url.pathname === "/api/orders/sync-shopify"
+          || /^\/api\/orders\/[^/]+\/sync-shopify-fulfillment$/.test(url.pathname);
         return await withApiStateLock(() => handleApi(req, res, url), {
           timeoutMs: isInventoryCreate ? 12_000 : isCommunicationsWrite ? 8_000 : isSlowExternalSync ? 30_000 : API_STATE_LOCK_TIMEOUT_MS,
           queue: !isInventoryCreate && !isCommunicationsWrite && !isSlowExternalSync,
