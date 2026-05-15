@@ -220,6 +220,7 @@ async function migrateOrders(orders) {
         totals, billing, warehouse, installation, accounting,
         line_items, line_details, attachments,
         converted_job_id,
+        operations_json,
         shopify_raw,
         created_at, updated_at
       ) VALUES (
@@ -232,7 +233,8 @@ async function migrateOrders(orders) {
         $26, $27, $28,
         $29,
         $30,
-        $31, $32
+        $31,
+        $32, $33
       )
       ON CONFLICT (id) DO UPDATE SET
         shopify_numeric_id  = EXCLUDED.shopify_numeric_id,
@@ -263,6 +265,7 @@ async function migrateOrders(orders) {
         line_details        = EXCLUDED.line_details,
         attachments         = EXCLUDED.attachments,
         converted_job_id    = EXCLUDED.converted_job_id,
+        operations_json     = EXCLUDED.operations_json,
         shopify_raw         = EXCLUDED.shopify_raw,
         created_at          = EXCLUDED.created_at,
         updated_at          = EXCLUDED.updated_at
@@ -296,6 +299,7 @@ async function migrateOrders(orders) {
       JSON.stringify(Array.isArray(order.lineDetails) ? order.lineDetails : []),
       JSON.stringify(Array.isArray(order.attachments) ? order.attachments : []),
       order.convertedJobId ? String(order.convertedJobId) : null,
+      JSON.stringify(safeJson(order.operations) ?? {}),
       JSON.stringify({}),
       safeTs(order.createdAt) ?? new Date().toISOString(),
       safeTs(order.updatedAt) ?? new Date().toISOString(),

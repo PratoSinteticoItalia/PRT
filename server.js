@@ -643,6 +643,7 @@ async function ensureRelationalSchema() {
         id BIGSERIAL PRIMARY KEY, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
         user_id TEXT, action TEXT NOT NULL, diff JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
       );
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS operations_json JSONB DEFAULT '{}';
       CREATE INDEX IF NOT EXISTS orders_shopify_id_idx       ON orders (shopify_numeric_id);
       CREATE INDEX IF NOT EXISTS orders_updated_at_idx       ON orders (updated_at DESC);
       CREATE INDEX IF NOT EXISTS orders_financial_status_idx ON orders (financial_status);
@@ -693,11 +694,19 @@ function dbRowToOrder(row) {
     attachments: row.attachments || [],
     convertedJobId: row.converted_job_id || null,
     accounting: row.accounting || {},
-    operations: {
-      warehouse: row.warehouse || {},
-      installation: row.installation || {},
-      accounting: row.accounting || {},
-    },
+    operations: row.operations_json && Object.keys(row.operations_json).length > 1
+      ? row.operations_json
+      : (() => {
+          // Colonna operations_json non ancora popolata: ricostruisci via normalizeOperations
+          // che deriva sqm/product dai lineItems quando mancano
+          const base = {
+            id: row.id,
+            lineItems: row.line_items || [],
+            lineDetails: row.line_details || [],
+            operations: { warehouse: row.warehouse || {}, installation: row.installation || {} },
+          };
+          return normalizeOperations(base);
+        })(),
   };
 }
 
@@ -848,10 +857,10 @@ async function upsertOrderToDb(order) {
         financial_status, fulfillment_status, payment_method,
         source, note, total,
         totals, billing, warehouse, installation, accounting,
-        line_items, line_details, attachments, converted_job_id, updated_at
+        line_items, line_details, attachments, converted_job_id, operations_json, updated_at
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,NOW()
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
         shopify_numeric_id=EXCLUDED.shopify_numeric_id,
@@ -871,6 +880,7 @@ async function upsertOrderToDb(order) {
         accounting=EXCLUDED.accounting,
         line_items=EXCLUDED.line_items, line_details=EXCLUDED.line_details,
         attachments=EXCLUDED.attachments, converted_job_id=EXCLUDED.converted_job_id,
+        operations_json=EXCLUDED.operations_json,
         updated_at=NOW()
     `, [
       String(order.id),
@@ -895,6 +905,7 @@ async function upsertOrderToDb(order) {
       JSON.stringify(Array.isArray(order.lineDetails) ? order.lineDetails : []),
       JSON.stringify(Array.isArray(order.attachments) ? order.attachments : []),
       order.convertedJobId ? String(order.convertedJobId) : null,
+      JSON.stringify(order.operations || {}),
     ]);
     // Audit log per cambiamenti di stato
     const isNewOrder = !existingOrderRow;
