@@ -4,6 +4,7 @@ import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } fr
 import { extname, dirname, join, resolve, sep } from "node:path";
 import { createHmac, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 
 const PORT = Number(process.env.PORT || 4178);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -111,6 +112,50 @@ let runtimeStoreRevision = "";
 let lastStoreBackupSnapshotAt = 0;
 let storeBackupQueue = Promise.resolve();
 let postgresMirrorWriteQueue = Promise.resolve();
+// In-memory store cache: evita un round-trip Postgres su ogni lettura API
+let storeMemCache = null;
+
+// Cache dei file statici pre-compressi all'avvio: evita readFile + gzipSync su ogni richiesta
+const staticFileCache = new Map(); // path → { raw, gzipped, mimeType }
+
+async function preloadStaticFiles() {
+  const targets = [
+    "index.html",
+    "app.js",
+    "styles.css",
+    "sw.js",
+    "manifest.webmanifest",
+    "garden-planner-page.js",
+    "sales-suite/shell.css",
+  ];
+  await Promise.allSettled(targets.map(async (rel) => {
+    try {
+      const filePath = join(ROOT, rel);
+      const ext = extname(rel);
+      let raw;
+      // Se esiste una versione pre-minificata (prodotta dal build step), usala
+      if (ext === ".js" || ext === ".css") {
+        const minRel = rel.replace(/\.(js|css)$/, ".min.$1");
+        const minPath = join(ROOT, minRel);
+        try {
+          raw = await readFile(minPath);
+          console.log(`[static-cache] usando versione minificata: ${minRel}`);
+        } catch {
+          raw = await readFile(filePath);
+        }
+      } else {
+        raw = await readFile(filePath);
+      }
+      const mimeType = MIME_TYPES[ext] || "application/octet-stream";
+      const isCompressible = /^(text\/|application\/(javascript|json|xml)|image\/svg)/.test(mimeType);
+      const gzipped = isCompressible ? gzipSync(raw) : null;
+      staticFileCache.set(`/${rel}`, { raw, gzipped, mimeType });
+    } catch {
+      // file opzionale — ignora se mancante
+    }
+  }));
+  console.log(`[static-cache] pre-caricati ${staticFileCache.size} file statici`);
+}
 let processApiWriteQueue = Promise.resolve();
 let processSessionWriteQueue = Promise.resolve();
 const STORE_EVENTS_HEARTBEAT_MS = 25_000;
@@ -576,31 +621,36 @@ async function readStoreRevisionSnapshot() {
 
 async function readJson(path, fallback) {
   const resolvedPath = resolve(path);
-  if (USE_POSTGRES && resolvedPath === resolve(STORE_PATH)) {
-    const payload = await readDatabaseDocument(STORE_DOC_KEY, fallback);
+  if (resolvedPath === resolve(STORE_PATH)) {
+    // Usa la cache in memoria se disponibile — evita round-trip DB su ogni API call
+    if (storeMemCache !== null) return storeMemCache;
+    let payload;
+    if (USE_POSTGRES) {
+      payload = await readDatabaseDocument(STORE_DOC_KEY, fallback);
+    } else {
+      payload = await readLocalJson(path, fallback);
+    }
     if (payload && typeof payload === "object") ensureStoreRevision(payload);
+    storeMemCache = payload;
     return payload;
   }
   if (USE_POSTGRES && resolvedPath === resolve(SESSION_PATH)) {
     return readDatabaseDocument(SESSION_DOC_KEY, fallback);
   }
-  const payload = await readLocalJson(path, fallback);
-  if (resolvedPath === resolve(STORE_PATH) && payload && typeof payload === "object") ensureStoreRevision(payload);
-  return payload;
+  return readLocalJson(path, fallback);
 }
 
 async function writeJson(path, value) {
   const resolvedPath = resolve(path);
   const isStorePayload = resolvedPath === resolve(STORE_PATH);
-  if (resolvedPath === resolve(STORE_PATH) && value && typeof value === "object") {
+  if (isStorePayload && value && typeof value === "object") {
     rotateStoreRevision(value);
+    storeMemCache = value; // aggiorna cache in memoria
   }
-  if (USE_POSTGRES && resolvedPath === resolve(STORE_PATH)) {
+  if (USE_POSTGRES && isStorePayload) {
     await writeDatabaseDocument(STORE_DOC_KEY, value);
     queuePostgresMirrorWrite(path, value);
-    if (isStorePayload) {
-      broadcastStoreRevision(getStoreRevision(value));
-    }
+    broadcastStoreRevision(getStoreRevision(value));
     return;
   }
   if (USE_POSTGRES && resolvedPath === resolve(SESSION_PATH)) {
@@ -1480,10 +1530,18 @@ function sendRedirect(res, location, headers = {}) {
   res.end();
 }
 
-function getStaticHeaders(contentType) {
+function getStaticHeaders(contentType, { versioned = false, isHtml = false } = {}) {
+  // Asset con ?v=... query string → immutable (il browser li scarica UNA SOLA VOLTA)
+  // HTML → no-cache (controlla sempre il server, ma usa cache se non cambiato)
+  // Tutto il resto → no-store (fallback sicuro)
+  const cacheControl = versioned
+    ? "public, max-age=31536000, immutable"
+    : isHtml
+      ? "no-cache"
+      : "no-store";
   return {
     "Content-Type": contentType,
-    "Cache-Control": "no-store",
+    "Cache-Control": cacheControl,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
   };
@@ -2031,16 +2089,8 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
     const options = getMeasuredCandidateOptions(inventory, plan, usedPieceIds, measuredSourceUsage, measuredBundles);
     if (!options.length && bundle.pieceCount > 1) return;
     if (!options.length) {
-      missing.push({
-        requirementId: bundle.requirementIds[0],
-        requirementIds: bundle.requirementIds,
-        product: bundle.product,
-        width: bundle.width,
-        length: bundle.totalLength,
-        sqm: bundle.sqm,
-        reason: "stock_unavailable",
-      });
-      bundle.requirementIds.forEach((id) => bundledRequirementIds.add(id));
+      // Non aggiungere a bundledRequirementIds: lascia che il percorso individuale
+      // gestisca il requirement spezzandolo su più pezzi disponibili
       return;
     }
     const selected = options[0];
@@ -2418,7 +2468,6 @@ function shouldFulfillInventoryForOrder(order = {}) {
   // must not auto-discharge inventory (it can be set automatically by webhooks)
   return Boolean(
     warehouse.shipped
-    || status === "ritirato"
     || (mode === "corriere" && warehouse.carrierPassed)
   );
 }
@@ -8642,10 +8691,41 @@ const server = createServer(async (req, res) => {
       res.end("Not found");
       return;
     }
-    const content = await readFile(filePath);
     const ext = extname(filePath);
-    res.writeHead(200, getStaticHeaders(MIME_TYPES[ext] || "application/octet-stream"));
-    res.end(content);
+    const mimeType = MIME_TYPES[ext] || "application/octet-stream";
+    const isHtml = ext === ".html";
+    const versioned = Boolean(url.search) && !isHtml;
+    const headers = getStaticHeaders(mimeType, { versioned, isHtml });
+    const acceptsGzip = /gzip/i.test(req.headers["accept-encoding"] || "");
+    // Prova a servire dalla cache pre-compressa (evita readFile + gzipSync runtime)
+    const cacheKey = `/${requestedPath.replace(/^\//, "")}`;
+    const cached = staticFileCache.get(cacheKey);
+    if (cached) {
+      if (acceptsGzip && cached.gzipped) {
+        headers["Content-Encoding"] = "gzip";
+        headers["Content-Length"] = String(cached.gzipped.length);
+        res.writeHead(200, headers);
+        res.end(cached.gzipped);
+      } else {
+        headers["Content-Length"] = String(cached.raw.length);
+        res.writeHead(200, headers);
+        res.end(cached.raw);
+      }
+      return;
+    }
+    // Fallback: leggi da disco (file non pre-caricato, es. immagini)
+    const content = await readFile(filePath);
+    const isCompressible = /^(text\/|application\/(javascript|json|xml)|image\/svg)/.test(mimeType);
+    if (acceptsGzip && isCompressible) {
+      const compressed = gzipSync(content);
+      headers["Content-Encoding"] = "gzip";
+      headers["Content-Length"] = String(compressed.length);
+      res.writeHead(200, headers);
+      res.end(compressed);
+    } else {
+      res.writeHead(200, headers);
+      res.end(content);
+    }
   } catch (error) {
     if (url.pathname.startsWith("/api/")) {
       const status = Number(error?.status || 0);
@@ -8659,9 +8739,33 @@ const server = createServer(async (req, res) => {
     }
 
     try {
-      const content = await readFile(join(ROOT, "index.html"));
-      res.writeHead(200, getStaticHeaders("text/html; charset=utf-8"));
-      res.end(content);
+      const headers = getStaticHeaders("text/html; charset=utf-8", { isHtml: true });
+      const acceptsGzip = /gzip/i.test(req.headers["accept-encoding"] || "");
+      const cachedHtml = staticFileCache.get("/index.html");
+      if (cachedHtml) {
+        if (acceptsGzip && cachedHtml.gzipped) {
+          headers["Content-Encoding"] = "gzip";
+          headers["Content-Length"] = String(cachedHtml.gzipped.length);
+          res.writeHead(200, headers);
+          res.end(cachedHtml.gzipped);
+        } else {
+          headers["Content-Length"] = String(cachedHtml.raw.length);
+          res.writeHead(200, headers);
+          res.end(cachedHtml.raw);
+        }
+      } else {
+        const content = await readFile(join(ROOT, "index.html"));
+        if (acceptsGzip) {
+          const compressed = gzipSync(content);
+          headers["Content-Encoding"] = "gzip";
+          headers["Content-Length"] = String(compressed.length);
+          res.writeHead(200, headers);
+          res.end(compressed);
+        } else {
+          res.writeHead(200, headers);
+          res.end(content);
+        }
+      }
     } catch {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
       res.end("Not found");
@@ -8671,4 +8775,9 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Vertex Ops backend running on http://${HOST}:${PORT}`);
+  // Pre-carica file statici e store in RAM all'avvio — la prima richiesta è già veloce
+  preloadStaticFiles().catch((err) => console.error("[static-cache] preload failed", err));
+  if (USE_POSTGRES) {
+    readJson(STORE_PATH, {}).catch((err) => console.error("[store-cache] warm-up failed", err));
+  }
 });

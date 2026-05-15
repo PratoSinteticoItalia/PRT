@@ -31,9 +31,8 @@ const NETWORK_FIRST_PATHS = new Set([
   "/garden-photo-configurator.html",
   "/garden-photo-configurator-v2.html",
   "/sales-suite/generator.html",
-  "/garden-planner-page.js",
-  "/styles.css",
-  "/app.js",
+  // app.js, styles.css, garden-planner-page.js sono versionati (?v=...) e pre-cachati
+  // nell'install step → cache-first è corretto, evita una richiesta network inutile
   "/manifest.webmanifest",
 ]);
 

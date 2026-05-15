@@ -6,16 +6,17 @@ const DEFAULT_CREW_DAILY_CAPACITY = 120;
 const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
 const COVERAGE_GEOCODE_CACHE_KEY = "pose-coverage-geocode-v1";
 const PROFIT_SPLIT_STORAGE_KEY = "pose-profit-split-v1";
-const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 15;
+const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 90; // era 15s — ridotto a 90s per meno chiamate /api/session
 const COMMUNICATIONS_POLL_INTERVAL_MS = 8000;
 const SESSION_REVISION_ENDPOINT = "/api/session/revision";
 const SESSION_EVENTS_ENDPOINT = "/api/events";
 const SESSION_EVENTS_RECONNECT_BASE_MS = 500;
 const SESSION_EVENTS_RECONNECT_MAX_MS = 10_000;
 const SESSION_EVENTS_REFRESH_DEBOUNCE_MS = 300;
-const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 2;
-const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 2;
-const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 45;
+const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5; // era 2min — sync periodica ogni 5min
+const SHOPIFY_AUTO_SYNC_VISIBILITY_COOLDOWN_MS = 1000 * 60 * 4; // no sync su focus/visibility se < 4min dall'ultima
+const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5; // era 2min — ogni 5min
+const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 60 * 2; // era 45s — cooldown 2min
 const SALES_REQUEST_SAVE_TIMEOUT_MS = 90_000;
 const SALES_REQUEST_SAVE_MAX_RETRIES = 2;
 const COVERAGE_SYNC_DEBOUNCE_MS = 350;
@@ -1231,6 +1232,7 @@ let sessionEventsLastRefreshAt = 0;
 let shopifyAutoSyncTimer = 0;
 let coverageGeocodeCache = loadCoverageGeocodeCache();
 let shopifyAutoSyncInFlight = false;
+let shopifyAutoSyncLastAttemptAt = 0;
 let salesRequestAutoSyncTimer = 0;
 let salesRequestSyncInFlight = false;
 let salesRequestAutoSyncLastAttemptAt = 0;
@@ -8369,7 +8371,6 @@ function isLogisticsOrderCompleted(order) {
   const shopifyFulfilled = String(order.fulfillmentStatus || "").toLowerCase() === "fulfilled";
   return Boolean(
     warehouse.shipped
-    || status === "ritirato"
     || (mode === "corriere" && warehouse.carrierPassed)
     || shopifyFulfilled,
   );
@@ -16584,6 +16585,7 @@ function formatShopifySyncError(rawMessage = "") {
 async function runShopifySync({ silent = false } = {}) {
   if (state.syncInProgress || shopifyAutoSyncInFlight) return false;
   shopifyAutoSyncInFlight = true;
+  shopifyAutoSyncLastAttemptAt = Date.now();
   const safetyTimer = window.setTimeout(() => {
     if (shopifyAutoSyncInFlight) {
       shopifyAutoSyncInFlight = false;
@@ -17205,6 +17207,17 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   if (_inboxFlowSaveInFlight.has(orderId)) return;
   _inboxFlowSaveInFlight.add(orderId);
   const previousOrder = state.orders.find((item) => item.id === orderId) || null;
+  // Se l'ordine era stato marcato "shipped" automaticamente (bug vecchio) ma non ha
+  // allocazioni evase, resetta shipped:false quando si cambia stato verso un non-terminale
+  if (payload.warehouse && previousOrder) {
+    const prevShipped = Boolean(previousOrder.operations?.warehouse?.shipped);
+    const newStatus = String(payload.warehouse.status || "").trim();
+    const hasEvaso = getOrderInventoryAllocations(previousOrder)
+      .some((a) => getInventoryPieceState({ pieceState: a.status }) === "evaso");
+    if (prevShipped && !hasEvaso && newStatus !== "ritirato") {
+      payload.warehouse = { ...payload.warehouse, shipped: false };
+    }
+  }
   if (previousOrder) {
     const optimistic = {
       ...previousOrder,
@@ -17366,6 +17379,17 @@ async function saveShipping(event) {
       : " Inventory was not auto-updated: use Fulfill now in inventory.";
   }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  // Se l'ordine è stato marcato come spedito ma non ha allocazioni inventario,
+  // porta l'utente alla vista warehouse per completare l'impegno
+  if (nextShipped) {
+    const savedAllocations = getOrderInventoryAllocations(saved);
+    const hasPhysicalLines = getPhysicalOrderLines(saved).length > 0 || toNumber(saved.operations?.sqm || 0) > 0;
+    if (savedAllocations.length === 0 && hasPhysicalLines) {
+      state.selectedOrderId = saved.id;
+      setView("warehouse");
+      return;
+    }
+  }
   renderCurrentViewOnly(state.currentView);
   setStatus(
     ui.shippingStatus,
@@ -19955,7 +19979,7 @@ document.addEventListener("visibilitychange", () => {
   }
   if (!state.currentUser || document.hidden) return;
   void keepSessionAlive({ silent: true });
-  if (canAutoSyncShopify()) {
+  if (canAutoSyncShopify() && Date.now() - shopifyAutoSyncLastAttemptAt >= SHOPIFY_AUTO_SYNC_VISIBILITY_COOLDOWN_MS) {
     void runShopifySync({ silent: true });
   }
   if (canAutoRefreshSalesRequests()) {
@@ -19966,7 +19990,7 @@ window.addEventListener("focus", () => {
   flushPendingCurrentViewRefresh();
   if (!state.currentUser) return;
   void keepSessionAlive({ silent: true });
-  if (canAutoSyncShopify()) {
+  if (canAutoSyncShopify() && Date.now() - shopifyAutoSyncLastAttemptAt >= SHOPIFY_AUTO_SYNC_VISIBILITY_COOLDOWN_MS) {
     void runShopifySync({ silent: true });
   }
   if (canAutoRefreshSalesRequests()) {
@@ -19977,7 +20001,7 @@ window.addEventListener("online", () => {
   flushPendingCurrentViewRefresh();
   if (!state.currentUser) return;
   void keepSessionAlive({ silent: true });
-  if (canAutoSyncShopify()) {
+  if (canAutoSyncShopify() && Date.now() - shopifyAutoSyncLastAttemptAt >= SHOPIFY_AUTO_SYNC_VISIBILITY_COOLDOWN_MS) {
     void runShopifySync({ silent: true });
   }
   if (canAutoRefreshSalesRequests()) {

@@ -7,3 +7,6 @@ data/attachments/
 node_modules/
 .claude/worktrees/
 kanban-demo.html
+# Artefatti build (prodotti da npm run build / scripts/build.mjs)
+*.min.js
+*.min.css

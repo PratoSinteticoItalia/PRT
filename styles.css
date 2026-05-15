@@ -2845,6 +2845,10 @@ button.is-feedback,
   letter-spacing: -0.04em;
 }
 
+.page-header h1[tabindex="-1"]:focus {
+  outline: none;
+}
+
 .page-header-sub {
   margin-top: 6px;
   color: var(--muted);
@@ -7039,36 +7043,51 @@ body {
   .topbar-btn,
   .btn,
   .primary-button,
-  .ghost-button,
-  .filter-btn {
+  .ghost-button {
     min-height: 40px;
     width: 100%;
     justify-content: center;
   }
 
   .detail-actions,
-  .inline-actions,
-  .filter-bar {
+  .inline-actions {
     display: grid;
     grid-template-columns: 1fr;
     width: 100%;
   }
 
   .detail-actions > *,
-  .inline-actions > *,
-  .filter-bar > * {
+  .inline-actions > * {
     width: 100%;
   }
 
-  /* Bug 4: filtri inventario/logistica — scroll orizzontale invece di stack verticale */
-  #warehouse .filter-bar,
-  #shipping .filter-bar {
+  /* Tutti i filter-bar: scroll orizzontale su mobile */
+  .filter-bar {
     display: flex;
+    flex-direction: row;
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    gap: 8px;
     width: 100%;
+    padding-bottom: 2px;
+  }
+
+  .filter-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filter-btn {
+    min-height: 40px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    width: auto;
+  }
+
+  /* Bug 4: override specifico warehouse/shipping (padding extra + children) */
+  #warehouse .filter-bar,
+  #shipping .filter-bar {
     padding-bottom: 4px;
   }
   #warehouse .filter-bar > *,
@@ -7733,7 +7752,6 @@ body {
     gap: 10px;
   }
 
-  .filter-bar,
   .detail-actions,
   .inline-actions {
     display: grid;
@@ -7741,10 +7759,14 @@ body {
     width: 100%;
   }
 
-  .filter-bar > *,
   .detail-actions > *,
   .inline-actions > * {
     width: 100%;
+  }
+
+  .view-toolbar .filter-bar,
+  .filter-bar {
+    flex-wrap: nowrap;
   }
 
   .shipping-material-line {
