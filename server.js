@@ -87,6 +87,9 @@ const SHOPIFY_OAUTH_SCOPES = [
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const SESSION_REFRESH_BUFFER_MS = 1000 * 60 * 60 * 24 * 7;
 const LOGIN_WINDOW_MS = 1000 * 60 * 2;
+// I webhook Shopify gestiscono gli aggiornamenti in tempo reale; la sync periodica è solo di sicurezza.
+// Valore precedente: 1000 * 60 * 5 (5 minuti)
+const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 30;
 const LOGIN_MAX_ATTEMPTS = 20;
 const SHOPIFY_FETCH_TIMEOUT_MS = 10_000;
 const SHOPIFY_MAX_RETRIES = 2;
@@ -7630,17 +7633,46 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/webhooks/shopify/orders" && req.method === "POST") {
     const rawBody = await readRawBody(req);
     const hmacHeader = req.headers["x-shopify-hmac-sha256"];
-    const topic = String(req.headers["x-shopify-topic"] || "");
+    const topic = req.headers["x-shopify-topic"] ?? "";
     const verified = verifyShopifyWebhook(rawBody, hmacHeader, store.shopifySettings?.clientSecret || "");
     if (!verified) return sendJson(res, 401, { error: "invalid_webhook_signature" });
-    if (topic && topic !== "orders/create") return sendJson(res, 200, { ok: true, ignored: true });
 
     const payload = JSON.parse(rawBody.toString("utf8") || "{}");
-    const normalized = normalizeOrderPayload(payload, 0);
-    const result = upsertOrderRecord(store, normalized);
-    store.orders = sortOrdersByRecency(store.orders);
-    await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, { ok: true, orderId: result.order.id, jobId: result.job?.id || null });
+
+    switch (topic) {
+      case "orders/create":
+      case "orders/updated": {
+        const normalized = normalizeOrderPayload(payload, 0);
+        const result = upsertOrderRecord(store, normalized);
+        store.orders = sortOrdersByRecency(store.orders);
+        await writeJson(STORE_PATH, store);
+        return sendJson(res, 200, { ok: true, orderId: result.order.id, jobId: result.job?.id || null });
+      }
+      case "orders/paid": {
+        const shopifyId = String(payload.id ?? "");
+        if (shopifyId) {
+          const idx = store.orders.findIndex((o) => getNormalizedShopifyNumericId(o) === shopifyId || o.id === shopifyId);
+          if (idx >= 0) {
+            store.orders[idx] = { ...store.orders[idx], financialStatus: "paid" };
+            await writeJson(STORE_PATH, store);
+          }
+        }
+        return sendJson(res, 200, { ok: true });
+      }
+      case "orders/cancelled": {
+        const shopifyId = String(payload.id ?? "");
+        if (shopifyId) {
+          const idx = store.orders.findIndex((o) => getNormalizedShopifyNumericId(o) === shopifyId || o.id === shopifyId);
+          if (idx >= 0) {
+            store.orders[idx] = { ...store.orders[idx], fulfillmentStatus: "cancelled", financialStatus: "voided" };
+            await writeJson(STORE_PATH, store);
+          }
+        }
+        return sendJson(res, 200, { ok: true });
+      }
+      default:
+        return sendJson(res, 200, { ok: true, ignored: true });
+    }
   }
 
   if (url.pathname === "/api/shopify/oauth/start" && req.method === "GET") {
@@ -8595,7 +8627,7 @@ async function handleApi(req, res, url) {
 
       const accessToken = await getShopifyAccessToken(store);
       const mutation = `
-        mutation RegisterOrdersCreateWebhook($topic: WebhookSubscriptionTopic!, $subscription: WebhookSubscriptionInput!) {
+        mutation RegisterOrdersWebhook($topic: WebhookSubscriptionTopic!, $subscription: WebhookSubscriptionInput!) {
           webhookSubscriptionCreate(topic: $topic, webhookSubscription: $subscription) {
             userErrors {
               field
@@ -8609,28 +8641,54 @@ async function handleApi(req, res, url) {
           }
         }
       `;
-      const data = await queryShopifyAdmin(
-        store,
-        accessToken,
-        mutation,
-        {
-          topic: "ORDERS_CREATE",
-          subscription: {
-            uri: endpoint,
-            format: "JSON",
+
+      const topicsToRegister = [
+        "ORDERS_CREATE",
+        "ORDERS_UPDATED",
+        "ORDERS_CANCELLED",
+        "ORDERS_PAID",
+      ];
+
+      const registrationResults = [];
+      for (const topicName of topicsToRegister) {
+        const data = await queryShopifyAdmin(
+          store,
+          accessToken,
+          mutation,
+          {
+            topic: topicName,
+            subscription: {
+              uri: endpoint,
+              format: "JSON",
+            },
           },
-        },
-        "webhook_register_failed",
-      );
-      const created = data?.webhookSubscriptionCreate;
-      if (created?.userErrors?.length) {
-        return sendJson(res, 400, { error: created.userErrors[0].message || "webhook_register_failed" });
+          "webhook_register_failed",
+        );
+        const created = data?.webhookSubscriptionCreate;
+        if (created?.userErrors?.length) {
+          // Ignora errori di topic non supportato (es. ORDERS_PAID su API più vecchie)
+          // ma propaga errori critici per il topic principale
+          if (topicName === "ORDERS_CREATE") {
+            return sendJson(res, 400, { error: created.userErrors[0].message || "webhook_register_failed" });
+          }
+          registrationResults.push({ topic: topicName, error: created.userErrors[0].message });
+        } else {
+          registrationResults.push({ topic: topicName, id: created?.webhookSubscription?.id || "" });
+        }
       }
 
+      const primaryResult = registrationResults.find((r) => r.topic === "ORDERS_CREATE");
       store.shopifySettings.webhookEndpoint = endpoint;
-      store.shopifySettings.webhookSubscriptionId = created?.webhookSubscription?.id || "";
+      store.shopifySettings.webhookSubscriptionId = primaryResult?.id || "";
+      store.shopifySettings.webhookTopicsRegistered = registrationResults
+        .filter((r) => r.id)
+        .map((r) => r.topic);
       await writeJson(STORE_PATH, store);
-      return sendJson(res, 200, { endpoint, subscriptionId: store.shopifySettings.webhookSubscriptionId });
+      return sendJson(res, 200, {
+        endpoint,
+        subscriptionId: store.shopifySettings.webhookSubscriptionId,
+        registrationResults,
+      });
     } catch (error) {
       return sendJson(res, 400, { error: error.message || "webhook_register_failed" });
     }
