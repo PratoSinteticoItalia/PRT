@@ -710,7 +710,7 @@ button.is-feedback,
 .topbar-search input::placeholder { color: rgba(255,255,255,0.35); }
 
 .topbar-search input:focus {
-  width: 400px;
+  /* Niente cambio di width: evita layout shift quando la barra riceve focus */
   background: rgba(255,255,255,0.12);
   border-color: rgba(255,255,255,0.2);
   box-shadow: none;
@@ -1172,7 +1172,7 @@ button.is-feedback,
 .row-actions,
 .inline-actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -2767,18 +2767,21 @@ button.is-feedback,
 .status-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 9px 12px;
+  gap: 5px;
+  padding: 3px 10px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: 11.5px;
   font-weight: 700;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+  white-space: nowrap;
 }
 
-.status-blue { background: var(--blue-soft); color: var(--blue); }
-.status-green { background: var(--brand-soft); color: var(--brand); }
-.status-amber { background: var(--amber-soft); color: var(--amber); }
-.status-red { background: var(--red-soft); color: var(--red); }
-.status-slate { background: #eef2f6; color: #637487; }
+.status-blue   { background: var(--tok-blue-bg);   color: var(--tok-blue-text);   border-color: var(--tok-blue-border); }
+.status-green  { background: var(--tok-green-bg);  color: var(--tok-green-text);  border-color: var(--tok-green-border); }
+.status-amber  { background: var(--tok-amber-bg);  color: var(--tok-amber-text);  border-color: var(--tok-amber-border); }
+.status-red    { background: var(--tok-red-bg);    color: var(--tok-red-text);    border-color: var(--tok-red-border); }
+.status-slate  { background: var(--tok-slate-bg);  color: var(--tok-slate-text);  border-color: var(--tok-slate-border); }
 
 @media (max-width: 1180px) {
   .dashboard-grid {
@@ -4443,7 +4446,7 @@ body {
 }
 
 .topbar-search input:focus {
-  width: 400px;
+  /* width fissa: niente layout shift al focus */
 }
 
 .topbar-btn {
@@ -11815,58 +11818,43 @@ body.mobile-safe-mode .nav-link.is-active {
 
 .sales-status-pill.is-new,
 .sales-request-detail-chip.is-new {
-  border-color: rgba(37, 99, 235, 0.22);
-  background: rgba(37, 99, 235, 0.1);
-  color: #1d4ed8;
+  border-color: var(--tok-blue-border);
+  background: var(--tok-blue-bg);
+  color: var(--tok-blue-text);
 }
-
-.sales-request-detail-chip.is-new strong {
-  color: #1d4ed8;
-}
+.sales-request-detail-chip.is-new strong { color: var(--tok-blue-text); }
 
 .sales-status-pill.is-followup,
 .sales-request-detail-chip.is-followup {
-  border-color: rgba(217, 119, 6, 0.28);
-  background: rgba(245, 158, 11, 0.13);
-  color: #a16207;
+  border-color: var(--tok-amber-border);
+  background: var(--tok-amber-bg);
+  color: var(--tok-amber-text);
 }
-
-.sales-request-detail-chip.is-followup strong {
-  color: #a16207;
-}
+.sales-request-detail-chip.is-followup strong { color: var(--tok-amber-text); }
 
 .sales-status-pill.is-quoted,
 .sales-request-detail-chip.is-quoted {
-  border-color: rgba(14, 116, 144, 0.24);
-  background: rgba(6, 182, 212, 0.12);
-  color: #0e7490;
+  border-color: var(--tok-teal-border);
+  background: var(--tok-teal-bg);
+  color: var(--tok-teal-text);
 }
-
-.sales-request-detail-chip.is-quoted strong {
-  color: #0e7490;
-}
+.sales-request-detail-chip.is-quoted strong { color: var(--tok-teal-text); }
 
 .sales-status-pill.is-closed,
 .sales-request-detail-chip.is-closed {
-  border-color: rgba(100, 116, 139, 0.22);
-  background: rgba(100, 116, 139, 0.11);
-  color: #475569;
+  border-color: var(--tok-slate-border);
+  background: var(--tok-slate-bg);
+  color: var(--tok-slate-text);
 }
-
-.sales-request-detail-chip.is-closed strong {
-  color: #475569;
-}
+.sales-request-detail-chip.is-closed strong { color: var(--tok-slate-text); }
 
 .sales-status-pill.is-custom,
 .sales-request-detail-chip.is-custom {
-  border-color: rgba(79, 70, 229, 0.2);
-  background: rgba(79, 70, 229, 0.09);
-  color: #4338ca;
+  border-color: var(--tok-purple-border);
+  background: var(--tok-purple-bg);
+  color: var(--tok-purple-text);
 }
-
-.sales-request-detail-chip.is-custom strong {
-  color: #4338ca;
-}
+.sales-request-detail-chip.is-custom strong { color: var(--tok-purple-text); }
 
 .sales-request-detail-meta {
   display: flex;
@@ -11893,17 +11881,17 @@ body.mobile-safe-mode .nav-link.is-active {
 }
 
 .sales-request-detail-chip.is-queued {
-  border-color: rgba(37, 99, 235, 0.22);
-  background: rgba(37, 99, 235, 0.09);
+  border-color: var(--tok-blue-border);
+  background: var(--tok-blue-bg);
 }
 
 .sales-request-detail-chip.is-queued strong {
-  color: #1d4ed8;
+  color: var(--tok-blue-text);
 }
 
 .sales-request-detail-chip.is-sent {
-  border-color: rgba(31, 70, 55, 0.24);
-  background: rgba(31, 70, 55, 0.09);
+  border-color: var(--tok-green-border);
+  background: var(--tok-green-bg);
 }
 
 .sales-request-detail-chip.is-sent strong {
@@ -14610,39 +14598,39 @@ textarea.text-input {
 
 :root {
   /* Verde — confermato, ok, assegnato, pubblicato */
-  --tok-green-bg:     rgba(31, 70, 55, 0.09);
-  --tok-green-border: rgba(31, 70, 55, 0.20);
-  --tok-green-text:   #1f4637;
+  --tok-green-bg:     #d1fae5;
+  --tok-green-border: #6ee7b7;
+  --tok-green-text:   #064e3b;
 
   /* Blu — nuovo, pianificato, info */
-  --tok-blue-bg:      rgba(62, 116, 216, 0.10);
-  --tok-blue-border:  rgba(62, 116, 216, 0.20);
-  --tok-blue-text:    #2563c8;
+  --tok-blue-bg:      #dbeafe;
+  --tok-blue-border:  #93c5fd;
+  --tok-blue-text:    #1e3a8a;
 
   /* Ambra — in attesa, follow-up, da fare */
-  --tok-amber-bg:     rgba(217, 119, 6, 0.09);
-  --tok-amber-border: rgba(217, 119, 6, 0.22);
-  --tok-amber-text:   #92400e;
+  --tok-amber-bg:     #fef3c7;
+  --tok-amber-border: #fcd34d;
+  --tok-amber-text:   #78350f;
 
   /* Rosso — urgente, bloccato, da incassare */
-  --tok-red-bg:       rgba(167, 75, 75, 0.09);
-  --tok-red-border:   rgba(167, 75, 75, 0.20);
-  --tok-red-text:     #a74b4b;
+  --tok-red-bg:       #fee2e2;
+  --tok-red-border:   #fca5a5;
+  --tok-red-text:     #7f1d1d;
 
   /* Teal — preventivo inviato (stato specifico vendite) */
-  --tok-teal-bg:      rgba(6, 182, 212, 0.10);
-  --tok-teal-border:  rgba(14, 116, 144, 0.22);
-  --tok-teal-text:    #0e7490;
+  --tok-teal-bg:      #ccfbf1;
+  --tok-teal-border:  #5eead4;
+  --tok-teal-text:    #134e4a;
 
   /* Slate — neutro, chiuso, archiviato */
-  --tok-slate-bg:     rgba(100, 116, 139, 0.10);
-  --tok-slate-border: rgba(100, 116, 139, 0.18);
-  --tok-slate-text:   #475569;
+  --tok-slate-bg:     #e2e8f0;
+  --tok-slate-border: #94a3b8;
+  --tok-slate-text:   #1e293b;
 
   /* Viola — personalizzato */
-  --tok-purple-bg:    rgba(79, 70, 229, 0.09);
-  --tok-purple-border:rgba(79, 70, 229, 0.18);
-  --tok-purple-text:  #4338ca;
+  --tok-purple-bg:    #ede9fe;
+  --tok-purple-border:#c4b5fd;
+  --tok-purple-text:  #4c1d95;
 }
 
 /* action-badge variants */
@@ -15466,4 +15454,224 @@ textarea.text-input {
   .marketing-cal-week {
     min-width: 560px;
   }
+}
+
+/* ── UI polish: tipografia, spaziatura, stabilità layout ─────────────────── */
+
+/* Reload button: larghezza fissa per evitare shift quando il testo cambia
+   tra "Ricarica dati" e "Sincronizzo..." */
+#reload-button {
+  min-width: 112px;
+  justify-content: center;
+}
+
+/* Topbar: "Nuovo ordine" rimane il CTA principale, reload è secondario */
+#new-order-button {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+#new-order-button:hover {
+  background: #40916c;
+  border-color: #40916c;
+}
+
+/* Topbar right: spacing leggermente più largo tra i controlli */
+.topbar-right {
+  gap: 10px;
+}
+
+/* Inbox status chips: font e padding più compatti */
+.inbox-status-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.01em;
+}
+.inbox-status-chip.is-idle { background: #f1f5f9; color: #64748b; }
+.inbox-status-chip.is-warn { background: var(--tok-amber-bg); color: var(--tok-amber-text); border: 1px solid var(--tok-amber-border); }
+.inbox-status-chip.is-info { background: var(--tok-blue-bg);  color: var(--tok-blue-text);  border: 1px solid var(--tok-blue-border); }
+.inbox-status-chip.is-ok   { background: var(--tok-green-bg); color: var(--tok-green-text); border: 1px solid var(--tok-green-border); }
+
+/* Order card: gerarchia tipografica più chiara */
+.order-card-head strong {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
+}
+.order-card-meta {
+  font-size: 12px;
+  color: #7a8694;
+  line-height: 1.4;
+}
+
+/* Sales request cards: nome cliente più prominente */
+.sales-request-card-head strong,
+.sales-content-card-head strong {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: #0f1724;
+}
+.sales-request-card-head p,
+.sales-content-card p {
+  font-size: 12.5px;
+  color: #7a8694;
+  margin: 3px 0 0;
+}
+
+/* Sales request card meta: testo secondario più leggibile */
+.sales-request-card-meta,
+.sales-request-card-foot {
+  font-size: 12px;
+  color: #7a8694;
+}
+.sales-request-card-sqm {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: #1a1a18;
+}
+
+/* Action badge: font più leggibile */
+.action-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 3px 9px;
+}
+
+/* Order type badge: dimensioni uniformi */
+.order-type-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.01em;
+}
+
+/* Panel head: spazio verticale più generoso */
+.panel-head,
+.subsection-head {
+  margin-bottom: 18px;
+}
+
+/* Detail panel inline-actions: respiro tra bottoni */
+.sales-request-detail-panel .inline-actions,
+.order-detail-panel .inline-actions,
+.job-detail-panel .inline-actions {
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+/* Small button: padding orizzontale leggero per bottoni icon+testo */
+.small-button,
+.ghost-button.small-button,
+.primary-button.small-button {
+  padding: 7px 13px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+/* Ghost button: bordo più definito */
+.ghost-button {
+  border-color: rgba(0,0,0,0.12);
+}
+.ghost-button:hover {
+  border-color: rgba(0,0,0,0.2);
+  background: rgba(255,255,255,1);
+}
+
+/* Sales status pill (nella lista): altezza coerente con i badge */
+.sales-status-pill {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Rimozione del focus-width sulla ricerca mobile */
+@media (max-width: 1180px) {
+  .topbar-search input:focus {
+    width: 320px;
+  }
+}
+
+/* Sezione tag filtri: più compatti */
+.filter-btn {
+  height: 34px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Contatori nelle pillole filtro: separati visivamente */
+.filter-btn .filter-count,
+.filter-count {
+  font-weight: 800;
+  opacity: 0.75;
+  margin-left: 4px;
+}
+
+/* Nav labels: gerarchia sezioni sidebar */
+.nav-section-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #a0a09a;
+  padding: 14px 10px 4px;
+}
+
+/* Stepper: più leggibile */
+.stepper-step {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Panel notes: colore testo più chiaro e font-size giusto */
+.panel-note,
+.form-note {
+  font-size: 12px;
+  color: #8a9099;
+  line-height: 1.5;
+}
+
+/* Card labels nel CRM: spaziatura uniforme */
+.sales-request-detail-meta {
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* Audit trail / storia: font leggero */
+.audit-trail-item,
+.historia-item {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.audit-trail-time,
+.historia-time {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* Margine interno pannelli detail: respiro superiore */
+.sales-request-detail-panel > *:first-child,
+.order-detail-panel > *:first-child {
+  margin-top: 0;
+}
+
+/* Assegnazione chip: badge leggibile */
+.sales-request-detail-chip {
+  font-size: 12px;
+  font-weight: 600;
+}
+.sales-request-detail-chip strong {
+  font-size: 13px;
+  font-weight: 700;
 }
