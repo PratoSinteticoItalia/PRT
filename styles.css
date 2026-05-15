@@ -2733,6 +2733,15 @@ button.is-feedback,
 .modal-header { margin-bottom: 18px; }
 .modal-actions { margin-top: 18px; }
 
+.modal-form .modal-actions {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  padding-top: 14px;
+  margin-top: 8px;
+  z-index: 1;
+}
+
 .modal-form {
   max-height: calc(100vh - 180px);
   overflow-y: auto;
@@ -3740,6 +3749,16 @@ button.is-feedback,
   border: 1px solid #e1e8dc;
   border-radius: 18px;
   padding: 14px;
+}
+
+.cal-day.cal-day-today {
+  border-color: #4a8c54;
+  background: rgba(74, 140, 84, 0.04);
+  box-shadow: 0 0 0 2px rgba(74, 140, 84, 0.18);
+}
+
+.cal-day.cal-day-today .cal-day-date {
+  color: #2d6a4f;
 }
 
 .cal-day-header {
@@ -7019,6 +7038,37 @@ body {
     width: 100%;
   }
 
+  /* Bug 4: filtri inventario/logistica — scroll orizzontale invece di stack verticale */
+  #warehouse .filter-bar,
+  #shipping .filter-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    width: 100%;
+    padding-bottom: 4px;
+  }
+  #warehouse .filter-bar > *,
+  #shipping .filter-bar > * {
+    flex-shrink: 0;
+    width: auto;
+    min-width: max-content;
+  }
+
+  /* Bug 5: pulsanti settimana Pose — rimangono affiancati su mobile */
+  #installations .page-header .detail-actions {
+    display: flex;
+    grid-template-columns: unset;
+    flex-direction: row;
+    width: auto;
+    flex-shrink: 0;
+  }
+  #installations .page-header .detail-actions > * {
+    width: auto;
+    flex: 1;
+  }
+
   .kpi-grid,
   .accounting-analysis,
   .shipping-overview-grid,
@@ -10101,6 +10151,10 @@ button:active,
   body.mobile-safe-mode #installations .detail-actions,
   body.mobile-safe-mode .install-detail-panel .inline-actions {
     grid-template-columns: 1fr;
+  }
+
+  body.mobile-safe-mode #installations .page-header .detail-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
