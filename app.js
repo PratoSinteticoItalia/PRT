@@ -1161,6 +1161,8 @@ const state = {
   salesGeneratorFreeMode: false,
   salesGeneratorPlannerMode: false,
   lastAccountsManagerSignature: "",
+  catalogCrews: [],
+  catalogSalesAssignments: [],
   lang: "it",
   filters: {
     order: "all",
@@ -3789,8 +3791,7 @@ function renderSalesRequestBulkBar(pageItems = []) {
     <div class="inline-actions sales-request-bulk-actions">
       <button class="ghost-button small-button" type="button" data-action="select-visible-sales-requests" ${visibleAssignableCount && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Seleziona visibili" : "Select visible"}</button>
       <button class="ghost-button small-button" type="button" data-action="clear-sales-request-bulk" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Pulisci" : "Clear"}</button>
-      <button class="primary-button small-button" type="button" data-action="bulk-assign-sales-requests" data-assignment="Gabriele" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Assegna a Gabriele" : "Assign to Gabriele"}</button>
-      <button class="primary-button small-button" type="button" data-action="bulk-assign-sales-requests" data-assignment="Ivan" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Assegna a Ivan" : "Assign to Ivan"}</button>
+      ${getSalesRequestAssignmentOptions().map((assignee) => `<button class="primary-button small-button" type="button" data-action="bulk-assign-sales-requests" data-assignment="${escapeHtml(assignee)}" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? `Assegna a ${escapeHtml(assignee)}` : `Assign to ${escapeHtml(assignee)}`}</button>`).join("")}
       <button class="primary-button small-button" type="button" data-action="bulk-followup-sales-requests" ${followUpCount && !isSaving ? "" : "disabled"} title="${state.lang === "it" ? "Apre WhatsApp per ogni preventivo inviato selezionato" : "Open WhatsApp for each selected sent quote"}">${state.lang === "it" ? `Follow-up WhatsApp (${followUpCount})` : `Follow-up WhatsApp (${followUpCount})`}</button>
     </div>
   `;
@@ -3904,7 +3905,8 @@ function getSalesRequestStatusOptions() {
 }
 
 function getSalesRequestAssignmentOptions() {
-  return [...SALES_REQUEST_ASSIGNMENT_REFERENCE];
+  const catalogAssignments = (state.catalogSalesAssignments || []).map((item) => item.label || item.value).filter(Boolean);
+  return catalogAssignments.length ? catalogAssignments : [...SALES_REQUEST_ASSIGNMENT_REFERENCE];
 }
 
 function getSalesRequestAssignmentFilterOptions(items = state.salesRequests) {
@@ -5785,7 +5787,9 @@ function getInstallationCrewNames() {
     .map((order) => String(order.operations?.installation?.crew || "").trim())
     .filter(Boolean);
   const storedCrews = Object.keys(state.coveragePlanner?.teams || {});
-  return Array.from(new Set([...crews, ...accountCrews, ...orderCrews, ...storedCrews]))
+  const catalogCrewNames = (state.catalogCrews || []).map((item) => item.label || item.value).filter(Boolean);
+  const baseCrews = catalogCrewNames.length ? catalogCrewNames : crews;
+  return Array.from(new Set([...baseCrews, ...accountCrews, ...orderCrews, ...storedCrews]))
     .filter(Boolean)
     .sort((left, right) => left.localeCompare(right, "it"));
 }
@@ -11333,6 +11337,39 @@ function setSalesRequestStatusWithAutoClear(kind, text, delayMs = 4000) {
   }
 }
 
+let _salesRequestAutoSaveTimer = 0;
+let _salesRequestAutoSaveStatusTimer = 0;
+
+function showSalesRequestAutoSaveStatus(text, kind = "success", autoHideMs = 2000) {
+  clearTimeout(_salesRequestAutoSaveStatusTimer);
+  setStatus(ui.salesRequestsStatus, kind, text);
+  if (kind === "success") {
+    _salesRequestAutoSaveStatusTimer = setTimeout(() => clearStatus(ui.salesRequestsStatus), autoHideMs);
+  }
+}
+
+async function autoSaveSalesRequestPatch(id, patch) {
+  if (!id || !patch || Object.keys(patch).length === 0) return;
+  const current = state.salesRequests.find((r) => r.id === id);
+  if (!current) return;
+  if (state.salesRequestSaveInFlight) return;
+  showSalesRequestAutoSaveStatus(state.lang === "it" ? "Salvataggio..." : "Saving...", "success", 30000);
+  try {
+    await persistSalesRequestRecordPatch(current, patch);
+    showSalesRequestAutoSaveStatus(state.lang === "it" ? "✓ Salvato" : "✓ Saved", "success", 2000);
+  } catch (err) {
+    console.warn("[auto-save] sales request patch failed:", err?.message);
+    showSalesRequestAutoSaveStatus(state.lang === "it" ? "Salvataggio non riuscito" : "Save failed", "error", 4000);
+  }
+}
+
+function debouncedAutoSaveSalesRequestNote(id, value) {
+  clearTimeout(_salesRequestAutoSaveTimer);
+  _salesRequestAutoSaveTimer = setTimeout(() => {
+    autoSaveSalesRequestPatch(id, { note: value });
+  }, 800);
+}
+
 async function processSalesRequestSave(draftRecord, {
   previousRequests,
   previousSelectedSalesRequestId,
@@ -13823,6 +13860,10 @@ function renderSettings() {
   renderAccountsManager();
   renderCrewExpenseMonthlyReport();
   renderSyncControlPanel();
+  if (state.currentUser?.role === "office") {
+    loadCatalogItems("crew");
+    loadCatalogItems("sales_assignment");
+  }
 }
 
 function renderSyncControlPanel() {
@@ -13867,6 +13908,55 @@ function renderSyncControlPanel() {
       </div>
     </div>
   `;
+}
+
+// --- Catalog API helpers ---
+
+async function loadCatalogItems(category) {
+  try {
+    const items = await apiFetch(`/api/catalog/${encodeURIComponent(category)}`);
+    if (category === "crew") {
+      state.catalogCrews = Array.isArray(items) ? items : [];
+    } else if (category === "sales_assignment") {
+      state.catalogSalesAssignments = Array.isArray(items) ? items : [];
+    }
+    const containerId = category === "crew" ? "crew-catalog-list" : "assignment-catalog-list";
+    renderCatalogPanel(category, Array.isArray(items) ? items : [], containerId);
+  } catch (_err) {
+    // silently ignore — catalog is optional
+  }
+}
+
+function renderCatalogPanel(category, items, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!items.length) {
+    container.innerHTML = `<div class="info-card" style="margin-bottom:8px;">${state.lang === "it" ? "Nessun elemento. Aggiungine uno." : "No items yet."}</div>`;
+    return;
+  }
+  container.innerHTML = items.map((item) => `
+    <div class="catalog-item detail-box" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;margin-bottom:6px;">
+      <span>${escapeHtml(item.label || item.value)}${item.metadata?.capacity ? ` <small style="color:var(--text-muted,#888)">${escapeHtml(String(item.metadata.capacity))} mq/g</small>` : ""}</span>
+      <button class="ghost-button small-button" type="button"
+        data-action="remove-catalog-item"
+        data-category="${escapeHtml(category)}"
+        data-value="${escapeHtml(item.value)}"
+        style="margin-left:8px;">Rimuovi</button>
+    </div>
+  `).join("");
+}
+
+async function saveCatalogItem(category, data) {
+  return apiFetch(`/api/catalog/${encodeURIComponent(category)}`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+async function removeCatalogItem(category, value) {
+  return apiFetch(`/api/catalog/${encodeURIComponent(category)}/${encodeURIComponent(value)}`, {
+    method: "DELETE",
+  });
 }
 
 function renderProfitSplitWorkspace() {
@@ -19231,6 +19321,17 @@ function handleGlobalClick(event) {
     if (tab) tab.focus();
     return;
   }
+  if (action === "remove-catalog-item") {
+    event.preventDefault();
+    event.stopPropagation();
+    const cat = button.dataset.category;
+    const val = button.dataset.value;
+    if (!cat || !val) return;
+    removeCatalogItem(cat, val).then(() => {
+      loadCatalogItems(cat);
+    }).catch(() => {});
+    return;
+  }
 }
 
 // ── Cmd+K global search ────────────────────────────────────────────────────
@@ -19631,8 +19732,18 @@ bindEvent(ui.salesRequestNoteField, "input", (event) => {
 bindEvent(ui.salesRequestForm, "input", () => {
   state.salesRequestFormDirty = true;
 });
-bindEvent(ui.salesRequestForm, "change", () => {
+bindEvent(ui.salesRequestForm, "change", (event) => {
   state.salesRequestFormDirty = true;
+  const field = event.target?.name;
+  const requestId = state.selectedSalesRequestId;
+  if (requestId && field && ["status", "assignment"].includes(field)) {
+    void autoSaveSalesRequestPatch(requestId, { [field]: event.target.value });
+  }
+});
+bindEvent(ui.salesRequestNoteField, "blur", () => {
+  const requestId = state.selectedSalesRequestId;
+  const value = ui.salesRequestNoteField?.value ?? "";
+  if (requestId) debouncedAutoSaveSalesRequestNote(requestId, value);
 });
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
@@ -20123,3 +20234,42 @@ const exportCsvBtn = document.getElementById("export-csv-button");
 const exportPdfBtn = document.getElementById("export-pdf-button");
 if (exportCsvBtn) exportCsvBtn.addEventListener("click", exportAccountingCSV);
 if (exportPdfBtn) exportPdfBtn.addEventListener("click", exportAccountingPDF);
+
+// --- Catalog form bindings ---
+const crewCatalogForm = document.getElementById("crew-catalog-form");
+if (crewCatalogForm) {
+  crewCatalogForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fd = new FormData(crewCatalogForm);
+    const value = String(fd.get("value") || "").trim();
+    if (!value) return;
+    const capacity = Number(fd.get("capacity") || 120);
+    await saveCatalogItem("crew", {
+      value,
+      label: value,
+      position: 0,
+      metadata: { capacity },
+    }).catch(() => {});
+    crewCatalogForm.reset();
+    crewCatalogForm.querySelector("[name='capacity']").value = "120";
+    await loadCatalogItems("crew");
+  });
+}
+
+const assignmentCatalogForm = document.getElementById("assignment-catalog-form");
+if (assignmentCatalogForm) {
+  assignmentCatalogForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fd = new FormData(assignmentCatalogForm);
+    const value = String(fd.get("value") || "").trim();
+    if (!value) return;
+    await saveCatalogItem("sales_assignment", {
+      value,
+      label: value,
+      position: 0,
+      metadata: {},
+    }).catch(() => {});
+    assignmentCatalogForm.reset();
+    await loadCatalogItems("sales_assignment");
+  });
+}

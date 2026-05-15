@@ -8771,6 +8771,57 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, fresh);
   }
 
+  // --- Catalog API ---
+  const catalogListMatch = url.pathname.match(/^\/api\/catalog\/([^/]+)$/);
+  if (catalogListMatch && req.method === "GET") {
+    if (requireOffice(res, currentUser)) return;
+    const category = decodeURIComponent(catalogListMatch[1]);
+    if (!USE_POSTGRES) return sendJson(res, 200, []);
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const result = await pool.query(
+      "SELECT * FROM catalog_items WHERE category=$1 AND active=TRUE ORDER BY position, created_at",
+      [category]
+    );
+    return sendJson(res, 200, result.rows);
+  }
+
+  if (catalogListMatch && req.method === "POST") {
+    if (requireOffice(res, currentUser)) return;
+    const category = decodeURIComponent(catalogListMatch[1]);
+    const body = await readBody(req);
+    const { value, label, position, metadata } = body || {};
+    if (!value) return sendJson(res, 400, { error: "value_required" });
+    if (!USE_POSTGRES) return sendJson(res, 200, { category, value, label: label || value, position: position || 0, metadata: metadata || {}, active: true });
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const result = await pool.query(
+      `INSERT INTO catalog_items (category, value, label, position, metadata, active)
+       VALUES ($1, $2, $3, $4, $5, true)
+       ON CONFLICT (category, value) DO UPDATE SET
+         label=EXCLUDED.label, position=EXCLUDED.position,
+         metadata=EXCLUDED.metadata, active=true
+       RETURNING *`,
+      [category, value, label || value, position || 0, JSON.stringify(metadata || {})]
+    );
+    return sendJson(res, 200, result.rows[0]);
+  }
+
+  const catalogItemMatch = url.pathname.match(/^\/api\/catalog\/([^/]+)\/([^/]+)$/);
+  if (catalogItemMatch && req.method === "DELETE") {
+    if (requireOffice(res, currentUser)) return;
+    const category = decodeURIComponent(catalogItemMatch[1]);
+    const value = decodeURIComponent(catalogItemMatch[2]);
+    if (!USE_POSTGRES) return sendJson(res, 200, { ok: true });
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    await pool.query(
+      "UPDATE catalog_items SET active=false WHERE category=$1 AND value=$2",
+      [category, value]
+    );
+    return sendJson(res, 200, { ok: true });
+  }
+
   return sendJson(res, 404, { error: "not_found" });
 }
 

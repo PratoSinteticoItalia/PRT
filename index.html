@@ -1729,6 +1729,32 @@
                 </div>
                 <div id="crew-expense-monthly-report" class="detail-stack"></div>
               </section>
+
+              <!-- Pannello Crew -->
+              <section class="panel" id="crew-catalog-panel">
+                <div class="panel-head">
+                  <h2>Squadre operative</h2>
+                </div>
+                <div id="crew-catalog-list" class="catalog-list"></div>
+                <form id="crew-catalog-form" class="inline-form">
+                  <input class="text-input" name="value" placeholder="Nome squadra (es. Alpha)" required />
+                  <input class="text-input" name="capacity" type="number" placeholder="Capacità mq/giorno" value="120" />
+                  <button type="submit" class="ghost-button small-button">+ Aggiungi</button>
+                </form>
+              </section>
+
+              <!-- Pannello Assegnazioni CRM -->
+              <section class="panel" id="assignment-catalog-panel">
+                <div class="panel-head">
+                  <h2>Assegnazioni CRM</h2>
+                </div>
+                <div id="assignment-catalog-list" class="catalog-list"></div>
+                <form id="assignment-catalog-form" class="inline-form">
+                  <input class="text-input" name="value" placeholder="Nome commerciale (es. Gabriele)" required />
+                  <button type="submit" class="ghost-button small-button">+ Aggiungi</button>
+                </form>
+              </section>
+
             </div>
 
             <!-- COL DESTRA: integrazioni + log -->
