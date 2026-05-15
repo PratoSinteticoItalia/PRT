@@ -11376,6 +11376,18 @@ function debouncedAutoSaveSalesRequestNote(id, value) {
   }, 800);
 }
 
+function debouncedAutoSaveSalesRequestFull(id) {
+  clearTimeout(_salesRequestAutoSaveTimer);
+  _salesRequestAutoSaveTimer = setTimeout(() => {
+    if (!id || state.selectedSalesRequestId !== id) return;
+    const current = state.salesRequests.find((r) => r.id === id);
+    if (!current || state.salesRequestSaveInFlight) return;
+    const draft = collectSalesRequestDraftFromForm();
+    if (!draft) return;
+    void autoSaveSalesRequestPatch(id, draft);
+  }, 800);
+}
+
 async function processSalesRequestSave(draftRecord, {
   previousRequests,
   previousSelectedSalesRequestId,
@@ -19784,19 +19796,21 @@ bindEvent(ui.salesRequestNoteField, "input", (event) => {
 });
 bindEvent(ui.salesRequestForm, "input", () => {
   state.salesRequestFormDirty = true;
+  const requestId = state.selectedSalesRequestId;
+  if (requestId) debouncedAutoSaveSalesRequestFull(requestId);
 });
 bindEvent(ui.salesRequestForm, "change", (event) => {
   state.salesRequestFormDirty = true;
   const field = event.target?.name;
   const requestId = state.selectedSalesRequestId;
-  if (requestId && field && ["status", "assignment"].includes(field)) {
+  if (!requestId) return;
+  if (field && ["status", "assignment"].includes(field)) {
+    // Campi select critici: salva immediatamente
     void autoSaveSalesRequestPatch(requestId, { [field]: event.target.value });
+  } else {
+    // Altri select/checkbox: debounce full save
+    debouncedAutoSaveSalesRequestFull(requestId);
   }
-});
-bindEvent(ui.salesRequestNoteField, "blur", () => {
-  const requestId = state.selectedSalesRequestId;
-  const value = ui.salesRequestNoteField?.value ?? "";
-  if (requestId) debouncedAutoSaveSalesRequestNote(requestId, value);
 });
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
