@@ -1535,6 +1535,7 @@ const ui = {
   syncControlPanel: document.getElementById("sync-control-panel"),
   topbarGardenPlannerLink: document.getElementById("topbar-garden-planner-link"),
   connectShopifyButton: document.getElementById("connect-shopify-button"),
+  registerWebhookButton: document.getElementById("register-webhook-button"),
   mobileGardenPlannerLink: document.getElementById("mobile-garden-planner-link"),
   sidebarMobileTools: document.querySelector(".sidebar-mobile-tools"),
   sidebarCard: document.querySelector(".sidebar-card"),
@@ -19962,6 +19963,24 @@ bindEvent(ui.profitSplitResetButton, "click", () => {
   renderProfitSplitCalculator();
 });
 bindEvent(ui.connectShopifyButton, "click", connectShopify);
+bindEvent(ui.registerWebhookButton, "click", async () => {
+  if (!ui.registerWebhookButton) return;
+  ui.registerWebhookButton.disabled = true;
+  ui.registerWebhookButton.textContent = state.lang === "it" ? "Registrazione..." : "Registering...";
+  try {
+    const result = await enableShopifyAutomation();
+    ui.registerWebhookButton.textContent = result.webhookRegistered
+      ? (state.lang === "it" ? "✓ Webhook aggiornati" : "✓ Webhooks updated")
+      : (state.lang === "it" ? "⚠ Parzialmente aggiornati" : "⚠ Partially updated");
+  } catch (err) {
+    ui.registerWebhookButton.textContent = state.lang === "it" ? "Errore — riprova" : "Error — retry";
+  } finally {
+    ui.registerWebhookButton.disabled = false;
+    setTimeout(() => {
+      if (ui.registerWebhookButton) ui.registerWebhookButton.textContent = state.lang === "it" ? "Aggiorna webhook" : "Update webhooks";
+    }, 4000);
+  }
+});
 bindEvent(ui.securityForm, "submit", updatePassword);
 bindEvent(ui.accountCreateForm, "submit", createManagedAccount);
 bindAccountCrewFields(ui.accountCreateForm);
