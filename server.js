@@ -7281,6 +7281,17 @@ async function handleFastInventoryItemsPost(req, res) {
       [STORE_DOC_KEY, JSON.stringify(payload.created), revision],
     );
     runtimeStoreRevision = revision;
+    // Aggiorna la cache in memoria per evitare che la prossima readJson
+    // riscriva sul DB i dati stale sovrascrivendo i pezzi appena aggiunti.
+    if (storeMemCache !== null) {
+      storeMemCache = {
+        ...storeMemCache,
+        _storeRevision: revision,
+        inventory: [...payload.created, ...(storeMemCache.inventory || [])],
+      };
+    }
+    // Scrivi anche nella tabella relazionale letta da getInventoryFromDb()
+    for (const piece of payload.created) upsertInventoryItemToDb(piece).catch(() => {});
     broadcastStoreRevision(revision);
     return sendJson(
       res,
@@ -8677,7 +8688,19 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/orders" && req.method === "GET") {
     const sqlOrders = await getOrdersFromDb();
-    return sendJson(res, 200, sqlOrders ?? store.orders);
+    if (!sqlOrders) return sendJson(res, 200, store.orders);
+    // store.orders è la fonte primaria (sqm calcolato, tutti gli ordini Shopify);
+    // DB override le operations solo dove sono state modificate manualmente.
+    const dbOpsMap = new Map(sqlOrders.map((o) => [o.id, o.operations]));
+    const storeIds = new Set(store.orders.map((o) => o.id));
+    const merged = store.orders.map((order) => {
+      const dbOps = dbOpsMap.get(order.id);
+      const isMeaningful = dbOps && Object.keys(dbOps).length > 3
+        && (dbOps.sqm > 0 || dbOps.officeStatus !== "bozza");
+      return isMeaningful ? { ...order, operations: dbOps } : order;
+    });
+    const dbOnlyOrders = sqlOrders.filter((o) => !storeIds.has(o.id));
+    return sendJson(res, 200, [...merged, ...dbOnlyOrders]);
   }
 
   if (url.pathname === "/api/orders" && req.method === "POST") {
