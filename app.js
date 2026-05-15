@@ -19833,6 +19833,8 @@ bindEvent(ui.salesRequestUseGeneratorButton, "click", useSelectedSalesRequestInG
 bindEvent(document.getElementById("sales-request-storia-tab-btn"), "click", () => {
   const requestId = state.selectedSalesRequestId;
   if (requestId) void loadAuditTrail("sales_request", requestId, "sales-request-audit-trail");
+  const panel = document.getElementById("sales-request-storia-panel");
+  if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 bindEvent(ui.salesRequestServiceAccountButton, "click", () => ui.salesRequestServiceAccountInput?.click());
 bindEvent(ui.salesRequestServiceAccountInput, "change", handleSalesRequestServiceAccountSelection);

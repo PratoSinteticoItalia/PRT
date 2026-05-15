@@ -608,6 +608,7 @@
                 </div>
                 <div class="inline-actions">
                   <button id="sales-request-save-top-button" class="primary-button small-button" type="submit" form="sales-request-form" hidden>Salva richiesta</button>
+                  <button id="sales-request-storia-tab-btn" class="ghost-button small-button" type="button">Storia</button>
                   <button id="sales-request-delete-button" class="ghost-button small-button" type="button">Elimina</button>
                   <button id="sales-request-use-generator-button" class="primary-button small-button" type="button">Usa nel generatore</button>
                 </div>
@@ -689,14 +690,12 @@
                   <input type="hidden" name="whatsappUrl" />
                 </div>
               </form>
-              <div class="panel-section">
-                <div class="tab-bar" style="margin-top:16px;">
-                  <button class="tab-button" data-tab="storia" id="sales-request-storia-tab-btn" type="button">Storia</button>
+              <div class="panel-section" id="sales-request-storia-panel">
+                <div class="subsection-head">
+                  <h4>Storia modifiche</h4>
                 </div>
-                <div id="sales-request-storia-panel" class="tab-content">
-                  <div id="sales-request-audit-trail" class="audit-trail-list">
-                    <p class="empty-state-text" style="color:#888;font-size:13px;padding:16px 0;">Caricamento storia...</p>
-                  </div>
+                <div id="sales-request-audit-trail" class="audit-trail-list">
+                  <p style="color:#888;font-size:13px;padding:8px 0;">Seleziona una richiesta per vedere la storia.</p>
                 </div>
               </div>
             </section>
