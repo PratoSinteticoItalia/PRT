@@ -1245,6 +1245,7 @@ const salesRequestPendingPatchIds = new Set();
 const orderPendingPatchIds = new Set();
 const inventoryPendingOps = new Set();
 const inventoryAllocationPendingOrderIds = new Set();
+const inventoryAutoSuggestedOrderIds = new Set();
 const salesContentAttachmentDeleteInFlight = new Set();
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
@@ -12176,7 +12177,8 @@ function renderWarehouse() {
   if (order) {
     const orderAllocations = getOrderInventoryAllocations(order);
     const hasActiveAllocations = orderAllocations.some((item) => getInventoryPieceState({ pieceState: item.status }) !== "disponibile");
-    if (!hasActiveAllocations && !getInventorySuggestionForOrder(order.id) && !inventoryAllocationPendingOrderIds.has(order.id)) {
+    if (!hasActiveAllocations && !getInventorySuggestionForOrder(order.id) && !inventoryAllocationPendingOrderIds.has(order.id) && !inventoryAutoSuggestedOrderIds.has(order.id)) {
+      inventoryAutoSuggestedOrderIds.add(order.id);
       setTimeout(() => suggestInventoryForOrder(order.id), 0);
     }
   }
@@ -19110,6 +19112,7 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "suggest-inventory-order") {
+    inventoryAutoSuggestedOrderIds.delete(id);
     suggestInventoryForOrder(id);
     return;
   }

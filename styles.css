@@ -1182,6 +1182,25 @@ button.is-feedback,
   margin-bottom: 16px;
 }
 
+/* Bottoni nel panel-head sempre su una riga */
+.panel-head .inline-actions {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+/* Form inline nelle impostazioni (es. Squadre operative, Assegnazioni CRM) */
+.inline-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.inline-form .text-input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
 .toolbar-input { flex: 1 1 260px; }
 
 .toolbar-tags {

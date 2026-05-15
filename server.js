@@ -8700,7 +8700,7 @@ async function handleApi(req, res, url) {
       return isMeaningful ? { ...order, operations: dbOps } : order;
     });
     const dbOnlyOrders = sqlOrders.filter((o) => !storeIds.has(o.id));
-    return sendJson(res, 200, [...merged, ...dbOnlyOrders]);
+    return sendJson(res, 200, sortOrdersByRecency([...merged, ...dbOnlyOrders]));
   }
 
   if (url.pathname === "/api/orders" && req.method === "POST") {
