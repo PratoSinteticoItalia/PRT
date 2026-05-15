@@ -7422,7 +7422,17 @@ async function handleApi(req, res, url) {
     const sessionOrders     = sqlOrdersResult.status       === "fulfilled" && sqlOrdersResult.value       ? sqlOrdersResult.value       : (currentUser ? store.orders        : []);
     const sessionInventory  = sqlInventoryResult.status    === "fulfilled" && sqlInventoryResult.value    ? sqlInventoryResult.value    : (currentUser ? store.inventory     : []);
     const sessionJobs       = sqlJobsResult.status         === "fulfilled" && sqlJobsResult.value         ? sqlJobsResult.value         : (currentUser ? store.jobs          : []);
-    const sessionSalesReqs  = sqlSalesRequestsResult.status=== "fulfilled" && sqlSalesRequestsResult.value ? sqlSalesRequestsResult.value : (currentUser?.role === "office" ? store.salesRequests : []);
+    const rawSalesReqs = sqlSalesRequestsResult.status === "fulfilled" && sqlSalesRequestsResult.value ? sqlSalesRequestsResult.value : null;
+    const sessionSalesReqs = rawSalesReqs
+      ? rawSalesReqs.map((req) => {
+          if (req.name || req.surname) return req;
+          const stored = (store.salesRequests || []).find((s) => s.id === req.id);
+          if (!stored?.name && !stored?.surname) return req;
+          const fixed = { ...req, name: stored.name || "", surname: stored.surname || "" };
+          upsertSalesRequestToDb(fixed).catch(() => {});
+          return fixed;
+        })
+      : (currentUser?.role === "office" ? store.salesRequests : []);
     return sendJson(res, 200, {
       revision: getStoreRevision(store),
       user: sanitizeUser(currentUser),
@@ -8099,6 +8109,7 @@ async function handleApi(req, res, url) {
         const result = upsertOrderRecord(store, normalized);
         store.orders = sortOrdersByRecency(store.orders);
         await writeJson(STORE_PATH, store);
+        upsertOrderToDb(result.order).catch(() => {});
         return sendJson(res, 200, { ok: true, orderId: result.order.id, jobId: result.job?.id || null });
       }
       case "orders/paid": {
@@ -9054,11 +9065,14 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/orders/sync-shopify" && req.method === "POST") {
     try {
       const orders = await syncOrdersFromShopify(store);
+      const syncedOrders = [];
       orders.forEach((order) => {
-        upsertOrderRecord(store, order);
+        const result = upsertOrderRecord(store, order);
+        syncedOrders.push(result.order);
       });
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
+      Promise.allSettled(syncedOrders.map((o) => upsertOrderToDb(o))).catch(() => {});
       return sendJson(res, 200, store.orders);
     } catch (error) {
       store.shopifySettings.lastSyncAt = new Date().toISOString();
