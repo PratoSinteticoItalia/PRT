@@ -9065,14 +9065,11 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/orders/sync-shopify" && req.method === "POST") {
     try {
       const orders = await syncOrdersFromShopify(store);
-      const syncedOrders = [];
       orders.forEach((order) => {
-        const result = upsertOrderRecord(store, order);
-        syncedOrders.push(result.order);
+        upsertOrderRecord(store, order);
       });
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
-      Promise.allSettled(syncedOrders.map((o) => upsertOrderToDb(o))).catch(() => {});
       return sendJson(res, 200, store.orders);
     } catch (error) {
       store.shopifySettings.lastSyncAt = new Date().toISOString();
