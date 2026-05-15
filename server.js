@@ -662,6 +662,380 @@ async function ensureRelationalSchema() {
   return relationalSchemaBootstrapPromise;
 }
 
+// ——— Helpers SQL: row mapper + read/write per tabelle relazionali ———
+
+function dbRowToOrder(row) {
+  return {
+    id: row.id,
+    shopifyNumericId: row.shopify_numeric_id || "",
+    shopifyGraphqlId: row.shopify_graphql_id || "",
+    orderNumber: row.order_number || "",
+    firstName: row.first_name || "",
+    lastName: row.last_name || "",
+    email: row.email || "",
+    phone: row.phone || "",
+    city: row.city || "",
+    address: row.address || "",
+    postalCode: row.postal_code || "",
+    provinceCode: row.province_code || "",
+    province: row.province || "",
+    countryCode: row.country_code || "IT",
+    financialStatus: row.financial_status || "pending",
+    fulfillmentStatus: row.fulfillment_status || "unfulfilled",
+    paymentMethod: row.payment_method || "",
+    source: row.source || "",
+    note: row.note || "",
+    total: row.total || "0",
+    totals: row.totals || {},
+    billing: row.billing || {},
+    lineItems: row.line_items || [],
+    lineDetails: row.line_details || [],
+    attachments: row.attachments || [],
+    convertedJobId: row.converted_job_id || null,
+    accounting: row.accounting || {},
+    operations: {
+      warehouse: row.warehouse || {},
+      installation: row.installation || {},
+      accounting: row.accounting || {},
+    },
+  };
+}
+
+function dbRowToInventoryItem(row) {
+  return {
+    id: row.id,
+    product: row.product || "",
+    family: row.family || "",
+    pieceType: row.piece_type || "",
+    pieceState: row.piece_state || "disponibile",
+    width: row.width != null ? Number(row.width) : null,
+    length: row.length != null ? Number(row.length) : null,
+    units: row.units || "",
+    label: row.label || "",
+    allocatedToOrderId: row.allocated_to_order_id || null,
+  };
+}
+
+function dbRowToJob(row) {
+  return {
+    id: row.id,
+    firstName: row.first_name || "",
+    lastName: row.last_name || "",
+    city: row.city || "",
+    phone: row.phone || "",
+    email: row.email || "",
+    address: row.address || "",
+    jobType: row.job_type || "",
+    surface: row.surface || "",
+    product: row.product || "",
+    sqm: row.sqm != null ? Number(row.sqm) : null,
+    installDate: row.install_date || "",
+    installTime: row.install_time || "",
+    crew: row.crew || "",
+    priority: row.priority || "",
+    warehouseStatus: row.warehouse_status || "",
+    installStatus: row.install_status || "",
+    materials: row.materials || [],
+    notes: row.notes || "",
+    attachments: row.attachments || [],
+    sourceOrderId: row.source_order_id || null,
+  };
+}
+
+function dbRowToSalesRequest(row) {
+  return {
+    id: row.id,
+    firstName: row.first_name || "",
+    lastName: row.last_name || "",
+    email: row.email || "",
+    phone: row.phone || "",
+    city: row.city || "",
+    address: row.address || "",
+    postalCode: row.postal_code || "",
+    provinceCode: row.province_code || "",
+    province: row.province || "",
+    countryCode: row.country_code || "IT",
+    company: row.company || "",
+    jobType: row.job_type || "",
+    surface: row.surface || "",
+    sqm: row.sqm != null ? Number(row.sqm) : null,
+    note: row.note || "",
+    status: row.status || "",
+    assignment: row.assignment || "",
+    firstContactBy: row.first_contact_by || "",
+    firstContactAt: row.first_contact_at || null,
+    source: row.source || "",
+    sourceRowNumber: row.source_row_number || null,
+    attachments: row.attachments || [],
+    whatsappThreadId: row.whatsapp_thread_id || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function getOrdersFromDb() {
+  if (!USE_POSTGRES) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query("SELECT * FROM orders ORDER BY updated_at DESC NULLS LAST");
+    return rows.map(dbRowToOrder);
+  } catch (err) {
+    console.warn("[db] getOrdersFromDb:", err?.message);
+    return null;
+  }
+}
+
+async function getInventoryFromDb() {
+  if (!USE_POSTGRES) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query("SELECT * FROM inventory_items ORDER BY created_at ASC NULLS LAST");
+    return rows.map(dbRowToInventoryItem);
+  } catch (err) {
+    console.warn("[db] getInventoryFromDb:", err?.message);
+    return null;
+  }
+}
+
+async function getJobsFromDb() {
+  if (!USE_POSTGRES) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query("SELECT * FROM jobs ORDER BY created_at DESC NULLS LAST");
+    return rows.map(dbRowToJob);
+  } catch (err) {
+    console.warn("[db] getJobsFromDb:", err?.message);
+    return null;
+  }
+}
+
+async function getSalesRequestsFromDb() {
+  if (!USE_POSTGRES) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query("SELECT * FROM sales_requests ORDER BY updated_at DESC NULLS LAST");
+    return rows.map(dbRowToSalesRequest);
+  } catch (err) {
+    console.warn("[db] getSalesRequestsFromDb:", err?.message);
+    return null;
+  }
+}
+
+async function upsertOrderToDb(order) {
+  if (!USE_POSTGRES || !order?.id) return;
+  const ops = order.operations || {};
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    await pool.query(`
+      INSERT INTO orders (
+        id, shopify_numeric_id, shopify_graphql_id, order_number,
+        first_name, last_name, email, phone,
+        city, address, postal_code, province_code, province, country_code,
+        financial_status, fulfillment_status, payment_method,
+        source, note, total,
+        totals, billing, warehouse, installation, accounting,
+        line_items, line_details, attachments, converted_job_id, updated_at
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,NOW()
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        shopify_numeric_id=EXCLUDED.shopify_numeric_id,
+        shopify_graphql_id=EXCLUDED.shopify_graphql_id,
+        order_number=EXCLUDED.order_number,
+        first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name,
+        email=EXCLUDED.email, phone=EXCLUDED.phone,
+        city=EXCLUDED.city, address=EXCLUDED.address,
+        postal_code=EXCLUDED.postal_code, province_code=EXCLUDED.province_code,
+        province=EXCLUDED.province, country_code=EXCLUDED.country_code,
+        financial_status=EXCLUDED.financial_status,
+        fulfillment_status=EXCLUDED.fulfillment_status,
+        payment_method=EXCLUDED.payment_method,
+        source=EXCLUDED.source, note=EXCLUDED.note, total=EXCLUDED.total,
+        totals=EXCLUDED.totals, billing=EXCLUDED.billing,
+        warehouse=EXCLUDED.warehouse, installation=EXCLUDED.installation,
+        accounting=EXCLUDED.accounting,
+        line_items=EXCLUDED.line_items, line_details=EXCLUDED.line_details,
+        attachments=EXCLUDED.attachments, converted_job_id=EXCLUDED.converted_job_id,
+        updated_at=NOW()
+    `, [
+      String(order.id),
+      String(order.shopifyNumericId || ""),
+      String(order.shopifyGraphqlId || ""),
+      String(order.orderNumber || ""),
+      String(order.firstName || ""), String(order.lastName || ""),
+      String(order.email || ""), String(order.phone || ""),
+      String(order.city || ""), String(order.address || ""),
+      String(order.postalCode || ""), String(order.provinceCode || ""),
+      String(order.province || ""), String(order.countryCode || "IT"),
+      String(order.financialStatus || "pending"),
+      String(order.fulfillmentStatus || "unfulfilled"),
+      String(order.paymentMethod || ""),
+      String(order.source || ""), String(order.note || ""), String(order.total || "0"),
+      JSON.stringify(order.totals || {}),
+      JSON.stringify(order.billing || {}),
+      JSON.stringify(ops.warehouse || {}),
+      JSON.stringify(ops.installation || {}),
+      JSON.stringify(order.accounting || ops.accounting || {}),
+      JSON.stringify(Array.isArray(order.lineItems) ? order.lineItems : []),
+      JSON.stringify(Array.isArray(order.lineDetails) ? order.lineDetails : []),
+      JSON.stringify(Array.isArray(order.attachments) ? order.attachments : []),
+      order.convertedJobId ? String(order.convertedJobId) : null,
+    ]);
+  } catch (err) {
+    console.warn("[db] upsertOrderToDb:", err?.message);
+  }
+}
+
+async function upsertInventoryItemToDb(item) {
+  if (!USE_POSTGRES || !item?.id) return;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    await pool.query(`
+      INSERT INTO inventory_items (id, product, family, piece_type, piece_state, width, length, units, label, allocated_to_order_id, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        product=EXCLUDED.product, family=EXCLUDED.family,
+        piece_type=EXCLUDED.piece_type, piece_state=EXCLUDED.piece_state,
+        width=EXCLUDED.width, length=EXCLUDED.length,
+        units=EXCLUDED.units, label=EXCLUDED.label,
+        allocated_to_order_id=EXCLUDED.allocated_to_order_id,
+        updated_at=NOW()
+    `, [
+      String(item.id),
+      String(item.product || ""), String(item.family || ""),
+      String(item.pieceType || ""), String(item.pieceState || "disponibile"),
+      item.width != null ? Number(item.width) : null,
+      item.length != null ? Number(item.length) : null,
+      String(item.units || ""), String(item.label || ""),
+      item.committedOrderId ? String(item.committedOrderId) : (item.allocatedToOrderId ? String(item.allocatedToOrderId) : null),
+    ]);
+  } catch (err) {
+    console.warn("[db] upsertInventoryItemToDb:", err?.message);
+  }
+}
+
+async function deleteInventoryItemFromDb(id) {
+  if (!USE_POSTGRES || !id) return;
+  try {
+    const pool = await getPgPool();
+    await pool.query("DELETE FROM inventory_items WHERE id = $1", [String(id)]);
+  } catch (err) {
+    console.warn("[db] deleteInventoryItemFromDb:", err?.message);
+  }
+}
+
+async function upsertJobToDb(job) {
+  if (!USE_POSTGRES || !job?.id) return;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    await pool.query(`
+      INSERT INTO jobs (id, first_name, last_name, city, phone, email, address, job_type, surface, product, sqm, install_date, install_time, crew, priority, warehouse_status, install_status, materials, notes, attachments, source_order_id, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name,
+        city=EXCLUDED.city, phone=EXCLUDED.phone, email=EXCLUDED.email, address=EXCLUDED.address,
+        job_type=EXCLUDED.job_type, surface=EXCLUDED.surface, product=EXCLUDED.product, sqm=EXCLUDED.sqm,
+        install_date=EXCLUDED.install_date, install_time=EXCLUDED.install_time, crew=EXCLUDED.crew,
+        priority=EXCLUDED.priority, warehouse_status=EXCLUDED.warehouse_status, install_status=EXCLUDED.install_status,
+        materials=EXCLUDED.materials, notes=EXCLUDED.notes, attachments=EXCLUDED.attachments,
+        source_order_id=EXCLUDED.source_order_id, updated_at=NOW()
+    `, [
+      String(job.id),
+      String(job.firstName || ""), String(job.lastName || ""),
+      String(job.city || ""), String(job.phone || ""), String(job.email || ""), String(job.address || ""),
+      String(job.jobType || ""), String(job.surface || ""), String(job.product || ""),
+      job.sqm != null ? Number(job.sqm) : null,
+      String(job.installDate || ""), String(job.installTime || ""),
+      String(job.crew || ""), String(job.priority || ""),
+      String(job.warehouseStatus || ""), String(job.installStatus || ""),
+      JSON.stringify(Array.isArray(job.materials) ? job.materials : []),
+      String(job.notes || ""),
+      JSON.stringify(Array.isArray(job.attachments) ? job.attachments : []),
+      job.sourceOrderId ? String(job.sourceOrderId) : null,
+    ]);
+  } catch (err) {
+    console.warn("[db] upsertJobToDb:", err?.message);
+  }
+}
+
+async function deleteJobFromDb(id) {
+  if (!USE_POSTGRES || !id) return;
+  try {
+    const pool = await getPgPool();
+    await pool.query("DELETE FROM jobs WHERE id = $1", [String(id)]);
+  } catch (err) {
+    console.warn("[db] deleteJobFromDb:", err?.message);
+  }
+}
+
+async function upsertSalesRequestToDb(request) {
+  if (!USE_POSTGRES || !request?.id) return;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    await pool.query(`
+      INSERT INTO sales_requests (
+        id, first_name, last_name, email, phone,
+        city, address, postal_code, province_code, province, country_code,
+        company, job_type, surface, sqm, note,
+        status, assignment, first_contact_by, first_contact_at,
+        source, source_row_number, attachments, whatsapp_thread_id, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name,
+        email=EXCLUDED.email, phone=EXCLUDED.phone,
+        city=EXCLUDED.city, address=EXCLUDED.address,
+        postal_code=EXCLUDED.postal_code, province_code=EXCLUDED.province_code,
+        province=EXCLUDED.province, country_code=EXCLUDED.country_code,
+        company=EXCLUDED.company, job_type=EXCLUDED.job_type,
+        surface=EXCLUDED.surface, sqm=EXCLUDED.sqm, note=EXCLUDED.note,
+        status=EXCLUDED.status, assignment=EXCLUDED.assignment,
+        first_contact_by=EXCLUDED.first_contact_by, first_contact_at=EXCLUDED.first_contact_at,
+        source=EXCLUDED.source, source_row_number=EXCLUDED.source_row_number,
+        attachments=EXCLUDED.attachments, whatsapp_thread_id=EXCLUDED.whatsapp_thread_id,
+        updated_at=NOW()
+    `, [
+      String(request.id),
+      String(request.firstName || ""), String(request.lastName || ""),
+      String(request.email || ""), String(request.phone || ""),
+      String(request.city || ""), String(request.address || ""),
+      String(request.postalCode || ""), String(request.provinceCode || ""),
+      String(request.province || ""), String(request.countryCode || "IT"),
+      String(request.company || ""),
+      String(request.jobType || ""), String(request.surface || ""),
+      request.sqm != null ? Number(request.sqm) : null,
+      String(request.note || ""),
+      String(request.status || ""), String(request.assignment || ""),
+      String(request.firstContactBy || ""),
+      request.firstContactAt ? new Date(String(request.firstContactAt)).toISOString() : null,
+      String(request.source || ""),
+      request.sourceRowNumber != null ? Number(request.sourceRowNumber) : null,
+      JSON.stringify(Array.isArray(request.attachments) ? request.attachments : []),
+      request.whatsappThreadId ? String(request.whatsappThreadId) : null,
+    ]);
+  } catch (err) {
+    console.warn("[db] upsertSalesRequestToDb:", err?.message);
+  }
+}
+
+async function deleteSalesRequestFromDb(id) {
+  if (!USE_POSTGRES || !id) return;
+  try {
+    const pool = await getPgPool();
+    await pool.query("DELETE FROM sales_requests WHERE id = $1", [String(id)]);
+  } catch (err) {
+    console.warn("[db] deleteSalesRequestFromDb:", err?.message);
+  }
+}
+
 async function readDatabaseDocument(key, fallback) {
   await ensureDatabaseStorage();
   const pool = await getPgPool();
@@ -6972,14 +7346,24 @@ async function handleApi(req, res, url) {
         return sum + msgs.length;
       }, 0);
     })() : 0;
+    const [sqlOrdersResult, sqlInventoryResult, sqlJobsResult, sqlSalesRequestsResult] = await Promise.allSettled([
+      getOrdersFromDb(),
+      getInventoryFromDb(),
+      getJobsFromDb(),
+      getSalesRequestsFromDb(),
+    ]);
+    const sessionOrders     = sqlOrdersResult.status       === "fulfilled" && sqlOrdersResult.value       ? sqlOrdersResult.value       : (currentUser ? store.orders        : []);
+    const sessionInventory  = sqlInventoryResult.status    === "fulfilled" && sqlInventoryResult.value    ? sqlInventoryResult.value    : (currentUser ? store.inventory     : []);
+    const sessionJobs       = sqlJobsResult.status         === "fulfilled" && sqlJobsResult.value         ? sqlJobsResult.value         : (currentUser ? store.jobs          : []);
+    const sessionSalesReqs  = sqlSalesRequestsResult.status=== "fulfilled" && sqlSalesRequestsResult.value ? sqlSalesRequestsResult.value : (currentUser?.role === "office" ? store.salesRequests : []);
     return sendJson(res, 200, {
       revision: getStoreRevision(store),
       user: sanitizeUser(currentUser),
       communicationsUnreadCount: sessionCommUnread,
-      jobs: currentUser ? store.jobs : [],
-      orders: currentUser ? store.orders : [],
-      inventory: currentUser ? store.inventory : [],
-      salesRequests: currentUser?.role === "office" ? store.salesRequests : [],
+      jobs: currentUser ? sessionJobs : [],
+      orders: currentUser ? sessionOrders : [],
+      inventory: currentUser ? sessionInventory : [],
+      salesRequests: currentUser?.role === "office" ? sessionSalesReqs : [],
       salesContents: currentUser?.role === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
       salesRequestSource: currentUser?.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
       coveragePlanner: currentUser ? store.coveragePlanner : normalizeCoveragePlanner(),
@@ -7394,6 +7778,7 @@ async function handleApi(req, res, url) {
       store.salesRequests.unshift(requestRecord);
     }
     await writeJson(STORE_PATH, store);
+    upsertSalesRequestToDb(requestRecord).catch(() => {});
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, [requestRecord]);
     return sendJson(res, 200, {
       ...requestRecord,
@@ -7462,6 +7847,7 @@ async function handleApi(req, res, url) {
     if (nextRequests.length === store.salesRequests.length) return sendJson(res, 404, { error: "request_not_found" });
     store.salesRequests = nextRequests;
     await writeJson(STORE_PATH, store);
+    deleteSalesRequestFromDb(requestId).catch(() => {});
     return sendJson(res, 200, { ok: true });
   }
 
@@ -7987,7 +8373,8 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === "/api/inventory" && req.method === "GET") {
-    return sendJson(res, 200, store.inventory);
+    const sqlInventory = await getInventoryFromDb();
+    return sendJson(res, 200, sqlInventory ?? store.inventory);
   }
 
   if (url.pathname === "/api/inventory/items" && req.method === "POST") {
@@ -7998,6 +8385,7 @@ async function handleApi(req, res, url) {
     }
     store.inventory.unshift(...payload.created);
     await writeJson(STORE_PATH, store);
+    for (const piece of payload.created) upsertInventoryItemToDb(piece).catch(() => {});
     return sendJson(res, 200, store.inventory);
   }
 
@@ -8023,6 +8411,7 @@ async function handleApi(req, res, url) {
     }
     store.inventory = store.inventory.filter((item) => item.id !== itemId);
     await writeJson(STORE_PATH, store);
+    deleteInventoryItemFromDb(itemId).catch(() => {});
     return sendJson(res, 200, store.inventory);
   }
 
@@ -8172,7 +8561,8 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === "/api/jobs" && req.method === "GET") {
-    return sendJson(res, 200, store.jobs);
+    const sqlJobs = await getJobsFromDb();
+    return sendJson(res, 200, sqlJobs ?? store.jobs);
   }
 
   if (url.pathname === "/api/jobs" && req.method === "POST") {
@@ -8180,6 +8570,7 @@ async function handleApi(req, res, url) {
     const nextJobs = [body, ...store.jobs.filter((job) => job.id !== body.id)];
     store.jobs = nextJobs;
     await writeJson(STORE_PATH, store);
+    upsertJobToDb(body).catch(() => {});
     return sendJson(res, 200, body);
   }
 
@@ -8188,6 +8579,7 @@ async function handleApi(req, res, url) {
     store.jobs = store.jobs.filter((job) => job.id !== jobId);
     store.orders = store.orders.map((order) => order.convertedJobId === jobId ? { ...order, convertedJobId: null } : order);
     await writeJson(STORE_PATH, store);
+    deleteJobFromDb(jobId).catch(() => {});
     return sendJson(res, 200, { ok: true });
   }
 
@@ -8206,7 +8598,8 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === "/api/orders" && req.method === "GET") {
-    return sendJson(res, 200, store.orders);
+    const sqlOrders = await getOrdersFromDb();
+    return sendJson(res, 200, sqlOrders ?? store.orders);
   }
 
   if (url.pathname === "/api/orders" && req.method === "POST") {
@@ -8264,6 +8657,7 @@ async function handleApi(req, res, url) {
     manualOrder.operations = normalizeOperations(manualOrder, null);
     store.orders.unshift(manualOrder);
     await writeJson(STORE_PATH, store);
+    upsertOrderToDb(manualOrder).catch(() => {});
     return sendJson(res, 200, manualOrder);
   }
 
@@ -8360,6 +8754,7 @@ async function handleApi(req, res, url) {
     );
     store.orders[orderIndex] = nextOrder;
     await writeJson(STORE_PATH, store);
+    upsertOrderToDb(nextOrder).catch(() => {});
     return sendJson(res, 200, nextOrder);
   }
 
