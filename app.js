@@ -947,7 +947,7 @@ function normalizeProfitSplitDraft(input = {}) {
 
 function loadProfitSplitDraft() {
   try {
-    const raw = window.localStorage.getItem(PROFIT_SPLIT_STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(PROFIT_SPLIT_STORAGE_KEY);
     if (!raw) return normalizeProfitSplitDraft();
     return normalizeProfitSplitDraft(JSON.parse(raw));
   } catch {
@@ -957,7 +957,7 @@ function loadProfitSplitDraft() {
 
 function saveProfitSplitDraft(draft = state?.profitSplitLocalDraft || state?.profitSplitDraft) {
   try {
-    window.localStorage.setItem(PROFIT_SPLIT_STORAGE_KEY, JSON.stringify(normalizeProfitSplitDraft(draft)));
+    window.sessionStorage.setItem(PROFIT_SPLIT_STORAGE_KEY, JSON.stringify(normalizeProfitSplitDraft(draft)));
   } catch {}
 }
 
@@ -1731,6 +1731,9 @@ function staticLabels() {
     ["#dashboard-trend-title", state.lang === "it" ? "Trend ricavi ultimi 6 mesi" : "Revenue trend (last 6 months)"],
     ["#dashboard-actions-title", state.lang === "it" ? "Priorità operative" : "Priority actions"],
     ["#dashboard-week-installations-title", state.lang === "it" ? "Pose questa settimana" : "Installations this week"],
+    // Modal ordine
+    ["#order-modal .panel-eyebrow", state.lang === "it" ? "Ordine operativo" : "Operational order"],
+    ["#order-modal button[data-close-modal]", state.lang === "it" ? "Chiudi" : "Close"],
   ];
 }
 
@@ -9231,6 +9234,9 @@ function applyStaticTranslations() {
   setFieldLabel(ui.settingsForm, "extraKgRate", state.lang === "it" ? "Extra €/kg oltre 1000 kg" : "Extra €/kg over 1000 kg");
   setFieldLabel(ui.orderForm, "provinceCode", state.lang === "it" ? "Provincia" : "Province");
   setFieldLabel(ui.orderForm, "postalCode", state.lang === "it" ? "CAP" : "ZIP");
+  setFieldLabel(ui.orderForm, "phone", state.lang === "it" ? "Telefono" : "Phone");
+  setFieldLabel(ui.orderForm, "address", state.lang === "it" ? "Indirizzo" : "Address");
+  setFieldLabel(ui.orderForm, "product", state.lang === "it" ? "Prodotto" : "Product");
   if (ui.installationForm?.status) {
     const statusLabels = {
       "da-pianificare": t("toPlan"),
@@ -9500,6 +9506,14 @@ function renderOps() {
   setText("ops-accounting-text", opsTexts.accounting);
   setText("ops-shipping-text", opsTexts.shipping);
   setText("ops-closed-text", opsTexts.closed);
+  setText("ops-orders-label", state.lang === "it" ? "Ordini" : "Orders");
+  setText("ops-sold-sqm-label", state.lang === "it" ? "Mq venduti" : "Sqm sold");
+  setText("ops-warehouse-label", state.lang === "it" ? "Inventario" : "Inventory");
+  setText("ops-stock-label", state.lang === "it" ? "Giacenza prato" : "Turf stock");
+  setText("ops-installations-label", state.lang === "it" ? "Pose" : "Installs");
+  setText("ops-accounting-label", state.lang === "it" ? "Da incassare" : "To collect");
+  setText("ops-shipping-label", state.lang === "it" ? "Logistica" : "Logistics");
+  setText("ops-closed-label", state.lang === "it" ? "Chiusi" : "Closed");
 }
 
 function buildFollowupReminders() {
@@ -12813,6 +12827,7 @@ function renderCrewExpenseMonthlyReport() {
 function buildInstallationCalendar(orders, crewName = "") {
   const start = getInstallationWeekStart();
   const dailyCapacity = getInstallationCapacityForScope(crewName);
+  const todayKey = new Date().toISOString().slice(0, 10);
   return Array.from({ length: 7 }).map((_, index) => {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
@@ -12823,8 +12838,9 @@ function buildInstallationCalendar(orders, crewName = "") {
     const fillPct = Math.min(100, Math.round(fillRatio * 100));
     const gaugeTone = getInstallationSaturationTone(fillRatio);
     const unavailable = Boolean(crewName && isCrewUnavailable(crewName, key));
+    const isToday = key === todayKey;
     return `
-      <article class="cal-day ${unavailable ? "is-unavailable" : ""}" data-date="${key}" data-drop-date="${key}">
+      <article class="cal-day ${unavailable ? "is-unavailable" : ""} ${isToday ? "cal-day-today" : ""}" data-date="${key}" data-drop-date="${key}">
         <div class="cal-day-header">
           <div class="cal-day-date">${formatDate(key)}</div>
           <div class="cal-day-capacity">${Math.round(totalSqm)}/${Math.round(dailyCapacity)} mq</div>
@@ -16442,6 +16458,13 @@ function setView(view, { pushHistory = true } = {}) {
   }
   if (nextView === "accounting") state.accountingMobilePane = "summary";
   if (nextView === "installations") state.installationMobilePane = "summary";
+  if (nextView === "sales-generator" && nextView !== previousView) {
+    reloadSalesGeneratorFrameSession({ force: true });
+  }
+  if (nextView === "shipping" && nextView !== previousView) {
+    state.filters.shipping = "all";
+    ui.shippingFilterTags?.forEach((btn) => btn.classList.toggle("is-active", btn.dataset.shippingFilter === "all"));
+  }
   clearAllSearchRenderTimers();
   clearPendingCurrentViewRefresh();
   state.currentView = nextView;
