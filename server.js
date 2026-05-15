@@ -6714,8 +6714,8 @@ async function handleFastInventoryItemsPost(req, res) {
       sessionContext.sessionId ? { "Set-Cookie": buildSessionCookie(sessionContext.sessionId) } : {},
     );
   } catch (err) {
-    console.error("[inventory/fast-add] db error:", err?.message || err);
-    return sendJson(res, 500, { error: "inventory_save_failed" });
+    console.error("[inventory/fast-add] db error, falling back to slow path:", err?.message || err);
+    return false;
   }
 }
 
@@ -7883,7 +7883,9 @@ async function handleApi(req, res, url) {
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
     const buildTag = "inv-commit-2026-05-14-g";
     try {
-      if (backfillInventoryIds(store)) await writeJson(STORE_PATH, store);
+      if (backfillInventoryIds(store)) {
+        writeJson(STORE_PATH, store).catch((e) => console.error("[inventory/commit] backfill persist failed:", e?.message || e));
+      }
       const clientSupplied = Array.isArray(body.suggestions);
       const debugSnapshot = {
         clientSupplied,
@@ -7971,29 +7973,39 @@ async function handleApi(req, res, url) {
     const orderId = decodeURIComponent(url.pathname.split("/")[3]);
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
-    const result = releaseInventoryCommitmentsForOrder(store, order);
-    writeJson(STORE_PATH, store).catch((writeErr) => {
-      console.error("[inventory/release] persist failed:", writeErr?.message || writeErr);
-    });
-    return sendJson(res, 200, {
-      order: result.order,
-      inventory: store.inventory,
-    });
+    try {
+      const result = releaseInventoryCommitmentsForOrder(store, order);
+      writeJson(STORE_PATH, store).catch((writeErr) => {
+        console.error("[inventory/release] persist failed:", writeErr?.message || writeErr);
+      });
+      return sendJson(res, 200, {
+        order: result.order,
+        inventory: store.inventory,
+      });
+    } catch (err) {
+      console.error("[inventory/release] unexpected error:", err);
+      return sendJson(res, 500, { error: "inventory_release_failed" });
+    }
   }
 
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/inventory\/fulfill$/) && req.method === "POST") {
     const orderId = decodeURIComponent(url.pathname.split("/")[3]);
     const order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
-    const result = fulfillInventoryCommitmentsForOrder(store, order);
-    writeJson(STORE_PATH, store).catch((writeErr) => {
-      console.error("[inventory/fulfill] persist failed:", writeErr?.message || writeErr);
-    });
-    return sendJson(res, 200, {
-      order: result.order,
-      inventory: store.inventory,
-      changed: Boolean(result.changed),
-    });
+    try {
+      const result = fulfillInventoryCommitmentsForOrder(store, order);
+      writeJson(STORE_PATH, store).catch((writeErr) => {
+        console.error("[inventory/fulfill] persist failed:", writeErr?.message || writeErr);
+      });
+      return sendJson(res, 200, {
+        order: result.order,
+        inventory: store.inventory,
+        changed: Boolean(result.changed),
+      });
+    } catch (err) {
+      console.error("[inventory/fulfill] unexpected error:", err);
+      return sendJson(res, 500, { error: "inventory_fulfill_failed" });
+    }
   }
 
   if (url.pathname === "/api/jobs" && req.method === "GET") {
@@ -8277,7 +8289,9 @@ async function handleApi(req, res, url) {
       const fulfillmentResult = fulfillInventoryCommitmentsForOrder(store, store.orders[orderIndex]);
       store.orders[orderIndex] = fulfillmentResult.order;
     }
-    await writeJson(STORE_PATH, store);
+    writeJson(STORE_PATH, store).catch((writeErr) => {
+      console.error("[operations] persist failed:", writeErr?.message || writeErr);
+    });
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 

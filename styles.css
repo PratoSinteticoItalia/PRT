@@ -296,6 +296,9 @@ body.shell-loading .shell-launch {
   place-items: start center;
   padding: 32px;
   align-content: center;
+  background:
+    linear-gradient(180deg, rgba(22, 42, 31, 0.05), transparent 42%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.96), rgba(242, 247, 241, 0.9));
 }
 
 .auth-card,
