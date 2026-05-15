@@ -19833,8 +19833,17 @@ bindEvent(ui.salesRequestUseGeneratorButton, "click", useSelectedSalesRequestInG
 bindEvent(document.getElementById("sales-request-storia-tab-btn"), "click", () => {
   const requestId = state.selectedSalesRequestId;
   if (requestId) void loadAuditTrail("sales_request", requestId, "sales-request-audit-trail");
-  const panel = document.getElementById("sales-request-storia-panel");
-  if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  const storiaPanel = document.getElementById("sales-request-storia-panel");
+  if (storiaPanel) {
+    const detailPanel = storiaPanel.closest(".sales-request-detail-panel");
+    if (detailPanel && window.innerWidth >= 981) {
+      // Desktop: scorre nel container sticky del pannello (non l'intera pagina)
+      const top = storiaPanel.getBoundingClientRect().top - detailPanel.getBoundingClientRect().top + detailPanel.scrollTop - 8;
+      detailPanel.scrollTo({ top, behavior: "smooth" });
+    } else {
+      storiaPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
 });
 bindEvent(ui.salesRequestServiceAccountButton, "click", () => ui.salesRequestServiceAccountInput?.click());
 bindEvent(ui.salesRequestServiceAccountInput, "change", handleSalesRequestServiceAccountSelection);

@@ -754,8 +754,9 @@ function dbRowToJob(row) {
 function dbRowToSalesRequest(row) {
   return {
     id: row.id,
-    firstName: row.first_name || "",
-    lastName: row.last_name || "",
+    // Il frontend usa name/surname (non firstName/lastName)
+    name: row.first_name || "",
+    surname: row.last_name || "",
     email: row.email || "",
     phone: row.phone || "",
     city: row.city || "",
@@ -765,6 +766,8 @@ function dbRowToSalesRequest(row) {
     province: row.province || "",
     countryCode: row.country_code || "IT",
     company: row.company || "",
+    // Il frontend usa service (non jobType)
+    service: row.job_type || "",
     jobType: row.job_type || "",
     surface: row.surface || "",
     sqm: row.sqm != null ? Number(row.sqm) : null,
@@ -1043,13 +1046,13 @@ async function upsertSalesRequestToDb(request) {
         updated_at=NOW()
     `, [
       String(request.id),
-      String(request.firstName || ""), String(request.lastName || ""),
+      String(request.name || request.firstName || ""), String(request.surname || request.lastName || ""),
       String(request.email || ""), String(request.phone || ""),
       String(request.city || ""), String(request.address || ""),
       String(request.postalCode || ""), String(request.provinceCode || ""),
       String(request.province || ""), String(request.countryCode || "IT"),
       String(request.company || ""),
-      String(request.jobType || ""), String(request.surface || ""),
+      String(request.service || request.jobType || ""), String(request.surface || ""),
       request.sqm != null ? Number(request.sqm) : null,
       String(request.note || ""),
       String(request.status || ""), String(request.assignment || ""),
