@@ -16993,7 +16993,15 @@ async function fulfillInventoryForOrder(orderId = "") {
 }
 
 async function syncInventoryFulfillmentForOrder(order = null) {
-  if (!order?.id || !getOrderInventoryAllocations(order).length || !isLogisticsOrderCompleted(order)) return order;
+  if (!order?.id || !getOrderInventoryAllocations(order).length) return order;
+  const _wh = order.operations?.warehouse || {};
+  const _mode = String(_wh.fulfillmentMode || "").trim();
+  const _locallyCompleted = Boolean(
+    _wh.shipped
+    || String(_wh.status || "").trim() === "ritirato"
+    || (_mode === "corriere" && _wh.carrierPassed),
+  );
+  if (!_locallyCompleted) return order;
   const result = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/inventory/fulfill`, {
     method: "POST",
     timeoutMs: 15_000,
