@@ -831,6 +831,15 @@ async function upsertOrderToDb(order) {
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
+    // Leggi stato prima dell'upsert per rilevare cambiamenti
+    let existingOrderRow = null;
+    try {
+      const existRes = await pool.query(
+        "SELECT financial_status, fulfillment_status FROM orders WHERE id = $1",
+        [String(order.id)],
+      );
+      existingOrderRow = existRes.rows[0] || null;
+    } catch {}
     await pool.query(`
       INSERT INTO orders (
         id, shopify_numeric_id, shopify_graphql_id, order_number,
@@ -887,6 +896,16 @@ async function upsertOrderToDb(order) {
       JSON.stringify(Array.isArray(order.attachments) ? order.attachments : []),
       order.convertedJobId ? String(order.convertedJobId) : null,
     ]);
+    // Audit log per cambiamenti di stato
+    const isNewOrder = !existingOrderRow;
+    if (!isNewOrder && existingOrderRow) {
+      const orderChanges = {};
+      if (existingOrderRow.financial_status !== String(order.financialStatus || "")) orderChanges.financialStatus = { before: existingOrderRow.financial_status, after: String(order.financialStatus || "") };
+      if (existingOrderRow.fulfillment_status !== String(order.fulfillmentStatus || "")) orderChanges.fulfillmentStatus = { before: existingOrderRow.fulfillment_status, after: String(order.fulfillmentStatus || "") };
+      if (Object.keys(orderChanges).length) {
+        writeAuditLog("order", order.id, "update", orderChanges, null).catch(() => {});
+      }
+    }
   } catch (err) {
     console.warn("[db] upsertOrderToDb:", err?.message);
   }
@@ -981,6 +1000,15 @@ async function upsertSalesRequestToDb(request) {
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
+    // Leggi stato prima dell'upsert per rilevare cambiamenti
+    let existingRow = null;
+    try {
+      const existingResult = await pool.query(
+        "SELECT status, assignment, note FROM sales_requests WHERE id = $1",
+        [String(request.id)],
+      );
+      existingRow = existingResult.rows[0] || null;
+    } catch {}
     await pool.query(`
       INSERT INTO sales_requests (
         id, first_name, last_name, email, phone,
@@ -1021,6 +1049,18 @@ async function upsertSalesRequestToDb(request) {
       JSON.stringify(Array.isArray(request.attachments) ? request.attachments : []),
       request.whatsappThreadId ? String(request.whatsappThreadId) : null,
     ]);
+    // Scrivi audit_log se ci sono cambiamenti nei campi chiave
+    const isNew = !existingRow;
+    if (isNew) {
+      writeAuditLog("sales_request", request.id, "create", { status: request.status, assignment: request.assignment }, null).catch(() => {});
+    } else {
+      const changes = {};
+      if (existingRow.status !== String(request.status || "")) changes.status = { before: existingRow.status, after: String(request.status || "") };
+      if (existingRow.assignment !== String(request.assignment || "")) changes.assignment = { before: existingRow.assignment, after: String(request.assignment || "") };
+      if (Object.keys(changes).length) {
+        writeAuditLog("sales_request", request.id, "update", changes, null).catch(() => {});
+      }
+    }
   } catch (err) {
     console.warn("[db] upsertSalesRequestToDb:", err?.message);
   }
@@ -1033,6 +1073,19 @@ async function deleteSalesRequestFromDb(id) {
     await pool.query("DELETE FROM sales_requests WHERE id = $1", [String(id)]);
   } catch (err) {
     console.warn("[db] deleteSalesRequestFromDb:", err?.message);
+  }
+}
+
+async function writeAuditLog(entityType, entityId, action, diff, userId) {
+  if (!USE_POSTGRES || !entityId) return;
+  try {
+    const pool = await getPgPool();
+    await pool.query(
+      "INSERT INTO audit_log (entity_type, entity_id, user_id, action, diff) VALUES ($1,$2,$3,$4,$5)",
+      [String(entityType), String(entityId), userId ? String(userId) : null, String(action), JSON.stringify(diff || {})],
+    );
+  } catch (err) {
+    console.warn("[db] writeAuditLog:", err?.message);
   }
 }
 
@@ -9200,6 +9253,32 @@ async function handleApi(req, res, url) {
       [category, value, label || value, position || 0, JSON.stringify(metadata || {})]
     );
     return sendJson(res, 200, result.rows[0]);
+  }
+
+  const auditMatch = url.pathname.match(/^\/api\/audit\/(order|sales_request)\/([^/]+)$/);
+  if (auditMatch && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const entityType = auditMatch[1];
+    const entityId = decodeURIComponent(auditMatch[2]);
+    if (!USE_POSTGRES) return sendJson(res, 200, []);
+    try {
+      const pool = await getPgPool();
+      const { rows } = await pool.query(
+        "SELECT id, entity_type, entity_id, user_id, action, diff, created_at FROM audit_log WHERE entity_type=$1 AND entity_id=$2 ORDER BY created_at DESC LIMIT 100",
+        [entityType, entityId],
+      );
+      return sendJson(res, 200, rows.map((r) => ({
+        id: String(r.id),
+        entityType: r.entity_type,
+        entityId: r.entity_id,
+        userId: r.user_id || null,
+        action: r.action,
+        diff: r.diff || {},
+        createdAt: r.created_at,
+      })));
+    } catch (err) {
+      return sendJson(res, 500, { error: err?.message || "audit_log_error" });
+    }
   }
 
   const catalogItemMatch = url.pathname.match(/^\/api\/catalog\/([^/]+)\/([^/]+)$/);

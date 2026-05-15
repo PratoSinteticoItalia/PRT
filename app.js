@@ -10420,6 +10420,9 @@ function renderOrders() {
       : `<div class="info-card">${t("noPhysicalPrep")}</div>`;
   }
   ui.orderAttachments.innerHTML = renderAttachmentGrid(order.attachments || [], order.id);
+  if (order.id) {
+    void loadAuditTrail("order", order.id, "order-audit-trail");
+  }
 }
 
 function getFilteredSalesRequests({ ignoreQuickFilter = false } = {}) {
@@ -10655,6 +10658,9 @@ function renderSalesRequestsDetailPanel(selected = null) {
   }
   if (ui.salesRequestDeleteButton) ui.salesRequestDeleteButton.disabled = !effectiveSelected;
   if (ui.salesRequestUseGeneratorButton) ui.salesRequestUseGeneratorButton.disabled = !effectiveSelected;
+  if (selected?.id) {
+    void loadAuditTrail("sales_request", selected.id, "sales-request-audit-trail");
+  }
 }
 
 function renderSalesGeneratorPlannerMaterials(reference) {
@@ -13957,6 +13963,53 @@ async function removeCatalogItem(category, value) {
   return apiFetch(`/api/catalog/${encodeURIComponent(category)}/${encodeURIComponent(value)}`, {
     method: "DELETE",
   });
+}
+
+async function loadAuditTrail(entityType, entityId, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '<p style="color:#888;font-size:13px;padding:8px 0;">Caricamento...</p>';
+  try {
+    const response = await fetch(`/api/audit/${entityType}/${encodeURIComponent(entityId)}`);
+    if (!response.ok) throw new Error(response.status);
+    const entries = await response.json();
+    if (!entries.length) {
+      container.innerHTML = '<p style="color:#888;font-size:13px;padding:8px 0;">Nessuna modifica registrata.</p>';
+      return;
+    }
+    const fieldLabels = {
+      status: "Stato",
+      assignment: "Assegnazione",
+      financialStatus: "Stato pagamento",
+      fulfillmentStatus: "Stato spedizione",
+    };
+    const html = entries.map((entry) => {
+      const dateStr = entry.createdAt
+        ? new Date(entry.createdAt).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+        : "";
+      const diffEntries = Object.entries(entry.diff || {});
+      let description = "";
+      if (entry.action === "create") {
+        description = `Creato — stato: <strong>${entry.diff?.status || ""}</strong>`;
+      } else if (diffEntries.length) {
+        description = diffEntries.map(([field, change]) => {
+          const label = fieldLabels[field] || field;
+          const before = change?.before ?? "";
+          const after = change?.after ?? "";
+          return `${label}: <em>${before}</em> → <strong>${after}</strong>`;
+        }).join(" · ");
+      } else {
+        description = entry.action;
+      }
+      return `<div class="audit-entry" style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;">
+        <span style="color:#888;font-size:11px;">${dateStr}</span><br>
+        ${description}
+      </div>`;
+    }).join("");
+    container.innerHTML = html;
+  } catch {
+    container.innerHTML = '<p style="color:#e74c3c;font-size:13px;padding:8px 0;">Errore caricamento storia.</p>';
+  }
 }
 
 function renderProfitSplitWorkspace() {
@@ -19763,6 +19816,10 @@ bindEvent(ui.salesRequestForm, "submit", saveSalesRequest);
 bindEvent(ui.salesRequestNewButton, "click", createNewSalesRequest);
 bindEvent(ui.salesRequestDeleteButton, "click", deleteSalesRequest);
 bindEvent(ui.salesRequestUseGeneratorButton, "click", useSelectedSalesRequestInGenerator);
+bindEvent(document.getElementById("sales-request-storia-tab-btn"), "click", () => {
+  const requestId = state.selectedSalesRequestId;
+  if (requestId) void loadAuditTrail("sales_request", requestId, "sales-request-audit-trail");
+});
 bindEvent(ui.salesRequestServiceAccountButton, "click", () => ui.salesRequestServiceAccountInput?.click());
 bindEvent(ui.salesRequestServiceAccountInput, "change", handleSalesRequestServiceAccountSelection);
 bindEvent(ui.salesRequestClearServiceAccountButton, "click", () => saveSalesRequestSourceConfig({ clearServiceAccount: true }));
