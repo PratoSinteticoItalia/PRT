@@ -3975,7 +3975,8 @@ function syncSalesRequestFilters() {
     ui.salesRequestAssignmentFilter.replaceChildren(...getSalesRequestAssignmentFilterOptions().map((item) => {
       const option = document.createElement("option");
       option.value = item.value;
-      option.textContent = `${item.label} (${item.count})`;
+      // Per "all" non mostrare il conteggio (già visibile nel chip, evita troncamento select)
+      option.textContent = item.value === "all" ? item.label : `${item.label} (${item.count})`;
       return option;
     }));
     const hasCurrent = Array.from(ui.salesRequestAssignmentFilter.options).some((option) => option.value === current);
@@ -3987,7 +3988,7 @@ function syncSalesRequestFilters() {
     ui.salesRequestStatusFilter.replaceChildren(...getSalesRequestStatusFilterOptions().map((item) => {
       const option = document.createElement("option");
       option.value = item.value;
-      option.textContent = `${item.label} (${item.count})`;
+      option.textContent = item.value === "all" ? item.label : `${item.label} (${item.count})`;
       return option;
     }));
     const hasCurrent = Array.from(ui.salesRequestStatusFilter.options).some((option) => option.value === current);
@@ -12832,16 +12833,10 @@ function renderWarehouse() {
   const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
   if (state.currentView === "warehouse" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (order) {
-    const orderAllocations = getOrderInventoryAllocations(order);
-    const hasActiveAllocations = orderAllocations.some((item) => getInventoryPieceState({ pieceState: item.status }) !== "disponibile");
-    if (state.currentView === "warehouse" && !hasActiveAllocations && !getInventorySuggestionForOrder(order.id) && !inventoryAllocationPendingOrderIds.has(order.id) && !inventoryAutoSuggestedOrderIds.has(order.id)) {
-      inventoryAutoSuggestedOrderIds.add(order.id);
-      setTimeout(() => {
-        if (state.currentView !== "warehouse") return;
-        suggestInventoryForOrder(order.id);
-      }, 0);
-    }
   }
+  // Nota: l'auto-suggest inventario è stato rimosso — era fastidioso perché mostrava
+  // l'avviso "mancano N pezzi" appena si apriva l'inventario. L'utente può richiedere
+  // la proposta esplicitamente con il pulsante dedicato.
   ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Inventario operativo" : "Inventory operations";
   ui.warehouseDetailFields.innerHTML = order
     ? `${[

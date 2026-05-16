@@ -839,7 +839,11 @@ async function getSalesRequestsFromDb() {
 
 async function upsertOrderToDb(order) {
   if (!USE_POSTGRES || !order?.id) return;
-  const ops = order.operations || {};
+  // Assicura che operations_json abbia sqm/product derivati: se mancano, li calcola da lineItems
+  const orderWithOps = (order.operations?.sqm == null || order.operations?.sqm === 0)
+    ? normalizeOperations(order)
+    : order;
+  const ops = orderWithOps.operations || order.operations || {};
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
@@ -908,7 +912,7 @@ async function upsertOrderToDb(order) {
       JSON.stringify(Array.isArray(order.lineDetails) ? order.lineDetails : []),
       JSON.stringify(Array.isArray(order.attachments) ? order.attachments : []),
       order.convertedJobId ? String(order.convertedJobId) : null,
-      JSON.stringify(order.operations || {}),
+      JSON.stringify(orderWithOps.operations || order.operations || {}),
     ]);
     // Audit log per cambiamenti di stato
     const isNewOrder = !existingOrderRow;
