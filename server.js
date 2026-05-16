@@ -7423,7 +7423,7 @@ async function handleApi(req, res, url) {
       ok: true,
       service: "vertex-ops-pose-system",
       timestamp: new Date().toISOString(),
-      buildTag: "inv-commit-2026-05-14-g",
+      buildTag: "perf-cache-2026-05-16-g",
       fixes: [
         "reconcileStoreData-persists-missing-piece-ids",
         "backfillInventoryIds-writes-on-change",
@@ -7433,6 +7433,13 @@ async function handleApi(req, res, url) {
         "external-sync-bypasses-fifo-write-queue",
         "commit-response-includes-full-debug-snapshot",
         "pg-pool-idle-error-no-longer-crashes",
+        "gzip-session-responses",
+        "ttl-cache-all-db-queries",
+        "skip-reconcile-mem-reconciled-flag",
+        "session-orders-blob-sql-merge",
+        "dual-write-all-endpoints",
+        "audit-log-order-sales-request",
+        "shopify-webhook-all-4-topics",
       ],
     });
   }
@@ -7967,7 +7974,7 @@ async function handleApi(req, res, url) {
       await writeJson(STORE_PATH, store);
       // Scrivi in SQL ogni richiesta importata (dual-write mancante in questo path)
       for (const r of importedRequests) {
-        upsertSalesRequestToDb(r).catch(() => {});
+        upsertSalesRequestToDb(r, currentUser?.email || null).catch(() => {});
       }
       return sendJson(res, 200, {
         requests: store.salesRequests,
