@@ -800,11 +800,15 @@ function dbRowToSalesRequest(row) {
 
 async function getOrdersFromDb() {
   if (!USE_POSTGRES) return null;
+  const now = Date.now();
+  if (_ordersDbCache && now - _ordersDbCacheAt < DB_CACHE_TTL_MS) return _ordersDbCache;
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
     const { rows } = await pool.query("SELECT * FROM orders ORDER BY updated_at DESC NULLS LAST");
-    return rows.map(dbRowToOrder);
+    _ordersDbCache = rows.map(dbRowToOrder);
+    _ordersDbCacheAt = now;
+    return _ordersDbCache;
   } catch (err) {
     console.warn("[db] getOrdersFromDb:", err?.message);
     return null;
@@ -813,11 +817,15 @@ async function getOrdersFromDb() {
 
 async function getInventoryFromDb() {
   if (!USE_POSTGRES) return null;
+  const now = Date.now();
+  if (_inventoryDbCache && now - _inventoryDbCacheAt < DB_CACHE_TTL_MS) return _inventoryDbCache;
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
     const { rows } = await pool.query("SELECT * FROM inventory_items ORDER BY created_at ASC NULLS LAST");
-    return rows.map(dbRowToInventoryItem);
+    _inventoryDbCache = rows.map(dbRowToInventoryItem);
+    _inventoryDbCacheAt = now;
+    return _inventoryDbCache;
   } catch (err) {
     console.warn("[db] getInventoryFromDb:", err?.message);
     return null;
@@ -826,22 +834,40 @@ async function getInventoryFromDb() {
 
 async function getJobsFromDb() {
   if (!USE_POSTGRES) return null;
+  const now = Date.now();
+  if (_jobsDbCache && now - _jobsDbCacheAt < DB_CACHE_TTL_MS) return _jobsDbCache;
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
     const { rows } = await pool.query("SELECT * FROM jobs ORDER BY created_at DESC NULLS LAST");
-    return rows.map(dbRowToJob);
+    _jobsDbCache = rows.map(dbRowToJob);
+    _jobsDbCacheAt = now;
+    return _jobsDbCache;
   } catch (err) {
     console.warn("[db] getJobsFromDb:", err?.message);
     return null;
   }
 }
 
-// Cache TTL per getSalesRequestsFromDb — evita N query DB su sessioni concorrenti.
-// Il cache viene invalidato dopo ogni upsert/delete di sales request.
+// Cache TTL per le 4 query DB chiamate su ogni /api/session.
+// Ogni cache viene invalidato da una funzione dedicata chiamata sui rispettivi write.
+const DB_CACHE_TTL_MS = 10_000; // 10 secondi — bilanciamento freschezza vs. carico DB
+
+let _ordersDbCache = null;
+let _ordersDbCacheAt = 0;
+function invalidateOrdersDbCache() { _ordersDbCache = null; _ordersDbCacheAt = 0; }
+
+let _inventoryDbCache = null;
+let _inventoryDbCacheAt = 0;
+function invalidateInventoryDbCache() { _inventoryDbCache = null; _inventoryDbCacheAt = 0; }
+
+let _jobsDbCache = null;
+let _jobsDbCacheAt = 0;
+function invalidateJobsDbCache() { _jobsDbCache = null; _jobsDbCacheAt = 0; }
+
 let _salesRequestsDbCache = null;
 let _salesRequestsDbCacheAt = 0;
-const SALES_REQUESTS_DB_CACHE_TTL_MS = 15_000; // 15 secondi
+const SALES_REQUESTS_DB_CACHE_TTL_MS = 15_000; // 15 secondi (eredita TTL legacy)
 
 function invalidateSalesRequestsDbCache() {
   _salesRequestsDbCache = null;
@@ -869,6 +895,7 @@ async function getSalesRequestsFromDb() {
 
 async function upsertOrderToDb(order, userId = null) {
   if (!USE_POSTGRES || !order?.id) return;
+  invalidateOrdersDbCache();
   // Assicura che operations_json abbia sqm/product derivati: se mancano, li calcola da lineItems
   const orderWithOps = (order.operations?.sqm == null || order.operations?.sqm === 0)
     ? normalizeOperations(order)
@@ -976,6 +1003,7 @@ async function upsertOrderToDb(order, userId = null) {
 
 async function upsertInventoryItemToDb(item) {
   if (!USE_POSTGRES || !item?.id) return;
+  invalidateInventoryDbCache();
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
@@ -1005,6 +1033,7 @@ async function upsertInventoryItemToDb(item) {
 
 async function deleteInventoryItemFromDb(id) {
   if (!USE_POSTGRES || !id) return;
+  invalidateInventoryDbCache();
   try {
     const pool = await getPgPool();
     await pool.query("DELETE FROM inventory_items WHERE id = $1", [String(id)]);
@@ -1015,6 +1044,7 @@ async function deleteInventoryItemFromDb(id) {
 
 async function upsertJobToDb(job) {
   if (!USE_POSTGRES || !job?.id) return;
+  invalidateJobsDbCache();
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
@@ -1050,6 +1080,7 @@ async function upsertJobToDb(job) {
 
 async function deleteJobFromDb(id) {
   if (!USE_POSTGRES || !id) return;
+  invalidateJobsDbCache();
   try {
     const pool = await getPgPool();
     await pool.query("DELETE FROM jobs WHERE id = $1", [String(id)]);
@@ -8921,6 +8952,7 @@ async function handleApi(req, res, url) {
       const result = upsertOrderRecord(store, refreshedOrder);
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
+      upsertOrderToDb(result.order, currentUser?.email || null).catch(() => {});
       return sendJson(res, 200, result.order);
     } catch (error) {
       return sendJson(res, 400, { error: error.message || "shopify_order_refresh_failed" });
