@@ -20,11 +20,13 @@
       --gx:  #4a5c4e;
       --gn:  #1e2820;
       --red: #c0392b;
+      --amber: #d97706;
     }
 
     html, body {
       font-family: 'Inter', sans-serif;
       background: #9aa096;
+      color: var(--gn);
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -50,176 +52,245 @@
       margin: 14mm auto;
       background: #fff;
       box-shadow: 0 8px 40px rgba(0,0,0,.22);
+      padding: 22px 26px 14px;
     }
     @media print {
       html, body { background: none; }
-      .page { margin: 0; box-shadow: none; width: 100%; }
+      .page { margin: 0; box-shadow: none; width: 100%; padding: 18px 22px; }
       .toolbar { display: none; }
-      .page + .page { page-break-before: always; }
       @page { size: A4; margin: 0; }
     }
 
     /* ── HEADER ── */
     .hdr {
-      padding: 15px 26px 13px;
       display: flex; align-items: center; justify-content: space-between;
-      border-bottom: 4px solid var(--gd);
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--gd);
+      margin-bottom: 14px;
     }
-    .logo-row { display: flex; align-items: center; gap: 13px; }
-    .logo-box {
-      width: 54px; height: 54px; background: var(--gd);
-      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    .hdr-left { display: flex; align-items: center; gap: 14px; }
+    .hdr-logo {
+      width: 72px; height: 60px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
     }
-    .logo-box svg { width: 40px; height: 40px; }
-    .logo-tx .brand { font-size: 20px; font-weight: 900; color: var(--gd); letter-spacing: -.3px; line-height: 1; }
-    .logo-tx .brand em { color: var(--ga); font-style: normal; }
-    .logo-tx .sub  { font-size: 10px; font-weight: 700; letter-spacing: 2.5px; color: var(--gd); text-transform: uppercase; opacity:.7; }
-    .logo-tx .tag  { font-size: 9px; color: var(--gl); margin-top: 2px; }
-    .hdr-r { text-align: right; }
-    .hdr-r .lbl { font-size: 8px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--gl); }
-    .hdr-r .num { font-size: 24px; font-weight: 900; color: var(--gd); letter-spacing: -1px; line-height: 1.1; }
-    .hdr-r .co  { font-size: 9px; color: var(--gx); margin-top: 2px; }
+    .hdr-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .hdr-brand { font-size: 22px; font-weight: 900; color: var(--gd); letter-spacing: -.3px; line-height: 1.05; }
+    .hdr-sub { font-size: 14px; font-weight: 800; color: var(--gd); letter-spacing: 1px; }
+    .hdr-tag { font-size: 9.5px; color: var(--gl); margin-top: 4px; }
+    .hdr-right { text-align: right; }
+    .hdr-lbl { font-size: 9px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--gl); }
+    .hdr-num { font-size: 24px; font-weight: 900; color: var(--gd); letter-spacing: -1px; line-height: 1.05; }
+    .hdr-co  { font-size: 9px; color: var(--gx); margin-top: 4px; letter-spacing: .2px; }
 
-    /* ── INFO ROW ── */
-    .info-row { display: grid; grid-template-columns: 1fr 195px; border-bottom: 1px solid var(--br); }
-    .c-box { padding: 12px 22px; border-right: 1px solid var(--br); }
-    .v-box { padding: 12px 18px; background: var(--off); }
-    .bx-t { font-size: 7.5px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ga); border-bottom: 1px solid var(--br); padding-bottom: 5px; margin-bottom: 8px; }
-    .cg { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; }
+    /* ── INFO ROW: Cliente + Validità ── */
+    .info-row {
+      display: grid; grid-template-columns: 1fr 200px; gap: 10px;
+      margin-bottom: 14px;
+    }
+    .ibox {
+      border: 1px solid var(--br); border-radius: 10px; overflow: hidden;
+      background: linear-gradient(180deg, #fcfdfb, #f6f8f5);
+    }
+    .ibox-t {
+      text-align: center; padding: 6px 12px;
+      font-size: 10px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase;
+      color: var(--gd);
+      border-bottom: 1px solid var(--br);
+    }
+    .ibox-body { padding: 10px 14px; }
+    .cgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
     .cf { display: flex; gap: 5px; align-items: baseline; }
-    .cf-l { font-size: 9px; color: var(--gl); white-space: nowrap; }
+    .cf-l { font-size: 10px; color: var(--gl); white-space: nowrap; font-weight: 500; }
     .cf-v { font-size: 11.5px; font-weight: 700; color: var(--gn); }
-    .vg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .vi .vl { font-size: 8px; color: var(--gl); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
-    .vi .vv { font-size: 16px; font-weight: 800; color: var(--gd); letter-spacing: -.3px; }
+    .ibox-body.v { text-align: center; }
+    .ibox-body.v .vrow { font-size: 12px; font-weight: 700; color: var(--gn); margin-top: 2px; }
+    .ibox-body.v .vrow span { color: var(--gl); font-weight: 500; }
 
-    /* ── HERO BAR ── */
+    /* ── HERO ── */
     .hero {
-      background: var(--gd); padding: 12px 26px;
-      display: flex; align-items: center; justify-content: space-between;
+      text-align: center;
+      font-size: 20px; font-weight: 900;
+      color: var(--gn); letter-spacing: 1.4px;
+      padding: 6px 0 8px;
+      border-bottom: 1px solid #c0cabb;
+      margin-bottom: 0;
     }
-    .hero h2 { font-size: 17px; font-weight: 900; color: #fff; letter-spacing: -.3px; text-transform: uppercase; }
-    .svc-pill { background: var(--ga); color: #fff; font-size: 9px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; padding: 5px 13px; border-radius: 20px; }
 
     /* ── TABELLA ── */
-    table.mt { width: 100%; border-collapse: collapse; }
-    table.mt thead tr { background: var(--gm); }
+    table.mt { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    table.mt thead tr { background: var(--gd); }
     table.mt th {
-      padding: 8px 10px; text-align: right;
-      font-size: 7.5px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
-      color: rgba(255,255,255,.6);
+      padding: 8px 8px; text-align: right;
+      font-size: 8px; font-weight: 700; letter-spacing: .8px;
+      color: #fff;
     }
     table.mt th:first-child { text-align: left; }
-    table.mt th.hl { color: #fff; }
-    table.mt tbody tr { border-bottom: 1px solid var(--br); }
-    table.mt tbody tr:nth-child(even) { background: var(--off); }
-    table.mt tbody tr.suggested {
-      background: linear-gradient(90deg, #eef7f0 0%, #f6faf6 100%);
-      border-left: 4px solid var(--gd);
-    }
-    table.mt td { padding: 10px 10px; text-align: right; vertical-align: middle; }
+    table.mt tbody tr { border-bottom: 1px solid #ebefe9; }
+    table.mt tbody tr:last-child { border-bottom: none; }
+    table.mt td { padding: 11px 8px; text-align: right; vertical-align: middle; }
     table.mt td:first-child { text-align: left; }
-    .mn  { font-size: 13px; font-weight: 800; color: var(--gn); }
-    .mc  { font-size: 8.5px; font-weight: 600; color: var(--ga); letter-spacing: .2px; }
-    .ms  { font-size: 9px; color: var(--gl); margin-top: 1px; }
-    .disc{ color: var(--red); font-weight: 800; font-size: 12px; }
-    .tm  { font-size: 12px; font-weight: 700; color: var(--gn); }
-    .tv  { font-size: 8px; color: var(--gl); margin-top: 1px; }
-    .tf  { font-size: 11px; font-weight: 700; color: var(--ga); }
-    .tt  { font-size: 14px; font-weight: 900; color: var(--gd); }
-    .product-thumb {
-      width: 42px; height: 42px; object-fit: cover; border-radius: 5px;
+    table.mt tbody tr.suggested {
+      background: linear-gradient(90deg, #f0f7f3 0%, #f8fbf7 100%);
+    }
+    table.mt tbody tr.suggested td:first-child {
+      border-left: 3px solid var(--gd);
+      padding-left: 10px;
+    }
+    .m-name { font-size: 12px; font-weight: 800; color: var(--gn); }
+    .m-tag  { font-size: 10px; color: var(--gl); margin-top: 1px; font-weight: 500; }
+    .m-cell {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .m-thumb {
+      width: 38px; height: 38px; object-fit: cover; border-radius: 5px;
       flex-shrink: 0; border: 1px solid #dde8df;
     }
-    .product-thumb.suggested { border: 2px solid var(--gd); }
-    .product-thumb-placeholder {
-      width: 42px; height: 42px; border-radius: 5px; flex-shrink: 0;
+    .m-thumb.suggested { border: 2px solid var(--gd); }
+    .m-thumb-ph {
+      width: 38px; height: 38px; border-radius: 5px; flex-shrink: 0;
       background: linear-gradient(135deg, var(--gp), var(--gb));
       border: 1px solid var(--br);
       display: flex; align-items: center; justify-content: center;
       font-size: 16px; color: var(--gd);
     }
-    .suggested-pill {
-      background: var(--gd); color: #fff; font-size: 7.5px; font-weight: 800;
-      letter-spacing: .5px; text-transform: uppercase;
-      padding: 3px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+    .price-val { font-size: 12.5px; font-weight: 700; color: var(--gn); }
+    .price-vat { font-size: 9px; color: var(--gl); margin-top: 1px; }
+    .disc { color: var(--red); font-weight: 800; font-size: 13px; }
+    .ship-free { color: var(--ga); font-weight: 700; font-size: 11px; }
+    .total-net { font-size: 12.5px; font-weight: 700; color: var(--gn); }
+    .total-grand {
+      font-size: 14px; font-weight: 900; color: var(--gd);
+    }
+    table.mt td.tot-col {
+      background: rgba(218, 235, 224, 0.32);
     }
 
-    /* ── STRIP INFO ── */
-    .info-strip {
-      display: flex; align-items: stretch;
-      border-top: 2px solid var(--gd); border-bottom: 1px solid var(--br);
-      margin-top: 12px;
+    /* ── BOX DETTAGLI MATERIALI ── */
+    .mat {
+      border: 1px solid var(--br); border-radius: 9px;
+      margin: 4px 0 14px;
+      overflow: hidden;
     }
-    .is-item {
-      flex: 1; padding: 9px 16px;
-      display: flex; align-items: center; gap: 10px;
-      border-right: 1px solid var(--br);
+    .mat-desc {
+      background: var(--off);
+      padding: 9px 14px;
+      font-size: 10px; color: var(--gx); line-height: 1.55;
+      border-bottom: 1px solid var(--br);
     }
-    .is-item:last-child { border-right: none; }
-    .is-icon { font-size: 15px; flex-shrink: 0; }
-    .is-title { font-size: 11px; font-weight: 800; color: var(--gd); line-height: 1.2; }
-    .is-sub   { font-size: 9px; color: var(--gl); margin-top: 1px; }
+    .mat-list {
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      padding: 8px 14px; gap: 4px 22px;
+    }
+    .mat-li {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 10px;
+    }
+    .mat-li-n { color: var(--gx); }
+    .mat-li-v { color: var(--gn); font-weight: 700; }
+    .mat-det {
+      padding: 6px 14px 9px;
+      font-size: 9px; color: var(--gl);
+      border-top: 1px solid var(--br);
+      line-height: 1.55;
+    }
+    .mat-det strong { color: var(--gx); }
 
-    /* ── PRICE CARDS adattive 1-3 ── */
-    .pc-row { display: grid; gap: 9px; margin: 12px 26px; }
-    .pc-row[data-count="1"] { grid-template-columns: 1fr; max-width: 240px; margin-left: auto; margin-right: auto; }
+    /* ── BADGES (4 elementi) ── */
+    .badges {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 8px; margin-bottom: 12px;
+    }
+    .badge {
+      border: 1px solid var(--br); border-radius: 9px;
+      padding: 11px 8px 9px;
+      text-align: center;
+      background: linear-gradient(180deg, #fff, #fcfdfb);
+    }
+    .badge-icon { font-size: 18px; line-height: 1; }
+    .badge-v { font-size: 13.5px; font-weight: 800; color: var(--gd); margin-top: 5px; letter-spacing: -.2px; }
+    .badge-s { font-size: 9px; color: var(--gl); margin-top: 2px; }
+
+    /* ── PRICE CARDS (1-3 adattive) ── */
+    .pc-row { display: grid; gap: 10px; margin-bottom: 14px; }
+    .pc-row[data-count="1"] { grid-template-columns: 1fr; max-width: 280px; margin-left: auto; margin-right: auto; }
     .pc-row[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
     .pc-row[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
-    .pc { background: var(--gd); border-radius: 8px; padding: 13px 13px 11px; text-align: center; }
-    .pc-m { font-size: 8.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,.5); }
-    .pc-c { font-size: 8px; color: var(--ga); font-weight: 600; margin-bottom: 5px; }
-    .pc-s { font-size: 8.5px; color: rgba(255,255,255,.4); margin-bottom: 5px; }
-    .pc-p { font-size: 28px; font-weight: 900; color: #fff; letter-spacing: -1px; line-height: 1; }
-    .pc-p sup { font-size: 12px; vertical-align: super; font-weight: 700; }
-    .pc-u { font-size: 8.5px; color: rgba(255,255,255,.4); margin-top: 2px; }
-    .pc-hl {
-      margin-top: 9px; padding-top: 9px;
-      border-top: 1px solid rgba(255,255,255,.12);
-      font-size: 9.5px; color: rgba(255,255,255,.55);
-      line-height: 1.3;
+    .pc {
+      border: 1.5px solid var(--br); border-radius: 9px;
+      padding: 12px 12px 11px; text-align: center;
+      background: #fff;
+      position: relative;
     }
-    .pc-hl strong { color: rgba(255,255,255,.85); font-size: 11px; }
-    .pc.suggested {
-      background: #fff; border: 2.5px solid var(--gd); position: relative;
-    }
-    .pc.suggested .suggested-badge {
-      position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
-      background: var(--ga); color: #fff; font-size: 8px; font-weight: 800;
+    .pc.suggested { border-color: var(--gd); border-width: 2.5px; }
+    .pc-m { font-size: 11.5px; font-weight: 800; letter-spacing: .8px; color: var(--gn); text-transform: uppercase; }
+    .pc-s { font-size: 10px; color: var(--gl); margin: 2px 0 8px; }
+    .pc-p { font-size: 26px; font-weight: 900; color: var(--gn); letter-spacing: -1px; line-height: 1; }
+    .pc-p .eu { font-size: 18px; vertical-align: baseline; font-weight: 800; }
+    .pc-u { font-size: 9.5px; color: var(--gl); margin-top: 4px; }
+    .pc-badge {
+      position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
+      background: var(--ga); color: #fff; font-size: 7.5px; font-weight: 800;
       letter-spacing: .5px; text-transform: uppercase;
-      padding: 3px 12px; border-radius: 20px; white-space: nowrap;
+      padding: 3px 10px; border-radius: 20px; white-space: nowrap;
     }
-    .pc.suggested .pc-m { color: var(--gd); margin-top: 4px; }
-    .pc.suggested .pc-c { color: var(--ga); }
-    .pc.suggested .pc-s, .pc.suggested .pc-u { color: var(--gl); }
-    .pc.suggested .pc-p, .pc.suggested .pc-p sup { color: var(--gd); }
-    .pc.suggested .pc-hl { border-top: 1px solid var(--br); color: var(--gx); }
-    .pc.suggested .pc-hl strong { color: var(--gd); }
 
-    /* ── PAGAMENTO ── */
-    .pay-strip {
-      margin: 4px 26px 12px;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 14px;
-      background: var(--off); border: 1px solid var(--br); border-radius: 6px;
+    /* ── METODI DI PAGAMENTO ── */
+    .pay {
+      border: 1px solid var(--br); border-radius: 9px;
+      padding: 14px 16px 12px;
+      margin-bottom: 12px; text-align: center;
+      background: linear-gradient(180deg, #fff, #fafbf8);
     }
-    .pay-strip-label { font-size: 9px; color: var(--gl); font-weight: 600; letter-spacing: .3px; }
-    .pay-logos { display: flex; gap: 5px; align-items: center; }
+    .pay-t {
+      font-size: 9px; font-weight: 800; letter-spacing: 2.4px;
+      color: var(--amber); text-transform: uppercase; margin-bottom: 7px;
+    }
+    .pay-d1 { font-size: 12px; font-weight: 700; color: var(--gn); line-height: 1.45; }
+    .pay-d2 { font-size: 10.5px; color: var(--gx); margin-top: 4px; line-height: 1.45; }
+
+    /* ── SIMULAZIONE HEYLIGHT ── */
+    .hl-sim { margin-bottom: 12px; }
+    .hl-sim-t {
+      text-align: center;
+      font-size: 9px; font-weight: 800; letter-spacing: 2.4px;
+      color: var(--amber); text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .hl-row { display: grid; gap: 10px; }
+    .hl-row[data-count="1"] { grid-template-columns: 1fr; max-width: 280px; margin: 0 auto; }
+    .hl-row[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
+    .hl-row[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
+    .hl-card {
+      background: var(--gd); color: #fff;
+      padding: 11px 12px; border-radius: 9px;
+      text-align: center;
+    }
+    .hl-m { font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: rgba(255,255,255,.85); }
+    .hl-v { font-size: 13px; font-weight: 800; color: #fff; margin-top: 5px; letter-spacing: -.2px; }
+
+    /* ── FIRMA + LOGOS PAGAMENTO ── */
+    .firma-row {
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 22px; align-items: end;
+      padding-top: 14px; border-top: 1px solid #ebefe9;
+    }
+    .firma-line {
+      border-bottom: 1px solid var(--br);
+      height: 26px;
+    }
+    .firma-lbl {
+      font-size: 9.5px; color: var(--gl); margin-top: 4px;
+    }
+    .pay-logos {
+      display: flex; gap: 5px; align-items: center;
+    }
     .pl {
       background: #fff; border: 1px solid var(--br);
       color: var(--gx); font-size: 7.5px; font-weight: 800;
       padding: 3px 7px; border-radius: 3px; letter-spacing: .3px;
     }
-    .pl.hl-logo { background: var(--gd); color: #fff; border-color: var(--gd); }
-
-    /* ── FIRMA ── */
-    .firma { margin: 6px 26px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 38px; }
-    .fl  { border-bottom: 1px solid var(--br); height: 24px; margin-bottom: 4px; }
-    .flb { font-size: 8.5px; color: var(--gl); }
-
-    /* ── FOOTER ── */
-    .ftr { background: var(--gd); padding: 9px 26px; display: flex; align-items: center; justify-content: space-between; }
-    .fi  { font-size: 8.5px; color: rgba(255,255,255,.5); line-height: 1.5; }
+    .pl.hl { background: var(--gd); color: #fff; border-color: var(--gd); }
   </style>
 </head>
 <body>
@@ -229,250 +300,201 @@
   <button type="button" class="ghost" onclick="window.close()">Chiudi</button>
 </div>
 
-<!-- ═══════════════════ PAGINA 1 ═══════════════════ -->
-<div class="page" id="page-1">
+<div class="page">
+  <!-- HEADER -->
   <div class="hdr">
-    <div class="logo-row">
-      <div class="logo-box"><svg viewBox="0 0 42 42" fill="none"><use href="#psi-logo"/></svg></div>
-      <div class="logo-tx">
-        <div class="brand">PRATO SINTETICO <em>ITALIA</em></div>
-        <div class="sub">Outdoor Collection</div>
-        <div class="tag">Dal 2016 · Fornitura e Posa Professionale</div>
+    <div class="hdr-left">
+      <div class="hdr-logo"><img src="./logo-prato.png" alt="Prato Sintetico Italia" onerror="this.style.display='none';"></div>
+      <div>
+        <div class="hdr-brand">PRATO SINTETICO</div>
+        <div class="hdr-sub">ITALIA</div>
+        <div class="hdr-tag" data-field="brandTagline">Dal 2016 · Fornitura e Posa Professionale</div>
       </div>
     </div>
-    <div class="hdr-r">
-      <div class="lbl">Preventivo Nr.</div>
-      <div class="num" data-field="quoteNumber">FP-0000-00</div>
-      <div class="co">VERTEX SRLS · P.IVA 04863610616</div>
+    <div class="hdr-right">
+      <div class="hdr-lbl">Preventivo Nr.</div>
+      <div class="hdr-num" data-field="quoteNumber">F-0000-00</div>
+      <div class="hdr-co" data-field="brandCompany">VERTEX SRLS · P.IVA 04863610616</div>
     </div>
   </div>
 
+  <!-- CLIENTE / VALIDITÀ -->
   <div class="info-row">
-    <div class="c-box">
-      <div class="bx-t">Cliente</div>
-      <div class="cg">
-        <div class="cf"><span class="cf-l">Nome:</span><span class="cf-v" data-field="customerName">—</span></div>
-        <div class="cf"><span class="cf-l">Città:</span><span class="cf-v" data-field="customerCity">—</span></div>
-        <div class="cf"><span class="cf-l">Tel:</span><span class="cf-v" data-field="customerPhone">—</span></div>
-        <div class="cf"><span class="cf-l">Email:</span><span class="cf-v" data-field="customerEmail">—</span></div>
+    <div class="ibox">
+      <div class="ibox-t">Cliente</div>
+      <div class="ibox-body">
+        <div class="cgrid">
+          <div class="cf"><span class="cf-l">Nome:</span><span class="cf-v" data-field="customerName">—</span></div>
+          <div class="cf"><span class="cf-l">Città:</span><span class="cf-v" data-field="customerCity">—</span></div>
+          <div class="cf"><span class="cf-l">Tel:</span><span class="cf-v" data-field="customerPhone">—</span></div>
+          <div class="cf"><span class="cf-l">Email:</span><span class="cf-v" data-field="customerEmail">—</span></div>
+        </div>
       </div>
     </div>
-    <div class="v-box">
-      <div class="bx-t">Validità</div>
-      <div class="vg">
-        <div class="vi"><div class="vl">Dal</div><div class="vv" data-field="validFrom">—</div></div>
-        <div class="vi"><div class="vl">Al</div><div class="vv" data-field="validTo">—</div></div>
+    <div class="ibox">
+      <div class="ibox-t">Validità</div>
+      <div class="ibox-body v">
+        <div class="vrow"><span>Dal</span> <strong data-field="validFrom">—</strong></div>
+        <div class="vrow"><span>Al</span> <strong data-field="validTo">—</strong></div>
       </div>
     </div>
   </div>
 
-  <div class="hero">
-    <h2 data-field="offerTitle">Offerta</h2>
-    <span class="svc-pill" data-field="servicePill">—</span>
-  </div>
+  <!-- HERO -->
+  <div class="hero" data-field="offerTitle">OFFERTA</div>
 
+  <!-- TABELLA -->
   <table class="mt">
     <thead>
-      <tr>
-        <th style="width:160px">Modello</th>
-        <th>Prezzo/mq</th>
-        <th>Sconto</th>
-        <th data-field="totalsHeader">Totale</th>
-        <th>Spedizione</th>
-        <th class="hl">Totale IVA incl.</th>
+      <tr id="mt-head">
+        <!-- Le colonne sono generate dinamicamente in base alla modalità (Solo fornitura / Fornitura+posa) -->
       </tr>
     </thead>
     <tbody data-field="optionsTable"></tbody>
   </table>
 
-  <div class="info-strip">
-    <div class="is-item">
-      <span class="is-icon">🛡️</span>
-      <div><div class="is-title">Garanzia 8 anni</div><div class="is-sub">Certificazione REACH · EN71-3:2013 · ASTM-D2616</div></div>
-    </div>
-    <div class="is-item">
-      <span class="is-icon">📦</span>
-      <div><div class="is-title">Spedizione gratuita · 3–5 giorni</div><div class="is-sub">Rotoli 4 m × 25 m · Drenaggio 40 L/min/m² · Backing PP+NET+LATEX</div></div>
-    </div>
-    <div class="is-item">
-      <span class="is-icon">⭐</span>
-      <div><div class="is-title">4,8 su Google</div><div class="is-sub">Oltre 380 recensioni verificate</div></div>
-    </div>
+  <!-- DETTAGLI MATERIALI (compatto) -->
+  <div class="mat" data-field="materialsBox">
+    <div class="mat-desc" data-field="materialsDesc">—</div>
+    <div class="mat-list" data-field="materialsList"></div>
+    <div class="mat-det" data-field="materialsDet"></div>
   </div>
 
+  <!-- BADGES -->
+  <div class="badges" data-field="badges"></div>
+
+  <!-- PRICE CARDS (al mq finale) -->
   <div class="pc-row" data-field="priceCards"></div>
 
-  <div class="pay-strip">
-    <span class="pay-strip-label">Pagamento accettato:</span>
+  <!-- METODI DI PAGAMENTO -->
+  <div class="pay">
+    <div class="pay-t">Metodi di pagamento</div>
+    <div class="pay-d1" data-field="paymentMain">Pagamento disponibile con carta, PayPal, bonifico bancario, Scalapay e HeyLight.</div>
+    <div class="pay-d2" data-field="paymentHeyLight">Con HeyLight puoi suddividere il preventivo in 3 o 5 rate senza interessi.</div>
+  </div>
+
+  <!-- SIMULAZIONE HEYLIGHT -->
+  <div class="hl-sim" data-field="hlBlock">
+    <div class="hl-sim-t" data-field="hlTitle">Simulazione 5 rate HeyLight</div>
+    <div class="hl-row" data-field="hlCards"></div>
+  </div>
+
+  <!-- FIRMA + LOGOS -->
+  <div class="firma-row">
+    <div>
+      <div class="firma-line"></div>
+      <div class="firma-lbl">Firma per accettazione</div>
+    </div>
     <div class="pay-logos">
       <span class="pl">VISA</span>
-      <span class="pl">Mastercard</span>
+      <span class="pl">MC</span>
       <span class="pl">PayPal</span>
       <span class="pl">Bonifico</span>
       <span class="pl">Scalapay</span>
-      <span class="pl hl-logo">HeyLight 0%</span>
+      <span class="pl hl">HeyLight</span>
     </div>
-  </div>
-
-  <div class="firma">
-    <div><div class="fl"></div><div class="flb">Firma per accettazione</div></div>
-    <div><div class="fl"></div><div class="flb">Firma e timbro azienda</div></div>
-  </div>
-
-  <div class="ftr">
-    <div class="fi">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
   </div>
 </div>
-
-<!-- ═══════════════════ PAGINA 2 ═══════════════════ -->
-<div class="page" id="page-2">
-  <div class="hdr" style="padding:10px 26px 9px;border-bottom:3px solid var(--gd);">
-    <div class="logo-row">
-      <div class="logo-box" style="width:40px;height:40px;"><svg viewBox="0 0 42 42" fill="none"><use href="#psi-logo"/></svg></div>
-      <div class="logo-tx">
-        <div class="brand" style="font-size:15px;">PRATO SINTETICO <em>ITALIA</em></div>
-        <div class="sub" style="font-size:8px;">Allegato tecnico · Pag. 2 di 2</div>
-      </div>
-    </div>
-    <div class="hdr-r">
-      <div class="lbl">Preventivo Nr.</div>
-      <div class="num" style="font-size:17px;" data-field="quoteNumber2">FP-0000-00</div>
-      <div class="co" data-field="summaryLine">—</div>
-    </div>
-  </div>
-
-  <div style="padding:12px 26px 0;">
-    <div style="font-size:8px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;color:var(--ga);margin-bottom:10px;">📋 Scheda tecnica prodotti offerti</div>
-    <div data-field="techCards" style="display:grid;gap:10px;"></div>
-  </div>
-
-  <div style="margin:10px 26px 0;display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--br);border:1px solid var(--br);border-radius:7px;overflow:hidden;">
-    <div style="background:#fff;padding:9px 10px;text-align:center;">
-      <div style="font-size:14px;margin-bottom:3px;">🛡️</div>
-      <div style="font-size:8px;font-weight:800;color:var(--gd);letter-spacing:.3px;">Garanzia 8 anni</div>
-      <div style="font-size:7px;color:var(--gl);margin-top:2px;">Difetti di fabbricazione</div>
-    </div>
-    <div style="background:#fff;padding:9px 10px;text-align:center;">
-      <div style="font-size:14px;margin-bottom:3px;">🧪</div>
-      <div style="font-size:8px;font-weight:800;color:var(--gd);letter-spacing:.3px;">REACH 2024</div>
-      <div style="font-size:7px;color:var(--gl);margin-top:2px;">SVHC 223 sostanze</div>
-    </div>
-    <div style="background:#fff;padding:9px 10px;text-align:center;">
-      <div style="font-size:14px;margin-bottom:3px;">🧒</div>
-      <div style="font-size:8px;font-weight:800;color:var(--gd);letter-spacing:.3px;">EN71-3:2013</div>
-      <div style="font-size:7px;color:var(--gl);margin-top:2px;">Sicurezza bambini</div>
-    </div>
-    <div style="background:#fff;padding:9px 10px;text-align:center;">
-      <div style="font-size:14px;margin-bottom:3px;">🏭</div>
-      <div style="font-size:8px;font-weight:800;color:var(--gd);letter-spacing:.3px;">ISO 9001:2015</div>
-      <div style="font-size:7px;color:var(--gl);margin-top:2px;">Sistema qualità</div>
-    </div>
-  </div>
-
-  <div style="margin:10px 26px 0;border:1px solid var(--br);border-radius:7px;overflow:hidden;">
-    <div style="background:var(--off);padding:7px 13px;border-bottom:1px solid var(--br);font-size:8px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--gx);">📄 Condizioni generali di vendita</div>
-    <div style="padding:9px 13px;display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;font-size:8px;color:var(--gx);line-height:1.65;">
-      <div><strong style="color:var(--gn);">Validità:</strong> Offerta valida 30 giorni dalla data di emissione.</div>
-      <div><strong style="color:var(--gn);">Pagamento:</strong> Saldo all'ordine via bonifico, carta, PayPal, Scalapay o HeyLight 0%.</div>
-      <div><strong style="color:var(--gn);">Spedizione:</strong> Gratuita in Italia, 3–5 giorni lavorativi, piano strada.</div>
-      <div><strong style="color:var(--gn);">Resi:</strong> Entro 14 giorni se prodotto integro e non posato.</div>
-      <div><strong style="color:var(--gn);">Garanzia:</strong> 8 anni su difetti di fabbricazione. Non copre usura normale.</div>
-      <div><strong style="color:var(--gn);">Privacy:</strong> Dati trattati ai sensi GDPR — privacy@pratosinteticoitalia.com</div>
-    </div>
-  </div>
-
-  <div style="margin:12px 26px;display:grid;grid-template-columns:1fr 1fr;gap:40px;">
-    <div><div style="border-bottom:1px solid var(--br);height:28px;margin-bottom:5px;"></div><div style="font-size:8.5px;color:var(--gl);">Data e firma del cliente per accettazione</div></div>
-    <div><div style="border-bottom:1px solid var(--br);height:28px;margin-bottom:5px;"></div><div style="font-size:8.5px;color:var(--gl);">Firma e timbro VERTEX SRLS</div></div>
-  </div>
-
-  <div class="ftr">
-    <div class="fi">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
-    <div class="fi" style="white-space:nowrap;">Pag. 2 / 2</div>
-  </div>
-</div>
-
-<!-- SVG LOGO -->
-<svg style="display:none">
-  <symbol id="psi-logo" viewBox="0 0 42 42" fill="none">
-    <path d="M21 3 L39 21 L21 39 L3 21 Z" fill="none" stroke="#3db554" stroke-width="2.5"/>
-    <path d="M14 21 Q17 13 21 10 Q25 13 28 21" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/>
-    <path d="M16 24 Q18 18 21 16 Q24 18 26 24" stroke="#3db554" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-    <line x1="21" y1="10" x2="21" y2="30" stroke="#fff" stroke-width="1" opacity=".35"/>
-    <line x1="14" y1="21" x2="28" y2="21" stroke="#fff" stroke-width="1" opacity=".25"/>
-  </symbol>
-</svg>
 
 <script>
 (function () {
   "use strict";
 
-  // ─── DATI DEMO (sostituiti in Fase 2 con dati reali dal generatore) ───
+  // ─── DATI DEMO basati su screenshot reali del generatore attuale ───
   const DEMO = {
-    quoteNumber: "FP-8790-88",
+    quoteNumber: "FP-1377-28",
     customer: {
-      name: "Luigi Matteucci",
-      city: "Pisa",
-      phone: "3475969282",
-      email: "luigi.matteucci@yahoo.it",
+      name: "Stefano Valsecchi",
+      city: "Cisano bergamasco",
+      phone: "3405700518",
+      email: "valstefano66@libero.it",
     },
     validFrom: "16/05/26",
     validTo: "15/06/26",
-    sqm: 28,
-    service: "Solo fornitura · spedizione inclusa",
+    sqm: 15,
+    mode: "fornitura+posa", // "solo-fornitura" | "fornitura+posa"
     vat: 22,
+    suggestedSlug: "",  // opzionale, es. "abete-45mm" → riga + card evidenziata
     options: [
       {
         slug: "faggio-25mm",
         name: "Faggio 25 mm",
-        code: "FAG-025",
-        tagline: "Resistente · verde naturale",
+        tagline: "Resistente",
         pricePerSqm: 10.90,
         discount: 0,
+        materials: 127.50,
+        installation: 25.00,
         shippingLabel: "Gratuita",
-        suggested: false,
-        tech: { altezza: "25 mm", dtex: "11.000", peso: "2.800 g/m²", drenaggio: "40 L/min/m²", note: "REACH · EN71-3 · ASTM-D2616" },
-        heylight: { installments: 5, monthly: 74.47 },
+        net: 666.00,
+        total: 812.52,
+        finalSqmPrice: 54.17,
+        heylightInstallment: 162.50,
       },
       {
         slug: "cedro-30mm",
         name: "Cedro 30 mm",
-        code: "CED-030",
-        tagline: "Versatile · verde cedro",
+        tagline: "Versatile · sconto 5%",
         pricePerSqm: 13.90,
         discount: 5,
+        materials: 127.50,
+        installation: 25.00,
         shippingLabel: "Gratuita",
-        suggested: false,
-        tech: { altezza: "30 mm", dtex: "13.500", peso: "3.200 g/m²", drenaggio: "40 L/min/m²", note: "REACH · EN71-3 · ASTM-D2616" },
-        heylight: { installments: 5, monthly: 90.12 },
+        net: 700.58,
+        total: 854.70,
+        finalSqmPrice: 56.98,
+        heylightInstallment: 170.94,
       },
       {
-        slug: "abete-45mm",
-        name: "Abete 45 mm",
-        code: "ABT-045",
-        tagline: "Premium · verde abete",
+        slug: "rovere-40mm",
+        name: "Rovere 40 mm",
+        tagline: "Naturale · sconto 5%",
         pricePerSqm: 13.90,
         discount: 5,
+        materials: 127.50,
+        installation: 25.00,
         shippingLabel: "Gratuita",
-        suggested: true,
-        tech: { altezza: "45 mm", dtex: "14.700", peso: "3.500 g/m²", drenaggio: "40 L/min/m²", note: "REACH · EN71-3 · ASTM-D2616 · Classe fuoco E-fl-S2" },
-        heylight: { installments: 5, monthly: 90.12 },
+        net: 700.58,
+        total: 854.70,
+        finalSqmPrice: 56.98,
+        heylightInstallment: 170.94,
       },
     ],
+    materials: {
+      desc: "La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm, telo separatore, giunte, fissaggi e finiture perimetrali. Il materiale è quantificato in base ai metri quadri inseriti.",
+      list: [
+        { name: "Pietrisco", qty: "0,45" },
+        { name: "Telo isolante", qty: "15,00" },
+        { name: "Bande di giunzione", qty: "1" },
+        { name: "Colla bicomponente", qty: "1 secchi (6 kg)" },
+        { name: "Picchetti a U", qty: "50" },
+      ],
+      det: "Pietrisco: 0,45 × 50,00 €/ mc; Telo isolante: 15,00 × 1,00 €/ mq; Bande di giunzione: 1 × 30,00 €/ pz; Colla bicomponente: 1 secchi (6 kg) × 45,00 €/ secchi; Picchetti a U: 50 × 0,30 €/ pz",
+    },
+    branding: {
+      tagline: "Dal 2016 · Fornitura e Posa Professionale",
+      company: "VERTEX SRLS · P.IVA 04863610616",
+    },
+    badges: [
+      { icon: "⭐",  value: "4,8 su Google",  sub: "111+ recensioni" },
+      { icon: "🏡",  value: "1.500+",        sub: "Giardini realizzati" },
+      { icon: "📦",  value: "3–5 giorni",    sub: "Spedizione Italia" },
+      { icon: "🛡️", value: "8 anni",        sub: "Garanzia prodotto" },
+    ],
+    payment: {
+      main: "Pagamento disponibile con carta, PayPal, bonifico bancario, Scalapay e HeyLight.",
+      heylight: "Con HeyLight puoi suddividere il preventivo in 3 o 5 rate senza interessi.",
+    },
+    heylight: {
+      installments: 5,
+      title: "Simulazione 5 rate HeyLight",
+    },
   };
 
-  // Formattatori
+  // ─── Utility ───
   const fmtEur = (n) => `${Number(n || 0).toFixed(2).replace(".", ",")} €`;
   const escHtml = (s) => String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-
-  function calcOptionTotals(opt, sqm, vat) {
-    const gross = Number(opt.pricePerSqm || 0) * Number(sqm || 0);
-    const discounted = gross * (1 - Number(opt.discount || 0) / 100);
-    const ivaIncl = discounted * (1 + Number(vat || 0) / 100);
-    return { gross, discounted, ivaIncl };
-  }
 
   function setField(key, value) {
     document.querySelectorAll(`[data-field="${key}"]`).forEach((el) => {
@@ -480,45 +502,101 @@
     });
   }
 
-  function productThumb(opt) {
+  function productThumb(opt, suggested) {
     const src = `./product-images/${opt.slug}.png`;
-    const cls = opt.suggested ? "product-thumb suggested" : "product-thumb";
-    return `<img src="${escHtml(src)}" alt="${escHtml(opt.name)}" class="${cls}" onerror="this.outerHTML='<div class=\\'product-thumb-placeholder\\'>🌿</div>';">`;
+    const cls = suggested ? "m-thumb suggested" : "m-thumb";
+    return `<img src="${escHtml(src)}" alt="${escHtml(opt.name)}" class="${cls}" onerror="this.outerHTML='<div class=\\'m-thumb-ph\\'>🌿</div>';">`;
+  }
+
+  function renderHeader(data) {
+    const isPosa = String(data.mode || "").includes("posa");
+    const headRow = document.getElementById("mt-head");
+    const totalLabel = `Totale compl.`;
+    const cols = isPosa
+      ? ["Modello", "Prezzo/mq", "Sconto", "Materiali", "Posa/mq", "Spedizione", "Netto compl.", totalLabel]
+      : ["Modello", "Prezzo/mq", "Sconto", "Materiali", "Spedizione", "Netto compl.", totalLabel];
+    headRow.innerHTML = cols.map((c, idx) => {
+      const isLast = idx === cols.length - 1;
+      const isFirst = idx === 0;
+      const style = isFirst ? 'style="width:170px"' : "";
+      const cls = isLast ? 'class="tot-col"' : "";
+      return `<th ${style} ${cls}>${escHtml(c)}</th>`;
+    }).join("");
+    return { isPosa, vat: data.vat };
   }
 
   function renderOptionsTable(data) {
     const tbody = document.querySelector('[data-field="optionsTable"]');
     if (!tbody) return;
+    const { isPosa, vat } = renderHeader(data);
+    const suggestedSlug = data.suggestedSlug || "";
     tbody.innerHTML = data.options.map((opt) => {
-      const totals = calcOptionTotals(opt, data.sqm, data.vat);
+      const isSuggested = opt.slug && opt.slug === suggestedSlug;
+      const rowCls = isSuggested ? "suggested" : "";
       const discountCell = opt.discount > 0
         ? `<div class="disc">${opt.discount}%</div>`
         : `<div class="disc">—</div>`;
-      const rowClass = opt.suggested ? "suggested" : "";
-      const suggestedPill = opt.suggested
-        ? `<span class="suggested-pill">★ Consigliato</span>`
+      const cellPosa = isPosa
+        ? `<td><div class="price-val">${fmtEur(opt.installation)}</div><div class="price-vat">IVA ${vat}%</div></td>`
         : "";
       return `
-        <tr class="${rowClass}">
+        <tr class="${rowCls}">
           <td>
-            <div style="display:flex;align-items:center;gap:8px;">
-              ${productThumb(opt)}
+            <div class="m-cell">
+              ${productThumb(opt, isSuggested)}
               <div>
-                <div class="mn">${escHtml(opt.name)}</div>
-                <div class="mc">COD. ${escHtml(opt.code)}</div>
-                <div class="ms">${escHtml(opt.tagline)}</div>
+                <div class="m-name">${escHtml(opt.name)}</div>
+                <div class="m-tag">${escHtml(opt.tagline || "")}</div>
               </div>
-              ${suggestedPill}
             </div>
           </td>
-          <td><div class="tm">${fmtEur(opt.pricePerSqm)}</div><div class="tv">+ IVA ${data.vat}%</div></td>
+          <td><div class="price-val">${fmtEur(opt.pricePerSqm)}</div><div class="price-vat">IVA ${vat}%</div></td>
           <td>${discountCell}</td>
-          <td><div class="tm">${fmtEur(totals.discounted)}</div><div class="tv">+ IVA ${data.vat}%</div></td>
-          <td><div class="tf">${escHtml(opt.shippingLabel || "—")}</div></td>
-          <td><div class="tt">${fmtEur(totals.ivaIncl)}</div></td>
+          <td><div class="price-val">${fmtEur(opt.materials)}</div><div class="price-vat">IVA ${vat}%</div></td>
+          ${cellPosa}
+          <td><div class="ship-free">${escHtml(opt.shippingLabel || "—")}</div><div class="price-vat">IVA ${vat}%</div></td>
+          <td><div class="total-net">${fmtEur(opt.net)}</div></td>
+          <td class="tot-col"><div class="total-grand">${fmtEur(opt.total)}</div></td>
         </tr>
       `;
     }).join("");
+  }
+
+  function renderMaterialsBox(data) {
+    const mat = data.materials || null;
+    const box = document.querySelector('[data-field="materialsBox"]');
+    if (!mat || (!mat.desc && !(mat.list && mat.list.length))) {
+      if (box) box.style.display = "none";
+      return;
+    }
+    if (box) box.style.display = "";
+    setField("materialsDesc", mat.desc || "");
+    const list = document.querySelector('[data-field="materialsList"]');
+    if (list) {
+      list.innerHTML = (mat.list || []).map((it) => `
+        <div class="mat-li"><span class="mat-li-n">${escHtml(it.name)}</span><span class="mat-li-v">${escHtml(it.qty)}</span></div>
+      `).join("");
+    }
+    const det = document.querySelector('[data-field="materialsDet"]');
+    if (det) {
+      det.innerHTML = mat.det
+        ? `<strong>Dettagli materiali:</strong> ${escHtml(mat.det)}`
+        : "";
+    }
+  }
+
+  function renderBadges(data) {
+    const row = document.querySelector('[data-field="badges"]');
+    if (!row) return;
+    const badges = (data.badges || []).slice(0, 4);
+    row.style.gridTemplateColumns = `repeat(${Math.max(1, badges.length)}, 1fr)`;
+    row.innerHTML = badges.map((b) => `
+      <div class="badge">
+        <div class="badge-icon">${escHtml(b.icon || "•")}</div>
+        <div class="badge-v">${escHtml(b.value || "—")}</div>
+        <div class="badge-s">${escHtml(b.sub || "")}</div>
+      </div>
+    `).join("");
   }
 
   function renderPriceCards(data) {
@@ -526,84 +604,72 @@
     if (!row) return;
     const opts = data.options || [];
     row.setAttribute("data-count", String(Math.min(3, opts.length)));
+    const suggestedSlug = data.suggestedSlug || "";
+    const isPosa = String(data.mode || "").includes("posa");
     row.innerHTML = opts.map((opt) => {
-      const effectivePrice = Number(opt.pricePerSqm || 0) * (1 - Number(opt.discount || 0) / 100);
-      const subline = opt.discount > 0
-        ? `sconto ${opt.discount}% · ${data.sqm} mq`
-        : `solo fornitura · ${data.sqm} mq`;
-      const heylight = opt.heylight && opt.heylight.installments && opt.heylight.monthly
-        ? `<div class="pc-hl">oppure HeyLight<br><strong>${opt.heylight.installments} × ${fmtEur(opt.heylight.monthly)}/mese</strong></div>`
-        : "";
-      const suggestedBadge = opt.suggested
-        ? `<div class="suggested-badge">★ Consigliato</div>`
-        : "";
-      const cls = opt.suggested ? "pc suggested" : "pc";
-      const integer = Math.floor(effectivePrice);
-      const decimals = String(effectivePrice.toFixed(2)).split(".")[1] || "00";
+      const isSuggested = opt.slug && opt.slug === suggestedSlug;
+      const cls = isSuggested ? "pc suggested" : "pc";
+      const subline = isPosa ? "posa su terra" : "rotoli da 2 m su misura";
+      const price = Number(opt.finalSqmPrice || 0);
+      const integer = Math.floor(price);
+      const decimals = String(price.toFixed(2)).split(".")[1] || "00";
+      const badge = isSuggested ? `<div class="pc-badge">★ Consigliato</div>` : "";
       return `
         <div class="${cls}">
-          ${suggestedBadge}
+          ${badge}
           <div class="pc-m">${escHtml(opt.name)}</div>
-          <div class="pc-c">COD. ${escHtml(opt.code)}</div>
           <div class="pc-s">${escHtml(subline)}</div>
-          <div class="pc-p"><sup>€</sup>${integer},${decimals}</div>
-          <div class="pc-u">al mq IVA escl.</div>
-          ${heylight}
+          <div class="pc-p">${integer},${decimals} <span class="eu">€</span></div>
+          <div class="pc-u">al mq finale</div>
         </div>
       `;
     }).join("");
   }
 
-  function renderTechCards(data) {
-    const container = document.querySelector('[data-field="techCards"]');
-    if (!container) return;
-    const opts = data.options || [];
-    container.style.gridTemplateColumns = `repeat(${Math.min(3, opts.length || 1)}, 1fr)`;
-    container.innerHTML = opts.map((opt) => {
-      const border = opt.suggested ? "border:2px solid var(--gd);" : "border:1px solid var(--br);";
-      const headExtra = opt.suggested
-        ? `<div style="background:var(--ga);color:#fff;font-size:7.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:20px;">★ Top</div>`
-        : "";
-      return `
-        <div style="${border}border-radius:7px;overflow:hidden;">
-          <div style="background:var(--gd);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;">
-            <div>
-              <div style="font-size:11px;font-weight:800;color:#fff;">${escHtml(opt.name)}</div>
-              <div style="font-size:8px;color:var(--ga);margin-top:1px;">COD. ${escHtml(opt.code)}</div>
-            </div>
-            ${headExtra}
-          </div>
-          <div style="padding:9px 12px;display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;">
-            <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Altezza</div><div style="font-size:11px;font-weight:800;color:var(--gn);">${escHtml(opt.tech?.altezza || "—")}</div></div>
-            <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Dtex</div><div style="font-size:11px;font-weight:800;color:var(--gn);">${escHtml(opt.tech?.dtex || "—")}</div></div>
-            <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Peso</div><div style="font-size:11px;font-weight:800;color:var(--gn);">${escHtml(opt.tech?.peso || "—")}</div></div>
-            <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Drenaggio</div><div style="font-size:11px;font-weight:800;color:var(--gn);">${escHtml(opt.tech?.drenaggio || "—")}</div></div>
-          </div>
-          <div style="background:var(--off);padding:4px 12px;border-top:1px solid var(--br);font-size:7.5px;color:var(--gl);">${escHtml(opt.tech?.note || "")}</div>
+  function renderHeyLight(data) {
+    const block = document.querySelector('[data-field="hlBlock"]');
+    if (!block) return;
+    const opts = (data.options || []).filter((o) => Number(o.heylightInstallment) > 0);
+    if (!opts.length) {
+      block.style.display = "none";
+      return;
+    }
+    block.style.display = "";
+    const installments = Number(data.heylight?.installments || 5);
+    setField("hlTitle", data.heylight?.title || `Simulazione ${installments} rate HeyLight`);
+    const cards = document.querySelector('[data-field="hlCards"]');
+    if (cards) {
+      cards.setAttribute("data-count", String(Math.min(3, opts.length)));
+      cards.innerHTML = opts.map((opt) => `
+        <div class="hl-card">
+          <div class="hl-m">${escHtml(opt.name)}</div>
+          <div class="hl-v">HeyLight: ${installments} rate da ${fmtEur(opt.heylightInstallment)}</div>
         </div>
-      `;
-    }).join("");
+      `).join("");
+    }
   }
 
   function renderPreventivo(data) {
     setField("quoteNumber", data.quoteNumber || "—");
-    setField("quoteNumber2", data.quoteNumber || "—");
+    setField("brandTagline", data.branding?.tagline || "Dal 2016 · Fornitura e Posa Professionale");
+    setField("brandCompany", data.branding?.company || "VERTEX SRLS · P.IVA 04863610616");
     setField("customerName", data.customer?.name || "—");
     setField("customerCity", data.customer?.city || "—");
     setField("customerPhone", data.customer?.phone || "—");
     setField("customerEmail", data.customer?.email || "—");
     setField("validFrom", data.validFrom || "—");
     setField("validTo", data.validTo || "—");
-    setField("offerTitle", `Offerta per ${data.sqm} mq`);
-    setField("servicePill", data.service || "—");
-    setField("totalsHeader", `Totale ${data.sqm} mq`);
-    setField("summaryLine", `${data.customer?.name || "—"} · ${data.sqm} mq · ${data.service || ""}`);
+    setField("offerTitle", `OFFERTA PER ${data.sqm || 0} MQ`);
+    setField("paymentMain", data.payment?.main || "");
+    setField("paymentHeyLight", data.payment?.heylight || "");
     renderOptionsTable(data);
+    renderMaterialsBox(data);
+    renderBadges(data);
     renderPriceCards(data);
-    renderTechCards(data);
+    renderHeyLight(data);
   }
 
-  // ─── Caricamento dati: prova da localStorage prima, altrimenti DEMO ───
+  // ─── Caricamento dati ───
   function loadData() {
     try {
       const raw = window.localStorage.getItem("psi:preventivo-v2:data");
@@ -615,14 +681,12 @@
     return DEMO;
   }
 
-  // ─── Listener per ricezione dati live (Fase 2) ───
   window.addEventListener("message", (event) => {
     if (event?.data?.type === "psi:preventivo-v2:data" && event.data.payload) {
       renderPreventivo(event.data.payload);
     }
   });
 
-  // Render iniziale
   document.addEventListener("DOMContentLoaded", () => {
     renderPreventivo(loadData());
   });
