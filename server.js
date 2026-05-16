@@ -837,13 +837,30 @@ async function getJobsFromDb() {
   }
 }
 
+// Cache TTL per getSalesRequestsFromDb — evita N query DB su sessioni concorrenti.
+// Il cache viene invalidato dopo ogni upsert/delete di sales request.
+let _salesRequestsDbCache = null;
+let _salesRequestsDbCacheAt = 0;
+const SALES_REQUESTS_DB_CACHE_TTL_MS = 15_000; // 15 secondi
+
+function invalidateSalesRequestsDbCache() {
+  _salesRequestsDbCache = null;
+  _salesRequestsDbCacheAt = 0;
+}
+
 async function getSalesRequestsFromDb() {
   if (!USE_POSTGRES) return null;
+  const now = Date.now();
+  if (_salesRequestsDbCache && now - _salesRequestsDbCacheAt < SALES_REQUESTS_DB_CACHE_TTL_MS) {
+    return _salesRequestsDbCache;
+  }
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
     const { rows } = await pool.query("SELECT * FROM sales_requests ORDER BY updated_at DESC NULLS LAST");
-    return rows.map(dbRowToSalesRequest);
+    _salesRequestsDbCache = rows.map(dbRowToSalesRequest);
+    _salesRequestsDbCacheAt = now;
+    return _salesRequestsDbCache;
   } catch (err) {
     console.warn("[db] getSalesRequestsFromDb:", err?.message);
     return null;
@@ -1043,6 +1060,7 @@ async function deleteJobFromDb(id) {
 
 async function upsertSalesRequestToDb(request, userId = null) {
   if (!USE_POSTGRES || !request?.id) return;
+  invalidateSalesRequestsDbCache(); // il cache diventa stale dopo ogni scrittura
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
@@ -1114,6 +1132,7 @@ async function upsertSalesRequestToDb(request, userId = null) {
 
 async function deleteSalesRequestFromDb(id) {
   if (!USE_POSTGRES || !id) return;
+  invalidateSalesRequestsDbCache(); // il cache diventa stale dopo ogni scrittura
   try {
     const pool = await getPgPool();
     await pool.query("DELETE FROM sales_requests WHERE id = $1", [String(id)]);
@@ -1200,6 +1219,9 @@ async function writeJson(path, value) {
   const isStorePayload = resolvedPath === resolve(STORE_PATH);
   if (isStorePayload && value && typeof value === "object") {
     rotateStoreRevision(value);
+    // Il dato che scriviamo è già normalizzato — mantieni il flag per saltare
+    // la prossima reconcileStoreData (evita O(N) su ogni request successiva)
+    if (storeMemCache?.__memReconciled) value.__memReconciled = true;
     storeMemCache = value; // aggiorna cache in memoria
   }
   if (USE_POSTGRES && isStorePayload) {
@@ -2063,8 +2085,16 @@ function parseCookies(cookieHeader = "") {
   }, {});
 }
 
+/**
+ * sendJson con gzip condizionale.
+ * Prima di chiamare handleApi, il server imposta res.__acceptsGzip
+ * basandosi sull'header Accept-Encoding del client.
+ * Comprime se: payload >= 4KB E res.__acceptsGzip === true.
+ * Riduce le risposte grandi (es. /api/session ~8-10 MB → ~450-600 KB).
+ */
 function sendJson(res, status, payload, headers = {}) {
-  res.writeHead(status, {
+  const body = JSON.stringify(payload);
+  const securityHeaders = {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
@@ -2072,9 +2102,28 @@ function sendJson(res, status, payload, headers = {}) {
     "X-Frame-Options": "DENY",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Content-Security-Policy": "default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self' https://*.myshopify.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  };
+  if (res.__acceptsGzip && body.length >= 4096) {
+    try {
+      const compressed = gzipSync(body, { level: 6 });
+      res.writeHead(status, {
+        ...securityHeaders,
+        ...headers,
+        "Content-Encoding": "gzip",
+        "Content-Length": String(compressed.length),
+      });
+      res.end(compressed);
+      return;
+    } catch {
+      // fallback a risposta non compressa se gzip fallisce
+    }
+  }
+  res.writeHead(status, {
+    ...securityHeaders,
     ...headers,
+    "Content-Length": String(Buffer.byteLength(body)),
   });
-  res.end(JSON.stringify(payload));
+  res.end(body);
 }
 
 function sendRedirect(res, location, headers = {}) {
@@ -7439,9 +7488,14 @@ async function handleApi(req, res, url) {
 
   await ensureStore();
   const store = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
-  const storeChanged = reconcileStoreData(store);
-  if (storeChanged) {
-    await writeJson(STORE_PATH, store);
+  // Salta la riconciliazione se la cache in memoria è già stata normalizzata
+  // (reconcileStoreData chiama normalizeSalesRequestRecord x 8180 record — O(N) su ogni request)
+  if (!store.__memReconciled) {
+    const storeChanged = reconcileStoreData(store);
+    if (storeChanged) {
+      await writeJson(STORE_PATH, store);
+    }
+    store.__memReconciled = true; // marca come già normalizzata nella cache in-memoria
   }
   const sessionContext = await getSessionContext(req, store);
   const currentUser = sessionContext.user;
@@ -9454,6 +9508,9 @@ async function handleApi(req, res, url) {
 const server = createServer(async (req, res) => {
   const rawRequestPath = String(req.url || "/").split("?")[0] || "/";
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
+
+  // Segnala a sendJson se comprimere la risposta (evita di passare req ovunque)
+  res.__acceptsGzip = /gzip/i.test(req.headers["accept-encoding"] || "");
 
   try {
     if (url.pathname.startsWith("/api/")) {
