@@ -149,16 +149,25 @@ async function createTables() {
   console.log('  tabelle create.');
 
   console.log('Creazione indici...');
+  // Colonne aggiuntive (idempotenti)
   await pool.query(`
-    CREATE INDEX IF NOT EXISTS orders_shopify_id_idx       ON orders (shopify_numeric_id);
-    CREATE INDEX IF NOT EXISTS orders_updated_at_idx       ON orders (updated_at DESC);
-    CREATE INDEX IF NOT EXISTS orders_financial_status_idx ON orders (financial_status);
-    CREATE INDEX IF NOT EXISTS inventory_state_idx         ON inventory_items (piece_state);
-    CREATE INDEX IF NOT EXISTS inventory_order_idx         ON inventory_items (allocated_to_order_id);
-    CREATE INDEX IF NOT EXISTS sales_requests_status_idx   ON sales_requests (status);
-    CREATE INDEX IF NOT EXISTS sales_requests_phone_idx    ON sales_requests (phone);
-    CREATE INDEX IF NOT EXISTS audit_log_entity_idx        ON audit_log (entity_type, entity_id);
-    CREATE INDEX IF NOT EXISTS audit_log_created_idx       ON audit_log (created_at DESC);
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS operations_json JSONB DEFAULT '{}';
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS orders_shopify_id_idx          ON orders (shopify_numeric_id);
+    CREATE INDEX IF NOT EXISTS orders_updated_at_idx          ON orders (updated_at DESC);
+    CREATE INDEX IF NOT EXISTS orders_financial_status_idx    ON orders (financial_status);
+    CREATE INDEX IF NOT EXISTS orders_fulfillment_idx         ON orders (fulfillment_status);
+    CREATE INDEX IF NOT EXISTS inventory_state_idx            ON inventory_items (piece_state);
+    CREATE INDEX IF NOT EXISTS inventory_order_idx            ON inventory_items (allocated_to_order_id);
+    CREATE INDEX IF NOT EXISTS sales_requests_status_idx      ON sales_requests (status);
+    CREATE INDEX IF NOT EXISTS sales_requests_phone_idx       ON sales_requests (phone);
+    CREATE INDEX IF NOT EXISTS sales_requests_assignment_idx  ON sales_requests (assignment);
+    CREATE INDEX IF NOT EXISTS sales_requests_source_idx      ON sales_requests (source);
+    CREATE INDEX IF NOT EXISTS sales_requests_updated_at_idx  ON sales_requests (updated_at DESC);
+    CREATE INDEX IF NOT EXISTS audit_log_entity_idx           ON audit_log (entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS audit_log_created_idx          ON audit_log (created_at DESC);
   `);
   console.log('  indici creati.\n');
 }
@@ -511,8 +520,8 @@ async function migrateSalesRequests(requests) {
         updated_at        = EXCLUDED.updated_at
     `, [
       String(req.id),
-      String(req.firstName || ''),
-      String(req.lastName || ''),
+      String(req.firstName || req.name || ''),      // gestisce sia il vecchio campo 'name' che 'firstName'
+      String(req.lastName || req.surname || ''),    // gestisce sia il vecchio campo 'surname' che 'lastName'
       String(req.email || ''),
       String(req.phone || ''),
       String(req.city || ''),
@@ -522,7 +531,7 @@ async function migrateSalesRequests(requests) {
       String(req.province || ''),
       String(req.countryCode || 'IT'),
       String(req.company || ''),
-      String(req.jobType || ''),
+      String(req.jobType || req.service || ''),    // gestisce sia 'jobType' che il vecchio 'service'
       String(req.surface || ''),
       safeNum(req.sqm),
       String(req.note || ''),
