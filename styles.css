@@ -5761,6 +5761,41 @@ body {
   margin-top: 16px;
   padding-right: 2px;
 }
+/* ── Urgency badges nelle righe inbox ordini ─────────────────────────────── */
+.order-urgency-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 3px 0 1px;
+}
+.order-urgency-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: default;
+  letter-spacing: 0.01em;
+}
+.order-urgency-badge.urgency-unpaid {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #fed7aa;
+}
+.order-urgency-badge.urgency-no-crew {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+.order-urgency-badge.urgency-prep {
+  background: #fefce8;
+  color: #854d0e;
+  border-color: #fef08a;
+}
+
 .order-row-date.is-fresh {
   background: #d8efe1;
   color: #14532d;

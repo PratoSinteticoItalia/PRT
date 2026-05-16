@@ -583,6 +583,10 @@ async function ensureDatabaseStorage() {
   return dbBootstrapPromise;
 }
 
+// Set che traccia quali blob-only salesRequests sono già stati backfillati in SQL
+// (evita upsertSalesRequestToDb a ogni /api/session per gli stessi record)
+const _backfilledSalesRequestIds = new Set();
+
 let relationalSchemaBootstrapPromise = null;
 async function ensureRelationalSchema() {
   if (!USE_POSTGRES) return;
@@ -649,10 +653,14 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS orders_financial_status_idx ON orders (financial_status);
       CREATE INDEX IF NOT EXISTS inventory_state_idx         ON inventory_items (piece_state);
       CREATE INDEX IF NOT EXISTS inventory_order_idx         ON inventory_items (allocated_to_order_id);
-      CREATE INDEX IF NOT EXISTS sales_requests_status_idx   ON sales_requests (status);
-      CREATE INDEX IF NOT EXISTS sales_requests_phone_idx    ON sales_requests (phone);
-      CREATE INDEX IF NOT EXISTS audit_log_entity_idx        ON audit_log (entity_type, entity_id);
-      CREATE INDEX IF NOT EXISTS audit_log_created_idx       ON audit_log (created_at DESC);
+      CREATE INDEX IF NOT EXISTS sales_requests_status_idx      ON sales_requests (status);
+      CREATE INDEX IF NOT EXISTS sales_requests_phone_idx       ON sales_requests (phone);
+      CREATE INDEX IF NOT EXISTS sales_requests_assignment_idx  ON sales_requests (assignment);
+      CREATE INDEX IF NOT EXISTS sales_requests_source_idx      ON sales_requests (source);
+      CREATE INDEX IF NOT EXISTS sales_requests_updated_at_idx  ON sales_requests (updated_at DESC);
+      CREATE INDEX IF NOT EXISTS orders_fulfillment_idx         ON orders (fulfillment_status);
+      CREATE INDEX IF NOT EXISTS audit_log_entity_idx           ON audit_log (entity_type, entity_id);
+      CREATE INDEX IF NOT EXISTS audit_log_created_idx          ON audit_log (created_at DESC);
     `);
     console.log("[db] schema relazionale verificato");
   })().catch((err) => {
@@ -7447,21 +7455,24 @@ async function handleApi(req, res, url) {
       if (!rawSalesReqs) {
         return currentUser?.role === "office" ? (store.salesRequests || []) : [];
       }
-      // Fix name/surname per record SQL che hanno i campi vuoti (da upsert con field names errati)
+      // Fix name/surname per record SQL con campi vuoti — O(1) via Map invece di find O(N²)
+      const blobById = new Map((store.salesRequests || []).map((r) => [String(r.id), r]));
       const fixedSql = rawSalesReqs.map((req) => {
         if (req.name || req.surname) return req;
-        const stored = (store.salesRequests || []).find((s) => s.id === req.id);
+        const stored = blobById.get(String(req.id));
         if (!stored?.name && !stored?.surname) return req;
         const fixed = { ...req, name: stored.name || "", surname: stored.surname || "" };
         upsertSalesRequestToDb(fixed).catch(() => {});
         return fixed;
       });
       // Safety net: aggiungi record blob-only (es. importati da Google Sheets prima del fix)
-      // e triggerali in SQL così il prossimo reload non perde nulla
+      // Usa _backfilledSalesRequestIds per non fare upsert a ogni /api/session
       const sqlIds = new Set(rawSalesReqs.map((r) => String(r.id)));
       const blobOnlyRecords = (store.salesRequests || []).filter((r) => !sqlIds.has(String(r.id)));
-      for (const r of blobOnlyRecords) {
-        upsertSalesRequestToDb(r).catch(() => {}); // backfill SQL
+      const newBlobOnly = blobOnlyRecords.filter((r) => !_backfilledSalesRequestIds.has(String(r.id)));
+      for (const r of newBlobOnly) {
+        _backfilledSalesRequestIds.add(String(r.id));
+        upsertSalesRequestToDb(r).catch(() => {}); // backfill SQL una sola volta per server uptime
       }
       return [...fixedSql, ...blobOnlyRecords];
     })();

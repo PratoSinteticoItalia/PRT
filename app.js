@@ -10734,6 +10734,70 @@ function formatOrderRelativeDate(isoString) {
   return { label, tone };
 }
 
+/**
+ * Restituisce array di badge urgenza per una riga ordine inbox.
+ * Ogni badge: { label, tone, title }
+ * Condizioni:
+ *  1. Non pagato da >7 giorni (e non chiuso/evaso)
+ *  2. Posa entro 5 giorni ma senza squadra assegnata
+ *  3. In magazzino ("da preparare") con posa entro 7 giorni
+ */
+function getOrderUrgencyBadges(order) {
+  if (!order || isOrderFulfilledOrClosed(order)) return [];
+  const badges = [];
+  const now = Date.now();
+  const financial = String(order.financialStatus || "").toLowerCase().trim();
+  const createdAt = order.createdAt ? new Date(order.createdAt).getTime() : 0;
+  const ageMs = createdAt ? now - createdAt : 0;
+  const ageDays = Math.floor(ageMs / 86400000);
+
+  // 1. Non pagato da >7 giorni
+  const unpaid = financial === "pending" || financial === "authorized" || financial === "" || financial === "unpaid";
+  if (unpaid && ageDays > 7) {
+    badges.push({
+      label: state.lang === "it" ? `⚠ Non pagato (${ageDays}gg)` : `⚠ Unpaid (${ageDays}d)`,
+      tone: "urgency-unpaid",
+      title: state.lang === "it" ? `Ordine non pagato da ${ageDays} giorni` : `Order unpaid for ${ageDays} days`,
+    });
+  }
+
+  // 2. Posa entro 5 giorni senza squadra
+  const install = order.operations?.installation || {};
+  if (install.installDate && isRoutedToInstallation(order)) {
+    const installMs = new Date(install.installDate).getTime();
+    const daysToInstall = Math.floor((installMs - now) / 86400000);
+    if (daysToInstall >= 0 && daysToInstall <= 5 && !String(install.crew || "").trim()) {
+      badges.push({
+        label: state.lang === "it"
+          ? `⚠ Posa in ${daysToInstall === 0 ? "oggi" : daysToInstall + "gg"} — nessuna squadra`
+          : `⚠ Install in ${daysToInstall === 0 ? "today" : daysToInstall + "d"} — no crew`,
+        tone: "urgency-no-crew",
+        title: state.lang === "it" ? "Posa imminente senza squadra assegnata" : "Imminent install without assigned crew",
+      });
+    }
+  }
+
+  // 3. "Da preparare" con posa entro 7 giorni (o installazione richiesta e nessuna data)
+  const stage = getUnifiedOrderStage(order);
+  if (stage.key === "warehouse-work") {
+    if (install.installDate) {
+      const installMs = new Date(install.installDate).getTime();
+      const daysToInstall = Math.floor((installMs - now) / 86400000);
+      if (daysToInstall >= 0 && daysToInstall <= 7) {
+        badges.push({
+          label: state.lang === "it"
+            ? `⚠ Prep. urgente (posa ${daysToInstall === 0 ? "oggi" : "+" + daysToInstall + "gg"})`
+            : `⚠ Urgent prep (+${daysToInstall}d)`,
+          tone: "urgency-prep",
+          title: state.lang === "it" ? "Materiale non ancora preparato, posa imminente" : "Material not ready, install is imminent",
+        });
+      }
+    }
+  }
+
+  return badges;
+}
+
 function renderOrderRow(order, view = "orders") {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const orderType = view === "orders" ? getInboxCommercialType(order) : getOrderType(order);
@@ -10748,12 +10812,17 @@ function renderOrderRow(order, view = "orders") {
         : "badge-warning";
   const statusTrack = view === "orders" ? buildOrderInboxStatusTrack(order) : "";
   const relativeDate = formatOrderRelativeDate(order.createdAt);
+  const urgencyBadges = view === "orders" ? getOrderUrgencyBadges(order) : [];
+  const urgencyHtml = urgencyBadges.length
+    ? `<div class="order-urgency-badges">${urgencyBadges.map((b) => `<span class="order-urgency-badge ${b.tone}" title="${escapeHtml(b.title)}">${escapeHtml(b.label)}</span>`).join("")}</div>`
+    : "";
   return `
     <article class="order-row inbox-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="${view}">
       <div class="inbox-row-main">
         <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small>${relativeDate.label ? `<span class="order-row-date ${relativeDate.tone}" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(relativeDate.label)}</span>` : ""}</div>
         <div class="order-meta">${order.operations?.product || undefinedText()} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || addressIncompleteText()}</div>
         ${statusTrack}
+        ${urgencyHtml}
         <div class="inbox-row-next-step">
           <strong>${nextAction}</strong>
         </div>
