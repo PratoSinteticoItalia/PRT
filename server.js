@@ -8275,7 +8275,7 @@ async function handleApi(req, res, url) {
         const result = upsertOrderRecord(store, normalized);
         store.orders = sortOrdersByRecency(store.orders);
         await writeJson(STORE_PATH, store);
-        upsertOrderToDb(result.order).catch(() => {});
+        upsertOrderToDb(result.order, "shopify-webhook").catch(() => {});
         return sendJson(res, 200, { ok: true, orderId: result.order.id, jobId: result.job?.id || null });
       }
       case "orders/paid": {
@@ -8285,7 +8285,7 @@ async function handleApi(req, res, url) {
           if (idx >= 0) {
             store.orders[idx] = { ...store.orders[idx], financialStatus: "paid" };
             await writeJson(STORE_PATH, store);
-            upsertOrderToDb(store.orders[idx]).catch(() => {});
+            upsertOrderToDb(store.orders[idx], "shopify-webhook").catch(() => {});
           }
         }
         return sendJson(res, 200, { ok: true });
@@ -8297,7 +8297,7 @@ async function handleApi(req, res, url) {
           if (idx >= 0) {
             store.orders[idx] = { ...store.orders[idx], fulfillmentStatus: "cancelled", financialStatus: "voided" };
             await writeJson(STORE_PATH, store);
-            upsertOrderToDb(store.orders[idx]).catch(() => {});
+            upsertOrderToDb(store.orders[idx], "shopify-webhook").catch(() => {});
           }
         }
         return sendJson(res, 200, { ok: true });
