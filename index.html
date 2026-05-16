@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260516-status-204" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260516-status-204" />
+    <link rel="preload" href="./styles.css?v=20260516-ui-v2-205" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260516-ui-v2-205" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -561,23 +561,15 @@
                 <span id="sales-requests-search-label">Cerca</span>
                 <input id="sales-requests-search" type="search" placeholder="Nome, città, telefono, assegnazione..." />
               </label>
-              <div class="sales-request-filter-row">
-                <label class="field">
-                  <span>Assegnazione</span>
-                  <select id="sales-request-assignment-filter" class="text-input">
-                    <option value="all">Tutte</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Stato</span>
-                  <select id="sales-request-status-filter" class="text-input">
-                    <option value="all">Tutti</option>
-                  </select>
-                </label>
-              </div>
               <div class="sales-request-toolbar">
                 <div id="sales-request-quick-filters" class="sales-request-quick-filters"></div>
-                <div class="sales-request-toolbar-actions">
+                <div class="sales-request-toolbar-right">
+                  <select id="sales-request-assignment-filter" class="sales-filter-select" aria-label="Filtra per assegnazione">
+                    <option value="all">Tutte</option>
+                  </select>
+                  <select id="sales-request-status-filter" class="sales-filter-select" aria-label="Filtra per stato">
+                    <option value="all">Tutti</option>
+                  </select>
                   <button id="sales-request-compact-toggle" class="ghost-button small-button" type="button">Vista compatta</button>
                 </div>
               </div>

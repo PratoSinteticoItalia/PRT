@@ -1242,6 +1242,7 @@ let ordersScrollIdleTimer = 0;
 let ordersDeferredRenderTimer = 0;
 let salesContentDeleteInFlightId = "";
 const salesRequestPendingPatchIds = new Set();
+const salesRequestPendingPatchGraceTimers = new Map();
 const orderPendingPatchIds = new Set();
 const inventoryPendingOps = new Set();
 const inventoryAllocationPendingOrderIds = new Set();
@@ -4819,7 +4820,11 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
   upsertSalesRequest(optimisticRecord, { skipOpsRender: true, preserveSelection: true });
   renderSalesRequests();
   if (state.currentView === "sales-generator") renderSalesGenerator();
-  if (recordId) salesRequestPendingPatchIds.add(recordId);
+  if (recordId) {
+    clearTimeout(salesRequestPendingPatchGraceTimers.get(recordId));
+    salesRequestPendingPatchGraceTimers.delete(recordId);
+    salesRequestPendingPatchIds.add(recordId);
+  }
   try {
     const saved = await apiFetchWithRetry("/api/sales/requests", {
       method: "POST",
@@ -4846,7 +4851,15 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     );
     throw error;
   } finally {
-    if (recordId) salesRequestPendingPatchIds.delete(recordId);
+    if (recordId) {
+      // Grace period: keep ID locked 1.5s after save so SSE-triggered
+      // session refresh doesn't overwrite the just-saved state.
+      const graceTimer = window.setTimeout(() => {
+        salesRequestPendingPatchIds.delete(recordId);
+        salesRequestPendingPatchGraceTimers.delete(recordId);
+      }, 1500);
+      salesRequestPendingPatchGraceTimers.set(recordId, graceTimer);
+    }
   }
 }
 
@@ -8548,7 +8561,7 @@ function getUnifiedOrderStage(order) {
     return {
       key: "warehouse-work",
       label: state.lang === "it" ? "Da preparare" : "To prepare",
-      tone: warehouseStatus === "bloccato" ? "red" : "amber",
+      tone: warehouseStatus === "bloccato" ? "red" : "blue",
     };
   }
   if (officeStatus === "bozza" || !isRoutedToWarehouse(order)) {
@@ -11355,10 +11368,12 @@ let _salesRequestAutoSaveStatusTimer = 0;
 
 function showSalesRequestAutoSaveStatus(text, kind = "success", autoHideMs = 2000) {
   clearTimeout(_salesRequestAutoSaveStatusTimer);
-  setStatus(ui.salesRequestsStatus, kind, text);
   if (kind === "success") {
-    _salesRequestAutoSaveStatusTimer = setTimeout(() => clearStatus(ui.salesRequestsStatus), autoHideMs);
+    // Use toast so the list never shifts layout
+    if (text && !text.startsWith("Salvataggio")) showToast(text, "success", Math.min(autoHideMs, 2500));
+    return;
   }
+  setStatus(ui.salesRequestsStatus, kind, text);
 }
 
 async function autoSaveSalesRequestPatch(id, patch) {
@@ -12183,7 +12198,7 @@ function renderWarehouse() {
   if (order) {
     const orderAllocations = getOrderInventoryAllocations(order);
     const hasActiveAllocations = orderAllocations.some((item) => getInventoryPieceState({ pieceState: item.status }) !== "disponibile");
-    if (!hasActiveAllocations && !getInventorySuggestionForOrder(order.id) && !inventoryAllocationPendingOrderIds.has(order.id) && !inventoryAutoSuggestedOrderIds.has(order.id)) {
+    if (state.currentView === "warehouse" && !hasActiveAllocations && !getInventorySuggestionForOrder(order.id) && !inventoryAllocationPendingOrderIds.has(order.id) && !inventoryAutoSuggestedOrderIds.has(order.id)) {
       inventoryAutoSuggestedOrderIds.add(order.id);
       setTimeout(() => suggestInventoryForOrder(order.id), 0);
     }

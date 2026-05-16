@@ -11324,29 +11324,18 @@ body.mobile-safe-mode .nav-link.is-active {
   outline: none;
 }
 
-.sales-request-filter-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin: -4px 0 16px;
-}
-
-.sales-request-filter-row .field {
-  margin: 0;
-}
-
-.sales-request-filter-row select {
-  min-height: 42px;
-  border-radius: 12px;
-  font-size: 13px;
+.sales-filter-select {
+  height: 34px;
+  min-height: unset;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
   font-weight: 700;
   color: #203425;
-}
-
-@media (max-width: 680px) {
-  .sales-request-filter-row {
-    grid-template-columns: 1fr;
-  }
+  border: 1px solid rgba(16, 24, 39, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .search-field-clear {
@@ -11437,10 +11426,18 @@ body.mobile-safe-mode .nav-link.is-active {
 
 .sales-request-toolbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 14px;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.sales-request-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .sales-request-quick-filters {
@@ -12107,8 +12104,9 @@ body.mobile-safe-mode .nav-link.is-active {
     align-items: stretch;
   }
 
-  .sales-request-toolbar-actions {
+  .sales-request-toolbar-right {
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .kpi-card,
@@ -14049,7 +14047,6 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
 }
 
 .inline-form-grid .field > span,
-.sales-request-filter-row .field > span,
 #sales-request-form .sales-request-routing-field > span {
   line-height: 1.25;
 }
@@ -14676,7 +14673,7 @@ textarea.text-input {
 }
 
 /* order-type-badge — allineati ai token */
-.type-fornitura       { background: var(--tok-green-bg); color: var(--tok-green-text); border-color: var(--tok-green-border); }
+.type-fornitura       { background: var(--tok-teal-bg);  color: var(--tok-teal-text);  border-color: var(--tok-teal-border); }
 .type-fornitura-posa  { background: var(--tok-amber-bg); color: var(--tok-amber-text); border-color: var(--tok-amber-border); }
 .type-posa            { background: var(--tok-amber-bg); color: var(--tok-amber-text); border-color: var(--tok-amber-border); }
 .type-spedizione      { background: var(--tok-blue-bg);  color: var(--tok-blue-text);  border-color: var(--tok-blue-border); }
