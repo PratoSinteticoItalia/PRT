@@ -8556,11 +8556,16 @@ async function handleApi(req, res, url) {
     if (!productKey) {
       return sendJson(res, 400, { error: "invalid_inventory_product" });
     }
+    // Raccogli gli ID da eliminare PRIMA del filter per il dual-write
+    const toDeleteIds = (store.inventory || [])
+      .filter((item) => normalizeInventoryProductKey(item.product || "") === productKey && normalizeInventoryPieceState(item.pieceState) === "disponibile")
+      .map((item) => item.id);
     store.inventory = (store.inventory || []).filter((item) => (
       normalizeInventoryProductKey(item.product || "") !== productKey
       || normalizeInventoryPieceState(item.pieceState) !== "disponibile"
     ));
     await writeJson(STORE_PATH, store);
+    for (const id of toDeleteIds) deleteInventoryItemFromDb(id).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.inventory);
   }
 
@@ -9182,6 +9187,10 @@ async function handleApi(req, res, url) {
       });
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
+      // Dual-write SQL per ogni ordine sincronizzato da Shopify
+      for (const order of orders) {
+        upsertOrderToDb(order).catch(() => {});
+      }
       return sendJson(res, 200, store.orders);
     } catch (error) {
       store.shopifySettings.lastSyncAt = new Date().toISOString();
