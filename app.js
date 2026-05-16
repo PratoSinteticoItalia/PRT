@@ -1244,6 +1244,8 @@ let ordersDeferredRenderTimer = 0;
 let salesContentDeleteInFlightId = "";
 const salesRequestPendingPatchIds = new Set();
 const salesRequestPendingPatchGraceTimers = new Map();
+// Version counter per record: evita che risposte server stale sovrascrivano ottimistic state più recente
+const _salesRequestPatchVersions = {};
 const orderPendingPatchIds = new Set();
 const inventoryPendingOps = new Set();
 const inventoryAllocationPendingOrderIds = new Set();
@@ -4824,6 +4826,9 @@ function markSelectedSalesRequestQuoteSent() {
 
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
   const recordId = String(record.id || "");
+  // Incrementa version per questo record: risposte server di save precedenti vengono scartate
+  _salesRequestPatchVersions[recordId] = (_salesRequestPatchVersions[recordId] || 0) + 1;
+  const myVersion = _salesRequestPatchVersions[recordId];
   const previousRecord = state.salesRequests.find((r) => r.id === recordId) || null;
   const optimisticRecord = normalizeSalesRequestRecord({ ...(previousRecord || record), ...patch });
   upsertSalesRequest(optimisticRecord, { skipOpsRender: true, preserveSelection: true });
@@ -4842,9 +4847,12 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     }, {
       retries: SALES_REQUEST_SAVE_MAX_RETRIES,
     });
-    upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
-    renderSalesRequests();
-    if (state.currentView === "sales-generator") renderSalesGenerator();
+    // Applica la risposta server solo se non è stata avviata una save più recente per questo record
+    if (_salesRequestPatchVersions[recordId] === myVersion) {
+      upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
+      renderSalesRequests();
+      if (state.currentView === "sales-generator") renderSalesGenerator();
+    }
     return saved;
   } catch (error) {
     showToast(

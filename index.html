@@ -528,42 +528,6 @@
               <button id="sales-request-new-button" class="ghost-button small-button" type="button">Nuova richiesta</button>
             </div>
           </div>
-          <section class="panel sales-request-source-panel">
-            <div class="panel-head">
-              <div>
-                <p class="panel-eyebrow">Collegamento Google Sheets</p>
-                <h3>Stesso file, lettura aggiornata delle richieste</h3>
-              </div>
-              <div class="panel-head-actions">
-                <button id="sales-request-service-account-button" class="ghost-button small-button" type="button">Carica service account JSON</button>
-                <button id="sales-request-clear-service-account-button" class="ghost-button small-button" type="button">Rimuovi credenziali</button>
-                <button id="sales-request-open-sheet-button" class="ghost-button small-button" type="button">Apri foglio Google</button>
-              </div>
-            </div>
-            <div class="sales-request-source-grid inline-form-grid">
-              <label class="field">
-                <span>Spreadsheet URL o ID</span>
-                <input id="sales-request-spreadsheet-input" class="text-input" type="text" placeholder="https://docs.google.com/spreadsheets/d/.../edit" />
-              </label>
-              <label class="field">
-                <span>Nome tab</span>
-                <input id="sales-request-sheet-name-input" class="text-input" type="text" placeholder="Lascia vuoto per usare il primo foglio" />
-              </label>
-              <div class="field field-full">
-                <div id="sales-request-source-summary" class="info-card sales-request-source-summary">
-                  Nessuna credenziale caricata.
-                </div>
-              </div>
-              <div id="sales-request-source-status" class="panel-note hidden field-full"></div>
-              <div class="inline-actions field-full">
-                <button id="sales-request-source-save-button" class="primary-button small-button" type="button">Salva collegamento</button>
-                <button id="sales-request-source-sync-button" class="ghost-button small-button" type="button">Aggiorna richieste</button>
-              </div>
-            </div>
-            <div class="hint-box sales-request-source-hint">
-              <p>Collega il service account Google e lo stesso spreadsheet usato dal vecchio CRM. Da qui puoi aggiornare le richieste reali senza reinserirle a mano.</p>
-            </div>
-          </section>
           <div class="dashboard-grid sales-dashboard-grid">
             <section class="panel sales-request-list-panel">
               <div class="panel-head">
@@ -1863,6 +1827,43 @@
                   </div>
                 </form>
                 <div id="settings-status" class="panel-note hidden"></div>
+              </section>
+
+              <section class="panel sales-request-source-panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow">Collegamento Google Sheets</p>
+                    <h3>Sincronizzazione richieste CRM</h3>
+                  </div>
+                  <div class="panel-head-actions">
+                    <button id="sales-request-service-account-button" class="ghost-button small-button" type="button">Carica service account JSON</button>
+                    <button id="sales-request-clear-service-account-button" class="ghost-button small-button" type="button">Rimuovi credenziali</button>
+                    <button id="sales-request-open-sheet-button" class="ghost-button small-button" type="button">Apri foglio Google</button>
+                  </div>
+                </div>
+                <div class="sales-request-source-grid inline-form-grid">
+                  <label class="field">
+                    <span>Spreadsheet URL o ID</span>
+                    <input id="sales-request-spreadsheet-input" class="text-input" type="text" placeholder="https://docs.google.com/spreadsheets/d/.../edit" />
+                  </label>
+                  <label class="field">
+                    <span>Nome tab</span>
+                    <input id="sales-request-sheet-name-input" class="text-input" type="text" placeholder="Lascia vuoto per usare il primo foglio" />
+                  </label>
+                  <div class="field field-full">
+                    <div id="sales-request-source-summary" class="info-card sales-request-source-summary">
+                      Nessuna credenziale caricata.
+                    </div>
+                  </div>
+                  <div id="sales-request-source-status" class="panel-note hidden field-full"></div>
+                  <div class="inline-actions field-full">
+                    <button id="sales-request-source-save-button" class="primary-button small-button" type="button">Salva collegamento</button>
+                    <button id="sales-request-source-sync-button" class="ghost-button small-button" type="button">Aggiorna richieste</button>
+                  </div>
+                </div>
+                <div class="hint-box sales-request-source-hint">
+                  <p>Collega il service account Google e lo stesso spreadsheet usato dal vecchio CRM. Da qui puoi aggiornare le richieste reali senza reinserirle a mano.</p>
+                </div>
               </section>
 
               <section class="panel">
