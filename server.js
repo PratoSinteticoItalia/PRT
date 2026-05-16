@@ -9141,6 +9141,13 @@ async function handleApi(req, res, url) {
     if (shouldFulfillInventoryForOrder(store.orders[orderIndex])) {
       const fulfillmentResult = fulfillInventoryCommitmentsForOrder(store, store.orders[orderIndex]);
       store.orders[orderIndex] = fulfillmentResult.order;
+      if (fulfillmentResult.changed) {
+        // Dual-write piece state auto-evase
+        const autoFulfillPieceIds = new Set(
+          (current.operations?.warehouse?.inventoryAllocations || []).map((a) => a.pieceId).filter(Boolean),
+        );
+        store.inventory.filter((p) => autoFulfillPieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
+      }
     }
     writeJson(STORE_PATH, store).catch((writeErr) => {
       console.error("[operations] persist failed:", writeErr?.message || writeErr);
