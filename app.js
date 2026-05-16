@@ -1456,6 +1456,7 @@ const ui = {
   salesGeneratorContactPanel: document.getElementById("sales-generator-contact-panel"),
   salesGeneratorContactSummary: document.getElementById("sales-generator-contact-summary"),
   salesGeneratorWhatsAppButton: document.getElementById("sales-generator-whatsapp-button"),
+  salesGeneratorPreviewV2Button: document.getElementById("sales-generator-preview-v2-button"),
   salesGeneratorEmailButton: document.getElementById("sales-generator-email-button"),
   salesContentSearch: document.getElementById("sales-content-search"),
   salesContentSearchClear: document.getElementById("sales-content-search-clear"),
@@ -20664,6 +20665,14 @@ bindEvent(ui.salesGeneratorWhatsAppButton, "click", () => {
   if (!href || href === "#") return;
   trackUsageEvent("quote_whatsapp_opened", { requestId: state.selectedSalesRequestId || "" });
   markSelectedSalesRequestQuoteSent();
+});
+bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
+  // Fase 1: apre preventivo-v2.html con i dati DEMO precompilati
+  // (Fase 2: estrarrà i dati reali dal generatore via postMessage e li passerà alla finestra)
+  try { window.localStorage.removeItem("psi:preventivo-v2:data"); } catch {}
+  const url = `./preventivo-v2.html?v=20260516-prev2-210`;
+  window.open(url, "psi_preventivo_v2", "noopener=yes");
+  trackUsageEvent("preventivo_v2_preview_opened", { requestId: state.selectedSalesRequestId || "" });
 });
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
