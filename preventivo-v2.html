@@ -291,6 +291,102 @@
       padding: 3px 7px; border-radius: 3px; letter-spacing: .3px;
     }
     .pl.hl { background: var(--gd); color: #fff; border-color: var(--gd); }
+
+    /* ── PAGINA 2 ── */
+    @media print { .page + .page { page-break-before: always; } }
+    .page2-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--gd);
+      margin-bottom: 12px;
+    }
+    .page2-head .hdr-num { font-size: 17px; }
+    .page2-summary { font-size: 9px; color: var(--gx); margin-top: 3px; }
+    .section-eyebrow {
+      font-size: 9px; font-weight: 800; letter-spacing: 1.8px;
+      text-transform: uppercase; color: var(--ga);
+      margin-bottom: 8px;
+    }
+    /* Schede tecniche prodotti */
+    .tech-grid { display: grid; gap: 9px; margin-bottom: 12px; }
+    .tech-grid[data-count="1"] { grid-template-columns: 1fr; max-width: 320px; }
+    .tech-grid[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
+    .tech-grid[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
+    .tech-card {
+      border: 1px solid var(--br); border-radius: 7px; overflow: hidden;
+    }
+    .tech-card.suggested { border: 2px solid var(--gd); }
+    .tech-card-head {
+      background: var(--gd); padding: 8px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .tech-card-head-l .name { font-size: 11.5px; font-weight: 800; color: #fff; }
+    .tech-card-head-l .code { font-size: 8.5px; color: var(--ga); margin-top: 1px; font-weight: 600; }
+    .tech-pill {
+      background: var(--ga); color: #fff; font-size: 7.5px; font-weight: 800;
+      letter-spacing: .5px; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 20px;
+    }
+    .tech-card-body {
+      padding: 9px 12px;
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 5px 10px;
+    }
+    .tech-card-body .l { font-size: 7.5px; color: var(--gl); text-transform: uppercase; letter-spacing: .3px; }
+    .tech-card-body .v { font-size: 11px; font-weight: 800; color: var(--gn); }
+    .tech-card-foot {
+      background: var(--off); border-top: 1px solid var(--br);
+      padding: 5px 12px; font-size: 7.5px; color: var(--gl);
+    }
+    /* Certificazioni */
+    .certs {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 1px; background: var(--br);
+      border: 1px solid var(--br); border-radius: 7px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .cert {
+      background: #fff; padding: 10px 10px; text-align: center;
+    }
+    .cert-icon { font-size: 16px; margin-bottom: 3px; }
+    .cert-name { font-size: 8.5px; font-weight: 800; color: var(--gd); letter-spacing: .3px; }
+    .cert-sub { font-size: 7.5px; color: var(--gl); margin-top: 2px; }
+    /* Condizioni vendita */
+    .conds {
+      border: 1px solid var(--br); border-radius: 7px;
+      overflow: hidden; margin-bottom: 12px;
+    }
+    .conds-t {
+      background: var(--off); padding: 7px 13px;
+      border-bottom: 1px solid var(--br);
+      font-size: 8.5px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase;
+      color: var(--gx);
+    }
+    .conds-grid {
+      padding: 10px 13px;
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 6px 26px;
+      font-size: 9px; color: var(--gx); line-height: 1.65;
+    }
+    .conds-grid strong { color: var(--gn); }
+    /* Firma finale doppia */
+    .firma-double {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
+      margin-top: 6px;
+    }
+    .firma-double .firma-line { height: 28px; }
+    .firma-double .firma-lbl { font-size: 9.5px; color: var(--gl); margin-top: 4px; }
+    /* Footer pagina 2 */
+    .p2-footer {
+      margin-top: 16px;
+      background: var(--gd);
+      padding: 8px 18px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .p2-footer-info { font-size: 8.5px; color: rgba(255,255,255,.7); }
+    .p2-footer-page { font-size: 8.5px; color: rgba(255,255,255,.55); white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -396,6 +492,59 @@
   </div>
 </div>
 
+<!-- ═══════════════════ PAGINA 2 — Allegato tecnico ═══════════════════ -->
+<div class="page" id="page-2" data-field="page2">
+  <!-- Header compatto -->
+  <div class="page2-head">
+    <div class="hdr-left">
+      <div class="hdr-logo" style="width:54px;height:46px;"><img src="./logo-prato.png" alt="Prato Sintetico Italia" onerror="this.style.display='none';"></div>
+      <div>
+        <div class="hdr-brand" style="font-size:16px;">PRATO SINTETICO</div>
+        <div class="hdr-sub" style="font-size:11px;">ITALIA</div>
+        <div class="hdr-tag" style="font-size:9px;">Allegato tecnico · Pag. 2 di 2</div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <div class="hdr-lbl">Preventivo Nr.</div>
+      <div class="hdr-num" data-field="quoteNumber2">F-0000-00</div>
+      <div class="page2-summary" data-field="summaryLine">—</div>
+    </div>
+  </div>
+
+  <!-- Schede tecniche prodotti -->
+  <div data-field="techBlock">
+    <div class="section-eyebrow">📋 Scheda tecnica prodotti offerti</div>
+    <div class="tech-grid" data-field="techCards"></div>
+  </div>
+
+  <!-- Certificazioni -->
+  <div class="certs" data-field="certsRow"></div>
+
+  <!-- Condizioni generali di vendita -->
+  <div class="conds">
+    <div class="conds-t">📄 Condizioni generali di vendita</div>
+    <div class="conds-grid" data-field="condsGrid"></div>
+  </div>
+
+  <!-- Firma doppia (cliente + azienda) -->
+  <div class="firma-double">
+    <div>
+      <div class="firma-line"></div>
+      <div class="firma-lbl">Data e firma del cliente per accettazione</div>
+    </div>
+    <div>
+      <div class="firma-line"></div>
+      <div class="firma-lbl" data-field="firmaAzienda">Firma e timbro VERTEX SRLS</div>
+    </div>
+  </div>
+
+  <!-- Footer pagina 2 -->
+  <div class="p2-footer">
+    <div class="p2-footer-info" data-field="p2FooterInfo">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
+    <div class="p2-footer-page">Pag. 2 / 2</div>
+  </div>
+</div>
+
 <script>
 (function () {
   "use strict";
@@ -419,6 +568,7 @@
       {
         slug: "faggio-25mm",
         name: "Faggio 25 mm",
+        code: "FAG-025",
         tagline: "Resistente",
         pricePerSqm: 10.90,
         discount: 0,
@@ -429,10 +579,12 @@
         total: 812.52,
         finalSqmPrice: 54.17,
         heylightInstallment: 162.50,
+        tech: { altezza: "25 mm", dtex: "11.000", peso: "2.800 g/m²", drenaggio: "40 L/min/m²", note: "REACH · EN71-3 · ASTM-D2616" },
       },
       {
         slug: "cedro-30mm",
         name: "Cedro 30 mm",
+        code: "CED-030",
         tagline: "Versatile · sconto 5%",
         pricePerSqm: 13.90,
         discount: 5,
@@ -443,10 +595,12 @@
         total: 854.70,
         finalSqmPrice: 56.98,
         heylightInstallment: 170.94,
+        tech: { altezza: "30 mm", dtex: "13.500", peso: "3.200 g/m²", drenaggio: "40 L/min/m²", note: "REACH · EN71-3 · ASTM-D2616" },
       },
       {
         slug: "rovere-40mm",
         name: "Rovere 40 mm",
+        code: "ROV-040",
         tagline: "Naturale · sconto 5%",
         pricePerSqm: 13.90,
         discount: 5,
@@ -457,8 +611,27 @@
         total: 854.70,
         finalSqmPrice: 56.98,
         heylightInstallment: 170.94,
+        tech: { altezza: "40 mm", dtex: "14.700", peso: "3.500 g/m²", drenaggio: "40 L/min/m²", note: "REACH · EN71-3 · ASTM-D2616" },
       },
     ],
+    certifications: [
+      { icon: "🛡️", name: "Garanzia 8 anni",  sub: "Difetti di fabbricazione" },
+      { icon: "🧪",  name: "REACH 2024",       sub: "SVHC 223 sostanze" },
+      { icon: "🧒",  name: "EN71-3:2013",      sub: "Sicurezza bambini" },
+      { icon: "🏭",  name: "ISO 9001:2015",    sub: "Sistema qualità" },
+    ],
+    conditions: [
+      { label: "Validità",   text: "Offerta valida 30 giorni dalla data di emissione." },
+      { label: "Pagamento",  text: "Saldo all'ordine via bonifico, carta, PayPal, Scalapay o HeyLight 0%." },
+      { label: "Spedizione", text: "Gratuita in Italia, 3–5 giorni lavorativi, piano strada." },
+      { label: "Resi",       text: "Entro 14 giorni se prodotto integro e non posato." },
+      { label: "Garanzia",   text: "8 anni su difetti di fabbricazione. Non copre usura normale." },
+      { label: "Privacy",    text: "Dati trattati ai sensi GDPR — privacy@pratosinteticoitalia.com" },
+    ],
+    page2Footer: {
+      info: "VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com",
+      firmaAzienda: "Firma e timbro VERTEX SRLS",
+    },
     materials: {
       desc: "La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm, telo separatore, giunte, fissaggi e finiture perimetrali. Il materiale è quantificato in base ai metri quadri inseriti.",
       list: [
@@ -649,8 +822,78 @@
     }
   }
 
+  function renderTechCards(data) {
+    const grid = document.querySelector('[data-field="techCards"]');
+    if (!grid) return;
+    const opts = data.options || [];
+    const withTech = opts.filter((o) => o.tech && Object.keys(o.tech).length);
+    if (!withTech.length) {
+      const block = document.querySelector('[data-field="techBlock"]');
+      if (block) block.style.display = "none";
+      return;
+    }
+    grid.setAttribute("data-count", String(Math.min(3, withTech.length)));
+    const suggestedSlug = data.suggestedSlug || "";
+    grid.innerHTML = withTech.map((opt) => {
+      const isSuggested = opt.slug && opt.slug === suggestedSlug;
+      const cardCls = isSuggested ? "tech-card suggested" : "tech-card";
+      const pill = isSuggested ? `<span class="tech-pill">★ Top</span>` : "";
+      const code = opt.code ? `<div class="code">COD. ${escHtml(opt.code)}</div>` : "";
+      const t = opt.tech || {};
+      return `
+        <div class="${cardCls}">
+          <div class="tech-card-head">
+            <div class="tech-card-head-l">
+              <div class="name">${escHtml(opt.name)}</div>
+              ${code}
+            </div>
+            ${pill}
+          </div>
+          <div class="tech-card-body">
+            <div><div class="l">Altezza</div><div class="v">${escHtml(t.altezza || "—")}</div></div>
+            <div><div class="l">Dtex</div><div class="v">${escHtml(t.dtex || "—")}</div></div>
+            <div><div class="l">Peso</div><div class="v">${escHtml(t.peso || "—")}</div></div>
+            <div><div class="l">Drenaggio</div><div class="v">${escHtml(t.drenaggio || "—")}</div></div>
+          </div>
+          <div class="tech-card-foot">${escHtml(t.note || "")}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderCertifications(data) {
+    const row = document.querySelector('[data-field="certsRow"]');
+    if (!row) return;
+    const certs = data.certifications || [];
+    if (!certs.length) { row.style.display = "none"; return; }
+    row.style.gridTemplateColumns = `repeat(${certs.length}, 1fr)`;
+    row.innerHTML = certs.map((c) => `
+      <div class="cert">
+        <div class="cert-icon">${escHtml(c.icon || "•")}</div>
+        <div class="cert-name">${escHtml(c.name || "—")}</div>
+        <div class="cert-sub">${escHtml(c.sub || "")}</div>
+      </div>
+    `).join("");
+  }
+
+  function renderConditions(data) {
+    const grid = document.querySelector('[data-field="condsGrid"]');
+    if (!grid) return;
+    const conds = data.conditions || [];
+    if (!conds.length) { grid.parentElement.style.display = "none"; return; }
+    grid.innerHTML = conds.map((c) => `
+      <div><strong>${escHtml(c.label || "")}:</strong> ${escHtml(c.text || "")}</div>
+    `).join("");
+  }
+
+  function renderPage2Footer(data) {
+    setField("p2FooterInfo", data.page2Footer?.info || "");
+    setField("firmaAzienda", data.page2Footer?.firmaAzienda || "Firma e timbro azienda");
+  }
+
   function renderPreventivo(data) {
     setField("quoteNumber", data.quoteNumber || "—");
+    setField("quoteNumber2", data.quoteNumber || "—");
     setField("brandTagline", data.branding?.tagline || "Dal 2016 · Fornitura e Posa Professionale");
     setField("brandCompany", data.branding?.company || "VERTEX SRLS · P.IVA 04863610616");
     setField("customerName", data.customer?.name || "—");
@@ -662,11 +905,17 @@
     setField("offerTitle", `OFFERTA PER ${data.sqm || 0} MQ`);
     setField("paymentMain", data.payment?.main || "");
     setField("paymentHeyLight", data.payment?.heylight || "");
+    const modeLabel = String(data.mode || "").includes("posa") ? "Fornitura + posa" : "Solo fornitura";
+    setField("summaryLine", `${data.customer?.name || "—"} · ${data.sqm || 0} mq · ${modeLabel}`);
     renderOptionsTable(data);
     renderMaterialsBox(data);
     renderBadges(data);
     renderPriceCards(data);
     renderHeyLight(data);
+    renderTechCards(data);
+    renderCertifications(data);
+    renderConditions(data);
+    renderPage2Footer(data);
   }
 
   // ─── Caricamento dati ───
