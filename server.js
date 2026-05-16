@@ -8770,6 +8770,9 @@ async function handleApi(req, res, url) {
       });
       const committedOrder = store.orders.find((o) => o.id === orderId);
       if (committedOrder) upsertOrderToDb(committedOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
+      // Dual-write delle inventory piece coinvolte nel commit
+      const commitPieceIds = new Set((result.allocations || []).map((a) => a.pieceId).filter(Boolean));
+      store.inventory.filter((p) => commitPieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
@@ -8792,6 +8795,11 @@ async function handleApi(req, res, url) {
       });
       const releasedOrder = store.orders.find((o) => o.id === orderId);
       if (releasedOrder) upsertOrderToDb(releasedOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
+      // Dual-write delle inventory piece rilasciate (ora disponibili)
+      const releasePieceIds = new Set(
+        (order.operations?.warehouse?.inventoryAllocations || []).map((a) => a.pieceId).filter(Boolean),
+      );
+      store.inventory.filter((p) => releasePieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
@@ -8813,6 +8821,13 @@ async function handleApi(req, res, url) {
       });
       const fulfilledOrder = store.orders.find((o) => o.id === orderId);
       if (fulfilledOrder) upsertOrderToDb(fulfilledOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
+      // Dual-write delle inventory piece evase (stato: evaso)
+      if (result.changed) {
+        const fulfillPieceIds = new Set(
+          (order.operations?.warehouse?.inventoryAllocations || []).map((a) => a.pieceId).filter(Boolean),
+        );
+        store.inventory.filter((p) => fulfillPieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
+      }
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
