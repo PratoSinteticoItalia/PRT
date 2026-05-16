@@ -11357,10 +11357,13 @@ function mergeFirstContactStateFromLive(draft, live) {
 let salesRequestStatusAutoClearTimer = 0;
 function setSalesRequestStatusWithAutoClear(kind, text, delayMs = 4000) {
   clearTimeout(salesRequestStatusAutoClearTimer);
-  setStatus(ui.salesRequestsStatus, kind, text);
   if (kind === "success") {
-    salesRequestStatusAutoClearTimer = setTimeout(() => clearStatus(ui.salesRequestsStatus), delayMs);
+    // Route success to toast so the list never shifts layout
+    if (text && !/Salvataggio in corso/i.test(text)) showToast(text, "success", Math.min(delayMs, 3000));
+    clearStatus(ui.salesRequestsStatus);
+    return;
   }
+  setStatus(ui.salesRequestsStatus, kind, text);
 }
 
 let _salesRequestAutoSaveTimer = 0;
@@ -11597,7 +11600,7 @@ async function deleteSalesRequest() {
     renderOps();
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Richiesta eliminata." : "Request deleted.");
+    showToast(state.lang === "it" ? "Richiesta eliminata." : "Request deleted.", "success");
   } catch (error) {
     setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile eliminare la richiesta." : "Unable to delete the request.");
   }
@@ -11650,7 +11653,7 @@ async function importSalesRequests() {
     renderOps();
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? `${parsedItems.length} richieste importate correttamente.` : `${parsedItems.length} requests imported successfully.`);
+    showToast(state.lang === "it" ? `${parsedItems.length} richieste importate correttamente.` : `${parsedItems.length} requests imported successfully.`, "success");
   } catch (error) {
     renderOps();
     setStatus(ui.salesRequestsStatus, "error", getSalesRequestSaveErrorMessage(error));
@@ -12200,7 +12203,10 @@ function renderWarehouse() {
     const hasActiveAllocations = orderAllocations.some((item) => getInventoryPieceState({ pieceState: item.status }) !== "disponibile");
     if (state.currentView === "warehouse" && !hasActiveAllocations && !getInventorySuggestionForOrder(order.id) && !inventoryAllocationPendingOrderIds.has(order.id) && !inventoryAutoSuggestedOrderIds.has(order.id)) {
       inventoryAutoSuggestedOrderIds.add(order.id);
-      setTimeout(() => suggestInventoryForOrder(order.id), 0);
+      setTimeout(() => {
+        if (state.currentView !== "warehouse") return;
+        suggestInventoryForOrder(order.id);
+      }, 0);
     }
   }
   ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Inventario operativo" : "Inventory operations";
@@ -17054,16 +17060,18 @@ async function suggestInventoryForOrder(orderId = "") {
     });
     setInventorySuggestionForOrder(normalizedId, suggestion);
     renderWarehouse();
-    const missingCount = Array.isArray(suggestion.missing) ? suggestion.missing.length : 0;
-    showToast(
-      missingCount
-        ? (state.lang === "it" ? `Proposta calcolata, ma mancano ${missingCount} pezzi.` : `Suggestion calculated, but ${missingCount} pieces are missing.`)
-        : (state.lang === "it" ? "Proposta pezzi pronta da confermare." : "Piece suggestion ready to confirm."),
-      missingCount ? "warning" : "success",
-    );
+    if (state.currentView === "warehouse") {
+      const missingCount = Array.isArray(suggestion.missing) ? suggestion.missing.length : 0;
+      showToast(
+        missingCount
+          ? (state.lang === "it" ? `Proposta calcolata, ma mancano ${missingCount} pezzi.` : `Suggestion calculated, but ${missingCount} pieces are missing.`)
+          : (state.lang === "it" ? "Proposta pezzi pronta da confermare." : "Piece suggestion ready to confirm."),
+        missingCount ? "warning" : "success",
+      );
+    }
   } catch (error) {
     console.error("inventory_suggestion_failed", error);
-    showToast(state.lang === "it" ? "Impossibile calcolare i pezzi disponibili." : "Unable to suggest available pieces.", "warning");
+    if (state.currentView === "warehouse") showToast(state.lang === "it" ? "Impossibile calcolare i pezzi disponibili." : "Unable to suggest available pieces.", "warning");
   } finally {
     inventoryAllocationPendingOrderIds.delete(normalizedId);
     scheduleRender("warehouse");
