@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260516-ui-v2-205" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260516-ui-v2-205" />
+    <link rel="preload" href="./styles.css?v=20260516-dash-v2-206" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260516-dash-v2-206" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -283,114 +283,128 @@
         </header>
 
         <section class="view is-active" id="dashboard">
-          <div class="page-header">
-            <div>
-              <h1>Dashboard</h1>
-              <div class="page-header-sub" id="dashboard-subtitle">Ordini, magazzino, pose e contabilità in un unico colpo d'occhio</div>
+          <div class="dash-header">
+            <div class="dash-header-text">
+              <h1 id="dashboard-title">Dashboard</h1>
+              <p class="dash-subtitle" id="dashboard-subtitle">Tutto quello che ti serve per gestire la giornata.</p>
+            </div>
+            <div class="dash-date-filter" role="tablist" aria-label="Intervallo date" data-dashboard-role="office warehouse">
+              <button class="dash-date-chip" type="button" data-dashboard-range="today" role="tab">Oggi</button>
+              <button class="dash-date-chip is-active" type="button" data-dashboard-range="7d" role="tab">7g</button>
+              <button class="dash-date-chip" type="button" data-dashboard-range="30d" role="tab">30g</button>
+              <button class="dash-date-chip" type="button" data-dashboard-range="90d" role="tab">90g</button>
+              <button class="dash-date-chip" type="button" data-dashboard-range="all" role="tab">Tutto</button>
             </div>
           </div>
 
-          <div class="kpi-grid">
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="orders" data-dashboard-order-filter="all" role="button" tabindex="0">
-              <div id="ops-orders-label" class="kpi-label">Ordini</div>
-              <div id="ops-orders-value" class="kpi-value">0</div>
-              <div id="ops-orders-text" class="kpi-sub">Ordini totali e bozze operative.</div>
-            </article>
-            <article class="kpi-card kpi-card-accent" data-action="open-dashboard-view" data-view="orders" data-dashboard-order-filter="all" role="button" tabindex="0">
-              <div id="ops-sold-sqm-label" class="kpi-label">Mq venduti</div>
-              <div id="ops-sold-sqm-value" class="kpi-value">0</div>
-              <div id="ops-sold-sqm-text" class="kpi-sub">Stima dei metri quadri confermati sugli ordini acquisiti.</div>
-            </article>
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="warehouse" data-dashboard-warehouse-filter="all" role="button" tabindex="0">
-              <div id="ops-warehouse-label" class="kpi-label">Inventario</div>
-              <div id="ops-warehouse-value" class="kpi-value">0</div>
-              <div id="ops-warehouse-text" class="kpi-sub">Ordini da preparare, spedire o caricare.</div>
-            </article>
-            <article class="kpi-card kpi-card-soft" data-action="open-dashboard-view" data-view="warehouse" data-dashboard-warehouse-filter="all" role="button" tabindex="0">
-              <div id="ops-stock-label" class="kpi-label">Giacenza prato</div>
-              <div id="ops-stock-value" class="kpi-value">0</div>
-              <div id="ops-stock-text" class="kpi-sub">Disponibilità reale dei modelli prato caricati.</div>
-            </article>
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="installations" data-dashboard-installation-filter="all" role="button" tabindex="0">
-              <div id="ops-installations-label" class="kpi-label">Pose</div>
-              <div id="ops-installations-value" class="kpi-value">0</div>
-              <div id="ops-installations-text" class="kpi-sub">Installazioni da pianificare o in corso.</div>
-            </article>
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="accounting" data-dashboard-accounting-filter="all" role="button" tabindex="0">
-              <div id="ops-accounting-label" class="kpi-label">Da incassare</div>
-              <div id="ops-accounting-value" class="kpi-value">0</div>
-              <div id="ops-accounting-text" class="kpi-sub">Ordini da verificare, saldare o fatturare.</div>
-            </article>
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="shipping" data-dashboard-shipping-filter="all" role="button" tabindex="0">
-              <div id="ops-shipping-label" class="kpi-label">Logistica</div>
-              <div id="ops-shipping-value" class="kpi-value">0</div>
-              <div id="ops-shipping-text" class="kpi-sub">Corrieri, ritiri, furgoni e bancali.</div>
-            </article>
-            <article class="kpi-card" data-action="open-dashboard-view" data-view="orders" data-dashboard-order-filter="fulfilled" role="button" tabindex="0">
-              <div id="ops-closed-label" class="kpi-label">Chiusi</div>
-              <div id="ops-closed-value" class="kpi-value">0</div>
-              <div id="ops-closed-text" class="kpi-sub">Ordini completati e senza azioni aperte.</div>
-            </article>
+          <!-- OFFICE VIEW -->
+          <div class="dash-role-view" data-dashboard-role="office">
+            <div class="dash-hero-kpis" id="dashboard-hero-kpis"></div>
+
+            <div class="dash-grid-2col">
+              <section class="dash-card dash-card-notifications">
+                <header class="dash-card-head">
+                  <div>
+                    <span class="dash-card-eyebrow">Centro notifiche</span>
+                    <h2 class="dash-card-title">Da gestire</h2>
+                  </div>
+                  <span class="dash-card-badge" id="dashboard-notif-badge">0</span>
+                </header>
+                <div class="dash-notification-list" id="dashboard-notifications"></div>
+              </section>
+
+              <section class="dash-card dash-card-team">
+                <header class="dash-card-head">
+                  <div>
+                    <span class="dash-card-eyebrow">Performance</span>
+                    <h2 class="dash-card-title">Carico squadra</h2>
+                  </div>
+                  <span class="dash-card-meta" id="dashboard-team-meta">—</span>
+                </header>
+                <div class="dash-team-list" id="dashboard-team-performance"></div>
+              </section>
+            </div>
+
+            <section class="dash-card dash-card-week">
+              <header class="dash-card-head">
+                <div>
+                  <span class="dash-card-eyebrow">Calendario</span>
+                  <h2 class="dash-card-title">Pose questa settimana</h2>
+                </div>
+              </header>
+              <div class="dash-week-summary" id="dashboard-week-summary"></div>
+            </section>
+
+            <div class="dash-grid-2col">
+              <section class="dash-card">
+                <header class="dash-card-head">
+                  <div>
+                    <span class="dash-card-eyebrow">Operativo</span>
+                    <h2 class="dash-card-title">Priorità ordini</h2>
+                  </div>
+                  <span class="dash-card-badge" id="dashboard-actions-badge">0</span>
+                </header>
+                <div id="dashboard-actions" class="dash-action-list"></div>
+              </section>
+
+              <section class="dash-card">
+                <header class="dash-card-head">
+                  <div>
+                    <span class="dash-card-eyebrow">Vendite</span>
+                    <h2 class="dash-card-title">Follow-up preventivi</h2>
+                  </div>
+                  <span class="dash-card-badge" id="dashboard-followup-badge">0</span>
+                </header>
+                <div id="dashboard-followup" class="dash-action-list"></div>
+              </section>
+            </div>
           </div>
 
-          <div class="dashboard-wide-stack">
-            <div class="section dashboard-wide-section">
-              <div class="section-header">
-                <div class="section-title" id="dashboard-quick-accounting-title">Contabilità rapida</div>
-              </div>
-              <div id="dashboard-accounting-snapshot" class="kpi-grid dashboard-snapshot-grid"></div>
-            </div>
-            <div class="section dashboard-wide-section">
-              <div class="section-header">
-                <div class="section-title" id="dashboard-stock-summary-title">Riepilogo giacenza</div>
-              </div>
-              <div id="dashboard-inventory-snapshot" class="kpi-grid dashboard-snapshot-grid inventory-snapshot"></div>
-            </div>
-            <div class="section dashboard-wide-section">
-              <div class="section-header">
-                <div class="section-title" id="dashboard-trend-title">Trend ricavi ultimi 6 mesi</div>
-              </div>
-              <div id="dashboard-trend"></div>
+          <!-- WAREHOUSE VIEW (placeholder, riempito nella prossima iterazione) -->
+          <div class="dash-role-view" data-dashboard-role="warehouse" hidden>
+            <div class="dash-hero-kpis" id="dashboard-hero-kpis-warehouse"></div>
+            <div class="dash-grid-2col">
+              <section class="dash-card">
+                <header class="dash-card-head">
+                  <div>
+                    <span class="dash-card-eyebrow">Magazzino</span>
+                    <h2 class="dash-card-title">Coda di lavoro</h2>
+                  </div>
+                </header>
+                <div id="dashboard-warehouse-queue" class="dash-action-list"></div>
+              </section>
+              <section class="dash-card">
+                <header class="dash-card-head">
+                  <div>
+                    <span class="dash-card-eyebrow">Stock</span>
+                    <h2 class="dash-card-title">Allarmi giacenza</h2>
+                  </div>
+                </header>
+                <div id="dashboard-warehouse-stock" class="dash-notification-list"></div>
+              </section>
             </div>
           </div>
 
-          <div class="two-col">
-            <div>
-              <div class="section">
-                <div class="section-header">
-                  <div class="section-title" id="dashboard-actions-title">Priorità operative</div>
-                  <div id="dashboard-actions-badge" class="section-badge">0</div>
+          <!-- CREW VIEW (placeholder, riempito nella prossima iterazione) -->
+          <div class="dash-role-view" data-dashboard-role="crew" hidden>
+            <section class="dash-card dash-card-week">
+              <header class="dash-card-head">
+                <div>
+                  <span class="dash-card-eyebrow">Oggi</span>
+                  <h2 class="dash-card-title">Le tue pose</h2>
                 </div>
-                <div id="dashboard-actions" class="action-list"></div>
-              </div>
-              <div class="section">
-                <div class="section-header">
-                  <div class="section-title">Follow-up preventivi</div>
-                  <div id="dashboard-followup-badge" class="section-badge">0</div>
+              </header>
+              <div id="dashboard-crew-today" class="dash-action-list"></div>
+            </section>
+            <section class="dash-card">
+              <header class="dash-card-head">
+                <div>
+                  <span class="dash-card-eyebrow">Settimana</span>
+                  <h2 class="dash-card-title">Carico programmato</h2>
                 </div>
-                <div id="dashboard-followup" class="action-list"></div>
-              </div>
-            </div>
-            <div>
-              <div class="section">
-                <div class="section-header">
-                  <div class="section-title" id="dashboard-week-installations-title">Pose questa settimana</div>
-                </div>
-                <div id="dashboard-week-summary"></div>
-              </div>
-              <div class="section">
-                <div class="section-header">
-                  <div class="section-title">Situazioni bloccanti</div>
-                </div>
-                <div id="dashboard-alerts" class="feed feed-alerts"></div>
-              </div>
-              <div class="section">
-                <div class="section-header">
-                  <div class="section-title">Attività recente</div>
-                </div>
-                <div id="dashboard-activity" class="feed"></div>
-              </div>
-            </div>
+              </header>
+              <div id="dashboard-crew-week" class="dash-week-summary"></div>
+            </section>
           </div>
         </section>
 
@@ -2009,6 +2023,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260516-ui-v2-205" type="module"></script>
+    <script src="./app.js?v=20260516-dash-v2-206" type="module"></script>
   </body>
 </html>

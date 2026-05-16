@@ -299,8 +299,8 @@ const TRAVEL_EXPENSE_TYPES = {
 };
 const roleViews = {
   office: ["dashboard", "orders", "warehouse", "installations", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner"],
-  warehouse: ["warehouse", "shipping", "communications"],
-  crew: ["installations", "sales-generator", "communications", "garden-planner"],
+  warehouse: ["dashboard", "warehouse", "shipping", "communications"],
+  crew: ["dashboard", "installations", "sales-generator", "communications", "garden-planner"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
@@ -1142,6 +1142,7 @@ const state = {
   usageEventSessionKeys: new Set(),
   settings: {},
   currentView: "dashboard",
+  dashboardDateRange: "7d",
   selectedOrderId: null,
   selectedSalesRequestId: "",
   selectedSalesRequestBulkIds: new Set(),
@@ -1352,6 +1353,13 @@ const ui = {
   dashboardWeekSummary: document.getElementById("dashboard-week-summary"),
   dashboardAccountingSnapshot: document.getElementById("dashboard-accounting-snapshot"),
   dashboardInventorySnapshot: document.getElementById("dashboard-inventory-snapshot"),
+  dashboardHeroKpis: document.getElementById("dashboard-hero-kpis"),
+  dashboardNotifications: document.getElementById("dashboard-notifications"),
+  dashboardNotifBadge: document.getElementById("dashboard-notif-badge"),
+  dashboardTeamPerformance: document.getElementById("dashboard-team-performance"),
+  dashboardTeamMeta: document.getElementById("dashboard-team-meta"),
+  dashboardRoleViews: Array.from(document.querySelectorAll("[data-dashboard-role]")),
+  dashboardDateChips: Array.from(document.querySelectorAll(".dash-date-chip")),
   quickViewButtons: Array.from(document.querySelectorAll("[data-quick-view]")),
   ordersSearch: document.getElementById("orders-search"),
   orderFilterTags: Array.from(document.querySelectorAll(".order-filter-tag")),
@@ -9474,12 +9482,12 @@ function renderOps() {
   const closed = state.orders.filter((order) => isOrderClosed(order)).length;
   const salesRequests = state.salesRequests.filter(isSalesRequestNewContactUnassigned).length;
   const salesContents = state.salesContents.filter(salesContentNeedsAction).length;
-  ui.opsOrdersValue.textContent = String(orders);
+  if (ui.opsOrdersValue) ui.opsOrdersValue.textContent = String(orders);
   if (ui.opsSoldSqmValue) ui.opsSoldSqmValue.textContent = `${Math.round(soldSqm)} mq`;
-  ui.opsWarehouseValue.textContent = String(warehouse);
+  if (ui.opsWarehouseValue) ui.opsWarehouseValue.textContent = String(warehouse);
   if (ui.opsStockValue) ui.opsStockValue.textContent = `${Math.round(inventorySnapshot.totalStockSqm)} mq`;
-  ui.opsInstallationsValue.textContent = String(installations);
-  ui.opsAccountingValue.textContent = String(accounting);
+  if (ui.opsInstallationsValue) ui.opsInstallationsValue.textContent = String(installations);
+  if (ui.opsAccountingValue) ui.opsAccountingValue.textContent = String(accounting);
   if (ui.opsShippingValue) ui.opsShippingValue.textContent = String(shipping);
   const opsClosedValue = document.getElementById("ops-closed-value");
   if (opsClosedValue) opsClosedValue.textContent = String(closed);
@@ -9549,7 +9557,519 @@ function buildFollowupReminders() {
     .slice(0, 8);
 }
 
+function getDashboardDateRangeMs(range = state.dashboardDateRange || "7d") {
+  const day = 86400000;
+  switch (range) {
+    case "today": return day;
+    case "7d":    return 7 * day;
+    case "30d":   return 30 * day;
+    case "90d":   return 90 * day;
+    case "all":   return Number.POSITIVE_INFINITY;
+    default:      return 7 * day;
+  }
+}
+
+function getDashboardDateRangeLabel(range = state.dashboardDateRange || "7d") {
+  switch (range) {
+    case "today": return state.lang === "it" ? "oggi" : "today";
+    case "7d":    return state.lang === "it" ? "ultimi 7 giorni" : "last 7 days";
+    case "30d":   return state.lang === "it" ? "ultimi 30 giorni" : "last 30 days";
+    case "90d":   return state.lang === "it" ? "ultimi 90 giorni" : "last 90 days";
+    case "all":   return state.lang === "it" ? "sempre" : "all time";
+    default:      return state.lang === "it" ? "ultimi 7 giorni" : "last 7 days";
+  }
+}
+
+function filterByDashboardDateRange(items = [], dateField = "createdAt") {
+  const ms = getDashboardDateRangeMs();
+  if (!Number.isFinite(ms)) return items;
+  const since = Date.now() - ms;
+  return items.filter((item) => {
+    const raw = item?.[dateField] || "";
+    if (!raw) return false;
+    const ts = new Date(raw).getTime();
+    return Number.isFinite(ts) && ts >= since;
+  });
+}
+
+function getActiveDashboardRole() {
+  const role = normalizeUserRole(state.currentUser?.role || "office");
+  return ["office", "warehouse", "crew"].includes(role) ? role : "office";
+}
+
+function toggleDashboardRoleViews(activeRole) {
+  if (!Array.isArray(ui.dashboardRoleViews)) return;
+  ui.dashboardRoleViews.forEach((view) => {
+    const roles = String(view.dataset.dashboardRole || "").split(/\s+/);
+    const match = roles.includes(activeRole) || roles.includes("all");
+    view.hidden = !match;
+  });
+}
+
+function syncDashboardDateChips() {
+  const active = state.dashboardDateRange || "7d";
+  (ui.dashboardDateChips || []).forEach((chip) => {
+    chip.classList.toggle("is-active", chip.dataset.dashboardRange === active);
+  });
+}
+
+function renderDashboardHeroKpis() {
+  if (!ui.dashboardHeroKpis) return;
+  const rangeLabel = getDashboardDateRangeLabel();
+
+  // Richieste da contattare (state new, not yet contacted)
+  const toContact = (state.salesRequests || []).filter((req) => {
+    const code = getSalesRequestStatusCode(req.status || "");
+    if (code === "closed") return false;
+    const firstState = normalizeSalesRequestFirstContactState(req.firstContactState || "");
+    return !["sent", "queued"].includes(firstState);
+  });
+
+  // Ordini in lavorazione (warehouse-work stage)
+  const inProgress = (state.orders || []).filter((order) => {
+    const stage = getUnifiedOrderStage(order);
+    return ["warehouse-work", "office-review", "install-planned"].includes(stage.key);
+  });
+
+  // Pose programmate nel range
+  const day = 86400000;
+  const rangeDays = Math.min(60, Math.round(getDashboardDateRangeMs() / day) || 7);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const horizon = now.getTime() + rangeDays * day;
+  const upcomingInstalls = (state.orders || []).filter((order) => {
+    const d = order.operations?.installation?.installDate;
+    if (!d) return false;
+    const ts = new Date(d).getTime();
+    return ts >= now.getTime() && ts <= horizon;
+  });
+
+  // Da incassare totale
+  const openBalance = (state.orders || []).reduce((sum, order) => sum + getOpenBalance(order), 0);
+
+  // Ordini nuovi nel range
+  const newOrders = filterByDashboardDateRange(state.orders || [], "createdAt").length;
+
+  const kpis = [
+    {
+      label: state.lang === "it" ? "Richieste da contattare" : "Requests to contact",
+      value: String(toContact.length),
+      sub: state.lang === "it" ? "Lead in attesa di primo contatto" : "Leads pending first contact",
+      icon: "📥",
+      tone: "blue",
+      view: "sales-requests",
+    },
+    {
+      label: state.lang === "it" ? "Ordini in lavorazione" : "Orders in progress",
+      value: String(inProgress.length),
+      sub: state.lang === "it" ? "Da verificare, preparare o pianificare" : "To review, prepare or plan",
+      icon: "📦",
+      tone: "amber",
+      view: "orders",
+    },
+    {
+      label: state.lang === "it" ? `Pose prossimi ${rangeDays} g` : `Installs next ${rangeDays} d`,
+      value: String(upcomingInstalls.length),
+      sub: state.lang === "it"
+        ? `${upcomingInstalls.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0).toFixed(0)} mq totali`
+        : `${upcomingInstalls.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0).toFixed(0)} sqm total`,
+      icon: "🔧",
+      tone: "green",
+      view: "installations",
+    },
+    {
+      label: state.lang === "it" ? "Da incassare" : "To collect",
+      value: formatCurrency(openBalance),
+      sub: state.lang === "it" ? `${newOrders} nuovi ordini ${rangeLabel}` : `${newOrders} new orders ${rangeLabel}`,
+      icon: "€",
+      tone: openBalance > 5000 ? "red" : "purple",
+      view: "accounting",
+    },
+  ];
+
+  ui.dashboardHeroKpis.innerHTML = kpis.map((kpi) => `
+    <article class="hero-kpi tone-${kpi.tone}" data-action="open-dashboard-view" data-view="${kpi.view}" role="button" tabindex="0">
+      <div class="hero-kpi-icon">${kpi.icon}</div>
+      <div class="hero-kpi-body">
+        <div class="hero-kpi-label">${escapeHtml(kpi.label)}</div>
+        <div class="hero-kpi-value">${escapeHtml(kpi.value)}</div>
+        <div class="hero-kpi-sub">${escapeHtml(kpi.sub)}</div>
+      </div>
+    </article>
+  `).join("");
+}
+
+function buildDashboardNotifications() {
+  const notifs = [];
+
+  // Stock in esaurimento
+  try {
+    const stockSnapshot = getDashboardInventorySnapshot();
+    if (stockSnapshot.uncovered > 0) {
+      notifs.push({
+        tone: "red",
+        icon: "⚠",
+        title: state.lang === "it" ? `${stockSnapshot.uncovered} prodotti sotto soglia` : `${stockSnapshot.uncovered} products under threshold`,
+        sub: state.lang === "it" ? "Il fabbisogno supera la disponibilità reale" : "Demand exceeds current availability",
+        view: "warehouse",
+      });
+    }
+  } catch {}
+
+  // Ordini bloccati
+  const blocked = (state.orders || []).filter((o) => o.operations?.warehouse?.status === "bloccato");
+  if (blocked.length) {
+    notifs.push({
+      tone: "red",
+      icon: "🚫",
+      title: state.lang === "it" ? `${blocked.length} ordini bloccati` : `${blocked.length} blocked orders`,
+      sub: blocked.slice(0, 2).map((o) => composeClientName(o)).join(" · "),
+      view: "warehouse",
+      count: blocked.length,
+    });
+  }
+
+  // Pose senza data
+  const installsNoDate = (state.orders || []).filter((o) => o.operations?.installation?.required && !o.operations?.installation?.installDate);
+  if (installsNoDate.length) {
+    notifs.push({
+      tone: "amber",
+      icon: "📅",
+      title: state.lang === "it" ? `${installsNoDate.length} pose senza data` : `${installsNoDate.length} installs without date`,
+      sub: state.lang === "it" ? "Pianifica la data per attivare la squadra" : "Schedule the date to activate the crew",
+      view: "installations",
+      count: installsNoDate.length,
+    });
+  }
+
+  // Pagamenti scaduti (residuo > 0 con ordine vecchio di 30+ giorni)
+  const overdue = (state.orders || []).filter((o) => {
+    if (getOpenBalance(o) <= 0) return false;
+    const created = new Date(o.createdAt || o.processedAt || 0).getTime();
+    return Number.isFinite(created) && (Date.now() - created) > 30 * 86400000;
+  });
+  if (overdue.length) {
+    notifs.push({
+      tone: "red",
+      icon: "💰",
+      title: state.lang === "it" ? `${overdue.length} pagamenti scaduti` : `${overdue.length} overdue payments`,
+      sub: state.lang === "it"
+        ? `${formatCurrency(overdue.reduce((s, o) => s + getOpenBalance(o), 0))} da recuperare`
+        : `${formatCurrency(overdue.reduce((s, o) => s + getOpenBalance(o), 0))} to recover`,
+      view: "accounting",
+      count: overdue.length,
+    });
+  }
+
+  // Richieste vecchie senza contatto
+  const stale = (state.salesRequests || []).filter((req) => {
+    const code = getSalesRequestStatusCode(req.status || "");
+    if (code === "closed") return false;
+    const firstState = normalizeSalesRequestFirstContactState(req.firstContactState || "");
+    if (["sent", "queued"].includes(firstState)) return false;
+    const created = new Date(req.createdAt || req.updatedAt || 0).getTime();
+    return Number.isFinite(created) && (Date.now() - created) > 3 * 86400000;
+  });
+  if (stale.length) {
+    notifs.push({
+      tone: "amber",
+      icon: "⏰",
+      title: state.lang === "it" ? `${stale.length} richieste in stallo` : `${stale.length} stalled requests`,
+      sub: state.lang === "it" ? "Da più di 3 giorni senza primo contatto" : "Over 3 days without first contact",
+      view: "sales-requests",
+      count: stale.length,
+    });
+  }
+
+  return notifs;
+}
+
+function renderDashboardNotifications() {
+  if (!ui.dashboardNotifications) return;
+  const notifs = buildDashboardNotifications();
+  if (ui.dashboardNotifBadge) ui.dashboardNotifBadge.textContent = String(notifs.length);
+  ui.dashboardNotifications.innerHTML = notifs.length
+    ? notifs.map((n) => `
+        <article class="dash-notif tone-${n.tone}" data-action="open-dashboard-view" data-view="${n.view}" role="button" tabindex="0">
+          <div class="dash-notif-icon">${n.icon}</div>
+          <div class="dash-notif-body">
+            <div class="dash-notif-title">${escapeHtml(n.title)}</div>
+            <div class="dash-notif-sub">${escapeHtml(n.sub || "")}</div>
+          </div>
+          ${n.count ? `<div class="dash-notif-count">${n.count}</div>` : ""}
+        </article>
+      `).join("")
+    : `<div class="dash-notif-empty">${state.lang === "it" ? "Tutto sotto controllo. Nessuna notifica al momento." : "All clear. Nothing pending right now."}</div>`;
+}
+
+function buildDashboardTeamPerformance() {
+  const rangeMs = getDashboardDateRangeMs();
+  const since = Number.isFinite(rangeMs) ? Date.now() - rangeMs : 0;
+  const counts = new Map();
+  (state.salesRequests || []).forEach((req) => {
+    const assignment = normalizeSalesRequestAssignment(req.assignment || req.assegnazione || req.firstContactBy || "");
+    if (!assignment) return;
+    const updated = new Date(req.updatedAt || req.createdAt || 0).getTime();
+    if (since && (!Number.isFinite(updated) || updated < since)) return;
+    if (!counts.has(assignment)) counts.set(assignment, { open: 0, closed: 0, total: 0 });
+    const row = counts.get(assignment);
+    row.total += 1;
+    if (getSalesRequestStatusCode(req.status || "") === "closed") row.closed += 1;
+    else row.open += 1;
+  });
+  const rows = Array.from(counts.entries())
+    .map(([name, data]) => ({ name, ...data }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 6);
+  return rows;
+}
+
+function renderDashboardTeamPerformance() {
+  if (!ui.dashboardTeamPerformance) return;
+  const rows = buildDashboardTeamPerformance();
+  const total = rows.reduce((s, r) => s + r.total, 0);
+  if (ui.dashboardTeamMeta) {
+    ui.dashboardTeamMeta.textContent = total
+      ? (state.lang === "it" ? `${total} richieste · ${getDashboardDateRangeLabel()}` : `${total} requests · ${getDashboardDateRangeLabel()}`)
+      : (state.lang === "it" ? "Nessuna attività nel periodo" : "No activity in period");
+  }
+  const max = rows.reduce((m, r) => Math.max(m, r.total), 1);
+  ui.dashboardTeamPerformance.innerHTML = rows.length
+    ? rows.map((r) => {
+        const pct = Math.round((r.total / max) * 100);
+        const initials = r.name.split(/\s+/).map((p) => p[0] || "").join("").slice(0, 2).toUpperCase();
+        return `
+          <article class="dash-team-row">
+            <div class="dash-team-avatar">${escapeHtml(initials || "?")}</div>
+            <div class="dash-team-info">
+              <div class="dash-team-name">${escapeHtml(r.name)}</div>
+              <div class="dash-team-meta">${r.open} ${state.lang === "it" ? "aperte" : "open"} · ${r.closed} ${state.lang === "it" ? "chiuse" : "closed"}</div>
+            </div>
+            <div class="dash-team-bar">
+              <div class="dash-team-bar-track"><div class="dash-team-bar-fill" style="width:${pct}%"></div></div>
+              <div class="dash-team-bar-value">${r.total}</div>
+            </div>
+          </article>
+        `;
+      }).join("")
+    : `<div class="dash-notif-empty">${state.lang === "it" ? "Assegna richieste alla squadra per vedere il carico." : "Assign requests to the team to see the load."}</div>`;
+}
+
+function renderDashboardWeekSummary(target = ui.dashboardWeekSummary, ownerFilter = null) {
+  if (!target) return;
+  const installs = filterInstallations();
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const todayKey = start.toISOString().slice(0, 10);
+  const dayNames = state.lang === "it"
+    ? ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
+    : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weekStart = new Date(start);
+  const dow = (weekStart.getDay() + 6) % 7;
+  weekStart.setDate(weekStart.getDate() - dow);
+  target.innerHTML = Array.from({ length: 7 }).map((_, idx) => {
+    const date = new Date(weekStart);
+    date.setDate(weekStart.getDate() + idx);
+    const key = date.toISOString().slice(0, 10);
+    let items = installs.filter((order) => order.operations?.installation?.installDate === key);
+    if (ownerFilter) items = items.filter(ownerFilter);
+    const totalSqm = items.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0);
+    const cap = 120;
+    const pct = Math.min(100, Math.round((totalSqm / cap) * 100));
+    const gaugeClass = pct >= 80 ? "high" : pct >= 50 ? "mid" : "low";
+    const isToday = key === todayKey;
+    const isPast = date < start && !isToday;
+    return `
+      <article class="dash-week-day ${isToday ? "is-today" : ""} ${isPast ? "is-past" : ""}">
+        <div class="dash-week-day-head">
+          <span class="dash-week-day-name">${dayNames[idx]}</span>
+          <span class="dash-week-day-num">${date.getDate()}</span>
+        </div>
+        <div class="dash-week-day-gauge"><div class="dash-week-day-gauge-fill ${gaugeClass}" style="width:${pct}%"></div></div>
+        <div class="dash-week-day-stats">${items.length} ${state.lang === "it" ? "pose" : "installs"} · ${Math.round(totalSqm)} mq</div>
+        <div class="dash-week-day-items">
+          ${items.slice(0, 2).map((o) => `<div class="dash-week-day-item">${escapeHtml(composeClientName(o))}</div>`).join("")}
+          ${items.length > 2 ? `<div class="dash-week-day-more">+ ${items.length - 2}</div>` : ""}
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderDashboardActions() {
+  if (!ui.dashboardActions) return;
+  const actions = buildDashboardActions();
+  const badge = document.getElementById("dashboard-actions-badge");
+  if (badge) badge.textContent = String(actions.length);
+  ui.dashboardActions.innerHTML = actions.length
+    ? actions.slice(0, 8).map(({ order, title, reason, urgency }) => {
+        const tone = urgency === "urgent" ? "red" : urgency === "warning" ? "amber" : urgency === "success" ? "green" : "blue";
+        return `
+          <article class="dash-action-row" data-action="select-order" data-id="${order.id}" data-view="orders">
+            <div class="dash-action-dot tone-${tone}"></div>
+            <div class="dash-action-content">
+              <div class="dash-action-title">${escapeHtml(title)}</div>
+              <div class="dash-action-sub">${escapeHtml(reason || "")}</div>
+            </div>
+            <span class="dash-action-tag tone-${tone}">${urgency === "urgent" ? "!" : urgency === "warning" ? "⚠" : "→"}</span>
+          </article>
+        `;
+      }).join("")
+    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna priorità critica al momento." : "No critical priorities right now."}</div>`;
+}
+
+function renderDashboardFollowup() {
+  if (!ui.dashboardFollowup) return;
+  const reminders = buildFollowupReminders();
+  if (ui.dashboardFollowupBadge) ui.dashboardFollowupBadge.textContent = String(reminders.length);
+  ui.dashboardFollowup.innerHTML = reminders.length
+    ? reminders.slice(0, 8).map((item) => {
+        const refDate = item.quotedAt || item.updatedAt || "";
+        const daysAgo = refDate ? Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000) : 0;
+        const name = [item.name, item.surname].filter(Boolean).join(" ") || "—";
+        const city = item.city ? ` · ${item.city}` : "";
+        const sqm = item.sqm ? ` · ${item.sqm} mq` : "";
+        const tone = daysAgo > 14 ? "red" : "amber";
+        return `
+          <article class="dash-action-row" data-action="select-sales-request" data-id="${item.id}" data-view="sales-requests">
+            <div class="dash-action-dot tone-${tone}"></div>
+            <div class="dash-action-content">
+              <div class="dash-action-title">${escapeHtml(name + city)}</div>
+              <div class="dash-action-sub">${state.lang === "it" ? `Preventivo inviato ${daysAgo} giorni fa` : `Quote sent ${daysAgo} days ago`}${escapeHtml(sqm)}</div>
+            </div>
+            <span class="dash-action-tag tone-${tone}">${daysAgo}g</span>
+          </article>
+        `;
+      }).join("")
+    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun preventivo da seguire." : "No quotes to follow up."}</div>`;
+}
+
+function renderDashboardWarehouseView() {
+  // Coda di lavoro: ordini in stage warehouse-work, ordinati per data installazione/priorità
+  const queueOrders = (state.orders || [])
+    .filter((o) => {
+      const stage = getUnifiedOrderStage(o);
+      return ["warehouse-work", "warehouse-ready"].includes(stage.key);
+    })
+    .sort((a, b) => {
+      const da = new Date(a.operations?.installation?.installDate || "9999-12-31").getTime();
+      const db = new Date(b.operations?.installation?.installDate || "9999-12-31").getTime();
+      return da - db;
+    })
+    .slice(0, 12);
+  const queueEl = document.getElementById("dashboard-warehouse-queue");
+  if (queueEl) {
+    queueEl.innerHTML = queueOrders.length
+      ? queueOrders.map((o) => {
+          const stage = getUnifiedOrderStage(o);
+          const tone = stage.key === "warehouse-ready" ? "green" : stage.tone === "red" ? "red" : "amber";
+          const installDate = o.operations?.installation?.installDate;
+          return `
+            <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="warehouse">
+              <div class="dash-action-dot tone-${tone}"></div>
+              <div class="dash-action-content">
+                <div class="dash-action-title">${escapeHtml(composeClientName(o))} · ${escapeHtml(getOrderNumber(o))}</div>
+                <div class="dash-action-sub">${escapeHtml(o.operations?.product || "—")} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq${installDate ? " · " + formatDate(installDate) : ""}</div>
+              </div>
+              <span class="dash-action-tag tone-${tone}">${escapeHtml(stage.label)}</span>
+            </article>
+          `;
+        }).join("")
+      : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun ordine in coda." : "Nothing in queue."}</div>`;
+  }
+
+  // Allarmi stock
+  const stockEl = document.getElementById("dashboard-warehouse-stock");
+  if (stockEl) {
+    let stockAlerts = [];
+    try {
+      const summary = getInventorySummary();
+      stockAlerts = summary.filter((g) => Number(g.availableSqm || 0) < 50).slice(0, 6);
+    } catch {}
+    stockEl.innerHTML = stockAlerts.length
+      ? stockAlerts.map((g) => {
+          const avail = Math.round(Number(g.availableSqm || 0));
+          const tone = avail < 10 ? "red" : "amber";
+          return `
+            <article class="dash-notif tone-${tone}" data-action="open-dashboard-view" data-view="warehouse">
+              <div class="dash-notif-icon">📦</div>
+              <div class="dash-notif-body">
+                <div class="dash-notif-title">${escapeHtml(g.product || "—")}</div>
+                <div class="dash-notif-sub">${avail} mq ${state.lang === "it" ? "disponibili" : "available"}</div>
+              </div>
+              <div class="dash-notif-count">${avail}</div>
+            </article>
+          `;
+        }).join("")
+      : `<div class="dash-notif-empty">${state.lang === "it" ? "Tutti i livelli di stock sono adeguati." : "All stock levels are healthy."}</div>`;
+  }
+}
+
+function renderDashboardCrewView() {
+  // Le pose di oggi assegnate a questa squadra
+  const me = state.currentUser || {};
+  const crewName = String(me.crewName || me.name || "").trim().toLowerCase();
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayInstalls = (state.orders || []).filter((o) => {
+    if (o.operations?.installation?.installDate !== todayKey) return false;
+    if (!crewName) return true;
+    const assignedCrew = String(o.operations?.installation?.assignedCrew || "").trim().toLowerCase();
+    return !assignedCrew || assignedCrew === crewName;
+  });
+  const todayEl = document.getElementById("dashboard-crew-today");
+  if (todayEl) {
+    todayEl.innerHTML = todayInstalls.length
+      ? todayInstalls.map((o) => `
+          <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="installations">
+            <div class="dash-action-dot tone-green"></div>
+            <div class="dash-action-content">
+              <div class="dash-action-title">${escapeHtml(composeClientName(o))}</div>
+              <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq · ${escapeHtml(o.operations?.product || "—")}</div>
+            </div>
+            <span class="dash-action-tag tone-green">${state.lang === "it" ? "Oggi" : "Today"}</span>
+          </article>
+        `).join("")
+      : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna posa programmata per oggi." : "No installs scheduled for today."}</div>`;
+  }
+
+  // Settimana per la propria squadra
+  const weekEl = document.getElementById("dashboard-crew-week");
+  if (weekEl) {
+    const ownerFilter = (order) => {
+      if (!crewName) return true;
+      const assignedCrew = String(order.operations?.installation?.assignedCrew || "").trim().toLowerCase();
+      return !assignedCrew || assignedCrew === crewName;
+    };
+    renderDashboardWeekSummary(weekEl, ownerFilter);
+  }
+}
+
 function renderDashboard() {
+  const role = getActiveDashboardRole();
+  toggleDashboardRoleViews(role);
+  syncDashboardDateChips();
+  if (ui.dashboardSubtitle) ui.dashboardSubtitle.textContent = getDashboardSubtitle();
+
+  if (role === "office") {
+    renderDashboardHeroKpis();
+    renderDashboardNotifications();
+    renderDashboardTeamPerformance();
+    renderDashboardWeekSummary();
+    renderDashboardActions();
+    renderDashboardFollowup();
+    return;
+  }
+  if (role === "warehouse") {
+    renderDashboardWarehouseView();
+    return;
+  }
+  if (role === "crew") {
+    renderDashboardCrewView();
+    return;
+  }
+}
+
+function renderDashboardLegacy() {
   const actions = buildDashboardActions();
   if (ui.dashboardSubtitle) ui.dashboardSubtitle.textContent = getDashboardSubtitle();
 
@@ -19672,6 +20192,15 @@ document.addEventListener("click", (event) => {
   const control = event.target.closest("button, .btn, .topbar-btn, .filter-btn, .primary-button, .mini-action, a.topbar-btn");
   if (!control) return;
   flashButtonFeedback(control);
+});
+
+document.addEventListener("click", (event) => {
+  const chip = event.target.closest(".dash-date-chip[data-dashboard-range]");
+  if (!chip) return;
+  const next = chip.dataset.dashboardRange || "7d";
+  if (state.dashboardDateRange === next) return;
+  state.dashboardDateRange = next;
+  renderDashboard();
 });
 
 ui.authForm.addEventListener("submit", async (event) => {
