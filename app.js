@@ -3134,12 +3134,12 @@ function normalizeSalesRequestStatus(value = "") {
     "perso",
     "declinata",
     "lead non qualificato",
-    "ordine eseguito",
     "completata",
     "completato",
     "archiviata",
     "archiviato",
   ].includes(normalized)) return "closed";
+  if (["ordine eseguito", "ordine confermato"].includes(normalized)) return "quoted";
   return raw;
 }
 

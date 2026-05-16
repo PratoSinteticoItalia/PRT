@@ -15694,3 +15694,16 @@ textarea.text-input {
   font-size: 13px;
   font-weight: 700;
 }
+
+/* Respiro tra form richiesta e sezione storia */
+#sales-request-storia-panel {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0,0,0,0.07);
+}
+
+/* Campo WhatsApp: respiro interno */
+.field.field-full:has(#sales-request-whatsapp-button) {
+  padding-top: 4px;
+  padding-bottom: 8px;
+}
