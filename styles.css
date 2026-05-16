@@ -15710,7 +15710,7 @@ textarea.text-input {
    performance squadra, calendario pose
    ============================================================ */
 
-#dashboard {
+#dashboard.is-active {
   display: flex;
   flex-direction: column;
   gap: 18px;
