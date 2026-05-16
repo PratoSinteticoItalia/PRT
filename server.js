@@ -9304,7 +9304,7 @@ async function handleApi(req, res, url) {
       await writeJson(STORE_PATH, store);
       // Dual-write SQL per ogni ordine sincronizzato da Shopify
       for (const order of orders) {
-        upsertOrderToDb(order).catch(() => {});
+        upsertOrderToDb(order, "shopify-sync").catch(() => {});
       }
       return sendJson(res, 200, store.orders);
     } catch (error) {
