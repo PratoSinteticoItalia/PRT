@@ -694,19 +694,24 @@ function dbRowToOrder(row) {
     attachments: row.attachments || [],
     convertedJobId: row.converted_job_id || null,
     accounting: row.accounting || {},
-    operations: row.operations_json && Object.keys(row.operations_json).length > 1
-      ? row.operations_json
-      : (() => {
-          // Colonna operations_json non ancora popolata: ricostruisci via normalizeOperations
-          // che deriva sqm/product dai lineItems quando mancano
-          const base = {
-            id: row.id,
-            lineItems: row.line_items || [],
-            lineDetails: row.line_details || [],
-            operations: { warehouse: row.warehouse || {}, installation: row.installation || {} },
-          };
-          return normalizeOperations(base);
-        })(),
+    operations: (() => {
+      const stored = row.operations_json || {};
+      // Se operations_json ha già sqm > 0, usalo direttamente
+      if (stored.sqm > 0) return stored;
+      // Altrimenti deriva sqm/product dai lineItems via normalizeOperations,
+      // ma preserva warehouse/installation/status già salvati in stored
+      const base = {
+        id: row.id,
+        lineItems: row.line_items || [],
+        lineDetails: row.line_details || [],
+        operations: {
+          ...stored,            // preserva warehouse, installation, status, note, etc.
+          sqm: 0,              // forza derivazione da lineItems (non usare il cached 0)
+          product: stored.product || "", // lascia che normalizeOperations usi defaults se vuoto
+        },
+      };
+      return normalizeOperations(base);
+    })(),
   };
 }
 

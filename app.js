@@ -3975,8 +3975,8 @@ function syncSalesRequestFilters() {
     ui.salesRequestAssignmentFilter.replaceChildren(...getSalesRequestAssignmentFilterOptions().map((item) => {
       const option = document.createElement("option");
       option.value = item.value;
-      // Per "all" non mostrare il conteggio (già visibile nel chip, evita troncamento select)
-      option.textContent = item.value === "all" ? item.label : `${item.label} (${item.count})`;
+      // Senza conteggio: il select ha max-width, i conteggi sono già nei chip sopra
+      option.textContent = item.label;
       return option;
     }));
     const hasCurrent = Array.from(ui.salesRequestAssignmentFilter.options).some((option) => option.value === current);
@@ -3988,7 +3988,7 @@ function syncSalesRequestFilters() {
     ui.salesRequestStatusFilter.replaceChildren(...getSalesRequestStatusFilterOptions().map((item) => {
       const option = document.createElement("option");
       option.value = item.value;
-      option.textContent = item.value === "all" ? item.label : `${item.label} (${item.count})`;
+      option.textContent = item.label;
       return option;
     }));
     const hasCurrent = Array.from(ui.salesRequestStatusFilter.options).some((option) => option.value === current);

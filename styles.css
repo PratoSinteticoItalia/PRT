@@ -11336,6 +11336,8 @@ body.mobile-safe-mode .nav-link.is-active {
   background: rgba(255, 255, 255, 0.9);
   cursor: pointer;
   flex: 0 0 auto;
+  max-width: 160px;
+  min-width: 80px;
 }
 
 .search-field-clear {
