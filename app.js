@@ -20666,13 +20666,203 @@ bindEvent(ui.salesGeneratorWhatsAppButton, "click", () => {
   trackUsageEvent("quote_whatsapp_opened", { requestId: state.selectedSalesRequestId || "" });
   markSelectedSalesRequestQuoteSent();
 });
+function parseEuroNumber(raw) {
+  if (raw == null) return 0;
+  const cleaned = String(raw).trim().replace(/€/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatItalianDateShort(iso) {
+  if (!iso || typeof iso !== "string") return "";
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1].slice(2)}`;
+}
+
+function slugifyModelName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function parseModelOptionLabel(label = "") {
+  // "Faggio 25 mm — 10,90 €/mq" → { name: "Faggio 25 mm", pricePerSqm: 10.90 }
+  const text = String(label || "").trim();
+  const match = text.match(/^(.+?)\s*[—–-]\s*([\d.,]+)\s*€\/mq/i);
+  if (match) {
+    return { name: match[1].trim(), pricePerSqm: parseEuroNumber(match[2]) };
+  }
+  return { name: text, pricePerSqm: 0 };
+}
+
+function getActiveSegmentButton(doc, segmentTexts = []) {
+  // Trova il button "attivo" tra un set di alternative (es. "Solo Fornitura" / "Fornitura + Posa").
+  // Considera attivo quello con background colorato (verde scuro) o classe is-active.
+  const buttons = Array.from(doc.querySelectorAll("button")).filter((b) => {
+    const t = String(b.textContent || "").trim();
+    return segmentTexts.some((s) => t.toLowerCase() === s.toLowerCase());
+  });
+  if (!buttons.length) return null;
+  // Strategia: il button "attivo" ha solitamente un background scuro (verde Prato Sintetico)
+  // e un font color chiaro. Confronto il colore di sfondo per identificarlo.
+  const active = buttons.find((b) => {
+    const bg = b.style.background || b.style.backgroundColor || "";
+    const cs = b.ownerDocument.defaultView.getComputedStyle(b);
+    const computedBg = cs.backgroundColor || "";
+    // Rilevante quando il background è scuro (R+G+B basso) e non trasparente
+    const rgb = computedBg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!rgb) return false;
+    const sum = parseInt(rgb[1]) + parseInt(rgb[2]) + parseInt(rgb[3]);
+    return sum < 350; // soglia: verde scuro Prato Sintetico ~28+66+41 = 135
+  });
+  return active || buttons[0];
+}
+
+function extractGeneratorPayloadFromIframe() {
+  // Legge dal DOM del generatore React i valori compilati e costruisce un payload
+  // per il preventivo v2. Restituisce null se l'iframe non è accessibile o se non
+  // ci sono dati utili (es. nessun MQ inserito).
+  try {
+    const iframe = document.getElementById("sales-generator-frame");
+    if (!iframe || !iframe.contentDocument) return null;
+    const doc = iframe.contentDocument;
+    const inputs = Array.from(doc.querySelectorAll("input"));
+    const selects = Array.from(doc.querySelectorAll("select"));
+
+    // Mappatura per indici stabile (verificata sul DOM React-renderizzato):
+    // input[0]  = Nr. Preventivo
+    // input[1]  = Metri Quadri
+    // input[2]  = Data
+    // input[3]  = Validità fino a
+    // input[4-9]  = Nome / Cognome / Città / Telefono / Email / Società
+    // input[10-12] = Sconti % opzioni 1/2/3
+    // input[13] = Costo spedizione €
+    // input[14] = Materiali totali auto €
+    // input[15] = Sconto materiali %
+    // select[0] = Superficie
+    // select[1-3] = Modelli opzioni 1/2/3
+    if (inputs.length < 16 || selects.length < 4) return null;
+
+    const sqm = Number(inputs[1]?.value || 0);
+    if (!sqm || sqm <= 0) return null; // se non ci sono MQ, niente preventivo realistico
+
+    const quoteNumber = String(inputs[0]?.value || "").trim();
+    const dataDal = inputs[2]?.value || "";
+    const dataAl  = inputs[3]?.value || "";
+    const nome    = String(inputs[4]?.value || "").trim();
+    const cognome = String(inputs[5]?.value || "").trim();
+    const citta   = String(inputs[6]?.value || "").trim();
+    const tel     = String(inputs[7]?.value || "").trim();
+    const email   = String(inputs[8]?.value || "").trim();
+    const ragione = String(inputs[9]?.value || "").trim();
+    const shippingCost = parseEuroNumber(inputs[13]?.value);
+    const materialsTotal = parseEuroNumber(inputs[14]?.value);
+    const materialsDiscountPct = Number(inputs[15]?.value || 0);
+
+    // Tipologia attiva (Solo Fornitura / Fornitura + Posa)
+    const tipoActive = getActiveSegmentButton(doc, ["Solo Fornitura", "Fornitura + Posa"]);
+    const isPosa = tipoActive && /posa/i.test(tipoActive.textContent || "");
+    const mode = isPosa ? "fornitura+posa" : "solo-fornitura";
+
+    // Costruisci opzioni dai 3 select modello + sconti
+    const vat = 22;
+    const options = [];
+    const sconti = [
+      Number(inputs[10]?.value || 0),
+      Number(inputs[11]?.value || 0),
+      Number(inputs[12]?.value || 0),
+    ];
+    for (let i = 1; i <= 3; i++) {
+      const sel = selects[i];
+      if (!sel) continue;
+      const opt = sel.options?.[sel.selectedIndex];
+      if (!opt) continue;
+      const parsed = parseModelOptionLabel(opt.textContent || "");
+      if (!parsed.name || parsed.pricePerSqm <= 0) continue;
+      const discount = sconti[i - 1] || 0;
+      // Calcoli — tieni semplice: rispecchia i totali del generatore
+      const grossPrice = parsed.pricePerSqm * sqm;
+      const discountedPrice = grossPrice * (1 - discount / 100);
+      const materialsBase = materialsTotal || 0;
+      const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
+      // Posa: se mode posa, il generatore React usa un campo aggiuntivo (potrebbe non
+      // essere mappato qui). Per ora 0; il payload reale lo settera quando arriva da bridge.
+      const installation = 0;
+      const installationTotal = isPosa ? installation * sqm : 0;
+      const shipping = shippingCost || 0;
+      const netTotal = discountedPrice + materialsAfterDisc + installationTotal + shipping;
+      const grandTotal = netTotal * (1 + vat / 100);
+      options.push({
+        slug: slugifyModelName(parsed.name),
+        name: parsed.name,
+        tagline: discount > 0 ? `Sconto ${discount}%` : "",
+        pricePerSqm: parsed.pricePerSqm,
+        discount,
+        materials: materialsAfterDisc,
+        installation: isPosa ? installation : 0,
+        shippingLabel: shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita",
+        net: netTotal,
+        total: grandTotal,
+        finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
+        heylightInstallment: grandTotal > 0 ? grandTotal / 5 : 0,
+      });
+    }
+    if (!options.length) return null;
+
+    return {
+      quoteNumber: quoteNumber || `F-0000-00`,
+      customer: {
+        name: [nome, cognome].filter(Boolean).join(" ").trim() || ragione || "—",
+        city: citta || "—",
+        phone: tel || "—",
+        email: email || "—",
+      },
+      validFrom: formatItalianDateShort(dataDal),
+      validTo: formatItalianDateShort(dataAl),
+      sqm,
+      mode,
+      vat,
+      suggestedSlug: "",
+      options,
+      materials: {
+        desc: isPosa
+          ? "La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm, telo separatore, giunte, fissaggi e finiture perimetrali. Il materiale è quantificato in base ai metri quadri inseriti."
+          : "La fornitura viene preparata in rotoli da 2 metri di larghezza, con lunghezza a scelta in base alle misure del progetto. La spedizione avviene in 3/5 giorni lavorativi ed è gratuita per ordini superiori a 500 euro di imponibile.",
+        discount: materialsDiscountPct || 0,
+        list: [],
+        det: "",
+      },
+      heylight: { installments: 5, title: "Simulazione 5 rate HeyLight" },
+    };
+  } catch (err) {
+    console.warn("[preventivo-v2] estrazione dal generatore fallita:", err?.message);
+    return null;
+  }
+}
+
 bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
-  // Fase 1: apre preventivo-v2.html con i dati DEMO precompilati
-  // (Fase 2: estrarrà i dati reali dal generatore via postMessage e li passerà alla finestra)
-  try { window.localStorage.removeItem("psi:preventivo-v2:data"); } catch {}
-  const url = `./preventivo-v2.html?v=20260516-prev2-214`;
+  // Estrae i dati live dal generatore (iframe React). Se non disponibili
+  // o se MQ non compilato, apre il preventivo v2 con dati DEMO precompilati
+  // così l'utente può comunque vedere il layout.
+  const payload = extractGeneratorPayloadFromIframe();
+  try {
+    if (payload) {
+      window.localStorage.setItem("psi:preventivo-v2:data", JSON.stringify(payload));
+    } else {
+      window.localStorage.removeItem("psi:preventivo-v2:data");
+    }
+  } catch {}
+  const url = `./preventivo-v2.html?v=20260516-prev2-215`;
   window.open(url, "psi_preventivo_v2", "noopener=yes");
-  trackUsageEvent("preventivo_v2_preview_opened", { requestId: state.selectedSalesRequestId || "" });
+  trackUsageEvent("preventivo_v2_preview_opened", {
+    requestId: state.selectedSalesRequestId || "",
+    hasLiveData: payload ? "yes" : "no",
+  });
 });
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
