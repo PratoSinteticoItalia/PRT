@@ -16451,3 +16451,29 @@ textarea.text-input {
   background: rgba(45, 106, 79, 0.06);
   border-color: rgba(45, 106, 79, 0.2);
 }
+
+/* Catalog panel: lista squadre e assegnazioni CRM configurabili */
+.catalog-list {
+  margin-bottom: 12px;
+  min-height: 4px;
+}
+.catalog-item.detail-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 13.5px;
+}
+.catalog-item.detail-box span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.catalog-item.detail-box small {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+}
