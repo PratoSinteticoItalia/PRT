@@ -1354,6 +1354,7 @@ const ui = {
   dashboardAccountingSnapshot: document.getElementById("dashboard-accounting-snapshot"),
   dashboardInventorySnapshot: document.getElementById("dashboard-inventory-snapshot"),
   dashboardHeroKpis: document.getElementById("dashboard-hero-kpis"),
+  dashboardMetricsStrip: document.getElementById("dashboard-metrics-strip"),
   dashboardNotifications: document.getElementById("dashboard-notifications"),
   dashboardNotifBadge: document.getElementById("dashboard-notif-badge"),
   dashboardTeamPerformance: document.getElementById("dashboard-team-performance"),
@@ -9613,23 +9614,46 @@ function syncDashboardDateChips() {
   });
 }
 
+function getDashboardPeriodTrend({ items = [], dateField = "createdAt", windowMs = null } = {}) {
+  // Restituisce delta % tra il periodo corrente e quello precedente di pari durata
+  const ms = windowMs ?? getDashboardDateRangeMs();
+  if (!Number.isFinite(ms)) return { current: items.length, delta: null };
+  const now = Date.now();
+  const currentSince = now - ms;
+  const previousSince = currentSince - ms;
+  let current = 0, previous = 0;
+  items.forEach((item) => {
+    const raw = item?.[dateField] || "";
+    if (!raw) return;
+    const ts = new Date(raw).getTime();
+    if (!Number.isFinite(ts)) return;
+    if (ts >= currentSince) current += 1;
+    else if (ts >= previousSince) previous += 1;
+  });
+  if (previous === 0) return { current, delta: null };
+  const delta = Math.round(((current - previous) / previous) * 100);
+  return { current, previous, delta };
+}
+
+function renderTrendChip(delta) {
+  if (delta === null || delta === undefined) return "";
+  if (delta === 0) return `<span class="hero-kpi-trend flat">→ 0%</span>`;
+  const cls = delta > 0 ? "up" : "down";
+  const arrow = delta > 0 ? "↑" : "↓";
+  return `<span class="hero-kpi-trend ${cls}">${arrow} ${Math.abs(delta)}%</span>`;
+}
+
 function renderDashboardHeroKpis() {
   if (!ui.dashboardHeroKpis) return;
   const rangeLabel = getDashboardDateRangeLabel();
 
-  // Richieste da contattare (state new, not yet contacted)
-  const toContact = (state.salesRequests || []).filter((req) => {
-    const code = getSalesRequestStatusCode(req.status || "");
-    if (code === "closed") return false;
-    const firstState = normalizeSalesRequestFirstContactState(req.firstContactState || "");
-    return !["sent", "queued"].includes(firstState);
-  });
+  // Richieste da contattare — stesso filtro del badge sidebar (non assegnate, nuovo contatto)
+  const toContact = (state.salesRequests || []).filter(isSalesRequestNewContactUnassigned);
+  const reqTrend = getDashboardPeriodTrend({ items: state.salesRequests || [], dateField: "createdAt" });
 
-  // Ordini in lavorazione (warehouse-work stage)
-  const inProgress = (state.orders || []).filter((order) => {
-    const stage = getUnifiedOrderStage(order);
-    return ["warehouse-work", "office-review", "install-planned"].includes(stage.key);
-  });
+  // Ordini in lavorazione — stesso filtro del badge sidebar (Inbox Ordini)
+  const inProgress = (state.orders || []).filter(orderNeedsInboxAttention);
+  const orderTrend = getDashboardPeriodTrend({ items: state.orders || [], dateField: "createdAt" });
 
   // Pose programmate nel range
   const day = 86400000;
@@ -9658,6 +9682,7 @@ function renderDashboardHeroKpis() {
       icon: "📥",
       tone: "blue",
       view: "sales-requests",
+      trend: reqTrend.delta,
     },
     {
       label: state.lang === "it" ? "Ordini in lavorazione" : "Orders in progress",
@@ -9666,6 +9691,7 @@ function renderDashboardHeroKpis() {
       icon: "📦",
       tone: "amber",
       view: "orders",
+      trend: orderTrend.delta,
     },
     {
       label: state.lang === "it" ? `Pose prossimi ${rangeDays} g` : `Installs next ${rangeDays} d`,
@@ -9694,8 +9720,76 @@ function renderDashboardHeroKpis() {
         <div class="hero-kpi-label">${escapeHtml(kpi.label)}</div>
         <div class="hero-kpi-value">${escapeHtml(kpi.value)}</div>
         <div class="hero-kpi-sub">${escapeHtml(kpi.sub)}</div>
+        ${renderTrendChip(kpi.trend)}
       </div>
     </article>
+  `).join("");
+}
+
+function renderDashboardMetricsStrip() {
+  if (!ui.dashboardMetricsStrip) return;
+  const ms = getDashboardDateRangeMs();
+  const since = Number.isFinite(ms) ? Date.now() - ms : 0;
+  const rangeLabel = getDashboardDateRangeLabel();
+
+  const ordersInRange = (state.orders || []).filter((o) => {
+    if (!since) return true;
+    const ts = new Date(o.createdAt || o.processedAt || 0).getTime();
+    return Number.isFinite(ts) && ts >= since;
+  });
+  const requestsInRange = (state.salesRequests || []).filter((r) => {
+    if (!since) return true;
+    const ts = new Date(r.createdAt || r.updatedAt || 0).getTime();
+    return Number.isFinite(ts) && ts >= since;
+  });
+
+  const newOrdersCount = ordersInRange.length;
+  const shopifyRevenue = ordersInRange.reduce((s, o) => s + getShopifyPaidAmount(o), 0);
+  const soldSqm = ordersInRange.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0);
+  const completedInstalls = ordersInRange.filter((o) => String(o.operations?.installation?.status || "").trim() === "completata").length;
+  const closedRequests = requestsInRange.filter((r) => getSalesRequestStatusCode(r.status || "") === "closed").length;
+  const convertedRequests = requestsInRange.filter((r) => {
+    const code = getSalesRequestStatusCode(r.status || "");
+    return code === "quoted" && /ordine/i.test(String(r.status || ""));
+  }).length;
+  const conversionRate = requestsInRange.length > 0
+    ? Math.round(((convertedRequests + closedRequests) / requestsInRange.length) * 100)
+    : 0;
+
+  const metrics = [
+    {
+      label: state.lang === "it" ? "Nuovi ordini" : "New orders",
+      value: String(newOrdersCount),
+      sub: rangeLabel,
+    },
+    {
+      label: state.lang === "it" ? "Ricavi acquisiti" : "Revenue captured",
+      value: formatCurrency(shopifyRevenue),
+      sub: state.lang === "it" ? "incassi Shopify nel periodo" : "Shopify captures in period",
+    },
+    {
+      label: state.lang === "it" ? "Mq venduti" : "Sqm sold",
+      value: `${Math.round(soldSqm)} mq`,
+      sub: state.lang === "it" ? `da ${newOrdersCount} ordini` : `across ${newOrdersCount} orders`,
+    },
+    {
+      label: state.lang === "it" ? "Pose completate" : "Installs completed",
+      value: String(completedInstalls),
+      sub: state.lang === "it" ? "nel periodo" : "in period",
+    },
+    {
+      label: state.lang === "it" ? "Conversione richieste" : "Request conversion",
+      value: `${conversionRate}%`,
+      sub: state.lang === "it" ? `su ${requestsInRange.length} richieste` : `of ${requestsInRange.length} requests`,
+    },
+  ];
+
+  ui.dashboardMetricsStrip.innerHTML = metrics.map((m) => `
+    <div class="dash-metric">
+      <div class="dash-metric-label">${escapeHtml(m.label)}</div>
+      <div class="dash-metric-value">${escapeHtml(m.value)}</div>
+      <div class="dash-metric-sub">${escapeHtml(m.sub)}</div>
+    </div>
   `).join("");
 }
 
@@ -9729,8 +9823,15 @@ function buildDashboardNotifications() {
     });
   }
 
-  // Pose senza data
-  const installsNoDate = (state.orders || []).filter((o) => o.operations?.installation?.required && !o.operations?.installation?.installDate);
+  // Pose senza data — solo ordini ancora aperti che richiedono posa (non chiusi/completati)
+  const installsNoDate = (state.orders || []).filter((o) => {
+    if (isOrderFulfilledOrClosed(o)) return false;
+    const inst = o.operations?.installation || {};
+    if (!inst.required) return false;
+    if (inst.installDate) return false;
+    if (["completata", "annullata"].includes(String(inst.status || "").trim())) return false;
+    return true;
+  });
   if (installsNoDate.length) {
     notifs.push({
       tone: "amber",
@@ -9742,11 +9843,13 @@ function buildDashboardNotifications() {
     });
   }
 
-  // Pagamenti scaduti (residuo > 0 con ordine vecchio di 30+ giorni)
+  // Pagamenti scaduti — residuo > 0, ordine non chiuso, vecchio di 45+ giorni e con importo > 50€
   const overdue = (state.orders || []).filter((o) => {
-    if (getOpenBalance(o) <= 0) return false;
+    if (isOrderFulfilledOrClosed(o)) return false;
+    const balance = getOpenBalance(o);
+    if (balance <= 50) return false;
     const created = new Date(o.createdAt || o.processedAt || 0).getTime();
-    return Number.isFinite(created) && (Date.now() - created) > 30 * 86400000;
+    return Number.isFinite(created) && (Date.now() - created) > 45 * 86400000;
   });
   if (overdue.length) {
     notifs.push({
@@ -9761,21 +9864,21 @@ function buildDashboardNotifications() {
     });
   }
 
-  // Richieste vecchie senza contatto
+  // Richieste in stallo — non assegnate, senza primo contatto, da 5-30 giorni (oltre i 30 sono storico)
+  const now = Date.now();
   const stale = (state.salesRequests || []).filter((req) => {
-    const code = getSalesRequestStatusCode(req.status || "");
-    if (code === "closed") return false;
-    const firstState = normalizeSalesRequestFirstContactState(req.firstContactState || "");
-    if (["sent", "queued"].includes(firstState)) return false;
+    if (!isSalesRequestNewContactUnassigned(req)) return false;
     const created = new Date(req.createdAt || req.updatedAt || 0).getTime();
-    return Number.isFinite(created) && (Date.now() - created) > 3 * 86400000;
+    if (!Number.isFinite(created)) return false;
+    const ageDays = (now - created) / 86400000;
+    return ageDays >= 5 && ageDays <= 30;
   });
   if (stale.length) {
     notifs.push({
       tone: "amber",
       icon: "⏰",
       title: state.lang === "it" ? `${stale.length} richieste in stallo` : `${stale.length} stalled requests`,
-      sub: state.lang === "it" ? "Da più di 3 giorni senza primo contatto" : "Over 3 days without first contact",
+      sub: state.lang === "it" ? "Da 5+ giorni senza primo contatto" : "5+ days without first contact",
       view: "sales-requests",
       count: stale.length,
     });
@@ -9838,8 +9941,9 @@ function renderDashboardTeamPerformance() {
     ? rows.map((r) => {
         const pct = Math.round((r.total / max) * 100);
         const initials = r.name.split(/\s+/).map((p) => p[0] || "").join("").slice(0, 2).toUpperCase();
+        const filterValue = normalizeLooseString(r.name);
         return `
-          <article class="dash-team-row">
+          <article class="dash-team-row" data-action="filter-sales-requests-by-assignment" data-assignment="${escapeHtml(filterValue)}" role="button" tabindex="0">
             <div class="dash-team-avatar">${escapeHtml(initials || "?")}</div>
             <div class="dash-team-info">
               <div class="dash-team-name">${escapeHtml(r.name)}</div>
@@ -10052,6 +10156,7 @@ function renderDashboard() {
 
   if (role === "office") {
     renderDashboardHeroKpis();
+    renderDashboardMetricsStrip();
     renderDashboardNotifications();
     renderDashboardTeamPerformance();
     renderDashboardWeekSummary();
@@ -19735,6 +19840,12 @@ function handleGlobalClick(event) {
   }
   if (action === "open-dashboard-view") {
     openDashboardViewTarget(button);
+    return;
+  }
+  if (action === "filter-sales-requests-by-assignment") {
+    const assignment = String(button.dataset.assignment || "").trim();
+    if (assignment) state.filters.salesRequestAssignment = assignment;
+    setView("sales-requests");
     return;
   }
   if (action === "open-profit-split-order") {

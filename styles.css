@@ -16319,3 +16319,77 @@ textarea.text-input {
   background: rgba(31, 70, 55, 0.18);
   border-radius: 999px;
 }
+
+/* ── Metrics strip (riga slim sotto hero KPI) ─────────────── */
+
+.dash-metrics-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(31, 70, 55, 0.08);
+  padding: 4px;
+  overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .dash-metrics-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .dash-metrics-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.dash-metric {
+  position: relative;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 10px;
+  transition: background 160ms ease;
+}
+
+.dash-metric:hover {
+  background: rgba(45, 106, 79, 0.04);
+}
+
+.dash-metric + .dash-metric::before {
+  content: "";
+  position: absolute;
+  top: 16%;
+  bottom: 16%;
+  left: -1px;
+  width: 1px;
+  background: rgba(31, 70, 55, 0.1);
+}
+
+.dash-metric-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #8a9990;
+}
+
+.dash-metric-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: #1a2e22;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.dash-metric-sub {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #6e7d72;
+}
+
+/* Cursor pointer su righe team cliccabili */
+.dash-team-row[data-action] { cursor: pointer; }
+.dash-team-row[data-action]:hover {
+  background: rgba(45, 106, 79, 0.06);
+  border-color: rgba(45, 106, 79, 0.2);
+}
