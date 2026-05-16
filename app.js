@@ -20693,6 +20693,52 @@ bindEvent(ui.salesGeneratorWhatsAppButton, "click", () => {
   trackUsageEvent("quote_whatsapp_opened", { requestId: state.selectedSalesRequestId || "" });
   markSelectedSalesRequestQuoteSent();
 });
+const PREVENTIVO_STATIC_DEFAULTS = Object.freeze({
+  certifications: [
+    { icon: "🛡️", name: "Garanzia 8 anni",  sub: "Difetti di fabbricazione" },
+    { icon: "🧪",  name: "REACH 2024",       sub: "SVHC 223 sostanze" },
+    { icon: "🧒",  name: "EN71-3:2013",      sub: "Sicurezza bambini" },
+    { icon: "🏭",  name: "ISO 9001:2015",    sub: "Sistema qualità" },
+  ],
+  conditions: [
+    { label: "Validità",   text: "Offerta valida 30 giorni dalla data di emissione." },
+    { label: "Pagamento",  text: "Saldo all'ordine via bonifico, carta, PayPal, Scalapay o HeyLight 0%." },
+    { label: "Spedizione", text: "Gratuita in Italia, 3–5 giorni lavorativi, piano strada." },
+    { label: "Resi",       text: "Entro 14 giorni se prodotto integro e non posato." },
+    { label: "Garanzia",   text: "8 anni su difetti di fabbricazione. Non copre usura normale." },
+    { label: "Privacy",    text: "Dati trattati ai sensi GDPR — privacy@pratosinteticoitalia.com" },
+  ],
+  installationWork: {
+    title: "Cosa include il servizio di posa",
+    intro: "La posa è eseguita da tecnici specializzati con pluriennale esperienza nel settore. L'intervento è completo e prevede le seguenti fasi:",
+    steps: [
+      { title: "Sopralluogo e preparazione", text: "Verifica delle misure reali in cantiere, livellamento del fondo, rimozione di radici e detriti." },
+      { title: "Posa del fondo drenante", text: "Stesa del pietrisco (3 cm), compattazione e regolarizzazione per garantire drenaggio uniforme." },
+      { title: "Telo separatore", text: "Posizionamento del telo isolante anti-radice per evitare la crescita di infestanti." },
+      { title: "Posa del prato", text: "Stesa dei rotoli con allineamento del verso del filato, taglio perimetrale a misura e giunzioni con bande e colla bicomponente." },
+      { title: "Fissaggio e finitura", text: "Fissaggio con picchetti a U lungo il perimetro, intaso facoltativo, spazzolatura finale per ottimizzare la resa estetica." },
+      { title: "Consegna e pulizia", text: "Verifica finale insieme al cliente, rimozione degli scarti dal cantiere e consegna del prato pronto all'uso." },
+    ],
+    note: "Tempi medi di posa: 1–3 giorni lavorativi a seconda della metratura e delle condizioni del fondo. La squadra è coperta da assicurazione RC professionale.",
+  },
+});
+
+function defaultProductTech(modelName = "") {
+  // Estrae l'altezza in mm dal nome (es. "Faggio 25 mm" → "25 mm") e usa
+  // valori plausibili per gli altri campi. Per dati esatti per prodotto,
+  // configurare un catalogo dedicato (TODO commit successivo).
+  const hMatch = String(modelName).match(/(\d+)\s*mm/i);
+  const altezza = hMatch ? `${hMatch[1]} mm` : "—";
+  return {
+    struttura: "Unidirezionale",
+    densita: "—",
+    dtex: "—",
+    drenaggio: "40 L/min/m²",
+    peso: "—",
+    note: `REACH · EN71-3 · ASTM-D2616 · Altezza filo ${altezza}`,
+  };
+}
+
 const PREVENTIVO_TEXTS_DEFAULTS = Object.freeze({
   brandTagline: "Dal 2016 · Fornitura e Posa Professionale",
   brandCompany: "VERTEX SRLS · P.IVA 04863610616",
@@ -20904,9 +20950,14 @@ function extractGeneratorPayloadFromIframe() {
       const shipping = shippingCost || 0;
       const netTotal = discountedPrice + materialsAfterDisc + installationTotal + shipping;
       const grandTotal = netTotal * (1 + vat / 100);
+      const slug = slugifyModelName(parsed.name);
+      // Codice prodotto: prime 3 lettere maiuscole + altezza in mm dal nome
+      const heightMatch = parsed.name.match(/(\d+)\s*mm/i);
+      const code = `${parsed.name.split(/\s+/)[0].substring(0,3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
       options.push({
-        slug: slugifyModelName(parsed.name),
+        slug,
         name: parsed.name,
+        code,
         tagline: discount > 0 ? `Sconto ${discount}%` : "",
         pricePerSqm: parsed.pricePerSqm,
         discount,
@@ -20917,6 +20968,7 @@ function extractGeneratorPayloadFromIframe() {
         total: grandTotal,
         finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
         heylightInstallment: grandTotal > 0 ? grandTotal / 5 : 0,
+        tech: defaultProductTech(parsed.name),
       });
     }
     if (!options.length) return null;
@@ -20955,6 +21007,10 @@ function extractGeneratorPayloadFromIframe() {
         info: customTexts.footerInfo,
         firmaAzienda: "Firma e timbro VERTEX SRLS",
       },
+      // Default statici (commit successivo: editabili dalle Impostazioni)
+      certifications: PREVENTIVO_STATIC_DEFAULTS.certifications,
+      conditions: PREVENTIVO_STATIC_DEFAULTS.conditions,
+      installationWork: isPosa ? PREVENTIVO_STATIC_DEFAULTS.installationWork : null,
     };
   } catch (err) {
     console.warn("[preventivo-v2] estrazione dal generatore fallita:", err?.message);
@@ -20974,7 +21030,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260516-fix-req-217`;
+  const url = `./preventivo-v2.html?v=20260516-p2-fill-218`;
   window.open(url, "psi_preventivo_v2", "noopener=yes");
   trackUsageEvent("preventivo_v2_preview_opened", {
     requestId: state.selectedSalesRequestId || "",
