@@ -12139,9 +12139,22 @@ async function autoSaveSalesRequestPatch(id, patch) {
   const current = state.salesRequests.find((r) => r.id === id);
   if (!current) return;
   if (state.salesRequestSaveInFlight) return;
+  // Anti-race: se c'è già un patch in volo per la stessa richiesta,
+  // attendi che sia completato + grace period, poi accoda con un retry
+  // (max 1 tentativo per evitare loop infiniti).
+  if (salesRequestPendingPatchIds.has(id)) {
+    if (!patch.__retried) {
+      window.setTimeout(() => {
+        void autoSaveSalesRequestPatch(id, { ...patch, __retried: true });
+      }, 200);
+    }
+    return;
+  }
   showSalesRequestAutoSaveStatus(state.lang === "it" ? "Salvataggio..." : "Saving...", "success", 30000);
   try {
-    await persistSalesRequestRecordPatch(current, patch);
+    // Rimuovi flag interno prima di inviare al server
+    const cleanPatch = Object.fromEntries(Object.entries(patch).filter(([k]) => !k.startsWith("__")));
+    await persistSalesRequestRecordPatch(current, cleanPatch);
     showSalesRequestAutoSaveStatus(state.lang === "it" ? "✓ Salvato" : "✓ Saved", "success", 2000);
   } catch (err) {
     console.warn("[auto-save] sales request patch failed:", err?.message);
@@ -20603,8 +20616,13 @@ bindEvent(ui.salesRequestCompactToggle, "click", () => {
 bindEvent(ui.salesRequestNoteField, "input", (event) => {
   autosizeTextarea(event.target);
 });
-bindEvent(ui.salesRequestForm, "input", () => {
+bindEvent(ui.salesRequestForm, "input", (event) => {
   state.salesRequestFormDirty = true;
+  // Skip per status/assignment: il loro 'change' handler dedicato esegue
+  // un patch immediato ed evita il doppio salvataggio (race condition
+  // tra patch mirato e full save).
+  const field = String(event?.target?.name || "");
+  if (["status", "assignment"].includes(field)) return;
   const requestId = state.selectedSalesRequestId;
   if (requestId) debouncedAutoSaveSalesRequestFull(requestId);
 });
@@ -20614,7 +20632,9 @@ bindEvent(ui.salesRequestForm, "change", (event) => {
   const requestId = state.selectedSalesRequestId;
   if (!requestId) return;
   if (field && ["status", "assignment"].includes(field)) {
-    // Campi select critici: salva immediatamente
+    // Campi select critici: cancella eventuale full save in coda (per evitare
+    // race con il patch mirato) e salva immediatamente solo il campo cambiato.
+    clearTimeout(_salesRequestAutoSaveTimer);
     void autoSaveSalesRequestPatch(requestId, { [field]: event.target.value });
   } else {
     // Altri select/checkbox: debounce full save
@@ -20954,7 +20974,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260516-prev2-216`;
+  const url = `./preventivo-v2.html?v=20260516-fix-req-217`;
   window.open(url, "psi_preventivo_v2", "noopener=yes");
   trackUsageEvent("preventivo_v2_preview_opened", {
     requestId: state.selectedSalesRequestId || "",
