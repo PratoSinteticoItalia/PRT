@@ -15710,10 +15710,8 @@ textarea.text-input {
    performance squadra, calendario pose
    ============================================================ */
 
-#dashboard.is-active {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+.view.is-active#dashboard > * + * {
+  margin-top: 18px;
 }
 
 .dash-header {
