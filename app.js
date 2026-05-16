@@ -10284,8 +10284,14 @@ function openDashboardViewTarget(target) {
 
 function renderOrders() {
   const orders = filterOrdersForView("order").sort((a, b) => {
-    const aTime = new Date(a.createdAt || a.processedAt || 0).getTime();
-    const bTime = new Date(b.createdAt || b.processedAt || 0).getTime();
+    // Primary: Shopify order number descending (higher = newer)
+    const parseNum = (o) => parseInt(String(o.orderNumber || "0").replace(/\D/g, ""), 10) || 0;
+    const aNum = parseNum(a);
+    const bNum = parseNum(b);
+    if (aNum && bNum && aNum !== bNum) return bNum - aNum;
+    // Fallback: most recently updated/created
+    const aTime = new Date(a.updatedAt || a.createdAt || a.processedAt || 0).getTime();
+    const bTime = new Date(b.updatedAt || b.createdAt || b.processedAt || 0).getTime();
     return bTime - aTime;
   });
   const { pageItems, totalPages, totalItems } = paginateOrders(orders);

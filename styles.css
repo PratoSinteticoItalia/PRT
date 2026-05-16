@@ -11853,19 +11853,19 @@ body.mobile-safe-mode .nav-link.is-active {
 
 .sales-status-pill.is-quoted,
 .sales-request-detail-chip.is-quoted {
-  border-color: var(--tok-teal-border);
-  background: var(--tok-teal-bg);
-  color: var(--tok-teal-text);
+  border-color: var(--tok-green-border);
+  background: var(--tok-green-bg);
+  color: var(--tok-green-text);
 }
-.sales-request-detail-chip.is-quoted strong { color: var(--tok-teal-text); }
+.sales-request-detail-chip.is-quoted strong { color: var(--tok-green-text); }
 
 .sales-status-pill.is-closed,
 .sales-request-detail-chip.is-closed {
-  border-color: var(--tok-slate-border);
-  background: var(--tok-slate-bg);
-  color: var(--tok-slate-text);
+  border-color: var(--tok-red-border);
+  background: var(--tok-red-bg);
+  color: var(--tok-red-text);
 }
-.sales-request-detail-chip.is-closed strong { color: var(--tok-slate-text); }
+.sales-request-detail-chip.is-closed strong { color: var(--tok-red-text); }
 
 .sales-status-pill.is-custom,
 .sales-request-detail-chip.is-custom {
@@ -14704,15 +14704,15 @@ textarea.text-input {
 
 .sales-status-pill.is-quoted,
 .sales-request-detail-chip.is-quoted {
-  border-color: var(--tok-teal-border); background: var(--tok-teal-bg); color: var(--tok-teal-text);
+  border-color: var(--tok-green-border); background: var(--tok-green-bg); color: var(--tok-green-text);
 }
-.sales-request-detail-chip.is-quoted strong { color: var(--tok-teal-text); }
+.sales-request-detail-chip.is-quoted strong { color: var(--tok-green-text); }
 
 .sales-status-pill.is-closed,
 .sales-request-detail-chip.is-closed {
-  border-color: var(--tok-slate-border); background: var(--tok-slate-bg); color: var(--tok-slate-text);
+  border-color: var(--tok-red-border); background: var(--tok-red-bg); color: var(--tok-red-text);
 }
-.sales-request-detail-chip.is-closed strong { color: var(--tok-slate-text); }
+.sales-request-detail-chip.is-closed strong { color: var(--tok-red-text); }
 
 .sales-status-pill.is-custom,
 .sales-request-detail-chip.is-custom {
