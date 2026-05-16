@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260516-prev2-215" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260516-prev2-215" />
+    <link rel="preload" href="./styles.css?v=20260516-prev2-216" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260516-prev2-216" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1714,6 +1714,50 @@
               <section class="panel">
                 <div class="panel-head">
                   <div>
+                    <p class="panel-eyebrow">Branding</p>
+                    <h3>Testi preventivo</h3>
+                  </div>
+                </div>
+                <p class="panel-note">Personalizza i testi che appaiono nel preventivo PDF. Sono validi per <em>tutti</em> i nuovi preventivi generati.</p>
+                <form id="preventivo-texts-form" class="inline-form-grid">
+                  <label class="field field-full">
+                    <span>Tagline aziendale (sotto il logo)</span>
+                    <input class="text-input" name="brandTagline" type="text" placeholder="Dal 2016 · Fornitura e Posa Professionale" />
+                  </label>
+                  <label class="field field-full">
+                    <span>Ragione sociale / P.IVA (header in alto a destra)</span>
+                    <input class="text-input" name="brandCompany" type="text" placeholder="VERTEX SRLS · P.IVA 04863610616" />
+                  </label>
+                  <label class="field field-full">
+                    <span>Descrizione "Solo fornitura"</span>
+                    <textarea class="text-input" name="materialsDescFornitura" rows="2" placeholder="La fornitura viene preparata in rotoli da 2 metri di larghezza…"></textarea>
+                  </label>
+                  <label class="field field-full">
+                    <span>Descrizione "Fornitura + posa"</span>
+                    <textarea class="text-input" name="materialsDescPosa" rows="2" placeholder="La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm…"></textarea>
+                  </label>
+                  <label class="field field-full">
+                    <span>Metodi di pagamento — riga 1</span>
+                    <input class="text-input" name="paymentMain" type="text" placeholder="Pagamento disponibile con carta, PayPal, bonifico bancario, Scalapay e HeyLight." />
+                  </label>
+                  <label class="field field-full">
+                    <span>Metodi di pagamento — riga 2 (HeyLight)</span>
+                    <input class="text-input" name="paymentHeyLight" type="text" placeholder="Con HeyLight puoi suddividere il preventivo in 3 o 5 rate senza interessi." />
+                  </label>
+                  <label class="field field-full">
+                    <span>Footer aziendale (riga in fondo a pagina 2)</span>
+                    <input class="text-input" name="footerInfo" type="text" placeholder="VERTEX SRLS · P.IVA … · Via … · vertexsrls@pec.it · www.pratosinteticoitalia.com" />
+                  </label>
+                  <div class="inline-actions field-full">
+                    <button type="submit" class="primary-button small-button">Salva testi</button>
+                    <button type="button" id="preventivo-texts-reset" class="ghost-button small-button">Ripristina default</button>
+                  </div>
+                </form>
+                <div id="preventivo-texts-status" class="panel-note hidden"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
                     <p class="panel-eyebrow">Trasferte</p>
                     <h3>Report costi squadre</h3>
                   </div>
@@ -2029,6 +2073,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260516-prev2-215" type="module"></script>
+    <script src="./app.js?v=20260516-prev2-216" type="module"></script>
   </body>
 </html>

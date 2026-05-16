@@ -1143,6 +1143,7 @@ const state = {
   settings: {},
   currentView: "dashboard",
   dashboardDateRange: "7d",
+  preventivoTexts: null, // popolato all'init da /api/catalog/preventivo_branding
   selectedOrderId: null,
   selectedSalesRequestId: "",
   selectedSalesRequestBulkIds: new Set(),
@@ -1457,6 +1458,9 @@ const ui = {
   salesGeneratorContactSummary: document.getElementById("sales-generator-contact-summary"),
   salesGeneratorWhatsAppButton: document.getElementById("sales-generator-whatsapp-button"),
   salesGeneratorPreviewV2Button: document.getElementById("sales-generator-preview-v2-button"),
+  preventivoTextsForm: document.getElementById("preventivo-texts-form"),
+  preventivoTextsResetButton: document.getElementById("preventivo-texts-reset"),
+  preventivoTextsStatus: document.getElementById("preventivo-texts-status"),
   salesGeneratorEmailButton: document.getElementById("sales-generator-email-button"),
   salesContentSearch: document.getElementById("sales-content-search"),
   salesContentSearchClear: document.getElementById("sales-content-search-clear"),
@@ -15565,6 +15569,9 @@ function showApp() {
   startShopifyAutoSync();
   startSalesRequestAutoSync();
   startUsageHeartbeat();
+  if (state.currentUser?.role === "office") {
+    void loadPreventivoTexts();
+  }
   clearPendingCurrentViewRefresh();
   setShellPending(false);
   state.mobileMenuOpen = false;
@@ -20666,6 +20673,83 @@ bindEvent(ui.salesGeneratorWhatsAppButton, "click", () => {
   trackUsageEvent("quote_whatsapp_opened", { requestId: state.selectedSalesRequestId || "" });
   markSelectedSalesRequestQuoteSent();
 });
+const PREVENTIVO_TEXTS_DEFAULTS = Object.freeze({
+  brandTagline: "Dal 2016 · Fornitura e Posa Professionale",
+  brandCompany: "VERTEX SRLS · P.IVA 04863610616",
+  materialsDescFornitura: "La fornitura viene preparata in rotoli da 2 metri di larghezza, con lunghezza a scelta in base alle misure del progetto. La spedizione avviene in 3/5 giorni lavorativi ed è gratuita per ordini superiori a 500 euro di imponibile.",
+  materialsDescPosa: "La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm, telo separatore, giunte, fissaggi e finiture perimetrali. Il materiale è quantificato in base ai metri quadri inseriti.",
+  paymentMain: "Pagamento disponibile con carta, PayPal, bonifico bancario, Scalapay e HeyLight.",
+  paymentHeyLight: "Con HeyLight puoi suddividere il preventivo in 3 o 5 rate senza interessi.",
+  footerInfo: "VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com",
+});
+
+function getPreventivoTexts() {
+  // Restituisce sempre un oggetto completo (default + override dello state)
+  const overrides = state.preventivoTexts || {};
+  return Object.fromEntries(
+    Object.keys(PREVENTIVO_TEXTS_DEFAULTS).map((k) => [k, String(overrides[k] || PREVENTIVO_TEXTS_DEFAULTS[k]).trim() || PREVENTIVO_TEXTS_DEFAULTS[k]])
+  );
+}
+
+async function loadPreventivoTexts() {
+  try {
+    const items = await apiFetch("/api/catalog/preventivo_branding");
+    if (Array.isArray(items) && items.length) {
+      // Salviamo come singolo record con value="texts" + metadata JSON contenente tutti i campi
+      const record = items.find((it) => it.value === "texts") || items[0];
+      const meta = record?.metadata || {};
+      state.preventivoTexts = typeof meta === "string" ? JSON.parse(meta) : meta;
+    } else {
+      state.preventivoTexts = null;
+    }
+  } catch (err) {
+    console.warn("[preventivo-texts] load failed:", err?.message);
+    state.preventivoTexts = null;
+  }
+  fillPreventivoTextsForm();
+}
+
+function fillPreventivoTextsForm() {
+  const form = ui.preventivoTextsForm;
+  if (!form) return;
+  const texts = getPreventivoTexts();
+  Object.keys(PREVENTIVO_TEXTS_DEFAULTS).forEach((k) => {
+    const field = form.elements?.[k];
+    if (field) field.value = String(state.preventivoTexts?.[k] || "");
+    if (field && !state.preventivoTexts?.[k]) field.setAttribute("placeholder", PREVENTIVO_TEXTS_DEFAULTS[k]);
+  });
+}
+
+async function savePreventivoTexts(event) {
+  if (event) event.preventDefault();
+  const form = ui.preventivoTextsForm;
+  if (!form) return;
+  const formData = new FormData(form);
+  const payload = {};
+  Object.keys(PREVENTIVO_TEXTS_DEFAULTS).forEach((k) => {
+    const v = String(formData.get(k) || "").trim();
+    if (v) payload[k] = v;
+  });
+  setStatus(ui.preventivoTextsStatus, "success", state.lang === "it" ? "Salvataggio in corso…" : "Saving…");
+  try {
+    await apiFetch("/api/catalog/preventivo_branding", {
+      method: "POST",
+      body: JSON.stringify({ value: "texts", label: "Testi preventivo v2", position: 0, metadata: payload }),
+    });
+    state.preventivoTexts = payload;
+    setStatus(ui.preventivoTextsStatus, "success", state.lang === "it" ? "✓ Testi salvati. Verranno usati per i nuovi preventivi generati." : "✓ Saved.");
+    showToast(state.lang === "it" ? "Testi preventivo salvati" : "Quote texts saved", "success");
+  } catch (err) {
+    setStatus(ui.preventivoTextsStatus, "error", state.lang === "it" ? "Salvataggio non riuscito. Riprova." : "Save failed.");
+  }
+}
+
+function resetPreventivoTexts() {
+  state.preventivoTexts = null;
+  fillPreventivoTextsForm();
+  setStatus(ui.preventivoTextsStatus, "success", state.lang === "it" ? "Default ripristinati nei campi. Clicca Salva per confermare." : "Defaults restored in fields. Click Save to confirm.");
+}
+
 function parseEuroNumber(raw) {
   if (raw == null) return 0;
   const cleaned = String(raw).trim().replace(/€/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
@@ -20751,6 +20835,9 @@ function extractGeneratorPayloadFromIframe() {
     const sqm = Number(inputs[1]?.value || 0);
     if (!sqm || sqm <= 0) return null; // se non ci sono MQ, niente preventivo realistico
 
+    // Testi personalizzati (Impostazioni → Testi preventivo) o default
+    const customTexts = getPreventivoTexts();
+
     const quoteNumber = String(inputs[0]?.value || "").trim();
     const dataDal = inputs[2]?.value || "";
     const dataAl  = inputs[3]?.value || "";
@@ -20830,14 +20917,24 @@ function extractGeneratorPayloadFromIframe() {
       suggestedSlug: "",
       options,
       materials: {
-        desc: isPosa
-          ? "La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm, telo separatore, giunte, fissaggi e finiture perimetrali. Il materiale è quantificato in base ai metri quadri inseriti."
-          : "La fornitura viene preparata in rotoli da 2 metri di larghezza, con lunghezza a scelta in base alle misure del progetto. La spedizione avviene in 3/5 giorni lavorativi ed è gratuita per ordini superiori a 500 euro di imponibile.",
+        desc: isPosa ? customTexts.materialsDescPosa : customTexts.materialsDescFornitura,
         discount: materialsDiscountPct || 0,
         list: [],
         det: "",
       },
       heylight: { installments: 5, title: "Simulazione 5 rate HeyLight" },
+      branding: {
+        tagline: customTexts.brandTagline,
+        company: customTexts.brandCompany,
+      },
+      payment: {
+        main: customTexts.paymentMain,
+        heylight: customTexts.paymentHeyLight,
+      },
+      page2Footer: {
+        info: customTexts.footerInfo,
+        firmaAzienda: "Firma e timbro VERTEX SRLS",
+      },
     };
   } catch (err) {
     console.warn("[preventivo-v2] estrazione dal generatore fallita:", err?.message);
@@ -20857,13 +20954,15 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260516-prev2-215`;
+  const url = `./preventivo-v2.html?v=20260516-prev2-216`;
   window.open(url, "psi_preventivo_v2", "noopener=yes");
   trackUsageEvent("preventivo_v2_preview_opened", {
     requestId: state.selectedSalesRequestId || "",
     hasLiveData: payload ? "yes" : "no",
   });
 });
+bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
+bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
