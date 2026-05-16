@@ -8155,6 +8155,7 @@ async function handleApi(req, res, url) {
           if (idx >= 0) {
             store.orders[idx] = { ...store.orders[idx], financialStatus: "paid" };
             await writeJson(STORE_PATH, store);
+            upsertOrderToDb(store.orders[idx]).catch(() => {});
           }
         }
         return sendJson(res, 200, { ok: true });
@@ -8166,6 +8167,7 @@ async function handleApi(req, res, url) {
           if (idx >= 0) {
             store.orders[idx] = { ...store.orders[idx], fulfillmentStatus: "cancelled", financialStatus: "voided" };
             await writeJson(STORE_PATH, store);
+            upsertOrderToDb(store.orders[idx]).catch(() => {});
           }
         }
         return sendJson(res, 200, { ok: true });
@@ -9135,13 +9137,26 @@ async function handleApi(req, res, url) {
 
     try {
       const endpoint = `${String(webhookBaseUrl).replace(/\/$/, "")}/api/webhooks/shopify/orders`;
+      const topicsToRegister = [
+        "ORDERS_CREATE",
+        "ORDERS_UPDATED",
+        "ORDERS_CANCELLED",
+        "ORDERS_PAID",
+      ];
+      // Considera "già registrato" solo se l'endpoint e TUTTI i topic sono configurati
+      const registeredTopics = Array.isArray(store.shopifySettings?.webhookTopicsRegistered)
+        ? store.shopifySettings.webhookTopicsRegistered
+        : [];
+      const allTopicsRegistered = topicsToRegister.every((t) => registeredTopics.includes(t));
       if (
         String(store.shopifySettings?.webhookEndpoint || "").trim() === endpoint
         && String(store.shopifySettings?.webhookSubscriptionId || "").trim()
+        && allTopicsRegistered
       ) {
         return sendJson(res, 200, {
           endpoint,
           subscriptionId: String(store.shopifySettings.webhookSubscriptionId || "").trim(),
+          topics: registeredTopics,
           reused: true,
         });
       }
@@ -9162,13 +9177,6 @@ async function handleApi(req, res, url) {
           }
         }
       `;
-
-      const topicsToRegister = [
-        "ORDERS_CREATE",
-        "ORDERS_UPDATED",
-        "ORDERS_CANCELLED",
-        "ORDERS_PAID",
-      ];
 
       const registrationResults = [];
       for (const topicName of topicsToRegister) {
