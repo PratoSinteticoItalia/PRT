@@ -342,12 +342,24 @@
       padding: 3px 8px; border-radius: 20px;
     }
     .tech-card-body {
-      padding: 9px 12px;
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 5px 10px;
+      padding: 4px 12px;
     }
-    .tech-card-body .l { font-size: 7.5px; color: var(--gl); text-transform: uppercase; letter-spacing: .3px; }
-    .tech-card-body .v { font-size: 11px; font-weight: 800; color: var(--gn); }
+    .tech-row {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 8px;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--br);
+    }
+    .tech-row:last-child { border-bottom: none; }
+    .tech-row .l {
+      font-size: 7.5px; color: var(--gl);
+      text-transform: uppercase; letter-spacing: .4px; font-weight: 700;
+      white-space: nowrap;
+    }
+    .tech-row .v {
+      font-size: 10.5px; font-weight: 800; color: var(--gn);
+      text-align: right;
+    }
     .tech-card-foot {
       background: var(--off); border-top: 1px solid var(--br);
       padding: 5px 12px; font-size: 7.5px; color: var(--gl);
@@ -658,7 +670,7 @@
         total: 812.52,
         finalSqmPrice: 54.17,
         heylightInstallment: 162.50,
-        tech: { altezza: "25 mm", dtex: "11.000", peso: "2.800 g/m²", drenaggio: "40 L/min/m²", note: "REACH · EN71-3 · ASTM-D2616" },
+        tech: { struttura: "Unidirezionale", densita: "11.000 m²", dtex: "9.500", drenaggio: "40 L/min/m²", peso: "2.800 g/m²", note: "REACH · EN71-3 · ASTM-D2616" },
       },
       {
         slug: "cedro-30mm",
@@ -674,7 +686,7 @@
         total: 854.70,
         finalSqmPrice: 56.98,
         heylightInstallment: 170.94,
-        tech: { altezza: "30 mm", dtex: "13.500", peso: "3.200 g/m²", drenaggio: "40 L/min/m²", note: "REACH · EN71-3 · ASTM-D2616" },
+        tech: { struttura: "Unidirezionale", densita: "13.500 m²", dtex: "10.800", drenaggio: "40 L/min/m²", peso: "3.200 g/m²", note: "REACH · EN71-3 · ASTM-D2616" },
       },
       {
         slug: "rovere-40mm",
@@ -690,7 +702,7 @@
         total: 854.70,
         finalSqmPrice: 56.98,
         heylightInstallment: 170.94,
-        tech: { altezza: "40 mm", dtex: "14.700", peso: "3.500 g/m²", drenaggio: "40 L/min/m²", note: "REACH · EN71-3 · ASTM-D2616" },
+        tech: { struttura: "Unidirezionale", densita: "14.700 m²", dtex: "11.500", drenaggio: "40 L/min/m²", peso: "3.500 g/m²", note: "REACH · EN71-3 · ASTM-D2616 · Classe fuoco E-fl-S2" },
       },
     ],
     certifications: [
@@ -983,10 +995,11 @@
             ${pill}
           </div>
           <div class="tech-card-body">
-            <div><div class="l">Altezza</div><div class="v">${escHtml(t.altezza || "—")}</div></div>
-            <div><div class="l">Dtex</div><div class="v">${escHtml(t.dtex || "—")}</div></div>
-            <div><div class="l">Peso</div><div class="v">${escHtml(t.peso || "—")}</div></div>
-            <div><div class="l">Drenaggio</div><div class="v">${escHtml(t.drenaggio || "—")}</div></div>
+            <div class="tech-row"><span class="l">Struttura</span><span class="v">${escHtml(t.struttura || "—")}</span></div>
+            <div class="tech-row"><span class="l">Densità</span><span class="v">${escHtml(t.densita || "—")}</span></div>
+            <div class="tech-row"><span class="l">Dtex</span><span class="v">${escHtml(t.dtex || "—")}</span></div>
+            <div class="tech-row"><span class="l">Drenaggio</span><span class="v">${escHtml(t.drenaggio || "—")}</span></div>
+            <div class="tech-row"><span class="l">Peso</span><span class="v">${escHtml(t.peso || "—")}</span></div>
           </div>
           <div class="tech-card-foot">${escHtml(t.note || "")}</div>
         </div>

@@ -20670,7 +20670,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
   // Fase 1: apre preventivo-v2.html con i dati DEMO precompilati
   // (Fase 2: estrarrà i dati reali dal generatore via postMessage e li passerà alla finestra)
   try { window.localStorage.removeItem("psi:preventivo-v2:data"); } catch {}
-  const url = `./preventivo-v2.html?v=20260516-prev2-213`;
+  const url = `./preventivo-v2.html?v=20260516-prev2-214`;
   window.open(url, "psi_preventivo_v2", "noopener=yes");
   trackUsageEvent("preventivo_v2_preview_opened", { requestId: state.selectedSalesRequestId || "" });
 });
