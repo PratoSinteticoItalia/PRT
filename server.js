@@ -7434,16 +7434,28 @@ async function handleApi(req, res, url) {
     const sessionInventory  = sqlInventoryResult.status    === "fulfilled" && sqlInventoryResult.value    ? sqlInventoryResult.value    : (currentUser ? store.inventory     : []);
     const sessionJobs       = sqlJobsResult.status         === "fulfilled" && sqlJobsResult.value         ? sqlJobsResult.value         : (currentUser ? store.jobs          : []);
     const rawSalesReqs = sqlSalesRequestsResult.status === "fulfilled" && sqlSalesRequestsResult.value ? sqlSalesRequestsResult.value : null;
-    const sessionSalesReqs = rawSalesReqs
-      ? rawSalesReqs.map((req) => {
-          if (req.name || req.surname) return req;
-          const stored = (store.salesRequests || []).find((s) => s.id === req.id);
-          if (!stored?.name && !stored?.surname) return req;
-          const fixed = { ...req, name: stored.name || "", surname: stored.surname || "" };
-          upsertSalesRequestToDb(fixed).catch(() => {});
-          return fixed;
-        })
-      : (currentUser?.role === "office" ? store.salesRequests : []);
+    const sessionSalesReqs = (() => {
+      if (!rawSalesReqs) {
+        return currentUser?.role === "office" ? (store.salesRequests || []) : [];
+      }
+      // Fix name/surname per record SQL che hanno i campi vuoti (da upsert con field names errati)
+      const fixedSql = rawSalesReqs.map((req) => {
+        if (req.name || req.surname) return req;
+        const stored = (store.salesRequests || []).find((s) => s.id === req.id);
+        if (!stored?.name && !stored?.surname) return req;
+        const fixed = { ...req, name: stored.name || "", surname: stored.surname || "" };
+        upsertSalesRequestToDb(fixed).catch(() => {});
+        return fixed;
+      });
+      // Safety net: aggiungi record blob-only (es. importati da Google Sheets prima del fix)
+      // e triggerali in SQL così il prossimo reload non perde nulla
+      const sqlIds = new Set(rawSalesReqs.map((r) => String(r.id)));
+      const blobOnlyRecords = (store.salesRequests || []).filter((r) => !sqlIds.has(String(r.id)));
+      for (const r of blobOnlyRecords) {
+        upsertSalesRequestToDb(r).catch(() => {}); // backfill SQL
+      }
+      return [...fixedSql, ...blobOnlyRecords];
+    })();
     return sendJson(res, 200, {
       revision: getStoreRevision(store),
       user: sanitizeUser(currentUser),
@@ -7818,6 +7830,10 @@ async function handleApi(req, res, url) {
       });
       store.salesRequests = [...importedRequests, ...manualRequests];
       await writeJson(STORE_PATH, store);
+      // Scrivi in SQL ogni richiesta importata (dual-write mancante in questo path)
+      for (const r of importedRequests) {
+        upsertSalesRequestToDb(r).catch(() => {});
+      }
       return sendJson(res, 200, {
         requests: store.salesRequests,
         importedCount: importedRequests.length,
