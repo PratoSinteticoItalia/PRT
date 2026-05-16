@@ -9144,6 +9144,7 @@ async function handleApi(req, res, url) {
       const fulfillmentResult = fulfillInventoryCommitmentsForOrder(store, store.orders[orderIndex]);
       store.orders[orderIndex] = fulfillmentResult.order;
       await writeJson(STORE_PATH, store);
+      upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
       return sendJson(res, 200, {
         ok: true,
         alreadySynced: result.alreadySynced,
@@ -9166,6 +9167,10 @@ async function handleApi(req, res, url) {
     });
     store.orders = sortOrdersByRecency(store.orders);
     await writeJson(STORE_PATH, store);
+    // Dual-write SQL per ogni ordine importato
+    for (const order of normalized) {
+      upsertOrderToDb(order, currentUser?.email || null).catch(() => {});
+    }
     return sendJson(res, 200, store.orders);
   }
 
