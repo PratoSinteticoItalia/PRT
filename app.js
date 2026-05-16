@@ -13955,7 +13955,7 @@ function renderCatalogPanel(category, items, containerId) {
     return;
   }
   container.innerHTML = items.map((item) => `
-    <div class="catalog-item detail-box" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;margin-bottom:6px;">
+    <div class="catalog-item detail-box" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;margin-bottom:8px;">
       <span>${escapeHtml(item.label || item.value)}${item.metadata?.capacity ? ` <small style="color:var(--text-muted,#888)">${escapeHtml(String(item.metadata.capacity))} mq/g</small>` : ""}</span>
       <button class="ghost-button small-button" type="button"
         data-action="remove-catalog-item"
