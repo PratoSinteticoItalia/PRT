@@ -14720,6 +14720,10 @@ async function loadAuditTrail(entityType, entityId, containerId) {
       assignment: "Assegnazione",
       financialStatus: "Stato pagamento",
       fulfillmentStatus: "Stato spedizione",
+      warehouseStatus: "Stato magazzino",
+      installStatus: "Stato posa",
+      installDate: "Data posa",
+      crew: "Squadra",
     };
     const html = entries.map((entry) => {
       const dateStr = entry.createdAt
@@ -14739,9 +14743,10 @@ async function loadAuditTrail(entityType, entityId, containerId) {
       } else {
         description = entry.action;
       }
-      return `<div class="audit-entry" style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;">
-        <span style="color:#888;font-size:11px;">${dateStr}</span><br>
-        ${description}
+      const userLabel = entry.userId ? `<span class="audit-entry-user">${escapeHtml(entry.userId)}</span>` : "";
+      return `<div class="audit-entry">
+        <div class="audit-entry-meta">${dateStr}${userLabel ? " · " + userLabel : ""}</div>
+        <div class="audit-entry-desc">${description}</div>
       </div>`;
     }).join("");
     container.innerHTML = html;

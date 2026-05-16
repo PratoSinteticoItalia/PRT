@@ -850,7 +850,7 @@ async function getSalesRequestsFromDb() {
   }
 }
 
-async function upsertOrderToDb(order) {
+async function upsertOrderToDb(order, userId = null) {
   if (!USE_POSTGRES || !order?.id) return;
   // Assicura che operations_json abbia sqm/product derivati: se mancano, li calcola da lineItems
   const orderWithOps = (order.operations?.sqm == null || order.operations?.sqm === 0)
@@ -860,11 +860,11 @@ async function upsertOrderToDb(order) {
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
-    // Leggi stato prima dell'upsert per rilevare cambiamenti
+    // Leggi stato prima dell'upsert per rilevare cambiamenti (audit log)
     let existingOrderRow = null;
     try {
       const existRes = await pool.query(
-        "SELECT financial_status, fulfillment_status FROM orders WHERE id = $1",
+        "SELECT financial_status, fulfillment_status, warehouse, installation FROM orders WHERE id = $1",
         [String(order.id)],
       );
       existingOrderRow = existRes.rows[0] || null;
@@ -927,14 +927,29 @@ async function upsertOrderToDb(order) {
       order.convertedJobId ? String(order.convertedJobId) : null,
       JSON.stringify(orderWithOps.operations || order.operations || {}),
     ]);
-    // Audit log per cambiamenti di stato
+    // Audit log per cambiamenti di stato e operazioni
     const isNewOrder = !existingOrderRow;
     if (!isNewOrder && existingOrderRow) {
       const orderChanges = {};
-      if (existingOrderRow.financial_status !== String(order.financialStatus || "")) orderChanges.financialStatus = { before: existingOrderRow.financial_status, after: String(order.financialStatus || "") };
-      if (existingOrderRow.fulfillment_status !== String(order.fulfillmentStatus || "")) orderChanges.fulfillmentStatus = { before: existingOrderRow.fulfillment_status, after: String(order.fulfillmentStatus || "") };
+      if (existingOrderRow.financial_status !== String(order.financialStatus || ""))
+        orderChanges.financialStatus = { before: existingOrderRow.financial_status, after: String(order.financialStatus || "") };
+      if (existingOrderRow.fulfillment_status !== String(order.fulfillmentStatus || ""))
+        orderChanges.fulfillmentStatus = { before: existingOrderRow.fulfillment_status, after: String(order.fulfillmentStatus || "") };
+      // Audit operazioni magazzino/installazione
+      const prevWarehouse = existingOrderRow.warehouse || {};
+      const prevInstall = existingOrderRow.installation || {};
+      const curWarehouse = ops.warehouse || {};
+      const curInstall = ops.installation || {};
+      if ((prevWarehouse.status || "") !== (curWarehouse.status || ""))
+        orderChanges.warehouseStatus = { before: prevWarehouse.status || "", after: curWarehouse.status || "" };
+      if ((prevInstall.status || "") !== (curInstall.status || ""))
+        orderChanges.installStatus = { before: prevInstall.status || "", after: curInstall.status || "" };
+      if ((prevInstall.installDate || "") !== (curInstall.installDate || ""))
+        orderChanges.installDate = { before: prevInstall.installDate || "", after: curInstall.installDate || "" };
+      if ((prevInstall.crew || "") !== (curInstall.crew || ""))
+        orderChanges.crew = { before: prevInstall.crew || "", after: curInstall.crew || "" };
       if (Object.keys(orderChanges).length) {
-        writeAuditLog("order", order.id, "update", orderChanges, null).catch(() => {});
+        writeAuditLog("order", order.id, "update", orderChanges, userId).catch(() => {});
       }
     }
   } catch (err) {
@@ -1026,7 +1041,7 @@ async function deleteJobFromDb(id) {
   }
 }
 
-async function upsertSalesRequestToDb(request) {
+async function upsertSalesRequestToDb(request, userId = null) {
   if (!USE_POSTGRES || !request?.id) return;
   try {
     await ensureRelationalSchema();
@@ -1083,13 +1098,13 @@ async function upsertSalesRequestToDb(request) {
     // Scrivi audit_log se ci sono cambiamenti nei campi chiave
     const isNew = !existingRow;
     if (isNew) {
-      writeAuditLog("sales_request", request.id, "create", { status: request.status, assignment: request.assignment }, null).catch(() => {});
+      writeAuditLog("sales_request", request.id, "create", { status: request.status, assignment: request.assignment }, userId).catch(() => {});
     } else {
       const changes = {};
       if (existingRow.status !== String(request.status || "")) changes.status = { before: existingRow.status, after: String(request.status || "") };
       if (existingRow.assignment !== String(request.assignment || "")) changes.assignment = { before: existingRow.assignment, after: String(request.assignment || "") };
       if (Object.keys(changes).length) {
-        writeAuditLog("sales_request", request.id, "update", changes, null).catch(() => {});
+        writeAuditLog("sales_request", request.id, "update", changes, userId).catch(() => {});
       }
     }
   } catch (err) {
@@ -7902,7 +7917,7 @@ async function handleApi(req, res, url) {
       store.salesRequests.unshift(requestRecord);
     }
     await writeJson(STORE_PATH, store);
-    upsertSalesRequestToDb(requestRecord).catch(() => {});
+    upsertSalesRequestToDb(requestRecord, currentUser?.email || null).catch(() => {});
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, [requestRecord]);
     return sendJson(res, 200, {
       ...requestRecord,
@@ -8637,6 +8652,8 @@ async function handleApi(req, res, url) {
       writeJson(STORE_PATH, store).catch((writeErr) => {
         console.error("[inventory/commit] persist failed:", writeErr?.message || writeErr);
       });
+      const committedOrder = store.orders.find((o) => o.id === orderId);
+      if (committedOrder) upsertOrderToDb(committedOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
@@ -8657,6 +8674,8 @@ async function handleApi(req, res, url) {
       writeJson(STORE_PATH, store).catch((writeErr) => {
         console.error("[inventory/release] persist failed:", writeErr?.message || writeErr);
       });
+      const releasedOrder = store.orders.find((o) => o.id === orderId);
+      if (releasedOrder) upsertOrderToDb(releasedOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
@@ -8676,6 +8695,8 @@ async function handleApi(req, res, url) {
       writeJson(STORE_PATH, store).catch((writeErr) => {
         console.error("[inventory/fulfill] persist failed:", writeErr?.message || writeErr);
       });
+      const fulfilledOrder = store.orders.find((o) => o.id === orderId);
+      if (fulfilledOrder) upsertOrderToDb(fulfilledOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
@@ -8721,6 +8742,7 @@ async function handleApi(req, res, url) {
       attachments: [...(current.attachments || []), ...(Array.isArray(body.attachments) ? body.attachments : [])],
     };
     await writeJson(STORE_PATH, store);
+    upsertJobToDb(store.jobs[jobIndex]).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.jobs[jobIndex]);
   }
 
@@ -8796,7 +8818,7 @@ async function handleApi(req, res, url) {
     manualOrder.operations = normalizeOperations(manualOrder, null);
     store.orders.unshift(manualOrder);
     await writeJson(STORE_PATH, store);
-    upsertOrderToDb(manualOrder).catch(() => {});
+    upsertOrderToDb(manualOrder, currentUser?.email || null).catch(() => {});
     return sendJson(res, 200, manualOrder);
   }
 
@@ -8893,7 +8915,7 @@ async function handleApi(req, res, url) {
     );
     store.orders[orderIndex] = nextOrder;
     await writeJson(STORE_PATH, store);
-    upsertOrderToDb(nextOrder).catch(() => {});
+    upsertOrderToDb(nextOrder, currentUser?.email || null).catch(() => {});
     return sendJson(res, 200, nextOrder);
   }
 
@@ -8913,6 +8935,7 @@ async function handleApi(req, res, url) {
       attachments: [...(current.attachments || []), ...savedAttachments],
     };
     await writeJson(STORE_PATH, store);
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
@@ -8948,6 +8971,7 @@ async function handleApi(req, res, url) {
       attachments,
     };
     await writeJson(STORE_PATH, store);
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
@@ -8989,6 +9013,7 @@ async function handleApi(req, res, url) {
     writeJson(STORE_PATH, store).catch((writeErr) => {
       console.error("[operations] persist failed:", writeErr?.message || writeErr);
     });
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
@@ -9027,6 +9052,7 @@ async function handleApi(req, res, url) {
       ),
     };
     await writeJson(STORE_PATH, store);
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
@@ -9051,6 +9077,7 @@ async function handleApi(req, res, url) {
       }, body.paymentMethod || current.accounting?.paymentMethod || current.paymentMethod || "", current.billing || {}),
     };
     await writeJson(STORE_PATH, store);
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 

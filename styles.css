@@ -15713,6 +15713,27 @@ textarea.text-input {
   color: #9ca3af;
 }
 
+/* Audit trail: righe generate da loadAuditTrail() */
+.audit-entry {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.audit-entry:last-child { border-bottom: none; }
+.audit-entry-meta {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-bottom: 2px;
+}
+.audit-entry-user {
+  font-weight: 600;
+  color: #6b7280;
+}
+.audit-entry-desc { color: var(--text, #111); }
+.audit-entry-desc em { color: #9ca3af; font-style: normal; }
+.audit-entry-desc strong { color: var(--text, #111); }
+
 /* Margine interno pannelli detail: respiro superiore */
 .sales-request-detail-panel > *:first-child,
 .order-detail-panel > *:first-child {
