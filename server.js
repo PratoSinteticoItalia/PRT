@@ -587,6 +587,41 @@ async function ensureDatabaseStorage() {
 // (evita upsertSalesRequestToDb a ogni /api/session per gli stessi record)
 const _backfilledSalesRequestIds = new Set();
 
+// Backfill proattivo requestedHeight: eseguito una sola volta a caldo dopo il primo /api/session
+// Trova tutti i record SQL con requested_height vuoto e li aggiorna dal blob su disco
+let _heightBackfillDone = false;
+async function backfillSalesRequestHeightToDb() {
+  if (_heightBackfillDone || !USE_POSTGRES) return;
+  _heightBackfillDone = true;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query(
+      "SELECT id FROM sales_requests WHERE requested_height IS NULL OR requested_height = ''"
+    );
+    if (!rows.length) return;
+    const rawStore = await readJson(STORE_PATH, {});
+    const blobById = new Map((rawStore.salesRequests || []).map((r) => [String(r.id), r]));
+    let count = 0;
+    for (const { id } of rows) {
+      const blob = blobById.get(id);
+      if (!blob?.requestedHeight) continue;
+      await pool.query(
+        "UPDATE sales_requests SET requested_height=$1, updated_at=NOW() WHERE id=$2 AND (requested_height IS NULL OR requested_height='')",
+        [String(blob.requestedHeight), id]
+      );
+      count++;
+    }
+    if (count) {
+      invalidateSalesRequestsDbCache();
+      console.log(`[db] backfill requestedHeight: ${count} record aggiornati`);
+    }
+  } catch (err) {
+    _heightBackfillDone = false; // permetti retry al prossimo avvio
+    console.warn("[db] backfillSalesRequestHeightToDb:", err?.message);
+  }
+}
+
 let relationalSchemaBootstrapPromise = null;
 async function ensureRelationalSchema() {
   if (!USE_POSTGRES) return;
@@ -1174,6 +1209,36 @@ async function deleteSalesRequestFromDb(id) {
     await pool.query("DELETE FROM sales_requests WHERE id = $1", [String(id)]);
   } catch (err) {
     console.warn("[db] deleteSalesRequestFromDb:", err?.message);
+  }
+}
+
+// ——— Coverage Planner in SQL (tabella settings, key='coverage_planner') ———
+
+async function getCoveragePlannerFromDb() {
+  if (!USE_POSTGRES) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query("SELECT value FROM settings WHERE key='coverage_planner'");
+    return rows[0]?.value || null;
+  } catch (err) {
+    console.warn("[db] getCoveragePlannerFromDb:", err?.message);
+    return null;
+  }
+}
+
+async function saveCoveragePlannerToDb(data) {
+  if (!USE_POSTGRES || !data) return;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    await pool.query(
+      `INSERT INTO settings (key, value, updated_at) VALUES ('coverage_planner', $1::jsonb, NOW())
+       ON CONFLICT (key) DO UPDATE SET value=$1::jsonb, updated_at=NOW()`,
+      [JSON.stringify(data)]
+    );
+  } catch (err) {
+    console.warn("[db] saveCoveragePlannerToDb:", err?.message);
   }
 }
 
@@ -7428,7 +7493,7 @@ async function handleApi(req, res, url) {
       ok: true,
       service: "vertex-ops-pose-system",
       timestamp: new Date().toISOString(),
-      buildTag: "sales-req-height-merge-2026-05-16-i",
+      buildTag: "coverage-planner-sql-2026-05-16-j",
       fixes: [
         "reconcileStoreData-persists-missing-piece-ids",
         "backfillInventoryIds-writes-on-change",
@@ -7447,6 +7512,8 @@ async function handleApi(req, res, url) {
         "shopify-webhook-all-4-topics",
         "sales-request-requested-height-sql-column",
         "sales-request-height-merge-from-blob",
+        "backfill-requested-height-proactive-startup",
+        "coverage-planner-sql-settings-table",
       ],
     });
   }
@@ -7555,12 +7622,15 @@ async function handleApi(req, res, url) {
         return sum + msgs.length;
       }, 0);
     })() : 0;
-    const [sqlOrdersResult, sqlInventoryResult, sqlJobsResult, sqlSalesRequestsResult] = await Promise.allSettled([
+    const [sqlOrdersResult, sqlInventoryResult, sqlJobsResult, sqlSalesRequestsResult, sqlCoveragePlannerResult] = await Promise.allSettled([
       getOrdersFromDb(),
       getInventoryFromDb(),
       getJobsFromDb(),
       getSalesRequestsFromDb(),
+      getCoveragePlannerFromDb(),
     ]);
+    // Backfill proattivo requestedHeight: eseguito una sola volta dopo lo startup
+    backfillSalesRequestHeightToDb().catch(() => {});
     // Per gli ordini: usa la stessa logica merge di GET /api/orders
     // (blob è fonte primaria per Shopify data; SQL override solo per operations significativi)
     const sessionOrders = (() => {
@@ -7620,7 +7690,9 @@ async function handleApi(req, res, url) {
       salesRequests: currentUser?.role === "office" ? sessionSalesReqs : [],
       salesContents: currentUser?.role === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
       salesRequestSource: currentUser?.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
-      coveragePlanner: currentUser ? store.coveragePlanner : normalizeCoveragePlanner(),
+      coveragePlanner: currentUser ? normalizeCoveragePlanner(
+        (sqlCoveragePlannerResult.status === "fulfilled" && sqlCoveragePlannerResult.value) || store.coveragePlanner
+      ) : normalizeCoveragePlanner(),
       shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
       users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
       communicationTargets: currentUser ? getAllowedCommunicationTargets(store, currentUser) : [],
@@ -7727,7 +7799,8 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/coverage-planner" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
-    return sendJson(res, 200, normalizeCoveragePlanner(store.coveragePlanner));
+    const dbPlanner = await getCoveragePlannerFromDb();
+    return sendJson(res, 200, normalizeCoveragePlanner(dbPlanner || store.coveragePlanner));
   }
 
   if (url.pathname === "/api/coverage-planner" && req.method === "POST") {
@@ -7736,6 +7809,7 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     store.coveragePlanner = normalizeCoveragePlanner(body || {});
     await writeJson(STORE_PATH, store);
+    saveCoveragePlannerToDb(store.coveragePlanner).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.coveragePlanner);
   }
 
@@ -9723,7 +9797,19 @@ server.listen(PORT, HOST, () => {
   preloadStaticFiles().catch((err) => console.error("[static-cache] preload failed", err));
   if (USE_POSTGRES) {
     // Crea le tabelle relazionali se non esistono (idempotente)
-    ensureRelationalSchema().catch((err) => console.error("[db] relational schema init failed", err));
+    ensureRelationalSchema()
+      .then(async () => {
+        // Backfill coverage planner: se SQL è vuoto, salva il valore dal blob
+        const existing = await getCoveragePlannerFromDb().catch(() => null);
+        if (!existing) {
+          const rawStore = await readJson(STORE_PATH, {}).catch(() => ({}));
+          if (rawStore.coveragePlanner) {
+            await saveCoveragePlannerToDb(normalizeCoveragePlanner(rawStore.coveragePlanner)).catch(() => {});
+            console.log("[db] backfill coverage_planner: salvato da blob a SQL");
+          }
+        }
+      })
+      .catch((err) => console.error("[db] relational schema init failed", err));
     readJson(STORE_PATH, {}).catch((err) => console.error("[store-cache] warm-up failed", err));
   }
 });
