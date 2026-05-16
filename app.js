@@ -299,8 +299,8 @@ const TRAVEL_EXPENSE_TYPES = {
 };
 const roleViews = {
   office: ["dashboard", "orders", "warehouse", "installations", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner"],
-  warehouse: ["warehouse", "shipping", "communications"],
-  crew: ["installations", "sales-generator", "communications", "garden-planner"],
+  warehouse: ["dashboard", "warehouse", "shipping", "communications"],
+  crew: ["dashboard", "installations", "sales-generator", "communications", "garden-planner"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
@@ -1142,6 +1142,7 @@ const state = {
   usageEventSessionKeys: new Set(),
   settings: {},
   currentView: "dashboard",
+  dashboardDateRange: "7d",
   selectedOrderId: null,
   selectedSalesRequestId: "",
   selectedSalesRequestBulkIds: new Set(),
@@ -1242,9 +1243,50 @@ let ordersScrollIdleTimer = 0;
 let ordersDeferredRenderTimer = 0;
 let salesContentDeleteInFlightId = "";
 const salesRequestPendingPatchIds = new Set();
+const salesRequestPendingPatchGraceTimers = new Map();
+
+// Memoization per getFilteredSalesRequests — evita sort O(N log N) + filter O(N)
+// su 8180 record ad ogni renderSalesRequests (che viene chiamata 2x per render)
+let _sfr_cache = null;         // { base, filtered } dell'ultima chiamata
+let _sfr_cacheKey = "";        // chiave che rappresenta lo stato usato per calcolare la cache
+let _sfr_sortedBase = null;    // salesRequests pre-ordinate (invalida solo quando cambiano i dati)
+let _sfr_dataVersion = 0;      // contatore monotono: si incrementa ad ogni mutazione dei dati
+
+/** Invalida esplicitamente il cache — chiama quando state.salesRequests cambia */
+function invalidateSalesRequestsFilterCache() {
+  _sfr_dataVersion++;
+  _sfr_sortedBase = null;
+  _sfr_cache = null;
+  _sfr_cacheKey = "";
+}
+
+function _getSalesRequestsSorted() {
+  // Riordina solo quando la versione dei dati cambia
+  if (!_sfr_sortedBase) {
+    const sr = state.salesRequests;
+    _sfr_sortedBase = [...sr].sort((left, right) => {
+      const leftRow = Number(left.sourceRowNumber || 0);
+      const rightRow = Number(right.sourceRowNumber || 0);
+      const leftHasRow = leftRow > 0;
+      const rightHasRow = rightRow > 0;
+      if (leftHasRow && rightHasRow && leftRow !== rightRow) return rightRow - leftRow;
+      if (leftHasRow !== rightHasRow) return leftHasRow ? -1 : 1;
+      const rightCreated = new Date(right.createdAt || right.updatedAt || 0).getTime();
+      const leftCreated = new Date(left.createdAt || left.updatedAt || 0).getTime();
+      if (rightCreated !== leftCreated) return rightCreated - leftCreated;
+      if (rightRow !== leftRow) return rightRow - leftRow;
+      return String(right.id || "").localeCompare(String(left.id || ""));
+    });
+  }
+  return _sfr_sortedBase;
+}
+
+// Version counter per record: evita che risposte server stale sovrascrivano ottimistic state più recente
+const _salesRequestPatchVersions = {};
 const orderPendingPatchIds = new Set();
 const inventoryPendingOps = new Set();
 const inventoryAllocationPendingOrderIds = new Set();
+const inventoryAutoSuggestedOrderIds = new Set();
 const salesContentAttachmentDeleteInFlight = new Set();
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
@@ -1350,6 +1392,14 @@ const ui = {
   dashboardWeekSummary: document.getElementById("dashboard-week-summary"),
   dashboardAccountingSnapshot: document.getElementById("dashboard-accounting-snapshot"),
   dashboardInventorySnapshot: document.getElementById("dashboard-inventory-snapshot"),
+  dashboardHeroKpis: document.getElementById("dashboard-hero-kpis"),
+  dashboardMetricsStrip: document.getElementById("dashboard-metrics-strip"),
+  dashboardNotifications: document.getElementById("dashboard-notifications"),
+  dashboardNotifBadge: document.getElementById("dashboard-notif-badge"),
+  dashboardTeamPerformance: document.getElementById("dashboard-team-performance"),
+  dashboardTeamMeta: document.getElementById("dashboard-team-meta"),
+  dashboardRoleViews: Array.from(document.querySelectorAll("[data-dashboard-role]")),
+  dashboardDateChips: Array.from(document.querySelectorAll(".dash-date-chip")),
   quickViewButtons: Array.from(document.querySelectorAll("[data-quick-view]")),
   ordersSearch: document.getElementById("orders-search"),
   orderFilterTags: Array.from(document.querySelectorAll(".order-filter-tag")),
@@ -3133,12 +3183,12 @@ function normalizeSalesRequestStatus(value = "") {
     "perso",
     "declinata",
     "lead non qualificato",
-    "ordine eseguito",
     "completata",
     "completato",
     "archiviata",
     "archiviato",
   ].includes(normalized)) return "closed";
+  if (["ordine eseguito", "ordine confermato"].includes(normalized)) return "quoted";
   return raw;
 }
 
@@ -3962,7 +4012,8 @@ function syncSalesRequestFilters() {
     ui.salesRequestAssignmentFilter.replaceChildren(...getSalesRequestAssignmentFilterOptions().map((item) => {
       const option = document.createElement("option");
       option.value = item.value;
-      option.textContent = `${item.label} (${item.count})`;
+      // Senza conteggio: il select ha max-width, i conteggi sono già nei chip sopra
+      option.textContent = item.label;
       return option;
     }));
     const hasCurrent = Array.from(ui.salesRequestAssignmentFilter.options).some((option) => option.value === current);
@@ -3974,7 +4025,7 @@ function syncSalesRequestFilters() {
     ui.salesRequestStatusFilter.replaceChildren(...getSalesRequestStatusFilterOptions().map((item) => {
       const option = document.createElement("option");
       option.value = item.value;
-      option.textContent = `${item.label} (${item.count})`;
+      option.textContent = item.label;
       return option;
     }));
     const hasCurrent = Array.from(ui.salesRequestStatusFilter.options).some((option) => option.value === current);
@@ -4803,6 +4854,7 @@ function markSelectedSalesRequestQuoteSent() {
   persistSalesRequestRecordPatch(previousRecord, patch)
     .catch(() => {
       state.salesRequests = state.salesRequests.map((item) => item.id === requestId ? previousRecord : item);
+      invalidateSalesRequestsFilterCache();
       renderSalesRequests();
       if (state.currentView === "sales-generator") renderSalesGenerator();
     })
@@ -4813,12 +4865,19 @@ function markSelectedSalesRequestQuoteSent() {
 
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
   const recordId = String(record.id || "");
+  // Incrementa version per questo record: risposte server di save precedenti vengono scartate
+  _salesRequestPatchVersions[recordId] = (_salesRequestPatchVersions[recordId] || 0) + 1;
+  const myVersion = _salesRequestPatchVersions[recordId];
   const previousRecord = state.salesRequests.find((r) => r.id === recordId) || null;
   const optimisticRecord = normalizeSalesRequestRecord({ ...(previousRecord || record), ...patch });
   upsertSalesRequest(optimisticRecord, { skipOpsRender: true, preserveSelection: true });
   renderSalesRequests();
   if (state.currentView === "sales-generator") renderSalesGenerator();
-  if (recordId) salesRequestPendingPatchIds.add(recordId);
+  if (recordId) {
+    clearTimeout(salesRequestPendingPatchGraceTimers.get(recordId));
+    salesRequestPendingPatchGraceTimers.delete(recordId);
+    salesRequestPendingPatchIds.add(recordId);
+  }
   try {
     const saved = await apiFetchWithRetry("/api/sales/requests", {
       method: "POST",
@@ -4827,9 +4886,12 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     }, {
       retries: SALES_REQUEST_SAVE_MAX_RETRIES,
     });
-    upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
-    renderSalesRequests();
-    if (state.currentView === "sales-generator") renderSalesGenerator();
+    // Applica la risposta server solo se non è stata avviata una save più recente per questo record
+    if (_salesRequestPatchVersions[recordId] === myVersion) {
+      upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
+      renderSalesRequests();
+      if (state.currentView === "sales-generator") renderSalesGenerator();
+    }
     return saved;
   } catch (error) {
     showToast(
@@ -4845,7 +4907,15 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     );
     throw error;
   } finally {
-    if (recordId) salesRequestPendingPatchIds.delete(recordId);
+    if (recordId) {
+      // Grace period: keep ID locked 1.5s after save so SSE-triggered
+      // session refresh doesn't overwrite the just-saved state.
+      const graceTimer = window.setTimeout(() => {
+        salesRequestPendingPatchIds.delete(recordId);
+        salesRequestPendingPatchGraceTimers.delete(recordId);
+      }, 1500);
+      salesRequestPendingPatchGraceTimers.set(recordId, graceTimer);
+    }
   }
 }
 
@@ -4888,6 +4958,7 @@ async function openSalesRequestWhatsAppContact(record = {}, { markAsSent = true 
   return persistSalesRequestRecordPatch(request, patch).catch((err) => {
     if (previousRecord) {
       state.salesRequests = state.salesRequests.map((r) => (r.id === previousRecord.id ? previousRecord : r));
+      invalidateSalesRequestsFilterCache();
       renderSalesRequests();
     }
     throw err;
@@ -8547,7 +8618,7 @@ function getUnifiedOrderStage(order) {
     return {
       key: "warehouse-work",
       label: state.lang === "it" ? "Da preparare" : "To prepare",
-      tone: warehouseStatus === "bloccato" ? "red" : "amber",
+      tone: warehouseStatus === "bloccato" ? "red" : "blue",
     };
   }
   if (officeStatus === "bozza" || !isRoutedToWarehouse(order)) {
@@ -9460,12 +9531,12 @@ function renderOps() {
   const closed = state.orders.filter((order) => isOrderClosed(order)).length;
   const salesRequests = state.salesRequests.filter(isSalesRequestNewContactUnassigned).length;
   const salesContents = state.salesContents.filter(salesContentNeedsAction).length;
-  ui.opsOrdersValue.textContent = String(orders);
+  if (ui.opsOrdersValue) ui.opsOrdersValue.textContent = String(orders);
   if (ui.opsSoldSqmValue) ui.opsSoldSqmValue.textContent = `${Math.round(soldSqm)} mq`;
-  ui.opsWarehouseValue.textContent = String(warehouse);
+  if (ui.opsWarehouseValue) ui.opsWarehouseValue.textContent = String(warehouse);
   if (ui.opsStockValue) ui.opsStockValue.textContent = `${Math.round(inventorySnapshot.totalStockSqm)} mq`;
-  ui.opsInstallationsValue.textContent = String(installations);
-  ui.opsAccountingValue.textContent = String(accounting);
+  if (ui.opsInstallationsValue) ui.opsInstallationsValue.textContent = String(installations);
+  if (ui.opsAccountingValue) ui.opsAccountingValue.textContent = String(accounting);
   if (ui.opsShippingValue) ui.opsShippingValue.textContent = String(shipping);
   const opsClosedValue = document.getElementById("ops-closed-value");
   if (opsClosedValue) opsClosedValue.textContent = String(closed);
@@ -9535,7 +9606,623 @@ function buildFollowupReminders() {
     .slice(0, 8);
 }
 
+function getDashboardDateRangeMs(range = state.dashboardDateRange || "7d") {
+  const day = 86400000;
+  switch (range) {
+    case "today": return day;
+    case "7d":    return 7 * day;
+    case "30d":   return 30 * day;
+    case "90d":   return 90 * day;
+    case "all":   return Number.POSITIVE_INFINITY;
+    default:      return 7 * day;
+  }
+}
+
+function getDashboardDateRangeLabel(range = state.dashboardDateRange || "7d") {
+  switch (range) {
+    case "today": return state.lang === "it" ? "oggi" : "today";
+    case "7d":    return state.lang === "it" ? "ultimi 7 giorni" : "last 7 days";
+    case "30d":   return state.lang === "it" ? "ultimi 30 giorni" : "last 30 days";
+    case "90d":   return state.lang === "it" ? "ultimi 90 giorni" : "last 90 days";
+    case "all":   return state.lang === "it" ? "sempre" : "all time";
+    default:      return state.lang === "it" ? "ultimi 7 giorni" : "last 7 days";
+  }
+}
+
+function filterByDashboardDateRange(items = [], dateField = "createdAt") {
+  const ms = getDashboardDateRangeMs();
+  if (!Number.isFinite(ms)) return items;
+  const since = Date.now() - ms;
+  return items.filter((item) => {
+    const raw = item?.[dateField] || "";
+    if (!raw) return false;
+    const ts = new Date(raw).getTime();
+    return Number.isFinite(ts) && ts >= since;
+  });
+}
+
+function getActiveDashboardRole() {
+  const role = normalizeUserRole(state.currentUser?.role || "office");
+  return ["office", "warehouse", "crew"].includes(role) ? role : "office";
+}
+
+function toggleDashboardRoleViews(activeRole) {
+  if (!Array.isArray(ui.dashboardRoleViews)) return;
+  ui.dashboardRoleViews.forEach((view) => {
+    const roles = String(view.dataset.dashboardRole || "").split(/\s+/);
+    const match = roles.includes(activeRole) || roles.includes("all");
+    view.hidden = !match;
+  });
+}
+
+function syncDashboardDateChips() {
+  const active = state.dashboardDateRange || "7d";
+  (ui.dashboardDateChips || []).forEach((chip) => {
+    chip.classList.toggle("is-active", chip.dataset.dashboardRange === active);
+  });
+}
+
+function getDashboardPeriodTrend({ items = [], dateField = "createdAt", windowMs = null } = {}) {
+  // Restituisce delta % tra il periodo corrente e quello precedente di pari durata
+  const ms = windowMs ?? getDashboardDateRangeMs();
+  if (!Number.isFinite(ms)) return { current: items.length, delta: null };
+  const now = Date.now();
+  const currentSince = now - ms;
+  const previousSince = currentSince - ms;
+  let current = 0, previous = 0;
+  items.forEach((item) => {
+    const raw = item?.[dateField] || "";
+    if (!raw) return;
+    const ts = new Date(raw).getTime();
+    if (!Number.isFinite(ts)) return;
+    if (ts >= currentSince) current += 1;
+    else if (ts >= previousSince) previous += 1;
+  });
+  if (previous === 0) return { current, delta: null };
+  const delta = Math.round(((current - previous) / previous) * 100);
+  return { current, previous, delta };
+}
+
+function renderTrendChip(delta) {
+  if (delta === null || delta === undefined) return "";
+  if (delta === 0) return `<span class="hero-kpi-trend flat">→ 0%</span>`;
+  const cls = delta > 0 ? "up" : "down";
+  const arrow = delta > 0 ? "↑" : "↓";
+  return `<span class="hero-kpi-trend ${cls}">${arrow} ${Math.abs(delta)}%</span>`;
+}
+
+function renderDashboardHeroKpis() {
+  if (!ui.dashboardHeroKpis) return;
+  const rangeLabel = getDashboardDateRangeLabel();
+
+  // Richieste da contattare — stesso filtro del badge sidebar (non assegnate, nuovo contatto)
+  const toContact = (state.salesRequests || []).filter(isSalesRequestNewContactUnassigned);
+  const reqTrend = getDashboardPeriodTrend({ items: state.salesRequests || [], dateField: "createdAt" });
+
+  // Ordini in lavorazione — stesso filtro del badge sidebar (Inbox Ordini)
+  const inProgress = (state.orders || []).filter(orderNeedsInboxAttention);
+  const orderTrend = getDashboardPeriodTrend({ items: state.orders || [], dateField: "createdAt" });
+
+  // Pose programmate nel range
+  const day = 86400000;
+  const rangeDays = Math.min(60, Math.round(getDashboardDateRangeMs() / day) || 7);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const horizon = now.getTime() + rangeDays * day;
+  const upcomingInstalls = (state.orders || []).filter((order) => {
+    const d = order.operations?.installation?.installDate;
+    if (!d) return false;
+    const ts = new Date(d).getTime();
+    return ts >= now.getTime() && ts <= horizon;
+  });
+
+  // Da incassare totale
+  const openBalance = (state.orders || []).reduce((sum, order) => sum + getOpenBalance(order), 0);
+
+  // Ordini nuovi nel range
+  const newOrders = filterByDashboardDateRange(state.orders || [], "createdAt").length;
+
+  const kpis = [
+    {
+      label: state.lang === "it" ? "Richieste da contattare" : "Requests to contact",
+      value: String(toContact.length),
+      sub: state.lang === "it" ? "Lead in attesa di primo contatto" : "Leads pending first contact",
+      icon: "📥",
+      tone: "blue",
+      view: "sales-requests",
+      trend: reqTrend.delta,
+    },
+    {
+      label: state.lang === "it" ? "Ordini in lavorazione" : "Orders in progress",
+      value: String(inProgress.length),
+      sub: state.lang === "it" ? "Da verificare, preparare o pianificare" : "To review, prepare or plan",
+      icon: "📦",
+      tone: "amber",
+      view: "orders",
+      trend: orderTrend.delta,
+    },
+    {
+      label: state.lang === "it" ? `Pose prossimi ${rangeDays} g` : `Installs next ${rangeDays} d`,
+      value: String(upcomingInstalls.length),
+      sub: state.lang === "it"
+        ? `${upcomingInstalls.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0).toFixed(0)} mq totali`
+        : `${upcomingInstalls.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0).toFixed(0)} sqm total`,
+      icon: "🔧",
+      tone: "green",
+      view: "installations",
+    },
+    {
+      label: state.lang === "it" ? "Da incassare" : "To collect",
+      value: formatCurrency(openBalance),
+      sub: state.lang === "it" ? `${newOrders} nuovi ordini ${rangeLabel}` : `${newOrders} new orders ${rangeLabel}`,
+      icon: "€",
+      tone: openBalance > 5000 ? "red" : "purple",
+      view: "accounting",
+    },
+  ];
+
+  ui.dashboardHeroKpis.innerHTML = kpis.map((kpi) => `
+    <article class="hero-kpi tone-${kpi.tone}" data-action="open-dashboard-view" data-view="${kpi.view}" role="button" tabindex="0">
+      <div class="hero-kpi-icon">${kpi.icon}</div>
+      <div class="hero-kpi-body">
+        <div class="hero-kpi-label">${escapeHtml(kpi.label)}</div>
+        <div class="hero-kpi-value">${escapeHtml(kpi.value)}</div>
+        <div class="hero-kpi-sub">${escapeHtml(kpi.sub)}</div>
+        ${renderTrendChip(kpi.trend)}
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderDashboardMetricsStrip() {
+  if (!ui.dashboardMetricsStrip) return;
+  const ms = getDashboardDateRangeMs();
+  const since = Number.isFinite(ms) ? Date.now() - ms : 0;
+  const rangeLabel = getDashboardDateRangeLabel();
+
+  const ordersInRange = (state.orders || []).filter((o) => {
+    if (!since) return true;
+    const ts = new Date(o.createdAt || o.processedAt || 0).getTime();
+    return Number.isFinite(ts) && ts >= since;
+  });
+  const requestsInRange = (state.salesRequests || []).filter((r) => {
+    if (!since) return true;
+    const ts = new Date(r.createdAt || r.updatedAt || 0).getTime();
+    return Number.isFinite(ts) && ts >= since;
+  });
+
+  const newOrdersCount = ordersInRange.length;
+  const shopifyRevenue = ordersInRange.reduce((s, o) => s + getShopifyPaidAmount(o), 0);
+  const soldSqm = ordersInRange.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0);
+  const completedInstalls = ordersInRange.filter((o) => String(o.operations?.installation?.status || "").trim() === "completata").length;
+  const closedRequests = requestsInRange.filter((r) => getSalesRequestStatusCode(r.status || "") === "closed").length;
+  const convertedRequests = requestsInRange.filter((r) => {
+    const code = getSalesRequestStatusCode(r.status || "");
+    return code === "quoted" && /ordine/i.test(String(r.status || ""));
+  }).length;
+  const conversionRate = requestsInRange.length > 0
+    ? Math.round(((convertedRequests + closedRequests) / requestsInRange.length) * 100)
+    : 0;
+
+  const metrics = [
+    {
+      label: state.lang === "it" ? "Nuovi ordini" : "New orders",
+      value: String(newOrdersCount),
+      sub: rangeLabel,
+    },
+    {
+      label: state.lang === "it" ? "Ricavi acquisiti" : "Revenue captured",
+      value: formatCurrency(shopifyRevenue),
+      sub: state.lang === "it" ? "incassi Shopify nel periodo" : "Shopify captures in period",
+    },
+    {
+      label: state.lang === "it" ? "Mq venduti" : "Sqm sold",
+      value: `${Math.round(soldSqm)} mq`,
+      sub: state.lang === "it" ? `da ${newOrdersCount} ordini` : `across ${newOrdersCount} orders`,
+    },
+    {
+      label: state.lang === "it" ? "Pose completate" : "Installs completed",
+      value: String(completedInstalls),
+      sub: state.lang === "it" ? "nel periodo" : "in period",
+    },
+    {
+      label: state.lang === "it" ? "Conversione richieste" : "Request conversion",
+      value: `${conversionRate}%`,
+      sub: state.lang === "it" ? `su ${requestsInRange.length} richieste` : `of ${requestsInRange.length} requests`,
+    },
+  ];
+
+  ui.dashboardMetricsStrip.innerHTML = metrics.map((m) => `
+    <div class="dash-metric">
+      <div class="dash-metric-label">${escapeHtml(m.label)}</div>
+      <div class="dash-metric-value">${escapeHtml(m.value)}</div>
+      <div class="dash-metric-sub">${escapeHtml(m.sub)}</div>
+    </div>
+  `).join("");
+}
+
+function buildDashboardNotifications() {
+  const notifs = [];
+
+  // Stock in esaurimento
+  try {
+    const stockSnapshot = getDashboardInventorySnapshot();
+    if (stockSnapshot.uncovered > 0) {
+      notifs.push({
+        tone: "red",
+        icon: "⚠",
+        title: state.lang === "it" ? `${stockSnapshot.uncovered} prodotti sotto soglia` : `${stockSnapshot.uncovered} products under threshold`,
+        sub: state.lang === "it" ? "Il fabbisogno supera la disponibilità reale" : "Demand exceeds current availability",
+        view: "warehouse",
+      });
+    }
+  } catch {}
+
+  // Ordini bloccati
+  const blocked = (state.orders || []).filter((o) => o.operations?.warehouse?.status === "bloccato");
+  if (blocked.length) {
+    notifs.push({
+      tone: "red",
+      icon: "🚫",
+      title: state.lang === "it" ? `${blocked.length} ordini bloccati` : `${blocked.length} blocked orders`,
+      sub: blocked.slice(0, 2).map((o) => composeClientName(o)).join(" · "),
+      view: "warehouse",
+      count: blocked.length,
+    });
+  }
+
+  // Pose senza data — solo ordini ancora aperti che richiedono posa (non chiusi/completati)
+  const installsNoDate = (state.orders || []).filter((o) => {
+    if (isOrderFulfilledOrClosed(o)) return false;
+    const inst = o.operations?.installation || {};
+    if (!inst.required) return false;
+    if (inst.installDate) return false;
+    if (["completata", "annullata"].includes(String(inst.status || "").trim())) return false;
+    return true;
+  });
+  if (installsNoDate.length) {
+    notifs.push({
+      tone: "amber",
+      icon: "📅",
+      title: state.lang === "it" ? `${installsNoDate.length} pose senza data` : `${installsNoDate.length} installs without date`,
+      sub: state.lang === "it" ? "Pianifica la data per attivare la squadra" : "Schedule the date to activate the crew",
+      view: "installations",
+      count: installsNoDate.length,
+    });
+  }
+
+  // Pagamenti scaduti — residuo > 0, ordine non chiuso, vecchio di 45+ giorni e con importo > 50€
+  const overdue = (state.orders || []).filter((o) => {
+    if (isOrderFulfilledOrClosed(o)) return false;
+    const balance = getOpenBalance(o);
+    if (balance <= 50) return false;
+    const created = new Date(o.createdAt || o.processedAt || 0).getTime();
+    return Number.isFinite(created) && (Date.now() - created) > 45 * 86400000;
+  });
+  if (overdue.length) {
+    notifs.push({
+      tone: "red",
+      icon: "💰",
+      title: state.lang === "it" ? `${overdue.length} pagamenti scaduti` : `${overdue.length} overdue payments`,
+      sub: state.lang === "it"
+        ? `${formatCurrency(overdue.reduce((s, o) => s + getOpenBalance(o), 0))} da recuperare`
+        : `${formatCurrency(overdue.reduce((s, o) => s + getOpenBalance(o), 0))} to recover`,
+      view: "accounting",
+      count: overdue.length,
+    });
+  }
+
+  // Richieste in stallo — non assegnate, senza primo contatto, da 5-30 giorni (oltre i 30 sono storico)
+  const now = Date.now();
+  const stale = (state.salesRequests || []).filter((req) => {
+    if (!isSalesRequestNewContactUnassigned(req)) return false;
+    const created = new Date(req.createdAt || req.updatedAt || 0).getTime();
+    if (!Number.isFinite(created)) return false;
+    const ageDays = (now - created) / 86400000;
+    return ageDays >= 5 && ageDays <= 30;
+  });
+  if (stale.length) {
+    notifs.push({
+      tone: "amber",
+      icon: "⏰",
+      title: state.lang === "it" ? `${stale.length} richieste in stallo` : `${stale.length} stalled requests`,
+      sub: state.lang === "it" ? "Da 5+ giorni senza primo contatto" : "5+ days without first contact",
+      view: "sales-requests",
+      count: stale.length,
+    });
+  }
+
+  return notifs;
+}
+
+function renderDashboardNotifications() {
+  if (!ui.dashboardNotifications) return;
+  const notifs = buildDashboardNotifications();
+  if (ui.dashboardNotifBadge) ui.dashboardNotifBadge.textContent = String(notifs.length);
+  ui.dashboardNotifications.innerHTML = notifs.length
+    ? notifs.map((n) => `
+        <article class="dash-notif tone-${n.tone}" data-action="open-dashboard-view" data-view="${n.view}" role="button" tabindex="0">
+          <div class="dash-notif-icon">${n.icon}</div>
+          <div class="dash-notif-body">
+            <div class="dash-notif-title">${escapeHtml(n.title)}</div>
+            <div class="dash-notif-sub">${escapeHtml(n.sub || "")}</div>
+          </div>
+          ${n.count ? `<div class="dash-notif-count">${n.count}</div>` : ""}
+        </article>
+      `).join("")
+    : `<div class="dash-notif-empty">${state.lang === "it" ? "Tutto sotto controllo. Nessuna notifica al momento." : "All clear. Nothing pending right now."}</div>`;
+}
+
+function buildDashboardTeamPerformance() {
+  const rangeMs = getDashboardDateRangeMs();
+  const since = Number.isFinite(rangeMs) ? Date.now() - rangeMs : 0;
+  const counts = new Map();
+  (state.salesRequests || []).forEach((req) => {
+    const assignment = normalizeSalesRequestAssignment(req.assignment || req.assegnazione || req.firstContactBy || "");
+    if (!assignment) return;
+    const updated = new Date(req.updatedAt || req.createdAt || 0).getTime();
+    if (since && (!Number.isFinite(updated) || updated < since)) return;
+    if (!counts.has(assignment)) counts.set(assignment, { open: 0, closed: 0, total: 0 });
+    const row = counts.get(assignment);
+    row.total += 1;
+    if (getSalesRequestStatusCode(req.status || "") === "closed") row.closed += 1;
+    else row.open += 1;
+  });
+  const rows = Array.from(counts.entries())
+    .map(([name, data]) => ({ name, ...data }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 6);
+  return rows;
+}
+
+function renderDashboardTeamPerformance() {
+  if (!ui.dashboardTeamPerformance) return;
+  const rows = buildDashboardTeamPerformance();
+  const total = rows.reduce((s, r) => s + r.total, 0);
+  if (ui.dashboardTeamMeta) {
+    ui.dashboardTeamMeta.textContent = total
+      ? (state.lang === "it" ? `${total} richieste · ${getDashboardDateRangeLabel()}` : `${total} requests · ${getDashboardDateRangeLabel()}`)
+      : (state.lang === "it" ? "Nessuna attività nel periodo" : "No activity in period");
+  }
+  const max = rows.reduce((m, r) => Math.max(m, r.total), 1);
+  ui.dashboardTeamPerformance.innerHTML = rows.length
+    ? rows.map((r) => {
+        const pct = Math.round((r.total / max) * 100);
+        const initials = r.name.split(/\s+/).map((p) => p[0] || "").join("").slice(0, 2).toUpperCase();
+        const filterValue = normalizeLooseString(r.name);
+        return `
+          <article class="dash-team-row" data-action="filter-sales-requests-by-assignment" data-assignment="${escapeHtml(filterValue)}" role="button" tabindex="0">
+            <div class="dash-team-avatar">${escapeHtml(initials || "?")}</div>
+            <div class="dash-team-info">
+              <div class="dash-team-name">${escapeHtml(r.name)}</div>
+              <div class="dash-team-meta">${r.open} ${state.lang === "it" ? "aperte" : "open"} · ${r.closed} ${state.lang === "it" ? "chiuse" : "closed"}</div>
+            </div>
+            <div class="dash-team-bar">
+              <div class="dash-team-bar-track"><div class="dash-team-bar-fill" style="width:${pct}%"></div></div>
+              <div class="dash-team-bar-value">${r.total}</div>
+            </div>
+          </article>
+        `;
+      }).join("")
+    : `<div class="dash-notif-empty">${state.lang === "it" ? "Assegna richieste alla squadra per vedere il carico." : "Assign requests to the team to see the load."}</div>`;
+}
+
+function renderDashboardWeekSummary(target = ui.dashboardWeekSummary, ownerFilter = null) {
+  if (!target) return;
+  const installs = filterInstallations();
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const todayKey = start.toISOString().slice(0, 10);
+  const dayNames = state.lang === "it"
+    ? ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
+    : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weekStart = new Date(start);
+  const dow = (weekStart.getDay() + 6) % 7;
+  weekStart.setDate(weekStart.getDate() - dow);
+  target.innerHTML = Array.from({ length: 7 }).map((_, idx) => {
+    const date = new Date(weekStart);
+    date.setDate(weekStart.getDate() + idx);
+    const key = date.toISOString().slice(0, 10);
+    let items = installs.filter((order) => order.operations?.installation?.installDate === key);
+    if (ownerFilter) items = items.filter(ownerFilter);
+    const totalSqm = items.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0);
+    const cap = 120;
+    const pct = Math.min(100, Math.round((totalSqm / cap) * 100));
+    const gaugeClass = pct >= 80 ? "high" : pct >= 50 ? "mid" : "low";
+    const isToday = key === todayKey;
+    const isPast = date < start && !isToday;
+    return `
+      <article class="dash-week-day ${isToday ? "is-today" : ""} ${isPast ? "is-past" : ""}">
+        <div class="dash-week-day-head">
+          <span class="dash-week-day-name">${dayNames[idx]}</span>
+          <span class="dash-week-day-num">${date.getDate()}</span>
+        </div>
+        <div class="dash-week-day-gauge"><div class="dash-week-day-gauge-fill ${gaugeClass}" style="width:${pct}%"></div></div>
+        <div class="dash-week-day-stats">${items.length} ${state.lang === "it" ? "pose" : "installs"} · ${Math.round(totalSqm)} mq</div>
+        <div class="dash-week-day-items">
+          ${items.slice(0, 2).map((o) => `<div class="dash-week-day-item">${escapeHtml(composeClientName(o))}</div>`).join("")}
+          ${items.length > 2 ? `<div class="dash-week-day-more">+ ${items.length - 2}</div>` : ""}
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderDashboardActions() {
+  if (!ui.dashboardActions) return;
+  const actions = buildDashboardActions();
+  const badge = document.getElementById("dashboard-actions-badge");
+  if (badge) badge.textContent = String(actions.length);
+  ui.dashboardActions.innerHTML = actions.length
+    ? actions.slice(0, 8).map(({ order, title, reason, urgency }) => {
+        const tone = urgency === "urgent" ? "red" : urgency === "warning" ? "amber" : urgency === "success" ? "green" : "blue";
+        return `
+          <article class="dash-action-row" data-action="select-order" data-id="${order.id}" data-view="orders">
+            <div class="dash-action-dot tone-${tone}"></div>
+            <div class="dash-action-content">
+              <div class="dash-action-title">${escapeHtml(title)}</div>
+              <div class="dash-action-sub">${escapeHtml(reason || "")}</div>
+            </div>
+            <span class="dash-action-tag tone-${tone}">${urgency === "urgent" ? "!" : urgency === "warning" ? "⚠" : "→"}</span>
+          </article>
+        `;
+      }).join("")
+    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna priorità critica al momento." : "No critical priorities right now."}</div>`;
+}
+
+function renderDashboardFollowup() {
+  if (!ui.dashboardFollowup) return;
+  const reminders = buildFollowupReminders();
+  if (ui.dashboardFollowupBadge) ui.dashboardFollowupBadge.textContent = String(reminders.length);
+  ui.dashboardFollowup.innerHTML = reminders.length
+    ? reminders.slice(0, 8).map((item) => {
+        const refDate = item.quotedAt || item.updatedAt || "";
+        const daysAgo = refDate ? Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000) : 0;
+        const name = [item.name, item.surname].filter(Boolean).join(" ") || "—";
+        const city = item.city ? ` · ${item.city}` : "";
+        const sqm = item.sqm ? ` · ${item.sqm} mq` : "";
+        const tone = daysAgo > 14 ? "red" : "amber";
+        return `
+          <article class="dash-action-row" data-action="select-sales-request" data-id="${item.id}" data-view="sales-requests">
+            <div class="dash-action-dot tone-${tone}"></div>
+            <div class="dash-action-content">
+              <div class="dash-action-title">${escapeHtml(name + city)}</div>
+              <div class="dash-action-sub">${state.lang === "it" ? `Preventivo inviato ${daysAgo} giorni fa` : `Quote sent ${daysAgo} days ago`}${escapeHtml(sqm)}</div>
+            </div>
+            <span class="dash-action-tag tone-${tone}">${daysAgo}g</span>
+          </article>
+        `;
+      }).join("")
+    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun preventivo da seguire." : "No quotes to follow up."}</div>`;
+}
+
+function renderDashboardWarehouseView() {
+  // Coda di lavoro: ordini in stage warehouse-work, ordinati per data installazione/priorità
+  const queueOrders = (state.orders || [])
+    .filter((o) => {
+      const stage = getUnifiedOrderStage(o);
+      return ["warehouse-work", "warehouse-ready"].includes(stage.key);
+    })
+    .sort((a, b) => {
+      const da = new Date(a.operations?.installation?.installDate || "9999-12-31").getTime();
+      const db = new Date(b.operations?.installation?.installDate || "9999-12-31").getTime();
+      return da - db;
+    })
+    .slice(0, 12);
+  const queueEl = document.getElementById("dashboard-warehouse-queue");
+  if (queueEl) {
+    queueEl.innerHTML = queueOrders.length
+      ? queueOrders.map((o) => {
+          const stage = getUnifiedOrderStage(o);
+          const tone = stage.key === "warehouse-ready" ? "green" : stage.tone === "red" ? "red" : "amber";
+          const installDate = o.operations?.installation?.installDate;
+          return `
+            <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="warehouse">
+              <div class="dash-action-dot tone-${tone}"></div>
+              <div class="dash-action-content">
+                <div class="dash-action-title">${escapeHtml(composeClientName(o))} · ${escapeHtml(getOrderNumber(o))}</div>
+                <div class="dash-action-sub">${escapeHtml(o.operations?.product || "—")} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq${installDate ? " · " + formatDate(installDate) : ""}</div>
+              </div>
+              <span class="dash-action-tag tone-${tone}">${escapeHtml(stage.label)}</span>
+            </article>
+          `;
+        }).join("")
+      : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun ordine in coda." : "Nothing in queue."}</div>`;
+  }
+
+  // Allarmi stock
+  const stockEl = document.getElementById("dashboard-warehouse-stock");
+  if (stockEl) {
+    let stockAlerts = [];
+    try {
+      const summary = getInventorySummary();
+      stockAlerts = summary.filter((g) => Number(g.availableSqm || 0) < 50).slice(0, 6);
+    } catch {}
+    stockEl.innerHTML = stockAlerts.length
+      ? stockAlerts.map((g) => {
+          const avail = Math.round(Number(g.availableSqm || 0));
+          const tone = avail < 10 ? "red" : "amber";
+          return `
+            <article class="dash-notif tone-${tone}" data-action="open-dashboard-view" data-view="warehouse">
+              <div class="dash-notif-icon">📦</div>
+              <div class="dash-notif-body">
+                <div class="dash-notif-title">${escapeHtml(g.product || "—")}</div>
+                <div class="dash-notif-sub">${avail} mq ${state.lang === "it" ? "disponibili" : "available"}</div>
+              </div>
+              <div class="dash-notif-count">${avail}</div>
+            </article>
+          `;
+        }).join("")
+      : `<div class="dash-notif-empty">${state.lang === "it" ? "Tutti i livelli di stock sono adeguati." : "All stock levels are healthy."}</div>`;
+  }
+}
+
+function renderDashboardCrewView() {
+  // Le pose di oggi assegnate a questa squadra
+  const me = state.currentUser || {};
+  const crewName = String(me.crewName || me.name || "").trim().toLowerCase();
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayInstalls = (state.orders || []).filter((o) => {
+    if (o.operations?.installation?.installDate !== todayKey) return false;
+    if (!crewName) return true;
+    const assignedCrew = String(o.operations?.installation?.assignedCrew || "").trim().toLowerCase();
+    return !assignedCrew || assignedCrew === crewName;
+  });
+  const todayEl = document.getElementById("dashboard-crew-today");
+  if (todayEl) {
+    todayEl.innerHTML = todayInstalls.length
+      ? todayInstalls.map((o) => `
+          <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="installations">
+            <div class="dash-action-dot tone-green"></div>
+            <div class="dash-action-content">
+              <div class="dash-action-title">${escapeHtml(composeClientName(o))}</div>
+              <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq · ${escapeHtml(o.operations?.product || "—")}</div>
+            </div>
+            <span class="dash-action-tag tone-green">${state.lang === "it" ? "Oggi" : "Today"}</span>
+          </article>
+        `).join("")
+      : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna posa programmata per oggi." : "No installs scheduled for today."}</div>`;
+  }
+
+  // Settimana per la propria squadra
+  const weekEl = document.getElementById("dashboard-crew-week");
+  if (weekEl) {
+    const ownerFilter = (order) => {
+      if (!crewName) return true;
+      const assignedCrew = String(order.operations?.installation?.assignedCrew || "").trim().toLowerCase();
+      return !assignedCrew || assignedCrew === crewName;
+    };
+    renderDashboardWeekSummary(weekEl, ownerFilter);
+  }
+}
+
 function renderDashboard() {
+  const role = getActiveDashboardRole();
+  toggleDashboardRoleViews(role);
+  syncDashboardDateChips();
+  if (ui.dashboardSubtitle) ui.dashboardSubtitle.textContent = getDashboardSubtitle();
+
+  if (role === "office") {
+    renderDashboardHeroKpis();
+    renderDashboardMetricsStrip();
+    renderDashboardNotifications();
+    renderDashboardTeamPerformance();
+    renderDashboardWeekSummary();
+    renderDashboardActions();
+    renderDashboardFollowup();
+    return;
+  }
+  if (role === "warehouse") {
+    renderDashboardWarehouseView();
+    return;
+  }
+  if (role === "crew") {
+    renderDashboardCrewView();
+    return;
+  }
+}
+
+function renderDashboardLegacy() {
   const actions = buildDashboardActions();
   if (ui.dashboardSubtitle) ui.dashboardSubtitle.textContent = getDashboardSubtitle();
 
@@ -10086,6 +10773,70 @@ function formatOrderRelativeDate(isoString) {
   return { label, tone };
 }
 
+/**
+ * Restituisce array di badge urgenza per una riga ordine inbox.
+ * Ogni badge: { label, tone, title }
+ * Condizioni:
+ *  1. Non pagato da >7 giorni (e non chiuso/evaso)
+ *  2. Posa entro 5 giorni ma senza squadra assegnata
+ *  3. In magazzino ("da preparare") con posa entro 7 giorni
+ */
+function getOrderUrgencyBadges(order) {
+  if (!order || isOrderFulfilledOrClosed(order)) return [];
+  const badges = [];
+  const now = Date.now();
+  const financial = String(order.financialStatus || "").toLowerCase().trim();
+  const createdAt = order.createdAt ? new Date(order.createdAt).getTime() : 0;
+  const ageMs = createdAt ? now - createdAt : 0;
+  const ageDays = Math.floor(ageMs / 86400000);
+
+  // 1. Non pagato da >7 giorni
+  const unpaid = financial === "pending" || financial === "authorized" || financial === "" || financial === "unpaid";
+  if (unpaid && ageDays > 7) {
+    badges.push({
+      label: state.lang === "it" ? `⚠ Non pagato (${ageDays}gg)` : `⚠ Unpaid (${ageDays}d)`,
+      tone: "urgency-unpaid",
+      title: state.lang === "it" ? `Ordine non pagato da ${ageDays} giorni` : `Order unpaid for ${ageDays} days`,
+    });
+  }
+
+  // 2. Posa entro 5 giorni senza squadra
+  const install = order.operations?.installation || {};
+  if (install.installDate && isRoutedToInstallation(order)) {
+    const installMs = new Date(install.installDate).getTime();
+    const daysToInstall = Math.floor((installMs - now) / 86400000);
+    if (daysToInstall >= 0 && daysToInstall <= 5 && !String(install.crew || "").trim()) {
+      badges.push({
+        label: state.lang === "it"
+          ? `⚠ Posa in ${daysToInstall === 0 ? "oggi" : daysToInstall + "gg"} — nessuna squadra`
+          : `⚠ Install in ${daysToInstall === 0 ? "today" : daysToInstall + "d"} — no crew`,
+        tone: "urgency-no-crew",
+        title: state.lang === "it" ? "Posa imminente senza squadra assegnata" : "Imminent install without assigned crew",
+      });
+    }
+  }
+
+  // 3. "Da preparare" con posa entro 7 giorni (o installazione richiesta e nessuna data)
+  const stage = getUnifiedOrderStage(order);
+  if (stage.key === "warehouse-work") {
+    if (install.installDate) {
+      const installMs = new Date(install.installDate).getTime();
+      const daysToInstall = Math.floor((installMs - now) / 86400000);
+      if (daysToInstall >= 0 && daysToInstall <= 7) {
+        badges.push({
+          label: state.lang === "it"
+            ? `⚠ Prep. urgente (posa ${daysToInstall === 0 ? "oggi" : "+" + daysToInstall + "gg"})`
+            : `⚠ Urgent prep (+${daysToInstall}d)`,
+          tone: "urgency-prep",
+          title: state.lang === "it" ? "Materiale non ancora preparato, posa imminente" : "Material not ready, install is imminent",
+        });
+      }
+    }
+  }
+
+  return badges;
+}
+
 function renderOrderRow(order, view = "orders") {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const orderType = view === "orders" ? getInboxCommercialType(order) : getOrderType(order);
@@ -10100,12 +10851,17 @@ function renderOrderRow(order, view = "orders") {
         : "badge-warning";
   const statusTrack = view === "orders" ? buildOrderInboxStatusTrack(order) : "";
   const relativeDate = formatOrderRelativeDate(order.createdAt);
+  const urgencyBadges = view === "orders" ? getOrderUrgencyBadges(order) : [];
+  const urgencyHtml = urgencyBadges.length
+    ? `<div class="order-urgency-badges">${urgencyBadges.map((b) => `<span class="order-urgency-badge ${b.tone}" title="${escapeHtml(b.title)}">${escapeHtml(b.label)}</span>`).join("")}</div>`
+    : "";
   return `
     <article class="order-row inbox-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="${view}">
       <div class="inbox-row-main">
         <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small>${relativeDate.label ? `<span class="order-row-date ${relativeDate.tone}" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(relativeDate.label)}</span>` : ""}</div>
         <div class="order-meta">${order.operations?.product || undefinedText()} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || addressIncompleteText()}</div>
         ${statusTrack}
+        ${urgencyHtml}
         <div class="inbox-row-next-step">
           <strong>${nextAction}</strong>
         </div>
@@ -10283,8 +11039,14 @@ function openDashboardViewTarget(target) {
 
 function renderOrders() {
   const orders = filterOrdersForView("order").sort((a, b) => {
-    const aTime = new Date(a.createdAt || a.processedAt || 0).getTime();
-    const bTime = new Date(b.createdAt || b.processedAt || 0).getTime();
+    // Primary: Shopify order number descending (higher = newer)
+    const parseNum = (o) => parseInt(String(o.orderNumber || "0").replace(/\D/g, ""), 10) || 0;
+    const aNum = parseNum(a);
+    const bNum = parseNum(b);
+    if (aNum && bNum && aNum !== bNum) return bNum - aNum;
+    // Fallback: most recently updated/created
+    const aTime = new Date(a.updatedAt || a.createdAt || a.processedAt || 0).getTime();
+    const bTime = new Date(b.updatedAt || b.createdAt || b.processedAt || 0).getTime();
     return bTime - aTime;
   });
   const { pageItems, totalPages, totalItems } = paginateOrders(orders);
@@ -10430,26 +11192,24 @@ function getFilteredSalesRequests({ ignoreQuickFilter = false } = {}) {
   const assignmentFilter = String(state.filters.salesRequestAssignment || "all");
   const statusFilter = String(state.filters.salesRequestStatus || "all");
   const quickFilter = String(state.filters.salesRequestQuick || "all");
-  return [...state.salesRequests]
-    .sort((left, right) => {
-      const leftRow = Number(left.sourceRowNumber || 0);
-      const rightRow = Number(right.sourceRowNumber || 0);
-      const leftHasRow = leftRow > 0;
-      const rightHasRow = rightRow > 0;
-      if (leftHasRow && rightHasRow && leftRow !== rightRow) return rightRow - leftRow;
-      if (leftHasRow !== rightHasRow) return leftHasRow ? -1 : 1;
-      const rightCreated = new Date(right.createdAt || right.updatedAt || 0).getTime();
-      const leftCreated = new Date(left.createdAt || left.updatedAt || 0).getTime();
-      if (rightCreated !== leftCreated) return rightCreated - leftCreated;
-      if (rightRow !== leftRow) return rightRow - leftRow;
-      return String(right.id || "").localeCompare(String(left.id || ""));
-    })
-    .filter((item) => {
+
+  // Usa il cache pre-calcolato se le dipendenze non sono cambiate
+  // _sfr_dataVersion si incrementa ad ogni mutazione → cache sempre fresh
+  const cacheKey = `${_sfr_dataVersion}|${query}|${assignmentFilter}|${statusFilter}|${quickFilter}`;
+  if (_sfr_cache && _sfr_cacheKey === cacheKey) {
+    return ignoreQuickFilter ? _sfr_cache.base : _sfr_cache.filtered;
+  }
+
+  // Pre-ordina una volta sola (il sort viene saltato se state.salesRequests non è cambiato)
+  const sorted = _getSalesRequestsSorted();
+
+  const applyFilter = (items, skipQuick) =>
+    items.filter((item) => {
       const assignment = normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
       if (assignmentFilter === "unassigned" && assignment) return false;
       if (!["all", "unassigned"].includes(assignmentFilter) && normalizeLooseString(assignment) !== assignmentFilter) return false;
       if (statusFilter !== "all" && normalizeLooseString(item.status || "") !== statusFilter) return false;
-      if (!ignoreQuickFilter && !matchesSalesRequestQuickFilter(item, quickFilter)) return false;
+      if (!skipQuick && !matchesSalesRequestQuickFilter(item, quickFilter)) return false;
       if (!query) return true;
       const haystack = [
         getSalesRequestDisplayName(item),
@@ -10465,6 +11225,14 @@ function getFilteredSalesRequests({ ignoreQuickFilter = false } = {}) {
       ].join(" ").toLowerCase();
       return haystack.includes(query);
     });
+
+  // Calcola entrambe le versioni e metti in cache (renderSalesRequests le chiede entrambe)
+  const base = applyFilter(sorted, true);
+  const filtered = quickFilter === "all" ? base : applyFilter(sorted, false);
+  _sfr_cache = { base, filtered };
+  _sfr_cacheKey = cacheKey;
+
+  return ignoreQuickFilter ? base : filtered;
 }
 
 function getFilteredSalesContents({ ignoreCategory = false } = {}) {
@@ -11051,6 +11819,7 @@ function upsertSalesRequest(saved, { skipOpsRender = false, preserveSelection = 
     state.salesRequests = [normalized, ...state.salesRequests];
     restoreSalesRequestPageAnchor(pageAnchorId);
   }
+  invalidateSalesRequestsFilterCache(); // dati cambiati → invalida sort+filter cache
   if (preserveSelection) {
     state.selectedSalesRequestId = previousSelectedSalesRequestId;
     state.creatingSalesRequest = previousCreatingSalesRequest;
@@ -11210,6 +11979,7 @@ function mergeSalesRequestRecords(records = []) {
       existingIds.add(item.id);
     }
   });
+  invalidateSalesRequestsFilterCache();
   restoreSalesRequestPageAnchor(pageAnchorId);
 }
 
@@ -11337,10 +12107,13 @@ function mergeFirstContactStateFromLive(draft, live) {
 let salesRequestStatusAutoClearTimer = 0;
 function setSalesRequestStatusWithAutoClear(kind, text, delayMs = 4000) {
   clearTimeout(salesRequestStatusAutoClearTimer);
-  setStatus(ui.salesRequestsStatus, kind, text);
   if (kind === "success") {
-    salesRequestStatusAutoClearTimer = setTimeout(() => clearStatus(ui.salesRequestsStatus), delayMs);
+    // Route success to toast so the list never shifts layout
+    if (text && !/Salvataggio in corso/i.test(text)) showToast(text, "success", Math.min(delayMs, 3000));
+    clearStatus(ui.salesRequestsStatus);
+    return;
   }
+  setStatus(ui.salesRequestsStatus, kind, text);
 }
 
 let _salesRequestAutoSaveTimer = 0;
@@ -11348,10 +12121,12 @@ let _salesRequestAutoSaveStatusTimer = 0;
 
 function showSalesRequestAutoSaveStatus(text, kind = "success", autoHideMs = 2000) {
   clearTimeout(_salesRequestAutoSaveStatusTimer);
-  setStatus(ui.salesRequestsStatus, kind, text);
   if (kind === "success") {
-    _salesRequestAutoSaveStatusTimer = setTimeout(() => clearStatus(ui.salesRequestsStatus), autoHideMs);
+    // Use toast so the list never shifts layout
+    if (text && !text.startsWith("Salvataggio")) showToast(text, "success", Math.min(autoHideMs, 2500));
+    return;
   }
+  setStatus(ui.salesRequestsStatus, kind, text);
 }
 
 async function autoSaveSalesRequestPatch(id, patch) {
@@ -11430,6 +12205,7 @@ async function processSalesRequestSave(draftRecord, {
     const authFailed = [401, 403].includes(Number(error?.status || 0));
     if (authFailed) {
       state.salesRequests = previousRequests;
+      invalidateSalesRequestsFilterCache();
       state.selectedSalesRequestId = previousSelectedSalesRequestId;
       state.creatingSalesRequest = previousCreatingSalesRequest;
     } else {
@@ -11481,6 +12257,7 @@ async function bulkAssignSalesRequests(assignmentValue = "") {
         })
       : item
   ));
+  invalidateSalesRequestsFilterCache();
   renderOps();
   renderSalesRequests();
   setStatus(
@@ -11515,6 +12292,7 @@ async function bulkAssignSalesRequests(assignmentValue = "") {
     );
   } catch (error) {
     state.salesRequests = previousRequests;
+    invalidateSalesRequestsFilterCache();
     state.selectedSalesRequestBulkIds = previousSelection;
     state.selectedSalesRequestId = previousSelectedSalesRequestId;
     renderOps();
@@ -11568,6 +12346,7 @@ async function deleteSalesRequest() {
   try {
     await apiFetch(`/api/sales/requests/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
     state.salesRequests = state.salesRequests.filter((item) => item.id !== selected.id);
+    invalidateSalesRequestsFilterCache();
     state.selectedSalesRequestId = "";
     restoreSalesRequestPageAnchor(pageAnchorId);
     state.creatingSalesRequest = false;
@@ -11575,7 +12354,7 @@ async function deleteSalesRequest() {
     renderOps();
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? "Richiesta eliminata." : "Request deleted.");
+    showToast(state.lang === "it" ? "Richiesta eliminata." : "Request deleted.", "success");
   } catch (error) {
     setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile eliminare la richiesta." : "Unable to delete the request.");
   }
@@ -11628,7 +12407,7 @@ async function importSalesRequests() {
     renderOps();
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
-    setStatus(ui.salesRequestsStatus, "success", state.lang === "it" ? `${parsedItems.length} richieste importate correttamente.` : `${parsedItems.length} requests imported successfully.`);
+    showToast(state.lang === "it" ? `${parsedItems.length} richieste importate correttamente.` : `${parsedItems.length} requests imported successfully.`, "success");
   } catch (error) {
     renderOps();
     setStatus(ui.salesRequestsStatus, "error", getSalesRequestSaveErrorMessage(error));
@@ -12174,12 +12953,10 @@ function renderWarehouse() {
   const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
   if (state.currentView === "warehouse" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (order) {
-    const orderAllocations = getOrderInventoryAllocations(order);
-    const hasActiveAllocations = orderAllocations.some((item) => getInventoryPieceState({ pieceState: item.status }) !== "disponibile");
-    if (!hasActiveAllocations && !getInventorySuggestionForOrder(order.id) && !inventoryAllocationPendingOrderIds.has(order.id)) {
-      setTimeout(() => suggestInventoryForOrder(order.id), 0);
-    }
   }
+  // Nota: l'auto-suggest inventario è stato rimosso — era fastidioso perché mostrava
+  // l'avviso "mancano N pezzi" appena si apriva l'inventario. L'utente può richiedere
+  // la proposta esplicitamente con il pulsante dedicato.
   ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Inventario operativo" : "Inventory operations";
   ui.warehouseDetailFields.innerHTML = order
     ? `${[
@@ -13953,7 +14730,7 @@ function renderCatalogPanel(category, items, containerId) {
     return;
   }
   container.innerHTML = items.map((item) => `
-    <div class="catalog-item detail-box" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;margin-bottom:6px;">
+    <div class="catalog-item detail-box" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;margin-bottom:8px;">
       <span>${escapeHtml(item.label || item.value)}${item.metadata?.capacity ? ` <small style="color:var(--text-muted,#888)">${escapeHtml(String(item.metadata.capacity))} mq/g</small>` : ""}</span>
       <button class="ghost-button small-button" type="button"
         data-action="remove-catalog-item"
@@ -13994,6 +14771,10 @@ async function loadAuditTrail(entityType, entityId, containerId) {
       assignment: "Assegnazione",
       financialStatus: "Stato pagamento",
       fulfillmentStatus: "Stato spedizione",
+      warehouseStatus: "Stato magazzino",
+      installStatus: "Stato posa",
+      installDate: "Data posa",
+      crew: "Squadra",
     };
     const html = entries.map((entry) => {
       const dateStr = entry.createdAt
@@ -14013,9 +14794,10 @@ async function loadAuditTrail(entityType, entityId, containerId) {
       } else {
         description = entry.action;
       }
-      return `<div class="audit-entry" style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;">
-        <span style="color:#888;font-size:11px;">${dateStr}</span><br>
-        ${description}
+      const userLabel = entry.userId ? `<span class="audit-entry-user">${escapeHtml(entry.userId)}</span>` : "";
+      return `<div class="audit-entry">
+        <div class="audit-entry-meta">${dateStr}${userLabel ? " · " + userLabel : ""}</div>
+        <div class="audit-entry-desc">${description}</div>
       </div>`;
     }).join("");
     container.innerHTML = html;
@@ -14391,6 +15173,7 @@ function applySessionPayload(session = {}) {
     state.selectedSalesRequestId = draft.id;
     state.creatingSalesRequest = false;
   }
+  invalidateSalesRequestsFilterCache(); // nuovi dati dalla sessione → invalida sort+filter cache
   state.salesContents = Array.isArray(session.salesContents) ? session.salesContents.map(normalizeSalesContentRecord) : [];
   state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(session.salesRequestSource || {});
   state.pendingSalesRequestServiceAccountJson = preserveEditingState ? state.pendingSalesRequestServiceAccountJson : "";
@@ -17031,16 +17814,18 @@ async function suggestInventoryForOrder(orderId = "") {
     });
     setInventorySuggestionForOrder(normalizedId, suggestion);
     renderWarehouse();
-    const missingCount = Array.isArray(suggestion.missing) ? suggestion.missing.length : 0;
-    showToast(
-      missingCount
-        ? (state.lang === "it" ? `Proposta calcolata, ma mancano ${missingCount} pezzi.` : `Suggestion calculated, but ${missingCount} pieces are missing.`)
-        : (state.lang === "it" ? "Proposta pezzi pronta da confermare." : "Piece suggestion ready to confirm."),
-      missingCount ? "warning" : "success",
-    );
+    if (state.currentView === "warehouse") {
+      const missingCount = Array.isArray(suggestion.missing) ? suggestion.missing.length : 0;
+      showToast(
+        missingCount
+          ? (state.lang === "it" ? `Proposta calcolata, ma mancano ${missingCount} pezzi.` : `Suggestion calculated, but ${missingCount} pieces are missing.`)
+          : (state.lang === "it" ? "Proposta pezzi pronta da confermare." : "Piece suggestion ready to confirm."),
+        missingCount ? "warning" : "success",
+      );
+    }
   } catch (error) {
     console.error("inventory_suggestion_failed", error);
-    showToast(state.lang === "it" ? "Impossibile calcolare i pezzi disponibili." : "Unable to suggest available pieces.", "warning");
+    if (state.currentView === "warehouse") showToast(state.lang === "it" ? "Impossibile calcolare i pezzi disponibili." : "Unable to suggest available pieces.", "warning");
   } finally {
     inventoryAllocationPendingOrderIds.delete(normalizedId);
     scheduleRender("warehouse");
@@ -19110,6 +19895,7 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "suggest-inventory-order") {
+    inventoryAutoSuggestedOrderIds.delete(id);
     suggestInventoryForOrder(id);
     return;
   }
@@ -19183,6 +19969,12 @@ function handleGlobalClick(event) {
   }
   if (action === "open-dashboard-view") {
     openDashboardViewTarget(button);
+    return;
+  }
+  if (action === "filter-sales-requests-by-assignment") {
+    const assignment = String(button.dataset.assignment || "").trim();
+    if (assignment) state.filters.salesRequestAssignment = assignment;
+    setView("sales-requests");
     return;
   }
   if (action === "open-profit-split-order") {
@@ -19640,6 +20432,15 @@ document.addEventListener("click", (event) => {
   const control = event.target.closest("button, .btn, .topbar-btn, .filter-btn, .primary-button, .mini-action, a.topbar-btn");
   if (!control) return;
   flashButtonFeedback(control);
+});
+
+document.addEventListener("click", (event) => {
+  const chip = event.target.closest(".dash-date-chip[data-dashboard-range]");
+  if (!chip) return;
+  const next = chip.dataset.dashboardRange || "7d";
+  if (state.dashboardDateRange === next) return;
+  state.dashboardDateRange = next;
+  renderDashboard();
 });
 
 ui.authForm.addEventListener("submit", async (event) => {

@@ -93,29 +93,11 @@
     <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260513-pdf-polish-195"></script>
     <script>
       if ("serviceWorker" in navigator) {
-        let reloaded = false;
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260513-pdf-polish-195").then((registration) => {
-            if (registration.waiting) {
-              registration.waiting.postMessage({ type: "SKIP_WAITING" });
-            }
-            registration.addEventListener("updatefound", () => {
-              const worker = registration.installing;
-              if (!worker) return;
-              worker.addEventListener("statechange", () => {
-                if (worker.state === "installed" && navigator.serviceWorker.controller) {
-                  worker.postMessage({ type: "SKIP_WAITING" });
-                }
-              });
-            });
-            navigator.serviceWorker.addEventListener("controllerchange", () => {
-              if (reloaded) return;
-              reloaded = true;
-              window.location.reload();
-            });
-            // Do not call registration.update() — the main app SW handles updates.
-            // Proactive update() causes a reload every time the garden planner opens.
-          }).catch(() => {});
+          // Register without update logic — the main app SW handles version updates.
+          // Avoid registration.waiting checks and controllerchange reloads here to
+          // prevent the garden planner iframe from reloading every time it opens.
+          navigator.serviceWorker.register("./sw.js?v=20260513-pdf-polish-195").catch(() => {});
         });
       }
     </script>

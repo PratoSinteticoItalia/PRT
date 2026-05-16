@@ -583,6 +583,10 @@ async function ensureDatabaseStorage() {
   return dbBootstrapPromise;
 }
 
+// Set che traccia quali blob-only salesRequests sono già stati backfillati in SQL
+// (evita upsertSalesRequestToDb a ogni /api/session per gli stessi record)
+const _backfilledSalesRequestIds = new Set();
+
 let relationalSchemaBootstrapPromise = null;
 async function ensureRelationalSchema() {
   if (!USE_POSTGRES) return;
@@ -644,15 +648,20 @@ async function ensureRelationalSchema() {
         user_id TEXT, action TEXT NOT NULL, diff JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
       );
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS operations_json JSONB DEFAULT '{}';
+      ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS requested_height TEXT DEFAULT '';
       CREATE INDEX IF NOT EXISTS orders_shopify_id_idx       ON orders (shopify_numeric_id);
       CREATE INDEX IF NOT EXISTS orders_updated_at_idx       ON orders (updated_at DESC);
       CREATE INDEX IF NOT EXISTS orders_financial_status_idx ON orders (financial_status);
       CREATE INDEX IF NOT EXISTS inventory_state_idx         ON inventory_items (piece_state);
       CREATE INDEX IF NOT EXISTS inventory_order_idx         ON inventory_items (allocated_to_order_id);
-      CREATE INDEX IF NOT EXISTS sales_requests_status_idx   ON sales_requests (status);
-      CREATE INDEX IF NOT EXISTS sales_requests_phone_idx    ON sales_requests (phone);
-      CREATE INDEX IF NOT EXISTS audit_log_entity_idx        ON audit_log (entity_type, entity_id);
-      CREATE INDEX IF NOT EXISTS audit_log_created_idx       ON audit_log (created_at DESC);
+      CREATE INDEX IF NOT EXISTS sales_requests_status_idx      ON sales_requests (status);
+      CREATE INDEX IF NOT EXISTS sales_requests_phone_idx       ON sales_requests (phone);
+      CREATE INDEX IF NOT EXISTS sales_requests_assignment_idx  ON sales_requests (assignment);
+      CREATE INDEX IF NOT EXISTS sales_requests_source_idx      ON sales_requests (source);
+      CREATE INDEX IF NOT EXISTS sales_requests_updated_at_idx  ON sales_requests (updated_at DESC);
+      CREATE INDEX IF NOT EXISTS orders_fulfillment_idx         ON orders (fulfillment_status);
+      CREATE INDEX IF NOT EXISTS audit_log_entity_idx           ON audit_log (entity_type, entity_id);
+      CREATE INDEX IF NOT EXISTS audit_log_created_idx          ON audit_log (created_at DESC);
     `);
     console.log("[db] schema relazionale verificato");
   })().catch((err) => {
@@ -694,19 +703,24 @@ function dbRowToOrder(row) {
     attachments: row.attachments || [],
     convertedJobId: row.converted_job_id || null,
     accounting: row.accounting || {},
-    operations: row.operations_json && Object.keys(row.operations_json).length > 1
-      ? row.operations_json
-      : (() => {
-          // Colonna operations_json non ancora popolata: ricostruisci via normalizeOperations
-          // che deriva sqm/product dai lineItems quando mancano
-          const base = {
-            id: row.id,
-            lineItems: row.line_items || [],
-            lineDetails: row.line_details || [],
-            operations: { warehouse: row.warehouse || {}, installation: row.installation || {} },
-          };
-          return normalizeOperations(base);
-        })(),
+    operations: (() => {
+      const stored = row.operations_json || {};
+      // Se operations_json ha già sqm > 0, usalo direttamente
+      if (stored.sqm > 0) return stored;
+      // Altrimenti deriva sqm/product dai lineItems via normalizeOperations,
+      // ma preserva warehouse/installation/status già salvati in stored
+      const base = {
+        id: row.id,
+        lineItems: row.line_items || [],
+        lineDetails: row.line_details || [],
+        operations: {
+          ...stored,            // preserva warehouse, installation, status, note, etc.
+          sqm: 0,              // forza derivazione da lineItems (non usare il cached 0)
+          product: stored.product || "", // lascia che normalizeOperations usi defaults se vuoto
+        },
+      };
+      return normalizeOperations(base);
+    })(),
   };
 }
 
@@ -780,6 +794,7 @@ function dbRowToSalesRequest(row) {
     sourceRowNumber: row.source_row_number || null,
     attachments: row.attachments || [],
     whatsappThreadId: row.whatsapp_thread_id || null,
+    requestedHeight: row.requested_height || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -787,11 +802,15 @@ function dbRowToSalesRequest(row) {
 
 async function getOrdersFromDb() {
   if (!USE_POSTGRES) return null;
+  const now = Date.now();
+  if (_ordersDbCache && now - _ordersDbCacheAt < DB_CACHE_TTL_MS) return _ordersDbCache;
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
     const { rows } = await pool.query("SELECT * FROM orders ORDER BY updated_at DESC NULLS LAST");
-    return rows.map(dbRowToOrder);
+    _ordersDbCache = rows.map(dbRowToOrder);
+    _ordersDbCacheAt = now;
+    return _ordersDbCache;
   } catch (err) {
     console.warn("[db] getOrdersFromDb:", err?.message);
     return null;
@@ -800,11 +819,15 @@ async function getOrdersFromDb() {
 
 async function getInventoryFromDb() {
   if (!USE_POSTGRES) return null;
+  const now = Date.now();
+  if (_inventoryDbCache && now - _inventoryDbCacheAt < DB_CACHE_TTL_MS) return _inventoryDbCache;
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
     const { rows } = await pool.query("SELECT * FROM inventory_items ORDER BY created_at ASC NULLS LAST");
-    return rows.map(dbRowToInventoryItem);
+    _inventoryDbCache = rows.map(dbRowToInventoryItem);
+    _inventoryDbCacheAt = now;
+    return _inventoryDbCache;
   } catch (err) {
     console.warn("[db] getInventoryFromDb:", err?.message);
     return null;
@@ -813,41 +836,81 @@ async function getInventoryFromDb() {
 
 async function getJobsFromDb() {
   if (!USE_POSTGRES) return null;
+  const now = Date.now();
+  if (_jobsDbCache && now - _jobsDbCacheAt < DB_CACHE_TTL_MS) return _jobsDbCache;
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
     const { rows } = await pool.query("SELECT * FROM jobs ORDER BY created_at DESC NULLS LAST");
-    return rows.map(dbRowToJob);
+    _jobsDbCache = rows.map(dbRowToJob);
+    _jobsDbCacheAt = now;
+    return _jobsDbCache;
   } catch (err) {
     console.warn("[db] getJobsFromDb:", err?.message);
     return null;
   }
 }
 
+// Cache TTL per le 4 query DB chiamate su ogni /api/session.
+// Ogni cache viene invalidato da una funzione dedicata chiamata sui rispettivi write.
+const DB_CACHE_TTL_MS = 10_000; // 10 secondi — bilanciamento freschezza vs. carico DB
+
+let _ordersDbCache = null;
+let _ordersDbCacheAt = 0;
+function invalidateOrdersDbCache() { _ordersDbCache = null; _ordersDbCacheAt = 0; }
+
+let _inventoryDbCache = null;
+let _inventoryDbCacheAt = 0;
+function invalidateInventoryDbCache() { _inventoryDbCache = null; _inventoryDbCacheAt = 0; }
+
+let _jobsDbCache = null;
+let _jobsDbCacheAt = 0;
+function invalidateJobsDbCache() { _jobsDbCache = null; _jobsDbCacheAt = 0; }
+
+let _salesRequestsDbCache = null;
+let _salesRequestsDbCacheAt = 0;
+const SALES_REQUESTS_DB_CACHE_TTL_MS = 15_000; // 15 secondi (eredita TTL legacy)
+
+function invalidateSalesRequestsDbCache() {
+  _salesRequestsDbCache = null;
+  _salesRequestsDbCacheAt = 0;
+}
+
 async function getSalesRequestsFromDb() {
   if (!USE_POSTGRES) return null;
+  const now = Date.now();
+  if (_salesRequestsDbCache && now - _salesRequestsDbCacheAt < SALES_REQUESTS_DB_CACHE_TTL_MS) {
+    return _salesRequestsDbCache;
+  }
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
     const { rows } = await pool.query("SELECT * FROM sales_requests ORDER BY updated_at DESC NULLS LAST");
-    return rows.map(dbRowToSalesRequest);
+    _salesRequestsDbCache = rows.map(dbRowToSalesRequest);
+    _salesRequestsDbCacheAt = now;
+    return _salesRequestsDbCache;
   } catch (err) {
     console.warn("[db] getSalesRequestsFromDb:", err?.message);
     return null;
   }
 }
 
-async function upsertOrderToDb(order) {
+async function upsertOrderToDb(order, userId = null) {
   if (!USE_POSTGRES || !order?.id) return;
-  const ops = order.operations || {};
+  invalidateOrdersDbCache();
+  // Assicura che operations_json abbia sqm/product derivati: se mancano, li calcola da lineItems
+  const orderWithOps = (order.operations?.sqm == null || order.operations?.sqm === 0)
+    ? normalizeOperations(order)
+    : order;
+  const ops = orderWithOps.operations || order.operations || {};
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
-    // Leggi stato prima dell'upsert per rilevare cambiamenti
+    // Leggi stato prima dell'upsert per rilevare cambiamenti (audit log)
     let existingOrderRow = null;
     try {
       const existRes = await pool.query(
-        "SELECT financial_status, fulfillment_status FROM orders WHERE id = $1",
+        "SELECT financial_status, fulfillment_status, warehouse, installation FROM orders WHERE id = $1",
         [String(order.id)],
       );
       existingOrderRow = existRes.rows[0] || null;
@@ -908,16 +971,31 @@ async function upsertOrderToDb(order) {
       JSON.stringify(Array.isArray(order.lineDetails) ? order.lineDetails : []),
       JSON.stringify(Array.isArray(order.attachments) ? order.attachments : []),
       order.convertedJobId ? String(order.convertedJobId) : null,
-      JSON.stringify(order.operations || {}),
+      JSON.stringify(orderWithOps.operations || order.operations || {}),
     ]);
-    // Audit log per cambiamenti di stato
+    // Audit log per cambiamenti di stato e operazioni
     const isNewOrder = !existingOrderRow;
     if (!isNewOrder && existingOrderRow) {
       const orderChanges = {};
-      if (existingOrderRow.financial_status !== String(order.financialStatus || "")) orderChanges.financialStatus = { before: existingOrderRow.financial_status, after: String(order.financialStatus || "") };
-      if (existingOrderRow.fulfillment_status !== String(order.fulfillmentStatus || "")) orderChanges.fulfillmentStatus = { before: existingOrderRow.fulfillment_status, after: String(order.fulfillmentStatus || "") };
+      if (existingOrderRow.financial_status !== String(order.financialStatus || ""))
+        orderChanges.financialStatus = { before: existingOrderRow.financial_status, after: String(order.financialStatus || "") };
+      if (existingOrderRow.fulfillment_status !== String(order.fulfillmentStatus || ""))
+        orderChanges.fulfillmentStatus = { before: existingOrderRow.fulfillment_status, after: String(order.fulfillmentStatus || "") };
+      // Audit operazioni magazzino/installazione
+      const prevWarehouse = existingOrderRow.warehouse || {};
+      const prevInstall = existingOrderRow.installation || {};
+      const curWarehouse = ops.warehouse || {};
+      const curInstall = ops.installation || {};
+      if ((prevWarehouse.status || "") !== (curWarehouse.status || ""))
+        orderChanges.warehouseStatus = { before: prevWarehouse.status || "", after: curWarehouse.status || "" };
+      if ((prevInstall.status || "") !== (curInstall.status || ""))
+        orderChanges.installStatus = { before: prevInstall.status || "", after: curInstall.status || "" };
+      if ((prevInstall.installDate || "") !== (curInstall.installDate || ""))
+        orderChanges.installDate = { before: prevInstall.installDate || "", after: curInstall.installDate || "" };
+      if ((prevInstall.crew || "") !== (curInstall.crew || ""))
+        orderChanges.crew = { before: prevInstall.crew || "", after: curInstall.crew || "" };
       if (Object.keys(orderChanges).length) {
-        writeAuditLog("order", order.id, "update", orderChanges, null).catch(() => {});
+        writeAuditLog("order", order.id, "update", orderChanges, userId).catch(() => {});
       }
     }
   } catch (err) {
@@ -927,6 +1005,7 @@ async function upsertOrderToDb(order) {
 
 async function upsertInventoryItemToDb(item) {
   if (!USE_POSTGRES || !item?.id) return;
+  invalidateInventoryDbCache();
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
@@ -956,6 +1035,7 @@ async function upsertInventoryItemToDb(item) {
 
 async function deleteInventoryItemFromDb(id) {
   if (!USE_POSTGRES || !id) return;
+  invalidateInventoryDbCache();
   try {
     const pool = await getPgPool();
     await pool.query("DELETE FROM inventory_items WHERE id = $1", [String(id)]);
@@ -966,6 +1046,7 @@ async function deleteInventoryItemFromDb(id) {
 
 async function upsertJobToDb(job) {
   if (!USE_POSTGRES || !job?.id) return;
+  invalidateJobsDbCache();
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
@@ -1001,6 +1082,7 @@ async function upsertJobToDb(job) {
 
 async function deleteJobFromDb(id) {
   if (!USE_POSTGRES || !id) return;
+  invalidateJobsDbCache();
   try {
     const pool = await getPgPool();
     await pool.query("DELETE FROM jobs WHERE id = $1", [String(id)]);
@@ -1009,8 +1091,9 @@ async function deleteJobFromDb(id) {
   }
 }
 
-async function upsertSalesRequestToDb(request) {
+async function upsertSalesRequestToDb(request, userId = null) {
   if (!USE_POSTGRES || !request?.id) return;
+  invalidateSalesRequestsDbCache(); // il cache diventa stale dopo ogni scrittura
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
@@ -1029,8 +1112,9 @@ async function upsertSalesRequestToDb(request) {
         city, address, postal_code, province_code, province, country_code,
         company, job_type, surface, sqm, note,
         status, assignment, first_contact_by, first_contact_at,
-        source, source_row_number, attachments, whatsapp_thread_id, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
+        source, source_row_number, attachments, whatsapp_thread_id,
+        requested_height, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW())
       ON CONFLICT (id) DO UPDATE SET
         first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name,
         email=EXCLUDED.email, phone=EXCLUDED.phone,
@@ -1043,6 +1127,7 @@ async function upsertSalesRequestToDb(request) {
         first_contact_by=EXCLUDED.first_contact_by, first_contact_at=EXCLUDED.first_contact_at,
         source=EXCLUDED.source, source_row_number=EXCLUDED.source_row_number,
         attachments=EXCLUDED.attachments, whatsapp_thread_id=EXCLUDED.whatsapp_thread_id,
+        requested_height=EXCLUDED.requested_height,
         updated_at=NOW()
     `, [
       String(request.id),
@@ -1062,17 +1147,18 @@ async function upsertSalesRequestToDb(request) {
       request.sourceRowNumber != null ? Number(request.sourceRowNumber) : null,
       JSON.stringify(Array.isArray(request.attachments) ? request.attachments : []),
       request.whatsappThreadId ? String(request.whatsappThreadId) : null,
+      String(request.requestedHeight || ""),
     ]);
     // Scrivi audit_log se ci sono cambiamenti nei campi chiave
     const isNew = !existingRow;
     if (isNew) {
-      writeAuditLog("sales_request", request.id, "create", { status: request.status, assignment: request.assignment }, null).catch(() => {});
+      writeAuditLog("sales_request", request.id, "create", { status: request.status, assignment: request.assignment }, userId).catch(() => {});
     } else {
       const changes = {};
       if (existingRow.status !== String(request.status || "")) changes.status = { before: existingRow.status, after: String(request.status || "") };
       if (existingRow.assignment !== String(request.assignment || "")) changes.assignment = { before: existingRow.assignment, after: String(request.assignment || "") };
       if (Object.keys(changes).length) {
-        writeAuditLog("sales_request", request.id, "update", changes, null).catch(() => {});
+        writeAuditLog("sales_request", request.id, "update", changes, userId).catch(() => {});
       }
     }
   } catch (err) {
@@ -1082,6 +1168,7 @@ async function upsertSalesRequestToDb(request) {
 
 async function deleteSalesRequestFromDb(id) {
   if (!USE_POSTGRES || !id) return;
+  invalidateSalesRequestsDbCache(); // il cache diventa stale dopo ogni scrittura
   try {
     const pool = await getPgPool();
     await pool.query("DELETE FROM sales_requests WHERE id = $1", [String(id)]);
@@ -1168,6 +1255,9 @@ async function writeJson(path, value) {
   const isStorePayload = resolvedPath === resolve(STORE_PATH);
   if (isStorePayload && value && typeof value === "object") {
     rotateStoreRevision(value);
+    // Il dato che scriviamo è già normalizzato — mantieni il flag per saltare
+    // la prossima reconcileStoreData (evita O(N) su ogni request successiva)
+    if (storeMemCache?.__memReconciled) value.__memReconciled = true;
     storeMemCache = value; // aggiorna cache in memoria
   }
   if (USE_POSTGRES && isStorePayload) {
@@ -2031,8 +2121,16 @@ function parseCookies(cookieHeader = "") {
   }, {});
 }
 
+/**
+ * sendJson con gzip condizionale.
+ * Prima di chiamare handleApi, il server imposta res.__acceptsGzip
+ * basandosi sull'header Accept-Encoding del client.
+ * Comprime se: payload >= 4KB E res.__acceptsGzip === true.
+ * Riduce le risposte grandi (es. /api/session ~8-10 MB → ~450-600 KB).
+ */
 function sendJson(res, status, payload, headers = {}) {
-  res.writeHead(status, {
+  const body = JSON.stringify(payload);
+  const securityHeaders = {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
@@ -2040,9 +2138,28 @@ function sendJson(res, status, payload, headers = {}) {
     "X-Frame-Options": "DENY",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Content-Security-Policy": "default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self' https://*.myshopify.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  };
+  if (res.__acceptsGzip && body.length >= 4096) {
+    try {
+      const compressed = gzipSync(body, { level: 6 });
+      res.writeHead(status, {
+        ...securityHeaders,
+        ...headers,
+        "Content-Encoding": "gzip",
+        "Content-Length": String(compressed.length),
+      });
+      res.end(compressed);
+      return;
+    } catch {
+      // fallback a risposta non compressa se gzip fallisce
+    }
+  }
+  res.writeHead(status, {
+    ...securityHeaders,
     ...headers,
+    "Content-Length": String(Buffer.byteLength(body)),
   });
-  res.end(JSON.stringify(payload));
+  res.end(body);
 }
 
 function sendRedirect(res, location, headers = {}) {
@@ -7281,6 +7398,17 @@ async function handleFastInventoryItemsPost(req, res) {
       [STORE_DOC_KEY, JSON.stringify(payload.created), revision],
     );
     runtimeStoreRevision = revision;
+    // Aggiorna la cache in memoria per evitare che la prossima readJson
+    // riscriva sul DB i dati stale sovrascrivendo i pezzi appena aggiunti.
+    if (storeMemCache !== null) {
+      storeMemCache = {
+        ...storeMemCache,
+        _storeRevision: revision,
+        inventory: [...payload.created, ...(storeMemCache.inventory || [])],
+      };
+    }
+    // Scrivi anche nella tabella relazionale letta da getInventoryFromDb()
+    for (const piece of payload.created) upsertInventoryItemToDb(piece).catch(() => {});
     broadcastStoreRevision(revision);
     return sendJson(
       res,
@@ -7300,7 +7428,7 @@ async function handleApi(req, res, url) {
       ok: true,
       service: "vertex-ops-pose-system",
       timestamp: new Date().toISOString(),
-      buildTag: "inv-commit-2026-05-14-g",
+      buildTag: "sales-req-height-merge-2026-05-16-i",
       fixes: [
         "reconcileStoreData-persists-missing-piece-ids",
         "backfillInventoryIds-writes-on-change",
@@ -7310,6 +7438,15 @@ async function handleApi(req, res, url) {
         "external-sync-bypasses-fifo-write-queue",
         "commit-response-includes-full-debug-snapshot",
         "pg-pool-idle-error-no-longer-crashes",
+        "gzip-session-responses",
+        "ttl-cache-all-db-queries",
+        "skip-reconcile-mem-reconciled-flag",
+        "session-orders-blob-sql-merge",
+        "dual-write-all-endpoints",
+        "audit-log-order-sales-request",
+        "shopify-webhook-all-4-topics",
+        "sales-request-requested-height-sql-column",
+        "sales-request-height-merge-from-blob",
       ],
     });
   }
@@ -7396,9 +7533,14 @@ async function handleApi(req, res, url) {
 
   await ensureStore();
   const store = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
-  const storeChanged = reconcileStoreData(store);
-  if (storeChanged) {
-    await writeJson(STORE_PATH, store);
+  // Salta la riconciliazione se la cache in memoria è già stata normalizzata
+  // (reconcileStoreData chiama normalizeSalesRequestRecord x 8180 record — O(N) su ogni request)
+  if (!store.__memReconciled) {
+    const storeChanged = reconcileStoreData(store);
+    if (storeChanged) {
+      await writeJson(STORE_PATH, store);
+    }
+    store.__memReconciled = true; // marca come già normalizzata nella cache in-memoria
   }
   const sessionContext = await getSessionContext(req, store);
   const currentUser = sessionContext.user;
@@ -7419,10 +7561,55 @@ async function handleApi(req, res, url) {
       getJobsFromDb(),
       getSalesRequestsFromDb(),
     ]);
-    const sessionOrders     = sqlOrdersResult.status       === "fulfilled" && sqlOrdersResult.value       ? sqlOrdersResult.value       : (currentUser ? store.orders        : []);
+    // Per gli ordini: usa la stessa logica merge di GET /api/orders
+    // (blob è fonte primaria per Shopify data; SQL override solo per operations significativi)
+    const sessionOrders = (() => {
+      const sqlOrders = sqlOrdersResult.status === "fulfilled" && sqlOrdersResult.value ? sqlOrdersResult.value : null;
+      if (!currentUser) return [];
+      if (!sqlOrders) return store.orders;
+      const dbOpsMap = new Map(sqlOrders.map((o) => [o.id, o.operations]));
+      const storeIds = new Set(store.orders.map((o) => o.id));
+      const merged = store.orders.map((order) => {
+        const dbOps = dbOpsMap.get(order.id);
+        const isMeaningful = dbOps && Object.keys(dbOps).length > 3 && (dbOps.sqm > 0 || dbOps.officeStatus !== "bozza");
+        return isMeaningful ? { ...order, operations: dbOps } : order;
+      });
+      const dbOnlyOrders = sqlOrders.filter((o) => !storeIds.has(o.id));
+      return sortOrdersByRecency([...merged, ...dbOnlyOrders]);
+    })();
     const sessionInventory  = sqlInventoryResult.status    === "fulfilled" && sqlInventoryResult.value    ? sqlInventoryResult.value    : (currentUser ? store.inventory     : []);
     const sessionJobs       = sqlJobsResult.status         === "fulfilled" && sqlJobsResult.value         ? sqlJobsResult.value         : (currentUser ? store.jobs          : []);
-    const sessionSalesReqs  = sqlSalesRequestsResult.status=== "fulfilled" && sqlSalesRequestsResult.value ? sqlSalesRequestsResult.value : (currentUser?.role === "office" ? store.salesRequests : []);
+    const rawSalesReqs = sqlSalesRequestsResult.status === "fulfilled" && sqlSalesRequestsResult.value ? sqlSalesRequestsResult.value : null;
+    const sessionSalesReqs = (() => {
+      if (!rawSalesReqs) {
+        return currentUser?.role === "office" ? (store.salesRequests || []) : [];
+      }
+      // Fix campi mancanti nei record SQL recuperandoli dal blob — O(1) via Map invece di find O(N²)
+      // Gestisce: name/surname e requestedHeight (campi aggiunti alla colonna SQL in un secondo momento)
+      const blobById = new Map((store.salesRequests || []).map((r) => [String(r.id), r]));
+      const fixedSql = rawSalesReqs.map((req) => {
+        const stored = blobById.get(String(req.id));
+        if (!stored) return req;
+        const needsNameFix = (!req.name && !req.surname) && (stored.name || stored.surname);
+        const needsHeightFix = !req.requestedHeight && stored.requestedHeight;
+        if (!needsNameFix && !needsHeightFix) return req;
+        const fixed = { ...req };
+        if (needsNameFix) { fixed.name = stored.name || ""; fixed.surname = stored.surname || ""; }
+        if (needsHeightFix) { fixed.requestedHeight = stored.requestedHeight; }
+        upsertSalesRequestToDb(fixed).catch(() => {}); // backfill colonne SQL mancanti
+        return fixed;
+      });
+      // Safety net: aggiungi record blob-only (es. importati da Google Sheets prima del fix)
+      // Usa _backfilledSalesRequestIds per non fare upsert a ogni /api/session
+      const sqlIds = new Set(rawSalesReqs.map((r) => String(r.id)));
+      const blobOnlyRecords = (store.salesRequests || []).filter((r) => !sqlIds.has(String(r.id)));
+      const newBlobOnly = blobOnlyRecords.filter((r) => !_backfilledSalesRequestIds.has(String(r.id)));
+      for (const r of newBlobOnly) {
+        _backfilledSalesRequestIds.add(String(r.id));
+        upsertSalesRequestToDb(r).catch(() => {}); // backfill SQL una sola volta per server uptime
+      }
+      return [...fixedSql, ...blobOnlyRecords];
+    })();
     return sendJson(res, 200, {
       revision: getStoreRevision(store),
       user: sanitizeUser(currentUser),
@@ -7797,6 +7984,10 @@ async function handleApi(req, res, url) {
       });
       store.salesRequests = [...importedRequests, ...manualRequests];
       await writeJson(STORE_PATH, store);
+      // Scrivi in SQL ogni richiesta importata (dual-write mancante in questo path)
+      for (const r of importedRequests) {
+        upsertSalesRequestToDb(r, currentUser?.email || null).catch(() => {});
+      }
       return sendJson(res, 200, {
         requests: store.salesRequests,
         importedCount: importedRequests.length,
@@ -7845,7 +8036,7 @@ async function handleApi(req, res, url) {
       store.salesRequests.unshift(requestRecord);
     }
     await writeJson(STORE_PATH, store);
-    upsertSalesRequestToDb(requestRecord).catch(() => {});
+    upsertSalesRequestToDb(requestRecord, currentUser?.email || null).catch(() => {});
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, [requestRecord]);
     return sendJson(res, 200, {
       ...requestRecord,
@@ -7896,6 +8087,10 @@ async function handleApi(req, res, url) {
     }
     if (!updatedRequests.length) return sendJson(res, 404, { error: "requests_not_found" });
     await writeJson(STORE_PATH, store);
+    // Dual-write SQL per ogni record aggiornato
+    for (const rec of updatedRequests) {
+      upsertSalesRequestToDb(rec, currentUser?.email || null).catch(() => {});
+    }
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, updatedRequests);
     return sendJson(res, 200, {
       requests: updatedRequests,
@@ -8099,6 +8294,7 @@ async function handleApi(req, res, url) {
         const result = upsertOrderRecord(store, normalized);
         store.orders = sortOrdersByRecency(store.orders);
         await writeJson(STORE_PATH, store);
+        upsertOrderToDb(result.order, "shopify-webhook").catch(() => {});
         return sendJson(res, 200, { ok: true, orderId: result.order.id, jobId: result.job?.id || null });
       }
       case "orders/paid": {
@@ -8108,6 +8304,7 @@ async function handleApi(req, res, url) {
           if (idx >= 0) {
             store.orders[idx] = { ...store.orders[idx], financialStatus: "paid" };
             await writeJson(STORE_PATH, store);
+            upsertOrderToDb(store.orders[idx], "shopify-webhook").catch(() => {});
           }
         }
         return sendJson(res, 200, { ok: true });
@@ -8119,6 +8316,7 @@ async function handleApi(req, res, url) {
           if (idx >= 0) {
             store.orders[idx] = { ...store.orders[idx], fulfillmentStatus: "cancelled", financialStatus: "voided" };
             await writeJson(STORE_PATH, store);
+            upsertOrderToDb(store.orders[idx], "shopify-webhook").catch(() => {});
           }
         }
         return sendJson(res, 200, { ok: true });
@@ -8462,11 +8660,16 @@ async function handleApi(req, res, url) {
     if (!productKey) {
       return sendJson(res, 400, { error: "invalid_inventory_product" });
     }
+    // Raccogli gli ID da eliminare PRIMA del filter per il dual-write
+    const toDeleteIds = (store.inventory || [])
+      .filter((item) => normalizeInventoryProductKey(item.product || "") === productKey && normalizeInventoryPieceState(item.pieceState) === "disponibile")
+      .map((item) => item.id);
     store.inventory = (store.inventory || []).filter((item) => (
       normalizeInventoryProductKey(item.product || "") !== productKey
       || normalizeInventoryPieceState(item.pieceState) !== "disponibile"
     ));
     await writeJson(STORE_PATH, store);
+    for (const id of toDeleteIds) deleteInventoryItemFromDb(id).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.inventory);
   }
 
@@ -8577,6 +8780,11 @@ async function handleApi(req, res, url) {
       writeJson(STORE_PATH, store).catch((writeErr) => {
         console.error("[inventory/commit] persist failed:", writeErr?.message || writeErr);
       });
+      const committedOrder = store.orders.find((o) => o.id === orderId);
+      if (committedOrder) upsertOrderToDb(committedOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
+      // Dual-write delle inventory piece coinvolte nel commit
+      const commitPieceIds = new Set((result.allocations || []).map((a) => a.pieceId).filter(Boolean));
+      store.inventory.filter((p) => commitPieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
@@ -8597,6 +8805,13 @@ async function handleApi(req, res, url) {
       writeJson(STORE_PATH, store).catch((writeErr) => {
         console.error("[inventory/release] persist failed:", writeErr?.message || writeErr);
       });
+      const releasedOrder = store.orders.find((o) => o.id === orderId);
+      if (releasedOrder) upsertOrderToDb(releasedOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
+      // Dual-write delle inventory piece rilasciate (ora disponibili)
+      const releasePieceIds = new Set(
+        (order.operations?.warehouse?.inventoryAllocations || []).map((a) => a.pieceId).filter(Boolean),
+      );
+      store.inventory.filter((p) => releasePieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
@@ -8616,6 +8831,15 @@ async function handleApi(req, res, url) {
       writeJson(STORE_PATH, store).catch((writeErr) => {
         console.error("[inventory/fulfill] persist failed:", writeErr?.message || writeErr);
       });
+      const fulfilledOrder = store.orders.find((o) => o.id === orderId);
+      if (fulfilledOrder) upsertOrderToDb(fulfilledOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
+      // Dual-write delle inventory piece evase (stato: evaso)
+      if (result.changed) {
+        const fulfillPieceIds = new Set(
+          (order.operations?.warehouse?.inventoryAllocations || []).map((a) => a.pieceId).filter(Boolean),
+        );
+        store.inventory.filter((p) => fulfillPieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
+      }
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
@@ -8661,12 +8885,25 @@ async function handleApi(req, res, url) {
       attachments: [...(current.attachments || []), ...(Array.isArray(body.attachments) ? body.attachments : [])],
     };
     await writeJson(STORE_PATH, store);
+    upsertJobToDb(store.jobs[jobIndex]).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.jobs[jobIndex]);
   }
 
   if (url.pathname === "/api/orders" && req.method === "GET") {
     const sqlOrders = await getOrdersFromDb();
-    return sendJson(res, 200, sqlOrders ?? store.orders);
+    if (!sqlOrders) return sendJson(res, 200, store.orders);
+    // store.orders è la fonte primaria (sqm calcolato, tutti gli ordini Shopify);
+    // DB override le operations solo dove sono state modificate manualmente.
+    const dbOpsMap = new Map(sqlOrders.map((o) => [o.id, o.operations]));
+    const storeIds = new Set(store.orders.map((o) => o.id));
+    const merged = store.orders.map((order) => {
+      const dbOps = dbOpsMap.get(order.id);
+      const isMeaningful = dbOps && Object.keys(dbOps).length > 3
+        && (dbOps.sqm > 0 || dbOps.officeStatus !== "bozza");
+      return isMeaningful ? { ...order, operations: dbOps } : order;
+    });
+    const dbOnlyOrders = sqlOrders.filter((o) => !storeIds.has(o.id));
+    return sendJson(res, 200, sortOrdersByRecency([...merged, ...dbOnlyOrders]));
   }
 
   if (url.pathname === "/api/orders" && req.method === "POST") {
@@ -8724,7 +8961,7 @@ async function handleApi(req, res, url) {
     manualOrder.operations = normalizeOperations(manualOrder, null);
     store.orders.unshift(manualOrder);
     await writeJson(STORE_PATH, store);
-    upsertOrderToDb(manualOrder).catch(() => {});
+    upsertOrderToDb(manualOrder, currentUser?.email || null).catch(() => {});
     return sendJson(res, 200, manualOrder);
   }
 
@@ -8749,6 +8986,7 @@ async function handleApi(req, res, url) {
       const result = upsertOrderRecord(store, refreshedOrder);
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
+      upsertOrderToDb(result.order, currentUser?.email || null).catch(() => {});
       return sendJson(res, 200, result.order);
     } catch (error) {
       return sendJson(res, 400, { error: error.message || "shopify_order_refresh_failed" });
@@ -8821,7 +9059,7 @@ async function handleApi(req, res, url) {
     );
     store.orders[orderIndex] = nextOrder;
     await writeJson(STORE_PATH, store);
-    upsertOrderToDb(nextOrder).catch(() => {});
+    upsertOrderToDb(nextOrder, currentUser?.email || null).catch(() => {});
     return sendJson(res, 200, nextOrder);
   }
 
@@ -8841,6 +9079,7 @@ async function handleApi(req, res, url) {
       attachments: [...(current.attachments || []), ...savedAttachments],
     };
     await writeJson(STORE_PATH, store);
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
@@ -8876,6 +9115,7 @@ async function handleApi(req, res, url) {
       attachments,
     };
     await writeJson(STORE_PATH, store);
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
@@ -8913,10 +9153,18 @@ async function handleApi(req, res, url) {
     if (shouldFulfillInventoryForOrder(store.orders[orderIndex])) {
       const fulfillmentResult = fulfillInventoryCommitmentsForOrder(store, store.orders[orderIndex]);
       store.orders[orderIndex] = fulfillmentResult.order;
+      if (fulfillmentResult.changed) {
+        // Dual-write piece state auto-evase
+        const autoFulfillPieceIds = new Set(
+          (current.operations?.warehouse?.inventoryAllocations || []).map((a) => a.pieceId).filter(Boolean),
+        );
+        store.inventory.filter((p) => autoFulfillPieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
+      }
     }
     writeJson(STORE_PATH, store).catch((writeErr) => {
       console.error("[operations] persist failed:", writeErr?.message || writeErr);
     });
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
@@ -8955,6 +9203,7 @@ async function handleApi(req, res, url) {
       ),
     };
     await writeJson(STORE_PATH, store);
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
@@ -8979,6 +9228,7 @@ async function handleApi(req, res, url) {
       }, body.paymentMethod || current.accounting?.paymentMethod || current.paymentMethod || "", current.billing || {}),
     };
     await writeJson(STORE_PATH, store);
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
@@ -9026,6 +9276,7 @@ async function handleApi(req, res, url) {
       const fulfillmentResult = fulfillInventoryCommitmentsForOrder(store, store.orders[orderIndex]);
       store.orders[orderIndex] = fulfillmentResult.order;
       await writeJson(STORE_PATH, store);
+      upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
       return sendJson(res, 200, {
         ok: true,
         alreadySynced: result.alreadySynced,
@@ -9048,6 +9299,10 @@ async function handleApi(req, res, url) {
     });
     store.orders = sortOrdersByRecency(store.orders);
     await writeJson(STORE_PATH, store);
+    // Dual-write SQL per ogni ordine importato
+    for (const order of normalized) {
+      upsertOrderToDb(order, currentUser?.email || null).catch(() => {});
+    }
     return sendJson(res, 200, store.orders);
   }
 
@@ -9059,6 +9314,10 @@ async function handleApi(req, res, url) {
       });
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
+      // Dual-write SQL per ogni ordine sincronizzato da Shopify
+      for (const order of orders) {
+        upsertOrderToDb(order, "shopify-sync").catch(() => {});
+      }
       return sendJson(res, 200, store.orders);
     } catch (error) {
       store.shopifySettings.lastSyncAt = new Date().toISOString();
@@ -9076,13 +9335,26 @@ async function handleApi(req, res, url) {
 
     try {
       const endpoint = `${String(webhookBaseUrl).replace(/\/$/, "")}/api/webhooks/shopify/orders`;
+      const topicsToRegister = [
+        "ORDERS_CREATE",
+        "ORDERS_UPDATED",
+        "ORDERS_CANCELLED",
+        "ORDERS_PAID",
+      ];
+      // Considera "già registrato" solo se l'endpoint e TUTTI i topic sono configurati
+      const registeredTopics = Array.isArray(store.shopifySettings?.webhookTopicsRegistered)
+        ? store.shopifySettings.webhookTopicsRegistered
+        : [];
+      const allTopicsRegistered = topicsToRegister.every((t) => registeredTopics.includes(t));
       if (
         String(store.shopifySettings?.webhookEndpoint || "").trim() === endpoint
         && String(store.shopifySettings?.webhookSubscriptionId || "").trim()
+        && allTopicsRegistered
       ) {
         return sendJson(res, 200, {
           endpoint,
           subscriptionId: String(store.shopifySettings.webhookSubscriptionId || "").trim(),
+          topics: registeredTopics,
           reused: true,
         });
       }
@@ -9103,13 +9375,6 @@ async function handleApi(req, res, url) {
           }
         }
       `;
-
-      const topicsToRegister = [
-        "ORDERS_CREATE",
-        "ORDERS_UPDATED",
-        "ORDERS_CANCELLED",
-        "ORDERS_PAID",
-      ];
 
       const registrationResults = [];
       for (const topicName of topicsToRegister) {
@@ -9316,6 +9581,9 @@ async function handleApi(req, res, url) {
 const server = createServer(async (req, res) => {
   const rawRequestPath = String(req.url || "/").split("?")[0] || "/";
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
+
+  // Segnala a sendJson se comprimere la risposta (evita di passare req ovunque)
+  res.__acceptsGzip = /gzip/i.test(req.headers["accept-encoding"] || "");
 
   try {
     if (url.pathname.startsWith("/api/")) {
