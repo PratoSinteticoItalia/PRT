@@ -1244,6 +1244,43 @@ let ordersDeferredRenderTimer = 0;
 let salesContentDeleteInFlightId = "";
 const salesRequestPendingPatchIds = new Set();
 const salesRequestPendingPatchGraceTimers = new Map();
+
+// Memoization per getFilteredSalesRequests — evita sort O(N log N) + filter O(N)
+// su 8180 record ad ogni renderSalesRequests (che viene chiamata 2x per render)
+let _sfr_cache = null;         // { base, filtered } dell'ultima chiamata
+let _sfr_cacheKey = "";        // chiave che rappresenta lo stato usato per calcolare la cache
+let _sfr_sortedBase = null;    // salesRequests pre-ordinate (invalida solo quando cambiano i dati)
+let _sfr_dataVersion = 0;      // contatore monotono: si incrementa ad ogni mutazione dei dati
+
+/** Invalida esplicitamente il cache — chiama quando state.salesRequests cambia */
+function invalidateSalesRequestsFilterCache() {
+  _sfr_dataVersion++;
+  _sfr_sortedBase = null;
+  _sfr_cache = null;
+  _sfr_cacheKey = "";
+}
+
+function _getSalesRequestsSorted() {
+  // Riordina solo quando la versione dei dati cambia
+  if (!_sfr_sortedBase) {
+    const sr = state.salesRequests;
+    _sfr_sortedBase = [...sr].sort((left, right) => {
+      const leftRow = Number(left.sourceRowNumber || 0);
+      const rightRow = Number(right.sourceRowNumber || 0);
+      const leftHasRow = leftRow > 0;
+      const rightHasRow = rightRow > 0;
+      if (leftHasRow && rightHasRow && leftRow !== rightRow) return rightRow - leftRow;
+      if (leftHasRow !== rightHasRow) return leftHasRow ? -1 : 1;
+      const rightCreated = new Date(right.createdAt || right.updatedAt || 0).getTime();
+      const leftCreated = new Date(left.createdAt || left.updatedAt || 0).getTime();
+      if (rightCreated !== leftCreated) return rightCreated - leftCreated;
+      if (rightRow !== leftRow) return rightRow - leftRow;
+      return String(right.id || "").localeCompare(String(left.id || ""));
+    });
+  }
+  return _sfr_sortedBase;
+}
+
 // Version counter per record: evita che risposte server stale sovrascrivano ottimistic state più recente
 const _salesRequestPatchVersions = {};
 const orderPendingPatchIds = new Set();
@@ -4817,6 +4854,7 @@ function markSelectedSalesRequestQuoteSent() {
   persistSalesRequestRecordPatch(previousRecord, patch)
     .catch(() => {
       state.salesRequests = state.salesRequests.map((item) => item.id === requestId ? previousRecord : item);
+      invalidateSalesRequestsFilterCache();
       renderSalesRequests();
       if (state.currentView === "sales-generator") renderSalesGenerator();
     })
@@ -4920,6 +4958,7 @@ async function openSalesRequestWhatsAppContact(record = {}, { markAsSent = true 
   return persistSalesRequestRecordPatch(request, patch).catch((err) => {
     if (previousRecord) {
       state.salesRequests = state.salesRequests.map((r) => (r.id === previousRecord.id ? previousRecord : r));
+      invalidateSalesRequestsFilterCache();
       renderSalesRequests();
     }
     throw err;
@@ -11153,26 +11192,24 @@ function getFilteredSalesRequests({ ignoreQuickFilter = false } = {}) {
   const assignmentFilter = String(state.filters.salesRequestAssignment || "all");
   const statusFilter = String(state.filters.salesRequestStatus || "all");
   const quickFilter = String(state.filters.salesRequestQuick || "all");
-  return [...state.salesRequests]
-    .sort((left, right) => {
-      const leftRow = Number(left.sourceRowNumber || 0);
-      const rightRow = Number(right.sourceRowNumber || 0);
-      const leftHasRow = leftRow > 0;
-      const rightHasRow = rightRow > 0;
-      if (leftHasRow && rightHasRow && leftRow !== rightRow) return rightRow - leftRow;
-      if (leftHasRow !== rightHasRow) return leftHasRow ? -1 : 1;
-      const rightCreated = new Date(right.createdAt || right.updatedAt || 0).getTime();
-      const leftCreated = new Date(left.createdAt || left.updatedAt || 0).getTime();
-      if (rightCreated !== leftCreated) return rightCreated - leftCreated;
-      if (rightRow !== leftRow) return rightRow - leftRow;
-      return String(right.id || "").localeCompare(String(left.id || ""));
-    })
-    .filter((item) => {
+
+  // Usa il cache pre-calcolato se le dipendenze non sono cambiate
+  // _sfr_dataVersion si incrementa ad ogni mutazione → cache sempre fresh
+  const cacheKey = `${_sfr_dataVersion}|${query}|${assignmentFilter}|${statusFilter}|${quickFilter}`;
+  if (_sfr_cache && _sfr_cacheKey === cacheKey) {
+    return ignoreQuickFilter ? _sfr_cache.base : _sfr_cache.filtered;
+  }
+
+  // Pre-ordina una volta sola (il sort viene saltato se state.salesRequests non è cambiato)
+  const sorted = _getSalesRequestsSorted();
+
+  const applyFilter = (items, skipQuick) =>
+    items.filter((item) => {
       const assignment = normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
       if (assignmentFilter === "unassigned" && assignment) return false;
       if (!["all", "unassigned"].includes(assignmentFilter) && normalizeLooseString(assignment) !== assignmentFilter) return false;
       if (statusFilter !== "all" && normalizeLooseString(item.status || "") !== statusFilter) return false;
-      if (!ignoreQuickFilter && !matchesSalesRequestQuickFilter(item, quickFilter)) return false;
+      if (!skipQuick && !matchesSalesRequestQuickFilter(item, quickFilter)) return false;
       if (!query) return true;
       const haystack = [
         getSalesRequestDisplayName(item),
@@ -11188,6 +11225,14 @@ function getFilteredSalesRequests({ ignoreQuickFilter = false } = {}) {
       ].join(" ").toLowerCase();
       return haystack.includes(query);
     });
+
+  // Calcola entrambe le versioni e metti in cache (renderSalesRequests le chiede entrambe)
+  const base = applyFilter(sorted, true);
+  const filtered = quickFilter === "all" ? base : applyFilter(sorted, false);
+  _sfr_cache = { base, filtered };
+  _sfr_cacheKey = cacheKey;
+
+  return ignoreQuickFilter ? base : filtered;
 }
 
 function getFilteredSalesContents({ ignoreCategory = false } = {}) {
@@ -11774,6 +11819,7 @@ function upsertSalesRequest(saved, { skipOpsRender = false, preserveSelection = 
     state.salesRequests = [normalized, ...state.salesRequests];
     restoreSalesRequestPageAnchor(pageAnchorId);
   }
+  invalidateSalesRequestsFilterCache(); // dati cambiati → invalida sort+filter cache
   if (preserveSelection) {
     state.selectedSalesRequestId = previousSelectedSalesRequestId;
     state.creatingSalesRequest = previousCreatingSalesRequest;
@@ -11933,6 +11979,7 @@ function mergeSalesRequestRecords(records = []) {
       existingIds.add(item.id);
     }
   });
+  invalidateSalesRequestsFilterCache();
   restoreSalesRequestPageAnchor(pageAnchorId);
 }
 
@@ -12158,6 +12205,7 @@ async function processSalesRequestSave(draftRecord, {
     const authFailed = [401, 403].includes(Number(error?.status || 0));
     if (authFailed) {
       state.salesRequests = previousRequests;
+      invalidateSalesRequestsFilterCache();
       state.selectedSalesRequestId = previousSelectedSalesRequestId;
       state.creatingSalesRequest = previousCreatingSalesRequest;
     } else {
@@ -12209,6 +12257,7 @@ async function bulkAssignSalesRequests(assignmentValue = "") {
         })
       : item
   ));
+  invalidateSalesRequestsFilterCache();
   renderOps();
   renderSalesRequests();
   setStatus(
@@ -12243,6 +12292,7 @@ async function bulkAssignSalesRequests(assignmentValue = "") {
     );
   } catch (error) {
     state.salesRequests = previousRequests;
+    invalidateSalesRequestsFilterCache();
     state.selectedSalesRequestBulkIds = previousSelection;
     state.selectedSalesRequestId = previousSelectedSalesRequestId;
     renderOps();
@@ -12296,6 +12346,7 @@ async function deleteSalesRequest() {
   try {
     await apiFetch(`/api/sales/requests/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
     state.salesRequests = state.salesRequests.filter((item) => item.id !== selected.id);
+    invalidateSalesRequestsFilterCache();
     state.selectedSalesRequestId = "";
     restoreSalesRequestPageAnchor(pageAnchorId);
     state.creatingSalesRequest = false;
@@ -15122,6 +15173,7 @@ function applySessionPayload(session = {}) {
     state.selectedSalesRequestId = draft.id;
     state.creatingSalesRequest = false;
   }
+  invalidateSalesRequestsFilterCache(); // nuovi dati dalla sessione → invalida sort+filter cache
   state.salesContents = Array.isArray(session.salesContents) ? session.salesContents.map(normalizeSalesContentRecord) : [];
   state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(session.salesRequestSource || {});
   state.pendingSalesRequestServiceAccountJson = preserveEditingState ? state.pendingSalesRequestServiceAccountJson : "";
