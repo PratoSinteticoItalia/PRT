@@ -648,6 +648,7 @@ async function ensureRelationalSchema() {
         user_id TEXT, action TEXT NOT NULL, diff JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
       );
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS operations_json JSONB DEFAULT '{}';
+      ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS requested_height TEXT DEFAULT '';
       CREATE INDEX IF NOT EXISTS orders_shopify_id_idx       ON orders (shopify_numeric_id);
       CREATE INDEX IF NOT EXISTS orders_updated_at_idx       ON orders (updated_at DESC);
       CREATE INDEX IF NOT EXISTS orders_financial_status_idx ON orders (financial_status);
@@ -793,6 +794,7 @@ function dbRowToSalesRequest(row) {
     sourceRowNumber: row.source_row_number || null,
     attachments: row.attachments || [],
     whatsappThreadId: row.whatsapp_thread_id || null,
+    requestedHeight: row.requested_height || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1110,8 +1112,9 @@ async function upsertSalesRequestToDb(request, userId = null) {
         city, address, postal_code, province_code, province, country_code,
         company, job_type, surface, sqm, note,
         status, assignment, first_contact_by, first_contact_at,
-        source, source_row_number, attachments, whatsapp_thread_id, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
+        source, source_row_number, attachments, whatsapp_thread_id,
+        requested_height, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW())
       ON CONFLICT (id) DO UPDATE SET
         first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name,
         email=EXCLUDED.email, phone=EXCLUDED.phone,
@@ -1124,6 +1127,7 @@ async function upsertSalesRequestToDb(request, userId = null) {
         first_contact_by=EXCLUDED.first_contact_by, first_contact_at=EXCLUDED.first_contact_at,
         source=EXCLUDED.source, source_row_number=EXCLUDED.source_row_number,
         attachments=EXCLUDED.attachments, whatsapp_thread_id=EXCLUDED.whatsapp_thread_id,
+        requested_height=EXCLUDED.requested_height,
         updated_at=NOW()
     `, [
       String(request.id),
@@ -1143,6 +1147,7 @@ async function upsertSalesRequestToDb(request, userId = null) {
       request.sourceRowNumber != null ? Number(request.sourceRowNumber) : null,
       JSON.stringify(Array.isArray(request.attachments) ? request.attachments : []),
       request.whatsappThreadId ? String(request.whatsappThreadId) : null,
+      String(request.requestedHeight || ""),
     ]);
     // Scrivi audit_log se ci sono cambiamenti nei campi chiave
     const isNew = !existingRow;
@@ -7423,7 +7428,7 @@ async function handleApi(req, res, url) {
       ok: true,
       service: "vertex-ops-pose-system",
       timestamp: new Date().toISOString(),
-      buildTag: "perf-cache-2026-05-16-g",
+      buildTag: "sales-req-height-merge-2026-05-16-i",
       fixes: [
         "reconcileStoreData-persists-missing-piece-ids",
         "backfillInventoryIds-writes-on-change",
@@ -7440,6 +7445,8 @@ async function handleApi(req, res, url) {
         "dual-write-all-endpoints",
         "audit-log-order-sales-request",
         "shopify-webhook-all-4-topics",
+        "sales-request-requested-height-sql-column",
+        "sales-request-height-merge-from-blob",
       ],
     });
   }
@@ -7577,14 +7584,19 @@ async function handleApi(req, res, url) {
       if (!rawSalesReqs) {
         return currentUser?.role === "office" ? (store.salesRequests || []) : [];
       }
-      // Fix name/surname per record SQL con campi vuoti — O(1) via Map invece di find O(N²)
+      // Fix campi mancanti nei record SQL recuperandoli dal blob — O(1) via Map invece di find O(N²)
+      // Gestisce: name/surname e requestedHeight (campi aggiunti alla colonna SQL in un secondo momento)
       const blobById = new Map((store.salesRequests || []).map((r) => [String(r.id), r]));
       const fixedSql = rawSalesReqs.map((req) => {
-        if (req.name || req.surname) return req;
         const stored = blobById.get(String(req.id));
-        if (!stored?.name && !stored?.surname) return req;
-        const fixed = { ...req, name: stored.name || "", surname: stored.surname || "" };
-        upsertSalesRequestToDb(fixed).catch(() => {});
+        if (!stored) return req;
+        const needsNameFix = (!req.name && !req.surname) && (stored.name || stored.surname);
+        const needsHeightFix = !req.requestedHeight && stored.requestedHeight;
+        if (!needsNameFix && !needsHeightFix) return req;
+        const fixed = { ...req };
+        if (needsNameFix) { fixed.name = stored.name || ""; fixed.surname = stored.surname || ""; }
+        if (needsHeightFix) { fixed.requestedHeight = stored.requestedHeight; }
+        upsertSalesRequestToDb(fixed).catch(() => {}); // backfill colonne SQL mancanti
         return fixed;
       });
       // Safety net: aggiungi record blob-only (es. importati da Google Sheets prima del fix)
