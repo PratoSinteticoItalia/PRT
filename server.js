@@ -7462,7 +7462,22 @@ async function handleApi(req, res, url) {
       getJobsFromDb(),
       getSalesRequestsFromDb(),
     ]);
-    const sessionOrders     = sqlOrdersResult.status       === "fulfilled" && sqlOrdersResult.value       ? sqlOrdersResult.value       : (currentUser ? store.orders        : []);
+    // Per gli ordini: usa la stessa logica merge di GET /api/orders
+    // (blob è fonte primaria per Shopify data; SQL override solo per operations significativi)
+    const sessionOrders = (() => {
+      const sqlOrders = sqlOrdersResult.status === "fulfilled" && sqlOrdersResult.value ? sqlOrdersResult.value : null;
+      if (!currentUser) return [];
+      if (!sqlOrders) return store.orders;
+      const dbOpsMap = new Map(sqlOrders.map((o) => [o.id, o.operations]));
+      const storeIds = new Set(store.orders.map((o) => o.id));
+      const merged = store.orders.map((order) => {
+        const dbOps = dbOpsMap.get(order.id);
+        const isMeaningful = dbOps && Object.keys(dbOps).length > 3 && (dbOps.sqm > 0 || dbOps.officeStatus !== "bozza");
+        return isMeaningful ? { ...order, operations: dbOps } : order;
+      });
+      const dbOnlyOrders = sqlOrders.filter((o) => !storeIds.has(o.id));
+      return sortOrdersByRecency([...merged, ...dbOnlyOrders]);
+    })();
     const sessionInventory  = sqlInventoryResult.status    === "fulfilled" && sqlInventoryResult.value    ? sqlInventoryResult.value    : (currentUser ? store.inventory     : []);
     const sessionJobs       = sqlJobsResult.status         === "fulfilled" && sqlJobsResult.value         ? sqlJobsResult.value         : (currentUser ? store.jobs          : []);
     const rawSalesReqs = sqlSalesRequestsResult.status === "fulfilled" && sqlSalesRequestsResult.value ? sqlSalesRequestsResult.value : null;
@@ -7968,6 +7983,10 @@ async function handleApi(req, res, url) {
     }
     if (!updatedRequests.length) return sendJson(res, 404, { error: "requests_not_found" });
     await writeJson(STORE_PATH, store);
+    // Dual-write SQL per ogni record aggiornato
+    for (const rec of updatedRequests) {
+      upsertSalesRequestToDb(rec, currentUser?.email || null).catch(() => {});
+    }
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, updatedRequests);
     return sendJson(res, 200, {
       requests: updatedRequests,
