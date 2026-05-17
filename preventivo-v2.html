@@ -1098,8 +1098,18 @@
     }
   }
 
+  // ?p2=0 → nasconde pagina 2 (schede tecniche). Default: visibile.
+  function applyP2Visibility() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("p2") === "0") {
+      const page2 = document.getElementById("page-2");
+      if (page2) page2.style.display = "none";
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     applyEmbeddedMode();
+    applyP2Visibility();
     renderPreventivo(loadData());
     // Segnala al parent che siamo pronti per ricevere dati live
     try { window.parent?.postMessage({ type: "psi:preventivo-v2:ready" }, "*"); } catch {}

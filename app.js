@@ -21422,35 +21422,19 @@ function extractGeneratorPayloadFromIframe() {
   }
 }
 
-function getSelectedQuoteTemplate() {
-  try {
-    const saved = window.localStorage.getItem("psi:quote-template");
-    if (saved === "v1" || saved === "v2") return saved;
-  } catch {}
-  return "v2";
+function getIncludeP2() {
+  const cb = document.getElementById("quote-include-p2");
+  return cb ? cb.checked : true;
 }
 
-function setSelectedQuoteTemplate(template) {
-  try { window.localStorage.setItem("psi:quote-template", template); } catch {}
-  document.querySelectorAll(".quote-template-option").forEach((btn) => {
-    const isActive = btn.dataset.template === template;
-    btn.classList.toggle("is-active", isActive);
-    btn.setAttribute("aria-selected", isActive ? "true" : "false");
-  });
-  // Aggiorna hint
-  document.querySelectorAll("[data-template-hint]").forEach((el) => {
-    el.hidden = el.dataset.templateHint !== template;
-  });
-  // Nasconde l'anteprima preview embedded del React quando v2 è selezionato
-  // (più chiaro: mostra solo i campi del form di input)
-  document.body.classList.toggle("quote-v2-active", template === "v2");
-  applyIframePreviewVisibility(template);
-  // Connette o disconnette l'observer a seconda della modalità
-  if (template === "v2") {
-    connectReactHideObserver();
-  } else {
-    disconnectReactHideObserver();
-  }
+// Sempre v2 — il selettore modello classico è stato rimosso
+function getSelectedQuoteTemplate() { return "v2"; }
+
+function setSelectedQuoteTemplate() {
+  // Sempre v2 — mantiene compatibilità con eventuali chiamate legacy
+  document.body.classList.add("quote-v2-active");
+  applyIframePreviewVisibility("v2");
+  connectReactHideObserver();
 }
 
 function connectReactHideObserver() {
@@ -21568,8 +21552,6 @@ function applyIframePreviewVisibility(template) {
       el.removeAttribute("data-psi-hide-area");
     });
 
-    if (template !== "v2") return; // v1: tutto resta visibile
-
     // Nasconde TUTTO SOPRA il form (toolbar React) e TUTTO SOTTO il form
     // (anteprima preventivo embedded), a OGNI livello di nesting React.
     const formStart = _findFormStartAnchor(reactDoc);
@@ -21600,17 +21582,7 @@ function triggerLegacyGeneratorPdf() {
 }
 
 bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
-  const template = getSelectedQuoteTemplate();
-  if (template === "v1") {
-    // Modello v1: triggera la generazione PDF dell'iframe React esistente
-    const ok = triggerLegacyGeneratorPdf();
-    if (!ok) {
-      showToast(state.lang === "it" ? "Impossibile generare con il modello v1. Usa il bottone interno del generatore." : "Cannot trigger v1 quote. Use the inner generator button.", "warning");
-    }
-    trackUsageEvent("quote_template_generate", { template: "v1", requestId: state.selectedSalesRequestId || "" });
-    return;
-  }
-  // Modello v2 (default): estrae dati live dall'iframe e apre preventivo-v2.html
+  // Estrae dati live dall'iframe React e apre preventivo-v2.html
   const payload = extractGeneratorPayloadFromIframe();
   try {
     if (payload) {
@@ -21619,7 +21591,8 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260517-mutation-observer-227`;
+  const p2 = getIncludeP2() ? "1" : "0";
+  const url = `./preventivo-v2.html?v=20260517-p2toggle-228&p2=${p2}`;
   const win = window.open(url, "psi_preventivo_v2", "noopener=yes");
   if (!win) {
     showToast(state.lang === "it" ? "Il browser ha bloccato il popup. Consenti i popup per questo sito e riprova." : "Popup blocked. Allow popups for this site.", "warning", 6000);
@@ -21631,12 +21604,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
   });
 });
 
-document.addEventListener("click", (event) => {
-  const btn = event.target.closest(".quote-template-option[data-template]");
-  if (!btn) return;
-  const template = btn.dataset.template === "v1" ? "v1" : "v2";
-  setSelectedQuoteTemplate(template);
-});
+// Nessun toggle Classico/Nuovo — rimosso. Sempre template v2.
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
 bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);
 bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
