@@ -21120,10 +21120,13 @@ function injectIframeHideStyles() {
 // ─── Anteprima live preventivo v2 (iframe affiancato) ────────────────────────
 
 const V2_PREVIEW_FRAME_ID = "preventivo-v2-preview-frame";
-const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-aggressive-226";
+const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-mutation-observer-227";
 let _v2PreviewInterval = 0;
 let _v2PreviewReady = false;
 let _v2LastSignature = "";
+// MutationObserver per re-applicare il hide del React ad ogni render
+let _reactHideObserver = null;
+let _reactHideDebounceTimer = 0;
 
 function refreshV2PreviewIfNeeded() {
   const frame = document.getElementById(V2_PREVIEW_FRAME_ID);
@@ -21442,6 +21445,40 @@ function setSelectedQuoteTemplate(template) {
   // (più chiaro: mostra solo i campi del form di input)
   document.body.classList.toggle("quote-v2-active", template === "v2");
   applyIframePreviewVisibility(template);
+  // Connette o disconnette l'observer a seconda della modalità
+  if (template === "v2") {
+    connectReactHideObserver();
+  } else {
+    disconnectReactHideObserver();
+  }
+}
+
+function connectReactHideObserver() {
+  // Osserva il DOM dell'iframe React e ri-applica il hide ogni volta che React
+  // ri-renderizza (React rimuove data-psi-hide-area ad ogni reconciliation).
+  // Usa solo childList per non triggerare sui nostri stessi setAttribute.
+  disconnectReactHideObserver();
+  const reactIframe = document.getElementById("sales-generator-frame");
+  const reactDoc = reactIframe?.contentDocument;
+  if (!reactDoc?.body) return;
+  _reactHideObserver = new MutationObserver(() => {
+    clearTimeout(_reactHideDebounceTimer);
+    _reactHideDebounceTimer = window.setTimeout(() => {
+      if (getSelectedQuoteTemplate() === "v2") {
+        applyIframePreviewVisibility("v2");
+      }
+    }, 120);
+  });
+  _reactHideObserver.observe(reactDoc.body, { childList: true, subtree: true, attributes: false });
+}
+
+function disconnectReactHideObserver() {
+  clearTimeout(_reactHideDebounceTimer);
+  _reactHideDebounceTimer = 0;
+  if (_reactHideObserver) {
+    _reactHideObserver.disconnect();
+    _reactHideObserver = null;
+  }
 }
 
 function _findFormStartAnchor(doc) {
@@ -21582,7 +21619,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260517-aggressive-226`;
+  const url = `./preventivo-v2.html?v=20260517-mutation-observer-227`;
   const win = window.open(url, "psi_preventivo_v2", "noopener=yes");
   if (!win) {
     showToast(state.lang === "it" ? "Il browser ha bloccato il popup. Consenti i popup per questo sito e riprova." : "Popup blocked. Allow popups for this site.", "warning", 6000);
@@ -21630,7 +21667,12 @@ if (iframeEl) {
     // Riapplica il toggle anteprima dopo che l'iframe ha caricato il suo DOM
     setTimeout(() => applyIframePreviewVisibility(getSelectedQuoteTemplate()), 600);
     setTimeout(() => applyIframePreviewVisibility(getSelectedQuoteTemplate()), 1600);
-    setTimeout(() => applyIframePreviewVisibility(getSelectedQuoteTemplate()), 3000);
+    setTimeout(() => {
+      applyIframePreviewVisibility(getSelectedQuoteTemplate());
+      // Collega l'observer DOPO che React ha finito il primo render
+      // (solo se siamo in modalità v2, altrimenti non serve)
+      if (getSelectedQuoteTemplate() === "v2") connectReactHideObserver();
+    }, 3000);
   });
   // Riprova all'avvio (l'iframe potrebbe essere già caricato)
   setTimeout(() => {
