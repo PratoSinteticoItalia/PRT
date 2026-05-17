@@ -1144,6 +1144,7 @@ const state = {
   currentView: "dashboard",
   dashboardDateRange: "7d",
   preventivoTexts: null, // popolato all'init da /api/catalog/preventivo_branding
+  preventivoCatalog: {}, // slug -> { code, tech: {struttura, densita, dtex, drenaggio, peso, note}, label }
   selectedOrderId: null,
   selectedSalesRequestId: "",
   selectedSalesRequestBulkIds: new Set(),
@@ -1461,6 +1462,10 @@ const ui = {
   preventivoTextsForm: document.getElementById("preventivo-texts-form"),
   preventivoTextsResetButton: document.getElementById("preventivo-texts-reset"),
   preventivoTextsStatus: document.getElementById("preventivo-texts-status"),
+  preventivoProductForm: document.getElementById("preventivo-product-form"),
+  preventivoProductSelect: document.getElementById("preventivo-product-select"),
+  preventivoProductSavedList: document.getElementById("preventivo-product-saved-list"),
+  preventivoProductStatus: document.getElementById("preventivo-product-status"),
   salesGeneratorEmailButton: document.getElementById("sales-generator-email-button"),
   salesContentSearch: document.getElementById("sales-content-search"),
   salesContentSearchClear: document.getElementById("sales-content-search-clear"),
@@ -15584,6 +15589,7 @@ function showApp() {
   startUsageHeartbeat();
   if (state.currentUser?.role === "office") {
     void loadPreventivoTexts();
+    void loadPreventivoCatalog();
   }
   clearPendingCurrentViewRefresh();
   setShellPending(false);
@@ -20816,6 +20822,131 @@ function resetPreventivoTexts() {
   setStatus(ui.preventivoTextsStatus, "success", state.lang === "it" ? "Default ripristinati nei campi. Clicca Salva per confermare." : "Defaults restored in fields. Click Save to confirm.");
 }
 
+// ─── Catalogo prodotti — Dati tecnici ────────────────────────────────────────
+
+const PREVENTIVO_PRODUCT_DEFAULTS = Object.freeze([
+  { slug: "tasso-12mm",   label: "Tasso 12 mm" },
+  { slug: "bonsai-18mm",  label: "Bonsai 18 mm" },
+  { slug: "faggio-25mm",  label: "Faggio 25 mm" },
+  { slug: "betulla-30mm", label: "Betulla 30 mm" },
+  { slug: "gelso-30mm",   label: "Gelso 30 mm" },
+  { slug: "cedro-30mm",   label: "Cedro 30 mm" },
+  { slug: "frassino-35mm",label: "Frassino 35 mm" },
+  { slug: "ginepro-35mm", label: "Ginepro 35 mm" },
+  { slug: "sequoia-40mm", label: "Sequoia 40 mm" },
+  { slug: "rovere-40mm",  label: "Rovere 40 mm" },
+  { slug: "palma-40mm",   label: "Palma 40 mm" },
+  { slug: "cipresso-40mm",label: "Cipresso 40 mm" },
+  { slug: "ginepro-45mm", label: "Ginepro 45 mm" },
+  { slug: "abete-45mm",   label: "Abete 45 mm" },
+  { slug: "mogano-50mm",  label: "Mogano 50 mm" },
+]);
+
+const PREVENTIVO_PRODUCT_FIELDS = ["code", "struttura", "densita", "dtex", "drenaggio", "peso", "note"];
+
+async function loadPreventivoCatalog() {
+  try {
+    const items = await apiFetch("/api/catalog/preventivo_products");
+    state.preventivoCatalog = {};
+    if (Array.isArray(items)) {
+      items.forEach((item) => {
+        const slug = String(item.value || "").trim();
+        if (!slug) return;
+        const meta = typeof item.metadata === "string" ? JSON.parse(item.metadata) : (item.metadata || {});
+        state.preventivoCatalog[slug] = {
+          label: item.label || slug,
+          ...meta,
+        };
+      });
+    }
+  } catch (err) {
+    console.warn("[preventivo-catalog] load failed:", err?.message);
+    state.preventivoCatalog = {};
+  }
+  populatePreventivoProductSelect();
+}
+
+function populatePreventivoProductSelect() {
+  const sel = ui.preventivoProductSelect;
+  if (!sel) return;
+  const current = sel.value || PREVENTIVO_PRODUCT_DEFAULTS[2].slug; // default su Faggio 25mm
+  sel.innerHTML = PREVENTIVO_PRODUCT_DEFAULTS.map((p) => {
+    const saved = state.preventivoCatalog?.[p.slug];
+    const marker = saved && saved.code ? " ✓" : "";
+    return `<option value="${p.slug}">${p.label}${marker}</option>`;
+  }).join("");
+  sel.value = current;
+  fillPreventivoProductForm();
+  updatePreventivoProductSavedList();
+}
+
+function updatePreventivoProductSavedList() {
+  if (!ui.preventivoProductSavedList) return;
+  const savedCount = Object.values(state.preventivoCatalog || {}).filter((v) => v && v.code).length;
+  const total = PREVENTIVO_PRODUCT_DEFAULTS.length;
+  ui.preventivoProductSavedList.textContent = `${savedCount}/${total} ${state.lang === "it" ? "modelli configurati" : "models configured"}`;
+}
+
+function fillPreventivoProductForm() {
+  const form = ui.preventivoProductForm;
+  const sel = ui.preventivoProductSelect;
+  if (!form || !sel) return;
+  const slug = sel.value;
+  const saved = state.preventivoCatalog?.[slug] || {};
+  PREVENTIVO_PRODUCT_FIELDS.forEach((k) => {
+    const field = form.elements?.[k];
+    if (field) field.value = String(saved[k] || "");
+  });
+}
+
+async function savePreventivoProduct(event) {
+  if (event) event.preventDefault();
+  const form = ui.preventivoProductForm;
+  const sel = ui.preventivoProductSelect;
+  if (!form || !sel) return;
+  const slug = sel.value;
+  if (!slug) return;
+  const model = PREVENTIVO_PRODUCT_DEFAULTS.find((p) => p.slug === slug);
+  const label = model?.label || slug;
+  const formData = new FormData(form);
+  const metadata = {};
+  PREVENTIVO_PRODUCT_FIELDS.forEach((k) => {
+    const v = String(formData.get(k) || "").trim();
+    if (v) metadata[k] = v;
+  });
+  setStatus(ui.preventivoProductStatus, "success", state.lang === "it" ? "Salvataggio in corso…" : "Saving…");
+  try {
+    await apiFetch("/api/catalog/preventivo_products", {
+      method: "POST",
+      body: JSON.stringify({ value: slug, label, position: 0, metadata }),
+    });
+    state.preventivoCatalog[slug] = { label, ...metadata };
+    setStatus(ui.preventivoProductStatus, "success", state.lang === "it" ? `✓ ${label} salvato.` : `✓ ${label} saved.`);
+    showToast(state.lang === "it" ? `${label} aggiornato` : `${label} updated`, "success");
+    populatePreventivoProductSelect();
+    sel.value = slug;
+  } catch (err) {
+    setStatus(ui.preventivoProductStatus, "error", state.lang === "it" ? "Salvataggio non riuscito." : "Save failed.");
+  }
+}
+
+function buildProductTechFromCatalog(modelName = "") {
+  const slug = slugifyModelName(modelName);
+  const saved = state.preventivoCatalog?.[slug];
+  if (!saved || !saved.code) return null;
+  return {
+    code: saved.code,
+    tech: {
+      struttura: saved.struttura || "",
+      densita: saved.densita || "",
+      dtex: saved.dtex || "",
+      drenaggio: saved.drenaggio || "",
+      peso: saved.peso || "",
+      note: saved.note || "",
+    },
+  };
+}
+
 function parseEuroNumber(raw) {
   if (raw == null) return 0;
   const cleaned = String(raw).trim().replace(/€/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
@@ -20951,9 +21082,13 @@ function extractGeneratorPayloadFromIframe() {
       const netTotal = discountedPrice + materialsAfterDisc + installationTotal + shipping;
       const grandTotal = netTotal * (1 + vat / 100);
       const slug = slugifyModelName(parsed.name);
-      // Codice prodotto: prime 3 lettere maiuscole + altezza in mm dal nome
+      // Usa dati dal Catalogo prodotti (Impostazioni) se configurati,
+      // altrimenti fallback ai default auto-generati
+      const catalogData = buildProductTechFromCatalog(parsed.name);
       const heightMatch = parsed.name.match(/(\d+)\s*mm/i);
-      const code = `${parsed.name.split(/\s+/)[0].substring(0,3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
+      const fallbackCode = `${parsed.name.split(/\s+/)[0].substring(0,3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
+      const code = catalogData?.code || fallbackCode;
+      const tech = catalogData?.tech || defaultProductTech(parsed.name);
       options.push({
         slug,
         name: parsed.name,
@@ -20968,7 +21103,7 @@ function extractGeneratorPayloadFromIframe() {
         total: grandTotal,
         finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
         heylightInstallment: grandTotal > 0 ? grandTotal / 5 : 0,
-        tech: defaultProductTech(parsed.name),
+        tech,
       });
     }
     if (!options.length) return null;
@@ -21030,7 +21165,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260516-p2-fill-218`;
+  const url = `./preventivo-v2.html?v=20260517-catalog-219`;
   window.open(url, "psi_preventivo_v2", "noopener=yes");
   trackUsageEvent("preventivo_v2_preview_opened", {
     requestId: state.selectedSalesRequestId || "",
@@ -21039,6 +21174,8 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
 });
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
 bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);
+bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
+bindEvent(ui.preventivoProductSelect, "change", fillPreventivoProductForm);
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {

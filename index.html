@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260516-p2-fill-218" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260516-p2-fill-218" />
+    <link rel="preload" href="./styles.css?v=20260517-catalog-219" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260517-catalog-219" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1758,6 +1758,54 @@
               <section class="panel">
                 <div class="panel-head">
                   <div>
+                    <p class="panel-eyebrow">Catalogo</p>
+                    <h3>Dati tecnici prodotti</h3>
+                  </div>
+                </div>
+                <p class="panel-note">Configura per ogni modello i dati che appariranno nella scheda tecnica del preventivo PDF (pagina 2).</p>
+                <form id="preventivo-product-form" class="inline-form-grid">
+                  <label class="field field-full">
+                    <span>Modello</span>
+                    <select id="preventivo-product-select" class="text-input" name="slug"></select>
+                  </label>
+                  <label class="field">
+                    <span>Codice prodotto</span>
+                    <input class="text-input" name="code" type="text" placeholder="FAG-025" />
+                  </label>
+                  <label class="field">
+                    <span>Struttura</span>
+                    <input class="text-input" name="struttura" type="text" placeholder="Unidirezionale" />
+                  </label>
+                  <label class="field">
+                    <span>Densità</span>
+                    <input class="text-input" name="densita" type="text" placeholder="14.700 m²" />
+                  </label>
+                  <label class="field">
+                    <span>Dtex</span>
+                    <input class="text-input" name="dtex" type="text" placeholder="11.500" />
+                  </label>
+                  <label class="field">
+                    <span>Drenaggio</span>
+                    <input class="text-input" name="drenaggio" type="text" placeholder="40 L/min/m²" />
+                  </label>
+                  <label class="field">
+                    <span>Peso totale</span>
+                    <input class="text-input" name="peso" type="text" placeholder="3.500 g/m²" />
+                  </label>
+                  <label class="field field-full">
+                    <span>Note normative (riga in fondo alla scheda)</span>
+                    <input class="text-input" name="note" type="text" placeholder="REACH · EN71-3 · ASTM-D2616" />
+                  </label>
+                  <div class="inline-actions field-full">
+                    <button type="submit" class="primary-button small-button">Salva modello</button>
+                    <span id="preventivo-product-saved-list" class="panel-note" style="margin:0;font-size:11px;"></span>
+                  </div>
+                </form>
+                <div id="preventivo-product-status" class="panel-note hidden"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
                     <p class="panel-eyebrow">Trasferte</p>
                     <h3>Report costi squadre</h3>
                   </div>
@@ -2073,6 +2121,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260516-p2-fill-218" type="module"></script>
+    <script src="./app.js?v=20260517-catalog-219" type="module"></script>
   </body>
 </html>
