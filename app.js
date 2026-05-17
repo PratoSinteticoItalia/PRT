@@ -21116,58 +21116,9 @@ function injectIframeHideStyles() {
   }
 }
 
-// ─── Anteprima live preventivo v2 (iframe affiancato) ────────────────────────
-
-const V2_PREVIEW_FRAME_ID = "preventivo-v2-preview-frame";
-const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-clamp-iframe-229";
-let _v2PreviewInterval = 0;
-let _v2PreviewReady = false;
-let _v2LastSignature = "";
 // MutationObserver per re-applicare il hide del React ad ogni render
 let _reactHideObserver = null;
 let _reactHideDebounceTimer = 0;
-
-function refreshV2PreviewIfNeeded() {
-  const frame = document.getElementById(V2_PREVIEW_FRAME_ID);
-  if (!frame || frame.hidden || !_v2PreviewReady) return;
-  // Re-applica hide del React (potrebbe re-renderizzare elementi nascosti)
-  applyIframePreviewVisibility("v2");
-  const payload = extractGeneratorPayloadFromIframe();
-  if (!payload) return;
-  // Confronto sigillato per evitare postMessage inutili
-  const sig = JSON.stringify(payload);
-  if (sig === _v2LastSignature) return;
-  _v2LastSignature = sig;
-  try {
-    frame.contentWindow?.postMessage({ type: "psi:preventivo-v2:data", payload }, "*");
-  } catch (err) {
-    console.warn("[v2-preview] postMessage failed:", err?.message);
-  }
-}
-
-function startV2PreviewLoop() {
-  if (_v2PreviewInterval) return;
-  _v2PreviewInterval = window.setInterval(refreshV2PreviewIfNeeded, 1500);
-}
-
-function stopV2PreviewLoop() {
-  if (_v2PreviewInterval) {
-    clearInterval(_v2PreviewInterval);
-    _v2PreviewInterval = 0;
-  }
-  _v2PreviewReady = false;
-  _v2LastSignature = "";
-}
-
-// Listener per messaggio ready dell'iframe v2
-window.addEventListener("message", (event) => {
-  if (event?.data?.type === "psi:preventivo-v2:ready") {
-    _v2PreviewReady = true;
-    // Trigger un refresh immediato
-    _v2LastSignature = "";
-    refreshV2PreviewIfNeeded();
-  }
-});
 
 function parseEuroNumber(raw) {
   if (raw == null) return 0;
@@ -21489,10 +21440,9 @@ function _hideAllBeforeAnchor(anchor, doc) {
 }
 
 function clampIframeToFormHeight() {
-  // Ridimensiona l'iframe React per mostrare SOLO il form, tagliando
-  // qualsiasi preview embedded che React renderizza sotto il bottone.
-  // React può fare re-render liberamente — l'iframe non mostra
-  // contenuto oltre l'altezza impostata (non serve manipolare il DOM React).
+  // Ridimensiona l'iframe React per mostrare SOLO il form.
+  // Inietta overflow:hidden nel body/html dell'iframe per bloccare lo scroll
+  // interno che rivelerebbe la preview di React sotto il bottone.
   try {
     const reactIframe = document.getElementById("sales-generator-frame");
     const reactDoc = reactIframe?.contentDocument;
@@ -21505,6 +21455,9 @@ function clampIframeToFormHeight() {
     const newH = Math.ceil(rect.bottom + scrollTop + 56); // 56px di padding sotto il bottone
     if (newH > 300 && newH < 8000) {
       reactIframe.style.height = newH + "px";
+      // Blocca scroll interno — il contenuto oltre newH non è raggiungibile
+      reactDoc.documentElement?.style.setProperty("overflow", "hidden", "important");
+      reactDoc.body?.style.setProperty("overflow", "hidden", "important");
     }
   } catch (err) {
     console.warn("[clamp-iframe]", err?.message);
@@ -21513,22 +21466,11 @@ function clampIframeToFormHeight() {
 
 function applyIframePreviewVisibility() {
   // Nasconde la toolbar React sopra il form (via CSS injection + attributi).
-  // Taglia l'iframe all'altezza del bottone "Genera Preventivo" per eliminare
-  // la preview embedded di React. Avvia il preview frame v2 separato.
+  // Clamp dell'iframe all'altezza del bottone "Genera Preventivo" per nascondere
+  // la preview embedded che React renderizza sotto il form.
   try {
     const reactIframe = document.getElementById("sales-generator-frame");
-    const v2Frame = document.getElementById(V2_PREVIEW_FRAME_ID);
     const reactDoc = reactIframe?.contentDocument;
-
-    // Avvia/mostra il preview frame v2
-    if (v2Frame) {
-      if (!v2Frame.src || !v2Frame.src.includes("preventivo-v2.html")) {
-        v2Frame.src = V2_PREVIEW_SRC;
-      }
-      v2Frame.hidden = false;
-      startV2PreviewLoop();
-    }
-
     if (!reactDoc) return;
 
     // Inietta stile per data-psi-hide-area (hide toolbar React sopra il form)
@@ -21583,19 +21525,6 @@ bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
 bindEvent(ui.preventivoProductSelect, "change", fillPreventivoProductForm);
 bindEvent(ui.productImageInput, "change", handleProductImageChange);
 bindEvent(ui.productImageClear, "click", handleProductImageClear);
-
-// Quando l'utente modifica il pannello "Modello custom", forza refresh
-// dell'anteprima v2 al prossimo poll (signature reset).
-["customModelTarget", "customModelName", "customModelPrice"].forEach((key) => {
-  const el = ui[key];
-  if (el) {
-    el.addEventListener("input", () => { _v2LastSignature = ""; });
-    el.addEventListener("change", () => { _v2LastSignature = ""; });
-  }
-});
-if (ui.customModelToggle) {
-  ui.customModelToggle.addEventListener("toggle", () => { _v2LastSignature = ""; });
-}
 
 // Inietta CSS per nascondere "Modello libero" dall'iframe quando si entra nel generatore
 // + applica visibilità anteprima preview in base al template selezionato
