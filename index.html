@@ -699,16 +699,14 @@
 
             <section class="panel panel-large sales-generator-frame-panel">
               <div class="sales-generator-toolbar">
-                <div class="quote-template-selector" role="tablist" aria-label="Modello preventivo">
-                  <span class="quote-template-label">Modello:</span>
-                  <button type="button" class="quote-template-option is-active" data-template="v2" role="tab" aria-selected="true">📄 Nuovo (ufficiale)</button>
-                  <button type="button" class="quote-template-option" data-template="v1" role="tab" aria-selected="false">Classico (opzionale)</button>
-                </div>
-                <button id="sales-generator-preview-v2-button" type="button" class="primary-button small-button" title="Genera il preventivo nel modello selezionato coi dati live del form">📄 Genera preventivo ↗</button>
+                <label class="quote-p2-toggle" title="Includi la pagina 2 con schede tecniche prodotti e certificazioni">
+                  <input type="checkbox" id="quote-include-p2" checked />
+                  <span>📋 Schede tecniche</span>
+                </label>
+                <button id="sales-generator-preview-v2-button" type="button" class="primary-button small-button" title="Genera il preventivo coi dati live del form">📄 Genera preventivo ↗</button>
               </div>
-              <p class="sales-generator-toolbar-hint" id="sales-generator-template-hint">
-                <span data-template-hint="v2">📌 Compila i campi sotto e clicca <strong>Genera preventivo ↗</strong> — il PDF si apre in una nuova finestra.</span>
-                <span data-template-hint="v1" hidden>Il modello <strong>Classico</strong> mostra l'anteprima qui sotto. Clicca <strong>Scarica PDF</strong> nella barra interna o <strong>Genera preventivo</strong> qui sopra.</span>
+              <p class="sales-generator-toolbar-hint">
+                📌 Compila i campi sotto e clicca <strong>Genera preventivo ↗</strong> — il PDF si apre in una nuova finestra.
               </p>
               <details class="sales-generator-custom-model" id="sales-generator-custom-model">
                 <summary>

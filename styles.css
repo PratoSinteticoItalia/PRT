@@ -16498,44 +16498,32 @@ textarea.text-input {
   color: #6e7d72;
 }
 
-/* Selettore modello preventivo (v2 ufficiale / v1 classico) */
-.quote-template-selector {
+/* Toggle "Schede tecniche" (includi pagina 2 nel preventivo) */
+.quote-p2-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px;
+  gap: 7px;
+  padding: 6px 12px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid rgba(31, 70, 55, 0.12);
-}
-.quote-template-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #6e7d72;
-  padding: 0 6px;
-}
-.quote-template-option {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: #4a5d51;
+  cursor: pointer;
   font-size: 12px;
   font-weight: 700;
-  padding: 6px 12px;
-  border-radius: 999px;
+  color: #4a5d51;
+  user-select: none;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.quote-p2-toggle:hover {
+  background: rgba(248, 252, 249, 1);
+  border-color: rgba(31, 70, 55, 0.22);
+}
+.quote-p2-toggle input[type="checkbox"] {
+  accent-color: var(--brand, #2d6a4f);
+  width: 15px;
+  height: 15px;
   cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
-}
-.quote-template-option:hover {
-  background: rgba(31, 70, 55, 0.06);
-  color: #1f4637;
-}
-.quote-template-option.is-active {
-  background: var(--brand, #2d6a4f);
-  color: #fff;
-  box-shadow: 0 1px 4px rgba(45, 106, 79, 0.22);
+  flex-shrink: 0;
 }
 .sales-generator-toolbar-hint {
   margin: 6px 4px 0;
