@@ -2167,6 +2167,14 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260518-clamp-iframe-229" type="module"></script>
+    <script src="./app.js?v=20260518-modal-230" type="module"></script>
+    <!-- Modale preventivo v2 (si apre inline, nessuna nuova finestra) -->
+    <div id="psi-pdf-modal" class="psi-pdf-modal" hidden>
+      <div class="psi-pdf-modal-bar">
+        <button id="psi-pdf-modal-close" type="button" class="psi-pdf-modal-close">← Torna al form</button>
+        <span class="psi-pdf-modal-title">Preventivo</span>
+      </div>
+      <iframe id="psi-pdf-modal-iframe" class="psi-pdf-modal-iframe" src="" title="Preventivo" allowfullscreen></iframe>
+    </div>
   </body>
 </html>

@@ -21496,8 +21496,7 @@ function applyIframePreviewVisibility() {
   }
 }
 
-bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
-  // Estrae dati live dall'iframe React e apre preventivo-v2.html
+function openPreventivoModal() {
   const payload = extractGeneratorPayloadFromIframe();
   try {
     if (payload) {
@@ -21507,17 +21506,31 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
     }
   } catch {}
   const p2 = getIncludeP2() ? "1" : "0";
-  const url = `./preventivo-v2.html?v=20260517-p2toggle-228&p2=${p2}`;
-  const win = window.open(url, "psi_preventivo_v2", "noopener=yes");
-  if (!win) {
-    showToast(state.lang === "it" ? "Il browser ha bloccato il popup. Consenti i popup per questo sito e riprova." : "Popup blocked. Allow popups for this site.", "warning", 6000);
+  const url = `./preventivo-v2.html?v=20260518-modal-230&p2=${p2}`;
+  const modal = document.getElementById("psi-pdf-modal");
+  const iframe = document.getElementById("psi-pdf-modal-iframe");
+  if (modal && iframe) {
+    iframe.src = url;
+    modal.hidden = false;
+    document.body.style.overflow = "hidden";
   }
   trackUsageEvent("quote_template_generate", {
     template: "v2",
     requestId: state.selectedSalesRequestId || "",
     hasLiveData: payload ? "yes" : "no",
   });
-});
+}
+
+function closePreventivoModal() {
+  const modal = document.getElementById("psi-pdf-modal");
+  const iframe = document.getElementById("psi-pdf-modal-iframe");
+  if (modal) modal.hidden = true;
+  if (iframe) iframe.src = "";
+  document.body.style.overflow = "";
+}
+
+bindEvent(ui.salesGeneratorPreviewV2Button, "click", openPreventivoModal);
+bindEvent(document.getElementById("psi-pdf-modal-close"), "click", closePreventivoModal);
 
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
 bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);

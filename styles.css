@@ -16534,6 +16534,49 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
   font-weight: 700;
 }
 
+/* ── Modale a schermo intero per preventivo v2 ── */
+.psi-pdf-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  background: #e8ebe5;
+}
+.psi-pdf-modal[hidden] { display: none !important; }
+
+.psi-pdf-modal-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--brand, #2d6a4f);
+  flex-shrink: 0;
+}
+.psi-pdf-modal-close {
+  appearance: none;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font: 700 13px/1 'Inter', sans-serif;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 140ms;
+}
+.psi-pdf-modal-close:hover { background: rgba(255, 255, 255, 0.24); }
+.psi-pdf-modal-title {
+  font: 700 13px/1 'Inter', sans-serif;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.04em;
+}
+.psi-pdf-modal-iframe {
+  flex: 1;
+  border: 0;
+  width: 100%;
+  height: 100%;
+}
+
 /* Pannello collassabile "Modello custom" */
 .sales-generator-custom-model {
   margin: 10px 4px 0;
