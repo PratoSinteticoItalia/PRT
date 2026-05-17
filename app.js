@@ -15595,6 +15595,8 @@ function showApp() {
     void loadPreventivoTexts();
     void loadPreventivoCatalog();
   }
+  // Ripristina la selezione del template preventivo (v2 default / v1 classico)
+  setSelectedQuoteTemplate(getSelectedQuoteTemplate());
   clearPendingCurrentViewRefresh();
   setShellPending(false);
   state.mobileMenuOpen = false;
@@ -21157,10 +21159,53 @@ function extractGeneratorPayloadFromIframe() {
   }
 }
 
+function getSelectedQuoteTemplate() {
+  try {
+    const saved = window.localStorage.getItem("psi:quote-template");
+    if (saved === "v1" || saved === "v2") return saved;
+  } catch {}
+  return "v2";
+}
+
+function setSelectedQuoteTemplate(template) {
+  try { window.localStorage.setItem("psi:quote-template", template); } catch {}
+  document.querySelectorAll(".quote-template-option").forEach((btn) => {
+    const isActive = btn.dataset.template === template;
+    btn.classList.toggle("is-active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+}
+
+function triggerLegacyGeneratorPdf() {
+  // Clicca il bottone "Genera Preventivo" DENTRO l'iframe React (modello v1 classico)
+  try {
+    const iframe = document.getElementById("sales-generator-frame");
+    const doc = iframe?.contentDocument;
+    if (!doc) return false;
+    const btns = Array.from(doc.querySelectorAll("button"));
+    const generateBtn = btns.find((b) => /^genera preventivo/i.test(String(b.textContent || "").trim()));
+    if (generateBtn) {
+      generateBtn.click();
+      return true;
+    }
+  } catch (err) {
+    console.warn("[quote-template] legacy generator click failed:", err?.message);
+  }
+  return false;
+}
+
 bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
-  // Estrae i dati live dal generatore (iframe React). Se non disponibili
-  // o se MQ non compilato, apre il preventivo v2 con dati DEMO precompilati
-  // così l'utente può comunque vedere il layout.
+  const template = getSelectedQuoteTemplate();
+  if (template === "v1") {
+    // Modello v1: triggera la generazione PDF dell'iframe React esistente
+    const ok = triggerLegacyGeneratorPdf();
+    if (!ok) {
+      showToast(state.lang === "it" ? "Impossibile generare con il modello v1. Usa il bottone interno del generatore." : "Cannot trigger v1 quote. Use the inner generator button.", "warning");
+    }
+    trackUsageEvent("quote_template_generate", { template: "v1", requestId: state.selectedSalesRequestId || "" });
+    return;
+  }
+  // Modello v2 (default): estrae dati live dall'iframe e apre preventivo-v2.html
   const payload = extractGeneratorPayloadFromIframe();
   try {
     if (payload) {
@@ -21169,12 +21214,20 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260517-date-220`;
+  const url = `./preventivo-v2.html?v=20260517-tpl-221`;
   window.open(url, "psi_preventivo_v2", "noopener=yes");
-  trackUsageEvent("preventivo_v2_preview_opened", {
+  trackUsageEvent("quote_template_generate", {
+    template: "v2",
     requestId: state.selectedSalesRequestId || "",
     hasLiveData: payload ? "yes" : "no",
   });
+});
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest(".quote-template-option[data-template]");
+  if (!btn) return;
+  const template = btn.dataset.template === "v1" ? "v1" : "v2";
+  setSelectedQuoteTemplate(template);
 });
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
 bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);
