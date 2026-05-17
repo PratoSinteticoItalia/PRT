@@ -1143,6 +1143,8 @@ const state = {
   settings: {},
   currentView: "dashboard",
   dashboardDateRange: "7d",
+  preventivoTexts: null, // popolato all'init da /api/catalog/preventivo_branding
+  preventivoCatalog: {}, // slug -> { code, tech: {struttura, densita, dtex, drenaggio, peso, note}, label }
   selectedOrderId: null,
   selectedSalesRequestId: "",
   selectedSalesRequestBulkIds: new Set(),
@@ -1456,6 +1458,22 @@ const ui = {
   salesGeneratorContactPanel: document.getElementById("sales-generator-contact-panel"),
   salesGeneratorContactSummary: document.getElementById("sales-generator-contact-summary"),
   salesGeneratorWhatsAppButton: document.getElementById("sales-generator-whatsapp-button"),
+  salesGeneratorPreviewV2Button: document.getElementById("sales-generator-preview-v2-button"),
+  preventivoTextsForm: document.getElementById("preventivo-texts-form"),
+  preventivoTextsResetButton: document.getElementById("preventivo-texts-reset"),
+  preventivoTextsStatus: document.getElementById("preventivo-texts-status"),
+  preventivoProductForm: document.getElementById("preventivo-product-form"),
+  preventivoProductSelect: document.getElementById("preventivo-product-select"),
+  preventivoProductSavedList: document.getElementById("preventivo-product-saved-list"),
+  preventivoProductStatus: document.getElementById("preventivo-product-status"),
+  productImageInput: document.getElementById("product-image-input"),
+  productImagePreview: document.getElementById("product-image-preview"),
+  productImageClear: document.getElementById("product-image-clear"),
+  productImageDataUrl: document.getElementById("product-image-data-url"),
+  customModelTarget: document.getElementById("custom-model-target"),
+  customModelName: document.getElementById("custom-model-name"),
+  customModelPrice: document.getElementById("custom-model-price"),
+  customModelToggle: document.getElementById("sales-generator-custom-model"),
   salesGeneratorEmailButton: document.getElementById("sales-generator-email-button"),
   salesContentSearch: document.getElementById("sales-content-search"),
   salesContentSearchClear: document.getElementById("sales-content-search-clear"),
@@ -10750,9 +10768,13 @@ function formatOrderRelativeDate(isoString) {
   if (!isoString) return { label: "", tone: "" };
   const orderDate = new Date(isoString);
   if (Number.isNaN(orderDate.getTime())) return { label: "", tone: "" };
-  const now = new Date();
-  const diffMs = now - orderDate;
-  const diffDays = Math.floor(diffMs / 86400000);
+  // Confronta GIORNI DI CALENDARIO (basato sulla data locale, non sui millisecondi):
+  // così "ieri sera tardi" rispetto a "oggi presto" risulta correttamente "Ieri",
+  // anche se l'intervallo in ore è < 24.
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfOrderDay = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate());
+  const diffDays = Math.round((startOfToday.getTime() - startOfOrderDay.getTime()) / 86400000);
   const lang = state.lang;
   const timeStr = orderDate.toLocaleTimeString(lang === "it" ? "it-IT" : "en-GB", { hour: "2-digit", minute: "2-digit" });
   let label;
@@ -12134,9 +12156,22 @@ async function autoSaveSalesRequestPatch(id, patch) {
   const current = state.salesRequests.find((r) => r.id === id);
   if (!current) return;
   if (state.salesRequestSaveInFlight) return;
+  // Anti-race: se c'è già un patch in volo per la stessa richiesta,
+  // attendi che sia completato + grace period, poi accoda con un retry
+  // (max 1 tentativo per evitare loop infiniti).
+  if (salesRequestPendingPatchIds.has(id)) {
+    if (!patch.__retried) {
+      window.setTimeout(() => {
+        void autoSaveSalesRequestPatch(id, { ...patch, __retried: true });
+      }, 200);
+    }
+    return;
+  }
   showSalesRequestAutoSaveStatus(state.lang === "it" ? "Salvataggio..." : "Saving...", "success", 30000);
   try {
-    await persistSalesRequestRecordPatch(current, patch);
+    // Rimuovi flag interno prima di inviare al server
+    const cleanPatch = Object.fromEntries(Object.entries(patch).filter(([k]) => !k.startsWith("__")));
+    await persistSalesRequestRecordPatch(current, cleanPatch);
     showSalesRequestAutoSaveStatus(state.lang === "it" ? "✓ Salvato" : "✓ Saved", "success", 2000);
   } catch (err) {
     console.warn("[auto-save] sales request patch failed:", err?.message);
@@ -15564,6 +15599,12 @@ function showApp() {
   startShopifyAutoSync();
   startSalesRequestAutoSync();
   startUsageHeartbeat();
+  if (state.currentUser?.role === "office") {
+    void loadPreventivoTexts();
+    void loadPreventivoCatalog();
+  }
+  // Ripristina la selezione del template preventivo (v2 default / v1 classico)
+  setSelectedQuoteTemplate(getSelectedQuoteTemplate());
   clearPendingCurrentViewRefresh();
   setShellPending(false);
   state.mobileMenuOpen = false;
@@ -20595,8 +20636,13 @@ bindEvent(ui.salesRequestCompactToggle, "click", () => {
 bindEvent(ui.salesRequestNoteField, "input", (event) => {
   autosizeTextarea(event.target);
 });
-bindEvent(ui.salesRequestForm, "input", () => {
+bindEvent(ui.salesRequestForm, "input", (event) => {
   state.salesRequestFormDirty = true;
+  // Skip per status/assignment: il loro 'change' handler dedicato esegue
+  // un patch immediato ed evita il doppio salvataggio (race condition
+  // tra patch mirato e full save).
+  const field = String(event?.target?.name || "");
+  if (["status", "assignment"].includes(field)) return;
   const requestId = state.selectedSalesRequestId;
   if (requestId) debouncedAutoSaveSalesRequestFull(requestId);
 });
@@ -20606,7 +20652,9 @@ bindEvent(ui.salesRequestForm, "change", (event) => {
   const requestId = state.selectedSalesRequestId;
   if (!requestId) return;
   if (field && ["status", "assignment"].includes(field)) {
-    // Campi select critici: salva immediatamente
+    // Campi select critici: cancella eventuale full save in coda (per evitare
+    // race con il patch mirato) e salva immediatamente solo il campo cambiato.
+    clearTimeout(_salesRequestAutoSaveTimer);
     void autoSaveSalesRequestPatch(requestId, { [field]: event.target.value });
   } else {
     // Altri select/checkbox: debounce full save
@@ -20665,6 +20713,973 @@ bindEvent(ui.salesGeneratorWhatsAppButton, "click", () => {
   trackUsageEvent("quote_whatsapp_opened", { requestId: state.selectedSalesRequestId || "" });
   markSelectedSalesRequestQuoteSent();
 });
+const PREVENTIVO_STATIC_DEFAULTS = Object.freeze({
+  certifications: [
+    { icon: "🛡️", name: "Garanzia 8 anni",  sub: "Difetti di fabbricazione" },
+    { icon: "🧪",  name: "REACH 2024",       sub: "SVHC 223 sostanze" },
+    { icon: "🧒",  name: "EN71-3:2013",      sub: "Sicurezza bambini" },
+    { icon: "🏭",  name: "ISO 9001:2015",    sub: "Sistema qualità" },
+  ],
+  conditions: [
+    { label: "Validità",   text: "Offerta valida 30 giorni dalla data di emissione." },
+    { label: "Pagamento",  text: "Saldo all'ordine via bonifico, carta, PayPal, Scalapay o HeyLight 0%." },
+    { label: "Spedizione", text: "Gratuita in Italia, 3–5 giorni lavorativi, piano strada." },
+    { label: "Resi",       text: "Entro 14 giorni se prodotto integro e non posato." },
+    { label: "Garanzia",   text: "8 anni su difetti di fabbricazione. Non copre usura normale." },
+    { label: "Privacy",    text: "Dati trattati ai sensi GDPR — privacy@pratosinteticoitalia.com" },
+  ],
+  installationWork: {
+    title: "Cosa include il servizio di posa",
+    intro: "La posa è eseguita da tecnici specializzati con pluriennale esperienza nel settore. L'intervento è completo e prevede le seguenti fasi:",
+    steps: [
+      { title: "Sopralluogo e preparazione", text: "Verifica delle misure reali in cantiere, livellamento del fondo, rimozione di radici e detriti." },
+      { title: "Posa del fondo drenante", text: "Stesa del pietrisco (3 cm), compattazione e regolarizzazione per garantire drenaggio uniforme." },
+      { title: "Telo separatore", text: "Posizionamento del telo isolante anti-radice per evitare la crescita di infestanti." },
+      { title: "Posa del prato", text: "Stesa dei rotoli con allineamento del verso del filato, taglio perimetrale a misura e giunzioni con bande e colla bicomponente." },
+      { title: "Fissaggio e finitura", text: "Fissaggio con picchetti a U lungo il perimetro, intaso facoltativo, spazzolatura finale per ottimizzare la resa estetica." },
+      { title: "Consegna e pulizia", text: "Verifica finale insieme al cliente, rimozione degli scarti dal cantiere e consegna del prato pronto all'uso." },
+    ],
+    note: "Tempi medi di posa: 1–3 giorni lavorativi a seconda della metratura e delle condizioni del fondo. La squadra è coperta da assicurazione RC professionale.",
+  },
+});
+
+function defaultProductTech(modelName = "") {
+  // Estrae l'altezza in mm dal nome (es. "Faggio 25 mm" → "25 mm") e usa
+  // valori plausibili per gli altri campi. Per dati esatti per prodotto,
+  // configurare un catalogo dedicato (TODO commit successivo).
+  const hMatch = String(modelName).match(/(\d+)\s*mm/i);
+  const altezza = hMatch ? `${hMatch[1]} mm` : "—";
+  return {
+    struttura: "Unidirezionale",
+    densita: "—",
+    dtex: "—",
+    drenaggio: "40 L/min/m²",
+    peso: "—",
+    note: `REACH · EN71-3 · ASTM-D2616 · Altezza filo ${altezza}`,
+  };
+}
+
+const PREVENTIVO_TEXTS_DEFAULTS = Object.freeze({
+  brandTagline: "Dal 2016 · Fornitura e Posa Professionale",
+  brandCompany: "VERTEX SRLS · P.IVA 04863610616",
+  materialsDescFornitura: "La fornitura viene preparata in rotoli da 2 metri di larghezza, con lunghezza a scelta in base alle misure del progetto. La spedizione avviene in 3/5 giorni lavorativi ed è gratuita per ordini superiori a 500 euro di imponibile.",
+  materialsDescPosa: "La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm, telo separatore, giunte, fissaggi e finiture perimetrali. Il materiale è quantificato in base ai metri quadri inseriti.",
+  paymentMain: "Pagamento disponibile con carta, PayPal, bonifico bancario, Scalapay e HeyLight.",
+  paymentHeyLight: "Con HeyLight puoi suddividere il preventivo in 3 o 5 rate senza interessi.",
+  footerInfo: "VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com",
+});
+
+function getPreventivoTexts() {
+  // Restituisce sempre un oggetto completo (default + override dello state)
+  const overrides = state.preventivoTexts || {};
+  return Object.fromEntries(
+    Object.keys(PREVENTIVO_TEXTS_DEFAULTS).map((k) => [k, String(overrides[k] || PREVENTIVO_TEXTS_DEFAULTS[k]).trim() || PREVENTIVO_TEXTS_DEFAULTS[k]])
+  );
+}
+
+async function loadPreventivoTexts() {
+  try {
+    const items = await apiFetch("/api/catalog/preventivo_branding");
+    if (Array.isArray(items) && items.length) {
+      // Salviamo come singolo record con value="texts" + metadata JSON contenente tutti i campi
+      const record = items.find((it) => it.value === "texts") || items[0];
+      const meta = record?.metadata || {};
+      state.preventivoTexts = typeof meta === "string" ? JSON.parse(meta) : meta;
+    } else {
+      state.preventivoTexts = null;
+    }
+  } catch (err) {
+    console.warn("[preventivo-texts] load failed:", err?.message);
+    state.preventivoTexts = null;
+  }
+  fillPreventivoTextsForm();
+}
+
+function fillPreventivoTextsForm() {
+  const form = ui.preventivoTextsForm;
+  if (!form) return;
+  const texts = getPreventivoTexts();
+  Object.keys(PREVENTIVO_TEXTS_DEFAULTS).forEach((k) => {
+    const field = form.elements?.[k];
+    if (field) field.value = String(state.preventivoTexts?.[k] || "");
+    if (field && !state.preventivoTexts?.[k]) field.setAttribute("placeholder", PREVENTIVO_TEXTS_DEFAULTS[k]);
+  });
+}
+
+async function savePreventivoTexts(event) {
+  if (event) event.preventDefault();
+  const form = ui.preventivoTextsForm;
+  if (!form) return;
+  const formData = new FormData(form);
+  const payload = {};
+  Object.keys(PREVENTIVO_TEXTS_DEFAULTS).forEach((k) => {
+    const v = String(formData.get(k) || "").trim();
+    if (v) payload[k] = v;
+  });
+  setStatus(ui.preventivoTextsStatus, "success", state.lang === "it" ? "Salvataggio in corso…" : "Saving…");
+  try {
+    await apiFetch("/api/catalog/preventivo_branding", {
+      method: "POST",
+      body: JSON.stringify({ value: "texts", label: "Testi preventivo v2", position: 0, metadata: payload }),
+    });
+    state.preventivoTexts = payload;
+    setStatus(ui.preventivoTextsStatus, "success", state.lang === "it" ? "✓ Testi salvati. Verranno usati per i nuovi preventivi generati." : "✓ Saved.");
+    showToast(state.lang === "it" ? "Testi preventivo salvati" : "Quote texts saved", "success");
+  } catch (err) {
+    setStatus(ui.preventivoTextsStatus, "error", state.lang === "it" ? "Salvataggio non riuscito. Riprova." : "Save failed.");
+  }
+}
+
+function resetPreventivoTexts() {
+  state.preventivoTexts = null;
+  fillPreventivoTextsForm();
+  setStatus(ui.preventivoTextsStatus, "success", state.lang === "it" ? "Default ripristinati nei campi. Clicca Salva per confermare." : "Defaults restored in fields. Click Save to confirm.");
+}
+
+// ─── Catalogo prodotti — Dati tecnici ────────────────────────────────────────
+
+const PREVENTIVO_PRODUCT_DEFAULTS = Object.freeze([
+  { slug: "tasso-12mm",   label: "Tasso 12 mm" },
+  { slug: "bonsai-18mm",  label: "Bonsai 18 mm" },
+  { slug: "faggio-25mm",  label: "Faggio 25 mm" },
+  { slug: "betulla-30mm", label: "Betulla 30 mm" },
+  { slug: "gelso-30mm",   label: "Gelso 30 mm" },
+  { slug: "cedro-30mm",   label: "Cedro 30 mm" },
+  { slug: "frassino-35mm",label: "Frassino 35 mm" },
+  { slug: "ginepro-35mm", label: "Ginepro 35 mm" },
+  { slug: "sequoia-40mm", label: "Sequoia 40 mm" },
+  { slug: "rovere-40mm",  label: "Rovere 40 mm" },
+  { slug: "palma-40mm",   label: "Palma 40 mm" },
+  { slug: "cipresso-40mm",label: "Cipresso 40 mm" },
+  { slug: "ginepro-45mm", label: "Ginepro 45 mm" },
+  { slug: "abete-45mm",   label: "Abete 45 mm" },
+  { slug: "mogano-50mm",  label: "Mogano 50 mm" },
+]);
+
+const PREVENTIVO_PRODUCT_FIELDS = ["code", "struttura", "densita", "dtex", "drenaggio", "peso", "note"];
+
+async function loadPreventivoCatalog() {
+  try {
+    const items = await apiFetch("/api/catalog/preventivo_products");
+    state.preventivoCatalog = {};
+    if (Array.isArray(items)) {
+      items.forEach((item) => {
+        const slug = String(item.value || "").trim();
+        if (!slug) return;
+        const meta = typeof item.metadata === "string" ? JSON.parse(item.metadata) : (item.metadata || {});
+        state.preventivoCatalog[slug] = {
+          label: item.label || slug,
+          ...meta,
+        };
+      });
+    }
+  } catch (err) {
+    console.warn("[preventivo-catalog] load failed:", err?.message);
+    state.preventivoCatalog = {};
+  }
+  populatePreventivoProductSelect();
+}
+
+function populatePreventivoProductSelect() {
+  const sel = ui.preventivoProductSelect;
+  if (!sel) return;
+  const current = sel.value || PREVENTIVO_PRODUCT_DEFAULTS[2].slug; // default su Faggio 25mm
+  sel.innerHTML = PREVENTIVO_PRODUCT_DEFAULTS.map((p) => {
+    const saved = state.preventivoCatalog?.[p.slug];
+    const marker = saved && saved.code ? " ✓" : "";
+    return `<option value="${p.slug}">${p.label}${marker}</option>`;
+  }).join("");
+  sel.value = current;
+  fillPreventivoProductForm();
+  updatePreventivoProductSavedList();
+}
+
+function updatePreventivoProductSavedList() {
+  if (!ui.preventivoProductSavedList) return;
+  const savedCount = Object.values(state.preventivoCatalog || {}).filter((v) => v && v.code).length;
+  const total = PREVENTIVO_PRODUCT_DEFAULTS.length;
+  ui.preventivoProductSavedList.textContent = `${savedCount}/${total} ${state.lang === "it" ? "modelli configurati" : "models configured"}`;
+}
+
+function fillPreventivoProductForm() {
+  const form = ui.preventivoProductForm;
+  const sel = ui.preventivoProductSelect;
+  if (!form || !sel) return;
+  const slug = sel.value;
+  const saved = state.preventivoCatalog?.[slug] || {};
+  PREVENTIVO_PRODUCT_FIELDS.forEach((k) => {
+    const field = form.elements?.[k];
+    if (field) field.value = String(saved[k] || "");
+  });
+  // Immagine prodotto: ripristina dataUrl o cerca file in product-images/<slug>.png
+  const dataUrl = String(saved.imageDataUrl || "");
+  if (ui.productImageDataUrl) ui.productImageDataUrl.value = dataUrl;
+  if (dataUrl) {
+    renderProductImagePreview(dataUrl);
+  } else {
+    // Prova a precaricare il file filesystem se esiste (fallback per i 3 modelli pre-popolati)
+    const img = new Image();
+    img.onload = () => renderProductImagePreview(`./product-images/${slug}.png`);
+    img.onerror = () => renderProductImagePreview("");
+    img.src = `./product-images/${slug}.png`;
+  }
+  if (ui.productImageInput) ui.productImageInput.value = "";
+}
+
+async function savePreventivoProduct(event) {
+  if (event) event.preventDefault();
+  const form = ui.preventivoProductForm;
+  const sel = ui.preventivoProductSelect;
+  if (!form || !sel) return;
+  const slug = sel.value;
+  if (!slug) return;
+  const model = PREVENTIVO_PRODUCT_DEFAULTS.find((p) => p.slug === slug);
+  const label = model?.label || slug;
+  const formData = new FormData(form);
+  const metadata = {};
+  PREVENTIVO_PRODUCT_FIELDS.forEach((k) => {
+    const v = String(formData.get(k) || "").trim();
+    if (v) metadata[k] = v;
+  });
+  const imageDataUrl = String(formData.get("imageDataUrl") || "").trim();
+  if (imageDataUrl) metadata.imageDataUrl = imageDataUrl;
+  setStatus(ui.preventivoProductStatus, "success", state.lang === "it" ? "Salvataggio in corso…" : "Saving…");
+  try {
+    await apiFetch("/api/catalog/preventivo_products", {
+      method: "POST",
+      body: JSON.stringify({ value: slug, label, position: 0, metadata }),
+    });
+    state.preventivoCatalog[slug] = { label, ...metadata };
+    setStatus(ui.preventivoProductStatus, "success", state.lang === "it" ? `✓ ${label} salvato.` : `✓ ${label} saved.`);
+    showToast(state.lang === "it" ? `${label} aggiornato` : `${label} updated`, "success");
+    populatePreventivoProductSelect();
+    sel.value = slug;
+  } catch (err) {
+    setStatus(ui.preventivoProductStatus, "error", state.lang === "it" ? "Salvataggio non riuscito." : "Save failed.");
+  }
+}
+
+function buildProductTechFromCatalog(modelName = "") {
+  const slug = slugifyModelName(modelName);
+  const saved = state.preventivoCatalog?.[slug];
+  if (!saved || !saved.code) return null;
+  return {
+    code: saved.code,
+    imageDataUrl: saved.imageDataUrl || "",
+    tech: {
+      struttura: saved.struttura || "",
+      densita: saved.densita || "",
+      dtex: saved.dtex || "",
+      drenaggio: saved.drenaggio || "",
+      peso: saved.peso || "",
+      note: saved.note || "",
+    },
+  };
+}
+
+// ─── Upload immagine prodotto (catalogo) ─────────────────────────────────────
+
+const PRODUCT_IMAGE_MAX_SIDE = 600;     // px lato lungo dopo resize
+const PRODUCT_IMAGE_JPEG_QUALITY = 0.85;
+const PRODUCT_IMAGE_HARD_LIMIT_BYTES = 20 * 1024 * 1024; // 20MB hard limit (protezione OOM)
+
+function renderProductImagePreview(dataUrl) {
+  const el = ui.productImagePreview;
+  if (!el) return;
+  if (dataUrl) {
+    el.innerHTML = `<img src="${dataUrl}" alt="Anteprima foto prodotto" />`;
+  } else {
+    el.innerHTML = "🌿";
+  }
+}
+
+function resizeImageDataUrl(srcDataUrl) {
+  // Ridimensiona a max 600px lato lungo + JPEG 0.85 via canvas.
+  // Garantisce output piccolo (~30-80 KB) indipendentemente dalla dimensione originale.
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const maxSide = PRODUCT_IMAGE_MAX_SIDE;
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        // Fondo bianco per JPEG (no trasparenza)
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const out = canvas.toDataURL("image/jpeg", PRODUCT_IMAGE_JPEG_QUALITY);
+        resolve(out);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => reject(new Error("image_decode_failed"));
+    img.src = srcDataUrl;
+  });
+}
+
+function handleProductImageChange(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  if (file.size > PRODUCT_IMAGE_HARD_LIMIT_BYTES) {
+    showToast(state.lang === "it" ? "Foto eccessivamente grande (>20MB)" : "Image too large (>20MB)", "warning");
+    event.target.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const srcDataUrl = String(reader.result || "");
+      const resized = await resizeImageDataUrl(srcDataUrl);
+      if (ui.productImageDataUrl) ui.productImageDataUrl.value = resized;
+      renderProductImagePreview(resized);
+    } catch (err) {
+      showToast(state.lang === "it" ? "Impossibile elaborare l'immagine" : "Cannot process image", "error");
+      console.warn("[product-image] resize failed:", err?.message);
+    }
+  };
+  reader.onerror = () => {
+    showToast(state.lang === "it" ? "Impossibile leggere l'immagine" : "Cannot read image", "error");
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleProductImageClear() {
+  if (ui.productImageDataUrl) ui.productImageDataUrl.value = "";
+  if (ui.productImageInput) ui.productImageInput.value = "";
+  renderProductImagePreview("");
+}
+
+// ─── Modello custom (fuori catalogo) — toolbar generatore ─────────────────────
+
+function getCustomModelOverride() {
+  const name = String(ui.customModelName?.value || "").trim();
+  const priceRaw = String(ui.customModelPrice?.value || "").trim();
+  const price = parseFloat(priceRaw.replace(",", "."));
+  const target = parseInt(String(ui.customModelTarget?.value || "1"), 10);
+  if (!name || !Number.isFinite(price) || price <= 0) return null;
+  const isOpen = ui.customModelToggle?.open;
+  if (!isOpen) return null;
+  return { target: target >= 1 && target <= 3 ? target : 1, name, pricePerSqm: price };
+}
+
+// ─── Nascondi "Modello libero" dell'iframe React (sostituito dalla toolbar) ───
+
+let _iframeStyleInjected = false;
+
+function injectIframeHideStyles() {
+  if (_iframeStyleInjected) return;
+  const iframe = document.getElementById("sales-generator-frame");
+  if (!iframe || !iframe.contentDocument) return;
+  const doc = iframe.contentDocument;
+  const tryInject = () => {
+    if (_iframeStyleInjected) return;
+    // Strategia 1: trova input con placeholder "Es. Sportgreen Plus 45mm"
+    let anchor = doc.querySelector('input[placeholder*="Sportgreen"]')
+              || doc.querySelector('input[placeholder*="Plus 45"]')
+              || doc.querySelector('input[placeholder*="Es. Sport"]');
+    // Strategia 2: cerca testo "Modello libero" in label/div/span
+    if (!anchor) {
+      const els = Array.from(doc.querySelectorAll("label, div, span, p, h1, h2, h3, h4"));
+      anchor = els.find((el) => /^modello libero/i.test(String(el.textContent || "").trim()));
+    }
+    if (!anchor) return;
+    // Risali al container con sfondo scuro (la "barra" del modello libero è
+    // tipicamente in un wrapper con background colorato distinto)
+    let container = anchor;
+    for (let i = 0; i < 10 && container.parentElement; i++) {
+      container = container.parentElement;
+      const cs = doc.defaultView.getComputedStyle(container);
+      const hasPaddingBlock = parseFloat(cs.paddingTop) >= 8 || parseFloat(cs.paddingBottom) >= 8;
+      const hasBg = cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent";
+      if (hasPaddingBlock && (hasBg || cs.borderRadius)) break;
+    }
+    container.setAttribute("data-psi-hide", "modello-libero");
+    if (!doc.getElementById("psi-injected-hide-style")) {
+      const style = doc.createElement("style");
+      style.id = "psi-injected-hide-style";
+      style.textContent = `[data-psi-hide="modello-libero"] { display: none !important; }`;
+      doc.head.appendChild(style);
+    }
+    _iframeStyleInjected = true;
+  };
+  tryInject();
+  if (!_iframeStyleInjected) {
+    setTimeout(tryInject, 400);
+    setTimeout(tryInject, 1200);
+    setTimeout(tryInject, 2500);
+    setTimeout(tryInject, 5000);
+  }
+}
+
+// ─── Anteprima live preventivo v2 (iframe affiancato) ────────────────────────
+
+const V2_PREVIEW_FRAME_ID = "preventivo-v2-preview-frame";
+const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-mutation-observer-227";
+let _v2PreviewInterval = 0;
+let _v2PreviewReady = false;
+let _v2LastSignature = "";
+// MutationObserver per re-applicare il hide del React ad ogni render
+let _reactHideObserver = null;
+let _reactHideDebounceTimer = 0;
+
+function refreshV2PreviewIfNeeded() {
+  const frame = document.getElementById(V2_PREVIEW_FRAME_ID);
+  if (!frame || frame.hidden || !_v2PreviewReady) return;
+  // Re-applica hide del React (potrebbe re-renderizzare elementi nascosti)
+  applyIframePreviewVisibility("v2");
+  const payload = extractGeneratorPayloadFromIframe();
+  if (!payload) return;
+  // Confronto sigillato per evitare postMessage inutili
+  const sig = JSON.stringify(payload);
+  if (sig === _v2LastSignature) return;
+  _v2LastSignature = sig;
+  try {
+    frame.contentWindow?.postMessage({ type: "psi:preventivo-v2:data", payload }, "*");
+  } catch (err) {
+    console.warn("[v2-preview] postMessage failed:", err?.message);
+  }
+}
+
+function startV2PreviewLoop() {
+  if (_v2PreviewInterval) return;
+  _v2PreviewInterval = window.setInterval(refreshV2PreviewIfNeeded, 1500);
+}
+
+function stopV2PreviewLoop() {
+  if (_v2PreviewInterval) {
+    clearInterval(_v2PreviewInterval);
+    _v2PreviewInterval = 0;
+  }
+  _v2PreviewReady = false;
+  _v2LastSignature = "";
+}
+
+// Listener per messaggio ready dell'iframe v2
+window.addEventListener("message", (event) => {
+  if (event?.data?.type === "psi:preventivo-v2:ready") {
+    _v2PreviewReady = true;
+    // Trigger un refresh immediato
+    _v2LastSignature = "";
+    refreshV2PreviewIfNeeded();
+  }
+});
+
+function parseEuroNumber(raw) {
+  if (raw == null) return 0;
+  const cleaned = String(raw).trim().replace(/€/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatItalianDateShort(iso) {
+  if (!iso || typeof iso !== "string") return "";
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1].slice(2)}`;
+}
+
+function slugifyModelName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function parseModelOptionLabel(label = "") {
+  // "Faggio 25 mm — 10,90 €/mq" → { name: "Faggio 25 mm", pricePerSqm: 10.90 }
+  const text = String(label || "").trim();
+  const match = text.match(/^(.+?)\s*[—–-]\s*([\d.,]+)\s*€\/mq/i);
+  if (match) {
+    return { name: match[1].trim(), pricePerSqm: parseEuroNumber(match[2]) };
+  }
+  return { name: text, pricePerSqm: 0 };
+}
+
+function getActiveSegmentButton(doc, segmentTexts = []) {
+  // Trova il button "attivo" tra un set di alternative (es. "Solo Fornitura" / "Fornitura + Posa").
+  // Considera attivo quello con background colorato (verde scuro) o classe is-active.
+  const buttons = Array.from(doc.querySelectorAll("button")).filter((b) => {
+    const t = String(b.textContent || "").trim();
+    return segmentTexts.some((s) => t.toLowerCase() === s.toLowerCase());
+  });
+  if (!buttons.length) return null;
+  // Strategia: il button "attivo" ha solitamente un background scuro (verde Prato Sintetico)
+  // e un font color chiaro. Confronto il colore di sfondo per identificarlo.
+  const active = buttons.find((b) => {
+    const bg = b.style.background || b.style.backgroundColor || "";
+    const cs = b.ownerDocument.defaultView.getComputedStyle(b);
+    const computedBg = cs.backgroundColor || "";
+    // Rilevante quando il background è scuro (R+G+B basso) e non trasparente
+    const rgb = computedBg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!rgb) return false;
+    const sum = parseInt(rgb[1]) + parseInt(rgb[2]) + parseInt(rgb[3]);
+    return sum < 350; // soglia: verde scuro Prato Sintetico ~28+66+41 = 135
+  });
+  return active || buttons[0];
+}
+
+function extractGeneratorPayloadFromIframe() {
+  // Legge dal DOM del generatore React i valori compilati e costruisce un payload
+  // per il preventivo v2. Restituisce null se l'iframe non è accessibile o se non
+  // ci sono dati utili (es. nessun MQ inserito).
+  try {
+    const iframe = document.getElementById("sales-generator-frame");
+    if (!iframe || !iframe.contentDocument) return null;
+    const doc = iframe.contentDocument;
+    const inputs = Array.from(doc.querySelectorAll("input"));
+    const selects = Array.from(doc.querySelectorAll("select"));
+
+    // Mappatura per indici stabile (verificata sul DOM React-renderizzato):
+    // input[0]  = Nr. Preventivo
+    // input[1]  = Metri Quadri
+    // input[2]  = Data
+    // input[3]  = Validità fino a
+    // input[4-9]  = Nome / Cognome / Città / Telefono / Email / Società
+    // input[10-12] = Sconti % opzioni 1/2/3
+    // input[13] = Costo spedizione €
+    // input[14] = Materiali totali auto €
+    // input[15] = Sconto materiali %
+    // select[0] = Superficie
+    // select[1-3] = Modelli opzioni 1/2/3
+    if (inputs.length < 16 || selects.length < 4) return null;
+
+    const sqm = Number(inputs[1]?.value || 0);
+    if (!sqm || sqm <= 0) return null; // se non ci sono MQ, niente preventivo realistico
+
+    // Testi personalizzati (Impostazioni → Testi preventivo) o default
+    const customTexts = getPreventivoTexts();
+
+    const quoteNumber = String(inputs[0]?.value || "").trim();
+    const dataDal = inputs[2]?.value || "";
+    const dataAl  = inputs[3]?.value || "";
+    const nome    = String(inputs[4]?.value || "").trim();
+    const cognome = String(inputs[5]?.value || "").trim();
+    const citta   = String(inputs[6]?.value || "").trim();
+    const tel     = String(inputs[7]?.value || "").trim();
+    const email   = String(inputs[8]?.value || "").trim();
+    const ragione = String(inputs[9]?.value || "").trim();
+    const shippingCost = parseEuroNumber(inputs[13]?.value);
+    const materialsTotal = parseEuroNumber(inputs[14]?.value);
+    const materialsDiscountPct = Number(inputs[15]?.value || 0);
+
+    // Tipologia attiva (Solo Fornitura / Fornitura + Posa)
+    const tipoActive = getActiveSegmentButton(doc, ["Solo Fornitura", "Fornitura + Posa"]);
+    const isPosa = tipoActive && /posa/i.test(tipoActive.textContent || "");
+    const mode = isPosa ? "fornitura+posa" : "solo-fornitura";
+
+    // Costruisci opzioni dai 3 select modello + sconti
+    const vat = 22;
+    const options = [];
+    const sconti = [
+      Number(inputs[10]?.value || 0),
+      Number(inputs[11]?.value || 0),
+      Number(inputs[12]?.value || 0),
+    ];
+    for (let i = 1; i <= 3; i++) {
+      const sel = selects[i];
+      if (!sel) continue;
+      const opt = sel.options?.[sel.selectedIndex];
+      if (!opt) continue;
+      const parsed = parseModelOptionLabel(opt.textContent || "");
+      if (!parsed.name || parsed.pricePerSqm <= 0) continue;
+      const discount = sconti[i - 1] || 0;
+      // Calcoli — tieni semplice: rispecchia i totali del generatore
+      const grossPrice = parsed.pricePerSqm * sqm;
+      const discountedPrice = grossPrice * (1 - discount / 100);
+      const materialsBase = materialsTotal || 0;
+      const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
+      // Posa: se mode posa, il generatore React usa un campo aggiuntivo (potrebbe non
+      // essere mappato qui). Per ora 0; il payload reale lo settera quando arriva da bridge.
+      const installation = 0;
+      const installationTotal = isPosa ? installation * sqm : 0;
+      const shipping = shippingCost || 0;
+      const netTotal = discountedPrice + materialsAfterDisc + installationTotal + shipping;
+      const grandTotal = netTotal * (1 + vat / 100);
+      const slug = slugifyModelName(parsed.name);
+      // Usa dati dal Catalogo prodotti (Impostazioni) se configurati,
+      // altrimenti fallback ai default auto-generati
+      const catalogData = buildProductTechFromCatalog(parsed.name);
+      const heightMatch = parsed.name.match(/(\d+)\s*mm/i);
+      const fallbackCode = `${parsed.name.split(/\s+/)[0].substring(0,3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
+      const code = catalogData?.code || fallbackCode;
+      const tech = catalogData?.tech || defaultProductTech(parsed.name);
+      const imageDataUrl = catalogData?.imageDataUrl || "";
+      options.push({
+        slug,
+        name: parsed.name,
+        code,
+        tagline: discount > 0 ? `Sconto ${discount}%` : "",
+        pricePerSqm: parsed.pricePerSqm,
+        discount,
+        materials: materialsAfterDisc,
+        installation: isPosa ? installation : 0,
+        shippingLabel: shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita",
+        net: netTotal,
+        total: grandTotal,
+        finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
+        heylightInstallment: grandTotal > 0 ? grandTotal / 5 : 0,
+        tech,
+        imageDataUrl,
+      });
+    }
+
+    // Applica modello custom (sostituisce un'opzione esistente o l'aggiunge se vuota)
+    const customModel = getCustomModelOverride();
+    if (customModel) {
+      const idx = customModel.target - 1;
+      const customSlug = slugifyModelName(customModel.name);
+      const customDiscount = options[idx]?.discount || 0;
+      const grossPrice = customModel.pricePerSqm * sqm;
+      const discountedPrice = grossPrice * (1 - customDiscount / 100);
+      const materialsBase = materialsTotal || 0;
+      const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
+      const installationTotal = isPosa ? 0 * sqm : 0;
+      const shipping = shippingCost || 0;
+      const netTotal = discountedPrice + materialsAfterDisc + installationTotal + shipping;
+      const grandTotal = netTotal * (1 + vat / 100);
+      const customOption = {
+        slug: customSlug,
+        name: customModel.name,
+        code: "—",
+        tagline: `Fuori catalogo${customDiscount > 0 ? ` · sconto ${customDiscount}%` : ""}`,
+        pricePerSqm: customModel.pricePerSqm,
+        discount: customDiscount,
+        materials: materialsAfterDisc,
+        installation: 0,
+        shippingLabel: shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita",
+        net: netTotal,
+        total: grandTotal,
+        finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
+        heylightInstallment: grandTotal > 0 ? grandTotal / 5 : 0,
+        tech: defaultProductTech(customModel.name),
+        imageDataUrl: "",
+      };
+      if (options[idx]) {
+        options[idx] = { ...options[idx], ...customOption };
+      } else {
+        // Riempie con placeholder fino a target poi append
+        while (options.length < idx) {
+          options.push(null);
+        }
+        options[idx] = customOption;
+        // Rimuove eventuali null intermedi
+        options.splice(0, options.length, ...options.filter(Boolean));
+      }
+    }
+    if (!options.length) return null;
+
+    return {
+      quoteNumber: quoteNumber || `F-0000-00`,
+      customer: {
+        name: [nome, cognome].filter(Boolean).join(" ").trim() || ragione || "—",
+        city: citta || "—",
+        phone: tel || "—",
+        email: email || "—",
+      },
+      validFrom: formatItalianDateShort(dataDal),
+      validTo: formatItalianDateShort(dataAl),
+      sqm,
+      mode,
+      vat,
+      suggestedSlug: "",
+      options,
+      materials: {
+        desc: isPosa ? customTexts.materialsDescPosa : customTexts.materialsDescFornitura,
+        discount: materialsDiscountPct || 0,
+        list: [],
+        det: "",
+      },
+      heylight: { installments: 5, title: "Simulazione 5 rate HeyLight" },
+      branding: {
+        tagline: customTexts.brandTagline,
+        company: customTexts.brandCompany,
+      },
+      payment: {
+        main: customTexts.paymentMain,
+        heylight: customTexts.paymentHeyLight,
+      },
+      page2Footer: {
+        info: customTexts.footerInfo,
+        firmaAzienda: "Firma e timbro VERTEX SRLS",
+      },
+      // Default statici (commit successivo: editabili dalle Impostazioni)
+      certifications: PREVENTIVO_STATIC_DEFAULTS.certifications,
+      conditions: PREVENTIVO_STATIC_DEFAULTS.conditions,
+      installationWork: isPosa ? PREVENTIVO_STATIC_DEFAULTS.installationWork : null,
+    };
+  } catch (err) {
+    console.warn("[preventivo-v2] estrazione dal generatore fallita:", err?.message);
+    return null;
+  }
+}
+
+function getSelectedQuoteTemplate() {
+  try {
+    const saved = window.localStorage.getItem("psi:quote-template");
+    if (saved === "v1" || saved === "v2") return saved;
+  } catch {}
+  return "v2";
+}
+
+function setSelectedQuoteTemplate(template) {
+  try { window.localStorage.setItem("psi:quote-template", template); } catch {}
+  document.querySelectorAll(".quote-template-option").forEach((btn) => {
+    const isActive = btn.dataset.template === template;
+    btn.classList.toggle("is-active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  // Aggiorna hint
+  document.querySelectorAll("[data-template-hint]").forEach((el) => {
+    el.hidden = el.dataset.templateHint !== template;
+  });
+  // Nasconde l'anteprima preview embedded del React quando v2 è selezionato
+  // (più chiaro: mostra solo i campi del form di input)
+  document.body.classList.toggle("quote-v2-active", template === "v2");
+  applyIframePreviewVisibility(template);
+  // Connette o disconnette l'observer a seconda della modalità
+  if (template === "v2") {
+    connectReactHideObserver();
+  } else {
+    disconnectReactHideObserver();
+  }
+}
+
+function connectReactHideObserver() {
+  // Osserva il DOM dell'iframe React e ri-applica il hide ogni volta che React
+  // ri-renderizza (React rimuove data-psi-hide-area ad ogni reconciliation).
+  // Usa solo childList per non triggerare sui nostri stessi setAttribute.
+  disconnectReactHideObserver();
+  const reactIframe = document.getElementById("sales-generator-frame");
+  const reactDoc = reactIframe?.contentDocument;
+  if (!reactDoc?.body) return;
+  _reactHideObserver = new MutationObserver(() => {
+    clearTimeout(_reactHideDebounceTimer);
+    _reactHideDebounceTimer = window.setTimeout(() => {
+      if (getSelectedQuoteTemplate() === "v2") {
+        applyIframePreviewVisibility("v2");
+      }
+    }, 120);
+  });
+  _reactHideObserver.observe(reactDoc.body, { childList: true, subtree: true, attributes: false });
+}
+
+function disconnectReactHideObserver() {
+  clearTimeout(_reactHideDebounceTimer);
+  _reactHideDebounceTimer = 0;
+  if (_reactHideObserver) {
+    _reactHideObserver.disconnect();
+    _reactHideObserver = null;
+  }
+}
+
+function _findFormStartAnchor(doc) {
+  // Trova l'elemento "Tipo Destinatario" (inizio form React)
+  const els = Array.from(doc.querySelectorAll("*"));
+  return els.find((el) => {
+    const text = String(el.textContent || "").trim();
+    return text.length < 60 && /^tipo destinatario/i.test(text);
+  }) || null;
+}
+
+function _findGenerateButtonAnchor(doc) {
+  // Trova il bottone "Genera Preventivo" (fine form React)
+  return Array.from(doc.querySelectorAll("button")).find((b) =>
+    /^genera preventivo/i.test(String(b.textContent || "").trim())
+  ) || null;
+}
+
+function _hideAllBeforeAnchor(anchor, doc) {
+  // Risale dall'anchor fino a body, e ad OGNI livello nasconde tutti i
+  // siblings PRECEDENTI. Garantisce che tutto sopra al form sparisca,
+  // a qualsiasi profondità di nesting React.
+  if (!anchor || !doc) return;
+  let current = anchor;
+  while (current && current.parentElement && current !== doc.body) {
+    let sib = current.previousElementSibling;
+    while (sib) {
+      sib.setAttribute("data-psi-hide-area", "true");
+      sib = sib.previousElementSibling;
+    }
+    current = current.parentElement;
+  }
+}
+
+function _hideAllAfterAnchor(anchor, doc) {
+  // Risale dall'anchor fino a body, e ad OGNI livello nasconde tutti i
+  // siblings SUCCESSIVI. Garantisce che tutto sotto al form sparisca,
+  // a qualsiasi profondità di nesting React.
+  if (!anchor || !doc) return;
+  let current = anchor;
+  while (current && current.parentElement && current !== doc.body) {
+    let sib = current.nextElementSibling;
+    while (sib) {
+      sib.setAttribute("data-psi-hide-area", "true");
+      sib = sib.nextElementSibling;
+    }
+    current = current.parentElement;
+  }
+}
+
+function applyIframePreviewVisibility(template) {
+  // Quando v2 attivo: nasconde toolbar React (sopra il form) E anteprima
+  // preview embedded (sotto il form). Lascia visibili SOLO i campi del form.
+  // Mostra il preview frame v2 come anteprima live sotto.
+  try {
+    const reactIframe = document.getElementById("sales-generator-frame");
+    const v2Frame = document.getElementById(V2_PREVIEW_FRAME_ID);
+    const reactDoc = reactIframe?.contentDocument;
+
+    // Toggle visibilità del v2 preview frame
+    if (v2Frame) {
+      if (template === "v2") {
+        if (!v2Frame.src || !v2Frame.src.includes("preventivo-v2.html")) {
+          v2Frame.src = V2_PREVIEW_SRC;
+        }
+        v2Frame.hidden = false;
+        startV2PreviewLoop();
+      } else {
+        v2Frame.hidden = true;
+        stopV2PreviewLoop();
+      }
+    }
+
+    if (!reactDoc) return;
+
+    // Inietta stile unico
+    let style = reactDoc.getElementById("psi-preview-toggle-style");
+    if (!style) {
+      style = reactDoc.createElement("style");
+      style.id = "psi-preview-toggle-style";
+      reactDoc.head.appendChild(style);
+    }
+    style.textContent = `[data-psi-hide-area="true"] { display: none !important; }`;
+
+    // Reset attributi precedenti (per gestire ripristino in modalità v1)
+    Array.from(reactDoc.querySelectorAll('[data-psi-hide-area="true"]')).forEach((el) => {
+      el.removeAttribute("data-psi-hide-area");
+    });
+
+    if (template !== "v2") return; // v1: tutto resta visibile
+
+    // Nasconde TUTTO SOPRA il form (toolbar React) e TUTTO SOTTO il form
+    // (anteprima preventivo embedded), a OGNI livello di nesting React.
+    const formStart = _findFormStartAnchor(reactDoc);
+    if (formStart) _hideAllBeforeAnchor(formStart, reactDoc);
+    const genBtn = _findGenerateButtonAnchor(reactDoc);
+    if (genBtn) _hideAllAfterAnchor(genBtn, reactDoc);
+  } catch (err) {
+    console.warn("[preview-toggle] failed:", err?.message);
+  }
+}
+
+function triggerLegacyGeneratorPdf() {
+  // Clicca il bottone "Genera Preventivo" DENTRO l'iframe React (modello v1 classico)
+  try {
+    const iframe = document.getElementById("sales-generator-frame");
+    const doc = iframe?.contentDocument;
+    if (!doc) return false;
+    const btns = Array.from(doc.querySelectorAll("button"));
+    const generateBtn = btns.find((b) => /^genera preventivo/i.test(String(b.textContent || "").trim()));
+    if (generateBtn) {
+      generateBtn.click();
+      return true;
+    }
+  } catch (err) {
+    console.warn("[quote-template] legacy generator click failed:", err?.message);
+  }
+  return false;
+}
+
+bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
+  const template = getSelectedQuoteTemplate();
+  if (template === "v1") {
+    // Modello v1: triggera la generazione PDF dell'iframe React esistente
+    const ok = triggerLegacyGeneratorPdf();
+    if (!ok) {
+      showToast(state.lang === "it" ? "Impossibile generare con il modello v1. Usa il bottone interno del generatore." : "Cannot trigger v1 quote. Use the inner generator button.", "warning");
+    }
+    trackUsageEvent("quote_template_generate", { template: "v1", requestId: state.selectedSalesRequestId || "" });
+    return;
+  }
+  // Modello v2 (default): estrae dati live dall'iframe e apre preventivo-v2.html
+  const payload = extractGeneratorPayloadFromIframe();
+  try {
+    if (payload) {
+      window.localStorage.setItem("psi:preventivo-v2:data", JSON.stringify(payload));
+    } else {
+      window.localStorage.removeItem("psi:preventivo-v2:data");
+    }
+  } catch {}
+  const url = `./preventivo-v2.html?v=20260517-mutation-observer-227`;
+  const win = window.open(url, "psi_preventivo_v2", "noopener=yes");
+  if (!win) {
+    showToast(state.lang === "it" ? "Il browser ha bloccato il popup. Consenti i popup per questo sito e riprova." : "Popup blocked. Allow popups for this site.", "warning", 6000);
+  }
+  trackUsageEvent("quote_template_generate", {
+    template: "v2",
+    requestId: state.selectedSalesRequestId || "",
+    hasLiveData: payload ? "yes" : "no",
+  });
+});
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest(".quote-template-option[data-template]");
+  if (!btn) return;
+  const template = btn.dataset.template === "v1" ? "v1" : "v2";
+  setSelectedQuoteTemplate(template);
+});
+bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
+bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);
+bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
+bindEvent(ui.preventivoProductSelect, "change", fillPreventivoProductForm);
+bindEvent(ui.productImageInput, "change", handleProductImageChange);
+bindEvent(ui.productImageClear, "click", handleProductImageClear);
+
+// Quando l'utente modifica il pannello "Modello custom", forza refresh
+// dell'anteprima v2 al prossimo poll (signature reset).
+["customModelTarget", "customModelName", "customModelPrice"].forEach((key) => {
+  const el = ui[key];
+  if (el) {
+    el.addEventListener("input", () => { _v2LastSignature = ""; });
+    el.addEventListener("change", () => { _v2LastSignature = ""; });
+  }
+});
+if (ui.customModelToggle) {
+  ui.customModelToggle.addEventListener("toggle", () => { _v2LastSignature = ""; });
+}
+
+// Inietta CSS per nascondere "Modello libero" dall'iframe quando si entra nel generatore
+// + applica visibilità anteprima preview in base al template selezionato
+const iframeEl = document.getElementById("sales-generator-frame");
+if (iframeEl) {
+  iframeEl.addEventListener("load", () => {
+    _iframeStyleInjected = false;
+    injectIframeHideStyles();
+    // Riapplica il toggle anteprima dopo che l'iframe ha caricato il suo DOM
+    setTimeout(() => applyIframePreviewVisibility(getSelectedQuoteTemplate()), 600);
+    setTimeout(() => applyIframePreviewVisibility(getSelectedQuoteTemplate()), 1600);
+    setTimeout(() => {
+      applyIframePreviewVisibility(getSelectedQuoteTemplate());
+      // Collega l'observer DOPO che React ha finito il primo render
+      // (solo se siamo in modalità v2, altrimenti non serve)
+      if (getSelectedQuoteTemplate() === "v2") connectReactHideObserver();
+    }, 3000);
+  });
+  // Riprova all'avvio (l'iframe potrebbe essere già caricato)
+  setTimeout(() => {
+    injectIframeHideStyles();
+    applyIframePreviewVisibility(getSelectedQuoteTemplate());
+  }, 1500);
+}
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
