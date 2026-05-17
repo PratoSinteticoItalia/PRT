@@ -21120,7 +21120,7 @@ function injectIframeHideStyles() {
 // ─── Anteprima live preventivo v2 (iframe affiancato) ────────────────────────
 
 const V2_PREVIEW_FRAME_ID = "preventivo-v2-preview-frame";
-const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-hide-225";
+const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-aggressive-226";
 let _v2PreviewInterval = 0;
 let _v2PreviewReady = false;
 let _v2LastSignature = "";
@@ -21128,6 +21128,8 @@ let _v2LastSignature = "";
 function refreshV2PreviewIfNeeded() {
   const frame = document.getElementById(V2_PREVIEW_FRAME_ID);
   if (!frame || frame.hidden || !_v2PreviewReady) return;
+  // Re-applica hide del React (potrebbe re-renderizzare elementi nascosti)
+  applyIframePreviewVisibility("v2");
   const payload = extractGeneratorPayloadFromIframe();
   if (!payload) return;
   // Confronto sigillato per evitare postMessage inutili
@@ -21442,36 +21444,52 @@ function setSelectedQuoteTemplate(template) {
   applyIframePreviewVisibility(template);
 }
 
-function _findFormStartContainer(doc) {
-  // Trova l'elemento "Tipo Destinatario" e risali al primo ancestor che abbia
-  // siblings PRECEDENTI (= toolbar superiore React). Restituisce l'ancestor.
+function _findFormStartAnchor(doc) {
+  // Trova l'elemento "Tipo Destinatario" (inizio form React)
   const els = Array.from(doc.querySelectorAll("*"));
-  const formStart = els.find((el) => {
+  return els.find((el) => {
     const text = String(el.textContent || "").trim();
     return text.length < 60 && /^tipo destinatario/i.test(text);
-  });
-  if (!formStart) return null;
-  let container = formStart;
-  while (container.parentElement) {
-    if (container.previousElementSibling) return container;
-    container = container.parentElement;
-  }
-  return null;
+  }) || null;
 }
 
-function _findGenerateButtonContainer(doc) {
-  // Trova il button "Genera Preventivo" e risali al primo ancestor con
-  // siblings SUCCESSIVI (= anteprima preventivo embedded). Restituisce l'ancestor.
-  const genBtn = Array.from(doc.querySelectorAll("button")).find((b) =>
+function _findGenerateButtonAnchor(doc) {
+  // Trova il bottone "Genera Preventivo" (fine form React)
+  return Array.from(doc.querySelectorAll("button")).find((b) =>
     /^genera preventivo/i.test(String(b.textContent || "").trim())
-  );
-  if (!genBtn) return null;
-  let container = genBtn;
-  while (container.parentElement) {
-    if (container.nextElementSibling) return container;
-    container = container.parentElement;
+  ) || null;
+}
+
+function _hideAllBeforeAnchor(anchor, doc) {
+  // Risale dall'anchor fino a body, e ad OGNI livello nasconde tutti i
+  // siblings PRECEDENTI. Garantisce che tutto sopra al form sparisca,
+  // a qualsiasi profondità di nesting React.
+  if (!anchor || !doc) return;
+  let current = anchor;
+  while (current && current.parentElement && current !== doc.body) {
+    let sib = current.previousElementSibling;
+    while (sib) {
+      sib.setAttribute("data-psi-hide-area", "true");
+      sib = sib.previousElementSibling;
+    }
+    current = current.parentElement;
   }
-  return null;
+}
+
+function _hideAllAfterAnchor(anchor, doc) {
+  // Risale dall'anchor fino a body, e ad OGNI livello nasconde tutti i
+  // siblings SUCCESSIVI. Garantisce che tutto sotto al form sparisca,
+  // a qualsiasi profondità di nesting React.
+  if (!anchor || !doc) return;
+  let current = anchor;
+  while (current && current.parentElement && current !== doc.body) {
+    let sib = current.nextElementSibling;
+    while (sib) {
+      sib.setAttribute("data-psi-hide-area", "true");
+      sib = sib.nextElementSibling;
+    }
+    current = current.parentElement;
+  }
 }
 
 function applyIframePreviewVisibility(template) {
@@ -21515,25 +21533,12 @@ function applyIframePreviewVisibility(template) {
 
     if (template !== "v2") return; // v1: tutto resta visibile
 
-    // Nasconde TOOLBAR superiore React (Modello libero / Consigliato / Scarica PDF)
-    const formStart = _findFormStartContainer(reactDoc);
-    if (formStart) {
-      let sib = formStart.previousElementSibling;
-      while (sib) {
-        sib.setAttribute("data-psi-hide-area", "true");
-        sib = sib.previousElementSibling;
-      }
-    }
-
-    // Nasconde ANTEPRIMA preventivo embedded (siblings dopo "Genera Preventivo")
-    const genContainer = _findGenerateButtonContainer(reactDoc);
-    if (genContainer) {
-      let sib = genContainer.nextElementSibling;
-      while (sib) {
-        sib.setAttribute("data-psi-hide-area", "true");
-        sib = sib.nextElementSibling;
-      }
-    }
+    // Nasconde TUTTO SOPRA il form (toolbar React) e TUTTO SOTTO il form
+    // (anteprima preventivo embedded), a OGNI livello di nesting React.
+    const formStart = _findFormStartAnchor(reactDoc);
+    if (formStart) _hideAllBeforeAnchor(formStart, reactDoc);
+    const genBtn = _findGenerateButtonAnchor(reactDoc);
+    if (genBtn) _hideAllAfterAnchor(genBtn, reactDoc);
   } catch (err) {
     console.warn("[preview-toggle] failed:", err?.message);
   }
@@ -21577,7 +21582,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260517-hide-225`;
+  const url = `./preventivo-v2.html?v=20260517-aggressive-226`;
   const win = window.open(url, "psi_preventivo_v2", "noopener=yes");
   if (!win) {
     showToast(state.lang === "it" ? "Il browser ha bloccato il popup. Consenti i popup per questo sito e riprova." : "Popup blocked. Allow popups for this site.", "warning", 6000);
