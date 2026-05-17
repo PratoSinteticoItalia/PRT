@@ -10760,9 +10760,13 @@ function formatOrderRelativeDate(isoString) {
   if (!isoString) return { label: "", tone: "" };
   const orderDate = new Date(isoString);
   if (Number.isNaN(orderDate.getTime())) return { label: "", tone: "" };
-  const now = new Date();
-  const diffMs = now - orderDate;
-  const diffDays = Math.floor(diffMs / 86400000);
+  // Confronta GIORNI DI CALENDARIO (basato sulla data locale, non sui millisecondi):
+  // così "ieri sera tardi" rispetto a "oggi presto" risulta correttamente "Ieri",
+  // anche se l'intervallo in ore è < 24.
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfOrderDay = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate());
+  const diffDays = Math.round((startOfToday.getTime() - startOfOrderDay.getTime()) / 86400000);
   const lang = state.lang;
   const timeStr = orderDate.toLocaleTimeString(lang === "it" ? "it-IT" : "en-GB", { hour: "2-digit", minute: "2-digit" });
   let label;
@@ -21165,7 +21169,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260517-catalog-219`;
+  const url = `./preventivo-v2.html?v=20260517-date-220`;
   window.open(url, "psi_preventivo_v2", "noopener=yes");
   trackUsageEvent("preventivo_v2_preview_opened", {
     requestId: state.selectedSalesRequestId || "",
