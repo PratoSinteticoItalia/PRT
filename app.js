@@ -21120,7 +21120,7 @@ function injectIframeHideStyles() {
 // ─── Anteprima live preventivo v2 (iframe affiancato) ────────────────────────
 
 const V2_PREVIEW_FRAME_ID = "preventivo-v2-preview-frame";
-const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-mutation-observer-227";
+const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-clamp-iframe-229";
 let _v2PreviewInterval = 0;
 let _v2PreviewReady = false;
 let _v2LastSignature = "";
@@ -21513,10 +21513,33 @@ function _hideAllAfterAnchor(anchor, doc) {
   }
 }
 
+function clampIframeToFormHeight() {
+  // Ridimensiona l'iframe React per mostrare SOLO il form, tagliando
+  // qualsiasi preview embedded che React renderizza sotto il bottone.
+  // Più affidabile di _hideAllAfterAnchor: React può fare re-render a piacere,
+  // l'iframe semplicemente non mostra il contenuto oltre l'altezza impostata.
+  try {
+    const reactIframe = document.getElementById("sales-generator-frame");
+    const reactDoc = reactIframe?.contentDocument;
+    if (!reactIframe || !reactDoc) return;
+    const genBtn = _findGenerateButtonAnchor(reactDoc);
+    if (!genBtn) return;
+    // Posizione assoluta dal top del documento iframe (indipendente dallo scroll)
+    const scrollTop = reactDoc.documentElement?.scrollTop || reactDoc.body?.scrollTop || 0;
+    const rect = genBtn.getBoundingClientRect();
+    const newH = Math.ceil(rect.bottom + scrollTop + 56); // 56px di padding sotto il bottone
+    if (newH > 300 && newH < 8000) {
+      reactIframe.style.height = newH + "px";
+    }
+  } catch (err) {
+    console.warn("[clamp-iframe]", err?.message);
+  }
+}
+
 function applyIframePreviewVisibility(template) {
-  // Quando v2 attivo: nasconde toolbar React (sopra il form) E anteprima
-  // preview embedded (sotto il form). Lascia visibili SOLO i campi del form.
-  // Mostra il preview frame v2 come anteprima live sotto.
+  // Quando v2 attivo: nasconde toolbar React (sopra il form) E taglia l'iframe
+  // all'altezza del bottone "Genera Preventivo" (evita di mostrare la preview
+  // embedded React). Mostra il preview frame v2 separato come anteprima live.
   try {
     const reactIframe = document.getElementById("sales-generator-frame");
     const v2Frame = document.getElementById(V2_PREVIEW_FRAME_ID);
@@ -21538,7 +21561,7 @@ function applyIframePreviewVisibility(template) {
 
     if (!reactDoc) return;
 
-    // Inietta stile unico
+    // Inietta stile unico per il data-psi-hide-area
     let style = reactDoc.getElementById("psi-preview-toggle-style");
     if (!style) {
       style = reactDoc.createElement("style");
@@ -21547,17 +21570,18 @@ function applyIframePreviewVisibility(template) {
     }
     style.textContent = `[data-psi-hide-area="true"] { display: none !important; }`;
 
-    // Reset attributi precedenti (per gestire ripristino in modalità v1)
+    // Reset attributi precedenti
     Array.from(reactDoc.querySelectorAll('[data-psi-hide-area="true"]')).forEach((el) => {
       el.removeAttribute("data-psi-hide-area");
     });
 
-    // Nasconde TUTTO SOPRA il form (toolbar React) e TUTTO SOTTO il form
-    // (anteprima preventivo embedded), a OGNI livello di nesting React.
+    // Nasconde TUTTO SOPRA il form (toolbar React) via attributi CSS
     const formStart = _findFormStartAnchor(reactDoc);
     if (formStart) _hideAllBeforeAnchor(formStart, reactDoc);
-    const genBtn = _findGenerateButtonAnchor(reactDoc);
-    if (genBtn) _hideAllAfterAnchor(genBtn, reactDoc);
+
+    // Taglia l'iframe all'altezza del bottone "Genera Preventivo" —
+    // più affidabile di _hideAllAfterAnchor che lottava con React reconciliation
+    clampIframeToFormHeight();
   } catch (err) {
     console.warn("[preview-toggle] failed:", err?.message);
   }
