@@ -21439,28 +21439,8 @@ function _hideAllBeforeAnchor(anchor, doc) {
   }
 }
 
-let _modalCooldownUntil = 0;
-
-function clampIframeToFormHeight() {
-  // Ridimensiona l'iframe React per mostrare SOLO il form.
-  // Ritorna true se React è in modalità form, false se in modalità preview.
+function clampIframeToFormHeight(reactIframe, reactDoc, genBtn) {
   try {
-    const reactIframe = document.getElementById("sales-generator-frame");
-    const reactDoc = reactIframe?.contentDocument;
-    if (!reactIframe || !reactDoc) return false;
-    const genBtn = _findGenerateButtonAnchor(reactDoc);
-    if (!genBtn) {
-      // React è in modalità preview.
-      // Durante il cooldown (utente ha appena chiuso il modal) non nascondere l'iframe —
-      // React sta tornando in form mode e dobbiamo lasciargli spazio.
-      const inCooldown = Date.now() < _modalCooldownUntil;
-      if (!inCooldown) {
-        reactIframe.style.height = "0px";
-        reactDoc.documentElement?.style.setProperty("overflow", "hidden", "important");
-        reactDoc.body?.style.setProperty("overflow", "hidden", "important");
-      }
-      return false;
-    }
     const scrollTop = reactDoc.documentElement?.scrollTop || reactDoc.body?.scrollTop || 0;
     const rect = genBtn.getBoundingClientRect();
     const newH = Math.ceil(rect.bottom + scrollTop + 56);
@@ -21469,23 +21449,64 @@ function clampIframeToFormHeight() {
       reactDoc.documentElement?.style.setProperty("overflow", "hidden", "important");
       reactDoc.body?.style.setProperty("overflow", "hidden", "important");
     }
-    return true; // siamo in form mode
   } catch (err) {
     console.warn("[clamp-iframe]", err?.message);
-    return false;
   }
 }
 
+function injectPreviewOverlay(reactIframe, reactDoc) {
+  // Espandi l'iframe React per riempire la viewport dal suo top in poi
+  const iframeRect = reactIframe.getBoundingClientRect();
+  const newH = Math.max(Math.round(window.innerHeight - iframeRect.top + 20), 600);
+  reactIframe.style.height = newH + "px";
+  reactDoc.documentElement?.style.removeProperty("overflow");
+  reactDoc.body?.style.removeProperty("overflow");
+
+  // Misura altezza toolbar React per posizionare l'overlay sotto di essa
+  const scaricaBtn = Array.from(reactDoc.querySelectorAll("button")).find((b) =>
+    /scarica\s*pdf/i.test((b.textContent || "").trim())
+  );
+  const toolbarH = scaricaBtn ? Math.ceil(scaricaBtn.getBoundingClientRect().bottom + 8) : 56;
+
+  let overlay = reactDoc.getElementById("psi-preview-overlay-frame");
+  const p2 = getIncludeP2() ? "1" : "0";
+  const newSrc = `../preventivo-v2.html?p2=${p2}&v=20260518-overlay`;
+
+  if (!overlay) {
+    overlay = reactDoc.createElement("iframe");
+    overlay.id = "psi-preview-overlay-frame";
+    overlay.style.cssText = "position:fixed;left:0;right:0;bottom:0;width:100%;border:0;z-index:999;";
+    reactDoc.body.appendChild(overlay);
+  }
+  overlay.style.top = toolbarH + "px";
+
+  if (overlay.getAttribute("data-psi-src") !== newSrc) {
+    overlay.setAttribute("data-psi-src", newSrc);
+    const payload = extractGeneratorPayloadFromIframe();
+    try {
+      if (payload) window.localStorage.setItem("psi:preventivo-v2:data", JSON.stringify(payload));
+      else window.localStorage.removeItem("psi:preventivo-v2:data");
+    } catch {}
+    overlay.src = newSrc;
+    trackUsageEvent("quote_template_generate", {
+      template: "v2-overlay",
+      requestId: state.selectedSalesRequestId || "",
+      hasLiveData: payload ? "yes" : "no",
+    });
+  }
+}
+
+function removePreviewOverlay(reactDoc) {
+  reactDoc?.getElementById("psi-preview-overlay-frame")?.remove();
+}
+
 function applyIframePreviewVisibility() {
-  // Nasconde la toolbar React sopra il form (via CSS injection + attributi).
-  // Clamp dell'iframe all'altezza del bottone "Genera Preventivo" per nascondere
-  // la preview embedded che React renderizza sotto il form.
   try {
     const reactIframe = document.getElementById("sales-generator-frame");
     const reactDoc = reactIframe?.contentDocument;
     if (!reactDoc) return;
 
-    // Inietta stile per data-psi-hide-area (hide toolbar React sopra il form)
+    // Inietta stile per data-psi-hide-area
     let style = reactDoc.getElementById("psi-preview-toggle-style");
     if (!style) {
       style = reactDoc.createElement("style");
@@ -21493,27 +21514,21 @@ function applyIframePreviewVisibility() {
       reactDoc.head.appendChild(style);
     }
     style.textContent = `[data-psi-hide-area="true"] { display: none !important; }`;
-
-    // Re-applica attributi hide (React li rimuove ad ogni reconciliation)
     Array.from(reactDoc.querySelectorAll('[data-psi-hide-area="true"]')).forEach((el) => {
       el.removeAttribute("data-psi-hide-area");
     });
     const formStart = _findFormStartAnchor(reactDoc);
     if (formStart) _hideAllBeforeAnchor(formStart, reactDoc);
 
-    // Clamp altezza iframe. Se ritorna false = React è in preview mode
-    const isFormMode = clampIframeToFormHeight();
-
-    // Nascondi "Modello libero"/"Modello consigliato" e intercetta "Scarica PDF"
-    patchReactPreviewToolbar(reactDoc);
-
-    // Se React è passato in preview mode e il modal non è aperto → apri automaticamente
-    if (!isFormMode) {
-      const modal = document.getElementById("psi-pdf-modal");
-      const now = Date.now();
-      if (modal && modal.hidden && now > _modalCooldownUntil) {
-        openPreventivoModal();
-      }
+    const genBtn = _findGenerateButtonAnchor(reactDoc);
+    if (genBtn) {
+      // FORM MODE: rimuovi overlay e clamp all'altezza del bottone
+      removePreviewOverlay(reactDoc);
+      clampIframeToFormHeight(reactIframe, reactDoc, genBtn);
+    } else {
+      // PREVIEW MODE: inietta overlay con il nostro template + intercetta Scarica PDF
+      patchReactPreviewToolbar(reactDoc);
+      injectPreviewOverlay(reactIframe, reactDoc);
     }
   } catch (err) {
     console.warn("[preview-toggle] failed:", err?.message);
@@ -21521,13 +21536,11 @@ function applyIframePreviewVisibility() {
 }
 
 function patchReactPreviewToolbar(reactDoc) {
-  // Nasconde "Modello libero" e "Modello consigliato" dalla toolbar React
-  // e intercetta "Scarica PDF" per aprire il nostro modal con preventivo-v2.html
   try {
     if (!reactDoc) return;
     const allEls = Array.from(reactDoc.querySelectorAll("*"));
 
-    // Nascondi container di "Modello libero"
+    // Nascondi "Modello libero"
     const liberoLabel = allEls.find(
       (el) => /^modello libero$/i.test(el.textContent?.trim()) && !el.children.length
     );
@@ -21535,14 +21548,11 @@ function patchReactPreviewToolbar(reactDoc) {
       let c = liberoLabel;
       for (let i = 0; i < 6 && c.parentElement; i++) {
         c = c.parentElement;
-        if (c.children.length >= 2) {
-          c.style.setProperty("display", "none", "important");
-          break;
-        }
+        if (c.children.length >= 2) { c.style.setProperty("display", "none", "important"); break; }
       }
     }
 
-    // Nascondi container di "Modello consigliato"
+    // Nascondi "Modello consigliato"
     const consigliatoLabel = allEls.find(
       (el) => /^modello consigliato$/i.test(el.textContent?.trim()) && !el.children.length
     );
@@ -21550,92 +21560,26 @@ function patchReactPreviewToolbar(reactDoc) {
       let c = consigliatoLabel;
       for (let i = 0; i < 6 && c.parentElement; i++) {
         c = c.parentElement;
-        if (c.children.length >= 2) {
-          c.style.setProperty("display", "none", "important");
-          break;
-        }
+        if (c.children.length >= 2) { c.style.setProperty("display", "none", "important"); break; }
       }
     }
 
-    // Override click "Scarica PDF" → apre il nostro modal
+    // Intercetta "Scarica PDF" → stampa il nostro overlay
     const scaricaBtn = Array.from(reactDoc.querySelectorAll("button")).find((b) =>
       /scarica\s*pdf/i.test((b.textContent || "").trim())
     );
     if (scaricaBtn && !scaricaBtn.dataset.psiHooked) {
       scaricaBtn.dataset.psiHooked = "1";
-      scaricaBtn.addEventListener(
-        "click",
-        (e) => {
-          e.stopImmediatePropagation();
-          e.preventDefault();
-          openPreventivoModal();
-        },
-        true
-      );
+      scaricaBtn.addEventListener("click", (e) => {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        reactDoc.getElementById("psi-preview-overlay-frame")?.contentWindow?.print();
+      }, true);
     }
   } catch (err) {
     console.warn("[patch-preview-toolbar]", err?.message);
   }
 }
-
-function openPreventivoModal() {
-  const payload = extractGeneratorPayloadFromIframe();
-  try {
-    if (payload) {
-      window.localStorage.setItem("psi:preventivo-v2:data", JSON.stringify(payload));
-    } else {
-      window.localStorage.removeItem("psi:preventivo-v2:data");
-    }
-  } catch {}
-  const p2 = getIncludeP2() ? "1" : "0";
-  const url = `./preventivo-v2.html?v=20260518-modal-230&p2=${p2}`;
-  const modal = document.getElementById("psi-pdf-modal");
-  const iframe = document.getElementById("psi-pdf-modal-iframe");
-  if (modal && iframe) {
-    iframe.src = url;
-    modal.hidden = false;
-    document.body.style.overflow = "hidden";
-  }
-  trackUsageEvent("quote_template_generate", {
-    template: "v2",
-    requestId: state.selectedSalesRequestId || "",
-    hasLiveData: payload ? "yes" : "no",
-  });
-}
-
-function closePreventivoModal() {
-  const modal = document.getElementById("psi-pdf-modal");
-  const iframe = document.getElementById("psi-pdf-modal-iframe");
-  if (modal) modal.hidden = true;
-  if (iframe) iframe.src = "";
-  document.body.style.overflow = "";
-
-  // Imposta cooldown per evitare re-apertura automatica immediata
-  _modalCooldownUntil = Date.now() + 4000;
-
-  // Torna alla modalità form React cliccando "← Modifica" (o equivalente)
-  try {
-    const reactIframe = document.getElementById("sales-generator-frame");
-    const reactDoc = reactIframe?.contentDocument;
-    if (reactIframe && reactDoc) {
-      // Ripristina altezza a valore generoso PRIMA del click così React può renderizzarsi
-      reactIframe.style.height = "1800px";
-      reactDoc.documentElement?.style.removeProperty("overflow");
-      reactDoc.body?.style.removeProperty("overflow");
-
-      const modificaBtn = Array.from(reactDoc.querySelectorAll("button")).find((b) =>
-        /modifica/i.test((b.textContent || "").trim())
-      );
-      if (modificaBtn) modificaBtn.click();
-
-      // Lascia che il MutationObserver riapplichi il clamp corretto una volta che
-      // React è tornato in form mode — non forziamo applyIframePreviewVisibility
-      // qui per non rischiare un loop durante il cooldown
-    }
-  } catch {}
-}
-
-bindEvent(document.getElementById("psi-pdf-modal-close"), "click", closePreventivoModal);
 
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
 bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);
