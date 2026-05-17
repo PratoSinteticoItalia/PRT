@@ -21470,7 +21470,7 @@ function injectPreviewOverlay(reactIframe, reactDoc) {
 
   let overlay = reactDoc.getElementById("psi-preview-overlay-frame");
   const p2 = getIncludeP2() ? "1" : "0";
-  const newSrc = `../preventivo-v2.html?p2=${p2}&v=20260518-overlay`;
+  const newSrc = `../preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-overlay`;
 
   if (!overlay) {
     overlay = reactDoc.createElement("iframe");
@@ -21517,16 +21517,17 @@ function applyIframePreviewVisibility() {
     Array.from(reactDoc.querySelectorAll('[data-psi-hide-area="true"]')).forEach((el) => {
       el.removeAttribute("data-psi-hide-area");
     });
-    const formStart = _findFormStartAnchor(reactDoc);
-    if (formStart) _hideAllBeforeAnchor(formStart, reactDoc);
 
     const genBtn = _findGenerateButtonAnchor(reactDoc);
     if (genBtn) {
-      // FORM MODE: rimuovi overlay e clamp all'altezza del bottone
+      // FORM MODE: nascondi toolbar React sopra il form, clamp, rimuovi overlay
+      const formStart = _findFormStartAnchor(reactDoc);
+      if (formStart) _hideAllBeforeAnchor(formStart, reactDoc);
       removePreviewOverlay(reactDoc);
       clampIframeToFormHeight(reactIframe, reactDoc, genBtn);
     } else {
-      // PREVIEW MODE: inietta overlay con il nostro template + intercetta Scarica PDF
+      // PREVIEW MODE: NON nascondere la toolbar React (contiene ← Modifica / Scarica PDF)
+      // Inietta il nostro template come overlay sotto la toolbar
       patchReactPreviewToolbar(reactDoc);
       injectPreviewOverlay(reactIframe, reactDoc);
     }
