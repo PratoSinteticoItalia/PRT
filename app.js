@@ -21491,8 +21491,69 @@ function applyIframePreviewVisibility() {
 
     // Clamp altezza iframe per tagliare la preview embedded
     clampIframeToFormHeight();
+
+    // Nascondi "Modello libero"/"Modello consigliato" e intercetta "Scarica PDF"
+    patchReactPreviewToolbar(reactDoc);
   } catch (err) {
     console.warn("[preview-toggle] failed:", err?.message);
+  }
+}
+
+function patchReactPreviewToolbar(reactDoc) {
+  // Nasconde "Modello libero" e "Modello consigliato" dalla toolbar React
+  // e intercetta "Scarica PDF" per aprire il nostro modal con preventivo-v2.html
+  try {
+    if (!reactDoc) return;
+    const allEls = Array.from(reactDoc.querySelectorAll("*"));
+
+    // Nascondi container di "Modello libero"
+    const liberoLabel = allEls.find(
+      (el) => /^modello libero$/i.test(el.textContent?.trim()) && !el.children.length
+    );
+    if (liberoLabel) {
+      let c = liberoLabel;
+      for (let i = 0; i < 6 && c.parentElement; i++) {
+        c = c.parentElement;
+        if (c.children.length >= 2) {
+          c.style.setProperty("display", "none", "important");
+          break;
+        }
+      }
+    }
+
+    // Nascondi container di "Modello consigliato"
+    const consigliatoLabel = allEls.find(
+      (el) => /^modello consigliato$/i.test(el.textContent?.trim()) && !el.children.length
+    );
+    if (consigliatoLabel) {
+      let c = consigliatoLabel;
+      for (let i = 0; i < 6 && c.parentElement; i++) {
+        c = c.parentElement;
+        if (c.children.length >= 2) {
+          c.style.setProperty("display", "none", "important");
+          break;
+        }
+      }
+    }
+
+    // Override click "Scarica PDF" → apre il nostro modal
+    const scaricaBtn = Array.from(reactDoc.querySelectorAll("button")).find((b) =>
+      /scarica\s*pdf/i.test((b.textContent || "").trim())
+    );
+    if (scaricaBtn && !scaricaBtn.dataset.psiHooked) {
+      scaricaBtn.dataset.psiHooked = "1";
+      scaricaBtn.addEventListener(
+        "click",
+        (e) => {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          openPreventivoModal();
+        },
+        true
+      );
+    }
+  } catch (err) {
+    console.warn("[patch-preview-toolbar]", err?.message);
   }
 }
 
@@ -21529,7 +21590,6 @@ function closePreventivoModal() {
   document.body.style.overflow = "";
 }
 
-bindEvent(ui.salesGeneratorPreviewV2Button, "click", openPreventivoModal);
 bindEvent(document.getElementById("psi-pdf-modal-close"), "click", closePreventivoModal);
 
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
