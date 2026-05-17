@@ -1466,6 +1466,14 @@ const ui = {
   preventivoProductSelect: document.getElementById("preventivo-product-select"),
   preventivoProductSavedList: document.getElementById("preventivo-product-saved-list"),
   preventivoProductStatus: document.getElementById("preventivo-product-status"),
+  productImageInput: document.getElementById("product-image-input"),
+  productImagePreview: document.getElementById("product-image-preview"),
+  productImageClear: document.getElementById("product-image-clear"),
+  productImageDataUrl: document.getElementById("product-image-data-url"),
+  customModelTarget: document.getElementById("custom-model-target"),
+  customModelName: document.getElementById("custom-model-name"),
+  customModelPrice: document.getElementById("custom-model-price"),
+  customModelToggle: document.getElementById("sales-generator-custom-model"),
   salesGeneratorEmailButton: document.getElementById("sales-generator-email-button"),
   salesContentSearch: document.getElementById("sales-content-search"),
   salesContentSearchClear: document.getElementById("sales-content-search-clear"),
@@ -20903,6 +20911,19 @@ function fillPreventivoProductForm() {
     const field = form.elements?.[k];
     if (field) field.value = String(saved[k] || "");
   });
+  // Immagine prodotto: ripristina dataUrl o cerca file in product-images/<slug>.png
+  const dataUrl = String(saved.imageDataUrl || "");
+  if (ui.productImageDataUrl) ui.productImageDataUrl.value = dataUrl;
+  if (dataUrl) {
+    renderProductImagePreview(dataUrl);
+  } else {
+    // Prova a precaricare il file filesystem se esiste (fallback per i 3 modelli pre-popolati)
+    const img = new Image();
+    img.onload = () => renderProductImagePreview(`./product-images/${slug}.png`);
+    img.onerror = () => renderProductImagePreview("");
+    img.src = `./product-images/${slug}.png`;
+  }
+  if (ui.productImageInput) ui.productImageInput.value = "";
 }
 
 async function savePreventivoProduct(event) {
@@ -20920,6 +20941,8 @@ async function savePreventivoProduct(event) {
     const v = String(formData.get(k) || "").trim();
     if (v) metadata[k] = v;
   });
+  const imageDataUrl = String(formData.get("imageDataUrl") || "").trim();
+  if (imageDataUrl) metadata.imageDataUrl = imageDataUrl;
   setStatus(ui.preventivoProductStatus, "success", state.lang === "it" ? "Salvataggio in corso…" : "Saving…");
   try {
     await apiFetch("/api/catalog/preventivo_products", {
@@ -20942,6 +20965,7 @@ function buildProductTechFromCatalog(modelName = "") {
   if (!saved || !saved.code) return null;
   return {
     code: saved.code,
+    imageDataUrl: saved.imageDataUrl || "",
     tech: {
       struttura: saved.struttura || "",
       densita: saved.densita || "",
@@ -20951,6 +20975,101 @@ function buildProductTechFromCatalog(modelName = "") {
       note: saved.note || "",
     },
   };
+}
+
+// ─── Upload immagine prodotto (catalogo) ─────────────────────────────────────
+
+const PRODUCT_IMAGE_MAX_BYTES = 300 * 1024;
+
+function renderProductImagePreview(dataUrl) {
+  const el = ui.productImagePreview;
+  if (!el) return;
+  if (dataUrl) {
+    el.innerHTML = `<img src="${dataUrl}" alt="Anteprima foto prodotto" />`;
+  } else {
+    el.innerHTML = "🌿";
+  }
+}
+
+function handleProductImageChange(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+    showToast(state.lang === "it" ? `Foto troppo grande (max ${Math.round(PRODUCT_IMAGE_MAX_BYTES / 1024)} KB)` : `Image too large`, "warning");
+    event.target.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = String(reader.result || "");
+    if (ui.productImageDataUrl) ui.productImageDataUrl.value = dataUrl;
+    renderProductImagePreview(dataUrl);
+  };
+  reader.onerror = () => {
+    showToast(state.lang === "it" ? "Impossibile leggere l'immagine" : "Cannot read image", "error");
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleProductImageClear() {
+  if (ui.productImageDataUrl) ui.productImageDataUrl.value = "";
+  if (ui.productImageInput) ui.productImageInput.value = "";
+  renderProductImagePreview("");
+}
+
+// ─── Modello custom (fuori catalogo) — toolbar generatore ─────────────────────
+
+function getCustomModelOverride() {
+  const name = String(ui.customModelName?.value || "").trim();
+  const priceRaw = String(ui.customModelPrice?.value || "").trim();
+  const price = parseFloat(priceRaw.replace(",", "."));
+  const target = parseInt(String(ui.customModelTarget?.value || "1"), 10);
+  if (!name || !Number.isFinite(price) || price <= 0) return null;
+  const isOpen = ui.customModelToggle?.open;
+  if (!isOpen) return null;
+  return { target: target >= 1 && target <= 3 ? target : 1, name, pricePerSqm: price };
+}
+
+// ─── Nascondi "Modello libero" dell'iframe React (sostituito dalla toolbar) ───
+
+let _iframeStyleInjected = false;
+
+function injectIframeHideStyles() {
+  if (_iframeStyleInjected) return;
+  const iframe = document.getElementById("sales-generator-frame");
+  if (!iframe || !iframe.contentDocument) return;
+  const doc = iframe.contentDocument;
+  // Cerca per label "Modello libero" e nasconde il section padre
+  const tryInject = () => {
+    if (_iframeStyleInjected) return;
+    const labels = Array.from(doc.querySelectorAll("label, div, span"));
+    const label = labels.find((el) => /^Modello libero$/i.test((el.textContent || "").trim()));
+    if (!label) return;
+    // Risali fino al primo container "card" della sezione (cerca un nodo con padding/border)
+    let container = label;
+    for (let i = 0; i < 8 && container.parentElement; i++) {
+      container = container.parentElement;
+      const cs = doc.defaultView.getComputedStyle(container);
+      const isCard = cs.padding && parseFloat(cs.padding) > 0 && cs.borderRadius && parseFloat(cs.borderRadius) > 0;
+      if (isCard) break;
+    }
+    // Aggiungi un attributo per CSS injection
+    container.setAttribute("data-psi-hide", "modello-libero");
+    if (!doc.getElementById("psi-injected-hide-style")) {
+      const style = doc.createElement("style");
+      style.id = "psi-injected-hide-style";
+      style.textContent = `[data-psi-hide="modello-libero"] { display: none !important; }`;
+      doc.head.appendChild(style);
+    }
+    _iframeStyleInjected = true;
+  };
+  tryInject();
+  if (!_iframeStyleInjected) {
+    // Riprova dopo render React
+    setTimeout(tryInject, 400);
+    setTimeout(tryInject, 1200);
+    setTimeout(tryInject, 2500);
+  }
 }
 
 function parseEuroNumber(raw) {
@@ -21095,6 +21214,7 @@ function extractGeneratorPayloadFromIframe() {
       const fallbackCode = `${parsed.name.split(/\s+/)[0].substring(0,3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
       const code = catalogData?.code || fallbackCode;
       const tech = catalogData?.tech || defaultProductTech(parsed.name);
+      const imageDataUrl = catalogData?.imageDataUrl || "";
       options.push({
         slug,
         name: parsed.name,
@@ -21110,7 +21230,39 @@ function extractGeneratorPayloadFromIframe() {
         finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
         heylightInstallment: grandTotal > 0 ? grandTotal / 5 : 0,
         tech,
+        imageDataUrl,
       });
+    }
+
+    // Applica modello custom (override di un'opzione)
+    const customModel = getCustomModelOverride();
+    if (customModel && options[customModel.target - 1]) {
+      const idx = customModel.target - 1;
+      const opt = options[idx];
+      const customSlug = slugifyModelName(customModel.name);
+      const customDiscount = opt.discount;
+      const grossPrice = customModel.pricePerSqm * sqm;
+      const discountedPrice = grossPrice * (1 - customDiscount / 100);
+      const materialsBase = materialsTotal || 0;
+      const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
+      const installationTotal = isPosa ? 0 * sqm : 0;
+      const shipping = shippingCost || 0;
+      const netTotal = discountedPrice + materialsAfterDisc + installationTotal + shipping;
+      const grandTotal = netTotal * (1 + vat / 100);
+      options[idx] = {
+        ...opt,
+        slug: customSlug,
+        name: customModel.name,
+        code: "—",
+        tagline: `Fuori catalogo${customDiscount > 0 ? ` · sconto ${customDiscount}%` : ""}`,
+        pricePerSqm: customModel.pricePerSqm,
+        net: netTotal,
+        total: grandTotal,
+        finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
+        heylightInstallment: grandTotal > 0 ? grandTotal / 5 : 0,
+        tech: defaultProductTech(customModel.name),
+        imageDataUrl: "",
+      };
     }
     if (!options.length) return null;
 
@@ -21174,6 +21326,10 @@ function setSelectedQuoteTemplate(template) {
     btn.classList.toggle("is-active", isActive);
     btn.setAttribute("aria-selected", isActive ? "true" : "false");
   });
+  // Aggiorna hint
+  document.querySelectorAll("[data-template-hint]").forEach((el) => {
+    el.hidden = el.dataset.templateHint !== template;
+  });
 }
 
 function triggerLegacyGeneratorPdf() {
@@ -21214,8 +21370,11 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260517-tpl-221`;
-  window.open(url, "psi_preventivo_v2", "noopener=yes");
+  const url = `./preventivo-v2.html?v=20260517-img-222`;
+  const win = window.open(url, "psi_preventivo_v2", "noopener=yes");
+  if (!win) {
+    showToast(state.lang === "it" ? "Il browser ha bloccato il popup. Consenti i popup per questo sito e riprova." : "Popup blocked. Allow popups for this site.", "warning", 6000);
+  }
   trackUsageEvent("quote_template_generate", {
     template: "v2",
     requestId: state.selectedSalesRequestId || "",
@@ -21233,6 +21392,19 @@ bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
 bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);
 bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
 bindEvent(ui.preventivoProductSelect, "change", fillPreventivoProductForm);
+bindEvent(ui.productImageInput, "change", handleProductImageChange);
+bindEvent(ui.productImageClear, "click", handleProductImageClear);
+
+// Inietta CSS per nascondere "Modello libero" dall'iframe quando si entra nel generatore
+const iframeEl = document.getElementById("sales-generator-frame");
+if (iframeEl) {
+  iframeEl.addEventListener("load", () => {
+    _iframeStyleInjected = false;
+    injectIframeHideStyles();
+  });
+  // Riprova all'avvio (l'iframe potrebbe essere già caricato)
+  setTimeout(() => injectIframeHideStyles(), 1500);
+}
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {

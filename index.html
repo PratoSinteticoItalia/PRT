@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260517-tpl-221" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260517-tpl-221" />
+    <link rel="preload" href="./styles.css?v=20260517-img-222" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260517-img-222" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -701,11 +701,43 @@
               <div class="sales-generator-toolbar">
                 <div class="quote-template-selector" role="tablist" aria-label="Modello preventivo">
                   <span class="quote-template-label">Modello:</span>
-                  <button type="button" class="quote-template-option is-active" data-template="v2" role="tab" aria-selected="true">📄 v2 ufficiale</button>
-                  <button type="button" class="quote-template-option" data-template="v1" role="tab" aria-selected="false">v1 classico</button>
+                  <button type="button" class="quote-template-option is-active" data-template="v2" role="tab" aria-selected="true">📄 Nuovo (ufficiale)</button>
+                  <button type="button" class="quote-template-option" data-template="v1" role="tab" aria-selected="false">Classico (opzionale)</button>
                 </div>
-                <button id="sales-generator-preview-v2-button" type="button" class="primary-button small-button" title="Genera il preventivo nel modello selezionato coi dati live del form">📄 Genera preventivo</button>
+                <button id="sales-generator-preview-v2-button" type="button" class="primary-button small-button" title="Genera il preventivo nel modello selezionato coi dati live del form">📄 Genera preventivo ↗</button>
               </div>
+              <p class="sales-generator-toolbar-hint" id="sales-generator-template-hint">
+                <span data-template-hint="v2">Il modello <strong>Nuovo</strong> si apre in una nuova finestra coi tuoi dati live. L'anteprima sotto è solo del modello Classico (opzionale).</span>
+                <span data-template-hint="v1" hidden>Il modello <strong>Classico</strong> usa il generatore PDF tradizionale qui sotto.</span>
+              </p>
+              <details class="sales-generator-custom-model" id="sales-generator-custom-model">
+                <summary>
+                  <span class="cm-summary-icon">+</span>
+                  <span class="cm-summary-label">Inserisci un modello fuori catalogo</span>
+                  <span class="cm-summary-hint">opzionale, per prati non in collezione</span>
+                </summary>
+                <div class="sales-generator-custom-model-body">
+                  <div class="cm-row">
+                    <label class="field">
+                      <span>Sostituisci l'opzione</span>
+                      <select id="custom-model-target" class="text-input">
+                        <option value="1">Opzione 1</option>
+                        <option value="2">Opzione 2</option>
+                        <option value="3">Opzione 3</option>
+                      </select>
+                    </label>
+                    <label class="field" style="flex:2;">
+                      <span>Nome modello</span>
+                      <input id="custom-model-name" class="text-input" type="text" placeholder="Es. Sportgreen Plus 45mm" />
+                    </label>
+                    <label class="field">
+                      <span>Prezzo €/mq</span>
+                      <input id="custom-model-price" class="text-input" type="number" step="0.01" placeholder="0,00" />
+                    </label>
+                  </div>
+                  <p class="cm-note">Verrà usato solo quando clicchi Genera. I dati live del form normale rimangono.</p>
+                </div>
+              </details>
               <iframe
                 id="sales-generator-frame"
                 class="sales-generator-frame"
@@ -1800,6 +1832,18 @@
                     <span>Note normative (riga in fondo alla scheda)</span>
                     <input class="text-input" name="note" type="text" placeholder="REACH · EN71-3 · ASTM-D2616" />
                   </label>
+                  <div class="field field-full product-image-uploader">
+                    <span>Foto prodotto (PNG/JPG, max 300 KB)</span>
+                    <div class="product-image-row">
+                      <div id="product-image-preview" class="product-image-preview" aria-label="Anteprima foto prodotto"></div>
+                      <div class="product-image-actions">
+                        <label class="ghost-button small-button" for="product-image-input" style="cursor:pointer;">📷 Carica foto</label>
+                        <input id="product-image-input" type="file" name="imageFile" accept="image/png,image/jpeg" hidden />
+                        <button type="button" id="product-image-clear" class="ghost-button small-button">Rimuovi</button>
+                      </div>
+                    </div>
+                    <input type="hidden" name="imageDataUrl" id="product-image-data-url" />
+                  </div>
                   <div class="inline-actions field-full">
                     <button type="submit" class="primary-button small-button">Salva modello</button>
                     <span id="preventivo-product-saved-list" class="panel-note" style="margin:0;font-size:11px;"></span>
@@ -2125,6 +2169,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260517-tpl-221" type="module"></script>
+    <script src="./app.js?v=20260517-img-222" type="module"></script>
   </body>
 </html>
