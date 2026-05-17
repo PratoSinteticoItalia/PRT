@@ -15603,8 +15603,7 @@ function showApp() {
     void loadPreventivoTexts();
     void loadPreventivoCatalog();
   }
-  // Ripristina la selezione del template preventivo (v2 default / v1 classico)
-  setSelectedQuoteTemplate(getSelectedQuoteTemplate());
+  initQuoteGenerator();
   clearPendingCurrentViewRefresh();
   setShellPending(false);
   state.mobileMenuOpen = false;
@@ -21427,13 +21426,9 @@ function getIncludeP2() {
   return cb ? cb.checked : true;
 }
 
-// Sempre v2 — il selettore modello classico è stato rimosso
-function getSelectedQuoteTemplate() { return "v2"; }
-
-function setSelectedQuoteTemplate() {
-  // Sempre v2 — mantiene compatibilità con eventuali chiamate legacy
+function initQuoteGenerator() {
   document.body.classList.add("quote-v2-active");
-  applyIframePreviewVisibility("v2");
+  applyIframePreviewVisibility();
   connectReactHideObserver();
 }
 
@@ -21447,11 +21442,7 @@ function connectReactHideObserver() {
   if (!reactDoc?.body) return;
   _reactHideObserver = new MutationObserver(() => {
     clearTimeout(_reactHideDebounceTimer);
-    _reactHideDebounceTimer = window.setTimeout(() => {
-      if (getSelectedQuoteTemplate() === "v2") {
-        applyIframePreviewVisibility("v2");
-      }
-    }, 120);
+    _reactHideDebounceTimer = window.setTimeout(() => applyIframePreviewVisibility(), 120);
   });
   _reactHideObserver.observe(reactDoc.body, { childList: true, subtree: true, attributes: false });
 }
@@ -21497,27 +21488,11 @@ function _hideAllBeforeAnchor(anchor, doc) {
   }
 }
 
-function _hideAllAfterAnchor(anchor, doc) {
-  // Risale dall'anchor fino a body, e ad OGNI livello nasconde tutti i
-  // siblings SUCCESSIVI. Garantisce che tutto sotto al form sparisca,
-  // a qualsiasi profondità di nesting React.
-  if (!anchor || !doc) return;
-  let current = anchor;
-  while (current && current.parentElement && current !== doc.body) {
-    let sib = current.nextElementSibling;
-    while (sib) {
-      sib.setAttribute("data-psi-hide-area", "true");
-      sib = sib.nextElementSibling;
-    }
-    current = current.parentElement;
-  }
-}
-
 function clampIframeToFormHeight() {
   // Ridimensiona l'iframe React per mostrare SOLO il form, tagliando
   // qualsiasi preview embedded che React renderizza sotto il bottone.
-  // Più affidabile di _hideAllAfterAnchor: React può fare re-render a piacere,
-  // l'iframe semplicemente non mostra il contenuto oltre l'altezza impostata.
+  // React può fare re-render liberamente — l'iframe non mostra
+  // contenuto oltre l'altezza impostata (non serve manipolare il DOM React).
   try {
     const reactIframe = document.getElementById("sales-generator-frame");
     const reactDoc = reactIframe?.contentDocument;
@@ -21536,32 +21511,27 @@ function clampIframeToFormHeight() {
   }
 }
 
-function applyIframePreviewVisibility(template) {
-  // Quando v2 attivo: nasconde toolbar React (sopra il form) E taglia l'iframe
-  // all'altezza del bottone "Genera Preventivo" (evita di mostrare la preview
-  // embedded React). Mostra il preview frame v2 separato come anteprima live.
+function applyIframePreviewVisibility() {
+  // Nasconde la toolbar React sopra il form (via CSS injection + attributi).
+  // Taglia l'iframe all'altezza del bottone "Genera Preventivo" per eliminare
+  // la preview embedded di React. Avvia il preview frame v2 separato.
   try {
     const reactIframe = document.getElementById("sales-generator-frame");
     const v2Frame = document.getElementById(V2_PREVIEW_FRAME_ID);
     const reactDoc = reactIframe?.contentDocument;
 
-    // Toggle visibilità del v2 preview frame
+    // Avvia/mostra il preview frame v2
     if (v2Frame) {
-      if (template === "v2") {
-        if (!v2Frame.src || !v2Frame.src.includes("preventivo-v2.html")) {
-          v2Frame.src = V2_PREVIEW_SRC;
-        }
-        v2Frame.hidden = false;
-        startV2PreviewLoop();
-      } else {
-        v2Frame.hidden = true;
-        stopV2PreviewLoop();
+      if (!v2Frame.src || !v2Frame.src.includes("preventivo-v2.html")) {
+        v2Frame.src = V2_PREVIEW_SRC;
       }
+      v2Frame.hidden = false;
+      startV2PreviewLoop();
     }
 
     if (!reactDoc) return;
 
-    // Inietta stile unico per il data-psi-hide-area
+    // Inietta stile per data-psi-hide-area (hide toolbar React sopra il form)
     let style = reactDoc.getElementById("psi-preview-toggle-style");
     if (!style) {
       style = reactDoc.createElement("style");
@@ -21570,39 +21540,18 @@ function applyIframePreviewVisibility(template) {
     }
     style.textContent = `[data-psi-hide-area="true"] { display: none !important; }`;
 
-    // Reset attributi precedenti
+    // Re-applica attributi hide (React li rimuove ad ogni reconciliation)
     Array.from(reactDoc.querySelectorAll('[data-psi-hide-area="true"]')).forEach((el) => {
       el.removeAttribute("data-psi-hide-area");
     });
-
-    // Nasconde TUTTO SOPRA il form (toolbar React) via attributi CSS
     const formStart = _findFormStartAnchor(reactDoc);
     if (formStart) _hideAllBeforeAnchor(formStart, reactDoc);
 
-    // Taglia l'iframe all'altezza del bottone "Genera Preventivo" —
-    // più affidabile di _hideAllAfterAnchor che lottava con React reconciliation
+    // Clamp altezza iframe per tagliare la preview embedded
     clampIframeToFormHeight();
   } catch (err) {
     console.warn("[preview-toggle] failed:", err?.message);
   }
-}
-
-function triggerLegacyGeneratorPdf() {
-  // Clicca il bottone "Genera Preventivo" DENTRO l'iframe React (modello v1 classico)
-  try {
-    const iframe = document.getElementById("sales-generator-frame");
-    const doc = iframe?.contentDocument;
-    if (!doc) return false;
-    const btns = Array.from(doc.querySelectorAll("button"));
-    const generateBtn = btns.find((b) => /^genera preventivo/i.test(String(b.textContent || "").trim()));
-    if (generateBtn) {
-      generateBtn.click();
-      return true;
-    }
-  } catch (err) {
-    console.warn("[quote-template] legacy generator click failed:", err?.message);
-  }
-  return false;
 }
 
 bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
@@ -21628,7 +21577,6 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
   });
 });
 
-// Nessun toggle Classico/Nuovo — rimosso. Sempre template v2.
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
 bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);
 bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
@@ -21656,20 +21604,18 @@ if (iframeEl) {
   iframeEl.addEventListener("load", () => {
     _iframeStyleInjected = false;
     injectIframeHideStyles();
-    // Riapplica il toggle anteprima dopo che l'iframe ha caricato il suo DOM
-    setTimeout(() => applyIframePreviewVisibility(getSelectedQuoteTemplate()), 600);
-    setTimeout(() => applyIframePreviewVisibility(getSelectedQuoteTemplate()), 1600);
+    // Riapplica hide + clamp man mano che React completa il render
+    setTimeout(() => applyIframePreviewVisibility(), 600);
+    setTimeout(() => applyIframePreviewVisibility(), 1600);
     setTimeout(() => {
-      applyIframePreviewVisibility(getSelectedQuoteTemplate());
-      // Collega l'observer DOPO che React ha finito il primo render
-      // (solo se siamo in modalità v2, altrimenti non serve)
-      if (getSelectedQuoteTemplate() === "v2") connectReactHideObserver();
+      applyIframePreviewVisibility();
+      connectReactHideObserver(); // collega dopo il primo render completo
     }, 3000);
   });
   // Riprova all'avvio (l'iframe potrebbe essere già caricato)
   setTimeout(() => {
     injectIframeHideStyles();
-    applyIframePreviewVisibility(getSelectedQuoteTemplate());
+    applyIframePreviewVisibility();
   }, 1500);
 }
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());

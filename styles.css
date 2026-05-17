@@ -16490,14 +16490,6 @@ textarea.text-input {
   border-radius: 10px;
   background: rgba(248, 250, 247, 0.6);
 }
-.sales-generator-toolbar-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #6e7d72;
-}
-
 /* Toggle "Schede tecniche" (includi pagina 2 nel preventivo) */
 .quote-p2-toggle {
   display: inline-flex;
