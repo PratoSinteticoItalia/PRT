@@ -21120,7 +21120,7 @@ function injectIframeHideStyles() {
 // ─── Anteprima live preventivo v2 (iframe affiancato) ────────────────────────
 
 const V2_PREVIEW_FRAME_ID = "preventivo-v2-preview-frame";
-const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-live-224";
+const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-hide-225";
 let _v2PreviewInterval = 0;
 let _v2PreviewReady = false;
 let _v2LastSignature = "";
@@ -21442,10 +21442,42 @@ function setSelectedQuoteTemplate(template) {
   applyIframePreviewVisibility(template);
 }
 
+function _findFormStartContainer(doc) {
+  // Trova l'elemento "Tipo Destinatario" e risali al primo ancestor che abbia
+  // siblings PRECEDENTI (= toolbar superiore React). Restituisce l'ancestor.
+  const els = Array.from(doc.querySelectorAll("*"));
+  const formStart = els.find((el) => {
+    const text = String(el.textContent || "").trim();
+    return text.length < 60 && /^tipo destinatario/i.test(text);
+  });
+  if (!formStart) return null;
+  let container = formStart;
+  while (container.parentElement) {
+    if (container.previousElementSibling) return container;
+    container = container.parentElement;
+  }
+  return null;
+}
+
+function _findGenerateButtonContainer(doc) {
+  // Trova il button "Genera Preventivo" e risali al primo ancestor con
+  // siblings SUCCESSIVI (= anteprima preventivo embedded). Restituisce l'ancestor.
+  const genBtn = Array.from(doc.querySelectorAll("button")).find((b) =>
+    /^genera preventivo/i.test(String(b.textContent || "").trim())
+  );
+  if (!genBtn) return null;
+  let container = genBtn;
+  while (container.parentElement) {
+    if (container.nextElementSibling) return container;
+    container = container.parentElement;
+  }
+  return null;
+}
+
 function applyIframePreviewVisibility(template) {
-  // Toggle visibilità: quando v2 attivo, l'anteprima embedded del React
-  // sparisce (CSS injection) e al suo posto compare l'iframe del preventivo v2
-  // come PREVIEW LIVE. Quando v1 attivo, ripristina v1 e nasconde v2 preview.
+  // Quando v2 attivo: nasconde toolbar React (sopra il form) E anteprima
+  // preview embedded (sotto il form). Lascia visibili SOLO i campi del form.
+  // Mostra il preview frame v2 come anteprima live sotto.
   try {
     const reactIframe = document.getElementById("sales-generator-frame");
     const v2Frame = document.getElementById(V2_PREVIEW_FRAME_ID);
@@ -21465,31 +21497,41 @@ function applyIframePreviewVisibility(template) {
       }
     }
 
-    // Toggle anteprima embedded React
-    if (reactDoc) {
-      let style = reactDoc.getElementById("psi-preview-toggle-style");
-      if (!style) {
-        style = reactDoc.createElement("style");
-        style.id = "psi-preview-toggle-style";
-        reactDoc.head.appendChild(style);
+    if (!reactDoc) return;
+
+    // Inietta stile unico
+    let style = reactDoc.getElementById("psi-preview-toggle-style");
+    if (!style) {
+      style = reactDoc.createElement("style");
+      style.id = "psi-preview-toggle-style";
+      reactDoc.head.appendChild(style);
+    }
+    style.textContent = `[data-psi-hide-area="true"] { display: none !important; }`;
+
+    // Reset attributi precedenti (per gestire ripristino in modalità v1)
+    Array.from(reactDoc.querySelectorAll('[data-psi-hide-area="true"]')).forEach((el) => {
+      el.removeAttribute("data-psi-hide-area");
+    });
+
+    if (template !== "v2") return; // v1: tutto resta visibile
+
+    // Nasconde TOOLBAR superiore React (Modello libero / Consigliato / Scarica PDF)
+    const formStart = _findFormStartContainer(reactDoc);
+    if (formStart) {
+      let sib = formStart.previousElementSibling;
+      while (sib) {
+        sib.setAttribute("data-psi-hide-area", "true");
+        sib = sib.previousElementSibling;
       }
-      if (template === "v2") {
-        const allEls = Array.from(reactDoc.querySelectorAll("div, section, main"));
-        const found = allEls.find((el) => /preventivo nr\./i.test(String(el.textContent || "").substring(0, 200)));
-        if (found) {
-          let container = found;
-          for (let i = 0; i < 12 && container.parentElement; i++) {
-            container = container.parentElement;
-            const cs = reactDoc.defaultView.getComputedStyle(container);
-            if (parseFloat(cs.padding) > 6 && cs.display !== "inline") break;
-          }
-          container.setAttribute("data-psi-preview-block", "true");
-        }
-        style.textContent = `[data-psi-preview-block="true"] { display: none !important; }`;
-        // Nasconde anche l'iframe React (lasciando solo il form di input).
-        // No, lo lasciamo visibile: contiene il form di input necessario.
-      } else {
-        style.textContent = "";
+    }
+
+    // Nasconde ANTEPRIMA preventivo embedded (siblings dopo "Genera Preventivo")
+    const genContainer = _findGenerateButtonContainer(reactDoc);
+    if (genContainer) {
+      let sib = genContainer.nextElementSibling;
+      while (sib) {
+        sib.setAttribute("data-psi-hide-area", "true");
+        sib = sib.nextElementSibling;
       }
     }
   } catch (err) {
@@ -21535,7 +21577,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260517-live-224`;
+  const url = `./preventivo-v2.html?v=20260517-hide-225`;
   const win = window.open(url, "psi_preventivo_v2", "noopener=yes");
   if (!win) {
     showToast(state.lang === "it" ? "Il browser ha bloccato il popup. Consenti i popup per questo sito e riprova." : "Popup blocked. Allow popups for this site.", "warning", 6000);
