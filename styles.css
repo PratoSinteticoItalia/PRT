@@ -16543,6 +16543,11 @@ textarea.text-input {
   line-height: 1.4;
   color: #6e7d72;
 }
+
+/* Quando il template Nuovo (v2) è attivo, l'iframe del generatore React
+   mostra solo i CAMPI DEL FORM. L'anteprima preview interna viene
+   nascosta via CSS injection (applyIframePreviewVisibility). */
+body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
 .sales-generator-toolbar-hint strong {
   color: var(--brand, #2d6a4f);
   font-weight: 700;

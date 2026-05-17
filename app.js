@@ -20979,7 +20979,9 @@ function buildProductTechFromCatalog(modelName = "") {
 
 // ─── Upload immagine prodotto (catalogo) ─────────────────────────────────────
 
-const PRODUCT_IMAGE_MAX_BYTES = 300 * 1024;
+const PRODUCT_IMAGE_MAX_SIDE = 600;     // px lato lungo dopo resize
+const PRODUCT_IMAGE_JPEG_QUALITY = 0.85;
+const PRODUCT_IMAGE_HARD_LIMIT_BYTES = 20 * 1024 * 1024; // 20MB hard limit (protezione OOM)
 
 function renderProductImagePreview(dataUrl) {
   const el = ui.productImagePreview;
@@ -20991,19 +20993,55 @@ function renderProductImagePreview(dataUrl) {
   }
 }
 
+function resizeImageDataUrl(srcDataUrl) {
+  // Ridimensiona a max 600px lato lungo + JPEG 0.85 via canvas.
+  // Garantisce output piccolo (~30-80 KB) indipendentemente dalla dimensione originale.
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const maxSide = PRODUCT_IMAGE_MAX_SIDE;
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        // Fondo bianco per JPEG (no trasparenza)
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const out = canvas.toDataURL("image/jpeg", PRODUCT_IMAGE_JPEG_QUALITY);
+        resolve(out);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => reject(new Error("image_decode_failed"));
+    img.src = srcDataUrl;
+  });
+}
+
 function handleProductImageChange(event) {
   const file = event?.target?.files?.[0];
   if (!file) return;
-  if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
-    showToast(state.lang === "it" ? `Foto troppo grande (max ${Math.round(PRODUCT_IMAGE_MAX_BYTES / 1024)} KB)` : `Image too large`, "warning");
+  if (file.size > PRODUCT_IMAGE_HARD_LIMIT_BYTES) {
+    showToast(state.lang === "it" ? "Foto eccessivamente grande (>20MB)" : "Image too large (>20MB)", "warning");
     event.target.value = "";
     return;
   }
   const reader = new FileReader();
-  reader.onload = () => {
-    const dataUrl = String(reader.result || "");
-    if (ui.productImageDataUrl) ui.productImageDataUrl.value = dataUrl;
-    renderProductImagePreview(dataUrl);
+  reader.onload = async () => {
+    try {
+      const srcDataUrl = String(reader.result || "");
+      const resized = await resizeImageDataUrl(srcDataUrl);
+      if (ui.productImageDataUrl) ui.productImageDataUrl.value = resized;
+      renderProductImagePreview(resized);
+    } catch (err) {
+      showToast(state.lang === "it" ? "Impossibile elaborare l'immagine" : "Cannot process image", "error");
+      console.warn("[product-image] resize failed:", err?.message);
+    }
   };
   reader.onerror = () => {
     showToast(state.lang === "it" ? "Impossibile leggere l'immagine" : "Cannot read image", "error");
@@ -21330,6 +21368,48 @@ function setSelectedQuoteTemplate(template) {
   document.querySelectorAll("[data-template-hint]").forEach((el) => {
     el.hidden = el.dataset.templateHint !== template;
   });
+  // Nasconde l'anteprima preview embedded del React quando v2 è selezionato
+  // (più chiaro: mostra solo i campi del form di input)
+  document.body.classList.toggle("quote-v2-active", template === "v2");
+  applyIframePreviewVisibility(template);
+}
+
+function applyIframePreviewVisibility(template) {
+  // Inietta nell'iframe del generatore React uno style che nasconde le sezioni
+  // di anteprima preventivo (lasciando visibili i campi del form di input).
+  // Quando v1 selezionato → mostra tutto.
+  try {
+    const iframe = document.getElementById("sales-generator-frame");
+    const doc = iframe?.contentDocument;
+    if (!doc) return;
+    let style = doc.getElementById("psi-preview-toggle-style");
+    if (!style) {
+      style = doc.createElement("style");
+      style.id = "psi-preview-toggle-style";
+      doc.head.appendChild(style);
+    }
+    if (template === "v2") {
+      // Trova un elemento che contiene "PREVENTIVO NR." e nascondi il suo
+      // primo container "card" antenato (anteprima preventivo embedded)
+      const allEls = Array.from(doc.querySelectorAll("div, section, main"));
+      const found = allEls.find((el) => /preventivo nr\./i.test(String(el.textContent || "").substring(0, 200)));
+      if (found) {
+        let container = found;
+        for (let i = 0; i < 12 && container.parentElement; i++) {
+          container = container.parentElement;
+          const cs = doc.defaultView.getComputedStyle(container);
+          if (parseFloat(cs.padding) > 6 && cs.display !== "inline") break;
+        }
+        container.setAttribute("data-psi-preview-block", "true");
+      }
+      style.textContent = `[data-psi-preview-block="true"] { display: none !important; }`;
+    } else {
+      // v1: rimuovi il filtro
+      style.textContent = "";
+    }
+  } catch (err) {
+    console.warn("[preview-toggle] failed:", err?.message);
+  }
 }
 
 function triggerLegacyGeneratorPdf() {
@@ -21370,7 +21450,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260517-img-222`;
+  const url = `./preventivo-v2.html?v=20260517-ui-223`;
   const win = window.open(url, "psi_preventivo_v2", "noopener=yes");
   if (!win) {
     showToast(state.lang === "it" ? "Il browser ha bloccato il popup. Consenti i popup per questo sito e riprova." : "Popup blocked. Allow popups for this site.", "warning", 6000);
@@ -21396,14 +21476,22 @@ bindEvent(ui.productImageInput, "change", handleProductImageChange);
 bindEvent(ui.productImageClear, "click", handleProductImageClear);
 
 // Inietta CSS per nascondere "Modello libero" dall'iframe quando si entra nel generatore
+// + applica visibilità anteprima preview in base al template selezionato
 const iframeEl = document.getElementById("sales-generator-frame");
 if (iframeEl) {
   iframeEl.addEventListener("load", () => {
     _iframeStyleInjected = false;
     injectIframeHideStyles();
+    // Riapplica il toggle anteprima dopo che l'iframe ha caricato il suo DOM
+    setTimeout(() => applyIframePreviewVisibility(getSelectedQuoteTemplate()), 600);
+    setTimeout(() => applyIframePreviewVisibility(getSelectedQuoteTemplate()), 1600);
+    setTimeout(() => applyIframePreviewVisibility(getSelectedQuoteTemplate()), 3000);
   });
   // Riprova all'avvio (l'iframe potrebbe essere già caricato)
-  setTimeout(() => injectIframeHideStyles(), 1500);
+  setTimeout(() => {
+    injectIframeHideStyles();
+    applyIframePreviewVisibility(getSelectedQuoteTemplate());
+  }, 1500);
 }
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));

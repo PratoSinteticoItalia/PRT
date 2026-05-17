@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260517-img-222" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260517-img-222" />
+    <link rel="preload" href="./styles.css?v=20260517-ui-223" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260517-ui-223" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -707,8 +707,8 @@
                 <button id="sales-generator-preview-v2-button" type="button" class="primary-button small-button" title="Genera il preventivo nel modello selezionato coi dati live del form">📄 Genera preventivo ↗</button>
               </div>
               <p class="sales-generator-toolbar-hint" id="sales-generator-template-hint">
-                <span data-template-hint="v2">Il modello <strong>Nuovo</strong> si apre in una nuova finestra coi tuoi dati live. L'anteprima sotto è solo del modello Classico (opzionale).</span>
-                <span data-template-hint="v1" hidden>Il modello <strong>Classico</strong> usa il generatore PDF tradizionale qui sotto.</span>
+                <span data-template-hint="v2">📌 Compila i campi sotto e clicca <strong>Genera preventivo ↗</strong> — il PDF si apre in una nuova finestra.</span>
+                <span data-template-hint="v1" hidden>Il modello <strong>Classico</strong> mostra l'anteprima qui sotto. Clicca <strong>Scarica PDF</strong> nella barra interna o <strong>Genera preventivo</strong> qui sopra.</span>
               </p>
               <details class="sales-generator-custom-model" id="sales-generator-custom-model">
                 <summary>
@@ -1833,7 +1833,7 @@
                     <input class="text-input" name="note" type="text" placeholder="REACH · EN71-3 · ASTM-D2616" />
                   </label>
                   <div class="field field-full product-image-uploader">
-                    <span>Foto prodotto (PNG/JPG, max 300 KB)</span>
+                    <span>Foto prodotto (PNG/JPG — ridimensionata automaticamente a 600px)</span>
                     <div class="product-image-row">
                       <div id="product-image-preview" class="product-image-preview" aria-label="Anteprima foto prodotto"></div>
                       <div class="product-image-actions">
@@ -2169,6 +2169,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260517-img-222" type="module"></script>
+    <script src="./app.js?v=20260517-ui-223" type="module"></script>
   </body>
 </html>
