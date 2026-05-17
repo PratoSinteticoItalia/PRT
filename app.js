@@ -21439,28 +21439,35 @@ function _hideAllBeforeAnchor(anchor, doc) {
   }
 }
 
+let _modalCooldownUntil = 0;
+
 function clampIframeToFormHeight() {
   // Ridimensiona l'iframe React per mostrare SOLO il form.
-  // Inietta overflow:hidden nel body/html dell'iframe per bloccare lo scroll
-  // interno che rivelerebbe la preview di React sotto il bottone.
+  // Ritorna true se React è in modalità form, false se in modalità preview.
   try {
     const reactIframe = document.getElementById("sales-generator-frame");
     const reactDoc = reactIframe?.contentDocument;
-    if (!reactIframe || !reactDoc) return;
+    if (!reactIframe || !reactDoc) return false;
     const genBtn = _findGenerateButtonAnchor(reactDoc);
-    if (!genBtn) return;
-    // Posizione assoluta dal top del documento iframe (indipendente dallo scroll)
+    if (!genBtn) {
+      // React è in modalità preview — nascondi l'iframe (lascia 0px)
+      reactIframe.style.height = "0px";
+      reactDoc.documentElement?.style.setProperty("overflow", "hidden", "important");
+      reactDoc.body?.style.setProperty("overflow", "hidden", "important");
+      return false; // segnala: siamo in preview mode
+    }
     const scrollTop = reactDoc.documentElement?.scrollTop || reactDoc.body?.scrollTop || 0;
     const rect = genBtn.getBoundingClientRect();
-    const newH = Math.ceil(rect.bottom + scrollTop + 56); // 56px di padding sotto il bottone
+    const newH = Math.ceil(rect.bottom + scrollTop + 56);
     if (newH > 300 && newH < 8000) {
       reactIframe.style.height = newH + "px";
-      // Blocca scroll interno — il contenuto oltre newH non è raggiungibile
       reactDoc.documentElement?.style.setProperty("overflow", "hidden", "important");
       reactDoc.body?.style.setProperty("overflow", "hidden", "important");
     }
+    return true; // siamo in form mode
   } catch (err) {
     console.warn("[clamp-iframe]", err?.message);
+    return false;
   }
 }
 
@@ -21489,11 +21496,20 @@ function applyIframePreviewVisibility() {
     const formStart = _findFormStartAnchor(reactDoc);
     if (formStart) _hideAllBeforeAnchor(formStart, reactDoc);
 
-    // Clamp altezza iframe per tagliare la preview embedded
-    clampIframeToFormHeight();
+    // Clamp altezza iframe. Se ritorna false = React è in preview mode
+    const isFormMode = clampIframeToFormHeight();
 
     // Nascondi "Modello libero"/"Modello consigliato" e intercetta "Scarica PDF"
     patchReactPreviewToolbar(reactDoc);
+
+    // Se React è passato in preview mode e il modal non è aperto → apri automaticamente
+    if (!isFormMode) {
+      const modal = document.getElementById("psi-pdf-modal");
+      const now = Date.now();
+      if (modal && modal.hidden && now > _modalCooldownUntil) {
+        openPreventivoModal();
+      }
+    }
   } catch (err) {
     console.warn("[preview-toggle] failed:", err?.message);
   }
@@ -21588,6 +21604,28 @@ function closePreventivoModal() {
   if (modal) modal.hidden = true;
   if (iframe) iframe.src = "";
   document.body.style.overflow = "";
+
+  // Imposta cooldown per evitare re-apertura automatica immediata
+  _modalCooldownUntil = Date.now() + 4000;
+
+  // Torna alla modalità form React cliccando "← Modifica" (o equivalente)
+  try {
+    const reactIframe = document.getElementById("sales-generator-frame");
+    const reactDoc = reactIframe?.contentDocument;
+    if (reactDoc) {
+      const modificaBtn = Array.from(reactDoc.querySelectorAll("button")).find((b) =>
+        /modifica/i.test((b.textContent || "").trim())
+      );
+      if (modificaBtn) {
+        modificaBtn.click();
+      }
+      // Ripristina altezza iframe dopo il click (React tornerà in form mode)
+      setTimeout(() => {
+        if (reactIframe) reactIframe.style.height = "";
+        applyIframePreviewVisibility();
+      }, 300);
+    }
+  } catch {}
 }
 
 bindEvent(document.getElementById("psi-pdf-modal-close"), "click", closePreventivoModal);
