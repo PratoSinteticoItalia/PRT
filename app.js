@@ -21450,11 +21450,16 @@ function clampIframeToFormHeight() {
     if (!reactIframe || !reactDoc) return false;
     const genBtn = _findGenerateButtonAnchor(reactDoc);
     if (!genBtn) {
-      // React è in modalità preview — nascondi l'iframe (lascia 0px)
-      reactIframe.style.height = "0px";
-      reactDoc.documentElement?.style.setProperty("overflow", "hidden", "important");
-      reactDoc.body?.style.setProperty("overflow", "hidden", "important");
-      return false; // segnala: siamo in preview mode
+      // React è in modalità preview.
+      // Durante il cooldown (utente ha appena chiuso il modal) non nascondere l'iframe —
+      // React sta tornando in form mode e dobbiamo lasciargli spazio.
+      const inCooldown = Date.now() < _modalCooldownUntil;
+      if (!inCooldown) {
+        reactIframe.style.height = "0px";
+        reactDoc.documentElement?.style.setProperty("overflow", "hidden", "important");
+        reactDoc.body?.style.setProperty("overflow", "hidden", "important");
+      }
+      return false;
     }
     const scrollTop = reactDoc.documentElement?.scrollTop || reactDoc.body?.scrollTop || 0;
     const rect = genBtn.getBoundingClientRect();
@@ -21612,18 +21617,20 @@ function closePreventivoModal() {
   try {
     const reactIframe = document.getElementById("sales-generator-frame");
     const reactDoc = reactIframe?.contentDocument;
-    if (reactDoc) {
+    if (reactIframe && reactDoc) {
+      // Ripristina altezza a valore generoso PRIMA del click così React può renderizzarsi
+      reactIframe.style.height = "1800px";
+      reactDoc.documentElement?.style.removeProperty("overflow");
+      reactDoc.body?.style.removeProperty("overflow");
+
       const modificaBtn = Array.from(reactDoc.querySelectorAll("button")).find((b) =>
         /modifica/i.test((b.textContent || "").trim())
       );
-      if (modificaBtn) {
-        modificaBtn.click();
-      }
-      // Ripristina altezza iframe dopo il click (React tornerà in form mode)
-      setTimeout(() => {
-        if (reactIframe) reactIframe.style.height = "";
-        applyIframePreviewVisibility();
-      }, 300);
+      if (modificaBtn) modificaBtn.click();
+
+      // Lascia che il MutationObserver riapplichi il clamp corretto una volta che
+      // React è tornato in form mode — non forziamo applyIframePreviewVisibility
+      // qui per non rischiare un loop durante il cooldown
     }
   } catch {}
 }
