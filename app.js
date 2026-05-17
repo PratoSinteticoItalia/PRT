@@ -21077,21 +21077,28 @@ function injectIframeHideStyles() {
   const iframe = document.getElementById("sales-generator-frame");
   if (!iframe || !iframe.contentDocument) return;
   const doc = iframe.contentDocument;
-  // Cerca per label "Modello libero" e nasconde il section padre
   const tryInject = () => {
     if (_iframeStyleInjected) return;
-    const labels = Array.from(doc.querySelectorAll("label, div, span"));
-    const label = labels.find((el) => /^Modello libero$/i.test((el.textContent || "").trim()));
-    if (!label) return;
-    // Risali fino al primo container "card" della sezione (cerca un nodo con padding/border)
-    let container = label;
-    for (let i = 0; i < 8 && container.parentElement; i++) {
+    // Strategia 1: trova input con placeholder "Es. Sportgreen Plus 45mm"
+    let anchor = doc.querySelector('input[placeholder*="Sportgreen"]')
+              || doc.querySelector('input[placeholder*="Plus 45"]')
+              || doc.querySelector('input[placeholder*="Es. Sport"]');
+    // Strategia 2: cerca testo "Modello libero" in label/div/span
+    if (!anchor) {
+      const els = Array.from(doc.querySelectorAll("label, div, span, p, h1, h2, h3, h4"));
+      anchor = els.find((el) => /^modello libero/i.test(String(el.textContent || "").trim()));
+    }
+    if (!anchor) return;
+    // Risali al container con sfondo scuro (la "barra" del modello libero è
+    // tipicamente in un wrapper con background colorato distinto)
+    let container = anchor;
+    for (let i = 0; i < 10 && container.parentElement; i++) {
       container = container.parentElement;
       const cs = doc.defaultView.getComputedStyle(container);
-      const isCard = cs.padding && parseFloat(cs.padding) > 0 && cs.borderRadius && parseFloat(cs.borderRadius) > 0;
-      if (isCard) break;
+      const hasPaddingBlock = parseFloat(cs.paddingTop) >= 8 || parseFloat(cs.paddingBottom) >= 8;
+      const hasBg = cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent";
+      if (hasPaddingBlock && (hasBg || cs.borderRadius)) break;
     }
-    // Aggiungi un attributo per CSS injection
     container.setAttribute("data-psi-hide", "modello-libero");
     if (!doc.getElementById("psi-injected-hide-style")) {
       const style = doc.createElement("style");
@@ -21103,12 +21110,60 @@ function injectIframeHideStyles() {
   };
   tryInject();
   if (!_iframeStyleInjected) {
-    // Riprova dopo render React
     setTimeout(tryInject, 400);
     setTimeout(tryInject, 1200);
     setTimeout(tryInject, 2500);
+    setTimeout(tryInject, 5000);
   }
 }
+
+// ─── Anteprima live preventivo v2 (iframe affiancato) ────────────────────────
+
+const V2_PREVIEW_FRAME_ID = "preventivo-v2-preview-frame";
+const V2_PREVIEW_SRC = "./preventivo-v2.html?embedded=1&v=20260517-live-224";
+let _v2PreviewInterval = 0;
+let _v2PreviewReady = false;
+let _v2LastSignature = "";
+
+function refreshV2PreviewIfNeeded() {
+  const frame = document.getElementById(V2_PREVIEW_FRAME_ID);
+  if (!frame || frame.hidden || !_v2PreviewReady) return;
+  const payload = extractGeneratorPayloadFromIframe();
+  if (!payload) return;
+  // Confronto sigillato per evitare postMessage inutili
+  const sig = JSON.stringify(payload);
+  if (sig === _v2LastSignature) return;
+  _v2LastSignature = sig;
+  try {
+    frame.contentWindow?.postMessage({ type: "psi:preventivo-v2:data", payload }, "*");
+  } catch (err) {
+    console.warn("[v2-preview] postMessage failed:", err?.message);
+  }
+}
+
+function startV2PreviewLoop() {
+  if (_v2PreviewInterval) return;
+  _v2PreviewInterval = window.setInterval(refreshV2PreviewIfNeeded, 1500);
+}
+
+function stopV2PreviewLoop() {
+  if (_v2PreviewInterval) {
+    clearInterval(_v2PreviewInterval);
+    _v2PreviewInterval = 0;
+  }
+  _v2PreviewReady = false;
+  _v2LastSignature = "";
+}
+
+// Listener per messaggio ready dell'iframe v2
+window.addEventListener("message", (event) => {
+  if (event?.data?.type === "psi:preventivo-v2:ready") {
+    _v2PreviewReady = true;
+    // Trigger un refresh immediato
+    _v2LastSignature = "";
+    refreshV2PreviewIfNeeded();
+  }
+});
 
 function parseEuroNumber(raw) {
   if (raw == null) return 0;
@@ -21272,13 +21327,12 @@ function extractGeneratorPayloadFromIframe() {
       });
     }
 
-    // Applica modello custom (override di un'opzione)
+    // Applica modello custom (sostituisce un'opzione esistente o l'aggiunge se vuota)
     const customModel = getCustomModelOverride();
-    if (customModel && options[customModel.target - 1]) {
+    if (customModel) {
       const idx = customModel.target - 1;
-      const opt = options[idx];
       const customSlug = slugifyModelName(customModel.name);
-      const customDiscount = opt.discount;
+      const customDiscount = options[idx]?.discount || 0;
       const grossPrice = customModel.pricePerSqm * sqm;
       const discountedPrice = grossPrice * (1 - customDiscount / 100);
       const materialsBase = materialsTotal || 0;
@@ -21287,13 +21341,16 @@ function extractGeneratorPayloadFromIframe() {
       const shipping = shippingCost || 0;
       const netTotal = discountedPrice + materialsAfterDisc + installationTotal + shipping;
       const grandTotal = netTotal * (1 + vat / 100);
-      options[idx] = {
-        ...opt,
+      const customOption = {
         slug: customSlug,
         name: customModel.name,
         code: "—",
         tagline: `Fuori catalogo${customDiscount > 0 ? ` · sconto ${customDiscount}%` : ""}`,
         pricePerSqm: customModel.pricePerSqm,
+        discount: customDiscount,
+        materials: materialsAfterDisc,
+        installation: 0,
+        shippingLabel: shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita",
         net: netTotal,
         total: grandTotal,
         finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
@@ -21301,6 +21358,17 @@ function extractGeneratorPayloadFromIframe() {
         tech: defaultProductTech(customModel.name),
         imageDataUrl: "",
       };
+      if (options[idx]) {
+        options[idx] = { ...options[idx], ...customOption };
+      } else {
+        // Riempie con placeholder fino a target poi append
+        while (options.length < idx) {
+          options.push(null);
+        }
+        options[idx] = customOption;
+        // Rimuove eventuali null intermedi
+        options.splice(0, options.length, ...options.filter(Boolean));
+      }
     }
     if (!options.length) return null;
 
@@ -21375,37 +21443,54 @@ function setSelectedQuoteTemplate(template) {
 }
 
 function applyIframePreviewVisibility(template) {
-  // Inietta nell'iframe del generatore React uno style che nasconde le sezioni
-  // di anteprima preventivo (lasciando visibili i campi del form di input).
-  // Quando v1 selezionato → mostra tutto.
+  // Toggle visibilità: quando v2 attivo, l'anteprima embedded del React
+  // sparisce (CSS injection) e al suo posto compare l'iframe del preventivo v2
+  // come PREVIEW LIVE. Quando v1 attivo, ripristina v1 e nasconde v2 preview.
   try {
-    const iframe = document.getElementById("sales-generator-frame");
-    const doc = iframe?.contentDocument;
-    if (!doc) return;
-    let style = doc.getElementById("psi-preview-toggle-style");
-    if (!style) {
-      style = doc.createElement("style");
-      style.id = "psi-preview-toggle-style";
-      doc.head.appendChild(style);
-    }
-    if (template === "v2") {
-      // Trova un elemento che contiene "PREVENTIVO NR." e nascondi il suo
-      // primo container "card" antenato (anteprima preventivo embedded)
-      const allEls = Array.from(doc.querySelectorAll("div, section, main"));
-      const found = allEls.find((el) => /preventivo nr\./i.test(String(el.textContent || "").substring(0, 200)));
-      if (found) {
-        let container = found;
-        for (let i = 0; i < 12 && container.parentElement; i++) {
-          container = container.parentElement;
-          const cs = doc.defaultView.getComputedStyle(container);
-          if (parseFloat(cs.padding) > 6 && cs.display !== "inline") break;
+    const reactIframe = document.getElementById("sales-generator-frame");
+    const v2Frame = document.getElementById(V2_PREVIEW_FRAME_ID);
+    const reactDoc = reactIframe?.contentDocument;
+
+    // Toggle visibilità del v2 preview frame
+    if (v2Frame) {
+      if (template === "v2") {
+        if (!v2Frame.src || !v2Frame.src.includes("preventivo-v2.html")) {
+          v2Frame.src = V2_PREVIEW_SRC;
         }
-        container.setAttribute("data-psi-preview-block", "true");
+        v2Frame.hidden = false;
+        startV2PreviewLoop();
+      } else {
+        v2Frame.hidden = true;
+        stopV2PreviewLoop();
       }
-      style.textContent = `[data-psi-preview-block="true"] { display: none !important; }`;
-    } else {
-      // v1: rimuovi il filtro
-      style.textContent = "";
+    }
+
+    // Toggle anteprima embedded React
+    if (reactDoc) {
+      let style = reactDoc.getElementById("psi-preview-toggle-style");
+      if (!style) {
+        style = reactDoc.createElement("style");
+        style.id = "psi-preview-toggle-style";
+        reactDoc.head.appendChild(style);
+      }
+      if (template === "v2") {
+        const allEls = Array.from(reactDoc.querySelectorAll("div, section, main"));
+        const found = allEls.find((el) => /preventivo nr\./i.test(String(el.textContent || "").substring(0, 200)));
+        if (found) {
+          let container = found;
+          for (let i = 0; i < 12 && container.parentElement; i++) {
+            container = container.parentElement;
+            const cs = reactDoc.defaultView.getComputedStyle(container);
+            if (parseFloat(cs.padding) > 6 && cs.display !== "inline") break;
+          }
+          container.setAttribute("data-psi-preview-block", "true");
+        }
+        style.textContent = `[data-psi-preview-block="true"] { display: none !important; }`;
+        // Nasconde anche l'iframe React (lasciando solo il form di input).
+        // No, lo lasciamo visibile: contiene il form di input necessario.
+      } else {
+        style.textContent = "";
+      }
     }
   } catch (err) {
     console.warn("[preview-toggle] failed:", err?.message);
@@ -21450,7 +21535,7 @@ bindEvent(ui.salesGeneratorPreviewV2Button, "click", () => {
       window.localStorage.removeItem("psi:preventivo-v2:data");
     }
   } catch {}
-  const url = `./preventivo-v2.html?v=20260517-ui-223`;
+  const url = `./preventivo-v2.html?v=20260517-live-224`;
   const win = window.open(url, "psi_preventivo_v2", "noopener=yes");
   if (!win) {
     showToast(state.lang === "it" ? "Il browser ha bloccato il popup. Consenti i popup per questo sito e riprova." : "Popup blocked. Allow popups for this site.", "warning", 6000);
@@ -21474,6 +21559,19 @@ bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
 bindEvent(ui.preventivoProductSelect, "change", fillPreventivoProductForm);
 bindEvent(ui.productImageInput, "change", handleProductImageChange);
 bindEvent(ui.productImageClear, "click", handleProductImageClear);
+
+// Quando l'utente modifica il pannello "Modello custom", forza refresh
+// dell'anteprima v2 al prossimo poll (signature reset).
+["customModelTarget", "customModelName", "customModelPrice"].forEach((key) => {
+  const el = ui[key];
+  if (el) {
+    el.addEventListener("input", () => { _v2LastSignature = ""; });
+    el.addEventListener("change", () => { _v2LastSignature = ""; });
+  }
+});
+if (ui.customModelToggle) {
+  ui.customModelToggle.addEventListener("toggle", () => { _v2LastSignature = ""; });
+}
 
 // Inietta CSS per nascondere "Modello libero" dall'iframe quando si entra nel generatore
 // + applica visibilità anteprima preview in base al template selezionato

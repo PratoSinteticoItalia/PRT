@@ -16548,6 +16548,19 @@ textarea.text-input {
    mostra solo i CAMPI DEL FORM. L'anteprima preview interna viene
    nascosta via CSS injection (applyIframePreviewVisibility). */
 body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
+
+/* Anteprima live del preventivo Nuovo (v2) — visibile solo quando "Nuovo (ufficiale)"
+   è selezionato. Si carica preventivo-v2.html?embedded=1 e riceve dati live
+   via postMessage dal form React. */
+.preventivo-v2-preview-frame {
+  width: 100%;
+  min-height: 1500px;
+  border: 0;
+  border-radius: 12px;
+  background: #e8ebe5;
+  box-shadow: inset 0 0 0 1px rgba(31, 70, 55, 0.08);
+}
+.preventivo-v2-preview-frame[hidden] { display: none !important; }
 .sales-generator-toolbar-hint strong {
   color: var(--brand, #2d6a4f);
   font-weight: 700;

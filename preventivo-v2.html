@@ -37,6 +37,11 @@
       padding: 10px 18px; display: flex; gap: 10px; justify-content: center;
       box-shadow: 0 2px 6px rgba(0,0,0,0.06);
     }
+    /* Embedded mode: nasconde toolbar e riduce margini per fit in iframe */
+    html.psi-embedded { background: #e8ebe5; }
+    html.psi-embedded body { background: #e8ebe5; }
+    html.psi-embedded .toolbar { display: none; }
+    html.psi-embedded .page { margin: 8mm auto; }
     .toolbar button {
       appearance: none; border: none; cursor: pointer;
       font: 700 13px/1 'Inter', sans-serif;
@@ -1084,8 +1089,20 @@
     }
   });
 
+  // Embedded mode (?embedded=1): nasconde toolbar (stampa/chiudi) e adatta
+  // padding per essere usato come preview live in iframe.
+  function applyEmbeddedMode() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("embedded") === "1") {
+      document.documentElement.classList.add("psi-embedded");
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
+    applyEmbeddedMode();
     renderPreventivo(loadData());
+    // Segnala al parent che siamo pronti per ricevere dati live
+    try { window.parent?.postMessage({ type: "psi:preventivo-v2:ready" }, "*"); } catch {}
   });
 })();
 </script>
