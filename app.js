@@ -21137,6 +21137,7 @@ function slugifyModelName(name) {
     .replace(/[^\w\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
+    .replace(/(\d)-(mm|cm)\b/g, "$1$2")  // "25-mm" → "25mm" per match con chiavi catalogo
     .replace(/^-|-$/g, "");
 }
 

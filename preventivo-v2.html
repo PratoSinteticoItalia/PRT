@@ -39,9 +39,15 @@
     }
     /* Embedded mode: nasconde toolbar e riduce margini per fit in iframe */
     html.psi-embedded { background: #e8ebe5; }
-    html.psi-embedded body { background: #e8ebe5; }
+    html.psi-embedded body { background: #e8ebe5; margin: 0; padding: 0; }
     html.psi-embedded .toolbar { display: none; }
-    html.psi-embedded .page { margin: 8mm auto; }
+    html.psi-embedded .page {
+      margin: 0 auto;
+      box-shadow: none;
+      max-width: 210mm;
+      width: 100%;
+      border-radius: 0;
+    }
     .toolbar button {
       appearance: none; border: none; cursor: pointer;
       font: 700 13px/1 'Inter', sans-serif;

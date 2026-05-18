@@ -16621,7 +16621,15 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
 /* Belt-and-suspenders: nasconde React iframe quando la preview è attiva */
 #sales-generator-frame[data-psi-preview="1"] { display: none !important; }
 
-.psi-preview-section { width: 100%; }
+/* Quando la preview è attiva, rimuovi padding/bg/shadow dal panel contenitore */
+.sales-generator-frame-panel:has(#psi-preview-section:not([hidden])) {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border: none;
+}
+
+.psi-preview-section { width: 100%; border-radius: 12px; overflow: hidden; }
 .psi-preview-section[hidden] { display: none !important; }
 .psi-preview-toolbar {
   display: flex;
@@ -16629,7 +16637,6 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
   justify-content: space-between;
   padding: 10px 16px;
   background: var(--brand, #2d6a4f);
-  border-radius: 10px 10px 0 0;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -16650,5 +16657,4 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
 }
 .psi-preview-iframe {
   width: 100%; height: 2600px; border: 0; display: block;
-  border-radius: 0 0 10px 10px;
 }
