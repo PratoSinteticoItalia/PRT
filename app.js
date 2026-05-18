@@ -21392,8 +21392,16 @@ function extractGeneratorPayloadFromIframe() {
       branding: {
         tagline: customTexts.brandTagline,
         company: customTexts.brandCompany,
-        // Priorità: logo crew (posatori) → logo settings → default logo-prato.png
-        logoDataUrl: buildSalesGeneratorBrandingPayload().crewLogoDataUrl || customTexts.brandLogoDataUrl || "",
+        // Priorità: logo crew da localStorage (stessa fonte del React generator) → settings → default
+        logoDataUrl: (() => {
+          try {
+            const raw = window.localStorage.getItem("quote-generator-branding");
+            const parsed = raw ? JSON.parse(raw) : null;
+            const fromStorage = String(parsed?.payload?.crewLogoDataUrl || "").trim();
+            if (fromStorage) return fromStorage;
+          } catch {}
+          return buildSalesGeneratorBrandingPayload().crewLogoDataUrl || customTexts.brandLogoDataUrl || "";
+        })(),
       },
       payment: {
         main: customTexts.paymentMain,

@@ -66,10 +66,11 @@
       padding: 22px 26px 14px;
     }
     @media print {
-      html, body { background: none; }
-      .page { margin: 0; box-shadow: none; width: 100%; padding: 18px 22px; }
+      html, body { background: none; width: 210mm; }
+      .page { margin: 0 !important; box-shadow: none !important; width: 210mm !important; max-width: 210mm !important; padding: 18px 22px !important; border-radius: 0 !important; }
+      .hdr-crew { display: flex !important; }
       .toolbar { display: none; }
-      @page { size: A4; margin: 0; }
+      @page { size: A4 portrait; margin: 0; }
     }
 
     /* ── HEADER ── */
