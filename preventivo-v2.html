@@ -77,7 +77,8 @@
         page-break-after: always;
       }
       .page:last-child { page-break-after: auto; }
-      .hdr-crew { display: flex !important; }
+      .hdr-crew:not([hidden]) { display: flex !important; }
+      .hdr-crew[hidden] { display: none !important; }
       .toolbar { display: none; }
       @page { size: A4 portrait; margin: 0; }
     }
@@ -102,6 +103,9 @@
     .hdr-tag { font-size: 9.5px; color: var(--gl); margin-top: 4px; }
     .hdr-right { text-align: right; }
     .hdr-crew { display: flex; align-items: center; justify-content: center; }
+    /* Specificity fix: l'attributo HTML hidden viene sovrascritto da .hdr-crew { display: flex }
+       perché hanno la stessa specificità CSS. Garantisci che hidden vinca sempre. */
+    .hdr-crew[hidden], [hidden].hdr-crew { display: none !important; }
     .hdr-lbl { font-size: 9px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--gl); }
     .hdr-num { font-size: 24px; font-weight: 900; color: var(--gd); letter-spacing: -1px; line-height: 1.05; }
     .hdr-co  { font-size: 9px; color: var(--gx); margin-top: 4px; letter-spacing: .2px; }

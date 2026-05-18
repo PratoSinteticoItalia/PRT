@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260518-logo-reset-255";
+const APP_SHELL_VERSION = "20260518-css-hidden-256";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21484,7 +21484,7 @@ function showPreventivoPreview() {
       if (h > 100) previewIframe.style.height = h + "px";
     } catch {}
   };
-  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-logo-reset-255`;
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-css-hidden-256`;
   if (reactIframe) {
     reactIframe.style.setProperty("display", "none", "important");
     reactIframe.setAttribute("data-psi-preview", "1");
