@@ -21455,39 +21455,49 @@ function clampIframeToFormHeight(reactIframe, reactDoc, genBtn) {
 }
 
 function injectPreviewOverlay(reactIframe, reactDoc) {
-  // Espandi l'iframe React per riempire la viewport dal suo top in poi
-  const iframeRect = reactIframe.getBoundingClientRect();
-  const newH = Math.max(Math.round(window.innerHeight - iframeRect.top + 20), 600);
-  reactIframe.style.height = newH + "px";
-  reactDoc.documentElement?.style.removeProperty("overflow");
-  reactDoc.body?.style.removeProperty("overflow");
-
-  // Misura altezza toolbar React per posizionare l'overlay sotto di essa
+  // Misura la toolbar React (← Modifica, Scarica PDF) dall'interno dell'iframe.
+  // Se non ancora renderizzata, riprova tra 300ms.
   const scaricaBtn = Array.from(reactDoc.querySelectorAll("button")).find((b) =>
     /scarica\s*pdf/i.test((b.textContent || "").trim())
   );
-  const toolbarH = scaricaBtn ? Math.ceil(scaricaBtn.getBoundingClientRect().bottom + 8) : 56;
-
-  let overlay = reactDoc.getElementById("psi-preview-overlay-frame");
-  const p2 = getIncludeP2() ? "1" : "0";
-  const newSrc = `../preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-overlay`;
-
-  if (!overlay) {
-    overlay = reactDoc.createElement("iframe");
-    overlay.id = "psi-preview-overlay-frame";
-    overlay.style.cssText = "position:fixed;left:0;right:0;bottom:0;width:100%;border:0;z-index:999;";
-    reactDoc.body.appendChild(overlay);
+  const toolbarH = scaricaBtn ? Math.ceil(scaricaBtn.getBoundingClientRect().bottom + 4) : 0;
+  if (toolbarH < 10) {
+    setTimeout(() => applyIframePreviewVisibility(), 300);
+    return;
   }
-  overlay.style.top = toolbarH + "px";
 
-  if (overlay.getAttribute("data-psi-src") !== newSrc) {
-    overlay.setAttribute("data-psi-src", newSrc);
+  // Clippa l'iframe React alla sola altezza della toolbar — il contenuto sotto scompare
+  reactIframe.style.height = toolbarH + "px";
+  reactDoc.documentElement?.style.setProperty("overflow", "hidden", "important");
+  reactDoc.body?.style.setProperty("overflow", "hidden", "important");
+
+  // Inietta il nostro template nel DOM principale, subito dopo l'iframe React.
+  // Così non ci sono complicazioni di position:fixed cross-iframe.
+  let overlayWrap = document.getElementById("psi-preview-overlay-wrap");
+  if (!overlayWrap) {
+    overlayWrap = document.createElement("div");
+    overlayWrap.id = "psi-preview-overlay-wrap";
+    overlayWrap.style.cssText = "width:100%;";
+    reactIframe.parentNode.insertBefore(overlayWrap, reactIframe.nextSibling);
+  }
+  let overlayIframe = overlayWrap.querySelector("iframe");
+  if (!overlayIframe) {
+    overlayIframe = document.createElement("iframe");
+    overlayIframe.id = "psi-preview-overlay-iframe";
+    overlayIframe.style.cssText = "width:100%;height:80vh;border:0;display:block;";
+    overlayWrap.appendChild(overlayIframe);
+  }
+
+  const p2 = getIncludeP2() ? "1" : "0";
+  const newSrc = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-overlay`;
+  if (overlayIframe.getAttribute("data-psi-src") !== newSrc) {
+    overlayIframe.setAttribute("data-psi-src", newSrc);
     const payload = extractGeneratorPayloadFromIframe();
     try {
       if (payload) window.localStorage.setItem("psi:preventivo-v2:data", JSON.stringify(payload));
       else window.localStorage.removeItem("psi:preventivo-v2:data");
     } catch {}
-    overlay.src = newSrc;
+    overlayIframe.src = newSrc;
     trackUsageEvent("quote_template_generate", {
       template: "v2-overlay",
       requestId: state.selectedSalesRequestId || "",
@@ -21497,7 +21507,8 @@ function injectPreviewOverlay(reactIframe, reactDoc) {
 }
 
 function removePreviewOverlay(reactDoc) {
-  reactDoc?.getElementById("psi-preview-overlay-frame")?.remove();
+  document.getElementById("psi-preview-overlay-wrap")?.remove();
+  reactDoc?.getElementById("psi-preview-overlay-frame")?.remove(); // pulizia legacy
 }
 
 function applyIframePreviewVisibility() {
@@ -21574,7 +21585,7 @@ function patchReactPreviewToolbar(reactDoc) {
       scaricaBtn.addEventListener("click", (e) => {
         e.stopImmediatePropagation();
         e.preventDefault();
-        reactDoc.getElementById("psi-preview-overlay-frame")?.contentWindow?.print();
+        document.getElementById("psi-preview-overlay-iframe")?.contentWindow?.print();
       }, true);
     }
   } catch (err) {
