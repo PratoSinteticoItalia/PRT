@@ -71,8 +71,12 @@
       .page, html.psi-embedded .page {
         margin: 0 !important; box-shadow: none !important;
         width: 210mm !important; max-width: 210mm !important;
+        min-height: 297mm !important; /* A4 portrait pieno */
         padding: 18px 22px !important; border-radius: 0 !important;
+        box-sizing: border-box;
+        page-break-after: always;
       }
+      .page:last-child { page-break-after: auto; }
       .hdr-crew { display: flex !important; }
       .toolbar { display: none; }
       @page { size: A4 portrait; margin: 0; }
@@ -84,8 +88,9 @@
       padding-bottom: 10px;
       border-bottom: 2px solid var(--gd);
       margin-bottom: 14px;
+      gap: 14px;
     }
-    .hdr-left { display: flex; align-items: center; gap: 14px; }
+    .hdr-left { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
     .hdr-logo {
       width: 72px; height: 60px;
       display: flex; align-items: center; justify-content: center;
@@ -1067,7 +1072,7 @@
     setField("quoteNumber2", data.quoteNumber || "—");
     setField("brandTagline", data.branding?.tagline || "Dal 2016 · Fornitura e Posa Professionale");
     setField("brandCompany", data.branding?.company || "VERTEX SRLS · P.IVA 04863610616");
-    const logoSrc = data.branding?.logoDataUrl || "";
+    const logoSrc = data.branding?.logoDataUrl || data.partner?.logoDataUrl || "";
     const crewSection = document.getElementById("hdr-crew-section");
     const crewLogo = document.getElementById("hdr-crew-logo");
     const crewSection2 = document.getElementById("hdr-crew-section-2");

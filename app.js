@@ -21439,6 +21439,16 @@ function extractGeneratorPayloadFromIframe() {
       certifications: PREVENTIVO_STATIC_DEFAULTS.certifications,
       conditions: PREVENTIVO_STATIC_DEFAULTS.conditions,
       installationWork: isPosa ? PREVENTIVO_STATIC_DEFAULTS.installationWork : null,
+      // Logo partner/squadra dell'utente corrente (se crew o se ha brand caricato)
+      partner: (() => {
+        try {
+          const branding = buildSalesGeneratorBrandingPayload();
+          if (branding?.crewLogoDataUrl || branding?.crewName) {
+            return { logoDataUrl: branding.crewLogoDataUrl, name: branding.crewName };
+          }
+        } catch {}
+        return null;
+      })(),
     };
   } catch (err) {
     console.warn("[preventivo-v2] estrazione dal generatore fallita:", err?.message);
@@ -21469,7 +21479,7 @@ function showPreventivoPreview() {
       if (h > 100) previewIframe.style.height = h + "px";
     } catch {}
   };
-  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-swap`;
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-partner-252`;
   if (reactIframe) {
     reactIframe.style.setProperty("display", "none", "important");
     reactIframe.setAttribute("data-psi-preview", "1");
@@ -21499,6 +21509,7 @@ function initQuoteGenerator() {
 }
 
 function _interceptReactGenerateButton(doc) {
+  // Intercetta click su "Genera Preventivo →" di React → mostra il nostro template
   try {
     if (!doc || doc._psiIntercepted) return;
     doc._psiIntercepted = true;
