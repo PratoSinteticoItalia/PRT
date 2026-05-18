@@ -703,6 +703,7 @@
                   <input type="checkbox" id="quote-include-p2" checked />
                   <span>📋 Schede tecniche</span>
                 </label>
+                <button id="sales-generator-generate-btn" type="button" class="primary-button small-button">📄 Genera preventivo</button>
               </div>
               <details class="sales-generator-custom-model" id="sales-generator-custom-model">
                 <summary>
@@ -739,6 +740,13 @@
                 src="./sales-suite/generator.html?embedded=1&v=20260514-commit-fix-201&shell=20260514-commit-fix-201"
                 scrolling="no"
               ></iframe>
+              <div id="psi-preview-section" class="psi-preview-section" hidden>
+                <div class="psi-preview-toolbar">
+                  <button id="psi-preview-back" type="button" class="psi-preview-back-btn">← Modifica</button>
+                  <button id="psi-preview-print" type="button" class="psi-preview-print-btn">🖨 Stampa / Salva PDF</button>
+                </div>
+                <iframe id="psi-preview-iframe" class="psi-preview-iframe" src="" title="Preventivo"></iframe>
+              </div>
             </section>
             <section id="sales-generator-contact-panel" class="panel sales-generator-contact-panel hidden">
               <div class="panel-head">
@@ -2163,6 +2171,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260518-main-dom-overlay-236" type="module"></script>
+    <script src="./app.js?v=20260518-swap-237" type="module"></script>
   </body>
 </html>
