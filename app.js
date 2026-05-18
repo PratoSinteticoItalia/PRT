@@ -21411,6 +21411,8 @@ function hidePreventivoPreview() {
 
 function initQuoteGenerator() {
   document.body.classList.add("quote-v2-active");
+  // Auto-mostra il nostro template subito (nasconde React preview)
+  setTimeout(showPreventivoPreview, 400);
 }
 
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
@@ -21419,10 +21421,14 @@ bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
 bindEvent(ui.preventivoProductSelect, "change", fillPreventivoProductForm);
 bindEvent(ui.productImageInput, "change", handleProductImageChange);
 bindEvent(ui.productImageClear, "click", handleProductImageClear);
-bindEvent(document.getElementById("sales-generator-generate-btn"), "click", showPreventivoPreview);
-bindEvent(document.getElementById("psi-preview-back"), "click", hidePreventivoPreview);
-bindEvent(document.getElementById("psi-preview-print"), "click", () => {
-  document.getElementById("psi-preview-iframe")?.contentWindow?.print();
+
+// Usa event delegation — i pulsanti potrebbero non essere nel DOM al momento del bind
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#sales-generator-generate-btn")) showPreventivoPreview();
+  if (e.target.closest("#psi-preview-back")) hidePreventivoPreview();
+  if (e.target.closest("#psi-preview-print")) {
+    document.getElementById("psi-preview-iframe")?.contentWindow?.print();
+  }
 });
 
 // Inietta CSS per nascondere "Modello libero" dall'iframe quando si entra nel generatore
