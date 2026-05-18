@@ -21116,10 +21116,6 @@ function injectIframeHideStyles() {
   }
 }
 
-// MutationObserver per re-applicare il hide del React ad ogni render
-let _reactHideObserver = null;
-let _reactHideDebounceTimer = 0;
-
 function parseEuroNumber(raw) {
   if (raw == null) return 0;
   const cleaned = String(raw).trim().replace(/€/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
@@ -21377,220 +21373,38 @@ function getIncludeP2() {
   return cb ? cb.checked : true;
 }
 
+function showPreventivoPreview() {
+  const reactIframe = document.getElementById("sales-generator-frame");
+  const previewSection = document.getElementById("psi-preview-section");
+  const previewIframe = document.getElementById("psi-preview-iframe");
+  if (!previewSection || !previewIframe) return;
+  const payload = extractGeneratorPayloadFromIframe();
+  try {
+    if (payload) window.localStorage.setItem("psi:preventivo-v2:data", JSON.stringify(payload));
+    else window.localStorage.removeItem("psi:preventivo-v2:data");
+  } catch {}
+  const p2 = getIncludeP2() ? "1" : "0";
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-swap`;
+  if (reactIframe) reactIframe.hidden = true;
+  previewSection.hidden = false;
+  trackUsageEvent("quote_template_generate", {
+    template: "v2-swap",
+    requestId: state.selectedSalesRequestId || "",
+    hasLiveData: payload ? "yes" : "no",
+  });
+}
+
+function hidePreventivoPreview() {
+  const reactIframe = document.getElementById("sales-generator-frame");
+  const previewSection = document.getElementById("psi-preview-section");
+  const previewIframe = document.getElementById("psi-preview-iframe");
+  if (previewIframe) previewIframe.src = "";
+  if (previewSection) previewSection.hidden = true;
+  if (reactIframe) reactIframe.hidden = false;
+}
+
 function initQuoteGenerator() {
   document.body.classList.add("quote-v2-active");
-  applyIframePreviewVisibility();
-  connectReactHideObserver();
-}
-
-function connectReactHideObserver() {
-  // Osserva il DOM dell'iframe React e ri-applica il hide ogni volta che React
-  // ri-renderizza (React rimuove data-psi-hide-area ad ogni reconciliation).
-  // Usa solo childList per non triggerare sui nostri stessi setAttribute.
-  disconnectReactHideObserver();
-  const reactIframe = document.getElementById("sales-generator-frame");
-  const reactDoc = reactIframe?.contentDocument;
-  if (!reactDoc?.body) return;
-  _reactHideObserver = new MutationObserver(() => {
-    clearTimeout(_reactHideDebounceTimer);
-    _reactHideDebounceTimer = window.setTimeout(() => applyIframePreviewVisibility(), 120);
-  });
-  _reactHideObserver.observe(reactDoc.body, { childList: true, subtree: true, attributes: false });
-}
-
-function disconnectReactHideObserver() {
-  clearTimeout(_reactHideDebounceTimer);
-  _reactHideDebounceTimer = 0;
-  if (_reactHideObserver) {
-    _reactHideObserver.disconnect();
-    _reactHideObserver = null;
-  }
-}
-
-function _findFormStartAnchor(doc) {
-  // Trova l'elemento "Tipo Destinatario" (inizio form React)
-  const els = Array.from(doc.querySelectorAll("*"));
-  return els.find((el) => {
-    const text = String(el.textContent || "").trim();
-    return text.length < 60 && /^tipo destinatario/i.test(text);
-  }) || null;
-}
-
-function _findGenerateButtonAnchor(doc) {
-  // Trova il bottone "Genera Preventivo" (fine form React)
-  return Array.from(doc.querySelectorAll("button")).find((b) =>
-    /^genera preventivo/i.test(String(b.textContent || "").trim())
-  ) || null;
-}
-
-function _hideAllBeforeAnchor(anchor, doc) {
-  // Risale dall'anchor fino a body, e ad OGNI livello nasconde tutti i
-  // siblings PRECEDENTI. Garantisce che tutto sopra al form sparisca,
-  // a qualsiasi profondità di nesting React.
-  if (!anchor || !doc) return;
-  let current = anchor;
-  while (current && current.parentElement && current !== doc.body) {
-    let sib = current.previousElementSibling;
-    while (sib) {
-      sib.setAttribute("data-psi-hide-area", "true");
-      sib = sib.previousElementSibling;
-    }
-    current = current.parentElement;
-  }
-}
-
-function clampIframeToFormHeight(reactIframe, reactDoc, genBtn) {
-  try {
-    const scrollTop = reactDoc.documentElement?.scrollTop || reactDoc.body?.scrollTop || 0;
-    const rect = genBtn.getBoundingClientRect();
-    const newH = Math.ceil(rect.bottom + scrollTop + 56);
-    if (newH > 300 && newH < 8000) {
-      reactIframe.style.height = newH + "px";
-      reactDoc.documentElement?.style.setProperty("overflow", "hidden", "important");
-      reactDoc.body?.style.setProperty("overflow", "hidden", "important");
-    }
-  } catch (err) {
-    console.warn("[clamp-iframe]", err?.message);
-  }
-}
-
-function injectPreviewOverlay(reactIframe, reactDoc) {
-  // Misura la toolbar React (← Modifica, Scarica PDF) dall'interno dell'iframe.
-  // Se non ancora renderizzata, riprova tra 300ms.
-  const scaricaBtn = Array.from(reactDoc.querySelectorAll("button")).find((b) =>
-    /scarica\s*pdf/i.test((b.textContent || "").trim())
-  );
-  const toolbarH = scaricaBtn ? Math.ceil(scaricaBtn.getBoundingClientRect().bottom + 4) : 0;
-  if (toolbarH < 10) {
-    setTimeout(() => applyIframePreviewVisibility(), 300);
-    return;
-  }
-
-  // Clippa l'iframe React alla sola altezza della toolbar — il contenuto sotto scompare
-  reactIframe.style.height = toolbarH + "px";
-  reactDoc.documentElement?.style.setProperty("overflow", "hidden", "important");
-  reactDoc.body?.style.setProperty("overflow", "hidden", "important");
-
-  // Inietta il nostro template nel DOM principale, subito dopo l'iframe React.
-  // Così non ci sono complicazioni di position:fixed cross-iframe.
-  let overlayWrap = document.getElementById("psi-preview-overlay-wrap");
-  if (!overlayWrap) {
-    overlayWrap = document.createElement("div");
-    overlayWrap.id = "psi-preview-overlay-wrap";
-    overlayWrap.style.cssText = "width:100%;";
-    reactIframe.parentNode.insertBefore(overlayWrap, reactIframe.nextSibling);
-  }
-  let overlayIframe = overlayWrap.querySelector("iframe");
-  if (!overlayIframe) {
-    overlayIframe = document.createElement("iframe");
-    overlayIframe.id = "psi-preview-overlay-iframe";
-    overlayIframe.style.cssText = "width:100%;height:80vh;border:0;display:block;";
-    overlayWrap.appendChild(overlayIframe);
-  }
-
-  const p2 = getIncludeP2() ? "1" : "0";
-  const newSrc = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-overlay`;
-  if (overlayIframe.getAttribute("data-psi-src") !== newSrc) {
-    overlayIframe.setAttribute("data-psi-src", newSrc);
-    const payload = extractGeneratorPayloadFromIframe();
-    try {
-      if (payload) window.localStorage.setItem("psi:preventivo-v2:data", JSON.stringify(payload));
-      else window.localStorage.removeItem("psi:preventivo-v2:data");
-    } catch {}
-    overlayIframe.src = newSrc;
-    trackUsageEvent("quote_template_generate", {
-      template: "v2-overlay",
-      requestId: state.selectedSalesRequestId || "",
-      hasLiveData: payload ? "yes" : "no",
-    });
-  }
-}
-
-function removePreviewOverlay(reactDoc) {
-  document.getElementById("psi-preview-overlay-wrap")?.remove();
-  reactDoc?.getElementById("psi-preview-overlay-frame")?.remove(); // pulizia legacy
-}
-
-function applyIframePreviewVisibility() {
-  try {
-    const reactIframe = document.getElementById("sales-generator-frame");
-    const reactDoc = reactIframe?.contentDocument;
-    if (!reactDoc) return;
-
-    // Inietta stile per data-psi-hide-area
-    let style = reactDoc.getElementById("psi-preview-toggle-style");
-    if (!style) {
-      style = reactDoc.createElement("style");
-      style.id = "psi-preview-toggle-style";
-      reactDoc.head.appendChild(style);
-    }
-    style.textContent = `[data-psi-hide-area="true"] { display: none !important; }`;
-    Array.from(reactDoc.querySelectorAll('[data-psi-hide-area="true"]')).forEach((el) => {
-      el.removeAttribute("data-psi-hide-area");
-    });
-
-    const genBtn = _findGenerateButtonAnchor(reactDoc);
-    if (genBtn) {
-      // FORM MODE: nascondi toolbar React sopra il form, clamp, rimuovi overlay
-      const formStart = _findFormStartAnchor(reactDoc);
-      if (formStart) _hideAllBeforeAnchor(formStart, reactDoc);
-      removePreviewOverlay(reactDoc);
-      clampIframeToFormHeight(reactIframe, reactDoc, genBtn);
-    } else {
-      // PREVIEW MODE: NON nascondere la toolbar React (contiene ← Modifica / Scarica PDF)
-      // Inietta il nostro template come overlay sotto la toolbar
-      patchReactPreviewToolbar(reactDoc);
-      injectPreviewOverlay(reactIframe, reactDoc);
-    }
-  } catch (err) {
-    console.warn("[preview-toggle] failed:", err?.message);
-  }
-}
-
-function patchReactPreviewToolbar(reactDoc) {
-  try {
-    if (!reactDoc) return;
-    const allEls = Array.from(reactDoc.querySelectorAll("*"));
-
-    // Nascondi "Modello libero"
-    const liberoLabel = allEls.find(
-      (el) => /^modello libero$/i.test(el.textContent?.trim()) && !el.children.length
-    );
-    if (liberoLabel) {
-      let c = liberoLabel;
-      for (let i = 0; i < 6 && c.parentElement; i++) {
-        c = c.parentElement;
-        if (c.children.length >= 2) { c.style.setProperty("display", "none", "important"); break; }
-      }
-    }
-
-    // Nascondi "Modello consigliato"
-    const consigliatoLabel = allEls.find(
-      (el) => /^modello consigliato$/i.test(el.textContent?.trim()) && !el.children.length
-    );
-    if (consigliatoLabel) {
-      let c = consigliatoLabel;
-      for (let i = 0; i < 6 && c.parentElement; i++) {
-        c = c.parentElement;
-        if (c.children.length >= 2) { c.style.setProperty("display", "none", "important"); break; }
-      }
-    }
-
-    // Intercetta "Scarica PDF" → stampa il nostro overlay
-    const scaricaBtn = Array.from(reactDoc.querySelectorAll("button")).find((b) =>
-      /scarica\s*pdf/i.test((b.textContent || "").trim())
-    );
-    if (scaricaBtn && !scaricaBtn.dataset.psiHooked) {
-      scaricaBtn.dataset.psiHooked = "1";
-      scaricaBtn.addEventListener("click", (e) => {
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        document.getElementById("psi-preview-overlay-iframe")?.contentWindow?.print();
-      }, true);
-    }
-  } catch (err) {
-    console.warn("[patch-preview-toolbar]", err?.message);
-  }
 }
 
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
@@ -21599,27 +21413,20 @@ bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
 bindEvent(ui.preventivoProductSelect, "change", fillPreventivoProductForm);
 bindEvent(ui.productImageInput, "change", handleProductImageChange);
 bindEvent(ui.productImageClear, "click", handleProductImageClear);
+bindEvent(document.getElementById("sales-generator-generate-btn"), "click", showPreventivoPreview);
+bindEvent(document.getElementById("psi-preview-back"), "click", hidePreventivoPreview);
+bindEvent(document.getElementById("psi-preview-print"), "click", () => {
+  document.getElementById("psi-preview-iframe")?.contentWindow?.print();
+});
 
 // Inietta CSS per nascondere "Modello libero" dall'iframe quando si entra nel generatore
-// + applica visibilità anteprima preview in base al template selezionato
 const iframeEl = document.getElementById("sales-generator-frame");
 if (iframeEl) {
   iframeEl.addEventListener("load", () => {
     _iframeStyleInjected = false;
     injectIframeHideStyles();
-    // Riapplica hide + clamp man mano che React completa il render
-    setTimeout(() => applyIframePreviewVisibility(), 600);
-    setTimeout(() => applyIframePreviewVisibility(), 1600);
-    setTimeout(() => {
-      applyIframePreviewVisibility();
-      connectReactHideObserver(); // collega dopo il primo render completo
-    }, 3000);
   });
-  // Riprova all'avvio (l'iframe potrebbe essere già caricato)
-  setTimeout(() => {
-    injectIframeHideStyles();
-    applyIframePreviewVisibility();
-  }, 1500);
+  setTimeout(() => { injectIframeHideStyles(); }, 1500);
 }
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
