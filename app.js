@@ -21385,6 +21385,13 @@ function showPreventivoPreview() {
     else window.localStorage.removeItem("psi:preventivo-v2:data");
   } catch {}
   const p2 = getIncludeP2() ? "1" : "0";
+  previewIframe.style.height = "600px"; // altezza provvisoria durante il caricamento
+  previewIframe.onload = () => {
+    try {
+      const h = previewIframe.contentDocument?.documentElement?.scrollHeight || 0;
+      if (h > 100) previewIframe.style.height = h + "px";
+    } catch {}
+  };
   previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-swap`;
   if (reactIframe) {
     reactIframe.style.setProperty("display", "none", "important");
