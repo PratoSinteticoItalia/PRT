@@ -67,7 +67,12 @@
     }
     @media print {
       html, body { background: none; width: 210mm; }
-      .page { margin: 0 !important; box-shadow: none !important; width: 210mm !important; max-width: 210mm !important; padding: 18px 22px !important; border-radius: 0 !important; }
+      /* Specificity alta per sovrascrivere html.psi-embedded .page { width:100% } */
+      .page, html.psi-embedded .page {
+        margin: 0 !important; box-shadow: none !important;
+        width: 210mm !important; max-width: 210mm !important;
+        padding: 18px 22px !important; border-radius: 0 !important;
+      }
       .hdr-crew { display: flex !important; }
       .toolbar { display: none; }
       @page { size: A4 portrait; margin: 0; }

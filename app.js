@@ -15237,6 +15237,9 @@ function applySessionPayload(session = {}) {
     state.usageReport = null;
     state.usageEventSessionKeys = new Set();
     state.pendingCurrentViewRefresh = false;
+    // Pulisce dati preventivo condivisi per evitare leakage cross-account
+    try { window.localStorage.removeItem("psi:preventivo-v2:data"); } catch {}
+    hidePreventivoPreview();
   }
   state.coveragePlanner = mergeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner, state.coveragePlanner);
   state.settings = session.shopifySettings || {};
@@ -21419,9 +21422,11 @@ function extractGeneratorPayloadFromIframe() {
       branding: {
         tagline: customTexts.brandTagline,
         company: customTexts.brandCompany,
-        // Logo crew: letto direttamente dallo state (fonte autoritativa), non dal DOM React
-        // che può restituire blob: URL o src in fase di trasformazione async
-        logoDataUrl: buildSalesGeneratorBrandingPayload().crewLogoDataUrl || customTexts.brandLogoDataUrl || "",
+        // Solo data URL validi (data:image/...) — scarta URL relativi, stringhe troncate, ecc.
+        logoDataUrl: [
+          buildSalesGeneratorBrandingPayload().crewLogoDataUrl,
+          customTexts.brandLogoDataUrl,
+        ].find((u) => String(u || "").trimStart().startsWith("data:image/") && u.length > 200) || "",
       },
       payment: {
         main: customTexts.paymentMain,
