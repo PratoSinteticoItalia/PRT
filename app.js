@@ -21385,7 +21385,7 @@ function showPreventivoPreview() {
   } catch {}
   const p2 = getIncludeP2() ? "1" : "0";
   previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-swap`;
-  if (reactIframe) reactIframe.hidden = true;
+  if (reactIframe) reactIframe.style.setProperty("display", "none", "important");
   previewSection.hidden = false;
   trackUsageEvent("quote_template_generate", {
     template: "v2-swap",
@@ -21400,7 +21400,7 @@ function hidePreventivoPreview() {
   const previewIframe = document.getElementById("psi-preview-iframe");
   if (previewIframe) previewIframe.src = "";
   if (previewSection) previewSection.hidden = true;
-  if (reactIframe) reactIframe.hidden = false;
+  if (reactIframe) reactIframe.style.removeProperty("display");
 }
 
 function initQuoteGenerator() {
