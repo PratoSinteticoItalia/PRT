@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260514-commit-fix-201";
+const APP_SHELL_VERSION = "20260518-crew-only-253";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
