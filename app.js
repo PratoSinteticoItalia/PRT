@@ -21218,107 +21218,140 @@ function getActiveSegmentButton(doc, segmentTexts = []) {
 }
 
 function extractGeneratorPayloadFromIframe() {
-  // Legge dal DOM del generatore React i valori compilati e costruisce un payload
-  // per il preventivo v2. Restituisce null se l'iframe non è accessibile o se non
-  // ci sono dati utili (es. nessun MQ inserito).
   try {
     const iframe = document.getElementById("sales-generator-frame");
     if (!iframe || !iframe.contentDocument) return null;
     const doc = iframe.contentDocument;
-    const inputs = Array.from(doc.querySelectorAll("input"));
-    const selects = Array.from(doc.querySelectorAll("select"));
 
-    // Mappatura per indici stabile (verificata sul DOM React-renderizzato):
-    // input[0]  = Nr. Preventivo
-    // input[1]  = Metri Quadri
-    // input[2]  = Data
-    // input[3]  = Validità fino a
-    // input[4-9]  = Nome / Cognome / Città / Telefono / Email / Società
-    // input[10-12] = Sconti % opzioni 1/2/3
-    // input[13] = Costo spedizione €
-    // input[14] = Materiali totali auto €
-    // input[15] = Sconto materiali %
-    // select[0] = Superficie
-    // select[1-3] = Modelli opzioni 1/2/3
-    if (inputs.length < 16 || selects.length < 4) return null;
+    // Normalizza testo label (specula generator-bridge.js normalizeLabel)
+    const normLbl = (v) => String(v || "")
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-    const sqm = Number(inputs[1]?.value || 0);
-    if (!sqm || sqm <= 0) return null; // se non ci sono MQ, niente preventivo realistico
+    // Trova il campo input/select/textarea più vicino a una label col testo dato.
+    // Supporta sia <label>Testo<input/></label> che strutture con parentElement.
+    const byLabel = (text) => {
+      const exp = normLbl(text);
+      if (!exp) return null;
+      for (const lbl of doc.querySelectorAll("label")) {
+        const t = normLbl(lbl.textContent);
+        if (t === exp || t.startsWith(exp + " ") || exp.startsWith(t.replace(/ ?%$/, "").trimEnd())) {
+          const f = lbl.querySelector("input, textarea, select")
+                 || lbl.parentElement?.querySelector("input, textarea, select");
+          if (f) return f;
+        }
+      }
+      return null;
+    };
 
-    // Testi personalizzati (Impostazioni → Testi preventivo) o default
+    // MQ è il campo obbligatorio — se mancante non c'è preventivo da generare
+    const sqm = Number(byLabel("Metri Quadri")?.value || 0);
+    if (!sqm || sqm <= 0) return null;
+
     const customTexts = getPreventivoTexts();
 
-    const quoteNumber = String(inputs[0]?.value || "").trim();
-    const dataDal = inputs[2]?.value || "";
-    const dataAl  = inputs[3]?.value || "";
-    const nome    = String(inputs[4]?.value || "").trim();
-    const cognome = String(inputs[5]?.value || "").trim();
-    const citta   = String(inputs[6]?.value || "").trim();
-    const tel     = String(inputs[7]?.value || "").trim();
-    const email   = String(inputs[8]?.value || "").trim();
-    const ragione = String(inputs[9]?.value || "").trim();
-    const shippingCost = parseEuroNumber(inputs[13]?.value);
-    const materialsTotal = parseEuroNumber(inputs[14]?.value);
-    const materialsDiscountPct = Number(inputs[15]?.value || 0);
+    // Campi scalari con fallback a indici legacy per compatibilità con vecchio generatore
+    const allInputs = Array.from(doc.querySelectorAll("input"));
+    const byLabelOrIdx = (labelText, fallbackIdx) =>
+      byLabel(labelText) || (Number.isInteger(fallbackIdx) ? allInputs[fallbackIdx] : null);
+
+    const quoteNumber  = String(byLabelOrIdx("Nr. Preventivo", 0)?.value || "").trim();
+    const dataDal      = byLabelOrIdx("Data", 2)?.value || "";
+    const dataAl       = byLabel("Validità fino a")?.value || byLabel("Validità")?.value
+                       || allInputs[3]?.value || "";
+    const nome         = String(byLabelOrIdx("Nome", 4)?.value || "").trim();
+    const cognome      = String(byLabelOrIdx("Cognome", 5)?.value || "").trim();
+    const citta        = String(byLabelOrIdx("Città", 6)?.value || "").trim();
+    const tel          = String(byLabelOrIdx("Telefono", 7)?.value || "").trim();
+    const email        = String(byLabelOrIdx("Email", 8)?.value || "").trim();
+    const ragione      = String(byLabel("Società / Ragione Sociale")?.value
+                       || byLabel("Ragione Sociale")?.value
+                       || byLabel("Società")?.value
+                       || allInputs[9]?.value || "").trim();
+    const shippingCost = parseEuroNumber(byLabel("Costo spedizione")?.value || allInputs[13]?.value);
+    const materialsTotal = parseEuroNumber(byLabel("Materiali totali")?.value || allInputs[14]?.value);
+
+    // "Sconto materiali %" — normLbl produce "sconto materiali", byLabel("Sconto materiali") è esatto
+    const materialsDiscountPct = Number(
+      byLabel("Sconto materiali")?.value || allInputs[15]?.value || 0
+    );
 
     // Tipologia attiva (Solo Fornitura / Fornitura + Posa)
     const tipoActive = getActiveSegmentButton(doc, ["Solo Fornitura", "Fornitura + Posa"]);
     const isPosa = tipoActive && /posa/i.test(tipoActive.textContent || "");
     const mode = isPosa ? "fornitura+posa" : "solo-fornitura";
 
-    // Costruisci opzioni dai 3 select modello + sconti
+    // ── Model selects ──────────────────────────────────────────────────────────
+    // Nuovo generatore: trova i select le cui option contengono il pattern "€/mq"
+    // Vecchio generatore fallback: select[1], [2], [3] (dopo quello superficie)
+    const allSelects = Array.from(doc.querySelectorAll("select"));
+    let modelSelects = allSelects.filter((sel) =>
+      Array.from(sel.options).some((o) => /€[^a-z\d]{0,4}mq/i.test(o.textContent))
+    );
+    if (!modelSelects.length) {
+      // Fallback legacy: superficie=0, modelli=1..3
+      modelSelects = allSelects.slice(1, 4);
+    }
+
+    // ── Sconto per proposta ────────────────────────────────────────────────────
+    // Nuovo generatore: input numerici con label "Sconto %" dentro la stessa riga del select
+    // Vecchio generatore fallback: allInputs[10],[11],[12]
+    const proposalScontoInputs = Array.from(doc.querySelectorAll("label"))
+      .filter((lbl) => {
+        const t = normLbl(lbl.textContent);
+        // "sconto" esatto o "sconto %" — esclude "sconto materiali"
+        return (t === "sconto" || t === "sconto %") && !t.includes("materiali");
+      })
+      .map((lbl) =>
+        lbl.querySelector("input[type='number'], input[type='text']")
+        || lbl.parentElement?.querySelector("input[type='number'], input[type='text']")
+      )
+      .filter(Boolean);
+
+    const getScontoForIndex = (i) => {
+      if (proposalScontoInputs[i]) return Number(proposalScontoInputs[i].value || 0);
+      // Fallback legacy
+      return Number(allInputs[10 + i]?.value || 0);
+    };
+
     const vat = 22;
     const options = [];
-    const sconti = [
-      Number(inputs[10]?.value || 0),
-      Number(inputs[11]?.value || 0),
-      Number(inputs[12]?.value || 0),
-    ];
-    for (let i = 1; i <= 3; i++) {
-      const sel = selects[i];
+
+    for (let i = 0; i < Math.min(modelSelects.length, 3); i++) {
+      const sel = modelSelects[i];
       if (!sel) continue;
       const opt = sel.options?.[sel.selectedIndex];
       if (!opt) continue;
       const parsed = parseModelOptionLabel(opt.textContent || "");
       if (!parsed.name || parsed.pricePerSqm <= 0) continue;
-      const discount = sconti[i - 1] || 0;
-      // Calcoli — tieni semplice: rispecchia i totali del generatore
+      const discount = getScontoForIndex(i);
       const grossPrice = parsed.pricePerSqm * sqm;
       const discountedPrice = grossPrice * (1 - discount / 100);
       const materialsBase = materialsTotal || 0;
       const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
-      // Posa: se mode posa, il generatore React usa un campo aggiuntivo (potrebbe non
-      // essere mappato qui). Per ora 0; il payload reale lo settera quando arriva da bridge.
-      const installation = 0;
-      const installationTotal = isPosa ? installation * sqm : 0;
       const shipping = shippingCost || 0;
-      const netTotal = discountedPrice + materialsAfterDisc + installationTotal + shipping;
+      const netTotal = discountedPrice + materialsAfterDisc + shipping;
       const grandTotal = netTotal * (1 + vat / 100);
       const slug = slugifyModelName(parsed.name);
-      // Usa dati dal Catalogo prodotti (Impostazioni) se configurati,
-      // altrimenti fallback ai default auto-generati
       const catalogData = buildProductTechFromCatalog(parsed.name);
       const heightMatch = parsed.name.match(/(\d+)\s*mm/i);
-      const fallbackCode = `${parsed.name.split(/\s+/)[0].substring(0,3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
-      const code = catalogData?.code || fallbackCode;
-      const tech = catalogData?.tech || defaultProductTech(parsed.name);
-      const imageDataUrl = catalogData?.imageDataUrl || "";
+      const fallbackCode = `${parsed.name.split(/\s+/)[0].substring(0, 3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
       options.push({
         slug,
         name: parsed.name,
-        code,
+        code: catalogData?.code || fallbackCode,
         tagline: discount > 0 ? `Sconto ${discount}%` : "",
         pricePerSqm: parsed.pricePerSqm,
         discount,
         materials: materialsAfterDisc,
-        installation: isPosa ? installation : 0,
+        installation: 0,
         shippingLabel: shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita",
         net: netTotal,
         total: grandTotal,
         finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
         heylightInstallment: grandTotal > 0 ? grandTotal / 5 : 0,
-        tech,
-        imageDataUrl,
+        tech: catalogData?.tech || defaultProductTech(parsed.name),
+        imageDataUrl: catalogData?.imageDataUrl || "",
       });
     }
 
@@ -21326,18 +21359,16 @@ function extractGeneratorPayloadFromIframe() {
     const customModel = getCustomModelOverride();
     if (customModel) {
       const idx = customModel.target - 1;
-      const customSlug = slugifyModelName(customModel.name);
       const customDiscount = options[idx]?.discount || 0;
       const grossPrice = customModel.pricePerSqm * sqm;
       const discountedPrice = grossPrice * (1 - customDiscount / 100);
       const materialsBase = materialsTotal || 0;
       const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
-      const installationTotal = isPosa ? 0 * sqm : 0;
       const shipping = shippingCost || 0;
-      const netTotal = discountedPrice + materialsAfterDisc + installationTotal + shipping;
+      const netTotal = discountedPrice + materialsAfterDisc + shipping;
       const grandTotal = netTotal * (1 + vat / 100);
       const customOption = {
-        slug: customSlug,
+        slug: slugifyModelName(customModel.name),
         name: customModel.name,
         code: "—",
         tagline: `Fuori catalogo${customDiscount > 0 ? ` · sconto ${customDiscount}%` : ""}`,
@@ -21356,19 +21387,15 @@ function extractGeneratorPayloadFromIframe() {
       if (options[idx]) {
         options[idx] = { ...options[idx], ...customOption };
       } else {
-        // Riempie con placeholder fino a target poi append
-        while (options.length < idx) {
-          options.push(null);
-        }
+        while (options.length < idx) options.push(null);
         options[idx] = customOption;
-        // Rimuove eventuali null intermedi
         options.splice(0, options.length, ...options.filter(Boolean));
       }
     }
     if (!options.length) return null;
 
     return {
-      quoteNumber: quoteNumber || `F-0000-00`,
+      quoteNumber: quoteNumber || "F-0000-00",
       customer: {
         name: [nome, cognome].filter(Boolean).join(" ").trim() || ragione || "—",
         city: citta || "—",
@@ -21392,19 +21419,9 @@ function extractGeneratorPayloadFromIframe() {
       branding: {
         tagline: customTexts.brandTagline,
         company: customTexts.brandCompany,
-        // Priorità: img dal DOM React (.codex-crew-branding img) → localStorage branding → settings → default
-        logoDataUrl: (() => {
-          try {
-            const crewImgSrc = String(doc.querySelector(".codex-crew-branding img")?.src || "").trim();
-            if (crewImgSrc) return crewImgSrc;
-          } catch {}
-          try {
-            const parsed = JSON.parse(window.localStorage.getItem("quote-generator-branding") || "null");
-            const fromStorage = String(parsed?.payload?.crewLogoDataUrl || "").trim();
-            if (fromStorage) return fromStorage;
-          } catch {}
-          return buildSalesGeneratorBrandingPayload().crewLogoDataUrl || customTexts.brandLogoDataUrl || "";
-        })(),
+        // Logo crew: letto direttamente dallo state (fonte autoritativa), non dal DOM React
+        // che può restituire blob: URL o src in fase di trasformazione async
+        logoDataUrl: buildSalesGeneratorBrandingPayload().crewLogoDataUrl || customTexts.brandLogoDataUrl || "",
       },
       payment: {
         main: customTexts.paymentMain,
@@ -21414,7 +21431,6 @@ function extractGeneratorPayloadFromIframe() {
         info: customTexts.footerInfo,
         firmaAzienda: "Firma e timbro VERTEX SRLS",
       },
-      // Default statici (commit successivo: editabili dalle Impostazioni)
       certifications: PREVENTIVO_STATIC_DEFAULTS.certifications,
       conditions: PREVENTIVO_STATIC_DEFAULTS.conditions,
       installationWork: isPosa ? PREVENTIVO_STATIC_DEFAULTS.installationWork : null,
