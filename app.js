@@ -21411,8 +21411,21 @@ function hidePreventivoPreview() {
 
 function initQuoteGenerator() {
   document.body.classList.add("quote-v2-active");
-  // Auto-mostra il nostro template subito (nasconde React preview)
-  setTimeout(showPreventivoPreview, 400);
+}
+
+function _interceptReactGenerateButton(doc) {
+  try {
+    if (!doc || doc._psiIntercepted) return;
+    doc._psiIntercepted = true;
+    doc.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (btn && /genera preventivo/i.test((btn.textContent || "").trim())) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        showPreventivoPreview();
+      }
+    }, true);
+  } catch {}
 }
 
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
@@ -21422,23 +21435,26 @@ bindEvent(ui.preventivoProductSelect, "change", fillPreventivoProductForm);
 bindEvent(ui.productImageInput, "change", handleProductImageChange);
 bindEvent(ui.productImageClear, "click", handleProductImageClear);
 
-// Usa event delegation — i pulsanti potrebbero non essere nel DOM al momento del bind
+// Event delegation per i pulsanti della preview (back e print)
 document.addEventListener("click", (e) => {
-  if (e.target.closest("#sales-generator-generate-btn")) showPreventivoPreview();
   if (e.target.closest("#psi-preview-back")) hidePreventivoPreview();
   if (e.target.closest("#psi-preview-print")) {
     document.getElementById("psi-preview-iframe")?.contentWindow?.print();
   }
 });
 
-// Inietta CSS per nascondere "Modello libero" dall'iframe quando si entra nel generatore
+// Inietta CSS per nascondere "Modello libero" + intercetta "Genera Preventivo →" React
 const iframeEl = document.getElementById("sales-generator-frame");
 if (iframeEl) {
   iframeEl.addEventListener("load", () => {
     _iframeStyleInjected = false;
     injectIframeHideStyles();
+    _interceptReactGenerateButton(iframeEl.contentDocument);
   });
-  setTimeout(() => { injectIframeHideStyles(); }, 1500);
+  setTimeout(() => {
+    injectIframeHideStyles();
+    _interceptReactGenerateButton(iframeEl.contentDocument);
+  }, 1500);
 }
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
