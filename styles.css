@@ -12344,7 +12344,6 @@ body.mobile-safe-mode #mobile-garden-planner-link[hidden] {
 }
 
 /* Hard role clamp so crew devices never render office sections even with stale mobile styles */
-body[data-user-role="crew"] .nav-link[data-view="dashboard"],
 body[data-user-role="crew"] .nav-link[data-view="orders"],
 body[data-user-role="crew"] .nav-link[data-view="warehouse"],
 body[data-user-role="crew"] .nav-link[data-view="sales-requests"],
@@ -16484,8 +16483,8 @@ textarea.text-input {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
   border: 1px dashed rgba(31, 70, 55, 0.18);
   border-radius: 10px;
   background: rgba(248, 250, 247, 0.6);

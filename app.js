@@ -21392,11 +21392,14 @@ function extractGeneratorPayloadFromIframe() {
       branding: {
         tagline: customTexts.brandTagline,
         company: customTexts.brandCompany,
-        // Priorità: logo crew da localStorage (stessa fonte del React generator) → settings → default
+        // Priorità: img dal DOM React (.codex-crew-branding img) → localStorage branding → settings → default
         logoDataUrl: (() => {
           try {
-            const raw = window.localStorage.getItem("quote-generator-branding");
-            const parsed = raw ? JSON.parse(raw) : null;
+            const crewImgSrc = String(doc.querySelector(".codex-crew-branding img")?.src || "").trim();
+            if (crewImgSrc) return crewImgSrc;
+          } catch {}
+          try {
+            const parsed = JSON.parse(window.localStorage.getItem("quote-generator-branding") || "null");
             const fromStorage = String(parsed?.payload?.crewLogoDataUrl || "").trim();
             if (fromStorage) return fromStorage;
           } catch {}
