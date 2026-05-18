@@ -16629,7 +16629,7 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
   border: none;
 }
 
-.psi-preview-section { width: 100%; border-radius: 12px; overflow: hidden; }
+.psi-preview-section { width: 100%; border-radius: 12px; overflow: hidden; margin-top: 16px; }
 .psi-preview-section[hidden] { display: none !important; }
 .psi-preview-toolbar {
   display: flex;
