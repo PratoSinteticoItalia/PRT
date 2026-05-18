@@ -21385,7 +21385,10 @@ function showPreventivoPreview() {
   } catch {}
   const p2 = getIncludeP2() ? "1" : "0";
   previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-swap`;
-  if (reactIframe) reactIframe.style.setProperty("display", "none", "important");
+  if (reactIframe) {
+    reactIframe.style.setProperty("display", "none", "important");
+    reactIframe.setAttribute("data-psi-preview", "1");
+  }
   previewSection.hidden = false;
   trackUsageEvent("quote_template_generate", {
     template: "v2-swap",
@@ -21400,7 +21403,10 @@ function hidePreventivoPreview() {
   const previewIframe = document.getElementById("psi-preview-iframe");
   if (previewIframe) previewIframe.src = "";
   if (previewSection) previewSection.hidden = true;
-  if (reactIframe) reactIframe.style.removeProperty("display");
+  if (reactIframe) {
+    reactIframe.style.removeProperty("display");
+    reactIframe.removeAttribute("data-psi-preview");
+  }
 }
 
 function initQuoteGenerator() {

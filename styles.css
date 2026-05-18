@@ -16618,6 +16618,9 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
 }
 
 /* ── Preview section preventivo v2 (swap con React iframe) ── */
+/* Belt-and-suspenders: nasconde React iframe quando la preview è attiva */
+#sales-generator-frame[data-psi-preview="1"] { display: none !important; }
+
 .psi-preview-section { width: 100%; }
 .psi-preview-section[hidden] { display: none !important; }
 .psi-preview-toolbar {
@@ -16627,6 +16630,9 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
   padding: 10px 16px;
   background: var(--brand, #2d6a4f);
   border-radius: 10px 10px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .psi-preview-back-btn {
   appearance: none; border: none;
@@ -16643,6 +16649,6 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
   padding: 8px 14px; border-radius: 999px; cursor: pointer;
 }
 .psi-preview-iframe {
-  width: 100%; height: 80vh; border: 0; display: block;
+  width: 100%; height: 2600px; border: 0; display: block;
   border-radius: 0 0 10px 10px;
 }
