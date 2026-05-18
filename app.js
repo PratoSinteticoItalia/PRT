@@ -21392,7 +21392,8 @@ function extractGeneratorPayloadFromIframe() {
       branding: {
         tagline: customTexts.brandTagline,
         company: customTexts.brandCompany,
-        logoDataUrl: customTexts.brandLogoDataUrl || "",
+        // Priorità: logo crew (posatori) → logo settings → default logo-prato.png
+        logoDataUrl: buildSalesGeneratorBrandingPayload().crewLogoDataUrl || customTexts.brandLogoDataUrl || "",
       },
       payment: {
         main: customTexts.paymentMain,
