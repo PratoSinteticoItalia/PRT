@@ -21422,11 +21422,16 @@ function extractGeneratorPayloadFromIframe() {
       branding: {
         tagline: customTexts.brandTagline,
         company: customTexts.brandCompany,
-        // Solo data URL validi (data:image/...) — scarta URL relativi, stringhe troncate, ecc.
-        logoDataUrl: [
-          buildSalesGeneratorBrandingPayload().crewLogoDataUrl,
-          customTexts.brandLogoDataUrl,
-        ].find((u) => String(u || "").trimStart().startsWith("data:image/") && u.length > 200) || "",
+        // Logo nell'header CENTRO del preventivo = logo della SQUADRA di posa
+        // (solo se l'utente loggato è "crew" con logo configurato nel proprio account).
+        // Per utenti office NON viene mostrato — il logo aziendale generico
+        // configurato in "Testi preventivo" non è destinato a questo spazio.
+        logoDataUrl: (() => {
+          const crewLogo = buildSalesGeneratorBrandingPayload().crewLogoDataUrl;
+          return String(crewLogo || "").trimStart().startsWith("data:image/") && crewLogo.length > 200
+            ? crewLogo
+            : "";
+        })(),
       },
       payment: {
         main: customTexts.paymentMain,
@@ -21479,7 +21484,7 @@ function showPreventivoPreview() {
       if (h > 100) previewIframe.style.height = h + "px";
     } catch {}
   };
-  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-partner-252`;
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260518-crew-only-253`;
   if (reactIframe) {
     reactIframe.style.setProperty("display", "none", "important");
     reactIframe.setAttribute("data-psi-preview", "1");
