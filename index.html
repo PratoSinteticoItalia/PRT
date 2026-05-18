@@ -1785,6 +1785,14 @@
                     <span>Footer aziendale (riga in fondo a pagina 2)</span>
                     <input class="text-input" name="footerInfo" type="text" placeholder="VERTEX SRLS · P.IVA … · Via … · vertexsrls@pec.it · www.pratosinteticoitalia.com" />
                   </label>
+                  <div class="field field-full">
+                    <span>Logo aziendale (header preventivo)</span>
+                    <div id="brand-logo-preview" class="product-image-preview" style="margin:6px 0;min-height:60px;display:flex;align-items:center;"></div>
+                    <input type="hidden" name="brandLogoDataUrl" id="brand-logo-data-url" />
+                    <input type="file" id="brand-logo-input" accept="image/*" class="text-input" style="margin-top:4px;" />
+                    <button type="button" id="brand-logo-clear" class="ghost-button small-button" style="margin-top:6px;">Rimuovi logo</button>
+                    <small class="field-hint">PNG o JPG consigliato. Lascia vuoto per usare il logo Prato Sintetico Italia di default.</small>
+                  </div>
                   <div class="inline-actions field-full">
                     <button type="submit" class="primary-button small-button">Salva testi</button>
                     <button type="button" id="preventivo-texts-reset" class="ghost-button small-button">Ripristina default</button>
@@ -2170,6 +2178,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260518-swap-244" type="module"></script>
+    <script src="./app.js?v=20260518-swap-245" type="module"></script>
   </body>
 </html>

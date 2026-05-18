@@ -1054,6 +1054,10 @@
     setField("quoteNumber2", data.quoteNumber || "—");
     setField("brandTagline", data.branding?.tagline || "Dal 2016 · Fornitura e Posa Professionale");
     setField("brandCompany", data.branding?.company || "VERTEX SRLS · P.IVA 04863610616");
+    const logoSrc = data.branding?.logoDataUrl || "";
+    if (logoSrc) {
+      document.querySelectorAll(".hdr-logo img").forEach(img => { img.src = logoSrc; });
+    }
     setField("customerName", data.customer?.name || "—");
     setField("customerCity", data.customer?.city || "—");
     setField("customerPhone", data.customer?.phone || "—");

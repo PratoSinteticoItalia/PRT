@@ -1470,6 +1470,10 @@ const ui = {
   productImagePreview: document.getElementById("product-image-preview"),
   productImageClear: document.getElementById("product-image-clear"),
   productImageDataUrl: document.getElementById("product-image-data-url"),
+  brandLogoInput: document.getElementById("brand-logo-input"),
+  brandLogoPreview: document.getElementById("brand-logo-preview"),
+  brandLogoClear: document.getElementById("brand-logo-clear"),
+  brandLogoDataUrl: document.getElementById("brand-logo-data-url"),
   customModelTarget: document.getElementById("custom-model-target"),
   customModelName: document.getElementById("custom-model-name"),
   customModelPrice: document.getElementById("custom-model-price"),
@@ -20759,6 +20763,7 @@ function defaultProductTech(modelName = "") {
 }
 
 const PREVENTIVO_TEXTS_DEFAULTS = Object.freeze({
+  brandLogoDataUrl: "",
   brandTagline: "Dal 2016 · Fornitura e Posa Professionale",
   brandCompany: "VERTEX SRLS · P.IVA 04863610616",
   materialsDescFornitura: "La fornitura viene preparata in rotoli da 2 metri di larghezza, con lunghezza a scelta in base alle misure del progetto. La spedizione avviene in 3/5 giorni lavorativi ed è gratuita per ordini superiori a 500 euro di imponibile.",
@@ -20797,12 +20802,12 @@ async function loadPreventivoTexts() {
 function fillPreventivoTextsForm() {
   const form = ui.preventivoTextsForm;
   if (!form) return;
-  const texts = getPreventivoTexts();
   Object.keys(PREVENTIVO_TEXTS_DEFAULTS).forEach((k) => {
     const field = form.elements?.[k];
     if (field) field.value = String(state.preventivoTexts?.[k] || "");
-    if (field && !state.preventivoTexts?.[k]) field.setAttribute("placeholder", PREVENTIVO_TEXTS_DEFAULTS[k]);
+    if (field && !state.preventivoTexts?.[k] && PREVENTIVO_TEXTS_DEFAULTS[k]) field.setAttribute("placeholder", PREVENTIVO_TEXTS_DEFAULTS[k]);
   });
+  renderBrandLogoPreview(state.preventivoTexts?.brandLogoDataUrl || "");
 }
 
 async function savePreventivoTexts(event) {
@@ -21052,6 +21057,44 @@ function handleProductImageClear() {
   if (ui.productImageDataUrl) ui.productImageDataUrl.value = "";
   if (ui.productImageInput) ui.productImageInput.value = "";
   renderProductImagePreview("");
+}
+
+// ─── Upload logo aziendale (branding preventivo) ──────────────────────────────
+
+function renderBrandLogoPreview(dataUrl) {
+  const el = ui.brandLogoPreview;
+  if (!el) return;
+  const src = dataUrl || "./logo-prato.png";
+  const opacity = dataUrl ? "1" : "0.45";
+  el.innerHTML = `<img src="${src}" alt="Logo" style="max-height:52px;max-width:140px;object-fit:contain;opacity:${opacity};" />`;
+}
+
+function handleBrandLogoChange(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  if (file.size > PRODUCT_IMAGE_HARD_LIMIT_BYTES) {
+    showToast("Immagine eccessivamente grande (>20MB)", "warning");
+    if (event.target) event.target.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const resized = await resizeImageDataUrl(String(reader.result || ""));
+      if (ui.brandLogoDataUrl) ui.brandLogoDataUrl.value = resized;
+      renderBrandLogoPreview(resized);
+    } catch {
+      showToast("Impossibile elaborare l'immagine", "error");
+    }
+  };
+  reader.onerror = () => showToast("Impossibile leggere l'immagine", "error");
+  reader.readAsDataURL(file);
+}
+
+function handleBrandLogoClear() {
+  if (ui.brandLogoDataUrl) ui.brandLogoDataUrl.value = "";
+  if (ui.brandLogoInput) ui.brandLogoInput.value = "";
+  renderBrandLogoPreview("");
 }
 
 // ─── Modello custom (fuori catalogo) — toolbar generatore ─────────────────────
@@ -21349,6 +21392,7 @@ function extractGeneratorPayloadFromIframe() {
       branding: {
         tagline: customTexts.brandTagline,
         company: customTexts.brandCompany,
+        logoDataUrl: customTexts.brandLogoDataUrl || "",
       },
       payment: {
         main: customTexts.paymentMain,
@@ -21442,6 +21486,8 @@ bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
 bindEvent(ui.preventivoProductSelect, "change", fillPreventivoProductForm);
 bindEvent(ui.productImageInput, "change", handleProductImageChange);
 bindEvent(ui.productImageClear, "click", handleProductImageClear);
+bindEvent(ui.brandLogoInput, "change", handleBrandLogoChange);
+bindEvent(ui.brandLogoClear, "click", handleBrandLogoClear);
 
 // Event delegation per i pulsanti della preview (back e print)
 document.addEventListener("click", (e) => {
