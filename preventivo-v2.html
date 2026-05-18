@@ -90,6 +90,7 @@
     .hdr-sub { font-size: 14px; font-weight: 800; color: var(--gd); letter-spacing: 1px; }
     .hdr-tag { font-size: 9.5px; color: var(--gl); margin-top: 4px; }
     .hdr-right { text-align: right; }
+    .hdr-crew { display: flex; align-items: center; justify-content: center; }
     .hdr-lbl { font-size: 9px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--gl); }
     .hdr-num { font-size: 24px; font-weight: 900; color: var(--gd); letter-spacing: -1px; line-height: 1.05; }
     .hdr-co  { font-size: 9px; color: var(--gx); margin-top: 4px; letter-spacing: .2px; }
@@ -494,6 +495,9 @@
         <div class="hdr-tag" data-field="brandTagline">Dal 2016 · Fornitura e Posa Professionale</div>
       </div>
     </div>
+    <div class="hdr-crew" id="hdr-crew-section" hidden>
+      <img id="hdr-crew-logo" src="" alt="Logo partner" style="max-height:52px;max-width:120px;object-fit:contain;" onerror="this.closest('.hdr-crew').hidden=true;" />
+    </div>
     <div class="hdr-right">
       <div class="hdr-lbl">Preventivo Nr.</div>
       <div class="hdr-num" data-field="quoteNumber">F-0000-00</div>
@@ -594,6 +598,9 @@
         <div class="hdr-sub" style="font-size:11px;">ITALIA</div>
         <div class="hdr-tag" style="font-size:9px;">Allegato tecnico · Pag. 2 di 2</div>
       </div>
+    </div>
+    <div class="hdr-crew" id="hdr-crew-section-2" hidden>
+      <img id="hdr-crew-logo-2" src="" alt="Logo partner" style="max-height:40px;max-width:100px;object-fit:contain;" onerror="this.closest('.hdr-crew').hidden=true;" />
     </div>
     <div class="hdr-right">
       <div class="hdr-lbl">Preventivo Nr.</div>
@@ -1055,8 +1062,17 @@
     setField("brandTagline", data.branding?.tagline || "Dal 2016 · Fornitura e Posa Professionale");
     setField("brandCompany", data.branding?.company || "VERTEX SRLS · P.IVA 04863610616");
     const logoSrc = data.branding?.logoDataUrl || "";
-    if (logoSrc) {
-      document.querySelectorAll(".hdr-logo img").forEach(img => { img.src = logoSrc; });
+    const crewSection = document.getElementById("hdr-crew-section");
+    const crewLogo = document.getElementById("hdr-crew-logo");
+    const crewSection2 = document.getElementById("hdr-crew-section-2");
+    const crewLogo2 = document.getElementById("hdr-crew-logo-2");
+    if (logoSrc && crewSection && crewLogo) {
+      crewLogo.src = logoSrc;
+      crewSection.removeAttribute("hidden");
+    }
+    if (logoSrc && crewSection2 && crewLogo2) {
+      crewLogo2.src = logoSrc;
+      crewSection2.removeAttribute("hidden");
     }
     setField("customerName", data.customer?.name || "—");
     setField("customerCity", data.customer?.city || "—");
