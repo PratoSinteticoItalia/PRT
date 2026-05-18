@@ -1077,13 +1077,23 @@
     const crewLogo = document.getElementById("hdr-crew-logo");
     const crewSection2 = document.getElementById("hdr-crew-section-2");
     const crewLogo2 = document.getElementById("hdr-crew-logo-2");
-    if (logoSrc && crewSection && crewLogo) {
-      crewLogo.src = logoSrc;
-      crewSection.removeAttribute("hidden");
-    }
-    if (logoSrc && crewSection2 && crewLogo2) {
-      crewLogo2.src = logoSrc;
-      crewSection2.removeAttribute("hidden");
+    // Reset esplicito: se non c'è logo (es. utente office), NASCONDI sempre
+    // la section e pulisci src. Senza questo branch il vecchio stato del DOM
+    // resta "appiccicato" da un render precedente (es. ex-crew → office).
+    if (logoSrc) {
+      if (crewSection && crewLogo) {
+        crewLogo.src = logoSrc;
+        crewSection.removeAttribute("hidden");
+      }
+      if (crewSection2 && crewLogo2) {
+        crewLogo2.src = logoSrc;
+        crewSection2.removeAttribute("hidden");
+      }
+    } else {
+      if (crewSection) crewSection.setAttribute("hidden", "");
+      if (crewLogo) crewLogo.removeAttribute("src");
+      if (crewSection2) crewSection2.setAttribute("hidden", "");
+      if (crewLogo2) crewLogo2.removeAttribute("src");
     }
     setField("customerName", data.customer?.name || "—");
     setField("customerCity", data.customer?.city || "—");
