@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260519-inline-style-258";
+const APP_SHELL_VERSION = "20260519-posa-mat-259";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21279,6 +21279,38 @@ function extractGeneratorPayloadFromIframe() {
       byLabel("Sconto materiali")?.value || allInputs[15]?.value || 0
     );
 
+    // Costo posa €/mq — letto solo se modalità "Fornitura + Posa"
+    // Label nel generator React: "Posa €/mq" → normLbl "posa mq" → byLabel("Posa") matcha
+    const installPerSqm = parseEuroNumber(
+      byLabel("Posa €/mq")?.value
+      || byLabel("Posa")?.value
+      || byLabel("Costo posa")?.value
+      || 0
+    );
+
+    // Estrai lista materiali + dettagli dal DOM React (sono calcolati automaticamente)
+    // Cerca elemento con testo "Dettagli materiali:" (riga finale del box materiali React)
+    const extractMaterialsFromDom = () => {
+      const result = { list: [], det: "" };
+      const els = Array.from(doc.querySelectorAll("div, span, p, textarea"));
+      for (const el of els) {
+        const text = String(el.textContent || el.value || "").trim();
+        if (text.length < 20 || text.length > 3000) continue;
+        const m = text.match(/Dettagli\s+materiali\s*:\s*(.+)$/is);
+        if (m) {
+          result.det = m[1].trim();
+          // Parsa "Nome: qty × prezzo €/unità; Nome2: qty × ..." → lista nome+qty
+          result.list = result.det.split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
+            const mm = item.match(/^([^:]+):\s*([^×x]+?)\s*[×x]/);
+            return mm ? { name: mm[1].trim(), qty: mm[2].trim() } : null;
+          }).filter(Boolean);
+          break;
+        }
+      }
+      return result;
+    };
+    const materialsFromDom = extractMaterialsFromDom();
+
     // Tipologia attiva (Solo Fornitura / Fornitura + Posa)
     const tipoActive = getActiveSegmentButton(doc, ["Solo Fornitura", "Fornitura + Posa"]);
     const isPosa = tipoActive && /posa/i.test(tipoActive.textContent || "");
@@ -21332,8 +21364,9 @@ function extractGeneratorPayloadFromIframe() {
       const discountedPrice = grossPrice * (1 - discount / 100);
       const materialsBase = materialsTotal || 0;
       const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
+      const installationCost = isPosa ? (installPerSqm || 0) * sqm : 0;
       const shipping = shippingCost || 0;
-      const netTotal = discountedPrice + materialsAfterDisc + shipping;
+      const netTotal = discountedPrice + materialsAfterDisc + installationCost + shipping;
       const grandTotal = netTotal * (1 + vat / 100);
       const slug = slugifyModelName(parsed.name);
       const catalogData = buildProductTechFromCatalog(parsed.name);
@@ -21347,7 +21380,7 @@ function extractGeneratorPayloadFromIframe() {
         pricePerSqm: parsed.pricePerSqm,
         discount,
         materials: materialsAfterDisc,
-        installation: 0,
+        installation: isPosa ? (installPerSqm || 0) : 0,
         shippingLabel: shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita",
         net: netTotal,
         total: grandTotal,
@@ -21367,8 +21400,9 @@ function extractGeneratorPayloadFromIframe() {
       const discountedPrice = grossPrice * (1 - customDiscount / 100);
       const materialsBase = materialsTotal || 0;
       const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
+      const installationCost = isPosa ? (installPerSqm || 0) * sqm : 0;
       const shipping = shippingCost || 0;
-      const netTotal = discountedPrice + materialsAfterDisc + shipping;
+      const netTotal = discountedPrice + materialsAfterDisc + installationCost + shipping;
       const grandTotal = netTotal * (1 + vat / 100);
       const customOption = {
         slug: slugifyModelName(customModel.name),
@@ -21378,7 +21412,7 @@ function extractGeneratorPayloadFromIframe() {
         pricePerSqm: customModel.pricePerSqm,
         discount: customDiscount,
         materials: materialsAfterDisc,
-        installation: 0,
+        installation: isPosa ? (installPerSqm || 0) : 0,
         shippingLabel: shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita",
         net: netTotal,
         total: grandTotal,
@@ -21415,8 +21449,8 @@ function extractGeneratorPayloadFromIframe() {
       materials: {
         desc: isPosa ? customTexts.materialsDescPosa : customTexts.materialsDescFornitura,
         discount: materialsDiscountPct || 0,
-        list: [],
-        det: "",
+        list: materialsFromDom.list,
+        det: materialsFromDom.det,
       },
       heylight: { installments: 5, title: "Simulazione 5 rate HeyLight" },
       branding: {
@@ -21484,7 +21518,7 @@ function showPreventivoPreview() {
       if (h > 100) previewIframe.style.height = h + "px";
     } catch {}
   };
-  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260519-inline-style-258`;
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260519-posa-mat-259`;
   if (reactIframe) {
     reactIframe.style.setProperty("display", "none", "important");
     reactIframe.setAttribute("data-psi-preview", "1");
