@@ -1081,22 +1081,25 @@
     const crewLogo = document.getElementById("hdr-crew-logo");
     const crewSection2 = document.getElementById("hdr-crew-section-2");
     const crewLogo2 = document.getElementById("hdr-crew-logo-2");
-    // Reset esplicito: se non c'è logo (es. utente office), NASCONDI sempre
-    // la section e pulisci src. Senza questo branch il vecchio stato del DOM
-    // resta "appiccicato" da un render precedente (es. ex-crew → office).
+    // Debug log (rimovibile in seguito, utile per diagnostica logo squadra)
+    try { console.log("[preventivo-v2] render logo:", logoSrc ? `${logoSrc.substring(0,40)}... (${logoSrc.length} char)` : "VUOTO"); } catch {}
+    // Uso style inline (specificity massima) per evitare conflitti CSS con
+    // .hdr-crew { display: flex } e @media print { .hdr-crew { display: flex !important } }
     if (logoSrc) {
       if (crewSection && crewLogo) {
         crewLogo.src = logoSrc;
         crewSection.removeAttribute("hidden");
+        crewSection.style.display = "flex";
       }
       if (crewSection2 && crewLogo2) {
         crewLogo2.src = logoSrc;
         crewSection2.removeAttribute("hidden");
+        crewSection2.style.display = "flex";
       }
     } else {
-      if (crewSection) crewSection.setAttribute("hidden", "");
+      if (crewSection) { crewSection.setAttribute("hidden", ""); crewSection.style.display = "none"; }
       if (crewLogo) crewLogo.removeAttribute("src");
-      if (crewSection2) crewSection2.setAttribute("hidden", "");
+      if (crewSection2) { crewSection2.setAttribute("hidden", ""); crewSection2.style.display = "none"; }
       if (crewLogo2) crewLogo2.removeAttribute("src");
     }
     setField("customerName", data.customer?.name || "—");
