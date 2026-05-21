@@ -222,6 +222,31 @@
       line-height: 1.55;
     }
     .mat-det strong { color: var(--gx); }
+    /* Accessori / Lavori extra */
+    .acc-box {
+      border: 1px solid #d8e3ea; border-radius: 8px; overflow: hidden;
+      margin-bottom: 8px; box-shadow: 0 1px 0 rgba(15,23,42,0.04);
+    }
+    .acc-hdr {
+      padding: 5px 10px; font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1.2px;
+      background: linear-gradient(90deg,#f5f9fc 0%,#eaf2f7 100%);
+      color: var(--gn);
+    }
+    .acc-note {
+      padding: 3px 10px; font-size: 7.5px; font-weight: 700;
+      color: var(--gl); background: #f9fbfd; border-bottom: 1px solid #e3edf3;
+    }
+    .acc-table { width: 100%; font-size: 9px; border-collapse: collapse; }
+    .acc-table th {
+      padding: 4px 6px; text-align: left; font-weight: 600; font-size: 8.5px;
+      color: var(--gn); background: #f7fafc;
+    }
+    .acc-table th:not(:first-child), .acc-table td:not(:first-child) { text-align: center; }
+    .acc-table td { padding: 4px 6px; color: var(--gx); border-bottom: 1px solid var(--br); }
+    .acc-table tr:last-child td { border-bottom: none; }
+    .lav-box { border-color: #f5c9dc; }
+    .lav-hdr { background: linear-gradient(90deg,#fff2f8 0%,#fce7f3 100%); color: #be185d; }
     .mat-discount-row {
       display: flex; align-items: center; justify-content: space-between;
       padding: 7px 14px;
@@ -564,6 +589,27 @@
     </div>
     <div class="mat-list" data-field="materialsList"></div>
     <div class="mat-det" data-field="materialsDet"></div>
+  </div>
+
+  <!-- ACCESSORI E PRODOTTI EXTRA -->
+  <div class="acc-box" id="accessories-section" style="display:none;">
+    <div class="acc-hdr">Accessori e Prodotti Extra</div>
+    <div class="acc-note">Queste voci sono già incluse nei totali complessivi delle proposte sopra.</div>
+    <table class="acc-table">
+      <thead><tr>
+        <th>Prodotto</th><th>Prezzo</th><th>Sconto</th><th>Qtà</th><th>Netto</th>
+      </tr></thead>
+      <tbody id="accessories-body"></tbody>
+    </table>
+  </div>
+
+  <!-- LAVORI EXTRA (solo posa) -->
+  <div class="acc-box lav-box" id="extra-services-section" style="display:none;">
+    <div class="acc-hdr lav-hdr">Lavori Extra</div>
+    <table class="acc-table">
+      <thead><tr><th>Descrizione</th><th>Costo netto</th></tr></thead>
+      <tbody id="extra-services-body"></tbody>
+    </table>
   </div>
 
   <!-- BADGES -->
@@ -910,6 +956,39 @@
     }
   }
 
+  function renderAccessories(data) {
+    const accs = data.materials?.accessories || [];
+    const section = document.getElementById("accessories-section");
+    const body    = document.getElementById("accessories-body");
+    if (!section || !body) return;
+    if (!accs.length) { section.style.display = "none"; return; }
+    section.style.display = "";
+    body.innerHTML = accs.map((a) => {
+      const disc = Number(a.discount || 0);
+      const net  = (Number(a.price || 0) * (1 - disc / 100)) * Number(a.qty || 1);
+      return `<tr>
+        <td>${escHtml(a.name || "—")}</td>
+        <td>${fmtEur(Number(a.price || 0))}</td>
+        <td>${disc > 0 ? disc + "%" : "—"}</td>
+        <td>${Number(a.qty || 1)}</td>
+        <td>${fmtEur(net)}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  function renderExtraServices(data) {
+    const svcs    = data.materials?.extraServices || [];
+    const section = document.getElementById("extra-services-section");
+    const body    = document.getElementById("extra-services-body");
+    if (!section || !body) return;
+    if (!svcs.length) { section.style.display = "none"; return; }
+    section.style.display = "";
+    body.innerHTML = svcs.map((s) => `<tr>
+      <td>${escHtml(s.description || "—")}</td>
+      <td>${fmtEur(Number(s.cost || 0))}</td>
+    </tr>`).join("");
+  }
+
   function renderInstallationWork(data) {
     const box = document.querySelector('[data-field="installWorkBox"]');
     if (!box) return;
@@ -1115,6 +1194,8 @@
     setField("summaryLine", `${data.customer?.name || "—"} · ${data.sqm || 0} mq · ${modeLabel}`);
     renderOptionsTable(data);
     renderMaterialsBox(data);
+    renderAccessories(data);
+    renderExtraServices(data);
     renderBadges(data);
     renderPriceCards(data);
     renderHeyLight(data);

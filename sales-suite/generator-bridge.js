@@ -768,6 +768,7 @@
       hideInternalImportPanel();
       syncCustomAccessoryPriceEditors();
       syncRecommendedQuoteLayout();
+      tryInjectTeNow();
       const payload = readPrefillFromStorage() || readPrefillFromUrl();
       if (payload) scheduleRequestPayload(payload);
       {
@@ -2010,17 +2011,43 @@
     return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
   }
 
+  // Hook index mapping for the main generator component (React 19, as of build index-CelZjrUy.js):
+  //   hooks[0]  = useRef (ref1) — memoizedState = {current: null}
+  //   hooks[1]  = useRef (ref2) — memoizedState = {current: null}
+  //   hooks[2]  = useState("edit")        — mode: "edit"|"pdf"
+  //   hooks[3]  = useState("cliente")     — tipo: "cliente"|"rivenditore"
+  //   hooks[4]  = useState(customerObj)   — customer state object
+  //   hooks[5]  = useState(false)
+  //   hooks[6]  = useState([])            — products array
+  //   hooks[7]  = useState(null)
+  //   hooks[8]  = useState(false)
+  //   hooks[9]  = useState("")
+  //   hooks[10] = useState(false)
+  //   hooks[11] = useState(sheetsUrl)     — Google Sheets URL (lazy init)
+  //   hooks[12] = useState("fornitura")   — service type: "fornitura"|"posa"
+  //   hooks[13] = useState(quoteNumber)   — preventivo number
+  //   hooks[14] = useState("")            — mq (string)
+  //   hooks[15] = useState(dateStr)       — date start (YYYY-MM-DD)
+  //   hooks[16] = useState(dateStr)       — date end   (YYYY-MM-DD)
+  //   hooks[17] = useState("terra")       — surface: "terra"|"pavimentazione"
+  //   hooks[18] = useState(productsConfig)
+  //   hooks[19] = useState(25)            — posa price €/mq
+  //   hooks[20] = useState(0)             — shipping
+  //   hooks[21] = useState(true)          — IVA prato
+  //   hooks[22] = useState(0)             — materials discount
   function matchesGeneratorHooks(hooks) {
-    return hooks.length >= 16
-      && ["edit", "pdf"].includes(String(hooks[0]?.memoizedState || ""))
-      && ["cliente", "rivenditore"].includes(String(hooks[1]?.memoizedState || ""))
-      && isCustomerState(hooks[2]?.memoizedState)
-      && Array.isArray(hooks[4]?.memoizedState)
-      && ["fornitura", "posa"].includes(String(hooks[10]?.memoizedState || ""))
-      && (typeof hooks[12]?.memoizedState === "string" || typeof hooks[12]?.memoizedState === "number")
-      && isDateLike(hooks[13]?.memoizedState)
-      && isDateLike(hooks[14]?.memoizedState)
-      && ["terra", "pavimentazione"].includes(String(hooks[15]?.memoizedState || ""));
+    // NOTE: the real mode values in this build are "edit" and "preview"  (not "pdf").
+    // "pdf" is kept for safety in case future builds change the value back.
+    return hooks.length >= 18
+      && ["edit", "pdf", "preview"].includes(String(hooks[2]?.memoizedState || ""))
+      && ["cliente", "rivenditore"].includes(String(hooks[3]?.memoizedState || ""))
+      && isCustomerState(hooks[4]?.memoizedState)
+      && Array.isArray(hooks[6]?.memoizedState)
+      && ["fornitura", "posa"].includes(String(hooks[12]?.memoizedState || ""))
+      && (typeof hooks[14]?.memoizedState === "string" || typeof hooks[14]?.memoizedState === "number")
+      && isDateLike(hooks[15]?.memoizedState)
+      && isDateLike(hooks[16]?.memoizedState)
+      && ["terra", "pavimentazione"].includes(String(hooks[17]?.memoizedState || ""));
   }
 
   function findGeneratorHooks() {
@@ -2061,8 +2088,9 @@
   function forceGeneratorEditState() {
     const hooks = findGeneratorHooks();
     let applied = false;
-    if (hooks?.[0]) {
-      applied = dispatchHookAction(hooks[0], "edit") || applied;
+    // hooks[2] = mode state: actual values are "edit" and "preview"
+    if (hooks?.[2]) {
+      applied = dispatchHookAction(hooks[2], "edit") || applied;
     }
     const modifyButton = Array.from(document.querySelectorAll("button"))
       .find((button) => normalizeLabel(button.textContent).includes("modifica"));
@@ -2106,32 +2134,168 @@
     const hooks = findGeneratorHooks();
     if (!hooks) return false;
 
+    // When the component is in "preview" mode (user already clicked "Genera Preventivo"),
+    // we must NOT dispatch mq / service / surface / posa-price because that would alter
+    // the PDF layout the user is looking at.  We still inject Te (materials description)
+    // if it is empty so the "Dettagli materiali:" line appears even when the user
+    // generated the PDF before the bridge had a chance to set it in edit mode.
+    const currentMode = String(hooks[2]?.memoizedState || "");
+    const inPreviewMode = currentMode === "preview";
+
     let applied = false;
 
-    if (isCustomerState(hooks[2]?.memoizedState)) {
-      applied = dispatchHookAction(hooks[2], (previous) => ({
-        ...(isCustomerState(previous) ? previous : {}),
-        nome: customerPayload.nome || "",
-        cognome: customerPayload.cognome || "",
-        citta: customerPayload.citta || "",
-        telefono: customerPayload.telefono || "",
-        email: customerPayload.email || "",
-      })) || applied;
+    if (!inPreviewMode) {
+      // hooks[4] = customer state object
+      if (isCustomerState(hooks[4]?.memoizedState)) {
+        applied = dispatchHookAction(hooks[4], (previous) => ({
+          ...(isCustomerState(previous) ? previous : {}),
+          nome: customerPayload.nome || "",
+          cognome: customerPayload.cognome || "",
+          citta: customerPayload.citta || "",
+          telefono: customerPayload.telefono || "",
+          email: customerPayload.email || "",
+        })) || applied;
+      }
+
+      // hooks[12] = service type: "fornitura"|"posa"
+      if (requestedServiceState) {
+        applied = dispatchHookAction(hooks[12], requestedServiceState) || applied;
+      }
+
+      // hooks[14] = mq string
+      if (requestedMq !== "") {
+        applied = dispatchHookAction(hooks[14], String(requestedMq)) || applied;
+      }
+
+      // hooks[17] = surface: "terra"|"pavimentazione"
+      if (requestedSurface) {
+        applied = dispatchHookAction(hooks[17], requestedSurface) || applied;
+      }
+
+      // hooks[19] = posa price €/mq (default 25).
+      // When the service is "posa" and the current value is 0 (or falsy), reset it to the
+      // default of 25 so that the "Posa/mq" column is never left at 0,00€.
+      if (requestedServiceState === "posa" && hooks[19]) {
+        const currentPosaPrice = hooks[19].memoizedState;
+        if (!currentPosaPrice || Number(currentPosaPrice) === 0) {
+          applied = dispatchHookAction(hooks[19], 25) || applied;
+        }
+      }
+    } else if (requestedMq && String(hooks[14]?.memoizedState ?? "") === "") {
+      // Preview mode AND mq was never dispatched in edit mode.  Bootstrap the core
+      // state now so Ne (useMemo hooks[34]) recomputes with the correct je value,
+      // enabling tryInjectTeNow() to generate Te on the very next DOM-change sync.
+      if (requestedServiceState) {
+        applied = dispatchHookAction(hooks[12], requestedServiceState) || applied;
+      }
+      applied = dispatchHookAction(hooks[14], String(requestedMq)) || applied;
+      if (requestedSurface) {
+        applied = dispatchHookAction(hooks[17], requestedSurface) || applied;
+      }
+      if (requestedServiceState === "posa" && hooks[19]) {
+        const currentPosaPrice = hooks[19].memoizedState;
+        if (!currentPosaPrice || Number(currentPosaPrice) === 0) {
+          applied = dispatchHookAction(hooks[19], 25) || applied;
+        }
+      }
     }
 
-    if (requestedServiceState) {
-      applied = dispatchHookAction(hooks[10], requestedServiceState) || applied;
+    // hooks[25] = Ce (materials toggle, default true).
+    // Ensure it is always ON so the materials grid and description are rendered.
+    if (hooks[25] && hooks[25].memoizedState === false) {
+      applied = dispatchHookAction(hooks[25], true) || applied;
     }
 
-    if (requestedMq !== "") {
-      applied = dispatchHookAction(hooks[12], String(requestedMq)) || applied;
-    }
+    // hooks[27] = Te (materials description auto-generated by a useEffect that calls re()).
+    // The useEffect depends on [Ce, P, le, je, codexPietriscoPrice].  If it ran before mq
+    // was dispatched (je was still 0), all quantities show as "0" and the description is
+    // useless.  On retry calls (delays 200ms+) the correct Ne.items are already computed
+    // in hooks[34] (useMemo Ne).  If Te is empty or stale-zero, regenerate it here from
+    // Ne.items so the "Dettagli materiali:" section always shows correct unit prices.
+    const currentTe = hooks[27]?.memoizedState;
+    const neHook = hooks[34];  // useMemo Ne = [value, deps]
+    const neValue = Array.isArray(neHook?.memoizedState) ? neHook.memoizedState[0] : null;
 
-    if (requestedSurface) {
-      applied = dispatchHookAction(hooks[15], requestedSurface) || applied;
+    // Only inject Te when it is empty AND Ne has at least one item with a real (>0) quantity.
+    // This avoids interfering when the React useEffect already generated the correct text.
+    const hasRealQty = neValue && Array.isArray(neValue.items)
+      && neValue.items.some((e) => {
+        const q = String(e.qtyDisplay || "");
+        return q && q !== "0" && !q.startsWith("0,00") && !q.startsWith("0 ");
+      });
+    const teNeedsRefresh = (!currentTe || !String(currentTe).trim()) && hasRealQty;
+
+    if (teNeedsRefresh && neValue && Array.isArray(neValue.items) && neValue.items.length > 0) {
+      const fmtIt = (n) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const currentService = requestedServiceState || String(hooks[12]?.memoizedState || "fornitura");
+      const eligibleItems = currentService === "fornitura"
+        ? neValue.items.filter((e) => e.key !== "pietrisco")
+        : neValue.items;
+      const teText = eligibleItems
+        .filter((e) => {
+          const qty = String(e.qtyDisplay || "");
+          return qty && qty !== "0" && qty !== "0,00" && !qty.startsWith("0 ") && !qty.startsWith("0,00 ");
+        })
+        .map((e) => e.unitPrice > 0
+          ? `${e.label}: ${e.qtyDisplay} × ${fmtIt(e.unitPrice)} €/${e.unit}`
+          : `${e.label}: ${e.qtyDisplay}`)
+        .join("; ");
+      if (teText) {
+        applied = dispatchHookAction(hooks[27], teText) || applied;
+      }
     }
 
     return applied;
+  }
+
+  // Inject Te (hooks[27]) whenever it is empty but Ne (useMemo hooks[34]) already
+  // holds items with real (> 0) quantities.  Called from scheduleBridgeSync on every
+  // DOM change so it fires regardless of the timed-retry window — this is the main
+  // guard that ensures "Dettagli materiali:" always appears in the PDF view.
+  function tryInjectTeNow() {
+    const hooks = findGeneratorHooks();  // accepts "edit", "pdf", "preview"
+    if (!hooks) return false;
+
+    const currentTe = hooks[27]?.memoizedState;
+    if (currentTe && String(currentTe).trim()) return false;  // Te already populated
+
+    const ce = hooks[25]?.memoizedState;
+    if (!ce) return false;  // materials section is toggled OFF
+
+    const neHook = hooks[34];
+    const neValue = Array.isArray(neHook?.memoizedState) ? neHook.memoizedState[0] : null;
+    const hasRealQty = neValue && Array.isArray(neValue.items)
+      && neValue.items.some((e) => {
+        const q = String(e.qtyDisplay || "");
+        return q && q !== "0" && !q.startsWith("0,00") && !q.startsWith("0 ");
+      });
+    if (!hasRealQty) return false;
+
+    const fmtIt = (n) => Number(n || 0).toLocaleString("it-IT", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const currentService = String(hooks[12]?.memoizedState || "fornitura");
+    const eligibleItems = currentService === "fornitura"
+      ? neValue.items.filter((e) => e.key !== "pietrisco")
+      : neValue.items;
+
+    const teText = eligibleItems
+      .filter((e) => {
+        const qty = String(e.qtyDisplay || "");
+        return qty && qty !== "0" && qty !== "0,00"
+          && !qty.startsWith("0 ") && !qty.startsWith("0,00 ");
+      })
+      .map((e) => e.unitPrice > 0
+        ? `${e.label}: ${e.qtyDisplay} × ${fmtIt(e.unitPrice)} €/${e.unit}`
+        : `${e.label}: ${e.qtyDisplay}`)
+      .join("; ");
+
+    if (teText && hooks[27]?.queue?.dispatch) {
+      dispatchHookAction(hooks[27], teText);
+      return true;
+    }
+    return false;
   }
 
   function applyRequestPayloadNow(payload) {
@@ -2197,6 +2361,21 @@
       applied = true;
     }
 
+    // DOM fallback for posa price: when service is "posa" and the price input shows 0
+    // (or is empty), reset it to 25 €/mq.  The input is only rendered by React after
+    // the service type re-renders as "posa", so this may only succeed on a later retry
+    // (scheduleRequestPayload calls us multiple times with increasing delays).
+    if (requestedServiceState === "posa") {
+      const posaPriceField = findFieldByLabel("Posa") || findFieldByLabel("Posa €/mq") || findFieldByLabel("Posa/mq");
+      if (posaPriceField) {
+        const currentVal = parseFloat(posaPriceField.value);
+        if (!currentVal || currentVal === 0) {
+          setNativeValue(posaPriceField, "25");
+          applied = true;
+        }
+      }
+    }
+
     return applied;
   }
 
@@ -2217,6 +2396,21 @@
       email: "",
     };
     applyReactStatePrefill(emptyCustomer, "", "", "");
+
+    // applyReactStatePrefill() skips mq/service/surface/Te when they are passed as "".
+    // Dispatch explicit defaults so a "preventivo libero" does not inherit stale React
+    // state from the previous prefill.
+    const hooksForClear = findGeneratorHooks();
+    if (hooksForClear) {
+      // hooks[12] = service type — reset to default "fornitura"
+      if (hooksForClear[12]?.queue?.dispatch) dispatchHookAction(hooksForClear[12], "fornitura");
+      // hooks[14] = mq string — clear to ""
+      if (hooksForClear[14]?.queue?.dispatch) dispatchHookAction(hooksForClear[14], "");
+      // hooks[17] = surface — reset to default "terra"
+      if (hooksForClear[17]?.queue?.dispatch) dispatchHookAction(hooksForClear[17], "terra");
+      // hooks[27] = Te (materials description) — clear
+      if (hooksForClear[27]?.queue?.dispatch) dispatchHookAction(hooksForClear[27], "");
+    }
 
     const clearLabels = [
       "Nome",
@@ -3039,4 +3233,24 @@
   window.addEventListener("resize", () => {
     reportEmbeddedContentHeight();
   });
+
+  // ── API pubblica per app.js (stesso dominio, accesso diretto a contentWindow) ──
+  // Restituisce accessori (Z), servizi extra (ke) e testo materiali (Te) correnti.
+  // Usato da extractGeneratorPayloadFromIframe() per popolare il preventivo-v2.html.
+  window.__codexGetGeneratorState = function () {
+    try {
+      // Z — accessori/prodotti extra: walk del fiber tree, robusto a cambi di indice
+      const accessories = getAccessoriesState();
+
+      // hooks[30] = ke (servizi/lavori extra), hooks[27] = Te (testo materiali calcolato)
+      const hooks = findGeneratorHooks();
+      const keRaw = Array.isArray(hooks?.[30]?.memoizedState) ? hooks[30].memoizedState : [];
+      const extraServices = keRaw.filter((e) => String(e?.description || "").trim());
+      const materialsText = String(hooks?.[27]?.memoizedState || "");
+
+      return { accessories, extraServices, materialsText };
+    } catch (_) {
+      return { accessories: [], extraServices: [], materialsText: "" };
+    }
+  };
 })();

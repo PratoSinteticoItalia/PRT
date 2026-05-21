@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260521-polish-262";
+const APP_SHELL_VERSION = "20260521-add-accessories";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21380,37 +21380,27 @@ function extractGeneratorPayloadFromIframe() {
       byLabel("Sconto materiali")?.value || allInputs[15]?.value || 0
     );
 
-    // Costo posa €/mq — letto solo se modalità "Fornitura + Posa"
-    // Label nel generator React: "Posa €/mq" → normLbl "posa mq" → byLabel("Posa") matcha
+    // Costo posa €/mq — label nel generatore React: "Posa €/mq"
     const installPerSqm = parseEuroNumber(
-      byLabel("Posa €/mq")?.value
-      || byLabel("Posa")?.value
-      || byLabel("Costo posa")?.value
-      || 0
+      byLabel("Posa €/mq")?.value || byLabel("Posa")?.value || byLabel("Costo posa")?.value || 0
     );
 
-    // Estrai lista materiali + dettagli dal DOM React (sono calcolati automaticamente)
-    // Cerca elemento con testo "Dettagli materiali:" (riga finale del box materiali React)
-    const extractMaterialsFromDom = () => {
-      const result = { list: [], det: "" };
-      const els = Array.from(doc.querySelectorAll("div, span, p, textarea"));
-      for (const el of els) {
-        const text = String(el.textContent || el.value || "").trim();
-        if (text.length < 20 || text.length > 3000) continue;
-        const m = text.match(/Dettagli\s+materiali\s*:\s*(.+)$/is);
-        if (m) {
-          result.det = m[1].trim();
-          // Parsa "Nome: qty × prezzo €/unità; Nome2: qty × ..." → lista nome+qty
-          result.list = result.det.split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
-            const mm = item.match(/^([^:]+):\s*([^×x]+?)\s*[×x]/);
-            return mm ? { name: mm[1].trim(), qty: mm[2].trim() } : null;
-          }).filter(Boolean);
-          break;
-        }
-      }
-      return result;
-    };
-    const materialsFromDom = extractMaterialsFromDom();
+    // Testo materiali calcolati automaticamente:
+    //   1) dal bridge (hook Te — già calcolato da React useEffect)
+    //   2) dalla textarea etichettata "Materiali calcolati automaticamente" (fallback DOM)
+    const bridgeState = (() => {
+      try { return iframe.contentWindow?.__codexGetGeneratorState?.() || {}; } catch (_) { return {}; }
+    })();
+    const materialsText = String(bridgeState.materialsText || "")
+      || String(
+          Array.from(doc.querySelectorAll("label"))
+            .find((lbl) => /materiali.*automaticamente/i.test(lbl.textContent || ""))
+            ?.parentElement?.querySelector("textarea")?.value || ""
+        );
+
+    // Accessori (Z) e servizi/lavori extra (ke) dal bridge React
+    const accessories  = Array.isArray(bridgeState.accessories)   ? bridgeState.accessories  : [];
+    const extraServices = Array.isArray(bridgeState.extraServices) ? bridgeState.extraServices : [];
 
     // Tipologia attiva (Solo Fornitura / Fornitura + Posa)
     const tipoActive = getActiveSegmentButton(doc, ["Solo Fornitura", "Fornitura + Posa"]);
@@ -21550,8 +21540,19 @@ function extractGeneratorPayloadFromIframe() {
       materials: {
         desc: isPosa ? customTexts.materialsDescPosa : customTexts.materialsDescFornitura,
         discount: materialsDiscountPct || 0,
-        list: materialsFromDom.list,
-        det: materialsFromDom.det,
+        // det: testo grezzo "Telo: 100 mq × 1,50 €/mq; Colla: 2 sec × 45,00 €/sec; ..."
+        det: materialsText,
+        // list: array [{name, qty}] parsato da det (per bullet-list nel PDF)
+        list: materialsText
+          ? materialsText.split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
+              const mm = item.match(/^([^:]+):\s*([^×x]+(?:[×x].+)?)/);
+              return mm ? { name: mm[1].trim(), qty: mm[2].trim() } : { name: item, qty: "" };
+            })
+          : [],
+        // accessories: prodotti extra / accessori aggiunti dall'utente nella sezione 5
+        accessories,
+        // extraServices: lavori extra (solo modalità posa)
+        extraServices,
       },
       heylight: { installments: 5, title: "Simulazione 5 rate HeyLight" },
       branding: {
