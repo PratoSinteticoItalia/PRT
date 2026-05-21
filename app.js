@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260521-green-toolbar";
+const APP_SHELL_VERSION = "20260521-pdf-polish";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21148,7 +21148,14 @@ function injectIframePolishStyles() {
       [data-psi-hide-modello-libero] { display: none !important; }
       /* Nascondi pannello "Modello libero" (sempre, non dipende da v2) */
       .codex-custom-turf-panel { display: none !important; }
-      /* Toolbar verde — override background scuro iniettato da React */
+      /* Toolbar verde — override background navy #0f172a = rgb(15,23,42) iniettato da React.
+         Usa selettore CSS-inline così regge anche dopo un re-render React che rimonta l'elemento.
+         Copre varianti con/senza spazio e con/senza 0x prefix. */
+      [style*="rgb(15, 23, 42)"],
+      [style*="rgb(15,23,42)"] {
+        background: #2d6a4f !important;
+        background-color: #2d6a4f !important;
+      }
       [data-psi-toolbar-green] {
         background: #2d6a4f !important;
         background-color: #2d6a4f !important;
@@ -21656,7 +21663,7 @@ function showPreventivoPreview() {
       if (h > 100) previewIframe.style.height = h + "px";
     } catch {}
   };
-  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260521-green-toolbar`;
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260521-pdf-polish`;
   if (reactIframe) {
     reactIframe.style.setProperty("display", "none", "important");
     reactIframe.setAttribute("data-psi-preview", "1");
