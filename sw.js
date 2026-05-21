@@ -40,6 +40,8 @@ const NETWORK_FIRST_PATHS = new Set([
 ]);
 
 self.addEventListener("install", (event) => {
+  // Preso controllo immediatamente senza aspettare la chiusura dei tab
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => cache.addAll(APP_SHELL)),
@@ -48,11 +50,16 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
-      keys
-        .filter((key) => key !== CACHE_NAME)
-        .map((key) => caches.delete(key)),
-    )),
+    Promise.all([
+      // Prende controllo di tutti i tab aperti subito
+      self.clients.claim(),
+      // Cancella le vecchie cache
+      caches.keys().then((keys) => Promise.all(
+        keys
+          .filter((key) => key !== CACHE_NAME)
+          .map((key) => caches.delete(key)),
+      )),
+    ])
   );
 });
 
