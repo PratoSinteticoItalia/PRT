@@ -21155,8 +21155,10 @@ function injectIframePolishStyles() {
       }
     `;
 
-    // HIDE "Modello libero" — cerca input con placeholder noti
-    if (!doc._psiHideMlInjected) {
+    // HIDE "Modello libero" — solo quando v2 è abilitato.
+    // Con PSI_PREVENTIVO_V2_DISABLED=true il generator React mostra la sezione
+    // liberamente, quindi NON va nascosta (causava display:none sul root React).
+    if (!PSI_PREVENTIVO_V2_DISABLED && !doc._psiHideMlInjected) {
       const tryHideMl = () => {
         if (doc._psiHideMlInjected) return;
         let anchor = doc.querySelector('input[placeholder*="Sportgreen"]')
@@ -21169,14 +21171,18 @@ function injectIframePolishStyles() {
         }
         if (!anchor) return;
         // Risali al container "bar" — il primo nodo con padding/background
+        // Safety: non salire oltre 6 livelli né oltre il body
         let container = anchor;
-        for (let i = 0; i < 10 && container.parentElement; i++) {
+        const root = doc.body || doc.documentElement;
+        for (let i = 0; i < 6 && container.parentElement && container.parentElement !== root; i++) {
           container = container.parentElement;
           const cs = doc.defaultView.getComputedStyle(container);
           const padOk = parseFloat(cs.paddingTop) >= 6 || parseFloat(cs.paddingBottom) >= 6;
           const bgOk = cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent";
           if (padOk && (bgOk || cs.borderRadius)) break;
         }
+        // Abort se siamo finiti troppo vicino alla radice
+        if (container === root || container === doc.documentElement) return;
         container.setAttribute("data-psi-hide-modello-libero", "true");
         doc._psiHideMlInjected = true;
       };
