@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260521-polish-261";
+const APP_SHELL_VERSION = "20260521-polish-262";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21118,15 +21118,14 @@ function getCustomModelOverride() {
 let _iframeStyleInjected = false;
 
 function injectIframePolishStyles() {
-  // CSS migliorativo SOLO per l'anteprima HTML embedded del generator React:
-  // soft-borders sulle card prezzo e box cliente (l'utente segnalava bordi
-  // troppo scuri). NB: non tocca il PDF generato da jsPDF — quello è
-  // disegnato direttamente dal bundle e non lo possiamo modificare.
+  // CSS migliorativo + hide "Modello libero" nell'iframe del generator React.
+  // Non tocca il flusso del PDF jsPDF, solo l'anteprima HTML embedded.
   try {
     const iframe = document.getElementById("sales-generator-frame");
     const doc = iframe?.contentDocument;
-    if (!doc || doc._psiPolished) return;
-    doc._psiPolished = true;
+    if (!doc) return;
+
+    // STYLE CSS UNICO
     let style = doc.getElementById("psi-polish-style");
     if (!style) {
       style = doc.createElement("style");
@@ -21134,7 +21133,7 @@ function injectIframePolishStyles() {
       doc.head.appendChild(style);
     }
     style.textContent = `
-      /* Soft-border per box che hanno border colori scuri inline */
+      /* Soft-border per box con bordo scuro inline */
       [style*="border: 1px solid #000"],
       [style*="border:1px solid #000"],
       [style*="border: 2px solid #000"],
@@ -21145,11 +21144,71 @@ function injectIframePolishStyles() {
       [style*="border:2px solid black"] {
         border-color: #d8e4da !important;
       }
-      /* Box cliente — più spazio e respiro tra le righe */
-      [style*="grid-template-columns"][style*="auto"] {
-        gap: 6px 16px !important;
+      /* Box cliente / validità: griglie più compatte se valori vuoti */
+      [data-psi-hide-modello-libero] { display: none !important; }
+      /* Compattazione box cliente — meno padding, più equilibrio */
+      [data-psi-customer-compact] {
+        padding: 14px 22px !important;
+      }
+      [data-psi-customer-compact] [style*="grid-template-columns"] {
+        gap: 4px 12px !important;
       }
     `;
+
+    // HIDE "Modello libero" — cerca input con placeholder noti
+    if (!doc._psiHideMlInjected) {
+      const tryHideMl = () => {
+        if (doc._psiHideMlInjected) return;
+        let anchor = doc.querySelector('input[placeholder*="Sportgreen"]')
+                  || doc.querySelector('input[placeholder*="Plus 45"]')
+                  || doc.querySelector('input[placeholder*="Es. Sport"]');
+        if (!anchor) {
+          // Strategy 2: cerca label "Modello libero"
+          const els = Array.from(doc.querySelectorAll("label, div, span, p, h1, h2, h3, h4"));
+          anchor = els.find((el) => /^modello libero/i.test(String(el.textContent || "").trim()));
+        }
+        if (!anchor) return;
+        // Risali al container "bar" — il primo nodo con padding/background
+        let container = anchor;
+        for (let i = 0; i < 10 && container.parentElement; i++) {
+          container = container.parentElement;
+          const cs = doc.defaultView.getComputedStyle(container);
+          const padOk = parseFloat(cs.paddingTop) >= 6 || parseFloat(cs.paddingBottom) >= 6;
+          const bgOk = cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent";
+          if (padOk && (bgOk || cs.borderRadius)) break;
+        }
+        container.setAttribute("data-psi-hide-modello-libero", "true");
+        doc._psiHideMlInjected = true;
+      };
+      tryHideMl();
+      if (!doc._psiHideMlInjected) {
+        setTimeout(tryHideMl, 400);
+        setTimeout(tryHideMl, 1200);
+        setTimeout(tryHideMl, 2500);
+      }
+    }
+
+    // COMPATTA box cliente — trova un div che contiene label tipo "Nome:" e "Tel:" come testo
+    if (!doc._psiCustomerCompactInjected) {
+      const tryCompact = () => {
+        if (doc._psiCustomerCompactInjected) return;
+        // Cerca un container che contiene il testo "CLIENTE" (header del box)
+        const all = Array.from(doc.querySelectorAll("div, section"));
+        const candidate = all.find((el) => {
+          const txt = String(el.textContent || "").trim();
+          return /CLIENTE/.test(txt) && /Nome\s*:/i.test(txt) && /Email\s*:/i.test(txt) && txt.length < 600;
+        });
+        if (!candidate) return;
+        candidate.setAttribute("data-psi-customer-compact", "true");
+        doc._psiCustomerCompactInjected = true;
+      };
+      tryCompact();
+      if (!doc._psiCustomerCompactInjected) {
+        setTimeout(tryCompact, 600);
+        setTimeout(tryCompact, 1800);
+        setTimeout(tryCompact, 3500);
+      }
+    }
   } catch {}
 }
 
@@ -21560,7 +21619,7 @@ function showPreventivoPreview() {
       if (h > 100) previewIframe.style.height = h + "px";
     } catch {}
   };
-  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260521-polish-261`;
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260521-polish-262`;
   if (reactIframe) {
     reactIframe.style.setProperty("display", "none", "important");
     reactIframe.setAttribute("data-psi-preview", "1");
