@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260521-v2-rollback-260";
+const APP_SHELL_VERSION = "20260521-polish-261";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21117,10 +21117,48 @@ function getCustomModelOverride() {
 
 let _iframeStyleInjected = false;
 
+function injectIframePolishStyles() {
+  // CSS migliorativo SOLO per l'anteprima HTML embedded del generator React:
+  // soft-borders sulle card prezzo e box cliente (l'utente segnalava bordi
+  // troppo scuri). NB: non tocca il PDF generato da jsPDF — quello è
+  // disegnato direttamente dal bundle e non lo possiamo modificare.
+  try {
+    const iframe = document.getElementById("sales-generator-frame");
+    const doc = iframe?.contentDocument;
+    if (!doc || doc._psiPolished) return;
+    doc._psiPolished = true;
+    let style = doc.getElementById("psi-polish-style");
+    if (!style) {
+      style = doc.createElement("style");
+      style.id = "psi-polish-style";
+      doc.head.appendChild(style);
+    }
+    style.textContent = `
+      /* Soft-border per box che hanno border colori scuri inline */
+      [style*="border: 1px solid #000"],
+      [style*="border:1px solid #000"],
+      [style*="border: 2px solid #000"],
+      [style*="border:2px solid #000"],
+      [style*="border: 1px solid black"],
+      [style*="border:1px solid black"],
+      [style*="border: 2px solid black"],
+      [style*="border:2px solid black"] {
+        border-color: #d8e4da !important;
+      }
+      /* Box cliente — più spazio e respiro tra le righe */
+      [style*="grid-template-columns"][style*="auto"] {
+        gap: 6px 16px !important;
+      }
+    `;
+  } catch {}
+}
+
 function injectIframeHideStyles() {
   // Mentre PSI_PREVENTIVO_V2_DISABLED è attivo, non manipoliamo il DOM del
   // generatore React — l'utente deve vedere e usare la UI originale completa
   // (Modello libero, Modello consigliato, Scarica PDF, anteprima ecc.)
+  // L'unica eccezione è il polish CSS (non è hide, migliora solo bordi e spacing)
+  injectIframePolishStyles();
   if (PSI_PREVENTIVO_V2_DISABLED) return;
   if (_iframeStyleInjected) return;
   const iframe = document.getElementById("sales-generator-frame");
@@ -21522,7 +21560,7 @@ function showPreventivoPreview() {
       if (h > 100) previewIframe.style.height = h + "px";
     } catch {}
   };
-  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260521-v2-rollback-260`;
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260521-polish-261`;
   if (reactIframe) {
     reactIframe.style.setProperty("display", "none", "important");
     reactIframe.setAttribute("data-psi-preview", "1");

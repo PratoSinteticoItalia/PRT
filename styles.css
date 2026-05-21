@@ -16674,3 +16674,21 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
 .preventivo-v2-preview-frame {
   display: none !important;
 }
+
+/* ROLLBACK v2 — selettori aggiuntivi (più specifici per essere certi) */
+.quote-p2-toggle,
+#quote-include-p2,
+label.quote-p2-toggle,
+.sales-generator-frame-panel > .sales-generator-toolbar,
+.sales-generator-frame-panel .sales-generator-toolbar,
+.sales-generator-frame-panel .quote-p2-toggle,
+.sales-generator-frame-panel .sales-generator-custom-model {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  width: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
