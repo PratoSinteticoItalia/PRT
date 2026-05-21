@@ -16660,3 +16660,17 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
   height: 600px; /* sovrascritta da JS dopo load */
   border: 0;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   ROLLBACK preventivo v2 — nasconde tutta la UI v2 in attesa di stabilizzarla
+   Quando il commit PSI_PREVENTIVO_V2_DISABLED viene rimosso, rimuovere anche
+   queste regole.
+   ───────────────────────────────────────────────────────────────────────── */
+.sales-generator-toolbar,
+.sales-generator-toolbar-hint,
+.sales-generator-custom-model,
+#preventivo-v2-preview-frame,
+#psi-preview-section,
+.preventivo-v2-preview-frame {
+  display: none !important;
+}

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260519-posa-mat-259";
+const APP_SHELL_VERSION = "20260521-v2-rollback-260";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21118,6 +21118,10 @@ function getCustomModelOverride() {
 let _iframeStyleInjected = false;
 
 function injectIframeHideStyles() {
+  // Mentre PSI_PREVENTIVO_V2_DISABLED è attivo, non manipoliamo il DOM del
+  // generatore React — l'utente deve vedere e usare la UI originale completa
+  // (Modello libero, Modello consigliato, Scarica PDF, anteprima ecc.)
+  if (PSI_PREVENTIVO_V2_DISABLED) return;
   if (_iframeStyleInjected) return;
   const iframe = document.getElementById("sales-generator-frame");
   if (!iframe || !iframe.contentDocument) return;
@@ -21518,7 +21522,7 @@ function showPreventivoPreview() {
       if (h > 100) previewIframe.style.height = h + "px";
     } catch {}
   };
-  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260519-posa-mat-259`;
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260521-v2-rollback-260`;
   if (reactIframe) {
     reactIframe.style.setProperty("display", "none", "important");
     reactIframe.setAttribute("data-psi-preview", "1");
@@ -21547,8 +21551,14 @@ function initQuoteGenerator() {
   document.body.classList.add("quote-v2-active");
 }
 
+// FEATURE FLAG: il preventivo v2 e i suoi intercept sono temporaneamente
+// DISABILITATI per ripristinare il flusso originale del generatore React
+// (PDF jsPDF). Quando v2 sarà pronto e stabile, basta rimettere a false.
+const PSI_PREVENTIVO_V2_DISABLED = true;
+
 function _interceptReactGenerateButton(doc) {
   // Intercetta click su "Genera Preventivo →" di React → mostra il nostro template
+  if (PSI_PREVENTIVO_V2_DISABLED) return; // ripristina comportamento React originale
   try {
     if (!doc || doc._psiIntercepted) return;
     doc._psiIntercepted = true;
