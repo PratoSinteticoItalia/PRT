@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260521-add-accessories";
+const APP_SHELL_VERSION = "20260521-green-toolbar";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21146,6 +21146,13 @@ function injectIframePolishStyles() {
       }
       /* Box cliente / validità: griglie più compatte se valori vuoti */
       [data-psi-hide-modello-libero] { display: none !important; }
+      /* Nascondi pannello "Modello libero" (sempre, non dipende da v2) */
+      .codex-custom-turf-panel { display: none !important; }
+      /* Toolbar verde — override background scuro iniettato da React */
+      [data-psi-toolbar-green] {
+        background: #2d6a4f !important;
+        background-color: #2d6a4f !important;
+      }
       /* Compattazione box cliente — meno padding, più equilibrio */
       [data-psi-customer-compact] {
         padding: 14px 22px !important;
@@ -21191,6 +21198,29 @@ function injectIframePolishStyles() {
         setTimeout(tryHideMl, 400);
         setTimeout(tryHideMl, 1200);
         setTimeout(tryHideMl, 2500);
+      }
+    }
+
+    // TOOLBAR VERDE — trova il parent del bottone "Scarica PDF" e cambia sfondo da navy a verde
+    if (!doc._psiToolbarGreenInjected) {
+      const tryGreenToolbar = () => {
+        if (doc._psiToolbarGreenInjected) return;
+        const btn = Array.from(doc.querySelectorAll("button"))
+          .find((b) => /scarica\s*pdf/i.test(String(b.textContent || "").trim()));
+        if (!btn) return;
+        const host = btn.parentElement;
+        if (!host) return;
+        host.setAttribute("data-psi-toolbar-green", "true");
+        // Forza anche inline per battere eventuali re-render React
+        host.style.setProperty("background", "#2d6a4f", "important");
+        host.style.setProperty("background-color", "#2d6a4f", "important");
+        doc._psiToolbarGreenInjected = true;
+      };
+      tryGreenToolbar();
+      if (!doc._psiToolbarGreenInjected) {
+        setTimeout(tryGreenToolbar, 400);
+        setTimeout(tryGreenToolbar, 1200);
+        setTimeout(tryGreenToolbar, 2500);
       }
     }
 
@@ -21626,7 +21656,7 @@ function showPreventivoPreview() {
       if (h > 100) previewIframe.style.height = h + "px";
     } catch {}
   };
-  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260521-add-accessories`;
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=20260521-green-toolbar`;
   if (reactIframe) {
     reactIframe.style.setProperty("display", "none", "important");
     reactIframe.setAttribute("data-psi-preview", "1");
