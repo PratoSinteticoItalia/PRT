@@ -16,6 +16,8 @@ const APP_SHELL = [
   "/pwa-icon-512.png",
   "/apple-touch-icon.png",
   "/manifest.webmanifest",
+  "/preventivo-v2.html?embedded=1&p2=1&v=20260521-add-accessories",
+  "/preventivo-v2.html?embedded=1&p2=0&v=20260521-add-accessories",
   "/sales-suite/generator.html?embedded=1&v=20260521-add-accessories&shell=20260521-add-accessories",
   "/sales-suite/generator-bridge.js?v=20260521-add-accessories",
   "/sales-suite/favicon.svg",
@@ -31,6 +33,7 @@ const NETWORK_FIRST_PATHS = new Set([
   "/garden-photo-configurator.html",
   "/garden-photo-configurator-v2.html",
   "/sales-suite/generator.html",
+  "/preventivo-v2.html",
   // app.js, styles.css, garden-planner-page.js sono versionati (?v=...) e pre-cachati
   // nell'install step → cache-first è corretto, evita una richiesta network inutile
   "/manifest.webmanifest",
