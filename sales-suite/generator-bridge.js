@@ -790,6 +790,7 @@
       }
       fixHeylightReadability(document.body);
       fixPerMqCardsReadability(document.body);
+      polishGeneratorToolbar();
       applyLivePreviewNorm(document.body);
       if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document.body);
       reportEmbeddedContentHeight();
@@ -1647,18 +1648,32 @@
     if (document.getElementById(id)) return;
     const style = document.createElement("style");
     style.id = id;
-    // Minimal white per price cards "al mq finale": bianco con bordo top verde accent
+    // Minimal white per price cards "al mq finale": bianco uniforme con accent solo
+    // sotto il nome modello (sottile underline 28px) — niente barra continua in cima
     style.textContent = `
       [data-cpermq="1"] {
         background: #ffffff !important;
         border: 1.5px solid #d8e4da !important;
-        border-top: 3px solid #3db554 !important;
         border-radius: 10px !important;
         box-shadow: 0 2px 8px rgba(28,66,41,0.07) !important;
         overflow: hidden !important;
       }
       [data-cpermq-name="1"] {
         color: #1c4229 !important;
+        position: relative !important;
+        padding-bottom: 7px !important;
+        margin-bottom: 6px !important;
+      }
+      [data-cpermq-name="1"]::after {
+        content: "" !important;
+        position: absolute !important;
+        bottom: 0 !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        width: 28px !important;
+        height: 2px !important;
+        background: #3db554 !important;
+        border-radius: 2px !important;
       }
       [data-cpermq-price="1"] {
         color: #1c4229 !important;
@@ -1668,6 +1683,30 @@
       }
     `;
     document.head.appendChild(style);
+  }
+
+  function polishGeneratorToolbar() {
+    // L'header che contiene "← Modifica / Modello consigliato / Scarica PDF" è
+    // il parent del bottone "Scarica PDF" renderizzato dal React. Per default ha
+    // uno sfondo verde piatto poco elegante: lo trasformiamo in un ribbon con
+    // gradient verticale più profondo e sottile bordo inferiore lucido.
+    const previewButton = Array.from(document.querySelectorAll("button"))
+      .find((btn) => normalizeLabel(btn.textContent).includes("scarica pdf"));
+    const host = previewButton?.parentElement;
+    if (!(host instanceof HTMLElement)) return;
+    if (host.dataset.cpsiPolishedToolbar === "1") return;
+    host.dataset.cpsiPolishedToolbar = "1";
+    host.style.setProperty(
+      "background",
+      "linear-gradient(180deg, #1c4229 0%, #122e1c 100%)",
+      "important",
+    );
+    host.style.setProperty(
+      "box-shadow",
+      "inset 0 -1px 0 rgba(255,255,255,0.10), 0 2px 10px rgba(28,66,41,0.20)",
+      "important",
+    );
+    host.style.setProperty("border-bottom", "1px solid rgba(0,0,0,0.18)", "important");
   }
 
   function ensureLivePreviewNormStyle() {
@@ -1769,7 +1808,6 @@
       card.dataset.cpermq = "1";
       card.style.setProperty("background", "#ffffff", "important");
       card.style.setProperty("border", "1.5px solid #d8e4da", "important");
-      card.style.setProperty("border-top", "3px solid #3db554", "important");
       card.style.setProperty("border-radius", "10px", "important");
       card.style.setProperty("box-shadow", "0 2px 8px rgba(28,66,41,0.07)", "important");
       card.style.setProperty("overflow", "hidden", "important");
