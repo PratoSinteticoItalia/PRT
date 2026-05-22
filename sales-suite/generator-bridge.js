@@ -497,6 +497,7 @@
     addExportClass(signatureRow, "codex-pdf-signature-row", cleanup);
 
     fixHeylightReadability(pdfRoot);
+    fixPerMqCardsReadability(pdfRoot);
 
     return () => {
       while (cleanup.length) {
@@ -788,6 +789,7 @@
         clearInjectedPlannerReport();
       }
       fixHeylightReadability(document.body);
+      fixPerMqCardsReadability(document.body);
       applyLivePreviewNorm(document.body);
       if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document.body);
       reportEmbeddedContentHeight();
@@ -1621,14 +1623,48 @@
     if (document.getElementById(id)) return;
     const style = document.createElement("style");
     style.id = id;
+    // Minimal white: card bianca, bordo verde a sinistra come accent, testo scuro
     style.textContent = `
       [data-chl="1"] > * {
-        background: #1e3a28 !important;
-        border-color: rgba(30,58,40,0.5) !important;
-        color: #ffffff !important;
+        background: #ffffff !important;
+        border: 1.5px solid #d8e4da !important;
+        border-left: 3px solid #1c4229 !important;
+        box-shadow: 0 1px 4px rgba(28,66,41,0.06) !important;
+        color: #1e2820 !important;
       }
-      [data-chl="1"] > * * {
-        color: #ffffff !important;
+      [data-chl="1"] > * > *:first-child {
+        color: #1c4229 !important;
+      }
+      [data-chl="1"] > * > *:not(:first-child) {
+        color: #1e2820 !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function ensurePerMqCardsLiveStyle() {
+    const id = "codex-permq-cards-fix";
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    // Minimal white per price cards "al mq finale": bianco con bordo top verde accent
+    style.textContent = `
+      [data-cpermq="1"] {
+        background: #ffffff !important;
+        border: 1.5px solid #d8e4da !important;
+        border-top: 3px solid #3db554 !important;
+        border-radius: 10px !important;
+        box-shadow: 0 2px 8px rgba(28,66,41,0.07) !important;
+        overflow: hidden !important;
+      }
+      [data-cpermq-name="1"] {
+        color: #1c4229 !important;
+      }
+      [data-cpermq-price="1"] {
+        color: #1c4229 !important;
+      }
+      [data-cpermq-muted="1"] {
+        color: #4a5c4e !important;
       }
     `;
     document.head.appendChild(style);
@@ -1701,14 +1737,60 @@
     // Mark the grid so the persistent <style> can target it
     grid.dataset.chl = "1";
     ensureHeylightLiveStyle();
-    // Also apply inline styles with !important for PDF export context
+    // Apply minimal white inline styles with !important for PDF export context
     Array.from(grid.children).forEach((card) => {
       if (!(card instanceof HTMLElement)) return;
-      card.style.setProperty("background", "#1e3a28", "important");
-      card.style.setProperty("border-color", "rgba(30,58,40,0.5)", "important");
-      card.style.setProperty("color", "#ffffff", "important");
-      Array.from(card.querySelectorAll("*")).forEach((el) => {
-        if (el instanceof HTMLElement) el.style.setProperty("color", "#ffffff", "important");
+      card.style.setProperty("background", "#ffffff", "important");
+      card.style.setProperty("border", "1.5px solid #d8e4da", "important");
+      card.style.setProperty("border-left", "3px solid #1c4229", "important");
+      card.style.setProperty("box-shadow", "0 1px 4px rgba(28,66,41,0.06)", "important");
+      card.style.setProperty("color", "#1e2820", "important");
+      const kids = Array.from(card.children);
+      kids.forEach((el, idx) => {
+        if (!(el instanceof HTMLElement)) return;
+        // primo figlio = nome modello (verde scuro), gli altri = scuro neutro
+        const color = idx === 0 ? "#1c4229" : "#1e2820";
+        el.style.setProperty("color", color, "important");
+        Array.from(el.querySelectorAll("*")).forEach((nested) => {
+          if (nested instanceof HTMLElement) nested.style.setProperty("color", color, "important");
+        });
+      });
+    });
+  }
+
+  function fixPerMqCardsReadability(root) {
+    if (!(root instanceof Element)) return;
+    ensurePerMqCardsLiveStyle();
+    // Reuse findPerMqCards which already locates the "al mq finale" cards
+    findPerMqCards(root).forEach((item) => {
+      const card = item.card;
+      if (!(card instanceof HTMLElement)) return;
+      // Override del background (in alcune varianti React lo applica verde scuro)
+      card.dataset.cpermq = "1";
+      card.style.setProperty("background", "#ffffff", "important");
+      card.style.setProperty("border", "1.5px solid #d8e4da", "important");
+      card.style.setProperty("border-top", "3px solid #3db554", "important");
+      card.style.setProperty("border-radius", "10px", "important");
+      card.style.setProperty("box-shadow", "0 2px 8px rgba(28,66,41,0.07)", "important");
+      card.style.setProperty("overflow", "hidden", "important");
+      // I figli: cerco nome modello, subline, prezzo, "al mq finale"
+      const children = Array.from(card.children).filter((c) => c instanceof HTMLElement);
+      children.forEach((el) => {
+        const text = (el.textContent || "").trim();
+        if (!text) return;
+        if (/mm/i.test(text) && text.length < 30) {
+          // nome modello (es. "FAGGIO 25 MM")
+          el.dataset.cpermqName = "1";
+          el.style.setProperty("color", "#1c4229", "important");
+        } else if (/€/.test(text) && text.length < 20) {
+          // prezzo
+          el.dataset.cpermqPrice = "1";
+          el.style.setProperty("color", "#1c4229", "important");
+        } else {
+          // subline o "al mq finale"
+          el.dataset.cpermqMuted = "1";
+          el.style.setProperty("color", "#4a5c4e", "important");
+        }
       });
     });
   }
@@ -2858,6 +2940,7 @@
   async function preparePdfBrandingForExport() {
     if (!ENABLE_BRANDING_EXPORT && !ENABLE_PLANNER_REPORT_EXPORT) return;
     fixHeylightReadability(document.body);
+    fixPerMqCardsReadability(document.body);
     if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document.body);
     ensurePdfExportStyles();
     stripPdfStyleArtifacts();
