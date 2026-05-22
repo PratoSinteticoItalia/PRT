@@ -333,37 +333,44 @@
     .pc-row[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
     .pc-row[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
     .pc {
-      border: none; border-radius: 10px;
+      border: 1.5px solid var(--br);
+      border-top: 3px solid var(--ga);
+      border-radius: 10px;
       text-align: center; overflow: hidden;
-      background: linear-gradient(160deg, #2a7043 0%, #3d9a5d 100%);
-      box-shadow: 0 3px 12px rgba(42,112,67,0.25);
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(28,66,41,0.07);
       position: relative;
     }
     .pc.suggested {
-      background: linear-gradient(160deg, #1c5c31 0%, #2d8049 45%, #3db554 100%);
-      box-shadow: 0 4px 16px rgba(28,66,41,0.35);
+      border: 2px solid var(--gd);
+      border-top: 4px solid var(--ga);
+      box-shadow: 0 4px 14px rgba(28,66,41,0.14);
     }
     /* header modello */
     .pc-head {
-      background: rgba(0,0,0,0.18);
+      background: var(--gp);
+      border-bottom: 1px solid var(--br);
       padding: 11px 12px 9px;
       position: relative;
+    }
+    .pc.suggested .pc-head {
+      background: linear-gradient(90deg, var(--gp), #edf7ef);
     }
     /* body prezzo */
     .pc-body {
       padding: 12px 12px 13px;
     }
-    .pc-m { font-size: 11.5px; font-weight: 900; letter-spacing: .9px; color: rgba(255,255,255,.95); text-transform: uppercase; }
-    .pc-s { font-size: 9.5px; color: rgba(255,255,255,.65); margin-top: 3px; }
-    .pc-p { font-size: 32px; font-weight: 900; color: #fff; letter-spacing: -1.5px; line-height: 1; }
+    .pc-m { font-size: 11.5px; font-weight: 900; letter-spacing: .9px; color: var(--gd); text-transform: uppercase; }
+    .pc-s { font-size: 9.5px; color: var(--gx); margin-top: 3px; }
+    .pc-p { font-size: 32px; font-weight: 900; color: var(--gd); letter-spacing: -1.5px; line-height: 1; }
     .pc-p .eu { font-size: 20px; vertical-align: baseline; font-weight: 900; }
-    .pc-u { font-size: 9px; color: rgba(255,255,255,.6); margin-top: 4px; }
+    .pc-u { font-size: 9px; color: var(--gl); margin-top: 4px; }
     .pc-badge {
-      position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
-      background: #4cc06a; color: #fff; font-size: 7.5px; font-weight: 800;
+      position: absolute; top: 0; right: 10px;
+      background: var(--gd); color: #fff; font-size: 7px; font-weight: 800;
       letter-spacing: .5px; text-transform: uppercase;
-      padding: 3px 10px; border-radius: 20px; white-space: nowrap;
-      box-shadow: 0 2px 6px rgba(61,181,84,0.4);
+      padding: 3px 9px; border-radius: 0 0 7px 7px; white-space: nowrap;
+      box-shadow: 0 2px 5px rgba(28,66,41,0.22);
     }
 
     /* ── METODI DI PAGAMENTO ── */
@@ -393,12 +400,15 @@
     .hl-row[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
     .hl-row[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
     .hl-card {
-      background: var(--gd); color: #fff;
+      background: #fff;
+      border: 1.5px solid var(--br);
+      border-left: 3px solid var(--gd);
       padding: 11px 12px; border-radius: 9px;
       text-align: center;
+      box-shadow: 0 1px 4px rgba(28,66,41,0.06);
     }
-    .hl-m { font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: rgba(255,255,255,.85); }
-    .hl-v { font-size: 13px; font-weight: 800; color: #fff; margin-top: 5px; letter-spacing: -.2px; }
+    .hl-m { font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--gd); }
+    .hl-v { font-size: 13px; font-weight: 800; color: var(--gn); margin-top: 5px; letter-spacing: -.2px; }
 
     /* ── FIRMA + LOGOS PAGAMENTO ── */
     .firma-row {
