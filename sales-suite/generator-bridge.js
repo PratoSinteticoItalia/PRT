@@ -500,6 +500,7 @@
     fixPerMqCardsReadability(pdfRoot);
     polishOfferHeading(pdfRoot);
     polishAccessoriesTable(pdfRoot);
+    injectMaterialsDiscount(pdfRoot);
 
     return () => {
       while (cleanup.length) {
@@ -794,6 +795,7 @@
       fixPerMqCardsReadability(document.body);
       polishOfferHeading(document.body);
       polishAccessoriesTable(document.body);
+      injectMaterialsDiscount(document.body);
       polishGeneratorToolbar();
       applyLivePreviewNorm(document.body);
       if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document.body);
@@ -1919,6 +1921,63 @@
         el.style.setProperty("border-color", "#d8e4da", "important");
       }
     });
+  }
+
+  function readMaterialsDiscountPercent() {
+    // Cerca nel form di editor il campo "Sconto materiali %" e ne legge il valore.
+    // L'input rimane nel DOM anche in modalità preview (è solo nascosto via display).
+    const labels = Array.from(document.querySelectorAll("label"));
+    const lbl = labels.find((l) => {
+      const t = normalizeLabel(l.textContent || "");
+      return t.includes("sconto materiali") && t.includes("%");
+    });
+    if (!(lbl instanceof HTMLElement)) return 0;
+    // L'input è solitamente sibling del label, entrambi figli di un wrapper div
+    const wrapper = lbl.parentElement;
+    if (!(wrapper instanceof HTMLElement)) return 0;
+    const input = wrapper.querySelector('input[type="number"]');
+    if (!(input instanceof HTMLInputElement)) return 0;
+    const value = parseFloat((input.value || "0").replace(",", "."));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }
+
+  function injectMaterialsDiscount(root) {
+    // Inietta nel preview una riga "Sconto materiali applicato: −X%" dentro il box
+    // dei materiali, sopra "Dettagli materiali:". Idempotente.
+    if (!(root instanceof Element)) return;
+    const discount = readMaterialsDiscountPercent();
+    // Cerco il marker "Dettagli materiali" (è in <strong> all'inizio della riga note)
+    const marker = findElementByTextWithin(root, "strong, p, div, span", "Dettagli materiali");
+    if (!(marker instanceof HTMLElement)) return;
+    // Risalgo al box contenitore (un livello sopra il paragrafo del marker)
+    const detailLine = marker.closest("p, div") || marker.parentElement;
+    if (!(detailLine instanceof HTMLElement) || !(detailLine.parentElement instanceof HTMLElement)) return;
+    const parent = detailLine.parentElement;
+    // Rimuovi eventuale riga precedente (così aggiorna il valore se cambia)
+    const existing = parent.querySelector("[data-cpsi-mat-discount='1']");
+    if (existing) existing.remove();
+    if (discount <= 0) return;
+    const row = document.createElement("div");
+    row.dataset.cpsiMatDiscount = "1";
+    row.style.cssText = [
+      "display: flex",
+      "align-items: center",
+      "justify-content: space-between",
+      "gap: 12px",
+      "margin: 6px 0 4px",
+      "padding: 6px 12px",
+      "background: linear-gradient(90deg, #fef5e8 0%, #fff8eb 100%)",
+      "border-top: 1px solid #f3d99c",
+      "border-bottom: 1px solid #f3d99c",
+      "border-radius: 4px",
+      "font-size: 10px",
+    ].join("; ");
+    const discTxt = String(discount).replace(".", ",");
+    row.innerHTML = `
+      <span style="color: #4a5c4e; font-weight: 600; letter-spacing: .2px;">Sconto materiali applicato</span>
+      <span style="color: #c0392b; font-weight: 800; font-size: 11.5px; background: #fef2f1; border: 1px solid #f5c0bb; padding: 1px 8px; border-radius: 10px;">−${discTxt}%</span>
+    `;
+    parent.insertBefore(row, detailLine);
   }
 
   function centerHeylightCards(root) {
@@ -3069,6 +3128,7 @@
     fixPerMqCardsReadability(document.body);
     polishOfferHeading(document.body);
     polishAccessoriesTable(document.body);
+    injectMaterialsDiscount(document.body);
     if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document.body);
     ensurePdfExportStyles();
     stripPdfStyleArtifacts();
