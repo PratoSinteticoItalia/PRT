@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260523-clean-v3";
+const APP_SHELL_VERSION = "20260523-clean-v4";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

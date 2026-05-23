@@ -498,6 +498,8 @@
 
     fixHeylightReadability(pdfRoot);
     fixPerMqCardsReadability(pdfRoot);
+    polishOfferHeading(pdfRoot);
+    polishAccessoriesTable(pdfRoot);
 
     return () => {
       while (cleanup.length) {
@@ -790,6 +792,8 @@
       }
       fixHeylightReadability(document.body);
       fixPerMqCardsReadability(document.body);
+      polishOfferHeading(document.body);
+      polishAccessoriesTable(document.body);
       polishGeneratorToolbar();
       applyLivePreviewNorm(document.body);
       if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document.body);
@@ -1811,9 +1815,17 @@
       card.style.setProperty("border-radius", "10px", "important");
       card.style.setProperty("box-shadow", "0 2px 8px rgba(28,66,41,0.07)", "important");
       card.style.setProperty("overflow", "hidden", "important");
-      // I figli: cerco nome modello, subline, prezzo, "al mq finale"
+      // I figli: cerco nome modello, subline, prezzo, "al mq finale", e il top-strip
       const children = Array.from(card.children).filter((c) => c instanceof HTMLElement);
       children.forEach((el) => {
+        // Top-strip React (position:absolute, height:3, sopra ogni card): lo nascondo
+        // per evitare l'effetto "linea continua" sopra le 3 card affiancate
+        const cs = window.getComputedStyle(el);
+        const elH = parseFloat(cs.height || "0");
+        if (cs.position === "absolute" && elH > 0 && elH <= 6) {
+          el.style.setProperty("display", "none", "important");
+          return;
+        }
         const text = (el.textContent || "").trim();
         if (!text) return;
         if (/mm/i.test(text) && text.length < 30) {
@@ -1830,6 +1842,82 @@
           el.style.setProperty("color", "#4a5c4e", "important");
         }
       });
+    });
+  }
+
+  function polishOfferHeading(root) {
+    // "OFFERTA PER X MQ" — il React lo renderizza scuro su sfondo trasparente con
+    // bordo superiore/inferiore. Lo trasformo in pill verde scuro con testo bianco.
+    if (!(root instanceof Element)) return;
+    const heading = findElementByTextWithin(root, "div, span, p", "OFFERTA PER");
+    if (!(heading instanceof HTMLElement)) return;
+    if (heading.dataset.cpsiOffer === "1") return;
+    heading.dataset.cpsiOffer = "1";
+    heading.style.setProperty(
+      "background",
+      "linear-gradient(180deg, #1c4229 0%, #163823 100%)",
+      "important",
+    );
+    heading.style.setProperty("color", "#ffffff", "important");
+    heading.style.setProperty("border-top", "none", "important");
+    heading.style.setProperty("border-bottom", "none", "important");
+    heading.style.setProperty("border-radius", "8px", "important");
+    heading.style.setProperty("padding", "9px 22px 11px", "important");
+    heading.style.setProperty("letter-spacing", "1.8px", "important");
+    heading.style.setProperty("box-shadow", "0 2px 6px rgba(28,66,41,0.18)", "important");
+    // Tutti i child eredita il bianco
+    Array.from(heading.querySelectorAll("*")).forEach((el) => {
+      if (el instanceof HTMLElement) el.style.setProperty("color", "#ffffff", "important");
+    });
+  }
+
+  function polishAccessoriesTable(root) {
+    // La tabella "ACCESSORI E PRODOTTI EXTRA" del React usa una palette blu/azzurra
+    // (#f6fafc, #dbe7ee, #eef4f8) fuori tema. Sostituisco con la palette verde.
+    if (!(root instanceof Element)) return;
+    const heading = findElementByTextWithin(root, "div, span, p", "Accessori e Prodotti Extra")
+      || findElementByTextWithin(root, "div, span, p", "ACCESSORI E PRODOTTI EXTRA");
+    const section = heading instanceof HTMLElement
+      ? (heading.closest("[class*='pdf-no-break']") || heading.parentElement?.parentElement || heading.parentElement)
+      : null;
+    if (!(section instanceof HTMLElement)) return;
+    if (section.dataset.cpsiAcc === "1") return;
+    section.dataset.cpsiAcc = "1";
+    // Container border in palette verde
+    section.style.setProperty("border", "1px solid #d8e4da", "important");
+    section.style.setProperty("box-shadow", "0 1px 0 rgba(28,66,41,0.05)", "important");
+    // Sostituisco background blu/grigio con tonalità verde su tutti i discendenti
+    const blueToGreen = {
+      "rgb(246, 250, 252)": "#f6faf6", // #f6fafc → off white verde
+      "rgb(219, 231, 238)": "#d8e4da", // #dbe7ee → borderSoft verde
+      "rgb(238, 244, 248)": "#eef7f0", // #eef4f8 → highlight verde chiaro
+      "rgb(247, 250, 252)": "#f6faf6", // #f7fafc → off white verde
+      "rgb(234, 242, 247)": "#e2efe5", // #eaf2f7 → tonalità intermedia
+      "rgb(245, 249, 252)": "#f4f9f5", // #f5f9fc → gradient header start
+    };
+    Array.from(section.querySelectorAll("*")).forEach((el) => {
+      if (!(el instanceof HTMLElement)) return;
+      const cs = window.getComputedStyle(el);
+      const bg = cs.backgroundColor || "";
+      const bgImg = cs.backgroundImage || "";
+      // Sostituisco backgroundColor blu con verde
+      Object.keys(blueToGreen).forEach((rgb) => {
+        if (bg === rgb) {
+          el.style.setProperty("background-color", blueToGreen[rgb], "important");
+        }
+      });
+      // Per il gradient header `linear-gradient(90deg, #f5f9fc 0%, #eaf2f7 100%)`
+      if (bgImg.includes("rgb(245, 249, 252)") || bgImg.includes("rgb(234, 242, 247)")) {
+        el.style.setProperty(
+          "background-image",
+          "linear-gradient(90deg, #f4f9f5 0%, #e2efe5 100%)",
+          "important",
+        );
+      }
+      // border-color blu → verde
+      if (cs.borderColor && cs.borderColor.includes("rgb(216, 227, 234)")) {
+        el.style.setProperty("border-color", "#d8e4da", "important");
+      }
     });
   }
 
@@ -2979,6 +3067,8 @@
     if (!ENABLE_BRANDING_EXPORT && !ENABLE_PLANNER_REPORT_EXPORT) return;
     fixHeylightReadability(document.body);
     fixPerMqCardsReadability(document.body);
+    polishOfferHeading(document.body);
+    polishAccessoriesTable(document.body);
     if (ENABLE_PREVIEW_POLISH) polishQuotePreviewLayout(document.body);
     ensurePdfExportStyles();
     stripPdfStyleArtifacts();
