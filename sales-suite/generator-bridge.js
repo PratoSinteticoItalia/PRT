@@ -1874,53 +1874,78 @@
   }
 
   function polishAccessoriesTable(root) {
-    // La tabella "ACCESSORI E PRODOTTI EXTRA" del React usa una palette blu/azzurra
-    // (#f6fafc, #dbe7ee, #eef4f8) fuori tema. Sostituisco con la palette verde.
+    // La tabella "ACCESSORI E PRODOTTI EXTRA" va integrata nello stesso linguaggio
+    // visivo del resto del documento (box materiali, badges, price cards):
+    // container bianco con bordo grigio chiaro + bordo radius, banner header chiaro
+    // off-white con testo verde scuro, righe bianche, totale highlight verde chiaro.
     if (!(root instanceof Element)) return;
     const heading = findElementByTextWithin(root, "div, span, p", "Accessori e Prodotti Extra")
       || findElementByTextWithin(root, "div, span, p", "ACCESSORI E PRODOTTI EXTRA");
-    const section = heading instanceof HTMLElement
-      ? (heading.closest("[class*='pdf-no-break']") || heading.parentElement?.parentElement || heading.parentElement)
-      : null;
+    if (!(heading instanceof HTMLElement)) return;
+    const section = heading.closest("[class*='pdf-no-break']")
+      || heading.parentElement?.parentElement
+      || heading.parentElement;
     if (!(section instanceof HTMLElement)) return;
-    if (section.dataset.cpsiAcc === "1") return;
     section.dataset.cpsiAcc = "1";
-    // Container border in palette verde
-    section.style.setProperty("border", "1px solid #d8e4da", "important");
-    section.style.setProperty("box-shadow", "0 1px 0 rgba(28,66,41,0.05)", "important");
-    // Sostituisco background blu/grigio con tonalità verde su tutti i discendenti
-    const blueToGreen = {
-      "rgb(246, 250, 252)": "#f6faf6", // #f6fafc → off white verde
-      "rgb(219, 231, 238)": "#d8e4da", // #dbe7ee → borderSoft verde
-      "rgb(238, 244, 248)": "#eef7f0", // #eef4f8 → highlight verde chiaro
-      "rgb(247, 250, 252)": "#f6faf6", // #f7fafc → off white verde
-      "rgb(234, 242, 247)": "#e2efe5", // #eaf2f7 → tonalità intermedia
-      "rgb(245, 249, 252)": "#f4f9f5", // #f5f9fc → gradient header start
-    };
-    Array.from(section.querySelectorAll("*")).forEach((el) => {
-      if (!(el instanceof HTMLElement)) return;
-      const cs = window.getComputedStyle(el);
-      const bg = cs.backgroundColor || "";
-      const bgImg = cs.backgroundImage || "";
-      // Sostituisco backgroundColor blu con verde
-      Object.keys(blueToGreen).forEach((rgb) => {
-        if (bg === rgb) {
-          el.style.setProperty("background-color", blueToGreen[rgb], "important");
-        }
+
+    // Container: stile coerente con altri box (bianco, bordo grigio, radius, shadow)
+    section.style.setProperty("background", "#ffffff", "important");
+    section.style.setProperty("border", "1.5px solid #d8e4da", "important");
+    section.style.setProperty("border-radius", "10px", "important");
+    section.style.setProperty("box-shadow", "0 2px 8px rgba(28,66,41,0.07)", "important");
+    section.style.setProperty("overflow", "hidden", "important");
+
+    // Banner heading "Accessori e Prodotti Extra" — off-white con testo verde brand
+    heading.style.setProperty(
+      "background",
+      "linear-gradient(90deg, #f6faf6 0%, #eef7f0 100%)",
+      "important",
+    );
+    heading.style.setProperty("background-image", "none", "important");
+    heading.style.setProperty("background-color", "#eef7f0", "important");
+    heading.style.setProperty("color", "#1c4229", "important");
+    heading.style.setProperty("border-bottom", "1px solid #d8e4da", "important");
+
+    // Subtitle "Queste voci sono già incluse..." — bianco con testo grigio neutro
+    // È il sibling immediato successivo del banner heading
+    const subtitle = heading.nextElementSibling;
+    if (subtitle instanceof HTMLElement && /queste voci/i.test(subtitle.textContent || "")) {
+      subtitle.style.setProperty("background-color", "#ffffff", "important");
+      subtitle.style.setProperty("background-image", "none", "important");
+      subtitle.style.setProperty("color", "#4a5c4e", "important");
+      subtitle.style.setProperty("border-bottom", "1px solid #ebefe9", "important");
+    }
+
+    // Tabella interna
+    const table = section.querySelector("table");
+    if (table instanceof HTMLElement) {
+      table.style.setProperty("background", "#ffffff", "important");
+      // THEAD: header celle con sfondo off-white verde + testo verde brand
+      table.querySelectorAll("thead th, thead td").forEach((th) => {
+        if (!(th instanceof HTMLElement)) return;
+        th.style.setProperty("background-color", "#f6faf6", "important");
+        th.style.setProperty("background-image", "none", "important");
+        th.style.setProperty("color", "#1c4229", "important");
+        th.style.setProperty("border-bottom", "1px solid #d8e4da", "important");
       });
-      // Per il gradient header `linear-gradient(90deg, #f5f9fc 0%, #eaf2f7 100%)`
-      if (bgImg.includes("rgb(245, 249, 252)") || bgImg.includes("rgb(234, 242, 247)")) {
-        el.style.setProperty(
-          "background-image",
-          "linear-gradient(90deg, #f4f9f5 0%, #e2efe5 100%)",
-          "important",
-        );
-      }
-      // border-color blu → verde
-      if (cs.borderColor && cs.borderColor.includes("rgb(216, 227, 234)")) {
-        el.style.setProperty("border-color", "#d8e4da", "important");
-      }
-    });
+      // TBODY: righe prodotto bianche, testo scuro neutro
+      table.querySelectorAll("tbody td").forEach((td) => {
+        if (!(td instanceof HTMLElement)) return;
+        td.style.setProperty("background-color", "#ffffff", "important");
+        td.style.setProperty("background-image", "none", "important");
+        td.style.setProperty("color", "#1e2820", "important");
+        td.style.setProperty("border-bottom", "1px solid #ebefe9", "important");
+      });
+      // TFOOT: riga "TOTALE ACCESSORI" — highlight verde chiaro (palette brand)
+      table.querySelectorAll("tfoot td").forEach((td) => {
+        if (!(td instanceof HTMLElement)) return;
+        td.style.setProperty("background-color", "#eef7f0", "important");
+        td.style.setProperty("background-image", "none", "important");
+        td.style.setProperty("color", "#1c4229", "important");
+        td.style.setProperty("border-top", "1.5px solid #d8e4da", "important");
+        td.style.setProperty("font-weight", "800", "important");
+      });
+    }
   }
 
   function readMaterialsDiscountPercent() {
