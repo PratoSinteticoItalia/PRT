@@ -1873,12 +1873,66 @@
     });
   }
 
+  function ensureAccessoriesLiveStyle() {
+    const id = "codex-accessories-table-fix";
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    // CSS persistente: vince anche se React re-renderizza l'inline style senza
+    // important (un selettore [data-attr] con !important supera lo style inline
+    // non-important del bundle). Doppio sicurezza inline + CSS rule.
+    style.textContent = `
+      [data-cpsi-acc-section="1"] {
+        background: #ffffff !important;
+        background-image: none !important;
+        border: 1.5px solid #d8e4da !important;
+        border-radius: 10px !important;
+        box-shadow: 0 2px 8px rgba(28,66,41,0.07) !important;
+        overflow: hidden !important;
+      }
+      [data-cpsi-acc-heading="1"] {
+        background: #eef7f0 !important;
+        background-image: none !important;
+        color: #1c4229 !important;
+        border-bottom: 1px solid #d8e4da !important;
+      }
+      [data-cpsi-acc-subtitle="1"] {
+        background: #ffffff !important;
+        background-image: none !important;
+        color: #4a5c4e !important;
+        border-bottom: 1px solid #ebefe9 !important;
+      }
+      [data-cpsi-acc-section="1"] thead th,
+      [data-cpsi-acc-section="1"] thead td {
+        background: #f6faf6 !important;
+        background-image: none !important;
+        color: #1c4229 !important;
+        border-bottom: 1px solid #d8e4da !important;
+      }
+      [data-cpsi-acc-section="1"] tbody td {
+        background: #ffffff !important;
+        background-image: none !important;
+        color: #1e2820 !important;
+        border-bottom: 1px solid #ebefe9 !important;
+      }
+      [data-cpsi-acc-section="1"] tfoot td {
+        background: #eef7f0 !important;
+        background-image: none !important;
+        color: #1c4229 !important;
+        border-top: 1.5px solid #d8e4da !important;
+        font-weight: 800 !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function polishAccessoriesTable(root) {
     // La tabella "ACCESSORI E PRODOTTI EXTRA" va integrata nello stesso linguaggio
     // visivo del resto del documento (box materiali, badges, price cards):
     // container bianco con bordo grigio chiaro + bordo radius, banner header chiaro
     // off-white con testo verde scuro, righe bianche, totale highlight verde chiaro.
     if (!(root instanceof Element)) return;
+    ensureAccessoriesLiveStyle();
     const heading = findElementByTextWithin(root, "div, span, p", "Accessori e Prodotti Extra")
       || findElementByTextWithin(root, "div, span, p", "ACCESSORI E PRODOTTI EXTRA");
     if (!(heading instanceof HTMLElement)) return;
@@ -1887,6 +1941,8 @@
       || heading.parentElement;
     if (!(section instanceof HTMLElement)) return;
     section.dataset.cpsiAcc = "1";
+    section.dataset.cpsiAccSection = "1";
+    heading.dataset.cpsiAccHeading = "1";
 
     // Container: stile coerente con altri box (bianco, bordo grigio, radius, shadow)
     section.style.setProperty("background", "#ffffff", "important");
@@ -1910,6 +1966,7 @@
     // È il sibling immediato successivo del banner heading
     const subtitle = heading.nextElementSibling;
     if (subtitle instanceof HTMLElement && /queste voci/i.test(subtitle.textContent || "")) {
+      subtitle.dataset.cpsiAccSubtitle = "1";
       subtitle.style.setProperty("background-color", "#ffffff", "important");
       subtitle.style.setProperty("background-image", "none", "important");
       subtitle.style.setProperty("color", "#4a5c4e", "important");
