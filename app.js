@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260526-drilldown-v1";
+const APP_SHELL_VERSION = "20260526-scroll-mobile-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7801,17 +7801,19 @@ function revealMobileDetailTarget(view) {
   }, 110);
 }
 
-// Preserva lo scrollTop del container scrollable + focus/valore/selection
-// dell'input attivo dentro `node`, attorno a una funzione che muta il DOM
-// (tipicamente innerHTML = ... di una lista).
+// Preserva lo scrollTop del container scrollable + scroll del window + focus
+// dell'input attivo, attorno a una funzione che muta il DOM (tipicamente
+// innerHTML = ... di una lista o re-render di una view intera).
 //
-// Risolve due problemi causati da re-render via innerHTML:
-//   1. Scroll teleport: il browser perde scrollTop del container scrollabile
-//      genitore (.main-content) quando il contenuto cambia.
-//   2. Focus/valore perso: se l'utente sta editando un input dentro la lista
-//      (es. quick edit, checkbox bulk, ricerca inline) e arriva un refresh,
-//      l'input viene distrutto. Salviamo l'identità + valore + selection e
-//      li ripristiniamo dopo il render.
+// Risolve tre problemi causati da re-render via innerHTML:
+//   1. Scroll teleport container (desktop): il browser perde scrollTop di
+//      .main-content (overflow-y: auto) quando il contenuto cambia.
+//   2. Scroll teleport window (mobile): su <=980px .app-shell perde height:
+//      100vh e diventa min-height: 100dvh, quindi lo scroll passa al window.
+//      Bisogna preservare anche window.scrollY.
+//   3. Focus/valore perso: se l'utente sta editando un input dentro la lista
+//      e arriva un refresh, l'input viene distrutto. Salviamo l'identità +
+//      valore + selection e li ripristiniamo dopo il render.
 //
 // Le navigation deliberate (cambio view, pagination, select drill-down) NON
 // usano questa utility ma chiamano scrollCurrentViewToTop() o scrollIntoView()
@@ -7845,24 +7847,34 @@ function withScrollPreservation(node, fn) {
     };
   }
 
-  const savedTop = container ? container.scrollTop : 0;
+  // Snapshot doppio: container (desktop) E window (mobile dove .app-shell
+  // ha min-height invece di height fissa → scroll è del body/window).
+  const savedContainerTop = container ? container.scrollTop : 0;
+  const savedWindowY = window.scrollY || document.documentElement.scrollTop || 0;
+
   fn();
 
   // Restore in due rAF: il primo fa settle del layout, il secondo applica.
   // Un solo rAF a volte non basta su Safari mobile.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      if (container && Math.abs(container.scrollTop - savedTop) > 1) {
-        container.scrollTop = savedTop;
+      // Restore container scroll (desktop)
+      if (container && Math.abs(container.scrollTop - savedContainerTop) > 1) {
+        container.scrollTop = savedContainerTop;
       }
+      // Restore window scroll (mobile)
+      const currentY = window.scrollY || document.documentElement.scrollTop || 0;
+      if (Math.abs(currentY - savedWindowY) > 1) {
+        // behavior:"auto" = istantaneo, niente smooth (eviterebbe sensazione di "salto")
+        window.scrollTo({ top: savedWindowY, left: 0, behavior: "auto" });
+      }
+      // Restore focus
       if (focusInfo && focusInfo.name && node) {
-        // Trova lo stesso input nel nuovo DOM
         const selector = focusInfo.ownerId
           ? `[data-id="${CSS.escape(focusInfo.ownerId)}"] [name="${CSS.escape(focusInfo.name)}"], [data-id="${CSS.escape(focusInfo.ownerId)}"] #${CSS.escape(focusInfo.name)}`
           : `[name="${CSS.escape(focusInfo.name)}"], #${CSS.escape(focusInfo.name)}`;
         const restored = node.querySelector(selector);
         if (restored instanceof HTMLInputElement || restored instanceof HTMLTextAreaElement || restored instanceof HTMLSelectElement) {
-          // Restore valore solo se diverso (evita di sporcare se il server ha aggiornato)
           if (focusInfo.value !== null && "value" in restored && restored.value !== focusInfo.value) {
             restored.value = focusInfo.value;
           }
@@ -16680,6 +16692,13 @@ function renderCommunications() {
   bindCommunicationsActions(container);
 }
 
+// Flag consume-once: setView lo imposta a true prima di chiamare renderCurrentViewOnly
+// quando l'utente ha effettivamente CAMBIATO view, così salta scroll preservation
+// e lascia che scrollCurrentViewToTop() resetti correttamente il viewport.
+// Nei refresh dati (SSE, autosave, sync periodico) il flag resta false → scroll
+// preservato (vedi withScrollPreservation: gestisce sia container che window).
+let _skipScrollPreservationOnce = false;
+
 function renderCurrentViewOnly(view = state.currentView) {
   if (state.currentUser && state.shellPending) {
     setShellPending(false);
@@ -16691,64 +16710,50 @@ function renderCurrentViewOnly(view = state.currentView) {
   if (view !== "communications") {
     stopCommunicationsPolling();
   }
-  switch (view) {
-    case "dashboard":
-      renderDashboard();
-      break;
-    case "orders":
-      renderOrders();
-      break;
-    case "sales-requests":
-      renderSalesRequests();
-      break;
-    case "sales-generator":
-      renderSalesGenerator();
-      break;
-    case "sales-content":
-      renderSalesContent();
-      break;
-    case "warehouse":
-      renderWarehouse();
-      break;
-    case "installations":
-      renderInstallations();
-      break;
-    case "accounting":
-      renderAccounting();
-      break;
-    case "profit-split":
-      renderProfitSplitWorkspace();
-      break;
-    case "shipping":
-      renderShipping();
-      break;
-    case "reseller-report":
-      renderResellerReport();
-      break;
-    case "settings":
-      renderSettings();
-      break;
-    case "marketing":
-      renderMarketing();
-      break;
-    case "communications":
-      startCommunicationsPolling();
-      renderCommunications();
-      if (state.communicationsInitialized) {
-        if (state.selectedCommunicationThreadId) {
-          void loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
+  // Scroll preservation a livello orchestratore: copre TUTTE le view, non solo
+  // le 5 liste master (Dashboard/Communications/Settings/ecc. hanno render che
+  // fanno innerHTML su elementi grandi). Su mobile <=980px lo scroll è del
+  // window perché .app-shell ha min-height invece di height fissa.
+  // setView setta _skipScrollPreservationOnce=true quando cambia view
+  // (dopo lo scrollCurrentViewToTop deve vincere); per i refresh dati il flag
+  // resta false e lo scroll position viene preservato.
+  const _skipPres = _skipScrollPreservationOnce;
+  _skipScrollPreservationOnce = false; // consume
+  const _renderSwitch = () => {
+    switch (view) {
+      case "dashboard": renderDashboard(); break;
+      case "orders": renderOrders(); break;
+      case "sales-requests": renderSalesRequests(); break;
+      case "sales-generator": renderSalesGenerator(); break;
+      case "sales-content": renderSalesContent(); break;
+      case "warehouse": renderWarehouse(); break;
+      case "installations": renderInstallations(); break;
+      case "accounting": renderAccounting(); break;
+      case "profit-split": renderProfitSplitWorkspace(); break;
+      case "shipping": renderShipping(); break;
+      case "reseller-report": renderResellerReport(); break;
+      case "settings": renderSettings(); break;
+      case "marketing": renderMarketing(); break;
+      case "communications":
+        startCommunicationsPolling();
+        renderCommunications();
+        if (state.communicationsInitialized) {
+          if (state.selectedCommunicationThreadId) {
+            void loadCommunicationMessages(state.selectedCommunicationThreadId, { render: true, markRead: true });
+          }
+        } else {
+          void loadCommunicationTargets({ render: true });
+          void loadCommunicationThreads({ render: true });
         }
-      } else {
-        void loadCommunicationTargets({ render: true });
-        void loadCommunicationThreads({ render: true });
-      }
-      break;
-    case "garden-planner":
-      renderGardenPlannerView();
-      break;
-    default:
-      renderDashboard();
-      break;
+        break;
+      case "garden-planner": renderGardenPlannerView(); break;
+      default: renderDashboard(); break;
+    }
+  };
+  if (_skipPres) {
+    _renderSwitch();
+  } else {
+    withScrollPreservation(ui.mainContent || document.body, _renderSwitch);
   }
 }
 
@@ -17725,6 +17730,12 @@ function setView(view, { pushHistory = true } = {}) {
   clearAllSearchRenderTimers();
   clearPendingCurrentViewRefresh();
   state.currentView = nextView;
+  // Quando l'utente cambia view, il render successivo NON deve preservare scroll
+  // (vogliamo partire dal top della nuova view). Il flag viene consumato dentro
+  // renderCurrentViewOnly e azzerato dopo l'uso.
+  if (nextView !== previousView) {
+    _skipScrollPreservationOnce = true;
+  }
   renderCurrentViewOnly(nextView);
   if (nextView === "sales-requests" && nextView !== previousView && canAutoRefreshSalesRequests()) {
     triggerSalesRequestAutoSync({ force: true });
