@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260526-backbar-v2";
+const APP_SHELL_VERSION = "20260526-scrollguard-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2135,6 +2135,7 @@ function openMobileDrillDetail(module, itemId) {
   document.body.classList.add("mobile-drill-detail");
   // Reset scroll: container (desktop) E window (mobile, dove e' il vero scroll
   // perche' .app-shell su mobile-safe-mode ha min-height invece di height fissa).
+  _acknowledgeIntentionalScroll(0);
   if (ui.mainContent) ui.mainContent.scrollTop = 0;
   try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
   updateMobileDrillBackBar();
@@ -2153,6 +2154,7 @@ function closeMobileDrillDetail({ skipHistory = false } = {}) {
   document.body.classList.remove("mobile-drill-detail");
   updateMobileDrillBackBar();
   // Ripristina scroll position della lista (container desktop + window mobile)
+  _acknowledgeIntentionalScroll(listScrollY);
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       if (ui.mainContent) ui.mainContent.scrollTop = listScrollY;
@@ -7921,7 +7923,82 @@ function withScrollPreservation(node, fn) {
   });
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// SCROLL GUARDIAN — ultima rete di sicurezza per il "torna in alto" residuo
+// ──────────────────────────────────────────────────────────────────────────
+// Monitora continuamente window.scrollY. Quando il DOM cambia (MutationObserver)
+// e rileviamo un "salto in alto" non causato dall'utente (es. scrollY > 100
+// prima, scrollY < 30 dopo, senza un user-scroll event recente), ripristina.
+// Si attiva indipendentemente dalla render-function specifica → cattura anche
+// i re-render che non passano da renderCurrentViewOnly o da render*() wrappate.
+let _lastUserScrollY = 0;
+let _lastUserScrollT = 0;
+let _userScrollTimer = 0;
+let _scrollGuardRestoring = false;
+let _scrollGuardObserver = null;
+
+function isUserScrollingActive() {
+  return Date.now() - _lastUserScrollT < 300;
+}
+
+// Chiamata quando lo scroll cambia in modo deliberato (cambio view, drill-down
+// open/close, scrollCurrentViewToTop, ecc.) per dire allo scroll guardian
+// "questa variazione e' voluta, non e' un salto sospetto". Aggiorna la baseline.
+function _acknowledgeIntentionalScroll(targetY = 0) {
+  _lastUserScrollY = Number(targetY) || 0;
+  _lastUserScrollT = Date.now();
+}
+
+function startScrollGuardian() {
+  if (_scrollGuardObserver) return; // già attivo
+  // Listener scroll: aggiorna l'ultima posizione utente nota
+  window.addEventListener("scroll", () => {
+    if (_scrollGuardRestoring) return;
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    _lastUserScrollY = y;
+    _lastUserScrollT = Date.now();
+    if (_userScrollTimer) window.clearTimeout(_userScrollTimer);
+    _userScrollTimer = window.setTimeout(() => { _userScrollTimer = 0; }, 250);
+  }, { passive: true });
+
+  // MutationObserver: dopo cambi DOM, verifica se lo scroll è "saltato in alto"
+  // senza che l'utente lo abbia richiesto. Throttle implicito via rAF.
+  let scheduled = false;
+  _scrollGuardObserver = new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      if (_scrollGuardRestoring) return;
+      if (isUserScrollingActive()) return;
+      const currentY = window.scrollY || document.documentElement.scrollTop || 0;
+      // Trigger: avevo scrollato significativamente, ora sono quasi in cima
+      // e questo è successo entro 60 secondi dall'ultimo user scroll
+      if (
+        _lastUserScrollY > 120
+        && currentY < 30
+        && Date.now() - _lastUserScrollT < 60_000
+      ) {
+        _scrollGuardRestoring = true;
+        const target = _lastUserScrollY;
+        window.scrollTo({ top: target, left: 0, behavior: "auto" });
+        // Reset flag dopo un paio di rAF per non auto-bloccarsi
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          _scrollGuardRestoring = false;
+        }));
+      }
+    });
+  });
+  _scrollGuardObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: false,
+    characterData: false,
+  });
+}
+
 function scrollCurrentViewToTop() {
+  _acknowledgeIntentionalScroll(0);
   const activeView = document.getElementById(state.currentView);
   if (activeView) {
     activeView.scrollTop = 0;
@@ -22426,6 +22503,10 @@ window.addEventListener("focus", () => {
     triggerSalesRequestAutoSync({ force: state.currentView === "sales-requests" });
   }
 });
+// Avvia scroll guardian al boot (idempotente, no-op se gia' attivo).
+// Cattura "torna in cima" residui che sfuggono a withScrollPreservation.
+try { startScrollGuardian(); } catch {}
+
 window.addEventListener("online", () => {
   flushPendingCurrentViewRefresh();
   if (!state.currentUser) return;
