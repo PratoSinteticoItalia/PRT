@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260523-clean-v7";
+const APP_SHELL_VERSION = "20260525-scroll-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7624,6 +7624,39 @@ function revealMobileDetailTarget(view) {
   }, 110);
 }
 
+// Preserva lo scrollTop del container scrollable attorno a una funzione che
+// muta il DOM (tipicamente innerHTML = ... di una lista). Soluzione al
+// "scroll teleport" che avveniva dopo SSE refresh / autosave / refresh dati:
+// il browser non preserva scroll dopo innerHTML, quindi lo facciamo noi.
+//
+// Le navigation deliberate (cambio view, pagination, select drill-down) NON
+// usano questa utility ma chiamano scrollCurrentViewToTop() o scrollIntoView()
+// esplicitamente, sovrascrivendo il restore con un seek deliberato.
+function withScrollPreservation(node, fn) {
+  let container = node?.parentElement;
+  while (container && container !== document.body) {
+    const cs = window.getComputedStyle(container);
+    if (cs.overflowY === "auto" || cs.overflowY === "scroll") break;
+    container = container.parentElement;
+  }
+  if (!container || container === document.body) container = ui.mainContent;
+  if (!container) {
+    fn();
+    return;
+  }
+  const savedTop = container.scrollTop;
+  fn();
+  // Restore in due rAF: il primo fa settle del layout, il secondo applica.
+  // Un solo rAF a volte non basta su Safari mobile.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (Math.abs(container.scrollTop - savedTop) > 1) {
+        container.scrollTop = savedTop;
+      }
+    });
+  });
+}
+
 function scrollCurrentViewToTop() {
   const activeView = document.getElementById(state.currentView);
   if (activeView) {
@@ -11079,7 +11112,9 @@ function renderOrders() {
   const ordersGrid = ui.ordersList?.closest(".order-grid");
   if (ordersGrid) ordersGrid.classList.toggle("is-empty", orders.length === 0);
   updateOrderImportPanel();
-  ui.ordersList.innerHTML = pageItems.length ? pageItems.map((order) => renderOrderRow(order, "orders")).join("") : `<div class="info-card">${t("noOrdersAvailable")}</div>`;
+  withScrollPreservation(ui.ordersList, () => {
+    ui.ordersList.innerHTML = pageItems.length ? pageItems.map((order) => renderOrderRow(order, "orders")).join("") : `<div class="info-card">${t("noOrdersAvailable")}</div>`;
+  });
   if (ui.ordersPagination) {
     ui.ordersPagination.innerHTML = totalItems > getOrdersPageSize()
       ? `
@@ -11307,6 +11342,7 @@ function renderSalesRequests() {
   renderSalesRequestBulkBar(pageItems);
   if (ui.salesRequestsList) {
     ui.salesRequestsList.classList.toggle("is-compact", Boolean(state.salesRequestCompactMode));
+    withScrollPreservation(ui.salesRequestsList, () => {
     ui.salesRequestsList.innerHTML = pageItems.length
       ? pageItems.map((item) => {
         const automationBadge = getSalesRequestAutomationBadge(item);
@@ -11358,6 +11394,7 @@ function renderSalesRequests() {
         `;
       }).join("")
       : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters."}</div>`;
+    });
   }
   if (ui.salesRequestsPagination) {
     const showPagination = totalItems > getSalesRequestsPageSize();
@@ -12949,6 +12986,7 @@ function renderWarehouse() {
     return matchesWarehouseInventoryFilter(group, state.filters.warehouse);
   });
 
+  withScrollPreservation(ui.warehouseList, () => {
   ui.warehouseList.innerHTML = orders.length
     ? `<div class="action-list">${
       orders.map((order) => {
@@ -12982,6 +13020,7 @@ function renderWarehouse() {
       }).join("")
     }</div>`
     : `<div class="info-card">${state.lang === "it" ? "Nessun ordine per il magazzino con questo filtro." : "No warehouse orders for this filter."}</div>`;
+  });
 
   if (ui.inventorySummary) {
     ui.inventorySummary.innerHTML = groups.length
@@ -13796,6 +13835,7 @@ function renderInstallations() {
     end.setDate(start.getDate() + 6);
     ui.installationNextWeekButton.dataset.weekEnd = end.toISOString().slice(0, 10);
   }
+  withScrollPreservation(ui.installationList, () => {
   ui.installationList.innerHTML = listOrders.length
     ? listOrders.map((order) => {
         const selected = order.id === state.selectedOrderId ? "selected" : "";
@@ -13822,6 +13862,7 @@ function renderInstallations() {
     : `<div class="info-card">${isCrewView
       ? (state.lang === "it" ? "Nessuna posa assegnata a questa squadra." : "No installs assigned to this crew.")
       : (state.lang === "it" ? "Nessuna posa in backlog per la settimana selezionata." : "No backlog installs for the selected week.")}</div>`;
+  });
 
   const order = orders.find((item) => item.id === state.selectedOrderId) || weekOrders[0] || listOrders[0] || null;
   if (state.currentView === "installations" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
@@ -13895,6 +13936,7 @@ function renderAccounting() {
   renderAccountingModels();
   renderAccountingAnalysis(allOrders);
   const { pageItems, totalPages, totalItems } = paginateAccounting(allOrders);
+  withScrollPreservation(ui.accountingList, () => {
   ui.accountingList.innerHTML = pageItems.length
     ? pageItems.map((order) => {
         const selected = order.id === state.selectedOrderId ? "selected" : "";
@@ -13922,6 +13964,7 @@ function renderAccounting() {
         `;
       }).join("")
     : `<div class="info-card">${state.lang === "it" ? "Nessun ordine in contabilità con questo filtro." : "No accounting orders for this filter."}</div>`;
+  });
 
   if (ui.accountingPagination) {
     ui.accountingPagination.innerHTML = totalItems > ACCOUNTING_PAGE_SIZE
