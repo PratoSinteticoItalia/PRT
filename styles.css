@@ -11283,6 +11283,12 @@ body.mobile-safe-mode .nav-link.is-active {
      aperta (es. "Mario Rossi" / "Milano · 12 mq · Fornitura+Posa")
    ──────────────────────────────────────────────────────────────────────────── */
 
+/* Altezza approssimativa della back bar mobile, usata come top: offset per le
+   action bar sticky dei detail panel nei moduli in drill-down. */
+:root {
+  --mobile-back-bar-h: 52px;
+}
+
 .mobile-drill-back-bar {
   display: none;
   position: sticky;
@@ -11294,6 +11300,8 @@ body.mobile-safe-mode .nav-link.is-active {
   background: linear-gradient(180deg, #1c4229 0%, #122e1c 100%);
   color: #fff;
   box-shadow: 0 2px 10px rgba(28, 66, 41, 0.22);
+  min-height: var(--mobile-back-bar-h);
+  box-sizing: border-box;
 }
 
 .mobile-drill-back-btn {
@@ -11414,6 +11422,72 @@ body.mobile-safe-mode .nav-link.is-active {
     margin: 0;
     padding-top: 12px;
     max-height: none;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────────
+     STICKY ACTIONS — intervento 2.2
+     ────────────────────────────────────────────────────────────────────────
+     Quando l'utente entra in drill-down su un detail panel lungo, le azioni
+     primarie (Salva, Elimina, WhatsApp, "Usa nel generatore", ecc.) sono nel
+     header del pannello. Senza sticky bar l'utente deve scrollare in cima
+     ogni volta. Le rendiamo sticky proprio sotto la back bar.
+
+     Funziona per:
+     - .sales-request-detail-panel .panel-head (Richieste CRM)
+     - .order-detail-panel .detail-header (Ordini)
+     - #warehouse .detail-panel .detail-header (Magazzino)
+     - .install-detail-panel .detail-header (Pose)
+     ──────────────────────────────────────────────────────────────────────── */
+  body[data-drill-module] .sales-request-detail-panel .panel-head,
+  body[data-drill-module] .order-detail-panel .detail-header,
+  body[data-drill-module] #warehouse .detail-panel .detail-header,
+  body[data-drill-module] .install-detail-panel .detail-header {
+    position: sticky !important;
+    top: var(--mobile-back-bar-h);
+    z-index: 40;
+    background: #fff;
+    margin: 0 -14px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #ebefe9;
+    box-shadow: 0 2px 6px rgba(28, 66, 41, 0.06);
+  }
+
+  /* Compattazione: il titolo nel detail-header e' gia' nella back bar in alto,
+     quindi lo rendiamo piu' piccolo o lo nascondiamo per dare spazio alle
+     azioni che restano l'elemento utile. */
+  body[data-drill-module] .sales-request-detail-panel .panel-head > div:first-child .panel-eyebrow,
+  body[data-drill-module] .order-detail-panel .detail-header .detail-id,
+  body[data-drill-module] #warehouse .detail-panel .detail-header .detail-id,
+  body[data-drill-module] .install-detail-panel .detail-header .detail-id {
+    display: none;
+  }
+  body[data-drill-module] .sales-request-detail-panel .panel-head h3,
+  body[data-drill-module] .detail-panel .detail-title,
+  body[data-drill-module] .install-detail-panel .detail-title,
+  body[data-drill-module] .order-detail-panel .detail-title {
+    font-size: 13px !important;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  /* Le inline-actions diventano l'elemento principale: ridimensionate per
+     toccabilita' mobile (min-height 40px, padding leggermente piu' generoso). */
+  body[data-drill-module] .sales-request-detail-panel .panel-head .inline-actions,
+  body[data-drill-module] .order-detail-panel .detail-header .inline-actions,
+  body[data-drill-module] #warehouse .detail-panel .detail-header .inline-actions,
+  body[data-drill-module] .install-detail-panel .detail-header .inline-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  body[data-drill-module] .sales-request-detail-panel .panel-head .inline-actions button,
+  body[data-drill-module] .order-detail-panel .detail-header .inline-actions button,
+  body[data-drill-module] #warehouse .detail-panel .detail-header .inline-actions button,
+  body[data-drill-module] .install-detail-panel .detail-header .inline-actions button {
+    min-height: 38px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    touch-action: manipulation;
   }
 }
 
