@@ -11270,6 +11270,103 @@ body.mobile-safe-mode .nav-link.is-active {
   line-height: 1.65;
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+   MOBILE DRILL-DOWN — pattern lista → dettaglio fullscreen su <= 768px
+   ════════════════════════════════════════════════════════════════════════════
+   Logica:
+   - state.mobileDrillDetail attivo  → body.mobile-drill-detail + data-drill-module="X"
+   - Su mobile stretto la lista del modulo attivo viene nascosta, il pannello
+     dettaglio diventa fixed inset:0 (fullscreen) + back bar visibile in cima.
+   - Su desktop/tablet (> 768px) il body data-attribute non ha effetto: pattern
+     master-detail co-resident continua a funzionare come prima.
+   - Back bar sticky in cima al viewport con titolo + sottotitolo della voce
+     aperta (es. "Mario Rossi" / "Milano · 12 mq · Fornitura+Posa")
+   ──────────────────────────────────────────────────────────────────────────── */
+
+.mobile-drill-back-bar {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, #1c4229 0%, #122e1c 100%);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(28, 66, 41, 0.22);
+}
+
+.mobile-drill-back-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: 700 13px / 1 "Inter", system-ui, sans-serif;
+  padding: 8px 12px 8px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
+.mobile-drill-back-btn:active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.mobile-drill-back-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.mobile-drill-title-wrap {
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-drill-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-drill-subtitle {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.72);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 768px) {
+  /* Back bar visibile solo quando un drill-down e' attivo */
+  body[data-drill-module] .mobile-drill-back-bar {
+    display: flex;
+  }
+
+  /* SALES-REQUESTS — primo modulo convertito al drill-down */
+  body[data-drill-module="sales-requests"] #sales-requests .page-header,
+  body[data-drill-module="sales-requests"] #sales-requests .sales-request-list-panel {
+    display: none !important;
+  }
+  body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel {
+    /* Pannello dettaglio diventa fullscreen sotto la back bar */
+    position: relative;
+    z-index: 1;
+    box-shadow: none;
+    border-radius: 0;
+    margin: 0;
+    padding-top: 12px;
+  }
+  /* La grid si riduce a 1 colonna naturalmente (gia' su breakpoint mobile) */
+}
+
 .sales-request-source-hint .hint-secondary {
   margin-top: 6px;
   font-size: 12.5px;

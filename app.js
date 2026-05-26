@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260526-diagnostic-v1";
+const APP_SHELL_VERSION = "20260526-drilldown-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1202,6 +1202,10 @@ const state = {
   salesContentCategory: "all",
   sessionRevision: "",
   mobileMenuOpen: false,
+  // Drill-down mobile: { module, itemId, listScrollY, title, subtitle } | null
+  // Attivato su tap "select-X" sotto 768px, chiude con back bar o history popstate.
+  // Vedi openMobileDrillDetail / closeMobileDrillDetail.
+  mobileDrillDetail: null,
   installationWeekOffset: 0,
   selectedInstallationCrew: "",
   coveragePlanner: loadCoveragePlannerState(),
@@ -1375,6 +1379,10 @@ const ui = {
   mobileLogoutInlineButton: document.getElementById("mobile-logout-inline-button"),
   mobileReloadButton: document.getElementById("mobile-reload-button"),
   mobileSidebarBackdrop: document.getElementById("mobile-sidebar-backdrop"),
+  mobileDrillBackBar: document.getElementById("mobile-drill-back-bar"),
+  mobileDrillBackButton: document.getElementById("mobile-drill-back-button"),
+  mobileDrillTitle: document.getElementById("mobile-drill-title"),
+  mobileDrillSubtitle: document.getElementById("mobile-drill-subtitle"),
   langButtons: Array.from(document.querySelectorAll(".lang-btn")),
   logoutButton: document.getElementById("logout-button"),
   reloadButton: document.getElementById("reload-button"),
@@ -2036,6 +2044,103 @@ function applyMobileSafeMode() {
   document.body.classList.toggle("mobile-safe-mode", mobileSafe);
   state.mobileMenuOpen = false;
   updateMobileMenu();
+  // Se l'utente passa da mobile a desktop con drill-down aperto, lo chiudiamo
+  // (su desktop il pattern master-detail co-resident funziona).
+  if (window.innerWidth > 768 && state.mobileDrillDetail) {
+    closeMobileDrillDetail({ skipHistory: true });
+  }
+}
+
+// Soglia drill-down: sotto questo width attiviamo il pattern fullscreen
+// detail. Sopra resta il master-detail co-resident (lista + dettaglio insieme).
+const MOBILE_DRILL_BREAKPOINT = 768;
+
+// Per ogni modulo "drill-down-compatible" definiamo come trovare il titolo
+// e il sottotitolo da mostrare nella back bar quando si entra in dettaglio.
+function computeMobileDrillHeader(module, itemId) {
+  if (module === "sales-requests") {
+    const req = (state.salesRequests || []).find((r) => r.id === itemId);
+    if (!req) {
+      return { title: state.lang === "it" ? "Nuova richiesta" : "New request", subtitle: "" };
+    }
+    const fullName = [req.name, req.surname].filter(Boolean).join(" ").trim();
+    const sqm = getSalesRequestSqm ? getSalesRequestSqm(req) : (req.sqm || "");
+    const meta = [req.city, sqm ? `${sqm} mq` : "", req.service || ""].filter(Boolean).join(" · ");
+    return {
+      title: fullName || (state.lang === "it" ? "Richiesta" : "Request"),
+      subtitle: meta,
+    };
+  }
+  // Placeholder per i moduli che aggiungeremo dopo (Inventario, Pose, Ordini)
+  return { title: "", subtitle: "" };
+}
+
+function updateMobileDrillBackBar() {
+  const bar = ui.mobileDrillBackBar;
+  if (!bar) return;
+  const active = state.mobileDrillDetail;
+  if (active) {
+    bar.hidden = false;
+    if (ui.mobileDrillTitle) ui.mobileDrillTitle.textContent = active.title || "";
+    if (ui.mobileDrillSubtitle) {
+      ui.mobileDrillSubtitle.textContent = active.subtitle || "";
+      ui.mobileDrillSubtitle.style.display = active.subtitle ? "" : "none";
+    }
+  } else {
+    bar.hidden = true;
+  }
+}
+
+function openMobileDrillDetail(module, itemId) {
+  if (!module) return false;
+  // Solo su mobile stretto: su tablet/desktop il pattern master-detail va bene
+  if (window.innerWidth > MOBILE_DRILL_BREAKPOINT) return false;
+  const listScrollY = (ui.mainContent && ui.mainContent.scrollTop) || window.scrollY || 0;
+  const header = computeMobileDrillHeader(module, itemId);
+  state.mobileDrillDetail = {
+    module,
+    itemId: itemId || "",
+    listScrollY,
+    title: header.title,
+    subtitle: header.subtitle,
+  };
+  document.body.setAttribute("data-drill-module", module);
+  document.body.classList.add("mobile-drill-detail");
+  // Reset scroll del container per partire dall'inizio del dettaglio
+  if (ui.mainContent) ui.mainContent.scrollTop = 0;
+  updateMobileDrillBackBar();
+  // History API: pushState così il back fisico del browser / swipe iOS chiude il drill-down
+  try {
+    window.history.pushState({ mobileDrill: true, module, itemId }, "", window.location.hash || "");
+  } catch {}
+  return true;
+}
+
+function closeMobileDrillDetail({ skipHistory = false } = {}) {
+  if (!state.mobileDrillDetail) return false;
+  const { listScrollY } = state.mobileDrillDetail;
+  state.mobileDrillDetail = null;
+  document.body.removeAttribute("data-drill-module");
+  document.body.classList.remove("mobile-drill-detail");
+  updateMobileDrillBackBar();
+  // Ripristina scroll position della lista
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (ui.mainContent) ui.mainContent.scrollTop = listScrollY;
+    });
+  });
+  if (!skipHistory) {
+    try {
+      // Se siamo arrivati qui con il bottone "Indietro" interno (non da popstate),
+      // chiamiamo history.back() così rimuoviamo il record di stack che abbiamo
+      // pushato in openMobileDrillDetail.
+      const state = window.history.state;
+      if (state && state.mobileDrill) {
+        window.history.back();
+      }
+    } catch {}
+  }
+  return true;
 }
 
 function getAllowedViewsForRole(role = state.currentUser?.role || "office") {
@@ -17599,6 +17704,11 @@ function setView(view, { pushHistory = true } = {}) {
   const allowed = getAllowedViewsForRole();
   const nextView = allowed.includes(view) ? view : (allowed[0] || "dashboard");
   const previousView = state.currentView;
+  // Se cambiamo view mentre siamo in drill-down mobile, chiudi il drill-down
+  // (la view target sara' renderizzata normalmente, non in modo fullscreen).
+  if (state.mobileDrillDetail && nextView !== previousView) {
+    closeMobileDrillDetail({ skipHistory: true });
+  }
   if (currentViewRenderFrame) {
     window.cancelAnimationFrame(currentViewRenderFrame);
     currentViewRenderFrame = 0;
@@ -17694,6 +17804,13 @@ async function copyContentLink(url, title = "") {
 }
 
 window.addEventListener("popstate", (event) => {
+  // Se siamo in drill-down mobile e l'utente preme back fisico/swipe iOS:
+  // chiudi il drill-down ma NON fare history.back (siamo già stati spostati dal browser).
+  if (state.mobileDrillDetail) {
+    closeMobileDrillDetail({ skipHistory: true });
+    // Se l'event.state è null o non ha view, restiamo nella view attuale senza navigare
+    if (!event.state?.view) return;
+  }
   const view = event.state?.view || "dashboard";
   setView(view, { pushHistory: false });
 });
@@ -20264,7 +20381,12 @@ function handleGlobalClick(event) {
       });
       renderSalesRequestsDetailPanel(getSelectedSalesRequest());
       if (state.currentView === "sales-generator") renderSalesGenerator();
-      if (window.innerWidth <= 980) {
+      // Drill-down mobile: su <= 768px nascondi lista e mostra dettaglio fullscreen.
+      // Sopra 768px lo scrollIntoView legacy garantisce che il pannello dettaglio sia
+      // visibile sotto la lista come prima (compatibilità tablet/desktop stretto).
+      if (window.innerWidth <= MOBILE_DRILL_BREAKPOINT) {
+        openMobileDrillDetail("sales-requests", state.selectedSalesRequestId);
+      } else if (window.innerWidth <= 980) {
         requestAnimationFrame(() => ui.salesRequestDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" }));
       }
     }
@@ -20727,9 +20849,13 @@ bindEvent(ui.reloadButton, "click", reloadAll);
 bindEvent(ui.mobileReloadButton, "click", reloadAll);
 bindEvent(ui.newOrderButton, "click", () => openOrderModal(null));
 bindEvent(ui.mobileMenuButton, "click", () => {
+  // Se siamo in drill-down e l'utente apre il menu, chiudiamo prima il drill-down
+  // così non resta sospeso sopra il menu della sidebar.
+  if (state.mobileDrillDetail) closeMobileDrillDetail();
   state.mobileMenuOpen = !state.mobileMenuOpen;
   updateMobileMenu();
 });
+bindEvent(ui.mobileDrillBackButton, "click", () => closeMobileDrillDetail());
 bindEvent(ui.mobileMenuClose, "click", () => {
   state.mobileMenuOpen = false;
   updateMobileMenu();

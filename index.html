@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260526-diagnostic-v1" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260526-diagnostic-v1" />
+    <link rel="preload" href="./styles.css?v=20260526-drilldown-v1" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260526-drilldown-v1" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -99,6 +99,16 @@
     </section>
 
     <div id="app-shell" class="app-shell hidden shell-pending">
+      <div id="mobile-drill-back-bar" class="mobile-drill-back-bar" hidden>
+        <button id="mobile-drill-back-button" class="mobile-drill-back-btn" type="button" aria-label="Indietro">
+          <span class="mobile-drill-back-icon" aria-hidden="true">←</span>
+          <span class="mobile-drill-back-label">Indietro</span>
+        </button>
+        <div class="mobile-drill-title-wrap">
+          <div id="mobile-drill-title" class="mobile-drill-title"></div>
+          <div id="mobile-drill-subtitle" class="mobile-drill-subtitle"></div>
+        </div>
+      </div>
       <header class="topbar">
         <div class="topbar-left">
           <button id="mobile-menu-button" class="topbar-btn mobile-menu-btn" type="button" aria-label="Apri menu">
@@ -2181,6 +2191,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260526-diagnostic-v1" type="module"></script>
+    <script src="./app.js?v=20260526-drilldown-v1" type="module"></script>
   </body>
 </html>
