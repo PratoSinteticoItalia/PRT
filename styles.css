@@ -11350,13 +11350,12 @@ body.mobile-safe-mode .nav-link.is-active {
     display: flex;
   }
 
-  /* SALES-REQUESTS — primo modulo convertito al drill-down */
+  /* SALES-REQUESTS */
   body[data-drill-module="sales-requests"] #sales-requests .page-header,
   body[data-drill-module="sales-requests"] #sales-requests .sales-request-list-panel {
     display: none !important;
   }
   body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel {
-    /* Pannello dettaglio diventa fullscreen sotto la back bar */
     position: relative;
     z-index: 1;
     box-shadow: none;
@@ -11364,7 +11363,58 @@ body.mobile-safe-mode .nav-link.is-active {
     margin: 0;
     padding-top: 12px;
   }
-  /* La grid si riduce a 1 colonna naturalmente (gia' su breakpoint mobile) */
+
+  /* ORDERS — nascondi page-header + lista (primo .detail-panel), mostra solo .order-detail-panel */
+  body[data-drill-module="orders"] #orders .page-header,
+  body[data-drill-module="orders"] #orders > *:not(:has(.order-detail-panel)) {
+    display: none !important;
+  }
+  body[data-drill-module="orders"] #orders .order-detail-panel {
+    position: relative;
+    z-index: 1;
+    box-shadow: none;
+    border-radius: 0;
+    margin: 0;
+    padding-top: 12px;
+    max-height: none;
+  }
+
+  /* WAREHOUSE — nascondi page-header + lista panel, mostra solo detail-panel */
+  body[data-drill-module="warehouse"] #warehouse .page-header,
+  body[data-drill-module="warehouse"] #warehouse > *:not(:has(.detail-panel)) {
+    display: none !important;
+  }
+  /* Dentro la grid del modulo c'e' sia la lista (con #warehouse-list) sia il detail-panel.
+     La grid ha 2 children: section.list + section.detail-panel. Nascondi il primo. */
+  body[data-drill-module="warehouse"] #warehouse section:has(#warehouse-list) {
+    display: none !important;
+  }
+  body[data-drill-module="warehouse"] #warehouse .detail-panel {
+    position: relative;
+    z-index: 1;
+    box-shadow: none;
+    border-radius: 0;
+    margin: 0;
+    padding-top: 12px;
+    max-height: none;
+  }
+
+  /* INSTALLATIONS — nascondi page-header + coverage + lista, mostra solo install-detail-panel */
+  body[data-drill-module="installations"] #installations .page-header,
+  body[data-drill-module="installations"] #installations .coverage-panel,
+  body[data-drill-module="installations"] #installations .installation-toolbar,
+  body[data-drill-module="installations"] #installations section:has(#installation-list) {
+    display: none !important;
+  }
+  body[data-drill-module="installations"] #installations .install-detail-panel {
+    position: relative;
+    z-index: 1;
+    box-shadow: none;
+    border-radius: 0;
+    margin: 0;
+    padding-top: 12px;
+    max-height: none;
+  }
 }
 
 .sales-request-source-hint .hint-secondary {

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260526-scroll-mobile-v1";
+const APP_SHELL_VERSION = "20260526-drilldown-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2071,7 +2071,28 @@ function computeMobileDrillHeader(module, itemId) {
       subtitle: meta,
     };
   }
-  // Placeholder per i moduli che aggiungeremo dopo (Inventario, Pose, Ordini)
+  // orders / warehouse / installations condividono lo stesso item type (Order)
+  if (module === "orders" || module === "warehouse" || module === "installations") {
+    const order = (state.orders || []).find((o) => o.id === itemId);
+    if (!order) {
+      return { title: state.lang === "it" ? "Ordine" : "Order", subtitle: "" };
+    }
+    const customerName = String(
+      order.customerName
+      || [order.customerFirstName, order.customerLastName].filter(Boolean).join(" ")
+      || order.customer?.name
+      || "",
+    ).trim();
+    const orderNumber = order.number || order.name || order.id || "";
+    const title = customerName
+      || (orderNumber ? `${state.lang === "it" ? "Ordine" : "Order"} ${orderNumber}` : (state.lang === "it" ? "Ordine" : "Order"));
+    const parts = [];
+    if (orderNumber && customerName) parts.push(String(orderNumber));
+    if (order.city || order.customer?.city) parts.push(String(order.city || order.customer?.city));
+    const sqmTotal = Number(order.sqmTotal || order.sqm || 0);
+    if (sqmTotal > 0) parts.push(`${Math.round(sqmTotal)} mq`);
+    return { title, subtitle: parts.join(" · ") };
+  }
   return { title: "", subtitle: "" };
 }
 
@@ -20486,7 +20507,16 @@ function handleGlobalClick(event) {
       renderCurrentViewOnly(state.currentView);
       focusViewTarget(state.currentView);
     }
-    revealMobileDetailTarget(nextView);
+    // Drill-down mobile per i moduli order-based: orders, warehouse, installations.
+    // Su <=768px nascondi la lista e mostra il dettaglio fullscreen.
+    if (
+      window.innerWidth <= MOBILE_DRILL_BREAKPOINT
+      && (nextView === "orders" || nextView === "warehouse" || nextView === "installations")
+    ) {
+      openMobileDrillDetail(nextView, id);
+    } else {
+      revealMobileDetailTarget(nextView);
+    }
     // Reset only the detail-panel internal scroll. List column has its own
     // max-height + overflow so the page itself doesn't scroll, matching the
     // Richieste UX the user wants everywhere.
