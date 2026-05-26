@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Pre-push hook: blocca il push se i check di progetto falliscono.
+# Attivato automaticamente da `npm install` (script "prepare" in package.json)
+# che esegue `git config core.hooksPath .githooks`.
+#
+# Esegue:
+#   - npm run check:syntax       (node --check su app.js, server.js, sw.js, generator-bridge.js)
+#   - npm run check:shell-version (verifica APP_SHELL_VERSION allineata su tutti i file)
+#
+# Bypass d'emergenza (solo se davvero serve):  git push --no-verify
+set -e
+
+echo "[pre-push] running npm run check…"
+npm run check
+echo "[pre-push] OK"
