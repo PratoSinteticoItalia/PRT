@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260525-scroll-v1";
+const APP_SHELL_VERSION = "20260525-scroll-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7624,10 +7624,17 @@ function revealMobileDetailTarget(view) {
   }, 110);
 }
 
-// Preserva lo scrollTop del container scrollable attorno a una funzione che
-// muta il DOM (tipicamente innerHTML = ... di una lista). Soluzione al
-// "scroll teleport" che avveniva dopo SSE refresh / autosave / refresh dati:
-// il browser non preserva scroll dopo innerHTML, quindi lo facciamo noi.
+// Preserva lo scrollTop del container scrollable + focus/valore/selection
+// dell'input attivo dentro `node`, attorno a una funzione che muta il DOM
+// (tipicamente innerHTML = ... di una lista).
+//
+// Risolve due problemi causati da re-render via innerHTML:
+//   1. Scroll teleport: il browser perde scrollTop del container scrollabile
+//      genitore (.main-content) quando il contenuto cambia.
+//   2. Focus/valore perso: se l'utente sta editando un input dentro la lista
+//      (es. quick edit, checkbox bulk, ricerca inline) e arriva un refresh,
+//      l'input viene distrutto. Salviamo l'identità + valore + selection e
+//      li ripristiniamo dopo il render.
 //
 // Le navigation deliberate (cambio view, pagination, select drill-down) NON
 // usano questa utility ma chiamano scrollCurrentViewToTop() o scrollIntoView()
@@ -7640,18 +7647,56 @@ function withScrollPreservation(node, fn) {
     container = container.parentElement;
   }
   if (!container || container === document.body) container = ui.mainContent;
-  if (!container) {
-    fn();
-    return;
+
+  // Snapshot focus se è dentro `node` e su un campo editabile
+  let focusInfo = null;
+  const active = document.activeElement;
+  if (
+    node && active && node.contains(active)
+    && (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement)
+  ) {
+    const name = active.getAttribute("name") || active.id || "";
+    // identificatore stabile della riga: data-id più vicino verso il container
+    const ownerNode = active.closest("[data-id]");
+    const ownerId = ownerNode && node.contains(ownerNode) ? ownerNode.dataset.id : "";
+    focusInfo = {
+      name,
+      ownerId,
+      value: "value" in active ? active.value : null,
+      selStart: typeof active.selectionStart === "number" ? active.selectionStart : null,
+      selEnd: typeof active.selectionEnd === "number" ? active.selectionEnd : null,
+    };
   }
-  const savedTop = container.scrollTop;
+
+  const savedTop = container ? container.scrollTop : 0;
   fn();
+
   // Restore in due rAF: il primo fa settle del layout, il secondo applica.
   // Un solo rAF a volte non basta su Safari mobile.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      if (Math.abs(container.scrollTop - savedTop) > 1) {
+      if (container && Math.abs(container.scrollTop - savedTop) > 1) {
         container.scrollTop = savedTop;
+      }
+      if (focusInfo && focusInfo.name && node) {
+        // Trova lo stesso input nel nuovo DOM
+        const selector = focusInfo.ownerId
+          ? `[data-id="${CSS.escape(focusInfo.ownerId)}"] [name="${CSS.escape(focusInfo.name)}"], [data-id="${CSS.escape(focusInfo.ownerId)}"] #${CSS.escape(focusInfo.name)}`
+          : `[name="${CSS.escape(focusInfo.name)}"], #${CSS.escape(focusInfo.name)}`;
+        const restored = node.querySelector(selector);
+        if (restored instanceof HTMLInputElement || restored instanceof HTMLTextAreaElement || restored instanceof HTMLSelectElement) {
+          // Restore valore solo se diverso (evita di sporcare se il server ha aggiornato)
+          if (focusInfo.value !== null && "value" in restored && restored.value !== focusInfo.value) {
+            restored.value = focusInfo.value;
+          }
+          restored.focus({ preventScroll: true });
+          if (
+            focusInfo.selStart !== null && focusInfo.selEnd !== null
+            && (restored instanceof HTMLInputElement || restored instanceof HTMLTextAreaElement)
+          ) {
+            try { restored.setSelectionRange(focusInfo.selStart, focusInfo.selEnd); } catch {}
+          }
+        }
       }
     });
   });
