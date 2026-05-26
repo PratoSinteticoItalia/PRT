@@ -11289,6 +11289,211 @@ body.mobile-safe-mode .nav-link.is-active {
   --mobile-back-bar-h: 52px;
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+   MOBILE FILTER SHEET — bottom sheet con i filtri della view corrente
+   Attivo solo su <= 768px e quando il modulo corrente e' in MOBILE_FILTER_CONFIGS.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+.mobile-filter-fab {
+  display: none;
+  position: fixed;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  right: 16px;
+  z-index: 1050;
+  appearance: none;
+  border: none;
+  background: linear-gradient(180deg, #245c35 0%, #1c4229 100%);
+  color: #fff;
+  padding: 12px 18px 12px 14px;
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(28, 66, 41, 0.32), 0 2px 4px rgba(0, 0, 0, 0.1);
+  font: 700 13px / 1 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+  gap: 8px;
+  align-items: center;
+  touch-action: manipulation;
+  min-height: 44px;
+}
+
+.mobile-filter-fab[hidden] {
+  display: none !important;
+}
+
+.mobile-filter-fab:active {
+  transform: scale(0.97);
+  box-shadow: 0 4px 12px rgba(28, 66, 41, 0.32);
+}
+
+.mobile-filter-fab-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.mobile-filter-fab-label {
+  letter-spacing: 0.3px;
+}
+
+@media (max-width: 768px) {
+  .mobile-filter-fab {
+    display: inline-flex;
+  }
+  /* Se in drill-down nascondiamo il FAB (la lista non e' visibile) */
+  body[data-drill-module] .mobile-filter-fab {
+    display: none !important;
+  }
+}
+
+/* Dialog bottom sheet */
+.mobile-filter-sheet {
+  /* Reset stili default <dialog> */
+  border: none;
+  padding: 0;
+  margin: 0;
+  max-width: 100%;
+  max-height: 90vh;
+  width: 100%;
+  background: #fff;
+  color: #1e2820;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.25);
+  /* Posizionamento dal basso */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  top: auto;
+  inset: auto 0 0 0;
+  overflow: hidden;
+  z-index: 1100;
+}
+
+.mobile-filter-sheet::backdrop {
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.mobile-filter-sheet:not([open]) {
+  display: none;
+}
+
+.mobile-filter-sheet[open] {
+  display: flex;
+  flex-direction: column;
+  animation: mobile-filter-sheet-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes mobile-filter-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.mobile-filter-sheet-grip {
+  width: 40px;
+  height: 4px;
+  background: #c7d4c6;
+  border-radius: 2px;
+  margin: 8px auto 4px;
+  flex-shrink: 0;
+}
+
+.mobile-filter-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 18px 12px;
+  border-bottom: 1px solid #ebefe9;
+  flex-shrink: 0;
+}
+
+.mobile-filter-sheet-head strong {
+  font-size: 16px;
+  color: #1c4229;
+  letter-spacing: 0.2px;
+}
+
+.mobile-filter-sheet-close {
+  appearance: none;
+  border: none;
+  background: #f6faf6;
+  color: #4a5c4e;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-filter-sheet-close:active {
+  background: #e3e8df;
+}
+
+.mobile-filter-sheet-content {
+  padding: 14px 18px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Forza la toolbar mossa dentro il sheet a usare layout vertical-friendly */
+.mobile-filter-sheet-content .view-toolbar,
+.mobile-filter-sheet-content .sales-request-toolbar,
+.mobile-filter-sheet-content .installation-toolbar {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.mobile-filter-sheet-content .filter-bar,
+.mobile-filter-sheet-content .sales-request-toolbar-right {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mobile-filter-sheet-content .filter-bar > button,
+.mobile-filter-sheet-content .filter-bar > .filter-tag {
+  min-height: 38px;
+  touch-action: manipulation;
+}
+
+.mobile-filter-sheet-content .field {
+  width: 100%;
+}
+
+.mobile-filter-sheet-content input,
+.mobile-filter-sheet-content select {
+  min-height: 40px;
+  font-size: 14px;
+}
+
+.mobile-filter-sheet-actions {
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #ebefe9;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.mobile-filter-sheet-actions .primary-button {
+  width: 100%;
+  min-height: 46px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* Quando il filter sheet e' aperto, impedisce scroll del body sottostante */
+body.mobile-filter-sheet-open {
+  overflow: hidden;
+}
+
 .mobile-drill-back-bar {
   display: none;
   /* Su mobile usiamo position: fixed invece di sticky perche':

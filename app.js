@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260526-scrollguard-v1";
+const APP_SHELL_VERSION = "20260526-filtersheet-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1383,6 +1383,12 @@ const ui = {
   mobileDrillBackButton: document.getElementById("mobile-drill-back-button"),
   mobileDrillTitle: document.getElementById("mobile-drill-title"),
   mobileDrillSubtitle: document.getElementById("mobile-drill-subtitle"),
+  mobileFilterSheet: document.getElementById("mobile-filter-sheet"),
+  mobileFilterSheetClose: document.getElementById("mobile-filter-sheet-close"),
+  mobileFilterSheetApply: document.getElementById("mobile-filter-sheet-apply"),
+  mobileFilterSheetContent: document.getElementById("mobile-filter-sheet-content"),
+  mobileFilterSheetTitle: document.getElementById("mobile-filter-sheet-title"),
+  mobileFilterFab: document.getElementById("mobile-filter-fab"),
   langButtons: Array.from(document.querySelectorAll(".lang-btn")),
   logoutButton: document.getElementById("logout-button"),
   reloadButton: document.getElementById("reload-button"),
@@ -2049,11 +2055,116 @@ function applyMobileSafeMode() {
   if (window.innerWidth > 768 && state.mobileDrillDetail) {
     closeMobileDrillDetail({ skipHistory: true });
   }
+  // Se passa a desktop con filter sheet aperto, lo chiudiamo
+  if (window.innerWidth > MOBILE_DRILL_BREAKPOINT && _mobileFilterSheetState) {
+    closeMobileFilterSheet();
+  }
+  try { updateMobileFilterFabVisibility(); } catch {}
 }
 
 // Soglia drill-down: sotto questo width attiviamo il pattern fullscreen
 // detail. Sopra resta il master-detail co-resident (lista + dettaglio insieme).
 const MOBILE_DRILL_BREAKPOINT = 768;
+
+// ──────────────────────────────────────────────────────────────────────────
+// MOBILE FILTER SHEET — bottom sheet con i filtri della view corrente.
+// Su mobile la toolbar e' in cima al modulo: per cambiare filtro l'utente
+// deve scorrere su, ogni volta. Aggiungiamo un FAB sticky in basso che apre
+// un bottom sheet con la stessa toolbar dentro. Niente duplicazione: la
+// toolbar viene MOSSA dentro il dialog all'apertura e RIPORTATA al posto
+// originale alla chiusura (appendChild preserva event handlers e state).
+// ──────────────────────────────────────────────────────────────────────────
+const MOBILE_FILTER_CONFIGS = {
+  "sales-requests": {
+    toolbarSelector: "#sales-requests .sales-request-toolbar",
+    title: "Filtri richieste",
+  },
+  "orders": {
+    toolbarSelector: "#orders .view-toolbar",
+    title: "Filtri ordini",
+  },
+  "warehouse": {
+    toolbarSelector: "#warehouse .view-toolbar",
+    title: "Filtri magazzino",
+  },
+  "installations": {
+    toolbarSelector: "#installations .installation-toolbar",
+    title: "Filtri pose",
+  },
+  "accounting": {
+    toolbarSelector: "#accounting .view-toolbar",
+    title: "Filtri contabilità",
+  },
+};
+
+// State della sheet: { sourceContainer, anchor, originalChildren } | null
+// - sourceContainer: l'elemento toolbar originale dove sono stati prelevati i figli
+// - anchor: un commento DOM piazzato come segnaposto (per re-insert nell'ordine)
+// - originalChildren: array dei nodi spostati (per restore)
+let _mobileFilterSheetState = null;
+
+function getCurrentMobileFilterConfig() {
+  return MOBILE_FILTER_CONFIGS[state.currentView] || null;
+}
+
+function openMobileFilterSheet() {
+  if (_mobileFilterSheetState) return; // gia' aperto
+  const config = getCurrentMobileFilterConfig();
+  if (!config) return;
+  const sourceContainer = document.querySelector(config.toolbarSelector);
+  const sheet = ui.mobileFilterSheet;
+  const content = ui.mobileFilterSheetContent;
+  if (!sourceContainer || !sheet || !content) return;
+
+  // Anchor: placeholder nel DOM originale per ricostruire la posizione esatta
+  const anchor = document.createComment("psi-filter-sheet-anchor");
+  sourceContainer.parentNode?.insertBefore(anchor, sourceContainer);
+  const originalChildren = Array.from(sourceContainer.childNodes);
+  // Sposto il container intero dentro il content del sheet (mantenendo classi
+  // e id, gli stili interni continuano a funzionare). I children rimangono
+  // figli del container come prima.
+  content.appendChild(sourceContainer);
+
+  if (ui.mobileFilterSheetTitle) ui.mobileFilterSheetTitle.textContent = config.title;
+  _mobileFilterSheetState = { sourceContainer, anchor, originalChildren };
+  try {
+    if (typeof sheet.showModal === "function") sheet.showModal();
+    else sheet.setAttribute("open", "");
+  } catch {
+    sheet.setAttribute("open", "");
+  }
+  document.body.classList.add("mobile-filter-sheet-open");
+}
+
+function closeMobileFilterSheet() {
+  if (!_mobileFilterSheetState) return;
+  const { sourceContainer, anchor } = _mobileFilterSheetState;
+  if (anchor && anchor.parentNode) {
+    anchor.parentNode.insertBefore(sourceContainer, anchor);
+    anchor.parentNode.removeChild(anchor);
+  }
+  _mobileFilterSheetState = null;
+  const sheet = ui.mobileFilterSheet;
+  if (sheet) {
+    try {
+      if (typeof sheet.close === "function" && sheet.open) sheet.close();
+      else sheet.removeAttribute("open");
+    } catch {
+      sheet.removeAttribute("open");
+    }
+  }
+  document.body.classList.remove("mobile-filter-sheet-open");
+}
+
+function updateMobileFilterFabVisibility() {
+  const fab = ui.mobileFilterFab;
+  if (!fab) return;
+  const hasConfig = Boolean(getCurrentMobileFilterConfig());
+  const isMobile = window.innerWidth <= MOBILE_DRILL_BREAKPOINT;
+  const inDrillDown = Boolean(state.mobileDrillDetail);
+  const visible = hasConfig && isMobile && !inDrillDown;
+  fab.hidden = !visible;
+}
 
 // Per ogni modulo "drill-down-compatible" definiamo come trovare il titolo
 // e il sottotitolo da mostrare nella back bar quando si entra in dettaglio.
@@ -2131,6 +2242,8 @@ function openMobileDrillDetail(module, itemId) {
     title: header.title,
     subtitle: header.subtitle,
   };
+  // Se il filter sheet e' aperto quando entriamo in drill-down, chiudilo
+  if (_mobileFilterSheetState) closeMobileFilterSheet();
   document.body.setAttribute("data-drill-module", module);
   document.body.classList.add("mobile-drill-detail");
   // Reset scroll: container (desktop) E window (mobile, dove e' il vero scroll
@@ -2139,6 +2252,7 @@ function openMobileDrillDetail(module, itemId) {
   if (ui.mainContent) ui.mainContent.scrollTop = 0;
   try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
   updateMobileDrillBackBar();
+  try { updateMobileFilterFabVisibility(); } catch {}
   // History API: pushState così il back fisico del browser / swipe iOS chiude il drill-down
   try {
     window.history.pushState({ mobileDrill: true, module, itemId }, "", window.location.hash || "");
@@ -2153,6 +2267,7 @@ function closeMobileDrillDetail({ skipHistory = false } = {}) {
   document.body.removeAttribute("data-drill-module");
   document.body.classList.remove("mobile-drill-detail");
   updateMobileDrillBackBar();
+  try { updateMobileFilterFabVisibility(); } catch {}
   // Ripristina scroll position della lista (container desktop + window mobile)
   _acknowledgeIntentionalScroll(listScrollY);
   requestAnimationFrame(() => {
@@ -17851,6 +17966,10 @@ function setView(view, { pushHistory = true } = {}) {
     if (pushHistory) {
       window.history.pushState({ view: nextView }, "", `#${nextView}`);
     }
+    // Se passi da una view che aveva filter sheet aperto a una nuova view,
+    // chiudi il sheet (puntava ai filtri della view precedente)
+    if (_mobileFilterSheetState) closeMobileFilterSheet();
+    try { updateMobileFilterFabVisibility(); } catch {}
     requestAnimationFrame(() => {
       scrollCurrentViewToTop();
       focusViewTarget(nextView);
@@ -20983,6 +21102,22 @@ bindEvent(ui.mobileMenuButton, "click", () => {
   updateMobileMenu();
 });
 bindEvent(ui.mobileDrillBackButton, "click", () => closeMobileDrillDetail());
+bindEvent(ui.mobileFilterFab, "click", () => openMobileFilterSheet());
+bindEvent(ui.mobileFilterSheetClose, "click", () => closeMobileFilterSheet());
+bindEvent(ui.mobileFilterSheetApply, "click", () => closeMobileFilterSheet());
+// Chiusura via ESC e click sul backdrop del <dialog>
+if (ui.mobileFilterSheet) {
+  ui.mobileFilterSheet.addEventListener("close", () => {
+    // Se viene chiuso dal browser (es. ESC), assicuriamoci che lo state sia ripulito
+    if (_mobileFilterSheetState) closeMobileFilterSheet();
+  });
+  ui.mobileFilterSheet.addEventListener("click", (event) => {
+    // Click sul backdrop del dialog (l'area scura fuori dal contenuto)
+    if (event.target === ui.mobileFilterSheet) {
+      closeMobileFilterSheet();
+    }
+  });
+}
 bindEvent(ui.mobileMenuClose, "click", () => {
   state.mobileMenuOpen = false;
   updateMobileMenu();

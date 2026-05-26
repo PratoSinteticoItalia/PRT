@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260526-scrollguard-v1" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260526-scrollguard-v1" />
+    <link rel="preload" href="./styles.css?v=20260526-filtersheet-v1" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260526-filtersheet-v1" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -99,6 +99,21 @@
     </section>
 
     <div id="app-shell" class="app-shell hidden shell-pending">
+      <dialog id="mobile-filter-sheet" class="mobile-filter-sheet">
+        <div class="mobile-filter-sheet-grip" aria-hidden="true"></div>
+        <div class="mobile-filter-sheet-head">
+          <strong id="mobile-filter-sheet-title">Filtri</strong>
+          <button id="mobile-filter-sheet-close" class="mobile-filter-sheet-close" type="button" aria-label="Chiudi filtri">✕</button>
+        </div>
+        <div id="mobile-filter-sheet-content" class="mobile-filter-sheet-content"></div>
+        <div class="mobile-filter-sheet-actions">
+          <button id="mobile-filter-sheet-apply" class="primary-button" type="button">Mostra risultati</button>
+        </div>
+      </dialog>
+      <button id="mobile-filter-fab" class="mobile-filter-fab" type="button" aria-label="Apri filtri" hidden>
+        <span class="mobile-filter-fab-icon" aria-hidden="true">⚙</span>
+        <span class="mobile-filter-fab-label">Filtri</span>
+      </button>
       <div id="mobile-drill-back-bar" class="mobile-drill-back-bar" hidden>
         <button id="mobile-drill-back-button" class="mobile-drill-back-btn" type="button" aria-label="Indietro">
           <span class="mobile-drill-back-icon" aria-hidden="true">←</span>
@@ -2191,6 +2206,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260526-scrollguard-v1" type="module"></script>
+    <script src="./app.js?v=20260526-filtersheet-v1" type="module"></script>
   </body>
 </html>
