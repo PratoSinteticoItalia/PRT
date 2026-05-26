@@ -8078,6 +8078,102 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // Diagnostic endpoint: fotografia dello stato richieste vendita per audit/monitoring.
+  // Step preparatorio alla migrazione IMAP (Architettura B). Mostra:
+  // - N totali richieste in DB, distribuzione per source/status/assignment
+  // - Ultima richiesta ricevuta + tempistiche
+  // - Configurazione Google Sheets (presente? sincronizzabile?)
+  // - Range temporale richieste (prima/ultima)
+  // NB: per ora NON contatta Google Sheets per non rischiare rate limit a freddo,
+  // il confronto sheets-vs-db sarà aggiunto in Fase 1 della migrazione.
+  if (url.pathname === "/api/sales/diagnostic" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const all = Array.isArray(store.salesRequests) ? store.salesRequests : [];
+      const total = all.length;
+      const bySource = {};
+      const byStatus = {};
+      const byAssignment = {};
+      let oldestCreatedAt = null;
+      let newestCreatedAt = null;
+      let newestRecord = null;
+      for (const r of all) {
+        const source = String(r.source || "manual");
+        const status = String(r.status || "new");
+        const assignment = String(r.assignment || "unassigned");
+        bySource[source] = (bySource[source] || 0) + 1;
+        byStatus[status] = (byStatus[status] || 0) + 1;
+        byAssignment[assignment] = (byAssignment[assignment] || 0) + 1;
+        const created = String(r.createdAt || "");
+        if (created) {
+          if (!oldestCreatedAt || created < oldestCreatedAt) oldestCreatedAt = created;
+          if (!newestCreatedAt || created > newestCreatedAt) {
+            newestCreatedAt = created;
+            newestRecord = r;
+          }
+        }
+      }
+      // Tempo dall'ultima richiesta in minuti (per capire se il flusso è attivo)
+      let minutesSinceLastRequest = null;
+      if (newestCreatedAt) {
+        const lastMs = new Date(newestCreatedAt).getTime();
+        if (Number.isFinite(lastMs)) {
+          minutesSinceLastRequest = Math.round((Date.now() - lastMs) / 60000);
+        }
+      }
+      // Configurazione Sheets
+      const sheetsConfig = normalizeSalesRequestSourceConfig(store.salesRequestSource || {});
+      const sheetsReady = Boolean(
+        sheetsConfig.spreadsheetInput && sheetsConfig.serviceAccountEmail && sheetsConfig.privateKey,
+      );
+      // Sanity check: ci sono record google-sheets senza ID stabile? (sintomo di
+      // sync ripetute con dedupe debole — utile per Fase 0 audit)
+      const sheetsRecords = all.filter((r) => String(r.source || "") === "google-sheets");
+      const duplicateGuess = sheetsRecords.length
+        - new Set(sheetsRecords.map((r) => String(r.id || "")).filter(Boolean)).size;
+      return sendJson(res, 200, {
+        generatedAt: new Date().toISOString(),
+        store: {
+          total,
+          oldestCreatedAt,
+          newestCreatedAt,
+          minutesSinceLastRequest,
+          newestPreview: newestRecord ? {
+            id: String(newestRecord.id || ""),
+            name: String(newestRecord.name || ""),
+            surname: String(newestRecord.surname || ""),
+            city: String(newestRecord.city || ""),
+            source: String(newestRecord.source || ""),
+            status: String(newestRecord.status || ""),
+            createdAt: String(newestRecord.createdAt || ""),
+          } : null,
+          bySource,
+          byStatus,
+          byAssignment,
+          potentialDuplicateIds: duplicateGuess,
+        },
+        sheets: {
+          configured: sheetsReady,
+          spreadsheetInput: sheetsConfig.spreadsheetInput || "",
+          sheetName: sheetsConfig.sheetName || "",
+          editUrl: buildSpreadsheetEditUrl(sheetsConfig.spreadsheetInput || ""),
+          // Conteggio righe live Sheets verrà aggiunto in Fase 1 (per ora skip
+          // per non chiamare Google API ad ogni diagnostic)
+          liveRowCount: null,
+        },
+        imap: {
+          // Placeholder per Fase 1 della migrazione (IMAP shadow run)
+          enabled: false,
+          shadowRecordsTotal: 0,
+          lastEmailSeenAt: null,
+        },
+      });
+    } catch (error) {
+      return sendJson(res, 500, { error: String(error?.message || "sales_diagnostic_failed") });
+    }
+  }
+
   if (url.pathname === "/api/sales/requests" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });

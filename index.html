@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260525-scroll-v2" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260525-scroll-v2" />
+    <link rel="preload" href="./styles.css?v=20260526-diagnostic-v1" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260526-diagnostic-v1" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -2012,10 +2012,13 @@
                   <div class="inline-actions field-full">
                     <button id="sales-request-source-save-button" class="primary-button small-button" type="button">Salva collegamento</button>
                     <button id="sales-request-source-sync-button" class="ghost-button small-button" type="button">Aggiorna richieste</button>
+                    <button id="sales-diagnostic-button" class="ghost-button small-button" type="button">📊 Diagnostica</button>
                   </div>
+                  <div id="sales-diagnostic-output" class="field-full sales-diagnostic-output hidden"></div>
                 </div>
                 <div class="hint-box sales-request-source-hint">
                   <p>Collega il service account Google e lo stesso spreadsheet usato dal vecchio CRM. Da qui puoi aggiornare le richieste reali senza reinserirle a mano.</p>
+                  <p class="hint-secondary">📊 <strong>Diagnostica</strong>: mostra a colpo d'occhio totali richieste, distribuzione per origine/stato, ultima ricezione e configurazione corrente. Utile per audit prima/dopo migrazioni.</p>
                 </div>
               </section>
 
@@ -2178,6 +2181,6 @@
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260525-scroll-v2" type="module"></script>
+    <script src="./app.js?v=20260526-diagnostic-v1" type="module"></script>
   </body>
 </html>

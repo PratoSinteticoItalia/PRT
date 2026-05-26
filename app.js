@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260525-scroll-v2";
+const APP_SHELL_VERSION = "20260526-diagnostic-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1432,6 +1432,8 @@ const ui = {
   salesRequestSourceStatus: document.getElementById("sales-request-source-status"),
   salesRequestSourceSaveButton: document.getElementById("sales-request-source-save-button"),
   salesRequestSourceSyncButton: document.getElementById("sales-request-source-sync-button"),
+  salesDiagnosticButton: document.getElementById("sales-diagnostic-button"),
+  salesDiagnosticOutput: document.getElementById("sales-diagnostic-output"),
   salesRequestServiceAccountButton: document.getElementById("sales-request-service-account-button"),
   salesRequestClearServiceAccountButton: document.getElementById("sales-request-clear-service-account-button"),
   salesRequestOpenSheetButton: document.getElementById("sales-request-open-sheet-button"),
@@ -5739,6 +5741,76 @@ function openSalesRequestSourceSheet() {
   const config = normalizeSalesRequestSourceConfig(state.salesRequestSourceConfig || {});
   if (!config.editUrl) return;
   window.open(config.editUrl, "_blank", "noopener,noreferrer");
+}
+
+async function showSalesDiagnostic() {
+  const out = ui.salesDiagnosticOutput;
+  if (!out) return;
+  out.classList.remove("hidden");
+  out.innerHTML = `<div class="info-card">${state.lang === "it" ? "Carico diagnostica…" : "Loading diagnostic…"}</div>`;
+  try {
+    const payload = await apiFetch("/api/sales/diagnostic");
+    const s = payload?.store || {};
+    const sh = payload?.sheets || {};
+    const im = payload?.imap || {};
+    const fmtRow = (label, value) => `<div class="diag-row"><span class="diag-row-l">${escapeHtml(label)}</span><span class="diag-row-v">${escapeHtml(String(value ?? "—"))}</span></div>`;
+    const fmtKV = (obj) => Object.entries(obj || {})
+      .sort(([, a], [, b]) => Number(b) - Number(a))
+      .map(([k, v]) => `<li><strong>${escapeHtml(k)}</strong>: ${escapeHtml(String(v))}</li>`)
+      .join("");
+    const latestPreview = s.newestPreview
+      ? `<div class="diag-latest">
+           <div class="diag-latest-title">${state.lang === "it" ? "Ultima richiesta ricevuta" : "Last request received"}</div>
+           <div>${escapeHtml([s.newestPreview.name, s.newestPreview.surname].filter(Boolean).join(" ") || "—")} · ${escapeHtml(s.newestPreview.city || "—")}</div>
+           <div class="diag-latest-meta">${escapeHtml(s.newestPreview.createdAt || "—")} · source: ${escapeHtml(s.newestPreview.source || "manual")} · status: ${escapeHtml(s.newestPreview.status || "—")}</div>
+         </div>`
+      : "";
+    out.innerHTML = `
+      <div class="diag-panel">
+        <div class="diag-panel-head">
+          <strong>${state.lang === "it" ? "Diagnostica richieste vendita" : "Sales requests diagnostic"}</strong>
+          <small>${escapeHtml(payload.generatedAt || "")}</small>
+        </div>
+        <div class="diag-grid">
+          <div class="diag-block">
+            <div class="diag-block-title">${state.lang === "it" ? "Database" : "Database"}</div>
+            ${fmtRow(state.lang === "it" ? "Totale richieste" : "Total requests", s.total)}
+            ${fmtRow(state.lang === "it" ? "Minuti dall'ultima" : "Minutes since last", s.minutesSinceLastRequest)}
+            ${fmtRow(state.lang === "it" ? "Più vecchia" : "Oldest", s.oldestCreatedAt || "—")}
+            ${fmtRow(state.lang === "it" ? "Più recente" : "Newest", s.newestCreatedAt || "—")}
+            ${s.potentialDuplicateIds > 0 ? fmtRow(state.lang === "it" ? "⚠ Duplicati sospetti" : "⚠ Potential duplicates", s.potentialDuplicateIds) : ""}
+          </div>
+          <div class="diag-block">
+            <div class="diag-block-title">${state.lang === "it" ? "Per origine" : "By source"}</div>
+            <ul class="diag-list">${fmtKV(s.bySource)}</ul>
+          </div>
+          <div class="diag-block">
+            <div class="diag-block-title">${state.lang === "it" ? "Per stato" : "By status"}</div>
+            <ul class="diag-list">${fmtKV(s.byStatus)}</ul>
+          </div>
+          <div class="diag-block">
+            <div class="diag-block-title">${state.lang === "it" ? "Per assegnazione" : "By assignment"}</div>
+            <ul class="diag-list">${fmtKV(s.byAssignment)}</ul>
+          </div>
+          <div class="diag-block diag-block-wide">
+            <div class="diag-block-title">${state.lang === "it" ? "Google Sheets" : "Google Sheets"}</div>
+            ${fmtRow(state.lang === "it" ? "Configurato" : "Configured", sh.configured ? "✓" : "✗")}
+            ${fmtRow(state.lang === "it" ? "Sheet" : "Sheet", sh.sheetName || "—")}
+            ${fmtRow("Spreadsheet", sh.spreadsheetInput || "—")}
+          </div>
+          <div class="diag-block diag-block-wide">
+            <div class="diag-block-title">IMAP ${state.lang === "it" ? "(in arrivo, Fase 1)" : "(coming, Phase 1)"}</div>
+            ${fmtRow(state.lang === "it" ? "Attivo" : "Enabled", im.enabled ? "✓" : "—")}
+            ${fmtRow(state.lang === "it" ? "Email viste (shadow)" : "Emails seen (shadow)", im.shadowRecordsTotal || 0)}
+            ${fmtRow(state.lang === "it" ? "Ultima email vista" : "Last email seen", im.lastEmailSeenAt || "—")}
+          </div>
+        </div>
+        ${latestPreview}
+      </div>
+    `;
+  } catch (error) {
+    out.innerHTML = `<div class="info-card status-error">${escapeHtml(state.lang === "it" ? "Errore caricamento diagnostica" : "Diagnostic load error")}: ${escapeHtml(String(error?.message || error))}</div>`;
+  }
 }
 
 function composeAddress(order) {
@@ -20793,6 +20865,7 @@ bindEvent(ui.salesRequestServiceAccountInput, "change", handleSalesRequestServic
 bindEvent(ui.salesRequestClearServiceAccountButton, "click", () => saveSalesRequestSourceConfig({ clearServiceAccount: true }));
 bindEvent(ui.salesRequestSourceSaveButton, "click", () => saveSalesRequestSourceConfig());
 bindEvent(ui.salesRequestSourceSyncButton, "click", syncSalesRequestSource);
+bindEvent(ui.salesDiagnosticButton, "click", showSalesDiagnostic);
 bindEvent(ui.salesRequestOpenSheetButton, "click", openSalesRequestSourceSheet);
 bindEvent(ui.salesGeneratorEmailButton, "click", (event) => {
   const href = ui.salesGeneratorEmailButton?.getAttribute("href") || "";
