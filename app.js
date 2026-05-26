@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260526-stickyact-v1";
+const APP_SHELL_VERSION = "20260526-backbar-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2116,7 +2116,13 @@ function openMobileDrillDetail(module, itemId) {
   if (!module) return false;
   // Solo su mobile stretto: su tablet/desktop il pattern master-detail va bene
   if (window.innerWidth > MOBILE_DRILL_BREAKPOINT) return false;
-  const listScrollY = (ui.mainContent && ui.mainContent.scrollTop) || window.scrollY || 0;
+  // Su mobile il vero scroll e' del window (perche' .app-shell ha min-height
+  // invece di height fissa). Salviamo il massimo tra i due per coprire entrambi
+  // i casi (mobile/desktop ristretto).
+  const listScrollY = Math.max(
+    (ui.mainContent && ui.mainContent.scrollTop) || 0,
+    window.scrollY || document.documentElement.scrollTop || 0,
+  );
   const header = computeMobileDrillHeader(module, itemId);
   state.mobileDrillDetail = {
     module,
@@ -2127,8 +2133,10 @@ function openMobileDrillDetail(module, itemId) {
   };
   document.body.setAttribute("data-drill-module", module);
   document.body.classList.add("mobile-drill-detail");
-  // Reset scroll del container per partire dall'inizio del dettaglio
+  // Reset scroll: container (desktop) E window (mobile, dove e' il vero scroll
+  // perche' .app-shell su mobile-safe-mode ha min-height invece di height fissa).
   if (ui.mainContent) ui.mainContent.scrollTop = 0;
+  try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
   updateMobileDrillBackBar();
   // History API: pushState così il back fisico del browser / swipe iOS chiude il drill-down
   try {
@@ -2144,10 +2152,11 @@ function closeMobileDrillDetail({ skipHistory = false } = {}) {
   document.body.removeAttribute("data-drill-module");
   document.body.classList.remove("mobile-drill-detail");
   updateMobileDrillBackBar();
-  // Ripristina scroll position della lista
+  // Ripristina scroll position della lista (container desktop + window mobile)
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       if (ui.mainContent) ui.mainContent.scrollTop = listScrollY;
+      try { window.scrollTo({ top: listScrollY, left: 0, behavior: "auto" }); } catch {}
     });
   });
   if (!skipHistory) {

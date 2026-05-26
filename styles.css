@@ -11291,12 +11291,23 @@ body.mobile-safe-mode .nav-link.is-active {
 
 .mobile-drill-back-bar {
   display: none;
-  position: sticky;
+  /* Su mobile usiamo position: fixed invece di sticky perche':
+     - .app-shell ha display:grid con grid-template-areas senza area
+       dedicata alla back bar → sticky non aveva un container valido
+     - fixed garantisce ancoraggio sempre al viewport top, indipendente
+       dalla struttura grid e dallo scroll del window
+     - su iOS Safari il viewport con address bar nascosta fa "respirare"
+       la pagina, ma fixed segue il layout viewport correttamente
+     Il body in drill-down riceve padding-top per fare spazio (vedi sotto). */
+  position: fixed;
   top: 0;
-  z-index: 60;
+  left: 0;
+  right: 0;
+  z-index: 1090;
   align-items: center;
   gap: 14px;
   padding: 10px 14px;
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
   background: linear-gradient(180deg, #1c4229 0%, #122e1c 100%);
   color: #fff;
   box-shadow: 0 2px 10px rgba(28, 66, 41, 0.22);
@@ -11353,9 +11364,18 @@ body.mobile-safe-mode .nav-link.is-active {
 }
 
 @media (max-width: 768px) {
-  /* Back bar visibile solo quando un drill-down e' attivo */
+  /* Back bar visibile solo quando un drill-down e' attivo + spazio sopra
+     per evitare che il contenuto inizi sotto la back-bar fixed */
   body[data-drill-module] .mobile-drill-back-bar {
     display: flex;
+  }
+  body[data-drill-module] {
+    padding-top: var(--mobile-back-bar-h);
+  }
+  body[data-drill-module] .topbar {
+    /* La topbar normale e' inutile in drill-down (la back-bar la sostituisce):
+       la nascondiamo per dare piu' spazio al contenuto */
+    display: none !important;
   }
 
   /* SALES-REQUESTS */
