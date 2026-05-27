@@ -14,6 +14,9 @@
     status: ["stato", "status", "stato preventivo"],
   };
   const PREFILL_STORAGE_KEY = "quote-generator-prefill";
+  const GENERATOR_FRAME_MIN_HEIGHT = 720;
+  const GENERATOR_FRAME_MAX_HEIGHT = 6200;
+  const GENERATOR_FRAME_DEFAULT_HEIGHT = 980;
 
   const state = {
     config: null,
@@ -620,6 +623,19 @@
     return delivered;
   }
 
+  function applyGeneratorFrameHeight(rawHeight) {
+    if (!elements.generatorFrame) return;
+    const measuredHeight = Number(rawHeight) || GENERATOR_FRAME_DEFAULT_HEIGHT;
+    const nextHeight = Math.max(
+      GENERATOR_FRAME_MIN_HEIGHT,
+      Math.min(GENERATOR_FRAME_MAX_HEIGHT, measuredHeight),
+    );
+    const currentHeight = Number(elements.generatorFrame.dataset.measuredHeight || 0);
+    if (currentHeight && Math.abs(currentHeight - nextHeight) < 8) return;
+    elements.generatorFrame.style.height = `${nextHeight}px`;
+    elements.generatorFrame.dataset.measuredHeight = String(nextHeight);
+  }
+
   function flushPendingPrefill() {
     if (!state.pendingPrefill || !state.generatorReady) return;
     const payload = state.pendingPrefill;
@@ -737,7 +753,14 @@
     elements.openSheetButton.addEventListener("click", openSheetInBrowser);
     elements.generatorFrame.addEventListener("load", () => {
       state.generatorReady = true;
+      applyGeneratorFrameHeight(GENERATOR_FRAME_DEFAULT_HEIGHT);
       flushPendingPrefill();
+    });
+
+    window.addEventListener("message", (event) => {
+      if (event.data?.type === "quote-generator:content-height") {
+        applyGeneratorFrameHeight(event.data.height);
+      }
     });
 
     window.addEventListener("keydown", (event) => {
@@ -757,6 +780,7 @@
     bindElements();
     bindEvents();
     elements.generatorFrame.src = buildGeneratorFrameUrl();
+    applyGeneratorFrameHeight(GENERATOR_FRAME_DEFAULT_HEIGHT);
 
     try {
       state.config = await window.desktopApp.googleSheets.getConfig();
