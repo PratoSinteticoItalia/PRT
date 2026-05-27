@@ -144,6 +144,29 @@ async function createTables() {
       diff JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    -- Shadow store del worker IMAP (Fase 1 migrazione lead, Architettura B).
+    -- I record qui dentro NON sono ancora sales_requests: vengono promossi
+    -- esplicitamente in Fase 3 (manuale 1-tap) o automaticamente in Fase 4.
+    CREATE TABLE IF NOT EXISTS incoming_leads_shadow (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      imap_message_id TEXT UNIQUE NOT NULL,
+      imap_uid BIGINT,
+      imap_mailbox TEXT,
+      from_email TEXT,
+      from_name TEXT,
+      subject TEXT,
+      received_at TIMESTAMPTZ,
+      raw_body_preview TEXT,
+      parsed_payload JSONB DEFAULT '{}',
+      parser_version TEXT DEFAULT 'v0',
+      parse_status TEXT DEFAULT 'pending',
+      parse_errors JSONB DEFAULT '[]',
+      promoted_to_sales_request_id TEXT,
+      promoted_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 
   console.log('  tabelle create.');
@@ -168,6 +191,10 @@ async function createTables() {
     CREATE INDEX IF NOT EXISTS sales_requests_updated_at_idx  ON sales_requests (updated_at DESC);
     CREATE INDEX IF NOT EXISTS audit_log_entity_idx           ON audit_log (entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS audit_log_created_idx          ON audit_log (created_at DESC);
+    CREATE INDEX IF NOT EXISTS incoming_leads_shadow_uid_idx       ON incoming_leads_shadow (imap_uid);
+    CREATE INDEX IF NOT EXISTS incoming_leads_shadow_recv_idx      ON incoming_leads_shadow (received_at DESC);
+    CREATE INDEX IF NOT EXISTS incoming_leads_shadow_status_idx    ON incoming_leads_shadow (parse_status);
+    CREATE INDEX IF NOT EXISTS incoming_leads_shadow_promoted_idx  ON incoming_leads_shadow (promoted_to_sales_request_id);
   `);
   console.log('  indici creati.\n');
 }

@@ -5,6 +5,7 @@ import { extname, dirname, join, resolve, sep } from "node:path";
 import { createHmac, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
+import { startImapWorker, getImapWorkerStatus, isImapWorkerEnabled, hasImapWorkerConfig, getImapWorkerConfig } from "./imap-worker.js";
 
 const PORT = Number(process.env.PORT || 4178);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -682,6 +683,30 @@ async function ensureRelationalSchema() {
         id BIGSERIAL PRIMARY KEY, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
         user_id TEXT, action TEXT NOT NULL, diff JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
       );
+      -- Tabella shadow per il worker IMAP (Fase 1 della migrazione lead).
+      -- Riceve ogni email letta dalla casella contatti@ in modalita' read-only,
+      -- senza ancora promuoverla a sales_request. Permette validazione 1-2
+      -- settimane prima del switch produttivo.
+      -- Chiave di dedupe: imap_message_id (header Message-ID del protocollo email).
+      CREATE TABLE IF NOT EXISTS incoming_leads_shadow (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        imap_message_id TEXT UNIQUE NOT NULL,
+        imap_uid BIGINT,
+        imap_mailbox TEXT,
+        from_email TEXT,
+        from_name TEXT,
+        subject TEXT,
+        received_at TIMESTAMPTZ,
+        raw_body_preview TEXT,
+        parsed_payload JSONB DEFAULT '{}',
+        parser_version TEXT DEFAULT 'v0',
+        parse_status TEXT DEFAULT 'pending',
+        parse_errors JSONB DEFAULT '[]',
+        promoted_to_sales_request_id TEXT,
+        promoted_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS operations_json JSONB DEFAULT '{}';
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS requested_height TEXT DEFAULT '';
       CREATE INDEX IF NOT EXISTS orders_shopify_id_idx       ON orders (shopify_numeric_id);
@@ -697,6 +722,10 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS orders_fulfillment_idx         ON orders (fulfillment_status);
       CREATE INDEX IF NOT EXISTS audit_log_entity_idx           ON audit_log (entity_type, entity_id);
       CREATE INDEX IF NOT EXISTS audit_log_created_idx          ON audit_log (created_at DESC);
+      CREATE INDEX IF NOT EXISTS incoming_leads_shadow_uid_idx     ON incoming_leads_shadow (imap_uid);
+      CREATE INDEX IF NOT EXISTS incoming_leads_shadow_recv_idx    ON incoming_leads_shadow (received_at DESC);
+      CREATE INDEX IF NOT EXISTS incoming_leads_shadow_status_idx  ON incoming_leads_shadow (parse_status);
+      CREATE INDEX IF NOT EXISTS incoming_leads_shadow_promoted_idx ON incoming_leads_shadow (promoted_to_sales_request_id);
     `);
     console.log("[db] schema relazionale verificato");
   })().catch((err) => {
@@ -4866,6 +4895,52 @@ function normalizeSalesRequestSurface(value = "") {
   return "";
 }
 
+// Snapshot stato IMAP worker + conteggio shadow records per il diagnostic.
+async function getImapDiagnosticSnapshot() {
+  const status = getImapWorkerStatus();
+  let shadowRecordsTotal = 0;
+  let lastEmailSeenAt = null;
+  let parseStatusCounts = {};
+  try {
+    const pool = await getPgPool();
+    if (pool) {
+      const tot = await pool.query("SELECT COUNT(*)::int AS n FROM incoming_leads_shadow");
+      shadowRecordsTotal = Number(tot.rows?.[0]?.n || 0);
+      const last = await pool.query(
+        "SELECT MAX(received_at) AS last FROM incoming_leads_shadow",
+      );
+      lastEmailSeenAt = last.rows?.[0]?.last || null;
+      const byStatus = await pool.query(
+        "SELECT parse_status, COUNT(*)::int AS n FROM incoming_leads_shadow GROUP BY parse_status",
+      );
+      for (const r of byStatus.rows || []) {
+        parseStatusCounts[String(r.parse_status || "unknown")] = Number(r.n || 0);
+      }
+    }
+  } catch (err) {
+    // Ignore: tabella potrebbe non esistere ancora se schema non e' stato applicato
+  }
+  return {
+    enabled: status.enabled,
+    configured: status.configured,
+    running: status.running,
+    host: status.host,
+    user: status.user,
+    mailbox: status.mailbox,
+    pollIntervalMs: status.pollIntervalMs,
+    lastPollAt: status.lastPollAt,
+    lastSuccessAt: status.lastSuccessAt,
+    lastError: status.lastError,
+    totalSeen: status.totalSeen,
+    totalParsed: status.totalParsed,
+    totalFailed: status.totalFailed,
+    parserVersion: status.parserVersion,
+    shadowRecordsTotal,
+    lastEmailSeenAt,
+    parseStatusCounts,
+  };
+}
+
 function normalizeSalesRequestSourceConfig(config = {}) {
   return {
     spreadsheetInput: String(config.spreadsheetInput || DEFAULT_SALES_REQUEST_SPREADSHEET).trim(),
@@ -8086,6 +8161,37 @@ async function handleApi(req, res, url) {
   // - Range temporale richieste (prima/ultima)
   // NB: per ora NON contatta Google Sheets per non rischiare rate limit a freddo,
   // il confronto sheets-vs-db sarà aggiunto in Fase 1 della migrazione.
+  // Endpoint debug per visualizzare gli ultimi lead shadow letti da IMAP.
+  // Solo office, read-only. Per audit della Fase 2 (validazione confronto
+  // IMAP vs Sheets).
+  if (url.pathname === "/api/sales/incoming-leads/shadow" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const pool = await getPgPool();
+      if (!pool) return sendJson(res, 200, { items: [], total: 0, worker: getImapWorkerStatus() });
+      const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 50)));
+      const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
+      const items = await pool.query(
+        `SELECT id, imap_message_id, imap_uid, imap_mailbox, from_email, from_name,
+                subject, received_at, parsed_payload, parser_version, parse_status,
+                parse_errors, promoted_to_sales_request_id, promoted_at, created_at
+         FROM incoming_leads_shadow
+         ORDER BY received_at DESC NULLS LAST, created_at DESC
+         LIMIT $1 OFFSET $2`,
+        [limit, offset],
+      );
+      const totalRow = await pool.query("SELECT COUNT(*)::int AS total FROM incoming_leads_shadow");
+      return sendJson(res, 200, {
+        items: items.rows || [],
+        total: Number(totalRow.rows?.[0]?.total || 0),
+        worker: getImapWorkerStatus(),
+      });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "shadow_query_failed") });
+    }
+  }
+
   if (url.pathname === "/api/sales/diagnostic" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
@@ -8162,12 +8268,7 @@ async function handleApi(req, res, url) {
           // per non chiamare Google API ad ogni diagnostic)
           liveRowCount: null,
         },
-        imap: {
-          // Placeholder per Fase 1 della migrazione (IMAP shadow run)
-          enabled: false,
-          shadowRecordsTotal: 0,
-          lastEmailSeenAt: null,
-        },
+        imap: await getImapDiagnosticSnapshot(),
       });
     } catch (error) {
       return sendJson(res, 500, { error: String(error?.message || "sales_diagnostic_failed") });
@@ -9903,6 +10004,14 @@ server.listen(PORT, HOST, () => {
             await saveCoveragePlannerToDb(normalizeCoveragePlanner(rawStore.coveragePlanner)).catch(() => {});
             console.log("[db] backfill coverage_planner: salvato da blob a SQL");
           }
+        }
+        // IMAP shadow worker (Fase 1 migrazione lead). Resta dormant se
+        // IMAP_SHADOW_ENABLED!=true o se credenziali mancanti.
+        try {
+          const pool = await getPgPool();
+          if (pool) startImapWorker(pool);
+        } catch (err) {
+          console.warn("[imap-worker] start failed:", err?.message || err);
         }
       })
       .catch((err) => console.error("[db] relational schema init failed", err));
