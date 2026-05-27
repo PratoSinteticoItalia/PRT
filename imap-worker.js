@@ -37,7 +37,153 @@ async function loadImapFlow() {
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 min
 const DEFAULT_MAILBOX = "INBOX";
-const PARSER_VERSION = "v0-placeholder";
+const PARSER_VERSION = "v1-php-form";
+
+// Pattern dei campi nelle email generate dal PHP del sito pratosinteticoitalia.com.
+// Esempio body:
+//   Ricevuti dalla pagina: https://pratosinteticoitalia.com
+//   Nome: GAVINO DE ROSA
+//   Email: dergav@libero.it
+//   Telefono: 3391392881
+//   Città: CAMPOSANO
+//   Tipologia cliente: Privata
+//   Metri quadri: 70
+//   Kit installazione: No
+//   Altezza: 40MM;
+//   Note aggiuntive: PREVENTIVO SOLO FORNITURA
+//
+// Le regex sono permissive: case-insensitive, accettano spazi extra, fine
+// riga \r\n o \n. La citta' puo' avere accenti (à/à). Il campo "Altezza"
+// puo' terminare con ; nel template originale, lo rimuoviamo.
+const PSI_LEAD_PATTERNS = {
+  nome:               /Nome:\s*([^\r\n]+)/i,
+  email:              /Email:\s*(\S+@\S+)/i,
+  telefono:           /Telefono:\s*([^\r\n]+)/i,
+  citta:              /Citt[àa]:\s*([^\r\n]+)/i,
+  tipologia_cliente:  /Tipologia\s*cliente:\s*([^\r\n]+)/i,
+  metri_quadri:       /Metri\s*quadri:\s*([\d.,]+)/i,
+  kit_installazione:  /Kit\s*installazione:\s*([^\r\n]+)/i,
+  altezza:            /Altezza:\s*([^\r\n;]+)/i,
+  note_aggiuntive:    /Note\s*aggiuntive:\s*([^\r\n]+)/i,
+  sorgente_pagina:    /Ricevuti\s*dalla\s*pagina:\s*(\S+)/i,
+};
+
+// Strip HTML basico: rimuove tag, normalizza entità HTML comuni, mantiene il
+// testo. Usato come fallback se la mail non ha bodyText (solo HTML).
+function stripHtmlToText(html) {
+  if (!html) return "";
+  return String(html)
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h\d)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&agrave;/gi, "à")
+    .replace(/&egrave;/gi, "è")
+    .replace(/&igrave;/gi, "ì")
+    .replace(/&ograve;/gi, "ò")
+    .replace(/&ugrave;/gi, "ù")
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function normalizePhoneIt(raw) {
+  if (!raw) return "";
+  // Mantiene cifre e il + iniziale (per prefissi internazionali)
+  const cleaned = String(raw).trim().replace(/[^\d+]/g, "");
+  return cleaned;
+}
+
+function normalizeKitBoolean(raw) {
+  if (raw == null) return null;
+  const v = String(raw).trim().toLowerCase();
+  if (["si", "sì", "yes", "true", "1"].includes(v)) return true;
+  if (["no", "false", "0", "n"].includes(v)) return false;
+  return null;
+}
+
+function parsePsiLeadEmail({ subject, fromEmail, fromName, receivedAt, bodyText, bodyHtml }) {
+  // Pre-processing: preferiamo plain text; se vuoto, strippiamo l'HTML.
+  let text = String(bodyText || "").trim();
+  if (!text && bodyHtml) text = stripHtmlToText(bodyHtml);
+
+  const errors = [];
+  const payload = {};
+  let matchedFields = 0;
+
+  for (const [key, regex] of Object.entries(PSI_LEAD_PATTERNS)) {
+    const m = text.match(regex);
+    if (m) {
+      payload[key] = String(m[1] || "").trim();
+      matchedFields++;
+    }
+  }
+
+  // Normalizzazioni
+  if (payload.email) {
+    payload.email = payload.email.toLowerCase().replace(/[<>,;]+$/g, "");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payload.email)) {
+      errors.push({ field: "email", reason: "invalid_format", value: payload.email });
+      delete payload.email;
+    }
+  }
+  if (payload.telefono) {
+    payload.telefono_raw = payload.telefono;
+    payload.telefono = normalizePhoneIt(payload.telefono);
+  }
+  if (payload.metri_quadri) {
+    payload.metri_quadri_raw = payload.metri_quadri;
+    const num = parseFloat(String(payload.metri_quadri).replace(",", "."));
+    if (Number.isFinite(num) && num >= 0) {
+      payload.metri_quadri = num;
+    } else {
+      errors.push({ field: "metri_quadri", reason: "not_a_number", value: payload.metri_quadri });
+      delete payload.metri_quadri;
+    }
+  }
+  if (payload.kit_installazione) {
+    payload.kit_installazione_raw = payload.kit_installazione;
+    const bool = normalizeKitBoolean(payload.kit_installazione);
+    if (bool !== null) payload.kit_installazione = bool;
+  }
+  if (payload.note_aggiuntive) {
+    // Tronca a 1000 chars per evitare blob enormi (es. firma email)
+    payload.note_aggiuntive = String(payload.note_aggiuntive).slice(0, 1000).trim();
+  }
+
+  // Status:
+  //   ok      → almeno nome, email o telefono, metri_quadri (lead utilizzabile)
+  //   partial → matchato qualche campo ma non i 4 base
+  //   no_match → niente, probabilmente non e' una richiesta preventivo
+  const requiredKeys = ["nome", "metri_quadri"];
+  const optionalContactKeys = ["email", "telefono"];
+  const hasRequired = requiredKeys.every((k) => payload[k] != null && payload[k] !== "");
+  const hasContact = optionalContactKeys.some((k) => payload[k] != null && payload[k] !== "");
+  let status;
+  if (hasRequired && hasContact) status = "ok";
+  else if (matchedFields > 0) status = "partial";
+  else status = "no_match";
+
+  // Metadati di parsing
+  payload._meta = {
+    matchedFields,
+    parserVersion: PARSER_VERSION,
+    subject,
+    fromEmail,
+    fromName,
+    receivedAtIso: receivedAt instanceof Date ? receivedAt.toISOString() : null,
+  };
+
+  return { payload, status, errors };
+}
 
 let workerState = {
   running: false,
@@ -80,28 +226,34 @@ function hasValidConfig(cfg) {
 }
 
 /**
- * Parser placeholder: estrae solo i metadati base e un preview del corpo.
- * In Fase 1B sostituiremo questa funzione con un parser strutturato che
- * estrae nome, cognome, telefono, mq, prodotto, ecc. dal body delle email
- * generate dal PHP del sito.
+ * Estrae i campi richiesta dall'email PHP del sito pratosinteticoitalia.com.
+ * Parser strutturato v1 (vedi PSI_LEAD_PATTERNS sopra). Restituisce un oggetto
+ * pronto per persistShadowRecord con metadati base + parsedPayload JSON.
  */
-function placeholderParseLeadEmail(message) {
+function parseLeadEmail(message) {
   const subject = String(message?.envelope?.subject || "").trim();
   const fromAddr = message?.envelope?.from?.[0] || {};
   const fromEmail = String(fromAddr.address || "").trim();
   const fromName = String(fromAddr.name || "").trim();
   const receivedAt = message?.envelope?.date ? new Date(message.envelope.date) : new Date();
-  const bodyText = String(message?.bodyText || message?.source || "").slice(0, 2000);
+  // imapflow puo' restituire bodyText (parts.text) e bodyHtml (parts.html)
+  // come stringhe; quando passiamo source:true c'e' anche message.source raw.
+  const bodyText = String(message?.bodyText || "");
+  const bodyHtml = String(message?.bodyHtml || "");
+  const sourceText = bodyText || stripHtmlToText(bodyHtml) || String(message?.source || "");
+  const { payload, status, errors } = parsePsiLeadEmail({
+    subject, fromEmail, fromName, receivedAt, bodyText, bodyHtml,
+  });
   return {
     subject,
     fromEmail,
     fromName,
     receivedAt,
-    rawBodyPreview: bodyText,
-    parsedPayload: {},
+    rawBodyPreview: sourceText.slice(0, 2000),
+    parsedPayload: payload,
     parserVersion: PARSER_VERSION,
-    parseStatus: "pending", // Fase 1A: niente parsing strutturato ancora
-    parseErrors: [],
+    parseStatus: status,
+    parseErrors: errors,
   };
 }
 
@@ -177,13 +329,13 @@ async function runPollCycle(pool) {
       for await (const msg of client.fetch(fetchRange, {
         uid: true,
         envelope: true,
-        bodyParts: ["text"],
+        bodyParts: ["text", "html"],
         source: false,
       }, { uid: true })) {
         count++;
         workerState.totalSeen++;
         const messageId = String(msg?.envelope?.messageId || `uid:${cfg.mailbox}:${msg.uid}`).trim();
-        const parsed = placeholderParseLeadEmail(msg);
+        const parsed = parseLeadEmail(msg);
         const ok = await persistShadowRecord(pool, messageId, msg.uid, cfg.mailbox, parsed);
         if (ok) workerState.totalParsed++; else workerState.totalFailed++;
       }
