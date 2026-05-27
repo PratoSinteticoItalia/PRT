@@ -5452,7 +5452,9 @@ async function syncSalesRequestsToGoogleSheet(config = {}, records = []) {
   if (!normalizedConfig.serviceAccountEmail || !normalizedConfig.privateKey) {
     return { action: "skipped", reason: "missing_service_account", updatedCells: 0 };
   }
-  const allRecords = (Array.isArray(records) ? records : []).map(normalizeSalesRequestRecord);
+  const allRecords = (Array.isArray(records) ? records : [])
+    .map(normalizeSalesRequestRecord)
+    .map((r) => backfillSheetSourceFields(r, normalizedConfig));
   // I record già provenienti da Sheets vengono UPDATE-ati alla loro riga esistente.
   const googleRecords = allRecords.filter((record) => getGoogleSheetRequestRecordKey(record));
   // I record di altra origine (imap/manual) che NON sono ancora su Sheets
@@ -5606,6 +5608,38 @@ function scheduleSalesRequestSheetSyncFlush() {
   salesRequestSheetSyncTimer.unref?.();
 }
 
+// Bugfix: i record google-sheets nello store possono avere
+// sourceSpreadsheetId/sourceSheetName/sourceRowNumber vuoti perche' il DB SQL
+// (mapSalesRequestRowToObject) non li persiste. Li ricostruisco da 2 fonti:
+// 1) L'ID del record ha formato "gs:<spreadsheetId>:<sheetKey>:<rowNumber>"
+// 2) La config Sheets corrente come fallback per spreadsheetId e sheetName
+function backfillSheetSourceFields(record, normalizedConfig) {
+  if (!record || record.source !== "google-sheets") return record;
+  const idStr = String(record.id || "");
+  if (idStr.startsWith("gs:")) {
+    const parts = idStr.split(":");
+    if (parts.length >= 4) {
+      if (!record.sourceSpreadsheetId) record.sourceSpreadsheetId = parts[1];
+      if (!record.sourceRowNumber) {
+        const lastPart = Number(parts[parts.length - 1]) || 0;
+        if (lastPart > 0) record.sourceRowNumber = lastPart;
+      }
+    }
+  }
+  // sheet name non e' nel ID in formato originale (e' normalizeSheetKey-ato).
+  // Recuperiamo il nome esatto del foglio dalla config attuale.
+  if (!record.sourceSheetName && normalizedConfig?.sheetName) {
+    record.sourceSheetName = normalizedConfig.sheetName;
+  }
+  // Fallback ultimissimo: spreadsheet ID dalla config se ID record non aiuta
+  if (!record.sourceSpreadsheetId && normalizedConfig?.spreadsheetInput) {
+    try {
+      record.sourceSpreadsheetId = resolveSpreadsheetId(normalizedConfig.spreadsheetInput);
+    } catch {}
+  }
+  return record;
+}
+
 function enqueueSalesRequestsGoogleSheetSync(config = {}, records = []) {
   const normalizedConfig = normalizeSalesRequestSourceConfig(config);
   // Diagnostic log: ogni chiamata loggata con sample, prima di ogni filtro.
@@ -5634,7 +5668,9 @@ function enqueueSalesRequestsGoogleSheetSync(config = {}, records = []) {
   // Fase 5 mirror Portal→Sheets: accodiamo anche record non-google-sheets
   // (orfani imap/manual) per fare APPEND di nuove righe su Sheets.
   // Filtra solo record che hanno dati cliente minimi (nome + contatto).
-  const allRecords = (Array.isArray(records) ? records : []).map(normalizeSalesRequestRecord);
+  const allRecords = (Array.isArray(records) ? records : [])
+    .map(normalizeSalesRequestRecord)
+    .map((r) => backfillSheetSourceFields(r, normalizedConfig));
   const googleRecords = allRecords.filter((record) => getGoogleSheetRequestRecordKey(record));
   const orphanRecords = allRecords.filter((record) => {
     if (getGoogleSheetRequestRecordKey(record)) return false;
