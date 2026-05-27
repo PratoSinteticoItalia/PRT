@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260527-mirror-safe-v12";
+const APP_SHELL_VERSION = "20260527-imap-requests-fast-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -18,6 +18,7 @@ const SHOPIFY_AUTO_SYNC_VISIBILITY_COOLDOWN_MS = 1000 * 60 * 4; // no sync su fo
 const SALES_REQUEST_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 5; // era 2min — ogni 5min
 const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 60 * 2; // era 45s — cooldown 2min
 const SALES_REQUEST_SAVE_TIMEOUT_MS = 90_000;
+const SALES_REQUEST_PATCH_TIMEOUT_MS = 15_000;
 const SALES_REQUEST_SAVE_MAX_RETRIES = 2;
 const COVERAGE_SYNC_DEBOUNCE_MS = 350;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
@@ -5141,11 +5142,14 @@ function markSelectedSalesRequestQuoteSent() {
 
 async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
   const recordId = String(record.id || "");
+  const cleanPatch = Object.fromEntries(
+    Object.entries(patch || {}).filter(([key]) => key && !key.startsWith("__")),
+  );
   // Incrementa version per questo record: risposte server di save precedenti vengono scartate
   _salesRequestPatchVersions[recordId] = (_salesRequestPatchVersions[recordId] || 0) + 1;
   const myVersion = _salesRequestPatchVersions[recordId];
   const previousRecord = state.salesRequests.find((r) => r.id === recordId) || null;
-  const optimisticRecord = normalizeSalesRequestRecord({ ...(previousRecord || record), ...patch });
+  const optimisticRecord = normalizeSalesRequestRecord({ ...(previousRecord || record), ...cleanPatch });
   upsertSalesRequest(optimisticRecord, { skipOpsRender: true, preserveSelection: true });
   renderSalesRequests();
   if (state.currentView === "sales-generator") renderSalesGenerator();
@@ -5155,12 +5159,12 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     salesRequestPendingPatchIds.add(recordId);
   }
   try {
-    const saved = await apiFetchWithRetry("/api/sales/requests", {
-      method: "POST",
-      timeoutMs: SALES_REQUEST_SAVE_TIMEOUT_MS,
-      body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, patch)),
+    const saved = await apiFetchWithRetry(`/api/sales/requests/${encodeURIComponent(recordId)}`, {
+      method: "PATCH",
+      timeoutMs: SALES_REQUEST_PATCH_TIMEOUT_MS,
+      body: JSON.stringify({ patch: cleanPatch }),
     }, {
-      retries: SALES_REQUEST_SAVE_MAX_RETRIES,
+      retries: 1,
     });
     // Applica la risposta server solo se non è stata avviata una save più recente per questo record
     if (_salesRequestPatchVersions[recordId] === myVersion) {

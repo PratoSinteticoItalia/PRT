@@ -1371,6 +1371,30 @@ async function writeJson(path, value) {
   }
 }
 
+let pendingStoreSnapshotWriteTimer = null;
+
+function scheduleStoreSnapshotWrite(value, label = "store_snapshot") {
+  if (!value || typeof value !== "object") return;
+  if (!USE_POSTGRES) {
+    writeJson(STORE_PATH, value).catch((error) => {
+      console.error(`[${label}] store write failed:`, error?.message || error);
+    });
+    return;
+  }
+  rotateStoreRevision(value);
+  if (storeMemCache?.__memReconciled) value.__memReconciled = true;
+  storeMemCache = value;
+  broadcastStoreRevision(getStoreRevision(value));
+  clearTimeout(pendingStoreSnapshotWriteTimer);
+  pendingStoreSnapshotWriteTimer = setTimeout(() => {
+    pendingStoreSnapshotWriteTimer = null;
+    writeJson(STORE_PATH, value).catch((error) => {
+      console.error(`[${label}] background store write failed:`, error?.message || error);
+    });
+  }, 750);
+  pendingStoreSnapshotWriteTimer.unref?.();
+}
+
 function normalizeSessionEntry(entry = null) {
   const userId = typeof entry === "string" ? entry : entry?.userId;
   const versionRaw = typeof entry === "object" ? entry?.version : 1;
@@ -5679,24 +5703,18 @@ function enqueueSalesRequestsGoogleSheetSync(config = {}, records = []) {
     console.warn("[sheet-mirror] enqueue skipped: missing_service_account");
     return { action: "skipped", reason: "missing_service_account", updatedCells: 0 };
   }
-  // Fase 5 mirror Portal→Sheets: accodiamo anche record non-google-sheets
-  // (orfani imap/manual) per fare APPEND di nuove righe su Sheets.
-  // Filtra solo record che hanno dati cliente minimi (nome + contatto).
+  // Nel flusso attuale le richieste arrivano da IMAP/DB. Manteniamo Sheets
+  // solo come mirror per record nati da Google Sheets, evitando append lenti
+  // e rumorosi per richieste IMAP/manuali.
   const allRecords = (Array.isArray(records) ? records : [])
     .map(normalizeSalesRequestRecord)
     .map((r) => backfillSheetSourceFields(r, normalizedConfig));
   const googleRecords = allRecords.filter((record) => getGoogleSheetRequestRecordKey(record));
-  const orphanRecords = allRecords.filter((record) => {
-    if (getGoogleSheetRequestRecordKey(record)) return false;
-    const src = String(record.source || "").toLowerCase();
-    if (src === "google-sheets") return false;
-    return Boolean((record.email || record.phone) && (record.name || record.surname));
-  });
-  const queueRecords = [...googleRecords, ...orphanRecords];
+  const queueRecords = googleRecords;
   console.log("[sheet-mirror] enqueue split", {
     total: allRecords.length,
     googleSheetsRecords: googleRecords.length,
-    orphanRecords: orphanRecords.length,
+    orphanRecords: 0,
     skippedReasons: allRecords
       .filter((r) => !queueRecords.includes(r))
       .slice(0, 3)
@@ -8645,6 +8663,81 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (url.pathname.match(/^\/api\/sales\/requests\/[^/]+$/) && req.method === "PATCH") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const requestId = decodeURIComponent(url.pathname.split("/")[4]);
+    const body = await readBody(req);
+    const rawPatch = body?.patch && typeof body.patch === "object" && !Array.isArray(body.patch)
+      ? body.patch
+      : body;
+    if (!rawPatch || typeof rawPatch !== "object" || Array.isArray(rawPatch)) {
+      return sendJson(res, 400, { error: "invalid_sales_request_patch" });
+    }
+    const allowedPatchFields = new Set([
+      "assignment",
+      "status",
+      "note",
+      "whatsappTemplate",
+      "whatsappUrl",
+      "firstContactState",
+      "firstContactScheduledAt",
+      "firstContactSentAt",
+      "firstContactBy",
+      "requestedHeight",
+      "sqm",
+      "surface",
+      "service",
+      "city",
+      "phone",
+      "email",
+      "name",
+      "surname",
+    ]);
+    const patch = {};
+    Object.entries(rawPatch).forEach(([key, value]) => {
+      if (allowedPatchFields.has(key)) patch[key] = value;
+    });
+    if (!Object.keys(patch).length) {
+      return sendJson(res, 400, { error: "empty_sales_request_patch" });
+    }
+    const existingIndex = store.salesRequests.findIndex((item) => item.id === requestId);
+    if (existingIndex < 0) return sendJson(res, 404, { error: "request_not_found" });
+    const existingRequest = store.salesRequests[existingIndex];
+    const now = new Date().toISOString();
+    const draftRecord = normalizeSalesRequestRecord({
+      ...existingRequest,
+      ...patch,
+      id: requestId,
+      createdAt: existingRequest.createdAt || now,
+      updatedAt: now,
+    });
+    const automationResult = await applySalesRequestAutomationOnSave({
+      existingRequest,
+      requestRecord: draftRecord,
+      nowIso: now,
+    });
+    const requestRecord = normalizeSalesRequestRecord({
+      ...automationResult.record,
+      id: requestId,
+      createdAt: existingRequest.createdAt || draftRecord.createdAt || now,
+      updatedAt: now,
+    });
+    store.salesRequests[existingIndex] = requestRecord;
+    if (USE_POSTGRES) {
+      await upsertSalesRequestToDb(requestRecord, currentUser?.email || null);
+      scheduleStoreSnapshotWrite(store, "sales_request_patch");
+    } else {
+      await writeJson(STORE_PATH, store);
+    }
+    const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, [requestRecord]);
+    return sendJson(res, 200, {
+      ...requestRecord,
+      _automation: automationResult.automation || { action: "none" },
+      _sheetSync: sheetSync,
+    });
+  }
+
   if (url.pathname === "/api/sales/requests/bulk-assignment" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
@@ -8686,10 +8779,11 @@ async function handleApi(req, res, url) {
       });
     }
     if (!updatedRequests.length) return sendJson(res, 404, { error: "requests_not_found" });
-    await writeJson(STORE_PATH, store);
-    // Dual-write SQL per ogni record aggiornato
-    for (const rec of updatedRequests) {
-      upsertSalesRequestToDb(rec, currentUser?.email || null).catch(() => {});
+    if (USE_POSTGRES) {
+      await Promise.all(updatedRequests.map((rec) => upsertSalesRequestToDb(rec, currentUser?.email || null)));
+      scheduleStoreSnapshotWrite(store, "sales_request_bulk_assignment");
+    } else {
+      await writeJson(STORE_PATH, store);
     }
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, updatedRequests);
     return sendJson(res, 200, {
