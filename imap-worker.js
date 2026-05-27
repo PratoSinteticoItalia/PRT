@@ -35,6 +35,19 @@ async function loadImapFlow() {
   }
 }
 
+let mailparserLib = null;
+async function loadMailParser() {
+  if (mailparserLib) return mailparserLib;
+  try {
+    const mod = await import("mailparser");
+    mailparserLib = mod.simpleParser || mod.default?.simpleParser;
+    return mailparserLib;
+  } catch (err) {
+    console.warn("[imap-worker] mailparser non disponibile:", err?.message || err);
+    return null;
+  }
+}
+
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 min
 const DEFAULT_MAILBOX = "INBOX";
 const PARSER_VERSION = "v2-multi-template";
@@ -380,19 +393,43 @@ async function runPollCycle(pool) {
 
       const fetchRange = lastUid > 0 ? `${lastUid + 1}:*` : "1:*";
       let count = 0;
+      // STRATEGIA: scarichiamo il messaggio MIME completo (source: true,
+      // imapflow usa BODY.PEEK[] universalmente supportato) e parsiamo
+      // localmente con mailparser. Necessario per server Dovecot stretti
+      // (es. SiteGround) che rifiutano la sintassi BODY[1.MIME] usata
+      // dall'opzione bodyParts.
+      const simpleParser = await loadMailParser();
+      console.log(`[imap-worker] starting fetch range ${fetchRange}...`);
       for await (const msg of client.fetch(fetchRange, {
         uid: true,
         envelope: true,
-        bodyParts: ["text", "html"],
-        source: false,
+        source: true,
       }, { uid: true })) {
         count++;
         workerState.totalSeen++;
+        let bodyText = "";
+        let bodyHtml = "";
+        if (simpleParser && msg.source) {
+          try {
+            const parsedMime = await simpleParser(msg.source);
+            bodyText = String(parsedMime.text || "");
+            bodyHtml = String(parsedMime.html || "");
+          } catch (err) {
+            console.warn(`[imap-worker] mailparser failed uid=${msg.uid}:`, err?.message);
+          }
+        }
+        // Iniettiamo i body parsati nel message per il parser PSI
+        msg.bodyText = bodyText;
+        msg.bodyHtml = bodyHtml;
         const messageId = String(msg?.envelope?.messageId || `uid:${cfg.mailbox}:${msg.uid}`).trim();
         const parsed = parseLeadEmail(msg);
         const ok = await persistShadowRecord(pool, messageId, msg.uid, cfg.mailbox, parsed);
         if (ok) workerState.totalParsed++; else workerState.totalFailed++;
+        if (count % 100 === 0) {
+          console.log(`[imap-worker] progress: ${count} email processate (parsed=${workerState.totalParsed}, failed=${workerState.totalFailed})`);
+        }
       }
+      console.log(`[imap-worker] fetch completed: ${count} email in this cycle (parsed=${workerState.totalParsed}, failed=${workerState.totalFailed})`);
       workerState.lastSuccessAt = new Date();
       workerState.lastError = null;
       return { fetched: count, lastUid };
