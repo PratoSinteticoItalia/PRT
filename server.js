@@ -5358,7 +5358,7 @@ async function getSalesRequestSheetWriteColumns(config = {}, spreadsheetId = "",
   const cacheKey = `${spreadsheetId}::${normalizeSheetKey(sheetName)}`;
   const cached = salesRequestSheetColumnsCache.get(cacheKey);
   if (cached && Number(cached.expiresAt || 0) > Date.now()) {
-    return { ...cached.columns };
+    return { ...cached.columns, _rawHeaders: cached.rawHeaders };
   }
   const encodedHeaderRange = encodeURIComponent(`${quoteSheetName(sheetName)}!1:1`);
   const headersPayload = await googleSheetsFetch(
@@ -5366,24 +5366,85 @@ async function getSalesRequestSheetWriteColumns(config = {}, spreadsheetId = "",
     `/spreadsheets/${spreadsheetId}/values/${encodedHeaderRange}`,
   );
   const headers = Array.isArray(headersPayload?.values?.[0]) ? headersPayload.values[0] : [];
+  // Fase 5 mirror Portal→Sheets: mappiamo ogni header conosciuto al
+  // proprio field del record sales_request. Usato sia per UPDATE
+  // (status, assignment, note, ...) sia per APPEND (orfani imap).
   const columns = {
     assignment: "",
     status: "",
+    name: "",
+    surname: "",
+    fullName: "",
+    city: "",
+    phone: "",
+    email: "",
+    sqm: "",
+    requestedHeight: "",
+    service: "",
+    surface: "",
+    note: "",
+    whatsappTemplate: "",
+    source: "",
   };
   headers.forEach((header, index) => {
     const normalizedHeader = normalizeSalesRequestImportHeader(header);
-    if (!columns.assignment && isSalesRequestAssignmentHeader(normalizedHeader)) {
-      columns.assignment = columnIndexToA1(index);
-    }
-    if (!columns.status && isSalesRequestStatusHeader(normalizedHeader)) {
-      columns.status = columnIndexToA1(index);
-    }
+    const a1 = columnIndexToA1(index);
+    if (!columns.assignment && isSalesRequestAssignmentHeader(normalizedHeader)) columns.assignment = a1;
+    if (!columns.status && isSalesRequestStatusHeader(normalizedHeader)) columns.status = a1;
+    if (!columns.name && ["nome", "name", "first name", "firstname"].includes(normalizedHeader)) columns.name = a1;
+    if (!columns.surname && ["cognome", "surname", "last name", "lastname"].includes(normalizedHeader)) columns.surname = a1;
+    if (!columns.fullName && ["cliente", "customer", "full name", "nome completo", "richiesta", "lead"].includes(normalizedHeader)) columns.fullName = a1;
+    if (!columns.city && ["citta", "city", "comune"].includes(normalizedHeader)) columns.city = a1;
+    if (!columns.phone && ["telefono", "phone", "tel", "mobile", "cellulare"].includes(normalizedHeader)) columns.phone = a1;
+    if (!columns.email && ["email", "mail"].includes(normalizedHeader)) columns.email = a1;
+    if (!columns.sqm && isSalesRequestSqmHeader(normalizedHeader)) columns.sqm = a1;
+    if (!columns.requestedHeight && isSalesRequestHeightHeader(normalizedHeader)) columns.requestedHeight = a1;
+    if (!columns.service && ["servizio", "service", "tipologia"].includes(normalizedHeader)) columns.service = a1;
+    if (!columns.surface && ["fondo", "surface", "superficie"].includes(normalizedHeader)) columns.surface = a1;
+    if (!columns.note && ["note", "notes", "annotazioni", "appunti"].includes(normalizedHeader)) columns.note = a1;
+    if (!columns.whatsappTemplate && ["whatsapp", "wa", "messaggio whatsapp", "whatsapp template"].includes(normalizedHeader)) columns.whatsappTemplate = a1;
+    if (!columns.source && ["origine", "fonte", "source"].includes(normalizedHeader)) columns.source = a1;
   });
   salesRequestSheetColumnsCache.set(cacheKey, {
     columns: { ...columns },
+    rawHeaders: [...headers],
     expiresAt: Date.now() + SALES_REQUEST_SHEET_COLUMNS_CACHE_TTL_MS,
   });
-  return columns;
+  return { ...columns, _rawHeaders: [...headers] };
+}
+
+// Mappa un record sales_request → array di valori coerente con gli headers del foglio.
+// Usata per APPEND (orfani imap → nuova riga sheets).
+function buildSalesRequestSheetRow(record, columns, rawHeaders = []) {
+  const row = new Array(rawHeaders.length).fill("");
+  const setAt = (a1Letter, value) => {
+    if (!a1Letter) return;
+    // Converti A1 letter (es. "C") in indice 0-based
+    let idx = 0;
+    for (const ch of String(a1Letter).toUpperCase()) {
+      idx = idx * 26 + (ch.charCodeAt(0) - 64);
+    }
+    idx -= 1;
+    if (idx >= 0 && idx < row.length) row[idx] = String(value || "");
+  };
+  const fullName = [record.name || record.first_name || record.firstName || "", record.surname || record.last_name || record.lastName || ""]
+    .filter(Boolean).join(" ").trim();
+  setAt(columns.fullName, fullName);
+  setAt(columns.name, record.name || record.first_name || record.firstName || "");
+  setAt(columns.surname, record.surname || record.last_name || record.lastName || "");
+  setAt(columns.city, record.city || "");
+  setAt(columns.phone, record.phone || record.telefono || "");
+  setAt(columns.email, record.email || "");
+  setAt(columns.sqm, record.sqm || record.metri_quadri || "");
+  setAt(columns.requestedHeight, record.requestedHeight || record.altezza || "");
+  setAt(columns.service, record.service || record.posa_in_opera || "");
+  setAt(columns.surface, record.surface || record.fondo || "");
+  setAt(columns.note, record.note || "");
+  setAt(columns.whatsappTemplate, record.whatsappTemplate || "");
+  setAt(columns.source, record.source || "imap");
+  setAt(columns.assignment, serializeSalesRequestAssignmentForSheet(record.assignment));
+  setAt(columns.status, serializeSalesRequestStatusForSheet(record.status));
+  return row;
 }
 
 async function syncSalesRequestsToGoogleSheet(config = {}, records = []) {
@@ -5391,67 +5452,131 @@ async function syncSalesRequestsToGoogleSheet(config = {}, records = []) {
   if (!normalizedConfig.serviceAccountEmail || !normalizedConfig.privateKey) {
     return { action: "skipped", reason: "missing_service_account", updatedCells: 0 };
   }
-  const googleRecords = (Array.isArray(records) ? records : [])
-    .map(normalizeSalesRequestRecord)
-    .filter((record) => getGoogleSheetRequestRecordKey(record));
-  if (!googleRecords.length) {
-    return { action: "skipped", reason: "no_google_sheet_rows", updatedCells: 0 };
-  }
-  const dataBySpreadsheet = new Map();
-  const groups = new Map();
-  googleRecords.forEach((record) => {
-    const key = getGoogleSheetRequestRecordKey(record);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(record);
+  const allRecords = (Array.isArray(records) ? records : []).map(normalizeSalesRequestRecord);
+  // I record già provenienti da Sheets vengono UPDATE-ati alla loro riga esistente.
+  const googleRecords = allRecords.filter((record) => getGoogleSheetRequestRecordKey(record));
+  // I record di altra origine (imap/manual) che NON sono ancora su Sheets
+  // vengono APPESI come nuove righe (Fase 5 mirror Portal→Sheets).
+  // Servono dati cliente per evitare di appendere righe vuote.
+  const orphanRecords = allRecords.filter((record) => {
+    if (getGoogleSheetRequestRecordKey(record)) return false;
+    const src = String(record.source || "").toLowerCase();
+    if (src === "google-sheets") return false; // safety
+    const hasContact = Boolean(record.email || record.phone);
+    const hasName = Boolean(record.name || record.surname);
+    return hasContact && hasName;
   });
-  for (const recordsGroup of groups.values()) {
-    const firstRecord = recordsGroup[0];
-    const spreadsheetId = String(firstRecord.sourceSpreadsheetId || "").trim();
-    const sheetName = String(firstRecord.sourceSheetName || "").trim();
-    const columns = await getSalesRequestSheetWriteColumns(normalizedConfig, spreadsheetId, sheetName);
-    if (!dataBySpreadsheet.has(spreadsheetId)) dataBySpreadsheet.set(spreadsheetId, []);
-    const data = dataBySpreadsheet.get(spreadsheetId);
-    recordsGroup.forEach((record) => {
-      const rowNumber = Number(record.sourceRowNumber || 0);
-      if (columns.assignment) {
-        data.push({
-          range: `${quoteSheetName(sheetName)}!${columns.assignment}${rowNumber}`,
-          values: [[serializeSalesRequestAssignmentForSheet(record.assignment)]],
-        });
-      }
-      if (columns.status) {
-        data.push({
-          range: `${quoteSheetName(sheetName)}!${columns.status}${rowNumber}`,
-          values: [[serializeSalesRequestStatusForSheet(record.status)]],
-        });
-      }
-    });
+  if (!googleRecords.length && !orphanRecords.length) {
+    return { action: "skipped", reason: "no_records_to_mirror", updatedCells: 0 };
   }
-  const updateBatches = Array.from(dataBySpreadsheet.entries()).filter(([, data]) => data.length);
-  if (!updateBatches.length) {
-    return { action: "skipped", reason: "missing_sheet_columns", updatedCells: 0 };
-  }
+
   let updatedCells = 0;
   let updatedRows = 0;
-  for (const [spreadsheetId, data] of updateBatches) {
-    const payload = await googleSheetsFetch(
-      normalizedConfig,
-      `/spreadsheets/${spreadsheetId}/values:batchUpdate`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          valueInputOption: "USER_ENTERED",
-          data,
-        }),
-      },
-    );
-    updatedCells += Number(payload?.totalUpdatedCells || data.length);
-    updatedRows += Number(payload?.totalUpdatedRows || 0);
+  let appendedRows = 0;
+
+  // ─── UPDATE: record che vengono originariamente da Sheets ────────────────
+  if (googleRecords.length) {
+    const dataBySpreadsheet = new Map();
+    const groups = new Map();
+    googleRecords.forEach((record) => {
+      const key = getGoogleSheetRequestRecordKey(record);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(record);
+    });
+    for (const recordsGroup of groups.values()) {
+      const firstRecord = recordsGroup[0];
+      const spreadsheetId = String(firstRecord.sourceSpreadsheetId || "").trim();
+      const sheetName = String(firstRecord.sourceSheetName || "").trim();
+      const columns = await getSalesRequestSheetWriteColumns(normalizedConfig, spreadsheetId, sheetName);
+      if (!dataBySpreadsheet.has(spreadsheetId)) dataBySpreadsheet.set(spreadsheetId, []);
+      const data = dataBySpreadsheet.get(spreadsheetId);
+      recordsGroup.forEach((record) => {
+        const rowNumber = Number(record.sourceRowNumber || 0);
+        // Fase 5: estendiamo l'update a TUTTI i campi conosciuti (era solo
+        // assignment + status). I dati cliente vengono mantenuti aggiornati
+        // anche se modificati nel CRM.
+        const pushCell = (a1, value) => {
+          if (!a1 || value == null) return;
+          data.push({
+            range: `${quoteSheetName(sheetName)}!${a1}${rowNumber}`,
+            values: [[String(value)]],
+          });
+        };
+        pushCell(columns.assignment, serializeSalesRequestAssignmentForSheet(record.assignment));
+        pushCell(columns.status, serializeSalesRequestStatusForSheet(record.status));
+        pushCell(columns.note, record.note || "");
+        pushCell(columns.whatsappTemplate, record.whatsappTemplate || "");
+        // Dati cliente: solo se non vuoti (non sovrascrivere con "" su Sheets)
+        if (record.name) pushCell(columns.name, record.name);
+        if (record.surname) pushCell(columns.surname, record.surname);
+        if (record.city) pushCell(columns.city, record.city);
+        if (record.phone) pushCell(columns.phone, record.phone);
+        if (record.email) pushCell(columns.email, record.email);
+        if (record.sqm) pushCell(columns.sqm, record.sqm);
+        if (record.requestedHeight) pushCell(columns.requestedHeight, record.requestedHeight);
+        if (record.service) pushCell(columns.service, record.service);
+        if (record.surface) pushCell(columns.surface, record.surface);
+      });
+    }
+    const updateBatches = Array.from(dataBySpreadsheet.entries()).filter(([, data]) => data.length);
+    for (const [spreadsheetId, data] of updateBatches) {
+      const payload = await googleSheetsFetch(
+        normalizedConfig,
+        `/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            valueInputOption: "USER_ENTERED",
+            data,
+          }),
+        },
+      );
+      updatedCells += Number(payload?.totalUpdatedCells || data.length);
+      updatedRows += Number(payload?.totalUpdatedRows || 0);
+    }
   }
+
+  // ─── APPEND: record orfani (imap/manual) non ancora su Sheets ────────────
+  // Fase 5 mirror Portal→Sheets. Risolviamo lo spreadsheet attivo dal config.
+  if (orphanRecords.length) {
+    try {
+      if (normalizedConfig.spreadsheetInput) {
+        const spreadsheetId = resolveSpreadsheetId(normalizedConfig.spreadsheetInput);
+        // Metadata per risolvere nome del foglio attivo
+        const metadata = await googleSheetsFetch(
+          normalizedConfig,
+          `/spreadsheets/${spreadsheetId}?fields=sheets.properties.title,sheets.properties.index`,
+        );
+        const sheetName = getResolvedSheetTitle(normalizedConfig, metadata);
+        if (sheetName) {
+          const colsResp = await getSalesRequestSheetWriteColumns(normalizedConfig, spreadsheetId, sheetName);
+          const rawHeaders = colsResp._rawHeaders || [];
+          const rows = orphanRecords.map((record) => buildSalesRequestSheetRow(record, colsResp, rawHeaders));
+          if (rows.length && rawHeaders.length) {
+            const encodedRange = encodeURIComponent(quoteSheetName(sheetName));
+            const appendPayload = await googleSheetsFetch(
+              normalizedConfig,
+              `/spreadsheets/${spreadsheetId}/values/${encodedRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+              {
+                method: "POST",
+                body: JSON.stringify({ values: rows }),
+              },
+            );
+            appendedRows = Number(appendPayload?.updates?.updatedRows || rows.length);
+            updatedCells += Number(appendPayload?.updates?.updatedCells || 0);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[mirror-sheets] append orfani fallito:", err?.message || err);
+    }
+  }
+
   return {
-    action: "updated",
+    action: updatedRows || appendedRows ? "updated" : "skipped",
     updatedCells,
-    updatedRows: updatedRows || googleRecords.length,
+    updatedRows: updatedRows + appendedRows,
+    appendedRows,
   };
 }
 
@@ -5486,14 +5611,23 @@ function enqueueSalesRequestsGoogleSheetSync(config = {}, records = []) {
   if (!normalizedConfig.serviceAccountEmail || !normalizedConfig.privateKey) {
     return { action: "skipped", reason: "missing_service_account", updatedCells: 0 };
   }
-  const googleRecords = (Array.isArray(records) ? records : [])
-    .map(normalizeSalesRequestRecord)
-    .filter((record) => getGoogleSheetRequestRecordKey(record));
-  if (!googleRecords.length) {
-    return { action: "skipped", reason: "no_google_sheet_rows", updatedCells: 0 };
+  // Fase 5 mirror Portal→Sheets: accodiamo anche record non-google-sheets
+  // (orfani imap/manual) per fare APPEND di nuove righe su Sheets.
+  // Filtra solo record che hanno dati cliente minimi (nome + contatto).
+  const allRecords = (Array.isArray(records) ? records : []).map(normalizeSalesRequestRecord);
+  const googleRecords = allRecords.filter((record) => getGoogleSheetRequestRecordKey(record));
+  const orphanRecords = allRecords.filter((record) => {
+    if (getGoogleSheetRequestRecordKey(record)) return false;
+    const src = String(record.source || "").toLowerCase();
+    if (src === "google-sheets") return false;
+    return Boolean((record.email || record.phone) && (record.name || record.surname));
+  });
+  const queueRecords = [...googleRecords, ...orphanRecords];
+  if (!queueRecords.length) {
+    return { action: "skipped", reason: "no_records_to_mirror", updatedCells: 0 };
   }
   pendingSalesRequestSheetSyncConfig = normalizedConfig;
-  googleRecords.forEach((record) => {
+  queueRecords.forEach((record) => {
     pendingSalesRequestSheetSyncRecords.set(getSalesRequestSheetSyncQueueKey(record), record);
   });
   scheduleSalesRequestSheetSyncFlush();
@@ -8202,6 +8336,20 @@ async function handleApi(req, res, url) {
       const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit") || 200)));
       const onlyOk = String(url.searchParams.get("onlyOk") || "true").toLowerCase() !== "false";
       const result = await reconcileShadowLeads(pool, { dryRun, limit, onlyOk });
+      // Fase 5 mirror Portal→Sheets: dopo il reconcile, propaghiamo gli
+      // imported (orfani) su Sheets come APPEND di nuove righe. Solo se non
+      // dryRun. Lo store JSONB ha gia' i nuovi record dopo reconcile reale.
+      if (!dryRun && Number(result.imported) > 0) {
+        try {
+          const store = await readJson(STORE_PATH, {});
+          const importedRecords = (Array.isArray(store.salesRequests) ? store.salesRequests : [])
+            .filter((r) => String(r.source || "") === "imap")
+            .slice(-Number(result.imported)); // gli ultimi N importati
+          enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, importedRecords);
+        } catch (mirrorErr) {
+          console.warn("[reconcile] mirror Sheets fallito:", mirrorErr?.message);
+        }
+      }
       return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "reconcile_failed") });
