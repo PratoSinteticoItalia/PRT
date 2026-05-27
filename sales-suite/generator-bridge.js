@@ -270,12 +270,26 @@
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-offer-heading {
+      color: #ffffff !important;
       padding: 6px 14px !important;
       font-size: 16px !important;
+      font-weight: 900 !important;
       line-height: 1.1 !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
+    }
+
+    .pdf-root .codex-pdf-offer-heading .codex-offer-heading-text {
+      color: #ffffff !important;
+      display: inline-block !important;
+      font: inherit !important;
+      font-weight: 900 !important;
+      letter-spacing: inherit !important;
+      line-height: inherit !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      white-space: nowrap !important;
     }
 
     .pdf-root.codex-pdf-export-compact .codex-pdf-pricing-table th {
@@ -1853,7 +1867,15 @@
     if (!(root instanceof Element)) return;
     const heading = findElementByTextWithin(root, "div, span, p", "OFFERTA PER");
     if (!(heading instanceof HTMLElement)) return;
-    if (heading.dataset.cpsiOffer === "1") return;
+    const label = normalizeLabel(heading.textContent || "");
+    let textSpan = heading.querySelector(":scope > .codex-offer-heading-text");
+    if (!(textSpan instanceof HTMLElement) && label.includes("offerta per")) {
+      heading.textContent = "";
+      textSpan = document.createElement("span");
+      textSpan.className = "codex-offer-heading-text";
+      textSpan.textContent = label.toUpperCase();
+      heading.appendChild(textSpan);
+    }
     heading.dataset.cpsiOffer = "1";
     heading.style.setProperty(
       "background",
@@ -1867,9 +1889,14 @@
     heading.style.setProperty("padding", "9px 22px 11px", "important");
     heading.style.setProperty("letter-spacing", "1.8px", "important");
     heading.style.setProperty("box-shadow", "0 2px 6px rgba(28,66,41,0.18)", "important");
+    heading.style.setProperty("opacity", "1", "important");
+    heading.style.setProperty("visibility", "visible", "important");
     // Tutti i child eredita il bianco
     Array.from(heading.querySelectorAll("*")).forEach((el) => {
-      if (el instanceof HTMLElement) el.style.setProperty("color", "#ffffff", "important");
+      if (!(el instanceof HTMLElement)) return;
+      el.style.setProperty("color", "#ffffff", "important");
+      el.style.setProperty("opacity", "1", "important");
+      el.style.setProperty("visibility", "visible", "important");
     });
   }
 
