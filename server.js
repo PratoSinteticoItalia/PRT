@@ -37,7 +37,7 @@ const DEFAULT_SALES_REQUEST_SPREADSHEET = "https://docs.google.com/spreadsheets/
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_FETCH_TIMEOUT_MS = 10_000;
-const SALES_REQUEST_SHEET_SYNC_DEBOUNCE_MS = Math.max(300, Number(process.env.SALES_REQUEST_SHEET_SYNC_DEBOUNCE_MS || 500));
+const SALES_REQUEST_SHEET_SYNC_DEBOUNCE_MS = Math.max(50, Number(process.env.SALES_REQUEST_SHEET_SYNC_DEBOUNCE_MS || 200));
 const SALES_REQUEST_SHEET_COLUMNS_CACHE_TTL_MS = Math.max(30_000, Number(process.env.SALES_REQUEST_SHEET_COLUMNS_CACHE_TTL_MS || 1000 * 60 * 10));
 const MAX_CREW_LOGO_DATA_URL_LENGTH = 6_500_000;
 const SALES_REQUEST_FIRST_CONTACT_SENT_STATUS = "1° contatto";
@@ -5413,19 +5413,33 @@ async function getSalesRequestSheetWriteColumns(config = {}, spreadsheetId = "",
   return { ...columns, _rawHeaders: [...headers] };
 }
 
+// Evita che Google Sheets interpreti valori che iniziano con +, -, =, @ come
+// formule (es. "+39 349..." → #ERROR! perche' viene parsato come +39). Il
+// prefisso ' (apostrofo) e' lo standard Google Sheets per "tratta come testo".
+// Lo USER_ENTERED rispetta l'apostrofo e lo nasconde nella visualizzazione.
+function safeSheetCellValue(value) {
+  if (value == null) return "";
+  const str = String(value);
+  if (!str.length) return str;
+  const first = str.charAt(0);
+  if (first === "+" || first === "-" || first === "=" || first === "@") {
+    return "'" + str;
+  }
+  return str;
+}
+
 // Mappa un record sales_request → array di valori coerente con gli headers del foglio.
 // Usata per APPEND (orfani imap → nuova riga sheets).
 function buildSalesRequestSheetRow(record, columns, rawHeaders = []) {
   const row = new Array(rawHeaders.length).fill("");
   const setAt = (a1Letter, value) => {
     if (!a1Letter) return;
-    // Converti A1 letter (es. "C") in indice 0-based
     let idx = 0;
     for (const ch of String(a1Letter).toUpperCase()) {
       idx = idx * 26 + (ch.charCodeAt(0) - 64);
     }
     idx -= 1;
-    if (idx >= 0 && idx < row.length) row[idx] = String(value || "");
+    if (idx >= 0 && idx < row.length) row[idx] = safeSheetCellValue(value);
   };
   const fullName = [record.name || record.first_name || record.firstName || "", record.surname || record.last_name || record.lastName || ""]
     .filter(Boolean).join(" ").trim();
@@ -5501,7 +5515,7 @@ async function syncSalesRequestsToGoogleSheet(config = {}, records = []) {
           if (!a1 || value == null) return;
           data.push({
             range: `${quoteSheetName(sheetName)}!${a1}${rowNumber}`,
-            values: [[String(value)]],
+            values: [[safeSheetCellValue(value)]],
           });
         };
         pushCell(columns.assignment, serializeSalesRequestAssignmentForSheet(record.assignment));
