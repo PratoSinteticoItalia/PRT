@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260527-imap-mime-v4";
+const APP_SHELL_VERSION = "20260527-reconcile-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6051,10 +6051,26 @@ async function showSalesDiagnostic() {
             ${fmtRow("Spreadsheet", sh.spreadsheetInput || "—")}
           </div>
           <div class="diag-block diag-block-wide">
-            <div class="diag-block-title">IMAP ${state.lang === "it" ? "(in arrivo, Fase 1)" : "(coming, Phase 1)"}</div>
+            <div class="diag-block-title">IMAP ${state.lang === "it" ? "(in arrivo)" : "(incoming)"}</div>
             ${fmtRow(state.lang === "it" ? "Attivo" : "Enabled", im.enabled ? "✓" : "—")}
             ${fmtRow(state.lang === "it" ? "Email viste (shadow)" : "Emails seen (shadow)", im.shadowRecordsTotal || 0)}
             ${fmtRow(state.lang === "it" ? "Ultima email vista" : "Last email seen", im.lastEmailSeenAt || "—")}
+            ${im.reconcile ? `
+              ${fmtRow(state.lang === "it" ? "Lead promossi nel CRM" : "Promoted to CRM", im.reconcile.promoted || 0)}
+              ${fmtRow(state.lang === "it" ? "Lead da riconciliare (OK)" : "Pending reconcile (OK)", im.reconcile.pendingOk || 0)}
+              ${fmtRow(state.lang === "it" ? "Lead no_match (autoresponder, ecc)" : "no_match (autoresponder, etc)", im.reconcile.pendingNoMatch || 0)}
+            ` : ""}
+            ${im.reconcile && im.reconcile.pendingOk > 0 ? `
+              <div class="diag-actions">
+                <button class="ghost-button small-button" type="button" data-action="reconcile-dry-run">
+                  ${state.lang === "it" ? "🔍 Simula riconciliazione (dry-run)" : "🔍 Simulate reconcile (dry-run)"}
+                </button>
+                <button class="primary-button small-button" type="button" data-action="reconcile-execute">
+                  ${state.lang === "it" ? "▶ Esegui riconciliazione" : "▶ Run reconcile"}
+                </button>
+              </div>
+              <div id="reconcile-output" class="reconcile-output"></div>
+            ` : ""}
           </div>
         </div>
         ${latestPreview}
@@ -21254,6 +21270,57 @@ bindEvent(ui.salesRequestClearServiceAccountButton, "click", () => saveSalesRequ
 bindEvent(ui.salesRequestSourceSaveButton, "click", () => saveSalesRequestSourceConfig());
 bindEvent(ui.salesRequestSourceSyncButton, "click", syncSalesRequestSource);
 bindEvent(ui.salesDiagnosticButton, "click", showSalesDiagnostic);
+// Delegated handler per le azioni dentro il pannello diagnostic (reconcile)
+bindEvent(ui.salesDiagnosticOutput, "click", async (event) => {
+  const btn = event.target.closest("[data-action]");
+  if (!btn) return;
+  const action = btn.dataset.action;
+  if (action !== "reconcile-dry-run" && action !== "reconcile-execute") return;
+  const dryRun = action === "reconcile-dry-run";
+  const outId = "reconcile-output";
+  const outEl = document.getElementById(outId);
+  if (!outEl) return;
+  if (!dryRun) {
+    const confirmed = window.confirm(
+      state.lang === "it"
+        ? "Esegui la riconciliazione SUL SERIO? Verranno creati nuovi sales_requests per i lead orfani e linkati quelli esistenti. Procedere?"
+        : "Run reconcile FOR REAL? New sales_requests will be created for orphan leads and existing ones linked. Proceed?",
+    );
+    if (!confirmed) return;
+  }
+  btn.disabled = true;
+  outEl.innerHTML = `<div class="info-card">${state.lang === "it" ? (dryRun ? "Simulazione in corso…" : "Riconciliazione in corso…") : (dryRun ? "Simulating…" : "Reconciling…")}</div>`;
+  try {
+    const payload = await apiFetch(`/api/sales/incoming-leads/shadow/reconcile?dryRun=${dryRun}&limit=1000`, { method: "POST" });
+    const sampleHtml = (label, items, color) => {
+      if (!items || !items.length) return "";
+      return `<div class="reconcile-samples">
+        <div class="reconcile-samples-title" style="color:${color}">${escapeHtml(label)}</div>
+        <ul>${items.map((s) => `<li>${escapeHtml(s.nome || "—")} · ${escapeHtml(s.email || "")} · shadow #${escapeHtml(String(s.shadow_id || "").slice(0, 8))}${s.matched_sales_id ? ` → ${escapeHtml(String(s.matched_sales_id).slice(0, 8))}` : ""}</li>`).join("")}</ul>
+      </div>`;
+    };
+    outEl.innerHTML = `
+      <div class="diag-panel" style="margin-top:10px;">
+        <div class="diag-panel-head">
+          <strong>${payload.dryRun ? (state.lang === "it" ? "🔍 Dry-run completata" : "🔍 Dry-run done") : (state.lang === "it" ? "✅ Riconciliazione eseguita" : "✅ Reconcile done")}</strong>
+        </div>
+        <div class="diag-grid">
+          <div class="diag-block">
+            <div class="diag-block-title">${state.lang === "it" ? "Risultato" : "Result"}</div>
+            ${["considered","matched","imported","skippedIncompleteFingerprint"].map((k) => `<div class="diag-row"><span class="diag-row-l">${k}</span><span class="diag-row-v">${escapeHtml(String(payload[k] ?? 0))}</span></div>`).join("")}
+          </div>
+        </div>
+        ${sampleHtml(state.lang === "it" ? "Esempi linkati a esistenti (max 5)" : "Linked samples (max 5)", payload.samples?.matched, "#1c4229")}
+        ${sampleHtml(state.lang === "it" ? "Esempi importati come orfani (max 5)" : "Imported orphan samples (max 5)", payload.samples?.imported, "#3d5a3f")}
+        ${(payload.errors || []).length ? `<div class="reconcile-samples"><div class="reconcile-samples-title" style="color:#c0392b">${escapeHtml(state.lang === "it" ? "Errori" : "Errors")}</div><ul>${payload.errors.slice(0, 5).map((e) => `<li>${escapeHtml(String(e.message || e))}</li>`).join("")}</ul></div>` : ""}
+      </div>
+    `;
+  } catch (err) {
+    outEl.innerHTML = `<div class="info-card status-error">${escapeHtml(state.lang === "it" ? "Errore" : "Error")}: ${escapeHtml(String(err?.message || err))}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+});
 bindEvent(ui.salesRequestOpenSheetButton, "click", openSalesRequestSourceSheet);
 bindEvent(ui.salesGeneratorEmailButton, "click", (event) => {
   const href = ui.salesGeneratorEmailButton?.getAttribute("href") || "";
