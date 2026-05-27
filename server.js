@@ -733,6 +733,29 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS incoming_leads_shadow_recv_idx    ON incoming_leads_shadow (received_at DESC);
       CREATE INDEX IF NOT EXISTS incoming_leads_shadow_status_idx  ON incoming_leads_shadow (parse_status);
       CREATE INDEX IF NOT EXISTS incoming_leads_shadow_promoted_idx ON incoming_leads_shadow (promoted_to_sales_request_id);
+      -- ─────────────────────────────────────────────────────────────────────
+      -- Outbox persistente per job critici (Step 1 — Persistent Queue).
+      -- Sostituisce i .catch(()=>{}) silenziosi su upsert sales_request,
+      -- audit_log e simili con retry tracciato + dead letter dopo N tentativi.
+      -- Stati: pending (in attesa) → processing (in volo) → done | dead.
+      -- next_attempt_at gestisce backoff esponenziale.
+      -- ─────────────────────────────────────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS outbox (
+        id BIGSERIAL PRIMARY KEY,
+        job_type TEXT NOT NULL,
+        payload JSONB NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        max_attempts INTEGER NOT NULL DEFAULT 5,
+        next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        done_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS outbox_ready_idx     ON outbox (next_attempt_at) WHERE status = 'pending';
+      CREATE INDEX IF NOT EXISTS outbox_dead_idx      ON outbox (created_at DESC) WHERE status = 'dead';
+      CREATE INDEX IF NOT EXISTS outbox_type_status_idx ON outbox (job_type, status);
     `);
     console.log("[db] schema relazionale verificato");
   })().catch((err) => {
@@ -1163,7 +1186,7 @@ async function deleteJobFromDb(id) {
   }
 }
 
-async function upsertSalesRequestToDb(request, userId = null) {
+async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
   if (!USE_POSTGRES || !request?.id) return;
   invalidateSalesRequestsDbCache(); // il cache diventa stale dopo ogni scrittura
   try {
@@ -1239,6 +1262,9 @@ async function upsertSalesRequestToDb(request, userId = null) {
     }
   } catch (err) {
     console.warn("[db] upsertSalesRequestToDb:", err?.message);
+    // opts.rethrow=true → usato dai call sites critici (via outbox) per
+    // distinguere "salvato" da "fallito" invece di silent fail.
+    if (opts && opts.rethrow) throw err;
   }
 }
 
@@ -1291,7 +1317,7 @@ async function updateSalesRequestMicroFieldsInDb(request, patch = {}, existingRe
   return true;
 }
 
-async function deleteSalesRequestFromDb(id) {
+async function deleteSalesRequestFromDb(id, opts = {}) {
   if (!USE_POSTGRES || !id) return;
   invalidateSalesRequestsDbCache(); // il cache diventa stale dopo ogni scrittura
   try {
@@ -1299,6 +1325,7 @@ async function deleteSalesRequestFromDb(id) {
     await pool.query("DELETE FROM sales_requests WHERE id = $1", [String(id)]);
   } catch (err) {
     console.warn("[db] deleteSalesRequestFromDb:", err?.message);
+    if (opts && opts.rethrow) throw err;
   }
 }
 
@@ -1616,6 +1643,235 @@ function runExclusiveSessionWrite(task) {
   const nextRun = processSessionWriteQueue.catch(() => {}).then(task);
   processSessionWriteQueue = nextRun.catch((err) => { console.error("[session-write-queue]", err?.message || err); });
   return nextRun;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OUTBOX — Persistent retry queue (Step 1)
+//
+// Sostituisce il pattern `criticalOp().catch(() => {})` con un sistema dove
+// ogni fallimento è persistito in tabella `outbox` e ritentato con backoff.
+// Dopo `max_attempts` (default 5) il job va in `dead`.
+//
+// Uso (in Step 2):
+//   await enqueueOrRunOutboxJob("upsert_sales_request", { request, userId });
+//   // tenta sync; se fallisce, enqueue e ritorna senza throw
+//
+// Registry handlers: OUTBOX_HANDLERS (popolato in Step 2 vicino agli use case).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OUTBOX_HANDLERS = Object.create(null);
+
+function registerOutboxHandler(jobType, handler) {
+  if (typeof handler !== "function") throw new TypeError(`outbox handler for "${jobType}" non è una funzione`);
+  OUTBOX_HANDLERS[jobType] = handler;
+}
+
+// Backoff: 1m, 5m, 30m, 2h, 8h. Indici fuori range usano l'ultimo (8h).
+const OUTBOX_BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3600_000, 8 * 3600_000];
+
+function computeOutboxNextAttempt(attempts) {
+  const idx = Math.min(Math.max(0, attempts - 1), OUTBOX_BACKOFF_MS.length - 1);
+  const base = OUTBOX_BACKOFF_MS[idx];
+  // Jitter ±20% per evitare thundering herd su retry simultanei.
+  const jitter = base * (Math.random() * 0.4 - 0.2);
+  return new Date(Date.now() + base + jitter);
+}
+
+async function enqueueOutboxJob(jobType, payload, { maxAttempts } = {}) {
+  if (!USE_POSTGRES) {
+    console.warn(`[outbox] enqueue ignorato (no Postgres): ${jobType}`);
+    return null;
+  }
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const result = await pool.query(
+      `INSERT INTO outbox (job_type, payload, max_attempts)
+       VALUES ($1, $2::jsonb, $3)
+       RETURNING id`,
+      [String(jobType), JSON.stringify(payload || {}), Number(maxAttempts || 5)],
+    );
+    const id = result.rows[0]?.id || null;
+    console.log(`[outbox] enqueued #${id} type=${jobType}`);
+    // Trigger immediato senza aspettare il prossimo tick del processor.
+    setImmediate(() => { processOutboxOnce().catch((err) => console.error("[outbox] process error:", err?.message || err)); });
+    return id;
+  } catch (err) {
+    // Se non riusciamo neppure a salvare in outbox, è il caso peggiore:
+    // log a livello "critical" così è visibile nei log Render.
+    console.error(`[outbox][CRITICAL] enqueue failed type=${jobType}:`, err?.message || err);
+    return null;
+  }
+}
+
+/**
+ * Tenta `runner()` sincrono. Se solleva, enqueue il job in outbox per retry.
+ * Non rilancia mai: i call sites che oggi fanno .catch(()=>{}) continuano a funzionare,
+ * ma ora il fallimento è tracciato invece di sparire.
+ */
+async function enqueueOrRunOutboxJob(jobType, payload, runner) {
+  try {
+    return await runner(payload);
+  } catch (err) {
+    console.warn(`[outbox] sync run failed type=${jobType}, enqueuing for retry:`, err?.message || err);
+    await enqueueOutboxJob(jobType, payload);
+    return null;
+  }
+}
+
+let _outboxProcessorTimer = null;
+let _outboxProcessing = false;
+
+async function processOutboxOnce() {
+  if (!USE_POSTGRES) return { processed: 0, failed: 0 };
+  if (_outboxProcessing) return { processed: 0, failed: 0, skipped: true };
+  _outboxProcessing = true;
+  let processed = 0;
+  let failed = 0;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    // Loop fino a esaurimento (max 50 job per tick per non bloccare).
+    for (let i = 0; i < 50; i++) {
+      const client = await pool.connect();
+      let job = null;
+      try {
+        await client.query("BEGIN");
+        // FOR UPDATE SKIP LOCKED → pattern PG-queue safe-against-concurrent-workers.
+        const pick = await client.query(
+          `SELECT id, job_type, payload, attempts, max_attempts
+             FROM outbox
+            WHERE status = 'pending' AND next_attempt_at <= NOW()
+            ORDER BY id ASC
+            LIMIT 1 FOR UPDATE SKIP LOCKED`,
+        );
+        if (!pick.rowCount) {
+          await client.query("COMMIT");
+          break;
+        }
+        job = pick.rows[0];
+        await client.query(
+          `UPDATE outbox SET status = 'processing', updated_at = NOW() WHERE id = $1`,
+          [job.id],
+        );
+        await client.query("COMMIT");
+      } catch (err) {
+        try { await client.query("ROLLBACK"); } catch {}
+        console.error("[outbox] pick failed:", err?.message || err);
+        break;
+      } finally {
+        client.release();
+      }
+
+      if (!job) break;
+      const handler = OUTBOX_HANDLERS[job.job_type];
+      if (!handler) {
+        // Job type sconosciuto → manda in dead per evitare loop infiniti.
+        await pool.query(
+          `UPDATE outbox SET status = 'dead', last_error = $2, updated_at = NOW(), done_at = NOW() WHERE id = $1`,
+          [job.id, `unknown handler: ${job.job_type}`],
+        );
+        console.error(`[outbox] dead #${job.id}: unknown handler "${job.job_type}"`);
+        failed++;
+        continue;
+      }
+
+      try {
+        await handler(job.payload || {});
+        await pool.query(
+          `UPDATE outbox SET status = 'done', updated_at = NOW(), done_at = NOW(), attempts = attempts + 1 WHERE id = $1`,
+          [job.id],
+        );
+        processed++;
+        console.log(`[outbox] done #${job.id} type=${job.job_type}`);
+      } catch (err) {
+        const attempts = (job.attempts || 0) + 1;
+        const maxAttempts = job.max_attempts || 5;
+        if (attempts >= maxAttempts) {
+          await pool.query(
+            `UPDATE outbox SET status = 'dead', attempts = $2, last_error = $3, updated_at = NOW(), done_at = NOW() WHERE id = $1`,
+            [job.id, attempts, String(err?.message || err).slice(0, 1000)],
+          );
+          console.error(`[outbox] DEAD #${job.id} type=${job.job_type} after ${attempts} attempts:`, err?.message || err);
+          failed++;
+        } else {
+          const nextAt = computeOutboxNextAttempt(attempts);
+          await pool.query(
+            `UPDATE outbox SET status = 'pending', attempts = $2, next_attempt_at = $3,
+                                last_error = $4, updated_at = NOW() WHERE id = $1`,
+            [job.id, attempts, nextAt, String(err?.message || err).slice(0, 1000)],
+          );
+          console.warn(`[outbox] retry #${job.id} type=${job.job_type} attempt=${attempts}/${maxAttempts} next=${nextAt.toISOString()}`);
+          failed++;
+        }
+      }
+    }
+  } finally {
+    _outboxProcessing = false;
+  }
+  return { processed, failed };
+}
+
+function startOutboxProcessor(intervalMs = 30_000) {
+  if (_outboxProcessorTimer) return;
+  if (!USE_POSTGRES) {
+    console.log("[outbox] processor disabilitato (no Postgres)");
+    return;
+  }
+  // Tick iniziale dopo 5s (lascia respirare lo startup).
+  setTimeout(() => {
+    processOutboxOnce().catch((err) => console.error("[outbox] tick failed:", err?.message || err));
+  }, 5_000);
+  _outboxProcessorTimer = setInterval(() => {
+    processOutboxOnce().catch((err) => console.error("[outbox] tick failed:", err?.message || err));
+  }, intervalMs);
+  console.log(`[outbox] processor avviato (tick=${intervalMs}ms)`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Registrazione handler outbox per sales_request (Step 2).
+// Posizionati DOPO il blocco outbox per non incappare in TDZ su OUTBOX_HANDLERS.
+// Payload: { request, userId } per upsert, { id } per delete.
+// opts.rethrow=true forza il fallimento a propagarsi → la queue lo riprende
+// invece di considerarlo "ok silenzioso".
+// ─────────────────────────────────────────────────────────────────────────────
+registerOutboxHandler("upsert_sales_request", async (payload = {}) => {
+  const request = payload.request || null;
+  const userId = payload.userId || null;
+  if (!request?.id) throw new Error("upsert_sales_request: missing request.id in payload");
+  await upsertSalesRequestToDb(request, userId, { rethrow: true });
+});
+
+registerOutboxHandler("delete_sales_request", async (payload = {}) => {
+  const id = payload.id || null;
+  if (!id) throw new Error("delete_sales_request: missing id in payload");
+  await deleteSalesRequestFromDb(id, { rethrow: true });
+});
+
+async function getOutboxStats() {
+  if (!USE_POSTGRES) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const result = await pool.query(`
+      SELECT status, COUNT(*)::int AS count,
+             MIN(created_at) AS oldest_created_at,
+             MAX(updated_at) AS most_recent_updated_at
+        FROM outbox
+       GROUP BY status
+    `);
+    const stats = { pending: 0, processing: 0, done: 0, dead: 0, oldestPendingAge: null };
+    for (const row of result.rows) {
+      stats[row.status] = row.count;
+      if (row.status === "pending" && row.oldest_created_at) {
+        stats.oldestPendingAge = Math.floor((Date.now() - new Date(row.oldest_created_at).getTime()) / 1000);
+      }
+    }
+    return stats;
+  } catch (err) {
+    console.error("[outbox] stats failed:", err?.message || err);
+    return null;
+  }
 }
 
 async function readSessionEntry(sessionId = "") {
@@ -8521,9 +8777,15 @@ async function handleApi(req, res, url) {
       });
       store.salesRequests = [...importedRequests, ...manualRequests];
       await writeJson(STORE_PATH, store);
-      // Scrivi in SQL ogni richiesta importata (dual-write mancante in questo path)
+      // Scrivi in SQL ogni richiesta importata (dual-write mancante in questo path).
+      // Outbox queue: se il sync immediato fallisce (DB lento/lock), enqueue
+      // per retry persistente invece di perdere silenziosamente il salvataggio.
       for (const r of importedRequests) {
-        upsertSalesRequestToDb(r, currentUser?.email || null).catch(() => {});
+        enqueueOrRunOutboxJob(
+          "upsert_sales_request",
+          { request: r, userId: currentUser?.email || null },
+          (payload) => upsertSalesRequestToDb(payload.request, payload.userId, { rethrow: true }),
+        ).catch(() => {});
       }
       return sendJson(res, 200, {
         requests: store.salesRequests,
@@ -8651,6 +8913,44 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // Diagnostic endpoint per la persistent outbox (Step 3).
+  // Espone counts pending/processing/done/dead + età del job più vecchio in coda
+  // e gli ultimi 20 dead per debug. Pensato per banner UI futuro.
+  if (url.pathname === "/api/diagnostic/outbox" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const stats = await getOutboxStats();
+      let recentDead = [];
+      if (USE_POSTGRES) {
+        try {
+          const pool = await getPgPool();
+          const dead = await pool.query(
+            `SELECT id, job_type, attempts, last_error, created_at, done_at
+               FROM outbox WHERE status = 'dead'
+              ORDER BY done_at DESC NULLS LAST LIMIT 20`,
+          );
+          recentDead = dead.rows.map((r) => ({
+            id: String(r.id),
+            jobType: r.job_type,
+            attempts: r.attempts,
+            lastError: r.last_error,
+            createdAt: r.created_at,
+            doneAt: r.done_at,
+          }));
+        } catch {}
+      }
+      return sendJson(res, 200, {
+        ok: true,
+        stats: stats || { pending: 0, processing: 0, done: 0, dead: 0, oldestPendingAge: null },
+        recentDead,
+        registeredHandlers: Object.keys(OUTBOX_HANDLERS),
+      });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "outbox_diagnostic_failed") });
+    }
+  }
+
   if (url.pathname === "/api/sales/diagnostic" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
@@ -8766,7 +9066,13 @@ async function handleApi(req, res, url) {
       store.salesRequests.unshift(requestRecord);
     }
     await writeJson(STORE_PATH, store);
-    upsertSalesRequestToDb(requestRecord, currentUser?.email || null).catch(() => {});
+    // Outbox-backed: se l'upsert immediato fallisce, ritentato in background
+    // invece di sparire silenziosamente.
+    enqueueOrRunOutboxJob(
+      "upsert_sales_request",
+      { request: requestRecord, userId: currentUser?.email || null },
+      (payload) => upsertSalesRequestToDb(payload.request, payload.userId, { rethrow: true }),
+    ).catch(() => {});
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, [requestRecord]);
     return sendJson(res, 200, {
       ...requestRecord,
@@ -8925,7 +9231,12 @@ async function handleApi(req, res, url) {
     if (nextRequests.length === store.salesRequests.length) return sendJson(res, 404, { error: "request_not_found" });
     store.salesRequests = nextRequests;
     await writeJson(STORE_PATH, store);
-    deleteSalesRequestFromDb(requestId).catch(() => {});
+    // Outbox-backed: se la delete immediata fallisce, ritentata in background.
+    enqueueOrRunOutboxJob(
+      "delete_sales_request",
+      { id: requestId },
+      (payload) => deleteSalesRequestFromDb(payload.id, { rethrow: true }),
+    ).catch(() => {});
     return sendJson(res, 200, { ok: true });
   }
 
@@ -10716,6 +11027,10 @@ server.listen(PORT, HOST, () => {
         } catch (err) {
           console.warn("[imap-worker] start failed:", err?.message || err);
         }
+        // Persistent outbox processor (Step 1). Lavora i job pendenti
+        // ogni 30s. Handler registrati in Step 2 vicino agli use case.
+        try { startOutboxProcessor(30_000); }
+        catch (err) { console.warn("[outbox] start failed:", err?.message || err); }
       })
       .catch((err) => console.error("[db] relational schema init failed", err));
     readJson(STORE_PATH, {}).catch((err) => console.error("[store-cache] warm-up failed", err));
