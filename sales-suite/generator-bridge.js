@@ -3252,8 +3252,45 @@
     await waitForAnimationFrame();
   }
 
+  function decorateOfferHeadingText(pdf, sourceElement) {
+    if (!pdf) return false;
+    const sourceRoot = sourceElement instanceof Element ? sourceElement : null;
+    if (!sourceRoot) return false;
+    const offerHeading = findElementByTextWithin(sourceRoot, "div, span, p", "OFFERTA PER");
+    if (!(offerHeading instanceof HTMLElement)) return false;
+    const label = String(offerHeading.textContent || "").replace(/\s+/g, " ").trim().toUpperCase();
+    if (!label) return false;
+
+    const rootRect = sourceRoot.getBoundingClientRect();
+    const headingRect = offerHeading.getBoundingClientRect();
+    if (!rootRect.width || !headingRect.width || !headingRect.height) return false;
+
+    const pageWidth = Number(pdf.internal?.pageSize?.getWidth?.() || 210);
+    const contentMargin = 3;
+    const contentWidth = Math.max(1, pageWidth - (contentMargin * 2));
+    const scale = contentWidth / rootRect.width;
+    const x = contentMargin + ((headingRect.left - rootRect.left) + (headingRect.width / 2)) * scale;
+    const y = contentMargin + ((headingRect.top - rootRect.top) + (headingRect.height / 2)) * scale;
+
+    try {
+      pdf.setPage(1);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(11.2);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(label, x, y, { align: "center", baseline: "middle" });
+      pdf.setTextColor(0, 0, 0);
+      return true;
+    } catch (error) {
+      console.warn("Decorazione testo offerta PDF fallita:", error);
+      return false;
+    }
+  }
+
   async function decoratePdfWithBranding(pdf, sourceElement) {
-    if (!ENABLE_BRANDING_EXPORT || !pdf || !activeBrandingPayload.crewLogoDataUrl) return false;
+    if (!pdf) return false;
+
+    let decorated = decorateOfferHeadingText(pdf, sourceElement);
+    if (!ENABLE_BRANDING_EXPORT || !activeBrandingPayload.crewLogoDataUrl) return decorated;
 
     const sourceRoot = sourceElement instanceof Element ? sourceElement : null;
     if (sourceRoot?.querySelector(".codex-crew-branding img")) {
@@ -3261,14 +3298,14 @@
     }
 
     const exportReadySrc = await getExportReadyBrandingLogoDataUrl(activeBrandingPayload.crewLogoDataUrl);
-    if (!exportReadySrc) return false;
+    if (!exportReadySrc) return decorated;
 
     let logoImage = null;
     try {
       logoImage = await loadImageFromSource(exportReadySrc);
     } catch (error) {
       console.warn("Logo squadra non caricato per decorazione PDF:", error);
-      return false;
+      return decorated;
     }
 
     const imageWidth = Math.max(1, Number(logoImage?.naturalWidth || logoImage?.width || 1));
@@ -3284,10 +3321,11 @@
     try {
       pdf.setPage(1);
       pdf.addImage(exportReadySrc, "PNG", x, y, width, height, undefined, "FAST");
-      return true;
+      decorated = true;
+      return decorated;
     } catch (error) {
       console.warn("Decorazione branding PDF fallita:", error);
-      return false;
+      return decorated;
     }
   }
 
