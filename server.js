@@ -756,6 +756,44 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS outbox_ready_idx     ON outbox (next_attempt_at) WHERE status = 'pending';
       CREATE INDEX IF NOT EXISTS outbox_dead_idx      ON outbox (created_at DESC) WHERE status = 'dead';
       CREATE INDEX IF NOT EXISTS outbox_type_status_idx ON outbox (job_type, status);
+      -- ─────────────────────────────────────────────────────────────────────
+      -- Verbali fine cantiere (MVP) — documenti firmati dal cliente che il
+      -- posatore genera a fine lavoro. Allegati alla scheda ordine/cliente,
+      -- archiviati in R2 come PDF + JSONB del payload originale per audit.
+      -- Status flow: draft → signed (firmato) → archived (PDF generato).
+      -- ─────────────────────────────────────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS work_completion_reports (
+        id TEXT PRIMARY KEY,                       -- es. "VL-2026-0042"
+        order_id TEXT,                             -- FK soft → orders.id (può essere null per lavori senza ordine Shopify)
+        installation_id TEXT,                      -- FK soft → jobs.id
+        crew_user_id TEXT NOT NULL,                -- chi ha compilato (users.id)
+        crew_name TEXT NOT NULL,                   -- snapshot ("Alpha")
+        operators JSONB NOT NULL DEFAULT '[]',     -- ["Mario Rossi", ...]
+        customer_name TEXT NOT NULL,
+        customer_email TEXT,                       -- snapshot per email automatica
+        site_address TEXT,
+        executed_sqm NUMERIC,                      -- mq effettivamente posati
+        product_model TEXT,                        -- modello prato installato
+        work_hours_start TIMESTAMPTZ,              -- inizio lavoro
+        work_hours_end TIMESTAMPTZ,                -- fine lavoro
+        notes TEXT,                                -- descrizione lavorazioni eseguite
+        extras JSONB NOT NULL DEFAULT '[]',        -- [{ description, amount_eur }, ...]
+        photos JSONB NOT NULL DEFAULT '[]',        -- [{ r2_key, w, h, taken_at }, ...]
+        liability_text TEXT,                       -- testo "scarico responsabilità" snapshot
+        customer_signature_r2_key TEXT,            -- PNG firma cliente
+        crew_signature_r2_key TEXT,                -- PNG firma posatore
+        signed_at TIMESTAMPTZ,                     -- timestamp firma (status → signed)
+        document_pdf_r2_key TEXT,                  -- PDF finale (status → archived)
+        document_pdf_sha256 TEXT,                  -- hash per immutabilità
+        status TEXT NOT NULL DEFAULT 'draft',      -- draft | signed | archived
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        archived_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS work_completion_reports_order_idx  ON work_completion_reports (order_id);
+      CREATE INDEX IF NOT EXISTS work_completion_reports_crew_idx   ON work_completion_reports (crew_user_id);
+      CREATE INDEX IF NOT EXISTS work_completion_reports_status_idx ON work_completion_reports (status);
+      CREATE INDEX IF NOT EXISTS work_completion_reports_created_idx ON work_completion_reports (created_at DESC);
     `);
     console.log("[db] schema relazionale verificato");
   })().catch((err) => {
@@ -1326,6 +1364,190 @@ async function deleteSalesRequestFromDb(id, opts = {}) {
   } catch (err) {
     console.warn("[db] deleteSalesRequestFromDb:", err?.message);
     if (opts && opts.rethrow) throw err;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Verbali fine cantiere (work_completion_reports)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function dbRowToWorkReport(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    orderId: row.order_id || "",
+    installationId: row.installation_id || "",
+    crewUserId: row.crew_user_id || "",
+    crewName: row.crew_name || "",
+    operators: Array.isArray(row.operators) ? row.operators : [],
+    customerName: row.customer_name || "",
+    customerEmail: row.customer_email || "",
+    siteAddress: row.site_address || "",
+    executedSqm: row.executed_sqm != null ? Number(row.executed_sqm) : null,
+    productModel: row.product_model || "",
+    workHoursStart: row.work_hours_start ? new Date(row.work_hours_start).toISOString() : null,
+    workHoursEnd: row.work_hours_end ? new Date(row.work_hours_end).toISOString() : null,
+    notes: row.notes || "",
+    extras: Array.isArray(row.extras) ? row.extras : [],
+    photos: Array.isArray(row.photos) ? row.photos : [],
+    liabilityText: row.liability_text || "",
+    customerSignatureR2Key: row.customer_signature_r2_key || "",
+    crewSignatureR2Key: row.crew_signature_r2_key || "",
+    signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : null,
+    documentPdfR2Key: row.document_pdf_r2_key || "",
+    documentPdfSha256: row.document_pdf_sha256 || "",
+    status: row.status || "draft",
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+    archivedAt: row.archived_at ? new Date(row.archived_at).toISOString() : null,
+  };
+}
+
+/**
+ * Genera un ID progressivo per anno nel formato "VL-YYYY-NNNN".
+ * MVP: best-effort, non transazionale. Race condition possibile ma il volume
+ * è low (decine/mese), e un eventuale conflitto verrebbe rifiutato dal PRIMARY KEY.
+ */
+async function generateWorkReportId() {
+  const year = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric" }).format(new Date());
+  if (!USE_POSTGRES) return `VL-${year}-0001`;
+  const pool = await getPgPool();
+  const prefix = `VL-${year}-`;
+  const { rows } = await pool.query(
+    `SELECT id FROM work_completion_reports WHERE id LIKE $1 ORDER BY id DESC LIMIT 1`,
+    [`${prefix}%`],
+  );
+  let next = 1;
+  if (rows[0]?.id) {
+    const tail = String(rows[0].id).slice(prefix.length);
+    const parsed = parseInt(tail, 10);
+    if (Number.isFinite(parsed)) next = parsed + 1;
+  }
+  return `${prefix}${String(next).padStart(4, "0")}`;
+}
+
+async function createWorkReportInDb(input = {}, opts = {}) {
+  if (!USE_POSTGRES) throw new Error("createWorkReportInDb: Postgres required");
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const id = input.id || await generateWorkReportId();
+  try {
+    await pool.query(
+      `INSERT INTO work_completion_reports (
+        id, order_id, installation_id, crew_user_id, crew_name,
+        operators, customer_name, customer_email, site_address,
+        executed_sqm, product_model, work_hours_start, work_hours_end,
+        notes, extras, photos, liability_text, status, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,$17,$18,NOW())`,
+      [
+        id,
+        String(input.orderId || "") || null,
+        String(input.installationId || "") || null,
+        String(input.crewUserId || ""),
+        String(input.crewName || ""),
+        JSON.stringify(Array.isArray(input.operators) ? input.operators : []),
+        String(input.customerName || ""),
+        String(input.customerEmail || "") || null,
+        String(input.siteAddress || "") || null,
+        input.executedSqm != null ? Number(input.executedSqm) : null,
+        String(input.productModel || "") || null,
+        input.workHoursStart ? new Date(input.workHoursStart).toISOString() : null,
+        input.workHoursEnd ? new Date(input.workHoursEnd).toISOString() : null,
+        String(input.notes || ""),
+        JSON.stringify(Array.isArray(input.extras) ? input.extras : []),
+        JSON.stringify(Array.isArray(input.photos) ? input.photos : []),
+        String(input.liabilityText || ""),
+        "draft",
+      ],
+    );
+    return await getWorkReportFromDb(id);
+  } catch (err) {
+    console.warn("[db] createWorkReportInDb:", err?.message);
+    if (opts && opts.rethrow) throw err;
+    return null;
+  }
+}
+
+async function getWorkReportFromDb(id) {
+  if (!USE_POSTGRES || !id) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query(
+      `SELECT * FROM work_completion_reports WHERE id = $1 LIMIT 1`,
+      [String(id)],
+    );
+    return dbRowToWorkReport(rows[0] || null);
+  } catch (err) {
+    console.warn("[db] getWorkReportFromDb:", err?.message);
+    return null;
+  }
+}
+
+async function listWorkReportsFromDb({ orderId = null, crewUserId = null, status = null, limit = 200 } = {}) {
+  if (!USE_POSTGRES) return [];
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const where = [];
+    const params = [];
+    if (orderId) { params.push(String(orderId)); where.push(`order_id = $${params.length}`); }
+    if (crewUserId) { params.push(String(crewUserId)); where.push(`crew_user_id = $${params.length}`); }
+    if (status) { params.push(String(status)); where.push(`status = $${params.length}`); }
+    params.push(Number(limit) || 200);
+    const sql = `SELECT * FROM work_completion_reports${where.length ? " WHERE " + where.join(" AND ") : ""}
+                 ORDER BY created_at DESC LIMIT $${params.length}`;
+    const { rows } = await pool.query(sql, params);
+    return rows.map(dbRowToWorkReport);
+  } catch (err) {
+    console.warn("[db] listWorkReportsFromDb:", err?.message);
+    return [];
+  }
+}
+
+/**
+ * Aggiorna campi modificabili. Whitelist esplicita per evitare update accidentali
+ * di status/signed_at/document_pdf/sha256 (che vanno solo via flow dedicato).
+ */
+async function updateWorkReportInDb(id, patch = {}, opts = {}) {
+  if (!USE_POSTGRES || !id) return null;
+  const allowedFields = {
+    operators:       { column: "operators", json: true },
+    customerName:    { column: "customer_name" },
+    customerEmail:   { column: "customer_email" },
+    siteAddress:     { column: "site_address" },
+    executedSqm:     { column: "executed_sqm" },
+    productModel:    { column: "product_model" },
+    workHoursStart:  { column: "work_hours_start", date: true },
+    workHoursEnd:    { column: "work_hours_end", date: true },
+    notes:           { column: "notes" },
+    extras:          { column: "extras", json: true },
+    photos:          { column: "photos", json: true },
+    liabilityText:   { column: "liability_text" },
+  };
+  const sets = [];
+  const params = [];
+  for (const [key, def] of Object.entries(allowedFields)) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+    const value = patch[key];
+    params.push(def.json ? JSON.stringify(value || []) : def.date && value ? new Date(value).toISOString() : value);
+    sets.push(`${def.column} = $${params.length}${def.json ? "::jsonb" : ""}`);
+  }
+  if (!sets.length) return await getWorkReportFromDb(id);
+  sets.push("updated_at = NOW()");
+  params.push(String(id));
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    await pool.query(
+      `UPDATE work_completion_reports SET ${sets.join(", ")} WHERE id = $${params.length}`,
+      params,
+    );
+    return await getWorkReportFromDb(id);
+  } catch (err) {
+    console.warn("[db] updateWorkReportInDb:", err?.message);
+    if (opts && opts.rethrow) throw err;
+    return null;
   }
 }
 
@@ -8948,6 +9170,110 @@ async function handleApi(req, res, url) {
       });
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "outbox_diagnostic_failed") });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Verbali fine cantiere (work_completion_reports) — MVP
+  // crew: vede/crea/modifica i propri (crew_user_id = self.id)
+  // office: tutto
+  // warehouse: lettura (per allegati ordine)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // POST /api/work-reports → crea bozza
+  if (url.pathname === "/api/work-reports" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const body = await readBody(req);
+      const crewName = String(body.crewName || currentUser.crewName || currentUser.name || "").trim();
+      if (!crewName) return sendJson(res, 400, { error: "missing_crew_name" });
+      if (!String(body.customerName || "").trim()) return sendJson(res, 400, { error: "missing_customer_name" });
+      const created = await createWorkReportInDb({
+        orderId: body.orderId,
+        installationId: body.installationId,
+        crewUserId: currentUser.id,
+        crewName,
+        operators: body.operators,
+        customerName: body.customerName,
+        customerEmail: body.customerEmail,
+        siteAddress: body.siteAddress,
+        executedSqm: body.executedSqm,
+        productModel: body.productModel,
+        workHoursStart: body.workHoursStart,
+        workHoursEnd: body.workHoursEnd,
+        notes: body.notes,
+        extras: body.extras,
+        photos: body.photos,
+        liabilityText: body.liabilityText,
+      }, { rethrow: true });
+      if (!created) return sendJson(res, 500, { error: "create_failed" });
+      writeAuditLog("work_report", created.id, "create", { orderId: created.orderId, crewName: created.crewName }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 201, created);
+    } catch (err) {
+      console.error("[work-reports] create failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "create_failed") });
+    }
+  }
+
+  // GET /api/work-reports?orderId=X&status=Y → lista
+  if (url.pathname === "/api/work-reports" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "warehouse", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const orderId = url.searchParams.get("orderId") || null;
+      const status = url.searchParams.get("status") || null;
+      // Crew vede solo i propri verbali (scope server-side, niente UI-only filtering).
+      const crewUserId = currentUser.role === "crew" ? currentUser.id : null;
+      const reports = await listWorkReportsFromDb({ orderId, status, crewUserId });
+      return sendJson(res, 200, { reports });
+    } catch (err) {
+      console.error("[work-reports] list failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "list_failed") });
+    }
+  }
+
+  // GET /api/work-reports/:id → dettaglio
+  if (url.pathname.startsWith("/api/work-reports/") && req.method === "GET" && !url.pathname.endsWith("/pdf") && !url.pathname.endsWith("/photos") && !url.pathname.endsWith("/sign")) {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "warehouse", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.slice("/api/work-reports/".length));
+    if (!id) return sendJson(res, 400, { error: "missing_id" });
+    try {
+      const report = await getWorkReportFromDb(id);
+      if (!report) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew" && report.crewUserId !== currentUser.id) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+      return sendJson(res, 200, report);
+    } catch (err) {
+      console.error("[work-reports] get failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "get_failed") });
+    }
+  }
+
+  // PATCH /api/work-reports/:id → aggiorna campi (whitelist server-side)
+  if (url.pathname.startsWith("/api/work-reports/") && req.method === "PATCH") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.slice("/api/work-reports/".length));
+    if (!id) return sendJson(res, 400, { error: "missing_id" });
+    try {
+      const existing = await getWorkReportFromDb(id);
+      if (!existing) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew" && existing.crewUserId !== currentUser.id) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+      if (existing.status !== "draft") {
+        return sendJson(res, 409, { error: "not_draft", message: "Solo i verbali in bozza possono essere modificati." });
+      }
+      const body = await readBody(req);
+      const updated = await updateWorkReportInDb(id, body, { rethrow: true });
+      writeAuditLog("work_report", id, "update", { fields: Object.keys(body || {}) }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, updated);
+    } catch (err) {
+      console.error("[work-reports] patch failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "patch_failed") });
     }
   }
 
