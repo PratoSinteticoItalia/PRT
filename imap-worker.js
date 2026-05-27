@@ -542,29 +542,49 @@ function stopImapWorker() {
 
 function getImapWorkerStatus() {
   const cfg = getConfig();
-  // Health: verde se ultimo successo entro 2x intervallo polling, niente errore.
-  // Giallo: nessun successo recente o ultimo polling >2x intervallo fa.
-  // Rosso: lastError non null AND ultimo successo > 30 min fa (oppure mai).
   const now = Date.now();
-  const lastSuccessMs = workerState.lastSuccessAt ? workerState.lastSuccessAt.getTime() : 0;
-  const lastPollMs = workerState.lastPollAt ? workerState.lastPollAt.getTime() : 0;
-  const healthyWindowMs = Math.max(60_000, cfg.pollIntervalMs * 2);
+  // Helper robusto: accetta Date, ISO string, o null
+  const toMs = (v) => {
+    if (!v) return 0;
+    if (v instanceof Date) return v.getTime();
+    const t = new Date(v).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+  const lastSuccessMs = toMs(workerState.lastSuccessAt);
+  const lastPollMs = toMs(workerState.lastPollAt);
+  const intervalMs = Number(cfg.pollIntervalMs) || DEFAULT_POLL_INTERVAL_MS;
+  // Healthy window: 3× intervallo polling (più tollerante). Stale: 12× intervallo.
+  const healthyWindowMs = Math.max(180_000, intervalMs * 3);
+  const staleWindowMs = Math.max(900_000, intervalMs * 12);
   let health = "unknown";
   if (!cfg.enabled) {
     health = "disabled";
   } else if (!hasValidConfig(cfg)) {
     health = "no_credentials";
-  } else if (workerState.lastError && (now - lastSuccessMs > 30 * 60_000)) {
+  } else if (workerState.lastError && lastSuccessMs && (now - lastSuccessMs > 30 * 60_000)) {
     health = "error";
   } else if (lastSuccessMs && now - lastSuccessMs < healthyWindowMs) {
     health = "ok";
   } else if (lastPollMs && now - lastPollMs < healthyWindowMs) {
     health = "ok";
-  } else if (workerState.running) {
+  } else if (lastSuccessMs && now - lastSuccessMs < staleWindowMs) {
     health = "stale";
+  } else if (workerState.running || cfg.enabled) {
+    // Worker partito ma nessun polling ancora completato (fase di warmup)
+    health = "warmup";
   }
-  const nextPollEtaMs = lastPollMs && cfg.pollIntervalMs
-    ? Math.max(0, (lastPollMs + cfg.pollIntervalMs) - now)
+  // Debug log non rumoroso: solo se health è "unknown" (situazione anomala)
+  if (health === "unknown") {
+    console.log("[imap-worker] health=unknown debug", {
+      cfgEnabled: cfg.enabled,
+      cfgValid: hasValidConfig(cfg),
+      lastSuccessMs, lastPollMs,
+      running: workerState.running,
+      lastError: workerState.lastError,
+    });
+  }
+  const nextPollEtaMs = lastPollMs && intervalMs
+    ? Math.max(0, (lastPollMs + intervalMs) - now)
     : null;
   return {
     enabled: cfg.enabled,

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260527-imap-health-v5";
+const APP_SHELL_VERSION = "20260527-imap-health-v6";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6055,6 +6055,7 @@ async function showSalesDiagnostic() {
             ${(() => {
               const healthMap = {
                 ok: { icon: "🟢", label: state.lang === "it" ? "Tutto regolare" : "Healthy" },
+                warmup: { icon: "🟡", label: state.lang === "it" ? "Avvio in corso" : "Warming up" },
                 stale: { icon: "🟡", label: state.lang === "it" ? "Nessun polling recente" : "No recent poll" },
                 error: { icon: "🔴", label: state.lang === "it" ? "Errore ricezione" : "Receive error" },
                 disabled: { icon: "⚪", label: state.lang === "it" ? "Disattivato (env IMAP_SHADOW_ENABLED=false)" : "Disabled" },
