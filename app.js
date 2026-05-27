@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260527-reconcile-v1";
+const APP_SHELL_VERSION = "20260527-autopromote-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6052,13 +6052,33 @@ async function showSalesDiagnostic() {
           </div>
           <div class="diag-block diag-block-wide">
             <div class="diag-block-title">IMAP ${state.lang === "it" ? "(in arrivo)" : "(incoming)"}</div>
+            ${(() => {
+              const healthMap = {
+                ok: { icon: "🟢", label: state.lang === "it" ? "Tutto regolare" : "Healthy" },
+                stale: { icon: "🟡", label: state.lang === "it" ? "Nessun polling recente" : "No recent poll" },
+                error: { icon: "🔴", label: state.lang === "it" ? "Errore ricezione" : "Receive error" },
+                disabled: { icon: "⚪", label: state.lang === "it" ? "Disattivato (env IMAP_SHADOW_ENABLED=false)" : "Disabled" },
+                no_credentials: { icon: "⚪", label: state.lang === "it" ? "Credenziali mancanti" : "Missing credentials" },
+                unknown: { icon: "❔", label: state.lang === "it" ? "Stato sconosciuto" : "Unknown" },
+              };
+              const h = healthMap[im.health || "unknown"] || healthMap.unknown;
+              return fmtRow(state.lang === "it" ? "Stato salute" : "Health", `${h.icon} ${h.label}`);
+            })()}
             ${fmtRow(state.lang === "it" ? "Attivo" : "Enabled", im.enabled ? "✓" : "—")}
+            ${fmtRow(state.lang === "it" ? "Auto-import nuove email" : "Auto-promote new emails", im.autoPromote ? "✓" : "—")}
             ${fmtRow(state.lang === "it" ? "Email viste (shadow)" : "Emails seen (shadow)", im.shadowRecordsTotal || 0)}
             ${fmtRow(state.lang === "it" ? "Ultima email vista" : "Last email seen", im.lastEmailSeenAt || "—")}
+            ${im.lastSuccessAt ? fmtRow(state.lang === "it" ? "Ultimo polling OK" : "Last successful poll", im.lastSuccessAt) : ""}
+            ${im.lastError ? fmtRow(state.lang === "it" ? "Ultimo errore" : "Last error", String(im.lastError).slice(0, 120)) : ""}
+            ${im.nextPollEtaMs != null ? fmtRow(state.lang === "it" ? "Prossimo polling tra" : "Next poll in", `${Math.max(0, Math.round(im.nextPollEtaMs / 1000))}s`) : ""}
             ${im.reconcile ? `
               ${fmtRow(state.lang === "it" ? "Lead promossi nel CRM" : "Promoted to CRM", im.reconcile.promoted || 0)}
               ${fmtRow(state.lang === "it" ? "Lead da riconciliare (OK)" : "Pending reconcile (OK)", im.reconcile.pendingOk || 0)}
               ${fmtRow(state.lang === "it" ? "Lead no_match (autoresponder, ecc)" : "no_match (autoresponder, etc)", im.reconcile.pendingNoMatch || 0)}
+            ` : ""}
+            ${im.lastAutoReconcileAt ? `
+              ${fmtRow(state.lang === "it" ? "Ultimo auto-promote" : "Last auto-promote", im.lastAutoReconcileAt)}
+              ${im.lastAutoReconcileResult ? fmtRow(state.lang === "it" ? "Risultato ultimo auto" : "Last auto result", `matched=${im.lastAutoReconcileResult.matched}, imported=${im.lastAutoReconcileResult.imported}`) : ""}
             ` : ""}
             ${im.reconcile && im.reconcile.pendingOk > 0 ? `
               <div class="diag-actions">

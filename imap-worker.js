@@ -22,6 +22,19 @@
  * telefono, mq, prodotto) richiede campioni email reali → Fase 1B.
  */
 
+// Auto-promote: importato lazy per evitare dipendenze al boot del worker
+let leadFingerprintLib = null;
+async function loadLeadFingerprint() {
+  if (leadFingerprintLib) return leadFingerprintLib;
+  try {
+    leadFingerprintLib = await import("./lead-fingerprint.mjs");
+    return leadFingerprintLib;
+  } catch (err) {
+    console.warn("[imap-worker] lead-fingerprint non disponibile:", err?.message || err);
+    return null;
+  }
+}
+
 let imapflowLib = null;
 async function loadImapFlow() {
   if (imapflowLib) return imapflowLib;
@@ -250,6 +263,11 @@ let workerState = {
   totalParsed: 0,
   totalFailed: 0,
   pollTimer: null,
+  // Fase 4 — stats auto-promote
+  lastAutoReconcileAt: null,
+  lastAutoReconcileResult: null, // { matched, imported, errors: N }
+  totalAutoMatched: 0,
+  totalAutoImported: 0,
 };
 
 function redactEmail(email) {
@@ -274,6 +292,11 @@ function getConfig() {
     password: String(process.env.IMAP_PASSWORD || "").trim(),
     mailbox: String(process.env.IMAP_MAILBOX || DEFAULT_MAILBOX).trim() || DEFAULT_MAILBOX,
     pollIntervalMs: Number(process.env.IMAP_POLL_INTERVAL_MS || DEFAULT_POLL_INTERVAL_MS),
+    // Fase 4: auto-reconcile dei nuovi shadow leads dopo ogni polling cycle.
+    // Quando true, dopo aver fetchato/salvato le nuove email il worker chiama
+    // il reconciler che le promuove automaticamente a sales_requests nel CRM
+    // (link se esistono gia' via Sheets, import se sono orfane).
+    autoPromote: String(process.env.IMAP_AUTO_PROMOTE || "false").trim().toLowerCase() === "true",
   };
 }
 
@@ -432,6 +455,35 @@ async function runPollCycle(pool) {
       console.log(`[imap-worker] fetch completed: ${count} email in this cycle (parsed=${workerState.totalParsed}, failed=${workerState.totalFailed})`);
       workerState.lastSuccessAt = new Date();
       workerState.lastError = null;
+
+      // Fase 4 — auto-promote: se attivato via env IMAP_AUTO_PROMOTE=true,
+      // chiama il reconciler in modalita' reale (dryRun=false) per promuovere
+      // i nuovi shadow a sales_requests nel CRM. Solo dei lead OK non ancora
+      // promossi (limit 500 per ciclo, sufficiente per ritmo normale).
+      if (cfg.autoPromote && count > 0) {
+        try {
+          const lib = await loadLeadFingerprint();
+          if (lib && typeof lib.reconcileShadowLeads === "function") {
+            console.log("[imap-worker] auto-promote: running reconcileShadowLeads...");
+            const recResult = await lib.reconcileShadowLeads(pool, {
+              dryRun: false,
+              limit: 500,
+              onlyOk: true,
+            });
+            workerState.lastAutoReconcileAt = new Date();
+            workerState.lastAutoReconcileResult = {
+              matched: recResult.matched,
+              imported: recResult.imported,
+              errors: (recResult.errors || []).length,
+            };
+            workerState.totalAutoMatched += recResult.matched || 0;
+            workerState.totalAutoImported += recResult.imported || 0;
+            console.log(`[imap-worker] auto-promote done: matched=${recResult.matched}, imported=${recResult.imported}, errors=${(recResult.errors || []).length}`);
+          }
+        } catch (recErr) {
+          console.warn("[imap-worker] auto-promote errore:", recErr?.message || recErr);
+        }
+      }
       return { fetched: count, lastUid };
     } finally {
       lock.release();
@@ -490,20 +542,51 @@ function stopImapWorker() {
 
 function getImapWorkerStatus() {
   const cfg = getConfig();
+  // Health: verde se ultimo successo entro 2x intervallo polling, niente errore.
+  // Giallo: nessun successo recente o ultimo polling >2x intervallo fa.
+  // Rosso: lastError non null AND ultimo successo > 30 min fa (oppure mai).
+  const now = Date.now();
+  const lastSuccessMs = workerState.lastSuccessAt ? workerState.lastSuccessAt.getTime() : 0;
+  const lastPollMs = workerState.lastPollAt ? workerState.lastPollAt.getTime() : 0;
+  const healthyWindowMs = Math.max(60_000, cfg.pollIntervalMs * 2);
+  let health = "unknown";
+  if (!cfg.enabled) {
+    health = "disabled";
+  } else if (!hasValidConfig(cfg)) {
+    health = "no_credentials";
+  } else if (workerState.lastError && (now - lastSuccessMs > 30 * 60_000)) {
+    health = "error";
+  } else if (lastSuccessMs && now - lastSuccessMs < healthyWindowMs) {
+    health = "ok";
+  } else if (lastPollMs && now - lastPollMs < healthyWindowMs) {
+    health = "ok";
+  } else if (workerState.running) {
+    health = "stale";
+  }
+  const nextPollEtaMs = lastPollMs && cfg.pollIntervalMs
+    ? Math.max(0, (lastPollMs + cfg.pollIntervalMs) - now)
+    : null;
   return {
     enabled: cfg.enabled,
     configured: hasValidConfig(cfg),
     running: workerState.running,
+    health,
     host: cfg.host || null,
     user: redactEmail(cfg.user),
     mailbox: cfg.mailbox,
     pollIntervalMs: cfg.pollIntervalMs,
+    autoPromote: cfg.autoPromote,
     lastPollAt: workerState.lastPollAt,
     lastSuccessAt: workerState.lastSuccessAt,
     lastError: workerState.lastError,
+    nextPollEtaMs,
     totalSeen: workerState.totalSeen,
     totalParsed: workerState.totalParsed,
     totalFailed: workerState.totalFailed,
+    lastAutoReconcileAt: workerState.lastAutoReconcileAt,
+    lastAutoReconcileResult: workerState.lastAutoReconcileResult,
+    totalAutoMatched: workerState.totalAutoMatched,
+    totalAutoImported: workerState.totalAutoImported,
     parserVersion: PARSER_VERSION,
   };
 }

@@ -6,6 +6,7 @@ import { createHmac, createSign, randomBytes, randomUUID, scryptSync, timingSafe
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { startImapWorker, getImapWorkerStatus, isImapWorkerEnabled, hasImapWorkerConfig, getImapWorkerConfig } from "./imap-worker.js";
+import { reconcileShadowLeads, buildLeadFingerprint, fingerprintIsComplete, findMatchingSalesRequest } from "./lead-fingerprint.mjs";
 
 const PORT = Number(process.env.PORT || 4178);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -4896,112 +4897,10 @@ function normalizeSalesRequestSurface(value = "") {
 }
 
 // Snapshot stato IMAP worker + conteggio shadow records per il diagnostic.
-// ──────────────────────────────────────────────────────────────────────────
-// LEAD FINGERPRINT — riconciliazione shadow IMAP ↔ sales_requests esistenti
-// ──────────────────────────────────────────────────────────────────────────
-// Stessa richiesta = stesso fingerprint (6 campi obbligatori + 2 opzionali).
-// Decisione utente (vedi ANALISI.md): NIENTE finestra temporale, solo match
-// strutturale. Mario Rossi che richiede preventivo 30mq oggi e 30mq tra 2 mesi
-// = stesso fingerprint = stessa richiesta. Mario Rossi 30mq vs 50mq = diversi.
-//
-// Campi obbligatori (mancano in entrambi → fingerprint nullo, no match):
-//   nome+cognome, email, telefono, citta, mq, altezza
-// Campi opzionali (inclusi solo se entrambi i record li hanno):
-//   posa_in_opera, fondo
-function normalizeLeadName(value) {
-  return String(value || "").trim().toUpperCase().replace(/\s+/g, " ");
-}
-function normalizeLeadEmail(value) {
-  return String(value || "").trim().toLowerCase();
-}
-function normalizeLeadPhone(value) {
-  return String(value || "").replace(/[^\d]/g, "");
-}
-function normalizeLeadCity(value) {
-  return String(value || "").trim().toUpperCase().replace(/\s+/g, " ");
-}
-function normalizeLeadNumber(value) {
-  const n = parseFloat(String(value || "").replace(",", "."));
-  return Number.isFinite(n) ? n : null;
-}
-function normalizeLeadHeight(value) {
-  // "40 mm" → "40MM", "40mm;" → "40MM", "40MM" → "40MM"
-  return String(value || "").replace(/[^\dA-Za-z]/g, "").toUpperCase();
-}
-
-function buildLeadFingerprint(rec = {}) {
-  // Estrae i 6 campi obbligatori dal record (puo' essere shadow.parsed_payload
-  // o sales_request normalizzato). I nomi dei campi differiscono nei due tipi,
-  // quindi accettiamo le possibili varianti.
-  const fullName = [
-    rec.nome || [rec.first_name || rec.firstName || rec.name, rec.last_name || rec.lastName || rec.surname].filter(Boolean).join(" "),
-  ].filter(Boolean).join(" ");
-  const fp = {
-    nome: normalizeLeadName(fullName),
-    email: normalizeLeadEmail(rec.email),
-    telefono: normalizeLeadPhone(rec.telefono || rec.phone),
-    citta: normalizeLeadCity(rec.citta || rec.city),
-    mq: normalizeLeadNumber(rec.metri_quadri ?? rec.sqm ?? rec.mq),
-    altezza: normalizeLeadHeight(rec.altezza ?? rec.requested_height ?? rec.requestedHeight),
-  };
-  // Campi opzionali normalizzati (null se assenti, NON entrano nel fingerprint base)
-  fp._optional = {
-    posa_in_opera: rec.posa_in_opera_normalized || (rec.service ? String(rec.service).toLowerCase().includes("posa") ? "fornitura+posa" : "fornitura" : null),
-    fondo: rec.fondo_normalized || (rec.surface ? String(rec.surface).toLowerCase() : null),
-  };
-  return fp;
-}
-
-function fingerprintIsComplete(fp) {
-  return Boolean(
-    fp.nome && fp.email && fp.telefono && fp.citta
-    && fp.mq != null && fp.altezza,
-  );
-}
-
-function fingerprintsMatch(a, b) {
-  // Match base sui 6 campi obbligatori
-  if (!fingerprintIsComplete(a) || !fingerprintIsComplete(b)) return false;
-  if (a.nome !== b.nome) return false;
-  if (a.email !== b.email) return false;
-  if (a.telefono !== b.telefono) return false;
-  if (a.citta !== b.citta) return false;
-  if (a.mq !== b.mq) return false;
-  if (a.altezza !== b.altezza) return false;
-  // Campi opzionali: matchano solo se ENTRAMBI presenti
-  const ao = a._optional || {};
-  const bo = b._optional || {};
-  if (ao.posa_in_opera && bo.posa_in_opera && ao.posa_in_opera !== bo.posa_in_opera) return false;
-  if (ao.fondo && bo.fondo && ao.fondo !== bo.fondo) return false;
-  return true;
-}
-
-async function findMatchingSalesRequest(pool, shadowFp) {
-  if (!pool || !fingerprintIsComplete(shadowFp)) return null;
-  // Pre-filter via SQL su email O telefono (gli unici due campi indicizzati su
-  // sales_requests). Poi confronto fingerprint completo in Node.
-  try {
-    const result = await pool.query(
-      `SELECT id, first_name, last_name, email, phone, city, sqm, requested_height,
-              surface, job_type, created_at
-       FROM sales_requests
-       WHERE LOWER(email) = $1 OR REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = $2
-       LIMIT 200`,
-      [shadowFp.email, shadowFp.telefono],
-    );
-    const rows = result.rows || [];
-    for (const row of rows) {
-      const candidateFp = buildLeadFingerprint(row);
-      if (fingerprintsMatch(shadowFp, candidateFp)) {
-        return { id: row.id, matched: row };
-      }
-    }
-    return null;
-  } catch (err) {
-    console.warn("[reconcile] findMatchingSalesRequest errore:", err?.message);
-    return null;
-  }
-}
+// Le funzioni buildLeadFingerprint, fingerprintIsComplete, fingerprintsMatch,
+// findMatchingSalesRequest, reconcileShadowLeads sono state spostate in
+// lead-fingerprint.mjs per essere importabili anche dal worker IMAP
+// (auto-promote Fase 4).
 
 async function getImapDiagnosticSnapshot() {
   const status = getImapWorkerStatus();
@@ -8302,114 +8201,7 @@ async function handleApi(req, res, url) {
       const dryRun = String(url.searchParams.get("dryRun") || "true").toLowerCase() !== "false";
       const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit") || 200)));
       const onlyOk = String(url.searchParams.get("onlyOk") || "true").toLowerCase() !== "false";
-
-      const statusFilter = onlyOk ? "AND parse_status = 'ok'" : "";
-      const candidates = await pool.query(
-        `SELECT id, imap_message_id, imap_uid, received_at, parsed_payload, parse_status
-         FROM incoming_leads_shadow
-         WHERE promoted_to_sales_request_id IS NULL
-         ${statusFilter}
-         ORDER BY received_at ASC NULLS LAST
-         LIMIT $1`,
-        [limit],
-      );
-
-      const result = {
-        dryRun,
-        considered: candidates.rows.length,
-        matched: 0,
-        imported: 0,
-        skippedIncompleteFingerprint: 0,
-        errors: [],
-        samples: { matched: [], imported: [] },
-      };
-
-      for (const row of candidates.rows) {
-        try {
-          const payload = row.parsed_payload || {};
-          const fp = buildLeadFingerprint(payload);
-          if (!fingerprintIsComplete(fp)) {
-            result.skippedIncompleteFingerprint++;
-            continue;
-          }
-          const match = await findMatchingSalesRequest(pool, fp);
-          if (match) {
-            result.matched++;
-            if (result.samples.matched.length < 5) {
-              result.samples.matched.push({
-                shadow_id: row.id,
-                imap_uid: row.imap_uid,
-                matched_sales_id: match.id,
-                nome: fp.nome,
-                email: fp.email,
-              });
-            }
-            if (!dryRun) {
-              await pool.query(
-                `UPDATE incoming_leads_shadow
-                 SET promoted_to_sales_request_id = $1, promoted_at = NOW(), updated_at = NOW()
-                 WHERE id = $2`,
-                [match.id, row.id],
-              );
-            }
-          } else {
-            result.imported++;
-            if (result.samples.imported.length < 5) {
-              result.samples.imported.push({
-                shadow_id: row.id,
-                imap_uid: row.imap_uid,
-                nome: fp.nome,
-                email: fp.email,
-                citta: fp.citta,
-                mq: fp.mq,
-                altezza: fp.altezza,
-                received_at: row.received_at,
-              });
-            }
-            if (!dryRun) {
-              // Crea nuova sales_request con dati shadow
-              const newId = randomUUID();
-              const fullName = String(payload.nome || "").trim();
-              const parts = fullName.split(/\s+/);
-              const firstName = parts.slice(0, 1).join(" ");
-              const lastName = parts.slice(1).join(" ");
-              const sqm = payload.metri_quadri ?? null;
-              const surface = payload.fondo || null;
-              const jobType = payload.posa_in_opera || null;
-              const note = [payload.note_aggiuntive, payload.note_posa, payload.descrizione_area]
-                .filter(Boolean).join(" | ").slice(0, 2000);
-              // createdAt = data email originale (coerenza temporale richiesta utente)
-              const createdIso = row.received_at instanceof Date ? row.received_at.toISOString() : (row.received_at || new Date().toISOString());
-              await pool.query(
-                `INSERT INTO sales_requests
-                   (id, first_name, last_name, email, phone, city, sqm,
-                    requested_height, surface, job_type, note,
-                    status, assignment, source, created_at, updated_at)
-                 VALUES
-                   ($1, $2, $3, $4, $5, $6, $7,
-                    $8, $9, $10, $11,
-                    'new', '', 'imap', $12, NOW())`,
-                [
-                  newId, firstName, lastName,
-                  payload.email || "", payload.telefono || "", payload.citta || "",
-                  sqm, payload.altezza || "", surface, jobType, note,
-                  createdIso,
-                ],
-              );
-              // Linka shadow → nuova sales_request
-              await pool.query(
-                `UPDATE incoming_leads_shadow
-                 SET promoted_to_sales_request_id = $1, promoted_at = NOW(), updated_at = NOW()
-                 WHERE id = $2`,
-                [newId, row.id],
-              );
-            }
-          }
-        } catch (rowErr) {
-          result.errors.push({ shadow_id: row.id, message: String(rowErr?.message || rowErr) });
-        }
-      }
-
+      const result = await reconcileShadowLeads(pool, { dryRun, limit, onlyOk });
       return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "reconcile_failed") });
