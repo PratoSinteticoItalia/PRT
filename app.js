@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260527-autopromote-v1";
+const APP_SHELL_VERSION = "20260527-offer-heading-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
