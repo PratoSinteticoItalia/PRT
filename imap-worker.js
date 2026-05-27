@@ -350,9 +350,20 @@ async function runPollCycle(pool) {
       port: cfg.port,
       secure: cfg.secure,
       auth: { user: cfg.user, pass: cfg.password },
-      logger: false, // niente log verbose; solo nostri log
+      logger: false,
+      // Opzioni TLS permissive: alcune caselle (SiteGround inclusi) usano
+      // certificati che ImapFlow non valida by default
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: "TLSv1.2",
+      },
+      // Timeouts espliciti
+      socketTimeout: 60_000,
+      greetingTimeout: 30_000,
     });
+    console.log(`[imap-worker] connecting to ${cfg.host}:${cfg.port}...`);
     await client.connect();
+    console.log(`[imap-worker] connected, opening mailbox ${cfg.mailbox}...`);
     const lock = await client.getMailboxLock(cfg.mailbox);
     try {
       // Trova il massimo UID gia' visto dal nostro shadow store per fare delta sync
@@ -389,9 +400,21 @@ async function runPollCycle(pool) {
       lock.release();
     }
   } catch (err) {
-    workerState.lastError = String(err?.message || err);
-    console.warn("[imap-worker] poll cycle errore:", workerState.lastError);
-    return { error: workerState.lastError };
+    // Logging dettagliato per diagnosi: imapflow espone vari campi utili
+    // ("Command failed" da solo non basta per capire la causa)
+    const details = {
+      message: err?.message,
+      code: err?.code,
+      response: err?.response,
+      responseText: err?.responseText,
+      responseStatus: err?.responseStatus,
+      authenticationFailed: err?.authenticationFailed,
+      serverResponseCode: err?.serverResponseCode,
+    };
+    workerState.lastError = JSON.stringify(details);
+    console.warn("[imap-worker] poll cycle errore:", details);
+    if (err?.stack) console.warn("[imap-worker] stack:", err.stack.split("\n").slice(0, 5).join(" | "));
+    return { error: details };
   } finally {
     if (client) {
       try { await client.logout(); } catch {}
