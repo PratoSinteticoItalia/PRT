@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260527-imap-micro-save-v2";
+const APP_SHELL_VERSION = "20260527-outbox-scroll-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
