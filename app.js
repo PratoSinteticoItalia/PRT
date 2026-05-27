@@ -20682,7 +20682,15 @@ function handleGlobalClick(event) {
     state.selectedOrderId = orderId;
     renderInstallations();
     requestAnimationFrame(() => {
-      scrollCurrentViewToTop();
+      // Scroll mirato al dettaglio appena selezionato invece di scroll-to-top
+      // globale: su desktop non muove la lista (master-detail), su mobile porta
+      // in vista il pannello dettaglio. Evita "teleport" durante il cambio
+      // selezione (stesso view, item diverso).
+      const detailTarget = getMobileDetailTarget("installations");
+      if (detailTarget && typeof detailTarget.scrollIntoView === "function") {
+        try { detailTarget.scrollIntoView({ block: "start", behavior: "auto" }); } catch {}
+        _acknowledgeIntentionalScroll(window.scrollY || 0);
+      }
       focusViewTarget("installations");
     });
     return;
