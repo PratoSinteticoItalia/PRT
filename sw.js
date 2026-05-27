@@ -69,6 +69,42 @@ self.addEventListener("message", (event) => {
   }
 });
 
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try { payload = event.data ? JSON.parse(event.data.text()) : {}; } catch {}
+  const title = String(payload.title || "PSI Ops");
+  const body = String(payload.body || "");
+  const data = payload.data || {};
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: "/pwa-icon-192.png",
+      badge: "/pwa-icon-192.png",
+      tag: payload.type || "psi-ops",
+      renotify: true,
+      data,
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const data = event.notification.data || {};
+  const view = data.view || "";
+  const targetUrl = view ? `/?view=${encodeURIComponent(view)}` : "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((c) => c.url.includes(self.location.origin));
+      if (existing) {
+        existing.focus();
+        if (view) existing.postMessage({ type: "NAVIGATE_TO_VIEW", view });
+        return;
+      }
+      return self.clients.openWindow(targetUrl);
+    })
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;

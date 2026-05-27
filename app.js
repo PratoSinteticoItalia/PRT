@@ -2019,6 +2019,46 @@ function registerServiceWorker() {
   });
 }
 
+async function registerPushSubscription() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  try {
+    const { publicKey } = await apiFetch("/api/push/vapid-public-key");
+    if (!publicKey) return;
+    const registration = await navigator.serviceWorker.ready;
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) {
+      // Rinnova la subscription lato server (potrebbe essere scaduta)
+      await apiFetch("/api/push/subscribe", {
+        method: "POST",
+        body: JSON.stringify(existing.toJSON()),
+      }).catch(() => {});
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return;
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: publicKey,
+    });
+    await apiFetch("/api/push/subscribe", {
+      method: "POST",
+      body: JSON.stringify(subscription.toJSON()),
+    });
+  } catch (err) {
+    console.warn("push_subscribe_failed", err?.message || err);
+  }
+}
+
+navigator.serviceWorker?.addEventListener("message", (event) => {
+  if (event.data?.type === "NAVIGATE_TO_VIEW") {
+    const view = String(event.data.view || "");
+    const allowed = getAllowedViewsForRole();
+    if (view && allowed.includes(view) && state.currentUser) {
+      setView(view);
+    }
+  }
+});
+
 function setShellPending(active) {
   const next = Boolean(active);
   if (next && state.currentUser) {
@@ -16187,6 +16227,7 @@ function showApp() {
     void loadPreventivoTexts();
     void loadPreventivoCatalog();
   }
+  void registerPushSubscription();
   initQuoteGenerator();
   clearPendingCurrentViewRefresh();
   setShellPending(false);

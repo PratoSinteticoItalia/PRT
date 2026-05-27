@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { startImapWorker, getImapWorkerStatus, isImapWorkerEnabled, hasImapWorkerConfig, getImapWorkerConfig } from "./imap-worker.js";
 import { reconcileShadowLeads, buildLeadFingerprint, fingerprintIsComplete, findMatchingSalesRequest } from "./lead-fingerprint.mjs";
+import webPush from "web-push";
 
 const PORT = Number(process.env.PORT || 4178);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -62,6 +63,9 @@ const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const META_MARKETING_ACCESS_TOKEN = String(process.env.META_MARKETING_ACCESS_TOKEN || WHATSAPP_DEFAULT_ACCESS_TOKEN).trim();
 const META_PAGE_ID = String(process.env.META_PAGE_ID || "").trim();
 const META_INSTAGRAM_BUSINESS_ACCOUNT_ID = String(process.env.META_INSTAGRAM_BUSINESS_ACCOUNT_ID || "").trim();
+const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY || "").trim();
+const VAPID_PRIVATE_KEY = String(process.env.VAPID_PRIVATE_KEY || "").trim();
+const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT || "mailto:admin@pratosintetico.it").trim();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -1990,6 +1994,35 @@ function normalizeCrewName(value = "") {
     .replace(/\b(squadra|team|crew)\b/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+async function sendPushToUser(store, userId, payload) {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  const subscriptions = (store.pushSubscriptions || []).filter((s) => s.userId === String(userId));
+  const dead = [];
+  await Promise.allSettled(subscriptions.map(async (sub) => {
+    try {
+      await webPush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, JSON.stringify(payload));
+    } catch (err) {
+      if (err.statusCode === 410 || err.statusCode === 404) dead.push(sub.endpoint);
+    }
+  }));
+  if (dead.length) {
+    store.pushSubscriptions = (store.pushSubscriptions || []).filter((s) => !dead.includes(s.endpoint));
+    writeJson(STORE_PATH, store).catch(() => {});
+  }
+}
+
+async function sendPushToRole(store, role, payload, exceptUserId = null) {
+  const users = store.users.filter((u) => u.role === role && u.id !== exceptUserId && u.status === "active");
+  await Promise.allSettled(users.map((u) => sendPushToUser(store, u.id, payload)));
+}
+
+async function sendPushToCrewName(store, crewName, payload) {
+  const norm = normalizeCrewName(crewName);
+  if (!norm) return;
+  const users = store.users.filter((u) => u.role === "crew" && u.status === "active" && normalizeCrewName(u.crewName || u.name) === norm);
+  await Promise.allSettled(users.map((u) => sendPushToUser(store, u.id, payload)));
 }
 
 function pushSecurityEvent(store, type, actor, message, meta = {}) {
@@ -6592,6 +6625,7 @@ function reconcileStoreData(store) {
   store.orders = Array.isArray(store.orders) ? store.orders : [];
   store.coveragePlanner = normalizeCoveragePlanner(store.coveragePlanner || defaults.coveragePlanner);
   store.securityEvents = Array.isArray(store.securityEvents) ? store.securityEvents : [];
+  store.pushSubscriptions = Array.isArray(store.pushSubscriptions) ? store.pushSubscriptions : [];
   store.shopifySettings = {
     ...defaults.shopifySettings,
     ...(store.shopifySettings || {}),
@@ -8071,24 +8105,46 @@ async function handleApi(req, res, url) {
       }
       return [...fixedSql, ...blobOnlyRecords];
     })();
+    const sessionRole = currentUser?.role || "";
+    const sessionCrewNorm = normalizeCrewName(currentUser?.crewName || "");
+    const roleFilteredOrders = (() => {
+      if (!currentUser) return [];
+      if (sessionRole === "crew") {
+        if (!sessionCrewNorm) return [];
+        return sessionOrders.filter((o) => normalizeCrewName(o.operations?.installation?.crew || "") === sessionCrewNorm);
+      }
+      if (sessionRole === "warehouse") {
+        return sessionOrders.filter((o) => (o.operations?.officeStatus || "bozza") !== "bozza");
+      }
+      return sessionOrders;
+    })();
+    const roleFilteredJobs = (() => {
+      if (!currentUser) return [];
+      if (sessionRole === "crew") {
+        if (!sessionCrewNorm) return [];
+        return sessionJobs.filter((j) => normalizeCrewName(j.crew || "") === sessionCrewNorm);
+      }
+      return sessionJobs;
+    })();
+    const roleFilteredInventory = sessionRole === "crew" ? [] : (currentUser ? sessionInventory : []);
     return sendJson(res, 200, {
       revision: getStoreRevision(store),
       user: sanitizeUser(currentUser),
       communicationsUnreadCount: sessionCommUnread,
-      jobs: currentUser ? sessionJobs : [],
-      orders: currentUser ? sessionOrders : [],
-      inventory: currentUser ? sessionInventory : [],
-      salesRequests: currentUser?.role === "office" ? sessionSalesReqs : [],
-      salesContents: currentUser?.role === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
-      salesRequestSource: currentUser?.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
+      jobs: roleFilteredJobs,
+      orders: roleFilteredOrders,
+      inventory: roleFilteredInventory,
+      salesRequests: sessionRole === "office" ? sessionSalesReqs : [],
+      salesContents: sessionRole === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
+      salesRequestSource: sessionRole === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
       coveragePlanner: currentUser ? normalizeCoveragePlanner(
         (sqlCoveragePlannerResult.status === "fulfilled" && sqlCoveragePlannerResult.value) || store.coveragePlanner
       ) : normalizeCoveragePlanner(),
       shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
-      users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
+      users: sessionRole === "office" ? store.users.map(sanitizeUser) : [],
       communicationTargets: currentUser ? getAllowedCommunicationTargets(store, currentUser) : [],
-      securityEvents: currentUser?.role === "office" ? store.securityEvents : [],
-      securityPolicy: currentUser?.role === "office"
+      securityEvents: sessionRole === "office" ? store.securityEvents : [],
+      securityPolicy: sessionRole === "office"
         ? {
             passwordMinLength: PASSWORD_MIN_LENGTH,
             bootstrapRecoveryActive: Boolean(BOOTSTRAP_OFFICE_PASSWORD),
@@ -8147,24 +8203,40 @@ async function handleApi(req, res, url) {
     recordUsageEvent(store, user, req, { type: "portal_login", sourceView: "login" });
     await writeJson(STORE_PATH, store);
 
+    const loginRole = user.role || "";
+    const loginCrewNorm = normalizeCrewName(user.crewName || "");
+    const loginOrders = (() => {
+      if (loginRole === "crew") {
+        if (!loginCrewNorm) return [];
+        return store.orders.filter((o) => normalizeCrewName(o.operations?.installation?.crew || "") === loginCrewNorm);
+      }
+      if (loginRole === "warehouse") {
+        return store.orders.filter((o) => (o.operations?.officeStatus || "bozza") !== "bozza");
+      }
+      return store.orders;
+    })();
+    const loginJobs = loginRole === "crew"
+      ? store.jobs.filter((j) => normalizeCrewName(j.crew || "") === loginCrewNorm)
+      : store.jobs;
+    const loginInventory = loginRole === "crew" ? [] : store.inventory;
     return sendJson(
       res,
       200,
       {
         revision: getStoreRevision(store),
         user: sanitizeUser(user),
-        jobs: store.jobs,
-        orders: store.orders,
-        inventory: store.inventory,
-        salesRequests: user.role === "office" ? store.salesRequests : [],
-        salesContents: user.role === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
-        salesRequestSource: user.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
+        jobs: loginJobs,
+        orders: loginOrders,
+        inventory: loginInventory,
+        salesRequests: loginRole === "office" ? store.salesRequests : [],
+        salesContents: loginRole === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
+        salesRequestSource: loginRole === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
         coveragePlanner: store.coveragePlanner,
         shopifySettings: serializeShopifySettings(store.shopifySettings),
-        users: user.role === "office" ? store.users.map(sanitizeUser) : [],
+        users: loginRole === "office" ? store.users.map(sanitizeUser) : [],
         communicationTargets: getAllowedCommunicationTargets(store, user),
-        securityEvents: user.role === "office" ? store.securityEvents : [],
-        securityPolicy: user.role === "office"
+        securityEvents: loginRole === "office" ? store.securityEvents : [],
+        securityPolicy: loginRole === "office"
           ? {
               passwordMinLength: PASSWORD_MIN_LENGTH,
               bootstrapRecoveryActive: Boolean(BOOTSTRAP_OFFICE_PASSWORD),
@@ -9909,7 +9981,29 @@ async function handleApi(req, res, url) {
       console.error("[operations] persist failed:", writeErr?.message || writeErr);
     });
     upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
-    return sendJson(res, 200, store.orders[orderIndex]);
+    // Push notifications: crew assegnata o ordine pronto per spedizione
+    const updatedOrder = store.orders[orderIndex];
+    const newCrew = updatedOrder.operations?.installation?.crew || "";
+    const prevCrew = current.operations?.installation?.crew || "";
+    const newWHStatus = updatedOrder.operations?.warehouse?.status || "";
+    const prevWHStatus = current.operations?.warehouse?.status || "";
+    if (normalizeCrewName(prevCrew) !== normalizeCrewName(newCrew) && newCrew) {
+      sendPushToCrewName(store, newCrew, {
+        type: "crew_assigned",
+        title: "Nuovo lavoro assegnato",
+        body: `${updatedOrder.name || updatedOrder.id} — ${updatedOrder.operations?.installation?.installDate || "data da definire"}`,
+        data: { orderId: updatedOrder.id, view: "installations" },
+      }).catch(() => {});
+    }
+    if (prevWHStatus !== newWHStatus && newWHStatus === "pronto") {
+      sendPushToRole(store, "warehouse", {
+        type: "warehouse_ready",
+        title: "Ordine pronto per spedizione",
+        body: updatedOrder.name || updatedOrder.id,
+        data: { orderId: updatedOrder.id, view: "warehouse" },
+      }).catch(() => {});
+    }
+    return sendJson(res, 200, updatedOrder);
   }
 
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/create-ddt$/) && req.method === "POST") {
@@ -10319,6 +10413,133 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true });
   }
 
+  // ─── Push subscriptions ──────────────────────────────────────────────────────
+
+  if (url.pathname === "/api/push/vapid-public-key" && req.method === "GET") {
+    return sendJson(res, 200, { publicKey: VAPID_PUBLIC_KEY || null });
+  }
+
+  if (url.pathname === "/api/push/subscribe" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const body = await readBody(req);
+    const { endpoint, keys } = body || {};
+    if (!endpoint || !keys?.p256dh || !keys?.auth) return sendJson(res, 400, { error: "invalid_subscription" });
+    store.pushSubscriptions = (store.pushSubscriptions || []).filter((s) => s.endpoint !== endpoint);
+    store.pushSubscriptions.push({
+      userId: String(currentUser.id),
+      endpoint,
+      keys: { p256dh: keys.p256dh, auth: keys.auth },
+      createdAt: new Date().toISOString(),
+    });
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (url.pathname === "/api/push/subscribe" && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const body = await readBody(req);
+    const { endpoint } = body || {};
+    if (!endpoint) return sendJson(res, 400, { error: "missing_endpoint" });
+    store.pushSubscriptions = (store.pushSubscriptions || []).filter(
+      (s) => !(s.endpoint === endpoint && s.userId === String(currentUser.id))
+    );
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  // ─── Crew job endpoints ──────────────────────────────────────────────────────
+
+  if (url.pathname === "/api/crew/jobs" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "crew") return sendJson(res, 403, { error: "forbidden" });
+    const crewNorm = normalizeCrewName(currentUser.crewName || "");
+    if (!crewNorm) return sendJson(res, 200, []);
+    const sqlJobs = await getJobsFromDb();
+    const allJobs = sqlJobs ?? store.jobs;
+    const crewJobs = allJobs.filter((j) => normalizeCrewName(j.crew || "") === crewNorm);
+    const ordersMap = new Map(store.orders.map((o) => [o.id, o]));
+    const result = crewJobs.map((j) => {
+      const order = j.sourceOrderId ? ordersMap.get(j.sourceOrderId) : null;
+      return {
+        ...j,
+        orderName: order?.name || "",
+        orderAddress: `${order?.shipping?.address1 || ""} ${order?.shipping?.city || ""}`.trim(),
+        orderPhone: order?.shipping?.phone || order?.phone || "",
+      };
+    });
+    return sendJson(res, 200, result);
+  }
+
+  if (url.pathname.match(/^\/api\/crew\/jobs\/[^/]+$/) && req.method === "PATCH") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "crew") return sendJson(res, 403, { error: "forbidden" });
+    const jobId = decodeURIComponent(url.pathname.split("/")[4]);
+    const body = await readBody(req);
+    const crewNorm = normalizeCrewName(currentUser.crewName || "");
+    const jobIndex = store.jobs.findIndex((j) => j.id === jobId && normalizeCrewName(j.crew || "") === crewNorm);
+    if (jobIndex < 0) return sendJson(res, 404, { error: "job_not_found" });
+    const prev = store.jobs[jobIndex];
+    const CREW_UPDATABLE = ["installStatus", "warehouseStatus", "notes"];
+    const update = {};
+    for (const field of CREW_UPDATABLE) {
+      if (body[field] !== undefined) update[field] = String(body[field] || "");
+    }
+    store.jobs[jobIndex] = { ...prev, ...update };
+    writeAuditLog("job", jobId, "crew_update", update, currentUser.id).catch(() => {});
+    if (update.installStatus && update.installStatus !== prev.installStatus) {
+      const jobLabel = `${prev.firstName || ""} ${prev.lastName || ""}`.trim() || jobId;
+      sendPushToRole(store, "office", {
+        type: "job_status_updated",
+        title: "Stato lavoro aggiornato",
+        body: `${currentUser.name || "Crew"}: ${jobLabel} → ${update.installStatus}`,
+        data: { jobId, view: "installations" },
+      }).catch(() => {});
+    }
+    await writeJson(STORE_PATH, store);
+    upsertJobToDb(store.jobs[jobIndex]).catch(() => {});
+    return sendJson(res, 200, store.jobs[jobIndex]);
+  }
+
+  if (url.pathname.match(/^\/api\/crew\/jobs\/[^/]+\/expenses$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "crew") return sendJson(res, 403, { error: "forbidden" });
+    const jobId = decodeURIComponent(url.pathname.split("/")[4]);
+    const body = await readBody(req);
+    const crewNorm = normalizeCrewName(currentUser.crewName || "");
+    const job = store.jobs.find((j) => j.id === jobId && normalizeCrewName(j.crew || "") === crewNorm);
+    if (!job) return sendJson(res, 404, { error: "job_not_found" });
+    const orderIndex = store.orders.findIndex((o) => o.convertedJobId === jobId || o.id === job.sourceOrderId);
+    if (orderIndex < 0) return sendJson(res, 404, { error: "order_not_found" });
+    if (normalizeCrewName(store.orders[orderIndex].operations?.installation?.crew || "") !== crewNorm) {
+      return sendJson(res, 403, { error: "forbidden" });
+    }
+    const expense = {
+      id: randomUUID(),
+      description: String(body.description || "").trim().slice(0, 200),
+      amount: Math.max(0, Number(String(body.amount || "0").replace(",", ".")) || 0),
+      date: String(body.date || "").trim() || new Date().toISOString().split("T")[0],
+      addedBy: String(currentUser.name || currentUser.email || ""),
+      addedAt: new Date().toISOString(),
+    };
+    const travelExpenses = [...(store.orders[orderIndex].operations?.installation?.travelExpenses || []), expense];
+    store.orders[orderIndex] = {
+      ...store.orders[orderIndex],
+      operations: normalizeOperations(
+        {
+          ...store.orders[orderIndex],
+          operations: {
+            ...store.orders[orderIndex].operations,
+            installation: { ...store.orders[orderIndex].operations?.installation, travelExpenses },
+          },
+        },
+        store.jobs.find((j) => j.sourceOrderId === store.orders[orderIndex].id) || null,
+      ),
+    };
+    await writeJson(STORE_PATH, store);
+    upsertOrderToDb(store.orders[orderIndex], currentUser.email).catch(() => {});
+    return sendJson(res, 200, { expense, travelExpenses });
+  }
+
   return sendJson(res, 404, { error: "not_found" });
 }
 
@@ -10463,6 +10684,15 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Vertex Ops backend running on http://${HOST}:${PORT}`);
+  if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+    webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    console.log("[push] VAPID initialized");
+  } else {
+    const keys = webPush.generateVAPIDKeys();
+    console.log("[push] VAPID keys non configurate. Aggiungi alle variabili d'ambiente:");
+    console.log(`  VAPID_PUBLIC_KEY=${keys.publicKey}`);
+    console.log(`  VAPID_PRIVATE_KEY=${keys.privateKey}`);
+  }
   // Pre-carica file statici e store in RAM all'avvio — la prima richiesta è già veloce
   preloadStaticFiles().catch((err) => console.error("[static-cache] preload failed", err));
   if (USE_POSTGRES) {
