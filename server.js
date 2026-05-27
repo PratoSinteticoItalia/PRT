@@ -5608,7 +5608,27 @@ function scheduleSalesRequestSheetSyncFlush() {
 
 function enqueueSalesRequestsGoogleSheetSync(config = {}, records = []) {
   const normalizedConfig = normalizeSalesRequestSourceConfig(config);
+  // Diagnostic log: ogni chiamata loggata con sample, prima di ogni filtro.
+  // Cosi' sappiamo se la funzione viene chiamata e perche' eventualmente skippa.
+  const inputSample = (Array.isArray(records) ? records : []).slice(0, 3).map((r) => ({
+    id: String(r?.id || "").slice(0, 40),
+    source: r?.source,
+    name: [r?.name, r?.surname].filter(Boolean).join(" "),
+    status: r?.status,
+    assignment: r?.assignment,
+    sourceSpreadsheetId: String(r?.sourceSpreadsheetId || "").slice(0, 20),
+    sourceSheetName: r?.sourceSheetName,
+    sourceRowNumber: r?.sourceRowNumber,
+    hasContact: Boolean(r?.email || r?.phone),
+    hasName: Boolean(r?.name || r?.surname),
+  }));
+  console.log("[sheet-mirror] enqueue called", {
+    count: Array.isArray(records) ? records.length : 0,
+    configReady: Boolean(normalizedConfig.serviceAccountEmail && normalizedConfig.privateKey),
+    sample: inputSample,
+  });
   if (!normalizedConfig.serviceAccountEmail || !normalizedConfig.privateKey) {
+    console.warn("[sheet-mirror] enqueue skipped: missing_service_account");
     return { action: "skipped", reason: "missing_service_account", updatedCells: 0 };
   }
   // Fase 5 mirror Portal→Sheets: accodiamo anche record non-google-sheets
@@ -5623,7 +5643,24 @@ function enqueueSalesRequestsGoogleSheetSync(config = {}, records = []) {
     return Boolean((record.email || record.phone) && (record.name || record.surname));
   });
   const queueRecords = [...googleRecords, ...orphanRecords];
+  console.log("[sheet-mirror] enqueue split", {
+    total: allRecords.length,
+    googleSheetsRecords: googleRecords.length,
+    orphanRecords: orphanRecords.length,
+    skippedReasons: allRecords
+      .filter((r) => !queueRecords.includes(r))
+      .slice(0, 3)
+      .map((r) => ({
+        id: String(r?.id || "").slice(0, 40),
+        source: r?.source,
+        sourceKey: getGoogleSheetRequestRecordKey(r),
+        sourceRowNumber: r?.sourceRowNumber,
+        hasContact: Boolean(r?.email || r?.phone),
+        hasName: Boolean(r?.name || r?.surname),
+      })),
+  });
   if (!queueRecords.length) {
+    console.warn("[sheet-mirror] enqueue skipped: no_records_to_mirror");
     return { action: "skipped", reason: "no_records_to_mirror", updatedCells: 0 };
   }
   pendingSalesRequestSheetSyncConfig = normalizedConfig;
