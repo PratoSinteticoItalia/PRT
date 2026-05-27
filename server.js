@@ -5649,8 +5649,23 @@ async function flushSalesRequestSheetSyncQueue() {
   pendingSalesRequestSheetSyncRecords.clear();
   if (!records.length) return;
   salesRequestSheetSyncInFlight = true;
+  // Log: ID, source, e (per debug) source key. Cosi' dai log capiamo se il
+  // mirror sta processando record google-sheets, imap, o altro.
+  console.log("[sheet-mirror] flush", {
+    count: records.length,
+    sample: records.slice(0, 3).map((r) => ({
+      id: String(r.id || "").slice(0, 40),
+      source: r.source,
+      name: [r.name, r.surname].filter(Boolean).join(" "),
+      status: r.status,
+      assignment: r.assignment,
+      sourceKey: getGoogleSheetRequestRecordKey(r),
+      sourceRowNumber: r.sourceRowNumber,
+    })),
+  });
   try {
     const result = await safeSyncSalesRequestsToGoogleSheet(config, records);
+    console.log("[sheet-mirror] result", result);
     if (result.action === "failed") {
       console.error("sales_request_google_sheet_background_sync_failed", result);
     }
