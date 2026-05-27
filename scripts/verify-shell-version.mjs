@@ -25,11 +25,13 @@ async function main() {
   const appJsPath = resolve(ROOT, "app.js");
   const indexPath = resolve(ROOT, "index.html");
   const swPath = resolve(ROOT, "sw.js");
+  const generatorHtmlPath = resolve(ROOT, "sales-suite/generator.html");
 
-  const [appJs, indexHtml, swJs] = await Promise.all([
+  const [appJs, indexHtml, swJs, generatorHtml] = await Promise.all([
     readText(appJsPath),
     readText(indexPath),
     readText(swPath),
+    readText(generatorHtmlPath),
   ]);
 
   const shellVersion = extractShellVersion(appJs);
@@ -40,6 +42,7 @@ async function main() {
   const escapedVersion = escapeRegExp(shellVersion);
   const errors = [];
 
+  // --- index.html ---
   assertMatches(
     indexHtml,
     new RegExp(`styles\\.css\\?v=${escapedVersion}`),
@@ -53,6 +56,7 @@ async function main() {
     errors,
   );
 
+  // --- sw.js ---
   assertMatches(
     swJs,
     new RegExp(`CACHE_NAME\\s*=\\s*"psi-ops-shell-${escapedVersion}"`),
@@ -75,6 +79,28 @@ async function main() {
     swJs,
     new RegExp(`/app\\.js\\?v=${escapedVersion}`),
     "sw.js missing versioned app.js entry",
+    errors,
+  );
+  assertMatches(
+    swJs,
+    new RegExp(`/sales-suite/generator-bridge\\.js\\?v=${escapedVersion}`),
+    "sw.js missing versioned sales-suite/generator-bridge.js entry",
+    errors,
+  );
+  assertMatches(
+    swJs,
+    new RegExp(`/sales-suite/generator\\.html\\?embedded=1&v=${escapedVersion}&shell=${escapedVersion}`),
+    "sw.js missing versioned sales-suite/generator.html entry",
+    errors,
+  );
+
+  // --- sales-suite/generator.html ---
+  // Il bridge è codice "nostro" (non Vite) e deve seguire APP_SHELL_VERSION.
+  // Gli asset Vite (./assets/index-*.js|css) hanno hash nel nome → versioning indipendente, non controllato qui.
+  assertMatches(
+    generatorHtml,
+    new RegExp(`generator-bridge\\.js\\?v=${escapedVersion}`),
+    "sales-suite/generator.html missing generator-bridge.js shell version",
     errors,
   );
 
