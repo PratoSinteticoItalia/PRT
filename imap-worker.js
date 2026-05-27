@@ -37,25 +37,18 @@ async function loadImapFlow() {
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 min
 const DEFAULT_MAILBOX = "INBOX";
-const PARSER_VERSION = "v1-php-form";
+const PARSER_VERSION = "v2-multi-template";
 
-// Pattern dei campi nelle email generate dal PHP del sito pratosinteticoitalia.com.
-// Esempio body:
-//   Ricevuti dalla pagina: https://pratosinteticoitalia.com
-//   Nome: GAVINO DE ROSA
-//   Email: dergav@libero.it
-//   Telefono: 3391392881
-//   Città: CAMPOSANO
-//   Tipologia cliente: Privata
-//   Metri quadri: 70
-//   Kit installazione: No
-//   Altezza: 40MM;
-//   Note aggiuntive: PREVENTIVO SOLO FORNITURA
+// Pattern dei campi nelle email generate dai form PHP di pratosinteticoitalia.com.
+// Esistono almeno 2 template: il modulo del sito principale (8-9 campi base) e
+// il modulo "landing" (campi base + 6 campi extra: area di posa, posa in opera,
+// fondo, animali domestici, descrizione area, note posa).
 //
-// Le regex sono permissive: case-insensitive, accettano spazi extra, fine
-// riga \r\n o \n. La citta' puo' avere accenti (à/à). Il campo "Altezza"
-// puo' terminare con ; nel template originale, lo rimuoviamo.
+// Le regex sono permissive: case-insensitive, accettano spazi extra, fine riga
+// \r\n o \n. La citta' puo' avere accenti. Alcuni campi terminano con ; o \,
+// li puliamo nella normalizzazione.
 const PSI_LEAD_PATTERNS = {
+  // Campi base (presenti in entrambi i template)
   nome:               /Nome:\s*([^\r\n]+)/i,
   email:              /Email:\s*(\S+@\S+)/i,
   telefono:           /Telefono:\s*([^\r\n]+)/i,
@@ -64,9 +57,30 @@ const PSI_LEAD_PATTERNS = {
   metri_quadri:       /Metri\s*quadri:\s*([\d.,]+)/i,
   kit_installazione:  /Kit\s*installazione:\s*([^\r\n]+)/i,
   altezza:            /Altezza:\s*([^\r\n;]+)/i,
-  note_aggiuntive:    /Note\s*aggiuntive:\s*([^\r\n]+)/i,
+  // Note aggiuntive/posa possono essere VUOTE: usiamo [ \t]* invece di \s*
+  // dopo i due punti per evitare che il match consumi newlines e finisca
+  // catturando il valore della riga successiva (bug riscontrato in test).
+  note_aggiuntive:    /Note\s*aggiuntive:[ \t]*([^\r\n]*)/i,
   sorgente_pagina:    /Ricevuti\s*dalla\s*pagina:\s*(\S+)/i,
+  // Campi extra del template "landing"
+  area_di_posa:       /Area\s*di\s*posa:\s*([^\r\n]+)/i,
+  posa_in_opera:      /Posa\s*in\s*opera:\s*([^\r\n]+)/i,
+  fondo:              /Fondo:\s*([^\r\n]+)/i,
+  animali_domestici:  /Animali\s*domestici:\s*([^\r\n]+)/i,
+  descrizione_area:   /Descrizione\s*dell['’]area:\s*([^\r\n]+)/i,
+  note_posa:          /Note\s*Posa:[ \t]*([^\r\n]*)/i,
 };
+
+// Sanitizza valori di tipo testo: rimuove caratteri di escape spuri (\) che
+// alcuni form PHP inseriscono ai bordi dei campi, normalizza spazi, trim.
+function cleanText(raw) {
+  if (raw == null) return "";
+  return String(raw)
+    .replace(/\\+$/g, "")        // rimuove backslash finali (es. "GIUSEPPE CRINO\")
+    .replace(/^\\+/g, "")        // rimuove backslash iniziali
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 
 // Strip HTML basico: rimuove tag, normalizza entità HTML comuni, mantiene il
 // testo. Usato come fallback se la mail non ha bodyText (solo HTML).
@@ -122,12 +136,15 @@ function parsePsiLeadEmail({ subject, fromEmail, fromName, receivedAt, bodyText,
   for (const [key, regex] of Object.entries(PSI_LEAD_PATTERNS)) {
     const m = text.match(regex);
     if (m) {
-      payload[key] = String(m[1] || "").trim();
-      matchedFields++;
+      const cleaned = cleanText(m[1]);
+      if (cleaned) {
+        payload[key] = cleaned;
+        matchedFields++;
+      }
     }
   }
 
-  // Normalizzazioni
+  // Normalizzazioni — campi base
   if (payload.email) {
     payload.email = payload.email.toLowerCase().replace(/[<>,;]+$/g, "");
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payload.email)) {
@@ -155,8 +172,34 @@ function parsePsiLeadEmail({ subject, fromEmail, fromName, receivedAt, bodyText,
     if (bool !== null) payload.kit_installazione = bool;
   }
   if (payload.note_aggiuntive) {
-    // Tronca a 1000 chars per evitare blob enormi (es. firma email)
     payload.note_aggiuntive = String(payload.note_aggiuntive).slice(0, 1000).trim();
+  }
+
+  // Normalizzazioni — campi template "landing"
+  if (payload.animali_domestici) {
+    payload.animali_domestici_raw = payload.animali_domestici;
+    const bool = normalizeKitBoolean(payload.animali_domestici); // riusa "si/no" parser
+    if (bool !== null) payload.animali_domestici = bool;
+  }
+  if (payload.posa_in_opera) {
+    // Normalizza in valori chiave: "fornitura", "fornitura+posa"
+    const v = payload.posa_in_opera.toLowerCase();
+    if (v.includes("posa")) payload.posa_in_opera_normalized = "fornitura+posa";
+    else payload.posa_in_opera_normalized = "fornitura";
+  }
+  if (payload.descrizione_area) {
+    payload.descrizione_area = payload.descrizione_area.slice(0, 1000).trim();
+  }
+  if (payload.note_posa) {
+    payload.note_posa = payload.note_posa.slice(0, 1000).trim();
+  }
+  if (payload.fondo) {
+    // Normalizza in valori chiave: "terra", "cemento", "erba", "altro"
+    const v = payload.fondo.toLowerCase();
+    if (v.includes("terra")) payload.fondo_normalized = "terra";
+    else if (v.includes("cemento") || v.includes("asfalto")) payload.fondo_normalized = "cemento";
+    else if (v.includes("erba") || v.includes("prato")) payload.fondo_normalized = "erba";
+    else payload.fondo_normalized = "altro";
   }
 
   // Status:
