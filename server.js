@@ -667,6 +667,7 @@ async function ensureRelationalSchema() {
         city TEXT, address TEXT, postal_code TEXT, province_code TEXT, province TEXT, country_code TEXT,
         company TEXT, job_type TEXT, surface TEXT, sqm NUMERIC, note TEXT,
         status TEXT, assignment TEXT, first_contact_by TEXT, first_contact_at TIMESTAMPTZ,
+        quoted_at TIMESTAMPTZ,
         source TEXT, source_row_number INTEGER, attachments JSONB DEFAULT '[]', whatsapp_thread_id TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
       );
@@ -710,6 +711,7 @@ async function ensureRelationalSchema() {
       );
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS operations_json JSONB DEFAULT '{}';
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS requested_height TEXT DEFAULT '';
+      ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS quoted_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS orders_shopify_id_idx       ON orders (shopify_numeric_id);
       CREATE INDEX IF NOT EXISTS orders_updated_at_idx       ON orders (updated_at DESC);
       CREATE INDEX IF NOT EXISTS orders_financial_status_idx ON orders (financial_status);
@@ -855,6 +857,7 @@ function dbRowToSalesRequest(row) {
     assignment: row.assignment || "",
     firstContactBy: row.first_contact_by || "",
     firstContactAt: row.first_contact_at || null,
+    quotedAt: row.quoted_at || null,
     source: row.source || "",
     sourceRowNumber: row.source_row_number || null,
     attachments: row.attachments || [],
@@ -1176,10 +1179,10 @@ async function upsertSalesRequestToDb(request, userId = null) {
         id, first_name, last_name, email, phone,
         city, address, postal_code, province_code, province, country_code,
         company, job_type, surface, sqm, note,
-        status, assignment, first_contact_by, first_contact_at,
+        status, assignment, first_contact_by, first_contact_at, quoted_at,
         source, source_row_number, attachments, whatsapp_thread_id,
         requested_height, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW())
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,NOW())
       ON CONFLICT (id) DO UPDATE SET
         first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name,
         email=EXCLUDED.email, phone=EXCLUDED.phone,
@@ -1190,6 +1193,7 @@ async function upsertSalesRequestToDb(request, userId = null) {
         surface=EXCLUDED.surface, sqm=EXCLUDED.sqm, note=EXCLUDED.note,
         status=EXCLUDED.status, assignment=EXCLUDED.assignment,
         first_contact_by=EXCLUDED.first_contact_by, first_contact_at=EXCLUDED.first_contact_at,
+        quoted_at=EXCLUDED.quoted_at,
         source=EXCLUDED.source, source_row_number=EXCLUDED.source_row_number,
         attachments=EXCLUDED.attachments, whatsapp_thread_id=EXCLUDED.whatsapp_thread_id,
         requested_height=EXCLUDED.requested_height,
@@ -1207,7 +1211,10 @@ async function upsertSalesRequestToDb(request, userId = null) {
       String(request.note || ""),
       String(request.status || ""), String(request.assignment || ""),
       String(request.firstContactBy || ""),
-      request.firstContactAt ? new Date(String(request.firstContactAt)).toISOString() : null,
+      (request.firstContactAt || request.firstContactSentAt || request.firstContactScheduledAt)
+        ? new Date(String(request.firstContactAt || request.firstContactSentAt || request.firstContactScheduledAt)).toISOString()
+        : null,
+      request.quotedAt ? new Date(String(request.quotedAt)).toISOString() : null,
       String(request.source || ""),
       request.sourceRowNumber != null ? Number(request.sourceRowNumber) : null,
       JSON.stringify(Array.isArray(request.attachments) ? request.attachments : []),
@@ -1229,6 +1236,55 @@ async function upsertSalesRequestToDb(request, userId = null) {
   } catch (err) {
     console.warn("[db] upsertSalesRequestToDb:", err?.message);
   }
+}
+
+async function updateSalesRequestMicroFieldsInDb(request, patch = {}, existingRequest = null, userId = null) {
+  if (!USE_POSTGRES || !request?.id) return false;
+  invalidateSalesRequestsDbCache();
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const entries = [];
+  const add = (column, value) => entries.push([column, value]);
+  const has = (key) => Object.prototype.hasOwnProperty.call(patch, key);
+  if (has("name")) add("first_name", String(request.name || request.firstName || ""));
+  if (has("surname")) add("last_name", String(request.surname || request.lastName || ""));
+  if (has("email")) add("email", String(request.email || ""));
+  if (has("phone")) add("phone", String(request.phone || ""));
+  if (has("city")) add("city", String(request.city || ""));
+  if (has("note")) add("note", String(request.note || ""));
+  if (has("service")) add("job_type", String(request.service || request.jobType || ""));
+  if (has("surface")) add("surface", String(request.surface || ""));
+  if (has("sqm")) add("sqm", request.sqm != null ? Number(request.sqm) : null);
+  if (has("requestedHeight")) add("requested_height", String(request.requestedHeight || ""));
+  if (has("status") || has("assignment")) add("status", String(request.status || ""));
+  if (has("assignment")) add("assignment", String(request.assignment || ""));
+  if (has("assignment") || has("firstContactBy")) add("first_contact_by", String(request.firstContactBy || request.assignment || ""));
+  if (has("firstContactAt") || has("firstContactSentAt") || request.firstContactAt || request.firstContactSentAt) {
+    const contactAt = request.firstContactAt || request.firstContactSentAt || null;
+    add("first_contact_at", contactAt ? new Date(String(contactAt)).toISOString() : null);
+  }
+  if (has("quotedAt") || String(request.status || "").trim().toLowerCase() === "preventivo inviato") {
+    add("quoted_at", request.quotedAt ? new Date(String(request.quotedAt)).toISOString() : null);
+  }
+  if (!entries.length) return false;
+  entries.push(["updated_at", new Date(String(request.updatedAt || new Date().toISOString())).toISOString()]);
+  const assignments = entries.map(([column], index) => `${column}=$${index + 1}`).join(", ");
+  const result = await pool.query(
+    `UPDATE sales_requests SET ${assignments} WHERE id=$${entries.length + 1}`,
+    [...entries.map(([, value]) => value), String(request.id)],
+  );
+  if (!result.rowCount) return false;
+  const changes = {};
+  if (has("status") && String(existingRequest?.status || "") !== String(request.status || "")) {
+    changes.status = { before: String(existingRequest?.status || ""), after: String(request.status || "") };
+  }
+  if (has("assignment") && String(existingRequest?.assignment || "") !== String(request.assignment || "")) {
+    changes.assignment = { before: String(existingRequest?.assignment || ""), after: String(request.assignment || "") };
+  }
+  if (Object.keys(changes).length) {
+    writeAuditLog("sales_request", request.id, "update", changes, userId).catch(() => {});
+  }
+  return true;
 }
 
 async function deleteSalesRequestFromDb(id) {
@@ -1369,30 +1425,6 @@ async function writeJson(path, value) {
   if (isStorePayload) {
     broadcastStoreRevision(getStoreRevision(value));
   }
-}
-
-let pendingStoreSnapshotWriteTimer = null;
-
-function scheduleStoreSnapshotWrite(value, label = "store_snapshot") {
-  if (!value || typeof value !== "object") return;
-  if (!USE_POSTGRES) {
-    writeJson(STORE_PATH, value).catch((error) => {
-      console.error(`[${label}] store write failed:`, error?.message || error);
-    });
-    return;
-  }
-  rotateStoreRevision(value);
-  if (storeMemCache?.__memReconciled) value.__memReconciled = true;
-  storeMemCache = value;
-  broadcastStoreRevision(getStoreRevision(value));
-  clearTimeout(pendingStoreSnapshotWriteTimer);
-  pendingStoreSnapshotWriteTimer = setTimeout(() => {
-    pendingStoreSnapshotWriteTimer = null;
-    writeJson(STORE_PATH, value).catch((error) => {
-      console.error(`[${label}] background store write failed:`, error?.message || error);
-    });
-  }, 750);
-  pendingStoreSnapshotWriteTimer.unref?.();
 }
 
 function normalizeSessionEntry(entry = null) {
@@ -5703,18 +5735,24 @@ function enqueueSalesRequestsGoogleSheetSync(config = {}, records = []) {
     console.warn("[sheet-mirror] enqueue skipped: missing_service_account");
     return { action: "skipped", reason: "missing_service_account", updatedCells: 0 };
   }
-  // Nel flusso attuale le richieste arrivano da IMAP/DB. Manteniamo Sheets
-  // solo come mirror per record nati da Google Sheets, evitando append lenti
-  // e rumorosi per richieste IMAP/manuali.
+  // Fase 5 mirror Portal→Sheets: accodiamo anche record non-google-sheets
+  // (orfani imap/manual) per fare APPEND di nuove righe su Sheets.
+  // Filtra solo record che hanno dati cliente minimi (nome + contatto).
   const allRecords = (Array.isArray(records) ? records : [])
     .map(normalizeSalesRequestRecord)
     .map((r) => backfillSheetSourceFields(r, normalizedConfig));
   const googleRecords = allRecords.filter((record) => getGoogleSheetRequestRecordKey(record));
-  const queueRecords = googleRecords;
+  const orphanRecords = allRecords.filter((record) => {
+    if (getGoogleSheetRequestRecordKey(record)) return false;
+    const src = String(record.source || "").toLowerCase();
+    if (src === "google-sheets") return false;
+    return Boolean((record.email || record.phone) && (record.name || record.surname));
+  });
+  const queueRecords = [...googleRecords, ...orphanRecords];
   console.log("[sheet-mirror] enqueue split", {
     total: allRecords.length,
     googleSheetsRecords: googleRecords.length,
-    orphanRecords: 0,
+    orphanRecords: orphanRecords.length,
     skippedReasons: allRecords
       .filter((r) => !queueRecords.includes(r))
       .slice(0, 3)
@@ -5909,6 +5947,8 @@ function normalizeSalesRequestRecord(item = {}) {
     firstContactScheduledAt: normalizeIsoDateTime(item.firstContactScheduledAt || item.firstContact?.scheduledAt || ""),
     firstContactSentAt: normalizeIsoDateTime(item.firstContactSentAt || item.firstContact?.sentAt || ""),
     firstContactBy: hasExplicitAssignment && !assignment ? "" : normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
+    firstContactAt: normalizeIsoDateTime(item.firstContactAt || item.firstContact?.at || ""),
+    quotedAt: normalizeIsoDateTime(item.quotedAt || ""),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || new Date().toISOString()),
   };
@@ -8678,12 +8718,11 @@ async function handleApi(req, res, url) {
       "assignment",
       "status",
       "note",
-      "whatsappTemplate",
-      "whatsappUrl",
       "firstContactState",
       "firstContactScheduledAt",
       "firstContactSentAt",
       "firstContactBy",
+      "firstContactAt",
       "requestedHeight",
       "sqm",
       "surface",
@@ -8693,6 +8732,7 @@ async function handleApi(req, res, url) {
       "email",
       "name",
       "surname",
+      "quotedAt",
     ]);
     const patch = {};
     Object.entries(rawPatch).forEach(([key, value]) => {
@@ -8725,8 +8765,12 @@ async function handleApi(req, res, url) {
     });
     store.salesRequests[existingIndex] = requestRecord;
     if (USE_POSTGRES) {
-      await upsertSalesRequestToDb(requestRecord, currentUser?.email || null);
-      scheduleStoreSnapshotWrite(store, "sales_request_patch");
+      const dbUpdated = await updateSalesRequestMicroFieldsInDb(requestRecord, patch, existingRequest, currentUser?.email || null);
+      if (!dbUpdated) await upsertSalesRequestToDb(requestRecord, currentUser?.email || null);
+      rotateStoreRevision(store);
+      if (storeMemCache?.__memReconciled) store.__memReconciled = true;
+      storeMemCache = store;
+      broadcastStoreRevision(getStoreRevision(store));
     } else {
       await writeJson(STORE_PATH, store);
     }
@@ -8780,8 +8824,14 @@ async function handleApi(req, res, url) {
     }
     if (!updatedRequests.length) return sendJson(res, 404, { error: "requests_not_found" });
     if (USE_POSTGRES) {
-      await Promise.all(updatedRequests.map((rec) => upsertSalesRequestToDb(rec, currentUser?.email || null)));
-      scheduleStoreSnapshotWrite(store, "sales_request_bulk_assignment");
+      await Promise.all(updatedRequests.map(async (rec) => {
+        const dbUpdated = await updateSalesRequestMicroFieldsInDb(rec, { assignment }, null, currentUser?.email || null);
+        if (!dbUpdated) await upsertSalesRequestToDb(rec, currentUser?.email || null);
+      }));
+      rotateStoreRevision(store);
+      if (storeMemCache?.__memReconciled) store.__memReconciled = true;
+      storeMemCache = store;
+      broadcastStoreRevision(getStoreRevision(store));
     } else {
       await writeJson(STORE_PATH, store);
     }

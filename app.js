@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260527-imap-requests-fast-v1";
+const APP_SHELL_VERSION = "20260527-imap-micro-save-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -20,6 +20,26 @@ const SALES_REQUEST_AUTO_SYNC_COOLDOWN_MS = 1000 * 60 * 2; // era 45s — cooldo
 const SALES_REQUEST_SAVE_TIMEOUT_MS = 90_000;
 const SALES_REQUEST_PATCH_TIMEOUT_MS = 15_000;
 const SALES_REQUEST_SAVE_MAX_RETRIES = 2;
+const SALES_REQUEST_FAST_PATCH_FIELDS = new Set([
+  "assignment",
+  "status",
+  "note",
+  "firstContactState",
+  "firstContactScheduledAt",
+  "firstContactSentAt",
+  "firstContactBy",
+  "firstContactAt",
+  "requestedHeight",
+  "sqm",
+  "surface",
+  "service",
+  "city",
+  "phone",
+  "email",
+  "name",
+  "surname",
+  "quotedAt",
+]);
 const COVERAGE_SYNC_DEBOUNCE_MS = 350;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
@@ -3706,6 +3726,7 @@ function buildSalesRequestPayloadFromRecord(record = {}, patch = {}) {
     firstContactScheduledAt: normalizeIsoDateTime(merged.firstContactScheduledAt),
     firstContactSentAt: normalizeIsoDateTime(merged.firstContactSentAt),
     firstContactBy: normalizeSalesRequestAssignment(merged.firstContactBy || merged.assignment),
+    quotedAt: normalizeIsoDateTime(merged.quotedAt),
     source: String(merged.source || "manual").trim() || "manual",
     sourceSpreadsheetId: String(merged.sourceSpreadsheetId || "").trim(),
     sourceSheetName: String(merged.sourceSheetName || "").trim(),
@@ -5113,14 +5134,18 @@ function openSalesRequestWhatsAppTab(url = "") {
   return tab;
 }
 
-function markSelectedSalesRequestQuoteSent() {
-  const request = getSelectedSalesRequest();
+function markSelectedSalesRequestQuoteSent(requestIdOverride = "") {
+  const explicitRequestId = String(requestIdOverride || "").trim();
+  const request = explicitRequestId
+    ? (state.salesRequests.find((item) => item.id === explicitRequestId) || getSelectedSalesRequest())
+    : getSelectedSalesRequest();
   const requestId = String(request?.id || "").trim();
   if (!request || !requestId || salesGeneratorQuoteStatusInFlight.has(requestId)) return;
   const previousRecord = state.salesRequests.find((item) => item.id === requestId) || request;
   const nowIso = new Date().toISOString();
   const patch = {
     status: "Preventivo inviato",
+    quotedAt: previousRecord.quotedAt || nowIso,
     updatedAt: nowIso,
   };
   const optimisticRecord = normalizeSalesRequestRecord({ ...previousRecord, ...patch });
@@ -5145,6 +5170,9 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
   const cleanPatch = Object.fromEntries(
     Object.entries(patch || {}).filter(([key]) => key && !key.startsWith("__")),
   );
+  const canUseFastPatch = recordId
+    && Object.keys(cleanPatch).length
+    && Object.keys(cleanPatch).every((key) => SALES_REQUEST_FAST_PATCH_FIELDS.has(key) || key === "updatedAt");
   // Incrementa version per questo record: risposte server di save precedenti vengono scartate
   _salesRequestPatchVersions[recordId] = (_salesRequestPatchVersions[recordId] || 0) + 1;
   const myVersion = _salesRequestPatchVersions[recordId];
@@ -5159,13 +5187,21 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     salesRequestPendingPatchIds.add(recordId);
   }
   try {
-    const saved = await apiFetchWithRetry(`/api/sales/requests/${encodeURIComponent(recordId)}`, {
-      method: "PATCH",
-      timeoutMs: SALES_REQUEST_PATCH_TIMEOUT_MS,
-      body: JSON.stringify({ patch: cleanPatch }),
-    }, {
-      retries: 1,
-    });
+    const saved = canUseFastPatch
+      ? await apiFetchWithRetry(`/api/sales/requests/${encodeURIComponent(recordId)}`, {
+          method: "PATCH",
+          timeoutMs: SALES_REQUEST_PATCH_TIMEOUT_MS,
+          body: JSON.stringify({ patch: cleanPatch }),
+        }, {
+          retries: 1,
+        })
+      : await apiFetchWithRetry("/api/sales/requests", {
+          method: "POST",
+          timeoutMs: SALES_REQUEST_SAVE_TIMEOUT_MS,
+          body: JSON.stringify(buildSalesRequestPayloadFromRecord(record, cleanPatch)),
+        }, {
+          retries: SALES_REQUEST_SAVE_MAX_RETRIES,
+        });
     // Applica la risposta server solo se non è stata avviata una save più recente per questo record
     if (_salesRequestPatchVersions[recordId] === myVersion) {
       upsertSalesRequest(saved, { skipOpsRender: true, preserveSelection: true });
@@ -12162,6 +12198,7 @@ function renderSalesGenerator() {
       ui.salesGeneratorWhatsAppButton.classList.toggle("hidden", !whatsappUrl);
       ui.salesGeneratorWhatsAppButton.setAttribute("aria-disabled", whatsappUrl ? "false" : "true");
       ui.salesGeneratorWhatsAppButton.dataset.action = "open-sales-generator-whatsapp";
+      ui.salesGeneratorWhatsAppButton.dataset.requestId = selected?.id || "";
     }
     if (ui.salesGeneratorEmailButton) {
       ui.salesGeneratorEmailButton.href = emailUrl || "#";
@@ -20432,8 +20469,9 @@ function handleGlobalClick(event) {
     event.preventDefault();
     event.stopPropagation();
     const target = event.target.closest("[href]");
+    const requestId = target?.dataset?.requestId || "";
     openSalesRequestWhatsAppTab(target?.getAttribute("href") || "");
-    markSelectedSalesRequestQuoteSent();
+    markSelectedSalesRequestQuoteSent(requestId);
     return;
   }
   if (action === "open-sales-request-followup-whatsapp") {
@@ -21354,11 +21392,14 @@ bindEvent(ui.salesGeneratorEmailButton, "click", (event) => {
   trackUsageEvent("quote_email_opened", { requestId: state.selectedSalesRequestId || "" });
   openMailtoUrl(href);
 });
-bindEvent(ui.salesGeneratorWhatsAppButton, "click", () => {
+bindEvent(ui.salesGeneratorWhatsAppButton, "click", (event) => {
   const href = ui.salesGeneratorWhatsAppButton?.getAttribute("href") || "";
   if (!href || href === "#") return;
+  event.preventDefault();
+  event.stopPropagation();
   trackUsageEvent("quote_whatsapp_opened", { requestId: state.selectedSalesRequestId || "" });
-  markSelectedSalesRequestQuoteSent();
+  openSalesRequestWhatsAppTab(href);
+  markSelectedSalesRequestQuoteSent(ui.salesGeneratorWhatsAppButton?.dataset?.requestId || "");
 });
 const PREVENTIVO_STATIC_DEFAULTS = Object.freeze({
   certifications: [
