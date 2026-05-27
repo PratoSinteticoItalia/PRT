@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260527-imap-health-v6";
+const APP_SHELL_VERSION = "20260527-imap-debug-v7";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

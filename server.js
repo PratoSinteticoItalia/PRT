@@ -8208,6 +8208,38 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // Endpoint debug per ispezionare i valori interni del worker IMAP.
+  // Risolve il caso "Stato sconosciuto" mostrato nel diagnostic frontend:
+  // dump diretto di cfg, workerState e valori calcolati dalla health logic.
+  if (url.pathname === "/api/sales/imap-debug" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const status = getImapWorkerStatus();
+    // Versione del modulo per confermare quale codice e' in esecuzione
+    const moduleMarker = "v6-1880991-health-debug";
+    return sendJson(res, 200, {
+      moduleMarker,
+      generatedAt: new Date().toISOString(),
+      now: Date.now(),
+      // Direttamente dal process.env (mostriamo solo presenza/valore, no password)
+      env: {
+        IMAP_SHADOW_ENABLED: String(process.env.IMAP_SHADOW_ENABLED || "(unset)"),
+        IMAP_AUTO_PROMOTE: String(process.env.IMAP_AUTO_PROMOTE || "(unset)"),
+        IMAP_HOST: String(process.env.IMAP_HOST || "(unset)"),
+        IMAP_USER: String(process.env.IMAP_USER || "(unset)").substring(0, 25),
+        IMAP_PORT: String(process.env.IMAP_PORT || "(unset)"),
+        IMAP_PASSWORD_PRESENT: Boolean(process.env.IMAP_PASSWORD),
+      },
+      // Tutto quello che getImapWorkerStatus restituisce
+      status,
+      // Verifica esplicita: cosa pensa il codice di autoPromote/enabled
+      computed: {
+        autoPromote_via_string: String(process.env.IMAP_AUTO_PROMOTE || "false").trim().toLowerCase() === "true",
+        enabled_via_string: String(process.env.IMAP_SHADOW_ENABLED || "false").trim().toLowerCase() === "true",
+      },
+    });
+  }
+
   // Endpoint debug per visualizzare gli ultimi lead shadow letti da IMAP.
   // Solo office, read-only. Per audit della Fase 2 (validazione confronto
   // IMAP vs Sheets).
