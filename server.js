@@ -2,11 +2,12 @@ import { createServer } from "node:http";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, dirname, join, resolve, sep } from "node:path";
-import { createHmac, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { startImapWorker, getImapWorkerStatus, isImapWorkerEnabled, hasImapWorkerConfig, getImapWorkerConfig } from "./imap-worker.js";
 import { reconcileShadowLeads, buildLeadFingerprint, fingerprintIsComplete, findMatchingSalesRequest } from "./lead-fingerprint.mjs";
+import { generateWorkReportPdf } from "./lib/work-report-pdf.js";
 import webPush from "web-push";
 
 const PORT = Number(process.env.PORT || 4178);
@@ -1551,6 +1552,71 @@ async function updateWorkReportInDb(id, patch = {}, opts = {}) {
   }
 }
 
+/**
+ * Marca un verbale come firmato. Solo se status='draft'.
+ * Update atomico: customer_signature_r2_key, crew_signature_r2_key,
+ * signed_at = NOW(), status = 'signed'. Idempotente sulle chiavi firma.
+ */
+async function signWorkReportInDb(id, { customerSignatureR2Key, crewSignatureR2Key }, opts = {}) {
+  if (!USE_POSTGRES || !id) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const result = await pool.query(
+      `UPDATE work_completion_reports
+          SET customer_signature_r2_key = $2,
+              crew_signature_r2_key     = $3,
+              signed_at                 = NOW(),
+              status                    = 'signed',
+              updated_at                = NOW()
+        WHERE id = $1 AND status = 'draft'
+        RETURNING id`,
+      [String(id), String(customerSignatureR2Key || ""), String(crewSignatureR2Key || "")],
+    );
+    if (!result.rowCount) {
+      // Già firmato o non esiste — distinguilo per UX.
+      const existing = await getWorkReportFromDb(id);
+      if (!existing) return null;
+      const err = new Error("not_draft");
+      err.code = "not_draft";
+      if (opts && opts.rethrow) throw err;
+      return null;
+    }
+    return await getWorkReportFromDb(id);
+  } catch (err) {
+    console.warn("[db] signWorkReportInDb:", err?.message);
+    if (opts && opts.rethrow) throw err;
+    return null;
+  }
+}
+
+/**
+ * Aggiorna i campi PDF + status dopo la generazione del documento.
+ * Chiamato dall'handler outbox 'generate_work_report_pdf'.
+ */
+async function archiveWorkReportInDb(id, { documentPdfR2Key, documentPdfSha256 }, opts = {}) {
+  if (!USE_POSTGRES || !id) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    await pool.query(
+      `UPDATE work_completion_reports
+          SET document_pdf_r2_key = $2,
+              document_pdf_sha256 = $3,
+              status              = 'archived',
+              archived_at         = NOW(),
+              updated_at          = NOW()
+        WHERE id = $1`,
+      [String(id), String(documentPdfR2Key || ""), String(documentPdfSha256 || "")],
+    );
+    return await getWorkReportFromDb(id);
+  } catch (err) {
+    console.warn("[db] archiveWorkReportInDb:", err?.message);
+    if (opts && opts.rethrow) throw err;
+    return null;
+  }
+}
+
 // ——— Coverage Planner in SQL (tabella settings, key='coverage_planner') ———
 
 async function getCoveragePlannerFromDb() {
@@ -2068,6 +2134,90 @@ registerOutboxHandler("delete_sales_request", async (payload = {}) => {
   const id = payload.id || null;
   if (!id) throw new Error("delete_sales_request: missing id in payload");
   await deleteSalesRequestFromDb(id, { rethrow: true });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Verbali fine cantiere — handler outbox per generazione PDF asincrona.
+// Trigger: enqueue automatico dopo POST /api/work-reports/:id/sign.
+// Flusso:
+//   1. carica report DB
+//   2. scarica firme + foto da R2 come Buffer
+//   3. genera PDF con pdfkit (modulo lib/work-report-pdf.js)
+//   4. calcola SHA-256 del PDF
+//   5. upload PDF su R2 con key "work-reports/{id}/verbale-{id}.pdf"
+//   6. archiveWorkReportInDb → status='archived'
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Scarica un oggetto da R2 e lo ritorna come Buffer. NULL se R2 non configurato,
+ * key vuota, o errore di rete. Helper riusabile per il PDF builder e altri usi.
+ */
+async function downloadR2ObjectAsBuffer(objectKey) {
+  if (!USE_R2 || !objectKey) return null;
+  try {
+    const client = await getR2Client();
+    const sdk = await getR2Sdk();
+    const obj = await client.send(new sdk.GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: String(objectKey),
+    }));
+    const chunks = [];
+    if (obj.Body?.[Symbol.asyncIterator]) {
+      for await (const chunk of obj.Body) chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  } catch (err) {
+    console.warn("[r2] download failed:", err?.message || err);
+    return null;
+  }
+}
+
+let _cachedLogoBuffer = null;
+async function getCachedLogoBuffer() {
+  if (_cachedLogoBuffer) return _cachedLogoBuffer;
+  try {
+    _cachedLogoBuffer = await readFile(resolve(ROOT, "logo-prato.png"));
+    return _cachedLogoBuffer;
+  } catch {
+    return null;
+  }
+}
+
+registerOutboxHandler("generate_work_report_pdf", async (payload = {}) => {
+  const id = payload.workReportId || null;
+  if (!id) throw new Error("generate_work_report_pdf: missing workReportId");
+  const report = await getWorkReportFromDb(id);
+  if (!report) throw new Error(`generate_work_report_pdf: report not found: ${id}`);
+  if (report.status !== "signed") {
+    // Idempotenza: già archived o tornato a draft? non rifare.
+    console.log(`[work-reports] PDF skip ${id} status=${report.status}`);
+    return;
+  }
+  const logoBuffer = await getCachedLogoBuffer();
+  const pdfBuffer = await generateWorkReportPdf(report, {
+    fetchR2Buffer: downloadR2ObjectAsBuffer,
+    logoBuffer,
+  });
+  const sha256 = createHash("sha256").update(pdfBuffer).digest("hex");
+  const objectKey = `work-reports/${id}/verbale-${id}.pdf`;
+  if (USE_R2) {
+    const client = await getR2Client();
+    const sdk = await getR2Sdk();
+    await client.send(new sdk.PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: objectKey,
+      Body: pdfBuffer,
+      ContentType: "application/pdf",
+      ContentLength: pdfBuffer.length,
+    }));
+  } else {
+    console.warn("[work-reports] R2 disabled, PDF non archiviato:", id);
+  }
+  await archiveWorkReportInDb(id, {
+    documentPdfR2Key: objectKey,
+    documentPdfSha256: sha256,
+  }, { rethrow: true });
+  console.log(`[work-reports] archived ${id} (${pdfBuffer.length} bytes, sha256=${sha256.slice(0,12)}...)`);
 });
 
 async function getOutboxStats() {
@@ -6524,7 +6674,9 @@ function buildLocalAttachmentRecord(ownerId = "", attachment = {}, parsed = null
   const safeName = sanitizeAttachmentName(attachment.name, fallbackExtension);
   const bucketPrefix = resource === "sales-content"
     ? "sales-content"
-    : (resource === "marketing-public" ? "marketing-public" : "orders");
+    : resource === "marketing-public" ? "marketing-public"
+    : resource === "work-reports" ? "work-reports"
+    : "orders";
   const ownerSegment = String(ownerId || resource).replace(/[^\w.-]+/g, "_");
   const relativePath = normalizeAttachmentLocalPath(`${bucketPrefix}/${ownerSegment}/${attachmentId}-${safeName}`);
   const absolutePath = resolveAttachmentLocalPath(relativePath);
@@ -6725,7 +6877,9 @@ async function storeAttachmentBuffer(ownerId, attachment = {}, buffer = Buffer.a
   const safeName = sanitizeAttachmentName(attachment.name, fallbackExtension);
   const bucketPrefix = resource === "sales-content"
     ? "sales-content"
-    : (resource === "marketing-public" ? "marketing-public" : "orders");
+    : resource === "marketing-public" ? "marketing-public"
+    : resource === "work-reports" ? "work-reports"
+    : "orders";
   const objectKey = `${bucketPrefix}/${String(ownerId || resource).replace(/[^\w.-]+/g, "_")}/${attachmentId}-${safeName}`;
 
   await client.send(new sdk.PutObjectCommand({
@@ -9274,6 +9428,199 @@ async function handleApi(req, res, url) {
     } catch (err) {
       console.error("[work-reports] patch failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "patch_failed") });
+    }
+  }
+
+  // POST /api/work-reports/:id/photos → append foto (R2)
+  // Body: { photos: [{ name, type, dataUrl }, ...] }
+  // Compressione lato client (vedi UI #8). Il server limita comunque a MAX_JSON_BODY_BYTES.
+  if (url.pathname.match(/^\/api\/work-reports\/[^/]+\/photos$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.split("/")[3]);
+    try {
+      const existing = await getWorkReportFromDb(id);
+      if (!existing) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew" && existing.crewUserId !== currentUser.id) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+      if (existing.status !== "draft") {
+        return sendJson(res, 409, { error: "not_draft", message: "Foto modificabili solo in bozza." });
+      }
+      const body = await readBody(req);
+      const incoming = Array.isArray(body.photos) ? body.photos : [];
+      if (!incoming.length) return sendJson(res, 400, { error: "no_photos" });
+      const MAX_PHOTOS = 10;
+      const currentCount = Array.isArray(existing.photos) ? existing.photos.length : 0;
+      if (currentCount + incoming.length > MAX_PHOTOS) {
+        return sendJson(res, 400, { error: "too_many_photos", limit: MAX_PHOTOS });
+      }
+      const saved = [];
+      for (const photo of incoming) {
+        if (!photo?.dataUrl) continue;
+        const attachment = await storeAttachmentAsset(id, {
+          id: photo.id || randomUUID(),
+          name: photo.name || `foto-${Date.now()}.jpg`,
+          type: photo.type || "image/jpeg",
+          dataUrl: photo.dataUrl,
+          size: photo.size,
+        }, "work-reports");
+        saved.push({
+          id: attachment.id,
+          name: attachment.name,
+          type: attachment.type,
+          size: attachment.size,
+          storage: attachment.storage,
+          objectKey: attachment.objectKey || "",
+          takenAt: photo.takenAt || new Date().toISOString(),
+        });
+      }
+      const nextPhotos = [...(existing.photos || []), ...saved];
+      const updated = await updateWorkReportInDb(id, { photos: nextPhotos }, { rethrow: true });
+      writeAuditLog("work_report", id, "photos_added", { count: saved.length }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, updated);
+    } catch (err) {
+      console.error("[work-reports] photos upload failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "upload_failed") });
+    }
+  }
+
+  // GET /api/work-reports/:id/photos/:photoId/file → stream foto da R2
+  if (url.pathname.match(/^\/api\/work-reports\/[^/]+\/photos\/[^/]+\/file$/) && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "warehouse", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const parts = url.pathname.split("/");
+    const id = decodeURIComponent(parts[3]);
+    const photoId = decodeURIComponent(parts[5]);
+    try {
+      const report = await getWorkReportFromDb(id);
+      if (!report) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew" && report.crewUserId !== currentUser.id) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+      const photo = (report.photos || []).find((p) => String(p.id || "") === photoId);
+      if (!photo) return sendJson(res, 404, { error: "photo_not_found" });
+      return streamAttachmentAsset(res, photo);
+    } catch (err) {
+      console.error("[work-reports] photo file failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "stream_failed") });
+    }
+  }
+
+  // GET /api/work-reports/:id/pdf → scarica il PDF archiviato (stream da R2)
+  if (url.pathname.match(/^\/api\/work-reports\/[^/]+\/pdf$/) && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "warehouse", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.split("/")[3]);
+    try {
+      const report = await getWorkReportFromDb(id);
+      if (!report) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew" && report.crewUserId !== currentUser.id) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+      if (report.status !== "archived" || !report.documentPdfR2Key) {
+        return sendJson(res, 409, {
+          error: "pdf_not_ready",
+          status: report.status,
+          message: report.status === "draft" ? "Verbale ancora in bozza." : "PDF in generazione, riprova tra qualche secondo.",
+        });
+      }
+      return streamAttachmentAsset(res, {
+        objectKey: report.documentPdfR2Key,
+        type: "application/pdf",
+        name: `verbale-${id}.pdf`,
+        storage: "r2",
+      });
+    } catch (err) {
+      console.error("[work-reports] pdf download failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "download_failed") });
+    }
+  }
+
+  // POST /api/work-reports/:id/sign → firma cliente + posatore, chiude bozza
+  // Body: { customerSignatureDataUrl, crewSignatureDataUrl }  (PNG base64 data URLs)
+  // Effetti: salva firme su R2, segna status='signed' + signed_at=NOW(),
+  // enqueue outbox job 'generate_work_report_pdf' per generazione async.
+  if (url.pathname.match(/^\/api\/work-reports\/[^/]+\/sign$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.split("/")[3]);
+    try {
+      const existing = await getWorkReportFromDb(id);
+      if (!existing) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew" && existing.crewUserId !== currentUser.id) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+      if (existing.status !== "draft") {
+        return sendJson(res, 409, { error: "not_draft", message: "Verbale già firmato o archiviato." });
+      }
+      const body = await readBody(req);
+      const customerSig = String(body.customerSignatureDataUrl || "").trim();
+      const crewSig = String(body.crewSignatureDataUrl || "").trim();
+      if (!customerSig || !customerSig.startsWith("data:image/")) {
+        return sendJson(res, 400, { error: "missing_customer_signature" });
+      }
+      if (!crewSig || !crewSig.startsWith("data:image/")) {
+        return sendJson(res, 400, { error: "missing_crew_signature" });
+      }
+      // Salva entrambe le firme su R2 come attachment dedicati.
+      const customerAtt = await storeAttachmentAsset(id, {
+        id: `${id}-customer-signature`,
+        name: "customer-signature.png",
+        type: "image/png",
+        dataUrl: customerSig,
+      }, "work-reports");
+      const crewAtt = await storeAttachmentAsset(id, {
+        id: `${id}-crew-signature`,
+        name: "crew-signature.png",
+        type: "image/png",
+        dataUrl: crewSig,
+      }, "work-reports");
+      const signed = await signWorkReportInDb(id, {
+        customerSignatureR2Key: customerAtt.objectKey || "",
+        crewSignatureR2Key: crewAtt.objectKey || "",
+      }, { rethrow: true });
+      if (!signed) return sendJson(res, 500, { error: "sign_failed" });
+      writeAuditLog("work_report", id, "sign", { customer: !!customerAtt.objectKey, crew: !!crewAtt.objectKey }, currentUser.email || null).catch(() => {});
+      // Enqueue PDF generation in background. Handler registrato in Step 5.
+      // Se non c'è ancora handler, finirà in dead → visibile da /api/diagnostic/outbox.
+      await enqueueOutboxJob("generate_work_report_pdf", { workReportId: id });
+      return sendJson(res, 200, signed);
+    } catch (err) {
+      console.error("[work-reports] sign failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "sign_failed") });
+    }
+  }
+
+  // DELETE /api/work-reports/:id/photos/:photoId → rimuove foto da R2 + JSONB
+  if (url.pathname.match(/^\/api\/work-reports\/[^/]+\/photos\/[^/]+$/) && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const parts = url.pathname.split("/");
+    const id = decodeURIComponent(parts[3]);
+    const photoId = decodeURIComponent(parts[5]);
+    try {
+      const existing = await getWorkReportFromDb(id);
+      if (!existing) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew" && existing.crewUserId !== currentUser.id) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+      if (existing.status !== "draft") {
+        return sendJson(res, 409, { error: "not_draft", message: "Foto rimuovibili solo in bozza." });
+      }
+      const photos = Array.isArray(existing.photos) ? existing.photos : [];
+      const idx = photos.findIndex((p) => String(p.id || "") === photoId);
+      if (idx < 0) return sendJson(res, 404, { error: "photo_not_found" });
+      const [removed] = photos.splice(idx, 1);
+      await removeAttachmentAsset(removed).catch((err) => {
+        console.warn("[work-reports] R2 delete failed (non-fatal):", err?.message || err);
+      });
+      const updated = await updateWorkReportInDb(id, { photos }, { rethrow: true });
+      writeAuditLog("work_report", id, "photo_removed", { photoId }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, updated);
+    } catch (err) {
+      console.error("[work-reports] photo delete failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "delete_failed") });
     }
   }
 
