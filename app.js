@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260528-work-report-mvp";
+const APP_SHELL_VERSION = "20260528-mobile-ux-fixes";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -8205,9 +8205,16 @@ function startScrollGuardian() {
       if (isUserScrollingActive()) return;
       const currentY = window.scrollY || document.documentElement.scrollTop || 0;
       // Trigger: avevo scrollato significativamente, ora sono quasi in cima
-      // e questo è successo entro 60 secondi dall'ultimo user scroll
+      // e questo è successo entro 60 secondi dall'ultimo user scroll.
+      //
+      // Soglie:
+      //   - Drill-down mobile attivo: 30px (ogni piccolo scroll è significativo,
+      //     l'utente è dentro un dettaglio e qualsiasi reset rovina l'UX).
+      //   - Default (desktop/lista mobile): 120px (evita falsi positivi su
+      //     micro-scroll naturali del browser).
+      const minScrollThreshold = state.mobileDrillDetail ? 30 : 120;
       if (
-        _lastUserScrollY > 120
+        _lastUserScrollY > minScrollThreshold
         && currentY < 30
         && Date.now() - _lastUserScrollT < 60_000
       ) {

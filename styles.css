@@ -19,6 +19,23 @@
 }
 
 * { box-sizing: border-box; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MOBILE SAFETY NET — applicato globalmente per evitare overflow orizzontale
+   su viewport stretti (< 600px). Senza questo, qualsiasi elemento con padding
+   + width: 100% o min-width nascosto causa shift orizzontale dell'intera pagina.
+   ───────────────────────────────────────────────────────────────────────── */
+html, body {
+  overflow-x: hidden;
+}
+/* min-width: 0 sui figli di grid/flex evita che il contenuto interno
+   (testo lungo, immagini, input) forzi l'allargamento del container. */
+:where(.detail-grid, .form-grid, .inline-form-grid, .wizard-grid,
+       .dash-grid-2col, .inventory-balance-grid, .work-reports-list,
+       .summary-grid, .stat-grid) > * {
+  min-width: 0;
+}
+
 body {
   margin: 0;
   font-family: "DM Sans", sans-serif;
@@ -17397,3 +17414,78 @@ label.quote-p2-toggle,
 
 /* Lock scroll body quando wizard aperto */
 body.wizard-open { overflow: hidden; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MOBILE FIX BUNDLE — interventi mirati per viewport < 600px
+   Identificati via audit codice (sessione 28/05/2026).
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  /* Fix #15: grid 2col senza media query → collassano a 1col sotto 600px */
+  .inventory-balance-grid,
+  .dash-grid-2col {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Fix #17a: subsection head (Verbali fine cantiere, Foto, Allegati)
+     bottone + titolo su mobile devono andare a capo, non in linea forzata */
+  .work-reports-section .subsection-head,
+  .panel-subsection .subsection-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .work-reports-section .subsection-actions,
+  .panel-subsection .subsection-actions {
+    width: 100%;
+  }
+  .work-reports-section .subsection-actions .primary-button,
+  .work-reports-section .subsection-actions .ghost-button {
+    width: 100%;
+    min-height: 48px;
+  }
+
+  /* Fix #17b: lista verbali in 1 colonna su mobile (auto-fill 280px è 1col
+     comunque a 390px ma garantiamo no padding/gap che sforino) */
+  .work-reports-list {
+    grid-template-columns: 1fr;
+  }
+  .work-report-card {
+    padding: 12px;
+  }
+  .work-report-card-head {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .work-report-meta {
+    text-align: left;
+  }
+  .work-report-card-body {
+    font-size: 12px;
+  }
+  .work-report-card-actions {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .work-report-card-actions > * {
+    width: 100%;
+    min-height: 44px;
+    text-align: center;
+  }
+
+  /* Fix calendario marketing: forzato dentro scroller orizzontale isolato
+     così la min-width: 560px non rompe il layout della pagina */
+  .marketing-cal-week-wrapper,
+  .marketing-cal-week {
+    max-width: 100vw;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Mobile-very-small: <= 380px (iPhone SE, dispositivi compatti) */
+@media (max-width: 380px) {
+  .wizard-head { padding: 12px 14px; }
+  .wizard-title-group h2 { font-size: 16px; }
+  .wizard-body { padding: 14px; }
+  .wizard-footer { padding: 12px 14px; gap: 8px; }
+  .wizard-footer button { font-size: 14px; min-height: 44px; }
+}
