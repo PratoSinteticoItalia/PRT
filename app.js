@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260528-mobile-ux-fixes";
+const APP_SHELL_VERSION = "20260528-ux-desktop-wave1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
