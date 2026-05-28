@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260527-outbox-scroll-fix";
+const APP_SHELL_VERSION = "20260528-work-report-mvp";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14498,8 +14498,877 @@ function renderInstallations() {
   renderInstallationProfitSplit(order);
   ui.installationAttachments.innerHTML = renderAttachmentGrid(mapAttachmentsForContext(order, "installation"), order.id);
   renderInstallationExpenseSection(order);
+  renderWorkReportsForOrder(order);
   clearStatus(ui.installationStatus);
   updateInstallationPaneVisibility();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VERBALI FINE CANTIERE (work_completion_reports) — UI client
+//
+// Sezione inline in dettaglio installazione + wizard a tutto schermo 4 step.
+// Mobile-first (target: posatore in cantiere). Autosave in localStorage per
+// resilienza offline. Signature pad touch (vendor/signature_pad.umd.min.js).
+// Compressione foto client-side via canvas prima di upload.
+//
+// Endpoint API:
+//   POST   /api/work-reports                       (crea bozza)
+//   GET    /api/work-reports?orderId=X             (lista)
+//   PATCH  /api/work-reports/:id                   (aggiorna draft)
+//   POST   /api/work-reports/:id/photos            (upload R2)
+//   POST   /api/work-reports/:id/sign              (firma → PDF async)
+//   GET    /api/work-reports/:id/pdf               (download)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const WORK_REPORT_LS_KEY_PREFIX = "psi-work-report-draft-";
+const WORK_REPORT_MAX_PHOTOS = 10;
+const WORK_REPORT_PHOTO_MAX_WIDTH = 1600;
+const WORK_REPORT_PHOTO_QUALITY = 0.82;
+const WORK_REPORT_DEFAULT_LIABILITY =
+  "Il cliente dichiara di aver verificato l'esecuzione dei lavori a regola d'arte, " +
+  "ne accetta lo stato di consegna ed esonera la ditta da ogni responsabilità per " +
+  "interventi successivi su materiali o strutture non installati direttamente da " +
+  "Prato Sintetico Italia, salvo difetti palesi o vizi occulti coperti dalle garanzie " +
+  "di legge. La firma del presente verbale costituisce conferma della consegna lavori.";
+
+if (!state.workReportWizard) {
+  state.workReportWizard = {
+    open: false,
+    step: 1,
+    orderId: "",
+    reportId: "",
+    draft: null,
+    busy: false,
+    error: "",
+    signaturePads: { customer: null, crew: null },
+  };
+}
+if (!state.workReportsByOrder) {
+  state.workReportsByOrder = {}; // { [orderId]: { reports: [], loadedAt } }
+}
+
+// ── API client wrappers ──────────────────────────────────────────────────────
+
+function apiListWorkReports({ orderId } = {}) {
+  const qs = new URLSearchParams();
+  if (orderId) qs.set("orderId", orderId);
+  return apiFetch(`/api/work-reports?${qs.toString()}`);
+}
+function apiCreateWorkReport(payload) {
+  return apiFetch("/api/work-reports", { method: "POST", body: JSON.stringify(payload || {}) });
+}
+function apiUpdateWorkReport(id, patch) {
+  return apiFetch(`/api/work-reports/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch || {}) });
+}
+function apiUploadWorkReportPhotos(id, photos) {
+  return apiFetch(`/api/work-reports/${encodeURIComponent(id)}/photos`, { method: "POST", body: JSON.stringify({ photos }) });
+}
+function apiSignWorkReport(id, signatures) {
+  return apiFetch(`/api/work-reports/${encodeURIComponent(id)}/sign`, { method: "POST", body: JSON.stringify(signatures || {}) });
+}
+
+// ── Visibilità sezione + render lista verbali per ordine ────────────────────
+
+function workReportsAllowedForCurrentUser() {
+  const role = state.currentUser?.role || "";
+  return role === "crew" || role === "office" || role === "warehouse";
+}
+
+function renderWorkReportsForOrder(order) {
+  const section = document.getElementById("work-reports-section");
+  const list = document.getElementById("work-reports-list");
+  if (!section || !list) return;
+  if (!order || !workReportsAllowedForCurrentUser()) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  // Bottone "Termina lavoro" visibile solo a crew + office; nascosto a warehouse.
+  const newBtn = document.getElementById("work-report-new-button");
+  if (newBtn) {
+    const role = state.currentUser?.role || "";
+    newBtn.hidden = !(role === "crew" || role === "office");
+    newBtn.dataset.orderId = order.id;
+  }
+  // Carica i verbali per quest'ordine (async, render skeleton intanto)
+  const cached = state.workReportsByOrder[order.id];
+  if (!cached) {
+    list.innerHTML = "<div class=\"work-reports-empty\">Caricamento verbali…</div>";
+    apiListWorkReports({ orderId: order.id })
+      .then((res) => {
+        state.workReportsByOrder[order.id] = { reports: res?.reports || [], loadedAt: Date.now() };
+        if (state.currentView === "installations" && state.selectedOrderId === order.id) {
+          renderWorkReportsListInto(list, order, state.workReportsByOrder[order.id].reports);
+        }
+      })
+      .catch((err) => {
+        list.innerHTML = `<div class="work-reports-empty error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
+      });
+  } else {
+    renderWorkReportsListInto(list, order, cached.reports);
+  }
+}
+
+function renderWorkReportsListInto(container, order, reports) {
+  if (!Array.isArray(reports) || reports.length === 0) {
+    container.innerHTML = `<div class="work-reports-empty">Nessun verbale per quest'ordine.</div>`;
+    return;
+  }
+  const sorted = [...reports].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  container.innerHTML = sorted.map((r) => {
+    const statusLabel = r.status === "archived" ? "PDF pronto"
+      : r.status === "signed" ? "PDF in preparazione"
+      : "Bozza";
+    const statusClass = `is-${r.status || "draft"}`;
+    const signedTxt = r.signedAt ? formatDate(r.signedAt) : "—";
+    const sqm = r.executedSqm != null ? `${r.executedSqm} mq` : "—";
+    const actions = [];
+    if (r.status === "archived") {
+      actions.push(`<a class="ghost-button small" href="/api/work-reports/${encodeURIComponent(r.id)}/pdf" target="_blank" rel="noopener">Scarica PDF</a>`);
+    }
+    if (r.status === "draft" && (state.currentUser?.role === "office" || (state.currentUser?.role === "crew" && r.crewUserId === state.currentUser?.id))) {
+      actions.push(`<button type="button" class="ghost-button small" data-action="open-work-report-wizard" data-order-id="${escapeAttr(order.id)}" data-report-id="${escapeAttr(r.id)}">Riprendi</button>`);
+    }
+    return `
+      <article class="work-report-card ${statusClass}">
+        <header class="work-report-card-head">
+          <div>
+            <strong class="work-report-id">${escapeHtml(r.id)}</strong>
+            <span class="work-report-badge">${escapeHtml(statusLabel)}</span>
+          </div>
+          <div class="work-report-meta">${escapeHtml(r.crewName || "")} · ${escapeHtml(signedTxt)}</div>
+        </header>
+        <div class="work-report-card-body">
+          <span><b>Mq</b> ${escapeHtml(sqm)}</span>
+          <span><b>Cliente</b> ${escapeHtml(r.customerName || "—")}</span>
+          ${Array.isArray(r.extras) && r.extras.length ? `<span><b>Extra</b> ${r.extras.length}</span>` : ""}
+          ${Array.isArray(r.photos) && r.photos.length ? `<span><b>Foto</b> ${r.photos.length}</span>` : ""}
+        </div>
+        ${actions.length ? `<footer class="work-report-card-actions">${actions.join("")}</footer>` : ""}
+      </article>
+    `;
+  }).join("");
+}
+
+function invalidateWorkReportsCache(orderId) {
+  if (orderId && state.workReportsByOrder[orderId]) delete state.workReportsByOrder[orderId];
+}
+
+// ── localStorage autosave (resilienza offline cantiere) ─────────────────────
+
+function workReportDraftLsKey(orderId) {
+  return `${WORK_REPORT_LS_KEY_PREFIX}${orderId || "noorder"}`;
+}
+function saveWizardLocalDraft() {
+  try {
+    if (!state.workReportWizard?.draft) return;
+    const key = workReportDraftLsKey(state.workReportWizard.orderId);
+    // Le foto comprese sono base64 → potenzialmente pesanti. Salviamo solo metadati,
+    // non le dataUrl raw. Le foto già uploadate sono solo riferimenti R2 (leggeri).
+    const draft = { ...state.workReportWizard.draft };
+    if (Array.isArray(draft.photos)) {
+      draft.photos = draft.photos.map((p) => ({
+        id: p.id, name: p.name, type: p.type, size: p.size,
+        objectKey: p.objectKey, uploaded: !!p.uploaded,
+      }));
+    }
+    window.localStorage.setItem(key, JSON.stringify({
+      reportId: state.workReportWizard.reportId || "",
+      step: state.workReportWizard.step || 1,
+      draft,
+      savedAt: Date.now(),
+    }));
+  } catch {}
+}
+function loadWizardLocalDraft(orderId) {
+  try {
+    const raw = window.localStorage.getItem(workReportDraftLsKey(orderId));
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+function clearWizardLocalDraft(orderId) {
+  try { window.localStorage.removeItem(workReportDraftLsKey(orderId)); } catch {}
+}
+
+// ── Compressione foto client-side ────────────────────────────────────────────
+
+async function compressPhotoFile(file, { maxWidth = WORK_REPORT_PHOTO_MAX_WIDTH, quality = WORK_REPORT_PHOTO_QUALITY } = {}) {
+  if (!file || !(file instanceof Blob)) throw new Error("file_required");
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const img = new Image();
+  img.decoding = "async";
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+  const ratio = img.width > maxWidth ? maxWidth / img.width : 1;
+  const w = Math.round(img.width * ratio);
+  const h = Math.round(img.height * ratio);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+  const compressedDataUrl = canvas.toDataURL("image/jpeg", quality);
+  return {
+    id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: (file.name || `foto-${Date.now()}.jpg`).replace(/\.[^.]+$/, "") + ".jpg",
+    type: "image/jpeg",
+    dataUrl: compressedDataUrl,
+    size: Math.round(compressedDataUrl.length * 0.75), // stima da base64
+    uploaded: false,
+    takenAt: new Date().toISOString(),
+  };
+}
+
+// ── Signature pad ─────────────────────────────────────────────────────────────
+
+function ensureSignaturePadAvailable() {
+  return typeof window !== "undefined" && typeof window.SignaturePad === "function";
+}
+
+function attachSignaturePad(canvasEl) {
+  if (!canvasEl || !ensureSignaturePadAvailable()) return null;
+  // Risoluzione DPI-aware per disegno nitido su mobile retina.
+  const ratio = Math.max(window.devicePixelRatio || 1, 1);
+  const rect = canvasEl.getBoundingClientRect();
+  canvasEl.width = (rect.width || 300) * ratio;
+  canvasEl.height = (rect.height || 140) * ratio;
+  canvasEl.getContext("2d").scale(ratio, ratio);
+  const pad = new window.SignaturePad(canvasEl, {
+    minWidth: 0.6,
+    maxWidth: 2.4,
+    penColor: "#111111",
+    backgroundColor: "rgba(255,255,255,0)",
+  });
+  return pad;
+}
+
+function readSignatureDataUrl(pad) {
+  if (!pad || pad.isEmpty()) return "";
+  return pad.toDataURL("image/png");
+}
+
+// ── Wizard open / close ──────────────────────────────────────────────────────
+
+function buildEmptyDraft(order) {
+  const installDate = order?.operations?.installation?.installDate || "";
+  const productLabel = order?.operations?.product || "";
+  const sqm = order?.operations?.sqm != null ? Number(order.operations.sqm) : null;
+  return {
+    orderId: order?.id || "",
+    installationId: order?.operations?.installation?.id || "",
+    customerName: composeClientName(order || {}) || "",
+    customerEmail: order?.email || "",
+    siteAddress: composeAddress(order || {}) || "",
+    crewName: getCrewForCurrentUser() || order?.operations?.installation?.crew || "",
+    operators: [],
+    executedSqm: sqm,
+    productModel: productLabel,
+    workHoursStart: installDate ? `${installDate}T08:00` : "",
+    workHoursEnd: installDate ? `${installDate}T17:00` : "",
+    notes: "",
+    extras: [],
+    photos: [],
+    liabilityText: WORK_REPORT_DEFAULT_LIABILITY,
+  };
+}
+
+async function openWorkReportWizard({ orderId, reportId = "" }) {
+  if (!orderId) return;
+  const order = state.orders?.find?.((o) => o.id === orderId)
+    || state.installations?.find?.((o) => o.id === orderId)
+    || null;
+  const wizard = document.getElementById("work-report-wizard");
+  if (!wizard) return;
+  state.workReportWizard.open = true;
+  state.workReportWizard.orderId = orderId;
+  state.workReportWizard.reportId = reportId || "";
+  state.workReportWizard.busy = false;
+  state.workReportWizard.error = "";
+  state.workReportWizard.step = 1;
+
+  // Restore da localStorage se c'è una bozza non submitted per quest'ordine
+  const lsDraft = loadWizardLocalDraft(orderId);
+  if (reportId) {
+    // Riprendi bozza esistente da server
+    try {
+      const fresh = await apiFetch(`/api/work-reports/${encodeURIComponent(reportId)}`);
+      state.workReportWizard.draft = sanitizeDraftFromServer(fresh);
+      state.workReportWizard.reportId = fresh.id;
+    } catch (err) {
+      state.workReportWizard.error = `Impossibile caricare bozza: ${err?.message || err}`;
+      state.workReportWizard.draft = buildEmptyDraft(order);
+    }
+  } else if (lsDraft?.draft && !lsDraft.draft.signedAt) {
+    state.workReportWizard.draft = { ...buildEmptyDraft(order), ...lsDraft.draft };
+    state.workReportWizard.step = lsDraft.step || 1;
+    state.workReportWizard.reportId = lsDraft.reportId || "";
+  } else {
+    state.workReportWizard.draft = buildEmptyDraft(order);
+  }
+
+  wizard.classList.remove("hidden");
+  document.body.classList.add("wizard-open");
+  // Lock scroll body (mobile UX), ma evitiamo conflitti con guardian scroll esistente.
+  _acknowledgeIntentionalScroll(0);
+  renderWizardStep();
+}
+
+function closeWorkReportWizard({ confirm = true } = {}) {
+  const wizard = document.getElementById("work-report-wizard");
+  if (!wizard) return;
+  if (confirm && state.workReportWizard?.draft && !state.workReportWizard.draft.signedAt) {
+    const hasContent = Boolean(
+      state.workReportWizard.draft.notes ||
+      (state.workReportWizard.draft.extras || []).length ||
+      (state.workReportWizard.draft.photos || []).length
+    );
+    if (hasContent && !window.confirm("Chiudere senza completare? La bozza resta salvata localmente.")) return;
+  }
+  saveWizardLocalDraft();
+  // Cleanup signature pads (rilascia handler touch)
+  for (const key of ["customer", "crew"]) {
+    const pad = state.workReportWizard.signaturePads?.[key];
+    if (pad?.off) try { pad.off(); } catch {}
+  }
+  state.workReportWizard.signaturePads = { customer: null, crew: null };
+  state.workReportWizard.open = false;
+  wizard.classList.add("hidden");
+  document.body.classList.remove("wizard-open");
+}
+
+function sanitizeDraftFromServer(report) {
+  return {
+    orderId: report.orderId || "",
+    installationId: report.installationId || "",
+    customerName: report.customerName || "",
+    customerEmail: report.customerEmail || "",
+    siteAddress: report.siteAddress || "",
+    crewName: report.crewName || "",
+    operators: Array.isArray(report.operators) ? report.operators : [],
+    executedSqm: report.executedSqm,
+    productModel: report.productModel || "",
+    workHoursStart: report.workHoursStart ? report.workHoursStart.slice(0, 16) : "",
+    workHoursEnd: report.workHoursEnd ? report.workHoursEnd.slice(0, 16) : "",
+    notes: report.notes || "",
+    extras: Array.isArray(report.extras) ? report.extras : [],
+    photos: Array.isArray(report.photos) ? report.photos.map((p) => ({ ...p, uploaded: true })) : [],
+    liabilityText: report.liabilityText || WORK_REPORT_DEFAULT_LIABILITY,
+  };
+}
+
+// ── Step navigation ──────────────────────────────────────────────────────────
+
+function goToWizardStep(n) {
+  const next = Math.max(1, Math.min(4, Number(n) || 1));
+  state.workReportWizard.step = next;
+  saveWizardLocalDraft();
+  renderWizardStep();
+}
+
+// ── Validazione + autosave server-side dei campi modificabili ───────────────
+
+async function persistWizardDraftToServer({ silent = false } = {}) {
+  const d = state.workReportWizard.draft || {};
+  // Crea il report al primo salvataggio se non esiste ancora
+  if (!state.workReportWizard.reportId) {
+    if (!String(d.customerName || "").trim()) {
+      if (!silent) showToast("Inserisci il nome cliente", "error");
+      throw new Error("missing_customer_name");
+    }
+    if (!String(d.crewName || "").trim()) {
+      if (!silent) showToast("Squadra non determinata", "error");
+      throw new Error("missing_crew_name");
+    }
+    const created = await apiCreateWorkReport({
+      orderId: d.orderId,
+      installationId: d.installationId,
+      customerName: d.customerName,
+      customerEmail: d.customerEmail,
+      siteAddress: d.siteAddress,
+      crewName: d.crewName,
+      operators: d.operators,
+      executedSqm: d.executedSqm,
+      productModel: d.productModel,
+      workHoursStart: d.workHoursStart,
+      workHoursEnd: d.workHoursEnd,
+      notes: d.notes,
+      extras: d.extras,
+      liabilityText: d.liabilityText,
+    });
+    state.workReportWizard.reportId = created.id;
+    invalidateWorkReportsCache(d.orderId);
+  } else {
+    await apiUpdateWorkReport(state.workReportWizard.reportId, {
+      customerName: d.customerName,
+      customerEmail: d.customerEmail,
+      siteAddress: d.siteAddress,
+      operators: d.operators,
+      executedSqm: d.executedSqm,
+      productModel: d.productModel,
+      workHoursStart: d.workHoursStart,
+      workHoursEnd: d.workHoursEnd,
+      notes: d.notes,
+      extras: d.extras,
+      liabilityText: d.liabilityText,
+    });
+    invalidateWorkReportsCache(d.orderId);
+  }
+}
+
+// ── Render principale: smista per step ──────────────────────────────────────
+
+function renderWizardStep() {
+  const body = document.getElementById("work-report-wizard-body");
+  const footer = document.getElementById("work-report-wizard-footer");
+  const subtitle = document.getElementById("work-report-wizard-subtitle");
+  if (!body || !footer) return;
+  const wizard = document.getElementById("work-report-wizard");
+  if (wizard) {
+    wizard.querySelectorAll(".wizard-step-dot").forEach((dot) => {
+      const n = Number(dot.dataset.step) || 0;
+      dot.classList.toggle("is-active", n === state.workReportWizard.step);
+      dot.classList.toggle("is-done", n < state.workReportWizard.step);
+    });
+  }
+  const d = state.workReportWizard.draft || {};
+  if (subtitle) {
+    const ref = state.workReportWizard.reportId || "Nuova bozza";
+    subtitle.textContent = `${ref} · ${d.customerName || "Cliente da definire"}`;
+  }
+  let html = "";
+  let footerHtml = "";
+  const errorBanner = state.workReportWizard.error
+    ? `<div class="wizard-error">${escapeHtml(state.workReportWizard.error)}</div>` : "";
+  switch (state.workReportWizard.step) {
+    case 1:
+      html = renderWizardStepData(d);
+      footerHtml = `
+        <button type="button" class="ghost-button" data-action="close-work-report-wizard">Annulla</button>
+        <button type="button" class="primary-button" data-action="wizard-next">Avanti →</button>`;
+      break;
+    case 2:
+      html = renderWizardStepExtras(d);
+      footerHtml = `
+        <button type="button" class="ghost-button" data-action="wizard-prev">← Indietro</button>
+        <button type="button" class="primary-button" data-action="wizard-next">Avanti →</button>`;
+      break;
+    case 3:
+      html = renderWizardStepPhotos(d);
+      footerHtml = `
+        <button type="button" class="ghost-button" data-action="wizard-prev">← Indietro</button>
+        <button type="button" class="primary-button" data-action="wizard-next">Avanti →</button>`;
+      break;
+    case 4:
+      html = renderWizardStepSign(d);
+      footerHtml = `
+        <button type="button" class="ghost-button" data-action="wizard-prev">← Indietro</button>
+        <button type="button" class="primary-button" data-action="wizard-submit">Firma e genera PDF</button>`;
+      break;
+  }
+  body.innerHTML = errorBanner + html;
+  footer.innerHTML = footerHtml;
+  // Inizializza signature pads se step 4
+  if (state.workReportWizard.step === 4) {
+    const customerCanvas = document.getElementById("work-report-signature-customer");
+    const crewCanvas = document.getElementById("work-report-signature-crew");
+    state.workReportWizard.signaturePads.customer = attachSignaturePad(customerCanvas);
+    state.workReportWizard.signaturePads.crew = attachSignaturePad(crewCanvas);
+    if (!ensureSignaturePadAvailable()) {
+      const warn = document.createElement("div");
+      warn.className = "wizard-error";
+      warn.textContent = "Libreria firma non disponibile. Ricarica la pagina.";
+      body.prepend(warn);
+    }
+  }
+  // Wire input file upload listener
+  const photoInput = document.getElementById("work-report-photo-input");
+  if (photoInput && !photoInput.dataset.wiredWorkReport) {
+    photoInput.dataset.wiredWorkReport = "1";
+    photoInput.addEventListener("change", onWorkReportPhotoInput);
+  }
+}
+
+// ── Step 1: dati lavoro ──────────────────────────────────────────────────────
+
+function renderWizardStepData(d) {
+  const operatorsStr = Array.isArray(d.operators) ? d.operators.join(", ") : "";
+  return `
+    <div class="wizard-section">
+      <h3>Dati lavoro</h3>
+      <p class="wizard-help">Verifica e completa i dati del cantiere appena concluso.</p>
+      <div class="wizard-grid">
+        <label class="field"><span>Cliente *</span>
+          <input class="text-input" type="text" data-bind="customerName" value="${escapeAttr(d.customerName || "")}" required />
+        </label>
+        <label class="field"><span>Email cliente (per invio PDF)</span>
+          <input class="text-input" type="email" data-bind="customerEmail" value="${escapeAttr(d.customerEmail || "")}" />
+        </label>
+        <label class="field span-2"><span>Indirizzo cantiere</span>
+          <input class="text-input" type="text" data-bind="siteAddress" value="${escapeAttr(d.siteAddress || "")}" />
+        </label>
+        <label class="field"><span>Mq posati</span>
+          <input class="text-input" type="number" inputmode="decimal" min="0" step="0.1" data-bind="executedSqm" value="${escapeAttr(d.executedSqm != null ? d.executedSqm : "")}" />
+        </label>
+        <label class="field"><span>Modello prato</span>
+          <input class="text-input" type="text" data-bind="productModel" value="${escapeAttr(d.productModel || "")}" />
+        </label>
+        <label class="field"><span>Squadra *</span>
+          <input class="text-input" type="text" data-bind="crewName" value="${escapeAttr(d.crewName || "")}" required />
+        </label>
+        <label class="field"><span>Operatori (separati da virgola)</span>
+          <input class="text-input" type="text" data-bind="operators" value="${escapeAttr(operatorsStr)}" placeholder="Mario Rossi, Luca Bianchi" />
+        </label>
+        <label class="field"><span>Inizio lavori</span>
+          <input class="text-input" type="datetime-local" data-bind="workHoursStart" value="${escapeAttr(d.workHoursStart || "")}" />
+        </label>
+        <label class="field"><span>Fine lavori</span>
+          <input class="text-input" type="datetime-local" data-bind="workHoursEnd" value="${escapeAttr(d.workHoursEnd || "")}" />
+        </label>
+        <label class="field span-2"><span>Note tecniche</span>
+          <textarea class="text-input" rows="4" data-bind="notes" placeholder="Lavorazioni eseguite, modifiche al progetto, terreno...">${escapeHtml(d.notes || "")}</textarea>
+        </label>
+      </div>
+    </div>
+  `;
+}
+
+// ── Step 2: extra concordati ────────────────────────────────────────────────
+
+function renderWizardStepExtras(d) {
+  const rows = Array.isArray(d.extras) ? d.extras : [];
+  const rowsHtml = rows.map((extra, idx) => `
+    <div class="wizard-extra-row" data-extra-index="${idx}">
+      <input class="text-input" type="text" placeholder="Descrizione" data-bind-extra="description" data-idx="${idx}" value="${escapeAttr(extra.description || "")}" />
+      <input class="text-input wizard-amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="€" data-bind-extra="amount_eur" data-idx="${idx}" value="${escapeAttr(extra.amount_eur != null ? extra.amount_eur : "")}" />
+      <button type="button" class="ghost-button small icon-only" data-action="wizard-remove-extra" data-idx="${idx}" aria-label="Rimuovi">×</button>
+    </div>
+  `).join("");
+  const total = rows.reduce((acc, e) => acc + (Number(e.amount_eur) || 0), 0);
+  return `
+    <div class="wizard-section">
+      <h3>Extra concordati in cantiere</h3>
+      <p class="wizard-help">Lavorazioni aggiuntive accordate con il cliente, non incluse nell'ordine iniziale.</p>
+      <div id="wizard-extras-rows" class="wizard-extras">${rowsHtml || `<div class="wizard-extras-empty">Nessun extra. Premi + per aggiungere.</div>`}</div>
+      <div class="wizard-extras-foot">
+        <button type="button" class="ghost-button" data-action="wizard-add-extra">+ Aggiungi extra</button>
+        <div class="wizard-extras-total">Totale extra: <strong>${formatEuroSimple(total)}</strong></div>
+      </div>
+    </div>
+  `;
+}
+
+function formatEuroSimple(n) {
+  try {
+    return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(Number(n) || 0);
+  } catch { return `€ ${(Number(n) || 0).toFixed(2)}`; }
+}
+
+// ── Step 3: foto cantiere ────────────────────────────────────────────────────
+
+function renderWizardStepPhotos(d) {
+  const photos = Array.isArray(d.photos) ? d.photos : [];
+  const photoCells = photos.map((p, idx) => {
+    const thumb = p.dataUrl ? p.dataUrl
+      : (p.objectKey && state.workReportWizard.reportId
+        ? `/api/work-reports/${encodeURIComponent(state.workReportWizard.reportId)}/photos/${encodeURIComponent(p.id)}/file`
+        : "");
+    return `
+      <div class="wizard-photo-cell" data-photo-index="${idx}">
+        ${thumb ? `<img src="${escapeAttr(thumb)}" alt="Foto ${idx + 1}" loading="lazy" />` : `<div class="wizard-photo-placeholder">Foto ${idx + 1}</div>`}
+        <button type="button" class="wizard-photo-remove" data-action="wizard-remove-photo" data-idx="${idx}" aria-label="Rimuovi">×</button>
+      </div>
+    `;
+  }).join("");
+  const remaining = WORK_REPORT_MAX_PHOTOS - photos.length;
+  return `
+    <div class="wizard-section">
+      <h3>Foto cantiere</h3>
+      <p class="wizard-help">${remaining > 0
+        ? `Aggiungi fino a ${remaining} foto del lavoro completato. Le foto vengono compresse automaticamente.`
+        : `Hai raggiunto il massimo di ${WORK_REPORT_MAX_PHOTOS} foto.`}</p>
+      <div class="wizard-photos-grid">${photoCells}</div>
+      ${remaining > 0 ? `
+        <button type="button" class="primary-button wizard-pick-photos" data-action="wizard-pick-photos">
+          📷 Aggiungi foto (${photos.length}/${WORK_REPORT_MAX_PHOTOS})
+        </button>
+      ` : ""}
+    </div>
+  `;
+}
+
+// ── Step 4: scarico responsabilità + firme ──────────────────────────────────
+
+function renderWizardStepSign(d) {
+  return `
+    <div class="wizard-section">
+      <h3>Scarico di responsabilità</h3>
+      <div class="wizard-liability-text">${escapeHtml(d.liabilityText || WORK_REPORT_DEFAULT_LIABILITY)}</div>
+      <h3 class="wizard-sign-title">Firma cliente</h3>
+      <p class="wizard-help">Far firmare il cliente nel riquadro qui sotto con il dito o pennino.</p>
+      <div class="wizard-signature-box">
+        <canvas id="work-report-signature-customer" class="wizard-signature-canvas"></canvas>
+        <button type="button" class="ghost-button small wizard-signature-clear" data-action="wizard-clear-signature" data-pad="customer">Cancella</button>
+      </div>
+      <h3 class="wizard-sign-title">Firma posatore</h3>
+      <p class="wizard-help">${escapeHtml(d.crewName || "")}${Array.isArray(d.operators) && d.operators.length ? " · " + escapeHtml(d.operators.join(", ")) : ""}</p>
+      <div class="wizard-signature-box">
+        <canvas id="work-report-signature-crew" class="wizard-signature-canvas"></canvas>
+        <button type="button" class="ghost-button small wizard-signature-clear" data-action="wizard-clear-signature" data-pad="crew">Cancella</button>
+      </div>
+    </div>
+  `;
+}
+
+// ── Handler change su input data-bind / data-bind-extra ─────────────────────
+
+function onWizardFieldChange(target) {
+  if (!target) return;
+  const d = state.workReportWizard.draft;
+  if (!d) return;
+  if (target.dataset.bind) {
+    const key = target.dataset.bind;
+    let value = target.value;
+    if (key === "operators") {
+      value = String(value || "").split(",").map((s) => s.trim()).filter(Boolean);
+    } else if (key === "executedSqm") {
+      value = value === "" ? null : Number(String(value).replace(",", "."));
+    }
+    d[key] = value;
+    saveWizardLocalDraft();
+  } else if (target.dataset.bindExtra) {
+    const idx = Number(target.dataset.idx);
+    const key = target.dataset.bindExtra;
+    if (!Array.isArray(d.extras)) d.extras = [];
+    if (!d.extras[idx]) d.extras[idx] = {};
+    d.extras[idx][key] = key === "amount_eur"
+      ? (target.value === "" ? 0 : Number(String(target.value).replace(",", ".")))
+      : target.value;
+    saveWizardLocalDraft();
+  }
+}
+
+// ── Handler: aggiungi/rimuovi extra row ─────────────────────────────────────
+
+function wizardAddExtraRow() {
+  const d = state.workReportWizard.draft;
+  if (!d) return;
+  if (!Array.isArray(d.extras)) d.extras = [];
+  d.extras.push({ description: "", amount_eur: 0 });
+  saveWizardLocalDraft();
+  renderWizardStep();
+}
+function wizardRemoveExtraRow(idx) {
+  const d = state.workReportWizard.draft;
+  if (!d || !Array.isArray(d.extras)) return;
+  d.extras.splice(idx, 1);
+  saveWizardLocalDraft();
+  renderWizardStep();
+}
+
+// ── Handler: input foto, compress + push ────────────────────────────────────
+
+async function onWorkReportPhotoInput(ev) {
+  const files = Array.from(ev?.target?.files || []);
+  if (!files.length) return;
+  const d = state.workReportWizard.draft;
+  if (!d) return;
+  const remaining = WORK_REPORT_MAX_PHOTOS - (d.photos?.length || 0);
+  const toProcess = files.slice(0, remaining);
+  if (files.length > remaining) {
+    showToast(`Solo le prime ${remaining} foto verranno aggiunte (max ${WORK_REPORT_MAX_PHOTOS}).`, "warning");
+  }
+  if (!Array.isArray(d.photos)) d.photos = [];
+  for (const file of toProcess) {
+    try {
+      const compressed = await compressPhotoFile(file);
+      d.photos.push(compressed);
+      saveWizardLocalDraft();
+      renderWizardStep();
+    } catch (err) {
+      showToast(`Errore compressione foto: ${err?.message || err}`, "error");
+    }
+  }
+  ev.target.value = ""; // permette re-selezione stesso file
+}
+
+function wizardRemovePhoto(idx) {
+  const d = state.workReportWizard.draft;
+  if (!d || !Array.isArray(d.photos)) return;
+  d.photos.splice(idx, 1);
+  saveWizardLocalDraft();
+  renderWizardStep();
+}
+
+// ── Handler: cancella canvas firma ──────────────────────────────────────────
+
+function wizardClearSignature(padKey) {
+  const pad = state.workReportWizard.signaturePads?.[padKey];
+  if (pad?.clear) pad.clear();
+}
+
+// ── Handler: next / prev step con autosave ─────────────────────────────────
+
+async function wizardGoNext() {
+  // Validazione minimale step 1
+  const step = state.workReportWizard.step;
+  const d = state.workReportWizard.draft;
+  if (step === 1) {
+    if (!String(d.customerName || "").trim()) {
+      showToast("Nome cliente obbligatorio", "error");
+      return;
+    }
+    if (!String(d.crewName || "").trim()) {
+      showToast("Squadra obbligatoria", "error");
+      return;
+    }
+  }
+  // Autosave server al passaggio di step (best-effort, draft locale resta come fallback)
+  try {
+    state.workReportWizard.busy = true;
+    await persistWizardDraftToServer({ silent: true });
+    state.workReportWizard.error = "";
+    // Upload foto nuove (non ancora uploadate) appena create
+    if (step === 3 && state.workReportWizard.reportId) {
+      const pending = (d.photos || []).filter((p) => !p.uploaded && p.dataUrl);
+      if (pending.length) {
+        const res = await apiUploadWorkReportPhotos(state.workReportWizard.reportId, pending.map((p) => ({
+          id: p.id, name: p.name, type: p.type, dataUrl: p.dataUrl, takenAt: p.takenAt,
+        })));
+        // Server ritorna il report aggiornato con photos riassemblate
+        if (res?.photos) d.photos = res.photos.map((p) => ({ ...p, uploaded: true }));
+        saveWizardLocalDraft();
+      }
+    }
+  } catch (err) {
+    state.workReportWizard.error = `Salvataggio fallito: ${err?.message || err}. Bozza salvata localmente, riprova.`;
+    renderWizardStep();
+    return;
+  } finally {
+    state.workReportWizard.busy = false;
+  }
+  goToWizardStep(step + 1);
+}
+function wizardGoPrev() {
+  goToWizardStep((state.workReportWizard.step || 1) - 1);
+}
+
+// ── Handler: submit finale (firma + chiusura) ───────────────────────────────
+
+async function wizardSubmit() {
+  const pads = state.workReportWizard.signaturePads || {};
+  const customerSig = readSignatureDataUrl(pads.customer);
+  const crewSig = readSignatureDataUrl(pads.crew);
+  if (!customerSig) {
+    showToast("Firma cliente mancante", "error");
+    return;
+  }
+  if (!crewSig) {
+    showToast("Firma posatore mancante", "error");
+    return;
+  }
+  if (!state.workReportWizard.reportId) {
+    showToast("Bozza non ancora salvata. Torna indietro e riprova.", "error");
+    return;
+  }
+  state.workReportWizard.busy = true;
+  state.workReportWizard.error = "";
+  renderWizardStep();
+  try {
+    await apiSignWorkReport(state.workReportWizard.reportId, {
+      customerSignatureDataUrl: customerSig,
+      crewSignatureDataUrl: crewSig,
+    });
+    showToast("Verbale firmato. PDF in generazione, riceverai la copia via email.", "success");
+    clearWizardLocalDraft(state.workReportWizard.orderId);
+    invalidateWorkReportsCache(state.workReportWizard.orderId);
+    closeWorkReportWizard({ confirm: false });
+    // Refresh sezione installations per mostrare il nuovo verbale
+    if (typeof renderInstallations === "function") renderInstallations();
+  } catch (err) {
+    state.workReportWizard.error = `Firma fallita: ${err?.message || err}`;
+    renderWizardStep();
+  } finally {
+    state.workReportWizard.busy = false;
+  }
+}
+
+// ── Event delegation: click + input change ─────────────────────────────────
+
+function bindWorkReportEvents() {
+  document.addEventListener("click", (ev) => {
+    const target = ev.target.closest?.("[data-action]");
+    if (!target) return;
+    const action = target.dataset.action;
+    switch (action) {
+      case "open-work-report-wizard": {
+        ev.preventDefault();
+        const orderId = target.dataset.orderId || state.selectedOrderId || "";
+        const reportId = target.dataset.reportId || "";
+        openWorkReportWizard({ orderId, reportId });
+        break;
+      }
+      case "close-work-report-wizard":
+        ev.preventDefault();
+        closeWorkReportWizard({ confirm: true });
+        break;
+      case "wizard-next":
+        ev.preventDefault();
+        if (!state.workReportWizard.busy) wizardGoNext();
+        break;
+      case "wizard-prev":
+        ev.preventDefault();
+        wizardGoPrev();
+        break;
+      case "wizard-submit":
+        ev.preventDefault();
+        if (!state.workReportWizard.busy) wizardSubmit();
+        break;
+      case "wizard-add-extra":
+        ev.preventDefault();
+        wizardAddExtraRow();
+        break;
+      case "wizard-remove-extra":
+        ev.preventDefault();
+        wizardRemoveExtraRow(Number(target.dataset.idx));
+        break;
+      case "wizard-pick-photos": {
+        ev.preventDefault();
+        const input = document.getElementById("work-report-photo-input");
+        if (input) input.click();
+        break;
+      }
+      case "wizard-remove-photo":
+        ev.preventDefault();
+        wizardRemovePhoto(Number(target.dataset.idx));
+        break;
+      case "wizard-clear-signature":
+        ev.preventDefault();
+        wizardClearSignature(target.dataset.pad || "customer");
+        break;
+    }
+  });
+  // Input binding: autosave su change/blur
+  document.addEventListener("input", (ev) => {
+    const target = ev.target;
+    if (target && (target.dataset?.bind || target.dataset?.bindExtra)) {
+      onWizardFieldChange(target);
+    }
+  });
+}
+try { bindWorkReportEvents(); } catch (err) { console.warn("[work-reports] bind events failed:", err); }
+
+// Helper escape per attributi (compat se non già definito)
+function escapeAttr(v) {
+  return String(v ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function renderAccounting() {

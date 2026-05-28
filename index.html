@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260527-outbox-scroll-fix" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260527-outbox-scroll-fix" />
+    <link rel="preload" href="./styles.css?v=20260528-work-report-mvp" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260528-work-report-mvp" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -761,7 +761,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260527-outbox-scroll-fix&shell=20260527-outbox-scroll-fix"
+                src="./sales-suite/generator.html?embedded=1&v=20260528-work-report-mvp&shell=20260528-work-report-mvp"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -1235,6 +1235,26 @@
               </form>
 
               <div id="installation-attachments" class="attachment-grid"></div>
+
+              <!-- ─────────────────────────────────────────────────────────
+                   Verbali fine cantiere (work_completion_reports) — MVP
+                   Sezione inline: lista verbali esistenti per l'ordine +
+                   bottone "Termina lavoro" che apre il wizard a tutto schermo.
+                   ───────────────────────────────────────────────────────── -->
+              <section id="work-reports-section" class="panel-subsection work-reports-section" hidden>
+                <div class="subsection-head">
+                  <div>
+                    <h4>Verbali fine cantiere</h4>
+                    <p class="section-copy">Documento firmato dal cliente a chiusura del lavoro, archiviato come PDF nella scheda ordine.</p>
+                  </div>
+                  <div class="subsection-actions">
+                    <button type="button" id="work-report-new-button" class="primary-button small" data-action="open-work-report-wizard">
+                      Termina lavoro
+                    </button>
+                  </div>
+                </div>
+                <div id="work-reports-list" class="work-reports-list" aria-live="polite"></div>
+              </section>
               </div>
 
               <div class="panel-subsection installation-expenses-section installation-pane-group" data-installation-pane="expenses">
@@ -2203,9 +2223,38 @@
     </div>
 
     <input id="attachment-input" type="file" accept="image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx" class="hidden" />
+    <input id="work-report-photo-input" type="file" accept="image/*" multiple capture="environment" class="hidden" />
     <input id="sales-request-service-account-input" type="file" accept=".json,application/json" class="hidden" />
     <datalist id="inventory-product-options"></datalist>
+
+    <!-- ──────────────────────────────────────────────────────────────────
+         Wizard verbale fine cantiere — overlay a tutto schermo (4 step).
+         Aperto via openWorkReportWizard(orderId), chiuso via closeWorkReportWizard().
+         Mobile-first: usato principalmente dal posatore in cantiere.
+         ────────────────────────────────────────────────────────────────── -->
+    <div id="work-report-wizard" class="wizard-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="work-report-wizard-title">
+      <div class="wizard-backdrop" data-action="close-work-report-wizard" aria-hidden="true"></div>
+      <div class="wizard-shell" role="document">
+        <header class="wizard-head">
+          <button type="button" class="wizard-back" data-action="close-work-report-wizard" aria-label="Chiudi">×</button>
+          <div class="wizard-title-group">
+            <h2 id="work-report-wizard-title">Termina lavoro</h2>
+            <p id="work-report-wizard-subtitle" class="wizard-subtitle"></p>
+          </div>
+          <div class="wizard-step-indicator">
+            <span class="wizard-step-dot" data-step="1"></span>
+            <span class="wizard-step-dot" data-step="2"></span>
+            <span class="wizard-step-dot" data-step="3"></span>
+            <span class="wizard-step-dot" data-step="4"></span>
+          </div>
+        </header>
+        <div id="work-report-wizard-body" class="wizard-body"></div>
+        <footer id="work-report-wizard-footer" class="wizard-footer"></footer>
+      </div>
+    </div>
+
     <script src="./shipping-tariffs.js"></script>
-    <script src="./app.js?v=20260527-outbox-scroll-fix" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260528-work-report-mvp" defer></script>
+    <script src="./app.js?v=20260528-work-report-mvp" type="module"></script>
   </body>
 </html>

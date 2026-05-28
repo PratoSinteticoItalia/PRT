@@ -93,6 +93,20 @@ async function main() {
     "sw.js missing versioned sales-suite/generator.html entry",
     errors,
   );
+  assertMatches(
+    swJs,
+    new RegExp(`/vendor/signature_pad\\.umd\\.min\\.js\\?v=${escapedVersion}`),
+    "sw.js missing versioned vendor/signature_pad.umd.min.js entry",
+    errors,
+  );
+
+  // --- index.html: vendor signature_pad ---
+  assertMatches(
+    indexHtml,
+    new RegExp(`vendor/signature_pad\\.umd\\.min\\.js\\?v=${escapedVersion}`),
+    "index.html missing signature_pad shell version",
+    errors,
+  );
 
   // --- sales-suite/generator.html ---
   // Il bridge è codice "nostro" (non Vite) e deve seguire APP_SHELL_VERSION.

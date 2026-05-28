@@ -10,3 +10,6 @@ kanban-demo.html
 # Artefatti build (prodotti da npm run build / scripts/build.mjs)
 *.min.js
 *.min.css
+# Eccezione: librerie vendor pre-minificate (signature_pad, ecc.) vanno committate
+!vendor/*.min.js
+!vendor/*.min.css
