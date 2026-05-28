@@ -2183,6 +2183,77 @@ async function getCachedLogoBuffer() {
   }
 }
 
+/**
+ * Invia email al cliente con il PDF del verbale in allegato.
+ * Best-effort: se Resend non configurato o email mancante, log warning e ritorna.
+ * Non rilancia: il successo dell'archiviazione PDF non dipende dall'invio email.
+ */
+async function sendWorkReportEmailToCustomer({ report, pdfBuffer }) {
+  if (!report?.customerEmail) {
+    console.log(`[work-reports] email skip ${report?.id}: customer email mancante`);
+    return { ok: false, reason: "missing_customer_email" };
+  }
+  if (!RESEND_API_KEY || !isValidEmailAddress(SALES_REQUEST_EMAIL_FROM)) {
+    console.log(`[work-reports] email skip ${report.id}: Resend non configurato`);
+    return { ok: false, reason: "missing_email_config" };
+  }
+  const recipient = cleanEmail(report.customerEmail);
+  if (!isValidEmailAddress(recipient)) {
+    return { ok: false, reason: "invalid_customer_email" };
+  }
+  const customerFirstName = String(report.customerName || "").split(/\s+/)[0] || "";
+  const greeting = customerFirstName ? `Buongiorno ${customerFirstName},` : "Buongiorno,";
+  const subject = `Verbale di fine lavori — ${report.id}`;
+  const text =
+    `${greeting}\n\n` +
+    `in allegato trova il verbale di fine lavori (rif. ${report.id}) relativo all'installazione effettuata.\n` +
+    `Il documento riassume le lavorazioni eseguite, eventuali extra concordati e le firme di consegna.\n\n` +
+    `La ringraziamo per averci scelto.\n\n` +
+    `Prato Sintetico Italia\n`;
+  const html =
+    `<p>${greeting}</p>` +
+    `<p>in allegato trova il <strong>verbale di fine lavori</strong> (rif. ${report.id}) ` +
+    `relativo all'installazione effettuata.</p>` +
+    `<p>Il documento riassume le lavorazioni eseguite, eventuali extra concordati e le firme di consegna.</p>` +
+    `<p>La ringraziamo per averci scelto.</p>` +
+    `<p><em>Prato Sintetico Italia</em></p>`;
+  const payload = {
+    from: SALES_REQUEST_EMAIL_FROM,
+    to: [recipient],
+    subject,
+    text,
+    html,
+    attachments: [
+      {
+        filename: `verbale-${report.id}.pdf`,
+        content: Buffer.from(pdfBuffer).toString("base64"),
+      },
+    ],
+  };
+  if (isValidEmailAddress(SALES_REQUEST_EMAIL_REPLY_TO)) payload.reply_to = SALES_REQUEST_EMAIL_REPLY_TO;
+  try {
+    const response = await fetchWithTimeout(
+      "https://api.resend.com/emails",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      SALES_REQUEST_EMAIL_TIMEOUT_MS,
+    );
+    const raw = await response.text().catch(() => "");
+    if (!response.ok) {
+      console.warn(`[work-reports] email FAIL ${report.id}: HTTP ${response.status} ${raw.slice(0, 200)}`);
+      return { ok: false, reason: "provider_error", statusCode: response.status };
+    }
+    console.log(`[work-reports] email sent ${report.id} → ${recipient}`);
+    return { ok: true };
+  } catch (err) {
+    console.warn(`[work-reports] email exception ${report.id}:`, err?.message || err);
+    return { ok: false, reason: "exception", error: String(err?.message || err) };
+  }
+}
+
 registerOutboxHandler("generate_work_report_pdf", async (payload = {}) => {
   const id = payload.workReportId || null;
   if (!id) throw new Error("generate_work_report_pdf: missing workReportId");
@@ -2213,11 +2284,18 @@ registerOutboxHandler("generate_work_report_pdf", async (payload = {}) => {
   } else {
     console.warn("[work-reports] R2 disabled, PDF non archiviato:", id);
   }
-  await archiveWorkReportInDb(id, {
+  const archived = await archiveWorkReportInDb(id, {
     documentPdfR2Key: objectKey,
     documentPdfSha256: sha256,
   }, { rethrow: true });
   console.log(`[work-reports] archived ${id} (${pdfBuffer.length} bytes, sha256=${sha256.slice(0,12)}...)`);
+  // Invio email cliente: best-effort, non blocca il successo dell'handler.
+  // Se fallisce, è log-only — il PDF è già archiviato e scaricabile dal portale.
+  try {
+    await sendWorkReportEmailToCustomer({ report: archived || report, pdfBuffer });
+  } catch (err) {
+    console.warn(`[work-reports] email send failed (non-fatal) ${id}:`, err?.message || err);
+  }
 });
 
 async function getOutboxStats() {
