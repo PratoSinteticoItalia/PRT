@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260529-timesheet-banner-position";
+const APP_SHELL_VERSION = "20260530-timesheet-banner-fix-css";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
