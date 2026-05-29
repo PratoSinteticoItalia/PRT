@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260529-timesheet-hotfix-immutable";
+const APP_SHELL_VERSION = "20260529-timesheet-banner-fallback";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15405,6 +15405,10 @@ function isTimesheetEmployee() {
 /** Carica lo shift di oggi e aggiorna stato + banner. */
 async function refreshTimesheetState() {
   if (!isTimesheetEmployee()) return;
+  // Render immediato con lo stato corrente (anche null), così il banner appare
+  // subito a "Fuori turno" mentre la fetch è in volo. Robusto anche se l'API
+  // è temporaneamente in errore (boot deploy, migration in corso, ecc.).
+  renderTimesheetBanner();
   try {
     const data = await apiFetch("/api/timesheet/current");
     state.timesheet.currentShift = data?.shift || null;
