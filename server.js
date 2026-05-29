@@ -795,6 +795,76 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS work_completion_reports_crew_idx   ON work_completion_reports (crew_user_id);
       CREATE INDEX IF NOT EXISTS work_completion_reports_status_idx ON work_completion_reports (status);
       CREATE INDEX IF NOT EXISTS work_completion_reports_created_idx ON work_completion_reports (created_at DESC);
+
+      -- ─────────────────────────────────────────────────────────────────────
+      -- Sistema Presenze (timesheet) — dipendenti aziendali (warehouse, seller,
+      -- office). Crew esclusi (sono subappaltatori, non dipendenti).
+      --
+      -- time_entries: log atomico di ogni clock-in/out con fingerprint
+      --   (IP, user-agent, device-id) per anti-frode passivo.
+      -- time_shifts: vista aggregata per giornata, calcolata da time_entries.
+      --   Una riga per (user_id, shift_date). worked_minutes calcolato.
+      -- ─────────────────────────────────────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS time_entries (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        entry_type TEXT NOT NULL,                  -- 'clock_in' | 'clock_out'
+        source TEXT NOT NULL DEFAULT 'manual',     -- 'manual' | 'auto_login' | 'auto_idle' | 'rectified'
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        notes TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        device_id TEXT,                            -- UUID generato client-side al primo accesso
+        network_tag TEXT,                          -- 'in_office' | 'off_network' | NULL
+        edited_by TEXT,                            -- chi ha rettificato (office user id/email)
+        edited_at TIMESTAMPTZ,
+        edit_reason TEXT,                          -- motivo della rettifica
+        device_info JSONB DEFAULT '{}',            -- altri metadati (browser version, screen, ecc.)
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS time_entries_user_idx ON time_entries (user_id, occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS time_entries_user_day_idx ON time_entries (user_id, (occurred_at::date));
+      CREATE INDEX IF NOT EXISTS time_entries_type_idx ON time_entries (entry_type, occurred_at DESC);
+
+      CREATE TABLE IF NOT EXISTS time_shifts (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        shift_date DATE NOT NULL,
+        clock_in_at TIMESTAMPTZ,
+        clock_out_at TIMESTAMPTZ,
+        clock_in_entry_id BIGINT,                  -- FK soft → time_entries.id
+        clock_out_entry_id BIGINT,
+        worked_minutes INTEGER,                    -- (clock_out - clock_in) in minuti
+        status TEXT NOT NULL DEFAULT 'open',       -- 'open' | 'closed' | 'reviewed' | 'locked'
+        anomaly_flags JSONB NOT NULL DEFAULT '[]', -- ["off_network_in", "off_network_out", "manual_rectify"]
+        notes TEXT,
+        reviewed_by TEXT,
+        reviewed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, shift_date)
+      );
+      CREATE INDEX IF NOT EXISTS time_shifts_user_idx ON time_shifts (user_id, shift_date DESC);
+      CREATE INDEX IF NOT EXISTS time_shifts_date_idx ON time_shifts (shift_date DESC);
+      CREATE INDEX IF NOT EXISTS time_shifts_status_idx ON time_shifts (status);
+
+      -- Richieste di rettifica timbratura: dipendente segnala anomalia, office approva
+      CREATE TABLE IF NOT EXISTS time_rectification_requests (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,                     -- chi richiede
+        shift_date DATE NOT NULL,
+        request_type TEXT NOT NULL,                -- 'fix_clock_in' | 'fix_clock_out' | 'add_missing' | 'remove_entry' | 'other'
+        target_entry_id BIGINT,                    -- entry da modificare (NULL se add_missing)
+        proposed_time TIMESTAMPTZ,                 -- orario corretto proposto
+        reason TEXT NOT NULL,                      -- motivo testuale
+        status TEXT NOT NULL DEFAULT 'pending',    -- 'pending' | 'approved' | 'rejected'
+        reviewed_by TEXT,
+        reviewed_at TIMESTAMPTZ,
+        review_notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS time_rect_user_idx ON time_rectification_requests (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS time_rect_status_idx ON time_rectification_requests (status, created_at DESC);
     `);
     console.log("[db] schema relazionale verificato");
   })().catch((err) => {
@@ -1615,6 +1685,344 @@ async function archiveWorkReportInDb(id, { documentPdfR2Key, documentPdfSha256 }
     if (opts && opts.rethrow) throw err;
     return null;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sistema Presenze (timesheet) — helper SQL
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Ruoli aziendali che hanno timbratura (esclude crew = subappaltatori).
+const TIMESHEET_ROLES = new Set(["warehouse", "seller", "office"]);
+
+function userIsEmployee(user) {
+  return Boolean(user && TIMESHEET_ROLES.has(String(user.role || "")));
+}
+
+/**
+ * Determina se un IP appartiene alla rete aziendale.
+ * Configurabile via env COMPANY_NETWORK_CIDR (lista di CIDR separati da virgola).
+ * Esempio: COMPANY_NETWORK_CIDR=192.168.1.0/24,10.0.0.0/8
+ * Se non configurato, ritorna NULL (no tag, niente verified-network logic).
+ */
+const COMPANY_NETWORK_CIDR = String(process.env.COMPANY_NETWORK_CIDR || "").trim();
+const _companyCidrs = COMPANY_NETWORK_CIDR
+  ? COMPANY_NETWORK_CIDR.split(",").map((s) => s.trim()).filter(Boolean)
+  : [];
+
+function ipToInt(ip) {
+  const parts = String(ip || "").split(".");
+  if (parts.length !== 4) return null;
+  let n = 0;
+  for (const p of parts) {
+    const v = parseInt(p, 10);
+    if (!Number.isFinite(v) || v < 0 || v > 255) return null;
+    n = (n << 8) | v;
+  }
+  return n >>> 0;
+}
+
+function ipMatchesCidr(ip, cidr) {
+  const [base, bitsStr] = String(cidr).split("/");
+  const bits = parseInt(bitsStr, 10);
+  const ipInt = ipToInt(ip);
+  const baseInt = ipToInt(base);
+  if (ipInt == null || baseInt == null || !Number.isFinite(bits) || bits < 0 || bits > 32) return false;
+  if (bits === 0) return true;
+  const mask = ((0xffffffff << (32 - bits)) >>> 0);
+  return (ipInt & mask) === (baseInt & mask);
+}
+
+function classifyNetwork(ip) {
+  if (!_companyCidrs.length) return null;          // anti-frode off, niente tag
+  const v = String(ip || "");
+  if (!v) return "unknown";
+  // IPv4-mapped IPv6 ("::ffff:1.2.3.4")
+  const ipv4Only = v.startsWith("::ffff:") ? v.slice(7) : v;
+  for (const cidr of _companyCidrs) {
+    if (ipMatchesCidr(ipv4Only, cidr)) return "in_office";
+  }
+  return "off_network";
+}
+
+function extractClientIp(req) {
+  // Render / proxy → X-Forwarded-For (primo). Altrimenti socket remote.
+  const xff = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return xff || (req.socket?.remoteAddress || "") || "";
+}
+
+function dbRowToTimeEntry(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    userId: row.user_id || "",
+    entryType: row.entry_type || "",
+    source: row.source || "manual",
+    occurredAt: row.occurred_at ? new Date(row.occurred_at).toISOString() : null,
+    notes: row.notes || "",
+    ipAddress: row.ip_address || "",
+    networkTag: row.network_tag || null,
+    deviceId: row.device_id || "",
+    userAgent: row.user_agent || "",
+    editedBy: row.edited_by || null,
+    editedAt: row.edited_at ? new Date(row.edited_at).toISOString() : null,
+    editReason: row.edit_reason || "",
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+  };
+}
+
+function dbRowToTimeShift(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    userId: row.user_id || "",
+    shiftDate: row.shift_date instanceof Date ? row.shift_date.toISOString().slice(0, 10) : String(row.shift_date || ""),
+    clockInAt: row.clock_in_at ? new Date(row.clock_in_at).toISOString() : null,
+    clockOutAt: row.clock_out_at ? new Date(row.clock_out_at).toISOString() : null,
+    workedMinutes: row.worked_minutes != null ? Number(row.worked_minutes) : null,
+    status: row.status || "open",
+    anomalyFlags: Array.isArray(row.anomaly_flags) ? row.anomaly_flags : [],
+    notes: row.notes || "",
+    reviewedBy: row.reviewed_by || null,
+    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+  };
+}
+
+/** Restituisce la data di shift (YYYY-MM-DD) in TZ Europe/Rome dato un timestamp. */
+function shiftDateForTimestamp(ts = new Date()) {
+  const date = ts instanceof Date ? ts : new Date(ts);
+  // Intl en-CA produce YYYY-MM-DD
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Rome",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(date);
+}
+
+/**
+ * Inserisce una time_entry e aggiorna/crea il time_shifts della giornata.
+ * Idempotente: se l'utente è già in turno e tenta clock_in, ritorna lo shift esistente.
+ * @param {string} userId
+ * @param {'clock_in'|'clock_out'} entryType
+ * @param {object} ctx { source, ipAddress, userAgent, deviceId, notes, occurredAt }
+ */
+async function insertTimeEntry(userId, entryType, ctx = {}) {
+  if (!USE_POSTGRES || !userId) return null;
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const occurredAt = ctx.occurredAt ? new Date(ctx.occurredAt) : new Date();
+  const shiftDate = shiftDateForTimestamp(occurredAt);
+  const networkTag = classifyNetwork(ctx.ipAddress);
+
+  // Trova shift della giornata, se esiste
+  const existingShift = await pool.query(
+    `SELECT * FROM time_shifts WHERE user_id = $1 AND shift_date = $2 LIMIT 1`,
+    [String(userId), shiftDate],
+  );
+  const shift = existingShift.rows[0] || null;
+
+  // Idempotenza: se clock_in e c'è già un turno aperto oggi, NO-OP (ritorna esistente).
+  if (entryType === "clock_in" && shift && shift.clock_in_at && !shift.clock_out_at) {
+    return { skipped: "already_open", shift: dbRowToTimeShift(shift) };
+  }
+  // Idempotenza: se clock_out e non c'è turno aperto, NO-OP.
+  if (entryType === "clock_out" && (!shift || !shift.clock_in_at || shift.clock_out_at)) {
+    return { skipped: "not_in_shift", shift: shift ? dbRowToTimeShift(shift) : null };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const entryRes = await client.query(
+      `INSERT INTO time_entries
+        (user_id, entry_type, source, occurred_at, notes, ip_address, user_agent, device_id, network_tag)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING *`,
+      [
+        String(userId),
+        entryType,
+        String(ctx.source || "manual"),
+        occurredAt.toISOString(),
+        String(ctx.notes || "") || null,
+        String(ctx.ipAddress || "") || null,
+        String(ctx.userAgent || "").slice(0, 500) || null,
+        String(ctx.deviceId || "") || null,
+        networkTag,
+      ],
+    );
+    const newEntry = entryRes.rows[0];
+
+    // Aggiorna/crea time_shifts
+    if (entryType === "clock_in") {
+      const flags = [];
+      if (networkTag === "off_network") flags.push("off_network_in");
+      await client.query(
+        `INSERT INTO time_shifts (user_id, shift_date, clock_in_at, clock_in_entry_id, status, anomaly_flags, updated_at)
+         VALUES ($1, $2, $3, $4, 'open', $5::jsonb, NOW())
+         ON CONFLICT (user_id, shift_date) DO UPDATE SET
+           clock_in_at = EXCLUDED.clock_in_at,
+           clock_in_entry_id = EXCLUDED.clock_in_entry_id,
+           status = 'open',
+           anomaly_flags = (time_shifts.anomaly_flags || EXCLUDED.anomaly_flags),
+           updated_at = NOW()`,
+        [String(userId), shiftDate, occurredAt.toISOString(), newEntry.id, JSON.stringify(flags)],
+      );
+    } else { // clock_out
+      const inTime = shift?.clock_in_at ? new Date(shift.clock_in_at) : null;
+      const worked = inTime ? Math.max(0, Math.round((occurredAt - inTime) / 60000)) : null;
+      const flags = Array.isArray(shift.anomaly_flags) ? [...shift.anomaly_flags] : [];
+      if (networkTag === "off_network") flags.push("off_network_out");
+      await client.query(
+        `UPDATE time_shifts
+            SET clock_out_at = $1,
+                clock_out_entry_id = $2,
+                worked_minutes = $3,
+                status = 'closed',
+                anomaly_flags = $4::jsonb,
+                updated_at = NOW()
+          WHERE user_id = $5 AND shift_date = $6`,
+        [occurredAt.toISOString(), newEntry.id, worked, JSON.stringify(flags), String(userId), shiftDate],
+      );
+    }
+    await client.query("COMMIT");
+    const refreshedShift = await pool.query(
+      `SELECT * FROM time_shifts WHERE user_id = $1 AND shift_date = $2`,
+      [String(userId), shiftDate],
+    );
+    return {
+      entry: dbRowToTimeEntry(newEntry),
+      shift: dbRowToTimeShift(refreshedShift.rows[0]),
+    };
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    console.warn("[timesheet] insertTimeEntry failed:", err?.message);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function getCurrentShiftForUser(userId) {
+  if (!USE_POSTGRES || !userId) return null;
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const today = shiftDateForTimestamp(new Date());
+  const { rows } = await pool.query(
+    `SELECT * FROM time_shifts WHERE user_id = $1 AND shift_date = $2 LIMIT 1`,
+    [String(userId), today],
+  );
+  return dbRowToTimeShift(rows[0] || null);
+}
+
+async function listShiftsForUser(userId, { from, to } = {}) {
+  if (!USE_POSTGRES || !userId) return [];
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const params = [String(userId)];
+  let sql = `SELECT * FROM time_shifts WHERE user_id = $1`;
+  if (from) { params.push(String(from)); sql += ` AND shift_date >= $${params.length}`; }
+  if (to)   { params.push(String(to));   sql += ` AND shift_date <= $${params.length}`; }
+  sql += ` ORDER BY shift_date DESC LIMIT 400`;
+  const { rows } = await pool.query(sql, params);
+  return rows.map(dbRowToTimeShift);
+}
+
+async function listShiftsAll({ from, to, userId } = {}) {
+  if (!USE_POSTGRES) return [];
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const params = [];
+  const where = [];
+  if (userId) { params.push(String(userId)); where.push(`user_id = $${params.length}`); }
+  if (from)   { params.push(String(from));   where.push(`shift_date >= $${params.length}`); }
+  if (to)     { params.push(String(to));     where.push(`shift_date <= $${params.length}`); }
+  const sql = `SELECT * FROM time_shifts${where.length ? " WHERE " + where.join(" AND ") : ""}
+               ORDER BY shift_date DESC, user_id ASC LIMIT 2000`;
+  const { rows } = await pool.query(sql, params);
+  return rows.map(dbRowToTimeShift);
+}
+
+async function listEntriesForUser(userId, { from, to, limit = 200 } = {}) {
+  if (!USE_POSTGRES || !userId) return [];
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const params = [String(userId)];
+  let sql = `SELECT * FROM time_entries WHERE user_id = $1`;
+  if (from) { params.push(String(from)); sql += ` AND occurred_at >= $${params.length}`; }
+  if (to)   { params.push(String(to));   sql += ` AND occurred_at <= $${params.length}`; }
+  params.push(Number(limit) || 200);
+  sql += ` ORDER BY occurred_at DESC LIMIT $${params.length}`;
+  const { rows } = await pool.query(sql, params);
+  return rows.map(dbRowToTimeEntry);
+}
+
+/**
+ * Calcola statistiche del mese per il dipendente (per "Le mie presenze").
+ */
+async function getMonthlyStatsForUser(userId, year, month) {
+  if (!USE_POSTGRES || !userId) return null;
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const monthStr = String(month).padStart(2, "0");
+  const fromDate = `${year}-${monthStr}-01`;
+  const toDate = new Date(year, month, 0).toISOString().slice(0, 10); // ultimo del mese
+  const { rows } = await pool.query(
+    `SELECT shift_date, worked_minutes, clock_in_at, clock_out_at, anomaly_flags
+       FROM time_shifts
+      WHERE user_id = $1 AND shift_date >= $2 AND shift_date <= $3
+      ORDER BY shift_date ASC`,
+    [String(userId), fromDate, toDate],
+  );
+  const totalMinutes = rows.reduce((acc, r) => acc + (Number(r.worked_minutes) || 0), 0);
+  const daysWorked = rows.filter((r) => Number(r.worked_minutes) > 0).length;
+  const avgMinutes = daysWorked > 0 ? Math.round(totalMinutes / daysWorked) : 0;
+  return {
+    year, month,
+    totalMinutes,
+    daysWorked,
+    averageMinutesPerDay: avgMinutes,
+    days: rows.map((r) => ({
+      date: r.shift_date instanceof Date ? r.shift_date.toISOString().slice(0, 10) : String(r.shift_date),
+      workedMinutes: Number(r.worked_minutes) || 0,
+      clockIn: r.clock_in_at ? new Date(r.clock_in_at).toISOString() : null,
+      clockOut: r.clock_out_at ? new Date(r.clock_out_at).toISOString() : null,
+      anomalies: Array.isArray(r.anomaly_flags) ? r.anomaly_flags : [],
+    })),
+  };
+}
+
+/** Conta giorni consecutivi lavorati fino a oggi (streak). */
+async function getCurrentStreakForUser(userId) {
+  if (!USE_POSTGRES || !userId) return 0;
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const { rows } = await pool.query(
+    `SELECT shift_date FROM time_shifts
+      WHERE user_id = $1 AND worked_minutes > 0
+      ORDER BY shift_date DESC LIMIT 60`,
+    [String(userId)],
+  );
+  if (!rows.length) return 0;
+  const dates = rows.map((r) => r.shift_date instanceof Date ? r.shift_date : new Date(r.shift_date));
+  let streak = 0;
+  let cursor = new Date();
+  // Tolleranza: streak parte da oggi O da ieri (se oggi non si è ancora timbrato)
+  for (let i = 0; i < dates.length; i++) {
+    const d = dates[i];
+    const cursorStr = shiftDateForTimestamp(cursor);
+    const dStr = d.toISOString().slice(0, 10);
+    if (cursorStr === dStr) {
+      streak++;
+      cursor.setDate(cursor.getDate() - 1);
+    } else if (streak === 0) {
+      // permette un giorno di gap iniziale (oggi non ancora timbrato)
+      cursor.setDate(cursor.getDate() - 1);
+      if (shiftDateForTimestamp(cursor) === dStr) {
+        streak++;
+        cursor.setDate(cursor.getDate() - 1);
+      } else break;
+    } else break;
+  }
+  return streak;
 }
 
 // ——— Coverage Planner in SQL (tabella settings, key='coverage_planner') ———
@@ -9699,6 +10107,280 @@ async function handleApi(req, res, url) {
     } catch (err) {
       console.error("[work-reports] photo delete failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "delete_failed") });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Sistema Presenze (timesheet) — endpoint REST
+  // Ruoli: warehouse, seller, office (dipendenti). Crew esclusi.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // POST /api/timesheet/clock-in
+  // Body: { deviceId, notes }   (deviceId è UUID generato lato client una sola volta)
+  if (url.pathname === "/api/timesheet/clock-in" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
+    try {
+      const body = await readBody(req);
+      const result = await insertTimeEntry(currentUser.id, "clock_in", {
+        source: "manual",
+        ipAddress: extractClientIp(req),
+        userAgent: String(req.headers["user-agent"] || ""),
+        deviceId: String(body.deviceId || ""),
+        notes: body.notes,
+      });
+      writeAuditLog("timesheet", String(currentUser.id), "clock_in", { networkTag: result?.entry?.networkTag || null, source: "manual" }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, result);
+    } catch (err) {
+      console.error("[timesheet] clock-in failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "clock_in_failed") });
+    }
+  }
+
+  // POST /api/timesheet/clock-out
+  if (url.pathname === "/api/timesheet/clock-out" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
+    try {
+      const body = await readBody(req);
+      const result = await insertTimeEntry(currentUser.id, "clock_out", {
+        source: "manual",
+        ipAddress: extractClientIp(req),
+        userAgent: String(req.headers["user-agent"] || ""),
+        deviceId: String(body.deviceId || ""),
+        notes: body.notes,
+      });
+      writeAuditLog("timesheet", String(currentUser.id), "clock_out", { networkTag: result?.entry?.networkTag || null, workedMinutes: result?.shift?.workedMinutes || null }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, result);
+    } catch (err) {
+      console.error("[timesheet] clock-out failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "clock_out_failed") });
+    }
+  }
+
+  // GET /api/timesheet/current → turno di oggi del dipendente loggato
+  if (url.pathname === "/api/timesheet/current" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
+    try {
+      const shift = await getCurrentShiftForUser(currentUser.id);
+      return sendJson(res, 200, { shift, networkConfigured: _companyCidrs.length > 0 });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "current_failed") });
+    }
+  }
+
+  // GET /api/timesheet/me?from=YYYY-MM-DD&to=YYYY-MM-DD → storico proprio
+  if (url.pathname === "/api/timesheet/me" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
+    try {
+      const from = url.searchParams.get("from") || null;
+      const to = url.searchParams.get("to") || null;
+      const shifts = await listShiftsForUser(currentUser.id, { from, to });
+      return sendJson(res, 200, { shifts });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "me_failed") });
+    }
+  }
+
+  // GET /api/timesheet/me/stats?year=2026&month=5 → KPI mese (ore, giorni, streak)
+  if (url.pathname === "/api/timesheet/me/stats" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
+    try {
+      const now = new Date();
+      const year = parseInt(url.searchParams.get("year") || String(now.getFullYear()), 10);
+      const month = parseInt(url.searchParams.get("month") || String(now.getMonth() + 1), 10);
+      const [stats, streak] = await Promise.all([
+        getMonthlyStatsForUser(currentUser.id, year, month),
+        getCurrentStreakForUser(currentUser.id),
+      ]);
+      // Mese scorso per delta
+      let prevMonth = month - 1, prevYear = year;
+      if (prevMonth < 1) { prevMonth = 12; prevYear--; }
+      const prevStats = await getMonthlyStatsForUser(currentUser.id, prevYear, prevMonth);
+      return sendJson(res, 200, {
+        current: stats,
+        previous: prevStats,
+        streak,
+        deltaMinutes: stats && prevStats ? (stats.totalMinutes - prevStats.totalMinutes) : null,
+      });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "stats_failed") });
+    }
+  }
+
+  // GET /api/timesheet?from=X&to=Y&userId=Z → office, lista turni di tutti
+  if (url.pathname === "/api/timesheet" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const from = url.searchParams.get("from") || null;
+      const to = url.searchParams.get("to") || null;
+      const userId = url.searchParams.get("userId") || null;
+      const shifts = await listShiftsAll({ from, to, userId });
+      return sendJson(res, 200, { shifts });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "list_failed") });
+    }
+  }
+
+  // GET /api/timesheet/export?from=X&to=Y → CSV office
+  if (url.pathname === "/api/timesheet/export" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const from = url.searchParams.get("from") || null;
+      const to = url.searchParams.get("to") || null;
+      const shifts = await listShiftsAll({ from, to });
+      // Mappa user_id → nome per output friendly
+      const users = Array.isArray(store.users) ? store.users : [];
+      const userMap = new Map(users.map((u) => [u.id, u]));
+      const lines = ["Data,Dipendente,Email,Ruolo,Entrata,Uscita,Ore lavorate,Rete entrata,Anomalie,Note"];
+      for (const s of shifts) {
+        const user = userMap.get(s.userId) || {};
+        const fmtTime = (iso) => iso ? new Date(iso).toLocaleString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" }) : "";
+        const hh = Math.floor((s.workedMinutes || 0) / 60);
+        const mm = (s.workedMinutes || 0) % 60;
+        const hoursStr = s.workedMinutes != null ? `${hh}:${String(mm).padStart(2, "0")}` : "";
+        const networkStr = (s.anomalyFlags || []).includes("off_network_in") ? "off-network"
+                        : (s.anomalyFlags || []).includes("off_network_out") ? "mixed"
+                        : "in_office";
+        const anomalies = (s.anomalyFlags || []).join("|");
+        const csvEscape = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+        lines.push([
+          s.shiftDate,
+          csvEscape(user.name || user.crewName || s.userId),
+          csvEscape(user.email || ""),
+          csvEscape(user.role || ""),
+          fmtTime(s.clockInAt),
+          fmtTime(s.clockOutAt),
+          hoursStr,
+          networkStr,
+          csvEscape(anomalies),
+          csvEscape(s.notes || ""),
+        ].join(","));
+      }
+      const csv = lines.join("\n");
+      const filename = `presenze_${from || "tutti"}_${to || "oggi"}.csv`;
+      res.writeHead(200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      });
+      res.end("﻿" + csv); // BOM per Excel italiano
+      return;
+    } catch (err) {
+      console.error("[timesheet] export failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "export_failed") });
+    }
+  }
+
+  // PATCH /api/timesheet/entries/:id → office rettifica
+  if (url.pathname.startsWith("/api/timesheet/entries/") && req.method === "PATCH") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.slice("/api/timesheet/entries/".length));
+    if (!id) return sendJson(res, 400, { error: "missing_id" });
+    try {
+      const body = await readBody(req);
+      const pool = await getPgPool();
+      const updates = [];
+      const params = [];
+      if (body.occurredAt) {
+        params.push(new Date(body.occurredAt).toISOString());
+        updates.push(`occurred_at = $${params.length}`);
+      }
+      if (body.entryType) {
+        params.push(String(body.entryType));
+        updates.push(`entry_type = $${params.length}`);
+      }
+      if (!updates.length) return sendJson(res, 400, { error: "no_fields" });
+      params.push(String(currentUser.email || currentUser.id));
+      updates.push(`edited_by = $${params.length}`);
+      updates.push(`edited_at = NOW()`);
+      if (body.reason) {
+        params.push(String(body.reason));
+        updates.push(`edit_reason = $${params.length}`);
+      }
+      updates.push(`source = 'rectified'`);
+      params.push(String(id));
+      await pool.query(`UPDATE time_entries SET ${updates.join(", ")} WHERE id = $${params.length}`, params);
+      // Ricalcola shift impattato
+      const entryRes = await pool.query(`SELECT * FROM time_entries WHERE id = $1`, [String(id)]);
+      const entry = entryRes.rows[0];
+      if (entry) {
+        const shiftDate = shiftDateForTimestamp(entry.occurred_at);
+        await pool.query(
+          `UPDATE time_shifts SET
+              clock_in_at  = (SELECT MIN(occurred_at) FROM time_entries WHERE user_id = $1 AND occurred_at::date = $2 AND entry_type = 'clock_in'),
+              clock_out_at = (SELECT MAX(occurred_at) FROM time_entries WHERE user_id = $1 AND occurred_at::date = $2 AND entry_type = 'clock_out'),
+              updated_at = NOW(),
+              status = 'reviewed',
+              reviewed_by = $3, reviewed_at = NOW()
+          WHERE user_id = $1 AND shift_date = $2`,
+          [entry.user_id, shiftDate, String(currentUser.email || currentUser.id)],
+        );
+        await pool.query(
+          `UPDATE time_shifts SET worked_minutes =
+             EXTRACT(EPOCH FROM (clock_out_at - clock_in_at))::int / 60
+           WHERE user_id = $1 AND shift_date = $2 AND clock_in_at IS NOT NULL AND clock_out_at IS NOT NULL`,
+          [entry.user_id, shiftDate],
+        );
+      }
+      writeAuditLog("timesheet_entry", id, "rectify", body, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, { ok: true });
+    } catch (err) {
+      console.error("[timesheet] patch entry failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "patch_failed") });
+    }
+  }
+
+  // POST /api/timesheet/rectifications → dipendente segnala anomalia
+  if (url.pathname === "/api/timesheet/rectifications" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
+    try {
+      const body = await readBody(req);
+      if (!body.reason || !body.shiftDate) return sendJson(res, 400, { error: "missing_fields" });
+      const pool = await getPgPool();
+      const { rows } = await pool.query(
+        `INSERT INTO time_rectification_requests
+           (user_id, shift_date, request_type, target_entry_id, proposed_time, reason)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         RETURNING id`,
+        [
+          String(currentUser.id),
+          String(body.shiftDate),
+          String(body.requestType || "other"),
+          body.targetEntryId ? Number(body.targetEntryId) : null,
+          body.proposedTime ? new Date(body.proposedTime).toISOString() : null,
+          String(body.reason),
+        ],
+      );
+      writeAuditLog("timesheet_rectification", String(rows[0].id), "create", { shiftDate: body.shiftDate, requestType: body.requestType }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 201, { id: String(rows[0].id) });
+    } catch (err) {
+      console.error("[timesheet] rectification create failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "create_failed") });
+    }
+  }
+
+  // GET /api/timesheet/rectifications → office, coda di richieste pending
+  if (url.pathname === "/api/timesheet/rectifications" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const status = url.searchParams.get("status") || "pending";
+      const pool = await getPgPool();
+      const { rows } = await pool.query(
+        `SELECT * FROM time_rectification_requests WHERE status = $1 ORDER BY created_at DESC LIMIT 200`,
+        [String(status)],
+      );
+      return sendJson(res, 200, { requests: rows });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "list_failed") });
     }
   }
 

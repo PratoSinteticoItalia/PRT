@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260529-ux-desktop-wave2";
+const APP_SHELL_VERSION = "20260529-timesheet-mvp";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -319,9 +319,10 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner"],
-  warehouse: ["dashboard", "warehouse", "shipping", "communications"],
+  office: ["dashboard", "orders", "warehouse", "installations", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
+  warehouse: ["dashboard", "warehouse", "shipping", "communications", "timesheet-me"],
   crew: ["dashboard", "installations", "sales-generator", "communications", "garden-planner"],
+  seller: ["dashboard", "sales-requests", "sales-generator", "sales-content", "communications", "timesheet-me"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
@@ -15361,6 +15362,531 @@ function escapeAttr(v) {
   return String(v ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SISTEMA PRESENZE (timesheet) — UI client
+//
+// Banner sticky in alto: stato turno + counter live + bottoni Inizia/Termina.
+// Modal: storico oggi + segnala anomalia.
+// View "Le mie presenze": KPI mese + heat-map + streak + export.
+// View office "Presenze": tabella settimanale + export CSV.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const TIMESHEET_DEVICE_ID_KEY = "psi-timesheet-device-id";
+const TIMESHEET_EMPLOYEE_ROLES = new Set(["warehouse", "seller", "office"]);
+
+if (!state.timesheet) {
+  state.timesheet = {
+    currentShift: null,
+    networkConfigured: false,
+    busy: false,
+    tickerHandle: 0,
+    modalOpen: false,
+    todayEntries: [],
+    monthStats: null,
+  };
+}
+
+/** Genera (e cachea in localStorage) un UUID univoco per il device. */
+function getTimesheetDeviceId() {
+  try {
+    let id = window.localStorage.getItem(TIMESHEET_DEVICE_ID_KEY);
+    if (!id) {
+      id = (window.crypto?.randomUUID?.() || `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+      window.localStorage.setItem(TIMESHEET_DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch { return "fallback-no-storage"; }
+}
+
+function isTimesheetEmployee() {
+  return TIMESHEET_EMPLOYEE_ROLES.has(state.currentUser?.role || "");
+}
+
+/** Carica lo shift di oggi e aggiorna stato + banner. */
+async function refreshTimesheetState() {
+  if (!isTimesheetEmployee()) return;
+  try {
+    const data = await apiFetch("/api/timesheet/current");
+    state.timesheet.currentShift = data?.shift || null;
+    state.timesheet.networkConfigured = Boolean(data?.networkConfigured);
+    renderTimesheetBanner();
+  } catch (err) {
+    console.warn("[timesheet] refresh failed:", err?.message || err);
+  }
+}
+
+function renderTimesheetBanner() {
+  const banner = document.getElementById("timesheet-banner");
+  if (!banner) return;
+  if (!isTimesheetEmployee()) {
+    banner.classList.add("hidden");
+    return;
+  }
+  banner.classList.remove("hidden");
+  const shift = state.timesheet.currentShift;
+  const inShift = Boolean(shift?.clockInAt && !shift?.clockOutAt);
+  const icon = document.getElementById("ts-banner-icon");
+  const text = document.getElementById("ts-banner-text");
+  const counter = document.getElementById("ts-banner-counter");
+  const cta = document.getElementById("ts-banner-cta");
+
+  if (inShift) {
+    if (icon) icon.textContent = "🟢";
+    const inAt = new Date(shift.clockInAt);
+    const inHM = inAt.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+    if (text) text.textContent = `In turno · entrata ${inHM}`;
+    if (cta) {
+      cta.textContent = "Termina turno";
+      cta.classList.add("is-danger");
+      cta.classList.remove("is-primary");
+    }
+    banner.classList.add("in-shift");
+    banner.classList.remove("off-shift");
+    startTimesheetTicker(inAt);
+  } else if (shift?.clockOutAt) {
+    if (icon) icon.textContent = "✅";
+    const inAt = new Date(shift.clockInAt);
+    const outAt = new Date(shift.clockOutAt);
+    if (text) text.textContent = `Turno chiuso · ${inAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}–${outAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}`;
+    if (counter) counter.textContent = formatTimesheetDuration(shift.workedMinutes * 60);
+    if (cta) {
+      cta.textContent = "Inizia nuovo turno";
+      cta.classList.remove("is-danger");
+      cta.classList.add("is-primary");
+    }
+    banner.classList.remove("in-shift");
+    banner.classList.add("off-shift");
+    stopTimesheetTicker();
+  } else {
+    if (icon) icon.textContent = "⚪";
+    if (text) text.textContent = "Fuori turno";
+    if (counter) counter.textContent = "";
+    if (cta) {
+      cta.textContent = "Inizia turno";
+      cta.classList.add("is-primary");
+      cta.classList.remove("is-danger");
+    }
+    banner.classList.remove("in-shift");
+    banner.classList.add("off-shift");
+    stopTimesheetTicker();
+  }
+}
+
+function formatTimesheetDuration(totalSeconds) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = Math.floor(totalSeconds % 60);
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}min`;
+  if (m > 0) return `${m}min ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+function startTimesheetTicker(clockInAt) {
+  stopTimesheetTicker();
+  const counter = document.getElementById("ts-banner-counter");
+  if (!counter) return;
+  const tick = () => {
+    const elapsed = (Date.now() - clockInAt.getTime()) / 1000;
+    counter.textContent = formatTimesheetDuration(elapsed);
+  };
+  tick();
+  state.timesheet.tickerHandle = window.setInterval(tick, 1000);
+}
+function stopTimesheetTicker() {
+  if (state.timesheet.tickerHandle) {
+    window.clearInterval(state.timesheet.tickerHandle);
+    state.timesheet.tickerHandle = 0;
+  }
+}
+
+async function timesheetClockIn() {
+  if (state.timesheet.busy) return;
+  state.timesheet.busy = true;
+  try {
+    await apiFetch("/api/timesheet/clock-in", {
+      method: "POST",
+      body: JSON.stringify({ deviceId: getTimesheetDeviceId() }),
+    });
+    showToast("Buon lavoro! Turno iniziato.", "success");
+    await refreshTimesheetState();
+  } catch (err) {
+    showToast(`Inizio turno fallito: ${err?.message || err}`, "error");
+  } finally {
+    state.timesheet.busy = false;
+  }
+}
+
+async function timesheetClockOut() {
+  if (state.timesheet.busy) return;
+  if (!window.confirm("Terminare il turno?")) return;
+  state.timesheet.busy = true;
+  try {
+    const data = await apiFetch("/api/timesheet/clock-out", {
+      method: "POST",
+      body: JSON.stringify({ deviceId: getTimesheetDeviceId() }),
+    });
+    const worked = data?.shift?.workedMinutes || 0;
+    const hh = Math.floor(worked / 60);
+    const mm = worked % 60;
+    showToast(`🎉 Buon riposo! Oggi ${hh}h ${String(mm).padStart(2,"0")}min`, "success", 6000);
+    await refreshTimesheetState();
+  } catch (err) {
+    showToast(`Termine turno fallito: ${err?.message || err}`, "error");
+  } finally {
+    state.timesheet.busy = false;
+  }
+}
+
+function openTimesheetModal() {
+  const modal = document.getElementById("timesheet-modal");
+  const body = document.getElementById("ts-modal-body");
+  if (!modal || !body) return;
+  state.timesheet.modalOpen = true;
+  modal.classList.remove("hidden");
+  const shift = state.timesheet.currentShift;
+  let html = "";
+  if (shift?.clockInAt) {
+    const inAt = new Date(shift.clockInAt);
+    const outAt = shift.clockOutAt ? new Date(shift.clockOutAt) : null;
+    const networkBadge = (shift.anomalyFlags || []).includes("off_network_in")
+      ? '<span class="ts-badge off">⚠️ off-network</span>'
+      : (state.timesheet.networkConfigured ? '<span class="ts-badge ok">✓ in sede</span>' : '');
+    html += `
+      <section class="ts-modal-section">
+        <h4>Turno di oggi</h4>
+        <div class="ts-modal-row">
+          <span class="ts-modal-label">Entrata</span>
+          <strong>${inAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}</strong>
+          ${networkBadge}
+        </div>
+        ${outAt ? `
+        <div class="ts-modal-row">
+          <span class="ts-modal-label">Uscita</span>
+          <strong>${outAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}</strong>
+        </div>
+        <div class="ts-modal-row">
+          <span class="ts-modal-label">Ore lavorate</span>
+          <strong>${Math.floor((shift.workedMinutes || 0) / 60)}h ${String((shift.workedMinutes || 0) % 60).padStart(2,"0")}min</strong>
+        </div>` : ""}
+      </section>`;
+  } else {
+    html += `<section class="ts-modal-section"><p class="ts-empty">Non hai ancora timbrato oggi.</p></section>`;
+  }
+  html += `
+    <section class="ts-modal-section">
+      <h4>Anomalia o errore?</h4>
+      <p class="ts-help">Segnala a ufficio se hai dimenticato di timbrare o serve correggere un orario. Riceverai una notifica appena rivisto.</p>
+      <button type="button" class="ghost-button" data-action="ts-report-anomaly">Segnala anomalia</button>
+    </section>
+  `;
+  body.innerHTML = html;
+}
+
+function closeTimesheetModal() {
+  const modal = document.getElementById("timesheet-modal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  state.timesheet.modalOpen = false;
+}
+
+async function reportTimesheetAnomaly() {
+  const shift = state.timesheet.currentShift;
+  const shiftDate = shift?.shiftDate || new Date().toISOString().slice(0, 10);
+  const requestType = window.prompt("Tipo segnalazione:\n1 = correggi entrata\n2 = correggi uscita\n3 = ho dimenticato di timbrare\n4 = altro", "1");
+  const typeMap = { "1": "fix_clock_in", "2": "fix_clock_out", "3": "add_missing", "4": "other" };
+  const requestTypeKey = typeMap[requestType] || "other";
+  const proposedTime = window.prompt("Orario corretto (HH:MM, lascia vuoto se non applicabile):", "");
+  const reason = window.prompt("Motivo della segnalazione:", "");
+  if (!reason) return;
+  let proposedISO = null;
+  if (proposedTime && /^\d{1,2}:\d{2}$/.test(proposedTime)) {
+    proposedISO = `${shiftDate}T${proposedTime.padStart(5, "0")}:00`;
+  }
+  try {
+    await apiFetch("/api/timesheet/rectifications", {
+      method: "POST",
+      body: JSON.stringify({
+        shiftDate,
+        requestType: requestTypeKey,
+        proposedTime: proposedISO,
+        reason,
+      }),
+    });
+    showToast("Segnalazione inviata all'ufficio. Riceverai notifica al riscontro.", "success");
+    closeTimesheetModal();
+  } catch (err) {
+    showToast(`Invio fallito: ${err?.message || err}`, "error");
+  }
+}
+
+// Event delegation per banner + modal
+document.addEventListener("click", (ev) => {
+  const target = ev.target.closest?.("[data-action]");
+  if (!target) return;
+  const action = target.dataset.action;
+  switch (action) {
+    case "ts-toggle-clock":
+      ev.preventDefault();
+      if (state.timesheet.currentShift?.clockInAt && !state.timesheet.currentShift?.clockOutAt) {
+        timesheetClockOut();
+      } else {
+        timesheetClockIn();
+      }
+      break;
+    case "ts-open-modal":
+      ev.preventDefault();
+      openTimesheetModal();
+      break;
+    case "ts-close-modal":
+      ev.preventDefault();
+      closeTimesheetModal();
+      break;
+    case "ts-report-anomaly":
+      ev.preventDefault();
+      reportTimesheetAnomaly();
+      break;
+  }
+});
+
+// Inizializzazione: dopo login, popola banner e refresh ogni 5 min
+function initTimesheet() {
+  if (!isTimesheetEmployee()) return;
+  refreshTimesheetState();
+  // Poll meno frequente del ticker UI (ticker live, poll per sync state remoto)
+  window.setInterval(() => {
+    if (document.visibilityState === "visible") refreshTimesheetState();
+  }, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshTimesheetState();
+  });
+}
+
+// ── View "Le mie presenze" (warehouse/seller) ───────────────────────────────
+
+function formatMinutesToHM(minutes) {
+  const m = Number(minutes) || 0;
+  const sign = m < 0 ? "-" : "";
+  const abs = Math.abs(m);
+  return `${sign}${Math.floor(abs / 60)}h ${String(abs % 60).padStart(2, "0")}min`;
+}
+
+async function renderTimesheetMe() {
+  const root = document.getElementById("timesheet-me-content");
+  if (!root) return;
+  root.innerHTML = '<div class="ts-loading">Caricamento…</div>';
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  try {
+    const data = await apiFetch(`/api/timesheet/me/stats?year=${year}&month=${month}`);
+    const cur = data?.current;
+    const prev = data?.previous;
+    const delta = Number.isFinite(data?.deltaMinutes) ? data.deltaMinutes : null;
+    const streak = data?.streak || 0;
+    if (!cur || (!cur.days?.length && (!prev || !prev.days?.length))) {
+      root.innerHTML = `<div class="ts-empty-state">
+        <h2>Nessuna timbratura registrata</h2>
+        <p>Quando inizi un turno comparirà qui lo storico delle tue ore lavorate.</p>
+      </div>`;
+      return;
+    }
+    const monthName = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" }).format(now);
+
+    // Heat-map calendario
+    const monthDays = new Date(year, month, 0).getDate();
+    const firstDow = (new Date(year, month - 1, 1).getDay() + 6) % 7; // L=0..D=6
+    const byDate = new Map();
+    (cur.days || []).forEach((d) => byDate.set(d.date, d));
+    const cells = [];
+    // Padding inizio settimana
+    for (let i = 0; i < firstDow; i++) cells.push({ pad: true });
+    for (let d = 1; d <= monthDays; d++) {
+      const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const day = byDate.get(dateStr);
+      const minutes = day?.workedMinutes || 0;
+      let intensity = 0;
+      if (minutes > 0) intensity = 1;
+      if (minutes >= 240) intensity = 2;  // 4h
+      if (minutes >= 360) intensity = 3;  // 6h
+      if (minutes >= 480) intensity = 4;  // 8h
+      cells.push({ d, dateStr, minutes, intensity });
+    }
+
+    root.innerHTML = `
+      <div class="ts-stats-grid">
+        <div class="ts-stat-card">
+          <span class="ts-stat-label">Ore mese</span>
+          <strong class="ts-stat-value">${formatMinutesToHM(cur.totalMinutes)}</strong>
+          ${delta != null ? `<span class="ts-stat-delta ${delta >= 0 ? "is-up" : "is-down"}">${delta >= 0 ? "▲" : "▼"} ${formatMinutesToHM(Math.abs(delta))} vs ${prev ? new Intl.DateTimeFormat("it-IT",{month:"long"}).format(new Date(prev.year, prev.month-1, 1)) : "mese scorso"}</span>` : ""}
+        </div>
+        <div class="ts-stat-card">
+          <span class="ts-stat-label">Media giornaliera</span>
+          <strong class="ts-stat-value">${formatMinutesToHM(cur.averageMinutesPerDay)}</strong>
+          <span class="ts-stat-sub">${cur.daysWorked} giorni lavorati</span>
+        </div>
+        <div class="ts-stat-card">
+          <span class="ts-stat-label">Streak</span>
+          <strong class="ts-stat-value">${streak} ${streak === 1 ? "giorno" : "giorni"} 🔥</strong>
+          <span class="ts-stat-sub">consecutivi</span>
+        </div>
+      </div>
+
+      <div class="ts-calendar-card panel">
+        <div class="ts-calendar-head">
+          <h3>${monthName}</h3>
+          <div class="ts-legend">
+            <span class="ts-legend-cell intensity-1"></span>
+            <span class="ts-legend-cell intensity-2"></span>
+            <span class="ts-legend-cell intensity-3"></span>
+            <span class="ts-legend-cell intensity-4"></span>
+            <small>più ore</small>
+          </div>
+        </div>
+        <div class="ts-calendar-dow">
+          <span>L</span><span>M</span><span>M</span><span>G</span><span>V</span><span>S</span><span>D</span>
+        </div>
+        <div class="ts-calendar-grid">
+          ${cells.map((c) => {
+            if (c.pad) return '<div class="ts-day pad"></div>';
+            const cls = `ts-day intensity-${c.intensity}${c.minutes > 0 ? " has-work" : ""}`;
+            const tooltip = c.minutes > 0 ? `${c.d}: ${formatMinutesToHM(c.minutes)}` : `${c.d}: nessun turno`;
+            return `<div class="${cls}" title="${escapeAttr(tooltip)}"><span class="ts-day-num">${c.d}</span>${c.minutes > 0 ? `<span class="ts-day-hours">${Math.round(c.minutes/60*10)/10}h</span>` : ""}</div>`;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    root.innerHTML = `<div class="ts-empty-state error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
+  }
+}
+
+// ── View office "Presenze" ──────────────────────────────────────────────────
+
+async function renderTimesheetOffice() {
+  const root = document.getElementById("timesheet-office-content");
+  if (!root) return;
+  root.innerHTML = '<div class="ts-loading">Caricamento…</div>';
+  try {
+    // Settimana corrente (lun→dom in TZ Europe/Rome)
+    const now = new Date();
+    const dow = (now.getDay() + 6) % 7; // L=0
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - dow);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    const fromStr = fmt(monday);
+    const toStr = fmt(sunday);
+
+    const data = await apiFetch(`/api/timesheet?from=${fromStr}&to=${toStr}`);
+    const shifts = data?.shifts || [];
+
+    // Raggruppa per userId
+    const byUser = new Map();
+    for (const s of shifts) {
+      if (!byUser.has(s.userId)) byUser.set(s.userId, []);
+      byUser.get(s.userId).push(s);
+    }
+    const users = Array.isArray(state.users) ? state.users : [];
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    // Header giorni
+    const weekDays = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return { date: fmt(d), label: new Intl.DateTimeFormat("it-IT", { weekday: "short", day: "numeric" }).format(d) };
+    });
+
+    if (byUser.size === 0) {
+      root.innerHTML = `<div class="ts-empty-state">
+        <h2>Nessuna timbratura questa settimana</h2>
+        <p>Le presenze appariranno qui appena i dipendenti iniziano a timbrare.</p>
+      </div>`;
+      return;
+    }
+
+    let html = `
+      <div class="ts-office-toolbar">
+        <strong>Settimana ${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short"}).format(monday)} - ${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short",year:"numeric"}).format(sunday)}</strong>
+      </div>
+      <div class="ts-office-table-wrap">
+        <table class="ts-office-table">
+          <thead>
+            <tr>
+              <th>Dipendente</th>
+              ${weekDays.map((d) => `<th>${escapeHtml(d.label)}</th>`).join("")}
+              <th>Totale</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    for (const [userId, userShifts] of byUser.entries()) {
+      const user = userMap.get(userId) || {};
+      const byDate = new Map(userShifts.map((s) => [s.shiftDate, s]));
+      const totalMinutes = userShifts.reduce((acc, s) => acc + (s.workedMinutes || 0), 0);
+      html += `<tr>
+        <td class="ts-user-cell">
+          <strong>${escapeHtml(user.name || user.crewName || userId)}</strong>
+          <small>${escapeHtml(user.role || "")}</small>
+        </td>`;
+      for (const d of weekDays) {
+        const s = byDate.get(d.date);
+        if (!s) { html += '<td class="ts-cell empty">—</td>'; continue; }
+        const offNet = (s.anomalyFlags || []).includes("off_network_in") || (s.anomalyFlags || []).includes("off_network_out");
+        const badge = offNet ? '⚠️' : '✓';
+        html += `<td class="ts-cell ${s.workedMinutes ? "worked" : ""} ${offNet ? "anomaly" : ""}">
+          <strong>${s.workedMinutes ? formatMinutesToHM(s.workedMinutes).replace("min","").trim() : (s.clockInAt ? "in turno" : "—")}</strong>
+          <span class="ts-cell-badge">${badge}</span>
+        </td>`;
+      }
+      html += `<td class="ts-cell total"><strong>${formatMinutesToHM(totalMinutes)}</strong></td>`;
+      html += `</tr>`;
+    }
+    html += `
+          </tbody>
+        </table>
+      </div>
+      <div class="ts-legend-row">
+        <span>✓ rete in sede</span>
+        <span>⚠️ off-network (clic per dettagli e rettifica)</span>
+      </div>
+    `;
+    root.innerHTML = html;
+  } catch (err) {
+    root.innerHTML = `<div class="ts-empty-state error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
+  }
+}
+
+// Handler export CSV
+async function exportTimesheetCsv({ scope = "all" } = {}) {
+  try {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const monthStr = String(month).padStart(2, "0");
+    const from = `${year}-${monthStr}-01`;
+    const to = new Date(year, month, 0).toISOString().slice(0, 10);
+    const qs = scope === "mine" ? `?from=${from}&to=${to}&userId=${encodeURIComponent(state.currentUser?.id || "")}` : `?from=${from}&to=${to}`;
+    window.open(`/api/timesheet/export${qs}`, "_blank");
+  } catch (err) {
+    showToast(`Export fallito: ${err?.message || err}`, "error");
+  }
+}
+
+// Wire bottoni export (event delegation aggiunto al listener globale già esistente)
+document.addEventListener("click", (ev) => {
+  const t = ev.target.closest?.("[data-action]");
+  if (!t) return;
+  if (t.dataset.action === "ts-export-mine") {
+    ev.preventDefault();
+    exportTimesheetCsv({ scope: "mine" });
+  } else if (t.dataset.action === "ts-export-all") {
+    ev.preventDefault();
+    exportTimesheetCsv({ scope: "all" });
+  }
+});
+
 function renderAccounting() {
   ui.accountingFilterTags.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.accountingFilter === state.filters.accounting);
@@ -17112,6 +17638,9 @@ function showApp() {
     scrollCurrentViewToTop();
     focusViewTarget(state.currentView);
   });
+  // Sistema Presenze: inizializza banner + counter live per dipendenti
+  // (warehouse, seller, office). Crew esclusi (subappaltatori).
+  try { initTimesheet(); } catch (err) { console.warn("[timesheet] init failed:", err); }
 }
 
 function getUsageEventLabel(type = "") {
@@ -17947,6 +18476,8 @@ function renderCurrentViewOnly(view = state.currentView) {
         }
         break;
       case "garden-planner": renderGardenPlannerView(); break;
+      case "timesheet-me": renderTimesheetMe(); break;
+      case "timesheet-office": renderTimesheetOffice(); break;
       default: renderDashboard(); break;
     }
   };
