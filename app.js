@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260528-ux-desktop-wave1";
+const APP_SHELL_VERSION = "20260529-ux-desktop-wave2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4428,27 +4428,10 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
     `).join("");
   }
   if (ui.salesRequestInsights) {
-    const visibleUnassigned = filteredItems.filter((item) => !normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "")).length;
-    const visibleToContact = filteredItems.filter((item) => matchesSalesRequestQuickFilter(item, "to-contact")).length;
-    const visibleMine = filteredItems.filter((item) => matchesSalesRequestQuickFilter(item, "mine")).length;
-    ui.salesRequestInsights.innerHTML = `
-      <article class="sales-request-kpi">
-        <strong>${filteredItems.length}</strong>
-        <span>${state.lang === "it" ? "richieste visibili" : "visible requests"}</span>
-      </article>
-      <article class="sales-request-kpi">
-        <strong>${visibleToContact}</strong>
-        <span>${state.lang === "it" ? "ancora da contattare" : "still to contact"}</span>
-      </article>
-      <article class="sales-request-kpi">
-        <strong>${visibleUnassigned}</strong>
-        <span>${state.lang === "it" ? "senza assegnazione" : "unassigned"}</span>
-      </article>
-      <article class="sales-request-kpi">
-        <strong>${visibleMine}</strong>
-        <span>${state.lang === "it" ? "nel mio carico" : "in my queue"}</span>
-      </article>
-    `;
+    // Fix #2 UX Ondata 2 (28 mag 2026): rimossi i 4 big-number KPI ridondanti.
+    // I conteggi sono già visibili nelle pillole filtro sopra (sales-request-quick-chip
+    // con <strong>${count}</strong>). Niente doppia rappresentazione.
+    ui.salesRequestInsights.innerHTML = "";
   }
   if (ui.salesRequestCompactToggle) {
     ui.salesRequestCompactToggle.classList.toggle("is-active", Boolean(state.salesRequestCompactMode));
@@ -13754,13 +13737,13 @@ function renderAccountingAnalysis(orders) {
     <article class="accounting-analysis-card">
       <span class="panel-eyebrow">${state.lang === "it" ? "Incassato reale" : "Collected"}</span>
       <strong>${formatCurrency(collectedTotal)}</strong>
-      <p>${state.lang === "it" ? `${settledCount} ordini già chiusi contabilmente.` : `${settledCount} orders already settled.`}</p>
+      <p>${state.lang === "it"
+        ? `${settledCount} ordini chiusi · Media ${formatCurrency(averageOpen)} · ${invoicePending} da fatturare`
+        : `${settledCount} orders settled · Average ${formatCurrency(averageOpen)} · ${invoicePending} to invoice`}</p>
     </article>
-    <article class="accounting-analysis-card accent">
-      <span class="panel-eyebrow">${state.lang === "it" ? "Residuo aperto" : "Open balance"}</span>
-      <strong>${formatCurrency(openTotal)}</strong>
-      <p>${state.lang === "it" ? `Media ${formatCurrency(averageOpen)} · ${invoicePending} da fatturare` : `Average ${formatCurrency(averageOpen)} · ${invoicePending} to invoice`}</p>
-    </article>
+    <!-- Card "Residuo aperto" rimossa: stesso valore di "Da incassare" big KPI top.
+         Le sotto-info utili (media residuo, conteggio da fatturare) spostate sopra
+         su "Incassato reale". Fix #2 UX Ondata 2 (28 mag 2026). -->
   `;
 }
 
@@ -18315,6 +18298,7 @@ function renderMarketing() {
       <button class="primary-button small-button" data-action="open-marketing-form">+ Nuovo contenuto</button>
     </div>
 
+    ${(kpiTotal + kpiWeek + kpiBozza + kpiAssets) > 0 ? `
     <div class="marketing-kpi-row">
       <div class="marketing-kpi-card panel">
         <span class="marketing-kpi-label">Nel piano (filtri)</span>
@@ -18336,7 +18320,7 @@ function renderMarketing() {
         <strong class="marketing-kpi-value">${kpiAssets}</strong>
         <span class="marketing-kpi-hint">pronti per pubblicazione</span>
       </div>
-    </div>
+    </div>` : ""}<!-- Fix #2 UX Ondata 2: KPI bar nascosta quando tutto a zero (empty state più pulito). -->
 
     <div class="view-toolbar marketing-toolbar-cluster marketing-toolbar-primary">
       <div class="filter-bar marketing-view-toggle" role="tablist" aria-label="Vista marketing">

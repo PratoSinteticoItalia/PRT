@@ -17610,3 +17610,130 @@ body {
 .work-report-card.is-archived .work-report-badge { background: #d8f3dc; color: #1a2e23; }
 .work-report-card.is-signed .work-report-badge { background: #fbf1e2; color: #8a5400; }
 .work-report-card.is-draft .work-report-badge { background: #e8e8e2; color: #555; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   ONDATA 2 — UX DESKTOP (28 mag 2026)
+   Fix #4: filtri pillole → segmented control compatto
+   Fix #8: spacing token sistematici
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── Spacing tokens (Fix #8) ──────────────────────────────────────────────
+   Scala uniforme. Da usare in future modifiche; non riapplichiamo a tutto il
+   codebase esistente (rischio regressioni) ma le usiamo nei nuovi componenti
+   come "Le mie presenze" e nei prossimi fix. */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+}
+
+/* ── Fix #4: segmented control unificato per filter-bar ──────────────────
+   Trasforma le pillole rotonde con padding generoso in un segmented control
+   compatto (altezza 36px), pattern macOS/iOS familiare. */
+.filter-bar {
+  display: inline-flex !important;
+  gap: 2px !important;
+  background: rgba(0, 0, 0, 0.05) !important;
+  border-radius: 10px !important;
+  padding: 3px !important;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: 100%;
+}
+.filter-bar .filter-btn {
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 14px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: var(--text2, #555) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 32px !important;
+  box-shadow: none !important;
+  transition: background 150ms, color 150ms;
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+.filter-bar .filter-btn:hover {
+  background: rgba(0, 0, 0, 0.04) !important;
+  color: var(--text, #111) !important;
+}
+.filter-bar .filter-btn.is-active {
+  background: #ffffff !important;
+  color: var(--text, #111) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 0 0 0.5px rgba(0, 0, 0, 0.04) !important;
+  font-weight: 600 !important;
+}
+
+/* ── Sales Request quick chips (le pillole con count): stesso pattern ────
+   Mantiene il <strong>${count}</strong> interno ma in versione compatta. */
+.sales-request-quick-chip {
+  height: 32px !important;
+  padding: 0 12px !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  color: var(--text2, #555) !important;
+}
+.sales-request-quick-chip > strong {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--text, #111);
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 22px;
+  text-align: center;
+}
+.sales-request-quick-chip:hover {
+  background: rgba(0, 0, 0, 0.04) !important;
+}
+.sales-request-quick-chip.is-active {
+  background: #ffffff !important;
+  color: var(--text, #111) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+  font-weight: 600 !important;
+}
+.sales-request-quick-chip.is-active > strong {
+  background: var(--brand, #2d6a4f);
+  color: #fff;
+}
+.sales-request-quick-chip.is-urgent > strong {
+  background: var(--red, #a74b4b);
+  color: #fff;
+}
+
+/* Wrapper della pipeline-vendite per le pillole sales-request (assicura che siano
+   raggruppate in un container come le filter-bar) */
+.sales-request-quick-filters {
+  display: inline-flex;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+/* ── Polish KPI grid: gap usa token ─────────────────────────────────────── */
+.kpi-grid {
+  gap: var(--space-3) !important;
+}
+.marketing-kpi-row {
+  gap: var(--space-3) !important;
+}
