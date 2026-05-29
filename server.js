@@ -823,7 +823,9 @@ async function ensureRelationalSchema() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS time_entries_user_idx ON time_entries (user_id, occurred_at DESC);
-      CREATE INDEX IF NOT EXISTS time_entries_user_day_idx ON time_entries (user_id, (occurred_at::date));
+      -- Indice opzionale per filtri rapidi per giorno: omesso perché PostgreSQL
+      -- rifiuta (occurred_at::date) come non IMMUTABLE per TIMESTAMPTZ. Le query
+      -- sono comunque coperte da time_entries_user_idx + filtro WHERE range.
       CREATE INDEX IF NOT EXISTS time_entries_type_idx ON time_entries (entry_type, occurred_at DESC);
 
       CREATE TABLE IF NOT EXISTS time_shifts (
