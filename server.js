@@ -1857,6 +1857,7 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
     if (entryType === "clock_in") {
       const flags = [];
       if (networkTag === "off_network") flags.push("off_network_in");
+      else if (networkTag === "in_office") flags.push("in_office_in");
       await client.query(
         `INSERT INTO time_shifts (user_id, shift_date, clock_in_at, clock_in_entry_id, status, anomaly_flags, updated_at)
          VALUES ($1, $2, $3, $4, 'open', $5::jsonb, NOW())
@@ -1873,6 +1874,7 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
       const worked = inTime ? Math.max(0, Math.round((occurredAt - inTime) / 60000)) : null;
       const flags = Array.isArray(shift.anomaly_flags) ? [...shift.anomaly_flags] : [];
       if (networkTag === "off_network") flags.push("off_network_out");
+      else if (networkTag === "in_office") flags.push("in_office_out");
       await client.query(
         `UPDATE time_shifts
             SET clock_out_at = $1,

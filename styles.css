@@ -18082,3 +18082,42 @@ body {
   margin-top: var(--space-3);
   padding: 0 var(--space-2);
 }
+
+/* Badge network sulle celle tabella office Presenze */
+.ts-net-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  vertical-align: middle;
+}
+.ts-net-badge.ok { color: var(--brand, #2d6a4f); }
+.ts-net-badge.off { color: var(--amber, #d97706); }
+
+.ts-cell.open strong::before {
+  content: "● ";
+  color: var(--brand, #2d6a4f);
+  animation: ts-blink 1.5s ease-in-out infinite;
+}
+@keyframes ts-blink { 50% { opacity: 0.3; } }
+
+/* Avviso anti-frode disabilitato */
+.ts-warn-banner {
+  background: #fff8eb;
+  border: 1px solid #f5d8a0;
+  border-left: 4px solid var(--amber, #d97706);
+  border-radius: 10px;
+  padding: var(--space-3) var(--space-4);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: var(--space-4);
+  color: #6b4400;
+}
+.ts-warn-banner strong { display: block; margin-bottom: 4px; font-size: 14px; }
+.ts-warn-banner code {
+  background: rgba(0,0,0,0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: #4a2f00;
+}

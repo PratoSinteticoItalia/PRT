@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260530-timesheet-banner-fix-css";
+const APP_SHELL_VERSION = "20260530-timesheet-network-badges";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15442,7 +15442,11 @@ function renderTimesheetBanner() {
     if (icon) icon.textContent = "🟢";
     const inAt = new Date(shift.clockInAt);
     const inHM = inAt.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
-    if (text) text.textContent = `In turno · entrata ${inHM}`;
+    const flags = shift.anomalyFlags || [];
+    let netSuffix = "";
+    if (flags.includes("off_network_in")) netSuffix = " ⚠️ off-network";
+    else if (flags.includes("in_office_in")) netSuffix = " ✓ in sede";
+    if (text) text.textContent = `In turno · entrata ${inHM}${netSuffix}`;
     if (cta) {
       cta.textContent = "Termina turno";
       cta.classList.add("is-danger");
@@ -15814,10 +15818,23 @@ async function renderTimesheetOffice() {
       return;
     }
 
+    // Determina se anti-frode è attivo (almeno uno shift ha classification)
+    const antifraudActive = shifts.some((s) => {
+      const f = s.anomalyFlags || [];
+      return f.includes("in_office_in") || f.includes("off_network_in") || f.includes("in_office_out") || f.includes("off_network_out");
+    });
+
     let html = `
       <div class="ts-office-toolbar">
         <strong>Settimana ${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short"}).format(monday)} - ${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short",year:"numeric"}).format(sunday)}</strong>
       </div>
+      ${!antifraudActive ? `
+      <div class="ts-warn-banner">
+        <strong>⚠️ Anti-frode IP non configurato.</strong>
+        Le timbrature non vengono classificate come "in sede" o "off-network".
+        Configura la variabile <code>COMPANY_NETWORK_CIDR</code> su Render con il range IP del capannone
+        (es. <code>192.168.1.0/24</code>) per attivare il check automatico.
+      </div>` : ""}
       <div class="ts-office-table-wrap">
         <table class="ts-office-table">
           <thead>
@@ -15841,11 +15858,27 @@ async function renderTimesheetOffice() {
       for (const d of weekDays) {
         const s = byDate.get(d.date);
         if (!s) { html += '<td class="ts-cell empty">—</td>'; continue; }
-        const offNet = (s.anomalyFlags || []).includes("off_network_in") || (s.anomalyFlags || []).includes("off_network_out");
-        const badge = offNet ? '⚠️' : '✓';
-        html += `<td class="ts-cell ${s.workedMinutes ? "worked" : ""} ${offNet ? "anomaly" : ""}">
-          <strong>${s.workedMinutes ? formatMinutesToHM(s.workedMinutes).replace("min","").trim() : (s.clockInAt ? "in turno" : "—")}</strong>
-          <span class="ts-cell-badge">${badge}</span>
+        const flags = s.anomalyFlags || [];
+        const offNetIn = flags.includes("off_network_in");
+        const offNetOut = flags.includes("off_network_out");
+        const offNet = offNetIn || offNetOut;
+        const inOfficeIn = flags.includes("in_office_in");
+        const inOfficeOut = flags.includes("in_office_out");
+        const wasClassified = offNet || inOfficeIn || inOfficeOut;
+        // ✓ se classified come in_office, ⚠️ se off_network, niente se anti-frode disabilitato
+        let networkBadge = "";
+        if (offNet) {
+          const where = offNetIn && offNetOut ? "in/out" : offNetIn ? "in" : "out";
+          networkBadge = `<span class="ts-net-badge off" title="Off-network (${escapeAttr(where)})">⚠️</span>`;
+        } else if (wasClassified && s.clockInAt) {
+          networkBadge = `<span class="ts-net-badge ok" title="Timbratura in sede">✓</span>`;
+        }
+        const displayValue = s.workedMinutes
+          ? formatMinutesToHM(s.workedMinutes)
+          : (s.clockInAt && !s.clockOutAt ? "in turno" : "—");
+        html += `<td class="ts-cell ${s.workedMinutes ? "worked" : ""} ${offNet ? "anomaly" : ""} ${s.clockInAt && !s.clockOutAt ? "open" : ""}">
+          <strong>${escapeHtml(displayValue)}</strong>
+          ${networkBadge}
         </td>`;
       }
       html += `<td class="ts-cell total"><strong>${formatMinutesToHM(totalMinutes)}</strong></td>`;
