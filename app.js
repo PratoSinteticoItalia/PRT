@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260529-timesheet-banner-fallback";
+const APP_SHELL_VERSION = "20260529-timesheet-banner-position";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -366,6 +366,8 @@ const translations = {
     settings: "Impostazioni",
     marketing: "Marketing",
     "garden-planner": "Garden Planner",
+    "timesheet-me": "Le mie presenze",
+    "timesheet-office": "Presenze",
     office: "Ufficio",
     warehouseRole: "Inventario",
     crewRole: "Squadra",
@@ -616,6 +618,8 @@ const translations = {
     settings: "Settings",
     marketing: "Marketing",
     "garden-planner": "Garden Planner",
+    "timesheet-me": "My time",
+    "timesheet-office": "Time tracking",
     office: "Office",
     warehouseRole: "Inventory",
     crewRole: "Crew",
