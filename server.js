@@ -1812,21 +1812,45 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
   await ensureRelationalSchema();
   const pool = await getPgPool();
   const occurredAt = ctx.occurredAt ? new Date(ctx.occurredAt) : new Date();
-  const shiftDate = shiftDateForTimestamp(occurredAt);
+  let shiftDate = shiftDateForTimestamp(occurredAt);
   const networkTag = classifyNetwork(ctx.ipAddress);
 
   // Trova shift della giornata, se esiste
-  const existingShift = await pool.query(
+  let existingShift = await pool.query(
     `SELECT * FROM time_shifts WHERE user_id = $1 AND shift_date = $2 LIMIT 1`,
     [String(userId), shiftDate],
   );
-  const shift = existingShift.rows[0] || null;
+  let shift = existingShift.rows[0] || null;
+
+  // Fix #4 polish: turno cavallo mezzanotte. Per clock_out, se non trovo
+  // turno aperto OGGI, cerco il turno aperto più recente entro 18h indietro.
+  // Caso: clock_in 23:50 → shift_date=oggi; clock_out 00:30 giorno dopo →
+  // shiftDate=domani, ma il turno aperto è di "oggi". Senza fix, sarebbe
+  // "not_in_shift" e l'utente non potrebbe più chiudere.
+  if (entryType === "clock_out" && (!shift || !shift.clock_in_at || shift.clock_out_at)) {
+    const lookback = new Date(occurredAt.getTime() - 18 * 3600 * 1000);
+    const recentOpen = await pool.query(
+      `SELECT * FROM time_shifts
+        WHERE user_id = $1
+          AND clock_in_at >= $2
+          AND clock_in_at <= $3
+          AND clock_out_at IS NULL
+        ORDER BY clock_in_at DESC LIMIT 1`,
+      [String(userId), lookback.toISOString(), occurredAt.toISOString()],
+    );
+    if (recentOpen.rowCount) {
+      shift = recentOpen.rows[0];
+      shiftDate = shift.shift_date instanceof Date
+        ? shift.shift_date.toISOString().slice(0, 10)
+        : String(shift.shift_date);
+    }
+  }
 
   // Idempotenza: se clock_in e c'è già un turno aperto oggi, NO-OP (ritorna esistente).
   if (entryType === "clock_in" && shift && shift.clock_in_at && !shift.clock_out_at) {
     return { skipped: "already_open", shift: dbRowToTimeShift(shift) };
   }
-  // Idempotenza: se clock_out e non c'è turno aperto, NO-OP.
+  // Idempotenza: se clock_out e non c'è turno aperto (nemmeno entro 18h), NO-OP.
   if (entryType === "clock_out" && (!shift || !shift.clock_in_at || shift.clock_out_at)) {
     return { skipped: "not_in_shift", shift: shift ? dbRowToTimeShift(shift) : null };
   }
@@ -1999,9 +2023,11 @@ async function getCurrentStreakForUser(userId) {
   if (!USE_POSTGRES || !userId) return 0;
   await ensureRelationalSchema();
   const pool = await getPgPool();
+  // Soglia 5 minuti: turni di test/dimenticati troppo brevi non contano
+  // come "giorno lavorato" per il calcolo streak (evita streak fake da prove).
   const { rows } = await pool.query(
     `SELECT shift_date FROM time_shifts
-      WHERE user_id = $1 AND worked_minutes > 0
+      WHERE user_id = $1 AND worked_minutes >= 5
       ORDER BY shift_date DESC LIMIT 60`,
     [String(userId)],
   );

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260530-timesheet-network-badges";
+const APP_SHELL_VERSION = "20260530-timesheet-polish";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15459,8 +15459,20 @@ function renderTimesheetBanner() {
     if (icon) icon.textContent = "✅";
     const inAt = new Date(shift.clockInAt);
     const outAt = new Date(shift.clockOutAt);
-    if (text) text.textContent = `Turno chiuso · ${inAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}–${outAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}`;
-    if (counter) counter.textContent = formatTimesheetDuration(shift.workedMinutes * 60);
+    const secondsBetween = Math.max(0, Math.round((outAt - inAt) / 1000));
+    // Fix orari ravvicinati: se < 60s tra in e out, mostro un solo timestamp
+    // (HH:MM arrotonderebbe a un solo minuto, dando l'impressione di out < in)
+    if (text) {
+      if (secondsBetween < 60) {
+        text.textContent = `Turno chiuso alle ${inAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}`;
+      } else {
+        text.textContent = `Turno chiuso · ${inAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}–${outAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}`;
+      }
+    }
+    // Counter: ore precise per turni > 1min, altrimenti secondi (0s comprende)
+    if (counter) counter.textContent = secondsBetween >= 60
+      ? formatTimesheetDuration(shift.workedMinutes * 60)
+      : `${secondsBetween}s`;
     if (cta) {
       cta.textContent = "Inizia nuovo turno";
       cta.classList.remove("is-danger");
@@ -15543,6 +15555,12 @@ async function timesheetClockOut() {
     const mm = worked % 60;
     showToast(`🎉 Buon riposo! Oggi ${hh}h ${String(mm).padStart(2,"0")}min`, "success", 6000);
     await refreshTimesheetState();
+    // Auto-refresh delle view timesheet aperte se siamo lì
+    if (state.currentView === "timesheet-office" && typeof renderTimesheetOffice === "function") {
+      try { renderTimesheetOffice(); } catch {}
+    } else if (state.currentView === "timesheet-me" && typeof renderTimesheetMe === "function") {
+      try { renderTimesheetMe(); } catch {}
+    }
   } catch (err) {
     showToast(`Termine turno fallito: ${err?.message || err}`, "error");
   } finally {
