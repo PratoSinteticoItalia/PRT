@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260530-icons-banner-compact";
+const APP_SHELL_VERSION = "20260531-banner-dot-only";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -16440,27 +16440,26 @@ document.addEventListener("click", (ev) => {
   }
 });
 
-// Click su banner compact → espande temporaneamente
+// Click su pallino timesheet → espande temporaneamente (sia in turno che fuori)
+// Click fuori dal banner → collapse. Auto-collapse dopo 6s.
+let _tsExpandTimer = 0;
 document.addEventListener("click", (ev) => {
   const banner = document.getElementById("timesheet-banner");
   if (!banner) return;
   const clickedInside = banner.contains(ev.target);
-  const inShift = banner.classList.contains("in-shift");
-  if (inShift) return; // niente toggle quando in turno (sempre espanso)
   if (clickedInside) {
-    // Toggle espansione
+    // Toggle espansione (vale sia per fuori turno che in turno)
     banner.classList.toggle("is-expanded");
-    // Auto-collapse dopo 5s se espanso
+    if (_tsExpandTimer) { window.clearTimeout(_tsExpandTimer); _tsExpandTimer = 0; }
     if (banner.classList.contains("is-expanded")) {
-      window.setTimeout(() => {
-        if (!banner.classList.contains("in-shift")) {
-          banner.classList.remove("is-expanded");
-        }
-      }, 5000);
+      _tsExpandTimer = window.setTimeout(() => {
+        banner.classList.remove("is-expanded");
+        _tsExpandTimer = 0;
+      }, 6000);
     }
   } else {
-    // Click fuori → collapse
     banner.classList.remove("is-expanded");
+    if (_tsExpandTimer) { window.clearTimeout(_tsExpandTimer); _tsExpandTimer = 0; }
   }
 });
 

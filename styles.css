@@ -17742,10 +17742,11 @@ body {
    SISTEMA PRESENZE (timesheet) — banner sticky + modal turno
    ═════════════════════════════════════════════════════════════════════════ */
 
-/* Banner timesheet:
-   - In turno: pill espansa con counter live (utile vedere ore real-time)
-   - Fuori turno: mini-badge 48x48 cliccabile (poco invadente)
-   Click sul mini-badge espande il banner full per ~5s o fino a click fuori. */
+/* Banner timesheet — sempre come pallino 48×48 compact.
+   Colore pallino dinamico:
+   - Fuori turno: grigio (bordo sottile, no fill)
+   - In turno: verde brand (fill solid + leggera pulse animation)
+   Click → si espande mostrando dettagli + bottone. Auto-collapse dopo 5s o click fuori. */
 .timesheet-banner {
   position: fixed;
   z-index: 100;
@@ -17753,8 +17754,8 @@ body {
 }
 .timesheet-banner.hidden { display: none !important; }
 
-/* COMPACT (off-shift): mini-badge circolare */
-.timesheet-banner:not(.in-shift):not(.is-expanded) {
+/* COMPACT (default sempre, in turno o fuori) — mini-badge circolare */
+.timesheet-banner:not(.is-expanded) {
   bottom: 16px;
   right: 16px;
   width: 48px;
@@ -17770,13 +17771,13 @@ body {
   justify-content: center;
   overflow: hidden;
 }
-.timesheet-banner:not(.in-shift):not(.is-expanded) .ts-banner-inner {
+.timesheet-banner:not(.is-expanded) .ts-banner-inner {
   width: 100%;
   height: 100%;
   justify-content: center;
   gap: 0;
 }
-.timesheet-banner:not(.in-shift):not(.is-expanded) .ts-banner-status {
+.timesheet-banner:not(.is-expanded) .ts-banner-status {
   font-size: 0 !important;
   gap: 0;
   flex: 0 0 auto;
@@ -17785,16 +17786,29 @@ body {
   align-items: center;
   justify-content: center;
 }
-.timesheet-banner:not(.in-shift):not(.is-expanded) .ts-banner-icon {
-  font-size: 22px !important;
-  line-height: 1;
+.timesheet-banner:not(.is-expanded) .ts-banner-icon {
+  font-size: 0 !important;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted, #888);
+  display: block;
+  position: relative;
 }
-.timesheet-banner:not(.in-shift):not(.is-expanded) .ts-banner-counter,
-.timesheet-banner:not(.in-shift):not(.is-expanded) .ts-banner-cta,
-.timesheet-banner:not(.in-shift):not(.is-expanded) .ts-banner-history { display: none; }
+/* In turno: pallino verde con pulsazione leggera */
+.timesheet-banner.in-shift:not(.is-expanded) .ts-banner-icon {
+  background: var(--brand, #2d6a4f);
+  animation: ts-pulse 2.5s ease-in-out infinite;
+}
+@keyframes ts-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(45, 106, 79, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(45, 106, 79, 0); }
+}
+.timesheet-banner:not(.is-expanded) .ts-banner-counter,
+.timesheet-banner:not(.is-expanded) .ts-banner-cta,
+.timesheet-banner:not(.is-expanded) .ts-banner-history { display: none; }
 
-/* EXPANDED (in turno o click su badge): pill completa */
-.timesheet-banner.in-shift,
+/* EXPANDED — solo on-click, mostra pill completa */
 .timesheet-banner.is-expanded {
   bottom: 16px;
   right: 16px;
@@ -17806,18 +17820,25 @@ body {
   background: linear-gradient(180deg, #fff, #fafaf6);
   box-shadow: 0 10px 30px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.04);
 }
-.timesheet-banner.in-shift {
+.timesheet-banner.is-expanded.in-shift {
   background: linear-gradient(180deg, #f0f9ec, #e9f5e0);
   border-color: rgba(45, 106, 79, 0.3);
 }
+.timesheet-banner.is-expanded .ts-banner-icon {
+  font-size: 18px !important;
+  width: auto;
+  height: auto;
+  background: transparent;
+  border-radius: 0;
+  animation: none;
+}
 
-/* Mobile: sopra bottom nav, attaccato a destra (compact) o full-width (expanded) */
+/* Mobile: sopra bottom nav */
 @media (max-width: 980px) {
-  .timesheet-banner:not(.in-shift):not(.is-expanded) {
+  .timesheet-banner:not(.is-expanded) {
     bottom: calc(74px + env(safe-area-inset-bottom));
     right: 12px;
   }
-  .timesheet-banner.in-shift,
   .timesheet-banner.is-expanded {
     bottom: calc(74px + env(safe-area-inset-bottom));
     right: 12px;
