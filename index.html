@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260530-pose-submenu" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260530-pose-submenu" />
+    <link rel="preload" href="./styles.css?v=20260530-pose-final" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260530-pose-final" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -191,6 +191,23 @@
         </div>
       </div>
 
+      <!-- Bottom navigation mobile (sostituisce il pill scrollabile su <980px).
+           4 voci fisse + Altro che apre sheet con tutte le altre.
+           Voci dinamiche per ruolo, popolate da app.js renderMobileBottomNav(). -->
+      <nav id="mobile-bottom-nav" class="mobile-bottom-nav hidden" aria-label="Navigazione principale"></nav>
+
+      <!-- Sheet "Altro" full-screen per voci secondarie -->
+      <div id="mobile-more-sheet" class="mobile-more-sheet hidden" role="dialog" aria-modal="true">
+        <div class="mobile-more-backdrop" data-action="close-more-sheet"></div>
+        <div class="mobile-more-shell">
+          <header class="mobile-more-head">
+            <h3>Tutte le sezioni</h3>
+            <button type="button" class="ts-modal-close" data-action="close-more-sheet">×</button>
+          </header>
+          <div id="mobile-more-content" class="mobile-more-content"></div>
+        </div>
+      </div>
+
       <div id="mobile-pill-shell" class="mobile-pill-shell hidden" aria-hidden="true">
         <nav id="mobile-pill-nav" class="mobile-pill-nav" aria-label="Navigazione mobile"></nav>
         <div class="mobile-pill-tools mobile-pill-utility" aria-label="Azioni rapide mobile">
@@ -259,10 +276,6 @@
               <span class="nav-chevron" aria-hidden="true">▾</span>
             </button>
             <div class="nav-subgroup" data-nav-subgroup="installations">
-              <button class="nav-link nav-sub" data-view="installations">
-                <span class="nav-sub-dot">·</span>
-                <span class="nav-label">Calendario</span>
-              </button>
               <button class="nav-link nav-sub" data-view="installations-todo">
                 <span class="nav-sub-dot">·</span>
                 <span class="nav-label">Da programmare</span>
@@ -823,7 +836,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260530-pose-submenu&shell=20260530-pose-submenu"
+                src="./sales-suite/generator.html?embedded=1&v=20260530-pose-final&shell=20260530-pose-final"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2374,7 +2387,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260530-pose-submenu" defer></script>
-    <script src="./app.js?v=20260530-pose-submenu" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260530-pose-final" defer></script>
+    <script src="./app.js?v=20260530-pose-final" type="module"></script>
   </body>
 </html>

@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Preventivi — Prato Sintetico Italia</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --gd:  #1c4229;
+      --gm:  #245c35;
+      --ga:  #3db554;
+      --gp:  #e8f5ec;
+      --gb:  #c2e8cc;
+      --off: #f6f8f5;
+      --br:  #d8e4da;
+      --gl:  #8fa890;
+      --gx:  #4a5c4e;
+      --gn:  #1e2820;
+      --red: #c0392b;
+    }
+
+    html, body {
+      font-family: 'Inter', sans-serif;
+      background: #9aa096;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .tpl-label {
+      text-align: center; padding: 8px;
+      font-size: 9px; font-weight: 800; letter-spacing: 1.8px;
+      text-transform: uppercase; color: #fff; background: #2a2a2a;
+    }
+
+    .page {
+      width: 210mm;
+      margin: 0 auto 14mm;
+      background: #fff;
+      box-shadow: 0 8px 40px rgba(0,0,0,.22);
+    }
+    @media print {
+      html,body { background: none; }
+      .page { margin: 0; box-shadow: none; width: 100%; }
+      .tpl-label { display: none; }
+      .page + .page { page-break-before: always; }
+    }
+
+    /* ── HEADER ── */
+    .hdr {
+      padding: 15px 26px 13px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 4px solid var(--gd);
+    }
+    .logo-row { display: flex; align-items: center; gap: 13px; }
+    .logo-box {
+      width: 54px; height: 54px; background: var(--gd);
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    }
+    .logo-box svg { width: 40px; height: 40px; }
+    .logo-tx .brand { font-size: 20px; font-weight: 900; color: var(--gd); letter-spacing: -.3px; line-height: 1; }
+    .logo-tx .brand em { color: var(--ga); font-style: normal; }
+    .logo-tx .sub  { font-size: 10px; font-weight: 700; letter-spacing: 2.5px; color: var(--gd); text-transform: uppercase; opacity:.7; }
+    .logo-tx .tag  { font-size: 9px; color: var(--gl); margin-top: 2px; }
+    .hdr-r { text-align: right; }
+    .hdr-r .lbl { font-size: 8px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--gl); }
+    .hdr-r .num { font-size: 24px; font-weight: 900; color: var(--gd); letter-spacing: -1px; line-height: 1.1; }
+    .hdr-r .co  { font-size: 9px; color: var(--gx); margin-top: 2px; }
+
+    /* ── INFO ROW ── */
+    .info-row { display: grid; grid-template-columns: 1fr 195px; border-bottom: 1px solid var(--br); }
+    .c-box { padding: 12px 22px; border-right: 1px solid var(--br); }
+    .v-box { padding: 12px 18px; background: var(--off); }
+    .bx-t { font-size: 7.5px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ga); border-bottom: 1px solid var(--br); padding-bottom: 5px; margin-bottom: 8px; }
+    .cg { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; }
+    .cf { display: flex; gap: 5px; align-items: baseline; }
+    .cf-l { font-size: 9px; color: var(--gl); white-space: nowrap; }
+    .cf-v { font-size: 11.5px; font-weight: 700; color: var(--gn); }
+    .vg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .vi .vl { font-size: 8px; color: var(--gl); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+    .vi .vv { font-size: 16px; font-weight: 800; color: var(--gd); letter-spacing: -.3px; }
+
+    /* ── HERO BAR ── */
+    .hero {
+      background: var(--gd); padding: 12px 26px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .hero h2 { font-size: 17px; font-weight: 900; color: #fff; letter-spacing: -.3px; text-transform: uppercase; }
+    .svc-pill { background: var(--ga); color: #fff; font-size: 9px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; padding: 5px 13px; border-radius: 20px; }
+
+    /* ── TABELLA ── */
+    table.mt { width: 100%; border-collapse: collapse; }
+    table.mt thead tr { background: var(--gm); }
+    table.mt th {
+      padding: 8px 10px; text-align: right;
+      font-size: 7.5px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+      color: rgba(255,255,255,.6);
+    }
+    table.mt th:first-child { text-align: left; }
+    table.mt th.hl { color: #fff; }
+    table.mt tbody tr { border-bottom: 1px solid var(--br); }
+    table.mt tbody tr:nth-child(even) { background: var(--off); }
+    table.mt td { padding: 10px 10px; text-align: right; vertical-align: middle; }
+    table.mt td:first-child { text-align: left; }
+    .mn  { font-size: 13px; font-weight: 800; color: var(--gn); }
+    .mc  { font-size: 8.5px; font-weight: 600; color: var(--ga); letter-spacing: .2px; }
+    .ms  { font-size: 9px; color: var(--gl); margin-top: 1px; }
+    .disc{ color: var(--red); font-weight: 800; font-size: 12px; }
+    .tm  { font-size: 12px; font-weight: 700; color: var(--gn); }
+    .tv  { font-size: 8px; color: var(--gl); margin-top: 1px; }
+    .tf  { font-size: 11px; font-weight: 700; color: var(--ga); }
+    .tt  { font-size: 14px; font-weight: 900; color: var(--gd); }
+
+    /* ── MATERIALI BOX ── */
+    .mat { margin: 12px 26px; border: 1px solid var(--br); border-radius: 7px; overflow: hidden; }
+    .mat-desc { background: var(--off); padding: 8px 13px; font-size: 9.5px; color: var(--gx); line-height: 1.5; border-bottom: 1px solid var(--br); }
+    .mat-grid { display: grid; grid-template-columns: repeat(4,1fr); padding: 9px 13px; gap: 6px 18px; }
+    .mi { display: flex; justify-content: space-between; gap: 5px; }
+    .mi-n { font-size: 9px; color: var(--gx); }
+    .mi-v { font-size: 9px; font-weight: 800; color: var(--gn); }
+    .mat-det { font-size: 8.5px; color: var(--gl); padding: 5px 13px 9px; border-top: 1px solid var(--br); line-height: 1.5; }
+    .mat-det strong { color: var(--gx); }
+
+    /* ── STRIP INFO (sostituisce i 4 badge) ── */
+    .info-strip {
+      display: flex; align-items: stretch;
+      border-top: 2px solid var(--gd); border-bottom: 1px solid var(--br);
+      margin-top: 12px;
+    }
+    .is-item {
+      flex: 1; padding: 9px 16px;
+      display: flex; align-items: center; gap: 10px;
+      border-right: 1px solid var(--br);
+    }
+    .is-item:last-child { border-right: none; }
+    .is-icon { font-size: 15px; flex-shrink: 0; }
+    .is-body {}
+    .is-title { font-size: 11px; font-weight: 800; color: var(--gd); line-height: 1.2; }
+    .is-sub   { font-size: 9px; color: var(--gl); margin-top: 1px; }
+
+    /* ── PRICE CARDS con HeyLight integrato ── */
+    .pc-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; margin: 12px 26px; }
+    .pc { background: var(--gd); border-radius: 8px; padding: 13px 13px 11px; text-align: center; }
+    .pc-m { font-size: 8.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,.5); }
+    .pc-c { font-size: 8px; color: var(--ga); font-weight: 600; margin-bottom: 5px; }
+    .pc-s { font-size: 8.5px; color: rgba(255,255,255,.4); margin-bottom: 5px; }
+    .pc-p { font-size: 28px; font-weight: 900; color: #fff; letter-spacing: -1px; line-height: 1; }
+    .pc-p sup { font-size: 12px; vertical-align: super; font-weight: 700; }
+    .pc-u { font-size: 8.5px; color: rgba(255,255,255,.4); margin-top: 2px; }
+    /* HeyLight integrato nella card */
+    .pc-hl {
+      margin-top: 9px; padding-top: 9px;
+      border-top: 1px solid rgba(255,255,255,.12);
+      font-size: 9.5px; color: rgba(255,255,255,.55);
+      line-height: 1.3;
+    }
+    .pc-hl strong { color: rgba(255,255,255,.85); font-size: 11px; }
+
+    /* ── PAGAMENTO (footer strip silenzioso) ── */
+    .pay-strip {
+      margin: 4px 26px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 14px;
+      background: var(--off); border: 1px solid var(--br); border-radius: 6px;
+    }
+    .pay-strip-label { font-size: 9px; color: var(--gl); font-weight: 600; letter-spacing: .3px; }
+    .pay-logos { display: flex; gap: 5px; align-items: center; }
+    .pl {
+      background: #fff; border: 1px solid var(--br);
+      color: var(--gx); font-size: 7.5px; font-weight: 800;
+      padding: 3px 7px; border-radius: 3px; letter-spacing: .3px;
+    }
+    .pl.hl-logo { background: var(--gd); color: #fff; border-color: var(--gd); }
+
+    /* ── FIRMA ── */
+    .firma { margin: 6px 26px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 38px; }
+    .fl  { border-bottom: 1px solid var(--br); height: 24px; margin-bottom: 4px; }
+    .flb { font-size: 8.5px; color: var(--gl); }
+
+    /* ── FOOTER ── */
+    .ftr { background: var(--gd); padding: 9px 26px; display: flex; align-items: center; justify-content: space-between; }
+    .fi  { font-size: 8.5px; color: rgba(255,255,255,.5); line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<!-- SVG LOGO ── riutilizzato in tutti i template -->
+
+<!-- ═══════════════════════════════════════════════
+     VERSIONE CON FOTO — pagina 1 migliorata
+═══════════════════════════════════════════════ -->
+<div class="tpl-label" style="background:#1c4229;">✦ Versione con foto — Pagina 1 migliorata</div>
+<div class="page">
+
+  <div class="hdr">
+    <div class="logo-row">
+      <div class="logo-box"><svg viewBox="0 0 42 42" fill="none"><use href="#logo"/></svg></div>
+      <div class="logo-tx">
+        <div class="brand">PRATO SINTETICO <em>ITALIA</em></div>
+        <div class="sub">Outdoor Collection</div>
+        <div class="tag">Dal 2016 · Fornitura e Posa Professionale</div>
+      </div>
+    </div>
+    <div class="hdr-r"><div class="lbl">Preventivo Nr.</div><div class="num">FP-8790-88</div><div class="co">VERTEX SRLS · P.IVA 04863610616</div></div>
+  </div>
+
+  <div class="info-row">
+    <div class="c-box"><div class="bx-t">Cliente</div><div class="cg">
+      <div class="cf"><span class="cf-l">Nome:</span><span class="cf-v">Luigi Matteucci</span></div>
+      <div class="cf"><span class="cf-l">Città:</span><span class="cf-v">Pisa</span></div>
+      <div class="cf"><span class="cf-l">Tel:</span><span class="cf-v">3475969282</span></div>
+      <div class="cf"><span class="cf-l">Email:</span><span class="cf-v">luigi.matteucci@yahoo.it</span></div>
+    </div></div>
+    <div class="v-box"><div class="bx-t">Validità</div><div class="vg">
+      <div class="vi"><div class="vl">Dal</div><div class="vv">16/05/26</div></div>
+      <div class="vi"><div class="vl">Al</div><div class="vv">15/06/26</div></div>
+    </div></div>
+  </div>
+
+  <div class="hero" style="padding:10px 26px;"><h2>Offerta per 28 mq</h2><span class="svc-pill">Solo fornitura · spedizione inclusa</span></div>
+
+  <!-- TABELLA con riga consigliato evidenziata -->
+  <table class="mt">
+    <thead><tr>
+      <th style="width:160px">Modello</th>
+      <th>Prezzo/mq</th>
+      <th>Sconto</th>
+      <th>Totale 28 mq</th>
+      <th>Spedizione</th>
+      <th class="hl">Totale IVA incl.</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <img src="/pose-system/product-images/faggio-25mm.png" alt="Faggio 25mm" style="width:42px;height:42px;object-fit:cover;border-radius:5px;flex-shrink:0;border:1px solid #dde8df;" onerror="this.style.display='none';">
+            <div><div class="mn">Faggio 25 mm</div><div class="mc">COD. FAG-025</div><div class="ms">Resistente · verde naturale</div></div>
+          </div>
+        </td>
+        <td><div class="tm">10,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">—</div></td>
+        <td><div class="tm">305,20 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tt">372,34 €</div></td>
+      </tr>
+      <tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <img src="/pose-system/product-images/cedro-30mm.png" alt="Cedro 30mm" style="width:42px;height:42px;object-fit:cover;border-radius:5px;flex-shrink:0;border:1px solid #dde8df;" onerror="this.style.display='none';">
+            <div><div class="mn">Cedro 30 mm</div><div class="mc">COD. CED-030</div><div class="ms">Versatile · verde cedro</div></div>
+          </div>
+        </td>
+        <td><div class="tm">13,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">5%</div></td>
+        <td><div class="tm">369,34 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tt">450,59 €</div></td>
+      </tr>
+      <!-- RIGA CONSIGLIATA — evidenziata -->
+      <tr style="background:linear-gradient(90deg,#eef7f0 0%,#f6faf6 100%);border-left:4px solid #1c4229;">
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <img src="/pose-system/product-images/abete-45mm.png" alt="Abete 45mm" style="width:42px;height:42px;object-fit:cover;border-radius:5px;flex-shrink:0;border:2px solid #1c4229;" onerror="this.style.display='none';">
+            <div>
+              <div class="mn">Abete 45 mm</div><div class="mc">COD. ABT-045</div><div class="ms">Premium · verde abete</div>
+            </div>
+            <span style="background:#1c4229;color:#fff;font-size:7.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0;">★ Consigliato</span>
+          </div>
+        </td>
+        <td><div class="tm" style="color:#1c4229;">13,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">5%</div></td>
+        <td><div class="tm" style="color:#1c4229;">369,34 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tt" style="font-size:16px;">450,59 €</div></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="info-strip">
+    <div class="is-item">
+      <span class="is-icon">🛡️</span>
+      <div class="is-body"><div class="is-title">Garanzia 8 anni</div><div class="is-sub">Certificazione REACH · EN71-3:2013 · ASTM-D2616</div></div>
+    </div>
+    <div class="is-item">
+      <span class="is-icon">📦</span>
+      <div class="is-body"><div class="is-title">Spedizione gratuita · 3–5 giorni</div><div class="is-sub">Rotoli 4 m × 25 m · Drenaggio 40 L/min/m² · Backing PP+NET+LATEX</div></div>
+    </div>
+    <div class="is-item" style="border-right:none;">
+      <span class="is-icon">⭐</span>
+      <div class="is-body"><div class="is-title">4,8 su Google</div><div class="is-sub">Oltre 380 recensioni verificate</div></div>
+    </div>
+  </div>
+
+  <div class="pc-row">
+    <div class="pc" style="opacity:.82;">
+      <div class="pc-m">Faggio 25 mm</div><div class="pc-c">COD. FAG-025</div>
+      <div class="pc-s">solo fornitura · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>10,90</div>
+      <div class="pc-u">al mq IVA escl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 74,47 €/mese</strong></div>
+    </div>
+    <div class="pc" style="opacity:.82;">
+      <div class="pc-m">Cedro 30 mm</div><div class="pc-c">COD. CED-030</div>
+      <div class="pc-s">sconto 5% · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>13,21</div>
+      <div class="pc-u">al mq IVA escl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 90,12 €/mese</strong></div>
+    </div>
+    <!-- CARD CONSIGLIATA -->
+    <div class="pc" style="background:#fff;border:2.5px solid #1c4229;position:relative;">
+      <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#3db554;color:#fff;font-size:8px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:3px 12px;border-radius:20px;white-space:nowrap;">★ Consigliato</div>
+      <div class="pc-m" style="color:#1c4229;margin-top:4px;">Abete 45 mm</div><div class="pc-c">COD. ABT-045</div>
+      <div class="pc-s" style="color:#8fa890;">sconto 5% · 28 mq</div>
+      <div class="pc-p" style="color:#1c4229;"><sup style="color:#1c4229;">€</sup>13,21</div>
+      <div class="pc-u" style="color:#8fa890;">al mq IVA escl.</div>
+      <div class="pc-hl" style="border-top:1px solid #d8e4da;color:#4a5c4e;">oppure HeyLight<br><strong style="color:#1c4229;">5 × 90,12 €/mese</strong></div>
+    </div>
+  </div>
+
+  <div class="pay-strip">
+    <span class="pay-strip-label">Pagamento accettato:</span>
+    <div class="pay-logos">
+      <span class="pl">VISA</span><span class="pl">Mastercard</span><span class="pl">PayPal</span>
+      <span class="pl">Bonifico</span><span class="pl">Scalapay</span><span class="pl hl-logo">HeyLight 0%</span>
+    </div>
+  </div>
+
+  <div class="firma">
+    <div><div class="fl"></div><div class="flb">Firma per accettazione</div></div>
+    <div><div class="fl"></div><div class="flb">Firma e timbro azienda</div></div>
+  </div>
+
+  <div class="ftr">
+    <div class="fi">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
+  </div>
+</div>
+
+<!-- ── PAGINA 2 VERSIONE CON FOTO ── -->
+<div class="tpl-label" style="background:#1c4229;">✦ Versione con foto — Pagina 2 con recensioni + QR</div>
+<div class="page" style="padding-bottom:0;">
+
+  <div class="hdr" style="padding:10px 26px 9px;border-bottom:3px solid var(--gd);">
+    <div class="logo-row">
+      <div class="logo-box" style="width:40px;height:40px;"><svg viewBox="0 0 42 42" fill="none"><use href="#logo"/></svg></div>
+      <div class="logo-tx">
+        <div class="brand" style="font-size:15px;">PRATO SINTETICO <em>ITALIA</em></div>
+        <div class="sub" style="font-size:8px;">Allegato tecnico · Pag. 2 di 2</div>
+      </div>
+    </div>
+    <div class="hdr-r">
+      <div class="lbl">Preventivo Nr.</div>
+      <div class="num" style="font-size:17px;">FP-8790-88</div>
+      <div class="co">Luigi Matteucci · 28 mq · Solo fornitura</div>
+    </div>
+  </div>
+
+  <!-- SCHEDE TECNICHE -->
+  <div style="padding:12px 26px 0;">
+    <div style="font-size:8px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;color:var(--ga);margin-bottom:10px;">📋 Scheda tecnica prodotti offerti</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+      <div style="border:1px solid var(--br);border-radius:7px;overflow:hidden;">
+        <div style="background:var(--gd);padding:8px 12px;"><div style="font-size:11px;font-weight:800;color:#fff;">Faggio 25 mm</div><div style="font-size:8px;color:var(--ga);margin-top:1px;">COD. FAG-025</div></div>
+        <div style="padding:9px 12px;display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;">
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Altezza</div><div style="font-size:11px;font-weight:800;color:var(--gn);">25 mm</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Dtex</div><div style="font-size:11px;font-weight:800;color:var(--gn);">11.000</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Peso</div><div style="font-size:11px;font-weight:800;color:var(--gn);">2.800 g/m²</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Drenaggio</div><div style="font-size:11px;font-weight:800;color:var(--gn);">40 L/min/m²</div></div>
+        </div>
+        <div style="background:var(--off);padding:4px 12px;border-top:1px solid var(--br);font-size:7.5px;color:var(--gl);">REACH · EN71-3 · ASTM-D2616</div>
+      </div>
+      <div style="border:1px solid var(--br);border-radius:7px;overflow:hidden;">
+        <div style="background:var(--gd);padding:8px 12px;"><div style="font-size:11px;font-weight:800;color:#fff;">Cedro 30 mm</div><div style="font-size:8px;color:var(--ga);margin-top:1px;">COD. CED-030</div></div>
+        <div style="padding:9px 12px;display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;">
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Altezza</div><div style="font-size:11px;font-weight:800;color:var(--gn);">30 mm</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Dtex</div><div style="font-size:11px;font-weight:800;color:var(--gn);">13.500</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Peso</div><div style="font-size:11px;font-weight:800;color:var(--gn);">3.200 g/m²</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Drenaggio</div><div style="font-size:11px;font-weight:800;color:var(--gn);">40 L/min/m²</div></div>
+        </div>
+        <div style="background:var(--off);padding:4px 12px;border-top:1px solid var(--br);font-size:7.5px;color:var(--gl);">REACH · EN71-3 · ASTM-D2616</div>
+      </div>
+      <div style="border:2px solid var(--gd);border-radius:7px;overflow:hidden;">
+        <div style="background:var(--gd);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;">
+          <div><div style="font-size:11px;font-weight:800;color:#fff;">Abete 45 mm</div><div style="font-size:8px;color:var(--ga);margin-top:1px;">COD. ABT-045</div></div>
+          <div style="background:var(--ga);color:#fff;font-size:7.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:20px;">★ Top</div>
+        </div>
+        <div style="padding:9px 12px;display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;">
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Altezza</div><div style="font-size:11px;font-weight:800;color:var(--gn);">45 mm</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Dtex</div><div style="font-size:11px;font-weight:800;color:var(--gn);">14.700</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Peso</div><div style="font-size:11px;font-weight:800;color:var(--gn);">3.500 g/m²</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;">Drenaggio</div><div style="font-size:11px;font-weight:800;color:var(--gn);">40 L/min/m²</div></div>
+        </div>
+        <div style="background:var(--off);padding:4px 12px;border-top:1px solid var(--br);font-size:7.5px;color:var(--gl);">REACH · EN71-3 · ASTM-D2616 · Classe fuoco E-fl-S2</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFERMA ORDINE — blocco mobile-friendly -->
+  <div style="margin:12px 26px 0;border:2px solid var(--gd);border-radius:8px;overflow:hidden;">
+    <div style="background:var(--gd);padding:10px 16px;display:flex;align-items:center;gap:10px;">
+      <div style="width:26px;height:26px;background:#3db554;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7L5.5 10L11.5 4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:900;color:#fff;letter-spacing:-.2px;">Conferma il tuo ordine</div>
+        <div style="font-size:8.5px;color:rgba(255,255,255,.65);margin-top:1px;">Tocca il link qui sotto per accettare o rifiutare il preventivo</div>
+      </div>
+      <div style="margin-left:auto;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);padding:4px 10px;border-radius:20px;font-size:9px;font-weight:700;color:rgba(255,255,255,.8);white-space:nowrap;">Preventivo FP-8790-88</div>
+    </div>
+    <div style="padding:14px 16px;background:#fff;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;">
+      <div>
+        <div style="font-size:8px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--gl);margin-bottom:5px;">Link personale</div>
+        <div style="font-size:11.5px;font-weight:800;color:var(--gd);letter-spacing:-.3px;word-break:break-all;">prato.si/conferma/FP-8790-88</div>
+        <div style="font-size:8px;color:var(--gl);margin-top:4px;">Valido fino al <strong style="color:var(--gn);">15/06/2026</strong> · Link personale non condivisibile</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
+        <div style="background:var(--gd);color:#fff;font-size:9px;font-weight:800;padding:7px 16px;border-radius:20px;text-align:center;white-space:nowrap;">✓ Accetta</div>
+        <div style="background:#fff;color:#888;font-size:9px;font-weight:700;padding:6px 16px;border-radius:20px;text-align:center;border:1px solid #ddd;white-space:nowrap;">✕ Rifiuta</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CERTIFICAZIONI -->
+  <div style="margin:10px 26px 0;display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--br);border:1px solid var(--br);border-radius:7px;overflow:hidden;">
+    <div style="background:#fff;padding:9px 10px;text-align:center;">
+      <div style="font-size:14px;margin-bottom:3px;">🛡️</div>
+      <div style="font-size:8px;font-weight:800;color:var(--gd);letter-spacing:.3px;">Garanzia 8 anni</div>
+      <div style="font-size:7px;color:var(--gl);margin-top:2px;">Difetti di fabbricazione</div>
+    </div>
+    <div style="background:#fff;padding:9px 10px;text-align:center;">
+      <div style="font-size:14px;margin-bottom:3px;">🧪</div>
+      <div style="font-size:8px;font-weight:800;color:var(--gd);letter-spacing:.3px;">REACH 2024</div>
+      <div style="font-size:7px;color:var(--gl);margin-top:2px;">SVHC 223 sostanze</div>
+    </div>
+    <div style="background:#fff;padding:9px 10px;text-align:center;">
+      <div style="font-size:14px;margin-bottom:3px;">🧒</div>
+      <div style="font-size:8px;font-weight:800;color:var(--gd);letter-spacing:.3px;">EN71-3:2013</div>
+      <div style="font-size:7px;color:var(--gl);margin-top:2px;">Sicurezza bambini</div>
+    </div>
+    <div style="background:#fff;padding:9px 10px;text-align:center;">
+      <div style="font-size:14px;margin-bottom:3px;">🏭</div>
+      <div style="font-size:8px;font-weight:800;color:var(--gd);letter-spacing:.3px;">ISO 9001:2015</div>
+      <div style="font-size:7px;color:var(--gl);margin-top:2px;">Sistema qualità</div>
+    </div>
+  </div>
+
+  <!-- CONDIZIONI + FIRMA -->
+  <div style="margin:10px 26px 0;border:1px solid var(--br);border-radius:7px;overflow:hidden;">
+    <div style="background:var(--off);padding:7px 13px;border-bottom:1px solid var(--br);font-size:8px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--gx);">📄 Condizioni generali di vendita</div>
+    <div style="padding:9px 13px;display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;font-size:8px;color:var(--gx);line-height:1.65;">
+      <div><strong style="color:var(--gn);">Validità:</strong> Offerta valida 30 giorni dalla data di emissione.</div>
+      <div><strong style="color:var(--gn);">Pagamento:</strong> Saldo all'ordine via bonifico, carta, PayPal, Scalapay o HeyLight 0%.</div>
+      <div><strong style="color:var(--gn);">Spedizione:</strong> Gratuita in Italia, 3–5 giorni lavorativi, piano strada.</div>
+      <div><strong style="color:var(--gn);">Resi:</strong> Entro 14 giorni se prodotto integro e non posato.</div>
+      <div><strong style="color:var(--gn);">Garanzia:</strong> 8 anni su difetti di fabbricazione. Non copre usura normale.</div>
+      <div><strong style="color:var(--gn);">Privacy:</strong> Dati trattati ai sensi GDPR — privacy@pratosinteticoitalia.com</div>
+    </div>
+  </div>
+
+  <div style="margin:12px 26px;display:grid;grid-template-columns:1fr 1fr;gap:40px;">
+    <div><div style="border-bottom:1px solid var(--br);height:28px;margin-bottom:5px;"></div><div style="font-size:8.5px;color:var(--gl);">Data e firma del cliente per accettazione</div></div>
+    <div><div style="border-bottom:1px solid var(--br);height:28px;margin-bottom:5px;"></div><div style="font-size:8.5px;color:var(--gl);">Firma e timbro VERTEX SRLS</div></div>
+  </div>
+
+  <div class="ftr">
+    <div class="fi">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
+    <div class="fi" style="white-space:nowrap;">Pag. 2 / 2</div>
+  </div>
+</div>
+
+
+<!-- SVG LOGO ── riutilizzato in tutti e 4 i template -->
+<svg style="display:none">
+  <symbol id="logo" viewBox="0 0 42 42" fill="none">
+    <path d="M21 3 L39 21 L21 39 L3 21 Z" fill="none" stroke="#3db554" stroke-width="2.5"/>
+    <path d="M14 21 Q17 13 21 10 Q25 13 28 21" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M16 24 Q18 18 21 16 Q24 18 26 24" stroke="#3db554" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <line x1="21" y1="10" x2="21" y2="30" stroke="#fff" stroke-width="1" opacity=".35"/>
+    <line x1="14" y1="21" x2="28" y2="21" stroke="#fff" stroke-width="1" opacity=".25"/>
+  </symbol>
+</svg>
+
+<!-- ═══════════════════════════════════════════════
+     TEMPLATE 1 — SOLO FORNITURA
+═══════════════════════════════════════════════ -->
+<div class="tpl-label">Template 1 — Solo fornitura</div>
+<div class="page">
+
+  <div class="hdr">
+    <div class="logo-row">
+      <div class="logo-box"><svg viewBox="0 0 42 42" fill="none"><use href="#logo"/></svg></div>
+      <div class="logo-tx">
+        <div class="brand">PRATO SINTETICO <em>ITALIA</em></div>
+        <div class="sub">Outdoor Collection</div>
+        <div class="tag">Dal 2016 · Fornitura e Posa Professionale</div>
+      </div>
+    </div>
+    <div class="hdr-r"><div class="lbl">Preventivo Nr.</div><div class="num">FP-8790-88</div><div class="co">VERTEX SRLS · P.IVA 04863610616</div></div>
+  </div>
+
+  <div class="info-row">
+    <div class="c-box"><div class="bx-t">Cliente</div><div class="cg">
+      <div class="cf"><span class="cf-l">Nome:</span><span class="cf-v">Luigi Matteucci</span></div>
+      <div class="cf"><span class="cf-l">Città:</span><span class="cf-v">Pisa</span></div>
+      <div class="cf"><span class="cf-l">Tel:</span><span class="cf-v">3475969282</span></div>
+      <div class="cf"><span class="cf-l">Email:</span><span class="cf-v">luigi.matteucci@yahoo.it</span></div>
+    </div></div>
+    <div class="v-box"><div class="bx-t">Validità</div><div class="vg">
+      <div class="vi"><div class="vl">Dal</div><div class="vv">16/05/26</div></div>
+      <div class="vi"><div class="vl">Al</div><div class="vv">15/06/26</div></div>
+    </div></div>
+  </div>
+
+  <div class="hero"><h2>Offerta per 28 mq</h2><span class="svc-pill">Solo fornitura · spedizione inclusa</span></div>
+
+  <table class="mt">
+    <thead><tr>
+      <th style="width:160px">Modello</th>
+      <th>Prezzo/mq</th>
+      <th>Sconto</th>
+      <th>Totale 28 mq</th>
+      <th>Spedizione</th>
+      <th class="hl">Totale IVA incl.</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><div class="mn">Faggio 25 mm</div><div class="mc">COD. FAG-025</div><div class="ms">Resistente · verde naturale</div></td>
+        <td><div class="tm">10,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">—</div></td>
+        <td><div class="tm">305,20 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tt">372,34 €</div></td>
+      </tr>
+      <tr>
+        <td><div class="mn">Cedro 30 mm</div><div class="mc">COD. CED-030</div><div class="ms">Versatile · verde cedro</div></td>
+        <td><div class="tm">13,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">5%</div></td>
+        <td><div class="tm">369,34 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tt">450,59 €</div></td>
+      </tr>
+      <tr>
+        <td><div class="mn">Abete 45 mm</div><div class="mc">COD. ABT-045</div><div class="ms">Premium · verde abete</div></td>
+        <td><div class="tm">13,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">5%</div></td>
+        <td><div class="tm">369,34 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tt">450,59 €</div></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- INFO STRIP: 2 voci utili -->
+  <div class="info-strip">
+    <div class="is-item">
+      <span class="is-icon">🛡️</span>
+      <div class="is-body"><div class="is-title">Garanzia 8 anni</div><div class="is-sub">Certificazione REACH · EN71-3:2013 · ASTM-D2616</div></div>
+    </div>
+    <div class="is-item">
+      <span class="is-icon">📦</span>
+      <div class="is-body"><div class="is-title">Spedizione gratuita · 3–5 giorni</div><div class="is-sub">Rotoli 4 m × 25 m · Drenaggio 40 L/min/m² · Backing PP+NET+LATEX</div></div>
+    </div>
+  </div>
+
+  <!-- PRICE CARDS con HeyLight integrato -->
+  <div class="pc-row">
+    <div class="pc">
+      <div class="pc-m">Faggio 25 mm</div><div class="pc-c">COD. FAG-025</div>
+      <div class="pc-s">solo fornitura · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>10,90</div>
+      <div class="pc-u">al mq IVA escl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 74,47 €/mese</strong></div>
+    </div>
+    <div class="pc">
+      <div class="pc-m">Cedro 30 mm</div><div class="pc-c">COD. CED-030</div>
+      <div class="pc-s">sconto 5% · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>13,21</div>
+      <div class="pc-u">al mq IVA escl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 90,12 €/mese</strong></div>
+    </div>
+    <div class="pc">
+      <div class="pc-m">Abete 45 mm</div><div class="pc-c">COD. ABT-045</div>
+      <div class="pc-s">sconto 5% · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>13,21</div>
+      <div class="pc-u">al mq IVA escl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 90,12 €/mese</strong></div>
+    </div>
+  </div>
+
+  <!-- PAGAMENTO: strip silenziosa -->
+  <div class="pay-strip">
+    <span class="pay-strip-label">Pagamento accettato:</span>
+    <div class="pay-logos">
+      <span class="pl">VISA</span><span class="pl">Mastercard</span><span class="pl">PayPal</span>
+      <span class="pl">Bonifico</span><span class="pl">Scalapay</span><span class="pl hl-logo">HeyLight 0%</span>
+    </div>
+  </div>
+
+  <div class="firma">
+    <div><div class="fl"></div><div class="flb">Firma per accettazione</div></div>
+    <div><div class="fl"></div><div class="flb">Firma e timbro azienda</div></div>
+  </div>
+
+  <div class="ftr">
+    <div class="fi">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     PAGINA 2 — DETTAGLI TECNICI (allegata al Template 1)
+═══════════════════════════════════════════════ -->
+<div class="tpl-label">Pagina 2 — Dettagli tecnici · allegato a Template 1</div>
+<div class="page" style="padding-bottom: 0;">
+
+  <!-- mini header -->
+  <div class="hdr" style="padding: 10px 26px 9px; border-bottom: 3px solid var(--gd);">
+    <div class="logo-row">
+      <div class="logo-box" style="width:40px;height:40px;"><svg viewBox="0 0 42 42" fill="none"><use href="#logo"/></svg></div>
+      <div class="logo-tx">
+        <div class="brand" style="font-size:15px;">PRATO SINTETICO <em>ITALIA</em></div>
+        <div class="sub" style="font-size:8px;">Allegato tecnico · Pag. 2 di 2</div>
+      </div>
+    </div>
+    <div class="hdr-r">
+      <div class="lbl">Preventivo Nr.</div>
+      <div class="num" style="font-size:17px;">FP-8790-88</div>
+      <div class="co">Luigi Matteucci · 28 mq · Solo fornitura</div>
+    </div>
+  </div>
+
+  <!-- ── SEZIONE 1: SCHEDA TECNICA PRODOTTI ── -->
+  <div style="padding: 14px 26px 0;">
+    <div style="font-size:8px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;color:var(--ga);margin-bottom:10px;">📋 Scheda tecnica prodotti offerti</div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+
+      <!-- card prodotto 1 -->
+      <div style="border:1px solid var(--br);border-radius:7px;overflow:hidden;">
+        <div style="background:var(--gd);padding:8px 12px;">
+          <div style="font-size:11px;font-weight:800;color:#fff;">Faggio 25 mm</div>
+          <div style="font-size:8px;color:var(--ga);margin-top:1px;">COD. FAG-025</div>
+        </div>
+        <div style="padding:9px 12px;display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;">
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Altezza filo</div><div style="font-size:11px;font-weight:800;color:var(--gn);">25 mm</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Dtex</div><div style="font-size:11px;font-weight:800;color:var(--gn);">11.000</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Struttura</div><div style="font-size:10px;font-weight:700;color:var(--gn);">Unidirezionale</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Peso totale</div><div style="font-size:11px;font-weight:800;color:var(--gn);">2.800 g/m²</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Drenaggio</div><div style="font-size:10px;font-weight:700;color:var(--gn);">40 L/min/m²</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Backing</div><div style="font-size:10px;font-weight:700;color:var(--gn);">PP + NET + LATEX</div></div>
+        </div>
+        <div style="background:var(--off);padding:5px 12px;border-top:1px solid var(--br);font-size:7.5px;color:var(--gl);">
+          REACH · EN71-3:2013 · ASTM-D2616 · Classe fuoco E-fl-S2
+        </div>
+      </div>
+
+      <!-- card prodotto 2 -->
+      <div style="border:1px solid var(--br);border-radius:7px;overflow:hidden;">
+        <div style="background:var(--gd);padding:8px 12px;">
+          <div style="font-size:11px;font-weight:800;color:#fff;">Cedro 30 mm</div>
+          <div style="font-size:8px;color:var(--ga);margin-top:1px;">COD. CED-030</div>
+        </div>
+        <div style="padding:9px 12px;display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;">
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Altezza filo</div><div style="font-size:11px;font-weight:800;color:var(--gn);">30 mm</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Dtex</div><div style="font-size:11px;font-weight:800;color:var(--gn);">13.500</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Struttura</div><div style="font-size:10px;font-weight:700;color:var(--gn);">Filo forma M</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Peso totale</div><div style="font-size:11px;font-weight:800;color:var(--gn);">3.200 g/m²</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Drenaggio</div><div style="font-size:10px;font-weight:700;color:var(--gn);">40 L/min/m²</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Backing</div><div style="font-size:10px;font-weight:700;color:var(--gn);">PP + NET + LATEX</div></div>
+        </div>
+        <div style="background:var(--off);padding:5px 12px;border-top:1px solid var(--br);font-size:7.5px;color:var(--gl);">
+          REACH · EN71-3:2013 · ASTM-D2616 · Classe fuoco E-fl-S2
+        </div>
+      </div>
+
+      <!-- card prodotto 3 -->
+      <div style="border:2px solid var(--gd);border-radius:7px;overflow:hidden;">
+        <div style="background:var(--gd);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#fff;">Abete 45 mm</div>
+            <div style="font-size:8px;color:var(--ga);margin-top:1px;">COD. ABT-045</div>
+          </div>
+          <div style="background:var(--ga);color:#fff;font-size:7.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:20px;">★ Consigliato</div>
+        </div>
+        <div style="padding:9px 12px;display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;">
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Altezza filo</div><div style="font-size:11px;font-weight:800;color:var(--gn);">45 mm</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Dtex</div><div style="font-size:11px;font-weight:800;color:var(--gn);">14.700</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Struttura</div><div style="font-size:10px;font-weight:700;color:var(--gn);">Filo forma M + D</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Peso totale</div><div style="font-size:11px;font-weight:800;color:var(--gn);">3.500 g/m²</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Drenaggio</div><div style="font-size:10px;font-weight:700;color:var(--gn);">40 L/min/m²</div></div>
+          <div><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;">Backing</div><div style="font-size:10px;font-weight:700;color:var(--gn);">PP + NET + LATEX</div></div>
+        </div>
+        <div style="background:var(--off);padding:5px 12px;border-top:1px solid var(--br);font-size:7.5px;color:var(--gl);">
+          REACH · EN71-3:2013 · ASTM-D2616 · Classe fuoco E-fl-S2
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── SEZIONE 2: COSA È INCLUSO ── -->
+  <div style="margin:14px 26px 0;border:1px solid var(--br);border-radius:7px;overflow:hidden;">
+    <div style="background:var(--gm);padding:7px 13px;font-size:8px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:rgba(255,255,255,.8);">📦 Cosa è incluso nella fornitura (calcolato su 28 mq)</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--br);">
+      <div style="padding:8px 12px;border-right:1px solid var(--br);"><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Formato rotolo</div><div style="font-size:12px;font-weight:800;color:var(--gn);">4 m × 25 m</div></div>
+      <div style="padding:8px 12px;border-right:1px solid var(--br);"><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">N° rotoli</div><div style="font-size:12px;font-weight:800;color:var(--gn);">1 pz</div></div>
+      <div style="padding:8px 12px;border-right:1px solid var(--br);"><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Larghezza taglio</div><div style="font-size:12px;font-weight:800;color:var(--gn);">4 m</div></div>
+      <div style="padding:8px 12px;border-right:1px solid var(--br);"><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Garanzia</div><div style="font-size:12px;font-weight:800;color:var(--gn);">8 anni</div></div>
+      <div style="padding:8px 12px;"><div style="font-size:7.5px;color:var(--gl);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;">Consegna</div><div style="font-size:12px;font-weight:800;color:var(--gn);">3–5 giorni</div></div>
+    </div>
+    <div style="padding:8px 13px;font-size:8.5px;color:var(--gx);line-height:1.6;">
+      Il prato viene spedito in rotoli di <strong>4 m di larghezza</strong>. Il taglio viene eseguito a misura in fase di produzione. La spedizione è inclusa nel prezzo per tutta Italia. Il materiale viene consegnato a piano strada; per consegne al piano superiore potrebbe essere richiesto un supplemento.
+    </div>
+  </div>
+
+  <!-- ── SEZIONE 3: NOTE OPERATIVE ── -->
+  <div style="margin:12px 26px 0;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+
+    <div style="border:1px solid var(--br);border-radius:7px;overflow:hidden;">
+      <div style="background:var(--off);padding:7px 12px;border-bottom:1px solid var(--br);font-size:8px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--gx);">🛠️ Note per la posa (fai-da-te)</div>
+      <div style="padding:9px 12px;font-size:8.5px;color:var(--gx);line-height:1.7;">
+        <div style="margin-bottom:4px;">• Il fondo deve essere piano, drenante e privo di vegetazione.</div>
+        <div style="margin-bottom:4px;">• Applicare telo separatore geotessile prima della posa.</div>
+        <div style="margin-bottom:4px;">• Usare bande di giunzione e colla bicomponente per le giunzioni.</div>
+        <div style="margin-bottom:4px;">• Fissare i bordi con picchetti a U ogni 30–40 cm.</div>
+        <div>• Non stendere il tappeto nelle ore più calde della giornata.</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--br);border-radius:7px;overflow:hidden;">
+      <div style="background:var(--off);padding:7px 12px;border-bottom:1px solid var(--br);font-size:8px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--gx);">🧹 Manutenzione e cura</div>
+      <div style="padding:9px 12px;font-size:8.5px;color:var(--gx);line-height:1.7;">
+        <div style="margin-bottom:4px;">• Spazzolare contropelo con scopa rigida 1–2 volte al mese.</div>
+        <div style="margin-bottom:4px;">• Rimuovere foglie e detriti con soffiatore o rastrello.</div>
+        <div style="margin-bottom:4px;">• Lavare con acqua e sapone neutro in caso di macchie.</div>
+        <div style="margin-bottom:4px;">• Non usare prodotti aggressivi o solventi.</div>
+        <div>• Il prato non richiede innaffiatura né taglio.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── SEZIONE 4: CONDIZIONI GENERALI ── -->
+  <div style="margin:12px 26px 0;border:1px solid var(--br);border-radius:7px;overflow:hidden;">
+    <div style="background:var(--off);padding:7px 13px;border-bottom:1px solid var(--br);font-size:8px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--gx);">📄 Condizioni generali di vendita</div>
+    <div style="padding:9px 13px;display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;font-size:8px;color:var(--gx);line-height:1.65;">
+      <div><strong style="color:var(--gn);">Validità offerta:</strong> Il preventivo è valido 30 giorni dalla data di emissione. Trascorso tale termine i prezzi potrebbero subire variazioni.</div>
+      <div><strong style="color:var(--gn);">Pagamento:</strong> Saldo al momento dell'ordine tramite bonifico bancario, carta di credito, PayPal, Scalapay o HeyLight (0% interessi, 5 rate).</div>
+      <div><strong style="color:var(--gn);">Spedizione:</strong> Gratuita su tutto il territorio italiano. I tempi di consegna sono indicativi (3–5 giorni lavorativi) e possono variare in base alla disponibilità di magazzino.</div>
+      <div><strong style="color:var(--gn);">Resi e reclami:</strong> Il prodotto può essere restituito entro 14 giorni dalla ricezione se integro e non posato. Segnalare eventuali danni entro 48 ore dalla consegna.</div>
+      <div><strong style="color:var(--gn);">Garanzia:</strong> 8 anni sul prodotto per difetti di fabbricazione. La garanzia non copre usura normale, danni da agenti chimici o errata posa.</div>
+      <div><strong style="color:var(--gn);">Privacy:</strong> I dati forniti sono trattati ai sensi del Reg. UE 2016/679 (GDPR) esclusivamente per la gestione del rapporto commerciale. Info: privacy@pratosinteticoitalia.com</div>
+    </div>
+  </div>
+
+  <!-- ── FIRMA FINALE ── -->
+  <div style="margin:14px 26px 12px;display:grid;grid-template-columns:1fr 1fr;gap:40px;">
+    <div>
+      <div style="border-bottom:1px solid var(--br);height:28px;margin-bottom:5px;"></div>
+      <div style="font-size:8.5px;color:var(--gl);">Data e firma del cliente per accettazione</div>
+    </div>
+    <div>
+      <div style="border-bottom:1px solid var(--br);height:28px;margin-bottom:5px;"></div>
+      <div style="font-size:8.5px;color:var(--gl);">Firma e timbro VERTEX SRLS</div>
+    </div>
+  </div>
+
+  <div class="ftr">
+    <div class="fi">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
+    <div class="fi" style="white-space:nowrap;">Pag. 2 / 2</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     TEMPLATE 2 — FORNITURA + KIT MATERIALI
+═══════════════════════════════════════════════ -->
+<div class="tpl-label">Template 2 — Fornitura + kit materiali</div>
+<div class="page">
+
+  <div class="hdr">
+    <div class="logo-row">
+      <div class="logo-box"><svg viewBox="0 0 42 42" fill="none"><use href="#logo"/></svg></div>
+      <div class="logo-tx">
+        <div class="brand">PRATO SINTETICO <em>ITALIA</em></div>
+        <div class="sub">Outdoor Collection</div>
+        <div class="tag">Dal 2016 · Fornitura e Posa Professionale</div>
+      </div>
+    </div>
+    <div class="hdr-r"><div class="lbl">Preventivo Nr.</div><div class="num">FP-8790-89</div><div class="co">VERTEX SRLS · P.IVA 04863610616</div></div>
+  </div>
+
+  <div class="info-row">
+    <div class="c-box"><div class="bx-t">Cliente</div><div class="cg">
+      <div class="cf"><span class="cf-l">Nome:</span><span class="cf-v">Luigi Matteucci</span></div>
+      <div class="cf"><span class="cf-l">Città:</span><span class="cf-v">Pisa</span></div>
+      <div class="cf"><span class="cf-l">Tel:</span><span class="cf-v">3475969282</span></div>
+      <div class="cf"><span class="cf-l">Email:</span><span class="cf-v">luigi.matteucci@yahoo.it</span></div>
+    </div></div>
+    <div class="v-box"><div class="bx-t">Validità</div><div class="vg">
+      <div class="vi"><div class="vl">Dal</div><div class="vv">16/05/26</div></div>
+      <div class="vi"><div class="vl">Al</div><div class="vv">15/06/26</div></div>
+    </div></div>
+  </div>
+
+  <div class="hero"><h2>Offerta per 28 mq</h2><span class="svc-pill">Fornitura + kit materiali</span></div>
+
+  <table class="mt">
+    <thead><tr>
+      <th style="width:145px">Modello</th>
+      <th>Prezzo/mq</th>
+      <th>Sconto</th>
+      <th>Kit materiali</th>
+      <th>Spedizione</th>
+      <th>Netto</th>
+      <th class="hl">Totale IVA incl.</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><div class="mn">Faggio 25 mm</div><div class="mc">COD. FAG-025</div><div class="ms">Resistente · verde naturale</div></td>
+        <td><div class="tm">10,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">—</div></td>
+        <td><div class="tm">173,20 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tm">478,40 €</div></td>
+        <td><div class="tt">583,65 €</div></td>
+      </tr>
+      <tr>
+        <td><div class="mn">Cedro 30 mm</div><div class="mc">COD. CED-030</div><div class="ms">Versatile · verde cedro</div></td>
+        <td><div class="tm">13,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">5%</div></td>
+        <td><div class="tm">173,20 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tm">542,54 €</div></td>
+        <td><div class="tt">661,90 €</div></td>
+      </tr>
+      <tr>
+        <td><div class="mn">Abete 45 mm</div><div class="mc">COD. ABT-045</div><div class="ms">Premium · verde abete</div></td>
+        <td><div class="tm">13,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">5%</div></td>
+        <td><div class="tm">173,20 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tm">542,54 €</div></td>
+        <td><div class="tt">661,90 €</div></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="mat">
+    <div class="mat-desc">Kit materiali per posa fai-da-te su fondo già preparato. Quantità calcolate su 28 mq.</div>
+    <div class="mat-grid">
+      <div class="mi"><span class="mi-n">Bande di giunzione</span><span class="mi-v">1 pz</span></div>
+      <div class="mi"><span class="mi-n">Colla bicomponente</span><span class="mi-v">1 secchio 6 kg</span></div>
+      <div class="mi"><span class="mi-n">Picchetti a U</span><span class="mi-v">94 pz</span></div>
+      <div class="mi"><span class="mi-n">Telo isolante</span><span class="mi-v">28,00 mq</span></div>
+      <div class="mi"><span class="mi-n">Formato rotolo</span><span class="mi-v">4 m × 25 m</span></div>
+      <div class="mi"><span class="mi-n">Drenaggio</span><span class="mi-v">40 L/min/m²</span></div>
+      <div class="mi"><span class="mi-n">Backing</span><span class="mi-v">PP + NET + LATEX</span></div>
+      <div class="mi"><span class="mi-n">Garanzia</span><span class="mi-v">8 anni</span></div>
+    </div>
+    <div class="mat-det"><strong>Dettagli kit:</strong> Bande 1 × 30,00 €/pz · Colla 1 × 45,00 €/secchio · Picchetti 94 × 0,30 €/pz · Telo 28 × 1,00 €/mq</div>
+  </div>
+
+  <div class="info-strip">
+    <div class="is-item">
+      <span class="is-icon">🛡️</span>
+      <div class="is-body"><div class="is-title">Garanzia 8 anni</div><div class="is-sub">Certificazione REACH · EN71-3:2013 · ASTM-D2616</div></div>
+    </div>
+    <div class="is-item">
+      <span class="is-icon">📦</span>
+      <div class="is-body"><div class="is-title">Spedizione gratuita · 3–5 giorni</div><div class="is-sub">Posa manuale: taglio in opera su rotoli 4 m di larghezza</div></div>
+    </div>
+  </div>
+
+  <div class="pc-row">
+    <div class="pc">
+      <div class="pc-m">Faggio 25 mm</div><div class="pc-c">COD. FAG-025</div>
+      <div class="pc-s">fornitura + kit · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>17,08</div>
+      <div class="pc-u">al mq IVA escl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 116,73 €/mese</strong></div>
+    </div>
+    <div class="pc">
+      <div class="pc-m">Cedro 30 mm</div><div class="pc-c">COD. CED-030</div>
+      <div class="pc-s">sconto 5% · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>19,38</div>
+      <div class="pc-u">al mq IVA escl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 132,38 €/mese</strong></div>
+    </div>
+    <div class="pc">
+      <div class="pc-m">Abete 45 mm</div><div class="pc-c">COD. ABT-045</div>
+      <div class="pc-s">sconto 5% · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>19,38</div>
+      <div class="pc-u">al mq IVA escl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 132,38 €/mese</strong></div>
+    </div>
+  </div>
+
+  <div class="pay-strip">
+    <span class="pay-strip-label">Pagamento accettato:</span>
+    <div class="pay-logos">
+      <span class="pl">VISA</span><span class="pl">Mastercard</span><span class="pl">PayPal</span>
+      <span class="pl">Bonifico</span><span class="pl">Scalapay</span><span class="pl hl-logo">HeyLight 0%</span>
+    </div>
+  </div>
+
+  <div class="firma">
+    <div><div class="fl"></div><div class="flb">Firma per accettazione</div></div>
+    <div><div class="fl"></div><div class="flb">Firma e timbro azienda</div></div>
+  </div>
+  <div class="ftr">
+    <div class="fi">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     TEMPLATE 3 — FORNITURA + POSA SU TERRA
+═══════════════════════════════════════════════ -->
+<div class="tpl-label">Template 3 — Fornitura + posa su terra battuta</div>
+<div class="page">
+
+  <div class="hdr">
+    <div class="logo-row">
+      <div class="logo-box"><svg viewBox="0 0 42 42" fill="none"><use href="#logo"/></svg></div>
+      <div class="logo-tx">
+        <div class="brand">PRATO SINTETICO <em>ITALIA</em></div>
+        <div class="sub">Outdoor Collection</div>
+        <div class="tag">Dal 2016 · Fornitura e Posa Professionale</div>
+      </div>
+    </div>
+    <div class="hdr-r"><div class="lbl">Preventivo Nr.</div><div class="num">FP-8790-86</div><div class="co">VERTEX SRLS · P.IVA 04863610616</div></div>
+  </div>
+
+  <div class="info-row">
+    <div class="c-box"><div class="bx-t">Cliente</div><div class="cg">
+      <div class="cf"><span class="cf-l">Nome:</span><span class="cf-v">Luigi Matteucci</span></div>
+      <div class="cf"><span class="cf-l">Città:</span><span class="cf-v">Pisa</span></div>
+      <div class="cf"><span class="cf-l">Tel:</span><span class="cf-v">3475969282</span></div>
+      <div class="cf"><span class="cf-l">Email:</span><span class="cf-v">luigi.matteucci@yahoo.it</span></div>
+    </div></div>
+    <div class="v-box"><div class="bx-t">Validità</div><div class="vg">
+      <div class="vi"><div class="vl">Dal</div><div class="vv">16/05/26</div></div>
+      <div class="vi"><div class="vl">Al</div><div class="vv">15/06/26</div></div>
+    </div></div>
+  </div>
+
+  <div class="hero"><h2>Offerta per 28 mq</h2><span class="svc-pill">Fornitura + posa su terra battuta</span></div>
+
+  <table class="mt">
+    <thead><tr>
+      <th style="width:130px">Modello</th>
+      <th>Prezzo/mq</th>
+      <th>Sconto</th>
+      <th>Materiali</th>
+      <th>Posa/mq</th>
+      <th>Spedizione</th>
+      <th>Netto</th>
+      <th class="hl">Totale IVA incl.</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><div class="mn">Faggio 25 mm</div><div class="mc">COD. FAG-025</div><div class="ms">Resistente</div></td>
+        <td><div class="tm">10,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">—</div></td>
+        <td><div class="tm">173,20 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tm">25,00 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tm">1.178,40 €</div></td>
+        <td><div class="tt">1.437,65 €</div></td>
+      </tr>
+      <tr>
+        <td><div class="mn">Cedro 30 mm</div><div class="mc">COD. CED-030</div><div class="ms">Versatile</div></td>
+        <td><div class="tm">13,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">5%</div></td>
+        <td><div class="tm">173,20 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tm">25,00 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tm">1.242,94 €</div></td>
+        <td><div class="tt">1.516,39 €</div></td>
+      </tr>
+      <tr>
+        <td><div class="mn">Abete 45 mm</div><div class="mc">COD. ABT-045</div><div class="ms">Premium</div></td>
+        <td><div class="tm">13,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">5%</div></td>
+        <td><div class="tm">173,20 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tm">25,00 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tm">1.242,94 €</div></td>
+        <td><div class="tt">1.516,39 €</div></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="mat">
+    <div class="mat-desc">La posa su terra prevede sistemazione del terreno, fondo drenante 3 cm, telo separatore, giunte, fissaggi e finiture perimetrali. Quantità su 28 mq.</div>
+    <div class="mat-grid">
+      <div class="mi"><span class="mi-n">Pietrisco</span><span class="mi-v">0,84 mc</span></div>
+      <div class="mi"><span class="mi-n">Telo isolante</span><span class="mi-v">28,00 mq</span></div>
+      <div class="mi"><span class="mi-n">Bande di giunzione</span><span class="mi-v">1 pz</span></div>
+      <div class="mi"><span class="mi-n">Colla bicomponente</span><span class="mi-v">1 secchio 6 kg</span></div>
+      <div class="mi"><span class="mi-n">Picchetti a U</span><span class="mi-v">94 pz</span></div>
+      <div class="mi"><span class="mi-n">Formato rotolo</span><span class="mi-v">4 m × 25 m</span></div>
+      <div class="mi"><span class="mi-n">Drenaggio</span><span class="mi-v">40 L/min/m²</span></div>
+      <div class="mi"><span class="mi-n">Certificazione</span><span class="mi-v">REACH · EN71</span></div>
+    </div>
+    <div class="mat-det"><strong>Dettagli materiali:</strong> Pietrisco 0,84 × 50,00 €/mc · Telo 28 × 1,00 €/mq · Bande 1 × 30,00 €/pz · Colla 1 × 45,00 €/secchio · Picchetti 94 × 0,30 €/pz</div>
+  </div>
+
+  <div class="info-strip">
+    <div class="is-item">
+      <span class="is-icon">🛡️</span>
+      <div class="is-body"><div class="is-title">Garanzia 8 anni</div><div class="is-sub">Certificazione REACH · EN71-3:2013 · Classe fuoco E-fl-S2</div></div>
+    </div>
+    <div class="is-item">
+      <span class="is-icon">🏗️</span>
+      <div class="is-body"><div class="is-title">Posa professionale inclusa</div><div class="is-sub">Sistemazione terreno · fondo drenante · finiture perimetrali</div></div>
+    </div>
+  </div>
+
+  <div class="pc-row">
+    <div class="pc">
+      <div class="pc-m">Faggio 25 mm</div><div class="pc-c">COD. FAG-025</div>
+      <div class="pc-s">posa su terra · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>51,34</div>
+      <div class="pc-u">al mq IVA incl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 287,53 €/mese</strong></div>
+    </div>
+    <div class="pc">
+      <div class="pc-m">Cedro 30 mm</div><div class="pc-c">COD. CED-030</div>
+      <div class="pc-s">posa su terra · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>54,16</div>
+      <div class="pc-u">al mq IVA incl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 303,28 €/mese</strong></div>
+    </div>
+    <div class="pc">
+      <div class="pc-m">Abete 45 mm</div><div class="pc-c">COD. ABT-045</div>
+      <div class="pc-s">posa su terra · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>54,16</div>
+      <div class="pc-u">al mq IVA incl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 303,28 €/mese</strong></div>
+    </div>
+  </div>
+
+  <div class="pay-strip">
+    <span class="pay-strip-label">Pagamento accettato:</span>
+    <div class="pay-logos">
+      <span class="pl">VISA</span><span class="pl">Mastercard</span><span class="pl">PayPal</span>
+      <span class="pl">Bonifico</span><span class="pl">Scalapay</span><span class="pl hl-logo">HeyLight 0%</span>
+    </div>
+  </div>
+
+  <div class="firma">
+    <div><div class="fl"></div><div class="flb">Firma per accettazione</div></div>
+    <div><div class="fl"></div><div class="flb">Firma e timbro azienda</div></div>
+  </div>
+  <div class="ftr">
+    <div class="fi">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     TEMPLATE 4 — FORNITURA + POSA SU PAVIMENTAZIONE
+═══════════════════════════════════════════════ -->
+<div class="tpl-label">Template 4 — Fornitura + posa su pavimentazione</div>
+<div class="page">
+
+  <div class="hdr">
+    <div class="logo-row">
+      <div class="logo-box"><svg viewBox="0 0 42 42" fill="none"><use href="#logo"/></svg></div>
+      <div class="logo-tx">
+        <div class="brand">PRATO SINTETICO <em>ITALIA</em></div>
+        <div class="sub">Outdoor Collection</div>
+        <div class="tag">Dal 2016 · Fornitura e Posa Professionale</div>
+      </div>
+    </div>
+    <div class="hdr-r"><div class="lbl">Preventivo Nr.</div><div class="num">FP-8790-90</div><div class="co">VERTEX SRLS · P.IVA 04863610616</div></div>
+  </div>
+
+  <div class="info-row">
+    <div class="c-box"><div class="bx-t">Cliente</div><div class="cg">
+      <div class="cf"><span class="cf-l">Nome:</span><span class="cf-v">Luigi Matteucci</span></div>
+      <div class="cf"><span class="cf-l">Città:</span><span class="cf-v">Pisa</span></div>
+      <div class="cf"><span class="cf-l">Tel:</span><span class="cf-v">3475969282</span></div>
+      <div class="cf"><span class="cf-l">Email:</span><span class="cf-v">luigi.matteucci@yahoo.it</span></div>
+    </div></div>
+    <div class="v-box"><div class="bx-t">Validità</div><div class="vg">
+      <div class="vi"><div class="vl">Dal</div><div class="vv">16/05/26</div></div>
+      <div class="vi"><div class="vl">Al</div><div class="vv">15/06/26</div></div>
+    </div></div>
+  </div>
+
+  <div class="hero"><h2>Offerta per 28 mq</h2><span class="svc-pill">Fornitura + posa su pavimentazione</span></div>
+
+  <table class="mt">
+    <thead><tr>
+      <th style="width:130px">Modello</th>
+      <th>Prezzo/mq</th>
+      <th>Sconto</th>
+      <th>Materiali posa</th>
+      <th>Posa/mq</th>
+      <th>Spedizione</th>
+      <th>Netto</th>
+      <th class="hl">Totale IVA incl.</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><div class="mn">Faggio 25 mm</div><div class="mc">COD. FAG-025</div><div class="ms">Resistente</div></td>
+        <td><div class="tm">10,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">—</div></td>
+        <td><div class="tm">98,00 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tm">22,00 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tm">1.024,20 €</div></td>
+        <td><div class="tt">1.249,52 €</div></td>
+      </tr>
+      <tr>
+        <td><div class="mn">Cedro 30 mm</div><div class="mc">COD. CED-030</div><div class="ms">Versatile</div></td>
+        <td><div class="tm">13,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">5%</div></td>
+        <td><div class="tm">98,00 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tm">22,00 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tm">1.082,94 €</div></td>
+        <td><div class="tt">1.321,19 €</div></td>
+      </tr>
+      <tr>
+        <td><div class="mn">Abete 45 mm</div><div class="mc">COD. ABT-045</div><div class="ms">Premium</div></td>
+        <td><div class="tm">13,90 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="disc">5%</div></td>
+        <td><div class="tm">98,00 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tm">22,00 €</div><div class="tv">+ IVA 22%</div></td>
+        <td><div class="tf">Gratuita</div></td>
+        <td><div class="tm">1.082,94 €</div></td>
+        <td><div class="tt">1.321,19 €</div></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="mat">
+    <div class="mat-desc">Posa su pavimentazione esistente (cemento, beton, piastrelle): applicazione primer + colla poliuretanica bicomponente. Fondo deve essere pulito, asciutto e planare. Quantità su 28 mq.</div>
+    <div class="mat-grid">
+      <div class="mi"><span class="mi-n">Primer acrilico</span><span class="mi-v">1 secchio 10 L</span></div>
+      <div class="mi"><span class="mi-n">Colla poliuretanica</span><span class="mi-v">2 cartucce 600 ml</span></div>
+      <div class="mi"><span class="mi-n">Bande di giunzione</span><span class="mi-v">1 pz</span></div>
+      <div class="mi"><span class="mi-n">Nastro perimetrale</span><span class="mi-v">30 ml</span></div>
+      <div class="mi"><span class="mi-n">Formato rotolo</span><span class="mi-v">4 m × 25 m</span></div>
+      <div class="mi"><span class="mi-n">Drenaggio</span><span class="mi-v">40 L/min/m²</span></div>
+      <div class="mi"><span class="mi-n">Backing</span><span class="mi-v">PP + NET + LATEX</span></div>
+      <div class="mi"><span class="mi-n">Garanzia</span><span class="mi-v">8 anni</span></div>
+    </div>
+    <div class="mat-det"><strong>Nota:</strong> Rimozione pavimentazione esistente e livellamento fondo non inclusi — quotati separatamente se necessario.</div>
+  </div>
+
+  <div class="info-strip">
+    <div class="is-item">
+      <span class="is-icon">🛡️</span>
+      <div class="is-body"><div class="is-title">Garanzia 8 anni</div><div class="is-sub">Certificazione REACH · EN71-3:2013 · Classe fuoco E-fl-S2</div></div>
+    </div>
+    <div class="is-item">
+      <span class="is-icon">🏗️</span>
+      <div class="is-body"><div class="is-title">Posa professionale inclusa</div><div class="is-sub">Primer + colla poliuretanica · fissaggio perimetrale · nessun foro nel fondo</div></div>
+    </div>
+  </div>
+
+  <div class="pc-row">
+    <div class="pc">
+      <div class="pc-m">Faggio 25 mm</div><div class="pc-c">COD. FAG-025</div>
+      <div class="pc-s">posa su pavimento · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>44,63</div>
+      <div class="pc-u">al mq IVA incl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 249,90 €/mese</strong></div>
+    </div>
+    <div class="pc">
+      <div class="pc-m">Cedro 30 mm</div><div class="pc-c">COD. CED-030</div>
+      <div class="pc-s">posa su pavimento · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>47,19</div>
+      <div class="pc-u">al mq IVA incl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 264,24 €/mese</strong></div>
+    </div>
+    <div class="pc">
+      <div class="pc-m">Abete 45 mm</div><div class="pc-c">COD. ABT-045</div>
+      <div class="pc-s">posa su pavimento · 28 mq</div>
+      <div class="pc-p"><sup>€</sup>47,19</div>
+      <div class="pc-u">al mq IVA incl.</div>
+      <div class="pc-hl">oppure HeyLight<br><strong>5 × 264,24 €/mese</strong></div>
+    </div>
+  </div>
+
+  <div class="pay-strip">
+    <span class="pay-strip-label">Pagamento accettato:</span>
+    <div class="pay-logos">
+      <span class="pl">VISA</span><span class="pl">Mastercard</span><span class="pl">PayPal</span>
+      <span class="pl">Bonifico</span><span class="pl">Scalapay</span><span class="pl hl-logo">HeyLight 0%</span>
+    </div>
+  </div>
+
+  <div class="firma">
+    <div><div class="fl"></div><div class="flb">Firma per accettazione</div></div>
+    <div><div class="fl"></div><div class="flb">Firma e timbro azienda</div></div>
+  </div>
+  <div class="ftr">
+    <div class="fi">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
+  </div>
+</div>
+
+</body>
+</html>

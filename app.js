@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260530-pose-submenu";
+const APP_SHELL_VERSION = "20260530-pose-final";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14617,27 +14617,540 @@ function renderInstallationsScheduled() {
   root.innerHTML = html;
 }
 
-function renderInstallationsRepairs() {
+// ═══════════════════════════════════════════════════════════════════════════
+// SISTEMAZIONI — feature full (#38-#42)
+// Stato + API client + render view + form modal + integrazione coverage planner
+// ═══════════════════════════════════════════════════════════════════════════
+
+const REPAIR_CATEGORY_LABELS = {
+  warranty: "🟢 Garanzia",
+  goodwill: "🤝 Goodwill",
+  paid_repair: "💰 A pagamento",
+  damage_client: "⚠️ Danno cliente",
+};
+const REPAIR_STATUS_LABELS = {
+  reported: "Segnalata",
+  scheduled: "Programmata",
+  in_progress: "In corso",
+  completed: "Completata",
+  cancelled: "Annullata",
+};
+const REPAIR_REASON_CODES = [
+  { code: "cucitura", label: "Cuciture scollate" },
+  { code: "distacco_bordo", label: "Distacco bordo" },
+  { code: "infiltrazione", label: "Infiltrazione acqua/sabbia" },
+  { code: "coloreggio", label: "Sbiadimento / colore" },
+  { code: "taglio_errato", label: "Errore di taglio originale" },
+  { code: "livellamento", label: "Irregolarità del fondo" },
+  { code: "pulizia", label: "Manutenzione / pulizia" },
+  { code: "altro", label: "Altro (vedi descrizione)" },
+];
+
+if (!state.repairs) {
+  state.repairs = {
+    list: [],
+    loadedAt: 0,
+    formOpen: false,
+    formDraft: null,
+    formBusy: false,
+    formError: "",
+    filter: "all",
+  };
+}
+
+function apiListRepairs(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.category) qs.set("category", params.category);
+  if (params.orderId) qs.set("orderId", params.orderId);
+  return apiFetch(`/api/repairs?${qs.toString()}`);
+}
+function apiCreateRepair(payload) {
+  return apiFetch("/api/repairs", { method: "POST", body: JSON.stringify(payload) });
+}
+function apiUpdateRepair(id, patch) {
+  return apiFetch(`/api/repairs/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+function apiWarrantyCheck(orderId) {
+  return apiFetch(`/api/repairs/warranty-check?orderId=${encodeURIComponent(orderId)}`);
+}
+
+// ── View completa Sistemazioni ───────────────────────────────────────────────
+
+async function _renderInstallationsRepairsFull() {
   const root = document.getElementById("installations-repairs-content");
   if (!root) return;
-  // Placeholder: full feature in arrivo con i task #38-42
+  root.innerHTML = '<div class="install-empty">Caricamento sistemazioni…</div>';
+  try {
+    const res = await apiListRepairs();
+    state.repairs.list = res?.repairs || [];
+    state.repairs.loadedAt = Date.now();
+    _renderRepairsInner(root);
+  } catch (err) {
+    root.innerHTML = `<div class="install-empty error">Errore: ${escapeHtml(String(err?.message || err))}</div>`;
+  }
+}
+
+function _renderRepairsInner(root) {
+  const repairs = state.repairs.list || [];
+  const filter = state.repairs.filter || "all";
+  const now = new Date();
+  const thisMonth = now.getMonth();
+  const thisYear = now.getFullYear();
+
+  // KPI
+  const open = repairs.filter((r) => r.status !== "completed" && r.status !== "cancelled").length;
+  const monthDone = repairs.filter((r) => {
+    if (r.status !== "completed" || !r.completedAt) return false;
+    const d = new Date(r.completedAt);
+    return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+  }).length;
+  const costMonth = repairs.reduce((acc, r) => {
+    if (!r.completedAt) return acc;
+    const d = new Date(r.completedAt);
+    if (d.getMonth() !== thisMonth || d.getFullYear() !== thisYear) return acc;
+    if (r.costOwner !== "company") return acc;
+    return acc + (Number(r.estimatedCostEur) || 0);
+  }, 0);
+  // % vs pose: contiamo le pose completate del mese (approssimato dagli ordini)
+  const installCount = (state.orders || []).filter((o) => {
+    const d = o?.operations?.installation?.installDate;
+    if (!d) return false;
+    const dt = new Date(d);
+    return dt.getMonth() === thisMonth && dt.getFullYear() === thisYear && isInstallationCompleted(o);
+  }).length;
+  const ratioPct = installCount > 0 ? Math.round((monthDone / installCount) * 100) : 0;
+
+  // Filtra
+  const filtered = repairs.filter((r) => {
+    if (filter === "all") return true;
+    if (filter === "todo") return r.status === "reported";
+    if (filter === "scheduled") return r.status === "scheduled" || r.status === "in_progress";
+    if (filter === "done") return r.status === "completed";
+    return true;
+  });
+
+  const filterCounts = {
+    all: repairs.length,
+    todo: repairs.filter((r) => r.status === "reported").length,
+    scheduled: repairs.filter((r) => r.status === "scheduled" || r.status === "in_progress").length,
+    done: repairs.filter((r) => r.status === "completed").length,
+  };
+
   root.innerHTML = `
-    <div class="install-empty install-empty-cta">
-      <h2>🔧 Sistemazioni in arrivo</h2>
-      <p>Stiamo finalizzando la gestione completa delle rilavorazioni e degli interventi di garanzia.</p>
-      <ul class="install-coming-list">
-        <li>Modulo "Nuova sistemazione" creabile da dettaglio ordine o thread WhatsApp</li>
-        <li>Auto-calcolo garanzia (12 mesi dalla data installazione)</li>
-        <li>Classificazione: Garanzia · Goodwill · A pagamento · Danno cliente</li>
-        <li>Reason code (cucitura, distacco, infiltrazione…) per analytics cause</li>
-        <li>Calendario Pose con icona 🔧 per distinguere sistemazioni da nuove pose</li>
-        <li>Verbale fine cantiere per sistemazione, firmato dal cliente</li>
-        <li>KPI strategico: % sistemazioni / pose totali</li>
-      </ul>
-      <p class="install-coming-note">Disponibile entro pochi giorni nel prossimo deploy.</p>
+    <div class="repairs-kpi-grid">
+      <div class="repair-kpi"><span class="repair-kpi-label">Aperte</span><strong>${open}</strong></div>
+      <div class="repair-kpi"><span class="repair-kpi-label">Completate (mese)</span><strong>${monthDone}</strong></div>
+      <div class="repair-kpi"><span class="repair-kpi-label">% vs pose mese</span><strong>${ratioPct}%</strong></div>
+      <div class="repair-kpi"><span class="repair-kpi-label">Costo aziendale (mese)</span><strong>${formatEuroSimple(costMonth)}</strong></div>
+    </div>
+
+    <div class="filter-bar repairs-filter-bar">
+      <button class="filter-btn ${filter === "all" ? "is-active" : ""}" data-action="repair-filter" data-filter="all">Tutte <strong>${filterCounts.all}</strong></button>
+      <button class="filter-btn ${filter === "todo" ? "is-active" : ""}" data-action="repair-filter" data-filter="todo">Da programmare <strong>${filterCounts.todo}</strong></button>
+      <button class="filter-btn ${filter === "scheduled" ? "is-active" : ""}" data-action="repair-filter" data-filter="scheduled">Programmate <strong>${filterCounts.scheduled}</strong></button>
+      <button class="filter-btn ${filter === "done" ? "is-active" : ""}" data-action="repair-filter" data-filter="done">Completate <strong>${filterCounts.done}</strong></button>
+    </div>
+
+    ${filtered.length === 0
+      ? `<div class="install-empty"><h2>Nessuna sistemazione</h2><p>Quando crei una sistemazione, comparirà qui.</p></div>`
+      : `<div class="repairs-list">${filtered.map(renderRepairCard).join("")}</div>`}
+  `;
+}
+
+function renderRepairCard(r) {
+  const cat = REPAIR_CATEGORY_LABELS[r.category] || r.category;
+  const statusLabel = REPAIR_STATUS_LABELS[r.status] || r.status;
+  const reason = REPAIR_REASON_CODES.find((x) => x.code === r.reasonCode);
+  const reasonLabel = reason ? reason.label : (r.reasonCode || "—");
+  let warrantyTag = "";
+  if (r.withinWarranty === true) warrantyTag = `<span class="repair-warranty ok">✓ in garanzia${r.warrantyDaysLeft != null ? ` (${r.warrantyDaysLeft}gg residui)` : ""}</span>`;
+  else if (r.withinWarranty === false) warrantyTag = `<span class="repair-warranty out">fuori garanzia da ${Math.abs(r.warrantyDaysLeft || 0)}gg</span>`;
+  const scheduled = r.scheduledDate ? formatDate(r.scheduledDate) : (r.status === "reported" ? "Da programmare" : "—");
+  return `
+    <article class="repair-card status-${r.status}">
+      <header class="repair-card-head">
+        <strong>${escapeHtml(r.id)}</strong>
+        <span class="repair-cat">${escapeHtml(cat)}</span>
+        <span class="repair-status">${escapeHtml(statusLabel)}</span>
+      </header>
+      <div class="repair-card-customer">
+        <strong>${escapeHtml(r.customerName || "—")}</strong>
+        <span class="repair-card-meta">${escapeHtml(r.siteAddress || "")}</span>
+      </div>
+      <div class="repair-card-body">
+        <p class="repair-desc"><b>${escapeHtml(reasonLabel)}</b> · ${escapeHtml(r.description || "")}</p>
+        ${warrantyTag}
+        <div class="repair-card-meta-row">
+          <span><b>Quando:</b> ${escapeHtml(scheduled)}${r.scheduledTime ? " · " + escapeHtml(r.scheduledTime) : ""}</span>
+          ${r.assignedCrew ? `<span><b>Squadra:</b> ${escapeHtml(r.assignedCrew)}</span>` : ""}
+          ${r.estimatedCostEur ? `<span><b>Costo:</b> ${formatEuroSimple(r.estimatedCostEur)}</span>` : ""}
+        </div>
+      </div>
+      <footer class="repair-card-actions">
+        <button class="ghost-button small" data-action="repair-edit" data-repair-id="${escapeAttr(r.id)}">Modifica</button>
+        ${r.status === "reported" ? `<button class="ghost-button small" data-action="repair-schedule" data-repair-id="${escapeAttr(r.id)}">Programma</button>` : ""}
+        ${r.status === "scheduled" ? `<button class="ghost-button small" data-action="repair-start" data-repair-id="${escapeAttr(r.id)}">Avvia intervento</button>` : ""}
+        ${r.status === "in_progress" ? `<button class="primary-button small" data-action="repair-complete" data-repair-id="${escapeAttr(r.id)}">Chiudi con verbale</button>` : ""}
+      </footer>
+    </article>
+  `;
+}
+
+// ── Form modal Nuova/Modifica sistemazione ──────────────────────────────────
+
+async function openRepairForm({ orderId = "", repairId = "" } = {}) {
+  // Trova ordine context (per pre-popolazione)
+  let order = null;
+  if (orderId) {
+    order = (state.orders || []).find((o) => o.id === orderId) || null;
+  }
+  // Se è una modifica, carico il repair esistente
+  let existing = null;
+  if (repairId) {
+    try { existing = await apiFetch(`/api/repairs/${encodeURIComponent(repairId)}`); } catch {}
+  }
+  state.repairs.formOpen = true;
+  state.repairs.formError = "";
+  state.repairs.formDraft = existing ? { ...existing } : {
+    parentOrderId: orderId || "",
+    customerName: composeClientName(order || {}) || "",
+    customerEmail: order?.email || "",
+    customerPhone: order?.phone || "",
+    siteAddress: composeAddress(order || {}) || "",
+    category: "warranty",
+    reasonCode: "",
+    description: "",
+    scheduledDate: "",
+    scheduledTime: "",
+    assignedCrew: order?.operations?.installation?.crew || "",
+    estimatedCostEur: "",
+    invoiceAmountEur: "",
+    status: "reported",
+  };
+  // Warranty auto-check se ho un parentOrderId
+  if (state.repairs.formDraft.parentOrderId && !existing) {
+    try {
+      const w = await apiWarrantyCheck(state.repairs.formDraft.parentOrderId);
+      state.repairs.formDraft._warranty = w;
+      if (w.suggestedCategory) state.repairs.formDraft.category = w.suggestedCategory;
+    } catch {}
+  }
+  renderRepairFormModal();
+}
+
+function closeRepairForm() {
+  state.repairs.formOpen = false;
+  state.repairs.formDraft = null;
+  const modal = document.getElementById("repair-form-modal");
+  if (modal) modal.remove();
+}
+
+function renderRepairFormModal() {
+  let modal = document.getElementById("repair-form-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "repair-form-modal";
+    modal.className = "repair-modal";
+    document.body.appendChild(modal);
+  }
+  const d = state.repairs.formDraft || {};
+  const isEdit = Boolean(d.id);
+  const w = d._warranty;
+  let warrantyBanner = "";
+  if (w && w.installDate) {
+    if (w.withinWarranty) {
+      warrantyBanner = `<div class="repair-warranty-banner ok">
+        ✓ Installazione del ${escapeHtml(formatDate(w.installDate))} — <strong>in garanzia</strong> (${w.daysLeft} giorni residui)
+      </div>`;
+    } else {
+      warrantyBanner = `<div class="repair-warranty-banner out">
+        ⚠️ Installazione del ${escapeHtml(formatDate(w.installDate))} — <strong>fuori garanzia</strong> da ${Math.abs(w.daysLeft)} giorni
+      </div>`;
+    }
+  } else if (w === null || (w && !w.installDate)) {
+    warrantyBanner = `<div class="repair-warranty-banner neutral">
+      Nessuna data installazione sull'ordine: scegli categoria manualmente.
+    </div>`;
+  }
+  const err = state.repairs.formError ? `<div class="wizard-error">${escapeHtml(state.repairs.formError)}</div>` : "";
+  modal.innerHTML = `
+    <div class="repair-modal-backdrop" data-action="repair-close"></div>
+    <div class="repair-modal-shell" role="dialog" aria-modal="true">
+      <header class="repair-modal-head">
+        <h3>${isEdit ? `Modifica sistemazione ${escapeHtml(d.id)}` : "Nuova sistemazione"}</h3>
+        <button type="button" class="ts-modal-close" data-action="repair-close">×</button>
+      </header>
+      <div class="repair-modal-body">
+        ${err}
+        ${warrantyBanner}
+        <div class="wizard-grid">
+          <label class="field span-2"><span>Ordine collegato *</span>
+            <input class="text-input" type="text" data-bind-repair="parentOrderId" value="${escapeAttr(d.parentOrderId || "")}" placeholder="ID ordine (es. 2867)" ${isEdit ? "readonly" : ""} />
+          </label>
+          <label class="field"><span>Cliente *</span>
+            <input class="text-input" type="text" data-bind-repair="customerName" value="${escapeAttr(d.customerName || "")}" required />
+          </label>
+          <label class="field"><span>Telefono</span>
+            <input class="text-input" type="tel" data-bind-repair="customerPhone" value="${escapeAttr(d.customerPhone || "")}" />
+          </label>
+          <label class="field span-2"><span>Indirizzo cantiere</span>
+            <input class="text-input" type="text" data-bind-repair="siteAddress" value="${escapeAttr(d.siteAddress || "")}" />
+          </label>
+          <label class="field"><span>Categoria *</span>
+            <select class="text-input" data-bind-repair="category">
+              ${Object.entries(REPAIR_CATEGORY_LABELS).map(([k, v]) => `<option value="${escapeAttr(k)}" ${d.category === k ? "selected" : ""}>${escapeHtml(v)}</option>`).join("")}
+            </select>
+          </label>
+          <label class="field"><span>Motivo</span>
+            <select class="text-input" data-bind-repair="reasonCode">
+              <option value="">— Seleziona —</option>
+              ${REPAIR_REASON_CODES.map((rc) => `<option value="${escapeAttr(rc.code)}" ${d.reasonCode === rc.code ? "selected" : ""}>${escapeHtml(rc.label)}</option>`).join("")}
+            </select>
+          </label>
+          <label class="field span-2"><span>Descrizione *</span>
+            <textarea class="text-input" rows="3" data-bind-repair="description" placeholder="Cosa serve fixare in dettaglio">${escapeHtml(d.description || "")}</textarea>
+          </label>
+          <label class="field"><span>Data programmata</span>
+            <input class="text-input" type="date" data-bind-repair="scheduledDate" value="${escapeAttr(d.scheduledDate || "")}" />
+          </label>
+          <label class="field"><span>Ora</span>
+            <input class="text-input" type="time" data-bind-repair="scheduledTime" value="${escapeAttr(d.scheduledTime || "")}" />
+          </label>
+          <label class="field"><span>Squadra assegnata</span>
+            <input class="text-input" type="text" data-bind-repair="assignedCrew" value="${escapeAttr(d.assignedCrew || "")}" placeholder="Alpha / Beta / Delta..." />
+          </label>
+          <label class="field"><span>Costo stimato (azienda)</span>
+            <input class="text-input" type="number" step="0.01" min="0" data-bind-repair="estimatedCostEur" value="${escapeAttr(d.estimatedCostEur != null ? d.estimatedCostEur : "")}" placeholder="€ 80,00" />
+          </label>
+          ${(d.category === "paid_repair" || d.category === "damage_client") ? `
+          <label class="field"><span>Importo da fatturare cliente</span>
+            <input class="text-input" type="number" step="0.01" min="0" data-bind-repair="invoiceAmountEur" value="${escapeAttr(d.invoiceAmountEur != null ? d.invoiceAmountEur : "")}" placeholder="€ 150,00" />
+          </label>` : ""}
+        </div>
+      </div>
+      <footer class="repair-modal-foot">
+        <button type="button" class="ghost-button" data-action="repair-close">Annulla</button>
+        <button type="button" class="primary-button" data-action="repair-submit" ${state.repairs.formBusy ? "disabled" : ""}>${isEdit ? "Salva modifiche" : "Crea sistemazione"}</button>
+      </footer>
     </div>
   `;
 }
+
+async function submitRepairForm() {
+  const d = state.repairs.formDraft || {};
+  if (!d.parentOrderId) { state.repairs.formError = "ID ordine obbligatorio"; renderRepairFormModal(); return; }
+  if (!d.customerName) { state.repairs.formError = "Nome cliente obbligatorio"; renderRepairFormModal(); return; }
+  if (!d.description) { state.repairs.formError = "Descrizione obbligatoria"; renderRepairFormModal(); return; }
+  state.repairs.formBusy = true;
+  state.repairs.formError = "";
+  renderRepairFormModal();
+  try {
+    if (d.id) {
+      await apiUpdateRepair(d.id, d);
+      showToast("Sistemazione aggiornata", "success");
+    } else {
+      await apiCreateRepair(d);
+      showToast("Sistemazione creata", "success");
+    }
+    closeRepairForm();
+    if (state.currentView === "installations-repairs") _renderInstallationsRepairsFull();
+  } catch (err) {
+    state.repairs.formError = `Errore: ${err?.message || err}`;
+    renderRepairFormModal();
+  } finally {
+    state.repairs.formBusy = false;
+  }
+}
+
+// Event delegation per form modal + filtri + entry points
+document.addEventListener("click", (ev) => {
+  const target = ev.target.closest?.("[data-action]");
+  if (!target) return;
+  const action = target.dataset.action;
+  switch (action) {
+    case "open-repair-form":
+      ev.preventDefault();
+      openRepairForm({ orderId: target.dataset.orderId || "" });
+      break;
+    case "repair-close":
+      ev.preventDefault();
+      closeRepairForm();
+      break;
+    case "repair-submit":
+      ev.preventDefault();
+      submitRepairForm();
+      break;
+    case "repair-filter":
+      ev.preventDefault();
+      state.repairs.filter = target.dataset.filter || "all";
+      const root = document.getElementById("installations-repairs-content");
+      if (root) _renderRepairsInner(root);
+      break;
+    case "repair-edit":
+      ev.preventDefault();
+      openRepairForm({ repairId: target.dataset.repairId });
+      break;
+    case "repair-schedule":
+    case "repair-start":
+    case "repair-complete": {
+      ev.preventDefault();
+      const newStatus = action === "repair-schedule" ? "scheduled" : action === "repair-start" ? "in_progress" : "completed";
+      const patch = { status: newStatus };
+      if (newStatus === "completed") patch.completedAt = new Date().toISOString();
+      apiUpdateRepair(target.dataset.repairId, patch)
+        .then(() => { showToast("Aggiornato", "success"); _renderInstallationsRepairsFull(); })
+        .catch((err) => showToast(`Errore: ${err?.message || err}`, "error"));
+      break;
+    }
+  }
+});
+document.addEventListener("input", (ev) => {
+  const t = ev.target;
+  if (t?.dataset?.bindRepair && state.repairs.formDraft) {
+    const key = t.dataset.bindRepair;
+    let v = t.value;
+    if (key === "estimatedCostEur" || key === "invoiceAmountEur") {
+      v = v === "" ? null : Number(String(v).replace(",", "."));
+    }
+    state.repairs.formDraft[key] = v;
+    // Re-render solo se cambia categoria (per mostrare/nascondere invoice)
+    if (key === "category") renderRepairFormModal();
+  }
+});
+
+// Helper: bottone "+ Apri sistemazione" da inserire nei dettagli ordine
+function buildOpenRepairButton(orderId, label = "+ Apri sistemazione") {
+  return `<button type="button" class="ghost-button small" data-action="open-repair-form" data-order-id="${escapeAttr(orderId)}">${escapeHtml(label)}</button>`;
+}
+window.buildOpenRepairButton = buildOpenRepairButton;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BOTTOM NAVIGATION MOBILE (#45)
+// Sostituisce il pill-shell orizzontale scrollabile con 4 voci fisse + Altro.
+// Voci primarie per ruolo. "Altro" apre sheet con tutte le secondarie.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MOBILE_BOTTOM_NAV_PRIMARY = {
+  office: ["dashboard", "orders", "installations", "communications"],
+  warehouse: ["dashboard", "warehouse", "shipping", "communications"],
+  crew: ["dashboard", "installations", "sales-generator", "communications"],
+  seller: ["dashboard", "sales-requests", "sales-generator", "communications"],
+};
+
+const VIEW_ICONS = {
+  dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>',
+  orders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="4" y1="9" x2="20" y2="9"/></svg>',
+  warehouse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
+  installations: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+  communications: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  "sales-requests": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21l1.5-4.5a8.38 8.38 0 0 1 .9-3.8 8.5 8.5 0 0 1 7.6-4.7 8.38 8.38 0 0 1 3.8.9 8.5 8.5 0 0 1 4.7 7.6 8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7H8z"/></svg>',
+  "sales-generator": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8 5.8 21.3 8.2 13.9 2 9.4h7.6z"/></svg>',
+  shipping: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+  more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>',
+};
+
+function renderMobileBottomNav() {
+  const nav = document.getElementById("mobile-bottom-nav");
+  if (!nav) return;
+  const role = state.currentUser?.role || "office";
+  const isMobile = window.innerWidth <= 980;
+  if (!state.currentUser || !isMobile) {
+    nav.classList.add("hidden");
+    return;
+  }
+  nav.classList.remove("hidden");
+  const primary = MOBILE_BOTTOM_NAV_PRIMARY[role] || MOBILE_BOTTOM_NAV_PRIMARY.office;
+  const allAllowed = getAllowedViewsForRole();
+  const currentView = state.currentView || "";
+  // Costruisce 4 voci primarie + bottone Altro
+  const tabs = primary.filter((v) => allAllowed.includes(v));
+  let html = tabs.map((view) => {
+    const active = currentView === view || currentView.startsWith(view + "-");
+    const label = t(view) || view;
+    const icon = VIEW_ICONS[view] || VIEW_ICONS.more;
+    return `<button type="button" class="mbn-tab ${active ? "is-active" : ""}" data-view="${escapeAttr(view)}">
+      <span class="mbn-icon">${icon}</span>
+      <span class="mbn-label">${escapeHtml(label)}</span>
+    </button>`;
+  }).join("");
+  // Bottone "Altro" se ci sono voci secondarie
+  const secondary = allAllowed.filter((v) => !primary.includes(v));
+  if (secondary.length > 0) {
+    const moreActive = secondary.includes(currentView);
+    html += `<button type="button" class="mbn-tab mbn-more ${moreActive ? "is-active" : ""}" data-action="open-more-sheet">
+      <span class="mbn-icon">${VIEW_ICONS.more}</span>
+      <span class="mbn-label">Altro</span>
+    </button>`;
+  }
+  nav.innerHTML = html;
+}
+
+function openMoreSheet() {
+  const sheet = document.getElementById("mobile-more-sheet");
+  const content = document.getElementById("mobile-more-content");
+  if (!sheet || !content) return;
+  const allAllowed = getAllowedViewsForRole();
+  const role = state.currentUser?.role || "office";
+  const primary = MOBILE_BOTTOM_NAV_PRIMARY[role] || [];
+  const secondary = allAllowed.filter((v) => !primary.includes(v));
+  content.innerHTML = secondary.map((view) => {
+    const label = t(view) || view;
+    const icon = VIEW_ICONS[view] || VIEW_ICONS.more;
+    return `<button type="button" class="more-sheet-item" data-view="${escapeAttr(view)}">
+      <span class="more-sheet-icon">${icon}</span>
+      <span class="more-sheet-label">${escapeHtml(label)}</span>
+    </button>`;
+  }).join("");
+  sheet.classList.remove("hidden");
+}
+function closeMoreSheet() {
+  const sheet = document.getElementById("mobile-more-sheet");
+  if (sheet) sheet.classList.add("hidden");
+}
+
+// Click su voce bottom nav o more sheet → setView
+document.addEventListener("click", (ev) => {
+  const tab = ev.target.closest?.(".mbn-tab[data-view], .more-sheet-item[data-view]");
+  if (tab) {
+    ev.preventDefault();
+    const view = tab.dataset.view;
+    if (view && typeof setView === "function") {
+      setView(view);
+      closeMoreSheet();
+    }
+    return;
+  }
+  const action = ev.target.closest?.("[data-action]")?.dataset.action;
+  if (action === "open-more-sheet") { ev.preventDefault(); openMoreSheet(); }
+  else if (action === "close-more-sheet") { ev.preventDefault(); closeMoreSheet(); }
+});
+
+// Re-render bottom nav su cambio view, login, resize
+window.addEventListener("resize", () => {
+  try { renderMobileBottomNav(); } catch {}
+});
+const _origInitTs = typeof initTimesheet === "function" ? initTimesheet : null;
+// Hook al login: chiamato dopo che lo state è settato
+function initMobileBottomNav() {
+  try { renderMobileBottomNav(); } catch {}
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initMobileBottomNav);
+} else {
+  setTimeout(initMobileBottomNav, 0);
+}
+// Re-render quando cambia view (hook globale)
+const _origSetView = window.setView;
+// Non posso wrappare setView qui perché definita dopo. Usiamo MutationObserver
+// sulla sidebar che cambia is-active per detectare cambio view.
+const _viewObserver = new MutationObserver(() => {
+  try { renderMobileBottomNav(); } catch {}
+});
+setTimeout(() => {
+  const sidebar = document.querySelector(".sidebar, #sidebar, nav.nav-primary, .app-shell");
+  if (sidebar) _viewObserver.observe(sidebar, { subtree: true, attributes: true, attributeFilter: ["class"] });
+}, 1000);
 
 // Gestione sottomenu sidebar Pose: espansione/collasso + auto-expand quando
 // una sotto-view è attiva. Stato persistito in localStorage.
@@ -14664,6 +15177,19 @@ function applyNavGroupState() {
     if (toggle) toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
   });
 }
+// Click su una riga ordine nelle sotto-view "Da programmare" / "Programmate":
+// seleziona l'ordine + naviga al Calendario Pose dove mostra il dettaglio.
+document.addEventListener("click", (ev) => {
+  const row = ev.target.closest?.('[data-action="select-order-install"]');
+  if (row) {
+    ev.preventDefault();
+    const orderId = row.dataset.orderId;
+    if (!orderId) return;
+    state.selectedOrderId = orderId;
+    if (typeof setView === "function") setView("installations");
+  }
+});
+
 document.addEventListener("click", (ev) => {
   const chevronOrLabel = ev.target.closest?.(".nav-group .nav-chevron, .nav-group-toggle .nav-chevron");
   if (chevronOrLabel) {
@@ -14776,6 +15302,19 @@ function renderWorkReportsForOrder(order) {
     const role = state.currentUser?.role || "";
     newBtn.hidden = !(role === "crew" || role === "office");
     newBtn.dataset.orderId = order.id;
+    // Inserisce/aggiorna il bottone "+ Apri sistemazione" accanto a "Termina lavoro"
+    let repairBtn = document.getElementById("open-repair-btn");
+    if (!repairBtn) {
+      repairBtn = document.createElement("button");
+      repairBtn.id = "open-repair-btn";
+      repairBtn.type = "button";
+      repairBtn.className = "ghost-button small";
+      repairBtn.dataset.action = "open-repair-form";
+      repairBtn.textContent = "🔧 Apri sistemazione";
+      newBtn.parentElement?.insertBefore(repairBtn, newBtn);
+    }
+    repairBtn.dataset.orderId = order.id;
+    repairBtn.hidden = !(role === "crew" || role === "office");
   }
   // Carica i verbali per quest'ordine (async, render skeleton intanto)
   const cached = state.workReportsByOrder[order.id];

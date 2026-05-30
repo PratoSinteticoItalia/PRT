@@ -867,6 +867,46 @@ async function ensureRelationalSchema() {
       );
       CREATE INDEX IF NOT EXISTS time_rect_user_idx ON time_rectification_requests (user_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS time_rect_status_idx ON time_rectification_requests (status, created_at DESC);
+
+      -- ─────────────────────────────────────────────────────────────────────
+      -- Sistemazioni (service_repairs) — rilavorazioni post-installazione.
+      -- Sempre collegate a un ordine PSI (parent_order_id required).
+      -- Garanzia auto: 12 mesi dalla data installazione del job originale.
+      -- ─────────────────────────────────────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS service_repairs (
+        id TEXT PRIMARY KEY,                       -- es. "SR-2026-0042"
+        parent_order_id TEXT NOT NULL,             -- FK soft → orders.id
+        customer_name TEXT NOT NULL,
+        customer_email TEXT,
+        customer_phone TEXT,
+        site_address TEXT,
+        category TEXT NOT NULL,                    -- warranty | goodwill | paid_repair | damage_client
+        reason_code TEXT,                          -- cucitura | distacco_bordo | infiltrazione | ...
+        description TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'manual',     -- manual | whatsapp | email | crew_report
+        reported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        reported_by TEXT,
+        status TEXT NOT NULL DEFAULT 'reported',   -- reported | scheduled | in_progress | completed | cancelled
+        scheduled_date DATE,
+        scheduled_time TEXT,
+        assigned_crew TEXT,
+        completed_at TIMESTAMPTZ,
+        work_report_id TEXT,                       -- FK soft → work_completion_reports.id
+        photos JSONB NOT NULL DEFAULT '[]',        -- foto problema PRE-intervento
+        cost_owner TEXT,                           -- company | client
+        estimated_cost_eur NUMERIC,
+        invoice_amount_eur NUMERIC,
+        within_warranty BOOLEAN,                   -- snapshot del calcolo al momento creazione
+        warranty_days_left INTEGER,                -- giorni di garanzia residui all'apertura
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS service_repairs_order_idx     ON service_repairs (parent_order_id);
+      CREATE INDEX IF NOT EXISTS service_repairs_status_idx    ON service_repairs (status, scheduled_date);
+      CREATE INDEX IF NOT EXISTS service_repairs_category_idx  ON service_repairs (category);
+      CREATE INDEX IF NOT EXISTS service_repairs_crew_idx      ON service_repairs (assigned_crew, scheduled_date);
+      CREATE INDEX IF NOT EXISTS service_repairs_created_idx   ON service_repairs (created_at DESC);
     `);
     console.log("[db] schema relazionale verificato");
   })().catch((err) => {
@@ -2053,6 +2093,232 @@ async function getCurrentStreakForUser(userId) {
     } else break;
   }
   return streak;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sistemazioni (service_repairs) — helper SQL + garanzia auto
+// ─────────────────────────────────────────────────────────────────────────────
+
+const REPAIR_WARRANTY_DAYS = Number(process.env.REPAIR_WARRANTY_DAYS) || 365;
+
+const REPAIR_CATEGORIES = new Set(["warranty", "goodwill", "paid_repair", "damage_client"]);
+const REPAIR_STATUSES = new Set(["reported", "scheduled", "in_progress", "completed", "cancelled"]);
+
+function dbRowToServiceRepair(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    parentOrderId: row.parent_order_id || "",
+    customerName: row.customer_name || "",
+    customerEmail: row.customer_email || "",
+    customerPhone: row.customer_phone || "",
+    siteAddress: row.site_address || "",
+    category: row.category || "warranty",
+    reasonCode: row.reason_code || "",
+    description: row.description || "",
+    source: row.source || "manual",
+    reportedAt: row.reported_at ? new Date(row.reported_at).toISOString() : null,
+    reportedBy: row.reported_by || null,
+    status: row.status || "reported",
+    scheduledDate: row.scheduled_date instanceof Date
+      ? row.scheduled_date.toISOString().slice(0, 10)
+      : (row.scheduled_date ? String(row.scheduled_date) : ""),
+    scheduledTime: row.scheduled_time || "",
+    assignedCrew: row.assigned_crew || "",
+    completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null,
+    workReportId: row.work_report_id || "",
+    photos: Array.isArray(row.photos) ? row.photos : [],
+    costOwner: row.cost_owner || (row.category === "warranty" || row.category === "goodwill" ? "company" : "client"),
+    estimatedCostEur: row.estimated_cost_eur != null ? Number(row.estimated_cost_eur) : null,
+    invoiceAmountEur: row.invoice_amount_eur != null ? Number(row.invoice_amount_eur) : null,
+    withinWarranty: row.within_warranty,
+    warrantyDaysLeft: row.warranty_days_left != null ? Number(row.warranty_days_left) : null,
+    notes: row.notes || "",
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+  };
+}
+
+async function generateServiceRepairId() {
+  const year = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric" }).format(new Date());
+  if (!USE_POSTGRES) return `SR-${year}-0001`;
+  const pool = await getPgPool();
+  const prefix = `SR-${year}-`;
+  const { rows } = await pool.query(
+    `SELECT id FROM service_repairs WHERE id LIKE $1 ORDER BY id DESC LIMIT 1`,
+    [`${prefix}%`],
+  );
+  let next = 1;
+  if (rows[0]?.id) {
+    const tail = String(rows[0].id).slice(prefix.length);
+    const parsed = parseInt(tail, 10);
+    if (Number.isFinite(parsed)) next = parsed + 1;
+  }
+  return `${prefix}${String(next).padStart(4, "0")}`;
+}
+
+/**
+ * Calcola garanzia automatica per un ordine.
+ * Cerca la data installazione dal blob store (operations.installation.installDate)
+ * e ritorna { withinWarranty, daysLeft, suggestedCategory, installDate }.
+ */
+async function computeWarrantyForOrder(orderId) {
+  try {
+    const store = await readJson(STORE_PATH, {});
+    const order = (store.orders || []).find((o) => o.id === orderId);
+    const installDate = order?.operations?.installation?.installDate;
+    if (!installDate) {
+      return { withinWarranty: null, daysLeft: null, suggestedCategory: "goodwill", installDate: null };
+    }
+    const installTs = new Date(installDate);
+    const now = new Date();
+    const daysSince = Math.floor((now - installTs) / (24 * 3600 * 1000));
+    const daysLeft = REPAIR_WARRANTY_DAYS - daysSince;
+    const withinWarranty = daysLeft >= 0;
+    return {
+      withinWarranty,
+      daysLeft,
+      daysSince,
+      suggestedCategory: withinWarranty ? "warranty" : "goodwill",
+      installDate,
+    };
+  } catch {
+    return { withinWarranty: null, daysLeft: null, suggestedCategory: "goodwill", installDate: null };
+  }
+}
+
+async function createServiceRepairInDb(input = {}, opts = {}) {
+  if (!USE_POSTGRES) throw new Error("createServiceRepairInDb: Postgres required");
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const id = input.id || await generateServiceRepairId();
+  const category = REPAIR_CATEGORIES.has(input.category) ? input.category : "warranty";
+  const costOwner = input.costOwner || (category === "warranty" || category === "goodwill" ? "company" : "client");
+  // Warranty snapshot al momento creazione
+  let withinWarranty = null;
+  let warrantyDaysLeft = null;
+  if (input.parentOrderId) {
+    const w = await computeWarrantyForOrder(input.parentOrderId);
+    withinWarranty = w.withinWarranty;
+    warrantyDaysLeft = w.daysLeft;
+  }
+  try {
+    await pool.query(
+      `INSERT INTO service_repairs (
+        id, parent_order_id, customer_name, customer_email, customer_phone, site_address,
+        category, reason_code, description, source, reported_by, status,
+        scheduled_date, scheduled_time, assigned_crew,
+        photos, cost_owner, estimated_cost_eur, invoice_amount_eur,
+        within_warranty, warranty_days_left, notes, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19,$20,$21,$22,NOW())`,
+      [
+        id,
+        String(input.parentOrderId || ""),
+        String(input.customerName || ""),
+        String(input.customerEmail || "") || null,
+        String(input.customerPhone || "") || null,
+        String(input.siteAddress || "") || null,
+        category,
+        String(input.reasonCode || "") || null,
+        String(input.description || ""),
+        String(input.source || "manual"),
+        String(input.reportedBy || "") || null,
+        String(input.status || "reported"),
+        input.scheduledDate || null,
+        String(input.scheduledTime || "") || null,
+        String(input.assignedCrew || "") || null,
+        JSON.stringify(Array.isArray(input.photos) ? input.photos : []),
+        costOwner,
+        input.estimatedCostEur != null ? Number(input.estimatedCostEur) : null,
+        input.invoiceAmountEur != null ? Number(input.invoiceAmountEur) : null,
+        withinWarranty,
+        warrantyDaysLeft,
+        String(input.notes || "") || null,
+      ],
+    );
+    return await getServiceRepairFromDb(id);
+  } catch (err) {
+    console.warn("[db] createServiceRepairInDb:", err?.message);
+    if (opts.rethrow) throw err;
+    return null;
+  }
+}
+
+async function getServiceRepairFromDb(id) {
+  if (!USE_POSTGRES || !id) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query(`SELECT * FROM service_repairs WHERE id = $1 LIMIT 1`, [String(id)]);
+    return dbRowToServiceRepair(rows[0] || null);
+  } catch (err) {
+    console.warn("[db] getServiceRepairFromDb:", err?.message);
+    return null;
+  }
+}
+
+async function listServiceRepairsFromDb({ status = null, category = null, parentOrderId = null, assignedCrew = null, limit = 500 } = {}) {
+  if (!USE_POSTGRES) return [];
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const where = [];
+    const params = [];
+    if (status) { params.push(String(status)); where.push(`status = $${params.length}`); }
+    if (category) { params.push(String(category)); where.push(`category = $${params.length}`); }
+    if (parentOrderId) { params.push(String(parentOrderId)); where.push(`parent_order_id = $${params.length}`); }
+    if (assignedCrew) { params.push(String(assignedCrew)); where.push(`assigned_crew = $${params.length}`); }
+    params.push(Number(limit) || 500);
+    const sql = `SELECT * FROM service_repairs${where.length ? " WHERE " + where.join(" AND ") : ""}
+                 ORDER BY COALESCE(scheduled_date, reported_at::date) DESC, created_at DESC
+                 LIMIT $${params.length}`;
+    const { rows } = await pool.query(sql, params);
+    return rows.map(dbRowToServiceRepair);
+  } catch (err) {
+    console.warn("[db] listServiceRepairsFromDb:", err?.message);
+    return [];
+  }
+}
+
+async function updateServiceRepairInDb(id, patch = {}, opts = {}) {
+  if (!USE_POSTGRES || !id) return null;
+  const allowed = {
+    category:           { col: "category" },
+    reasonCode:         { col: "reason_code" },
+    description:        { col: "description" },
+    status:             { col: "status" },
+    scheduledDate:      { col: "scheduled_date" },
+    scheduledTime:      { col: "scheduled_time" },
+    assignedCrew:       { col: "assigned_crew" },
+    completedAt:        { col: "completed_at", date: true },
+    workReportId:       { col: "work_report_id" },
+    photos:             { col: "photos", json: true },
+    costOwner:          { col: "cost_owner" },
+    estimatedCostEur:   { col: "estimated_cost_eur" },
+    invoiceAmountEur:   { col: "invoice_amount_eur" },
+    notes:              { col: "notes" },
+  };
+  const sets = [];
+  const params = [];
+  for (const [key, def] of Object.entries(allowed)) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+    const v = patch[key];
+    params.push(def.json ? JSON.stringify(v || []) : def.date && v ? new Date(v).toISOString() : v);
+    sets.push(`${def.col} = $${params.length}${def.json ? "::jsonb" : ""}`);
+  }
+  if (!sets.length) return await getServiceRepairFromDb(id);
+  sets.push("updated_at = NOW()");
+  params.push(String(id));
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    await pool.query(`UPDATE service_repairs SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
+    return await getServiceRepairFromDb(id);
+  } catch (err) {
+    console.warn("[db] updateServiceRepairInDb:", err?.message);
+    if (opts.rethrow) throw err;
+    return null;
+  }
 }
 
 // ——— Coverage Planner in SQL (tabella settings, key='coverage_planner') ———
@@ -9840,6 +10106,117 @@ async function handleApi(req, res, url) {
       });
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "outbox_diagnostic_failed") });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Sistemazioni (service_repairs) — CRUD + garanzia auto
+  // Permessi: office tutto, crew filtered su assigned_crew, altri 403
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // GET /api/repairs/warranty-check?orderId=X → calcola garanzia per un ordine
+  if (url.pathname === "/api/repairs/warranty-check" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const orderId = url.searchParams.get("orderId") || "";
+    if (!orderId) return sendJson(res, 400, { error: "missing_orderId" });
+    try {
+      const result = await computeWarrantyForOrder(orderId);
+      return sendJson(res, 200, { ok: true, ...result, warrantyDays: REPAIR_WARRANTY_DAYS });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "warranty_check_failed") });
+    }
+  }
+
+  // POST /api/repairs → crea sistemazione
+  if (url.pathname === "/api/repairs" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const body = await readBody(req);
+      if (!String(body.parentOrderId || "").trim()) return sendJson(res, 400, { error: "missing_parentOrderId" });
+      if (!String(body.customerName || "").trim()) return sendJson(res, 400, { error: "missing_customerName" });
+      if (!String(body.description || "").trim()) return sendJson(res, 400, { error: "missing_description" });
+      if (body.category && !REPAIR_CATEGORIES.has(body.category)) return sendJson(res, 400, { error: "invalid_category" });
+      const created = await createServiceRepairInDb({
+        ...body,
+        reportedBy: currentUser.email || currentUser.id || null,
+      }, { rethrow: true });
+      if (!created) return sendJson(res, 500, { error: "create_failed" });
+      writeAuditLog("service_repair", created.id, "create", {
+        parentOrderId: created.parentOrderId,
+        category: created.category,
+        withinWarranty: created.withinWarranty,
+      }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 201, created);
+    } catch (err) {
+      console.error("[repairs] create failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "create_failed") });
+    }
+  }
+
+  // GET /api/repairs → lista (con filtri + scope crew)
+  if (url.pathname === "/api/repairs" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const status = url.searchParams.get("status") || null;
+      const category = url.searchParams.get("category") || null;
+      const parentOrderId = url.searchParams.get("orderId") || null;
+      // Crew vede solo le proprie squadre (scope server-side)
+      const assignedCrew = currentUser.role === "crew"
+        ? (currentUser.crewName || currentUser.name || "")
+        : (url.searchParams.get("crew") || null);
+      const repairs = await listServiceRepairsFromDb({ status, category, parentOrderId, assignedCrew });
+      return sendJson(res, 200, { repairs, warrantyDays: REPAIR_WARRANTY_DAYS });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "list_failed") });
+    }
+  }
+
+  // GET /api/repairs/:id → dettaglio
+  if (url.pathname.startsWith("/api/repairs/") && req.method === "GET" && !url.pathname.endsWith("/pdf")) {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.slice("/api/repairs/".length));
+    if (!id || id.includes("/")) return sendJson(res, 400, { error: "missing_id" });
+    try {
+      const repair = await getServiceRepairFromDb(id);
+      if (!repair) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew") {
+        const crewName = (currentUser.crewName || currentUser.name || "").trim();
+        if (repair.assignedCrew && repair.assignedCrew !== crewName) {
+          return sendJson(res, 403, { error: "forbidden" });
+        }
+      }
+      return sendJson(res, 200, repair);
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "get_failed") });
+    }
+  }
+
+  // PATCH /api/repairs/:id → aggiorna
+  if (url.pathname.startsWith("/api/repairs/") && req.method === "PATCH") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.slice("/api/repairs/".length));
+    if (!id || id.includes("/")) return sendJson(res, 400, { error: "missing_id" });
+    try {
+      const existing = await getServiceRepairFromDb(id);
+      if (!existing) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew") {
+        const crewName = (currentUser.crewName || currentUser.name || "").trim();
+        if (existing.assignedCrew && existing.assignedCrew !== crewName) {
+          return sendJson(res, 403, { error: "forbidden" });
+        }
+      }
+      const body = await readBody(req);
+      const updated = await updateServiceRepairInDb(id, body, { rethrow: true });
+      writeAuditLog("service_repair", id, "update", { fields: Object.keys(body || {}) }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, updated);
+    } catch (err) {
+      console.error("[repairs] patch failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "patch_failed") });
     }
   }
 
