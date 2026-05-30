@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260530-shell-loading-hard-failsafe";
+const APP_SHELL_VERSION = "20260530-fix-bootloop";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15156,17 +15156,18 @@ if (document.readyState === "loading") {
 } else {
   setTimeout(initMobileBottomNav, 0);
 }
-// Re-render quando cambia view (hook globale)
-const _origSetView = window.setView;
-// Non posso wrappare setView qui perché definita dopo. Usiamo MutationObserver
-// sulla sidebar che cambia is-active per detectare cambio view.
-const _viewObserver = new MutationObserver(() => {
-  try { renderMobileBottomNav(); } catch {}
+// Re-render bottom nav quando cambia view.
+// IMPORTANTE: NIENTE MutationObserver su .app-shell con subtree:true →
+// causa loop infinito perché renderMobileBottomNav modifica DOM dentro app-shell.
+// Soluzione: hook esplicito su click di nav-link. Il rAF doppio garantisce
+// che setView abbia finito di aggiornare lo stato/DOM prima di renderizzare.
+document.addEventListener("click", (ev) => {
+  const navLink = ev.target.closest?.(".nav-link[data-view], .mbn-tab[data-view], .more-sheet-item[data-view]");
+  if (!navLink) return;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    try { renderMobileBottomNav(); } catch {}
+  }));
 });
-setTimeout(() => {
-  const sidebar = document.querySelector(".sidebar, #sidebar, nav.nav-primary, .app-shell");
-  if (sidebar) _viewObserver.observe(sidebar, { subtree: true, attributes: true, attributeFilter: ["class"] });
-}, 1000);
 
 // Gestione sottomenu sidebar Pose: espansione/collasso + auto-expand quando
 // una sotto-view è attiva. Stato persistito in localStorage.
