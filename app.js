@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260530-pose-final";
+const APP_SHELL_VERSION = "20260530-shell-loading-hard-failsafe";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2091,17 +2091,33 @@ function setShellPending(active) {
   }
   if (!next) return;
 
-  // Failsafe: never leave the app blocked behind launch overlay during active usage.
+  // Failsafe: never leave the app blocked behind launch overlay.
+  // Scattano DUE timer: uno rapido per utenti loggati (UX), uno "hard" globale
+  // che libera la shell anche se l'utente non è ancora autenticato (anti-deadlock
+  // in caso di errori boot/JS che bloccano il flusso normale di setShellPending(false)).
   shellPendingFailsafeTimer = window.setTimeout(() => {
     shellPendingFailsafeTimer = 0;
     if (!state.shellPending) return;
-    if (!state.currentUser) return;
-    console.warn("shell_pending_failsafe_released");
+    console.warn("shell_pending_failsafe_released", { hasUser: !!state.currentUser });
     state.shellPending = false;
     document.body.classList.remove("shell-loading");
     ui.authScreen?.classList.remove("shell-pending");
     ui.appShell?.classList.remove("shell-pending");
   }, SHELL_PENDING_FAILSAFE_MS);
+}
+
+// Hard failsafe globale: indipendentemente da chi chiama setShellPending,
+// se dopo 10s dal caricamento dell'app la shell è ancora bloccata, la libera.
+// Difesa contro errori JS al boot che impediscono il normale flow di dismissal.
+if (typeof window !== "undefined") {
+  window.setTimeout(() => {
+    if (document.body.classList.contains("shell-loading")) {
+      console.warn("[bootstrap] hard failsafe: removing shell-loading after 10s timeout");
+      document.body.classList.remove("shell-loading");
+      document.getElementById("auth-screen")?.classList.remove("shell-pending");
+      document.getElementById("app-shell")?.classList.remove("shell-pending");
+    }
+  }, 10000);
 }
 
 function updateMobileMenu() {
