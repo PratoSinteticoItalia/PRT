@@ -18121,3 +18121,189 @@ body {
   font-size: 12px;
   color: #4a2f00;
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   SOTTOMENU SIDEBAR (nav-group espandibile) + SOTTO-VISTE POSE
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.nav-group-toggle .nav-chevron {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 200ms;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.nav-group-toggle .nav-chevron:hover { background: rgba(0,0,0,0.06); color: var(--text); }
+.nav-group.is-collapsed .nav-group-toggle .nav-chevron {
+  transform: rotate(-90deg);
+}
+
+.nav-subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: 18px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+  overflow: hidden;
+  max-height: 200px;
+  transition: max-height 250ms ease, opacity 200ms;
+  opacity: 1;
+}
+.nav-group.is-collapsed .nav-subgroup {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  border-left-color: transparent;
+}
+.nav-link.nav-sub {
+  font-size: 13px;
+  padding: 6px 8px 6px 12px;
+  gap: 8px;
+}
+.nav-link.nav-sub .nav-label {
+  flex: 1;
+}
+.nav-sub-dot {
+  display: inline-block;
+  width: 8px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  opacity: 0.6;
+}
+.nav-link.nav-sub.is-active .nav-sub-dot { color: var(--brand, #2d6a4f); opacity: 1; }
+.nav-link.nav-sub:hover .nav-sub-dot { opacity: 1; }
+
+/* Stats summary per view installazioni */
+.install-stats {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  font-size: 13px;
+  color: var(--muted);
+}
+.install-stats .install-stat strong {
+  color: var(--text);
+  font-size: 18px;
+  margin-right: 4px;
+}
+
+/* Lista righe installazioni */
+.install-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+.install-row {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: border-color 150ms, box-shadow 150ms;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.install-row:hover {
+  border-color: rgba(45, 106, 79, 0.4);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.install-row.is-todo { border-left: 4px solid var(--amber, #d97706); }
+.install-row.is-scheduled { border-left: 4px solid var(--blue, #3e74d8); }
+.install-row.is-done { border-left: 4px solid var(--brand, #2d6a4f); opacity: 0.7; }
+
+.install-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.install-row-head strong { font-size: 15px; }
+.install-row-num {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+.install-row-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 100px;
+  text-transform: uppercase;
+}
+.install-row-badge.is-todo { background: #fff3e0; color: var(--amber, #d97706); }
+.install-row-badge.is-scheduled { background: #e8f0ff; color: var(--blue, #3e74d8); }
+.install-row-badge.is-done { background: var(--brand-soft, #d8f3dc); color: var(--brand-strong, #1a2e23); }
+
+.install-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.install-row-meta {
+  color: var(--text2, #555);
+  line-height: 1.4;
+}
+.install-row-meta b { color: var(--text); font-weight: 600; }
+.install-row-when { color: var(--text); font-weight: 500; }
+
+/* Heading settimana in Programmate */
+.install-week-head {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* Empty state */
+.install-empty {
+  padding: var(--space-7) var(--space-4);
+  text-align: center;
+  color: var(--muted);
+  background: #fff;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+}
+.install-empty h2 { color: var(--text); margin-bottom: var(--space-2); font-size: 20px; }
+.install-empty p { font-size: 14px; margin: 0; }
+
+.install-empty-cta {
+  text-align: left;
+  padding: var(--space-5) var(--space-5);
+  background: linear-gradient(135deg, #fffbf5, #f6f1e9);
+  border-style: solid;
+  border-color: rgba(217, 119, 6, 0.2);
+}
+.install-empty-cta h2 { text-align: center; }
+.install-empty-cta p { text-align: center; font-size: 15px; }
+.install-coming-list {
+  margin: var(--space-4) auto;
+  max-width: 600px;
+  padding-left: var(--space-4);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text2, #555);
+}
+.install-coming-list li { margin-bottom: 4px; }
+.install-coming-note {
+  text-align: center;
+  font-size: 13px !important;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: var(--space-4) !important;
+}

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260530-timesheet-polish";
+const APP_SHELL_VERSION = "20260530-pose-submenu";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -319,9 +319,9 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-todo", "installations-scheduled", "installations-repairs", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "communications", "timesheet-me"],
-  crew: ["dashboard", "installations", "sales-generator", "communications", "garden-planner"],
+  crew: ["dashboard", "installations", "installations-todo", "installations-scheduled", "installations-repairs", "sales-generator", "communications", "garden-planner"],
   seller: ["dashboard", "sales-requests", "sales-generator", "sales-content", "communications", "timesheet-me"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner"]);
@@ -368,6 +368,9 @@ const translations = {
     "garden-planner": "Garden Planner",
     "timesheet-me": "Le mie presenze",
     "timesheet-office": "Presenze",
+    "installations-todo": "Da programmare",
+    "installations-scheduled": "Programmate",
+    "installations-repairs": "Sistemazioni",
     office: "Ufficio",
     warehouseRole: "Inventario",
     crewRole: "Squadra",
@@ -620,6 +623,9 @@ const translations = {
     "garden-planner": "Garden Planner",
     "timesheet-me": "My time",
     "timesheet-office": "Time tracking",
+    "installations-todo": "To schedule",
+    "installations-scheduled": "Scheduled",
+    "installations-repairs": "Repairs",
     office: "Office",
     warehouseRole: "Inventory",
     crewRole: "Crew",
@@ -14499,6 +14505,192 @@ function renderInstallations() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SOTTO-VISTE POSE (Da programmare / Programmate / Sistemazioni)
+//
+// Trasformano la sezione Pose da view singola a gruppo di view dedicate.
+// Riusano i dati di state.orders + filtri ad-hoc per evitare duplicazione.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function getInstallationsList() {
+  // Riusa filterOrdersForView se disponibile, altrimenti fallback a state.orders.
+  try {
+    if (typeof filterOrdersForView === "function") return filterOrdersForView("installations") || [];
+  } catch {}
+  return Array.isArray(state.orders) ? state.orders : [];
+}
+
+function getInstallDate(order) {
+  return String(order?.operations?.installation?.installDate || "").trim();
+}
+function getInstallStatus(order) {
+  return String(order?.operations?.installation?.status || "").trim().toLowerCase();
+}
+function isInstallationCompleted(order) {
+  const s = getInstallStatus(order);
+  return s === "completata" || s === "completed";
+}
+
+function renderInstallationOrderRow(order) {
+  const installDate = getInstallDate(order);
+  const dateLabel = installDate ? formatDate(installDate) : "Da pianificare";
+  const time = order?.operations?.installation?.installTime || "";
+  const crew = order?.operations?.installation?.crew || "Da assegnare";
+  const customer = composeClientName(order) || "—";
+  const address = composeAddress(order) || "Indirizzo da completare";
+  const sqm = order?.operations?.sqm || 0;
+  const product = order?.operations?.product || "—";
+  const orderNum = getOrderNumber(order);
+  const stageBadge = isInstallationCompleted(order) ? "COMPLETATA" : (installDate ? "PROGRAMMATA" : "DA PIANIFICARE");
+  const stageClass = isInstallationCompleted(order) ? "is-done" : (installDate ? "is-scheduled" : "is-todo");
+  return `
+    <article class="install-row ${stageClass}" data-action="select-order-install" data-order-id="${escapeAttr(order.id)}">
+      <header class="install-row-head">
+        <strong>${escapeHtml(customer)}</strong>
+        <span class="install-row-num">#${escapeHtml(orderNum)}</span>
+        <span class="install-row-badge ${stageClass}">${escapeHtml(stageBadge)}</span>
+      </header>
+      <div class="install-row-body">
+        <span class="install-row-meta"><b>${escapeHtml(product)}</b> · ${sqm} mq</span>
+        <span class="install-row-meta">${escapeHtml(address)}</span>
+        <span class="install-row-meta install-row-when">
+          ${escapeHtml(dateLabel)}${time ? " · " + escapeHtml(time) : ""}
+          · Squadra ${escapeHtml(crew)}
+        </span>
+      </div>
+    </article>
+  `;
+}
+
+function renderInstallationsTodo() {
+  const root = document.getElementById("installations-todo-content");
+  if (!root) return;
+  const list = getInstallationsList().filter((o) => !getInstallDate(o) && !isInstallationCompleted(o));
+  // Ordina: più recenti prima (data ordine)
+  list.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  if (!list.length) {
+    root.innerHTML = `<div class="install-empty">
+      <h2>Tutto pianificato!</h2>
+      <p>Nessun ordine in attesa di pianificazione installazione.</p>
+    </div>`;
+    return;
+  }
+  root.innerHTML = `
+    <div class="install-stats">
+      <span class="install-stat"><strong>${list.length}</strong> ordini da programmare</span>
+    </div>
+    <div class="install-list">${list.map(renderInstallationOrderRow).join("")}</div>
+  `;
+}
+
+function renderInstallationsScheduled() {
+  const root = document.getElementById("installations-scheduled-content");
+  if (!root) return;
+  const list = getInstallationsList().filter((o) => getInstallDate(o) && !isInstallationCompleted(o));
+  // Ordina cronologicamente: prima le più imminenti
+  list.sort((a, b) => String(getInstallDate(a)).localeCompare(String(getInstallDate(b))));
+  if (!list.length) {
+    root.innerHTML = `<div class="install-empty">
+      <h2>Nessuna installazione programmata</h2>
+      <p>Gli ordini con data confermata appariranno qui in ordine cronologico.</p>
+    </div>`;
+    return;
+  }
+  // Raggruppa per settimana ISO
+  const groups = new Map();
+  for (const o of list) {
+    const d = new Date(getInstallDate(o));
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    const key = monday.toISOString().slice(0, 10);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(o);
+  }
+  let html = `<div class="install-stats"><span class="install-stat"><strong>${list.length}</strong> programmate</span></div>`;
+  for (const [weekKey, items] of groups.entries()) {
+    const monday = new Date(weekKey);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const label = `${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short"}).format(monday)} – ${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short",year:"numeric"}).format(sunday)}`;
+    html += `<h3 class="install-week-head">${escapeHtml(label)} · ${items.length} ${items.length === 1 ? "posa" : "pose"}</h3>`;
+    html += `<div class="install-list">${items.map(renderInstallationOrderRow).join("")}</div>`;
+  }
+  root.innerHTML = html;
+}
+
+function renderInstallationsRepairs() {
+  const root = document.getElementById("installations-repairs-content");
+  if (!root) return;
+  // Placeholder: full feature in arrivo con i task #38-42
+  root.innerHTML = `
+    <div class="install-empty install-empty-cta">
+      <h2>🔧 Sistemazioni in arrivo</h2>
+      <p>Stiamo finalizzando la gestione completa delle rilavorazioni e degli interventi di garanzia.</p>
+      <ul class="install-coming-list">
+        <li>Modulo "Nuova sistemazione" creabile da dettaglio ordine o thread WhatsApp</li>
+        <li>Auto-calcolo garanzia (12 mesi dalla data installazione)</li>
+        <li>Classificazione: Garanzia · Goodwill · A pagamento · Danno cliente</li>
+        <li>Reason code (cucitura, distacco, infiltrazione…) per analytics cause</li>
+        <li>Calendario Pose con icona 🔧 per distinguere sistemazioni da nuove pose</li>
+        <li>Verbale fine cantiere per sistemazione, firmato dal cliente</li>
+        <li>KPI strategico: % sistemazioni / pose totali</li>
+      </ul>
+      <p class="install-coming-note">Disponibile entro pochi giorni nel prossimo deploy.</p>
+    </div>
+  `;
+}
+
+// Gestione sottomenu sidebar Pose: espansione/collasso + auto-expand quando
+// una sotto-view è attiva. Stato persistito in localStorage.
+const NAV_GROUP_LS_KEY = "psi-nav-group-state";
+function getNavGroupState() {
+  try { return JSON.parse(window.localStorage.getItem(NAV_GROUP_LS_KEY) || "{}"); } catch { return {}; }
+}
+function setNavGroupState(state) {
+  try { window.localStorage.setItem(NAV_GROUP_LS_KEY, JSON.stringify(state || {})); } catch {}
+}
+function applyNavGroupState() {
+  const groups = document.querySelectorAll(".nav-group[data-nav-group]");
+  const stateMap = getNavGroupState();
+  const installViews = new Set(["installations", "installations-todo", "installations-scheduled", "installations-repairs"]);
+  const currentView = window?.state?.currentView || "";
+  groups.forEach((g) => {
+    const key = g.dataset.navGroup;
+    let expanded = stateMap[key];
+    // Auto-expand se la view corrente è figlia del gruppo
+    if (key === "installations" && installViews.has(currentView)) expanded = true;
+    if (expanded === undefined) expanded = true; // default expanded
+    g.classList.toggle("is-collapsed", !expanded);
+    const toggle = g.querySelector(".nav-group-toggle");
+    if (toggle) toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+  });
+}
+document.addEventListener("click", (ev) => {
+  const chevronOrLabel = ev.target.closest?.(".nav-group .nav-chevron, .nav-group-toggle .nav-chevron");
+  if (chevronOrLabel) {
+    const group = chevronOrLabel.closest(".nav-group");
+    if (group) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const key = group.dataset.navGroup;
+      const stateMap = getNavGroupState();
+      const isCollapsed = group.classList.toggle("is-collapsed");
+      stateMap[key] = !isCollapsed;
+      setNavGroupState(stateMap);
+      const toggle = group.querySelector(".nav-group-toggle");
+      if (toggle) toggle.setAttribute("aria-expanded", !isCollapsed ? "true" : "false");
+    }
+  }
+});
+// Re-apply al cambio view
+const _originalSetView = typeof setView === "function" ? setView : null;
+// (l'auto-expand viene gestito al render: chiamiamo applyNavGroupState in initApp/DOMContentLoaded)
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", applyNavGroupState);
+} else {
+  setTimeout(applyNavGroupState, 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // VERBALI FINE CANTIERE (work_completion_reports) — UI client
 //
 // Sezione inline in dettaglio installazione + wizard a tutto schermo 4 step.
@@ -18537,6 +18729,9 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "garden-planner": renderGardenPlannerView(); break;
       case "timesheet-me": renderTimesheetMe(); break;
       case "timesheet-office": renderTimesheetOffice(); break;
+      case "installations-todo": renderInstallationsTodo(); break;
+      case "installations-scheduled": renderInstallationsScheduled(); break;
+      case "installations-repairs": renderInstallationsRepairs(); break;
       default: renderDashboard(); break;
     }
   };
