@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Maurizio Coltellacci · Il tuo prato sintetico — Prato Sintetico Italia</title>
+    <link rel="icon" href="./logo-prato.png" />
+    <style>
+      :root {
+        --brand: #2d6a4f;
+        --brand-strong: #1a2e23;
+        --brand-soft: #d8f3dc;
+        --amber: #d97706;
+        --amber-soft: #fff3e0;
+        --blue: #3e74d8;
+        --blue-soft: #edf3ff;
+        --text: #1a1a18;
+        --text2: #4a4a48;
+        --muted: #6b6b66;
+        --line: rgba(0, 0, 0, 0.08);
+        --bg: #f7f7f3;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "DM Sans", "Segoe UI", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      .page {
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 16px 16px 80px;
+      }
+
+      /* Header brand */
+      .brand-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 0 20px;
+      }
+      .brand-mark {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: var(--brand-strong);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 800;
+        font-size: 18px;
+        letter-spacing: -0.04em;
+      }
+      .brand-copy strong { display: block; font-size: 14px; }
+      .brand-copy small { color: var(--muted); font-size: 12px; }
+
+      /* Hero status card */
+      .hero {
+        background: linear-gradient(135deg, var(--brand-soft) 0%, #fff 70%);
+        border: 1px solid rgba(45, 106, 79, 0.2);
+        border-radius: 20px;
+        padding: 24px 20px;
+        box-shadow: 0 4px 20px rgba(45, 106, 79, 0.06);
+        position: relative;
+        overflow: hidden;
+      }
+      .hero::before {
+        content: "";
+        position: absolute;
+        top: -40px;
+        right: -40px;
+        width: 160px;
+        height: 160px;
+        background: radial-gradient(circle, rgba(45, 106, 79, 0.15), transparent 70%);
+        border-radius: 50%;
+        pointer-events: none;
+      }
+      .hero-eyebrow {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-weight: 700;
+        color: var(--brand-strong);
+        margin-bottom: 8px;
+      }
+      .hero-title {
+        margin: 0 0 6px;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+      }
+      .hero-sub {
+        margin: 0;
+        color: var(--text2);
+        font-size: 14px;
+      }
+      .hero-pulse {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 14px;
+        padding: 6px 12px;
+        background: rgba(45, 106, 79, 0.12);
+        border-radius: 100px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--brand-strong);
+      }
+      .pulse-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--brand);
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(45, 106, 79, 0.5); }
+        50% { box-shadow: 0 0 0 6px rgba(45, 106, 79, 0); }
+      }
+
+      /* Timeline stati ordine */
+      .section { margin-top: 28px; }
+      .section-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-weight: 700;
+        color: var(--muted);
+        margin: 0 0 12px;
+        padding: 0 4px;
+      }
+      .timeline-card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 18px 16px;
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 32px 1fr auto;
+        gap: 12px;
+        padding: 10px 0;
+        align-items: flex-start;
+      }
+      .step + .step { border-top: 1px solid var(--line); }
+      .step-mark {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--brand-soft);
+        border: 2px solid var(--brand);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        line-height: 1;
+        color: var(--brand-strong);
+      }
+      .step.is-done .step-mark { background: var(--brand); color: #fff; }
+      .step.is-current .step-mark {
+        background: #fff;
+        animation: pulse 2s ease-in-out infinite;
+      }
+      .step.is-upcoming .step-mark {
+        background: #fff;
+        border-color: var(--line);
+        color: var(--muted);
+      }
+      .step-body strong {
+        display: block;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .step-body span {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .step.is-upcoming .step-body strong { color: var(--muted); font-weight: 500; }
+      .step-time {
+        font-size: 12px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      /* Dettaglio installazione */
+      .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .info-card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .info-card .label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      .info-card .value {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .info-card .value small {
+        display: block;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+
+      /* Foto cantiere live */
+      .photos-card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 16px;
+        margin-top: 12px;
+      }
+      .photos-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .photo-cell {
+        aspect-ratio: 1 / 1;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #aac9a8, #5d8f5a);
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+      }
+      .photo-cell::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, transparent 50%, rgba(0, 0, 0, 0.3));
+      }
+      .photo-cell.pre { background: linear-gradient(135deg, #d4cdb8, #8c8270); }
+      .photo-cell.during { background: linear-gradient(135deg, #b8d4a8, #5d9558); }
+      .photo-cell.detail { background: linear-gradient(135deg, #c5d9c1, #6d9968); }
+      .photo-cell.post { background: linear-gradient(135deg, #a5d49d, #4b9646); }
+      .photo-cell.team { background: linear-gradient(135deg, #87b288, #2d6a4f); }
+      .photo-tag {
+        position: absolute;
+        bottom: 6px;
+        left: 6px;
+        z-index: 1;
+        font-size: 10px;
+        color: #fff;
+        font-weight: 600;
+        padding: 2px 6px;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .photos-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+
+      /* Squadra in cantiere */
+      .crew-card {
+        background: linear-gradient(135deg, #fffbf5 0%, #fff 80%);
+        border: 1px solid rgba(217, 119, 6, 0.2);
+        border-radius: 16px;
+        padding: 18px 16px;
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .crew-avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: var(--brand);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 22px;
+      }
+      .crew-info { flex: 1; min-width: 0; }
+      .crew-info strong { display: block; font-size: 15px; }
+      .crew-info span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .crew-action {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .icon-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        background: var(--brand);
+        color: #fff;
+        border: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        text-decoration: none;
+        font-size: 18px;
+      }
+      .icon-btn.whatsapp { background: #25D366; }
+      .icon-btn.phone { background: var(--brand); }
+
+      /* Garanzia banner */
+      .warranty-card {
+        background: var(--blue-soft);
+        border: 1px solid rgba(62, 116, 216, 0.2);
+        border-radius: 14px;
+        padding: 14px;
+        margin-top: 12px;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .warranty-icon {
+        font-size: 22px;
+        line-height: 1;
+        flex-shrink: 0;
+      }
+      .warranty-body strong { display: block; font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+      .warranty-body p { margin: 0; font-size: 12px; color: var(--text2); }
+
+      /* Bottom bar quick action */
+      .bottom-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-top: 1px solid var(--line);
+        padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        z-index: 100;
+        box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.04);
+      }
+      .bottom-bar-inner {
+        max-width: 560px;
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .bb-btn {
+        padding: 14px;
+        border-radius: 12px;
+        border: 0;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .bb-btn.primary { background: var(--brand); color: #fff; }
+      .bb-btn.whatsapp { background: #25D366; color: #fff; }
+
+      /* Verbale download */
+      .doc-card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px;
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .doc-icon {
+        width: 44px;
+        height: 44px;
+        background: var(--brand-soft);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--brand-strong);
+        font-size: 22px;
+      }
+      .doc-body { flex: 1; min-width: 0; }
+      .doc-body strong { display: block; font-size: 14px; }
+      .doc-body span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .doc-link {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--brand);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      /* Demo mode banner */
+      .demo-banner {
+        background: #fef3c7;
+        border: 1px solid #fbbf24;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 12px;
+        color: #78350f;
+        text-align: center;
+        margin-bottom: 16px;
+      }
+      .demo-banner strong { color: #92400e; }
+
+      /* Scenario selector demo */
+      .scenario-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 10px;
+        margin-bottom: 16px;
+        overflow-x: auto;
+      }
+      .scenario-tab {
+        flex: 1;
+        padding: 8px 12px;
+        border: 0;
+        background: transparent;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        cursor: pointer;
+        border-radius: 7px;
+        white-space: nowrap;
+      }
+      .scenario-tab.is-active {
+        background: #fff;
+        color: var(--text);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+
+      /* Hide content by scenario */
+      .scenario-content { display: none; }
+      .scenario-content.is-active { display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="demo-banner">
+        <strong>🎬 Anteprima demo</strong> · Questo è un mockup di come il cliente vedrà il tracking del proprio ordine
+      </div>
+
+      <!-- Selettore scenario per la demo -->
+      <div class="scenario-tabs">
+        <button class="scenario-tab" data-scenario="confirmed">📦 Confermato</button>
+        <button class="scenario-tab is-active" data-scenario="installing">🔨 In installazione</button>
+        <button class="scenario-tab" data-scenario="completed">✓ Completato</button>
+      </div>
+
+      <!-- Brand header sempre presente -->
+      <div class="brand-bar">
+        <div class="brand-mark">PSI</div>
+        <div class="brand-copy">
+          <strong>Prato Sintetico Italia</strong>
+          <small>Il tuo prato è in arrivo</small>
+        </div>
+      </div>
+
+      <!-- ═══ SCENARIO 1: ORDINE CONFERMATO ═══ -->
+      <div class="scenario-content" data-scenario-content="confirmed">
+        <div class="hero">
+          <div class="hero-eyebrow">Ordine #2867 · Maurizio Coltellacci</div>
+          <h1 class="hero-title">Ordine confermato 🎉</h1>
+          <p class="hero-sub">Grazie Maurizio! Il tuo ordine è entrato in lavorazione. Ti aggiorneremo su ogni passo.</p>
+          <div class="hero-pulse"><span class="pulse-dot"></span>Preparazione materiali</div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">Stato del tuo ordine</h2>
+          <div class="timeline-card">
+            <div class="step is-done">
+              <div class="step-mark">✓</div>
+              <div class="step-body">
+                <strong>Ordine ricevuto</strong>
+                <span>Pagamento confermato · Salice 40mm · 110 mq</span>
+              </div>
+              <span class="step-time">02 mar</span>
+            </div>
+            <div class="step is-current">
+              <div class="step-mark">📦</div>
+              <div class="step-body">
+                <strong>Preparazione materiali</strong>
+                <span>Stiamo selezionando i rotoli migliori dal capannone</span>
+              </div>
+              <span class="step-time">in corso</span>
+            </div>
+            <div class="step is-upcoming">
+              <div class="step-mark">🚛</div>
+              <div class="step-body">
+                <strong>Spedizione</strong>
+                <span>Consegna in cantiere il giorno prima della posa</span>
+              </div>
+            </div>
+            <div class="step is-upcoming">
+              <div class="step-mark">🔨</div>
+              <div class="step-body">
+                <strong>Installazione</strong>
+                <span>Squadra Alpha · data da confermare</span>
+              </div>
+            </div>
+            <div class="step is-upcoming">
+              <div class="step-mark">✅</div>
+              <div class="step-body">
+                <strong>Verbale firmato</strong>
+                <span>Garanzia 12 mesi attiva</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">Dettagli ordine</h2>
+          <div class="info-grid">
+            <div class="info-card">
+              <div class="label">Prodotto</div>
+              <div class="value">Salice 40mm<small>Eco-riciclabile</small></div>
+            </div>
+            <div class="info-card">
+              <div class="label">Quantità</div>
+              <div class="value">110 mq<small>≈ 5 rotoli da 2m</small></div>
+            </div>
+            <div class="info-card">
+              <div class="label">Cantiere</div>
+              <div class="value" style="font-size:14px">Via Tre Galli 21<small>Perugia (PG)</small></div>
+            </div>
+            <div class="info-card">
+              <div class="label">Importo</div>
+              <div class="value">€ 4.180<small>IVA inclusa, saldato</small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ SCENARIO 2: IN INSTALLAZIONE (default) ═══ -->
+      <div class="scenario-content is-active" data-scenario-content="installing">
+        <div class="hero">
+          <div class="hero-eyebrow">Ordine #2867 · Maurizio Coltellacci</div>
+          <h1 class="hero-title">Stiamo posando il tuo prato 🔨</h1>
+          <p class="hero-sub">La squadra Alpha è arrivata alle 09:42 e sta lavorando da 2h 15min.</p>
+          <div class="hero-pulse"><span class="pulse-dot"></span>Posa in corso · 65 mq su 110</div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">Cosa sta succedendo</h2>
+          <div class="timeline-card">
+            <div class="step is-done">
+              <div class="step-mark">📦</div>
+              <div class="step-body">
+                <strong>Materiali consegnati</strong>
+                <span>5 rotoli Salice 40mm + accessori</span>
+              </div>
+              <span class="step-time">ieri 16:40</span>
+            </div>
+            <div class="step is-done">
+              <div class="step-mark">🚛</div>
+              <div class="step-body">
+                <strong>Squadra in viaggio</strong>
+                <span>Partita dal capannone</span>
+              </div>
+              <span class="step-time">08:15</span>
+            </div>
+            <div class="step is-done">
+              <div class="step-mark">📍</div>
+              <div class="step-body">
+                <strong>Arrivati in cantiere</strong>
+                <span>Mario, Luca e Giuseppe (squadra Alpha)</span>
+              </div>
+              <span class="step-time">09:42</span>
+            </div>
+            <div class="step is-current">
+              <div class="step-mark">🔨</div>
+              <div class="step-body">
+                <strong>Posa in corso</strong>
+                <span>65 mq completati su 110 totali · circa 2h alla fine</span>
+              </div>
+              <span class="step-time">10:08 →</span>
+            </div>
+            <div class="step is-upcoming">
+              <div class="step-mark">✓</div>
+              <div class="step-body">
+                <strong>Firma verbale di consegna</strong>
+                <span>Verifica insieme il lavoro e firmi sul telefono di Mario</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">La squadra al lavoro</h2>
+          <div class="crew-card">
+            <div class="crew-avatar">A</div>
+            <div class="crew-info">
+              <strong>Squadra Alpha</strong>
+              <span>Mario Rossi · Luca Bianchi · Giuseppe Verdi</span>
+            </div>
+            <div class="crew-action">
+              <a href="https://wa.me/393331234567" class="icon-btn whatsapp" title="WhatsApp Mario">💬</a>
+              <a href="tel:+393331234567" class="icon-btn phone" title="Chiama Mario">📞</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">Foto dal cantiere</h2>
+          <div class="photos-card">
+            <div class="photos-grid">
+              <div class="photo-cell pre">
+                <span class="photo-tag">Pre 09:45</span>
+              </div>
+              <div class="photo-cell pre">
+                <span class="photo-tag">Pre 09:46</span>
+              </div>
+              <div class="photo-cell pre">
+                <span class="photo-tag">Pre 09:47</span>
+              </div>
+              <div class="photo-cell during">
+                <span class="photo-tag">Posa 10:30</span>
+              </div>
+              <div class="photo-cell detail">
+                <span class="photo-tag">Posa 11:15</span>
+              </div>
+              <div class="photo-cell during">
+                <span class="photo-tag">Posa 12:00</span>
+              </div>
+            </div>
+            <div class="photos-meta">
+              <span>6 foto · aggiornato 12:18</span>
+              <span style="color: var(--brand); font-weight: 600;">↻ live</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ SCENARIO 3: COMPLETATO ═══ -->
+      <div class="scenario-content" data-scenario-content="completed">
+        <div class="hero" style="background: linear-gradient(135deg, var(--brand-soft) 0%, #fff 70%);">
+          <div class="hero-eyebrow">Ordine #2867 · Maurizio Coltellacci</div>
+          <h1 class="hero-title">Il tuo prato è pronto 🌿</h1>
+          <p class="hero-sub">Lavori completati e firmati il 30 maggio 2026. Goditi il tuo nuovo giardino!</p>
+          <div class="hero-pulse" style="background: rgba(45, 106, 79, 0.18);"><span style="color: var(--brand-strong);">✓ Garanzia attiva fino al 30/05/2027</span></div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">Riepilogo lavori</h2>
+          <div class="timeline-card">
+            <div class="step is-done">
+              <div class="step-mark">📍</div>
+              <div class="step-body">
+                <strong>Arrivati in cantiere</strong>
+                <span>Squadra Alpha</span>
+              </div>
+              <span class="step-time">09:42</span>
+            </div>
+            <div class="step is-done">
+              <div class="step-mark">🔨</div>
+              <div class="step-body">
+                <strong>Posa completata</strong>
+                <span>110 mq Salice 40mm posati a regola d'arte</span>
+              </div>
+              <span class="step-time">17:32</span>
+            </div>
+            <div class="step is-done">
+              <div class="step-mark">✓</div>
+              <div class="step-body">
+                <strong>Verbale firmato</strong>
+                <span>Hai firmato la consegna sul telefono di Mario</span>
+              </div>
+              <span class="step-time">17:45</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">Foto finali</h2>
+          <div class="photos-card">
+            <div class="photos-grid">
+              <div class="photo-cell post"><span class="photo-tag">Finita 17:30</span></div>
+              <div class="photo-cell post"><span class="photo-tag">Finita 17:30</span></div>
+              <div class="photo-cell post"><span class="photo-tag">Finita 17:31</span></div>
+              <div class="photo-cell post"><span class="photo-tag">Finita 17:31</span></div>
+              <div class="photo-cell team"><span class="photo-tag">Squadra</span></div>
+              <div class="photo-cell post"><span class="photo-tag">Finita 17:32</span></div>
+            </div>
+            <div class="photos-meta">
+              <span>6 foto finali · archivio permanente</span>
+              <span>📥 Scarica tutte</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">Documenti</h2>
+          <div class="doc-card">
+            <div class="doc-icon">📄</div>
+            <div class="doc-body">
+              <strong>Verbale di consegna</strong>
+              <span>VL-2026-0042 · firmato 30/05/2026</span>
+            </div>
+            <a href="#" class="doc-link">Scarica PDF →</a>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">Garanzia</h2>
+          <div class="warranty-card">
+            <div class="warranty-icon">🛡️</div>
+            <div class="warranty-body">
+              <strong>12 mesi di garanzia attiva</strong>
+              <p>Scadenza 30 maggio 2027. In caso di anomalie sulla posa, segnalacele entro la scadenza per intervento gratuito.</p>
+            </div>
+          </div>
+          <div style="margin-top: 12px;">
+            <a href="#" style="display: block; text-align: center; padding: 14px; background: var(--blue-soft); color: var(--blue); border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 14px;">🔧 Segnala una sistemazione</a>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">Lascia un feedback</h2>
+          <div style="background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 20px; text-align: center;">
+            <p style="margin: 0 0 12px; font-size: 14px;">Com'è andato il lavoro?</p>
+            <div style="font-size: 28px; letter-spacing: 4px;">⭐⭐⭐⭐⭐</div>
+            <p style="margin: 12px 0 0; font-size: 12px; color: var(--muted);">Tap su una stella per votare e aiutaci a migliorare.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom bar fissa con quick actions -->
+    <div class="bottom-bar">
+      <div class="bottom-bar-inner">
+        <a href="https://wa.me/393331234567" class="bb-btn whatsapp">💬 WhatsApp PSI</a>
+        <a href="tel:+390812345678" class="bb-btn primary">📞 Chiama</a>
+      </div>
+    </div>
+
+    <script>
+      // Switch scenario demo
+      const tabs = document.querySelectorAll('.scenario-tab');
+      const contents = document.querySelectorAll('[data-scenario-content]');
+      tabs.forEach((t) => t.addEventListener('click', () => {
+        const sc = t.dataset.scenario;
+        tabs.forEach((x) => x.classList.toggle('is-active', x.dataset.scenario === sc));
+        contents.forEach((c) => c.classList.toggle('is-active', c.dataset.scenarioContent === sc));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }));
+    </script>
+  </body>
+</html>
