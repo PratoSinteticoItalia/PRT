@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260531-sprint1-job-events";
+const APP_SHELL_VERSION = "20260531-google-maps-link";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15201,8 +15201,12 @@ function renderJobEventCard(ev) {
   const label = JOB_EVENT_LABELS[ev.eventType] || ev.eventType;
   const def = JOB_EVENT_DEFS.find((d) => d.type === ev.eventType);
   const icon = def?.icon || "•";
+  // Link "verificato" → Google Maps universal URL.
+  // Su desktop apre maps.google.com nel browser (familiare per office).
+  // Su mobile, se è installata l'app Google Maps, si apre quella con routing
+  // integrato. Niente API key necessarie, gratuito.
   const geoBadge = ev.lat != null && ev.lng != null
-    ? `<a class="job-event-geo" href="https://www.openstreetmap.org/?mlat=${ev.lat}&mlon=${ev.lng}&zoom=17" target="_blank" rel="noopener">📍 verificato${ev.gpsAccuracyM ? ` (±${ev.gpsAccuracyM}m)` : ""}</a>`
+    ? `<a class="job-event-geo" href="https://www.google.com/maps?q=${ev.lat},${ev.lng}" target="_blank" rel="noopener">📍 verificato${ev.gpsAccuracyM ? ` (±${ev.gpsAccuracyM}m)` : ""}</a>`
     : "";
   const photosHtml = Array.isArray(ev.photos) && ev.photos.length
     ? `<div class="job-event-photos">${ev.photos.map((p, i) => `<span class="job-event-photo-chip">📷 ${i + 1}</span>`).join("")}</div>`
