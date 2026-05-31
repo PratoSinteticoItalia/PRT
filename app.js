@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260531-live-refresh-fix";
+const APP_SHELL_VERSION = "20260531-more-sheet-sections";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15590,22 +15590,53 @@ function renderMobileBottomNav() {
   nav.innerHTML = html;
 }
 
+// Definizione macroaree per la sheet "Altro" — corrispondono alla sidebar desktop
+const MORE_SHEET_SECTIONS = [
+  {
+    label: "Operativo",
+    views: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-todo", "installations-scheduled", "installations-repairs", "communications"],
+  },
+  {
+    label: "Vendite",
+    views: ["sales-requests", "sales-generator", "sales-content", "marketing"],
+  },
+  {
+    label: "Amministrazione",
+    views: ["accounting", "profit-split", "shipping", "reseller-report", "settings", "timesheet-office"],
+  },
+  {
+    label: "Strumenti",
+    views: ["garden-planner", "timesheet-me"],
+  },
+];
+
 function openMoreSheet() {
   const sheet = document.getElementById("mobile-more-sheet");
   const content = document.getElementById("mobile-more-content");
   if (!sheet || !content) return;
-  const allAllowed = getAllowedViewsForRole();
+  const allAllowed = new Set(getAllowedViewsForRole());
   const role = state.currentUser?.role || "office";
   const primary = MOBILE_BOTTOM_NAV_PRIMARY[role] || [];
-  const secondary = allAllowed.filter((v) => !primary.includes(v));
-  content.innerHTML = secondary.map((view) => {
-    const label = t(view) || view;
-    const icon = VIEW_ICONS[view] || VIEW_ICONS.more;
-    return `<button type="button" class="more-sheet-item" data-view="${escapeAttr(view)}">
-      <span class="more-sheet-icon">${icon}</span>
-      <span class="more-sheet-label">${escapeHtml(label)}</span>
-    </button>`;
-  }).join("");
+  const exclude = new Set(primary);
+  let html = "";
+  for (const section of MORE_SHEET_SECTIONS) {
+    const visible = section.views.filter((v) => allAllowed.has(v) && !exclude.has(v));
+    if (!visible.length) continue;
+    html += `<div class="more-sheet-section">
+      <div class="more-sheet-section-label">${escapeHtml(section.label)}</div>
+      <div class="more-sheet-grid">
+        ${visible.map((view) => {
+          const label = t(view) || view;
+          const icon = VIEW_ICONS[view] || VIEW_ICONS.more;
+          return `<button type="button" class="more-sheet-item" data-view="${escapeAttr(view)}">
+            <span class="more-sheet-icon">${icon}</span>
+            <span class="more-sheet-label">${escapeHtml(label)}</span>
+          </button>`;
+        }).join("")}
+      </div>
+    </div>`;
+  }
+  content.innerHTML = html;
   sheet.classList.remove("hidden");
 }
 function closeMoreSheet() {

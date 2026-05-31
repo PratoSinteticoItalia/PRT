@@ -18584,11 +18584,29 @@ body {
 .mobile-more-content {
   padding: var(--space-3);
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.more-sheet-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.more-sheet-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted, #6b6b66);
+  padding: 0 var(--space-1);
+}
+.more-sheet-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-2);
 }
-@media (max-width: 380px) { .mobile-more-content { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 380px) { .more-sheet-grid { grid-template-columns: repeat(2, 1fr); } }
 .more-sheet-item {
   display: flex;
   flex-direction: column;
