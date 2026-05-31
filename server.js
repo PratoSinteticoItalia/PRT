@@ -907,6 +907,45 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS service_repairs_category_idx  ON service_repairs (category);
       CREATE INDEX IF NOT EXISTS service_repairs_crew_idx      ON service_repairs (assigned_crew, scheduled_date);
       CREATE INDEX IF NOT EXISTS service_repairs_created_idx   ON service_repairs (created_at DESC);
+
+      -- ─────────────────────────────────────────────────────────────────────
+      -- Job events — eventi puntuali durante la giornata di cantiere.
+      -- Granularità: 1 tap crew = 1 evento. Permette timeline live + KPI
+      -- (tempo trasferta, tempo posa effettivo, puntualità).
+      --
+      -- event_type:
+      --   'departure'   → crew in viaggio dal capannone
+      --   'arrival'     → arrivato in cantiere (può includere foto pre-lavoro)
+      --   'work_start'  → inizio posa effettiva (distinto da arrivo)
+      --   'work_end'    → fine posa (separato dal verbale che è step finale)
+      --   'return'      → rientro al capannone, cantiere chiuso
+      --   'issue'       → segnalazione rapida problema dal cantiere (testo)
+      --   'note'        → nota generica (libero)
+      -- ─────────────────────────────────────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS job_events (
+        id BIGSERIAL PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        installation_id TEXT,
+        event_type TEXT NOT NULL,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        user_id TEXT,                              -- chi ha registrato (crew/office)
+        user_name TEXT,                            -- snapshot per audit
+        crew_name TEXT,                            -- squadra (snapshot)
+        lat NUMERIC,                               -- opt-in geolocation
+        lng NUMERIC,
+        gps_accuracy_m INTEGER,                    -- precisione GPS in metri
+        photos JSONB NOT NULL DEFAULT '[]',        -- [{ r2_key, w, h, taken_at }, ...]
+        notes TEXT,
+        source TEXT NOT NULL DEFAULT 'manual',     -- manual | auto
+        ip_address TEXT,
+        user_agent TEXT,
+        device_id TEXT,                            -- da localStorage client
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS job_events_order_idx       ON job_events (order_id, occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS job_events_type_idx        ON job_events (event_type, occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS job_events_crew_idx        ON job_events (crew_name, occurred_at DESC);
+      CREATE INDEX IF NOT EXISTS job_events_recent_idx      ON job_events (occurred_at DESC);
     `);
     console.log("[db] schema relazionale verificato");
   })().catch((err) => {
@@ -2318,6 +2357,112 @@ async function updateServiceRepairInDb(id, patch = {}, opts = {}) {
     console.warn("[db] updateServiceRepairInDb:", err?.message);
     if (opts.rethrow) throw err;
     return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Job Events — eventi puntuali del cantiere (departure → arrival → work_start → return)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const JOB_EVENT_TYPES = new Set([
+  "departure", "arrival", "work_start", "work_end", "return", "issue", "note",
+]);
+
+function dbRowToJobEvent(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    orderId: row.order_id || "",
+    installationId: row.installation_id || "",
+    eventType: row.event_type || "",
+    occurredAt: row.occurred_at ? new Date(row.occurred_at).toISOString() : null,
+    userId: row.user_id || null,
+    userName: row.user_name || "",
+    crewName: row.crew_name || "",
+    lat: row.lat != null ? Number(row.lat) : null,
+    lng: row.lng != null ? Number(row.lng) : null,
+    gpsAccuracyM: row.gps_accuracy_m != null ? Number(row.gps_accuracy_m) : null,
+    photos: Array.isArray(row.photos) ? row.photos : [],
+    notes: row.notes || "",
+    source: row.source || "manual",
+    deviceId: row.device_id || "",
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+  };
+}
+
+async function insertJobEvent(orderId, eventType, ctx = {}) {
+  if (!USE_POSTGRES || !orderId) throw new Error("insertJobEvent: orderId required");
+  if (!JOB_EVENT_TYPES.has(eventType)) throw new Error(`invalid event_type: ${eventType}`);
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const occurredAt = ctx.occurredAt ? new Date(ctx.occurredAt) : new Date();
+  const { rows } = await pool.query(
+    `INSERT INTO job_events
+      (order_id, installation_id, event_type, occurred_at, user_id, user_name, crew_name,
+       lat, lng, gps_accuracy_m, photos, notes, source, ip_address, user_agent, device_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16)
+     RETURNING *`,
+    [
+      String(orderId),
+      String(ctx.installationId || "") || null,
+      eventType,
+      occurredAt.toISOString(),
+      String(ctx.userId || "") || null,
+      String(ctx.userName || "") || null,
+      String(ctx.crewName || "") || null,
+      ctx.lat != null ? Number(ctx.lat) : null,
+      ctx.lng != null ? Number(ctx.lng) : null,
+      ctx.gpsAccuracyM != null ? Number(ctx.gpsAccuracyM) : null,
+      JSON.stringify(Array.isArray(ctx.photos) ? ctx.photos : []),
+      String(ctx.notes || "") || null,
+      String(ctx.source || "manual"),
+      String(ctx.ipAddress || "") || null,
+      String(ctx.userAgent || "").slice(0, 500) || null,
+      String(ctx.deviceId || "") || null,
+    ],
+  );
+  return dbRowToJobEvent(rows[0]);
+}
+
+async function listJobEventsForOrder(orderId) {
+  if (!USE_POSTGRES || !orderId) return [];
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query(
+      `SELECT * FROM job_events WHERE order_id = $1 ORDER BY occurred_at ASC`,
+      [String(orderId)],
+    );
+    return rows.map(dbRowToJobEvent);
+  } catch (err) {
+    console.warn("[db] listJobEventsForOrder:", err?.message);
+    return [];
+  }
+}
+
+/**
+ * Eventi del giorno corrente raggruppati per ordine.
+ * Usato dalla view "Cantieri Live" office.
+ */
+async function listLiveJobEventsToday({ crewName = null } = {}) {
+  if (!USE_POSTGRES) return [];
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    // Finestra: ultimi 18h (copre turno notturno) per evitare timezone issue
+    const sinceTs = new Date(Date.now() - 18 * 3600 * 1000).toISOString();
+    const params = [sinceTs];
+    let sql = `SELECT * FROM job_events WHERE occurred_at >= $1`;
+    if (crewName) {
+      params.push(String(crewName));
+      sql += ` AND crew_name = $${params.length}`;
+    }
+    sql += ` ORDER BY occurred_at ASC LIMIT 2000`;
+    const { rows } = await pool.query(sql, params);
+    return rows.map(dbRowToJobEvent);
+  } catch (err) {
+    console.warn("[db] listLiveJobEventsToday:", err?.message);
+    return [];
   }
 }
 
@@ -10217,6 +10362,96 @@ async function handleApi(req, res, url) {
     } catch (err) {
       console.error("[repairs] patch failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "patch_failed") });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Job Events — eventi cantiere (departure/arrival/work_start/work_end/return/issue/note)
+  // crew: registra eventi per il proprio job, vede solo i propri
+  // office: tutto
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // POST /api/jobs/:orderId/events → registra evento
+  if (url.pathname.match(/^\/api\/jobs\/[^/]+\/events$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    if (!orderId) return sendJson(res, 400, { error: "missing_orderId" });
+    try {
+      const body = await readBody(req);
+      if (!JOB_EVENT_TYPES.has(body.eventType)) return sendJson(res, 400, { error: "invalid_eventType" });
+      const event = await insertJobEvent(orderId, body.eventType, {
+        installationId: body.installationId,
+        userId: currentUser.id,
+        userName: currentUser.name || currentUser.email || "",
+        crewName: currentUser.crewName || body.crewName || "",
+        lat: body.lat,
+        lng: body.lng,
+        gpsAccuracyM: body.gpsAccuracyM,
+        photos: body.photos,
+        notes: body.notes,
+        source: body.source || "manual",
+        ipAddress: extractClientIp(req),
+        userAgent: req.headers["user-agent"] || "",
+        deviceId: body.deviceId,
+      });
+      writeAuditLog("job_event", String(event.id), "create", {
+        orderId, eventType: event.eventType, hasGps: event.lat != null,
+      }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 201, event);
+    } catch (err) {
+      console.error("[job-events] create failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "create_failed") });
+    }
+  }
+
+  // GET /api/jobs/:orderId/events → timeline ordine
+  if (url.pathname.match(/^\/api\/jobs\/[^/]+\/events$/) && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew", "warehouse"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    try {
+      const events = await listJobEventsForOrder(orderId);
+      return sendJson(res, 200, { events });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "list_failed") });
+    }
+  }
+
+  // GET /api/jobs/live → eventi delle ultime 18h, raggruppati per ordine.
+  // Office vede tutti, crew vede solo i propri.
+  if (url.pathname === "/api/jobs/live" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const crewName = currentUser.role === "crew"
+        ? (currentUser.crewName || currentUser.name || "")
+        : (url.searchParams.get("crew") || null);
+      const events = await listLiveJobEventsToday({ crewName });
+      // Raggruppa per orderId, mantieni l'ordine cronologico
+      const byOrder = new Map();
+      for (const ev of events) {
+        if (!byOrder.has(ev.orderId)) byOrder.set(ev.orderId, []);
+        byOrder.get(ev.orderId).push(ev);
+      }
+      const groups = Array.from(byOrder.entries()).map(([orderId, evs]) => ({
+        orderId,
+        crewName: evs[0]?.crewName || "",
+        events: evs,
+        firstAt: evs[0]?.occurredAt,
+        lastAt: evs[evs.length - 1]?.occurredAt,
+        lastEventType: evs[evs.length - 1]?.eventType,
+      }));
+      // Ordina: cantieri aperti (no return) prima, poi per lastAt desc
+      groups.sort((a, b) => {
+        const aOpen = a.lastEventType !== "return" ? 0 : 1;
+        const bOpen = b.lastEventType !== "return" ? 0 : 1;
+        if (aOpen !== bOpen) return aOpen - bOpen;
+        return String(b.lastAt).localeCompare(String(a.lastAt));
+      });
+      return sendJson(res, 200, { groups, count: groups.length });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "live_failed") });
     }
   }
 

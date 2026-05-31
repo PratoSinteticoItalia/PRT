@@ -18670,3 +18670,146 @@ body {
 /* Bottom nav: nascondi su tutti i breakpoint quando l'utente non è loggato */
 .shell-pending ~ .mobile-bottom-nav,
 .shell-loading .mobile-bottom-nav { display: none !important; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   JOB EVENTS — diario cantiere + view Cantieri Live (Sprint 1)
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.job-events-section { margin-top: var(--space-4); }
+.job-events-quickbar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+@media (max-width: 600px) {
+  .job-events-quickbar { grid-template-columns: repeat(2, 1fr); }
+}
+
+.job-event-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: var(--space-3) var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 80px;
+  position: relative;
+  transition: all 150ms;
+  color: var(--text);
+}
+.job-event-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+.job-event-btn .job-event-icon { font-size: 24px; line-height: 1; }
+.job-event-btn .job-event-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.job-event-btn.is-done {
+  background: rgba(45, 106, 79, 0.08);
+  border-color: var(--brand, #2d6a4f);
+  opacity: 0.7;
+  cursor: default;
+}
+.job-event-btn.is-done:hover { transform: none; box-shadow: none; }
+.job-event-btn .job-event-check {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  color: var(--brand, #2d6a4f);
+  font-weight: 800;
+}
+.job-event-btn.color-blue.is-done { background: rgba(62, 116, 216, 0.08); border-color: var(--blue, #3e74d8); }
+.job-event-btn.color-amber.is-done { background: rgba(217, 119, 6, 0.08); border-color: var(--amber, #d97706); }
+
+/* Timeline */
+.job-events-timeline { display: flex; flex-direction: column; gap: var(--space-2); }
+.job-events-loading, .job-events-empty, .job-events-error {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.job-events-error { color: var(--red, #a74b4b); }
+.job-event-row {
+  display: grid;
+  grid-template-columns: 64px 32px 1fr;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+.job-event-row:last-child { border-bottom: 0; }
+.job-event-time {
+  display: flex;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 14px;
+}
+.job-event-time small { font-size: 10px; color: var(--muted); font-weight: 400; }
+.job-event-marker { font-size: 18px; text-align: center; }
+.job-event-body strong { display: block; font-size: 14px; }
+.job-event-meta { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.job-event-geo { display: inline-block; font-size: 11px; color: var(--brand, #2d6a4f); margin-top: 4px; text-decoration: none; }
+.job-event-geo:hover { text-decoration: underline; }
+.job-event-notes { font-size: 13px; margin: 4px 0 0; color: var(--text2, #555); }
+.job-event-photos { display: flex; gap: 4px; margin-top: 4px; }
+.job-event-photo-chip { font-size: 11px; padding: 2px 6px; background: rgba(0,0,0,0.05); border-radius: 4px; }
+
+/* View Cantieri Live */
+.live-loading, .live-empty, .live-error {
+  padding: var(--space-7);
+  text-align: center;
+  color: var(--muted);
+}
+.live-empty h2 { font-size: 20px; color: var(--text); margin-bottom: var(--space-2); }
+.live-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: var(--space-3);
+}
+.live-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border-left: 4px solid var(--brand, #2d6a4f);
+}
+.live-card.is-closed { opacity: 0.6; border-left-color: var(--muted, #888); }
+.live-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2); }
+.live-card-head strong { display: block; font-size: 15px; }
+.live-card-meta { font-size: 12px; color: var(--muted); }
+.live-card-badge {
+  background: rgba(45, 106, 79, 0.12);
+  color: var(--brand-strong, #1a2e23);
+  padding: 4px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.live-card.is-closed .live-card-badge { background: rgba(0,0,0,0.06); color: var(--muted); }
+.live-card-crew { font-size: 13px; color: var(--text2, #555); }
+.live-card-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2) 0;
+  border-top: 1px dashed var(--line);
+  border-bottom: 1px dashed var(--line);
+}
+.live-tick {
+  display: grid;
+  grid-template-columns: 48px 24px 1fr auto;
+  gap: 6px;
+  font-size: 12px;
+  align-items: center;
+}
+.live-tick-time { font-family: ui-monospace, monospace; color: var(--muted); }
+.live-tick-icon { text-align: center; }
+.live-tick-geo { color: var(--brand, #2d6a4f); }
+.live-card-foot { font-size: 11px; color: var(--muted); padding-top: var(--space-2); }

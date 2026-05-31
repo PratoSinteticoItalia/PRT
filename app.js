@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260531-banner-dot-only";
+const APP_SHELL_VERSION = "20260531-sprint1-job-events";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -319,9 +319,9 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-todo", "installations-scheduled", "installations-repairs", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-todo", "installations-scheduled", "installations-repairs", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "communications", "timesheet-me"],
-  crew: ["dashboard", "installations", "installations-todo", "installations-scheduled", "installations-repairs", "sales-generator", "communications", "garden-planner"],
+  crew: ["dashboard", "installations", "installations-live", "installations-todo", "installations-scheduled", "installations-repairs", "sales-generator", "communications", "garden-planner"],
   seller: ["dashboard", "sales-requests", "sales-generator", "sales-content", "communications", "timesheet-me"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner"]);
@@ -371,6 +371,7 @@ const translations = {
     "installations-todo": "Da programmare",
     "installations-scheduled": "Programmate",
     "installations-repairs": "Sistemazioni",
+    "installations-live": "Cantieri Live",
     office: "Ufficio",
     warehouseRole: "Inventario",
     crewRole: "Squadra",
@@ -626,6 +627,7 @@ const translations = {
     "installations-todo": "To schedule",
     "installations-scheduled": "Scheduled",
     "installations-repairs": "Repairs",
+    "installations-live": "Live sites",
     office: "Office",
     warehouseRole: "Inventory",
     crewRole: "Crew",
@@ -14516,6 +14518,7 @@ function renderInstallations() {
   ui.installationAttachments.innerHTML = renderAttachmentGrid(mapAttachmentsForContext(order, "installation"), order.id);
   renderInstallationExpenseSection(order);
   renderWorkReportsForOrder(order);
+  renderJobEventsForOrder(order);
   clearStatus(ui.installationStatus);
   updateInstallationPaneVisibility();
 }
@@ -15040,6 +15043,466 @@ function buildOpenRepairButton(orderId, label = "+ Apri sistemazione") {
   return `<button type="button" class="ghost-button small" data-action="open-repair-form" data-order-id="${escapeAttr(orderId)}">${escapeHtml(label)}</button>`;
 }
 window.buildOpenRepairButton = buildOpenRepairButton;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JOB EVENTS — diario di cantiere real-time (Sprint 1)
+// 4 bottoni rapidi crew + timeline + view office "Cantieri Live"
+// ═══════════════════════════════════════════════════════════════════════════
+
+const JOB_EVENT_DEFS = [
+  { type: "departure", label: "Partenza", icon: "🚛", color: "blue" },
+  { type: "arrival",   label: "Arrivato", icon: "📍", color: "amber", askPhoto: true },
+  { type: "work_start", label: "Inizio posa", icon: "🔨", color: "green" },
+  { type: "return",    label: "Rientro", icon: "🏁", color: "muted" },
+];
+
+const JOB_EVENT_LABELS = {
+  departure: "Partenza dal capannone",
+  arrival: "Arrivato in cantiere",
+  work_start: "Inizio posa",
+  work_end: "Fine posa",
+  return: "Rientro / cantiere chiuso",
+  issue: "Problema segnalato",
+  note: "Nota",
+};
+
+const DEVICE_ID_KEY = "psi-device-id";
+const GEO_OPT_IN_KEY = "psi-geo-opt-in";
+
+function getDeviceId() {
+  try {
+    let id = window.localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = (window.crypto?.randomUUID?.() || `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+      window.localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch { return ""; }
+}
+
+function isGeoOptedIn() {
+  try { return window.localStorage.getItem(GEO_OPT_IN_KEY) === "yes"; } catch { return false; }
+}
+
+function setGeoOptIn(value) {
+  try { window.localStorage.setItem(GEO_OPT_IN_KEY, value ? "yes" : "no"); } catch {}
+}
+
+async function getCurrentPosition({ timeout = 8000 } = {}) {
+  if (!isGeoOptedIn() || !navigator.geolocation) return null;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), timeout + 500);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        clearTimeout(timer);
+        resolve({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy || 0),
+        });
+      },
+      () => { clearTimeout(timer); resolve(null); },
+      { enableHighAccuracy: true, timeout, maximumAge: 30000 },
+    );
+  });
+}
+
+// API client
+function apiListJobEvents(orderId) {
+  return apiFetch(`/api/jobs/${encodeURIComponent(orderId)}/events`);
+}
+function apiCreateJobEvent(orderId, payload) {
+  return apiFetch(`/api/jobs/${encodeURIComponent(orderId)}/events`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+function apiListLiveJobs() {
+  return apiFetch("/api/jobs/live");
+}
+
+// State
+if (!state.jobEvents) {
+  state.jobEvents = {
+    byOrder: {},        // { orderId: [events] }
+    busy: false,
+    live: { groups: [], loadedAt: 0, autoRefresh: 0 },
+  };
+}
+
+// ── Render Diario cantiere nel dettaglio job ────────────────────────────────
+
+function renderJobEventsForOrder(order) {
+  const section = document.getElementById("job-events-section");
+  const quickbar = document.getElementById("job-events-quickbar");
+  const timeline = document.getElementById("job-events-timeline");
+  if (!section || !quickbar || !timeline) return;
+  const role = state.currentUser?.role || "";
+  if (!order || !["office", "crew", "warehouse"].includes(role)) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  // Carica eventi (cache-friendly)
+  const cached = state.jobEvents.byOrder[order.id];
+  if (!cached) {
+    quickbar.innerHTML = "";
+    timeline.innerHTML = '<div class="job-events-loading">Caricamento timeline…</div>';
+    apiListJobEvents(order.id).then((res) => {
+      state.jobEvents.byOrder[order.id] = res?.events || [];
+      if (state.currentView === "installations" && state.selectedOrderId === order.id) {
+        renderJobEventsInner(order, quickbar, timeline);
+      }
+    }).catch((err) => {
+      timeline.innerHTML = `<div class="job-events-error">Errore: ${escapeHtml(String(err?.message || err))}</div>`;
+    });
+  } else {
+    renderJobEventsInner(order, quickbar, timeline);
+  }
+}
+
+function renderJobEventsInner(order, quickbar, timeline) {
+  const events = state.jobEvents.byOrder[order.id] || [];
+  const role = state.currentUser?.role || "";
+  // Quick bar: bottoni rapidi (solo crew + office)
+  if (role === "crew" || role === "office") {
+    const completed = new Set(events.map((e) => e.eventType));
+    quickbar.innerHTML = JOB_EVENT_DEFS.map((def) => {
+      const isDone = completed.has(def.type);
+      return `
+        <button type="button"
+                class="job-event-btn color-${def.color} ${isDone ? "is-done" : ""}"
+                data-action="register-job-event"
+                data-order-id="${escapeAttr(order.id)}"
+                data-event-type="${escapeAttr(def.type)}"
+                data-ask-photo="${def.askPhoto ? "1" : "0"}"
+                ${isDone ? "disabled" : ""}>
+          <span class="job-event-icon">${def.icon}</span>
+          <span class="job-event-label">${escapeHtml(def.label)}</span>
+          ${isDone ? '<span class="job-event-check">✓</span>' : ""}
+        </button>
+      `;
+    }).join("");
+  } else {
+    quickbar.innerHTML = "";
+  }
+  // Timeline
+  if (!events.length) {
+    timeline.innerHTML = '<div class="job-events-empty">Nessun evento ancora registrato. Tocca un bottone qui sopra per iniziare.</div>';
+    return;
+  }
+  timeline.innerHTML = events.map(renderJobEventCard).join("");
+}
+
+function renderJobEventCard(ev) {
+  const t = new Date(ev.occurredAt);
+  const hhmm = t.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  const dateLabel = formatDate(ev.occurredAt);
+  const label = JOB_EVENT_LABELS[ev.eventType] || ev.eventType;
+  const def = JOB_EVENT_DEFS.find((d) => d.type === ev.eventType);
+  const icon = def?.icon || "•";
+  const geoBadge = ev.lat != null && ev.lng != null
+    ? `<a class="job-event-geo" href="https://www.openstreetmap.org/?mlat=${ev.lat}&mlon=${ev.lng}&zoom=17" target="_blank" rel="noopener">📍 verificato${ev.gpsAccuracyM ? ` (±${ev.gpsAccuracyM}m)` : ""}</a>`
+    : "";
+  const photosHtml = Array.isArray(ev.photos) && ev.photos.length
+    ? `<div class="job-event-photos">${ev.photos.map((p, i) => `<span class="job-event-photo-chip">📷 ${i + 1}</span>`).join("")}</div>`
+    : "";
+  return `
+    <article class="job-event-row">
+      <div class="job-event-time">${escapeHtml(hhmm)}<small>${escapeHtml(dateLabel)}</small></div>
+      <div class="job-event-marker">${icon}</div>
+      <div class="job-event-body">
+        <strong>${escapeHtml(label)}</strong>
+        <span class="job-event-meta">${escapeHtml(ev.userName || "")}${ev.crewName ? ` · ${escapeHtml(ev.crewName)}` : ""}</span>
+        ${geoBadge}
+        ${ev.notes ? `<p class="job-event-notes">${escapeHtml(ev.notes)}</p>` : ""}
+        ${photosHtml}
+      </div>
+    </article>
+  `;
+}
+
+async function registerJobEvent(orderId, eventType, opts = {}) {
+  if (state.jobEvents.busy) return;
+  state.jobEvents.busy = true;
+  try {
+    // Geo opt-in: chiedi 1 sola volta al primo uso
+    if (!isGeoOptedIn() && opts.askGeo !== false) {
+      const wantsGeo = window.confirm("Vuoi attivare la geolocalizzazione? Le tue timbrature saranno 'verificate' e potrai dimostrare di essere stato in cantiere. (Attivabile/disattivabile in qualsiasi momento)");
+      setGeoOptIn(wantsGeo);
+    }
+    const pos = await getCurrentPosition();
+    const payload = {
+      eventType,
+      lat: pos?.lat,
+      lng: pos?.lng,
+      gpsAccuracyM: pos?.accuracy,
+      deviceId: getDeviceId(),
+      photos: opts.photos || [],
+      notes: opts.notes || "",
+    };
+    const event = await apiCreateJobEvent(orderId, payload);
+    // Aggiorna cache locale
+    if (!state.jobEvents.byOrder[orderId]) state.jobEvents.byOrder[orderId] = [];
+    state.jobEvents.byOrder[orderId].push(event);
+    showToast(`✓ ${JOB_EVENT_LABELS[eventType] || eventType}`, "success");
+    // Re-render
+    const order = (state.orders || []).find((o) => o.id === orderId);
+    if (order) renderJobEventsForOrder(order);
+  } catch (err) {
+    showToast(`Errore: ${err?.message || err}`, "error");
+  } finally {
+    state.jobEvents.busy = false;
+  }
+}
+
+// Event delegation per bottoni rapidi
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest?.('[data-action="register-job-event"]');
+  if (!btn) return;
+  ev.preventDefault();
+  const orderId = btn.dataset.orderId;
+  const eventType = btn.dataset.eventType;
+  const askPhoto = btn.dataset.askPhoto === "1";
+  if (!orderId || !eventType) return;
+  if (askPhoto) {
+    // Apri input file per foto pre-lavoro (opt-in)
+    const wantsPhoto = window.confirm("Vuoi allegare 1-3 foto del cantiere prima di iniziare? (Consigliato per documentare lo stato iniziale)");
+    if (wantsPhoto) {
+      // Trigger photo input via work-report-photo-input (riusiamo lo stesso)
+      const input = document.getElementById("work-report-photo-input");
+      if (input) {
+        input.dataset.mode = "job-event-photo";
+        input.dataset.orderId = orderId;
+        input.dataset.eventType = eventType;
+        input.click();
+        return; // verrà completato in handler change
+      }
+    }
+  }
+  registerJobEvent(orderId, eventType);
+});
+
+// Quando l'input foto è in modalità job-event, comprimi + registra event
+document.addEventListener("change", async (ev) => {
+  const input = ev.target;
+  if (input?.id !== "work-report-photo-input" || input.dataset.mode !== "job-event-photo") return;
+  const files = Array.from(input.files || []);
+  if (!files.length) {
+    input.dataset.mode = "";
+    return;
+  }
+  const orderId = input.dataset.orderId;
+  const eventType = input.dataset.eventType;
+  input.dataset.mode = "";
+  input.dataset.orderId = "";
+  input.dataset.eventType = "";
+  // Comprimi foto (max 3) usando lo stesso helper del verbale
+  const photos = [];
+  for (const file of files.slice(0, 3)) {
+    try {
+      const c = await compressPhotoFile(file);
+      photos.push({ name: c.name, type: c.type, dataUrl: c.dataUrl, takenAt: c.takenAt });
+    } catch {}
+  }
+  input.value = "";
+  registerJobEvent(orderId, eventType, { photos });
+});
+
+// ── View Cantieri Live (office + crew) ──────────────────────────────────────
+
+async function renderInstallationsLive() {
+  const root = document.getElementById("installations-live-content");
+  if (!root) return;
+  root.innerHTML = '<div class="live-loading">Caricamento cantieri live…</div>';
+  try {
+    const res = await apiListLiveJobs();
+    state.jobEvents.live.groups = res?.groups || [];
+    state.jobEvents.live.loadedAt = Date.now();
+    _renderLiveInner(root);
+    // Auto-refresh ogni 30s mentre la view è aperta
+    if (state.jobEvents.live.autoRefresh) clearInterval(state.jobEvents.live.autoRefresh);
+    state.jobEvents.live.autoRefresh = window.setInterval(() => {
+      if (state.currentView !== "installations-live") {
+        clearInterval(state.jobEvents.live.autoRefresh);
+        state.jobEvents.live.autoRefresh = 0;
+        return;
+      }
+      apiListLiveJobs().then((r) => {
+        state.jobEvents.live.groups = r?.groups || [];
+        _renderLiveInner(root);
+      }).catch(() => {});
+    }, 30000);
+  } catch (err) {
+    root.innerHTML = `<div class="live-error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
+  }
+}
+
+function _renderLiveInner(root) {
+  const groups = state.jobEvents.live.groups || [];
+  if (!groups.length) {
+    root.innerHTML = `<div class="live-empty">
+      <h2>Nessun cantiere attivo</h2>
+      <p>Quando una squadra inizia a timbrare un evento, comparirà qui in tempo reale.</p>
+    </div>`;
+    return;
+  }
+  const orders = state.orders || [];
+  root.innerHTML = `<div class="live-grid">${groups.map((g) => {
+    const order = orders.find((o) => o.id === g.orderId) || {};
+    const customer = composeClientName(order) || g.orderId;
+    const address = composeAddress(order) || "—";
+    const lastType = g.lastEventType || "";
+    const isOpen = lastType !== "return";
+    const statusLabel = lastType === "return" ? "Cantiere chiuso"
+      : lastType === "work_start" ? "🔨 In posa"
+      : lastType === "arrival" ? "📍 In cantiere"
+      : lastType === "departure" ? "🚛 In viaggio"
+      : lastType === "work_end" ? "✓ Posa finita"
+      : "—";
+    const lastAt = g.lastAt ? new Date(g.lastAt) : null;
+    const sinceMin = lastAt ? Math.floor((Date.now() - lastAt.getTime()) / 60000) : null;
+    const sinceLabel = sinceMin != null
+      ? (sinceMin < 60 ? `${sinceMin}min fa` : `${Math.floor(sinceMin / 60)}h ${sinceMin % 60}min fa`)
+      : "";
+    return `
+      <article class="live-card ${isOpen ? "is-open" : "is-closed"}">
+        <header class="live-card-head">
+          <div>
+            <strong>${escapeHtml(customer)}</strong>
+            <span class="live-card-meta">${escapeHtml(address)}</span>
+          </div>
+          <span class="live-card-badge">${escapeHtml(statusLabel)}</span>
+        </header>
+        <div class="live-card-crew">Squadra: <b>${escapeHtml(g.crewName || "—")}</b></div>
+        <div class="live-card-timeline">
+          ${g.events.map((ev) => {
+            const t = new Date(ev.occurredAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+            const def = JOB_EVENT_DEFS.find((d) => d.type === ev.eventType);
+            return `<div class="live-tick"><span class="live-tick-time">${escapeHtml(t)}</span><span class="live-tick-icon">${def?.icon || "•"}</span><span class="live-tick-label">${escapeHtml(JOB_EVENT_LABELS[ev.eventType] || ev.eventType)}</span>${ev.lat != null ? ' <span class="live-tick-geo">📍</span>' : ""}</div>`;
+          }).join("")}
+        </div>
+        ${sinceLabel ? `<footer class="live-card-foot"><span>Ultimo aggiornamento: ${escapeHtml(sinceLabel)}</span></footer>` : ""}
+      </article>
+    `;
+  }).join("")}</div>`;
+}
+
+// Listener bottone refresh manuale
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest?.('[data-action="live-refresh"]');
+  if (!btn) return;
+  ev.preventDefault();
+  renderInstallationsLive();
+});
+
+// ── PWA install prompt + onboarding crew (#51) ──────────────────────────────
+
+let _deferredInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", (ev) => {
+  ev.preventDefault();
+  _deferredInstallPrompt = ev;
+});
+
+function shouldShowOnboarding() {
+  try {
+    if (window.localStorage.getItem("psi-onboarding-done") === "1") return false;
+    const role = state.currentUser?.role;
+    return role === "crew" || role === "warehouse";
+  } catch { return false; }
+}
+
+function markOnboardingDone() {
+  try { window.localStorage.setItem("psi-onboarding-done", "1"); } catch {}
+}
+
+function showOnboardingPrompt() {
+  if (!shouldShowOnboarding()) return;
+  const existing = document.getElementById("pwa-onboarding-modal");
+  if (existing) return;
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const html = `
+    <div id="pwa-onboarding-modal" class="ts-modal" role="dialog" aria-modal="true">
+      <div class="ts-modal-backdrop" data-action="onboarding-skip"></div>
+      <div class="ts-modal-shell">
+        <header class="ts-modal-head">
+          <h3>🏗️ Benvenuto!</h3>
+          <button type="button" class="ts-modal-close" data-action="onboarding-skip" aria-label="Salta">×</button>
+        </header>
+        <div class="ts-modal-body">
+          <p>Per usare al meglio l'app dal cantiere, configura queste 3 cose (30 secondi):</p>
+          <section class="ts-modal-section">
+            <h4>1. 📱 Installa l'app sul telefono</h4>
+            ${isIOS
+              ? '<p class="ts-help">Tocca il bottone <b>⬆ Condividi</b> in Safari, poi scorri e tocca <b>"Aggiungi a Home"</b>. Avrai l\'icona PSI direttamente in homescreen.</p>'
+              : '<p class="ts-help">Su Chrome trovi l\'opzione "Aggiungi alla schermata Home" nel menu ⋮ in alto a destra.</p><button type="button" class="primary-button" data-action="pwa-install">Installa ora</button>'}
+          </section>
+          <section class="ts-modal-section">
+            <h4>2. 📍 Geolocalizzazione (consigliata)</h4>
+            <p class="ts-help">Le tue timbrature saranno marcate "verificate" e potrai dimostrare di essere stato in cantiere. Tu controlli quando attivarla.</p>
+            <button type="button" class="primary-button" data-action="onboarding-enable-geo">Attiva geolocalizzazione</button>
+          </section>
+          <section class="ts-modal-section">
+            <h4>3. 🔔 Notifiche</h4>
+            <p class="ts-help">Per ricevere comunicazioni urgenti dall'ufficio (es. modifica posa).</p>
+            <button type="button" class="primary-button" data-action="onboarding-enable-push">Attiva notifiche</button>
+          </section>
+        </div>
+        <footer class="ts-modal-head" style="border-top:1px solid var(--line); border-bottom:0; justify-content:flex-end;">
+          <button type="button" class="ghost-button" data-action="onboarding-skip">Saltare per ora</button>
+          <button type="button" class="primary-button" data-action="onboarding-done">Ho capito, fatto</button>
+        </footer>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML("beforeend", html);
+}
+
+document.addEventListener("click", (ev) => {
+  const target = ev.target.closest?.("[data-action]");
+  if (!target) return;
+  const action = target.dataset.action;
+  switch (action) {
+    case "onboarding-skip":
+    case "onboarding-done":
+      ev.preventDefault();
+      markOnboardingDone();
+      document.getElementById("pwa-onboarding-modal")?.remove();
+      break;
+    case "onboarding-enable-geo":
+      ev.preventDefault();
+      navigator.geolocation?.getCurrentPosition(
+        () => { setGeoOptIn(true); showToast("Geolocalizzazione attivata", "success"); },
+        () => { showToast("Permesso negato", "error"); },
+      );
+      break;
+    case "onboarding-enable-push":
+      ev.preventDefault();
+      if ("Notification" in window) {
+        Notification.requestPermission().then((p) => {
+          if (p === "granted") showToast("Notifiche attivate", "success");
+          else showToast("Permesso negato", "error");
+        });
+      }
+      break;
+    case "pwa-install":
+      ev.preventDefault();
+      if (_deferredInstallPrompt) {
+        _deferredInstallPrompt.prompt();
+        _deferredInstallPrompt = null;
+      } else {
+        showToast("Usa il menu del browser → 'Aggiungi a Home'", "info");
+      }
+      break;
+  }
+});
+
+// Mostra onboarding 1.5s dopo il login
+function maybeShowOnboardingAfterLogin() {
+  setTimeout(() => {
+    if (shouldShowOnboarding()) showOnboardingPrompt();
+  }, 1500);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BOTTOM NAVIGATION MOBILE (#45)
@@ -18484,6 +18947,8 @@ function showApp() {
   // Sistema Presenze: inizializza banner + counter live per dipendenti
   // (warehouse, seller, office). Crew esclusi (subappaltatori).
   try { initTimesheet(); } catch (err) { console.warn("[timesheet] init failed:", err); }
+  // Mostra onboarding PWA al primo login crew/warehouse
+  try { maybeShowOnboardingAfterLogin(); } catch {}
 }
 
 function getUsageEventLabel(type = "") {
@@ -19324,6 +19789,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "installations-todo": renderInstallationsTodo(); break;
       case "installations-scheduled": renderInstallationsScheduled(); break;
       case "installations-repairs": renderInstallationsRepairs(); break;
+      case "installations-live": renderInstallationsLive(); break;
       default: renderDashboard(); break;
     }
   };
