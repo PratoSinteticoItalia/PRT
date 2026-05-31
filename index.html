@@ -18,8 +18,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260531-timesheet-geoloc" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260531-timesheet-geoloc" />
+    <link rel="preload" href="./styles.css?v=20260531-tracking-cliente-token" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260531-tracking-cliente-token" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -840,7 +840,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260531-timesheet-geoloc&shell=20260531-timesheet-geoloc"
+                src="./sales-suite/generator.html?embedded=1&v=20260531-tracking-cliente-token&shell=20260531-tracking-cliente-token"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -1330,6 +1330,9 @@
                 <div id="job-events-quickbar" class="job-events-quickbar"></div>
                 <div id="job-events-timeline" class="job-events-timeline" aria-live="polite"></div>
               </section>
+
+              <!-- Tracking cliente: link pubblico manuale (office only, fornitura+posa) -->
+              <section id="client-tracking-section" class="panel-subsection client-tracking-section" hidden></section>
 
               <!-- ─────────────────────────────────────────────────────────
                    Verbali fine cantiere (work_completion_reports) — MVP
@@ -2419,7 +2422,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260531-timesheet-geoloc" defer></script>
-    <script src="./app.js?v=20260531-timesheet-geoloc" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260531-tracking-cliente-token" defer></script>
+    <script src="./app.js?v=20260531-tracking-cliente-token" type="module"></script>
   </body>
 </html>

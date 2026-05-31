@@ -715,6 +715,9 @@ async function ensureRelationalSchema() {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS operations_json JSONB DEFAULT '{}';
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_token TEXT;
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_token_created_at TIMESTAMPTZ;
+      CREATE UNIQUE INDEX IF NOT EXISTS orders_tracking_token_idx ON orders (tracking_token) WHERE tracking_token IS NOT NULL;
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS requested_height TEXT DEFAULT '';
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS quoted_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS orders_shopify_id_idx       ON orders (shopify_numeric_id);
@@ -2255,6 +2258,50 @@ async function generateServiceRepairId() {
     if (Number.isFinite(parsed)) next = parsed + 1;
   }
   return `${prefix}${String(next).padStart(4, "0")}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tracking cliente (URL pubblico con token random)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Genera token random URL-safe per il tracking pubblico (32 chars base64url). */
+function generateTrackingToken() {
+  const bytes = require("node:crypto").randomBytes(24);
+  return bytes.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/**
+ * Verifica se un ordine ha "fornitura + posa" (cioè ha un flow installazione).
+ * Criterio: operations.installation esiste E ha almeno crew o installDate o status.
+ */
+function orderHasInstallation(order) {
+  const inst = order?.operations?.installation;
+  if (!inst) return false;
+  return Boolean(inst.crew || inst.installDate || inst.status || inst.id);
+}
+
+/**
+ * Recupera un ordine dal blob store via tracking_token (best-effort).
+ * Ritorna null se non trovato o token invalido.
+ */
+async function findOrderByTrackingToken(token) {
+  if (!token || typeof token !== "string" || token.length < 16) return null;
+  // Cerco prima in DB (se gli ordini sono migrati relazionalmente)
+  if (USE_POSTGRES) {
+    try {
+      const pool = await getPgPool();
+      const { rows } = await pool.query("SELECT id FROM orders WHERE tracking_token = $1 LIMIT 1", [String(token)]);
+      if (rows[0]?.id) {
+        const store = await readJson(STORE_PATH, {});
+        return (store.orders || []).find((o) => o.id === rows[0].id) || null;
+      }
+    } catch {}
+  }
+  // Fallback: scan blob store (i token sono salvati anche lì in operations.trackingToken)
+  try {
+    const store = await readJson(STORE_PATH, {});
+    return (store.orders || []).find((o) => o.operations?.trackingToken === token) || null;
+  } catch { return null; }
 }
 
 /**
@@ -10519,6 +10566,151 @@ async function handleApi(req, res, url) {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Tracking pubblico cliente (URL con token)
+  // Office genera/revoca token, cliente apre /track/:token (no auth).
+  // Solo ordini con flow installazione (fornitura+posa).
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // POST /api/orders/:id/tracking-token → genera o ritorna esistente
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/tracking-token$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    try {
+      const store = await readJson(STORE_PATH, {});
+      const orders = Array.isArray(store.orders) ? store.orders : [];
+      const order = orders.find((o) => o.id === orderId);
+      if (!order) return sendJson(res, 404, { error: "order_not_found" });
+      if (!orderHasInstallation(order)) {
+        return sendJson(res, 400, { error: "no_installation", message: "Il tracking pubblico è disponibile solo per ordini con fornitura+posa." });
+      }
+      let token = order.operations?.trackingToken;
+      let createdAt = order.operations?.trackingTokenCreatedAt;
+      if (!token) {
+        token = generateTrackingToken();
+        createdAt = new Date().toISOString();
+        order.operations = order.operations || {};
+        order.operations.trackingToken = token;
+        order.operations.trackingTokenCreatedAt = createdAt;
+        await writeJson(STORE_PATH, store);
+        // Sync DB (best-effort)
+        if (USE_POSTGRES) {
+          try {
+            const pool = await getPgPool();
+            await pool.query(
+              "UPDATE orders SET tracking_token = $1, tracking_token_created_at = $2 WHERE id = $3",
+              [token, createdAt, String(orderId)],
+            );
+          } catch (err) { console.warn("[tracking] db sync failed:", err?.message); }
+        }
+        writeAuditLog("order", orderId, "tracking_token_created", { token: token.slice(0, 8) + "..." }, currentUser.email || null).catch(() => {});
+      }
+      const publicUrl = `${url.protocol}//${url.host}/track/${token}`;
+      return sendJson(res, 200, { token, createdAt, publicUrl });
+    } catch (err) {
+      console.error("[tracking] create failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "create_failed") });
+    }
+  }
+
+  // DELETE /api/orders/:id/tracking-token → revoca
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/tracking-token$/) && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    try {
+      const store = await readJson(STORE_PATH, {});
+      const order = (store.orders || []).find((o) => o.id === orderId);
+      if (!order) return sendJson(res, 404, { error: "order_not_found" });
+      if (order.operations?.trackingToken) {
+        delete order.operations.trackingToken;
+        delete order.operations.trackingTokenCreatedAt;
+        await writeJson(STORE_PATH, store);
+        if (USE_POSTGRES) {
+          try {
+            const pool = await getPgPool();
+            await pool.query("UPDATE orders SET tracking_token = NULL, tracking_token_created_at = NULL WHERE id = $1", [String(orderId)]);
+          } catch {}
+        }
+        writeAuditLog("order", orderId, "tracking_token_revoked", {}, currentUser.email || null).catch(() => {});
+      }
+      return sendJson(res, 200, { ok: true });
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "revoke_failed") });
+    }
+  }
+
+  // GET /api/public/track/:token → dati pubblici filtrati (no auth)
+  if (url.pathname.startsWith("/api/public/track/") && req.method === "GET") {
+    const token = decodeURIComponent(url.pathname.slice("/api/public/track/".length));
+    try {
+      const order = await findOrderByTrackingToken(token);
+      if (!order) return sendJson(res, 404, { error: "not_found" });
+      // Carica eventi del cantiere + verbali firmati
+      const events = await listJobEventsForOrder(order.id);
+      const reports = await listWorkReportsFromDb({ orderId: order.id, status: "archived" });
+      const inst = order.operations?.installation || {};
+      const customerName = composeClientName(order) || "Cliente";
+      const productName = order.operations?.product || "Prato sintetico";
+      const sqm = order.operations?.sqm || 0;
+      const siteAddress = composeAddress(order) || "";
+      // Stage corrente: derivato dal latest event o stato job
+      const lastEvent = events.length ? events[events.length - 1] : null;
+      const stage = lastEvent?.eventType === "return" ? "completed"
+        : lastEvent?.eventType === "work_start" || lastEvent?.eventType === "work_end" ? "in_progress"
+        : lastEvent?.eventType === "arrival" ? "on_site"
+        : lastEvent?.eventType === "departure" ? "in_transit"
+        : inst.installDate ? "scheduled"
+        : "preparing";
+      // Garanzia: 365gg dall'ultimo event "return" o data installazione
+      let warrantyUntil = null;
+      const installCompletedAt = lastEvent?.eventType === "return" ? lastEvent.occurredAt : (inst.completedAt || null);
+      if (installCompletedAt) {
+        const d = new Date(installCompletedAt);
+        d.setDate(d.getDate() + 365);
+        warrantyUntil = d.toISOString();
+      }
+      // Filtra eventi: niente IP, niente userName privato. Solo orario, tipo, foto.
+      const publicEvents = events.map((ev) => ({
+        eventType: ev.eventType,
+        occurredAt: ev.occurredAt,
+        crewName: ev.crewName || "",
+        hasGps: ev.lat != null,
+        photosCount: Array.isArray(ev.photos) ? ev.photos.length : 0,
+      }));
+      const publicReports = reports.map((r) => ({
+        id: r.id,
+        signedAt: r.signedAt,
+        executedSqm: r.executedSqm,
+        pdfUrl: r.documentPdfR2Key ? `/api/public/track/${encodeURIComponent(token)}/verbale/${encodeURIComponent(r.id)}.pdf` : null,
+      }));
+      return sendJson(res, 200, {
+        ok: true,
+        orderId: order.id,
+        orderNumber: getOrderNumber(order) || order.id,
+        customerName,
+        productName,
+        sqm,
+        siteAddress,
+        installation: {
+          installDate: inst.installDate || null,
+          installTime: inst.installTime || null,
+          crew: inst.crew || null,
+        },
+        stage,
+        events: publicEvents,
+        reports: publicReports,
+        warrantyUntil,
+        contactWhatsapp: process.env.PSI_OFFICE_WHATSAPP || "",
+        contactPhone: process.env.PSI_OFFICE_PHONE || "",
+      });
+    } catch (err) {
+      console.error("[tracking] public fetch failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "public_failed") });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Verbali fine cantiere (work_completion_reports) — MVP
   // crew: vede/crea/modifica i propri (crew_user_id = self.id)
   // office: tutto
@@ -13059,6 +13251,11 @@ const server = createServer(async (req, res) => {
       res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
       res.end("Bad request");
       return;
+    }
+    // Tracking pubblico cliente: /track/:token → serve la pagina tracking.html
+    // (la pagina poi fetch /api/public/track/:token per popolare i dati)
+    if (requestedPath.startsWith("/track/")) {
+      requestedPath = "/tracking.html";
     }
     const filePath = resolve(ROOT, `.${requestedPath}`);
     const rootPrefix = ROOT.endsWith(sep) ? ROOT : `${ROOT}${sep}`;

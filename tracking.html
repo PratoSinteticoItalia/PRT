@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Il tuo prato — Prato Sintetico Italia</title>
+    <link rel="icon" href="/logo-prato.png" />
+    <meta name="robots" content="noindex,nofollow" />
+    <style>
+      :root {
+        --brand: #2d6a4f;
+        --brand-strong: #1a2e23;
+        --brand-soft: #d8f3dc;
+        --amber: #d97706;
+        --amber-soft: #fff3e0;
+        --blue: #3e74d8;
+        --blue-soft: #edf3ff;
+        --text: #1a1a18;
+        --text2: #4a4a48;
+        --muted: #6b6b66;
+        --line: rgba(0, 0, 0, 0.08);
+        --bg: #f7f7f3;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "DM Sans", "Segoe UI", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      .page { max-width: 560px; margin: 0 auto; padding: 16px 16px 100px; }
+      .loading, .error-state {
+        text-align: center;
+        padding: 80px 24px;
+        color: var(--muted);
+      }
+      .error-state h1 { color: var(--text); font-size: 22px; margin-bottom: 8px; }
+      .brand-bar { display: flex; align-items: center; gap: 12px; padding: 12px 0 20px; }
+      .brand-mark {
+        width: 44px; height: 44px; border-radius: 12px; background: var(--brand-strong);
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-weight: 800; font-size: 18px; letter-spacing: -0.04em;
+      }
+      .brand-copy strong { display: block; font-size: 14px; }
+      .brand-copy small { color: var(--muted); font-size: 12px; }
+      .hero {
+        background: linear-gradient(135deg, var(--brand-soft) 0%, #fff 70%);
+        border: 1px solid rgba(45, 106, 79, 0.2);
+        border-radius: 20px; padding: 24px 20px;
+        box-shadow: 0 4px 20px rgba(45, 106, 79, 0.06);
+        position: relative; overflow: hidden;
+      }
+      .hero::before {
+        content: ""; position: absolute; top: -40px; right: -40px;
+        width: 160px; height: 160px; pointer-events: none;
+        background: radial-gradient(circle, rgba(45, 106, 79, 0.15), transparent 70%);
+        border-radius: 50%;
+      }
+      .hero-eyebrow {
+        font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;
+        font-weight: 700; color: var(--brand-strong); margin-bottom: 8px;
+      }
+      .hero-title {
+        margin: 0 0 6px; font-size: 28px; font-weight: 800;
+        letter-spacing: -0.02em; line-height: 1.2;
+      }
+      .hero-sub { margin: 0; color: var(--text2); font-size: 14px; }
+      .hero-pulse {
+        display: inline-flex; align-items: center; gap: 6px;
+        margin-top: 14px; padding: 6px 12px;
+        background: rgba(45, 106, 79, 0.12); border-radius: 100px;
+        font-size: 12px; font-weight: 600; color: var(--brand-strong);
+      }
+      .pulse-dot {
+        width: 8px; height: 8px; border-radius: 50%; background: var(--brand);
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(45, 106, 79, 0.5); }
+        50% { box-shadow: 0 0 0 6px rgba(45, 106, 79, 0); }
+      }
+      .section { margin-top: 28px; }
+      .section-title {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+        font-weight: 700; color: var(--muted); margin: 0 0 12px; padding: 0 4px;
+      }
+      .timeline-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 18px 16px; }
+      .step {
+        display: grid; grid-template-columns: 32px 1fr auto;
+        gap: 12px; padding: 10px 0; align-items: flex-start;
+      }
+      .step + .step { border-top: 1px solid var(--line); }
+      .step-mark {
+        width: 28px; height: 28px; border-radius: 50%;
+        background: var(--brand-soft); border: 2px solid var(--brand);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 14px; line-height: 1; color: var(--brand-strong);
+      }
+      .step.is-done .step-mark { background: var(--brand); color: #fff; }
+      .step.is-current .step-mark { background: #fff; animation: pulse 2s ease-in-out infinite; }
+      .step.is-upcoming .step-mark { background: #fff; border-color: var(--line); color: var(--muted); }
+      .step-body strong { display: block; font-size: 14px; font-weight: 700; }
+      .step-body span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .step.is-upcoming .step-body strong { color: var(--muted); font-weight: 500; }
+      .step-time {
+        font-size: 12px; color: var(--muted);
+        font-variant-numeric: tabular-nums; white-space: nowrap;
+      }
+      .info-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;
+      }
+      .info-card {
+        background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+      }
+      .info-card .label {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+        color: var(--muted); font-weight: 700; margin-bottom: 4px;
+      }
+      .info-card .value { font-size: 16px; font-weight: 700; color: var(--text); }
+      .info-card .value small {
+        display: block; font-size: 12px; font-weight: 500;
+        color: var(--muted); margin-top: 2px;
+      }
+      .crew-card {
+        background: linear-gradient(135deg, #fffbf5 0%, #fff 80%);
+        border: 1px solid rgba(217, 119, 6, 0.2); border-radius: 16px;
+        padding: 18px 16px; margin-top: 12px;
+        display: flex; align-items: center; gap: 14px;
+      }
+      .crew-avatar {
+        width: 56px; height: 56px; border-radius: 50%; background: var(--brand);
+        color: #fff; display: flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: 22px;
+      }
+      .crew-info { flex: 1; min-width: 0; }
+      .crew-info strong { display: block; font-size: 15px; }
+      .crew-info span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .warranty-card {
+        background: var(--blue-soft); border: 1px solid rgba(62, 116, 216, 0.2);
+        border-radius: 14px; padding: 14px; margin-top: 12px;
+        display: flex; gap: 12px; align-items: flex-start;
+      }
+      .warranty-icon { font-size: 22px; line-height: 1; flex-shrink: 0; }
+      .warranty-body strong { display: block; font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+      .warranty-body p { margin: 0; font-size: 12px; color: var(--text2); }
+      .doc-card {
+        background: #fff; border: 1px solid var(--line); border-radius: 14px;
+        padding: 16px; margin-top: 12px;
+        display: flex; align-items: center; gap: 12px;
+      }
+      .doc-icon {
+        width: 44px; height: 44px; background: var(--brand-soft); border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        color: var(--brand-strong); font-size: 22px;
+      }
+      .doc-body { flex: 1; min-width: 0; }
+      .doc-body strong { display: block; font-size: 14px; }
+      .doc-body span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .doc-link {
+        font-size: 13px; font-weight: 600; color: var(--brand);
+        text-decoration: none; white-space: nowrap;
+      }
+      .bottom-bar {
+        position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+        background: #fff; border-top: 1px solid var(--line);
+        padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+        box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.04);
+      }
+      .bottom-bar-inner {
+        max-width: 560px; margin: 0 auto;
+        display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+      }
+      .bb-btn {
+        padding: 14px; border-radius: 12px; border: 0;
+        font-size: 14px; font-weight: 600;
+        cursor: pointer; text-decoration: none; text-align: center;
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+      }
+      .bb-btn.primary { background: var(--brand); color: #fff; }
+      .bb-btn.whatsapp { background: #25D366; color: #fff; }
+      .bb-btn.hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root" class="page">
+      <div class="loading">
+        <p>Caricamento del tuo ordine…</p>
+      </div>
+    </div>
+
+    <script>
+      const STAGE_LABELS = {
+        preparing: { title: "Ordine in preparazione", sub: "Stiamo selezionando i rotoli dal capannone.", pulse: "📦 Preparazione materiali" },
+        scheduled: { title: "Installazione programmata", sub: "Ti aggiorneremo quando la squadra sarà in viaggio.", pulse: "📅 In attesa del giorno della posa" },
+        in_transit: { title: "La squadra è in viaggio 🚛", sub: "Stanno raggiungendo il cantiere.", pulse: "🚛 In viaggio" },
+        on_site: { title: "Squadra arrivata in cantiere 📍", sub: "Stanno preparando i materiali per la posa.", pulse: "📍 In cantiere" },
+        in_progress: { title: "Stiamo posando il tuo prato 🔨", sub: "Lavori in corso.", pulse: "🔨 Posa in corso" },
+        completed: { title: "Il tuo prato è pronto 🌿", sub: "Lavori completati e firmati. Goditi il tuo nuovo giardino!", pulse: "✓ Lavori completati" },
+      };
+
+      const EVENT_LABELS = {
+        departure: { icon: "🚛", title: "Squadra in viaggio", sub: "Partiti dal capannone" },
+        arrival: { icon: "📍", title: "Arrivati in cantiere", sub: "Inizio attività" },
+        work_start: { icon: "🔨", title: "Inizio posa", sub: "Lavori operativi avviati" },
+        work_end: { icon: "✓", title: "Posa finita", sub: "Verifica con il cliente" },
+        return: { icon: "🏁", title: "Cantiere chiuso", sub: "Lavori completati e squadra rientrata" },
+        issue: { icon: "⚠️", title: "Segnalazione", sub: "Comunicazione dal cantiere" },
+        note: { icon: "📝", title: "Nota", sub: "Aggiornamento operativo" },
+      };
+
+      const STANDARD_STEPS = [
+        { key: "ordered", title: "Ordine ricevuto", sub: "Pagamento confermato" },
+        { key: "preparing", title: "Preparazione materiali", sub: "Selezione rotoli dal capannone" },
+        { key: "in_transit", title: "Squadra in viaggio", sub: "Verso il cantiere" },
+        { key: "on_site", title: "Arrivati in cantiere", sub: "Verifica preparativa" },
+        { key: "in_progress", title: "Posa in corso", sub: "Lavori operativi" },
+        { key: "completed", title: "Verbale firmato", sub: "Garanzia 12 mesi attiva" },
+      ];
+
+      const STAGE_ORDER = ["ordered", "preparing", "scheduled", "in_transit", "on_site", "in_progress", "completed"];
+
+      function escapeHtml(v) {
+        return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+      function formatDate(iso) {
+        if (!iso) return "—";
+        try {
+          return new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
+        } catch { return String(iso); }
+      }
+      function formatTime(iso) {
+        if (!iso) return "";
+        try {
+          return new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+        } catch { return ""; }
+      }
+
+      async function loadTracking() {
+        const root = document.getElementById("root");
+        // Estrai token da /track/:token
+        const m = window.location.pathname.match(/^\/track\/([A-Za-z0-9_\-]+)/);
+        const token = m && m[1];
+        if (!token) {
+          root.innerHTML = `<div class="error-state"><h1>Link non valido</h1><p>Il link che hai aperto non sembra corretto. Contatta Prato Sintetico Italia per riceverne uno nuovo.</p></div>`;
+          return;
+        }
+        try {
+          const res = await fetch(`/api/public/track/${encodeURIComponent(token)}`);
+          if (res.status === 404) {
+            root.innerHTML = `<div class="error-state"><h1>Link non trovato</h1><p>Questo link di tracking non è più valido. Contatta Prato Sintetico Italia per assistenza.</p></div>`;
+            return;
+          }
+          if (!res.ok) throw new Error("fetch_failed");
+          const data = await res.json();
+          renderTracking(root, data);
+        } catch (err) {
+          root.innerHTML = `<div class="error-state"><h1>Errore di caricamento</h1><p>Ricarica la pagina o riprova tra qualche minuto.</p></div>`;
+        }
+      }
+
+      function renderTracking(root, data) {
+        const stage = data.stage || "preparing";
+        const stageInfo = STAGE_LABELS[stage] || STAGE_LABELS.preparing;
+        const stageIdx = STAGE_ORDER.indexOf(stage);
+
+        const html = [];
+        html.push(`
+          <div class="brand-bar">
+            <div class="brand-mark">PSI</div>
+            <div class="brand-copy">
+              <strong>Prato Sintetico Italia</strong>
+              <small>Il tuo prato in arrivo</small>
+            </div>
+          </div>
+
+          <div class="hero">
+            <div class="hero-eyebrow">Ordine ${escapeHtml(data.orderNumber)} · ${escapeHtml(data.customerName)}</div>
+            <h1 class="hero-title">${escapeHtml(stageInfo.title)}</h1>
+            <p class="hero-sub">${escapeHtml(stageInfo.sub)}</p>
+            <div class="hero-pulse"><span class="pulse-dot"></span>${escapeHtml(stageInfo.pulse)}</div>
+          </div>
+        `);
+
+        // Timeline degli step standard, con stato dedotto dallo stage corrente
+        html.push(`<div class="section"><h2 class="section-title">Stato del tuo ordine</h2><div class="timeline-card">`);
+        STANDARD_STEPS.forEach((step) => {
+          const stepIdx = STAGE_ORDER.indexOf(step.key);
+          const cls = stepIdx < stageIdx ? "is-done"
+            : stepIdx === stageIdx ? "is-current"
+            : "is-upcoming";
+          const mark = cls === "is-done" ? "✓" : cls === "is-current" ? "●" : "·";
+          html.push(`
+            <div class="step ${cls}">
+              <div class="step-mark">${mark}</div>
+              <div class="step-body">
+                <strong>${escapeHtml(step.title)}</strong>
+                <span>${escapeHtml(step.sub)}</span>
+              </div>
+            </div>
+          `);
+        });
+        html.push(`</div></div>`);
+
+        // Eventi reali del cantiere (job_events) se presenti
+        if (data.events && data.events.length) {
+          html.push(`<div class="section"><h2 class="section-title">Cronologia cantiere</h2><div class="timeline-card">`);
+          data.events.forEach((ev) => {
+            const info = EVENT_LABELS[ev.eventType] || { icon: "•", title: ev.eventType, sub: "" };
+            html.push(`
+              <div class="step is-done">
+                <div class="step-mark">${info.icon}</div>
+                <div class="step-body">
+                  <strong>${escapeHtml(info.title)}</strong>
+                  <span>${escapeHtml(info.sub)}${ev.hasGps ? " · 📍 verificato" : ""}${ev.photosCount > 0 ? ` · 📷 ${ev.photosCount} foto` : ""}</span>
+                </div>
+                <span class="step-time">${escapeHtml(formatTime(ev.occurredAt))}</span>
+              </div>
+            `);
+          });
+          html.push(`</div></div>`);
+        }
+
+        // Dettagli ordine
+        html.push(`
+          <div class="section"><h2 class="section-title">Dettagli del lavoro</h2>
+            <div class="info-grid">
+              <div class="info-card">
+                <div class="label">Prodotto</div>
+                <div class="value">${escapeHtml(data.productName)}<small>posa professionale</small></div>
+              </div>
+              <div class="info-card">
+                <div class="label">Quantità</div>
+                <div class="value">${escapeHtml(String(data.sqm))} mq<small>area totale</small></div>
+              </div>
+              ${data.siteAddress ? `<div class="info-card" style="grid-column: span 2;">
+                <div class="label">Indirizzo cantiere</div>
+                <div class="value" style="font-size: 14px;">${escapeHtml(data.siteAddress)}</div>
+              </div>` : ""}
+              ${data.installation && data.installation.installDate ? `<div class="info-card">
+                <div class="label">Data posa</div>
+                <div class="value" style="font-size: 14px;">${escapeHtml(formatDate(data.installation.installDate))}${data.installation.installTime ? `<small>ore ${escapeHtml(data.installation.installTime)}</small>` : ""}</div>
+              </div>` : ""}
+              ${data.installation && data.installation.crew ? `<div class="info-card">
+                <div class="label">Squadra</div>
+                <div class="value" style="font-size: 14px;">Team ${escapeHtml(data.installation.crew)}</div>
+              </div>` : ""}
+            </div>
+          </div>
+        `);
+
+        // Verbale firmato (se completato)
+        if (data.reports && data.reports.length) {
+          html.push(`<div class="section"><h2 class="section-title">Documenti</h2>`);
+          data.reports.forEach((r) => {
+            html.push(`
+              <div class="doc-card">
+                <div class="doc-icon">📄</div>
+                <div class="doc-body">
+                  <strong>Verbale di consegna</strong>
+                  <span>${escapeHtml(r.id)} · firmato ${escapeHtml(formatDate(r.signedAt))}${r.executedSqm ? ` · ${escapeHtml(String(r.executedSqm))} mq` : ""}</span>
+                </div>
+                ${r.pdfUrl ? `<a href="${escapeHtml(r.pdfUrl)}" class="doc-link" target="_blank" rel="noopener">Scarica PDF →</a>` : ""}
+              </div>
+            `);
+          });
+          html.push(`</div>`);
+        }
+
+        // Garanzia se completato
+        if (data.warrantyUntil) {
+          html.push(`
+            <div class="section"><h2 class="section-title">Garanzia</h2>
+              <div class="warranty-card">
+                <div class="warranty-icon">🛡️</div>
+                <div class="warranty-body">
+                  <strong>12 mesi di garanzia attiva</strong>
+                  <p>Scadenza ${escapeHtml(formatDate(data.warrantyUntil))}. In caso di anomalie sulla posa, segnala il problema per intervento gratuito entro la scadenza.</p>
+                </div>
+              </div>
+            </div>
+          `);
+        }
+
+        root.innerHTML = html.join("");
+
+        // Bottom bar contatti (se forniti via env)
+        if (data.contactWhatsapp || data.contactPhone) {
+          const bar = document.createElement("div");
+          bar.className = "bottom-bar";
+          bar.innerHTML = `
+            <div class="bottom-bar-inner">
+              <a href="${data.contactWhatsapp ? `https://wa.me/${data.contactWhatsapp.replace(/[^0-9]/g, "")}` : "#"}" class="bb-btn whatsapp ${data.contactWhatsapp ? "" : "hidden"}">💬 WhatsApp PSI</a>
+              <a href="${data.contactPhone ? `tel:${data.contactPhone}` : "#"}" class="bb-btn primary ${data.contactPhone ? "" : "hidden"}">📞 Chiama</a>
+            </div>
+          `;
+          document.body.appendChild(bar);
+        }
+      }
+
+      loadTracking();
+      // Auto-refresh ogni 60s per vedere aggiornamenti live durante la posa
+      setInterval(loadTracking, 60000);
+    </script>
+  </body>
+</html>

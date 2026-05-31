@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260531-timesheet-geoloc";
+const APP_SHELL_VERSION = "20260531-tracking-cliente-token";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14519,6 +14519,7 @@ function renderInstallations() {
   renderInstallationExpenseSection(order);
   renderWorkReportsForOrder(order);
   renderJobEventsForOrder(order);
+  renderClientTrackingSection(order);
   clearStatus(ui.installationStatus);
   updateInstallationPaneVisibility();
 }
@@ -15348,6 +15349,120 @@ async function renderInstallationsLive() {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && state.currentView === "installations-live") {
     renderInstallationsLive();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TRACKING CLIENTE — generazione manuale link pubblico (solo office, solo
+// ordini fornitura+posa)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function orderHasInstallationFlow(order) {
+  const inst = order?.operations?.installation;
+  if (!inst) return false;
+  return Boolean(inst.crew || inst.installDate || inst.status || inst.id);
+}
+
+function renderClientTrackingSection(order) {
+  const root = document.getElementById("client-tracking-section");
+  if (!root) return;
+  if (!order || state.currentUser?.role !== "office" || !orderHasInstallationFlow(order)) {
+    root.hidden = true;
+    root.innerHTML = "";
+    return;
+  }
+  root.hidden = false;
+  const token = order.operations?.trackingToken || "";
+  const createdAt = order.operations?.trackingTokenCreatedAt || null;
+  const baseUrl = window.location.origin;
+  const publicUrl = token ? `${baseUrl}/track/${token}` : "";
+  if (token) {
+    root.innerHTML = `
+      <div class="subsection-head">
+        <div>
+          <h4>Link tracking cliente</h4>
+          <p class="section-copy">Condividi questo link con il cliente per fargli vedere lo stato del cantiere in tempo reale.</p>
+        </div>
+      </div>
+      <div class="tracking-link-card">
+        <div class="tracking-link-row">
+          <input type="text" readonly class="text-input tracking-link-input" value="${escapeAttr(publicUrl)}" id="tracking-url-input" />
+          <button type="button" class="primary-button small" data-action="copy-tracking-link">📋 Copia</button>
+        </div>
+        <div class="tracking-link-actions">
+          <a href="${escapeAttr(publicUrl)}" target="_blank" rel="noopener" class="ghost-button small">↗ Apri anteprima</a>
+          <a href="https://wa.me/?text=${encodeURIComponent("Ciao! Puoi seguire lo stato della tua installazione qui: " + publicUrl)}" target="_blank" rel="noopener" class="ghost-button small">💬 Invia via WhatsApp</a>
+          <button type="button" class="ghost-button small tracking-revoke" data-action="revoke-tracking-link" data-order-id="${escapeAttr(order.id)}">🔒 Revoca link</button>
+        </div>
+        ${createdAt ? `<p class="tracking-link-meta">Generato il ${escapeHtml(formatDate(createdAt))} alle ${escapeHtml(new Date(createdAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }))}</p>` : ""}
+      </div>
+    `;
+  } else {
+    root.innerHTML = `
+      <div class="subsection-head">
+        <div>
+          <h4>Link tracking cliente</h4>
+          <p class="section-copy">Crea un link che il cliente può aprire per vedere stato cantiere, foto live e verbale firmato.</p>
+        </div>
+        <div class="subsection-actions">
+          <button type="button" class="primary-button" data-action="generate-tracking-link" data-order-id="${escapeAttr(order.id)}">🔗 Genera link tracking</button>
+        </div>
+      </div>
+    `;
+  }
+}
+
+async function generateTrackingLink(orderId) {
+  try {
+    const res = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/tracking-token`, { method: "POST" });
+    // Aggiorna lo stato dell'ordine in cache locale
+    const order = (state.orders || []).find((o) => o.id === orderId);
+    if (order) {
+      order.operations = order.operations || {};
+      order.operations.trackingToken = res.token;
+      order.operations.trackingTokenCreatedAt = res.createdAt;
+    }
+    showToast("Link tracking generato", "success");
+    if (state.currentView === "installations") renderInstallations();
+  } catch (err) {
+    showToast(`Errore: ${err?.message || err}`, "error");
+  }
+}
+
+async function revokeTrackingLink(orderId) {
+  if (!window.confirm("Revocare il link? Il cliente non potrà più aprirlo. Potrai sempre generarne uno nuovo.")) return;
+  try {
+    await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/tracking-token`, { method: "DELETE" });
+    const order = (state.orders || []).find((o) => o.id === orderId);
+    if (order?.operations) {
+      delete order.operations.trackingToken;
+      delete order.operations.trackingTokenCreatedAt;
+    }
+    showToast("Link revocato", "success");
+    if (state.currentView === "installations") renderInstallations();
+  } catch (err) {
+    showToast(`Errore: ${err?.message || err}`, "error");
+  }
+}
+
+document.addEventListener("click", (ev) => {
+  const target = ev.target.closest?.("[data-action]");
+  if (!target) return;
+  const action = target.dataset.action;
+  if (action === "generate-tracking-link") {
+    ev.preventDefault();
+    generateTrackingLink(target.dataset.orderId);
+  } else if (action === "revoke-tracking-link") {
+    ev.preventDefault();
+    revokeTrackingLink(target.dataset.orderId);
+  } else if (action === "copy-tracking-link") {
+    ev.preventDefault();
+    const input = document.getElementById("tracking-url-input");
+    if (input) {
+      input.select();
+      try { document.execCommand("copy"); showToast("Link copiato negli appunti", "success"); }
+      catch { showToast("Copia manualmente dal campo", "info"); }
+    }
   }
 });
 
