@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260531-fix-repairs-live-debug";
+const APP_SHELL_VERSION = "20260531-timesheet-geoloc";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -16711,7 +16711,10 @@ function renderTimesheetBanner() {
     const inHM = inAt.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
     const flags = shift.anomalyFlags || [];
     let netSuffix = "";
-    if (flags.includes("off_network_in")) netSuffix = " ⚠️ off-network";
+    // Priorità geo (nuovo) > network (legacy)
+    if (flags.includes("geo_off_site_in")) netSuffix = " ⚠️ off-site";
+    else if (flags.includes("geo_verified_in")) netSuffix = " ✓ in sede";
+    else if (flags.includes("off_network_in")) netSuffix = " ⚠️ off-network";
     else if (flags.includes("in_office_in")) netSuffix = " ✓ in sede";
     if (text) text.textContent = `In turno · entrata ${inHM}${netSuffix}`;
     if (cta) {
@@ -16795,9 +16798,20 @@ async function timesheetClockIn() {
   if (state.timesheet.busy) return;
   state.timesheet.busy = true;
   try {
+    // Chiedi geoloc opt-in al primo uso (stesso pattern di registerJobEvent)
+    if (!isGeoOptedIn()) {
+      const wantsGeo = window.confirm("Vuoi attivare la geolocalizzazione? Le tue timbrature saranno verificate 'in sede'. Attivabile/disattivabile in qualsiasi momento.");
+      setGeoOptIn(wantsGeo);
+    }
+    const pos = await getCurrentPosition();
     await apiFetch("/api/timesheet/clock-in", {
       method: "POST",
-      body: JSON.stringify({ deviceId: getTimesheetDeviceId() }),
+      body: JSON.stringify({
+        deviceId: getTimesheetDeviceId(),
+        lat: pos?.lat,
+        lng: pos?.lng,
+        gpsAccuracyM: pos?.accuracy,
+      }),
     });
     showToast("Buon lavoro! Turno iniziato.", "success");
     await refreshTimesheetState();
@@ -16813,9 +16827,15 @@ async function timesheetClockOut() {
   if (!window.confirm("Terminare il turno?")) return;
   state.timesheet.busy = true;
   try {
+    const pos = await getCurrentPosition();
     const data = await apiFetch("/api/timesheet/clock-out", {
       method: "POST",
-      body: JSON.stringify({ deviceId: getTimesheetDeviceId() }),
+      body: JSON.stringify({
+        deviceId: getTimesheetDeviceId(),
+        lat: pos?.lat,
+        lng: pos?.lng,
+        gpsAccuracyM: pos?.accuracy,
+      }),
     });
     const worked = data?.shift?.workedMinutes || 0;
     const hh = Math.floor(worked / 60);
@@ -16846,9 +16866,12 @@ function openTimesheetModal() {
   if (shift?.clockInAt) {
     const inAt = new Date(shift.clockInAt);
     const outAt = shift.clockOutAt ? new Date(shift.clockOutAt) : null;
-    const networkBadge = (shift.anomalyFlags || []).includes("off_network_in")
-      ? '<span class="ts-badge off">⚠️ off-network</span>'
-      : (state.timesheet.networkConfigured ? '<span class="ts-badge ok">✓ in sede</span>' : '');
+    const sFlags = shift.anomalyFlags || [];
+    let networkBadge = "";
+    if (sFlags.includes("geo_off_site_in")) networkBadge = '<span class="ts-badge off">⚠️ off-site</span>';
+    else if (sFlags.includes("geo_verified_in")) networkBadge = '<span class="ts-badge ok">✓ in sede</span>';
+    else if (sFlags.includes("off_network_in")) networkBadge = '<span class="ts-badge off">⚠️ off-network</span>';
+    else if (sFlags.includes("in_office_in")) networkBadge = '<span class="ts-badge ok">✓ in sede</span>';
     html += `
       <section class="ts-modal-section">
         <h4>Turno di oggi</h4>
@@ -17127,22 +17150,25 @@ async function renderTimesheetOffice() {
       return;
     }
 
-    // Determina se anti-frode è attivo (almeno uno shift ha classification)
-    const antifraudActive = shifts.some((s) => {
+    // Determina se geofence è attivo (almeno uno shift ha tag geo)
+    const geofenceActive = shifts.some((s) => {
       const f = s.anomalyFlags || [];
-      return f.includes("in_office_in") || f.includes("off_network_in") || f.includes("in_office_out") || f.includes("off_network_out");
+      return f.includes("geo_verified_in") || f.includes("geo_off_site_in")
+        || f.includes("geo_verified_out") || f.includes("geo_off_site_out")
+        || f.includes("in_office_in") || f.includes("off_network_in"); // legacy network
     });
 
     let html = `
       <div class="ts-office-toolbar">
         <strong>Settimana ${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short"}).format(monday)} - ${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short",year:"numeric"}).format(sunday)}</strong>
       </div>
-      ${!antifraudActive ? `
+      ${!geofenceActive ? `
       <div class="ts-warn-banner">
-        <strong>⚠️ Anti-frode IP non configurato.</strong>
-        Le timbrature non vengono classificate come "in sede" o "off-network".
-        Configura la variabile <code>COMPANY_NETWORK_CIDR</code> su Render con il range IP del capannone
-        (es. <code>192.168.1.0/24</code>) per attivare il check automatico.
+        <strong>⚠️ Geofence non configurato.</strong>
+        Le timbrature non vengono verificate per posizione "in sede".
+        Configura le variabili <code>COMPANY_OFFICE_LAT</code>, <code>COMPANY_OFFICE_LNG</code> e
+        <code>COMPANY_OFFICE_RADIUS_M</code> (default 200m) su Render con le coordinate del capannone
+        per attivare il check automatico.
       </div>` : ""}
       <div class="ts-office-table-wrap">
         <table class="ts-office-table">
@@ -17168,19 +17194,27 @@ async function renderTimesheetOffice() {
         const s = byDate.get(d.date);
         if (!s) { html += '<td class="ts-cell empty">—</td>'; continue; }
         const flags = s.anomalyFlags || [];
-        const offNetIn = flags.includes("off_network_in");
-        const offNetOut = flags.includes("off_network_out");
-        const offNet = offNetIn || offNetOut;
-        const inOfficeIn = flags.includes("in_office_in");
-        const inOfficeOut = flags.includes("in_office_out");
-        const wasClassified = offNet || inOfficeIn || inOfficeOut;
-        // ✓ se classified come in_office, ⚠️ se off_network, niente se anti-frode disabilitato
+        // Priorità: geo_* (nuovo) > network_* (legacy)
+        const geoOffIn = flags.includes("geo_off_site_in");
+        const geoOffOut = flags.includes("geo_off_site_out");
+        const geoOff = geoOffIn || geoOffOut;
+        const geoOkIn = flags.includes("geo_verified_in");
+        const geoOkOut = flags.includes("geo_verified_out");
+        const geoOk = geoOkIn || geoOkOut;
+        // Fallback legacy network (per shift vecchi precedenti alla migrazione)
+        const netOffIn = flags.includes("off_network_in");
+        const netOffOut = flags.includes("off_network_out");
+        const netOff = netOffIn || netOffOut;
+        const netOk = flags.includes("in_office_in") || flags.includes("in_office_out");
+        const offSite = geoOff || (!geoOk && netOff);
+        const verified = geoOk || (!geoOff && netOk);
+        // ✓ se verificata, ⚠️ se off-site, niente se non classificata
         let networkBadge = "";
-        if (offNet) {
-          const where = offNetIn && offNetOut ? "in/out" : offNetIn ? "in" : "out";
-          networkBadge = `<span class="ts-net-badge off" title="Off-network (${escapeAttr(where)})">⚠️</span>`;
-        } else if (wasClassified && s.clockInAt) {
-          networkBadge = `<span class="ts-net-badge ok" title="Timbratura in sede">✓</span>`;
+        if (offSite) {
+          const where = geoOffIn && geoOffOut ? "in/out" : geoOffIn || netOffIn ? "entrata" : "uscita";
+          networkBadge = `<span class="ts-net-badge off" title="Off-site (${escapeAttr(where)})">⚠️</span>`;
+        } else if (verified && s.clockInAt) {
+          networkBadge = `<span class="ts-net-badge ok" title="Timbratura in sede (GPS verificato)">✓</span>`;
         }
         const displayValue = s.workedMinutes
           ? formatMinutesToHM(s.workedMinutes)

@@ -815,13 +815,21 @@ async function ensureRelationalSchema() {
         ip_address TEXT,
         user_agent TEXT,
         device_id TEXT,                            -- UUID generato client-side al primo accesso
-        network_tag TEXT,                          -- 'in_office' | 'off_network' | NULL
+        network_tag TEXT,                          -- 'in_office' | 'off_network' | NULL (legacy, sostituito da geo_*)
+        lat NUMERIC,                               -- opt-in geolocation al clock-in/out
+        lng NUMERIC,
+        gps_accuracy_m INTEGER,                    -- precisione GPS in metri
+        geo_tag TEXT,                              -- 'verified' | 'off_site' | NULL (se no geoloc)
         edited_by TEXT,                            -- chi ha rettificato (office user id/email)
         edited_at TIMESTAMPTZ,
         edit_reason TEXT,                          -- motivo della rettifica
         device_info JSONB DEFAULT '{}',            -- altri metadati (browser version, screen, ecc.)
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS lat NUMERIC;
+      ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS lng NUMERIC;
+      ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS gps_accuracy_m INTEGER;
+      ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS geo_tag TEXT;
       CREATE INDEX IF NOT EXISTS time_entries_user_idx ON time_entries (user_id, occurred_at DESC);
       -- Indice opzionale per filtri rapidi per giorno: omesso perché PostgreSQL
       -- rifiuta (occurred_at::date) come non IMMUTABLE per TIMESTAMPTZ. Le query
@@ -1831,6 +1839,42 @@ function extractClientIp(req) {
   return xff || (req.socket?.remoteAddress || "") || "";
 }
 
+/**
+ * Posizione capannone + raggio per geofence timesheet.
+ * Configurabile via env vars (preferred) o settings table.
+ *   COMPANY_OFFICE_LAT=41.901
+ *   COMPANY_OFFICE_LNG=12.493
+ *   COMPANY_OFFICE_RADIUS_M=200
+ * Se non configurate, geofence disabilitato (geo_tag resta NULL).
+ */
+const COMPANY_OFFICE_LAT = process.env.COMPANY_OFFICE_LAT ? Number(process.env.COMPANY_OFFICE_LAT) : null;
+const COMPANY_OFFICE_LNG = process.env.COMPANY_OFFICE_LNG ? Number(process.env.COMPANY_OFFICE_LNG) : null;
+const COMPANY_OFFICE_RADIUS_M = Number(process.env.COMPANY_OFFICE_RADIUS_M) || 200;
+
+/** Distanza in metri tra 2 punti lat/lng (formula haversine semplificata). */
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) return null;
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(Math.max(0, Math.min(1, a)))));
+}
+
+/**
+ * Classifica una timbratura per geofence: 'verified' se entro il raggio,
+ * 'off_site' se fuori, NULL se geoloc non disponibile o geofence non configurato.
+ */
+function classifyGeoTag(lat, lng) {
+  if (lat == null || lng == null) return null;
+  if (COMPANY_OFFICE_LAT == null || COMPANY_OFFICE_LNG == null) return null;
+  const distance = haversineMeters(lat, lng, COMPANY_OFFICE_LAT, COMPANY_OFFICE_LNG);
+  if (distance == null) return null;
+  return distance <= COMPANY_OFFICE_RADIUS_M ? "verified" : "off_site";
+}
+
 function dbRowToTimeEntry(row) {
   if (!row) return null;
   return {
@@ -1842,6 +1886,10 @@ function dbRowToTimeEntry(row) {
     notes: row.notes || "",
     ipAddress: row.ip_address || "",
     networkTag: row.network_tag || null,
+    lat: row.lat != null ? Number(row.lat) : null,
+    lng: row.lng != null ? Number(row.lng) : null,
+    gpsAccuracyM: row.gps_accuracy_m != null ? Number(row.gps_accuracy_m) : null,
+    geoTag: row.geo_tag || null,
     deviceId: row.device_id || "",
     userAgent: row.user_agent || "",
     editedBy: row.edited_by || null,
@@ -1893,6 +1941,10 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
   const occurredAt = ctx.occurredAt ? new Date(ctx.occurredAt) : new Date();
   let shiftDate = shiftDateForTimestamp(occurredAt);
   const networkTag = classifyNetwork(ctx.ipAddress);
+  const lat = ctx.lat != null ? Number(ctx.lat) : null;
+  const lng = ctx.lng != null ? Number(ctx.lng) : null;
+  const gpsAccuracyM = ctx.gpsAccuracyM != null ? Number(ctx.gpsAccuracyM) : null;
+  const geoTag = classifyGeoTag(lat, lng);
 
   // Trova shift della giornata, se esiste
   let existingShift = await pool.query(
@@ -1939,8 +1991,8 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
     await client.query("BEGIN");
     const entryRes = await client.query(
       `INSERT INTO time_entries
-        (user_id, entry_type, source, occurred_at, notes, ip_address, user_agent, device_id, network_tag)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        (user_id, entry_type, source, occurred_at, notes, ip_address, user_agent, device_id, network_tag, lat, lng, gps_accuracy_m, geo_tag)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
         String(userId),
@@ -1952,13 +2004,20 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
         String(ctx.userAgent || "").slice(0, 500) || null,
         String(ctx.deviceId || "") || null,
         networkTag,
+        lat,
+        lng,
+        gpsAccuracyM,
+        geoTag,
       ],
     );
     const newEntry = entryRes.rows[0];
 
     // Aggiorna/crea time_shifts
+    // Flags geo (preferito) + network (legacy): consente fallback graduale
     if (entryType === "clock_in") {
       const flags = [];
+      if (geoTag === "off_site") flags.push("geo_off_site_in");
+      else if (geoTag === "verified") flags.push("geo_verified_in");
       if (networkTag === "off_network") flags.push("off_network_in");
       else if (networkTag === "in_office") flags.push("in_office_in");
       await client.query(
@@ -1976,6 +2035,8 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
       const inTime = shift?.clock_in_at ? new Date(shift.clock_in_at) : null;
       const worked = inTime ? Math.max(0, Math.round((occurredAt - inTime) / 60000)) : null;
       const flags = Array.isArray(shift.anomaly_flags) ? [...shift.anomaly_flags] : [];
+      if (geoTag === "off_site") flags.push("geo_off_site_out");
+      else if (geoTag === "verified") flags.push("geo_verified_out");
       if (networkTag === "off_network") flags.push("off_network_out");
       else if (networkTag === "in_office") flags.push("in_office_out");
       await client.query(
@@ -10772,8 +10833,15 @@ async function handleApi(req, res, url) {
         userAgent: String(req.headers["user-agent"] || ""),
         deviceId: String(body.deviceId || ""),
         notes: body.notes,
+        lat: body.lat,
+        lng: body.lng,
+        gpsAccuracyM: body.gpsAccuracyM,
       });
-      writeAuditLog("timesheet", String(currentUser.id), "clock_in", { networkTag: result?.entry?.networkTag || null, source: "manual" }, currentUser.email || null).catch(() => {});
+      writeAuditLog("timesheet", String(currentUser.id), "clock_in", {
+        networkTag: result?.entry?.networkTag || null,
+        geoTag: result?.entry?.geoTag || null,
+        source: "manual",
+      }, currentUser.email || null).catch(() => {});
       return sendJson(res, 200, result);
     } catch (err) {
       console.error("[timesheet] clock-in failed:", err?.message || err);
@@ -10793,8 +10861,15 @@ async function handleApi(req, res, url) {
         userAgent: String(req.headers["user-agent"] || ""),
         deviceId: String(body.deviceId || ""),
         notes: body.notes,
+        lat: body.lat,
+        lng: body.lng,
+        gpsAccuracyM: body.gpsAccuracyM,
       });
-      writeAuditLog("timesheet", String(currentUser.id), "clock_out", { networkTag: result?.entry?.networkTag || null, workedMinutes: result?.shift?.workedMinutes || null }, currentUser.email || null).catch(() => {});
+      writeAuditLog("timesheet", String(currentUser.id), "clock_out", {
+        networkTag: result?.entry?.networkTag || null,
+        geoTag: result?.entry?.geoTag || null,
+        workedMinutes: result?.shift?.workedMinutes || null,
+      }, currentUser.email || null).catch(() => {});
       return sendJson(res, 200, result);
     } catch (err) {
       console.error("[timesheet] clock-out failed:", err?.message || err);
@@ -10808,7 +10883,11 @@ async function handleApi(req, res, url) {
     if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
     try {
       const shift = await getCurrentShiftForUser(currentUser.id);
-      return sendJson(res, 200, { shift, networkConfigured: _companyCidrs.length > 0 });
+      return sendJson(res, 200, {
+        shift,
+        networkConfigured: _companyCidrs.length > 0,
+        geofenceConfigured: COMPANY_OFFICE_LAT != null && COMPANY_OFFICE_LNG != null,
+      });
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "current_failed") });
     }
