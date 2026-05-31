@@ -2266,7 +2266,8 @@ async function generateServiceRepairId() {
 
 /** Genera token random URL-safe per il tracking pubblico (32 chars base64url). */
 function generateTrackingToken() {
-  const bytes = require("node:crypto").randomBytes(24);
+  // randomBytes già importato in cima al file (ESM)
+  const bytes = randomBytes(24);
   return bytes.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
