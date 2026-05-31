@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260531-google-maps-link";
+const APP_SHELL_VERSION = "20260531-live-refresh-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15321,10 +15321,11 @@ async function renderInstallationsLive() {
   root.innerHTML = '<div class="live-loading">Caricamento cantieri live…</div>';
   try {
     const res = await apiListLiveJobs();
+    console.log("[cantieri-live] fetch result:", res);
     state.jobEvents.live.groups = res?.groups || [];
     state.jobEvents.live.loadedAt = Date.now();
     _renderLiveInner(root);
-    // Auto-refresh ogni 30s mentre la view è aperta
+    // Auto-refresh più frequente: 15s + refresh anche al focus tab
     if (state.jobEvents.live.autoRefresh) clearInterval(state.jobEvents.live.autoRefresh);
     state.jobEvents.live.autoRefresh = window.setInterval(() => {
       if (state.currentView !== "installations-live") {
@@ -15335,12 +15336,20 @@ async function renderInstallationsLive() {
       apiListLiveJobs().then((r) => {
         state.jobEvents.live.groups = r?.groups || [];
         _renderLiveInner(root);
-      }).catch(() => {});
-    }, 30000);
+      }).catch((err) => console.warn("[cantieri-live] poll error:", err?.message || err));
+    }, 15000);
   } catch (err) {
+    console.error("[cantieri-live] initial fetch failed:", err);
     root.innerHTML = `<div class="live-error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
   }
 }
+
+// Refresh Cantieri Live anche quando il tab torna visibile
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.currentView === "installations-live") {
+    renderInstallationsLive();
+  }
+});
 
 function _renderLiveInner(root) {
   const groups = state.jobEvents.live.groups || [];
