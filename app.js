@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260531-more-sheet-sections";
+const APP_SHELL_VERSION = "20260531-fix-repairs-live-debug";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -19832,7 +19832,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "timesheet-office": renderTimesheetOffice(); break;
       case "installations-todo": renderInstallationsTodo(); break;
       case "installations-scheduled": renderInstallationsScheduled(); break;
-      case "installations-repairs": renderInstallationsRepairs(); break;
+      case "installations-repairs": _renderInstallationsRepairsFull(); break;
       case "installations-live": renderInstallationsLive(); break;
       default: renderDashboard(); break;
     }

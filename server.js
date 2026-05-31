@@ -2449,8 +2449,8 @@ async function listLiveJobEventsToday({ crewName = null } = {}) {
   try {
     await ensureRelationalSchema();
     const pool = await getPgPool();
-    // Finestra: ultimi 18h (copre turno notturno) per evitare timezone issue
-    const sinceTs = new Date(Date.now() - 18 * 3600 * 1000).toISOString();
+    // Finestra: ultimi 24h (più tollerante per timezone server UTC vs Roma)
+    const sinceTs = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const params = [sinceTs];
     let sql = `SELECT * FROM job_events WHERE occurred_at >= $1`;
     if (crewName) {
@@ -2459,6 +2459,7 @@ async function listLiveJobEventsToday({ crewName = null } = {}) {
     }
     sql += ` ORDER BY occurred_at ASC LIMIT 2000`;
     const { rows } = await pool.query(sql, params);
+    console.log(`[db] listLiveJobEventsToday: sinceTs=${sinceTs} crew=${crewName || "(any)"} found=${rows.length}`);
     return rows.map(dbRowToJobEvent);
   } catch (err) {
     console.warn("[db] listLiveJobEventsToday:", err?.message);
@@ -10428,6 +10429,7 @@ async function handleApi(req, res, url) {
         ? (currentUser.crewName || currentUser.name || "")
         : (url.searchParams.get("crew") || null);
       const events = await listLiveJobEventsToday({ crewName });
+      console.log(`[cantieri-live] user=${currentUser.email || currentUser.id} role=${currentUser.role} crewFilter=${crewName || "(none)"} events=${events.length}`);
       // Raggruppa per orderId, mantieni l'ordine cronologico
       const byOrder = new Map();
       for (const ev of events) {
