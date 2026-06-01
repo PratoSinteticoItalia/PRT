@@ -7,6 +7,7 @@
     <meta name="theme-color" content="#18241f" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="color-scheme" content="light" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="PSI Ops" />
     <title>Prato Sintetico Italia - Portale Operativo</title>
@@ -18,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260531-fix-require-esm" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260531-fix-require-esm" />
+    <link rel="preload" href="./styles.css?v=20260602-comms-ux5" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260602-comms-ux5" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -294,10 +295,6 @@
               </button>
             </div>
           </div>
-          <button class="nav-link" data-view="communications">
-            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></span>
-            <span class="nav-label">Comunicazioni</span>
-          </button>
         </nav>
 
         <div id="sidebar-sales-divider" class="sidebar-divider-line"></div>
@@ -312,6 +309,10 @@
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.9 5.8a2 2 0 0 0 1.27 1.27L21 12l-5.83 1.93a2 2 0 0 0-1.27 1.27L12 21l-1.9-5.8a2 2 0 0 0-1.27-1.27L3 12l5.83-1.93a2 2 0 0 0 1.27-1.27L12 3z"></path></svg></span>
             <span class="nav-label">Generatore</span>
           </button>
+          <button class="nav-link" data-view="garden-planner">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V12"></path><path d="M5 3a7 7 0 0 0 14 0"></path><path d="M5 3c0 3.866 3.134 7 7 7s7-3.134 7-7"></path><path d="M5 3H3"></path><path d="M19 3h2"></path></svg></span>
+            <span class="nav-label">Garden Planner</span>
+          </button>
           <button class="nav-link" data-view="sales-content">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M16 13H8"></path><path d="M16 17H8"></path><path d="M10 9H8"></path></svg></span>
             <span class="nav-label">Contenuti</span>
@@ -319,6 +320,24 @@
           <button class="nav-link" data-view="marketing">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg></span>
             <span class="nav-label">Marketing</span>
+          </button>
+        </nav>
+
+        <div id="sidebar-team-divider" class="sidebar-divider-line"></div>
+
+        <div id="sidebar-team-label" class="sidebar-section-label">Team</div>
+        <nav id="sidebar-team-nav" class="nav nav-secondary">
+          <button class="nav-link" data-view="communications">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></span>
+            <span class="nav-label">Comunicazioni</span>
+          </button>
+          <button class="nav-link nav-timesheet-me" data-view="timesheet-me">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 14"></polyline></svg></span>
+            <span class="nav-label">Le mie presenze</span>
+          </button>
+          <button class="nav-link nav-timesheet-office" data-view="timesheet-office">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></span>
+            <span class="nav-label">Presenze</span>
           </button>
         </nav>
 
@@ -345,25 +364,6 @@
           <button class="nav-link" data-view="settings">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span>
             <span class="nav-label">Impostazioni</span>
-          </button>
-          <!-- Sistema Presenze: voci dedicate per ruoli employee -->
-          <button class="nav-link nav-timesheet-me" data-view="timesheet-me">
-            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 14"></polyline></svg></span>
-            <span class="nav-label">Le mie presenze</span>
-          </button>
-          <button class="nav-link nav-timesheet-office" data-view="timesheet-office">
-            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></span>
-            <span class="nav-label">Presenze</span>
-          </button>
-        </nav>
-
-        <div id="sidebar-tools-divider" class="sidebar-divider-line"></div>
-
-        <div id="sidebar-tools-label" class="sidebar-section-label">Strumenti</div>
-        <nav id="sidebar-tools-nav" class="nav nav-secondary">
-          <button class="nav-link" data-view="garden-planner">
-            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V12"></path><path d="M5 3a7 7 0 0 0 14 0"></path><path d="M5 3c0 3.866 3.134 7 7 7s7-3.134 7-7"></path><path d="M5 3H3"></path><path d="M19 3h2"></path></svg></span>
-            <span class="nav-label">Garden Planner</span>
           </button>
         </nav>
 
@@ -509,6 +509,15 @@
                 </div>
               </header>
               <div id="dashboard-crew-week" class="dash-week-summary"></div>
+            </section>
+            <section class="dash-card">
+              <header class="dash-card-head">
+                <div>
+                  <span class="dash-card-eyebrow" id="dashboard-crew-messages-eyebrow">Comunicazioni</span>
+                  <h2 class="dash-card-title" id="dashboard-crew-messages-title">Chat diretta</h2>
+                </div>
+              </header>
+              <div id="dashboard-crew-messages" class="dash-action-list"></div>
             </section>
           </div>
         </section>
@@ -840,7 +849,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260531-fix-require-esm&shell=20260531-fix-require-esm"
+                src="./sales-suite/generator.html?embedded=1&v=20260602-comms-ux5&shell=20260602-comms-ux5"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2422,7 +2431,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260531-fix-require-esm" defer></script>
-    <script src="./app.js?v=20260531-fix-require-esm" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260602-comms-ux5" defer></script>
+    <script src="./app.js?v=20260602-comms-ux5" type="module"></script>
   </body>
 </html>

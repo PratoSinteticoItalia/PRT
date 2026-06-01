@@ -3,7 +3,7 @@
   "short_name": "PSI Ops",
   "description": "Portale operativo per ordini, logistica, pose e contabilita.",
   "lang": "it-IT",
-  "start_url": "/?shell=20260512-stability-audit-177",
+  "start_url": "/?shell=20260602-comms-ux5",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -38,12 +38,12 @@
     {
       "name": "Portale operativo",
       "short_name": "Ops",
-      "url": "/?shell=20260512-stability-audit-177"
+      "url": "/?shell=20260602-comms-ux5"
     },
     {
       "name": "Garden Planner",
       "short_name": "Planner",
-      "url": "/garden-planner.html?shell=20260512-stability-audit-177"
+      "url": "/garden-planner.html?shell=20260602-comms-ux5"
     }
   ]
 }

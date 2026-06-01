@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --bg: #fafaf8;
   --panel: rgba(255, 255, 255, 0.96);
   --line: rgba(0, 0, 0, 0.08);
@@ -14573,6 +14574,50 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   }
 }
 
+/* Warehouse mobile layout: il detail-panel (form + allocazione) sale in cima,
+   il catalogo giacenze finisce sotto — così su mobile si vede subito l'azione. */
+@media (max-width: 980px) {
+  #warehouse .two-col {
+    grid-template-columns: 1fr;
+  }
+
+  #warehouse .two-col > section:first-child {
+    order: 2;
+  }
+
+  #warehouse .two-col > .detail-panel {
+    order: 1;
+    max-height: none;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .warehouse-allocation-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .warehouse-allocation-actions > button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .warehouse-allocation-head {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .inventory-section-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .inventory-section-head > button {
+    width: 100%;
+  }
+}
+
 #accounting .accounting-pane-group[data-accounting-pane="billing"] .inline-actions {
   margin-top: 14px;
   padding-top: 6px;
@@ -15895,7 +15940,8 @@ textarea.text-input {
 .communications-thread {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: start;
+  padding-top: 10px;
   gap: 10px;
   width: 100%;
   border: 1px solid rgba(35, 49, 33, 0.08);
@@ -16049,19 +16095,119 @@ textarea.text-input {
   .communications-shell {
     grid-template-columns: 1fr;
     min-height: auto;
+    height: auto;
   }
   .communications-sidebar {
     border-right: 0;
     border-bottom: 1px solid rgba(35, 49, 33, 0.08);
     padding-right: 0;
     padding-bottom: 14px;
+    max-height: none;
+    overflow: visible;
+  }
+  /* Drill-down mobile: mostra solo lista O solo chat, non entrambe */
+  .communications-shell[data-mobile-view="chat"] .communications-sidebar {
+    display: none;
+  }
+  .communications-shell[data-mobile-view="list"] .communications-chat,
+  .communications-shell:not([data-mobile-view]) .communications-chat {
+    display: none;
   }
   .communications-chat {
-    min-height: 520px;
+    /* 4 righe: back-btn + head + messages(1fr) + composer */
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    /* Altezza dinamica: viewport − contenuto sopra(~230px) − bottom-nav(~70px) − margini(~50px) */
+    height: min(calc(100dvh - 350px), 560px);
+    min-height: min(260px, calc(100dvh - 350px));
+    display: grid;
   }
   .communications-composer {
     grid-template-columns: 1fr;
   }
+  /* Page header comunicazioni: compatto su mobile per liberare spazio verticale */
+  #communications-content .page-header {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 10px;
+  }
+  #communications-content .page-header h1 {
+    font-size: 20px !important;
+    line-height: 1.2 !important;
+    letter-spacing: -0.01em !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #communications-content .page-header-sub {
+    font-size: 11px !important;
+    margin-top: 1px !important;
+  }
+  /* Form nuova chat: più compatto su mobile quando ci sono già thread */
+  .communications-shell[data-has-threads] .communications-new {
+    background: rgba(255,255,255,0.56);
+    border: 1px solid rgba(35, 49, 33, 0.08);
+    border-radius: 14px;
+    padding: 10px 12px;
+  }
+}
+/* Back button: visibile solo dentro il drill-down chat su mobile */
+.communications-back-btn {
+  display: none;
+}
+@media (max-width: 900px) {
+  .communications-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px 5px 8px;
+    border: 1px solid rgba(35, 49, 33, 0.14);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--brand);
+    margin-bottom: 10px;
+    width: fit-content;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .communications-back-btn:active {
+    background: var(--brand-soft);
+  }
+}
+/* Form nuova chat: variante singolo target già attivo */
+.communications-new--active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 12px;
+}
+.communications-new-active-label {
+  font-size: 13px;
+  color: var(--text2);
+}
+.communications-new-active-label strong {
+  color: var(--text1);
+}
+/* Form nuova chat: variante singolo target, 1 click */
+.communications-new--single {
+  padding: 0 0 14px;
+}
+.communications-new--single button {
+  width: 100%;
+}
+/* Thread meta: badge unread + timestamp in colonna */
+.communications-thread-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.communications-thread-time {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 .marketing-preview-top {
   display: flex;

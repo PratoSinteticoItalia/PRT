@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260531-tracking-cliente-token";
+const APP_SHELL_VERSION = "20260602-comms-ux5";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7,7 +7,13 @@ const COVERAGE_STORAGE_KEY = "pose-installation-coverage-v1";
 const COVERAGE_GEOCODE_CACHE_KEY = "pose-coverage-geocode-v1";
 const PROFIT_SPLIT_STORAGE_KEY = "pose-profit-split-v1";
 const SESSION_KEEPALIVE_INTERVAL_MS = 1000 * 90; // era 15s — ridotto a 90s per meno chiamate /api/session
-const COMMUNICATIONS_POLL_INTERVAL_MS = 8000;
+// Poll più lento per ridurre carico: la chat fa già piggyback su SSE store-revision
+// per nuovi messaggi in real-time. Il polling è il fallback.
+const COMMUNICATIONS_POLL_INTERVAL_MS = 15000;
+// Ogni N tick del polling ricaricalmo la lista thread completa. In mezzo solo i messaggi
+// del thread attivo (i thread cambiano raramente, le preview si aggiornano comunque
+// quando arriva un messaggio).
+const COMMUNICATIONS_THREADS_REFRESH_EVERY_N_POLLS = 3;
 const SESSION_REVISION_ENDPOINT = "/api/session/revision";
 const SESSION_EVENTS_ENDPOINT = "/api/events";
 const SESSION_EVENTS_RECONNECT_BASE_MS = 500;
@@ -10841,6 +10847,43 @@ function renderDashboardCrewView() {
     };
     renderDashboardWeekSummary(weekEl, ownerFilter);
   }
+
+  // Widget comunicazioni: mostra messaggi non letti o CTA per aprire la chat
+  const messagesEl = document.getElementById("dashboard-crew-messages");
+  const msgEyebrow = document.getElementById("dashboard-crew-messages-eyebrow");
+  const msgTitle = document.getElementById("dashboard-crew-messages-title");
+  if (messagesEl) {
+    const it = state.lang !== "en";
+    const unread = Number(state.communicationsUnreadCount || 0);
+    const threads = state.communicationThreads || [];
+    const firstThread = threads.find((t) => Number(t.unreadCount || 0) > 0) || threads[0];
+    const contactName = firstThread?.otherUser ? communicationUserLabel(firstThread.otherUser) : (it ? "Ufficio" : "Office");
+    if (unread > 0) {
+      if (msgEyebrow) msgEyebrow.textContent = it ? "Messaggi" : "Messages";
+      if (msgTitle) msgTitle.textContent = it ? `${unread} non lett${unread === 1 ? "o" : "i"}` : `${unread} unread`;
+      messagesEl.innerHTML = `
+        <button class="dash-action-row" type="button" data-action="go-communications" style="width:100%;cursor:pointer">
+          <div class="dash-action-dot tone-amber"></div>
+          <div class="dash-action-content">
+            <div class="dash-action-title">${escapeHtml(contactName)}</div>
+            <div class="dash-action-sub">${unread === 1 ? (it ? "1 messaggio non letto" : "1 unread message") : (it ? `${unread} messaggi non letti` : `${unread} unread messages`)}</div>
+          </div>
+          <span class="dash-action-tag tone-amber">${it ? "Apri →" : "Open →"}</span>
+        </button>`;
+    } else {
+      if (msgEyebrow) msgEyebrow.textContent = it ? "Comunicazioni" : "Chat";
+      if (msgTitle) msgTitle.textContent = it ? "Chat diretta" : "Direct chat";
+      messagesEl.innerHTML = `
+        <button class="dash-action-row" type="button" data-action="go-communications" style="width:100%;cursor:pointer">
+          <div class="dash-action-dot"></div>
+          <div class="dash-action-content">
+            <div class="dash-action-title">${it ? "Scrivi all'ufficio" : "Message the office"}</div>
+            <div class="dash-action-sub">${firstThread ? (it ? "Chat attiva — nessun nuovo messaggio" : "Active chat — no new messages") : (it ? "Apri la chat privata con l'ufficio" : "Open a private chat with the office")}</div>
+          </div>
+          <span class="dash-action-arrow" style="color:var(--brand);font-weight:700">→</span>
+        </button>`;
+    }
+  }
 }
 
 function renderDashboard() {
@@ -13538,6 +13581,13 @@ function renderOrderInventoryAllocationPanel(order) {
       </div>`
     : "";
 
+  const hasSuggestions = suggestionRows.length > 0 || missingRows.length > 0;
+  const suggestLabel = pending
+    ? (state.lang === "it" ? "Caricamento..." : "Loading...")
+    : hasSuggestions
+      ? (state.lang === "it" ? "Ricalcola" : "Recalculate")
+      : (state.lang === "it" ? "Calcola proposta" : "Suggest pieces");
+
   return `
     <div class="warehouse-allocation-card">
       <div class="warehouse-allocation-head">
@@ -13546,6 +13596,9 @@ function renderOrderInventoryAllocationPanel(order) {
           <span>${allocationSummaryLabel}</span>
         </div>
         <div class="warehouse-allocation-actions">
+          <button class="${hasSuggestions || activeAllocations.length ? "ghost-button" : "primary-button"} small-button${pending ? " is-busy" : ""}" type="button" data-action="suggest-inventory-order" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>
+            ${suggestLabel}
+          </button>
           <button class="primary-button small-button${pending ? " is-busy" : ""}" type="button" data-action="commit-inventory-order" data-id="${escapeHtml(order.id)}" ${canCommit ? "" : "disabled"}>
             ${pending ? (state.lang === "it" ? "Caricamento..." : "Loading...") : (state.lang === "it" ? "Impegna" : "Commit")}
           </button>
@@ -15774,6 +15827,7 @@ document.addEventListener("click", (ev) => {
   const action = ev.target.closest?.("[data-action]")?.dataset.action;
   if (action === "open-more-sheet") { ev.preventDefault(); openMoreSheet(); }
   else if (action === "close-more-sheet") { ev.preventDefault(); closeMoreSheet(); }
+  else if (action === "go-communications") { ev.preventDefault(); if (typeof setView === "function") setView("communications"); }
 });
 
 // Re-render bottom nav su cambio view, login, resize
@@ -18857,6 +18911,11 @@ function startSessionEvents() {
     if (sessionEventsSource !== source) return;
     const payload = parseSessionEventPayload(event);
     handleRealtimeSessionRevision(payload?.revision);
+    // PERF chat: se siamo nella view Comunicazioni, riallinea subito al cambio store
+    // (nuovi messaggi arrivati). Evita di aspettare il poll periodico (~15s).
+    if (state.currentView === "communications" && !document.hidden) {
+      void pollCommunications({ render: true });
+    }
   });
 
   source.onopen = () => {
@@ -19032,12 +19091,38 @@ function startSalesRequestAutoSync() {
   }, SALES_REQUEST_AUTO_SYNC_INTERVAL_MS);
 }
 
+const PSI_SESSION_CACHE_KEY = "psi_session_v1";
+function saveSessionCache(session) {
+  if (!session?.user) return;
+  try { localStorage.setItem(PSI_SESSION_CACHE_KEY, JSON.stringify({ user: session.user })); } catch {}
+}
+function loadCachedSession() {
+  try { const r = localStorage.getItem(PSI_SESSION_CACHE_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+}
+function clearSessionCache() {
+  try { localStorage.removeItem(PSI_SESSION_CACHE_KEY); } catch {}
+}
+
 async function loadSession() {
   setShellPending(true);
+
+  // Stale-while-revalidate: render from cached user instantly so nav pills appear
+  // immediately on repeat visits and the app is usable offline.
+  const cached = loadCachedSession();
+  if (cached?.user) {
+    applyFetchedSessionSnapshot(cached, { renderMode: "none", enforcePasswordResetView: false });
+    setShellPending(false);
+    updateMobileMenu();
+    ui.authScreen?.classList.add("hidden");
+    ui.appShell?.classList.remove("hidden");
+    renderCurrentViewOnly(state.currentView);
+  }
+
   let lastError = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const session = await apiFetch("/api/session");
+      saveSessionCache(session);
       const hasSession = applyFetchedSessionSnapshot(session, {
         renderMode: "none",
         enforcePasswordResetView: true,
@@ -19051,6 +19136,7 @@ async function loadSession() {
     } catch (error) {
       lastError = error;
       if (error?.status === 401 || error?.message === "unauthorized") {
+        clearSessionCache();
         resetSessionToAuthView();
         return;
       }
@@ -19061,7 +19147,7 @@ async function loadSession() {
     }
   }
   console.warn("session_bootstrap_failed", lastError);
-  if (state.currentUser) {
+  if (cached?.user || state.currentUser) {
     showApp();
     return;
   }
@@ -19413,6 +19499,38 @@ function formatCommunicationTime(value = "") {
   }).format(date);
 }
 
+function formatThreadTime(value = "") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffH = Math.floor(diffMs / 3600000);
+  if (diffMin < 2) return state.lang === "it" ? "ora" : "now";
+  if (diffMin < 60) return `${diffMin} min`;
+  if (diffH < 24) return `${diffH}h`;
+  const yday = new Date(now);
+  yday.setDate(yday.getDate() - 1);
+  if (date.toDateString() === yday.toDateString()) return state.lang === "it" ? "ieri" : "yest.";
+  return new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit" }).format(date);
+}
+
+function syncCommunicationsMobileView() {
+  const shell = document.querySelector(".communications-shell");
+  if (!shell) return;
+  const isMobile = window.innerWidth <= 900;
+  if (!isMobile) {
+    shell.removeAttribute("data-mobile-view");
+  } else {
+    shell.dataset.mobileView = state.selectedCommunicationThreadId ? "chat" : "list";
+  }
+  if (isMobile && (state.communicationThreads || []).length > 0) {
+    shell.setAttribute("data-has-threads", "");
+  } else {
+    shell.removeAttribute("data-has-threads");
+  }
+}
+
 function getSelectedCommunicationThread() {
   return (state.communicationThreads || []).find((thread) => thread.id === state.selectedCommunicationThreadId) || null;
 }
@@ -19475,26 +19593,17 @@ function renderCommunicationThreadListHtml(threads = state.communicationThreads 
         <strong>${escapeHtml(communicationUserLabel(thread.otherUser || {}))}</strong>
         <small>${escapeHtml(thread.lastMessagePreview || "Nessun messaggio")}</small>
       </span>
-      ${Number(thread.unreadCount || 0) > 0 ? `<span class="communications-unread">${Number(thread.unreadCount || 0)}</span>` : ""}
+      <span class="communications-thread-meta">
+        ${Number(thread.unreadCount || 0) > 0 ? `<span class="communications-unread">${Number(thread.unreadCount || 0)}</span>` : ""}
+        ${thread.updatedAt ? `<span class="communications-thread-time">${escapeHtml(formatThreadTime(thread.updatedAt))}</span>` : ""}
+      </span>
     </button>
   `).join("") : `<div class="communications-empty">Nessuna chat privata. Aprine una scegliendo un account autorizzato.</div>`;
 }
 
 function renderCommunicationMessagesHtml(messages = getCommunicationMessagesForSelectedThread(), participantById = getCommunicationParticipantMap()) {
-  return messages.map((message) => {
-    const author = participantById.get(String(message.authorId)) || {};
-    const mine = String(message.authorId) === String(state.currentUser?.id || "");
-    const pendingLabel = message.pending ? (state.lang === "it" ? " · invio..." : " · sending...") : "";
-    return `
-      <div class="communications-message ${mine ? "is-mine" : ""}${message.pending ? " is-pending" : ""}">
-        <div class="communications-message-bubble">
-          <strong>${escapeHtml(mine ? "Tu" : communicationUserLabel(author))}</strong>
-          <p>${escapeHtml(message.body)}</p>
-          <small>${escapeHtml(formatCommunicationTime(message.createdAt))}${pendingLabel}</small>
-        </div>
-      </div>
-    `;
-  }).join("") || `<div class="communications-empty">Scrivi il primo messaggio.</div>`;
+  return messages.map((message) => renderSingleCommunicationMessageHtml(message, participantById)).join("")
+    || `<div class="communications-empty">Scrivi il primo messaggio.</div>`;
 }
 
 function renderCommunicationsChatBodyHtml() {
@@ -19503,6 +19612,9 @@ function renderCommunicationsChatBodyHtml() {
   const messagesForSelectedThread = getCommunicationMessagesForSelectedThread();
   const participantById = getCommunicationParticipantMap();
   return selectedThread ? `
+    <button type="button" class="communications-back-btn" data-action="communications-back">
+      ← ${state.lang === "it" ? "Chat" : "Back"}
+    </button>
     <div class="communications-chat-head">
       <div>
         <strong>${escapeHtml(communicationUserLabel(selectedOther || {}))}</strong>
@@ -19541,6 +19653,7 @@ function bindCommunicationThreadSelectActions(container = document) {
       state.communicationMessages = [];
       state.communicationParticipants = [];
       renderCommunications();
+      syncCommunicationsMobileView();
       await loadCommunicationMessages(threadId, { render: true, markRead: true });
     });
   });
@@ -19613,11 +19726,23 @@ function bindCommunicationsMessageForm(container = document) {
   });
 }
 
+function bindCommunicationsBackAction(container = document) {
+  const backBtn = container.querySelector("[data-action='communications-back']");
+  if (!backBtn || backBtn.dataset.bound === "true") return;
+  backBtn.dataset.bound = "true";
+  backBtn.addEventListener("click", () => {
+    state.selectedCommunicationThreadId = "";
+    syncCommunicationsMobileView();
+    updateCommunicationThreadsDom();
+  });
+}
+
 function bindCommunicationsActions(container = document) {
   bindCommunicationsNewThreadForm(container);
   bindCommunicationThreadSelectActions(container);
   bindCommunicationsRefreshAction(container);
   bindCommunicationsMessageForm(container);
+  bindCommunicationsBackAction(container);
 }
 
 function updateCommunicationThreadsDom() {
@@ -19632,6 +19757,23 @@ function updateCommunicationThreadsDom() {
   return true;
 }
 
+// Rende un singolo messaggio (estratto da renderCommunicationMessagesHtml per riuso
+// in append-only diff). DEVE produrre identico markup, altrimenti il diff si rompe.
+function renderSingleCommunicationMessageHtml(message, participantById) {
+  const author = participantById.get(String(message.authorId)) || {};
+  const mine = String(message.authorId) === String(state.currentUser?.id || "");
+  const pendingLabel = message.pending ? (state.lang === "it" ? " · invio..." : " · sending...") : "";
+  return `
+      <div class="communications-message ${mine ? "is-mine" : ""}${message.pending ? " is-pending" : ""}" data-msg-id="${escapeAttr(String(message.id || ""))}">
+        <div class="communications-message-bubble">
+          <strong>${escapeHtml(mine ? "Tu" : communicationUserLabel(author))}</strong>
+          <p>${escapeHtml(message.body)}</p>
+          <small>${escapeHtml(formatCommunicationTime(message.createdAt))}${pendingLabel}</small>
+        </div>
+      </div>
+    `;
+}
+
 function updateCommunicationMessagesDom({ force = false, scroll = true } = {}) {
   const messagesNode = document.getElementById("communications-messages");
   if (!messagesNode) return false;
@@ -19640,7 +19782,42 @@ function updateCommunicationMessagesDom({ force = false, scroll = true } = {}) {
   if (!force && messagesNode.dataset.signature === signature) return true;
   const distanceFromBottom = messagesNode.scrollHeight - messagesNode.scrollTop - messagesNode.clientHeight;
   const shouldStickToBottom = distanceFromBottom < 96;
-  messagesNode.innerHTML = renderCommunicationMessagesHtml(messages, getCommunicationParticipantMap());
+  const participantById = getCommunicationParticipantMap();
+
+  // Optimizzazione: se i messaggi attuali nel DOM sono un PREFISSO della nuova lista,
+  // appendi solo la coda (caso comune: nuovo messaggio in arrivo, optimistic resolved).
+  // Altrimenti fall-back a full re-render.
+  const domMessages = Array.from(messagesNode.querySelectorAll(".communications-message[data-msg-id]"));
+  let appendOnly = false;
+  if (!force && domMessages.length > 0 && domMessages.length <= messages.length) {
+    appendOnly = true;
+    for (let i = 0; i < domMessages.length; i++) {
+      const domId = domMessages[i].getAttribute("data-msg-id") || "";
+      const stateId = String(messages[i]?.id || "");
+      const isPending = domMessages[i].classList.contains("is-pending");
+      const stillPending = Boolean(messages[i]?.pending);
+      // Se ID match ma lo stato pending è cambiato (optimistic → server), serve re-render
+      if (domId !== stateId || isPending !== stillPending) {
+        appendOnly = false;
+        break;
+      }
+    }
+  }
+
+  if (appendOnly && messages.length > domMessages.length) {
+    // Append solo i nuovi messaggi (caso super-frequente nel polling)
+    const tail = messages.slice(domMessages.length);
+    const html = tail.map((m) => renderSingleCommunicationMessageHtml(m, participantById)).join("");
+    // Rimuovi eventuale empty-state placeholder
+    const empty = messagesNode.querySelector(".communications-empty");
+    if (empty) empty.remove();
+    messagesNode.insertAdjacentHTML("beforeend", html);
+  } else if (appendOnly && messages.length === domMessages.length) {
+    // Nessun nuovo messaggio e nessun pending risolto → solo update signature, no work
+  } else {
+    // Re-render completo (cambiamenti complessi: edit, delete, riordinamento, pending→sent)
+    messagesNode.innerHTML = renderCommunicationMessagesHtml(messages, participantById);
+  }
   messagesNode.dataset.signature = signature;
   if (scroll && shouldStickToBottom) messagesNode.scrollTop = messagesNode.scrollHeight;
   return true;
@@ -19663,6 +19840,7 @@ function refreshCommunicationsDom({ updateThreads = true, updateMessages = true,
   }
   if (updateThreads) updateCommunicationThreadsDom();
   if (updateMessages) updateCommunicationMessagesDom({ force: forceMessages, scroll: true });
+  syncCommunicationsMobileView();
 }
 
 async function loadCommunicationTargets({ render = true } = {}) {
@@ -19702,7 +19880,12 @@ async function loadCommunicationThreads({ render = true } = {}) {
       state.communicationMessages = [];
       state.communicationParticipants = [];
     }
-    if (!state.selectedCommunicationThreadId && state.communicationThreads.length) {
+    // Su desktop: auto-select il primo thread al primo caricamento (UX stile email client).
+    // Su mobile: non auto-selezionare mai — il drill-down parte sempre dalla lista.
+    // In ogni caso, non ri-selezionare dopo communicationsInitialized=true per non
+    // sovrascrivere il "← Chat" del back button mobile durante il polling.
+    const isDesktop = window.innerWidth > 900;
+    if (!state.selectedCommunicationThreadId && state.communicationThreads.length && isDesktop && !state.communicationsInitialized) {
       state.selectedCommunicationThreadId = state.communicationThreads[0].id;
     }
     state.communicationsInitialized = true;
@@ -19772,7 +19955,9 @@ async function refreshCommunicationMessages() {
     if (JSON.stringify(merged.map((m) => m.id)) !== JSON.stringify((state.communicationMessages || []).map((m) => m.id))) {
       state.communicationMessages = merged;
       state.communicationParticipants = Array.isArray(payload.participants) ? payload.participants : state.communicationParticipants;
-      if (state.currentView === "communications") renderCommunications();
+      // PERF: refresh chirurgico invece di full re-render shell. Il diff append-only
+      // appende solo i nuovi messaggi senza ricostruire la lista intera.
+      if (state.currentView === "communications") refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: false });
     }
   } catch {}
 }
@@ -19849,17 +20034,24 @@ async function sendCommunicationMessage(form) {
   }
 }
 
+// Tick counter per alternare quale endpoint chiamare nel poll
+let communicationsPollTickCount = 0;
+
 async function pollCommunications({ render = true } = {}) {
   if (!state.currentUser || state.currentView !== "communications" || document.hidden || communicationsPollInFlight) return;
   communicationsPollInFlight = true;
+  communicationsPollTickCount++;
   try {
-    await loadCommunicationThreads({ render });
+    // PERF: ricarica la lista thread solo ogni N tick (~ogni 45s a 15s/poll).
+    // La preview si aggiorna comunque quando arrivano nuovi messaggi nel thread attivo.
+    const shouldRefreshThreads = (communicationsPollTickCount % COMMUNICATIONS_THREADS_REFRESH_EVERY_N_POLLS) === 1;
+    if (shouldRefreshThreads) {
+      await loadCommunicationThreads({ render });
+    }
     if (state.currentView === "communications" && state.selectedCommunicationThreadId && state.loadedCommunicationThreadId === state.selectedCommunicationThreadId) {
-      const selectedThread = (state.communicationThreads || []).find((thread) => thread.id === state.selectedCommunicationThreadId);
-      await loadCommunicationMessages(state.selectedCommunicationThreadId, {
-        render: true,
-        markRead: Number(selectedThread?.unreadCount || 0) > 0,
-      });
+      // PERF: usa refreshCommunicationMessages (lightweight diff) invece di loadCommunicationMessages
+      // (che faceva forceMessages:true e bypassava il dedup di signature).
+      await refreshCommunicationMessages();
     }
   } catch (error) {
     console.error("communications_poll_failed", error);
@@ -19883,31 +20075,67 @@ function stopCommunicationsPolling() {
   }
 }
 
+function renderCommunicationsNewFormHtml(targets, threads) {
+  const it = state.lang === "it";
+  if (targets.length === 1) {
+    const t = targets[0];
+    const name = communicationUserLabel(t);
+    const role = communicationRoleLabel(t.role);
+    const hasThread = threads.some((th) => String(th.otherUser?.id || "") === String(t.id || ""));
+    if (hasThread) {
+      // Thread già esistente: form minimale, l'utente usa la lista sotto
+      return `
+        <div class="communications-new communications-new--active">
+          <span class="communications-new-active-label">
+            ${it ? "Chat con" : "Chat with"} <strong>${escapeHtml(name)}</strong>
+          </span>
+        </div>`;
+    }
+    // Nessun thread ancora: 1 solo click per avviare
+    return `
+      <form class="communications-new communications-new--single" id="communications-new-form">
+        <input type="hidden" name="targetUserId" value="${escapeHtml(String(t.id))}">
+        <button type="submit" class="primary-button small-button">
+          ${it ? `Avvia chat con ${escapeHtml(name)} →` : `Start chat with ${escapeHtml(name)} →`}
+        </button>
+      </form>`;
+  }
+  // Form standard con dropdown per account multipli
+  return `
+    <form class="communications-new" id="communications-new-form">
+      <label class="field">
+        <span>${it ? "Nuova chat privata" : "New private chat"}</span>
+        <select class="text-input" name="targetUserId">
+          <option value="">${targets.length ? (it ? "Seleziona account" : "Select account") : (it ? "Caricamento..." : "Loading...")}</option>
+          ${targets.map((u) => `<option value="${escapeHtml(u.id)}">${escapeHtml(communicationUserLabel(u))} · ${escapeHtml(communicationRoleLabel(u.role))}</option>`).join("")}
+        </select>
+      </label>
+      <button type="submit" class="primary-button small-button" ${targets.length ? "" : "disabled"}>${it ? "Apri chat" : "Open chat"}</button>
+    </form>`;
+}
+
 function renderCommunications() {
   const container = document.getElementById("communications-content");
   if (!container) return;
   const threads = state.communicationThreads || [];
   const targets = state.communicationTargets || [];
+  const isMobile = window.innerWidth <= 900;
+  const mobileView = isMobile && state.selectedCommunicationThreadId ? "chat" : "list";
+  // Nascondi la sezione "nuova chat" su mobile se esiste già un thread con quell'unico target
+  const hideSidebarForm = isMobile && targets.length === 1 && threads.some((th) => String(th.otherUser?.id || "") === String(targets[0]?.id || ""));
   container.innerHTML = `
     <div class="page-header">
       <div>
-        <h1>Comunicazioni</h1>
-        <div class="page-header-sub">Chat private tra account autorizzati. Le squadre non vedono altre squadre.</div>
+        <h1>${state.lang === "it" ? "Comunicazioni" : "Communications"}</h1>
+        <div class="page-header-sub">${state.lang === "it" ? "Chat private tra account autorizzati." : "Private chats between authorised accounts."}</div>
       </div>
-      <button type="button" class="ghost-button small-button" data-action="communications-refresh">Aggiorna</button>
+      <button type="button" class="ghost-button small-button" data-action="communications-refresh">${state.lang === "it" ? "Aggiorna" : "Refresh"}</button>
     </div>
-    <section class="communications-shell panel">
+    <section class="communications-shell panel"
+      data-mobile-view="${isMobile ? mobileView : ""}"
+      ${threads.length ? "data-has-threads" : ""}>
       <aside class="communications-sidebar">
-        <form class="communications-new" id="communications-new-form">
-          <label class="field">
-            <span>Nuova chat privata</span>
-            <select class="text-input" name="targetUserId">
-              <option value="">${targets.length ? "Seleziona account" : "Caricamento account..."}</option>
-              ${targets.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(communicationUserLabel(user))} · ${escapeHtml(communicationRoleLabel(user.role))}</option>`).join("")}
-            </select>
-          </label>
-          <button type="submit" class="primary-button small-button" ${targets.length ? "" : "disabled"}>Apri chat</button>
-        </form>
+        ${hideSidebarForm ? "" : renderCommunicationsNewFormHtml(targets, threads)}
         <div class="communications-thread-list" data-signature="${escapeHtml(getCommunicationThreadsSignature(threads))}">
           ${renderCommunicationThreadListHtml(threads)}
         </div>
@@ -19920,6 +20148,7 @@ function renderCommunications() {
   const messages = document.getElementById("communications-messages");
   if (messages) messages.scrollTop = messages.scrollHeight;
   bindCommunicationsActions(container);
+  syncCommunicationsMobileView();
 }
 
 // Flag consume-once: setView lo imposta a true prima di chiamare renderCurrentViewOnly
@@ -24105,6 +24334,7 @@ function performOptimisticLogout({ closeMobileMenu = false } = {}) {
   // Optimistic: tear down the UI immediately, send the API call in the
   // background. The cookie is HttpOnly so the server still owns the source
   // of truth — even if the request lags, the next reload will redirect.
+  clearSessionCache();
   if (closeMobileMenu) state.mobileMenuOpen = false;
   applySessionPayload({});
   showAuth();

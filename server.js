@@ -10606,7 +10606,8 @@ async function handleApi(req, res, url) {
         }
         writeAuditLog("order", orderId, "tracking_token_created", { token: token.slice(0, 8) + "..." }, currentUser.email || null).catch(() => {});
       }
-      const publicUrl = `${url.protocol}//${url.host}/track/${token}`;
+      const baseUrl = (process.env.PUBLIC_BASE_URL || getRequestBaseUrl(req)).replace(/\/+$/, "");
+      const publicUrl = `${baseUrl}/track/${token}`;
       return sendJson(res, 200, { token, createdAt, publicUrl });
     } catch (err) {
       console.error("[tracking] create failed:", err?.message || err);
@@ -10651,10 +10652,10 @@ async function handleApi(req, res, url) {
       const events = await listJobEventsForOrder(order.id);
       const reports = await listWorkReportsFromDb({ orderId: order.id, status: "archived" });
       const inst = order.operations?.installation || {};
-      const customerName = composeClientName(order) || "Cliente";
+      const customerName = (`${order.firstName || ""} ${order.lastName || ""}`).trim() || "Cliente";
       const productName = order.operations?.product || "Prato sintetico";
       const sqm = order.operations?.sqm || 0;
-      const siteAddress = composeAddress(order) || "";
+      const siteAddress = [order.address, order.city].filter(Boolean).join(", ");
       // Stage corrente: derivato dal latest event o stato job
       const lastEvent = events.length ? events[events.length - 1] : null;
       const stage = lastEvent?.eventType === "return" ? "completed"
@@ -10688,7 +10689,7 @@ async function handleApi(req, res, url) {
       return sendJson(res, 200, {
         ok: true,
         orderId: order.id,
-        orderNumber: getOrderNumber(order) || order.id,
+        orderNumber: String(order.orderNumber || order.id || ""),
         customerName,
         productName,
         sqm,
@@ -13209,6 +13210,22 @@ const server = createServer(async (req, res) => {
 
   // Segnala a sendJson se comprimere la risposta (evita di passare req ovunque)
   res.__acceptsGzip = /gzip/i.test(req.headers["accept-encoding"] || "");
+
+  // Redirect 301 dal dominio Render di default al dominio custom (se configurato)
+  // Esclude solo /api/healthz per non rompere health-check di Render
+  const canonicalHost = (process.env.PUBLIC_BASE_URL || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const incomingHost = String(req.headers.host || "").toLowerCase();
+  if (
+    canonicalHost
+    && incomingHost
+    && incomingHost !== canonicalHost.toLowerCase()
+    && incomingHost.endsWith(".onrender.com")
+    && url.pathname !== "/api/healthz"
+  ) {
+    const target = `https://${canonicalHost}${req.url || "/"}`;
+    res.writeHead(301, { Location: target, "Cache-Control": "no-cache" });
+    return res.end();
+  }
 
   try {
     if (url.pathname.startsWith("/api/")) {
