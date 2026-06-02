@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260602-crm-fix7";
+const APP_SHELL_VERSION = "20260602-crm-fix8";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2404,8 +2404,13 @@ function openCrmDrawer() {
   if (!section) return;
   section.classList.add("crm-detail-open");
   document.body.classList.add("crm-drawer-body-lock");
-  // Il pannello è position:fixed, quindi è sempre visibile nel viewport
-  // indipendentemente dallo scroll della lista. Non è necessario azzerare scrollTop.
+  // Porta il pannello dettaglio in cima così l'utente vede i dati dall'inizio
+  // (il pannello ha overflow-y:auto e potrebbe essere scrollato da un'apertura precedente).
+  // Non toccare mainContent.scrollTop: la lista rimane nella posizione dello scroll.
+  requestAnimationFrame(() => {
+    const panel = section.querySelector(".sales-request-detail-panel");
+    if (panel && panel.scrollTop > 0) panel.scrollTop = 0;
+  });
 }
 
 function closeCrmDrawer() {

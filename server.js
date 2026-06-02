@@ -13121,7 +13121,11 @@ async function handleApi(req, res, url) {
     // Scrivi prima in PG, poi in blob store (che emette il broadcast NOTIFY ai client).
     // Questo elimina la race condition dove GET /api/orders legge dati PG stantii
     // subito dopo il broadcast, riportando lo stato a "da-pianificare".
+    // Dopo l'upsert PG invalida la cache in-memory di getOrdersFromDb(): senza questa
+    // chiamata la cache (TTL 10s) restituisce i dati vecchi all'immediata /api/session
+    // triggered dal NOTIFY, riportando isMeaningful a sovrascrivere il blob con "da-pianificare".
     upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null)
+      .then(() => { invalidateOrdersDbCache(); })
       .catch(() => {})
       .finally(() => {
         writeJson(STORE_PATH, store).catch((writeErr) => {

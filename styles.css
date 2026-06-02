@@ -18126,14 +18126,15 @@ body {
 /* Wrapper della pipeline-vendite per le pillole sales-request (assicura che siano
    raggruppate in un container come le filter-bar) */
 .sales-request-quick-filters {
-  display: inline-flex;
+  display: flex;
   gap: 2px;
   background: rgba(0, 0, 0, 0.05);
   border-radius: 10px;
   padding: 3px;
   border: 1px solid rgba(0, 0, 0, 0.06);
   flex-wrap: wrap;
-  max-width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 
 /* ── Polish KPI grid: gap usa token ─────────────────────────────────────── */
