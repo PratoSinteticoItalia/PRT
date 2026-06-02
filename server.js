@@ -749,6 +749,46 @@ async function backfillSalesRequestHeightToDb() {
   }
 }
 
+// Backfill one-shot: corregge created_at di tutti i record che hanno la data
+// di import bulk (≥ 2026-06-02) usando i valori originali dal blob store.
+let _createdAtBackfillDone = false;
+async function backfillSalesRequestCreatedAtToDb() {
+  if (_createdAtBackfillDone || !USE_POSTGRES) return;
+  _createdAtBackfillDone = true;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    // Trova tutti i record con created_at nella finestra di import (oggi - 3 gg)
+    const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const { rows } = await pool.query(
+      "SELECT id FROM sales_requests WHERE created_at >= $1", [cutoff]
+    );
+    if (!rows.length) return;
+    const rawStore = await readJson(STORE_PATH, {});
+    const blobById = new Map((rawStore.salesRequests || []).map((r) => [String(r.id), r]));
+    let count = 0;
+    for (const { id } of rows) {
+      const blob = blobById.get(id);
+      if (!blob?.createdAt) continue;
+      let blobTs;
+      try { blobTs = new Date(blob.createdAt).toISOString(); } catch { continue; }
+      // Aggiorna solo se il blob ha una data precedente (quella corretta)
+      const result = await pool.query(
+        "UPDATE sales_requests SET created_at=$1 WHERE id=$2 AND created_at > $1",
+        [blobTs, id]
+      );
+      if (result.rowCount > 0) count++;
+    }
+    if (count) {
+      invalidateSalesRequestsDbCache();
+      console.log(`[db] backfill created_at: ${count} record corretti`);
+    }
+  } catch (err) {
+    _createdAtBackfillDone = false; // consenti retry al prossimo avvio
+    console.warn("[db] backfillSalesRequestCreatedAtToDb:", err?.message);
+  }
+}
+
 let relationalSchemaBootstrapPromise = null;
 async function ensureRelationalSchema() {
   if (!USE_POSTGRES) return;
@@ -10058,6 +10098,8 @@ async function handleApi(req, res, url) {
     ]);
     // Backfill proattivo requestedHeight: eseguito una sola volta dopo lo startup
     backfillSalesRequestHeightToDb().catch(() => {});
+    // Backfill created_at: corregge date di import errate (eseguito una sola volta)
+    backfillSalesRequestCreatedAtToDb().catch(() => {});
     // Per gli ordini: usa la stessa logica merge di GET /api/orders
     // (blob è fonte primaria per Shopify data; SQL override solo per operations significativi)
     const sessionOrders = (() => {

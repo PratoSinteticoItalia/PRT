@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260602-crm-fix3";
+const APP_SHELL_VERSION = "20260602-crm-fix4";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4291,7 +4291,7 @@ function renderSalesRequestDetailMeta(item = {}) {
   const automationBadge = getSalesRequestAutomationBadge(item);
   const receivedLabel = item.createdAt ? formatDate(item.createdAt) : "—";
   const updatedLabel = item.updatedAt ? formatDate(item.updatedAt) : "—";
-  const showUpdated = item.updatedAt && item.updatedAt !== item.createdAt;
+  const showUpdated = item.updatedAt && item.createdAt && formatDate(item.updatedAt) !== formatDate(item.createdAt);
   return `
     <span class="sales-request-detail-chip sales-assignment-chip ${getSalesRequestAssignmentTone(item)}">
       <small>${state.lang === "it" ? "Assegnazione" : "Assignment"}</small>
@@ -12278,9 +12278,9 @@ function renderSalesRequests() {
                   <small>${state.lang === "it" ? "Ricevuta" : "Received"}</small>
                   <strong>${item.createdAt ? formatDate(item.createdAt) : "—"}</strong>
                 </span>
-                ${item.updatedAt && item.updatedAt !== item.createdAt ? `<span class="sales-card-date sales-card-date--secondary" title="${state.lang === "it" ? "Ultima modifica" : "Last update"}: ${item.updatedAt ? formatDate(item.updatedAt) : "—"}">
+                ${item.updatedAt && item.createdAt && formatDate(item.updatedAt) !== formatDate(item.createdAt) ? `<span class="sales-card-date sales-card-date--secondary">
                   <small>${state.lang === "it" ? "Aggiornata" : "Updated"}</small>
-                  <strong>${item.updatedAt ? formatDate(item.updatedAt) : "—"}</strong>
+                  <strong>${formatDate(item.updatedAt)}</strong>
                 </span>` : ""}
               </span>
             </div>
