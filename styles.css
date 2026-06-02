@@ -19026,3 +19026,175 @@ body {
   .tracking-link-row { flex-direction: column; align-items: stretch; }
   .tracking-revoke { margin-left: 0; }
 }
+
+/* ── CRM Stats Bar ───────────────────────────────────────────────────────── */
+/* Il container padre .sales-request-insights è un grid a 4 col: span full row */
+.sales-request-insights .crm-stats-bar,
+.sales-request-insights .crm-stats-bar--compact {
+  grid-column: 1 / -1;
+}
+.crm-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: 10px 0 4px;
+}
+.crm-stats-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 56px;
+  background: var(--surface, #f8f9fa);
+  border: 1px solid var(--line, #e2e5e9);
+  border-radius: 10px;
+  padding: 8px 14px;
+  gap: 2px;
+}
+.crm-stats-item.is-highlight {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+.crm-stats-item.is-warn {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+.crm-stats-value {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text, #1a1a2e);
+}
+.crm-stats-label {
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.crm-view-toggle {
+  margin-left: auto;
+  font-size: 12px;
+  gap: 4px;
+}
+.crm-view-toggle.is-active {
+  background: var(--brand, #2d6a4f);
+  color: #fff;
+  border-color: var(--brand, #2d6a4f);
+}
+.crm-stats-bar--compact {
+  padding: 4px 0;
+}
+
+/* ── CRM Kanban ─────────────────────────────────────────────────────────── */
+.crm-kanban {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4, 16px);
+  padding: var(--space-3, 12px) 0;
+  min-height: 200px;
+  align-items: start;
+}
+.crm-kanban-col {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #f8f9fa);
+  border: 1px solid var(--line, #e2e5e9);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.crm-kanban-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line, #e2e5e9);
+  background: #fff;
+}
+.crm-kanban-col.is-new .crm-kanban-col-header    { background: #ecfdf5; border-bottom-color: #a7f3d0; }
+.crm-kanban-col.is-followup .crm-kanban-col-header { background: #eff6ff; border-bottom-color: #bfdbfe; }
+.crm-kanban-col.is-quoted .crm-kanban-col-header  { background: #fefce8; border-bottom-color: #fde68a; }
+.crm-kanban-col.is-closed .crm-kanban-col-header  { background: #f9fafb; border-bottom-color: #e5e7eb; }
+.crm-kanban-col-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted, #6b7280);
+}
+.crm-kanban-col-count {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text, #1a1a2e);
+  background: var(--line, #e2e5e9);
+  border-radius: 20px;
+  padding: 0 8px;
+  line-height: 22px;
+}
+.crm-kanban-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 12px;
+}
+.crm-kanban-col-empty {
+  font-size: 12px;
+  color: var(--muted, #9ca3af);
+  text-align: center;
+  padding: 16px 0;
+}
+.crm-kanban-card {
+  background: #fff;
+  border: 1px solid var(--line, #e2e5e9);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: box-shadow .15s, border-color .15s;
+  user-select: none;
+}
+.crm-kanban-card:hover {
+  border-color: var(--brand, #2d6a4f);
+  box-shadow: 0 2px 8px rgba(45,106,79,.12);
+}
+.crm-kanban-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #1a1a2e);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crm-kanban-card-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  margin-bottom: 4px;
+}
+.crm-kanban-card-meta strong {
+  color: var(--brand, #2d6a4f);
+}
+.crm-kanban-card-assign {
+  font-size: 11px;
+  color: var(--muted, #9ca3af);
+  margin-bottom: 2px;
+}
+.crm-kanban-card-date {
+  font-size: 11px;
+  color: var(--muted, #b0b7c0);
+  text-align: right;
+}
+.crm-kanban-col-more {
+  font-size: 12px;
+  align-self: center;
+  margin-top: 4px;
+}
+@media (max-width: 900px) {
+  .crm-kanban { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .crm-kanban { grid-template-columns: 1fr; }
+  .crm-stats-bar { gap: var(--space-2); }
+  .crm-stats-item { min-width: 44px; padding: 6px 10px; }
+  .crm-stats-value { font-size: 17px; }
+}

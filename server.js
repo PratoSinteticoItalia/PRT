@@ -384,6 +384,66 @@ function isLoginBlocked(req, email) {
   return Boolean(entry && entry.count >= LOGIN_MAX_ATTEMPTS && entry.resetAt > Date.now());
 }
 
+// ── Login rate-limit cross-istanza (PG) ─────────────────────────────────────
+// Mantiene doppio strato: PG per consistenza multi-istanza + Map locale come
+// fallback immediato se il DB è irraggiungibile (evita 500 su DB flap).
+
+async function isLoginBlockedAsync(req, email) {
+  if (!USE_POSTGRES) return isLoginBlocked(req, email);
+  try {
+    const pool = await getPgPool();
+    const key = getLoginAttemptKey(req, email);
+    const result = await pool.query(
+      "SELECT attempts FROM login_rate_limits WHERE key=$1 AND reset_at > NOW()",
+      [key],
+    );
+    const dbAttempts = parseInt(result.rows[0]?.attempts || "0", 10);
+    if (dbAttempts >= LOGIN_MAX_ATTEMPTS) return true;
+    // Controlla anche la cache locale come salvaguardia (es. DB lento)
+    return isLoginBlocked(req, email);
+  } catch {
+    return isLoginBlocked(req, email); // fallback in-process
+  }
+}
+
+async function recordFailedLoginAsync(req, email) {
+  recordFailedLogin(req, email); // aggiorna subito la cache locale
+  if (!USE_POSTGRES) return;
+  try {
+    const pool = await getPgPool();
+    const key = getLoginAttemptKey(req, email);
+    // UPSERT con logica finestra temporale:
+    //   - se reset_at è scaduto → ricomincia da 1 con nuova finestra
+    //   - altrimenti → incrementa dentro la finestra esistente
+    await pool.query(
+      `INSERT INTO login_rate_limits (key, attempts, reset_at)
+       VALUES ($1, 1, NOW() + ($2 || ' milliseconds')::interval)
+       ON CONFLICT (key) DO UPDATE SET
+         attempts = CASE
+           WHEN login_rate_limits.reset_at <= NOW() THEN 1
+           ELSE login_rate_limits.attempts + 1
+         END,
+         reset_at = CASE
+           WHEN login_rate_limits.reset_at <= NOW() THEN NOW() + ($2 || ' milliseconds')::interval
+           ELSE login_rate_limits.reset_at
+         END`,
+      [key, String(LOGIN_WINDOW_MS)],
+    );
+  } catch {
+    // fallback già aggiornato nella Map locale sopra
+  }
+}
+
+async function clearFailedLoginAsync(req, email) {
+  clearFailedLogin(req, email); // aggiorna subito la cache locale
+  if (!USE_POSTGRES) return;
+  try {
+    const pool = await getPgPool();
+    const key = getLoginAttemptKey(req, email);
+    await pool.query("DELETE FROM login_rate_limits WHERE key=$1", [key]);
+  } catch {}
+}
+
 function setDataDir(nextDir) {
   DATA_DIR = resolve(nextDir);
   STORE_PATH = join(DATA_DIR, "store.json");
@@ -527,12 +587,31 @@ async function setupPgListener() {
       const client = new Client({ connectionString: DATABASE_URL, application_name: "psi-ops-listener" });
       await client.connect();
       await client.query("LISTEN psi_ops_store_changed");
+      await client.query("LISTEN psi_ops_cache_invalidate");
       client.on("notification", (msg) => {
-        const revision = String(msg.payload || "").trim();
-        // Invalida la cache locale — la prossima readJson rilegge da DB
-        storeMemCache = null;
-        if (revision) broadcastStoreRevision(revision);
-        console.log("[pg-listen] store invalidated revision:", revision.slice(0, 16));
+        if (msg.channel === "psi_ops_store_changed") {
+          // Invalida blob-store cache + propaga revisione a tutti i client SSE
+          const revision = String(msg.payload || "").trim();
+          storeMemCache = null;
+          if (revision) broadcastStoreRevision(revision);
+          console.log("[pg-listen] store invalidated revision:", revision.slice(0, 16));
+        } else if (msg.channel === "psi_ops_cache_invalidate") {
+          // Invalida la cache relazionale dell'entità specificata
+          const entity = String(msg.payload || "").trim();
+          switch (entity) {
+            case "orders":         invalidateOrdersDbCache();         break;
+            case "inventory":      invalidateInventoryDbCache();      break;
+            case "jobs":           invalidateJobsDbCache();           break;
+            case "sales_requests": invalidateSalesRequestsDbCache();  break;
+            default:
+              // Fallback: invalida tutto se il payload è sconosciuto
+              invalidateOrdersDbCache();
+              invalidateInventoryDbCache();
+              invalidateJobsDbCache();
+              invalidateSalesRequestsDbCache();
+          }
+          console.log("[pg-listen] entity cache invalidated:", entity);
+        }
       });
       client.on("error", (err) => {
         console.error("[pg-listen] error:", err?.message);
@@ -544,7 +623,7 @@ async function setupPgListener() {
         setTimeout(tryConnect, 5_000);
       });
       pgListenerClient = client;
-      console.log("[pg-listen] ready — listening on psi_ops_store_changed");
+      console.log("[pg-listen] ready — listening on psi_ops_store_changed + psi_ops_cache_invalidate");
     } catch (err) {
       console.error("[pg-listen] connect failed:", err?.message);
       setTimeout(tryConnect, 10_000);
@@ -788,6 +867,18 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS incoming_leads_shadow_recv_idx    ON incoming_leads_shadow (received_at DESC);
       CREATE INDEX IF NOT EXISTS incoming_leads_shadow_status_idx  ON incoming_leads_shadow (parse_status);
       CREATE INDEX IF NOT EXISTS incoming_leads_shadow_promoted_idx ON incoming_leads_shadow (promoted_to_sales_request_id);
+      -- ─────────────────────────────────────────────────────────────────────
+      -- Rate limiting login cross-istanza: sostituisce la Map in-process.
+      -- Chiave: "<ip>::<email>"; reset_at definisce la finestra temporale.
+      -- Cleanup automatico: le righe scadute vengono rimosse al prossimo
+      -- recordFailedLoginAsync via INSERT ON CONFLICT + CASE sul reset_at.
+      -- ─────────────────────────────────────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS login_rate_limits (
+        key TEXT PRIMARY KEY,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        reset_at TIMESTAMPTZ NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS login_rate_limits_reset_idx ON login_rate_limits (reset_at);
       -- ─────────────────────────────────────────────────────────────────────
       -- Outbox persistente per job critici (Step 1 — Persistent Queue).
       -- Sostituisce i .catch(()=>{}) silenziosi su upsert sales_request,
@@ -1309,6 +1400,80 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   }
 }
 
+// Pipeline CRM: conteggi per colonna kanban + primi N lead per ogni colonna
+// Le colonne rispecchiano getSalesRequestStatusTone() del client:
+//   new       → new, (vuoto)
+//   followup  → followup, called, to_call, scheduled
+//   quoted    → quoted, counter_offered
+//   closed    → closed, won, lost
+async function getSalesRequestPipelineFromDb({ limit = 20 } = {}) {
+  if (!USE_POSTGRES) return { columns: [] };
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+
+  const COLUMNS = [
+    {
+      key: "new",
+      label: "Nuovi",
+      statuses: ["new", ""],
+    },
+    {
+      key: "followup",
+      label: "In lavorazione",
+      statuses: ["followup", "called", "to_call", "scheduled"],
+    },
+    {
+      key: "quoted",
+      label: "In preventivo",
+      statuses: ["quoted", "counter_offered"],
+    },
+    {
+      key: "closed",
+      label: "Chiusi",
+      statuses: ["closed", "won", "lost"],
+    },
+  ];
+
+  try {
+    // Lancia le query di ogni colonna in parallelo (count + top N items)
+    const results = await Promise.all(
+      COLUMNS.map(async (col) => {
+        const statusList = col.statuses;
+        // Usa IN + gestione del caso vuoto ("") con OR IS NULL
+        const hasEmpty = statusList.includes("");
+        const nonEmpty = statusList.filter((s) => s !== "");
+        const params = [...nonEmpty];
+        let cond;
+        if (nonEmpty.length && hasEmpty) {
+          cond = `(status IN (${nonEmpty.map((_, i) => `$${i + 1}`).join(",")}) OR status IS NULL OR status = '')`;
+        } else if (nonEmpty.length) {
+          cond = `status IN (${nonEmpty.map((_, i) => `$${i + 1}`).join(",")})`;
+        } else {
+          cond = `(status IS NULL OR status = '')`;
+        }
+        const limitN = Math.min(100, Math.max(1, Number(limit) || 20));
+        const [countRes, dataRes] = await Promise.all([
+          pool.query(`SELECT COUNT(*) AS total FROM sales_requests WHERE ${cond}`, params),
+          pool.query(
+            `SELECT * FROM sales_requests WHERE ${cond} ORDER BY updated_at DESC NULLS LAST LIMIT ${limitN}`,
+            params,
+          ),
+        ]);
+        return {
+          key: col.key,
+          label: col.label,
+          count: parseInt(countRes.rows[0]?.total || "0", 10),
+          items: dataRes.rows.map(dbRowToSalesRequest),
+        };
+      }),
+    );
+    return { columns: results };
+  } catch (err) {
+    console.warn("[db] getSalesRequestPipelineFromDb:", err?.message);
+    return { columns: COLUMNS.map((c) => ({ key: c.key, label: c.label, count: 0, items: [] })) };
+  }
+}
+
 async function upsertOrderToDb(order, userId = null) {
   if (!USE_POSTGRES || !order?.id) return;
   invalidateOrdersDbCache();
@@ -1412,6 +1577,8 @@ async function upsertOrderToDb(order, userId = null) {
         writeAuditLog("order", order.id, "update", orderChanges, userId).catch(() => {});
       }
     }
+    // Notifica le altre istanze di invalidare la loro cache ordini
+    pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'orders')").catch(() => {});
   } catch (err) {
     console.warn("[db] upsertOrderToDb:", err?.message);
   }
@@ -1442,6 +1609,7 @@ async function upsertInventoryItemToDb(item) {
       String(item.units || ""), String(item.label || ""),
       item.committedOrderId ? String(item.committedOrderId) : (item.allocatedToOrderId ? String(item.allocatedToOrderId) : null),
     ]);
+    pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'inventory')").catch(() => {});
   } catch (err) {
     console.warn("[db] upsertInventoryItemToDb:", err?.message);
   }
@@ -1453,6 +1621,7 @@ async function deleteInventoryItemFromDb(id) {
   try {
     const pool = await getPgPool();
     await pool.query("DELETE FROM inventory_items WHERE id = $1", [String(id)]);
+    pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'inventory')").catch(() => {});
   } catch (err) {
     console.warn("[db] deleteInventoryItemFromDb:", err?.message);
   }
@@ -1489,6 +1658,7 @@ async function upsertJobToDb(job) {
       JSON.stringify(Array.isArray(job.attachments) ? job.attachments : []),
       job.sourceOrderId ? String(job.sourceOrderId) : null,
     ]);
+    pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'jobs')").catch(() => {});
   } catch (err) {
     console.warn("[db] upsertJobToDb:", err?.message);
   }
@@ -1500,6 +1670,7 @@ async function deleteJobFromDb(id) {
   try {
     const pool = await getPgPool();
     await pool.query("DELETE FROM jobs WHERE id = $1", [String(id)]);
+    pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'jobs')").catch(() => {});
   } catch (err) {
     console.warn("[db] deleteJobFromDb:", err?.message);
   }
@@ -1579,6 +1750,8 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
         writeAuditLog("sales_request", request.id, "update", changes, userId).catch(() => {});
       }
     }
+    // Notifica le altre istanze di invalidare la loro cache leads
+    pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'sales_requests')").catch(() => {});
   } catch (err) {
     console.warn("[db] upsertSalesRequestToDb:", err?.message);
     // opts.rethrow=true → usato dai call sites critici (via outbox) per
@@ -9960,7 +10133,7 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "").trim();
-    if (isLoginBlocked(req, email)) {
+    if (await isLoginBlockedAsync(req, email)) {
       return sendJson(res, 429, { error: "too_many_attempts" });
     }
     const demoUsers = getDemoUsers();
@@ -9982,7 +10155,7 @@ async function handleApi(req, res, url) {
     }
 
     if (!user) {
-      recordFailedLogin(req, email);
+      await recordFailedLoginAsync(req, email);
       pushSecurityEvent(store, "login_failed", email || "unknown", "Tentativo login fallito.", { ip: getClientIp(req) });
       await writeJson(STORE_PATH, store);
       return sendJson(res, 401, { error: "invalid_credentials" });
@@ -9992,7 +10165,7 @@ async function handleApi(req, res, url) {
       await writeJson(STORE_PATH, store);
       return sendJson(res, 403, { error: "account_suspended" });
     }
-    clearFailedLogin(req, email);
+    await clearFailedLoginAsync(req, email);
 
     const sessionId = randomUUID();
     await writeSessionEntry(sessionId, {
@@ -11524,6 +11697,19 @@ async function handleApi(req, res, url) {
       });
     } catch (error) {
       return sendJson(res, 500, { error: String(error?.message || "sales_diagnostic_failed") });
+    }
+  }
+
+  // GET /api/sales/requests/pipeline — vista kanban: 4 colonne con conteggi + top leads
+  if (url.pathname === "/api/sales/requests/pipeline" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "20", 10) || 20));
+    try {
+      const result = await getSalesRequestPipelineFromDb({ limit });
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "pipeline_failed") });
     }
   }
 

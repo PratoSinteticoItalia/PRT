@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260602-comms-ux5";
+const APP_SHELL_VERSION = "20260602-crm-pipeline";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1268,6 +1268,12 @@ const state = {
   inventorySuggestions: {},
   // CRM server-side state (paginazione + FTS via GET /api/sales/requests)
   crmServerPage: { total: 0, page: 1, limit: 50, items: [], loading: false, loadedAt: 0 },
+  // CRM pipeline kanban (GET /api/sales/requests/pipeline)
+  crmPipeline: { columns: [], loading: false, loadedAt: 0 },
+  // "list" | "kanban" — toggle nella toolbar del CRM
+  crmViewMode: "list",
+  // Stats aggregate dal server (totale, nuovi, non assegnati, questa settimana)
+  salesRequestsStats: null,
 };
 
 let sessionKeepaliveTimer = 0;
@@ -4465,16 +4471,60 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
     `).join("");
   }
   if (ui.salesRequestInsights) {
-    // Fix #2 UX Ondata 2 (28 mag 2026): rimossi i 4 big-number KPI ridondanti.
-    // I conteggi sono già visibili nelle pillole filtro sopra (sales-request-quick-chip
-    // con <strong>${count}</strong>). Niente doppia rappresentazione.
-    ui.salesRequestInsights.innerHTML = "";
+    // Stats bar: mostra KPI dal server (totale, nuovi, non assegnati, questa settimana)
+    const stats = state.salesRequestsStats;
+    const isKanban = state.crmViewMode === "kanban";
+    const toggleLabel = isKanban
+      ? (state.lang === "it" ? "Lista" : "List")
+      : (state.lang === "it" ? "Pipeline" : "Pipeline");
+    const toggleIcon = isKanban ? "☰" : "⬛⬛";
+    if (stats) {
+      ui.salesRequestInsights.innerHTML = `
+        <div class="crm-stats-bar">
+          <div class="crm-stats-item">
+            <span class="crm-stats-value">${stats.total ?? "—"}</span>
+            <span class="crm-stats-label">${state.lang === "it" ? "Totale" : "Total"}</span>
+          </div>
+          <div class="crm-stats-item is-highlight">
+            <span class="crm-stats-value">${stats.new ?? "—"}</span>
+            <span class="crm-stats-label">${state.lang === "it" ? "Nuovi" : "New"}</span>
+          </div>
+          <div class="crm-stats-item is-warn">
+            <span class="crm-stats-value">${stats.unassigned ?? "—"}</span>
+            <span class="crm-stats-label">${state.lang === "it" ? "Non assegnati" : "Unassigned"}</span>
+          </div>
+          <div class="crm-stats-item">
+            <span class="crm-stats-value">${stats.thisWeek ?? "—"}</span>
+            <span class="crm-stats-label">${state.lang === "it" ? "Questa settimana" : "This week"}</span>
+          </div>
+          <button class="btn crm-view-toggle ${isKanban ? "is-active" : ""}" type="button" data-action="toggle-crm-view" aria-pressed="${isKanban ? "true" : "false"}" title="${isKanban ? (state.lang === "it" ? "Torna alla lista" : "Back to list") : (state.lang === "it" ? "Vista pipeline kanban" : "Pipeline kanban view")}">
+            <span aria-hidden="true">${toggleIcon}</span> ${escapeHtml(toggleLabel)}
+          </button>
+        </div>
+      `;
+    } else {
+      ui.salesRequestInsights.innerHTML = `
+        <div class="crm-stats-bar crm-stats-bar--compact">
+          <button class="btn crm-view-toggle ${isKanban ? "is-active" : ""}" type="button" data-action="toggle-crm-view" aria-pressed="${isKanban ? "true" : "false"}">
+            <span aria-hidden="true">${toggleIcon}</span> ${escapeHtml(toggleLabel)}
+          </button>
+        </div>
+      `;
+    }
   }
   if (ui.salesRequestCompactToggle) {
     ui.salesRequestCompactToggle.classList.toggle("is-active", Boolean(state.salesRequestCompactMode));
     ui.salesRequestCompactToggle.textContent = state.salesRequestCompactMode
       ? (state.lang === "it" ? "Vista compatta attiva" : "Compact view on")
       : (state.lang === "it" ? "Vista compatta" : "Compact view");
+  }
+  const pipelineBtn = document.getElementById("crm-pipeline-toggle-btn");
+  if (pipelineBtn) {
+    const isKanbanNow = state.crmViewMode === "kanban";
+    pipelineBtn.textContent = isKanbanNow
+      ? (state.lang === "it" ? "☰ Lista" : "☰ List")
+      : (state.lang === "it" ? "⬛ Pipeline" : "⬛ Pipeline");
+    pipelineBtn.classList.toggle("is-active", isKanbanNow);
   }
 }
 
@@ -12001,8 +12051,95 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
   }
 }
 
+/**
+ * Carica la vista kanban dal server (GET /api/sales/requests/pipeline).
+ * Aggiorna state.crmPipeline e re-renderizza il kanban.
+ */
+async function loadCrmPipeline({ forceReload = false } = {}) {
+  if (!forceReload && state.crmPipeline.loading) return;
+  state.crmPipeline.loading = true;
+  try {
+    const data = await apiFetch("/api/sales/requests/pipeline?limit=25");
+    state.crmPipeline = {
+      columns: Array.isArray(data.columns) ? data.columns : [],
+      loading: false,
+      loadedAt: Date.now(),
+    };
+    renderSalesRequestsKanban();
+  } catch (err) {
+    state.crmPipeline.loading = false;
+    console.warn("[crm] loadCrmPipeline error:", err?.message);
+  }
+}
+
+/**
+ * Renderizza la vista kanban del CRM con 4 colonne.
+ */
+function renderSalesRequestsKanban() {
+  if (!ui.salesRequestsList) return;
+  const { columns = [], loading, loadedAt } = state.crmPipeline;
+  if (loading || !loadedAt) {
+    ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:24px">
+      <span style="display:inline-block;width:20px;height:20px;border:2px solid #ccc;border-top-color:#2d6a4f;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>
+      ${state.lang === "it" ? "Caricamento pipeline…" : "Loading pipeline…"}
+    </div>`;
+    return;
+  }
+  const TONE_MAP = { new: "is-new", followup: "is-followup", quoted: "is-quoted", closed: "is-closed" };
+  const html = `
+    <div class="crm-kanban">
+      ${columns.map((col) => {
+        const tone = TONE_MAP[col.key] || "";
+        const items = Array.isArray(col.items) ? col.items : [];
+        return `
+          <div class="crm-kanban-col ${tone}">
+            <div class="crm-kanban-col-header">
+              <span class="crm-kanban-col-label">${escapeHtml(col.label)}</span>
+              <span class="crm-kanban-col-count">${col.count}</span>
+            </div>
+            <div class="crm-kanban-col-body">
+              ${items.length
+                ? items.map((item) => `
+                    <article class="crm-kanban-card" data-action="select-sales-request" data-id="${item.id}">
+                      <div class="crm-kanban-card-name">${escapeHtml(getSalesRequestDisplayName(item))}</div>
+                      <div class="crm-kanban-card-meta">
+                        <span>${escapeHtml(item.city || "—")}</span>
+                        ${getSalesRequestSqm(item) > 0 ? `<strong>${getSalesRequestSqm(item)} mq</strong>` : ""}
+                      </div>
+                      ${item.assignment ? `<div class="crm-kanban-card-assign">${escapeHtml(item.assignment)}</div>` : ""}
+                      <div class="crm-kanban-card-date">${item.updatedAt ? formatDate(item.updatedAt) : "—"}</div>
+                    </article>
+                  `).join("")
+                : `<div class="crm-kanban-col-empty">${state.lang === "it" ? "Nessun lead" : "No leads"}</div>`
+              }
+              ${col.count > items.length ? `
+                <button class="crm-kanban-col-more btn" data-action="crm-kanban-load-more" data-col="${escapeHtml(col.key)}">
+                  ${state.lang === "it" ? `+${col.count - items.length} altri` : `+${col.count - items.length} more`}
+                </button>
+              ` : ""}
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+  ui.salesRequestsList.innerHTML = html;
+  // Nascondi paginazione in modalità kanban
+  if (ui.salesRequestsPagination) ui.salesRequestsPagination.innerHTML = "";
+}
+
 function renderSalesRequests() {
   syncSalesRequestFilters();
+  // Vista kanban: delega a renderSalesRequestsKanban()
+  if (state.crmViewMode === "kanban") {
+    renderSalesRequestToolbar([], []);
+    if (state.crmPipeline.loadedAt > 0) {
+      renderSalesRequestsKanban();
+    } else {
+      loadCrmPipeline({ forceReload: false });
+    }
+    return;
+  }
   // Usa crmServerPage se disponibile (dati server-side), altrimenti fallback locale
   const pageItems = state.crmServerPage?.items?.length > 0 || state.crmServerPage?.loadedAt > 0
     ? state.crmServerPage.items
@@ -18863,6 +19000,9 @@ function applySessionPayload(session = {}) {
   }
   state.securityEvents = session.securityEvents || [];
   state.securityPolicy = session.securityPolicy || {};
+  if (session.salesRequestsStats && typeof session.salesRequestsStats === "object") {
+    state.salesRequestsStats = session.salesRequestsStats;
+  }
   try {
     window.localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(state.coveragePlanner));
   } catch {}
@@ -21265,7 +21405,11 @@ function setView(view, { pushHistory = true } = {}) {
   }
   // Carica prima pagina CRM dal server quando si entra nella view
   if (nextView === "sales-requests" && nextView !== previousView) {
-    loadCrmPage({ page: 1, forceReload: true });
+    if (state.crmViewMode === "kanban") {
+      loadCrmPipeline({ forceReload: true });
+    } else {
+      loadCrmPage({ page: 1, forceReload: true });
+    }
   }
   if (nextView !== previousView) {
     if (pushHistory) {
@@ -23902,6 +24046,27 @@ function handleGlobalClick(event) {
     const expenseId = button.dataset.expenseId || "";
     if (!id || !expenseId) return;
     removeInstallationExpense(id, expenseId);
+    return;
+  }
+  if (action === "toggle-crm-view") {
+    state.crmViewMode = state.crmViewMode === "kanban" ? "list" : "kanban";
+    if (state.crmViewMode === "kanban") {
+      loadCrmPipeline({ forceReload: true });
+    } else {
+      renderSalesRequests();
+    }
+    return;
+  }
+  if (action === "crm-kanban-load-more") {
+    // Passa alla lista filtrata per la colonna cliccata
+    const col = button.dataset.col || "";
+    state.crmViewMode = "list";
+    if (col) {
+      // Mappa la colonna al filtro di status
+      const colStatusMap = { new: "new", followup: "followup", quoted: "quoted", closed: "closed" };
+      if (colStatusMap[col]) state.filters.salesRequestStatus = colStatusMap[col];
+    }
+    loadCrmPage({ page: 1, forceReload: true });
     return;
   }
   if (action === "toggle-sales-request-bulk") {
