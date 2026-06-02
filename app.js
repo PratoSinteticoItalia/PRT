@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260602-crm-fix6";
+const APP_SHELL_VERSION = "20260602-crm-fix7";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2404,9 +2404,8 @@ function openCrmDrawer() {
   if (!section) return;
   section.classList.add("crm-detail-open");
   document.body.classList.add("crm-drawer-body-lock");
-  // Porta il contenuto in cima per rendere il drawer visibile
-  // (necessario se l'utente era scrollato verso il basso nella lista)
-  if (ui.mainContent) ui.mainContent.scrollTop = 0;
+  // Il pannello è position:fixed, quindi è sempre visibile nel viewport
+  // indipendentemente dallo scroll della lista. Non è necessario azzerare scrollTop.
 }
 
 function closeCrmDrawer() {
@@ -4605,7 +4604,14 @@ function getSalesContentCategoryOptions(items = []) {
 }
 
 function getSelectedSalesRequest() {
-  return state.salesRequests.find((item) => item.id === state.selectedSalesRequestId) || null;
+  const id = state.selectedSalesRequestId;
+  if (!id) return null;
+  // Cerca prima in salesRequests (blob/server), poi in crmServerPage.items (pagina PG corrente).
+  // È necessario perché applySessionPayload può sostituire state.salesRequests con dati blob
+  // mentre la pagina PG caricata in precedenza aveva l'item selezionato.
+  return state.salesRequests.find((item) => item.id === id)
+    || (state.crmServerPage?.items || []).find((item) => item.id === id)
+    || null;
 }
 
 function getSelectedSalesContent() {
@@ -12226,18 +12232,27 @@ function renderSalesRequests() {
   const baseItems = pageItems; // usato per toolbar e quick filter chips
   const filtered = pageItems;
   const bulkSelectedIds = new Set(getSalesRequestBulkSelectedIds());
-  let selected = ensureSelectedSalesRequest();
-  if (selected && !filtered.some((item) => item.id === selected.id)) {
-    selected = filtered[0] || null;
-  }
-  if (!selected && filtered.length) {
-    selected = filtered[0];
-  }
-  if (selected && !pageItems.some((item) => item.id === selected.id) && pageItems.length) {
-    selected = pageItems[0];
-  }
-  if ((selected?.id || "") !== state.selectedSalesRequestId) {
-    state.selectedSalesRequestId = selected?.id || "";
+  // Quando il drawer è aperto l'utente ha selezionato esplicitamente un item:
+  // non sovrascrivere selectedSalesRequestId con il primo della pagina corrente.
+  const crmDrawerOpen = document.getElementById("sales-requests")?.classList.contains("crm-detail-open");
+  let selected;
+  if (crmDrawerOpen) {
+    // Mantieni la selezione esplicita; getSelectedSalesRequest cerca anche crmServerPage.items
+    selected = getSelectedSalesRequest() || ensureSelectedSalesRequest();
+  } else {
+    selected = ensureSelectedSalesRequest();
+    if (selected && !filtered.some((item) => item.id === selected.id)) {
+      selected = filtered[0] || null;
+    }
+    if (!selected && filtered.length) {
+      selected = filtered[0];
+    }
+    if (selected && !pageItems.some((item) => item.id === selected.id) && pageItems.length) {
+      selected = pageItems[0];
+    }
+    if ((selected?.id || "") !== state.selectedSalesRequestId) {
+      state.selectedSalesRequestId = selected?.id || "";
+    }
   }
   updateSalesRequestImportPanel();
   updateSalesRequestSourcePanel();

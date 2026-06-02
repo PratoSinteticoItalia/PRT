@@ -1541,7 +1541,7 @@ async function getSalesRequestPipelineFromDb({ limit = 20 } = {}) {
       ranked AS (
         SELECT b.*,
           c.cnt, c.unassigned_cnt, c.this_week_cnt,
-          ROW_NUMBER() OVER (PARTITION BY b._bucket ORDER BY b.updated_at DESC NULLS LAST) AS _rn
+          ROW_NUMBER() OVER (PARTITION BY b._bucket ORDER BY COALESCE(b.updated_at, b.created_at) DESC NULLS LAST) AS _rn
         FROM bucketed b
         JOIN counts c ON c._bucket = b._bucket
       )

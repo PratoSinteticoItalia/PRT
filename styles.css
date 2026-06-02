@@ -14794,11 +14794,10 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   }
 }
 
-/* Quando il drawer è aperto non scrollare il body né il main-content */
+/* Quando il drawer è aperto non scrollare il body (iOS Safari scroll prevention).
+   Non bloccare .main-content: il pannello è position:fixed e la lista deve
+   restare scrollabile anche con il drawer aperto. */
 body.crm-drawer-body-lock {
-  overflow: hidden;
-}
-body.crm-drawer-body-lock .main-content {
   overflow: hidden;
 }
 
