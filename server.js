@@ -1407,70 +1407,106 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
 //   quoted    → quoted, counter_offered
 //   closed    → closed, won, lost
 async function getSalesRequestPipelineFromDb({ limit = 20 } = {}) {
-  if (!USE_POSTGRES) return { columns: [] };
+  if (!USE_POSTGRES) return { columns: [], stats: null };
   await ensureRelationalSchema();
   const pool = await getPgPool();
+  const limitN = Math.min(100, Math.max(1, Number(limit) || 20));
 
-  const COLUMNS = [
-    {
-      key: "new",
-      label: "Nuovi",
-      statuses: ["new", ""],
-    },
-    {
-      key: "followup",
-      label: "In lavorazione",
-      statuses: ["followup", "called", "to_call", "scheduled"],
-    },
-    {
-      key: "quoted",
-      label: "In preventivo",
-      statuses: ["quoted", "counter_offered"],
-    },
-    {
-      key: "closed",
-      label: "Chiusi",
-      statuses: ["closed", "won", "lost"],
-    },
+  const COLUMN_DEFS = [
+    { key: "new",      label: "Nuovi" },
+    { key: "followup", label: "In lavorazione" },
+    { key: "quoted",   label: "In preventivo" },
+    { key: "closed",   label: "Chiusi" },
   ];
 
+  // Normalizza status esattamente come normalizeSalesRequestStatus() in JS:
+  // strip diacritici italiani → strip non-alfanumerici → lowercase
+  const normExpr = `lower(regexp_replace(translate(coalesce(trim(status),''), 'àèéìíòóùúÀÈÉÌÍÒÓÙÚ', 'aaeiioouuAAEIIOOUU'), '[^a-zA-Z0-9 ]', '', 'g'))`;
+
+  // Classifica ogni riga nel bucket corretto (stesso ordine di priorità del JS)
+  const bucketExpr = `CASE
+    WHEN ${normExpr} IN ('new','nuova','nuovo','lead','nuovo contatto','richiesta nuova','nuova richiesta')
+      OR coalesce(trim(status),'') = ''
+    THEN 'new'
+    WHEN ${normExpr} IN ('quoted','quote','preventivo','in preventivo','preventivo inviato',
+      'preventivo da inviare','preventivo confermato','offerta','offerta inviata',
+      'quotato','campione acquistato','ordine eseguito','ordine confermato')
+    THEN 'quoted'
+    WHEN ${normExpr} IN ('closed','chiusa','chiuso','vinta','vinto','persa','perso',
+      'declinata','lead non qualificato','completata','completato','archiviata','archiviato')
+    THEN 'closed'
+    WHEN ${normExpr} IN ('followup','follow up','1 contatto','1 contatto whatsapp',
+      'da richiamare','richiamare','richiamata','recall',
+      'attesa','in attesa di risposta','nessuna risposta',
+      'ricontattato','chiamare','email','email inviata','fare follow up',
+      'in lavorazione','da seguire')
+      OR ${normExpr} LIKE '%follow%'
+      OR ${normExpr} LIKE '%richiam%'
+      OR ${normExpr} LIKE '%attesa%'
+      OR ${normExpr} LIKE '%contatt%'
+    THEN 'followup'
+    ELSE 'new'
+  END`;
+
   try {
-    // Lancia le query di ogni colonna in parallelo (count + top N items)
-    const results = await Promise.all(
-      COLUMNS.map(async (col) => {
-        const statusList = col.statuses;
-        // Usa IN + gestione del caso vuoto ("") con OR IS NULL
-        const hasEmpty = statusList.includes("");
-        const nonEmpty = statusList.filter((s) => s !== "");
-        const params = [...nonEmpty];
-        let cond;
-        if (nonEmpty.length && hasEmpty) {
-          cond = `(status IN (${nonEmpty.map((_, i) => `$${i + 1}`).join(",")}) OR status IS NULL OR status = '')`;
-        } else if (nonEmpty.length) {
-          cond = `status IN (${nonEmpty.map((_, i) => `$${i + 1}`).join(",")})`;
-        } else {
-          cond = `(status IS NULL OR status = '')`;
-        }
-        const limitN = Math.min(100, Math.max(1, Number(limit) || 20));
-        const [countRes, dataRes] = await Promise.all([
-          pool.query(`SELECT COUNT(*) AS total FROM sales_requests WHERE ${cond}`, params),
-          pool.query(
-            `SELECT * FROM sales_requests WHERE ${cond} ORDER BY updated_at DESC NULLS LAST LIMIT ${limitN}`,
-            params,
-          ),
-        ]);
+    // 1. Un'unica query per conteggi + statistiche aggregate
+    const statsRes = await pool.query(`
+      SELECT
+        (${bucketExpr}) AS bucket,
+        COUNT(*)::int                                                                      AS cnt,
+        COUNT(*) FILTER (WHERE coalesce(trim(assignment),'') = '')::int                   AS unassigned_cnt,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int             AS this_week_cnt
+      FROM sales_requests
+      GROUP BY bucket
+    `);
+
+    const bucketCounts      = {};
+    let totalAll            = 0;
+    let totalUnassigned     = 0;
+    let totalThisWeek       = 0;
+    for (const row of statsRes.rows) {
+      const b = row.bucket;
+      const n = row.cnt;
+      bucketCounts[b]   = n;
+      totalAll         += n;
+      totalUnassigned  += row.unassigned_cnt;
+      totalThisWeek    += row.this_week_cnt;
+    }
+    const stats = {
+      total:      totalAll,
+      new:        bucketCounts["new"]  || 0,
+      unassigned: totalUnassigned,
+      thisWeek:   totalThisWeek,
+    };
+
+    // 2. Top-N items per colonna in parallelo
+    const columns = await Promise.all(
+      COLUMN_DEFS.map(async (col) => {
+        const dataRes = await pool.query(`
+          SELECT * FROM (
+            SELECT *, (${bucketExpr}) AS _bucket
+            FROM sales_requests
+          ) sub
+          WHERE _bucket = $1
+          ORDER BY updated_at DESC NULLS LAST
+          LIMIT ${limitN}
+        `, [col.key]);
         return {
-          key: col.key,
+          key:   col.key,
           label: col.label,
-          count: parseInt(countRes.rows[0]?.total || "0", 10),
+          count: bucketCounts[col.key] || 0,
           items: dataRes.rows.map(dbRowToSalesRequest),
         };
       }),
     );
-    return { columns: results };
+
+    return { columns, stats };
   } catch (err) {
     console.warn("[db] getSalesRequestPipelineFromDb:", err?.message);
-    return { columns: COLUMNS.map((c) => ({ key: c.key, label: c.label, count: 0, items: [] })) };
+    return {
+      columns: COLUMN_DEFS.map((c) => ({ key: c.key, label: c.label, count: 0, items: [] })),
+      stats: null,
+    };
   }
 }
 

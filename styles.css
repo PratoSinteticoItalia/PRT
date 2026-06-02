@@ -19087,113 +19087,187 @@ body {
 
 /* ── CRM Kanban ─────────────────────────────────────────────────────────── */
 .crm-kanban {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-4, 16px);
-  padding: var(--space-3, 12px) 0;
-  min-height: 200px;
-  align-items: start;
+  display: flex;
+  gap: 12px;
+  padding: 6px 0 18px;
+  overflow-x: auto;
+  align-items: flex-start;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
 }
+.crm-kanban::-webkit-scrollbar { height: 4px; }
+.crm-kanban::-webkit-scrollbar-track { background: transparent; }
+.crm-kanban::-webkit-scrollbar-thumb { background: var(--line, #d1d5db); border-radius: 2px; }
+
 .crm-kanban-col {
+  flex: 0 0 272px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--surface, #f8f9fa);
-  border: 1px solid var(--line, #e2e5e9);
-  border-radius: 12px;
+  background: var(--surface, #f5f6f8);
+  border-radius: 14px;
   overflow: hidden;
+  border-top: 3px solid transparent;
+  max-height: calc(100vh - 240px);
+  scroll-snap-align: start;
 }
+.crm-kanban-col.is-new      { border-top-color: #22c55e; }
+.crm-kanban-col.is-followup { border-top-color: #3b82f6; }
+.crm-kanban-col.is-quoted   { border-top-color: #eab308; }
+.crm-kanban-col.is-closed   { border-top-color: #9ca3af; }
+
 .crm-kanban-col-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line, #e2e5e9);
-  background: #fff;
+  padding: 10px 13px 9px;
+  border-bottom: 1px solid transparent;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
-.crm-kanban-col.is-new .crm-kanban-col-header    { background: #ecfdf5; border-bottom-color: #a7f3d0; }
-.crm-kanban-col.is-followup .crm-kanban-col-header { background: #eff6ff; border-bottom-color: #bfdbfe; }
-.crm-kanban-col.is-quoted .crm-kanban-col-header  { background: #fefce8; border-bottom-color: #fde68a; }
-.crm-kanban-col.is-closed .crm-kanban-col-header  { background: #f9fafb; border-bottom-color: #e5e7eb; }
+.crm-kanban-col.is-new .crm-kanban-col-header      { background: #dcfce7; border-bottom-color: #86efac; }
+.crm-kanban-col.is-followup .crm-kanban-col-header  { background: #dbeafe; border-bottom-color: #93c5fd; }
+.crm-kanban-col.is-quoted .crm-kanban-col-header    { background: #fef9c3; border-bottom-color: #fde047; }
+.crm-kanban-col.is-closed .crm-kanban-col-header    { background: #f3f4f6; border-bottom-color: #d1d5db; }
+
 .crm-kanban-col-label {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  color: var(--muted, #6b7280);
-}
-.crm-kanban-col-count {
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--text, #1a1a2e);
-  background: var(--line, #e2e5e9);
-  border-radius: 20px;
-  padding: 0 8px;
-  line-height: 22px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
 }
+.crm-kanban-col.is-new .crm-kanban-col-label      { color: #15803d; }
+.crm-kanban-col.is-followup .crm-kanban-col-label  { color: #1d4ed8; }
+.crm-kanban-col.is-quoted .crm-kanban-col-label    { color: #92400e; }
+.crm-kanban-col.is-closed .crm-kanban-col-label    { color: #6b7280; }
+
+.crm-kanban-col-count {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  padding: 0 8px;
+  border-radius: 20px;
+  background: rgba(0,0,0,.1);
+}
+.crm-kanban-col.is-new .crm-kanban-col-count      { color: #15803d; }
+.crm-kanban-col.is-followup .crm-kanban-col-count  { color: #1d4ed8; }
+.crm-kanban-col.is-quoted .crm-kanban-col-count    { color: #92400e; }
+.crm-kanban-col.is-closed .crm-kanban-col-count    { color: #6b7280; }
+
 .crm-kanban-col-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 10px 12px;
+  gap: 6px;
+  padding: 8px 8px 10px;
+  overflow-y: auto;
+  flex: 1;
 }
+.crm-kanban-col-body::-webkit-scrollbar { width: 3px; }
+.crm-kanban-col-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,.1); border-radius: 2px; }
+
 .crm-kanban-col-empty {
   font-size: 12px;
   color: var(--muted, #9ca3af);
   text-align: center;
-  padding: 16px 0;
+  padding: 28px 8px;
+  opacity: .65;
 }
+
+/* Cards */
 .crm-kanban-card {
   background: #fff;
-  border: 1px solid var(--line, #e2e5e9);
+  border: 1px solid var(--line, #e8eaed);
+  border-left: 3px solid var(--line, #e8eaed);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 9px 11px 8px;
   cursor: pointer;
-  transition: box-shadow .15s, border-color .15s;
+  transition: box-shadow .12s, transform .1s;
   user-select: none;
 }
+.crm-kanban-col.is-new .crm-kanban-card      { border-left-color: #22c55e; }
+.crm-kanban-col.is-followup .crm-kanban-card  { border-left-color: #3b82f6; }
+.crm-kanban-col.is-quoted .crm-kanban-card    { border-left-color: #eab308; }
+.crm-kanban-col.is-closed .crm-kanban-card    { border-left-color: #9ca3af; }
 .crm-kanban-card:hover {
-  border-color: var(--brand, #2d6a4f);
-  box-shadow: 0 2px 8px rgba(45,106,79,.12);
+  box-shadow: 0 3px 12px rgba(0,0,0,.1);
+  transform: translateY(-1px);
 }
+.crm-kanban-card:active { transform: translateY(0); box-shadow: none; }
+
 .crm-kanban-card-name {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text, #1a1a2e);
-  margin-bottom: 4px;
+  color: var(--text, #111827);
+  margin-bottom: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.crm-kanban-card-status {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface, #f3f4f6);
+  color: var(--muted, #6b7280);
+  margin-bottom: 5px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  border: 1px solid var(--line, #e8eaed);
+}
 .crm-kanban-card-meta {
   display: flex;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--muted, #6b7280);
-  margin-bottom: 4px;
-}
-.crm-kanban-card-meta strong {
-  color: var(--brand, #2d6a4f);
-}
-.crm-kanban-card-assign {
+  gap: 6px;
   font-size: 11px;
   color: var(--muted, #9ca3af);
-  margin-bottom: 2px;
+  margin-bottom: 5px;
+  flex-wrap: wrap;
 }
-.crm-kanban-card-date {
-  font-size: 11px;
-  color: var(--muted, #b0b7c0);
-  text-align: right;
-}
-.crm-kanban-col-more {
-  font-size: 12px;
-  align-self: center;
+.crm-kanban-card-meta strong { color: var(--brand, #2d6a4f); font-weight: 600; }
+.crm-kanban-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 4px;
 }
+.crm-kanban-card-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--brand-subtle, #d1fae5);
+  color: var(--brand, #2d6a4f);
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.crm-kanban-card-date {
+  font-size: 10px;
+  color: var(--muted, #b0b7c0);
+  white-space: nowrap;
+}
+.crm-kanban-col-more {
+  font-size: 11px;
+  align-self: center;
+  margin-top: 4px;
+  opacity: .75;
+  width: 100%;
+}
+.crm-kanban-col-more:hover { opacity: 1; }
+
 @media (max-width: 900px) {
-  .crm-kanban { grid-template-columns: repeat(2, 1fr); }
+  .crm-kanban-col { flex: 0 0 240px; }
 }
 @media (max-width: 560px) {
-  .crm-kanban { grid-template-columns: 1fr; }
+  .crm-kanban { padding: 4px 0 14px; gap: 10px; }
+  .crm-kanban-col { flex: 0 0 220px; max-height: calc(100vh - 200px); }
   .crm-stats-bar { gap: var(--space-2); }
   .crm-stats-item { min-width: 44px; padding: 6px 10px; }
   .crm-stats-value { font-size: 17px; }

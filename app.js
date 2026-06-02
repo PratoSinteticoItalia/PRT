@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260602-crm-pipeline";
+const APP_SHELL_VERSION = "20260602-crm-fix1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12065,6 +12065,20 @@ async function loadCrmPipeline({ forceReload = false } = {}) {
       loading: false,
       loadedAt: Date.now(),
     };
+    // Aggiorna stats con dati PG accurati (non dal blob store)
+    if (data.stats && typeof data.stats === "object") {
+      state.salesRequestsStats = data.stats;
+      renderSalesRequestToolbar([], []);
+    }
+    // Merge items pipeline in state.salesRequests: serve al click su card
+    // per trovare il record tramite getSelectedSalesRequest()
+    for (const col of (data.columns || [])) {
+      for (const item of (col.items || [])) {
+        const idx = state.salesRequests.findIndex((r) => r.id === item.id);
+        if (idx >= 0) state.salesRequests[idx] = item;
+        else state.salesRequests.push(item);
+      }
+    }
     renderSalesRequestsKanban();
   } catch (err) {
     state.crmPipeline.loading = false;
@@ -12079,8 +12093,8 @@ function renderSalesRequestsKanban() {
   if (!ui.salesRequestsList) return;
   const { columns = [], loading, loadedAt } = state.crmPipeline;
   if (loading || !loadedAt) {
-    ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:24px">
-      <span style="display:inline-block;width:20px;height:20px;border:2px solid #ccc;border-top-color:#2d6a4f;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>
+    ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:32px">
+      <span style="display:inline-block;width:22px;height:22px;border:2px solid #ccc;border-top-color:#2d6a4f;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:10px"></span>
       ${state.lang === "it" ? "Caricamento pipeline…" : "Loading pipeline…"}
     </div>`;
     return;
@@ -12099,22 +12113,39 @@ function renderSalesRequestsKanban() {
             </div>
             <div class="crm-kanban-col-body">
               ${items.length
-                ? items.map((item) => `
-                    <article class="crm-kanban-card" data-action="select-sales-request" data-id="${item.id}">
-                      <div class="crm-kanban-card-name">${escapeHtml(getSalesRequestDisplayName(item))}</div>
+                ? items.map((item) => {
+                    const sqm = getSalesRequestSqm(item);
+                    const rawStatus = String(item.status || "").trim();
+                    const displayName = escapeHtml(getSalesRequestDisplayName(item));
+                    const city = escapeHtml(item.city || "");
+                    const assignInitials = item.assignment
+                      ? escapeHtml(item.assignment.split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase())
+                      : "";
+                    const assignFull = item.assignment ? escapeHtml(item.assignment) : "";
+                    return `
+                    <article class="crm-kanban-card" data-action="select-sales-request" data-id="${item.id}" title="${displayName}">
+                      <div class="crm-kanban-card-name">${displayName}</div>
+                      ${rawStatus ? `<span class="crm-kanban-card-status">${escapeHtml(rawStatus)}</span>` : ""}
                       <div class="crm-kanban-card-meta">
-                        <span>${escapeHtml(item.city || "—")}</span>
-                        ${getSalesRequestSqm(item) > 0 ? `<strong>${getSalesRequestSqm(item)} mq</strong>` : ""}
+                        ${city ? `<span>📍 ${city}</span>` : ""}
+                        ${sqm > 0 ? `<strong>${sqm} mq</strong>` : ""}
                       </div>
-                      ${item.assignment ? `<div class="crm-kanban-card-assign">${escapeHtml(item.assignment)}</div>` : ""}
-                      <div class="crm-kanban-card-date">${item.updatedAt ? formatDate(item.updatedAt) : "—"}</div>
-                    </article>
-                  `).join("")
-                : `<div class="crm-kanban-col-empty">${state.lang === "it" ? "Nessun lead" : "No leads"}</div>`
+                      <div class="crm-kanban-card-footer">
+                        ${assignInitials
+                          ? `<span class="crm-kanban-card-avatar" title="${assignFull}">${assignInitials}</span>`
+                          : `<span></span>`}
+                        <span class="crm-kanban-card-date">${item.updatedAt ? formatDate(item.updatedAt) : "—"}</span>
+                      </div>
+                    </article>`;
+                  }).join("")
+                : `<div class="crm-kanban-col-empty">
+                     <span style="font-size:22px;display:block;margin-bottom:6px">✓</span>
+                     ${state.lang === "it" ? "Nessun lead" : "No leads"}
+                   </div>`
               }
               ${col.count > items.length ? `
-                <button class="crm-kanban-col-more btn" data-action="crm-kanban-load-more" data-col="${escapeHtml(col.key)}">
-                  ${state.lang === "it" ? `+${col.count - items.length} altri` : `+${col.count - items.length} more`}
+                <button class="crm-kanban-col-more btn ghost-button small-button" data-action="crm-kanban-load-more" data-col="${escapeHtml(col.key)}">
+                  +${col.count - items.length} ${state.lang === "it" ? "altri" : "more"}
                 </button>
               ` : ""}
             </div>
@@ -12124,7 +12155,6 @@ function renderSalesRequestsKanban() {
     </div>
   `;
   ui.salesRequestsList.innerHTML = html;
-  // Nascondi paginazione in modalità kanban
   if (ui.salesRequestsPagination) ui.salesRequestsPagination.innerHTML = "";
 }
 
