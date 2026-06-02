@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260602-crm-fix2";
+const APP_SHELL_VERSION = "20260602-crm-fix3";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2396,6 +2396,27 @@ function closeMobileDrillDetail({ skipHistory = false } = {}) {
 
 function getAllowedViewsForRole(role = state.currentUser?.role || "office") {
   return roleViews[normalizeUserRole(role)] || roleViews.office;
+}
+
+/* ── CRM Drawer (overlay panel dettaglio richiesta) ──────────────────────── */
+function openCrmDrawer() {
+  const section = document.getElementById("sales-requests");
+  if (!section) return;
+  section.classList.add("crm-detail-open");
+  document.body.classList.add("crm-drawer-body-lock");
+}
+
+function closeCrmDrawer() {
+  const section = document.getElementById("sales-requests");
+  if (!section) return;
+  section.classList.remove("crm-detail-open");
+  document.body.classList.remove("crm-drawer-body-lock");
+  // Deseleziona il record corrente (visual feedback sulle card)
+  section.querySelectorAll("[data-action='select-sales-request']").forEach((card) => {
+    card.classList.remove("is-active");
+  });
+  state.selectedSalesRequestId = "";
+  state.salesRequestFormDirty = false;
 }
 
 function forceMobileVisibility(node, visible, displayValue = "block") {
@@ -12787,8 +12808,8 @@ function createNewSalesRequest() {
   state.salesRequestFormDirty = false;
   renderSalesRequests();
   clearStatus(ui.salesRequestsStatus);
+  openCrmDrawer();
   requestAnimationFrame(() => {
-    ui.salesRequestDetailTitle?.scrollIntoView({ behavior: window.innerWidth <= 980 ? "smooth" : "auto", block: "start" });
     ui.salesRequestForm?.name?.focus();
   });
 }
@@ -21422,6 +21443,14 @@ function setView(view, { pushHistory = true } = {}) {
   if (state.mobileDrillDetail && nextView !== previousView) {
     closeMobileDrillDetail({ skipHistory: true });
   }
+  // Se usciamo dal CRM con il drawer aperto, chiudilo senza deselezionare
+  if (previousView === "sales-requests" && nextView !== previousView) {
+    const section = document.getElementById("sales-requests");
+    if (section?.classList.contains("crm-detail-open")) {
+      section.classList.remove("crm-detail-open");
+      document.body.classList.remove("crm-drawer-body-lock");
+    }
+  }
   if (currentViewRenderFrame) {
     window.cancelAnimationFrame(currentViewRenderFrame);
     currentViewRenderFrame = 0;
@@ -24150,15 +24179,13 @@ function handleGlobalClick(event) {
       });
       renderSalesRequestsDetailPanel(getSelectedSalesRequest());
       if (state.currentView === "sales-generator") renderSalesGenerator();
-      // Drill-down mobile: su <= 768px nascondi lista e mostra dettaglio fullscreen.
-      // Sopra 768px lo scrollIntoView legacy garantisce che il pannello dettaglio sia
-      // visibile sotto la lista come prima (compatibilità tablet/desktop stretto).
-      if (window.innerWidth <= MOBILE_DRILL_BREAKPOINT) {
-        openMobileDrillDetail("sales-requests", state.selectedSalesRequestId);
-      } else if (window.innerWidth <= 980) {
-        requestAnimationFrame(() => ui.salesRequestDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" }));
-      }
+      // Apri il drawer CRM (sia desktop che mobile gestito dal CSS overlay)
+      openCrmDrawer();
     }
+    return;
+  }
+  if (action === "close-crm-detail") {
+    closeCrmDrawer();
     return;
   }
   if (action === "select-sales-content") {
@@ -24482,6 +24509,11 @@ function handleGlobalActionKeydown(event) {
   }
   if (event.key === "Escape" && !ui.cmdKOverlay?.classList.contains("hidden")) {
     closeGlobalSearch();
+    return;
+  }
+  // ESC chiude il drawer CRM se aperto
+  if (event.key === "Escape" && document.getElementById("sales-requests")?.classList.contains("crm-detail-open")) {
+    closeCrmDrawer();
     return;
   }
   if (event.key !== "Enter" && event.key !== " ") return;

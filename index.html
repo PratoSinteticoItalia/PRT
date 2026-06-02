@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260602-crm-fix2" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260602-crm-fix2" />
+    <link rel="preload" href="./styles.css?v=20260602-crm-fix3" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260602-crm-fix3" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -642,6 +642,7 @@
               <button id="sales-request-new-button" class="ghost-button small-button" type="button">Nuova richiesta</button>
             </div>
           </div>
+          <div class="crm-drawer-backdrop" data-action="close-crm-detail" aria-hidden="true"></div>
           <div class="dashboard-grid sales-dashboard-grid">
             <section class="panel sales-request-list-panel">
               <div class="panel-head">
@@ -695,6 +696,7 @@
                   <button id="sales-request-storia-tab-btn" class="ghost-button small-button" type="button">Storia</button>
                   <button id="sales-request-delete-button" class="ghost-button small-button" type="button">Elimina</button>
                   <button id="sales-request-use-generator-button" class="primary-button small-button" type="button">Usa nel generatore</button>
+                  <button class="crm-drawer-close" type="button" data-action="close-crm-detail" aria-label="Chiudi pannello" title="Chiudi">✕</button>
                 </div>
               </div>
               <form id="sales-request-form" class="inline-form-grid">
@@ -850,7 +852,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260602-crm-fix2&shell=20260602-crm-fix2"
+                src="./sales-suite/generator.html?embedded=1&v=20260602-crm-fix3&shell=20260602-crm-fix3"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2432,7 +2434,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260602-crm-fix2" defer></script>
-    <script src="./app.js?v=20260602-crm-fix2" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260602-crm-fix3" defer></script>
+    <script src="./app.js?v=20260602-crm-fix3" type="module"></script>
   </body>
 </html>

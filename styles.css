@@ -14564,8 +14564,119 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   padding-right: 0;
 }
 
+/* ── CRM Drawer overlay (sostituisce il layout a due colonne) ──────────── */
+
+/* Lista sempre full-width nel CRM */
+#sales-requests .sales-dashboard-grid {
+  display: block !important;
+}
+
+/* Il pannello dettaglio è nascosto di default e scivola dalla destra */
+#sales-requests .sales-request-detail-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(480px, 100vw);
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  z-index: 400;
+  background: var(--card, #fff);
+  box-shadow: -6px 0 40px rgba(0, 0, 0, .18);
+  transform: translateX(110%);
+  transition: transform .26s cubic-bezier(.4, 0, .2, 1),
+              visibility 0s linear .27s;
+  visibility: hidden;
+  will-change: transform;
+  border-left: 1px solid var(--line, #e2e5e9);
+  padding-bottom: 40px;
+}
+
+/* Backdrop semitrasparente sotto il drawer */
+.crm-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 399;
+  background: rgba(0, 0, 0, .35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .26s ease;
+  cursor: pointer;
+  display: none;
+}
+
+/* Stato aperto */
+#sales-requests.crm-detail-open .sales-request-detail-panel {
+  transform: translateX(0);
+  visibility: visible;
+  transition: transform .26s cubic-bezier(.4, 0, .2, 1);
+}
+#sales-requests.crm-detail-open .crm-drawer-backdrop {
+  display: block;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Pulsante close nella testata del drawer */
+.crm-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--line, #e2e5e9);
+  color: var(--muted, #6b7280);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.crm-drawer-close:hover {
+  background: var(--surface, #f5f6f8);
+  color: var(--text, #111827);
+}
+
+/* Mobile: il drawer viene dal basso come sheet */
+@media (max-width: 768px) {
+  #sales-requests .sales-request-detail-panel {
+    top: auto;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    height: 92dvh;
+    border-left: none;
+    border-top: 1px solid var(--line, #e2e5e9);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 40px rgba(0, 0, 0, .18);
+    transform: translateY(110%);
+  }
+  #sales-requests.crm-detail-open .sales-request-detail-panel {
+    transform: translateY(0);
+  }
+  /* Handle pill per swipe visivo */
+  #sales-requests .sales-request-detail-panel::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--line, #d1d5db);
+    margin: 10px auto 0;
+  }
+}
+
+/* Quando il drawer è aperto non scrollare il body */
+body.crm-drawer-body-lock {
+  overflow: hidden;
+}
+
+/* Sticky stili legacy non più necessari per CRM, ma lasciamoli per altri moduli */
 @media (min-width: 981px) {
-  #sales-requests .sales-request-detail-panel,
   #sales-content .sales-content-detail-panel {
     position: sticky;
     top: 18px;
