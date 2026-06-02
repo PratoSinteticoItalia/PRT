@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260602-crm-fix10";
+const APP_SHELL_VERSION = "20260603-crm-fix11";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12104,6 +12104,9 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
 async function loadCrmPipeline({ forceReload = false } = {}) {
   if (!forceReload && state.crmPipeline.loading) return;
   state.crmPipeline.loading = true;
+  // Mostra subito lo spinner (prima del fetch): senza questo l'utente vede ancora
+  // la lista e ri-clicca il bottone pensando che il primo click non abbia funzionato.
+  renderSalesRequestsKanban();
   try {
     const data = await apiFetch("/api/sales/requests/pipeline?limit=25");
     state.crmPipeline = {
