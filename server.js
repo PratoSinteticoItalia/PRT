@@ -1734,8 +1734,8 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
         company, job_type, surface, sqm, note,
         status, assignment, first_contact_by, first_contact_at, quoted_at,
         source, source_row_number, attachments, whatsapp_thread_id,
-        requested_height, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,NOW())
+        requested_height, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,COALESCE($27::timestamptz,NOW()),NOW())
       ON CONFLICT (id) DO UPDATE SET
         first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name,
         email=EXCLUDED.email, phone=EXCLUDED.phone,
@@ -1750,6 +1750,8 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
         source=EXCLUDED.source, source_row_number=EXCLUDED.source_row_number,
         attachments=EXCLUDED.attachments, whatsapp_thread_id=EXCLUDED.whatsapp_thread_id,
         requested_height=EXCLUDED.requested_height,
+        -- Correggi created_at se in PG è più recente dell'originale (fix import bulk)
+        created_at=LEAST(sales_requests.created_at, EXCLUDED.created_at),
         updated_at=NOW()
     `, [
       String(request.id),
@@ -1773,6 +1775,7 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
       JSON.stringify(Array.isArray(request.attachments) ? request.attachments : []),
       request.whatsappThreadId ? String(request.whatsappThreadId) : null,
       String(request.requestedHeight || ""),
+      request.createdAt ? new Date(String(request.createdAt)).toISOString() : null,
     ]);
     // Scrivi audit_log se ci sono cambiamenti nei campi chiave
     const isNew = !existingRow;

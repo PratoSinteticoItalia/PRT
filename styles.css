@@ -12431,6 +12431,12 @@ body.mobile-filter-sheet-open {
 }
 
 .sales-assignment-pill,
+.sales-card-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-end;
+}
 .sales-card-date {
   display: grid;
   gap: 3px;
@@ -12441,6 +12447,16 @@ body.mobile-filter-sheet-open {
   border: 1px solid rgba(16, 24, 39, 0.08);
   background: rgba(255, 255, 255, 0.72);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+.sales-card-dates .sales-card-date {
+  min-height: unset;
+  padding: 5px 10px;
+}
+.sales-card-date--secondary {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  opacity: .65;
 }
 
 .sales-assignment-pill small,
@@ -12565,6 +12581,13 @@ body.mobile-filter-sheet-open {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
 
+.sales-request-detail-chip.sales-date-chip {
+  border-color: rgba(107, 114, 128, 0.2);
+  background: rgba(249, 250, 251, 0.9);
+}
+.sales-request-detail-chip.sales-date-chip strong {
+  color: #374151;
+}
 .sales-request-detail-chip.is-queued {
   border-color: var(--tok-blue-border);
   background: var(--tok-blue-bg);
