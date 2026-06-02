@@ -14687,15 +14687,14 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   padding-right: 0;
 }
 
-/* ── CRM Drawer overlay (sostituisce il layout a due colonne) ──────────── */
+/* ── CRM: master-detail su desktop, drawer su mobile ──────────────────── */
 
-/* Lista sempre full-width nel CRM */
+/* Base (tablet + mobile): lista full-width, pannello = drawer fixed */
 #sales-requests .sales-dashboard-grid {
   display: block !important;
 }
 
-/* Il pannello dettaglio è nascosto di default e scivola dalla destra.
-   top: 56px = altezza topbar, così il drawer non copre la barra di navigazione. */
+/* Pannello dettaglio: nascosto di default, scivola da destra come drawer */
 #sales-requests .sales-request-detail-panel {
   position: fixed;
   top: 56px;
@@ -14730,7 +14729,7 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   display: none;
 }
 
-/* Stato aperto */
+/* Stato aperto (tablet/mobile) */
 #sales-requests.crm-detail-open .sales-request-detail-panel {
   transform: translateX(0);
   visibility: visible;
@@ -14764,7 +14763,7 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   color: var(--text, #111827);
 }
 
-/* Mobile: il drawer viene dal basso come sheet */
+/* Mobile (≤768px): drawer dal basso come sheet */
 @media (max-width: 768px) {
   #sales-requests .sales-request-detail-panel {
     top: auto;
@@ -14794,11 +14793,61 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   }
 }
 
-/* Quando il drawer è aperto non scrollare il body (iOS Safari scroll prevention).
-   Non bloccare .main-content: il pannello è position:fixed e la lista deve
-   restare scrollabile anche con il drawer aperto. */
+/* Desktop (≥860px): layout master-detail side-by-side.
+   Il pannello dettaglio è sempre visibile come colonna sticky — niente overlay,
+   niente backdrop, niente close button. Lo scroll della lista e del pannello
+   sono indipendenti. */
+@media (min-width: 860px) {
+  #sales-requests .sales-dashboard-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 460px;
+    gap: 16px;
+    align-items: start;
+  }
+
+  #sales-requests .sales-request-detail-panel {
+    /* Fuori dal fixed: diventa colonna del grid, sticky rispetto a .main-content */
+    position: sticky;
+    top: 0;
+    right: auto;
+    width: auto;
+    height: calc(100dvh - 56px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    /* Annulla trasform/visibility del drawer */
+    transform: none !important;
+    visibility: visible !important;
+    transition: none !important;
+    will-change: auto;
+    /* Stile panel normale (tutto attorno, no shadow laterale pesante) */
+    border: 1px solid var(--line, #e2e5e9);
+    border-radius: 18px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, .06);
+    z-index: 1;
+    padding-bottom: 40px;
+    background: var(--card, #fff);
+  }
+
+  /* Backdrop e close button non necessari su desktop */
+  #sales-requests .crm-drawer-backdrop {
+    display: none !important;
+    pointer-events: none;
+  }
+  #sales-requests .crm-drawer-close {
+    display: none;
+  }
+}
+
+/* Body lock: solo mobile/tablet (drawer overlay). Su desktop il pannello è
+   nel layout, non blocciamo mai lo scroll del body. */
 body.crm-drawer-body-lock {
   overflow: hidden;
+}
+@media (min-width: 860px) {
+  body.crm-drawer-body-lock {
+    overflow: auto;
+  }
 }
 
 /* Sticky stili legacy non più necessari per CRM, ma lasciamoli per altri moduli */

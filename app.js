@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260602-crm-fix9";
+const APP_SHELL_VERSION = "20260602-crm-fix10";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2402,13 +2402,19 @@ function getAllowedViewsForRole(role = state.currentUser?.role || "office") {
 function openCrmDrawer() {
   const section = document.getElementById("sales-requests");
   if (!section) return;
-  // Reset sincrono prima dell'animazione: azzerato il pannello PRIMA che la classe
-  // crm-detail-open lo renda visibile, così l'utente vede sempre dall'inizio.
-  // Non toccare mainContent.scrollTop: la lista rimane nella posizione dello scroll.
+  // 1) Aggiunge la classe PRIMA di resettare lo scroll.
+  //    Su mobile/tablet: visibility passa immediatamente a "visible" (la transition
+  //    CSS su visibility è 0s nello stato open) → il browser accetta scrollTop=0.
+  //    Su desktop: il pannello è già visible (sticky in layout) → nessun effetto.
+  section.classList.add("crm-detail-open");
+  // 2) Body lock solo su mobile/tablet (drawer overlay).
+  //    Su desktop il pannello è nel layout: bloccare lo scroll sarebbe sbagliato.
+  if (window.innerWidth < 860) {
+    document.body.classList.add("crm-drawer-body-lock");
+  }
+  // 3) Reset scroll ora che visibility è garantita.
   const panel = section.querySelector(".sales-request-detail-panel");
   if (panel) panel.scrollTop = 0;
-  section.classList.add("crm-detail-open");
-  document.body.classList.add("crm-drawer-body-lock");
 }
 
 function closeCrmDrawer() {
@@ -12338,6 +12344,18 @@ function renderSalesRequests() {
 
 function renderSalesRequestsDetailPanel(selected = null) {
   if (!ui.salesRequestForm) return;
+  // Reset scroll quando la selezione cambia (funziona sia su desktop — pannello
+  // sempre visibile nel layout — che su mobile dopo openCrmDrawer).
+  // Confronta l'ID precedente per NON resettare se è un re-render dello stesso item.
+  const _panel = ui.salesRequestForm.closest(".sales-request-detail-panel");
+  if (_panel) {
+    const _prevId = _panel.dataset.panelItemId || "";
+    const _newId = selected?.id || "";
+    if (_prevId !== _newId) {
+      _panel.dataset.panelItemId = _newId;
+      _panel.scrollTop = 0;
+    }
+  }
   ensureSalesRequestWhatsAppActionUi();
   const preserveFormValues = shouldPreserveSalesRequestFormValues(selected);
   const effectiveSelected = getSalesRequestUiDraftOrSelected(selected);
