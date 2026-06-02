@@ -1266,6 +1266,8 @@ const state = {
   marketingPublishingId: "",
   marketingPublishingMode: "",
   inventorySuggestions: {},
+  // CRM server-side state (paginazione + FTS via GET /api/sales/requests)
+  crmServerPage: { total: 0, page: 1, limit: 50, items: [], loading: false, loadedAt: 0 },
 };
 
 let sessionKeepaliveTimer = 0;
@@ -11952,11 +11954,65 @@ function getFilteredSalesContents({ ignoreCategory = false } = {}) {
     });
 }
 
+/**
+ * Carica una pagina del CRM dal server con filtri correnti.
+ * Aggiorna state.crmServerPage e re-renderizza.
+ */
+async function loadCrmPage({ page = 1, forceReload = false } = {}) {
+  if (!forceReload && state.crmServerPage.loading) return;
+  state.crmServerPage.loading = true;
+  state.crmServerPage.page = page;
+  // Scrivi indicatore loading
+  if (ui.salesRequestsList) {
+    ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:24px">
+      <span style="display:inline-block;width:20px;height:20px;border:2px solid #ccc;border-top-color:#2d6a4f;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>
+      ${state.lang === "it" ? "Caricamento…" : "Loading…"}
+    </div>`;
+  }
+  try {
+    const q          = String(state.search?.salesRequests || "").trim();
+    const status     = String(state.filters?.salesRequestStatus || "").trim();
+    const assignment = String(state.filters?.salesRequestAssignment || "").trim();
+    const source     = String(state.filters?.salesRequestSource || "").trim();
+    const limit      = 50;
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (q)          params.set("q", q);
+    if (status && status !== "all") params.set("status", status);
+    if (assignment) params.set("assignment", assignment);
+    if (source && source !== "all")  params.set("source", source);
+    const data = await apiFetch(`/api/sales/requests?${params}`);
+    state.crmServerPage = {
+      total: data.total || 0,
+      page: data.page || page,
+      limit: data.limit || limit,
+      items: Array.isArray(data.items) ? data.items : [],
+      loading: false,
+      loadedAt: Date.now(),
+    };
+    // Aggiorna anche state.salesRequests per compatibilità con detail panel etc.
+    state.salesRequests = state.crmServerPage.items;
+    renderSalesRequests();
+  } catch (err) {
+    state.crmServerPage.loading = false;
+    console.warn("[crm] loadCrmPage error:", err?.message);
+    if (ui.salesRequestsList) {
+      ui.salesRequestsList.innerHTML = `<div class="info-card">${state.lang === "it" ? "Errore nel caricamento. Riprova." : "Load error. Retry."}</div>`;
+    }
+  }
+}
+
 function renderSalesRequests() {
   syncSalesRequestFilters();
-  const baseItems = getFilteredSalesRequests({ ignoreQuickFilter: true });
-  const filtered = getFilteredSalesRequests();
-  const { pageItems, totalPages, totalItems } = paginateSalesRequests(filtered);
+  // Usa crmServerPage se disponibile (dati server-side), altrimenti fallback locale
+  const pageItems = state.crmServerPage?.items?.length > 0 || state.crmServerPage?.loadedAt > 0
+    ? state.crmServerPage.items
+    : getFilteredSalesRequests();
+  const totalItems = state.crmServerPage?.loadedAt > 0
+    ? state.crmServerPage.total
+    : pageItems.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / (state.crmServerPage?.limit || 50)));
+  const baseItems = pageItems; // usato per toolbar e quick filter chips
+  const filtered = pageItems;
   const bulkSelectedIds = new Set(getSalesRequestBulkSelectedIds());
   let selected = ensureSelectedSalesRequest();
   if (selected && !filtered.some((item) => item.id === selected.id)) {
@@ -12032,20 +12088,21 @@ function renderSalesRequests() {
     });
   }
   if (ui.salesRequestsPagination) {
-    const showPagination = totalItems > getSalesRequestsPageSize();
+    const currentPage = state.crmServerPage?.loadedAt > 0 ? (state.crmServerPage.page || 1) : (state.salesRequestPage || 1);
+    const showPagination = totalItems > (state.crmServerPage?.limit || 50);
     ui.salesRequestsPagination.classList.toggle("hidden", !showPagination);
     ui.salesRequestsPagination.innerHTML = showPagination
       ? `
-        <div class="list-pagination-copy">${state.lang === "it" ? `Pagina ${state.salesRequestPage} di ${totalPages} · ${totalItems} richieste` : `Page ${state.salesRequestPage} of ${totalPages} · ${totalItems} requests`}</div>
+        <div class="list-pagination-copy">${state.lang === "it" ? `Pagina ${currentPage} di ${totalPages} · ${totalItems} richieste` : `Page ${currentPage} of ${totalPages} · ${totalItems} requests`}</div>
         <div class="list-pagination-actions">
-          <button class="btn" data-action="sales-requests-first-page" ${state.salesRequestPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prima" : "First"}</button>
-          <button class="btn" data-action="sales-requests-prev-page" ${state.salesRequestPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prec." : "Prev"}</button>
+          <button class="btn" data-action="sales-requests-first-page" ${currentPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prima" : "First"}</button>
+          <button class="btn" data-action="sales-requests-prev-page" ${currentPage <= 1 ? "disabled" : ""}>${state.lang === "it" ? "Prec." : "Prev"}</button>
           <label class="list-pagination-jump">
             <span>${state.lang === "it" ? "Vai a" : "Go to"}</span>
-            <input class="list-pagination-page-input" data-sales-requests-page-input type="number" min="1" max="${totalPages}" value="${state.salesRequestPage}" inputmode="numeric" aria-label="${state.lang === "it" ? "Vai alla pagina richieste" : "Go to requests page"}" />
+            <input class="list-pagination-page-input" data-sales-requests-page-input type="number" min="1" max="${totalPages}" value="${currentPage}" inputmode="numeric" aria-label="${state.lang === "it" ? "Vai alla pagina richieste" : "Go to requests page"}" />
           </label>
-          <button class="btn" data-action="sales-requests-next-page" ${state.salesRequestPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Succ." : "Next"}</button>
-          <button class="btn" data-action="sales-requests-last-page" ${state.salesRequestPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Ultima" : "Last"}</button>
+          <button class="btn" data-action="sales-requests-next-page" ${currentPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Succ." : "Next"}</button>
+          <button class="btn" data-action="sales-requests-last-page" ${currentPage >= totalPages ? "disabled" : ""}>${state.lang === "it" ? "Ultima" : "Last"}</button>
         </div>
       `
       : "";
@@ -21206,6 +21263,10 @@ function setView(view, { pushHistory = true } = {}) {
   if (nextView === "sales-requests" && nextView !== previousView && canAutoRefreshSalesRequests()) {
     triggerSalesRequestAutoSync({ force: true });
   }
+  // Carica prima pagina CRM dal server quando si entra nella view
+  if (nextView === "sales-requests" && nextView !== previousView) {
+    loadCrmPage({ page: 1, forceReload: true });
+  }
   if (nextView !== previousView) {
     if (pushHistory) {
       window.history.pushState({ view: nextView }, "", `#${nextView}`);
@@ -23602,19 +23663,27 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "sales-requests-prev-page") {
-    setSalesRequestPage((state.salesRequestPage || 1) - 1);
+    const prevPage = Math.max(1, (state.crmServerPage?.page || state.salesRequestPage || 1) - 1);
+    loadCrmPage({ page: prevPage });
+    ui.salesRequestsList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
   if (action === "sales-requests-next-page") {
-    setSalesRequestPage((state.salesRequestPage || 1) + 1);
+    const totalPagesNext = Math.max(1, Math.ceil((state.crmServerPage?.total || 0) / (state.crmServerPage?.limit || 50)));
+    const nextPage = Math.min(totalPagesNext, (state.crmServerPage?.page || state.salesRequestPage || 1) + 1);
+    loadCrmPage({ page: nextPage });
+    ui.salesRequestsList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
   if (action === "sales-requests-first-page") {
-    setSalesRequestPage(1);
+    loadCrmPage({ page: 1 });
+    ui.salesRequestsList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
   if (action === "sales-requests-last-page") {
-    setSalesRequestPage(getSalesRequestsTotalPages());
+    const totalPagesLast = Math.max(1, Math.ceil((state.crmServerPage?.total || 0) / (state.crmServerPage?.limit || 50)));
+    loadCrmPage({ page: totalPagesLast });
+    ui.salesRequestsList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
   if (action === "open-sales-request-whatsapp") {
@@ -24404,19 +24473,20 @@ bindEvent(ui.ordersSearch, "input", (event) => {
 bindEvent(ui.salesRequestsSearch, "input", (event) => {
   state.search.salesRequests = event.target.value;
   state.salesRequestPage = 1;
-  scheduleSearchRender("sales-requests", renderSalesRequests);
+  // Debounce 300ms poi carica dal server con FTS
+  scheduleSearchRender("sales-requests", () => loadCrmPage({ page: 1, forceReload: true }));
 });
 bindEvent(ui.salesRequestAssignmentFilter, "change", (event) => {
   state.filters.salesRequestAssignment = event.target.value || "all";
   state.salesRequestPage = 1;
   clearSalesRequestBulkSelection({ render: false });
-  renderSalesRequests();
+  loadCrmPage({ page: 1, forceReload: true });
 });
 bindEvent(ui.salesRequestStatusFilter, "change", (event) => {
   state.filters.salesRequestStatus = event.target.value || "all";
   state.salesRequestPage = 1;
   clearSalesRequestBulkSelection({ render: false });
-  renderSalesRequests();
+  loadCrmPage({ page: 1, forceReload: true });
 });
 bindEvent(ui.salesRequestQuickFilters, "click", (event) => {
   const button = event.target.closest("[data-action='set-sales-request-quick-filter']");

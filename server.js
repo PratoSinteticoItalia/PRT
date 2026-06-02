@@ -124,6 +124,7 @@ let storeBackupQueue = Promise.resolve();
 let postgresMirrorWriteQueue = Promise.resolve();
 // In-memory store cache: evita un round-trip Postgres su ogni lettura API
 let storeMemCache = null;
+let pgListenerClient = null; // connessione dedicata per LISTEN/NOTIFY
 
 // Cache dei file statici pre-compressi all'avvio: evita readFile + gzipSync su ogni richiesta
 const staticFileCache = new Map(); // path → { raw, gzipped, mimeType }
@@ -512,6 +513,46 @@ async function getPgPool() {
   return pgPool;
 }
 
+/**
+ * Avvia una connessione PG dedicata in ascolto su 'psi_ops_store_changed'.
+ * Quando un'altra istanza scrive il documento store, questa connessione riceve
+ * la notifica, invalida la cache locale e fa broadcast SSE ai propri client.
+ * Riconnette automaticamente in caso di errore.
+ */
+async function setupPgListener() {
+  if (!USE_POSTGRES) return;
+  const { Client } = await import("pg");
+  const tryConnect = async () => {
+    try {
+      const client = new Client({ connectionString: DATABASE_URL, application_name: "psi-ops-listener" });
+      await client.connect();
+      await client.query("LISTEN psi_ops_store_changed");
+      client.on("notification", (msg) => {
+        const revision = String(msg.payload || "").trim();
+        // Invalida la cache locale — la prossima readJson rilegge da DB
+        storeMemCache = null;
+        if (revision) broadcastStoreRevision(revision);
+        console.log("[pg-listen] store invalidated revision:", revision.slice(0, 16));
+      });
+      client.on("error", (err) => {
+        console.error("[pg-listen] error:", err?.message);
+        pgListenerClient = null;
+        setTimeout(tryConnect, 5_000);
+      });
+      client.on("end", () => {
+        pgListenerClient = null;
+        setTimeout(tryConnect, 5_000);
+      });
+      pgListenerClient = client;
+      console.log("[pg-listen] ready — listening on psi_ops_store_changed");
+    } catch (err) {
+      console.error("[pg-listen] connect failed:", err?.message);
+      setTimeout(tryConnect, 10_000);
+    }
+  };
+  tryConnect();
+}
+
 async function ensureDatabaseStorage() {
   if (!USE_POSTGRES) return;
   if (dbBootstrapPromise) return dbBootstrapPromise;
@@ -730,6 +771,16 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS sales_requests_assignment_idx  ON sales_requests (assignment);
       CREATE INDEX IF NOT EXISTS sales_requests_source_idx      ON sales_requests (source);
       CREATE INDEX IF NOT EXISTS sales_requests_updated_at_idx  ON sales_requests (updated_at DESC);
+      ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
+      ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS surname TEXT DEFAULT '';
+      CREATE INDEX IF NOT EXISTS sales_requests_fts_idx ON sales_requests
+        USING gin(to_tsvector('italian',
+          coalesce(first_name,'') || ' ' || coalesce(last_name,'') || ' ' ||
+          coalesce(phone,'') || ' ' || coalesce(city,'') || ' ' ||
+          coalesce(email,'') || ' ' || coalesce(note,'') || ' ' ||
+          coalesce(company,'')
+        ));
+      CREATE INDEX IF NOT EXISTS sales_requests_created_at_idx ON sales_requests (created_at DESC);
       CREATE INDEX IF NOT EXISTS orders_fulfillment_idx         ON orders (fulfillment_status);
       CREATE INDEX IF NOT EXISTS audit_log_entity_idx           ON audit_log (entity_type, entity_id);
       CREATE INDEX IF NOT EXISTS audit_log_created_idx          ON audit_log (created_at DESC);
@@ -1188,6 +1239,73 @@ async function getSalesRequestsFromDb() {
   } catch (err) {
     console.warn("[db] getSalesRequestsFromDb:", err?.message);
     return null;
+  }
+}
+
+/**
+ * CRM server-side search con FTS, filtri e paginazione.
+ * Usato da GET /api/sales/requests.
+ */
+async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", dateFrom = "", dateTo = "", page = 1, limit = 50 } = {}) {
+  if (!USE_POSTGRES) return { total: 0, page, limit, items: [] };
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const where = [];
+  const params = [];
+
+  if (q && q.trim()) {
+    params.push(q.trim());
+    where.push(`to_tsvector('italian',
+      coalesce(first_name,'') || ' ' || coalesce(last_name,'') || ' ' ||
+      coalesce(phone,'') || ' ' || coalesce(city,'') || ' ' ||
+      coalesce(email,'') || ' ' || coalesce(note,'') || ' ' ||
+      coalesce(company,'')
+    ) @@ plainto_tsquery('italian', $${params.length})`);
+  }
+  if (status && status !== "all") {
+    params.push(String(status));
+    where.push(`status = $${params.length}`);
+  }
+  if (assignment === "unassigned") {
+    where.push(`(assignment IS NULL OR assignment = '')`);
+  } else if (assignment && assignment !== "all") {
+    params.push(String(assignment));
+    where.push(`assignment = $${params.length}`);
+  }
+  if (source && source !== "all") {
+    params.push(String(source));
+    where.push(`source = $${params.length}`);
+  }
+  if (dateFrom) {
+    params.push(String(dateFrom));
+    where.push(`created_at >= $${params.length}::date`);
+  }
+  if (dateTo) {
+    params.push(String(dateTo));
+    where.push(`created_at < ($${params.length}::date + interval '1 day')`);
+  }
+
+  const whereClause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+  const offset = (Math.max(1, Number(page) || 1) - 1) * (Number(limit) || 50);
+  const limitN = Math.min(200, Math.max(1, Number(limit) || 50));
+
+  try {
+    const [countRes, dataRes] = await Promise.all([
+      pool.query(`SELECT COUNT(*) AS total FROM sales_requests${whereClause}`, params),
+      pool.query(
+        `SELECT * FROM sales_requests${whereClause} ORDER BY updated_at DESC NULLS LAST LIMIT ${limitN} OFFSET ${offset}`,
+        params,
+      ),
+    ]);
+    return {
+      total: parseInt(countRes.rows[0]?.total || "0", 10),
+      page: Number(page) || 1,
+      limit: limitN,
+      items: dataRes.rows.map(dbRowToSalesRequest),
+    };
+  } catch (err) {
+    console.warn("[db] searchSalesRequestsFromDb:", err?.message);
+    return { total: 0, page: Number(page) || 1, limit: limitN, items: [] };
   }
 }
 
@@ -2631,14 +2749,17 @@ async function writeDatabaseDocument(key, value) {
   await ensureDatabaseStorage();
   const pool = await getPgPool();
   await pool.query(
-    `
-      INSERT INTO app_documents (key, payload, updated_at)
-      VALUES ($1, $2::jsonb, NOW())
-      ON CONFLICT (key)
-      DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
-    `,
+    `INSERT INTO app_documents (key, payload, updated_at) VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()`,
     [key, JSON.stringify(value)],
   );
+  // Notifica tutte le istanze del cambio store (LISTEN/NOTIFY cross-instance)
+  if (key === STORE_DOC_KEY) {
+    const revision = getStoreRevision(value) || buildStoreRevisionToken();
+    try {
+      await pool.query("SELECT pg_notify('psi_ops_store_changed', $1)", [String(revision)]);
+    } catch {}
+  }
 }
 
 async function readStoreRevisionSnapshot() {
@@ -9803,7 +9924,18 @@ async function handleApi(req, res, url) {
       jobs: roleFilteredJobs,
       orders: roleFilteredOrders,
       inventory: roleFilteredInventory,
-      salesRequests: sessionRole === "office" ? sessionSalesReqs : [],
+      salesRequests: [], // deprecated: usa GET /api/sales/requests per dati CRM paginati
+      salesRequestsStats: sessionRole === "office" ? (() => {
+        const reqs = Array.isArray(store.salesRequests) ? store.salesRequests : [];
+        const now = Date.now();
+        const week = 7 * 24 * 3600 * 1000;
+        return {
+          total: reqs.length,
+          new: reqs.filter((r) => !r.status || r.status === "new" || r.status === "nuovo").length,
+          unassigned: reqs.filter((r) => !r.assignment).length,
+          thisWeek: reqs.filter((r) => r.createdAt && (now - new Date(r.createdAt).getTime()) < week).length,
+        };
+      })() : null,
       salesContents: sessionRole === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
       salesRequestSource: sessionRole === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
       coveragePlanner: currentUser ? normalizeCoveragePlanner(
@@ -9897,7 +10029,18 @@ async function handleApi(req, res, url) {
         jobs: loginJobs,
         orders: loginOrders,
         inventory: loginInventory,
-        salesRequests: loginRole === "office" ? store.salesRequests : [],
+        salesRequests: [], // deprecated: usa GET /api/sales/requests per dati CRM paginati
+        salesRequestsStats: loginRole === "office" ? (() => {
+          const reqs = Array.isArray(store.salesRequests) ? store.salesRequests : [];
+          const now = Date.now();
+          const week = 7 * 24 * 3600 * 1000;
+          return {
+            total: reqs.length,
+            new: reqs.filter((r) => !r.status || r.status === "new" || r.status === "nuovo").length,
+            unassigned: reqs.filter((r) => !r.assignment).length,
+            thisWeek: reqs.filter((r) => r.createdAt && (now - new Date(r.createdAt).getTime()) < week).length,
+          };
+        })() : null,
         salesContents: loginRole === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
         salesRequestSource: loginRole === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
         coveragePlanner: store.coveragePlanner,
@@ -11381,6 +11524,26 @@ async function handleApi(req, res, url) {
       });
     } catch (error) {
       return sendJson(res, 500, { error: String(error?.message || "sales_diagnostic_failed") });
+    }
+  }
+
+  // GET /api/sales/requests — ricerca CRM server-side con FTS + filtri + paginazione
+  if (url.pathname === "/api/sales/requests" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const q          = String(url.searchParams.get("q") || "").trim();
+    const status     = String(url.searchParams.get("status") || "").trim();
+    const assignment = String(url.searchParams.get("assignment") || "").trim();
+    const source     = String(url.searchParams.get("source") || "").trim();
+    const dateFrom   = String(url.searchParams.get("dateFrom") || "").trim();
+    const dateTo     = String(url.searchParams.get("dateTo") || "").trim();
+    const page       = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
+    const limit      = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10) || 50));
+    try {
+      const result = await searchSalesRequestsFromDb({ q, status, assignment, source, dateFrom, dateTo, page, limit });
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err?.message || "search_failed") });
     }
   }
 
@@ -13366,6 +13529,8 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Vertex Ops backend running on http://${HOST}:${PORT}`);
+  // Avvia listener PG per invalidazione cache cross-istanza
+  setupPgListener().catch((err) => console.error("[pg-listen] setup error:", err?.message));
   if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
     webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
     console.log("[push] VAPID initialized");
