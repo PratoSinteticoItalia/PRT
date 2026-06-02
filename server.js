@@ -1452,93 +1452,143 @@ async function getSalesRequestPipelineFromDb({ limit = 20 } = {}) {
   const pool = await getPgPool();
   const limitN = Math.min(100, Math.max(1, Number(limit) || 20));
 
+  // Colonne kanban = stati reali del processo commerciale
   const COLUMN_DEFS = [
-    { key: "new",      label: "Nuovi" },
-    { key: "followup", label: "In lavorazione" },
-    { key: "quoted",   label: "In preventivo" },
-    { key: "closed",   label: "Chiusi" },
+    { key: "unassigned", label: "Da assegnare"        },
+    { key: "new",        label: "Nuovo contatto"       },
+    { key: "contacted",  label: "1° Contatto"          },
+    { key: "followup",   label: "Follow-up"            },
+    { key: "quoting",    label: "In preventivo"        },
+    { key: "quoted",     label: "Preventivo inviato"   },
+    { key: "won",        label: "Confermato"           },
+    { key: "lost",       label: "Perso / Chiuso"       },
   ];
 
   // Normalizza status esattamente come normalizeSalesRequestStatus() in JS:
   // strip diacritici italiani → strip non-alfanumerici → lowercase
   const normExpr = `lower(regexp_replace(translate(coalesce(trim(status),''), 'àèéìíòóùúÀÈÉÌÍÒÓÙÚ', 'aaeiioouuAAEIIOOUU'), '[^a-zA-Z0-9 ]', '', 'g'))`;
 
-  // Classifica ogni riga nel bucket corretto (stesso ordine di priorità del JS)
+  // Classifica ogni riga in uno degli 8 bucket (stati reali del processo commerciale)
   const bucketExpr = `CASE
-    WHEN ${normExpr} IN ('new','nuova','nuovo','lead','nuovo contatto','richiesta nuova','nuova richiesta')
-      OR coalesce(trim(status),'') = ''
-    THEN 'new'
-    WHEN ${normExpr} IN ('quoted','quote','preventivo','in preventivo','preventivo inviato',
-      'preventivo da inviare','preventivo confermato','offerta','offerta inviata',
-      'quotato','campione acquistato','ordine eseguito','ordine confermato')
-    THEN 'quoted'
+    -- Perso / Chiuso: ha la massima priorità, evita che chiusi finiscano in altre colonne
     WHEN ${normExpr} IN ('closed','chiusa','chiuso','vinta','vinto','persa','perso',
       'declinata','lead non qualificato','completata','completato','archiviata','archiviato')
-    THEN 'closed'
-    WHEN ${normExpr} IN ('followup','follow up','1 contatto','1 contatto whatsapp',
-      'da richiamare','richiamare','richiamata','recall',
-      'attesa','in attesa di risposta','nessuna risposta',
-      'ricontattato','chiamare','email','email inviata','fare follow up',
-      'in lavorazione','da seguire')
+      OR ${normExpr} LIKE '%non qualific%'
+      OR ${normExpr} LIKE '%archivi%'
+    THEN 'lost'
+
+    -- Da assegnare: non ancora assegnato e non chiuso/vinto/perso
+    WHEN coalesce(trim(assignment),'') = ''
+    THEN 'unassigned'
+
+    -- Confermato: preventivo/ordine confermato o eseguito
+    WHEN ${normExpr} IN ('preventivo confermato','ordine confermato','ordine eseguito',
+      'campione acquistato')
+      OR (${normExpr} LIKE '%confermato%' AND ${normExpr} NOT LIKE '%non%')
+      OR ${normExpr} LIKE '%ordine%'
+    THEN 'won'
+
+    -- Preventivo inviato
+    WHEN ${normExpr} IN ('preventivo inviato','offerta inviata')
+      OR (${normExpr} LIKE '%preventivo%' AND ${normExpr} LIKE '%inviato%')
+    THEN 'quoted'
+
+    -- In preventivo (da inviare o in lavorazione)
+    WHEN ${normExpr} IN ('preventivo','in preventivo','preventivo da inviare','offerta','quotato')
+      OR (${normExpr} LIKE '%preventivo%'
+          AND ${normExpr} NOT LIKE '%inviato%'
+          AND ${normExpr} NOT LIKE '%confermato%')
+      OR (${normExpr} LIKE '%offerta%' AND ${normExpr} NOT LIKE '%inviata%')
+    THEN 'quoting'
+
+    -- 1° Contatto
+    WHEN ${normExpr} IN ('1 contatto','1 contatto whatsapp','primo contatto')
+      OR ${normExpr} LIKE '1 contatt%'
+      OR ${normExpr} LIKE '1o contatt%'
+    THEN 'contacted'
+
+    -- Follow-up: da richiamare, in attesa, nessuna risposta, ecc.
+    WHEN ${normExpr} IN ('followup','follow up','da richiamare','richiamare','richiamata','recall',
+      'attesa','in attesa di risposta','nessuna risposta','ricontattato','chiamare',
+      'email','email inviata','fare follow up','in lavorazione','da seguire')
       OR ${normExpr} LIKE '%follow%'
       OR ${normExpr} LIKE '%richiam%'
       OR ${normExpr} LIKE '%attesa%'
       OR ${normExpr} LIKE '%contatt%'
+      OR ${normExpr} LIKE '%lavoraz%'
     THEN 'followup'
+
+    -- Nuovo contatto: assegnato ma senza stato specifico
     ELSE 'new'
   END`;
 
   try {
-    // 1. Un'unica query per conteggi + statistiche aggregate
-    const statsRes = await pool.query(`
-      SELECT
-        (${bucketExpr}) AS bucket,
-        COUNT(*)::int                                                                      AS cnt,
-        COUNT(*) FILTER (WHERE coalesce(trim(assignment),'') = '')::int                   AS unassigned_cnt,
-        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int             AS this_week_cnt
-      FROM sales_requests
-      GROUP BY bucket
-    `);
+    // Unica query CTE: un solo table scan per bucket + stats + top-N per colonna
+    const cteRes = await pool.query(`
+      WITH bucketed AS (
+        SELECT *, (${bucketExpr}) AS _bucket
+        FROM sales_requests
+      ),
+      counts AS (
+        SELECT
+          _bucket,
+          COUNT(*)::int                                                                    AS cnt,
+          COUNT(*) FILTER (WHERE coalesce(trim(assignment),'') = '')::int                 AS unassigned_cnt,
+          COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int           AS this_week_cnt
+        FROM bucketed
+        GROUP BY _bucket
+      ),
+      ranked AS (
+        SELECT b.*,
+          c.cnt, c.unassigned_cnt, c.this_week_cnt,
+          ROW_NUMBER() OVER (PARTITION BY b._bucket ORDER BY b.updated_at DESC NULLS LAST) AS _rn
+        FROM bucketed b
+        JOIN counts c ON c._bucket = b._bucket
+      )
+      SELECT * FROM ranked
+      WHERE _rn <= $1
+      ORDER BY _bucket, _rn
+    `, [limitN]);
 
-    const bucketCounts      = {};
-    let totalAll            = 0;
-    let totalUnassigned     = 0;
-    let totalThisWeek       = 0;
-    for (const row of statsRes.rows) {
-      const b = row.bucket;
-      const n = row.cnt;
-      bucketCounts[b]   = n;
-      totalAll         += n;
-      totalUnassigned  += row.unassigned_cnt;
-      totalThisWeek    += row.this_week_cnt;
+    // Ricostruisci stats e colonne dalla risposta unica
+    const bucketCounts     = {};
+    let totalAll           = 0;
+    let totalUnassigned    = 0;
+    let totalThisWeek      = 0;
+    const bucketRowsMap    = {};
+    const seenBuckets      = new Set();
+
+    for (const row of cteRes.rows) {
+      const b = row._bucket;
+      if (!seenBuckets.has(b)) {
+        seenBuckets.add(b);
+        bucketCounts[b]  = row.cnt;
+        totalAll        += row.cnt;
+        totalUnassigned += row.unassigned_cnt;
+        totalThisWeek   += row.this_week_cnt;
+      }
+      if (!bucketRowsMap[b]) bucketRowsMap[b] = [];
+      bucketRowsMap[b].push(row);
     }
+
+    // Assicura che tutti i bucket abbiano un conteggio (anche se non tornano righe top-N)
+    // Serve una seconda micro-query solo se ci sono bucket con 0 record nel top-N
+    // (edge case: bucket esiste ma tutti i record finiscono oltre il limit — non possibile)
+
     const stats = {
       total:      totalAll,
-      new:        bucketCounts["new"]  || 0,
+      // "NUOVI" in toolbar = da assegnare (azione immediata richiesta)
+      new:        (bucketCounts["unassigned"] || 0),
       unassigned: totalUnassigned,
       thisWeek:   totalThisWeek,
     };
 
-    // 2. Top-N items per colonna in parallelo
-    const columns = await Promise.all(
-      COLUMN_DEFS.map(async (col) => {
-        const dataRes = await pool.query(`
-          SELECT * FROM (
-            SELECT *, (${bucketExpr}) AS _bucket
-            FROM sales_requests
-          ) sub
-          WHERE _bucket = $1
-          ORDER BY updated_at DESC NULLS LAST
-          LIMIT ${limitN}
-        `, [col.key]);
-        return {
-          key:   col.key,
-          label: col.label,
-          count: bucketCounts[col.key] || 0,
-          items: dataRes.rows.map(dbRowToSalesRequest),
-        };
-      }),
-    );
+    const columns = COLUMN_DEFS.map((col) => ({
+      key:   col.key,
+      label: col.label,
+      count: bucketCounts[col.key] || 0,
+      items: (bucketRowsMap[col.key] || []).map(dbRowToSalesRequest),
+    }));
 
     return { columns, stats };
   } catch (err) {
@@ -13068,10 +13118,16 @@ async function handleApi(req, res, url) {
         store.inventory.filter((p) => autoFulfillPieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
       }
     }
-    writeJson(STORE_PATH, store).catch((writeErr) => {
-      console.error("[operations] persist failed:", writeErr?.message || writeErr);
-    });
-    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
+    // Scrivi prima in PG, poi in blob store (che emette il broadcast NOTIFY ai client).
+    // Questo elimina la race condition dove GET /api/orders legge dati PG stantii
+    // subito dopo il broadcast, riportando lo stato a "da-pianificare".
+    upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null)
+      .catch(() => {})
+      .finally(() => {
+        writeJson(STORE_PATH, store).catch((writeErr) => {
+          console.error("[operations] persist failed:", writeErr?.message || writeErr);
+        });
+      });
     // Push notifications: crew assegnata o ordine pronto per spedizione
     const updatedOrder = store.orders[orderIndex];
     const newCrew = updatedOrder.operations?.installation?.crew || "";

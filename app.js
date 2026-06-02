@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260602-crm-fix4";
+const APP_SHELL_VERSION = "20260602-crm-fix6";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2404,6 +2404,9 @@ function openCrmDrawer() {
   if (!section) return;
   section.classList.add("crm-detail-open");
   document.body.classList.add("crm-drawer-body-lock");
+  // Porta il contenuto in cima per rendere il drawer visibile
+  // (necessario se l'utente era scrollato verso il basso nella lista)
+  if (ui.mainContent) ui.mainContent.scrollTop = 0;
 }
 
 function closeCrmDrawer() {
@@ -12127,7 +12130,19 @@ function renderSalesRequestsKanban() {
     </div>`;
     return;
   }
-  const TONE_MAP = { new: "is-new", followup: "is-followup", quoted: "is-quoted", closed: "is-closed" };
+  const TONE_MAP = {
+    // nuovi 8 bucket
+    unassigned: "is-unassigned",
+    new:        "is-new",
+    contacted:  "is-contacted",
+    followup:   "is-followup",
+    quoting:    "is-quoting",
+    quoted:     "is-quoted",
+    won:        "is-won",
+    lost:       "is-lost",
+    // vecchi 4 bucket (compatibilità)
+    closed:     "is-lost",
+  };
   const html = `
     <div class="crm-kanban">
       ${columns.map((col) => {
@@ -12239,6 +12254,14 @@ function renderSalesRequests() {
         const statusTone = getSalesRequestStatusTone(item.status || "");
         const isBulkSelected = bulkSelectedIds.has(item.id);
         const requestSqm = getSalesRequestSqm(item);
+        const statusLabel = getSalesRequestStatusLabel(item.status);
+        const serviceLabel = getSalesRequestServiceLabel(item.service);
+        const assignmentInitials = assignmentTone === "is-assigned"
+          ? (assignmentLabel.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "?")
+          : "?";
+        const specsText = requestSqm > 0
+          ? `${requestSqm} mq${item.requestedHeight ? ` · ${item.requestedHeight}` : ""}`
+          : "";
         return `
           <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""} ${isBulkSelected ? "is-bulk-selected" : ""}" data-action="select-sales-request" data-id="${item.id}" data-first-contact-state="${escapeHtml(normalizeSalesRequestFirstContactState(item.firstContactState || ""))}">
             <button
@@ -12247,41 +12270,23 @@ function renderSalesRequests() {
               data-action="toggle-sales-request-bulk"
               data-id="${item.id}"
               aria-pressed="${isBulkSelected ? "true" : "false"}"
-              aria-label="${state.lang === "it" ? "Seleziona richiesta per assegnazione multipla" : "Select request for bulk assignment"}"
+              aria-label="${state.lang === "it" ? "Seleziona richiesta" : "Select request"}"
             >${isBulkSelected ? "✓" : ""}</button>
-            <div class="sales-request-card-head">
-              <div>
-                <strong>${escapeHtml(getSalesRequestDisplayName(item))}</strong>
-                <p>${escapeHtml(item.city || (state.lang === "it" ? "Città da definire" : "City pending"))}</p>
+            <div class="sales-card-row sales-card-row--main">
+              <div class="sales-card-identity">
+                <strong class="sales-card-name">${escapeHtml(getSalesRequestDisplayName(item))}</strong>
+                <span class="sales-card-sep">·</span>
+                <span class="sales-card-city">${escapeHtml(item.city || (state.lang === "it" ? "Città —" : "City —"))}</span>
               </div>
-              <div class="sales-request-card-head-badges">
-                <span class="sales-status-pill ${statusTone}">${escapeHtml(getSalesRequestStatusLabel(item.status))}</span>
-                ${automationBadge
-                  ? `<span class="sales-automation-pill ${automationBadge.tone === "queued" ? "is-queued" : "is-sent"}" title="${escapeHtml(automationBadge.title)}">${escapeHtml(automationBadge.label)}</span>`
-                  : ""}
-              </div>
+              <span class="sales-status-pill ${statusTone}">${escapeHtml(statusLabel)}</span>
             </div>
-            <div class="sales-request-card-meta">
-              <span class="sales-request-card-service">${escapeHtml(getSalesRequestServiceLabel(item.service))}</span>
-              <span class="sales-request-card-request">
-                <strong class="sales-request-card-sqm">${escapeHtml(requestSqm > 0 ? `${requestSqm} mq` : (state.lang === "it" ? "MQ da definire" : "SQM pending"))}</strong>
-                ${item.requestedHeight ? `<small class="sales-request-card-height">${escapeHtml(item.requestedHeight)}</small>` : ""}
-              </span>
-            </div>
-            <div class="sales-request-card-foot">
-              <span class="sales-assignment-pill ${assignmentTone}">
-                <small>${state.lang === "it" ? "Assegnazione" : "Assignment"}</small>
-                <strong>${escapeHtml(assignmentLabel)}</strong>
-              </span>
-              <span class="sales-card-dates">
-                <span class="sales-card-date">
-                  <small>${state.lang === "it" ? "Ricevuta" : "Received"}</small>
-                  <strong>${item.createdAt ? formatDate(item.createdAt) : "—"}</strong>
-                </span>
-                ${item.updatedAt && item.createdAt && formatDate(item.updatedAt) !== formatDate(item.createdAt) ? `<span class="sales-card-date sales-card-date--secondary">
-                  <small>${state.lang === "it" ? "Aggiornata" : "Updated"}</small>
-                  <strong>${formatDate(item.updatedAt)}</strong>
-                </span>` : ""}
+            <div class="sales-card-row sales-card-row--sub">
+              <span class="sales-card-service-tag">${escapeHtml(serviceLabel)}</span>
+              ${specsText ? `<span class="sales-card-bullet">·</span><span class="sales-card-specs">${escapeHtml(specsText)}</span>` : ""}
+              <span class="sales-card-meta-right">
+                ${automationBadge ? `<span class="sales-automation-pill ${automationBadge.tone === "queued" ? "is-queued" : "is-sent"}" title="${escapeHtml(automationBadge.title)}">${escapeHtml(automationBadge.label)}</span>` : ""}
+                <span class="sales-card-avatar ${assignmentTone}" title="${escapeHtml(assignmentLabel)}">${assignmentInitials}</span>
+                <time class="sales-card-time">${item.createdAt ? formatDate(item.createdAt) : "—"}</time>
               </span>
             </div>
           </article>

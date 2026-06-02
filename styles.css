@@ -12301,8 +12301,130 @@ body.mobile-filter-sheet-open {
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
 
+/* ── Compact 2-row card per CRM lista richieste ────────────── */
 #sales-requests .sales-request-card {
-  padding-left: 58px;
+  gap: 5px;
+  padding: 10px 14px 10px 50px;
+  border-radius: 14px;
+}
+
+/* Riga superiore: nome · città | status */
+.sales-card-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.sales-card-row--main {
+  justify-content: space-between;
+}
+.sales-card-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+}
+.sales-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f1724;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+.sales-card-sep {
+  font-size: 11px;
+  color: #b0bac5;
+  flex-shrink: 0;
+}
+.sales-card-city {
+  font-size: 12px;
+  color: #667688;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 3;
+}
+
+/* Riga inferiore: servizio · specs | avatar + data */
+.sales-card-row--sub {
+  font-size: 12px;
+  color: #667688;
+}
+.sales-card-service-tag {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 2;
+  max-width: 38%;
+}
+.sales-card-bullet {
+  color: #b0bac5;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.sales-card-specs {
+  white-space: nowrap;
+  color: #667688;
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sales-card-meta-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.sales-card-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(16, 24, 39, 0.12);
+  background: var(--surface, #f5f6f8);
+  color: #667688;
+}
+.sales-card-avatar.is-assigned {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: rgba(6, 95, 70, 0.2);
+}
+.sales-card-avatar.is-unassigned {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: rgba(146, 64, 14, 0.2);
+}
+.sales-card-time {
+  font-size: 11px;
+  color: #8a96a4;
+  white-space: nowrap;
+}
+
+/* Pillola status più piccola nelle card compatte */
+#sales-requests .sales-card-row--main .sales-status-pill {
+  font-size: 10px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+/* Checkbox centrato verticalmente nella card compatta */
+#sales-requests .sales-request-select-toggle {
+  top: 50%;
+  transform: translateY(-50%);
+  left: 14px;
+  width: 22px;
+  height: 22px;
 }
 
 .sales-request-select-toggle {
@@ -14572,13 +14694,14 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   display: block !important;
 }
 
-/* Il pannello dettaglio è nascosto di default e scivola dalla destra */
+/* Il pannello dettaglio è nascosto di default e scivola dalla destra.
+   top: 56px = altezza topbar, così il drawer non copre la barra di navigazione. */
 #sales-requests .sales-request-detail-panel {
   position: fixed;
-  top: 0;
+  top: 56px;
   right: 0;
   width: min(480px, 100vw);
-  height: 100dvh;
+  height: calc(100dvh - 56px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -14671,8 +14794,11 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   }
 }
 
-/* Quando il drawer è aperto non scrollare il body */
+/* Quando il drawer è aperto non scrollare il body né il main-content */
 body.crm-drawer-body-lock {
+  overflow: hidden;
+}
+body.crm-drawer-body-lock .main-content {
   overflow: hidden;
 }
 
@@ -19246,10 +19372,17 @@ body {
   max-height: calc(100vh - 240px);
   scroll-snap-align: start;
 }
+/* ─ Vecchi 4 bucket (mantenuti per compatibilità) ─ */
 .crm-kanban-col.is-new      { border-top-color: #22c55e; }
 .crm-kanban-col.is-followup { border-top-color: #3b82f6; }
 .crm-kanban-col.is-quoted   { border-top-color: #eab308; }
 .crm-kanban-col.is-closed   { border-top-color: #9ca3af; }
+/* ─ Nuovi 8 colonne stati preventivo ─ */
+.crm-kanban-col.is-unassigned  { border-top-color: #f59e0b; }
+.crm-kanban-col.is-contacted   { border-top-color: #a78bfa; }
+.crm-kanban-col.is-quoting     { border-top-color: #f97316; }
+.crm-kanban-col.is-won         { border-top-color: #10b981; }
+.crm-kanban-col.is-lost        { border-top-color: #9ca3af; }
 
 .crm-kanban-col-header {
   display: flex;
@@ -19261,10 +19394,15 @@ body {
   top: 0;
   z-index: 1;
 }
-.crm-kanban-col.is-new .crm-kanban-col-header      { background: #dcfce7; border-bottom-color: #86efac; }
-.crm-kanban-col.is-followup .crm-kanban-col-header  { background: #dbeafe; border-bottom-color: #93c5fd; }
-.crm-kanban-col.is-quoted .crm-kanban-col-header    { background: #fef9c3; border-bottom-color: #fde047; }
-.crm-kanban-col.is-closed .crm-kanban-col-header    { background: #f3f4f6; border-bottom-color: #d1d5db; }
+.crm-kanban-col.is-new .crm-kanban-col-header          { background: #dcfce7; border-bottom-color: #86efac; }
+.crm-kanban-col.is-followup .crm-kanban-col-header     { background: #dbeafe; border-bottom-color: #93c5fd; }
+.crm-kanban-col.is-quoted .crm-kanban-col-header       { background: #fef9c3; border-bottom-color: #fde047; }
+.crm-kanban-col.is-closed .crm-kanban-col-header       { background: #f3f4f6; border-bottom-color: #d1d5db; }
+.crm-kanban-col.is-unassigned .crm-kanban-col-header   { background: #fef3c7; border-bottom-color: #fcd34d; }
+.crm-kanban-col.is-contacted .crm-kanban-col-header    { background: #ede9fe; border-bottom-color: #c4b5fd; }
+.crm-kanban-col.is-quoting .crm-kanban-col-header      { background: #ffedd5; border-bottom-color: #fdba74; }
+.crm-kanban-col.is-won .crm-kanban-col-header          { background: #d1fae5; border-bottom-color: #6ee7b7; }
+.crm-kanban-col.is-lost .crm-kanban-col-header         { background: #f3f4f6; border-bottom-color: #d1d5db; }
 
 .crm-kanban-col-label {
   font-size: 11px;
@@ -19272,10 +19410,15 @@ body {
   text-transform: uppercase;
   letter-spacing: .07em;
 }
-.crm-kanban-col.is-new .crm-kanban-col-label      { color: #15803d; }
-.crm-kanban-col.is-followup .crm-kanban-col-label  { color: #1d4ed8; }
-.crm-kanban-col.is-quoted .crm-kanban-col-label    { color: #92400e; }
-.crm-kanban-col.is-closed .crm-kanban-col-label    { color: #6b7280; }
+.crm-kanban-col.is-new .crm-kanban-col-label           { color: #15803d; }
+.crm-kanban-col.is-followup .crm-kanban-col-label      { color: #1d4ed8; }
+.crm-kanban-col.is-quoted .crm-kanban-col-label        { color: #92400e; }
+.crm-kanban-col.is-closed .crm-kanban-col-label        { color: #6b7280; }
+.crm-kanban-col.is-unassigned .crm-kanban-col-label    { color: #b45309; }
+.crm-kanban-col.is-contacted .crm-kanban-col-label     { color: #6d28d9; }
+.crm-kanban-col.is-quoting .crm-kanban-col-label       { color: #c2410c; }
+.crm-kanban-col.is-won .crm-kanban-col-label           { color: #065f46; }
+.crm-kanban-col.is-lost .crm-kanban-col-label          { color: #6b7280; }
 
 .crm-kanban-col-count {
   font-size: 12px;
@@ -19285,10 +19428,15 @@ body {
   border-radius: 20px;
   background: rgba(0,0,0,.1);
 }
-.crm-kanban-col.is-new .crm-kanban-col-count      { color: #15803d; }
-.crm-kanban-col.is-followup .crm-kanban-col-count  { color: #1d4ed8; }
-.crm-kanban-col.is-quoted .crm-kanban-col-count    { color: #92400e; }
-.crm-kanban-col.is-closed .crm-kanban-col-count    { color: #6b7280; }
+.crm-kanban-col.is-new .crm-kanban-col-count           { color: #15803d; }
+.crm-kanban-col.is-followup .crm-kanban-col-count      { color: #1d4ed8; }
+.crm-kanban-col.is-quoted .crm-kanban-col-count        { color: #92400e; }
+.crm-kanban-col.is-closed .crm-kanban-col-count        { color: #6b7280; }
+.crm-kanban-col.is-unassigned .crm-kanban-col-count    { color: #b45309; }
+.crm-kanban-col.is-contacted .crm-kanban-col-count     { color: #6d28d9; }
+.crm-kanban-col.is-quoting .crm-kanban-col-count       { color: #c2410c; }
+.crm-kanban-col.is-won .crm-kanban-col-count           { color: #065f46; }
+.crm-kanban-col.is-lost .crm-kanban-col-count          { color: #6b7280; }
 
 .crm-kanban-col-body {
   display: flex;
@@ -19320,10 +19468,15 @@ body {
   transition: box-shadow .12s, transform .1s;
   user-select: none;
 }
-.crm-kanban-col.is-new .crm-kanban-card      { border-left-color: #22c55e; }
-.crm-kanban-col.is-followup .crm-kanban-card  { border-left-color: #3b82f6; }
-.crm-kanban-col.is-quoted .crm-kanban-card    { border-left-color: #eab308; }
-.crm-kanban-col.is-closed .crm-kanban-card    { border-left-color: #9ca3af; }
+.crm-kanban-col.is-new .crm-kanban-card           { border-left-color: #22c55e; }
+.crm-kanban-col.is-followup .crm-kanban-card      { border-left-color: #3b82f6; }
+.crm-kanban-col.is-quoted .crm-kanban-card        { border-left-color: #eab308; }
+.crm-kanban-col.is-closed .crm-kanban-card        { border-left-color: #9ca3af; }
+.crm-kanban-col.is-unassigned .crm-kanban-card    { border-left-color: #f59e0b; }
+.crm-kanban-col.is-contacted .crm-kanban-card     { border-left-color: #a78bfa; }
+.crm-kanban-col.is-quoting .crm-kanban-card       { border-left-color: #f97316; }
+.crm-kanban-col.is-won .crm-kanban-card           { border-left-color: #10b981; }
+.crm-kanban-col.is-lost .crm-kanban-card          { border-left-color: #9ca3af; }
 .crm-kanban-card:hover {
   box-shadow: 0 3px 12px rgba(0,0,0,.1);
   transform: translateY(-1px);
