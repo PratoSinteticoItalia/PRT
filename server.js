@@ -1541,7 +1541,7 @@ async function getSalesRequestPipelineFromDb({ limit = 20 } = {}) {
       ranked AS (
         SELECT b.*,
           c.cnt, c.unassigned_cnt, c.this_week_cnt,
-          ROW_NUMBER() OVER (PARTITION BY b._bucket ORDER BY COALESCE(b.updated_at, b.created_at) DESC NULLS LAST) AS _rn
+          ROW_NUMBER() OVER (PARTITION BY b._bucket ORDER BY b.created_at DESC NULLS LAST) AS _rn
         FROM bucketed b
         JOIN counts c ON c._bucket = b._bucket
       )
@@ -10161,7 +10161,11 @@ async function handleApi(req, res, url) {
       const merged = store.orders.map((order) => {
         const dbOps = dbOpsMap.get(order.id);
         const isMeaningful = dbOps && Object.keys(dbOps).length > 3 && (dbOps.sqm > 0 || dbOps.officeStatus !== "bozza");
-        return isMeaningful ? { ...order, operations: dbOps } : order;
+        // Blob vince su PG: PG fornisce i dati di base, ma le operazioni del blob
+        // (aggiornate dal client) sovrascrivono quelle PG per i campi in comune.
+        // Questo evita che la cache PG stantia sovrascriva modifiche appena salvate
+        // (es. status "completata" → "da-pianificare" al primo reload dopo NOTIFY).
+        return isMeaningful ? { ...order, operations: { ...dbOps, ...(order.operations || {}) } } : order;
       });
       const dbOnlyOrders = sqlOrders.filter((o) => !storeIds.has(o.id));
       return sortOrdersByRecency([...merged, ...dbOnlyOrders]);
@@ -12857,7 +12861,8 @@ async function handleApi(req, res, url) {
       const dbOps = dbOpsMap.get(order.id);
       const isMeaningful = dbOps && Object.keys(dbOps).length > 3
         && (dbOps.sqm > 0 || dbOps.officeStatus !== "bozza");
-      return isMeaningful ? { ...order, operations: dbOps } : order;
+      // Blob vince su PG per i campi in comune (evita revert status "completata").
+      return isMeaningful ? { ...order, operations: { ...dbOps, ...(order.operations || {}) } } : order;
     });
     const dbOnlyOrders = sqlOrders.filter((o) => !storeIds.has(o.id));
     return sendJson(res, 200, sortOrdersByRecency([...merged, ...dbOnlyOrders]));
@@ -13125,9 +13130,11 @@ async function handleApi(req, res, url) {
     // chiamata la cache (TTL 10s) restituisce i dati vecchi all'immediata /api/session
     // triggered dal NOTIFY, riportando isMeaningful a sovrascrivere il blob con "da-pianificare".
     upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null)
-      .then(() => { invalidateOrdersDbCache(); })
       .catch(() => {})
       .finally(() => {
+        // Invalida sempre la cache PG (anche se l'upsert fallisce) per evitare
+        // che dati stantii sovrascrivano le operazioni appena salvate nel blob.
+        invalidateOrdersDbCache();
         writeJson(STORE_PATH, store).catch((writeErr) => {
           console.error("[operations] persist failed:", writeErr?.message || writeErr);
         });
