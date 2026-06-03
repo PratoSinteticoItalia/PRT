@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260603-crm-fix11";
+const APP_SHELL_VERSION = "20260603-crm-fix12";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12058,19 +12058,28 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
   if (!forceReload && state.crmServerPage.loading) return;
   state.crmServerPage.loading = true;
   state.crmServerPage.page = page;
-  // Scrivi indicatore loading
-  if (ui.salesRequestsList) {
+  // Calcola i parametri subito per confrontarli col cache precedente
+  const q          = String(state.search?.salesRequests || "").trim();
+  const status     = String(state.filters?.salesRequestStatus || "").trim();
+  const assignment = String(state.filters?.salesRequestAssignment || "").trim();
+  const source     = String(state.filters?.salesRequestSource || "").trim();
+  const limit      = 50;
+  const queryKey   = `${page}|${q}|${status}|${assignment}|${source}`;
+  // Se abbiamo già dati per la stessa query, mostrali subito senza spinner:
+  // il fetch avviene in background e aggiorna la lista silenziosamente.
+  // Se i parametri sono cambiati (filtro/ricerca diversi), mostra lo spinner.
+  const hasCachedData = state.crmServerPage.loadedAt > 0
+    && state.crmServerPage.items.length > 0
+    && state.crmServerPage._queryKey === queryKey;
+  if (hasCachedData) {
+    renderSalesRequests();
+  } else if (ui.salesRequestsList) {
     ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:24px">
       <span style="display:inline-block;width:20px;height:20px;border:2px solid #ccc;border-top-color:#2d6a4f;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>
       ${state.lang === "it" ? "Caricamento…" : "Loading…"}
     </div>`;
   }
   try {
-    const q          = String(state.search?.salesRequests || "").trim();
-    const status     = String(state.filters?.salesRequestStatus || "").trim();
-    const assignment = String(state.filters?.salesRequestAssignment || "").trim();
-    const source     = String(state.filters?.salesRequestSource || "").trim();
-    const limit      = 50;
     const params = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (q)          params.set("q", q);
     if (status && status !== "all") params.set("status", status);
@@ -12084,6 +12093,7 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
       items: Array.isArray(data.items) ? data.items : [],
       loading: false,
       loadedAt: Date.now(),
+      _queryKey: queryKey,
     };
     // Aggiorna anche state.salesRequests per compatibilità con detail panel etc.
     state.salesRequests = state.crmServerPage.items;
