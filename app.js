@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260603-crm-fix16";
+const APP_SHELL_VERSION = "20260604-crm-fix17";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1267,7 +1267,7 @@ const state = {
   marketingPublishingMode: "",
   inventorySuggestions: {},
   // CRM server-side state (paginazione + FTS via GET /api/sales/requests)
-  crmServerPage: { total: 0, page: 1, limit: 50, items: [], loading: false, loadedAt: 0 },
+  crmServerPage: { total: 0, page: 1, limit: 50, items: [], loading: false, loadedAt: 0, loadError: false },
   // CRM pipeline kanban (GET /api/sales/requests/pipeline)
   crmPipeline: { columns: [], loading: false, loadedAt: 0 },
   // "list" | "kanban" — toggle nella toolbar del CRM
@@ -12053,6 +12053,7 @@ function getFilteredSalesContents({ ignoreCategory = false } = {}) {
 async function loadCrmPage({ page = 1, forceReload = false } = {}) {
   if (!forceReload && state.crmServerPage.loading) return;
   state.crmServerPage.loading = true;
+  state.crmServerPage.loadError = false;
   state.crmServerPage.page = page;
   // Calcola i parametri subito per confrontarli col cache precedente
   const q          = String(state.search?.salesRequests || "").trim();
@@ -12061,20 +12062,9 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
   const source     = String(state.filters?.salesRequestSource || "").trim();
   const limit      = 50;
   const queryKey   = `${page}|${q}|${status}|${assignment}|${source}`;
-  // Se abbiamo già dati per la stessa query, mostrali subito senza spinner:
-  // il fetch avviene in background e aggiorna la lista silenziosamente.
-  // Se i parametri sono cambiati (filtro/ricerca diversi), mostra lo spinner.
-  const hasCachedData = state.crmServerPage.loadedAt > 0
-    && state.crmServerPage.items.length > 0
-    && state.crmServerPage._queryKey === queryKey;
-  if (hasCachedData) {
-    renderSalesRequests();
-  } else if (ui.salesRequestsList) {
-    ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:24px">
-      <span style="display:inline-block;width:20px;height:20px;border:2px solid #ccc;border-top-color:#2d6a4f;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>
-      ${state.lang === "it" ? "Caricamento…" : "Loading…"}
-    </div>`;
-  }
+  // Notifica subito renderSalesRequests: se ci sono dati cached mostra quelli,
+  // altrimenti (loadedAt === 0) mostra lo spinner e ritorna in attesa del fetch.
+  renderSalesRequests();
   try {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (q)          params.set("q", q);
@@ -12088,6 +12078,7 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
       limit: data.limit || limit,
       items: Array.isArray(data.items) ? data.items : [],
       loading: false,
+      loadError: false,
       loadedAt: Date.now(),
       _queryKey: queryKey,
     };
@@ -12096,10 +12087,11 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
     renderSalesRequests();
   } catch (err) {
     state.crmServerPage.loading = false;
+    state.crmServerPage.loadError = true;
     console.warn("[crm] loadCrmPage error:", err?.message);
-    if (ui.salesRequestsList) {
-      ui.salesRequestsList.innerHTML = `<div class="info-card">${state.lang === "it" ? "Errore nel caricamento. Riprova." : "Load error. Retry."}</div>`;
-    }
+    // Usa renderSalesRequests per mostrare l'errore: in questo modo qualsiasi
+    // re-render SSE successivo mostrerà comunque l'errore, non "Nessuna richiesta".
+    renderSalesRequests();
   }
 }
 
@@ -12237,6 +12229,36 @@ function renderSalesRequests() {
     } else {
       loadCrmPipeline({ forceReload: false });
     }
+    return;
+  }
+  // Caricamento in corso senza dati cached: mostra spinner, non sovrascrivere
+  // con "Nessuna richiesta" (problema noto: SSE fires durante fetch iniziale).
+  if (state.crmServerPage?.loading && !state.crmServerPage?.loadedAt) {
+    if (ui.salesRequestsList) {
+      ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:24px">
+        <span style="display:inline-block;width:20px;height:20px;border:2px solid #ccc;border-top-color:#2d6a4f;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>
+        ${state.lang === "it" ? "Caricamento…" : "Loading…"}
+      </div>`;
+    }
+    renderSalesRequestToolbar([], []);
+    renderSalesRequestBulkBar([]);
+    return;
+  }
+  // Errore di caricamento: mostra messaggio con tasto Riprova, non "Nessuna richiesta".
+  if (state.crmServerPage?.loadError && !state.crmServerPage?.loadedAt) {
+    if (ui.salesRequestsList) {
+      ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:16px">
+        <span style="display:block;margin-bottom:8px">${state.lang === "it" ? "Errore nel caricamento." : "Load error."}</span>
+        <button class="ghost-button small-button" type="button" data-action="reload-crm-page">${state.lang === "it" ? "Riprova" : "Retry"}</button>
+      </div>`;
+    }
+    renderSalesRequestToolbar([], []);
+    renderSalesRequestBulkBar([]);
+    return;
+  }
+  // Nessun dato e nessun caricamento attivo: avvia il caricamento automaticamente.
+  if (!state.crmServerPage?.loadedAt && !state.crmServerPage?.loading) {
+    void loadCrmPage({ page: 1, forceReload: false });
     return;
   }
   // Usa crmServerPage se disponibile (dati server-side), altrimenti fallback locale
@@ -23943,6 +23965,10 @@ function handleGlobalClick(event) {
     state.accountingPage = (state.accountingPage || 1) + 1;
     renderAccounting();
     ui.accountingList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "reload-crm-page") {
+    void loadCrmPage({ page: state.crmServerPage?.page || 1, forceReload: true });
     return;
   }
   if (action === "sales-requests-prev-page") {
