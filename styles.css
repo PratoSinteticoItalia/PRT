@@ -48,15 +48,15 @@ body {
       0deg,
       transparent,
       transparent 31px,
-      rgba(65, 68, 72, 0.07) 31px,
-      rgba(65, 68, 72, 0.07) 32px
+      rgba(65, 68, 72, 0.18) 31px,
+      rgba(65, 68, 72, 0.18) 32px
     ),
     repeating-linear-gradient(
       90deg,
       transparent,
       transparent 31px,
-      rgba(65, 68, 72, 0.07) 31px,
-      rgba(65, 68, 72, 0.07) 32px
+      rgba(65, 68, 72, 0.18) 31px,
+      rgba(65, 68, 72, 0.18) 32px
     );
   font-size: 14px;
   line-height: 1.5;
@@ -108,15 +108,15 @@ body.shell-loading::after {
       0deg,
       transparent,
       transparent 31px,
-      rgba(65, 68, 72, 0.08) 31px,
-      rgba(65, 68, 72, 0.08) 32px
+      rgba(65, 68, 72, 0.18) 31px,
+      rgba(65, 68, 72, 0.18) 32px
     ),
     repeating-linear-gradient(
       90deg,
       transparent,
       transparent 31px,
-      rgba(65, 68, 72, 0.08) 31px,
-      rgba(65, 68, 72, 0.08) 32px
+      rgba(65, 68, 72, 0.18) 31px,
+      rgba(65, 68, 72, 0.18) 32px
     );
 }
 
@@ -320,15 +320,15 @@ body.shell-loading .shell-launch {
       0deg,
       transparent,
       transparent 31px,
-      rgba(65, 68, 72, 0.07) 31px,
-      rgba(65, 68, 72, 0.07) 32px
+      rgba(65, 68, 72, 0.18) 31px,
+      rgba(65, 68, 72, 0.18) 32px
     ),
     repeating-linear-gradient(
       90deg,
       transparent,
       transparent 31px,
-      rgba(65, 68, 72, 0.07) 31px,
-      rgba(65, 68, 72, 0.07) 32px
+      rgba(65, 68, 72, 0.18) 31px,
+      rgba(65, 68, 72, 0.18) 32px
     );
 }
 
@@ -2982,6 +2982,14 @@ button.is-feedback,
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+/* Nella testata pagina i bottoni vanno in riga, non in colonna */
+.page-header .action-list,
+.page-header-bar .action-list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .action-card {
@@ -6446,15 +6454,15 @@ body {
       0deg,
       transparent,
       transparent 31px,
-      rgba(65, 68, 72, 0.07) 31px,
-      rgba(65, 68, 72, 0.07) 32px
+      rgba(65, 68, 72, 0.18) 31px,
+      rgba(65, 68, 72, 0.18) 32px
     ),
     repeating-linear-gradient(
       90deg,
       transparent,
       transparent 31px,
-      rgba(65, 68, 72, 0.07) 31px,
-      rgba(65, 68, 72, 0.07) 32px
+      rgba(65, 68, 72, 0.18) 31px,
+      rgba(65, 68, 72, 0.18) 32px
     );
 }
 
@@ -12107,13 +12115,32 @@ body.mobile-filter-sheet-open {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+/* Selects possono restringersi; il bottone compatta non si tronca mai */
+.sales-request-toolbar-right .sales-filter-select {
+  flex: 0 1 auto;
+  min-width: 70px;
+}
+#sales-request-compact-toggle {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .sales-request-quick-filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;      /* riga singola — scorre orizzontalmente */
   gap: 8px;
   min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;  /* nasconde scrollbar su Firefox */
+  padding-bottom: 2px;    /* evita clip del box-shadow del chip */
+  flex: 1 1 100%;         /* prende tutta la larghezza → va su riga propria */
+}
+.sales-request-quick-filters::-webkit-scrollbar {
+  display: none;
 }
 
 .sales-request-quick-chip {
