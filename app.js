@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260603-crm-fix14";
+const APP_SHELL_VERSION = "20260603-crm-fix15";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12831,6 +12831,17 @@ function upsertSalesRequest(saved, { skipOpsRender = false, preserveSelection = 
   } else {
     state.salesRequests = [normalized, ...state.salesRequests];
     restoreSalesRequestPageAnchor(pageAnchorId);
+  }
+  // Aggiorna anche crmServerPage.items: renderSalesRequests() legge da lì per le card
+  // della lista. Senza questo le card mostrano i dati vecchi dopo un patch (stato/assegnazione).
+  if (state.crmServerPage?.items?.length) {
+    const crmIdx = state.crmServerPage.items.findIndex((item) => item.id === normalized.id);
+    if (crmIdx >= 0) {
+      state.crmServerPage = {
+        ...state.crmServerPage,
+        items: state.crmServerPage.items.map((item, i) => (i === crmIdx ? normalized : item)),
+      };
+    }
   }
   invalidateSalesRequestsFilterCache(); // dati cambiati → invalida sort+filter cache
   if (preserveSelection) {

@@ -12278,40 +12278,59 @@ body.mobile-filter-sheet-open {
 .sales-request-bulk-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 0 0 14px;
-  padding: 12px;
-  border-radius: 18px;
-  border: 1px solid rgba(37, 99, 235, 0.14);
-  background: linear-gradient(180deg, rgba(240, 246, 255, 0.86), rgba(248, 251, 255, 0.72));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  background: rgba(240, 246, 255, 0.7);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-height: 0;
 }
+.sales-request-bulk-bar::-webkit-scrollbar { display: none; }
 
 #sales-requests-status {
-  margin: 0 0 14px;
+  margin: 0 0 10px;
 }
 
 .sales-request-bulk-copy {
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .sales-request-bulk-copy strong {
   color: #122032;
-  font-size: 14px;
-  line-height: 1.15;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .sales-request-bulk-copy span {
   color: #617082;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .sales-request-bulk-actions {
-  justify-content: flex-end;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.sales-request-bulk-actions .primary-button,
+.sales-request-bulk-actions .ghost-button {
+  font-size: 11px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 10px !important;
+  border-radius: 7px !important;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .sales-request-card,
@@ -13025,16 +13044,12 @@ body.mobile-filter-sheet-open {
 
 @media (max-width: 720px) {
   .sales-request-bulk-bar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .sales-request-bulk-actions {
-    justify-content: stretch;
+    flex-wrap: nowrap;
+    overflow-x: auto;
   }
 
   .sales-request-bulk-actions > button {
-    flex: 1 1 140px;
+    flex-shrink: 0;
   }
 
   .sales-request-card,
@@ -17979,11 +17994,9 @@ body.wizard-open { overflow: hidden; }
    page-header sparse nel file.
    ═════════════════════════════════════════════════════════════════════════ */
 
-/* ── Fix #7: sfondo solido (rimuove texture quadrettata costante) ─────────
-   Era: repeating-linear-gradient × 4 → rumore visivo. Ora: tinta uniforme. */
+/* ── Fix #7: colore sfondo leggermente più chiaro (mantiene texture quadrettata) */
 body {
-  background-image: none !important;
-  background-color: #f5f5f1;
+  background-color: #f0f0ea;
 }
 
 /* ── Fix #1: compact header su ogni view ──────────────────────────────────
