@@ -11967,7 +11967,19 @@ async function handleApi(req, res, url) {
     if (!Object.keys(patch).length) {
       return sendJson(res, 400, { error: "empty_sales_request_patch" });
     }
-    const existingIndex = store.salesRequests.findIndex((item) => item.id === requestId);
+    let existingIndex = store.salesRequests.findIndex((item) => item.id === requestId);
+    // Fallback PostgreSQL: record importati via IMAP/shadow non sono nel blob store.
+    if (existingIndex < 0 && USE_POSTGRES) {
+      try {
+        const pool = await getPgPool();
+        const pgRes = await pool.query("SELECT * FROM sales_requests WHERE id = $1", [requestId]);
+        if (pgRes.rows.length) {
+          const pgRecord = dbRowToSalesRequest(pgRes.rows[0]);
+          store.salesRequests.unshift(pgRecord);
+          existingIndex = 0;
+        }
+      } catch {}
+    }
     if (existingIndex < 0) return sendJson(res, 404, { error: "request_not_found" });
     const existingRequest = store.salesRequests[existingIndex];
     const now = new Date().toISOString();

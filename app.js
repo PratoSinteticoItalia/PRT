@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260604-crm-fix18";
+const APP_SHELL_VERSION = "20260604-crm-fix19";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1298,6 +1298,10 @@ let ordersDeferredRenderTimer = 0;
 let salesContentDeleteInFlightId = "";
 const salesRequestPendingPatchIds = new Set();
 const salesRequestPendingPatchGraceTimers = new Map();
+// Coda PATCH "last-write-wins": se arriva una modifica mentre un PATCH è in volo,
+// la memorizziamo qui e la spediamo al termine del grace period (1.5s dopo il save).
+// Evita sia i drop silenti (retry singolo con __retried) sia le race condition.
+const salesRequestPatchQueue = new Map();
 
 // Memoization per getFilteredSalesRequests — evita sort O(N log N) + filter O(N)
 // su 8180 record ad ogni renderSalesRequests (che viene chiamata 2x per render)
@@ -5384,9 +5388,15 @@ async function persistSalesRequestRecordPatch(record = {}, patch = {}) {
     if (recordId) {
       // Grace period: keep ID locked 1.5s after save so SSE-triggered
       // session refresh doesn't overwrite the just-saved state.
+      // Al termine del grace period svuota la coda PATCH (last-write-wins).
       const graceTimer = window.setTimeout(() => {
         salesRequestPendingPatchIds.delete(recordId);
         salesRequestPendingPatchGraceTimers.delete(recordId);
+        const queued = salesRequestPatchQueue.get(recordId);
+        if (queued) {
+          salesRequestPatchQueue.delete(recordId);
+          void autoSaveSalesRequestPatch(recordId, queued);
+        }
       }, 1500);
       salesRequestPendingPatchGraceTimers.set(recordId, graceTimer);
     }
@@ -13194,20 +13204,17 @@ async function autoSaveSalesRequestPatch(id, patch) {
     || (state.crmServerPage?.items || []).find((r) => r.id === id);
   if (!current) return;
   if (state.salesRequestSaveInFlight) return;
-  // Anti-race: se c'è già un patch in volo per la stessa richiesta,
-  // attendi che sia completato + grace period, poi accoda con un retry
-  // (max 1 tentativo per evitare loop infiniti).
+  // Coda last-write-wins: se un PATCH è in volo (o nel grace period post-save),
+  // memorizza l'ultimo stato e invialo al termine del grace period (≤1.5s).
+  // Elimina i drop silenti del vecchio sistema a retry singolo.
   if (salesRequestPendingPatchIds.has(id)) {
-    if (!patch.__retried) {
-      window.setTimeout(() => {
-        void autoSaveSalesRequestPatch(id, { ...patch, __retried: true });
-      }, 200);
-    }
+    const cleanPatch = Object.fromEntries(Object.entries(patch).filter(([k]) => !k.startsWith("__")));
+    salesRequestPatchQueue.set(id, cleanPatch);
     return;
   }
+  salesRequestPatchQueue.delete(id);
   showSalesRequestAutoSaveStatus(state.lang === "it" ? "Salvataggio..." : "Saving...", "success", 30000);
   try {
-    // Rimuovi flag interno prima di inviare al server
     const cleanPatch = Object.fromEntries(Object.entries(patch).filter(([k]) => !k.startsWith("__")));
     await persistSalesRequestRecordPatch(current, cleanPatch);
     showSalesRequestAutoSaveStatus(state.lang === "it" ? "✓ Salvato" : "✓ Saved", "success", 2000);
