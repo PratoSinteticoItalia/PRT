@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260603-crm-fix15";
+const APP_SHELL_VERSION = "20260603-crm-fix16";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4240,23 +4240,19 @@ function renderSalesRequestBulkBar(pageItems = []) {
   const isSaving = Boolean(state.salesRequestBulkSaving);
   const followUpCandidates = getSalesRequestBulkFollowUpCandidates();
   const followUpCount = followUpCandidates.length;
-  ui.salesRequestBulkBar.innerHTML = `
-    <div class="sales-request-bulk-copy">
-      <strong>${hasSelection
-        ? `${selectedCount} ${state.lang === "it" ? "contatti selezionati" : "selected contacts"}`
-        : (state.lang === "it" ? "Assegnazione rapida" : "Quick assignment")}</strong>
-      <span>${hasSelection
-        ? (isSaving
-            ? (state.lang === "it" ? "Assegnazione in corso..." : "Assigning contacts...")
-            : (state.lang === "it" ? "Salva più contatti con una sola operazione." : "Save multiple contacts with one operation."))
-        : (state.lang === "it" ? `${visibleAssignableCount} contatti visibili ancora da assegnare.` : `${visibleAssignableCount} visible contacts still unassigned.`)}</span>
-    </div>
+  // Stato idle: solo il bottone "Seleziona" + conteggio; stato attivo: tutti i comandi
+  ui.salesRequestBulkBar.innerHTML = hasSelection ? `
+    <span class="srbb-label">${isSaving
+      ? (state.lang === "it" ? "Assegnazione…" : "Assigning…")
+      : `${selectedCount} ${state.lang === "it" ? "selezionati" : "selected"}`}</span>
     <div class="inline-actions sales-request-bulk-actions">
-      <button class="ghost-button small-button" type="button" data-action="select-visible-sales-requests" ${visibleAssignableCount && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Seleziona visibili" : "Select visible"}</button>
-      <button class="ghost-button small-button" type="button" data-action="clear-sales-request-bulk" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? "Pulisci" : "Clear"}</button>
-      ${getSalesRequestAssignmentOptions().map((assignee) => `<button class="primary-button small-button" type="button" data-action="bulk-assign-sales-requests" data-assignment="${escapeHtml(assignee)}" ${hasSelection && !isSaving ? "" : "disabled"}>${state.lang === "it" ? `Assegna a ${escapeHtml(assignee)}` : `Assign to ${escapeHtml(assignee)}`}</button>`).join("")}
-      <button class="primary-button small-button" type="button" data-action="bulk-followup-sales-requests" ${followUpCount && !isSaving ? "" : "disabled"} title="${state.lang === "it" ? "Apre WhatsApp per ogni preventivo inviato selezionato" : "Open WhatsApp for each selected sent quote"}">${state.lang === "it" ? `Follow-up WhatsApp (${followUpCount})` : `Follow-up WhatsApp (${followUpCount})`}</button>
+      ${getSalesRequestAssignmentOptions().map((assignee) => `<button class="primary-button small-button" type="button" data-action="bulk-assign-sales-requests" data-assignment="${escapeHtml(assignee)}" ${!isSaving ? "" : "disabled"}>${state.lang === "it" ? `→ ${escapeHtml(assignee)}` : `→ ${escapeHtml(assignee)}`}</button>`).join("")}
+      <button class="ghost-button small-button" type="button" data-action="bulk-followup-sales-requests" ${followUpCount && !isSaving ? "" : "disabled"}>Follow-up WA (${followUpCount})</button>
+      <button class="ghost-button small-button" type="button" data-action="clear-sales-request-bulk">${state.lang === "it" ? "Annulla" : "Clear"}</button>
     </div>
+  ` : `
+    <span class="srbb-label muted">${state.lang === "it" ? `${visibleAssignableCount} da assegnare` : `${visibleAssignableCount} unassigned`}</span>
+    <button class="ghost-button small-button" type="button" data-action="select-visible-sales-requests" ${visibleAssignableCount ? "" : "disabled"}>${state.lang === "it" ? "Seleziona visibili" : "Select visible"}</button>
   `;
 }
 
@@ -13155,7 +13151,10 @@ function showSalesRequestAutoSaveStatus(text, kind = "success", autoHideMs = 200
 
 async function autoSaveSalesRequestPatch(id, patch) {
   if (!id || !patch || Object.keys(patch).length === 0) return;
-  const current = state.salesRequests.find((r) => r.id === id);
+  // state.salesRequests può essere vuoto dopo un SSE (sessione restituisce salesRequests:[]).
+  // Fallback a crmServerPage.items per trovare il record corrente.
+  const current = state.salesRequests.find((r) => r.id === id)
+    || (state.crmServerPage?.items || []).find((r) => r.id === id);
   if (!current) return;
   if (state.salesRequestSaveInFlight) return;
   // Anti-race: se c'è già un patch in volo per la stessa richiesta,
@@ -13192,7 +13191,8 @@ function debouncedAutoSaveSalesRequestFull(id) {
   clearTimeout(_salesRequestAutoSaveTimer);
   _salesRequestAutoSaveTimer = setTimeout(() => {
     if (!id || state.selectedSalesRequestId !== id) return;
-    const current = state.salesRequests.find((r) => r.id === id);
+    const current = state.salesRequests.find((r) => r.id === id)
+      || (state.crmServerPage?.items || []).find((r) => r.id === id);
     if (!current || state.salesRequestSaveInFlight) return;
     const draft = collectSalesRequestDraftFromForm();
     if (!draft) return;
@@ -24236,6 +24236,9 @@ function handleGlobalClick(event) {
     state.creatingSalesRequest = false;
     state.selectedSalesRequestId = id || "";
     state.salesRequestFormDirty = false;
+    // Cancella il pending refresh: la sessione SSE non porta dati CRM (salesRequests:[])
+    // quindi il re-render completo della lista non aggiunge nulla e causa un "flash" visivo.
+    clearPendingCurrentViewRefresh();
     if (button.dataset.view && button.dataset.view !== state.currentView) {
       setView(button.dataset.view);
     } else {
