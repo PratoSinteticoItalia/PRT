@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260603-crm-fix12";
+const APP_SHELL_VERSION = "20260603-crm-fix13";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -17702,7 +17702,7 @@ async function renderTimesheetOffice() {
         const displayValue = s.workedMinutes
           ? formatMinutesToHM(s.workedMinutes)
           : (s.clockInAt && !s.clockOutAt ? "in turno" : "—");
-        html += `<td class="ts-cell ${s.workedMinutes ? "worked" : ""} ${offNet ? "anomaly" : ""} ${s.clockInAt && !s.clockOutAt ? "open" : ""}">
+        html += `<td class="ts-cell ${s.workedMinutes ? "worked" : ""} ${offSite ? "anomaly" : ""} ${s.clockInAt && !s.clockOutAt ? "open" : ""}">
           <strong>${escapeHtml(displayValue)}</strong>
           ${networkBadge}
         </td>`;
