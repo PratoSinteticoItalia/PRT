@@ -1421,18 +1421,32 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   const limitN = Math.min(200, Math.max(1, Number(limit) || 50));
 
   try {
-    const [countRes, dataRes] = await Promise.all([
+    const [countRes, dataRes, statsRes] = await Promise.all([
       pool.query(`SELECT COUNT(*) AS total FROM sales_requests${whereClause}`, params),
       pool.query(
-        `SELECT * FROM sales_requests${whereClause} ORDER BY updated_at DESC NULLS LAST LIMIT ${limitN} OFFSET ${offset}`,
+        `SELECT * FROM sales_requests${whereClause} ORDER BY created_at DESC NULLS LAST LIMIT ${limitN} OFFSET ${offset}`,
         params,
       ),
+      // Stats globali (senza WHERE filtro) per i KPI in cima alla lista.
+      pool.query(`SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE status IS NULL OR status = '' OR status = 'new')::int AS new_count,
+        COUNT(*) FILTER (WHERE assignment IS NULL OR assignment = '')::int AS unassigned_count,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS this_week_count
+      FROM sales_requests`),
     ]);
+    const sr = statsRes.rows[0] || {};
     return {
       total: parseInt(countRes.rows[0]?.total || "0", 10),
       page: Number(page) || 1,
       limit: limitN,
       items: dataRes.rows.map(dbRowToSalesRequest),
+      stats: {
+        total: sr.total ?? 0,
+        new: sr.new_count ?? 0,
+        unassigned: sr.unassigned_count ?? 0,
+        thisWeek: sr.this_week_count ?? 0,
+      },
     };
   } catch (err) {
     console.warn("[db] searchSalesRequestsFromDb:", err?.message);

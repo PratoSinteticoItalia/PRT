@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260604-crm-fix17";
+const APP_SHELL_VERSION = "20260604-crm-fix18";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4423,9 +4423,15 @@ function getSalesRequestStatusFilterOptions(items = state.salesRequests) {
 }
 
 function syncSalesRequestFilters() {
+  // Usa crmServerPage.items come base per le opzioni di filtro: resistente al
+  // reset SSE (applySessionPayload svuota state.salesRequests = []).
+  // Fallback a state.salesRequests solo se crmServerPage non è ancora caricato.
+  const filterItems = state.crmServerPage?.items?.length > 0
+    ? state.crmServerPage.items
+    : state.salesRequests;
   if (ui.salesRequestAssignmentFilter) {
     const current = String(state.filters.salesRequestAssignment || "all");
-    ui.salesRequestAssignmentFilter.replaceChildren(...getSalesRequestAssignmentFilterOptions().map((item) => {
+    ui.salesRequestAssignmentFilter.replaceChildren(...getSalesRequestAssignmentFilterOptions(filterItems).map((item) => {
       const option = document.createElement("option");
       option.value = item.value;
       // Senza conteggio: il select ha max-width, i conteggi sono già nei chip sopra
@@ -4438,7 +4444,7 @@ function syncSalesRequestFilters() {
   }
   if (ui.salesRequestStatusFilter) {
     const current = String(state.filters.salesRequestStatus || "all");
-    ui.salesRequestStatusFilter.replaceChildren(...getSalesRequestStatusFilterOptions().map((item) => {
+    ui.salesRequestStatusFilter.replaceChildren(...getSalesRequestStatusFilterOptions(filterItems).map((item) => {
       const option = document.createElement("option");
       option.value = item.value;
       option.textContent = item.label;
@@ -12082,6 +12088,15 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
       loadedAt: Date.now(),
       _queryKey: queryKey,
     };
+    // Stats da PostgreSQL: sostituisce quelle dal blob (sessione) — fonte unica di verità.
+    if (data.stats && typeof data.stats === "object") {
+      state.salesRequestsStats = {
+        total: data.stats.total ?? data.total ?? 0,
+        new: data.stats.new ?? 0,
+        unassigned: data.stats.unassigned ?? 0,
+        thisWeek: data.stats.thisWeek ?? 0,
+      };
+    }
     // Aggiorna anche state.salesRequests per compatibilità con detail panel etc.
     state.salesRequests = state.crmServerPage.items;
     renderSalesRequests();
