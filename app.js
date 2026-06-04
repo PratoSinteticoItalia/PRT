@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260604-crm-fix20";
+const APP_SHELL_VERSION = "20260605-crm-fix21";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -325,9 +325,9 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-todo", "installations-scheduled", "installations-repairs", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "communications", "timesheet-me"],
-  crew: ["dashboard", "installations", "installations-live", "installations-todo", "installations-scheduled", "installations-repairs", "sales-generator", "communications", "garden-planner"],
+  crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "sales-generator", "communications", "garden-planner"],
   seller: ["dashboard", "sales-requests", "sales-generator", "sales-content", "communications", "timesheet-me"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner"]);
@@ -374,7 +374,6 @@ const translations = {
     "garden-planner": "Garden Planner",
     "timesheet-me": "Le mie presenze",
     "timesheet-office": "Presenze",
-    "installations-todo": "Da programmare",
     "installations-scheduled": "Programmate",
     "installations-repairs": "Sistemazioni",
     "installations-live": "Cantieri Live",
@@ -630,7 +629,6 @@ const translations = {
     "garden-planner": "Garden Planner",
     "timesheet-me": "My time",
     "timesheet-office": "Time tracking",
-    "installations-todo": "To schedule",
     "installations-scheduled": "Scheduled",
     "installations-repairs": "Repairs",
     "installations-live": "Live sites",
@@ -9381,7 +9379,7 @@ function getUnifiedOrderStage(order) {
     return {
       key: "warehouse-work",
       label: state.lang === "it" ? "Da preparare" : "To prepare",
-      tone: warehouseStatus === "bloccato" ? "red" : "blue",
+      tone: warehouseStatus === "bloccato" ? "red" : "amber",
     };
   }
   if (officeStatus === "bozza" || !isRoutedToWarehouse(order)) {
@@ -11672,7 +11670,7 @@ function renderOrderRow(order, view = "orders") {
       </div>
       <div class="order-type-badge ${view === "orders" ? orderType.className : (orderType.tone === "status-amber" ? "type-posa" : orderType.tone === "status-blue" ? "type-spedizione" : "type-ritiro")}">${orderType.label}</div>
       <div class="order-amount">${formatCurrency(order.total)}</div>
-      <div class="action-badge ${stageChipTone}">${stage.label}</div>
+      <div class="action-badge ${stageChipTone} badge-key-${stage.key}">${stage.label}</div>
     </article>
   `;
 }

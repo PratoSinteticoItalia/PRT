@@ -19676,17 +19676,23 @@ body {
   border-color: transparent;
 }
 
-/* Action badge nella card: Chiuso/Evaso (badge-success) e badge-info →
-   grigio — ordine chiuso non richiede attenzione.
-   badge-warning (DA PREPARARE, UFFICIO) e badge-urgent (Blocco) rimangono
-   colorati: sono gli unici segnali su cui agire.                               */
-#orders .order-row .action-badge.badge-success {
+/* Action badge nella card ordine: colori per stato operativo.
+   Solo gli stati "conclusi" (chiuso, ritirato/evaso, posa completata,
+   caricato su furgone) vanno in grigio. Tutti gli altri mantengono il
+   colore semantico (ambra = azione, blu = pianificato/in corso,
+   verde = pronto per partenza, rosso = blocco urgente).                         */
+
+/* Completati / nessuna azione richiesta → grigio */
+#orders .order-row .action-badge.badge-key-closed,
+#orders .order-row .action-badge.badge-key-goods-collected,
+#orders .order-row .action-badge.badge-key-install-completed,
+#orders .order-row .action-badge.badge-key-van-loaded {
   background: #f0f0ef;
   color: #6b7280;
   border-color: transparent;
+  font-weight: 600;
 }
-#orders .order-row .action-badge.badge-info {
-  background: #f0f0ef;
-  color: #6b7280;
-  border-color: transparent;
-}
+/* Posa in corso, Da verificare → blu (già badge-info) */
+/* Da preparare → ambra (già badge-warning dopo il cambio di tone) */
+/* Pronto per uscita → verde (già badge-success) */
+/* Blocco → rosso (già badge-urgent) */
