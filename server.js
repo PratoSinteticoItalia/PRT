@@ -8886,10 +8886,12 @@ function normalizeOrderPayload(order, index) {
     order.note_attributes || order.noteAttributes || [],
     order.customAttributes || [],
   );
-  // Nome: priorità customer (nome ordine Shopify) > billing > shipping (destinatario).
+  // Nome che compare sull'ordine in Shopify admin = billing_address (intestatario pagamento).
+  // customer può essere l'account rivenditore/reseller e non coincide col nome ordine.
+  // Priorità: billing_address > customer > shipping_address (destinatario consegna).
   const billingRaw = order.billing_address || order.billing || {};
-  const orderFirstName = customer.first_name || billingRaw.first_name || shipping.first_name || order.firstName || "";
-  const orderLastName  = customer.last_name  || billingRaw.last_name  || shipping.last_name  || order.lastName  || "";
+  const orderFirstName = billingRaw.first_name || customer.first_name || shipping.first_name || order.firstName || "";
+  const orderLastName  = billingRaw.last_name  || customer.last_name  || shipping.last_name  || order.lastName  || "";
   const billing = normalizeBillingAddress(billingRaw, {
     firstName: orderFirstName,
     lastName: orderLastName,
