@@ -8890,8 +8890,9 @@ function normalizeOrderPayload(order, index) {
   // customer può essere l'account rivenditore/reseller e non coincide col nome ordine.
   // Priorità: billing_address > customer > shipping_address (destinatario consegna).
   const billingRaw = order.billing_address || order.billing || {};
-  const orderFirstName = billingRaw.first_name || customer.first_name || shipping.first_name || order.firstName || "";
-  const orderLastName  = billingRaw.last_name  || customer.last_name  || shipping.last_name  || order.lastName  || "";
+  // Customer account name first (= come compare in Shopify admin), poi billing, poi shipping come fallback
+  const orderFirstName = customer.first_name || billingRaw.first_name || shipping.first_name || order.firstName || "";
+  const orderLastName  = customer.last_name  || billingRaw.last_name  || shipping.last_name  || order.lastName  || "";
   const billing = normalizeBillingAddress(billingRaw, {
     firstName: orderFirstName,
     lastName: orderLastName,
@@ -8988,8 +8989,8 @@ function normalizeGraphqlOrder(node, index) {
   );
   const billingAddr = node.billingAddress || {};
   const billing = normalizeBillingAddress(billingAddr, {
-    firstName: billingAddr.firstName || customer.firstName || shipping.firstName || "",
-    lastName: billingAddr.lastName || customer.lastName || shipping.lastName || "",
+    firstName: customer.firstName || billingAddr.firstName || shipping.firstName || "",
+    lastName: customer.lastName || billingAddr.lastName || shipping.lastName || "",
     email: node.email || customer.email || "",
     phone: shipping.phone || customer.phone || "",
     city: shipping.city || "",
@@ -9032,8 +9033,8 @@ function normalizeGraphqlOrder(node, index) {
     shopifyNumericId,
     shopifyGraphqlId,
     orderNumber: node.name || `#${index + 1}`,
-    firstName: billingAddr.firstName || customer.firstName || shipping.firstName || "",
-    lastName: billingAddr.lastName || customer.lastName || shipping.lastName || "",
+    firstName: customer.firstName || billingAddr.firstName || shipping.firstName || "",
+    lastName: customer.lastName || billingAddr.lastName || shipping.lastName || "",
     email: node.email || customer.email || "",
     phone: shipping.phone || customer.phone || "",
     city: shipping.city || "",
