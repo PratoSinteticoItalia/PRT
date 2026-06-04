@@ -19638,3 +19638,55 @@ body {
   .crm-stats-item { min-width: 44px; padding: 6px 10px; }
   .crm-stats-value { font-size: 17px; }
 }
+
+/* ── Inbox Ordini: palette sobria ─────────────────────────────────────────────
+   Principio: il colore è riservato agli elementi che richiedono attenzione
+   immediata (warning ambra, urgent rosso). Stati completati e informativi
+   usano grigio neutro per non saturare la lista.                               */
+
+/* Status chips: completati (Spedito, Ritirato, Saldato, Posa ok) e
+   informativi (Pronto, date posa) → grigio neutro.
+   is-warn (residuo, prep mancante, data mancante) rimane ambra.               */
+#orders .inbox-status-chip.is-ok,
+#orders .inbox-status-chip.is-info {
+  background: #f0f0ef;
+  color: #6b7280;
+}
+
+/* Tipo ordine (Solo fornitura, Fornitura+posa, Campionatura) → etichetta
+   neutra, è informativa non operativa.                                         */
+#orders .order-type-badge,
+#orders .order-type-badge.type-fornitura,
+#orders .order-type-badge.type-fornitura-posa,
+#orders .order-type-badge.type-posa,
+#orders .order-type-badge.type-spedizione,
+#orders .order-type-badge.type-ritiro,
+#orders .order-type-badge.type-sample-box {
+  background: #f0f0ef;
+  color: #6b7280;
+  border: none;
+}
+
+/* Data creazione: recente (default, is-fresh) → grigio neutro.
+   is-aging (ambra) e is-stale (rosso) mantengono il segnale visivo.           */
+#orders .order-row-date,
+#orders .order-row-date.is-fresh {
+  background: #f0f0ef;
+  color: #6b7280;
+  border-color: transparent;
+}
+
+/* Action badge nella card: Chiuso/Evaso (badge-success) e badge-info →
+   grigio — ordine chiuso non richiede attenzione.
+   badge-warning (DA PREPARARE, UFFICIO) e badge-urgent (Blocco) rimangono
+   colorati: sono gli unici segnali su cui agire.                               */
+#orders .order-row .action-badge.badge-success {
+  background: #f0f0ef;
+  color: #6b7280;
+  border-color: transparent;
+}
+#orders .order-row .action-badge.badge-info {
+  background: #f0f0ef;
+  color: #6b7280;
+  border-color: transparent;
+}
