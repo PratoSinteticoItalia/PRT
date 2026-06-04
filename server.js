@@ -8986,9 +8986,10 @@ function normalizeGraphqlOrder(node, index) {
     node,
     node.customAttributes || [],
   );
-  const billing = normalizeBillingAddress(node.billingAddress || {}, {
-    firstName: shipping.firstName || customer.firstName || "",
-    lastName: shipping.lastName || customer.lastName || "",
+  const billingAddr = node.billingAddress || {};
+  const billing = normalizeBillingAddress(billingAddr, {
+    firstName: billingAddr.firstName || customer.firstName || shipping.firstName || "",
+    lastName: billingAddr.lastName || customer.lastName || shipping.lastName || "",
     email: node.email || customer.email || "",
     phone: shipping.phone || customer.phone || "",
     city: shipping.city || "",
@@ -9031,8 +9032,8 @@ function normalizeGraphqlOrder(node, index) {
     shopifyNumericId,
     shopifyGraphqlId,
     orderNumber: node.name || `#${index + 1}`,
-    firstName: shipping.firstName || customer.firstName || "",
-    lastName: shipping.lastName || customer.lastName || "",
+    firstName: billingAddr.firstName || customer.firstName || shipping.firstName || "",
+    lastName: billingAddr.lastName || customer.lastName || shipping.lastName || "",
     email: node.email || customer.email || "",
     phone: shipping.phone || customer.phone || "",
     city: shipping.city || "",
