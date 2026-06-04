@@ -8886,9 +8886,13 @@ function normalizeOrderPayload(order, index) {
     order.note_attributes || order.noteAttributes || [],
     order.customAttributes || [],
   );
-  const billing = normalizeBillingAddress(order.billing_address || order.billing || {}, {
-    firstName: shipping.first_name || customer.first_name || order.firstName || "",
-    lastName: shipping.last_name || customer.last_name || order.lastName || "",
+  // Nome: priorità customer (nome ordine Shopify) > billing > shipping (destinatario).
+  const billingRaw = order.billing_address || order.billing || {};
+  const orderFirstName = customer.first_name || billingRaw.first_name || shipping.first_name || order.firstName || "";
+  const orderLastName  = customer.last_name  || billingRaw.last_name  || shipping.last_name  || order.lastName  || "";
+  const billing = normalizeBillingAddress(billingRaw, {
+    firstName: orderFirstName,
+    lastName: orderLastName,
     email: order.email || customer.email || "",
     phone: shipping.phone || customer.phone || order.phone || "",
     city: shipping.city || order.city || "",
@@ -8935,8 +8939,8 @@ function normalizeOrderPayload(order, index) {
     shopifyNumericId,
     shopifyGraphqlId,
     orderNumber: order.name || order.orderNumber || `#${order.order_number || index + 1}`,
-    firstName: shipping.first_name || customer.first_name || order.firstName || "",
-    lastName: shipping.last_name || customer.last_name || order.lastName || "",
+    firstName: orderFirstName,
+    lastName: orderLastName,
     email: order.email || customer.email || "",
     phone: shipping.phone || customer.phone || order.phone || "",
     city: shipping.city || order.city || "",
