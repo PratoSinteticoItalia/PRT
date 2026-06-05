@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260605-crm-fix21";
+const APP_SHELL_VERSION = "20260605-crm-fix22";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4295,21 +4295,13 @@ function bulkOpenSalesRequestFollowUpWhatsApp() {
 }
 
 function renderSalesRequestDetailMeta(item = {}) {
-  const statusLabel = getSalesRequestStatusLabel(item.status || "");
-  const assignmentLabel = getSalesRequestAssignmentLabel(item);
+  // Assegnazione e Stato sono ora i primi campi editabili del form (non servono chip decorative).
+  // Manteniamo solo automation badge (segnale operativo) e data di ricezione.
   const automationBadge = getSalesRequestAutomationBadge(item);
   const receivedLabel = item.createdAt ? formatDate(item.createdAt) : "—";
   const updatedLabel = item.updatedAt ? formatDate(item.updatedAt) : "—";
   const showUpdated = item.updatedAt && item.createdAt && formatDate(item.updatedAt) !== formatDate(item.createdAt);
   return `
-    <span class="sales-request-detail-chip sales-assignment-chip ${getSalesRequestAssignmentTone(item)}">
-      <small>${state.lang === "it" ? "Assegnazione" : "Assignment"}</small>
-      <strong>${escapeHtml(assignmentLabel)}</strong>
-    </span>
-    <span class="sales-request-detail-chip sales-status-chip ${getSalesRequestStatusTone(item.status || "")}">
-      <small>${state.lang === "it" ? "Stato" : "Status"}</small>
-      <strong>${escapeHtml(statusLabel)}</strong>
-    </span>
     ${automationBadge
       ? `<span class="sales-request-detail-chip sales-contact-chip ${automationBadge.tone === "queued" ? "is-queued" : "is-sent"}"><small>${state.lang === "it" ? "Primo contatto" : "First contact"}</small><strong>${escapeHtml(automationBadge.label.replace(/^✓\s*/, ""))}</strong></span>`
       : ""}
@@ -4514,13 +4506,8 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
     `).join("");
   }
   if (ui.salesRequestInsights) {
-    // Stats bar: mostra KPI dal server (totale, nuovi, non assegnati, questa settimana)
+    // Stats bar: KPI da PostgreSQL, senza toggle di vista (kanban rimosso)
     const stats = state.salesRequestsStats;
-    const isKanban = state.crmViewMode === "kanban";
-    const toggleLabel = isKanban
-      ? (state.lang === "it" ? "Lista" : "List")
-      : (state.lang === "it" ? "Pipeline" : "Pipeline");
-    const toggleIcon = isKanban ? "☰" : "⬛⬛";
     if (stats) {
       ui.salesRequestInsights.innerHTML = `
         <div class="crm-stats-bar">
@@ -4540,34 +4527,11 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
             <span class="crm-stats-value">${stats.thisWeek ?? "—"}</span>
             <span class="crm-stats-label">${state.lang === "it" ? "Questa settimana" : "This week"}</span>
           </div>
-          <button class="btn crm-view-toggle ${isKanban ? "is-active" : ""}" type="button" data-action="toggle-crm-view" aria-pressed="${isKanban ? "true" : "false"}" title="${isKanban ? (state.lang === "it" ? "Torna alla lista" : "Back to list") : (state.lang === "it" ? "Vista pipeline kanban" : "Pipeline kanban view")}">
-            <span aria-hidden="true">${toggleIcon}</span> ${escapeHtml(toggleLabel)}
-          </button>
         </div>
       `;
     } else {
-      ui.salesRequestInsights.innerHTML = `
-        <div class="crm-stats-bar crm-stats-bar--compact">
-          <button class="btn crm-view-toggle ${isKanban ? "is-active" : ""}" type="button" data-action="toggle-crm-view" aria-pressed="${isKanban ? "true" : "false"}">
-            <span aria-hidden="true">${toggleIcon}</span> ${escapeHtml(toggleLabel)}
-          </button>
-        </div>
-      `;
+      ui.salesRequestInsights.innerHTML = "";
     }
-  }
-  if (ui.salesRequestCompactToggle) {
-    ui.salesRequestCompactToggle.classList.toggle("is-active", Boolean(state.salesRequestCompactMode));
-    ui.salesRequestCompactToggle.textContent = state.salesRequestCompactMode
-      ? (state.lang === "it" ? "Vista compatta attiva" : "Compact view on")
-      : (state.lang === "it" ? "Vista compatta" : "Compact view");
-  }
-  const pipelineBtn = document.getElementById("crm-pipeline-toggle-btn");
-  if (pipelineBtn) {
-    const isKanbanNow = state.crmViewMode === "kanban";
-    pipelineBtn.textContent = isKanbanNow
-      ? (state.lang === "it" ? "☰ Lista" : "☰ List")
-      : (state.lang === "it" ? "⬛ Pipeline" : "⬛ Pipeline");
-    pipelineBtn.classList.toggle("is-active", isKanbanNow);
   }
 }
 

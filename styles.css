@@ -19639,6 +19639,23 @@ body {
   .crm-stats-value { font-size: 17px; }
 }
 
+/* ── CRM Richieste: Assegnazione + Stato in cima al form ─────────────────────
+   I due dropdown operativi hanno priorità visiva massima: no scroll, subito
+   raggiungibili appena si apre una richiesta.                                  */
+
+.crm-top-field select {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.crm-top-field > span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text3, #687467);
+}
+
 /* ── Inbox Ordini: palette sobria ─────────────────────────────────────────────
    Principio: il colore è riservato agli elementi che richiedono attenzione
    immediata (warning ambra, urgent rosso). Stati completati e informativi

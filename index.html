@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260605-crm-fix21" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260605-crm-fix21" />
+    <link rel="preload" href="./styles.css?v=20260605-crm-fix22" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260605-crm-fix22" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -633,7 +633,6 @@
               <p id="sales-requests-subtitle">Gestisci richieste commerciali e prepara il passaggio verso il generatore.</p>
             </div>
             <div class="action-list">
-              <button id="crm-pipeline-toggle-btn" class="ghost-button small-button" type="button" data-action="toggle-crm-view">⬛ Pipeline</button>
               <button id="sales-request-import-button" class="ghost-button small-button" type="button">Importa richieste</button>
               <button id="sales-request-new-button" class="ghost-button small-button" type="button">Nuova richiesta</button>
             </div>
@@ -660,7 +659,6 @@
                   <select id="sales-request-status-filter" class="sales-filter-select" aria-label="Filtra per stato">
                     <option value="all">Tutti</option>
                   </select>
-                  <button id="sales-request-compact-toggle" class="ghost-button small-button" type="button">Vista compatta</button>
                 </div>
               </div>
               <div id="sales-request-insights" class="sales-request-insights"></div>
@@ -697,6 +695,21 @@
               </div>
               <form id="sales-request-form" class="inline-form-grid">
                 <input type="hidden" name="id" />
+                <label class="field sales-request-routing-field crm-top-field">
+                  <span>Assegnazione</span>
+                  <select class="text-input" name="assignment">
+                    <option value="">non assegnato</option>
+                  </select>
+                </label>
+                <label class="field sales-request-routing-field crm-top-field">
+                  <span>Stato</span>
+                  <select class="text-input" name="status">
+                    <option value="new">Nuova</option>
+                    <option value="quoted">In preventivo</option>
+                    <option value="followup">Follow-up</option>
+                    <option value="closed">Chiusa</option>
+                  </select>
+                </label>
                 <label class="field">
                   <span>Nome</span>
                   <input class="text-input" name="name" placeholder="Mario" />
@@ -739,21 +752,6 @@
                     <option value="">Da definire</option>
                     <option value="terra">Terra</option>
                     <option value="pavimentazione">Pavimentazione</option>
-                  </select>
-                </label>
-                <label class="field sales-request-routing-field">
-                  <span>Assegnazione</span>
-                  <select class="text-input" name="assignment">
-                    <option value="">non assegnato</option>
-                  </select>
-                </label>
-                <label class="field sales-request-routing-field">
-                  <span>Stato</span>
-                  <select class="text-input" name="status">
-                    <option value="new">Nuova</option>
-                    <option value="quoted">In preventivo</option>
-                    <option value="followup">Follow-up</option>
-                    <option value="closed">Chiusa</option>
                   </select>
                 </label>
                 <label class="field field-full sales-request-note-field">
@@ -848,7 +846,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260605-crm-fix21&shell=20260605-crm-fix21"
+                src="./sales-suite/generator.html?embedded=1&v=20260605-crm-fix22&shell=20260605-crm-fix22"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2419,7 +2417,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260605-crm-fix21" defer></script>
-    <script src="./app.js?v=20260605-crm-fix21" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260605-crm-fix22" defer></script>
+    <script src="./app.js?v=20260605-crm-fix22" type="module"></script>
   </body>
 </html>
