@@ -642,6 +642,13 @@ button.is-feedback,
   color: var(--brand);
 }
 
+.panel-note.info {
+  background: #f0f4ff;
+  color: #4b6bb5;
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
 .app-shell {
   height: 100vh;
   display: grid;

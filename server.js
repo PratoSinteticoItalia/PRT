@@ -11991,22 +11991,11 @@ async function handleApi(req, res, url) {
     if (existingIndex < 0) return sendJson(res, 404, { error: "request_not_found" });
     const existingRequest = store.salesRequests[existingIndex];
     const now = new Date().toISOString();
-    const draftRecord = normalizeSalesRequestRecord({
+    const requestRecord = normalizeSalesRequestRecord({
       ...existingRequest,
       ...patch,
       id: requestId,
       createdAt: existingRequest.createdAt || now,
-      updatedAt: now,
-    });
-    const automationResult = await applySalesRequestAutomationOnSave({
-      existingRequest,
-      requestRecord: draftRecord,
-      nowIso: now,
-    });
-    const requestRecord = normalizeSalesRequestRecord({
-      ...automationResult.record,
-      id: requestId,
-      createdAt: existingRequest.createdAt || draftRecord.createdAt || now,
       updatedAt: now,
     });
     store.salesRequests[existingIndex] = requestRecord;
@@ -12021,11 +12010,49 @@ async function handleApi(req, res, url) {
       await writeJson(STORE_PATH, store);
     }
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, [requestRecord]);
-    return sendJson(res, 200, {
+    // Risposta immediata — l'automazione (primo contatto WhatsApp/email) gira in background
+    // così il client riceve conferma in < 200 ms invece di aspettare 5-10 s l'API esterna.
+    sendJson(res, 200, {
       ...requestRecord,
-      _automation: automationResult.automation || { action: "none" },
+      _automation: { action: "none" },
       _sheetSync: sheetSync,
     });
+    // Automazione in background: aggiorna il record se l'assignment è cambiato
+    // e invia primo contatto (WhatsApp/email). Il client riceverà l'aggiornamento
+    // via SSE (broadcastStoreRevision) subito dopo.
+    applySalesRequestAutomationOnSave({
+      existingRequest,
+      requestRecord,
+      nowIso: now,
+    }).then(async (automationResult) => {
+      if (!automationResult?.automation?.action || automationResult.automation.action === "none") return;
+      const automatedRecord = normalizeSalesRequestRecord({
+        ...automationResult.record,
+        id: requestId,
+        createdAt: requestRecord.createdAt || now,
+        updatedAt: new Date().toISOString(),
+      });
+      const idx2 = store.salesRequests.findIndex((r) => r.id === requestId);
+      if (idx2 < 0) return;
+      store.salesRequests[idx2] = automatedRecord;
+      if (USE_POSTGRES) {
+        const automationPatch = {
+          firstContactState: automatedRecord.firstContactState,
+          firstContactSentAt: automatedRecord.firstContactSentAt,
+          firstContactScheduledAt: automatedRecord.firstContactScheduledAt,
+          firstContactBy: automatedRecord.firstContactBy,
+          status: automatedRecord.status,
+        };
+        await updateSalesRequestMicroFieldsInDb(automatedRecord, automationPatch, requestRecord, null);
+        rotateStoreRevision(store);
+        if (storeMemCache?.__memReconciled) store.__memReconciled = true;
+        storeMemCache = store;
+        broadcastStoreRevision(getStoreRevision(store));
+      } else {
+        await writeJson(STORE_PATH, store);
+      }
+    }).catch((err) => console.error("[bg-automation] PATCH first-contact:", err?.message));
+    return;
   }
 
   if (url.pathname === "/api/sales/requests/bulk-assignment" && req.method === "POST") {
@@ -13899,6 +13926,17 @@ server.listen(PORT, HOST, () => {
   console.log(`Vertex Ops backend running on http://${HOST}:${PORT}`);
   // Avvia listener PG per invalidazione cache cross-istanza
   setupPgListener().catch((err) => console.error("[pg-listen] setup error:", err?.message));
+  // Keepalive PG: una SELECT 1 ogni 5 s mantiene le connessioni nel pool
+  // attive prima che l'idle timeout (8 s) le chiuda. Elimina il reconnect
+  // overhead da 2-5 s che causava la latenza percepita nei salvataggi CRM.
+  if (USE_POSTGRES) {
+    setInterval(async () => {
+      try {
+        const pool = await getPgPool();
+        if (pool) await pool.query("SELECT 1");
+      } catch { /* silently ignore: il prossimo keepalive riprova */ }
+    }, 5_000);
+  }
   if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
     webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
     console.log("[push] VAPID initialized");

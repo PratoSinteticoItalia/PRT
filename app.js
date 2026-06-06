@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260605-crm-fix22";
+const APP_SHELL_VERSION = "20260606-crm-fix23";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -13151,8 +13151,14 @@ let _salesRequestAutoSaveStatusTimer = 0;
 function showSalesRequestAutoSaveStatus(text, kind = "success", autoHideMs = 2000) {
   clearTimeout(_salesRequestAutoSaveStatusTimer);
   if (kind === "success") {
-    // Use toast so the list never shifts layout
-    if (text && !text.startsWith("Salvataggio")) showToast(text, "success", Math.min(autoHideMs, 2500));
+    if (text && text.startsWith("Salvataggio")) {
+      // In-progress: mostra nel pannello stato senza toast (non shift layout nella list)
+      setStatus(ui.salesRequestsStatus, "info", text);
+      return;
+    }
+    // Completato: svuota stato + toast breve di conferma
+    clearStatus(ui.salesRequestsStatus);
+    if (text) showToast(text, "success", Math.min(autoHideMs, 2500));
     return;
   }
   setStatus(ui.salesRequestsStatus, kind, text);
