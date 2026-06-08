@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-apri-ordine";
+const APP_SHELL_VERSION = "20260608-crm-v2-followup";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -24704,6 +24704,14 @@ function handleGlobalClick(event) {
         // Apre WhatsApp se disponibile, altrimenti focus telefono
         const wa = document.getElementById("sales-request-whatsapp-button");
         if (wa && !wa.classList.contains("hidden")) wa.click();
+        else document.querySelector("#sales-request-form input[name='phone']")?.focus();
+      } else if (actionLabel.includes("follow")) {
+        // Follow-up: clicca il bottone "Follow-up WhatsApp" se disponibile,
+        // altrimenti fallback su Primo contatto WhatsApp, altrimenti focus telefono.
+        const fu = document.getElementById("sales-request-followup-button");
+        const wa = document.getElementById("sales-request-whatsapp-button");
+        if (fu && !fu.classList.contains("hidden")) fu.click();
+        else if (wa && !wa.classList.contains("hidden")) wa.click();
         else document.querySelector("#sales-request-form input[name='phone']")?.focus();
       } else if (actionLabel.includes("ordine") || actionLabel.includes("order")) {
         // Naviga alla vista Ordini con ricerca precompilata sul cliente.
