@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-sort-diag";
+const APP_SHELL_VERSION = "20260608-crm-v2-fix-dup-names";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1488,6 +1488,7 @@ const ui = {
   salesRequestDedupButton: document.getElementById("sales-request-dedup-button"),
   salesRequestRestoreDatesButton: document.getElementById("sales-request-restore-dates-button"),
   salesRequestRestoreNamesButton: document.getElementById("sales-request-restore-names-button"),
+  salesRequestFixDupNamesButton: document.getElementById("sales-request-fix-dup-names-button"),
   salesRequestImportButton: document.getElementById("sales-request-import-button"),
   salesRequestImportWrap: document.getElementById("sales-request-import-wrap"),
   salesRequestImportText: document.getElementById("sales-request-import-text"),
@@ -13994,6 +13995,46 @@ async function restoreSalesRequestNames() {
   }
 }
 
+// CRM v2 — Fixa nomi duplicati nel DB.
+async function fixDuplicateSalesRequestNames() {
+  if (ui.salesRequestFixDupNamesButton) {
+    ui.salesRequestFixDupNamesButton.disabled = true;
+    ui.salesRequestFixDupNamesButton.textContent = "Analisi…";
+  }
+  clearStatus(ui.salesRequestsStatus);
+  try {
+    const preview = await apiFetch("/api/sales/requests/fix-duplicate-names", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: true }),
+    });
+    if (preview.count === 0) {
+      showToast("Nessun nome duplicato trovato.", "success");
+      return;
+    }
+    const examples = (preview.samples || []).slice(0, 5).map((s) => `${s.from} → ${s.to}`).join("\n");
+    const more = preview.count > 5 ? `\n…e altri ${preview.count - 5}` : "";
+    const ok = window.confirm(`Trovati ${preview.count} record con nome duplicato.\n\nEsempi:\n${examples}${more}\n\nProcedo con il fix?`);
+    if (!ok) {
+      showToast("Annullato.", "info");
+      return;
+    }
+    if (ui.salesRequestFixDupNamesButton) ui.salesRequestFixDupNamesButton.textContent = "Sistemo…";
+    const result = await apiFetch("/api/sales/requests/fix-duplicate-names", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: false }),
+    });
+    await loadCrmPage({ page: 1, forceReload: true });
+    showToast(`✓ Sistemati ${result.count} nomi duplicati.`, "success", 5000);
+  } catch (err) {
+    setStatus(ui.salesRequestsStatus, "error", "Errore nel fix nomi duplicati.");
+  } finally {
+    if (ui.salesRequestFixDupNamesButton) {
+      ui.salesRequestFixDupNamesButton.disabled = false;
+      ui.salesRequestFixDupNamesButton.textContent = "Fix doppi";
+    }
+  }
+}
+
 async function importSalesRequests() {
   clearStatus(ui.salesRequestsStatus);
   const raw = String(ui.salesRequestImportText?.value || "").trim();
@@ -25571,6 +25612,7 @@ bindEvent(ui.salesRequestForm, "change", (event) => {
 bindEvent(ui.salesRequestDedupButton, "click", dedupSalesRequests);
 bindEvent(ui.salesRequestRestoreDatesButton, "click", restoreSalesRequestDates);
 bindEvent(ui.salesRequestRestoreNamesButton, "click", restoreSalesRequestNames);
+bindEvent(ui.salesRequestFixDupNamesButton, "click", fixDuplicateSalesRequestNames);
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
   updateSalesRequestImportPanel();

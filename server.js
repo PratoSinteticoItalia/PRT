@@ -12050,6 +12050,92 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // POST /api/sales/requests/fix-duplicate-names — sistema record con nome doppio
+  // (es. first_name="Rosario Platania" + last_name="Platania" → display
+  // "Rosario Platania PLATANIA"). Splitta first_name in nome+cognome reali.
+  if (url.pathname === "/api/sales/requests/fix-duplicate-names" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 400, { error: "postgres_only" });
+    const body = await readBody(req);
+    const dryRun = body?.dryRun === true;
+    try {
+      const pool = await getPgPool();
+      // Trova record dove first_name contiene last_name come substring
+      // (case insensitive) → c'è duplicazione.
+      const candRes = await pool.query(`
+        SELECT id, first_name, last_name
+        FROM sales_requests
+        WHERE coalesce(trim(last_name),'') <> ''
+          AND coalesce(trim(first_name),'') <> ''
+          AND position(lower(trim(last_name)) IN lower(trim(first_name))) > 0
+          AND length(trim(first_name)) > length(trim(last_name))
+        LIMIT 10000
+      `);
+      const updates = [];
+      for (const r of candRes.rows) {
+        const first = String(r.first_name || "").trim();
+        const last = String(r.last_name || "").trim();
+        if (!first || !last) continue;
+        const lcFirst = first.toLowerCase();
+        const lcLast = last.toLowerCase();
+        // Caso 1: first_name finisce con last_name → rimuovi dalla fine di first
+        // "Rosario Platania" + last "Platania" → first="Rosario", last="Platania"
+        if (lcFirst.endsWith(lcLast)) {
+          const trimmedFirst = first.substring(0, first.length - last.length).trim();
+          if (trimmedFirst) {
+            updates.push({
+              id: r.id,
+              from: `"${first}" + "${last}"`,
+              to: `"${trimmedFirst}" + "${last}"`,
+              patch: { first_name: trimmedFirst },
+            });
+          }
+        }
+        // Caso 2: first_name == last_name (es. "Mario" + "Mario") → svuota last_name
+        else if (lcFirst === lcLast) {
+          updates.push({
+            id: r.id,
+            from: `"${first}" + "${last}"`,
+            to: `"${first}" + ""`,
+            patch: { last_name: "" },
+          });
+        }
+      }
+      if (dryRun) {
+        return sendJson(res, 200, {
+          dryRun: true,
+          count: updates.length,
+          samples: updates.slice(0, 10),
+        });
+      }
+      if (updates.length === 0) return sendJson(res, 200, { dryRun: false, count: 0 });
+      let updated = 0;
+      for (const u of updates) {
+        const cols = Object.keys(u.patch);
+        const vals = Object.values(u.patch);
+        const setStr = cols.map((c, i) => `${c} = $${i + 2}`).join(", ");
+        try {
+          await pool.query(
+            `UPDATE sales_requests SET ${setStr}, updated_at = NOW() WHERE id = $1`,
+            [u.id, ...vals],
+          );
+          updated++;
+          writeAuditLog("sales_request", u.id, "fix_duplicate_name", u.patch, currentUser?.email || null).catch(() => {});
+        } catch (uErr) {
+          console.warn("[fix-dup-names] update failed for", u.id, uErr?.message);
+        }
+      }
+      invalidateSalesRequestsDbCache();
+      rotateStoreRevision(store);
+      broadcastStoreRevision(getStoreRevision(store));
+      return sendJson(res, 200, { dryRun: false, count: updated });
+    } catch (err) {
+      console.error("[fix-dup-names] error:", err?.message);
+      return sendJson(res, 500, { error: String(err?.message || "fix_dup_names_failed") });
+    }
+  }
+
   // GET /api/sales/requests/diagnostic — diagnostica completa stato dati richieste:
   // - quanti record nella shadow IMAP
   // - quanti hanno parsed_payload con telefono normalizzabile
@@ -12164,11 +12250,22 @@ async function handleApi(req, res, url) {
         const shadowFirst = parts[0] || "";
         const shadowLast = parts.slice(1).join(" ");
         const patch = {};
-        // last_name: se vuoto e shadow ha cognome
-        if (!String(r.sr_last || "").trim() && shadowLast) patch.last_name = shadowLast;
+        const srFirst = String(r.sr_first || "").trim();
+        const srLast  = String(r.sr_last || "").trim();
+        const srFirstLc = srFirst.toLowerCase();
+        const srLastLc  = srLast.toLowerCase();
+        const shadowFullLc = shadowFull.toLowerCase();
+        const shadowLastLc = shadowLast.toLowerCase();
+        // last_name: se vuoto e shadow ha cognome, MA SOLO SE first_name non contiene già il cognome
+        // (es. first_name="Rosario Platania" + shadow last="Platania" → NON aggiungere, sarebbe duplicato)
+        if (!srLast && shadowLast && !srFirstLc.includes(shadowLastLc)) {
+          patch.last_name = shadowLast;
+        }
         // first_name: se shadow ha un nome più completo (più caratteri)
-        if (shadowFirst && String(r.sr_first || "").trim().toUpperCase() !== shadowFirst.toUpperCase()
-            && String(r.sr_first || "").length < shadowFirst.length) {
+        // MA solo se non duplichiamo: se srFirst contiene già shadowFirst o viceversa, skip
+        if (shadowFirst && srFirstLc !== shadowFirst.toLowerCase()
+            && srFirst.length < shadowFirst.length
+            && !srFirstLc.includes(shadowFull.toLowerCase())) {
           patch.first_name = shadowFirst;
         }
         // sqm: se vuoto e shadow ha
