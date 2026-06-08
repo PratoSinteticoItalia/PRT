@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-fix30";
+const APP_SHELL_VERSION = "20260608-crm-fix31";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12059,7 +12059,17 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
   const assignment = String(state.filters?.salesRequestAssignment || "").trim();
   const source     = String(state.filters?.salesRequestSource || "").trim();
   const limit      = 50;
-  const queryKey   = `${page}|${q}|${status}|${assignment}|${source}`;
+  // Quick filter → parametri server: "mine"→assignment, "unassigned"→assignment,
+  // "fornitura"→service, "posa"→service, "to-contact"/"contacted"→contactState
+  const _quick = String(state.filters?.salesRequestQuick || "all").trim();
+  const _quickAssignment = _quick === "mine"
+    ? (getSalesRequestOperatorFromCurrentUser() || "")
+    : _quick === "unassigned" ? "unassigned" : "";
+  const _quickService      = _quick === "fornitura" ? "fornitura" : _quick === "posa" ? "posa" : "";
+  const _quickContactState = _quick === "to-contact" ? "to-contact" : _quick === "contacted" ? "contacted" : "";
+  // Merge: il quick filter ha la precedenza sul dropdown quando entrambi sono impostati
+  const _finalAssignment = _quickAssignment || assignment;
+  const queryKey   = `${page}|${q}|${status}|${_finalAssignment}|${source}|${_quick}`;
   // Notifica subito renderSalesRequests: se ci sono dati cached mostra quelli,
   // altrimenti (loadedAt === 0) mostra lo spinner e ritorna in attesa del fetch.
   renderSalesRequests();
@@ -12067,8 +12077,10 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (q)          params.set("q", q);
     if (status && status !== "all") params.set("status", status);
-    if (assignment) params.set("assignment", assignment);
+    if (_finalAssignment) params.set("assignment", _finalAssignment);
     if (source && source !== "all")  params.set("source", source);
+    if (_quickService)      params.set("service", _quickService);
+    if (_quickContactState) params.set("contactState", _quickContactState);
     const data = await apiFetch(`/api/sales/requests?${params}`);
     // Protezione ottimistica: se un PATCH è in-volo (o nel grace period da 1.5s),
     // mantieni la versione locale per quell'item — la risposta del server potrebbe
@@ -24980,7 +24992,8 @@ bindEvent(ui.salesRequestQuickFilters, "click", (event) => {
   state.filters.salesRequestQuick = button.dataset.value || "all";
   state.salesRequestPage = 1;
   clearSalesRequestBulkSelection({ render: false });
-  renderSalesRequests();
+  // Ricarica dal server con il nuovo filtro: copre tutti i record, non solo i 50 in pagina
+  loadCrmPage({ page: 1, forceReload: true });
 });
 bindEvent(ui.salesRequestsPagination, "change", (event) => {
   const input = event.target.closest("[data-sales-requests-page-input]");

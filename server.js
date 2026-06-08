@@ -1377,7 +1377,7 @@ async function getSalesRequestsFromDb() {
  * CRM server-side search con FTS, filtri e paginazione.
  * Usato da GET /api/sales/requests.
  */
-async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", dateFrom = "", dateTo = "", page = 1, limit = 50 } = {}) {
+async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", page = 1, limit = 50 } = {}) {
   if (!USE_POSTGRES) return { total: 0, page, limit, items: [] };
   await ensureRelationalSchema();
   const pool = await getPgPool();
@@ -1406,6 +1406,21 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   if (source && source !== "all") {
     params.push(String(source));
     where.push(`source = $${params.length}`);
+  }
+  // Filtro servizio (fornitura / posa): mappa il valore del quick-filter al campo job_type
+  if (service === "fornitura") {
+    // Solo fornitura: job_type non contiene "posa"
+    where.push(`(lower(coalesce(job_type,'')) LIKE '%fornitura%' AND lower(coalesce(job_type,'')) NOT LIKE '%posa%')`);
+  } else if (service === "posa") {
+    // Fornitura + posa
+    where.push(`lower(coalesce(job_type,'')) LIKE '%posa%'`);
+  }
+  // Filtro stato contatto (to-contact = non ancora contattati; contacted = già contattati)
+  if (contactState === "to-contact") {
+    // Escludi record con first_contact_state = queued/sent e stati chiusi
+    where.push(`(first_contact_at IS NULL AND coalesce(status,'') NOT IN ('ordine confermato','ordine eseguito','campione acquistato','preventivo confermato'))`);
+  } else if (contactState === "contacted") {
+    where.push(`first_contact_at IS NOT NULL`);
   }
   if (dateFrom) {
     params.push(String(dateFrom));
@@ -12133,16 +12148,18 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/sales/requests" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
-    const q          = String(url.searchParams.get("q") || "").trim();
-    const status     = String(url.searchParams.get("status") || "").trim();
-    const assignment = String(url.searchParams.get("assignment") || "").trim();
-    const source     = String(url.searchParams.get("source") || "").trim();
-    const dateFrom   = String(url.searchParams.get("dateFrom") || "").trim();
-    const dateTo     = String(url.searchParams.get("dateTo") || "").trim();
-    const page       = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
-    const limit      = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10) || 50));
+    const q            = String(url.searchParams.get("q") || "").trim();
+    const status       = String(url.searchParams.get("status") || "").trim();
+    const assignment   = String(url.searchParams.get("assignment") || "").trim();
+    const source       = String(url.searchParams.get("source") || "").trim();
+    const service      = String(url.searchParams.get("service") || "").trim();
+    const contactState = String(url.searchParams.get("contactState") || "").trim();
+    const dateFrom     = String(url.searchParams.get("dateFrom") || "").trim();
+    const dateTo       = String(url.searchParams.get("dateTo") || "").trim();
+    const page         = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
+    const limit        = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10) || 50));
     try {
-      const result = await searchSalesRequestsFromDb({ q, status, assignment, source, dateFrom, dateTo, page, limit });
+      const result = await searchSalesRequestsFromDb({ q, status, assignment, source, service, contactState, dateFrom, dateTo, page, limit });
       return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "search_failed") });
