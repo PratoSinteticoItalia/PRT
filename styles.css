@@ -20429,3 +20429,191 @@ body {
 #sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-urgent.is-active > strong {
   color: rgba(255,255,255,0.75) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   CRM v2 — Mobile responsive (< 980px)
+   Il layout 2-colonne diventa stack verticale, il pannello dettaglio
+   diventa un drawer fullscreen, le righe si compattano.
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 980px) {
+  /* Grid sales-requests: una colonna sola */
+  #sales-requests .dashboard-grid.sales-dashboard-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Pannello dettaglio: NASCOSTO di default, visibile solo come drawer */
+  #sales-requests .sales-request-detail-panel {
+    display: none !important;
+  }
+  #sales-requests.crm-detail-open .sales-request-detail-panel,
+  #sales-requests .sales-request-detail-panel.is-open {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 1000 !important;
+    background: #fdfcfa !important;
+    overflow-y: auto !important;
+    border-radius: 0 !important;
+    padding: 16px !important;
+  }
+
+  /* KPI strip: scroll orizzontale invece di wrap */
+  #sales-requests #sales-request-insights.crm-kpi-strip {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 22px !important;
+    padding: 12px 14px !important;
+    scrollbar-width: thin;
+  }
+  #sales-requests #sales-request-insights.crm-kpi-strip::-webkit-scrollbar { height: 4px; }
+  #sales-requests .crm-kpi { flex-shrink: 0; min-width: max-content; }
+  #sales-requests .crm-kpi-value { font-size: 20px !important; }
+  #sales-requests .crm-kpi-label { font-size: 9.5px !important; }
+
+  /* Pillole filtro: scroll orizzontale */
+  #sales-requests #sales-request-quick-filters {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 4px !important;
+    scrollbar-width: thin;
+  }
+  #sales-requests #sales-request-quick-filters .sales-request-quick-chip {
+    flex-shrink: 0 !important;
+  }
+
+  /* Toolbar: dropdown sotto invece che a destra */
+  #sales-requests .sales-request-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  #sales-requests .sales-request-toolbar-right {
+    margin-left: 0 !important;
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+  #sales-requests .sales-filter-select {
+    width: 100% !important;
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+  }
+
+  /* Righe: layout più stretto, azione visibile */
+  #sales-requests .sales-request-card.crm-row {
+    grid-template-columns: 24px 1fr auto !important;  /* drop il bottone azione dalla griglia */
+    grid-template-rows: auto auto !important;
+    gap: 10px !important;
+    padding: 12px 14px 12px 38px !important;
+  }
+  #sales-requests .sales-request-card.crm-row .crm-row-status {
+    width: 12px !important;
+    height: 12px !important;
+  }
+  #sales-requests .sales-request-card.crm-row .sales-request-select-toggle {
+    left: 10px !important;
+    width: 18px !important;
+    height: 18px !important;
+  }
+  #sales-requests .crm-row-name {
+    font-size: 13.5px !important;
+    text-transform: none !important; /* leggibilità migliore su mobile */
+  }
+  #sales-requests .crm-row-meta {
+    font-size: 11.5px !important;
+    gap: 4px !important;
+  }
+  #sales-requests .crm-row-service-tag {
+    font-size: 9.5px !important;
+    padding: 1px 6px !important;
+  }
+  /* Aside (data + assegnatario): più stretto */
+  #sales-requests .crm-row-aside {
+    min-width: 70px !important;
+    font-size: 10.5px !important;
+  }
+  #sales-requests .crm-row-date,
+  #sales-requests .crm-row-assignee {
+    font-size: 10.5px !important;
+  }
+  /* Bottone azione: passa sotto a tutta larghezza */
+  #sales-requests .sales-request-card.crm-row .crm-row-action {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    padding: 10px !important;
+    font-size: 13px !important;
+    margin-top: 4px !important;
+  }
+
+  /* Banner nuovi lead: più stretto */
+  #sales-requests .crm-new-leads-banner {
+    flex-direction: column !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+    text-align: center;
+  }
+  #sales-requests .crm-new-leads-banner-btn {
+    width: 100% !important;
+  }
+
+  /* Action list header: scroll orizzontale per i bottoni admin */
+  #sales-requests .page-header .action-list {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 4px !important;
+  }
+  #sales-requests .page-header .action-list button {
+    flex-shrink: 0 !important;
+  }
+
+  /* Pannello dettaglio aperto: form a 1 colonna */
+  #sales-requests .sales-request-detail-panel .crm-detail-section-grid {
+    grid-template-columns: 1fr !important;
+  }
+  /* Bottoni nel panel-head: wrappa */
+  #sales-requests .sales-request-detail-panel .panel-head {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  #sales-requests .sales-request-detail-panel .panel-head .inline-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  /* Bottone X chiudi drawer: posizione fissa in alto a destra */
+  #sales-requests .sales-request-detail-panel .crm-drawer-close {
+    position: absolute !important;
+    top: 12px !important;
+    right: 12px !important;
+    z-index: 10 !important;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+    background: #fff !important;
+    border: 1px solid #d4cebd !important;
+    font-size: 16px !important;
+  }
+}
+
+/* Smartphone stretti: ottimizzazioni ulteriori */
+@media (max-width: 560px) {
+  #sales-requests .page-header h1 { font-size: 18px !important; }
+  #sales-requests .page-header p  { font-size: 12px !important; }
+  #sales-requests .sales-request-card.crm-row {
+    padding: 10px 12px 10px 32px !important;
+  }
+  #sales-requests .crm-row-aside { min-width: 0 !important; }
+  #sales-requests .crm-row-assignee {
+    /* Su schermo stretto mostra solo l'avatar, non il nome */
+    overflow: hidden;
+    white-space: nowrap;
+    max-width: 60px;
+    text-overflow: ellipsis;
+  }
+}

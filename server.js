@@ -1446,8 +1446,26 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
     ) @@ plainto_tsquery('italian', $${params.length})`);
   }
   if (status && status !== "all") {
-    params.push(String(status));
-    where.push(`status = $${params.length}`);
+    // Filtro per CATEGORIA (allineato al popover tone): new | contacted | quoted | won | lost
+    const _statusLc = String(status).toLowerCase();
+    if (_statusLc === "new") {
+      where.push(`(status IS NULL OR status = '' OR LOWER(status) = 'new' OR LOWER(status) LIKE '%nuovo contatto%')`);
+    } else if (_statusLc === "contacted") {
+      where.push(`(LOWER(coalesce(status,'')) LIKE '%1° contatto%' OR LOWER(coalesce(status,'')) LIKE '%1 contatto%'
+                   OR LOWER(coalesce(status,'')) LIKE '%follow%' OR LOWER(coalesce(status,'')) LIKE '%richiam%'
+                   OR LOWER(coalesce(status,'')) LIKE '%attesa%' OR LOWER(coalesce(status,'')) LIKE '%ricontatt%'
+                   OR LOWER(coalesce(status,'')) LIKE '%nessuna risposta%')`);
+    } else if (_statusLc === "quoted") {
+      where.push(`(LOWER(coalesce(status,'')) LIKE '%preventivo inviato%' OR LOWER(coalesce(status,'')) LIKE '%preventivo da inviare%' OR LOWER(coalesce(status,'')) LIKE '%offerta inviata%')`);
+    } else if (_statusLc === "won") {
+      where.push(`(LOWER(coalesce(status,'')) LIKE '%preventivo confermato%' OR LOWER(coalesce(status,'')) LIKE '%ordine confermato%' OR LOWER(coalesce(status,'')) LIKE '%ordine eseguito%' OR LOWER(coalesce(status,'')) LIKE '%campione acquistato%')`);
+    } else if (_statusLc === "lost") {
+      where.push(`(LOWER(coalesce(status,'')) LIKE '%declinata%' OR LOWER(coalesce(status,'')) LIKE '%lead non qualificato%' OR LOWER(coalesce(status,'')) LIKE '%perso%' OR LOWER(coalesce(status,'')) = 'chiuso')`);
+    } else {
+      // Fallback: match esatto (per compatibilità con filtri legacy)
+      params.push(String(status));
+      where.push(`status = $${params.length}`);
+    }
   }
   if (assignment === "unassigned") {
     where.push(`(assignment IS NULL OR assignment = '')`);

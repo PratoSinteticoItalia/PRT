@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-followup";
+const APP_SHELL_VERSION = "20260608-crm-v2-mobile-filters";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4412,24 +4412,16 @@ function getSalesRequestAssignmentFilterOptions(items = state.salesRequests) {
 }
 
 function getSalesRequestStatusFilterOptions(items = state.salesRequests) {
-  const options = [{ value: "all", label: state.lang === "it" ? "Tutti" : "All" }];
-  const seen = new Set(["all"]);
-  const append = (status = "") => {
-    const label = String(status || "").trim();
-    if (!label) return;
-    const key = normalizeLooseString(label);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    options.push({ value: key, label });
-  };
-  getSalesRequestStatusOptions().forEach(append);
-  items.forEach((item) => append(item.status || ""));
-  return options
-    .map((option) => ({
-      ...option,
-      count: items.filter((item) => option.value === "all" || normalizeLooseString(item.status || "") === option.value).length,
-    }))
-    .filter((option) => option.value === "all" || option.count > 0);
+  // CRM v2: filtro stato allineato al popover — 5 categorie unificate
+  // che mappano a gruppi di status raw (vedi server.js searchSalesRequestsFromDb).
+  return [
+    { value: "all",       label: state.lang === "it" ? "Tutti gli stati" : "All statuses" },
+    { value: "new",       label: state.lang === "it" ? "🔵 Nuovo contatto" : "🔵 New" },
+    { value: "contacted", label: state.lang === "it" ? "🟡 1° contatto / Follow-up" : "🟡 1st contact / Follow-up" },
+    { value: "quoted",    label: state.lang === "it" ? "🟣 Preventivo inviato" : "🟣 Quote sent" },
+    { value: "won",       label: state.lang === "it" ? "🟢 Confermato / Ordine" : "🟢 Confirmed / Won" },
+    { value: "lost",      label: state.lang === "it" ? "🔴 Perso / Declinato" : "🔴 Lost" },
+  ];
 }
 
 function syncSalesRequestFilters() {
