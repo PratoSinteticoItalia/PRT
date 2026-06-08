@@ -20336,3 +20336,96 @@ body {
 #sales-requests .sales-request-list-panel > .panel-head {
   margin-bottom: 8px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   CRM v2 — Override DEFINITIVO pillole filtro (vince su tutto)
+   Sovrascrive le regole vecchie a styles.css:18180-18220 che davano
+   il look "segmented control" con badge colorati pieni.
+   Il mockup vuole pillole separate, count sottile grigio.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Container pillole: niente più sfondo grigio + box. Solo flex con gap. */
+#sales-requests #sales-request-quick-filters.sales-request-quick-filters {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  margin-bottom: 12px !important;
+}
+
+/* Pillola singola: bianco, bordo sottile, rotondo, 13px */
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 14px !important;
+  background: #ffffff !important;
+  border: 1px solid #e5e1d6 !important;
+  border-radius: 999px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #5a6e63 !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+  font-family: inherit !important;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip:hover {
+  background: #ffffff !important;
+  border-color: #d4cebd !important;
+  color: #1a2e26 !important;
+}
+
+/* Numero count: solo testo grigio, niente badge pieno colorato */
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip > strong {
+  background: transparent !important;
+  color: #8a9690 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  font-variant-numeric: tabular-nums !important;
+  min-width: 0 !important;
+  text-align: left !important;
+}
+
+/* Pillola ATTIVA: verde scuro pieno, testo bianco, count semi-opaco */
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-active {
+  background: #1f4d3d !important;
+  color: #ffffff !important;
+  border-color: #1f4d3d !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-active > strong {
+  background: transparent !important;
+  color: rgba(255,255,255,0.7) !important;
+}
+
+/* Pillola URGENT (Da assegnare): ambra chiaro, testo ambra scuro */
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-urgent {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  border-color: #fbbf24 !important;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-urgent > strong {
+  background: transparent !important;
+  color: #b45309 !important;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-urgent:hover {
+  background: #fde68a !important;
+  border-color: #f59e0b !important;
+  color: #78350f !important;
+}
+
+/* Pillola URGENT + ATTIVA: ambra pieno, testo bianco */
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-urgent.is-active {
+  background: #f59e0b !important;
+  color: #ffffff !important;
+  border-color: #f59e0b !important;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-urgent.is-active > strong {
+  color: rgba(255,255,255,0.75) !important;
+}
