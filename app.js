@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-fix27";
+const APP_SHELL_VERSION = "20260608-crm-fix28";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6128,12 +6128,19 @@ async function syncSalesRequestSource({ auto = false, silent = false } = {}) {
     renderSalesRequests();
     if (state.currentView === "sales-generator") renderSalesGenerator();
     if (!silent) {
+      const _skipped = Number(payload.skippedDuplicates || 0);
+      const _imported = Number(payload.importedCount || 0);
+      const _skippedNote = _skipped > 0
+        ? (state.lang === "it"
+            ? ` (${_skipped} saltati perché già presenti come IMAP/manuale)`
+            : ` (${_skipped} skipped — already exist as IMAP/manual)`)
+        : "";
       setStatus(
         ui.salesRequestSourceStatus,
         "success",
         state.lang === "it"
-          ? `${Number(payload.importedCount || 0)} richieste aggiornate da Google Sheets.`
-          : `${Number(payload.importedCount || 0)} requests updated from Google Sheets.`,
+          ? `${_imported} richieste aggiornate da Google Sheets.${_skippedNote}`
+          : `${_imported} requests updated from Google Sheets.${_skippedNote}`,
       );
     } else if (auto) {
       clearTransientSalesRequestSyncStatus();

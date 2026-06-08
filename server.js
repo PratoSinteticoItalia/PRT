@@ -10656,17 +10656,70 @@ async function handleApi(req, res, url) {
       });
       const manualRequests = (Array.isArray(store.salesRequests) ? store.salesRequests : [])
         .filter((item) => String(item.source || "") !== "google-sheets");
+
+      // ─── Phone dedup: salta record Sheets il cui telefono è già presente
+      // come record IMAP/manuale (prevenzione duplicati strutturali). ─────────
+      // Stessa normalizzazione usata nel dedup endpoint: rimuovi +39, spazi, etc.
+      const _normPhoneJs = (phone) =>
+        String(phone || "").replace(/^\+39/, "").replace(/[\s().\-]/g, "");
+
+      // Record Sheets "nuovi" (non già tracciati in store con source=google-sheets)
+      const _newSheetRecords = importedRequests.filter((r) => !existingById.has(r.id));
+      const _newSheetPhones = [
+        ...new Set(_newSheetRecords.map((r) => _normPhoneJs(r.phone)).filter((p) => p.length >= 7)),
+      ];
+
+      // Set di telefoni da saltare: costruito da store (manualRequests) + DB (record IMAP-only)
+      const _skipPhones = new Set(
+        manualRequests.map((r) => _normPhoneJs(r.phone)).filter((p) => p.length >= 7),
+      );
+      if (_newSheetPhones.length > 0 && USE_POSTGRES) {
+        try {
+          const _pool = await getPgPool();
+          const _normPhoneSql = `regexp_replace(regexp_replace(coalesce(phone,''), '^[+]39', ''), '[[:space:]()\\-\\.]', '', 'g')`;
+          const _dbRes = await _pool.query(
+            `SELECT ${_normPhoneSql} AS np FROM sales_requests
+             WHERE source != 'google-sheets'
+               AND ${_normPhoneSql} = ANY($1)`,
+            [_newSheetPhones],
+          );
+          for (const _row of _dbRes.rows) {
+            if (_row.np) _skipPhones.add(_row.np);
+          }
+        } catch (_dbErr) {
+          console.warn("[sheets-sync] phone dedup DB query fallita:", _dbErr?.message);
+          // non bloccare il sync in caso di errore DB
+        }
+      }
+
+      // Filtra: conserva sempre i record già noti (sync aggiornamenti);
+      // salta i nuovi record con telefono già presente come non-Sheets.
+      const filteredImportedRequests = importedRequests.filter((r) => {
+        if (existingById.has(r.id)) return true; // aggiorna sempre i record già in store
+        const _np = _normPhoneJs(r.phone);
+        if (_np.length >= 7 && _skipPhones.has(_np)) return false; // duplicato → salta
+        return true;
+      });
+      const _skippedDuplicates = importedRequests.length - filteredImportedRequests.length;
+      if (_skippedDuplicates > 0) {
+        console.log(
+          `[sheets-sync] skippati ${_skippedDuplicates} record Sheets` +
+          ` con telefono già presente come IMAP/manuale`,
+        );
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
       store.salesRequestSource = normalizeSalesRequestSourceConfig({
         ...(store.salesRequestSource || {}),
         spreadsheetInput: store.salesRequestSource?.spreadsheetInput || DEFAULT_SALES_REQUEST_SPREADSHEET,
         sheetName: sourcePayload.sheetName || store.salesRequestSource?.sheetName || "",
       });
-      store.salesRequests = [...importedRequests, ...manualRequests];
+      store.salesRequests = [...filteredImportedRequests, ...manualRequests];
       await writeJson(STORE_PATH, store);
       // Scrivi in SQL ogni richiesta importata (dual-write mancante in questo path).
       // Outbox queue: se il sync immediato fallisce (DB lento/lock), enqueue
       // per retry persistente invece di perdere silenziosamente il salvataggio.
-      for (const r of importedRequests) {
+      for (const r of filteredImportedRequests) {
         enqueueOrRunOutboxJob(
           "upsert_sales_request",
           { request: r, userId: currentUser?.email || null },
@@ -10675,7 +10728,8 @@ async function handleApi(req, res, url) {
       }
       return sendJson(res, 200, {
         requests: store.salesRequests,
-        importedCount: importedRequests.length,
+        importedCount: filteredImportedRequests.length,
+        skippedDuplicates: _skippedDuplicates,
         config: sanitizeSalesRequestSourceConfig(store.salesRequestSource),
         sheetName: sourcePayload.sheetName,
         spreadsheetTitle: sourcePayload.spreadsheetTitle,
