@@ -1479,15 +1479,37 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   const offset = (Math.max(1, Number(page) || 1) - 1) * (Number(limit) || 50);
   const limitN = Math.min(200, Math.max(1, Number(limit) || 50));
 
-  // CTE shadow_dates: garantisce 1 riga per sr.id (MIN(received_at) se ci sono N shadow linkate).
-  // Senza CTE, il LEFT JOIN diretto moltiplica le righe quando un sales_request ha
-  // più shadow promosse → conteggi statistici gonfiati (es. "questa settimana 505" invece di 71).
-  const SHADOW_CTE = `WITH shadow_dates AS (
+  // CTE shadow_dates: ricava la data IMAP reale per ogni sales_request, con DOPPIO fallback:
+  //   1) linkage diretto (promoted_to_sales_request_id) — caso normale post-reconcile
+  //   2) match per telefono normalizzato — caso sopravvissuto al dedup (il sales_request
+  //      è il record Sheets sopravvissuto, ma il telefono matcha una shadow IMAP esistente)
+  // Senza il fallback per telefono, i record sopravvissuti al dedup avrebbero sempre
+  // created_at = data di re-backfill ("08 giu" artificiale).
+  const SHADOW_CTE = `WITH shadow_by_id AS (
     SELECT promoted_to_sales_request_id AS sr_id,
            MIN(received_at) AS received_at
     FROM incoming_leads_shadow
     WHERE promoted_to_sales_request_id IS NOT NULL
+      AND received_at IS NOT NULL
     GROUP BY promoted_to_sales_request_id
+  ),
+  shadow_by_phone AS (
+    SELECT sr.id AS sr_id,
+           MIN(ils.received_at) AS received_at
+    FROM sales_requests sr
+    INNER JOIN incoming_leads_shadow ils
+      ON regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g') =
+         regexp_replace(coalesce(ils.parsed_payload->>'telefono',''), '[^0-9]', '', 'g')
+      AND length(regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g')) >= 8
+      AND ils.received_at IS NOT NULL
+    WHERE NOT EXISTS (SELECT 1 FROM shadow_by_id sbi WHERE sbi.sr_id = sr.id)
+    GROUP BY sr.id
+  ),
+  shadow_dates AS (
+    SELECT COALESCE(sbi.sr_id, sbp.sr_id) AS sr_id,
+           COALESCE(sbi.received_at, sbp.received_at) AS received_at
+    FROM shadow_by_id sbi
+    FULL OUTER JOIN shadow_by_phone sbp ON sbp.sr_id = sbi.sr_id
   )`;
   // I riferimenti a ils.received_at nelle WHERE vanno tradotti a sd.received_at
   const whereWithSd = whereSrPrefixed.replace(/ils\.received_at/g, "sd.received_at");
@@ -12023,9 +12045,12 @@ async function handleApi(req, res, url) {
     const dryRun = body?.dryRun === true;
     try {
       const pool = await getPgPool();
-      // Trova record con last_name vuoto MA la shadow ha un nome composto
+      // Trova record (linkage diretto OR match per telefono) con dati da arricchire.
+      // DISTINCT ON garantisce 1 riga per sr.id; ORDER BY ils.received_at DESC
+      // prende la shadow più recente in caso di multi-match.
       const candRes = await pool.query(`
-        SELECT sr.id,
+        SELECT DISTINCT ON (sr.id)
+               sr.id,
                sr.first_name AS sr_first,
                sr.last_name  AS sr_last,
                sr.sqm        AS sr_sqm,
@@ -12034,9 +12059,16 @@ async function handleApi(req, res, url) {
                ils.parsed_payload->>'email'         AS shadow_email,
                (ils.parsed_payload->>'metri_quadri')::numeric AS shadow_sqm
         FROM sales_requests sr
-        INNER JOIN incoming_leads_shadow ils
-          ON ils.promoted_to_sales_request_id = sr.id
+        INNER JOIN incoming_leads_shadow ils ON (
+          ils.promoted_to_sales_request_id = sr.id
+          OR (
+            length(regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g')) >= 8
+            AND regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g') =
+                regexp_replace(coalesce(ils.parsed_payload->>'telefono',''), '[^0-9]', '', 'g')
+          )
+        )
         WHERE ils.parsed_payload IS NOT NULL
+        ORDER BY sr.id, ils.received_at DESC NULLS LAST
         LIMIT 10000
       `);
       const updates = [];
@@ -12118,17 +12150,30 @@ async function handleApi(req, res, url) {
     try {
       const pool = await getPgPool();
       // Trova i record dove la shadow IMAP ha una received_at più vecchia
-      // del created_at attuale (= la nostra è artificiale, quella shadow è reale)
+      // del created_at attuale. Match: per linkage diretto OR per telefono.
+      // Il match per telefono è cruciale per i record sopravvissuti al dedup.
       const preview = await pool.query(`
-        SELECT sr.id, sr.first_name, sr.last_name, sr.created_at AS current_at,
-               ils.received_at AS real_at
-        FROM sales_requests sr
-        INNER JOIN incoming_leads_shadow ils
-          ON ils.promoted_to_sales_request_id = sr.id
-        WHERE ils.received_at IS NOT NULL
-          AND ils.received_at < sr.created_at
-        ORDER BY ils.received_at ASC
-        LIMIT 5000
+        WITH matches AS (
+          SELECT sr.id AS sr_id,
+                 sr.first_name, sr.last_name, sr.created_at AS current_at,
+                 MIN(ils.received_at) AS real_at
+          FROM sales_requests sr
+          INNER JOIN incoming_leads_shadow ils ON (
+            ils.promoted_to_sales_request_id = sr.id
+            OR (
+              length(regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g')) >= 8
+              AND regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g') =
+                  regexp_replace(coalesce(ils.parsed_payload->>'telefono',''), '[^0-9]', '', 'g')
+            )
+          )
+          WHERE ils.received_at IS NOT NULL
+            AND ils.received_at < sr.created_at
+          GROUP BY sr.id, sr.first_name, sr.last_name, sr.created_at
+        )
+        SELECT sr_id AS id, first_name, last_name, current_at, real_at
+        FROM matches
+        ORDER BY real_at ASC
+        LIMIT 10000
       `);
       const count = preview.rows.length;
       if (dryRun) {
@@ -12146,14 +12191,29 @@ async function handleApi(req, res, url) {
       if (count === 0) {
         return sendJson(res, 200, { dryRun: false, count: 0 });
       }
-      // Esegui l'aggiornamento in una singola query
+      // Esegui l'aggiornamento — UPDATE con CTE per aggregare MIN(received_at)
+      // per sr.id (in caso di multi-match per telefono).
       const result = await pool.query(`
+        WITH matches AS (
+          SELECT sr.id AS sr_id,
+                 MIN(ils.received_at) AS real_at
+          FROM sales_requests sr
+          INNER JOIN incoming_leads_shadow ils ON (
+            ils.promoted_to_sales_request_id = sr.id
+            OR (
+              length(regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g')) >= 8
+              AND regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g') =
+                  regexp_replace(coalesce(ils.parsed_payload->>'telefono',''), '[^0-9]', '', 'g')
+            )
+          )
+          WHERE ils.received_at IS NOT NULL
+            AND ils.received_at < sr.created_at
+          GROUP BY sr.id
+        )
         UPDATE sales_requests sr
-        SET created_at = ils.received_at, updated_at = NOW()
-        FROM incoming_leads_shadow ils
-        WHERE ils.promoted_to_sales_request_id = sr.id
-          AND ils.received_at IS NOT NULL
-          AND ils.received_at < sr.created_at
+        SET created_at = m.real_at, updated_at = NOW()
+        FROM matches m
+        WHERE m.sr_id = sr.id
       `);
       invalidateSalesRequestsDbCache();
       rotateStoreRevision(store);
