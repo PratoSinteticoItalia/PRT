@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-dates";
+const APP_SHELL_VERSION = "20260608-crm-v2-sse";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12102,6 +12102,13 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
       loadedAt: Date.now(),
       _queryKey: queryKey,
     };
+    // CRM v2: rimuovi dal banner i nuovi lead che ora sono visibili in pagina
+    if (_crmNewLeadIds.size > 0) {
+      const visibleIds = new Set(mergedItems.map((r) => r.id));
+      for (const id of [..._crmNewLeadIds]) {
+        if (visibleIds.has(id)) _crmNewLeadIds.delete(id);
+      }
+    }
     // Stats da PostgreSQL: sostituisce quelle dal blob (sessione) — fonte unica di verità.
     if (data.stats && typeof data.stats === "object") {
       state.salesRequestsStats = {
@@ -12425,6 +12432,84 @@ function renderCrmV2Banner() {
       </button>
     </div>
   `;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Handler SSE granulari CRM v2 — aggiornano solo la riga interessata
+// ═══════════════════════════════════════════════════════════════════
+
+// Aggiorna SOLO la riga corrispondente nello state, senza ricaricare la pagina.
+// Se siamo nel grace period di una nostra PATCH, ignoriamo l'eco SSE.
+function handleCrmV2RecordUpdated(payload = {}) {
+  const id = String(payload?.id || payload?.record?.id || "");
+  if (!id) return;
+  // Se sto modificando io questo record adesso (PATCH in volo o appena finita),
+  // la mia versione ottimistica è più fresca → ignoro l'eco SSE per non perdere edit.
+  if (salesRequestPendingPatchIds.has(id)) return;
+  const newRecord = payload.record ? normalizeSalesRequestRecord(payload.record) : null;
+  let touched = false;
+  // 1. Aggiorna in crmServerPage.items (la lista visibile)
+  if (state.crmServerPage?.items?.length) {
+    const idx = state.crmServerPage.items.findIndex((r) => r.id === id);
+    if (idx >= 0 && newRecord) {
+      state.crmServerPage.items = state.crmServerPage.items.map((r, i) =>
+        (i === idx ? { ...r, ...newRecord } : r));
+      touched = true;
+    }
+  }
+  // 2. Aggiorna in state.salesRequests (mirror legacy)
+  if (Array.isArray(state.salesRequests)) {
+    const idx2 = state.salesRequests.findIndex((r) => r.id === id);
+    if (idx2 >= 0 && newRecord) {
+      state.salesRequests = state.salesRequests.map((r, i) =>
+        (i === idx2 ? { ...r, ...newRecord } : r));
+      touched = true;
+    }
+  }
+  // 3. Re-render solo se siamo nella view CRM
+  if (touched && state.currentView === "sales-requests" && !document.hidden) {
+    renderSalesRequests();
+  }
+}
+
+// Nuovo lead arrivato (es. IMAP reconcile auto-promote):
+// NON lo aggiunge alla lista corrente — lo conta nel banner "N nuovi lead".
+function handleCrmV2RecordCreated(payload = {}) {
+  const record = payload?.record;
+  const id = String(record?.id || "");
+  if (!id) return;
+  // Se è già nella lista visibile, non lo conto come "nuovo"
+  if (state.crmServerPage?.items?.some((r) => r.id === id)) return;
+  _crmNewLeadIds.add(id);
+  // Re-render solo del banner (parte di renderSalesRequests)
+  if (state.currentView === "sales-requests" && !document.hidden) {
+    renderSalesRequests();
+  }
+}
+
+// Record eliminato (es. dedup, delete da altro tab):
+// rimuovi dalla lista visibile + decrementa stats.
+function handleCrmV2RecordDeleted(payload = {}) {
+  const id = String(payload?.id || "");
+  if (!id) return;
+  let touched = false;
+  if (state.crmServerPage?.items?.length) {
+    const before = state.crmServerPage.items.length;
+    state.crmServerPage.items = state.crmServerPage.items.filter((r) => r.id !== id);
+    if (state.crmServerPage.items.length !== before) {
+      state.crmServerPage.total = Math.max(0, (state.crmServerPage.total || 0) - 1);
+      touched = true;
+    }
+  }
+  if (Array.isArray(state.salesRequests)) {
+    const before = state.salesRequests.length;
+    state.salesRequests = state.salesRequests.filter((r) => r.id !== id);
+    if (state.salesRequests.length !== before) touched = true;
+  }
+  _crmNewLeadIds.delete(id);
+  if (touched && state.currentView === "sales-requests" && !document.hidden) {
+    renderSalesRequests();
+  }
 }
 
 function renderSalesRequests() {
@@ -19625,6 +19710,39 @@ function startSessionEvents() {
     // (nuovi messaggi arrivati). Evita di aspettare il poll periodico (~15s).
     if (state.currentView === "communications" && !document.hidden) {
       void pollCommunications({ render: true });
+    }
+  });
+
+  // ─── SSE granulari CRM v2 ───────────────────────────────────────────
+  // Eventi per-record: aggiornano SOLO la riga interessata senza causare
+  // un full reload della sessione (preserva scroll, selezione, drawer).
+  source.addEventListener("salesrequest:updated", (event) => {
+    if (sessionEventsSource !== source) return;
+    try {
+      const payload = parseSessionEventPayload(event);
+      handleCrmV2RecordUpdated(payload);
+    } catch (err) {
+      console.warn("[sse] salesrequest:updated handler error:", err?.message);
+    }
+  });
+
+  source.addEventListener("salesrequest:created", (event) => {
+    if (sessionEventsSource !== source) return;
+    try {
+      const payload = parseSessionEventPayload(event);
+      handleCrmV2RecordCreated(payload);
+    } catch (err) {
+      console.warn("[sse] salesrequest:created handler error:", err?.message);
+    }
+  });
+
+  source.addEventListener("salesrequest:deleted", (event) => {
+    if (sessionEventsSource !== source) return;
+    try {
+      const payload = parseSessionEventPayload(event);
+      handleCrmV2RecordDeleted(payload);
+    } catch (err) {
+      console.warn("[sse] salesrequest:deleted handler error:", err?.message);
     }
   });
 

@@ -254,6 +254,46 @@ function broadcastStoreRevision(revision = "") {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// SSE granulari per CRM v2 — eventi specifici per record sales_request.
+// Permettono al client di aggiornare la SINGOLA riga senza ricaricare
+// l'intera sessione (UX istantanea, niente perdita di scroll/selezione).
+// ═══════════════════════════════════════════════════════════════════
+
+function broadcastSalesRequestEvent(eventName = "", payload = {}) {
+  if (!eventName) return;
+  const evtPayload = { ...payload, timestamp: new Date().toISOString() };
+  for (const [clientId, client] of storeEventsClients.entries()) {
+    if (!client || !client.res) {
+      unregisterStoreEventsClient(clientId);
+      continue;
+    }
+    try {
+      writeStoreEvent(client.res, eventName, evtPayload);
+    } catch {
+      unregisterStoreEventsClient(clientId);
+    }
+  }
+}
+
+// Broadcast quando un record è stato creato (es. via IMAP reconcile, manual create)
+function broadcastSalesRequestCreated(record = {}) {
+  if (!record?.id) return;
+  broadcastSalesRequestEvent("salesrequest:created", { record });
+}
+
+// Broadcast quando un record è stato aggiornato (PATCH)
+function broadcastSalesRequestUpdated(id = "", patch = {}, fullRecord = null) {
+  if (!id) return;
+  broadcastSalesRequestEvent("salesrequest:updated", { id: String(id), patch, record: fullRecord });
+}
+
+// Broadcast quando un record è stato eliminato
+function broadcastSalesRequestDeleted(id = "") {
+  if (!id) return;
+  broadcastSalesRequestEvent("salesrequest:deleted", { id: String(id) });
+}
+
 function buildStoreRevisionToken() {
   return `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
 }
@@ -10798,6 +10838,11 @@ async function handleApi(req, res, url) {
             .filter((r) => String(r.source || "") === "imap")
             .slice(-Number(result.imported)); // gli ultimi N importati
           enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, importedRecords);
+          // SSE granulare CRM v2: ogni nuovo lead promosso → broadcast separato
+          // così i client connessi vedono il banner "N nuovi lead" istantaneamente
+          for (const rec of importedRecords) {
+            broadcastSalesRequestCreated(rec);
+          }
         } catch (mirrorErr) {
           console.warn("[reconcile] mirror Sheets fallito:", mirrorErr?.message);
         }
@@ -12269,6 +12314,14 @@ async function handleApi(req, res, url) {
       (payload) => upsertSalesRequestToDb(payload.request, payload.userId, { rethrow: true }),
     ).catch(() => {});
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, [requestRecord]);
+    // SSE granulare CRM v2: notifica gli altri client che è arrivato un nuovo lead
+    // (o che il record è stato aggiornato). Il client che ha fatto la PATCH gestisce
+    // il suo ottimistico, il banner appare SOLO sugli ALTRI client/tab.
+    if (existingRequest) {
+      broadcastSalesRequestUpdated(requestRecord.id, body, requestRecord);
+    } else {
+      broadcastSalesRequestCreated(requestRecord);
+    }
     // Rilevamento duplicati: se è un record NUOVO (non aggiornamento), cerca altri
     // record con lo stesso numero di telefono per avvisare l'operatore.
     let possibleDuplicate = null;
@@ -12367,8 +12420,11 @@ async function handleApi(req, res, url) {
       if (storeMemCache?.__memReconciled) store.__memReconciled = true;
       storeMemCache = store;
       broadcastStoreRevision(getStoreRevision(store));
+      // SSE granulare CRM v2: aggiorna SOLO la riga, niente full reload
+      broadcastSalesRequestUpdated(requestId, patch, requestRecord);
     } else {
       await writeJson(STORE_PATH, store);
+      broadcastSalesRequestUpdated(requestId, patch, requestRecord);
     }
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, [requestRecord]);
     // Risposta immediata — l'automazione (primo contatto WhatsApp/email) gira in background
@@ -12493,6 +12549,8 @@ async function handleApi(req, res, url) {
       { id: requestId },
       (payload) => deleteSalesRequestFromDb(payload.id, { rethrow: true }),
     ).catch(() => {});
+    // SSE granulare CRM v2: notifica gli altri client di rimuovere la riga
+    broadcastSalesRequestDeleted(requestId);
     return sendJson(res, 200, { ok: true });
   }
 
