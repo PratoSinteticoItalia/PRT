@@ -11929,6 +11929,69 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // POST /api/sales/requests/restore-real-dates — ripristina created_at dalle
+  // date reali nella shadow IMAP. Risolve il problema "tutte le richieste
+  // mostrano '08 giu 2026'" causato dai re-backfill di store.json.
+  if (url.pathname === "/api/sales/requests/restore-real-dates" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 400, { error: "postgres_only" });
+    const body = await readBody(req);
+    const dryRun = body?.dryRun === true;
+    try {
+      const pool = await getPgPool();
+      // Trova i record dove la shadow IMAP ha una received_at più vecchia
+      // del created_at attuale (= la nostra è artificiale, quella shadow è reale)
+      const preview = await pool.query(`
+        SELECT sr.id, sr.first_name, sr.last_name, sr.created_at AS current_at,
+               ils.received_at AS real_at
+        FROM sales_requests sr
+        INNER JOIN incoming_leads_shadow ils
+          ON ils.promoted_to_sales_request_id = sr.id
+        WHERE ils.received_at IS NOT NULL
+          AND ils.received_at < sr.created_at
+        ORDER BY ils.received_at ASC
+        LIMIT 5000
+      `);
+      const count = preview.rows.length;
+      if (dryRun) {
+        return sendJson(res, 200, {
+          dryRun: true,
+          count,
+          samples: preview.rows.slice(0, 10).map((r) => ({
+            id: r.id,
+            name: [r.first_name, r.last_name].filter(Boolean).join(" "),
+            from: r.current_at,
+            to: r.real_at,
+          })),
+        });
+      }
+      if (count === 0) {
+        return sendJson(res, 200, { dryRun: false, count: 0 });
+      }
+      // Esegui l'aggiornamento in una singola query
+      const result = await pool.query(`
+        UPDATE sales_requests sr
+        SET created_at = ils.received_at, updated_at = NOW()
+        FROM incoming_leads_shadow ils
+        WHERE ils.promoted_to_sales_request_id = sr.id
+          AND ils.received_at IS NOT NULL
+          AND ils.received_at < sr.created_at
+      `);
+      invalidateSalesRequestsDbCache();
+      rotateStoreRevision(store);
+      broadcastStoreRevision(getStoreRevision(store));
+      for (const row of preview.rows) {
+        writeAuditLog("sales_request", row.id, "restore_date",
+          { from: row.current_at, to: row.real_at }, currentUser?.email || null).catch(() => {});
+      }
+      return sendJson(res, 200, { dryRun: false, count: result.rowCount || count });
+    } catch (err) {
+      console.error("[restore-dates] error:", err?.message);
+      return sendJson(res, 500, { error: String(err?.message || "restore_dates_failed") });
+    }
+  }
+
   // POST /api/sales/requests/deduplicate — rimuove duplicati per telefono.
   // Body: { dryRun?: boolean }
   // Logica: raggruppa per telefono normalizzato, tieni il record più avanzato

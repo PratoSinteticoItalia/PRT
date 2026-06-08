@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-detail";
+const APP_SHELL_VERSION = "20260608-crm-v2-dates";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1486,6 +1486,7 @@ const ui = {
   salesRequestInsights: document.getElementById("sales-request-insights"),
   salesRequestCompactToggle: document.getElementById("sales-request-compact-toggle"),
   salesRequestDedupButton: document.getElementById("sales-request-dedup-button"),
+  salesRequestRestoreDatesButton: document.getElementById("sales-request-restore-dates-button"),
   salesRequestImportButton: document.getElementById("sales-request-import-button"),
   salesRequestImportWrap: document.getElementById("sales-request-import-wrap"),
   salesRequestImportText: document.getElementById("sales-request-import-text"),
@@ -13715,6 +13716,69 @@ async function dedupSalesRequests() {
   }
 }
 
+// CRM v2 — Ripristina le date reali dalla coda IMAP shadow.
+// Corregge i created_at artificiali generati dai re-backfill di store.json.
+async function restoreSalesRequestDates() {
+  if (ui.salesRequestRestoreDatesButton) {
+    ui.salesRequestRestoreDatesButton.disabled = true;
+    ui.salesRequestRestoreDatesButton.textContent = "Analisi…";
+  }
+  clearStatus(ui.salesRequestsStatus);
+  try {
+    // Preview dry-run
+    const preview = await apiFetch("/api/sales/requests/restore-real-dates", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: true }),
+    });
+    if (preview.count === 0) {
+      showToast(
+        state.lang === "it"
+          ? "Tutte le date sono già allineate alla shadow IMAP."
+          : "All dates are already aligned to IMAP shadow.",
+        "success",
+      );
+      return;
+    }
+    const examples = (preview.samples || []).slice(0, 5).map((s) => {
+      const oldD = new Date(s.from).toLocaleDateString("it-IT");
+      const newD = new Date(s.to).toLocaleDateString("it-IT");
+      return `"${s.name}": ${oldD} → ${newD}`;
+    }).join("\n");
+    const more = preview.count > 5 ? `\n…e altri ${preview.count - 5} record` : "";
+    const ok = window.confirm(
+      `${preview.count} richieste hanno date artificiali da correggere.\n\nEsempi:\n${examples}${more}\n\nProcedo con il ripristino?`,
+    );
+    if (!ok) {
+      showToast(state.lang === "it" ? "Operazione annullata." : "Cancelled.", "info");
+      return;
+    }
+    if (ui.salesRequestRestoreDatesButton) ui.salesRequestRestoreDatesButton.textContent = "Ripristino…";
+    const result = await apiFetch("/api/sales/requests/restore-real-dates", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: false }),
+    });
+    await loadCrmPage({ page: 1, forceReload: true });
+    showToast(
+      state.lang === "it"
+        ? `✓ Ripristinate ${result.count} date reali dalla shadow IMAP.`
+        : `✓ Restored ${result.count} real dates from IMAP shadow.`,
+      "success",
+      5000,
+    );
+  } catch (err) {
+    setStatus(
+      ui.salesRequestsStatus,
+      "error",
+      state.lang === "it" ? "Errore nel ripristino date. Riprova." : "Date restore failed.",
+    );
+  } finally {
+    if (ui.salesRequestRestoreDatesButton) {
+      ui.salesRequestRestoreDatesButton.disabled = false;
+      ui.salesRequestRestoreDatesButton.textContent = "Ripristina date";
+    }
+  }
+}
+
 async function importSalesRequests() {
   clearStatus(ui.salesRequestsStatus);
   const raw = String(ui.salesRequestImportText?.value || "").trim();
@@ -25225,6 +25289,7 @@ bindEvent(ui.salesRequestForm, "change", (event) => {
   }
 });
 bindEvent(ui.salesRequestDedupButton, "click", dedupSalesRequests);
+bindEvent(ui.salesRequestRestoreDatesButton, "click", restoreSalesRequestDates);
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
   updateSalesRequestImportPanel();
