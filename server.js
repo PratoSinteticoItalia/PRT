@@ -1511,12 +1511,8 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
            MIN(ils.received_at) AS received_at
     FROM sales_requests sr
     INNER JOIN incoming_leads_shadow ils
-      ON (
-        (length(${normPhoneSql("sr.phone")}) >= 8
-         AND ${normPhoneSql("sr.phone")} = ${normPhoneSql("ils.parsed_payload->>'telefono'")})
-        OR (coalesce(trim(sr.email),'') <> ''
-            AND lower(trim(sr.email)) = lower(trim(ils.parsed_payload->>'email')))
-      )
+      ON ${normPhoneSql("sr.phone")} = ${normPhoneSql("ils.parsed_payload->>'telefono'")}
+      AND length(${normPhoneSql("sr.phone")}) >= 8
       AND ils.received_at IS NOT NULL
     WHERE NOT EXISTS (SELECT 1 FROM shadow_by_id sbi WHERE sbi.sr_id = sr.id)
     GROUP BY sr.id
