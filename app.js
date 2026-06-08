@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-display-dedup";
+const APP_SHELL_VERSION = "20260608-crm-v2-tone-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12324,19 +12324,22 @@ let _crmStatusPopoverOpenId = "";
 // Mappa stato CRM → codice tono per pallino: "is-new", "is-contacted", "is-quoted", "is-won", "is-lost"
 function getCrmV2StatusTone(item = {}) {
   const tone = getSalesRequestStatusTone(item.status || "");
-  // tone esistente: is-new, is-quoted, is-followup, is-closed, ecc.
-  // Mappa al colore del pallino:
-  if (tone === "is-closed") {
-    const norm = String(item.status || "").toLowerCase();
-    if (norm.includes("ordine confermato") || norm.includes("ordine eseguito") || norm.includes("campione acquistato")) return "is-won";
-    return "is-lost";
+  const norm = String(item.status || "").toLowerCase();
+  // Stati "vinti" (verde): preventivo CONFERMATO, ordine confermato/eseguito, campione acquistato
+  const isWon = norm.includes("preventivo confermato")
+    || norm.includes("ordine confermato")
+    || norm.includes("ordine eseguito")
+    || norm.includes("campione acquistato");
+  if (isWon) return "is-won";
+  // Stati "persi" (rosso): declinata, lead non qualificato, perso, chiuso
+  if (tone === "is-closed") return "is-lost";
+  // Stati "preventivo inviato/da inviare" (viola)
+  if (tone === "is-quoted") return "is-quoted";
+  // Stati "in contatto" (giallo): 1° contatto, follow-up, richiamare, ecc.
+  if (tone === "is-followup" || norm.includes("contatt") || norm.includes("follow") || norm.includes("richiam")) {
+    return "is-contacted";
   }
-  if (tone === "is-quoted") {
-    const norm = String(item.status || "").toLowerCase();
-    if (norm.includes("ordine confermato") || norm.includes("ordine eseguito")) return "is-won";
-    return "is-quoted";
-  }
-  if (tone === "is-followup" || String(item.status || "").toLowerCase().includes("contatt")) return "is-contacted";
+  // Default: nuovo (blu)
   return "is-new";
 }
 
