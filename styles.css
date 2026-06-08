@@ -28,6 +28,10 @@
    ───────────────────────────────────────────────────────────────────────── */
 html, body {
   overflow-x: hidden;
+  /* Previene il pull-to-refresh nativo del browser (reload involontario che
+     riporta in alto) quando si scrolla oltre il bordo superiore su mobile.
+     Funziona su Chrome Android e PWA standalone. */
+  overscroll-behavior-y: contain;
 }
 /* min-width: 0 sui figli di grid/flex evita che il contenuto interno
    (testo lungo, immagini, input) forzi l'allargamento del container. */

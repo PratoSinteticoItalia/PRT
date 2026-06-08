@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-drill-reset";
+const APP_SHELL_VERSION = "20260608-crm-v2-mobile-wa-scroll";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -5115,6 +5115,14 @@ function buildWhatsAppWebSendUrl(phone = "", message = "") {
   const normalizedPhone = normalizePhoneForWhatsApp(phone);
   if (!normalizedPhone) return "";
   const waPhone = normalizedPhone.replace(/[^\d]/g, "");
+  // Device-aware: su mobile/tablet usa wa.me (apre l'APP WhatsApp nativa),
+  // su desktop usa web.whatsapp.com (WhatsApp Web nel browser).
+  const deviceType = getClientDeviceType();
+  if (deviceType === "mobile" || deviceType === "tablet") {
+    // wa.me/<numero>?text=<messaggio> → universal link che apre l'app
+    const base = `https://wa.me/${waPhone}`;
+    return message ? `${base}?text=${encodeURIComponent(message)}` : base;
+  }
   const targetUrl = new URL("https://web.whatsapp.com/send");
   targetUrl.searchParams.set("phone", waPhone);
   if (message) targetUrl.searchParams.set("text", message);
@@ -22310,11 +22318,21 @@ window.addEventListener("popstate", (event) => {
   // Se siamo in drill-down mobile e l'utente preme back fisico/swipe iOS:
   // chiudi il drill-down ma NON fare history.back (siamo già stati spostati dal browser).
   if (state.mobileDrillDetail) {
+    const currentView = state.currentView;
     closeMobileDrillDetail({ skipHistory: true });
-    // Se l'event.state è null o non ha view, restiamo nella view attuale senza navigare
-    if (!event.state?.view) return;
+    // Se il back rimane nella STESSA view (caso normale: chiudo il dettaglio e
+    // torno alla lista), NON chiamiamo setView: causerebbe un re-render che
+    // resetta lo scroll ("ricaricamento che riporta in alto"). closeMobileDrillDetail
+    // ripristina già la posizione della lista.
+    const targetView = event.state?.view || currentView;
+    if (targetView === currentView) return;
+    setView(targetView, { pushHistory: false });
+    return;
   }
   const view = event.state?.view || "dashboard";
+  // No-op se la view di destinazione è già quella corrente: evita un re-render
+  // inutile che resetterebbe lo scroll (es. dopo history.back() del bottone Indietro).
+  if (view === state.currentView) return;
   setView(view, { pushHistory: false });
 });
 
