@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-pills-override";
+const APP_SHELL_VERSION = "20260608-crm-v2-sort-diag";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

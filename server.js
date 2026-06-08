@@ -1543,7 +1543,11 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
          FROM sales_requests sr
          LEFT JOIN shadow_dates sd ON sd.sr_id = sr.id
          ${whereWithSd}
-         ORDER BY COALESCE(sd.received_at, sr.created_at) DESC NULLS LAST
+         ORDER BY
+           sd.received_at DESC NULLS LAST,        -- 1) primi i record con shadow (data IMAP reale)
+           sr.source_row_number DESC NULLS LAST,  -- 2) poi gli altri per riga Sheets (più recente = riga più alta)
+           sr.updated_at DESC NULLS LAST,         -- 3) infine per ultimo aggiornamento
+           sr.created_at DESC NULLS LAST
          LIMIT ${limitN} OFFSET ${offset}`,
         params,
       ),
@@ -12043,6 +12047,71 @@ async function handleApi(req, res, url) {
       });
     } catch (error) {
       return sendJson(res, 500, { error: String(error?.message || "sales_diagnostic_failed") });
+    }
+  }
+
+  // GET /api/sales/requests/diagnostic — diagnostica completa stato dati richieste:
+  // - quanti record nella shadow IMAP
+  // - quanti hanno parsed_payload con telefono normalizzabile
+  // - quanti sales_requests matchano shadow per linkage diretto
+  // - quanti matchano shadow per telefono
+  // - esempio di MISS (sales_request con phone valido ma senza match)
+  if (url.pathname === "/api/sales/requests/diagnostic" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 400, { error: "postgres_only" });
+    try {
+      const pool = await getPgPool();
+      const stats = await pool.query(`
+        WITH s AS (
+          SELECT
+            (SELECT COUNT(*)::int FROM incoming_leads_shadow) AS shadow_total,
+            (SELECT COUNT(*)::int FROM incoming_leads_shadow WHERE parsed_payload IS NOT NULL) AS shadow_with_payload,
+            (SELECT COUNT(*)::int FROM incoming_leads_shadow WHERE received_at >= NOW() - INTERVAL '7 days') AS shadow_recent_week,
+            (SELECT COUNT(*)::int FROM incoming_leads_shadow WHERE promoted_to_sales_request_id IS NOT NULL) AS shadow_promoted,
+            (SELECT MAX(received_at) FROM incoming_leads_shadow) AS shadow_last_received,
+            (SELECT COUNT(*)::int FROM sales_requests) AS sr_total,
+            (SELECT COUNT(*)::int FROM sales_requests WHERE length(regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g')) >= 8) AS sr_with_phone
+        ),
+        matches_by_id AS (
+          SELECT COUNT(DISTINCT sr.id)::int AS n
+          FROM sales_requests sr
+          INNER JOIN incoming_leads_shadow ils ON ils.promoted_to_sales_request_id = sr.id
+        ),
+        matches_by_phone AS (
+          SELECT COUNT(DISTINCT sr.id)::int AS n
+          FROM sales_requests sr
+          INNER JOIN incoming_leads_shadow ils
+            ON regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g') =
+               regexp_replace(coalesce(ils.parsed_payload->>'telefono',''), '[^0-9]', '', 'g')
+            AND length(regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g')) >= 8
+        )
+        SELECT s.*, mbi.n AS matches_by_id, mbp.n AS matches_by_phone
+        FROM s, matches_by_id mbi, matches_by_phone mbp
+      `);
+      // Esempio di 5 record sales_request CON shadow trovata (per verificare match)
+      const samples = await pool.query(`
+        SELECT sr.id,
+               trim(coalesce(sr.first_name,'') || ' ' || coalesce(sr.last_name,'')) AS name,
+               sr.phone, sr.created_at,
+               ils.received_at AS shadow_received_at,
+               ils.parsed_payload->>'nome' AS shadow_nome,
+               ils.parsed_payload->>'telefono' AS shadow_telefono
+        FROM sales_requests sr
+        INNER JOIN incoming_leads_shadow ils
+          ON regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g') =
+             regexp_replace(coalesce(ils.parsed_payload->>'telefono',''), '[^0-9]', '', 'g')
+          AND length(regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g')) >= 8
+        ORDER BY ils.received_at DESC NULLS LAST
+        LIMIT 5
+      `);
+      return sendJson(res, 200, {
+        stats: stats.rows[0] || {},
+        samples_matched: samples.rows,
+      });
+    } catch (err) {
+      console.error("[diagnostic] error:", err?.message);
+      return sendJson(res, 500, { error: String(err?.message || "diagnostic_failed") });
     }
   }
 
