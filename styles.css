@@ -20094,3 +20094,83 @@ body {
   height: 16px;
   font-size: 12px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   CRM v2 — Polish finale: bottoni sempre visibili, spaziature, fix
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Bottone azione sempre visibile (non solo on hover) — più chiaro per utente */
+#sales-requests .sales-request-card.crm-row .crm-row-action {
+  opacity: 1 !important;
+}
+
+/* KPI strip: bordo più leggero, padding ridotto, no shadow */
+#sales-request-insights.crm-kpi-strip {
+  background: #ffffff;
+  border: 1px solid #ece8de;
+  box-shadow: none;
+  padding: 12px 18px;
+  margin-top: 0;
+  margin-bottom: 12px;
+  gap: 36px;
+}
+
+/* Pillole filtro: spaziatura più aerata, look pill puro */
+.sales-request-toolbar {
+  margin-bottom: 12px;
+}
+#sales-request-quick-filters .sales-request-quick-chip {
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Search field: più discreta, in fondo */
+.sales-request-list-panel .search-field {
+  margin-bottom: 12px;
+}
+
+/* Bulk bar (es. "30 da assegnare") più compatta e meno invadente */
+#sales-request-bulk-bar:not(:empty) {
+  margin: 8px 0 12px;
+  padding: 8px 14px;
+  background: #fdfcfa;
+  border: 1px dashed #d4cebd;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* Riga: gap leggermente maggiore tra elementi per respirare */
+#sales-requests .sales-request-card.crm-row {
+  padding: 13px 16px 13px 46px;
+}
+
+/* Meta riga sotto al nome — colore più tenue, spazio uniforme */
+.crm-row-meta {
+  gap: 7px;
+  font-size: 12.5px;
+  color: #6b7980;
+}
+
+/* Service tag più compatto */
+.crm-row-service-tag {
+  padding: 2px 8px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+/* Avatar tondino più piccolo per non gridare */
+.crm-row-avatar {
+  width: 16px;
+  height: 16px;
+  font-size: 8.5px;
+}
+
+/* Riga selezionata: bordo più sottile e visibile sul lato sinistro */
+#sales-requests .sales-request-card.crm-row.is-active {
+  border-color: #1f4d3d;
+  border-left: 3px solid #1f4d3d;
+  padding-left: 44px; /* compensa il bordo extra */
+  box-shadow: 0 2px 8px rgba(31,77,61,.08);
+}

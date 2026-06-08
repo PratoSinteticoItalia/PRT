@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-sse";
+const APP_SHELL_VERSION = "20260608-crm-v2-polish";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -24453,43 +24453,41 @@ function handleGlobalClick(event) {
   if (action === "crm-toggle-status-popover") {
     event.preventDefault();
     event.stopPropagation();
-    const id = String(target?.dataset?.id || "");
-    if (!id) return;
-    _crmStatusPopoverOpenId = (_crmStatusPopoverOpenId === id) ? "" : id;
+    const popId = String(button?.dataset?.id || "");
+    if (!popId) return;
+    _crmStatusPopoverOpenId = (_crmStatusPopoverOpenId === popId) ? "" : popId;
     renderSalesRequests();
     return;
   }
-  // CRM v2: chiude il popover se clicchi fuori
-  if (_crmStatusPopoverOpenId && !target?.closest?.("[data-action='crm-status-popover']")
-      && !target?.closest?.("[data-action='crm-toggle-status-popover']")
-      && !target?.closest?.("[data-action='crm-set-status']")) {
+  // CRM v2: chiude il popover se clicchi fuori (in modo non-bloccante)
+  if (_crmStatusPopoverOpenId
+      && action !== "crm-status-popover"
+      && action !== "crm-toggle-status-popover"
+      && action !== "crm-set-status") {
     _crmStatusPopoverOpenId = "";
-    renderSalesRequests();
-    // non return: lasciamo che eventuali altre azioni si processino
+    // niente re-render qui — lasciamo che il prossimo handler (o nessuno) lo faccia
   }
   // CRM v2: cambia stato — optimistic via autoSaveSalesRequestPatch
   if (action === "crm-set-status") {
     event.preventDefault();
     event.stopPropagation();
-    const id = String(target?.dataset?.id || "");
-    const newStatus = String(target?.dataset?.status || "");
-    if (!id || !newStatus) return;
+    const statusId = String(button?.dataset?.id || "");
+    const newStatus = String(button?.dataset?.status || "");
+    if (!statusId || !newStatus) return;
     _crmStatusPopoverOpenId = "";
-    const record = (state.crmServerPage?.items || []).find((r) => r.id === id)
-                || state.salesRequests.find((r) => r.id === id);
+    const record = (state.crmServerPage?.items || []).find((r) => r.id === statusId)
+                || state.salesRequests.find((r) => r.id === statusId);
     if (!record) return;
-    void autoSaveSalesRequestPatch(id, { status: newStatus }, record);
-    // autoSaveSalesRequestPatch già chiama renderSalesRequests() in modo ottimistico
+    void autoSaveSalesRequestPatch(statusId, { status: newStatus }, record);
     return;
   }
   // CRM v2: azione primaria della riga (Assegna / Contatta / Invia preventivo / ecc.)
-  // Per ora apre il pannello di dettaglio del record. In una v3 potremo specializzare per stato.
   if (action === "crm-row-action") {
     event.preventDefault();
     event.stopPropagation();
-    const id = String(target?.dataset?.id || "");
-    if (!id) return;
-    state.selectedSalesRequestId = id;
+    const rowId = String(button?.dataset?.id || "");
+    if (!rowId) return;
+    state.selectedSalesRequestId = rowId;
     document.getElementById("sales-requests")?.classList.add("crm-detail-open");
     renderSalesRequests();
     return;

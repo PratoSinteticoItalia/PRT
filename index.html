@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260608-crm-v2-sse" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260608-crm-v2-sse" />
+    <link rel="preload" href="./styles.css?v=20260608-crm-v2-polish" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260608-crm-v2-polish" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -648,10 +648,8 @@
                   <h3 id="sales-request-list-title">Richieste attive</h3>
                 </div>
               </div>
-              <label class="search-field">
-                <span id="sales-requests-search-label">Cerca</span>
-                <input id="sales-requests-search" type="search" placeholder="Nome, città, telefono, assegnazione..." />
-              </label>
+              <!-- CRM v2: ordine layout = KPI → pillole → search → bulk bar → lista -->
+              <div id="sales-request-insights" class="sales-request-insights"></div>
               <div class="sales-request-toolbar">
                 <div id="sales-request-quick-filters" class="sales-request-quick-filters"></div>
                 <div class="sales-request-toolbar-right">
@@ -663,7 +661,10 @@
                   </select>
                 </div>
               </div>
-              <div id="sales-request-insights" class="sales-request-insights"></div>
+              <label class="search-field">
+                <span id="sales-requests-search-label">Cerca</span>
+                <input id="sales-requests-search" type="search" placeholder="Nome, città, telefono, assegnazione..." />
+              </label>
               <div id="sales-request-import-wrap" class="field field-full collapsible-field order-import-panel hidden">
                 <p class="panel-eyebrow" style="margin-bottom: 8px;">Import richieste</p>
                 <p style="margin: 0 0 10px; color: var(--muted); font-size: 13px;">
@@ -872,7 +873,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260608-crm-v2-sse&shell=20260608-crm-v2-sse"
+                src="./sales-suite/generator.html?embedded=1&v=20260608-crm-v2-polish&shell=20260608-crm-v2-polish"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2444,7 +2445,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260608-crm-v2-sse" defer></script>
-    <script src="./app.js?v=20260608-crm-v2-sse" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260608-crm-v2-polish" defer></script>
+    <script src="./app.js?v=20260608-crm-v2-polish" type="module"></script>
   </body>
 </html>
