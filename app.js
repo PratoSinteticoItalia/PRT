@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-polish";
+const APP_SHELL_VERSION = "20260608-crm-v2-portal";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12342,8 +12342,7 @@ function renderCrmV2Row(item, selected, bulkSelectedIds) {
   const action = getCrmV2PrimaryAction(item);
   const sourceIcon = getCrmV2SourceIcon(item);
   const cityLabel = item.city || (state.lang === "it" ? "—" : "—");
-  const isPopoverOpen = _crmStatusPopoverOpenId === item.id;
-  const popoverHtml = isPopoverOpen ? renderCrmV2StatusPopover(item) : "";
+  // Popover NON inline: viene renderizzato al body via openCrmV2StatusPopoverPortal
 
   return `
     <article class="sales-request-card crm-row ${item.id === selected?.id ? "is-active" : ""} ${isBulkSelected ? "is-bulk-selected" : ""}"
@@ -12379,9 +12378,37 @@ function renderCrmV2Row(item, selected, bulkSelectedIds) {
               data-action="crm-row-action" data-id="${item.id}">
         ${escapeHtml(action.label)}
       </button>
-      ${popoverHtml}
     </article>
   `;
+}
+
+// Portal popover: renderizzato AL BODY in posizione fissa calcolata
+// dal getBoundingClientRect del bottone cliccato. Niente clipping da
+// overflow, niente problemi di z-index annidato.
+function openCrmV2StatusPopoverPortal(recordId, anchorRect) {
+  closeCrmV2StatusPopoverPortal();
+  const item = (state.crmServerPage?.items || []).find((r) => r.id === recordId)
+            || state.salesRequests.find((r) => r.id === recordId);
+  if (!item || !anchorRect) return;
+  const wrapper = document.createElement("div");
+  wrapper.id = "crm-v2-status-popover-portal";
+  wrapper.style.position = "fixed";
+  wrapper.style.left = `${Math.round(anchorRect.left + 16)}px`;
+  // Posiziona SOTTO il pallino; se troppo vicino al fondo, sopra
+  const spaceBelow = window.innerHeight - anchorRect.bottom;
+  if (spaceBelow > 240) {
+    wrapper.style.top = `${Math.round(anchorRect.bottom + 8)}px`;
+  } else {
+    wrapper.style.top = `${Math.round(anchorRect.top - 250)}px`;
+  }
+  wrapper.style.zIndex = "9999";
+  wrapper.innerHTML = renderCrmV2StatusPopover(item);
+  document.body.appendChild(wrapper);
+}
+
+function closeCrmV2StatusPopoverPortal() {
+  const old = document.getElementById("crm-v2-status-popover-portal");
+  if (old) old.remove();
 }
 
 function renderCrmV2StatusPopover(item) {
@@ -24449,23 +24476,23 @@ function handleGlobalClick(event) {
     void loadCrmPage({ page: state.crmServerPage?.page || 1, forceReload: true });
     return;
   }
-  // CRM v2: toggle popover stato sulla riga
+  // CRM v2: toggle popover stato sulla riga — posizionato dinamicamente al body
   if (action === "crm-toggle-status-popover") {
     event.preventDefault();
     event.stopPropagation();
     const popId = String(button?.dataset?.id || "");
     if (!popId) return;
-    _crmStatusPopoverOpenId = (_crmStatusPopoverOpenId === popId) ? "" : popId;
-    renderSalesRequests();
+    // Se già aperto sullo stesso ID → chiudi
+    if (_crmStatusPopoverOpenId === popId) {
+      _crmStatusPopoverOpenId = "";
+      closeCrmV2StatusPopoverPortal();
+      return;
+    }
+    // Apri sul nuovo ID e posiziona in coordinate viewport
+    _crmStatusPopoverOpenId = popId;
+    const rect = button.getBoundingClientRect();
+    openCrmV2StatusPopoverPortal(popId, rect);
     return;
-  }
-  // CRM v2: chiude il popover se clicchi fuori (in modo non-bloccante)
-  if (_crmStatusPopoverOpenId
-      && action !== "crm-status-popover"
-      && action !== "crm-toggle-status-popover"
-      && action !== "crm-set-status") {
-    _crmStatusPopoverOpenId = "";
-    // niente re-render qui — lasciamo che il prossimo handler (o nessuno) lo faccia
   }
   // CRM v2: cambia stato — optimistic via autoSaveSalesRequestPatch
   if (action === "crm-set-status") {
@@ -24475,13 +24502,27 @@ function handleGlobalClick(event) {
     const newStatus = String(button?.dataset?.status || "");
     if (!statusId || !newStatus) return;
     _crmStatusPopoverOpenId = "";
+    closeCrmV2StatusPopoverPortal();
     const record = (state.crmServerPage?.items || []).find((r) => r.id === statusId)
                 || state.salesRequests.find((r) => r.id === statusId);
-    if (!record) return;
+    if (!record) {
+      showToast(state.lang === "it" ? "Record non trovato" : "Record not found", "error");
+      return;
+    }
     void autoSaveSalesRequestPatch(statusId, { status: newStatus }, record);
+    showToast(state.lang === "it" ? "Stato aggiornato" : "Status updated", "success", 1500);
     return;
   }
-  // CRM v2: azione primaria della riga (Assegna / Contatta / Invia preventivo / ecc.)
+  // CRM v2: chiude il popover se clicchi fuori
+  if (_crmStatusPopoverOpenId
+      && action !== "crm-status-popover"
+      && action !== "crm-toggle-status-popover"
+      && action !== "crm-set-status") {
+    _crmStatusPopoverOpenId = "";
+    closeCrmV2StatusPopoverPortal();
+    // niente return: lascia che il click in corso vada al suo handler
+  }
+  // CRM v2: azione primaria della riga — comportamento contestuale
   if (action === "crm-row-action") {
     event.preventDefault();
     event.stopPropagation();
@@ -24490,6 +24531,26 @@ function handleGlobalClick(event) {
     state.selectedSalesRequestId = rowId;
     document.getElementById("sales-requests")?.classList.add("crm-detail-open");
     renderSalesRequests();
+    // Comportamento contestuale in base al label del bottone
+    const actionLabel = String(button?.textContent || "").trim().toLowerCase();
+    window.setTimeout(() => {
+      if (actionLabel.includes("assegna")) {
+        // Focus + apre la select assignment
+        const sel = document.querySelector("#sales-request-form select[name='assignment']");
+        if (sel) { sel.focus(); try { sel.click(); } catch {} }
+      } else if (actionLabel.includes("preventivo") || actionLabel.includes("quote")) {
+        // Click su "Usa nel generatore"
+        document.getElementById("sales-request-use-generator-button")?.click();
+      } else if (actionLabel.includes("contatta") || actionLabel.includes("contact")) {
+        // Apre WhatsApp se disponibile, altrimenti focus telefono
+        const wa = document.getElementById("sales-request-whatsapp-button");
+        if (wa && !wa.classList.contains("hidden")) wa.click();
+        else document.querySelector("#sales-request-form input[name='phone']")?.focus();
+      } else if (actionLabel.includes("ordine") || actionLabel.includes("order")) {
+        document.getElementById("sales-request-use-generator-button")?.click();
+      }
+    }, 80);
+    showToast(state.lang === "it" ? `${button.textContent.trim()}…` : `${button.textContent.trim()}…`, "info", 1200);
     return;
   }
   // CRM v2: "Mostra nuovi lead" — ricarica la pagina 1 e svuota il banner
