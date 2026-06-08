@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-fix-dup-names";
+const APP_SHELL_VERSION = "20260608-crm-v2-display-dedup";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4093,7 +4093,19 @@ function getSalesContentAttachmentPendingKey(contentId = "", attachmentId = "", 
 }
 
 function getSalesRequestDisplayName(item = {}) {
-  return `${item.name || ""} ${item.surname || ""}`.trim() || (state.lang === "it" ? "Richiesta senza nome" : "Unnamed request");
+  const first = String(item.name || "").trim();
+  const last = String(item.surname || "").trim();
+  // De-duplicazione runtime: se first_name termina già con last_name (case-insensitive),
+  // non lo ri-aggiungere. Es. first="Rosario Platania" + last="Platania" → "Rosario Platania"
+  // invece di "Rosario Platania PLATANIA". Stessa cosa se first == last.
+  if (first && last) {
+    const firstLc = first.toLowerCase();
+    const lastLc = last.toLowerCase();
+    if (firstLc === lastLc) return first;
+    if (firstLc.endsWith(" " + lastLc) || firstLc === lastLc) return first;
+    if (firstLc.includes(" " + lastLc + " ") || firstLc.endsWith(" " + lastLc)) return first;
+  }
+  return `${first} ${last}`.trim() || (state.lang === "it" ? "Richiesta senza nome" : "Unnamed request");
 }
 
 function getSalesRequestFirstName(item = {}) {
