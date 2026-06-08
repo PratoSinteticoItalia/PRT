@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-tone-fix";
+const APP_SHELL_VERSION = "20260608-crm-v2-apri-ordine";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -24706,7 +24706,21 @@ function handleGlobalClick(event) {
         if (wa && !wa.classList.contains("hidden")) wa.click();
         else document.querySelector("#sales-request-form input[name='phone']")?.focus();
       } else if (actionLabel.includes("ordine") || actionLabel.includes("order")) {
-        document.getElementById("sales-request-use-generator-button")?.click();
+        // Naviga alla vista Ordini con ricerca precompilata sul cliente.
+        // Permette di vedere l'ordine esistente per questo lead, o crearne uno nuovo.
+        const record = (state.crmServerPage?.items || []).find((r) => r.id === rowId)
+                    || state.salesRequests.find((r) => r.id === rowId);
+        if (record) {
+          // Cerca per telefono se presente (più univoco), altrimenti per nome
+          const searchKey = String(record.phone || "").trim()
+                         || `${record.name || ""} ${record.surname || ""}`.trim();
+          if (searchKey) {
+            state.search.orders = searchKey;
+            state.orderPage = 1;
+            if (ui.ordersSearch) ui.ordersSearch.value = searchKey;
+          }
+          setView("orders");
+        }
       }
     }, 80);
     showToast(state.lang === "it" ? `${button.textContent.trim()}…` : `${button.textContent.trim()}…`, "info", 1200);
