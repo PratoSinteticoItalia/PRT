@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-apri-ordine-fix";
+const APP_SHELL_VERSION = "20260608-ordini-merge-materiali";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11988,24 +11988,28 @@ function renderOrders() {
   ui.orderOfficeSummary.innerHTML = order.note
     ? `<div class="detail-note-chip">${escapeHtml(order.note)}</div>`
     : "";
-  ui.orderLineList.innerHTML = (order.lineDetails || []).length
-    ? order.lineDetails.map((item) => {
-      const dims = extractDimensions(item.title);
-      const lineType = inferCatalogEntry(item.title)?.type || (isServiceLine(item.title) ? "service" : "other");
-      const displayQty = getDisplayPieceCount(order, item);
-      const formatMeasure = (value) => String(value ?? "").replace(".", ",");
-      const meta = dims
-        ? `${formatMeasure(dims.width)} x ${formatMeasure(dims.length)} · ${displayQty} ${state.lang === "it" ? "pz" : "pcs"}`
-        : lineType === "service"
-          ? (state.lang === "it" ? "Servizio / voce non fisica" : "Service / non-physical line")
-          : (state.lang === "it" ? "Riga Shopify" : "Shopify line");
-      return `<li><span><strong>${item.title}</strong><small class="line-item-meta">${meta}</small></span><strong>x${displayQty}</strong></li>`;
-    }).join("")
-    : `<li><span>${state.lang === "it" ? "Nessun articolo disponibile" : "No items available"}</span><strong>—</strong></li>`;
+  // Lista articoli Shopify ora UNITA nella sezione materiali (vedi orderPrepList).
+  // L'elemento resta nel DOM ma nascosto: lo svuotiamo per non duplicare dati.
+  if (ui.orderLineList) ui.orderLineList.innerHTML = "";
   if (ui.orderPrepList) {
+    const formatMeasure = (value) => String(value ?? "").replace(".", ",");
     const prepItems = getWarehousePrepItems(order);
-    ui.orderPrepList.innerHTML = prepItems.length
-      ? prepItems.map((item, index) => `
+    // Righe servizio / non fisiche (es. "Posa in opera"): NON sono materiali da
+    // preparare, ma le mostriamo come riferimento read-only così l'operatore vede
+    // il quadro completo dell'ordine senza una sezione "Articoli" separata.
+    const serviceLines = (order.lineDetails || []).filter((line) => {
+      const lineType = inferCatalogEntry(line.title)?.type || (isServiceLine(line.title) ? "service" : "other");
+      return lineType === "service";
+    });
+    const prepHtml = prepItems.length
+      ? prepItems.map((item, index) => {
+        const dims = extractDimensions(item.title);
+        const dimsLabel = dims ? `${formatMeasure(dims.width)} × ${formatMeasure(dims.length)} m` : "";
+        const metaParts = [
+          dimsLabel,
+          `${t("prepQty")}: ${item.quantity}`,
+        ].filter(Boolean).join(" · ");
+        return `
         <article class="prep-item ${item.included === false ? "is-excluded" : ""}">
           <label class="prep-item-toggle">
             <input type="checkbox" data-prep-field="included" data-index="${index}" ${item.included === false ? "" : "checked"} />
@@ -12014,7 +12018,7 @@ function renderOrders() {
             <div class="prep-item-head">
               <div>
                 <strong>${item.title}</strong>
-                <div class="prep-item-meta">${t("prepQty")}: ${item.quantity}</div>
+                <div class="prep-item-meta">${metaParts}</div>
               </div>
               ${statusChip(item.included === false ? t("excluded") : t("included"), item.included === false ? "slate" : "green")}
             </div>
@@ -12024,8 +12028,20 @@ function renderOrders() {
             </label>
           </div>
         </article>
-      `).join("")
+      `;
+      }).join("")
       : `<div class="info-card">${t("noPhysicalPrep")}</div>`;
+    // Righe servizio read-only sotto i materiali
+    const serviceHtml = serviceLines.length
+      ? `<div class="prep-service-lines">
+          <div class="prep-service-lines-label">${state.lang === "it" ? "Servizi nell'ordine (non da preparare)" : "Services in order (not to prepare)"}</div>
+          ${serviceLines.map((line) => {
+            const qty = getDisplayPieceCount(order, line);
+            return `<div class="prep-service-line"><span>${escapeHtml(line.title)}</span><span class="prep-service-line-qty">×${qty}</span></div>`;
+          }).join("")}
+        </div>`
+      : "";
+    ui.orderPrepList.innerHTML = prepHtml + serviceHtml;
   }
   ui.orderAttachments.innerHTML = renderAttachmentGrid(order.attachments || [], order.id);
   if (order.id) {

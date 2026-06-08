@@ -20631,3 +20631,35 @@ body {
     text-overflow: ellipsis;
   }
 }
+
+/* ── Inbox Ordini: righe servizio read-only sotto i materiali da preparare ── */
+.prep-service-lines {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line, #e5e1d6);
+}
+.prep-service-lines-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint, #8a9690);
+  margin-bottom: 8px;
+}
+.prep-service-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 12px;
+  background: #f7f6f2;
+  border: 1px solid #ece8de;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--ink-soft, #5a6e63);
+}
+.prep-service-line-qty {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink-faint, #8a9690);
+}

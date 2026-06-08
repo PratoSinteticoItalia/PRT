@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260608-crm-v2-apri-ordine-fix" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260608-crm-v2-apri-ordine-fix" />
+    <link rel="preload" href="./styles.css?v=20260608-ordini-merge-materiali" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260608-ordini-merge-materiali" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -592,19 +592,15 @@
               <div class="panel-subsection panel-subsection-prep">
                 <div class="subsection-head">
                   <div>
-                    <h4>Preparazione ufficio</h4>
-                    <p class="subsection-copy">Seleziona cosa il magazzino deve davvero preparare per questo ordine.</p>
+                    <h4>Materiali ordine</h4>
+                    <p class="subsection-copy">Spunta cosa il magazzino deve davvero preparare. I servizi (es. posa) sono mostrati come riferimento.</p>
                   </div>
                   <button id="save-prep-list-button" class="primary-button small-button">Salva preparazione</button>
                 </div>
                 <div id="order-prep-list" class="prep-list"></div>
-              </div>
-
-              <div class="panel-subsection panel-subsection-items">
-                <div class="subsection-head">
-                  <h4>Articoli ordine</h4>
-                </div>
-                <ul id="order-line-list" class="material-list compact-list"></ul>
+                <!-- Lista articoli Shopify unita qui sopra: elemento mantenuto nascosto
+                     per compatibilità con codice che lo referenzia (ui.orderLineList). -->
+                <ul id="order-line-list" class="material-list compact-list" hidden></ul>
               </div>
 
               <div class="panel-subsection panel-subsection-docs">
@@ -875,7 +871,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260608-crm-v2-apri-ordine-fix&shell=20260608-crm-v2-apri-ordine-fix"
+                src="./sales-suite/generator.html?embedded=1&v=20260608-ordini-merge-materiali&shell=20260608-ordini-merge-materiali"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2447,7 +2443,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260608-crm-v2-apri-ordine-fix" defer></script>
-    <script src="./app.js?v=20260608-crm-v2-apri-ordine-fix" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260608-ordini-merge-materiali" defer></script>
+    <script src="./app.js?v=20260608-ordini-merge-materiali" type="module"></script>
   </body>
 </html>
