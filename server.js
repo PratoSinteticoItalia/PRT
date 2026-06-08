@@ -11956,11 +11956,14 @@ async function handleApi(req, res, url) {
           `DELETE FROM sales_requests WHERE id = ANY($1)`,
           [allDeleteIds],
         );
-        // Aggiorna store in memoria
-        for (const id of allDeleteIds) {
-          const idx = store.salesRequests.findIndex((r) => r.id === id);
-          if (idx >= 0) store.salesRequests.splice(idx, 1);
-        }
+        // Aggiorna store in memoria E su disco (CRITICO: impedisce il re-backfill
+        // dopo riavvio server — senza writeJson, il JSON sul disco conserva ancora i
+        // record eliminati e la prossima sessione li reinserisce nel DB con data oggi)
+        const deleteIdSet = new Set(allDeleteIds);
+        store.salesRequests = (store.salesRequests || []).filter((r) => !deleteIdSet.has(String(r.id)));
+        // Segna come già backfillati così non vengono reinseriti nemmeno in questa sessione
+        for (const id of allDeleteIds) _backfilledSalesRequestIds.add(id);
+        await writeJson(STORE_PATH, store); // persiste la pulizia su disco
         rotateStoreRevision(store);
         if (storeMemCache?.__memReconciled) store.__memReconciled = true;
         storeMemCache = store;
