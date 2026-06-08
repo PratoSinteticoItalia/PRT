@@ -1479,37 +1479,51 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   const offset = (Math.max(1, Number(page) || 1) - 1) * (Number(limit) || 50);
   const limitN = Math.min(200, Math.max(1, Number(limit) || 50));
 
+  // CTE shadow_dates: garantisce 1 riga per sr.id (MIN(received_at) se ci sono N shadow linkate).
+  // Senza CTE, il LEFT JOIN diretto moltiplica le righe quando un sales_request ha
+  // più shadow promosse → conteggi statistici gonfiati (es. "questa settimana 505" invece di 71).
+  const SHADOW_CTE = `WITH shadow_dates AS (
+    SELECT promoted_to_sales_request_id AS sr_id,
+           MIN(received_at) AS received_at
+    FROM incoming_leads_shadow
+    WHERE promoted_to_sales_request_id IS NOT NULL
+    GROUP BY promoted_to_sales_request_id
+  )`;
+  // I riferimenti a ils.received_at nelle WHERE vanno tradotti a sd.received_at
+  const whereWithSd = whereSrPrefixed.replace(/ils\.received_at/g, "sd.received_at");
+
   try {
     const [countRes, dataRes, statsRes] = await Promise.all([
-      pool.query(`SELECT COUNT(*) AS total FROM sales_requests sr${whereSrPrefixed}`, params),
-      // CRM v2: LEFT JOIN con shadow IMAP per recuperare la data REALE di ricezione.
-      // Se il record è stato promosso da shadow, ils.received_at è la verità
-      // (timestamp dell'email originale). Altrimenti fallback su sr.created_at.
-      // Sort = data effettiva DESC: i lead più recenti in cima, sempre.
-      // Sovrascrive sr.created_at nel risultato con effective_date così il client
-      // mostra direttamente la data giusta senza calcolo extra.
       pool.query(
-        `SELECT sr.*,
-                COALESCE(ils.received_at, sr.created_at) AS created_at
+        `${SHADOW_CTE}
+         SELECT COUNT(*) AS total
          FROM sales_requests sr
-         LEFT JOIN incoming_leads_shadow ils ON ils.promoted_to_sales_request_id = sr.id
-         ${whereSrPrefixed}
-         ORDER BY COALESCE(ils.received_at, sr.created_at) DESC NULLS LAST
+         LEFT JOIN shadow_dates sd ON sd.sr_id = sr.id
+         ${whereWithSd}`,
+        params,
+      ),
+      pool.query(
+        `${SHADOW_CTE}
+         SELECT sr.*,
+                COALESCE(sd.received_at, sr.created_at) AS created_at
+         FROM sales_requests sr
+         LEFT JOIN shadow_dates sd ON sd.sr_id = sr.id
+         ${whereWithSd}
+         ORDER BY COALESCE(sd.received_at, sr.created_at) DESC NULLS LAST
          LIMIT ${limitN} OFFSET ${offset}`,
         params,
       ),
-      // Stats globali (senza WHERE filtro) per i KPI in cima alla lista.
-      // Anche qui usiamo la data effettiva per "questa settimana" (più accurato).
-      pool.query(`SELECT
-        COUNT(*)::int AS total,
-        COUNT(*) FILTER (WHERE sr.status IS NULL OR sr.status = '' OR sr.status = 'new')::int AS new_count,
-        COUNT(*) FILTER (WHERE sr.assignment IS NULL OR sr.assignment = '')::int AS unassigned_count,
-        COUNT(*) FILTER (WHERE COALESCE(ils.received_at, sr.created_at) >= NOW() - INTERVAL '7 days')::int AS this_week_count,
-        COUNT(*) FILTER (WHERE COALESCE(ils.received_at, sr.created_at) >= CURRENT_DATE)::int AS today_count,
-        COUNT(*) FILTER (WHERE LOWER(coalesce(sr.status,'')) LIKE '%preventivo%inviato%' OR LOWER(coalesce(sr.status,'')) LIKE '%offerta%inviata%')::int AS quoted_count,
-        COUNT(*) FILTER (WHERE COALESCE(ils.received_at, sr.created_at) >= NOW() - INTERVAL '14 days' AND COALESCE(ils.received_at, sr.created_at) < NOW() - INTERVAL '7 days')::int AS prev_week_count
-      FROM sales_requests sr
-      LEFT JOIN incoming_leads_shadow ils ON ils.promoted_to_sales_request_id = sr.id`),
+      pool.query(`${SHADOW_CTE}
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE sr.status IS NULL OR sr.status = '' OR sr.status = 'new')::int AS new_count,
+          COUNT(*) FILTER (WHERE sr.assignment IS NULL OR sr.assignment = '')::int AS unassigned_count,
+          COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '7 days')::int AS this_week_count,
+          COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= CURRENT_DATE)::int AS today_count,
+          COUNT(*) FILTER (WHERE LOWER(coalesce(sr.status,'')) LIKE '%preventivo%inviato%' OR LOWER(coalesce(sr.status,'')) LIKE '%offerta%inviata%')::int AS quoted_count,
+          COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '14 days' AND COALESCE(sd.received_at, sr.created_at) < NOW() - INTERVAL '7 days')::int AS prev_week_count
+        FROM sales_requests sr
+        LEFT JOIN shadow_dates sd ON sd.sr_id = sr.id`),
     ]);
     const sr = statsRes.rows[0] || {};
     return {
