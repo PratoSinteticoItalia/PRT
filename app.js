@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-mobile-wa-scroll";
+const APP_SHELL_VERSION = "20260608-crm-v2-apri-ordine-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9854,8 +9854,19 @@ function filterOrdersForView(kind) {
       order.city,
       order.operations?.product,
       getShippingModeLabel(order),
+      order.email || order.customerEmail || "",
+      order.phone || order.customerPhone || order.telefono || "",
     ].join(" ").toLowerCase();
-    if (search && !haystack.includes(search.toLowerCase())) return false;
+    if (search) {
+      const searchLc = search.toLowerCase();
+      // Match testuale normale OPPURE match per telefono (solo cifre):
+      // permette di cercare un ordine per numero anche se memorizzato con spazi/+39.
+      const searchDigits = searchLc.replace(/\D+/g, "");
+      const haystackDigits = haystack.replace(/\D+/g, "");
+      const textMatch = haystack.includes(searchLc);
+      const phoneMatch = searchDigits.length >= 8 && haystackDigits.includes(searchDigits);
+      if (!textMatch && !phoneMatch) return false;
+    }
     if (kind === "order") {
       const stage = getUnifiedOrderStage(order);
       const fulfilledOrClosed = isOrderFulfilledOrClosed(order);
@@ -24725,17 +24736,26 @@ function handleGlobalClick(event) {
         else document.querySelector("#sales-request-form input[name='phone']")?.focus();
       } else if (actionLabel.includes("ordine") || actionLabel.includes("order")) {
         // Naviga alla vista Ordini con ricerca precompilata sul cliente.
-        // Permette di vedere l'ordine esistente per questo lead, o crearne uno nuovo.
         const record = (state.crmServerPage?.items || []).find((r) => r.id === rowId)
                     || state.salesRequests.find((r) => r.id === rowId);
         if (record) {
-          // Cerca per telefono se presente (più univoco), altrimenti per nome
-          const searchKey = String(record.phone || "").trim()
-                         || `${record.name || ""} ${record.surname || ""}`.trim();
+          // Cerca per NOME de-duplicato (più affidabile: l'ordine Shopify ha il
+          // nome cliente). Fallback su telefono se manca il nome.
+          // Gli ordini ora indicizzano anche phone/email (vedi filterOrdersForView).
+          const displayName = getSalesRequestDisplayName(record);
+          const isUnnamed = !displayName || displayName === "Richiesta senza nome" || displayName === "Unnamed request";
+          const searchKey = !isUnnamed ? displayName : String(record.phone || "").trim();
           if (searchKey) {
             state.search.orders = searchKey;
             state.orderPage = 1;
+            state.filters.order = "all"; // mostra anche ordini chiusi/evasi
             if (ui.ordersSearch) ui.ordersSearch.value = searchKey;
+            // Evidenzia il tag "Tutti" tra i filtri ordini (sono bottoni, non select)
+            if (ui.orderFilterTags) {
+              ui.orderFilterTags.forEach((tag) => {
+                tag.classList.toggle("is-active", (tag.dataset.orderFilter || "") === "all");
+              });
+            }
           }
           setView("orders");
         }
