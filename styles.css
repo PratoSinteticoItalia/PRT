@@ -11622,12 +11622,32 @@ body.mobile-filter-sheet-open {
     display: none !important;
   }
   body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel {
-    position: relative;
+    position: relative !important;
     z-index: 1;
     box-shadow: none;
     border-radius: 0;
     margin: 0;
-    padding-top: 12px;
+    padding: 16px !important;
+    /* IMPORTANTE: il drawer base ha transform:translateX(110%) e visibility:hidden
+       per nasconderlo offscreen. Quando entriamo in drill-mode questi vanno
+       resettati altrimenti la pagina rimane vuota. */
+    transform: none !important;
+    visibility: visible !important;
+    transition: none !important;
+    /* Annulla anche i valori bottom-sheet del media query <768px */
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100dvh;
+    border: none !important;
+    background: #fdfcfa !important;
+  }
+  /* Handle pill ::before del bottom-sheet non serve in drill-mode */
+  body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel::before {
+    display: none !important;
   }
 
   /* ORDERS — nascondi page-header + lista (primo .detail-panel), mostra solo .order-detail-panel */
