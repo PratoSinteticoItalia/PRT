@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-fix31";
+const APP_SHELL_VERSION = "20260608-crm-v2-row";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12248,6 +12248,179 @@ function renderSalesRequestsKanban() {
   if (ui.salesRequestsPagination) ui.salesRequestsPagination.innerHTML = "";
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// CRM v2 — Nuovo layout righe (mockup definitivo)
+// Funzioni helper per il nuovo template + popover stato + banner nuovi lead.
+// ═════════════════════════════════════════════════════════════════════════
+
+// Tracking dei nuovi lead arrivati via SSE durante la sessione:
+// non vengono inseriti automaticamente nella lista visualizzata, ma mostrati
+// in un banner "N nuovi lead — Mostra".
+const _crmNewLeadIds = new Set();
+let _crmStatusPopoverOpenId = "";
+
+// Mappa stato CRM → codice tono per pallino: "is-new", "is-contacted", "is-quoted", "is-won", "is-lost"
+function getCrmV2StatusTone(item = {}) {
+  const tone = getSalesRequestStatusTone(item.status || "");
+  // tone esistente: is-new, is-quoted, is-followup, is-closed, ecc.
+  // Mappa al colore del pallino:
+  if (tone === "is-closed") {
+    const norm = String(item.status || "").toLowerCase();
+    if (norm.includes("ordine confermato") || norm.includes("ordine eseguito") || norm.includes("campione acquistato")) return "is-won";
+    return "is-lost";
+  }
+  if (tone === "is-quoted") {
+    const norm = String(item.status || "").toLowerCase();
+    if (norm.includes("ordine confermato") || norm.includes("ordine eseguito")) return "is-won";
+    return "is-quoted";
+  }
+  if (tone === "is-followup" || String(item.status || "").toLowerCase().includes("contatt")) return "is-contacted";
+  return "is-new";
+}
+
+// Restituisce l'azione primaria contestuale per la riga (label + tone + action)
+function getCrmV2PrimaryAction(item = {}) {
+  const tone = getCrmV2StatusTone(item);
+  const assignment = normalizeSalesRequestAssignment(item.assignment || "");
+  if (!assignment) {
+    return { label: state.lang === "it" ? "Assegna" : "Assign", tone: "is-blue" };
+  }
+  if (tone === "is-new") {
+    return { label: state.lang === "it" ? "Contatta" : "Contact", tone: "is-blue" };
+  }
+  if (tone === "is-contacted") {
+    return { label: state.lang === "it" ? "Invia preventivo" : "Send quote", tone: "" };
+  }
+  if (tone === "is-quoted") {
+    return { label: state.lang === "it" ? "Follow-up" : "Follow-up", tone: "is-ghost" };
+  }
+  if (tone === "is-won") {
+    return { label: state.lang === "it" ? "Apri ordine" : "Open order", tone: "is-green" };
+  }
+  if (tone === "is-lost") {
+    return { label: state.lang === "it" ? "Riapri" : "Reopen", tone: "is-ghost" };
+  }
+  return { label: state.lang === "it" ? "Apri" : "Open", tone: "" };
+}
+
+// Icona fonte: 📧 IMAP/email, ✍️ manuale, 📋 Sheets, 🏠 generico
+function getCrmV2SourceIcon(item = {}) {
+  const source = String(item.source || "").toLowerCase();
+  if (source === "imap" || source === "email") return "📧";
+  if (source === "google-sheets") return "📋";
+  if (source === "manual" || source === "manuale") return "✍️";
+  return "🏠";
+}
+
+function renderCrmV2Row(item, selected, bulkSelectedIds) {
+  const assignmentLabel = getSalesRequestAssignmentLabel(item);
+  const assignmentTone = getSalesRequestAssignmentTone(item);
+  const statusToneV2 = getCrmV2StatusTone(item);
+  const statusLabel = getSalesRequestStatusLabel(item.status);
+  const isBulkSelected = bulkSelectedIds.has(item.id);
+  const requestSqm = getSalesRequestSqm(item);
+  const serviceLabel = getSalesRequestServiceLabel(item.service);
+  const assignmentInitials = assignmentTone === "is-assigned"
+    ? (assignmentLabel.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "?")
+    : "?";
+  const specsText = requestSqm > 0
+    ? `${requestSqm} mq${item.requestedHeight ? ` · ${item.requestedHeight}` : ""}`
+    : "";
+  const action = getCrmV2PrimaryAction(item);
+  const sourceIcon = getCrmV2SourceIcon(item);
+  const cityLabel = item.city || (state.lang === "it" ? "—" : "—");
+  const isPopoverOpen = _crmStatusPopoverOpenId === item.id;
+  const popoverHtml = isPopoverOpen ? renderCrmV2StatusPopover(item) : "";
+
+  return `
+    <article class="sales-request-card crm-row ${item.id === selected?.id ? "is-active" : ""} ${isBulkSelected ? "is-bulk-selected" : ""}"
+             data-action="select-sales-request" data-id="${item.id}"
+             data-first-contact-state="${escapeHtml(normalizeSalesRequestFirstContactState(item.firstContactState || ""))}">
+      <button class="sales-request-select-toggle ${isBulkSelected ? "is-selected" : ""}"
+              type="button" data-action="toggle-sales-request-bulk" data-id="${item.id}"
+              aria-pressed="${isBulkSelected ? "true" : "false"}"
+              aria-label="${state.lang === "it" ? "Seleziona richiesta" : "Select"}">${isBulkSelected ? "✓" : ""}</button>
+      <button class="crm-row-status ${statusToneV2}" type="button"
+              data-action="crm-toggle-status-popover" data-id="${item.id}"
+              title="${escapeHtml(statusLabel)} — clicca per cambiare">
+      </button>
+      <div class="crm-row-main">
+        <div class="crm-row-name">${escapeHtml(getSalesRequestDisplayName(item))}</div>
+        <div class="crm-row-meta">
+          <span>${escapeHtml(cityLabel)}</span>
+          ${serviceLabel ? `<span class="crm-row-meta-dot">·</span><span class="crm-row-service-tag">${escapeHtml(serviceLabel)}</span>` : ""}
+          ${specsText ? `<span class="crm-row-meta-dot">·</span><span>${escapeHtml(specsText)}</span>` : ""}
+        </div>
+      </div>
+      <div class="crm-row-aside">
+        <div class="crm-row-date">
+          <span class="crm-row-source-icon">${sourceIcon}</span>
+          ${item.createdAt ? formatDate(item.createdAt) : "—"}
+        </div>
+        <div class="crm-row-assignee">
+          <span class="crm-row-avatar ${assignmentTone === "is-assigned" ? "" : "is-empty"}">${assignmentInitials}</span>
+          ${assignmentTone === "is-assigned" ? escapeHtml(assignmentLabel) : (state.lang === "it" ? "non assegnato" : "unassigned")}
+        </div>
+      </div>
+      <button class="crm-row-action ${action.tone}" type="button"
+              data-action="crm-row-action" data-id="${item.id}">
+        ${escapeHtml(action.label)}
+      </button>
+      ${popoverHtml}
+    </article>
+  `;
+}
+
+function renderCrmV2StatusPopover(item) {
+  const currentTone = getCrmV2StatusTone(item);
+  // Stati che l'utente può scegliere dal popover.
+  // Valori = quelli che vengono effettivamente salvati nel campo status.
+  const options = [
+    { tone: "is-new",       label: state.lang === "it" ? "Nuovo contatto" : "New",            value: "new" },
+    { tone: "is-contacted", label: state.lang === "it" ? "1° contatto"   : "1st contact",     value: "1 contatto" },
+    { tone: "is-quoted",    label: state.lang === "it" ? "Preventivo inviato" : "Quote sent", value: "preventivo inviato" },
+    { tone: "is-won",       label: state.lang === "it" ? "Ordine confermato"  : "Order won",  value: "ordine confermato" },
+    { tone: "is-lost",      label: state.lang === "it" ? "Perso" : "Lost",                    value: "declinata" },
+  ];
+  return `
+    <div class="crm-status-popover" data-action="crm-status-popover" data-id="${item.id}">
+      ${options.map((opt) => {
+        const dotClass = opt.tone === "is-new" ? "dot-new" :
+                         opt.tone === "is-contacted" ? "dot-contacted" :
+                         opt.tone === "is-quoted" ? "dot-quoted" :
+                         opt.tone === "is-won" ? "dot-won" : "dot-lost";
+        const isCurrent = opt.tone === currentTone;
+        return `
+          <div class="crm-status-popover-item ${dotClass} ${isCurrent ? "is-current" : ""}"
+               data-action="crm-set-status" data-id="${item.id}" data-status="${escapeHtml(opt.value)}">
+            <span class="crm-status-popover-item-dot"></span>
+            ${escapeHtml(opt.label)}
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderCrmV2Banner() {
+  if (_crmNewLeadIds.size === 0) return "";
+  const n = _crmNewLeadIds.size;
+  const txt = state.lang === "it"
+    ? `<b>${n} nuov${n === 1 ? "o lead" : "i lead"}</b> ${n === 1 ? "è arrivato" : "sono arrivati"} dall'ultimo caricamento`
+    : `<b>${n} new lead${n === 1 ? "" : "s"}</b> since last load`;
+  return `
+    <div class="crm-new-leads-banner">
+      <div class="crm-new-leads-banner-text">
+        <span class="crm-pulse-dot"></span>
+        <span>${txt}</span>
+      </div>
+      <button class="crm-new-leads-banner-btn" type="button" data-action="crm-show-new-leads">
+        ${state.lang === "it" ? "Mostra ↻" : "Show ↻"}
+      </button>
+    </div>
+  `;
+}
+
 function renderSalesRequests() {
   syncSalesRequestFilters();
   // Vista kanban: delega a renderSalesRequestsKanban()
@@ -12339,52 +12512,8 @@ function renderSalesRequests() {
     ui.salesRequestsList.classList.toggle("is-compact", Boolean(state.salesRequestCompactMode));
     withScrollPreservation(ui.salesRequestsList, () => {
     ui.salesRequestsList.innerHTML = pageItems.length
-      ? pageItems.map((item) => {
-        const automationBadge = getSalesRequestAutomationBadge(item);
-        const assignmentLabel = getSalesRequestAssignmentLabel(item);
-        const assignmentTone = getSalesRequestAssignmentTone(item);
-        const statusTone = getSalesRequestStatusTone(item.status || "");
-        const isBulkSelected = bulkSelectedIds.has(item.id);
-        const requestSqm = getSalesRequestSqm(item);
-        const statusLabel = getSalesRequestStatusLabel(item.status);
-        const serviceLabel = getSalesRequestServiceLabel(item.service);
-        const assignmentInitials = assignmentTone === "is-assigned"
-          ? (assignmentLabel.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "?")
-          : "?";
-        const specsText = requestSqm > 0
-          ? `${requestSqm} mq${item.requestedHeight ? ` · ${item.requestedHeight}` : ""}`
-          : "";
-        return `
-          <article class="sales-request-card ${item.id === selected?.id ? "is-active" : ""} ${isBulkSelected ? "is-bulk-selected" : ""}" data-action="select-sales-request" data-id="${item.id}" data-first-contact-state="${escapeHtml(normalizeSalesRequestFirstContactState(item.firstContactState || ""))}">
-            <button
-              class="sales-request-select-toggle ${isBulkSelected ? "is-selected" : ""}"
-              type="button"
-              data-action="toggle-sales-request-bulk"
-              data-id="${item.id}"
-              aria-pressed="${isBulkSelected ? "true" : "false"}"
-              aria-label="${state.lang === "it" ? "Seleziona richiesta" : "Select request"}"
-            >${isBulkSelected ? "✓" : ""}</button>
-            <div class="sales-card-row sales-card-row--main">
-              <div class="sales-card-identity">
-                <strong class="sales-card-name">${escapeHtml(getSalesRequestDisplayName(item))}</strong>
-                <span class="sales-card-sep">·</span>
-                <span class="sales-card-city">${escapeHtml(item.city || (state.lang === "it" ? "Città —" : "City —"))}</span>
-              </div>
-              <span class="sales-status-pill ${statusTone}">${escapeHtml(statusLabel)}</span>
-            </div>
-            <div class="sales-card-row sales-card-row--sub">
-              <span class="sales-card-service-tag">${escapeHtml(serviceLabel)}</span>
-              ${specsText ? `<span class="sales-card-bullet">·</span><span class="sales-card-specs">${escapeHtml(specsText)}</span>` : ""}
-              <span class="sales-card-meta-right">
-                ${automationBadge ? `<span class="sales-automation-pill ${automationBadge.tone === "queued" ? "is-queued" : "is-sent"}" title="${escapeHtml(automationBadge.title)}">${escapeHtml(automationBadge.label)}</span>` : ""}
-                <span class="sales-card-avatar ${assignmentTone}" title="${escapeHtml(assignmentLabel)}">${assignmentInitials}</span>
-                <time class="sales-card-time">${item.createdAt ? formatDate(item.createdAt) : "—"}</time>
-              </span>
-            </div>
-          </article>
-        `;
-      }).join("")
-      : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters."}</div>`;
+      ? renderCrmV2Banner() + pageItems.map((item) => renderCrmV2Row(item, selected, bulkSelectedIds)).join("")
+      : renderCrmV2Banner() + `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters."}</div>`;
     });
   }
   if (ui.salesRequestsPagination) {
@@ -24131,6 +24260,58 @@ function handleGlobalClick(event) {
   }
   if (action === "reload-crm-page") {
     void loadCrmPage({ page: state.crmServerPage?.page || 1, forceReload: true });
+    return;
+  }
+  // CRM v2: toggle popover stato sulla riga
+  if (action === "crm-toggle-status-popover") {
+    event.preventDefault();
+    event.stopPropagation();
+    const id = String(target?.dataset?.id || "");
+    if (!id) return;
+    _crmStatusPopoverOpenId = (_crmStatusPopoverOpenId === id) ? "" : id;
+    renderSalesRequests();
+    return;
+  }
+  // CRM v2: chiude il popover se clicchi fuori
+  if (_crmStatusPopoverOpenId && !target?.closest?.("[data-action='crm-status-popover']")
+      && !target?.closest?.("[data-action='crm-toggle-status-popover']")
+      && !target?.closest?.("[data-action='crm-set-status']")) {
+    _crmStatusPopoverOpenId = "";
+    renderSalesRequests();
+    // non return: lasciamo che eventuali altre azioni si processino
+  }
+  // CRM v2: cambia stato — optimistic via autoSaveSalesRequestPatch
+  if (action === "crm-set-status") {
+    event.preventDefault();
+    event.stopPropagation();
+    const id = String(target?.dataset?.id || "");
+    const newStatus = String(target?.dataset?.status || "");
+    if (!id || !newStatus) return;
+    _crmStatusPopoverOpenId = "";
+    const record = (state.crmServerPage?.items || []).find((r) => r.id === id)
+                || state.salesRequests.find((r) => r.id === id);
+    if (!record) return;
+    void autoSaveSalesRequestPatch(id, { status: newStatus }, record);
+    // autoSaveSalesRequestPatch già chiama renderSalesRequests() in modo ottimistico
+    return;
+  }
+  // CRM v2: azione primaria della riga (Assegna / Contatta / Invia preventivo / ecc.)
+  // Per ora apre il pannello di dettaglio del record. In una v3 potremo specializzare per stato.
+  if (action === "crm-row-action") {
+    event.preventDefault();
+    event.stopPropagation();
+    const id = String(target?.dataset?.id || "");
+    if (!id) return;
+    state.selectedSalesRequestId = id;
+    document.getElementById("sales-requests")?.classList.add("crm-detail-open");
+    renderSalesRequests();
+    return;
+  }
+  // CRM v2: "Mostra nuovi lead" — ricarica la pagina 1 e svuota il banner
+  if (action === "crm-show-new-leads") {
+    event.preventDefault();
+    _crmNewLeadIds.clear();
+    void loadCrmPage({ page: 1, forceReload: true });
     return;
   }
   if (action === "sales-requests-prev-page") {

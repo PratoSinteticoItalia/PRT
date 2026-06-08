@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Richieste rivisitate</title>
+<style>
+  :root {
+    --bg: #f5f3ee;
+    --paper: #ffffff;
+    --ink: #1a2e26;
+    --ink-soft: #5a6e63;
+    --ink-faint: #8a9690;
+    --line: #e5e1d6;
+    --line-strong: #d4cebd;
+    --primary: #1f4d3d;
+    --primary-soft: #e8f0ec;
+    --accent: #10b981;
+    --blue: #3b82f6;
+    --blue-soft: #e0edff;
+    --amber: #f59e0b;
+    --amber-soft: #fef3c7;
+    --purple: #8b5cf6;
+    --purple-soft: #ede9fe;
+    --green: #10b981;
+    --green-soft: #d1fae5;
+    --red: #ef4444;
+    --red-soft: #fee2e2;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 1px 2px rgba(26,46,38,.04), 0 4px 12px rgba(26,46,38,.04);
+    --shadow-hover: 0 4px 12px rgba(26,46,38,.08), 0 8px 24px rgba(26,46,38,.06);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(circle at 1px 1px, rgba(31,77,61,.05) 1px, transparent 0) 0 0/24px 24px,
+      var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.45;
+    min-height: 100vh;
+  }
+  .page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px 28px 80px;
+  }
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    margin-bottom: 18px;
+  }
+  .page-title {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .page-subtitle {
+    margin: 4px 0 0;
+    color: var(--ink-soft);
+    font-size: 14px;
+  }
+  .last-loaded {
+    font-size: 12px;
+    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .last-loaded::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(16,185,129,.15);
+  }
+
+  /* ────── Pills filter ────── */
+  .pills {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .pill:hover { border-color: var(--line-strong); color: var(--ink); }
+  .pill .count {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--ink-faint);
+    font-size: 12px;
+  }
+  .pill.is-active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+  }
+  .pill.is-active .count { color: rgba(255,255,255,.7); }
+  .pill.is-urgent {
+    border-color: var(--amber);
+    color: #92400e;
+    background: var(--amber-soft);
+  }
+  .pill.is-urgent .count { color: #92400e; }
+
+  /* ────── Search bar ────── */
+  .search-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+  .search {
+    flex: 1;
+    position: relative;
+  }
+  .search input {
+    width: 100%;
+    padding: 12px 14px 12px 42px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .search input:focus { border-color: var(--primary); }
+  .search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--ink-faint);
+    pointer-events: none;
+  }
+  .secondary-btn {
+    padding: 11px 16px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--ink);
+    cursor: pointer;
+    font-weight: 500;
+    transition: all .15s;
+  }
+  .secondary-btn:hover { background: var(--primary-soft); border-color: var(--primary); }
+  .primary-btn {
+    padding: 11px 18px;
+    background: var(--primary);
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: white;
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  /* ────── New leads banner ────── */
+  .new-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #e0edff 0%, #f0f7ff 100%);
+    border: 1px solid #b8d4ff;
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: #1e40af;
+    box-shadow: var(--shadow);
+  }
+  .new-banner-text {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 500;
+  }
+  .new-banner-text .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--blue);
+    box-shadow: 0 0 0 4px rgba(59,130,246,.2);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(59,130,246,.2); }
+    50% { box-shadow: 0 0 0 8px rgba(59,130,246,.05); }
+  }
+  .banner-btn {
+    background: white;
+    border: 1px solid #b8d4ff;
+    color: #1e40af;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* ────── List ────── */
+  .list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 32px 1fr auto auto;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all .12s;
+  }
+  .row:hover {
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-1px);
+  }
+  .row.is-selected {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-soft);
+  }
+
+  /* status dot + label inline */
+  .row-status {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    cursor: pointer;
+    position: relative;
+  }
+  .row-status::after {
+    content: "";
+    position: absolute;
+    inset: -10px;
+  }
+  .row-status.is-new { background: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+  .row-status.is-contacted { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+  .row-status.is-quoted { background: var(--purple); box-shadow: 0 0 0 3px var(--purple-soft); }
+  .row-status.is-won { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .row-status.is-lost { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+
+  .row-main { min-width: 0; }
+  .row-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    margin-bottom: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .row-meta {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    color: var(--ink-soft);
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+  .row-meta .dot { color: var(--ink-faint); }
+  .row-meta .service-tag {
+    background: var(--primary-soft);
+    color: var(--primary);
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .row-aside {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    text-align: right;
+  }
+  .row-date {
+    font-size: 12px;
+    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .row-date .source-icon {
+    font-size: 14px;
+    opacity: .7;
+  }
+  .row-assignee {
+    font-size: 12px;
+    color: var(--ink-soft);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .avatar {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .avatar.is-empty {
+    background: transparent;
+    border: 1.5px dashed var(--line-strong);
+    color: var(--ink-faint);
+  }
+
+  /* primary action button on row */
+  .row-action {
+    padding: 8px 14px;
+    background: var(--ink);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s;
+    white-space: nowrap;
+  }
+  .row:hover .row-action { opacity: 1; }
+  .row-action.is-visible { opacity: 1; }
+  .row-action.is-blue { background: var(--blue); }
+  .row-action.is-green { background: var(--green); }
+  .row-action.is-ghost {
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+  }
+
+  /* ────── Inline status dropdown (visualizzato aperto su una riga) ────── */
+  .status-popover {
+    position: absolute;
+    top: 30px;
+    left: -8px;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 8px 24px rgba(26,46,38,.12);
+    padding: 6px;
+    min-width: 180px;
+    z-index: 10;
+    font-size: 13px;
+  }
+  .status-popover-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .status-popover-item:hover { background: var(--primary-soft); }
+  .status-popover-item.is-current { background: var(--primary-soft); font-weight: 600; }
+  .status-popover-item .item-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+
+  /* ────── KPI strip (sostituisce i contatori giganti) ────── */
+  .kpi-strip {
+    display: flex;
+    gap: 32px;
+    padding: 14px 18px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+  }
+  .kpi {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .kpi-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .kpi-label {
+    font-size: 11px;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  .kpi-trend {
+    font-size: 11px;
+    color: var(--green);
+    font-weight: 600;
+  }
+  .kpi-trend.is-warn { color: var(--amber); }
+
+  /* ────── Pagination ────── */
+  .pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 18px;
+    padding: 0 4px;
+    color: var(--ink-soft);
+    font-size: 13px;
+  }
+  .pagination-controls {
+    display: flex;
+    gap: 6px;
+  }
+  .page-btn {
+    padding: 7px 12px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--ink);
+    min-width: 36px;
+  }
+  .page-btn.is-current {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+    font-weight: 600;
+  }
+  .page-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ────── Note di lettura del mockup ────── */
+  .mock-note {
+    margin-top: 40px;
+    padding: 18px 22px;
+    background: #fff8e1;
+    border: 1px dashed #d4cebd;
+    border-radius: var(--radius);
+    color: #6e5c1a;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .mock-note h3 { margin: 0 0 8px; font-size: 14px; color: #5a4a14; }
+  .mock-note ul { margin: 0; padding-left: 20px; }
+  .mock-note li { margin-bottom: 4px; }
+  .mock-note code { background: rgba(255,255,255,.6); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Richieste</h1>
+      <p class="page-subtitle">Lead in arrivo e pipeline commerciale</p>
+    </div>
+    <div class="last-loaded">aggiornato 12 secondi fa</div>
+  </div>
+
+  <!-- KPI compatti -->
+  <div class="kpi-strip">
+    <div class="kpi">
+      <span class="kpi-value">7.345</span>
+      <span class="kpi-label">Totale</span>
+    </div>
+    <div class="kpi">
+      <span class="kpi-value">19</span>
+      <span class="kpi-label">Da contattare</span>
+      <span class="kpi-trend is-warn">↑ 4 oggi</span>
+    </div>
+    <div class="kpi">
+      <span class="kpi-value">627</span>
+      <span class="kpi-label">Da assegnare</span>
+    </div>
+    <div class="kpi">
+      <span class="kpi-value">71</span>
+      <span class="kpi-label">Questa settimana</span>
+      <span class="kpi-trend">↑ 12% vs scorsa</span>
+    </div>
+    <div class="kpi">
+      <span class="kpi-value">14</span>
+      <span class="kpi-label">Preventivi inviati</span>
+    </div>
+  </div>
+
+  <!-- Filtri pillole -->
+  <div class="pills">
+    <div class="pill is-active">Tutti <span class="count">7.345</span></div>
+    <div class="pill">Miei <span class="count">124</span></div>
+    <div class="pill is-urgent">Da assegnare <span class="count">627</span></div>
+    <div class="pill">Nuovi <span class="count">19</span></div>
+    <div class="pill">Questa settimana <span class="count">71</span></div>
+    <div class="pill">Solo fornitura <span class="count">3.402</span></div>
+    <div class="pill">Fornitura + posa <span class="count">3.812</span></div>
+  </div>
+
+  <!-- Search + azioni -->
+  <div class="search-row">
+    <div class="search">
+      <span class="search-icon">⌕</span>
+      <input type="text" placeholder="Cerca per nome, telefono, città, email…" />
+    </div>
+    <button class="secondary-btn">⚙️ Filtri avanzati</button>
+    <button class="primary-btn">+ Nuova richiesta</button>
+  </div>
+
+  <!-- Banner nuovi lead -->
+  <div class="new-banner">
+    <div class="new-banner-text">
+      <span class="dot"></span>
+      <span><b>5 nuovi lead</b> sono arrivati dall'ultimo caricamento</span>
+    </div>
+    <button class="banner-btn">Mostra ↻</button>
+  </div>
+
+  <!-- Lista -->
+  <div class="list">
+
+    <!-- Riga 1: nuovo, non assegnato -->
+    <div class="row">
+      <div class="row-status is-new" title="Nuovo contatto"></div>
+      <div class="row-main">
+        <div class="row-name">ANDREA PRINCIPESSA</div>
+        <div class="row-meta">
+          <span>Poggio Moiano</span>
+          <span class="dot">·</span>
+          <span class="service-tag">SOLO FORNITURA</span>
+          <span class="dot">·</span>
+          <span>9 mq · 18mm</span>
+        </div>
+      </div>
+      <div class="row-aside">
+        <div class="row-date"><span class="source-icon">📧</span> ieri 10:17</div>
+        <div class="row-assignee"><span class="avatar is-empty">?</span> non assegnato</div>
+      </div>
+      <button class="row-action is-blue is-visible">Assegna</button>
+    </div>
+
+    <!-- Riga 2: in lavorazione, mio -->
+    <div class="row is-selected">
+      <div class="row-status is-contacted" title="1° contatto"></div>
+      <div class="row-main">
+        <div class="row-name">FABIO DALLE DONNE</div>
+        <div class="row-meta">
+          <span>Malalbergo</span>
+          <span class="dot">·</span>
+          <span class="service-tag">FORNITURA + POSA</span>
+          <span class="dot">·</span>
+          <span>40 mq · 30mm</span>
+        </div>
+      </div>
+      <div class="row-aside">
+        <div class="row-date"><span class="source-icon">📧</span> ieri 12:17</div>
+        <div class="row-assignee"><span class="avatar">G</span> Gabriele</div>
+      </div>
+      <button class="row-action is-visible">Invia preventivo</button>
+    </div>
+
+    <!-- Riga 3: con popover stato aperto (mostra l'edit inline) -->
+    <div class="row" style="position: relative; z-index: 5;">
+      <div class="row-status is-contacted" title="1° contatto" style="position: relative;">
+        <div class="status-popover">
+          <div class="status-popover-item">
+            <span class="item-dot" style="background: var(--blue)"></span>
+            Nuovo contatto
+          </div>
+          <div class="status-popover-item is-current">
+            <span class="item-dot" style="background: var(--amber)"></span>
+            1° contatto
+          </div>
+          <div class="status-popover-item">
+            <span class="item-dot" style="background: var(--purple)"></span>
+            Preventivo inviato
+          </div>
+          <div class="status-popover-item">
+            <span class="item-dot" style="background: var(--green)"></span>
+            Ordine confermato
+          </div>
+          <div class="status-popover-item">
+            <span class="item-dot" style="background: var(--red)"></span>
+            Perso
+          </div>
+        </div>
+      </div>
+      <div class="row-main">
+        <div class="row-name">ROSARIO PLATANIA</div>
+        <div class="row-meta">
+          <span>San Pietro Clarenza</span>
+          <span class="dot">·</span>
+          <span class="service-tag">FORNITURA + POSA</span>
+          <span class="dot">·</span>
+          <span>30 mq · 30mm</span>
+        </div>
+      </div>
+      <div class="row-aside">
+        <div class="row-date"><span class="source-icon">📧</span> 07 giu 14:32</div>
+        <div class="row-assignee"><span class="avatar">G</span> Gabriele</div>
+      </div>
+      <button class="row-action is-visible">Invia preventivo</button>
+    </div>
+
+    <!-- Riga 4: preventivo inviato -->
+    <div class="row">
+      <div class="row-status is-quoted" title="Preventivo inviato"></div>
+      <div class="row-main">
+        <div class="row-name">ANNA ESPOSITO</div>
+        <div class="row-meta">
+          <span>Praia a Mare</span>
+          <span class="dot">·</span>
+          <span class="service-tag">FORNITURA + POSA</span>
+          <span class="dot">·</span>
+          <span>20 mq · 25mm</span>
+        </div>
+      </div>
+      <div class="row-aside">
+        <div class="row-date"><span class="source-icon">📧</span> oggi 12:53</div>
+        <div class="row-assignee"><span class="avatar">A</span> Anna</div>
+      </div>
+      <button class="row-action is-ghost">Follow-up</button>
+    </div>
+
+    <!-- Riga 5: ordine confermato -->
+    <div class="row">
+      <div class="row-status is-won" title="Ordine confermato"></div>
+      <div class="row-main">
+        <div class="row-name">GIUSEPPE VITO</div>
+        <div class="row-meta">
+          <span>Pignataro Maggiore</span>
+          <span class="dot">·</span>
+          <span class="service-tag">SOLO FORNITURA</span>
+          <span class="dot">·</span>
+          <span>5 mq · 30mm</span>
+        </div>
+      </div>
+      <div class="row-aside">
+        <div class="row-date"><span class="source-icon">📧</span> 03 giu</div>
+        <div class="row-assignee"><span class="avatar">G</span> Gabriele</div>
+      </div>
+      <button class="row-action is-green is-visible">Apri ordine</button>
+    </div>
+
+    <!-- Riga 6: manuale, non assegnato -->
+    <div class="row">
+      <div class="row-status is-new" title="Nuovo contatto"></div>
+      <div class="row-main">
+        <div class="row-name">ALESSIO BAGLIO</div>
+        <div class="row-meta">
+          <span>Nettuno</span>
+          <span class="dot">·</span>
+          <span class="service-tag">FORNITURA + POSA</span>
+          <span class="dot">·</span>
+          <span>40 mq · 18mm</span>
+        </div>
+      </div>
+      <div class="row-aside">
+        <div class="row-date"><span class="source-icon">✍️</span> oggi 11:08</div>
+        <div class="row-assignee"><span class="avatar is-empty">?</span> non assegnato</div>
+      </div>
+      <button class="row-action is-blue is-visible">Assegna</button>
+    </div>
+
+    <!-- Riga 7: perso -->
+    <div class="row">
+      <div class="row-status is-lost" title="Perso"></div>
+      <div class="row-main">
+        <div class="row-name">VALENTINA COMIN</div>
+        <div class="row-meta">
+          <span>Venezia</span>
+          <span class="dot">·</span>
+          <span class="service-tag">SOLO FORNITURA</span>
+          <span class="dot">·</span>
+          <span>15 mq · 25mm</span>
+        </div>
+      </div>
+      <div class="row-aside">
+        <div class="row-date"><span class="source-icon">📧</span> 28 mag</div>
+        <div class="row-assignee"><span class="avatar">A</span> Anna</div>
+      </div>
+      <button class="row-action is-ghost">Riapri</button>
+    </div>
+
+  </div>
+
+  <!-- Paginazione -->
+  <div class="pagination">
+    <div>Visualizzati <b>1–7</b> di <b>7.345</b></div>
+    <div class="pagination-controls">
+      <button class="page-btn" disabled>‹</button>
+      <button class="page-btn is-current">1</button>
+      <button class="page-btn">2</button>
+      <button class="page-btn">3</button>
+      <button class="page-btn">…</button>
+      <button class="page-btn">147</button>
+      <button class="page-btn">›</button>
+    </div>
+  </div>
+
+  <!-- Note didascalia -->
+  <div class="mock-note">
+    <h3>Note di lettura</h3>
+    <ul>
+      <li><b>Pallino di stato</b> a sinistra di ogni riga = sostituisce il badge testuale. Cliccaci sopra → menu inline (vedi 3ª riga) → cambio istantaneo (ottimistico, nessuna attesa server).</li>
+      <li><b>Icona fonte</b> davanti alla data: <code>📧</code> = lead arrivato via IMAP, <code>✍️</code> = creato manualmente. Fa capire a colpo d'occhio l'origine.</li>
+      <li><b>Data</b> = data reale di ricezione dall'email (<code>received_at</code> IMAP), mai più "08 giu" artificiali da re-backfill.</li>
+      <li><b>Azione primaria</b> a destra cambia in base allo stato: <i>Assegna</i> se non assegnato, <i>Invia preventivo</i> se 1° contatto, <i>Apri ordine</i> se confermato, ecc. Sempre 1 azione, sempre chiara.</li>
+      <li><b>Banner blu</b> compare quando arrivano nuovi lead via SSE — niente più ricariche silenziose. Decidi tu quando vederli.</li>
+      <li><b>Riga selezionata</b> ha bordo verde scuro: il pannello dettaglio (qui non disegnato) si apre solo per modifiche complesse (note, ricontrollo dati), non per cambiare stato.</li>
+      <li><b>Pillole filtro</b> = 7 viste rapide, una sola attiva. Conteggi sempre veri dall'intero DB, non dai 50 in pagina.</li>
+      <li><b>KPI in alto</b> compatti su una sola riga, con trend ("↑ 4 oggi", "↑ 12% vs scorsa") — più informativi dei riquadri giganti attuali.</li>
+    </ul>
+  </div>
+
+</div>
+
+</body>
+</html>

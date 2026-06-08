@@ -19720,3 +19720,274 @@ body {
 /* Da preparare → ambra (già badge-warning dopo il cambio di tone) */
 /* Pronto per uscita → verde (già badge-success) */
 /* Blocco → rosso (già badge-urgent) */
+
+/* ═══════════════════════════════════════════════════════════════════
+   CRM v2 — Nuovo layout righe richieste (mockup definitivo)
+   Override del design vecchio. Stesso wrapper <article class="sales-request-card">
+   ma layout interno completamente nuovo.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Reset card padding/struttura per il nuovo layout */
+#sales-requests .sales-request-card.crm-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px 12px 44px;
+  background: #ffffff;
+  border: 1px solid #e5e1d6;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(26,46,38,.03);
+  transition: border-color .12s, box-shadow .12s, transform .12s;
+  position: relative;
+}
+#sales-requests .sales-request-card.crm-row:hover {
+  border-color: #d4cebd;
+  box-shadow: 0 4px 12px rgba(26,46,38,.06);
+  transform: translateY(-1px);
+}
+#sales-requests .sales-request-card.crm-row.is-active {
+  border-color: #1f4d3d;
+  box-shadow: 0 0 0 3px rgba(31,77,61,.10);
+}
+
+/* Pallino stato a sinistra — cliccabile per cambio inline */
+.crm-row-status {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+  transition: transform .12s;
+}
+.crm-row-status:hover { transform: scale(1.15); }
+.crm-row-status::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+}
+.crm-row-status.is-new      { background: #3b82f6; box-shadow: 0 0 0 3px #e0edff; }
+.crm-row-status.is-contacted{ background: #f59e0b; box-shadow: 0 0 0 3px #fef3c7; }
+.crm-row-status.is-quoted   { background: #8b5cf6; box-shadow: 0 0 0 3px #ede9fe; }
+.crm-row-status.is-won      { background: #10b981; box-shadow: 0 0 0 3px #d1fae5; }
+.crm-row-status.is-lost     { background: #ef4444; box-shadow: 0 0 0 3px #fee2e2; }
+
+/* Blocco centrale: nome + meta */
+.crm-row-main { min-width: 0; }
+.crm-row-name {
+  font-weight: 600;
+  font-size: 14.5px;
+  color: #1a2e26;
+  letter-spacing: -0.005em;
+  margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.crm-row-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: #5a6e63;
+  font-size: 12.5px;
+  flex-wrap: wrap;
+}
+.crm-row-meta .crm-row-meta-dot { color: #8a9690; }
+.crm-row-meta .crm-row-service-tag {
+  background: #e8f0ec;
+  color: #1f4d3d;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* Lato destro: data + assegnazione */
+.crm-row-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+  min-width: 110px;
+}
+.crm-row-date {
+  font-size: 11.5px;
+  color: #8a9690;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.crm-row-date .crm-row-source-icon { font-size: 13px; opacity: .85; }
+.crm-row-assignee {
+  font-size: 11.5px;
+  color: #5a6e63;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.crm-row-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #1f4d3d;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.02em;
+}
+.crm-row-avatar.is-empty {
+  background: transparent;
+  border: 1.5px dashed #d4cebd;
+  color: #8a9690;
+}
+
+/* Bottone azione primaria a destra */
+.crm-row-action {
+  padding: 7px 13px;
+  background: #1a2e26;
+  color: white;
+  border: none;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity .15s, transform .12s;
+  font-family: inherit;
+}
+.crm-row:hover .crm-row-action,
+.crm-row.is-active .crm-row-action { opacity: 1; }
+.crm-row-action:hover { transform: scale(1.03); }
+.crm-row-action.is-blue { background: #3b82f6; }
+.crm-row-action.is-green { background: #10b981; }
+.crm-row-action.is-ghost {
+  background: transparent;
+  color: #5a6e63;
+  border: 1px solid #d4cebd;
+}
+
+/* Popover cambio stato inline */
+.crm-status-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 14px;
+  background: #ffffff;
+  border: 1px solid #d4cebd;
+  border-radius: 10px;
+  box-shadow: 0 10px 32px rgba(26,46,38,.16);
+  padding: 6px;
+  min-width: 200px;
+  z-index: 50;
+  font-size: 13px;
+  animation: crmPopoverIn 0.12s ease-out;
+}
+@keyframes crmPopoverIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.crm-status-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #1a2e26;
+  user-select: none;
+}
+.crm-status-popover-item:hover { background: #e8f0ec; }
+.crm-status-popover-item.is-current { background: #e8f0ec; font-weight: 600; }
+.crm-status-popover-item-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.crm-status-popover-item.dot-new      .crm-status-popover-item-dot { background: #3b82f6; }
+.crm-status-popover-item.dot-contacted .crm-status-popover-item-dot { background: #f59e0b; }
+.crm-status-popover-item.dot-quoted   .crm-status-popover-item-dot { background: #8b5cf6; }
+.crm-status-popover-item.dot-won      .crm-status-popover-item-dot { background: #10b981; }
+.crm-status-popover-item.dot-lost     .crm-status-popover-item-dot { background: #ef4444; }
+
+/* Banner nuovi lead arrivati via SSE */
+.crm-new-leads-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px;
+  background: linear-gradient(135deg, #e0edff 0%, #f0f7ff 100%);
+  border: 1px solid #b8d4ff;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #1e40af;
+  box-shadow: 0 1px 2px rgba(26,46,38,.04);
+}
+.crm-new-leads-banner-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+}
+.crm-new-leads-banner-text .crm-pulse-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59,130,246,.2);
+  animation: crmPulse 2s infinite;
+}
+@keyframes crmPulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(59,130,246,.2); }
+  50%      { box-shadow: 0 0 0 8px rgba(59,130,246,.05); }
+}
+.crm-new-leads-banner-btn {
+  background: white;
+  border: 1px solid #b8d4ff;
+  color: #1e40af;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.crm-new-leads-banner-btn:hover { background: #f0f7ff; }
+
+/* "Aggiornato N sec fa" sopra la lista */
+.crm-last-loaded {
+  font-size: 11.5px;
+  color: #8a9690;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.crm-last-loaded::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(16,185,129,.15);
+}
+
+/* Checkbox di selezione bulk centrato nel nuovo layout */
+#sales-requests .sales-request-card.crm-row .sales-request-select-toggle {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+}
