@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260606-crm-fix23";
+const APP_SHELL_VERSION = "20260606-crm-fix24";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12050,11 +12050,21 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
     if (assignment) params.set("assignment", assignment);
     if (source && source !== "all")  params.set("source", source);
     const data = await apiFetch(`/api/sales/requests?${params}`);
+    // Protezione ottimistica: se un PATCH è in-volo (o nel grace period da 1.5s),
+    // mantieni la versione locale per quell'item — la risposta del server potrebbe
+    // essere "vecchia" (fetched prima che il PATCH arrivasse al DB).
+    const rawItems = Array.isArray(data.items) ? data.items : [];
+    const mergedItems = rawItems.map((serverItem) => {
+      if (!salesRequestPendingPatchIds.has(serverItem.id)) return serverItem;
+      return state.salesRequests.find((r) => r.id === serverItem.id)
+        || (state.crmServerPage?.items || []).find((r) => r.id === serverItem.id)
+        || serverItem;
+    });
     state.crmServerPage = {
       total: data.total || 0,
       page: data.page || page,
       limit: data.limit || limit,
-      items: Array.isArray(data.items) ? data.items : [],
+      items: mergedItems,
       loading: false,
       loadError: false,
       loadedAt: Date.now(),
@@ -12825,12 +12835,35 @@ function renderSalesContent() {
   }
 }
 
+/**
+ * Aggiorna le stats KPI (Nuovi, Non assegnati) in modo incrementale dopo ogni upsert.
+ * Opera per delta rispetto al record precedente → corretto per dataset > 1 pagina.
+ * Non modifica `total` e `thisWeek` (provengono dal server, cambiano solo al reload).
+ */
+function applyPatchToSalesRequestStats(previousRecord, nextRecord) {
+  if (!state.salesRequestsStats) return;
+  const prevIsNew = getSalesRequestStatusCode(previousRecord?.status || "") === "new";
+  const nextIsNew = getSalesRequestStatusCode(nextRecord?.status || "") === "new";
+  const prevAssigned = Boolean(normalizeSalesRequestAssignment(previousRecord?.assignment || ""));
+  const nextAssigned = Boolean(normalizeSalesRequestAssignment(nextRecord?.assignment || ""));
+  const dNew = (!prevIsNew && nextIsNew) ? 1 : (prevIsNew && !nextIsNew) ? -1 : 0;
+  const dUnassigned = (!prevAssigned && nextAssigned) ? -1 : (prevAssigned && !nextAssigned) ? 1 : 0;
+  if (dNew === 0 && dUnassigned === 0) return;
+  state.salesRequestsStats = {
+    ...state.salesRequestsStats,
+    new: Math.max(0, (state.salesRequestsStats.new ?? 0) + dNew),
+    unassigned: Math.max(0, (state.salesRequestsStats.unassigned ?? 0) + dUnassigned),
+  };
+}
+
 function upsertSalesRequest(saved, { skipOpsRender = false, preserveSelection = false } = {}) {
   const previousSelectedSalesRequestId = state.selectedSalesRequestId;
   const previousCreatingSalesRequest = state.creatingSalesRequest;
   const pageAnchorId = getCurrentSalesRequestPageAnchorId();
   const normalized = normalizeSalesRequestRecord(saved);
   const existingIndex = state.salesRequests.findIndex((item) => item.id === normalized.id);
+  // Cattura il record precedente PRIMA di sovrascriverlo per calcolare il delta stats
+  const previousRecord = existingIndex >= 0 ? state.salesRequests[existingIndex] : null;
   if (existingIndex >= 0) {
     state.salesRequests = state.salesRequests.map((item, index) => (index === existingIndex ? normalized : item));
   } else {
@@ -12847,6 +12880,10 @@ function upsertSalesRequest(saved, { skipOpsRender = false, preserveSelection = 
         items: state.crmServerPage.items.map((item, i) => (i === crmIdx ? normalized : item)),
       };
     }
+  }
+  // Aggiorna le stats KPI in tempo reale (delta rispetto al record precedente)
+  if (previousRecord) {
+    applyPatchToSalesRequestStats(previousRecord, normalized);
   }
   invalidateSalesRequestsFilterCache(); // dati cambiati → invalida sort+filter cache
   if (preserveSelection) {
@@ -13171,7 +13208,13 @@ async function autoSaveSalesRequestPatch(id, patch) {
   const current = state.salesRequests.find((r) => r.id === id)
     || (state.crmServerPage?.items || []).find((r) => r.id === id);
   if (!current) return;
-  if (state.salesRequestSaveInFlight) return;
+  if (state.salesRequestSaveInFlight) {
+    // Full save (POST) in corso: non droppare il patch ma accodarlo last-write-wins.
+    // Verrà inviato non appena processSalesRequestSave completa nel suo finally.
+    const cleanPatch = Object.fromEntries(Object.entries(patch).filter(([k]) => !k.startsWith("__")));
+    salesRequestPatchQueue.set(id, { ...(salesRequestPatchQueue.get(id) || {}), ...cleanPatch });
+    return;
+  }
   // Coda last-write-wins: se un PATCH è in volo (o nel grace period post-save),
   // memorizza l'ultimo stato e invialo al termine del grace period (≤1.5s).
   // Elimina i drop silenti del vecchio sistema a retry singolo.
@@ -13269,6 +13312,16 @@ async function processSalesRequestSave(draftRecord, {
     setStatus(ui.salesRequestsStatus, "error", getSalesRequestSaveErrorMessage(error));
   } finally {
     state.salesRequestSaveInFlight = false;
+    // Svuota patch accodate durante il full save (stato/assegnazione cambiati
+    // mentre il POST era in volo). last-write-wins: l'ultimo patch accodato vince.
+    const savedId = String(draftRecord?.id || "");
+    if (savedId) {
+      const pendingPatch = salesRequestPatchQueue.get(savedId);
+      if (pendingPatch && !salesRequestPendingPatchIds.has(savedId)) {
+        salesRequestPatchQueue.delete(savedId);
+        void autoSaveSalesRequestPatch(savedId, pendingPatch);
+      }
+    }
     const nextQueuedDraft = state.pendingSalesRequestSave;
     state.pendingSalesRequestSave = null;
     if (nextQueuedDraft) {
