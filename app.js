@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-row";
+const APP_SHELL_VERSION = "20260608-crm-v2-detail";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4507,27 +4507,26 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
     `).join("");
   }
   if (ui.salesRequestInsights) {
-    // Stats bar: KPI da PostgreSQL, senza toggle di vista (kanban rimosso)
+    // CRM v2 — KPI strip compatta (sostituisce i box giganti)
     const stats = state.salesRequestsStats;
     if (stats) {
+      ui.salesRequestInsights.className = "sales-request-insights crm-kpi-strip";
       ui.salesRequestInsights.innerHTML = `
-        <div class="crm-stats-bar">
-          <div class="crm-stats-item">
-            <span class="crm-stats-value">${stats.total ?? "—"}</span>
-            <span class="crm-stats-label">${state.lang === "it" ? "Totale" : "Total"}</span>
-          </div>
-          <div class="crm-stats-item is-highlight">
-            <span class="crm-stats-value">${stats.new ?? "—"}</span>
-            <span class="crm-stats-label">${state.lang === "it" ? "Nuovi" : "New"}</span>
-          </div>
-          <div class="crm-stats-item is-warn">
-            <span class="crm-stats-value">${stats.unassigned ?? "—"}</span>
-            <span class="crm-stats-label">${state.lang === "it" ? "Non assegnati" : "Unassigned"}</span>
-          </div>
-          <div class="crm-stats-item">
-            <span class="crm-stats-value">${stats.thisWeek ?? "—"}</span>
-            <span class="crm-stats-label">${state.lang === "it" ? "Questa settimana" : "This week"}</span>
-          </div>
+        <div class="crm-kpi">
+          <span class="crm-kpi-value">${(stats.total ?? 0).toLocaleString("it-IT")}</span>
+          <span class="crm-kpi-label">${state.lang === "it" ? "Totale" : "Total"}</span>
+        </div>
+        <div class="crm-kpi ${(stats.new ?? 0) > 0 ? "is-positive" : ""}">
+          <span class="crm-kpi-value">${stats.new ?? 0}</span>
+          <span class="crm-kpi-label">${state.lang === "it" ? "Da contattare" : "To contact"}</span>
+        </div>
+        <div class="crm-kpi ${(stats.unassigned ?? 0) > 0 ? "is-warn" : ""}">
+          <span class="crm-kpi-value">${stats.unassigned ?? 0}</span>
+          <span class="crm-kpi-label">${state.lang === "it" ? "Da assegnare" : "Unassigned"}</span>
+        </div>
+        <div class="crm-kpi">
+          <span class="crm-kpi-value">${stats.thisWeek ?? 0}</span>
+          <span class="crm-kpi-label">${state.lang === "it" ? "Questa settimana" : "This week"}</span>
         </div>
       `;
     } else {
@@ -12303,13 +12302,19 @@ function getCrmV2PrimaryAction(item = {}) {
   return { label: state.lang === "it" ? "Apri" : "Open", tone: "" };
 }
 
-// Icona fonte: 📧 IMAP/email, ✍️ manuale, 📋 Sheets, 🏠 generico
+// Icona fonte — versione robusta con fallback su segnali secondari.
+// I record vecchi possono avere `source` vuoto: in quel caso deduciamo
+// dall'email (se valida = web form / IMAP) o restituiamo un'icona neutra.
 function getCrmV2SourceIcon(item = {}) {
-  const source = String(item.source || "").toLowerCase();
+  const source = String(item.source || "").toLowerCase().trim();
   if (source === "imap" || source === "email") return "📧";
-  if (source === "google-sheets") return "📋";
-  if (source === "manual" || source === "manuale") return "✍️";
-  return "🏠";
+  if (source === "google-sheets" || source === "googlesheets" || source === "sheets") return "📋";
+  if (source === "manual" || source === "manuale" || source === "office") return "✍️";
+  // Fallback: se ha un'email valida è molto probabilmente arrivato via web form → IMAP
+  const email = String(item.email || "").trim();
+  if (email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return "📧";
+  // Nessun segnale: nessuna icona (più pulito di un emoji random)
+  return "";
 }
 
 function renderCrmV2Row(item, selected, bulkSelectedIds) {

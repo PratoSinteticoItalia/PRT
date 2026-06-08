@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260608-crm-v2-row" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260608-crm-v2-row" />
+    <link rel="preload" href="./styles.css?v=20260608-crm-v2-detail" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260608-crm-v2-detail" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -694,72 +694,96 @@
                   <button class="crm-drawer-close" type="button" data-action="close-crm-detail" aria-label="Chiudi pannello" title="Chiudi">✕</button>
                 </div>
               </div>
-              <form id="sales-request-form" class="inline-form-grid">
+              <form id="sales-request-form" class="inline-form-grid crm-detail-form">
                 <input type="hidden" name="id" />
-                <label class="field sales-request-routing-field crm-top-field">
-                  <span>Assegnazione</span>
-                  <select class="text-input" name="assignment">
-                    <option value="">non assegnato</option>
-                  </select>
-                </label>
-                <label class="field sales-request-routing-field crm-top-field">
-                  <span>Stato</span>
-                  <select class="text-input" name="status">
-                    <option value="new">Nuova</option>
-                    <option value="quoted">In preventivo</option>
-                    <option value="followup">Follow-up</option>
-                    <option value="closed">Chiusa</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Nome</span>
-                  <input class="text-input" name="name" placeholder="Mario" />
-                </label>
-                <label class="field">
-                  <span>Cognome</span>
-                  <input class="text-input" name="surname" placeholder="Rossi" />
-                </label>
-                <label class="field">
-                  <span>Città</span>
-                  <input class="text-input" name="city" placeholder="Roma" />
-                </label>
-                <label class="field">
-                  <span>Telefono</span>
-                  <input class="text-input" name="phone" placeholder="+39 ..." />
-                </label>
-                <label class="field">
-                  <span>Email</span>
-                  <input class="text-input" name="email" type="email" placeholder="cliente@email.it" />
-                </label>
-                <label class="field sales-request-sqm-field">
-                  <span>MQ richiesti</span>
-                  <input class="text-input" name="sqm" />
-                </label>
-                <label class="field">
-                  <span>Altezza da preventivare</span>
-                  <input class="text-input" name="requestedHeight" placeholder="35 mm" />
-                </label>
-                <label class="field">
-                  <span>Servizio</span>
-                  <select class="text-input" name="service">
-                    <option value="">Da definire</option>
-                    <option value="fornitura">Solo fornitura</option>
-                    <option value="posa">Fornitura + posa</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Fondo</span>
-                  <select class="text-input" name="surface">
-                    <option value="">Da definire</option>
-                    <option value="terra">Terra</option>
-                    <option value="pavimentazione">Pavimentazione</option>
-                  </select>
-                </label>
-                <label class="field field-full sales-request-note-field">
-                  <span>Note</span>
-                  <textarea class="text-input" name="note" rows="3" placeholder="Esigenze cliente, note commerciali, riferimenti utili..."></textarea>
-                  <small class="field-hint">Tieni qui contesto commerciale, esigenze cliente e appunti rapidi.</small>
-                </label>
+
+                <!-- ── Sezione: Stato commerciale ─────────────────── -->
+                <div class="crm-detail-section field-full">
+                  <p class="crm-detail-section-label">Stato commerciale</p>
+                  <div class="crm-detail-section-grid">
+                    <label class="field sales-request-routing-field crm-top-field">
+                      <span>Assegnazione</span>
+                      <select class="text-input" name="assignment">
+                        <option value="">non assegnato</option>
+                      </select>
+                    </label>
+                    <label class="field sales-request-routing-field crm-top-field">
+                      <span>Stato</span>
+                      <select class="text-input" name="status">
+                        <option value="new">Nuova</option>
+                        <option value="quoted">In preventivo</option>
+                        <option value="followup">Follow-up</option>
+                        <option value="closed">Chiusa</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- ── Sezione: Anagrafica cliente ────────────────── -->
+                <div class="crm-detail-section field-full">
+                  <p class="crm-detail-section-label">Anagrafica cliente</p>
+                  <div class="crm-detail-section-grid">
+                    <label class="field">
+                      <span>Nome</span>
+                      <input class="text-input" name="name" placeholder="—" />
+                    </label>
+                    <label class="field">
+                      <span>Cognome <small style="opacity:.5;font-weight:400">(opzionale)</small></span>
+                      <input class="text-input" name="surname" placeholder="—" />
+                    </label>
+                    <label class="field">
+                      <span>Città</span>
+                      <input class="text-input" name="city" placeholder="—" />
+                    </label>
+                    <label class="field">
+                      <span>Telefono</span>
+                      <input class="text-input" name="phone" placeholder="+39 ..." />
+                    </label>
+                    <label class="field field-full">
+                      <span>Email</span>
+                      <input class="text-input" name="email" type="email" placeholder="cliente@email.it" />
+                    </label>
+                  </div>
+                </div>
+
+                <!-- ── Sezione: Dettaglio richiesta ───────────────── -->
+                <div class="crm-detail-section field-full">
+                  <p class="crm-detail-section-label">Dettaglio richiesta</p>
+                  <div class="crm-detail-section-grid">
+                    <label class="field sales-request-sqm-field">
+                      <span>MQ richiesti</span>
+                      <input class="text-input" name="sqm" placeholder="—" />
+                    </label>
+                    <label class="field">
+                      <span>Altezza da preventivare</span>
+                      <input class="text-input" name="requestedHeight" placeholder="35 mm" />
+                    </label>
+                    <label class="field">
+                      <span>Servizio</span>
+                      <select class="text-input" name="service">
+                        <option value="">Da definire</option>
+                        <option value="fornitura">Solo fornitura</option>
+                        <option value="posa">Fornitura + posa</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Fondo</span>
+                      <select class="text-input" name="surface">
+                        <option value="">Da definire</option>
+                        <option value="terra">Terra</option>
+                        <option value="pavimentazione">Pavimentazione</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- ── Sezione: Note commerciali ──────────────────── -->
+                <div class="crm-detail-section field-full">
+                  <p class="crm-detail-section-label">Note commerciali</p>
+                  <label class="field field-full sales-request-note-field">
+                    <textarea class="text-input" name="note" rows="3" placeholder="Esigenze cliente, riferimenti utili, contesto commerciale..."></textarea>
+                  </label>
+                </div>
                 <div class="field field-full">
                   <span>Primo contatto WhatsApp</span>
                   <div class="inline-actions">
@@ -847,7 +871,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260608-crm-v2-row&shell=20260608-crm-v2-row"
+                src="./sales-suite/generator.html?embedded=1&v=20260608-crm-v2-detail&shell=20260608-crm-v2-detail"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2419,7 +2443,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260608-crm-v2-row" defer></script>
-    <script src="./app.js?v=20260608-crm-v2-row" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260608-crm-v2-detail" defer></script>
+    <script src="./app.js?v=20260608-crm-v2-detail" type="module"></script>
   </body>
 </html>
