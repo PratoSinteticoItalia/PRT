@@ -11962,10 +11962,13 @@ async function handleApi(req, res, url) {
       // Trova tutti i gruppi duplicati per telefono
       const groupRes = await pool.query(`
         WITH normed AS (
-          SELECT id, first_name, last_name, phone, status, assignment, note, created_at,
+          SELECT id, first_name, last_name, email, phone, city, sqm,
+                 requested_height, note, source, status, assignment, created_at,
                  (${normPhone}) AS norm_phone,
                  (${statusRank}) AS st_rank,
-                 (${ricchezza}) AS richness
+                 (${ricchezza}) AS richness,
+                 -- Preferenza fonte: IMAP=0 (primario), altri=1
+                 CASE WHEN coalesce(trim(source),'') = 'imap' THEN 0 ELSE 1 END AS src_rank
           FROM sales_requests
           WHERE length(coalesce(trim(${normPhone}),'')) >= 7
         ),
@@ -11977,14 +11980,15 @@ async function handleApi(req, res, url) {
           SELECT n.*,
                  ROW_NUMBER() OVER (
                    PARTITION BY n.norm_phone
-                   ORDER BY n.st_rank DESC, n.richness DESC, n.created_at ASC
+                   -- IMAP preferito su Sheets a parità di status+richness
+                   ORDER BY n.st_rank DESC, n.richness DESC, n.src_rank ASC, n.created_at ASC
                  ) AS rn
           FROM normed n
           INNER JOIN dup_phones d ON d.norm_phone = n.norm_phone
         )
-        SELECT id, first_name, last_name, phone, norm_phone, status, st_rank, richness, created_at,
-               rn,
-               (rn = 1) AS is_keeper
+        SELECT id, first_name, last_name, email, phone, city, sqm,
+               requested_height, note, source, norm_phone, status, st_rank, richness, src_rank, created_at,
+               rn, (rn = 1) AS is_keeper
         FROM ranked
         ORDER BY norm_phone, rn
       `);
@@ -11995,8 +11999,16 @@ async function handleApi(req, res, url) {
         if (!groups[key]) groups[key] = { keeper: null, toDelete: [] };
         const entry = {
           id: row.id,
+          firstName: String(row.first_name || ""),
+          lastName: String(row.last_name || ""),
           name: [String(row.first_name || ""), String(row.last_name || "")].filter(Boolean).join(" ").trim() || row.id,
+          email: String(row.email || ""),
           phone: row.phone,
+          city: String(row.city || ""),
+          sqm: row.sqm != null ? Number(row.sqm) : null,
+          requestedHeight: String(row.requested_height || ""),
+          note: String(row.note || ""),
+          source: String(row.source || ""),
           status: row.status,
           statusRank: Number(row.st_rank),
           richness: Number(row.richness),
@@ -12013,6 +12025,65 @@ async function handleApi(req, res, url) {
           `DELETE FROM sales_requests WHERE id = ANY($1)`,
           [allDeleteIds],
         );
+
+        // ─── Arricchimento keeper: copia campi vuoti dai record eliminati ──────
+        // I record IMAP hanno dati accurati dall'email reale; se il keeper
+        // (tipicamente il record Sheets con più storico commerciale) ha campi
+        // vuoti, li prendiamo dai record eliminati (IMAP in priorità).
+        // Corregge anche la data: se il keeper ha created_at artificiale
+        // (backfill) e un record eliminato ha una data più vecchia, la ripristina.
+        const _mergeFieldMap = {
+          firstName: "first_name",
+          lastName: "last_name",
+          email: "email",
+          city: "city",
+          requestedHeight: "requested_height",
+          note: "note",
+        };
+        for (const g of groupList) {
+          const patch = {};
+          // Ordina: IMAP prima, poi gli altri
+          const sortedDel = [...g.toDelete].sort((a, b) =>
+            (a.source === "imap" ? 0 : 1) - (b.source === "imap" ? 0 : 1),
+          );
+          // Testo: copia se il keeper ha il campo vuoto
+          for (const [jsField, dbCol] of Object.entries(_mergeFieldMap)) {
+            if (g.keeper[jsField]) continue; // già presente
+            for (const src of sortedDel) {
+              if (src[jsField]) { patch[dbCol] = src[jsField]; break; }
+            }
+          }
+          // Numero (sqm): copia se il keeper è NULL
+          if (g.keeper.sqm == null) {
+            for (const src of sortedDel) {
+              if (src.sqm != null) { patch.sqm = src.sqm; break; }
+            }
+          }
+          // Data: usa la più vecchia tra keeper e tutti i deleted (ripristina
+          // date reali se il keeper era stato re-backfillato con data di oggi)
+          const allDates = [g.keeper.createdAt, ...g.toDelete.map((r) => r.createdAt)]
+            .filter(Boolean).map((d) => new Date(d)).filter((d) => !isNaN(d));
+          if (allDates.length > 1) {
+            const oldest = new Date(Math.min(...allDates.map((d) => d.getTime())));
+            const keeperDate = new Date(g.keeper.createdAt);
+            if (oldest < keeperDate) patch.created_at = oldest.toISOString();
+          }
+          if (Object.keys(patch).length > 0) {
+            const cols = Object.keys(patch);
+            const vals = Object.values(patch);
+            const setStr = cols.map((c, i) => `${c} = $${i + 2}`).join(", ");
+            await pool.query(
+              `UPDATE sales_requests SET ${setStr}, updated_at = NOW() WHERE id = $1`,
+              [g.keeper.id, ...vals],
+            ).catch((pErr) => console.warn("[dedup] enrich patch failed:", pErr?.message));
+            writeAuditLog("sales_request", g.keeper.id, "enrich_dedup",
+              { patch, fromIds: sortedDel.filter((s) => s.source === "imap").map((s) => s.id) },
+              currentUser?.email || null,
+            ).catch(() => {});
+          }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         // Aggiorna store in memoria E su disco (CRITICO: impedisce il re-backfill
         // dopo riavvio server — senza writeJson, il JSON sul disco conserva ancora i
         // record eliminati e la prossima sessione li reinserisce nel DB con data oggi)
