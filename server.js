@@ -1504,7 +1504,10 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE sr.status IS NULL OR sr.status = '' OR sr.status = 'new')::int AS new_count,
         COUNT(*) FILTER (WHERE sr.assignment IS NULL OR sr.assignment = '')::int AS unassigned_count,
-        COUNT(*) FILTER (WHERE COALESCE(ils.received_at, sr.created_at) >= NOW() - INTERVAL '7 days')::int AS this_week_count
+        COUNT(*) FILTER (WHERE COALESCE(ils.received_at, sr.created_at) >= NOW() - INTERVAL '7 days')::int AS this_week_count,
+        COUNT(*) FILTER (WHERE COALESCE(ils.received_at, sr.created_at) >= CURRENT_DATE)::int AS today_count,
+        COUNT(*) FILTER (WHERE LOWER(coalesce(sr.status,'')) LIKE '%preventivo%inviato%' OR LOWER(coalesce(sr.status,'')) LIKE '%offerta%inviata%')::int AS quoted_count,
+        COUNT(*) FILTER (WHERE COALESCE(ils.received_at, sr.created_at) >= NOW() - INTERVAL '14 days' AND COALESCE(ils.received_at, sr.created_at) < NOW() - INTERVAL '7 days')::int AS prev_week_count
       FROM sales_requests sr
       LEFT JOIN incoming_leads_shadow ils ON ils.promoted_to_sales_request_id = sr.id`),
     ]);
@@ -1519,6 +1522,9 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
         new: sr.new_count ?? 0,
         unassigned: sr.unassigned_count ?? 0,
         thisWeek: sr.this_week_count ?? 0,
+        today: sr.today_count ?? 0,
+        quoted: sr.quoted_count ?? 0,
+        prevWeek: sr.prev_week_count ?? 0,
       },
     };
   } catch (err) {

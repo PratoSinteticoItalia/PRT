@@ -20174,3 +20174,165 @@ body {
   padding-left: 44px; /* compensa il bordo extra */
   box-shadow: 0 2px 8px rgba(31,77,61,.08);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   CRM v2 — Replica fedele mockup (override aggressivo finale)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* KPI strip: gap maggiore, padding più ariosi, valore più grande */
+#sales-requests #sales-request-insights.crm-kpi-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 36px;
+  padding: 16px 22px;
+  background: #ffffff;
+  border: 1px solid #ece8de;
+  border-radius: 12px;
+  box-shadow: none;
+  margin: 0 0 14px 0;
+}
+#sales-requests .crm-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+#sales-requests .crm-kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a2e26;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+#sales-requests .crm-kpi-label {
+  font-size: 10.5px;
+  color: #8a9690;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+#sales-requests .crm-kpi-trend {
+  font-size: 11px;
+  font-weight: 600;
+  color: #10b981;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+#sales-requests .crm-kpi-trend.is-warn { color: #d97706; }
+
+/* Pillole filtri rapidi — look mockup pulito */
+#sales-requests #sales-request-quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #ffffff;
+  border: 1px solid #e5e1d6;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #5a6e63;
+  cursor: pointer;
+  transition: all .15s;
+  line-height: 1;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip:hover {
+  border-color: #d4cebd;
+  color: #1a2e26;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: #8a9690;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-active {
+  background: #1f4d3d;
+  color: white;
+  border-color: #1f4d3d;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-active strong {
+  color: rgba(255,255,255,.75);
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-urgent {
+  background: #fef3c7;
+  border-color: #fbbf24;
+  color: #92400e;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-urgent strong {
+  color: #92400e;
+}
+#sales-requests #sales-request-quick-filters .sales-request-quick-chip.is-urgent.is-active {
+  background: #f59e0b;
+  color: white;
+  border-color: #f59e0b;
+}
+
+/* Search field full-width pulita */
+#sales-requests .sales-request-list-panel > .search-field {
+  margin: 0 0 12px 0;
+}
+#sales-requests .sales-request-list-panel > .search-field > span {
+  font-size: 10.5px;
+  color: #8a9690;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: block;
+}
+#sales-requests #sales-requests-search {
+  width: 100%;
+  padding: 12px 14px;
+  background: white;
+  border: 1px solid #e5e1d6;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1a2e26;
+  outline: none;
+  transition: border-color .12s;
+}
+#sales-requests #sales-requests-search:focus {
+  border-color: #1f4d3d;
+}
+
+/* Toolbar select dropdowns: layout adiacente alle pillole */
+#sales-requests .sales-request-toolbar-right {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+#sales-requests .sales-filter-select {
+  padding: 8px 28px 8px 14px;
+  border: 1px solid #e5e1d6;
+  border-radius: 999px;
+  background: white;
+  font-size: 12px;
+  color: #5a6e63;
+  cursor: pointer;
+}
+
+/* Riga: padding piu' ariosi e ombra hover dolce */
+#sales-requests .sales-request-card.crm-row {
+  padding: 14px 18px 14px 46px;
+  border-radius: 12px;
+}
+
+/* Banner nuovi lead: piu' visibile, animazione attiva */
+#sales-requests .crm-new-leads-banner {
+  margin-bottom: 14px;
+}
+
+/* Nasconde elementi orfani vecchi che residuano */
+#sales-requests .sales-request-list-panel > .panel-head {
+  margin-bottom: 8px;
+}

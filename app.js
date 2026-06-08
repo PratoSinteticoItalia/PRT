@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-effective-date";
+const APP_SHELL_VERSION = "20260608-crm-v2-mockup-faithful";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4469,27 +4469,35 @@ function matchesSalesRequestQuickFilter(item = {}, filter = String(state.filters
   if (quickFilter === "fornitura") return String(item.service || "").trim().toLowerCase() === "fornitura";
   if (quickFilter === "posa") return String(item.service || "").trim().toLowerCase() === "posa";
   if (quickFilter === "new") return statusCode === "new";
+  if (quickFilter === "this-week") {
+    const d = item.createdAt ? new Date(item.createdAt) : null;
+    if (!d || Number.isNaN(d.getTime())) return false;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return d.getTime() >= sevenDaysAgo;
+  }
   return true;
 }
 
 function getSalesRequestQuickFilterOptions(items = state.salesRequests) {
   const currentOperator = getSalesRequestOperatorFromCurrentUser();
+  const stats = state.salesRequestsStats || {};
+  // Ordine mockup: Tutti / Miei / Da assegnare (urgente) / Nuovi / Questa settimana / Solo fornitura / Fornitura + posa
   const options = [
-    { value: "all", label: state.lang === "it" ? "Tutte" : "All" },
-    { value: "mine", label: state.lang === "it" ? "Mie" : "Mine" },
-    { value: "unassigned", label: state.lang === "it" ? "Da assegnare" : "Unassigned" },
-    { value: "to-contact", label: state.lang === "it" ? "Da contattare" : "To contact" },
-    { value: "contacted", label: state.lang === "it" ? "Contattate" : "Contacted" },
-    { value: "fornitura", label: state.lang === "it" ? "Solo fornitura" : "Supply only" },
-    { value: "posa", label: state.lang === "it" ? "Fornitura + posa" : "Supply + install" },
+    { value: "all",         label: state.lang === "it" ? "Tutti" : "All",                 count: stats.total ?? items.length },
+    { value: "mine",        label: state.lang === "it" ? "Miei" : "Mine" },
+    { value: "unassigned",  label: state.lang === "it" ? "Da assegnare" : "Unassigned",   count: stats.unassigned, urgent: true },
+    { value: "new",         label: state.lang === "it" ? "Nuovi" : "New",                 count: stats.new },
+    { value: "this-week",   label: state.lang === "it" ? "Questa settimana" : "This week", count: stats.thisWeek },
+    { value: "fornitura",   label: state.lang === "it" ? "Solo fornitura" : "Supply only" },
+    { value: "posa",        label: state.lang === "it" ? "Fornitura + posa" : "Supply + install" },
   ];
   return options
     .filter((option) => option.value !== "mine" || currentOperator)
     .map((option) => ({
       ...option,
-      count: items.filter((item) => matchesSalesRequestQuickFilter(item, option.value)).length,
+      count: option.count != null ? option.count : items.filter((item) => matchesSalesRequestQuickFilter(item, option.value)).length,
     }))
-    .filter((option) => option.value === "all" || option.count > 0);
+    .filter((option) => option.value === "all" || (option.count > 0 || option.value === "mine"));
 }
 
 function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
@@ -4509,26 +4517,47 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
     `).join("");
   }
   if (ui.salesRequestInsights) {
-    // CRM v2 — KPI strip compatta (sostituisce i box giganti)
+    // CRM v2 — KPI strip mockup-style (5 metriche + trend)
     const stats = state.salesRequestsStats;
     if (stats) {
       ui.salesRequestInsights.className = "sales-request-insights crm-kpi-strip";
+      const today = Number(stats.today || 0);
+      const thisWeek = Number(stats.thisWeek || 0);
+      const prevWeek = Number(stats.prevWeek || 0);
+      let weekTrend = "";
+      if (prevWeek > 0) {
+        const delta = Math.round(((thisWeek - prevWeek) / prevWeek) * 100);
+        const arrow = delta >= 0 ? "↑" : "↓";
+        const cls = delta >= 0 ? "" : "is-warn";
+        weekTrend = `<span class="crm-kpi-trend ${cls}">${arrow} ${Math.abs(delta)}% vs scorsa</span>`;
+      } else if (thisWeek > 0) {
+        weekTrend = `<span class="crm-kpi-trend">↑ ${thisWeek} nuovi</span>`;
+      }
+      const todayTrend = today > 0
+        ? `<span class="crm-kpi-trend is-warn">↑ ${today} ogg${today === 1 ? "i" : "i"}</span>`
+        : "";
       ui.salesRequestInsights.innerHTML = `
         <div class="crm-kpi">
           <span class="crm-kpi-value">${(stats.total ?? 0).toLocaleString("it-IT")}</span>
           <span class="crm-kpi-label">${state.lang === "it" ? "Totale" : "Total"}</span>
         </div>
-        <div class="crm-kpi ${(stats.new ?? 0) > 0 ? "is-positive" : ""}">
+        <div class="crm-kpi">
           <span class="crm-kpi-value">${stats.new ?? 0}</span>
           <span class="crm-kpi-label">${state.lang === "it" ? "Da contattare" : "To contact"}</span>
+          ${todayTrend}
         </div>
-        <div class="crm-kpi ${(stats.unassigned ?? 0) > 0 ? "is-warn" : ""}">
+        <div class="crm-kpi">
           <span class="crm-kpi-value">${stats.unassigned ?? 0}</span>
           <span class="crm-kpi-label">${state.lang === "it" ? "Da assegnare" : "Unassigned"}</span>
         </div>
         <div class="crm-kpi">
           <span class="crm-kpi-value">${stats.thisWeek ?? 0}</span>
           <span class="crm-kpi-label">${state.lang === "it" ? "Questa settimana" : "This week"}</span>
+          ${weekTrend}
+        </div>
+        <div class="crm-kpi">
+          <span class="crm-kpi-value">${stats.quoted ?? 0}</span>
+          <span class="crm-kpi-label">${state.lang === "it" ? "Preventivi inviati" : "Quotes sent"}</span>
         </div>
       `;
     } else {
@@ -12064,28 +12093,36 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
   const assignment = String(state.filters?.salesRequestAssignment || "").trim();
   const source     = String(state.filters?.salesRequestSource || "").trim();
   const limit      = 50;
-  // Quick filter → parametri server: "mine"→assignment, "unassigned"→assignment,
-  // "fornitura"→service, "posa"→service, "to-contact"/"contacted"→contactState
+  // Quick filter → parametri server
   const _quick = String(state.filters?.salesRequestQuick || "all").trim();
   const _quickAssignment = _quick === "mine"
     ? (getSalesRequestOperatorFromCurrentUser() || "")
     : _quick === "unassigned" ? "unassigned" : "";
   const _quickService      = _quick === "fornitura" ? "fornitura" : _quick === "posa" ? "posa" : "";
   const _quickContactState = _quick === "to-contact" ? "to-contact" : _quick === "contacted" ? "contacted" : "";
-  // Merge: il quick filter ha la precedenza sul dropdown quando entrambi sono impostati
+  const _quickStatus       = _quick === "new" ? "new" : "";
+  // "this-week": calcola dateFrom = oggi - 7gg (lato client → server)
+  let _quickDateFrom = "";
+  if (_quick === "this-week") {
+    const d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    _quickDateFrom = d.toISOString().slice(0, 10);
+  }
+  // Merge: quick filter > dropdown
   const _finalAssignment = _quickAssignment || assignment;
-  const queryKey   = `${page}|${q}|${status}|${_finalAssignment}|${source}|${_quick}`;
+  const _finalStatus     = _quickStatus || status;
+  const queryKey   = `${page}|${q}|${_finalStatus}|${_finalAssignment}|${source}|${_quick}`;
   // Notifica subito renderSalesRequests: se ci sono dati cached mostra quelli,
   // altrimenti (loadedAt === 0) mostra lo spinner e ritorna in attesa del fetch.
   renderSalesRequests();
   try {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (q)          params.set("q", q);
-    if (status && status !== "all") params.set("status", status);
+    if (_finalStatus && _finalStatus !== "all") params.set("status", _finalStatus);
     if (_finalAssignment) params.set("assignment", _finalAssignment);
     if (source && source !== "all")  params.set("source", source);
     if (_quickService)      params.set("service", _quickService);
     if (_quickContactState) params.set("contactState", _quickContactState);
+    if (_quickDateFrom)     params.set("dateFrom", _quickDateFrom);
     const data = await apiFetch(`/api/sales/requests?${params}`);
     // Protezione ottimistica: se un PATCH è in-volo (o nel grace period da 1.5s),
     // mantieni la versione locale per quell'item — la risposta del server potrebbe
