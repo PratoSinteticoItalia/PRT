@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-status-sync";
+const APP_SHELL_VERSION = "20260608-crm-v2-effective-date";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1487,6 +1487,7 @@ const ui = {
   salesRequestCompactToggle: document.getElementById("sales-request-compact-toggle"),
   salesRequestDedupButton: document.getElementById("sales-request-dedup-button"),
   salesRequestRestoreDatesButton: document.getElementById("sales-request-restore-dates-button"),
+  salesRequestRestoreNamesButton: document.getElementById("sales-request-restore-names-button"),
   salesRequestImportButton: document.getElementById("sales-request-import-button"),
   salesRequestImportWrap: document.getElementById("sales-request-import-wrap"),
   salesRequestImportText: document.getElementById("sales-request-import-text"),
@@ -13897,6 +13898,65 @@ async function restoreSalesRequestDates() {
   }
 }
 
+// CRM v2 — Ripristina nomi/cognomi/MQ mancanti dalla coda IMAP shadow.
+async function restoreSalesRequestNames() {
+  if (ui.salesRequestRestoreNamesButton) {
+    ui.salesRequestRestoreNamesButton.disabled = true;
+    ui.salesRequestRestoreNamesButton.textContent = "Analisi…";
+  }
+  clearStatus(ui.salesRequestsStatus);
+  try {
+    const preview = await apiFetch("/api/sales/requests/restore-names", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: true }),
+    });
+    if (preview.count === 0) {
+      showToast(
+        state.lang === "it"
+          ? "Tutti i nomi sono già completi rispetto alla shadow IMAP."
+          : "All names are complete vs IMAP shadow.",
+        "success",
+      );
+      return;
+    }
+    const examples = (preview.samples || []).slice(0, 5).map((s) => {
+      return `"${s.from || "(vuoto)"}" → "${s.to}" [${s.fields.join(", ")}]`;
+    }).join("\n");
+    const more = preview.count > 5 ? `\n…e altri ${preview.count - 5} record` : "";
+    const ok = window.confirm(
+      `${preview.count} record hanno nomi/cognomi/MQ da completare dalla shadow IMAP.\n\nEsempi:\n${examples}${more}\n\nProcedo?`,
+    );
+    if (!ok) {
+      showToast(state.lang === "it" ? "Operazione annullata." : "Cancelled.", "info");
+      return;
+    }
+    if (ui.salesRequestRestoreNamesButton) ui.salesRequestRestoreNamesButton.textContent = "Ripristino…";
+    const result = await apiFetch("/api/sales/requests/restore-names", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: false }),
+    });
+    await loadCrmPage({ page: 1, forceReload: true });
+    showToast(
+      state.lang === "it"
+        ? `✓ Completati ${result.count} record con dati dalla shadow IMAP.`
+        : `✓ Filled ${result.count} records from IMAP shadow.`,
+      "success",
+      5000,
+    );
+  } catch (err) {
+    setStatus(
+      ui.salesRequestsStatus,
+      "error",
+      state.lang === "it" ? "Errore nel ripristino nomi. Riprova." : "Name restore failed.",
+    );
+  } finally {
+    if (ui.salesRequestRestoreNamesButton) {
+      ui.salesRequestRestoreNamesButton.disabled = false;
+      ui.salesRequestRestoreNamesButton.textContent = "Ripristina nomi";
+    }
+  }
+}
+
 async function importSalesRequests() {
   clearStatus(ui.salesRequestsStatus);
   const raw = String(ui.salesRequestImportText?.value || "").trim();
@@ -25473,6 +25533,7 @@ bindEvent(ui.salesRequestForm, "change", (event) => {
 });
 bindEvent(ui.salesRequestDedupButton, "click", dedupSalesRequests);
 bindEvent(ui.salesRequestRestoreDatesButton, "click", restoreSalesRequestDates);
+bindEvent(ui.salesRequestRestoreNamesButton, "click", restoreSalesRequestNames);
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
   updateSalesRequestImportPanel();

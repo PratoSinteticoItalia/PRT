@@ -1471,24 +1471,42 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
     where.push(`created_at < ($${params.length}::date + interval '1 day')`);
   }
 
-  const whereClause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+  // CRM v2: il where va ribattezzato con prefisso "sr." per il join con shadow
+  const whereSrPrefixed = where.length
+    ? ` WHERE ${where.join(" AND ")
+        .replace(/\b(first_name|last_name|email|phone|status|assignment|source|note|company|city|created_at)\b/g, "sr.$1")}`
+    : "";
   const offset = (Math.max(1, Number(page) || 1) - 1) * (Number(limit) || 50);
   const limitN = Math.min(200, Math.max(1, Number(limit) || 50));
 
   try {
     const [countRes, dataRes, statsRes] = await Promise.all([
-      pool.query(`SELECT COUNT(*) AS total FROM sales_requests${whereClause}`, params),
+      pool.query(`SELECT COUNT(*) AS total FROM sales_requests sr${whereSrPrefixed}`, params),
+      // CRM v2: LEFT JOIN con shadow IMAP per recuperare la data REALE di ricezione.
+      // Se il record è stato promosso da shadow, ils.received_at è la verità
+      // (timestamp dell'email originale). Altrimenti fallback su sr.created_at.
+      // Sort = data effettiva DESC: i lead più recenti in cima, sempre.
+      // Sovrascrive sr.created_at nel risultato con effective_date così il client
+      // mostra direttamente la data giusta senza calcolo extra.
       pool.query(
-        `SELECT * FROM sales_requests${whereClause} ORDER BY created_at DESC NULLS LAST LIMIT ${limitN} OFFSET ${offset}`,
+        `SELECT sr.*,
+                COALESCE(ils.received_at, sr.created_at) AS created_at
+         FROM sales_requests sr
+         LEFT JOIN incoming_leads_shadow ils ON ils.promoted_to_sales_request_id = sr.id
+         ${whereSrPrefixed}
+         ORDER BY COALESCE(ils.received_at, sr.created_at) DESC NULLS LAST
+         LIMIT ${limitN} OFFSET ${offset}`,
         params,
       ),
       // Stats globali (senza WHERE filtro) per i KPI in cima alla lista.
+      // Anche qui usiamo la data effettiva per "questa settimana" (più accurato).
       pool.query(`SELECT
         COUNT(*)::int AS total,
-        COUNT(*) FILTER (WHERE status IS NULL OR status = '' OR status = 'new')::int AS new_count,
-        COUNT(*) FILTER (WHERE assignment IS NULL OR assignment = '')::int AS unassigned_count,
-        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS this_week_count
-      FROM sales_requests`),
+        COUNT(*) FILTER (WHERE sr.status IS NULL OR sr.status = '' OR sr.status = 'new')::int AS new_count,
+        COUNT(*) FILTER (WHERE sr.assignment IS NULL OR sr.assignment = '')::int AS unassigned_count,
+        COUNT(*) FILTER (WHERE COALESCE(ils.received_at, sr.created_at) >= NOW() - INTERVAL '7 days')::int AS this_week_count
+      FROM sales_requests sr
+      LEFT JOIN incoming_leads_shadow ils ON ils.promoted_to_sales_request_id = sr.id`),
     ]);
     const sr = statsRes.rows[0] || {};
     return {
@@ -11971,6 +11989,100 @@ async function handleApi(req, res, url) {
       });
     } catch (error) {
       return sendJson(res, 500, { error: String(error?.message || "sales_diagnostic_failed") });
+    }
+  }
+
+  // POST /api/sales/requests/restore-names — corregge first_name/last_name/sqm/email
+  // dei record che hanno dati mancanti o troncati, leggendo dalla shadow IMAP.
+  // Es. record "FABIO" → "FABIO" + "DALLE DONNE" se la shadow ha il nome completo.
+  if (url.pathname === "/api/sales/requests/restore-names" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 400, { error: "postgres_only" });
+    const body = await readBody(req);
+    const dryRun = body?.dryRun === true;
+    try {
+      const pool = await getPgPool();
+      // Trova record con last_name vuoto MA la shadow ha un nome composto
+      const candRes = await pool.query(`
+        SELECT sr.id,
+               sr.first_name AS sr_first,
+               sr.last_name  AS sr_last,
+               sr.sqm        AS sr_sqm,
+               sr.email      AS sr_email,
+               ils.parsed_payload->>'nome'          AS shadow_nome,
+               ils.parsed_payload->>'email'         AS shadow_email,
+               (ils.parsed_payload->>'metri_quadri')::numeric AS shadow_sqm
+        FROM sales_requests sr
+        INNER JOIN incoming_leads_shadow ils
+          ON ils.promoted_to_sales_request_id = sr.id
+        WHERE ils.parsed_payload IS NOT NULL
+        LIMIT 10000
+      `);
+      const updates = [];
+      for (const r of candRes.rows) {
+        const shadowFull = String(r.shadow_nome || "").trim();
+        if (!shadowFull) continue;
+        const parts = shadowFull.split(/\s+/);
+        const shadowFirst = parts[0] || "";
+        const shadowLast = parts.slice(1).join(" ");
+        const patch = {};
+        // last_name: se vuoto e shadow ha cognome
+        if (!String(r.sr_last || "").trim() && shadowLast) patch.last_name = shadowLast;
+        // first_name: se shadow ha un nome più completo (più caratteri)
+        if (shadowFirst && String(r.sr_first || "").trim().toUpperCase() !== shadowFirst.toUpperCase()
+            && String(r.sr_first || "").length < shadowFirst.length) {
+          patch.first_name = shadowFirst;
+        }
+        // sqm: se vuoto e shadow ha
+        if ((r.sr_sqm == null || Number(r.sr_sqm) === 0) && Number.isFinite(Number(r.shadow_sqm)) && Number(r.shadow_sqm) > 0) {
+          patch.sqm = Number(r.shadow_sqm);
+        }
+        // email: se vuoto e shadow ha
+        if (!String(r.sr_email || "").trim() && String(r.shadow_email || "").trim()) {
+          patch.email = String(r.shadow_email).trim();
+        }
+        if (Object.keys(patch).length > 0) {
+          updates.push({ id: r.id, patch, shadow_name: shadowFull, sr_name: [r.sr_first, r.sr_last].filter(Boolean).join(" ") });
+        }
+      }
+      if (dryRun) {
+        return sendJson(res, 200, {
+          dryRun: true,
+          count: updates.length,
+          samples: updates.slice(0, 10).map((u) => ({
+            id: u.id,
+            from: u.sr_name,
+            to: u.shadow_name,
+            fields: Object.keys(u.patch),
+          })),
+        });
+      }
+      if (updates.length === 0) return sendJson(res, 200, { dryRun: false, count: 0 });
+      // Esegui UPDATE per ogni record
+      let updated = 0;
+      for (const u of updates) {
+        const cols = Object.keys(u.patch);
+        const vals = Object.values(u.patch);
+        const setStr = cols.map((c, i) => `${c} = $${i + 2}`).join(", ");
+        try {
+          await pool.query(
+            `UPDATE sales_requests SET ${setStr}, updated_at = NOW() WHERE id = $1`,
+            [u.id, ...vals],
+          );
+          updated++;
+          writeAuditLog("sales_request", u.id, "restore_names", u.patch, currentUser?.email || null).catch(() => {});
+        } catch (uErr) {
+          console.warn("[restore-names] update failed for", u.id, uErr?.message);
+        }
+      }
+      invalidateSalesRequestsDbCache();
+      rotateStoreRevision(store);
+      broadcastStoreRevision(getStoreRevision(store));
+      return sendJson(res, 200, { dryRun: false, count: updated });
+    } catch (err) {
+      console.error("[restore-names] error:", err?.message);
+      return sendJson(res, 500, { error: String(err?.message || "restore_names_failed") });
     }
   }
 
