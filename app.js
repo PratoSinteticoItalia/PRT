@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-mobile-filters";
+const APP_SHELL_VERSION = "20260608-crm-v2-mobile-drill";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -25024,8 +25024,6 @@ function handleGlobalClick(event) {
     state.creatingSalesRequest = false;
     state.selectedSalesRequestId = id || "";
     state.salesRequestFormDirty = false;
-    // Cancella il pending refresh: la sessione SSE non porta dati CRM (salesRequests:[])
-    // quindi il re-render completo della lista non aggiunge nulla e causa un "flash" visivo.
     clearPendingCurrentViewRefresh();
     if (button.dataset.view && button.dataset.view !== state.currentView) {
       setView(button.dataset.view);
@@ -25035,13 +25033,24 @@ function handleGlobalClick(event) {
       });
       renderSalesRequestsDetailPanel(getSelectedSalesRequest());
       if (state.currentView === "sales-generator") renderSalesGenerator();
-      // Apri il drawer CRM (sia desktop che mobile gestito dal CSS overlay)
-      openCrmDrawer();
+      // Mobile (<768px): full-page drill (data-drill-module="sales-requests")
+      //   → header/list nascosti, solo detail visibile, X chiude e torna alla lista
+      // Desktop/tablet: drawer laterale (CSS gestisce overlay/sticky)
+      if (window.innerWidth <= 768 && id) {
+        openMobileDrillDetail("sales-requests", id);
+      } else {
+        openCrmDrawer();
+      }
     }
     return;
   }
   if (action === "close-crm-detail") {
-    closeCrmDrawer();
+    // Se siamo in drill-down mobile, chiudi quello (riapre header+lista)
+    if (state.mobileDrillDetail) {
+      closeMobileDrillDetail();
+    } else {
+      closeCrmDrawer();
+    }
     return;
   }
   if (action === "select-sales-content") {

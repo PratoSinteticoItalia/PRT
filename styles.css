@@ -20443,21 +20443,11 @@ body {
     gap: 12px !important;
   }
 
-  /* Pannello dettaglio: NASCOSTO di default, visibile solo come drawer */
-  #sales-requests .sales-request-detail-panel {
-    display: none !important;
-  }
-  #sales-requests.crm-detail-open .sales-request-detail-panel,
-  #sales-requests .sales-request-detail-panel.is-open {
-    display: block !important;
-    position: fixed !important;
-    inset: 0 !important;
-    z-index: 1000 !important;
-    background: #fdfcfa !important;
-    overflow-y: auto !important;
-    border-radius: 0 !important;
-    padding: 16px !important;
-  }
+  /* Pannello dettaglio: gestito dal sistema drawer esistente (translateX/Y).
+     Su mobile <=768 si attiva data-drill-module="sales-requests" → CSS 11620
+     nasconde page-header + list-panel e mostra solo il detail come pagina piena.
+     Su tablet 769-979: drawer dal basso (bottom sheet).
+     Vedi anche openMobileDrillDetail in app.js. */
 
   /* KPI strip: scroll orizzontale invece di wrap */
   #sales-requests #sales-request-insights.crm-kpi-strip {
