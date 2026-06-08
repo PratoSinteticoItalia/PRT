@@ -11857,6 +11857,134 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // POST /api/sales/requests/deduplicate — rimuove duplicati per telefono.
+  // Body: { dryRun?: boolean }
+  // Logica: raggruppa per telefono normalizzato, tieni il record più avanzato
+  // (rank status: won > quoted > quoting > followup > contacted > new > unassigned),
+  // a parità di status tieni quello con più campi compilati. Elimina gli altri.
+  if (url.pathname === "/api/sales/requests/deduplicate" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 400, { error: "postgres_only" });
+    const body = await readBody(req);
+    const dryRun = body?.dryRun === true;
+    try {
+      const pool = await getPgPool();
+      // Normalizza telefono: rimuovi spazi, +39, trattini, parentesi
+      const normPhone = `regexp_replace(regexp_replace(coalesce(phone,''), '^[+]39', ''), '[[:space:]()\\-\\.]', '', 'g')`;
+      // Rank status (più alto = più avanzato = da tenere)
+      const normSt = `lower(regexp_replace(translate(coalesce(trim(status),''), 'àèéìíòóùúÀÈÉÌÍÒÓÙÚ', 'aaeiioouuAAEIIOOUU'), '[^a-zA-Z0-9 ]', '', 'g'))`;
+      const statusRank = `CASE
+        WHEN ${normSt} IN ('preventivo confermato','ordine confermato','ordine eseguito','campione acquistato')
+          OR (${normSt} LIKE '%confermato%' AND ${normSt} NOT LIKE '%non%')
+          OR ${normSt} LIKE '%ordine%' THEN 8
+        WHEN ${normSt} IN ('preventivo inviato','offerta inviata')
+          OR (${normSt} LIKE '%preventivo%' AND ${normSt} LIKE '%inviato%') THEN 7
+        WHEN ${normSt} IN ('preventivo','in preventivo','preventivo da inviare','offerta','quotato')
+          OR (${normSt} LIKE '%preventivo%' AND ${normSt} NOT LIKE '%inviato%')
+          OR (${normSt} LIKE '%offerta%' AND ${normSt} NOT LIKE '%inviata%') THEN 6
+        WHEN ${normSt} LIKE '%follow%' OR ${normSt} LIKE '%richiam%' OR ${normSt} LIKE '%attesa%'
+          OR ${normSt} IN ('followup','follow up','da richiamare','richiamare') THEN 5
+        WHEN ${normSt} IN ('1 contatto','1 contatto whatsapp','primo contatto')
+          OR ${normSt} LIKE '1 contatt%' OR ${normSt} LIKE '1° contatt%' THEN 4
+        WHEN ${normSt} LIKE '%contatt%' OR ${normSt} IN ('nuovo contatto','new contact') THEN 3
+        WHEN coalesce(trim(assignment),'') <> '' THEN 2
+        ELSE 1
+      END`;
+      // Calcola un punteggio di "ricchezza" del record: più campi compilati = meglio
+      const ricchezza = `(
+        CASE WHEN coalesce(trim(first_name),'') <> '' THEN 1 ELSE 0 END +
+        CASE WHEN coalesce(trim(last_name),'') <> '' THEN 1 ELSE 0 END +
+        CASE WHEN coalesce(trim(email),'') <> '' THEN 2 ELSE 0 END +
+        CASE WHEN coalesce(trim(note),'') <> '' THEN 2 ELSE 0 END +
+        CASE WHEN coalesce(trim(city),'') <> '' THEN 1 ELSE 0 END +
+        CASE WHEN sqm IS NOT NULL THEN 1 ELSE 0 END +
+        CASE WHEN coalesce(trim(assignment),'') <> '' THEN 2 ELSE 0 END +
+        CASE WHEN coalesce(trim(requested_height),'') <> '' THEN 1 ELSE 0 END
+      )`;
+      // Trova tutti i gruppi duplicati per telefono
+      const groupRes = await pool.query(`
+        WITH normed AS (
+          SELECT id, first_name, last_name, phone, status, assignment, note, created_at,
+                 (${normPhone}) AS norm_phone,
+                 (${statusRank}) AS st_rank,
+                 (${ricchezza}) AS richness
+          FROM sales_requests
+          WHERE length(coalesce(trim(${normPhone}),'')) >= 7
+        ),
+        dup_phones AS (
+          SELECT norm_phone FROM normed
+          GROUP BY norm_phone HAVING COUNT(*) > 1
+        ),
+        ranked AS (
+          SELECT n.*,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY n.norm_phone
+                   ORDER BY n.st_rank DESC, n.richness DESC, n.created_at ASC
+                 ) AS rn
+          FROM normed n
+          INNER JOIN dup_phones d ON d.norm_phone = n.norm_phone
+        )
+        SELECT id, first_name, last_name, phone, norm_phone, status, st_rank, richness, created_at,
+               rn,
+               (rn = 1) AS is_keeper
+        FROM ranked
+        ORDER BY norm_phone, rn
+      `);
+      // Raggruppa per telefono
+      const groups = {};
+      for (const row of groupRes.rows) {
+        const key = row.norm_phone;
+        if (!groups[key]) groups[key] = { keeper: null, toDelete: [] };
+        const entry = {
+          id: row.id,
+          name: [String(row.first_name || ""), String(row.last_name || "")].filter(Boolean).join(" ").trim() || row.id,
+          phone: row.phone,
+          status: row.status,
+          statusRank: Number(row.st_rank),
+          richness: Number(row.richness),
+          createdAt: row.created_at,
+        };
+        if (row.is_keeper) groups[key].keeper = entry;
+        else groups[key].toDelete.push(entry);
+      }
+      const groupList = Object.values(groups).filter((g) => g.keeper && g.toDelete.length > 0);
+      const allDeleteIds = groupList.flatMap((g) => g.toDelete.map((r) => r.id));
+      if (!dryRun && allDeleteIds.length > 0) {
+        // Elimina dal DB
+        await pool.query(
+          `DELETE FROM sales_requests WHERE id = ANY($1)`,
+          [allDeleteIds],
+        );
+        // Aggiorna store in memoria
+        for (const id of allDeleteIds) {
+          const idx = store.salesRequests.findIndex((r) => r.id === id);
+          if (idx >= 0) store.salesRequests.splice(idx, 1);
+        }
+        rotateStoreRevision(store);
+        if (storeMemCache?.__memReconciled) store.__memReconciled = true;
+        storeMemCache = store;
+        broadcastStoreRevision(getStoreRevision(store));
+        // Audit log
+        for (const id of allDeleteIds) {
+          writeAuditLog("sales_request", id, "delete_dedup", { reason: "phone_duplicate" }, currentUser?.email || null).catch(() => {});
+        }
+      }
+      return sendJson(res, 200, {
+        dryRun,
+        totalGroups: groupList.length,
+        totalDeleted: allDeleteIds.length,
+        groups: groupList.map((g) => ({
+          kept: g.keeper,
+          deleted: g.toDelete,
+        })),
+      });
+    } catch (err) {
+      console.error("[dedup] error:", err?.message);
+      return sendJson(res, 500, { error: String(err?.message || "dedup_failed") });
+    }
+  }
+
   // GET /api/sales/requests/pipeline — vista kanban: 4 colonne con conteggi + top leads
   if (url.pathname === "/api/sales/requests/pipeline" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
@@ -11930,10 +12058,32 @@ async function handleApi(req, res, url) {
       (payload) => upsertSalesRequestToDb(payload.request, payload.userId, { rethrow: true }),
     ).catch(() => {});
     const sheetSync = enqueueSalesRequestsGoogleSheetSync(store.salesRequestSource || {}, [requestRecord]);
+    // Rilevamento duplicati: se è un record NUOVO (non aggiornamento), cerca altri
+    // record con lo stesso numero di telefono per avvisare l'operatore.
+    let possibleDuplicate = null;
+    const isNewRecord = !existingRequest;
+    const phoneToCheck = String(requestRecord.phone || "").trim().replace(/^[+]39/, "").replace(/[\s().\-]/g, "");
+    if (isNewRecord && phoneToCheck && phoneToCheck.length >= 8 && USE_POSTGRES) {
+      try {
+        const pool = await getPgPool();
+        const dupRes = await pool.query(
+          `SELECT id, first_name, last_name FROM sales_requests WHERE regexp_replace(coalesce(phone,''), '[[:space:]()\\-\\.]', '', 'g') = $1 AND id <> $2 ORDER BY created_at DESC LIMIT 1`,
+          [phoneToCheck, requestRecord.id],
+        );
+        if (dupRes.rows.length) {
+          const dup = dupRes.rows[0];
+          possibleDuplicate = {
+            id: dup.id,
+            name: [String(dup.first_name || ""), String(dup.last_name || "")].filter(Boolean).join(" ").trim() || dup.id,
+          };
+        }
+      } catch { /* non bloccare il salvataggio per errori di dedup */ }
+    }
     return sendJson(res, 200, {
       ...requestRecord,
       _automation: automationResult.automation || { action: "none" },
       _sheetSync: sheetSync,
+      ...(possibleDuplicate ? { _possibleDuplicate: possibleDuplicate } : {}),
     });
   }
 

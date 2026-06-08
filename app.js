@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260606-crm-fix24";
+const APP_SHELL_VERSION = "20260608-crm-fix26";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1485,6 +1485,7 @@ const ui = {
   salesRequestQuickFilters: document.getElementById("sales-request-quick-filters"),
   salesRequestInsights: document.getElementById("sales-request-insights"),
   salesRequestCompactToggle: document.getElementById("sales-request-compact-toggle"),
+  salesRequestDedupButton: document.getElementById("sales-request-dedup-button"),
   salesRequestImportButton: document.getElementById("sales-request-import-button"),
   salesRequestImportWrap: document.getElementById("sales-request-import-wrap"),
   salesRequestImportText: document.getElementById("sales-request-import-text"),
@@ -12259,9 +12260,17 @@ function renderSalesRequests() {
     return;
   }
   // Usa crmServerPage se disponibile (dati server-side), altrimenti fallback locale
-  const pageItems = state.crmServerPage?.items?.length > 0 || state.crmServerPage?.loadedAt > 0
+  const _rawPageItems = state.crmServerPage?.items?.length > 0 || state.crmServerPage?.loadedAt > 0
     ? state.crmServerPage.items
     : getFilteredSalesRequests();
+  // Dedup by ID (safety net): previene duplicati visivi da qualsiasi race condition
+  // client-side. Non tocca il DB né crmServerPage.items — solo la lista renderizzata.
+  const _pageSeenIds = new Set();
+  const pageItems = _rawPageItems.filter((item) => {
+    if (_pageSeenIds.has(item.id)) return false;
+    _pageSeenIds.add(item.id);
+    return true;
+  });
   const totalItems = state.crmServerPage?.loadedAt > 0
     ? state.crmServerPage.total
     : pageItems.length;
@@ -13276,6 +13285,17 @@ async function processSalesRequestSave(draftRecord, {
     });
     const automationMessage = getSalesRequestAutomationSaveMessage(saved?._automation || null);
     const sheetSyncMessage = getSalesRequestSheetSyncMessage(saved?._sheetSync || null);
+    // Avvisa se il server ha rilevato un possibile duplicato (stesso telefono, ID diverso)
+    if (saved?._possibleDuplicate?.id) {
+      const dupName = saved._possibleDuplicate.name || saved._possibleDuplicate.id;
+      showToast(
+        state.lang === "it"
+          ? `⚠️ Possibile duplicato: esiste già una richiesta con questo telefono (${dupName}).`
+          : `⚠️ Possible duplicate: a request with this phone already exists (${dupName}).`,
+        "warning",
+        6000,
+      );
+    }
     upsertSalesRequest(saved, { preserveSelection: true });
     const currentFormSignature = ui.salesRequestForm
       ? JSON.stringify(buildSalesRequestPayloadFromRecord(collectSalesRequestDraftFromForm()))
@@ -13448,6 +13468,26 @@ async function deleteSalesRequest() {
   try {
     await apiFetch(`/api/sales/requests/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
     state.salesRequests = state.salesRequests.filter((item) => item.id !== selected.id);
+    // Aggiorna anche crmServerPage.items: renderSalesRequests() legge da lì, senza
+    // questa riga il record eliminato rimane visibile nella lista fino al prossimo reload.
+    if (state.crmServerPage?.items) {
+      state.crmServerPage = {
+        ...state.crmServerPage,
+        items: state.crmServerPage.items.filter((item) => item.id !== selected.id),
+        total: Math.max(0, (state.crmServerPage.total || 0) - 1),
+      };
+    }
+    // Aggiorna stats KPI in modo incrementale
+    if (state.salesRequestsStats) {
+      const wasNew = getSalesRequestStatusCode(selected.status || "") === "new";
+      const wasUnassigned = !normalizeSalesRequestAssignment(selected.assignment || "");
+      state.salesRequestsStats = {
+        ...state.salesRequestsStats,
+        total: Math.max(0, (state.salesRequestsStats.total ?? 0) - 1),
+        new: wasNew ? Math.max(0, (state.salesRequestsStats.new ?? 0) - 1) : (state.salesRequestsStats.new ?? 0),
+        unassigned: wasUnassigned ? Math.max(0, (state.salesRequestsStats.unassigned ?? 0) - 1) : (state.salesRequestsStats.unassigned ?? 0),
+      };
+    }
     invalidateSalesRequestsFilterCache();
     state.selectedSalesRequestId = "";
     restoreSalesRequestPageAnchor(pageAnchorId);
@@ -13459,6 +13499,54 @@ async function deleteSalesRequest() {
     showToast(state.lang === "it" ? "Richiesta eliminata." : "Request deleted.", "success");
   } catch (error) {
     setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Impossibile eliminare la richiesta." : "Unable to delete the request.");
+  }
+}
+
+async function dedupSalesRequests() {
+  if (ui.salesRequestDedupButton) {
+    ui.salesRequestDedupButton.disabled = true;
+    ui.salesRequestDedupButton.textContent = "Analisi…";
+  }
+  try {
+    // Prima un dry-run per vedere quanti duplicati ci sono
+    const preview = await apiFetch("/api/sales/requests/deduplicate", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: true }),
+    });
+    if (!preview || preview.totalGroups === 0) {
+      showToast(state.lang === "it" ? "Nessun duplicato trovato." : "No duplicates found.", "success");
+      return;
+    }
+    // Mostra un riepilogo e chiedi conferma
+    const examples = (preview.groups || []).slice(0, 5).map((g) => {
+      const delNames = g.deleted.map((d) => `"${d.name}" (${d.status || "nuova"})`).join(", ");
+      return `Tengo: "${g.kept.name}" (${g.kept.status || "nuova"}) — Elimino: ${delNames}`;
+    }).join("\n");
+    const more = preview.totalGroups > 5 ? `\n…e altri ${preview.totalGroups - 5} gruppi` : "";
+    const confirmMsg = `Trovati ${preview.totalGroups} gruppi duplicati, ${preview.totalDeleted} record da eliminare.\n\nPer ogni telefono tengo il record più avanzato:\n\n${examples}${more}\n\nProcedo con la pulizia?`;
+    if (!window.confirm(confirmMsg)) {
+      showToast(state.lang === "it" ? "Operazione annullata." : "Operation cancelled.", "info");
+      return;
+    }
+    // Esegui la dedup reale
+    if (ui.salesRequestDedupButton) ui.salesRequestDedupButton.textContent = "Pulizia…";
+    const result = await apiFetch("/api/sales/requests/deduplicate", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: false }),
+    });
+    // Ricarica la pagina CRM con dati freschi
+    await loadCrmPage({ page: 1, forceReload: true });
+    const msg = state.lang === "it"
+      ? `✓ Rimossi ${result.totalDeleted} duplicati (${result.totalGroups} gruppi).`
+      : `✓ Removed ${result.totalDeleted} duplicates (${result.totalGroups} groups).`;
+    showToast(msg, "success", 5000);
+  } catch (err) {
+    setStatus(ui.salesRequestsStatus, "error", state.lang === "it" ? "Errore durante la deduplicazione. Riprova." : "Deduplication failed. Retry.");
+  } finally {
+    if (ui.salesRequestDedupButton) {
+      ui.salesRequestDedupButton.disabled = false;
+      ui.salesRequestDedupButton.textContent = "Rimuovi duplicati";
+    }
   }
 }
 
@@ -24918,6 +25006,7 @@ bindEvent(ui.salesRequestForm, "change", (event) => {
     debouncedAutoSaveSalesRequestFull(requestId);
   }
 });
+bindEvent(ui.salesRequestDedupButton, "click", dedupSalesRequests);
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
   updateSalesRequestImportPanel();

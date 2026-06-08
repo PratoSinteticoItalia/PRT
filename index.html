@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260606-crm-fix24" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260606-crm-fix24" />
+    <link rel="preload" href="./styles.css?v=20260608-crm-fix26" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260608-crm-fix26" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -633,6 +633,7 @@
               <p id="sales-requests-subtitle">Gestisci richieste commerciali e prepara il passaggio verso il generatore.</p>
             </div>
             <div class="action-list">
+              <button id="sales-request-dedup-button" class="ghost-button small-button" type="button" title="Trova e rimuovi richieste duplicate con lo stesso numero di telefono">Rimuovi duplicati</button>
               <button id="sales-request-import-button" class="ghost-button small-button" type="button">Importa richieste</button>
               <button id="sales-request-new-button" class="ghost-button small-button" type="button">Nuova richiesta</button>
             </div>
@@ -846,7 +847,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260606-crm-fix24&shell=20260606-crm-fix24"
+                src="./sales-suite/generator.html?embedded=1&v=20260608-crm-fix26&shell=20260608-crm-fix26"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2417,7 +2418,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260606-crm-fix24" defer></script>
-    <script src="./app.js?v=20260606-crm-fix24" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260608-crm-fix26" defer></script>
+    <script src="./app.js?v=20260608-crm-fix26" type="module"></script>
   </body>
 </html>
