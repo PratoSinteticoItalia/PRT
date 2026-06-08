@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-fix28";
+const APP_SHELL_VERSION = "20260608-crm-fix29";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6114,6 +6114,18 @@ async function saveSalesRequestSourceConfig({ clearServiceAccount = false } = {}
 }
 
 async function syncSalesRequestSource({ auto = false, silent = false } = {}) {
+  // Import Google Sheets → CRM disabilitato: sorgente dati unica = IMAP.
+  // Il push CRM → Sheets (aggiornamenti stato/assegnazione) rimane attivo.
+  if (!silent) {
+    setStatus(
+      ui.salesRequestSourceStatus,
+      "info",
+      state.lang === "it"
+        ? "Sync da Google Sheets disabilitato: i lead arrivano solo da IMAP."
+        : "Google Sheets sync disabled: leads come from IMAP only.",
+    );
+  }
+  return false;
   if (salesRequestSyncInFlight) return false;
   salesRequestSyncInFlight = true;
   if (!silent) clearStatus(ui.salesRequestSourceStatus);

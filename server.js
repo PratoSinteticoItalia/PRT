@@ -10624,6 +10624,9 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/sales/request-source/sync" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    // Import da Google Sheets → CRM disabilitato: la sorgente dati unica è IMAP.
+    // Il push CRM → Sheets (aggiornamenti stato/assegnazione) rimane attivo.
+    return sendJson(res, 200, { disabled: true, reason: "imap_only_mode" });
     try {
       const sourcePayload = await loadGoogleSheetSalesRequests(store.salesRequestSource || {});
       const now = new Date().toISOString();
