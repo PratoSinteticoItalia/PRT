@@ -1485,6 +1485,13 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   //      è il record Sheets sopravvissuto, ma il telefono matcha una shadow IMAP esistente)
   // Senza il fallback per telefono, i record sopravvissuti al dedup avrebbero sempre
   // created_at = data di re-backfill ("08 giu" artificiale).
+  // Normalizzazione telefono per il match shadow↔sales_request: toglie un
+  // eventuale prefisso internazionale "+39"/"0039" SOLO quando è marcatore
+  // esplicito (presenza di + o 00), poi rimuove ogni non-cifra. Così "+39 348…",
+  // "0039 348…" e "348…" collassano sullo stesso valore, ma un mobile bare
+  // come "393…" (prefisso Vodafone) NON viene mutilato.
+  const normPhoneSql = (col) =>
+    `regexp_replace(regexp_replace(coalesce(${col},''), '^\\s*(\\+39|0039)', ''), '[^0-9]', '', 'g')`;
   const SHADOW_CTE = `WITH shadow_by_id AS (
     SELECT promoted_to_sales_request_id AS sr_id,
            MIN(received_at) AS received_at
@@ -1498,9 +1505,9 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
            MIN(ils.received_at) AS received_at
     FROM sales_requests sr
     INNER JOIN incoming_leads_shadow ils
-      ON regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g') =
-         regexp_replace(coalesce(ils.parsed_payload->>'telefono',''), '[^0-9]', '', 'g')
-      AND length(regexp_replace(coalesce(sr.phone,''), '[^0-9]', '', 'g')) >= 8
+      ON ${normPhoneSql("sr.phone")} =
+         ${normPhoneSql("ils.parsed_payload->>'telefono'")}
+      AND length(${normPhoneSql("sr.phone")}) >= 8
       AND ils.received_at IS NOT NULL
     WHERE NOT EXISTS (SELECT 1 FROM shadow_by_id sbi WHERE sbi.sr_id = sr.id)
     GROUP BY sr.id

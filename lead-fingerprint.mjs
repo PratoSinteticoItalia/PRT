@@ -64,6 +64,92 @@ export function fingerprintIsComplete(fp) {
   );
 }
 
+/**
+ * Gate PERMISSIVO per la promozione/aggancio data: a differenza di
+ * fingerprintIsComplete (usato per il match anti-duplicato a 6 campi), qui
+ * basta un nome + un canale di contatto. Serve a NON perdere i lead reali con
+ * città o altezza mancanti: vanno comunque importati (portano mq/fondo/servizio)
+ * o agganciati a un sales_request esistente (per recuperarne la data IMAP reale).
+ */
+export function fingerprintCanPromote(fp) {
+  return Boolean(fp && fp.nome && (fp.telefono || fp.email));
+}
+
+/**
+ * Canonicalizza un telefono italiano: solo cifre, e rimuove il prefisso
+ * internazionale "39" SOLO quando è chiaramente country code (numero > 10 cifre
+ * che inizia con 39). Un mobile bare a 10 cifre come 393xxxxxxx NON viene toccato.
+ */
+export function canonicalItPhone(raw) {
+  let d = String(raw || "").replace(/\D/g, "");
+  if (d.startsWith("0039")) d = d.slice(4);
+  if (d.length > 10 && d.startsWith("39")) d = d.slice(2);
+  return d;
+}
+
+/**
+ * Match LEGGERO per contatto (email OR telefono canonico), senza richiedere il
+ * fingerprint completo. Usato per i lead "can-promote" ma incompleti: trova un
+ * sales_request già esistente a cui agganciare la data, evitando di crearne un
+ * doppione. Ritorna { id, matched } o null.
+ */
+export async function findSalesRequestByContact(pool, fp) {
+  if (!pool || !fp) return null;
+  const email = String(fp.email || "").trim().toLowerCase();
+  const phone = canonicalItPhone(fp.telefono);
+  if (!email && phone.length < 8) return null;
+  const digits = (c) => `regexp_replace(regexp_replace(coalesce(${c},''),'[^0-9]','','g'),'^0039','')`;
+  const canon = (c) => `CASE WHEN length(${digits(c)})>10 AND left(${digits(c)},2)='39' THEN substr(${digits(c)},3) ELSE ${digits(c)} END`;
+  try {
+    const res = await pool.query(
+      `SELECT id, first_name, last_name, email, phone, city, sqm, surface, job_type, requested_height
+       FROM sales_requests
+       WHERE ($1 <> '' AND lower(coalesce(email,'')) = $1)
+          OR ($2 <> '' AND length($2) >= 8 AND ${canon("phone")} = $2)
+       ORDER BY created_at ASC NULLS LAST
+       LIMIT 1`,
+      [email, phone],
+    );
+    return res.rows[0] ? { id: res.rows[0].id, matched: res.rows[0] } : null;
+  } catch (err) {
+    console.warn("[reconcile] findSalesRequestByContact errore:", err?.message);
+    return null;
+  }
+}
+
+/**
+ * Riempie SOLO i campi vuoti di un sales_request con i dati di una mail shadow
+ * (non sovrascrive mai un valore già presente). Recupera cognome/mq/fondo/servizio
+ * persi quando a sopravvivere è stato un record povero di dati.
+ */
+export async function backfillSalesRequestFromShadow(pool, srId, payload = {}) {
+  if (!pool || !srId) return;
+  const fullName = String(payload.nome || "").trim();
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  const lastName = parts.slice(1).join(" ");
+  const sqm = payload.metri_quadri != null && payload.metri_quadri !== "" ? payload.metri_quadri : null;
+  try {
+    await pool.query(
+      `UPDATE sales_requests SET
+         last_name        = CASE WHEN coalesce(trim(last_name),'')='' THEN $2 ELSE last_name END,
+         city             = CASE WHEN coalesce(trim(city),'')='' THEN $3 ELSE city END,
+         email            = CASE WHEN coalesce(trim(email),'')='' THEN $4 ELSE email END,
+         sqm              = CASE WHEN sqm IS NULL THEN $5 ELSE sqm END,
+         surface          = CASE WHEN coalesce(trim(surface),'')='' THEN $6 ELSE surface END,
+         job_type         = CASE WHEN coalesce(trim(job_type),'')='' THEN $7 ELSE job_type END,
+         requested_height = CASE WHEN coalesce(trim(requested_height),'')='' THEN $8 ELSE requested_height END,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [
+        srId, lastName, payload.citta || "", payload.email || "",
+        sqm, payload.fondo || null, payload.posa_in_opera || null, payload.altezza || "",
+      ],
+    );
+  } catch (err) {
+    console.warn("[reconcile] backfillSalesRequestFromShadow errore:", err?.message);
+  }
+}
+
 export function fingerprintsMatch(a, b) {
   if (!fingerprintIsComplete(a) || !fingerprintIsComplete(b)) return false;
   if (a.nome !== b.nome) return false;
@@ -144,11 +230,18 @@ export async function reconcileShadowLeads(pool, options = {}) {
     try {
       const payload = row.parsed_payload || {};
       const fp = buildLeadFingerprint(payload);
-      if (!fingerprintIsComplete(fp)) {
+      const complete = fingerprintIsComplete(fp);
+      // Lead completo → match anti-duplicato stretto (6 campi).
+      // Lead incompleto ma promovibile (nome + contatto) → match LEGGERO per
+      // contatto, così agganciamo la data reale a un sales_request esistente
+      // invece di perderlo. Solo i lead senza nome/contatto vengono saltati.
+      if (!complete && !fingerprintCanPromote(fp)) {
         result.skippedIncompleteFingerprint++;
         continue;
       }
-      const match = await findMatchingSalesRequest(pool, fp);
+      const match = complete
+        ? await findMatchingSalesRequest(pool, fp)
+        : await findSalesRequestByContact(pool, fp);
       if (match) {
         result.matched++;
         if (result.samples.matched.length < 5) {
@@ -167,6 +260,8 @@ export async function reconcileShadowLeads(pool, options = {}) {
              WHERE id = $2`,
             [match.id, row.id],
           );
+          // Riempi i campi vuoti del record sopravvissuto (cognome/mq/fondo/servizio).
+          await backfillSalesRequestFromShadow(pool, match.id, payload);
         }
       } else {
         result.imported++;
