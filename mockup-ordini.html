@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Inbox Ordini rivisitato</title>
+<style>
+  :root {
+    --bg: #f5f3ee;
+    --paper: #ffffff;
+    --ink: #1a2e26;
+    --ink-soft: #5a6e63;
+    --ink-faint: #8a9690;
+    --line: #e5e1d6;
+    --line-strong: #d4cebd;
+    --primary: #1f4d3d;
+    --primary-soft: #e8f0ec;
+    --blue: #3b82f6;  --blue-soft: #e0edff;
+    --amber: #f59e0b; --amber-soft: #fef3c7;
+    --purple: #8b5cf6;--purple-soft: #ede9fe;
+    --green: #10b981; --green-soft: #d1fae5;
+    --red: #ef4444;   --red-soft: #fee2e2;
+    --radius: 12px;
+    --shadow-hover: 0 4px 12px rgba(26,46,38,.08);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 1px 1px, rgba(31,77,61,.05) 1px, transparent 0) 0 0/24px 24px, var(--bg);
+    color: var(--ink); font-size: 14px; line-height: 1.45; min-height: 100vh;
+  }
+  .page { max-width: 1400px; margin: 0 auto; padding: 24px 28px 80px; }
+  .layout { display: grid; grid-template-columns: 1fr 440px; gap: 18px; align-items: start; }
+
+  .page-header { display: flex; justify-content: space-between; align-items: end; margin-bottom: 18px; }
+  .page-title { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.01em; }
+  .page-subtitle { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; }
+  .header-actions { display: flex; gap: 8px; }
+  .primary-btn { padding: 11px 18px; background: var(--primary); border: 1px solid var(--primary); border-radius: 8px; font-size: 13px; color: white; cursor: pointer; font-weight: 600; }
+  .secondary-btn { padding: 11px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; font-size: 13px; color: var(--ink); cursor: pointer; font-weight: 500; }
+
+  /* KPI strip */
+  .kpi-strip { display: flex; gap: 34px; padding: 16px 22px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 14px; flex-wrap: wrap; }
+  .kpi { display: flex; flex-direction: column; gap: 2px; }
+  .kpi-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.1; }
+  .kpi-label { font-size: 10.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; white-space: nowrap; }
+  .kpi-trend { font-size: 11px; font-weight: 600; color: var(--green); }
+  .kpi-trend.warn { color: var(--amber); }
+
+  /* Pills */
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--ink-soft); cursor: pointer; }
+  .pill .count { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink-faint); font-size: 12px; }
+  .pill.active { background: var(--primary); color: white; border-color: var(--primary); }
+  .pill.active .count { color: rgba(255,255,255,.7); }
+  .pill.urgent { background: var(--amber-soft); border-color: #fbbf24; color: #92400e; }
+  .pill.urgent .count { color: #b45309; }
+
+  .search { margin-bottom: 14px; }
+  .search input { width: 100%; padding: 12px 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; outline: none; }
+
+  /* Rows */
+  .list { display: flex; flex-direction: column; gap: 6px; }
+  .row { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 14px; padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; transition: all .12s; }
+  .row:hover { border-color: var(--line-strong); box-shadow: var(--shadow-hover); transform: translateY(-1px); }
+  .row.selected { border-color: var(--primary); border-left: 3px solid var(--primary); padding-left: 14px; }
+
+  .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .dot.prep { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+  .dot.work { background: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+  .dot.ship { background: var(--purple); box-shadow: 0 0 0 3px var(--purple-soft); }
+  .dot.done { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .dot.block { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+
+  .main { min-width: 0; }
+  .name-line { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+  .name { font-weight: 600; font-size: 14.5px; letter-spacing: -0.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ordernum { font-size: 12px; color: var(--ink-faint); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .meta { display: flex; gap: 6px; align-items: center; color: var(--ink-soft); font-size: 12.5px; flex-wrap: wrap; }
+  .meta .sep { color: var(--ink-faint); }
+  .service-tag { background: var(--primary-soft); color: var(--primary); padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; }
+  .badge { padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+  .badge.ok { background: var(--green-soft); color: #065f46; }
+  .badge.pay { background: var(--amber-soft); color: #92400e; }
+  .badge.ship { background: #ede9fe; color: #5b21b6; }
+
+  .aside { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
+  .amount { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .status-chip { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 5px; letter-spacing: .03em; }
+  .status-chip.prep { background: var(--amber-soft); color: #92400e; }
+  .status-chip.done { background: #f0f0ef; color: #6b7280; }
+  .status-chip.ship { background: #ede9fe; color: #5b21b6; }
+
+  .row-action { padding: 8px 13px; background: var(--ink); color: white; border: none; border-radius: 7px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; opacity: 0; transition: opacity .15s; }
+  .row:hover .row-action, .row.selected .row-action { opacity: 1; }
+  .row-action.green { background: var(--green); }
+  .row-action.blue { background: var(--blue); }
+
+  /* Detail panel */
+  .detail { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 18px; position: sticky; top: 16px; }
+  .detail-amount { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .detail-sub { color: var(--ink-soft); font-size: 12.5px; margin: 2px 0 14px; }
+  .detail-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .detail-actions button { padding: 9px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: 500; }
+  .section { background: #fdfcfa; border: 1px solid #ece8de; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+  .section.accent { border-left: 3px solid var(--green); }
+  .section.accent2 { border-left: 3px solid var(--amber); }
+  .section-label { margin: 0 0 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+  .section p { margin: 0 0 12px; font-size: 12.5px; color: var(--ink-soft); }
+  .section-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .section-btns button { padding: 8px; background: var(--paper); border: 1px solid var(--line); border-radius: 7px; font-size: 11.5px; cursor: pointer; }
+  .save-btn { padding: 10px 16px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+  .mock-note { grid-column: 1 / -1; margin-top: 30px; padding: 18px 22px; background: #fff8e1; border: 1px dashed #d4cebd; border-radius: var(--radius); color: #6e5c1a; font-size: 13px; line-height: 1.6; }
+  .mock-note h3 { margin: 0 0 8px; font-size: 14px; color: #5a4a14; }
+  .mock-note ul { margin: 0; padding-left: 20px; }
+  .mock-note li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Inbox Ordini</h1>
+      <p class="page-subtitle">Ordini Shopify sincronizzati e in lavorazione</p>
+    </div>
+    <div class="header-actions">
+      <button class="primary-btn">Sincronizza Shopify</button>
+      <button class="secondary-btn">Importa JSON</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <!-- Colonna sinistra: KPI + filtri + lista -->
+    <div>
+      <div class="kpi-strip">
+        <div class="kpi"><span class="kpi-value">142</span><span class="kpi-label">Totale ordini</span></div>
+        <div class="kpi"><span class="kpi-value">13</span><span class="kpi-label">Da completare</span><span class="kpi-trend warn">↑ 2 oggi</span></div>
+        <div class="kpi"><span class="kpi-value">6</span><span class="kpi-label">In posa</span></div>
+        <div class="kpi"><span class="kpi-value">€ 8.420</span><span class="kpi-label">Da incassare</span></div>
+        <div class="kpi"><span class="kpi-value">121</span><span class="kpi-label">Evasi / chiusi</span></div>
+      </div>
+
+      <div class="pills">
+        <div class="pill active">Tutti <span class="count">142</span></div>
+        <div class="pill urgent">Da completare <span class="count">13</span></div>
+        <div class="pill">Inventario <span class="count">4</span></div>
+        <div class="pill">Posa <span class="count">6</span></div>
+        <div class="pill">Spedizione <span class="count">3</span></div>
+        <div class="pill">Evasi / chiusi <span class="count">121</span></div>
+      </div>
+
+      <div class="search"><input type="text" placeholder="Cerca cliente, ordine, città, telefono o prodotto…" /></div>
+
+      <div class="list">
+        <!-- Da preparare, selezionato -->
+        <div class="row selected">
+          <div class="dot prep"></div>
+          <div class="main">
+            <div class="name-line"><span class="name">Luciano Espedito</span><span class="ordernum">#2872</span></div>
+            <div class="meta">
+              <span>Cedro 30mm · 44mq</span><span class="sep">·</span>
+              <span>Via Sena 37, Saviano</span><span class="sep">·</span>
+              <span class="service-tag">SOLO FORNITURA</span>
+              <span class="badge ok">✓ MATERIALE</span><span class="badge ok">SALDATO</span>
+            </div>
+          </div>
+          <div class="aside"><span class="amount">671,54 €</span><span class="status-chip prep">DA PREPARARE</span></div>
+          <button class="row-action blue">Prepara</button>
+        </div>
+
+        <!-- Da preparare, non saldato -->
+        <div class="row">
+          <div class="dot prep"></div>
+          <div class="main">
+            <div class="name-line"><span class="name">Massimo Emmeci Edilizia srls</span><span class="ordernum">#2871</span></div>
+            <div class="meta">
+              <span>Abete 45mm · 100mq</span><span class="sep">·</span>
+              <span>P.za Masaniello 31, Napoli</span><span class="sep">·</span>
+              <span class="service-tag">SOLO FORNITURA</span>
+              <span class="badge ok">✓ MATERIALE</span><span class="badge pay">€ 2.491 DA SALDARE</span>
+            </div>
+          </div>
+          <div class="aside"><span class="amount">2.491,85 €</span><span class="status-chip prep">DA PREPARARE</span></div>
+          <button class="row-action blue">Prepara</button>
+        </div>
+
+        <!-- Spedito -->
+        <div class="row">
+          <div class="dot ship"></div>
+          <div class="main">
+            <div class="name-line"><span class="name">Luigi Pontillo</span><span class="ordernum">#2870</span></div>
+            <div class="meta">
+              <span>Cedro 30mm · 120mq</span><span class="sep">·</span>
+              <span>Indirizzo da completare</span><span class="sep">·</span>
+              <span class="service-tag">SOLO FORNITURA</span>
+              <span class="badge ship">SPEDITO</span><span class="badge ok">SALDATO</span>
+            </div>
+          </div>
+          <div class="aside"><span class="amount">2.094,98 €</span><span class="status-chip ship">SPEDIZIONE</span></div>
+          <button class="row-action">Traccia</button>
+        </div>
+
+        <!-- Chiuso -->
+        <div class="row">
+          <div class="dot done"></div>
+          <div class="main">
+            <div class="name-line"><span class="name">Elisa Marcelli</span><span class="ordernum">#2869</span></div>
+            <div class="meta">
+              <span>Palma 40mm · 52mq</span><span class="sep">·</span>
+              <span>Via Monti Sabini 185, Monterotondo</span><span class="sep">·</span>
+              <span class="service-tag">SOLO FORNITURA</span>
+              <span class="badge ok">RITIRATO</span><span class="badge ok">SALDATO</span>
+            </div>
+          </div>
+          <div class="aside"><span class="amount">1.327,12 €</span><span class="status-chip done">CHIUSO</span></div>
+          <button class="row-action green">Riapri</button>
+        </div>
+
+        <!-- In posa -->
+        <div class="row">
+          <div class="dot work"></div>
+          <div class="main">
+            <div class="name-line"><span class="name">Antonio Caliendo</span><span class="ordernum">#2868</span></div>
+            <div class="meta">
+              <span>Bonsai 25mm · 35mq</span><span class="sep">·</span>
+              <span>Via Roma 12, Caserta</span><span class="sep">·</span>
+              <span class="service-tag">FORNITURA + POSA</span>
+              <span class="badge ok">✓ MATERIALE</span>
+            </div>
+          </div>
+          <div class="aside"><span class="amount">3.150,00 €</span><span class="status-chip prep" style="background:var(--blue-soft);color:#1e40af">IN POSA</span></div>
+          <button class="row-action blue">Pianifica</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Colonna destra: dettaglio (INVARIATO funzionalmente, solo allineato visivamente) -->
+    <div class="detail">
+      <div class="detail-amount">671,54 €</div>
+      <div class="detail-sub">Saldo operativo allineato · Shopify incassato 671,54 €</div>
+      <div class="detail-actions">
+        <button>Apri su Shopify ↗</button>
+        <button>Apri Maps</button>
+        <button>Chiama cliente</button>
+      </div>
+      <div class="section accent">
+        <p class="section-label">Commessa unificata</p>
+        <p>Primo step: qui vedi in un solo punto i dati già presenti in ufficio, magazzino, posa, contabilità e documenti, senza cambiare i flussi esistenti.</p>
+        <div class="section-btns">
+          <button>Apri Magazzino</button>
+          <button>Apri Contabilità</button>
+          <button>Apri Conti posa</button>
+        </div>
+      </div>
+      <div class="section accent2">
+        <p class="section-label">Preparazione ufficio</p>
+        <p>Seleziona cosa il magazzino deve davvero preparare per questo ordine.</p>
+        <button class="save-btn">Salva preparazione</button>
+      </div>
+    </div>
+
+    <div class="mock-note">
+      <h3>Note di lettura</h3>
+      <ul>
+        <li><b>Pallino stato</b> a sinistra = stadio operativo: <b>🟡 da preparare</b>, <b>🔵 in posa/pianificato</b>, <b>🟣 spedizione</b>, <b>🟢 chiuso/evaso</b>, <b>🔴 bloccato</b>.</li>
+        <li><b>Riga compatta</b>: nome + #ordine in alto; prodotto · mq · indirizzo · tag servizio + badge stato (Materiale OK, Saldato/Da saldare, Spedito) sotto.</li>
+        <li><b>Lato destro</b>: importo grande + chip stadio. Bottone azione contestuale (<i>Prepara / Pianifica / Traccia / Riapri</i>) che cambia per stadio.</li>
+        <li><b>KPI strip</b>: Totale · Da completare · In posa · Da incassare (€) · Evasi. La metrica "Da incassare" in euro è specifica degli ordini.</li>
+        <li><b>Pillole</b> = gli stessi filtri attuali (Tutti / Da completare / Inventario / Posa / Spedizione / Evasi), look uniforme alle Richieste, "Da completare" urgente in ambra.</li>
+        <li><b>Pannello dettaglio destro</b>: <u>nessun cambiamento funzionale</u> — Commessa unificata, Preparazione ufficio, Apri Magazzino/Contabilità/Conti posa restano identici. Solo allineamento visivo (sezioni con eyebrow, card beige).</li>
+        <li><b>Mobile</b> (se approvato): tap riga → pagina dettaglio fullscreen, X per chiudere, stesso pattern delle Richieste.</li>
+        <li><b>La ricerca</b> ora include anche telefono ed email (già fatto lato codice per il fix "Apri ordine").</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>
