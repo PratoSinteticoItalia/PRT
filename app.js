@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-crm-v2-portal";
+const APP_SHELL_VERSION = "20260608-crm-v2-status-sync";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4616,12 +4616,14 @@ function syncSalesRequestStatusField(value = "") {
   if (!field) return;
   const options = getSalesRequestStatusOptions();
   const nextValue = String(value || "").trim() || options[0] || "new";
+  const nextValueLc = nextValue.toLowerCase();
   const fragment = document.createDocumentFragment();
-  const seen = new Set();
+  // Mappa per recuperare il VALUE attribute originale (case-preserving) dato un key lowercase
+  const lcToActualValue = new Map();
   const appendOption = (optionValue, optionLabel, dynamic = false) => {
     const normalizedKey = String(optionValue || "").trim().toLowerCase();
-    if (!normalizedKey || seen.has(normalizedKey)) return;
-    seen.add(normalizedKey);
+    if (!normalizedKey || lcToActualValue.has(normalizedKey)) return;
+    lcToActualValue.set(normalizedKey, optionValue);
     const option = document.createElement("option");
     option.value = optionValue;
     option.textContent = optionLabel;
@@ -4629,12 +4631,14 @@ function syncSalesRequestStatusField(value = "") {
     fragment.append(option);
   };
   options.forEach((status) => appendOption(status, status, true));
-  if (!seen.has(nextValue.toLowerCase())) {
+  if (!lcToActualValue.has(nextValueLc)) {
     appendOption(nextValue, nextValue, true);
   }
   field.replaceChildren(fragment);
-  const fallbackValue = options[0] || String(field.options[0]?.value || "new");
-  field.value = seen.has(nextValue.toLowerCase()) ? nextValue : fallbackValue;
+  // Usa il VALUE attribute esatto (case dell'option), non quello passato in input,
+  // così "preventivo inviato" matcha l'option <value="Preventivo inviato">.
+  const actualValue = lcToActualValue.get(nextValueLc) || nextValue;
+  field.value = actualValue;
 }
 
 function syncSalesRequestAssignmentField(value = "") {
@@ -12414,12 +12418,14 @@ function closeCrmV2StatusPopoverPortal() {
 function renderCrmV2StatusPopover(item) {
   const currentTone = getCrmV2StatusTone(item);
   // Stati che l'utente può scegliere dal popover.
-  // Valori = quelli che vengono effettivamente salvati nel campo status.
+  // I valori DEVONO matchare ESATTAMENTE (case inclusa) le opzioni in
+  // SALES_REQUEST_STATUS_REFERENCE, altrimenti la select del dettaglio
+  // non riesce a selezionare l'option corrispondente.
   const options = [
-    { tone: "is-new",       label: state.lang === "it" ? "Nuovo contatto" : "New",            value: "new" },
-    { tone: "is-contacted", label: state.lang === "it" ? "1° contatto"   : "1st contact",     value: "1 contatto" },
-    { tone: "is-quoted",    label: state.lang === "it" ? "Preventivo inviato" : "Quote sent", value: "preventivo inviato" },
-    { tone: "is-won",       label: state.lang === "it" ? "Ordine confermato"  : "Order won",  value: "ordine confermato" },
+    { tone: "is-new",       label: state.lang === "it" ? "Nuovo contatto" : "New",            value: "nuovo contatto" },
+    { tone: "is-contacted", label: state.lang === "it" ? "1° contatto"   : "1st contact",     value: "1° contatto" },
+    { tone: "is-quoted",    label: state.lang === "it" ? "Preventivo inviato" : "Quote sent", value: "Preventivo inviato" },
+    { tone: "is-won",       label: state.lang === "it" ? "Preventivo confermato"  : "Confirmed", value: "preventivo confermato" },
     { tone: "is-lost",      label: state.lang === "it" ? "Perso" : "Lost",                    value: "declinata" },
   ];
   return `
