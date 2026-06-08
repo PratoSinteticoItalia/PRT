@@ -20663,3 +20663,32 @@ body {
   font-weight: 600;
   color: var(--ink-faint, #8a9690);
 }
+
+/* ── Inbox Ordini: banner stato instradamento (conferma visiva) ── */
+.route-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 0 14px;
+  border: 1px solid transparent;
+}
+.route-status-banner .route-status-icon { font-size: 16px; line-height: 1; }
+.route-status-banner.is-logistics {
+  background: #e0edff;
+  border-color: #b8d4ff;
+  color: #1e40af;
+}
+.route-status-banner.is-install {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  color: #065f46;
+}
+.route-status-banner.is-pending {
+  background: #fef3c7;
+  border-color: #fbbf24;
+  color: #92400e;
+}

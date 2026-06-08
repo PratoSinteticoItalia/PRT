@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-ordini-merge-materiali";
+const APP_SHELL_VERSION = "20260608-ordini-routing-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9942,11 +9942,12 @@ function renderInboxFlowControls(order) {
   const preparationDate = getShippingTargetDate(order);
   const stage = getUnifiedOrderStage(order);
   const nextAction = getNextOrderAction(order);
-  const routeSummary = installSelected
-    ? (state.lang === "it" ? "Ordine in carico a ufficio, logistica e squadra posa." : "Order active for office, logistics and installation crew.")
+  // Banner di stato instradamento: conferma visiva permanente + colore semantico.
+  const routeBanner = installSelected
+    ? { cls: "is-install", icon: "🔧", text: (state.lang === "it" ? "Instradato a: Ufficio · Logistica · Posa" : "Routed to: Office · Logistics · Installation") }
     : warehouseSelected
-      ? (state.lang === "it" ? "Ordine in carico a ufficio e logistica / magazzino." : "Order active for office and logistics / warehouse.")
-      : (state.lang === "it" ? "Ordine ancora da instradare nei flussi operativi." : "Order not routed yet into the operational flows.");
+      ? { cls: "is-logistics", icon: "📦", text: (state.lang === "it" ? "Instradato a: Ufficio · Logistica / Magazzino" : "Routed to: Office · Logistics / Warehouse") }
+      : { cls: "is-pending", icon: "⏳", text: (state.lang === "it" ? "Non ancora instradato — spunta logistica o posa qui sotto" : "Not routed yet — check logistics or installation below") };
   return `
     <article class="guidance-card order-flow-card">
       <span class="panel-eyebrow">${state.lang === "it" ? "Processo operativo" : "Operational flow"}</span>
@@ -9956,7 +9957,10 @@ function renderInboxFlowControls(order) {
         ${renderInfoLine(state.lang === "it" ? "Percorso ordine" : "Order route", getInboxRouteLabel(order))}
         ${renderInfoLine(state.lang === "it" ? "Visibilità moduli" : "Module visibility", getInboxVisibilityLabel(order))}
       </div>
-      <p>${routeSummary}</p>
+      <div class="route-status-banner ${routeBanner.cls}">
+        <span class="route-status-icon">${routeBanner.icon}</span>
+        <span class="route-status-text">${routeBanner.text}</span>
+      </div>
       <div class="route-visibility-grid">
         <label class="route-toggle-card ${warehouseSelected ? "is-active" : ""}">
           <div class="route-toggle-head">
@@ -11977,8 +11981,31 @@ function renderOrders() {
       ${order.phone && isOrderFulfilledOrClosed(order) ? `<button class="btn" data-action="request-order-review" data-id="${order.id}">${state.lang === "it" ? "Chiedi recensione" : "Request review"}</button>` : ""}
     </div>
   `;
+  // Checkbox di instradamento (logistica/posa): salvataggio IMMEDIATO + toast.
+  // I checkbox sono azioni discrete, non testo: niente debounce (che causava
+  // "spunte che non si salvano" se il pannello si ri-renderizzava prima dei 400ms).
   ui.orderDetailSummary.querySelectorAll(
-    "[data-order-flow-warehouse], [data-order-flow-installation], [data-order-flow-status], [data-order-flow-mode], [data-order-flow-date]"
+    "[data-order-flow-warehouse], [data-order-flow-installation]"
+  ).forEach((input) => {
+    input.addEventListener("change", () => {
+      const isInstall = input.hasAttribute("data-order-flow-installation");
+      const isChecked = input.checked;
+      // Salva subito (no debounce) e mostra conferma visiva
+      saveInboxOrderFlow(order.id).then(() => {
+        const dest = isInstall
+          ? (state.lang === "it" ? "Posa" : "Installation")
+          : (state.lang === "it" ? "Logistica" : "Logistics");
+        if (isChecked) {
+          showToast(state.lang === "it" ? `✓ Ordine instradato a ${dest}` : `✓ Order routed to ${dest}`, "success", 2500);
+        } else {
+          showToast(state.lang === "it" ? `Ordine rimosso da ${dest}` : `Order removed from ${dest}`, "info", 2500);
+        }
+      });
+    });
+  });
+  // Select/data: mantengono il debounce (cambiano spesso durante l'editing)
+  ui.orderDetailSummary.querySelectorAll(
+    "[data-order-flow-status], [data-order-flow-mode], [data-order-flow-date]"
   ).forEach((input) => {
     input.addEventListener("change", () => {
       debouncedSaveInboxOrderFlow(order.id);
