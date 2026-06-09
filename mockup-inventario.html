@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Inventario rivisitato</title>
+<style>
+  :root {
+    --bg:#f5f3ee; --paper:#fff; --ink:#1a2e26; --ink-soft:#5a6e63; --ink-faint:#8a9690;
+    --line:#e5e1d6; --line-strong:#d4cebd; --primary:#1f4d3d; --primary-soft:#e8f0ec;
+    --blue:#3b82f6;--blue-soft:#e0edff; --amber:#f59e0b;--amber-soft:#fef3c7;
+    --purple:#8b5cf6;--purple-soft:#ede9fe; --green:#10b981;--green-soft:#d1fae5;
+    --red:#ef4444;--red-soft:#fee2e2; --radius:12px;
+    font-family:-apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:radial-gradient(circle at 1px 1px,rgba(31,77,61,.05) 1px,transparent 0) 0 0/24px 24px,var(--bg);color:var(--ink);font-size:14px;line-height:1.45;min-height:100vh;}
+  .page{max-width:1400px;margin:0 auto;padding:24px 28px 80px;}
+  .layout{display:grid;grid-template-columns:1fr 440px;gap:18px;align-items:start;}
+  .page-header{display:flex;justify-content:space-between;align-items:end;margin-bottom:18px;}
+  .page-title{margin:0;font-size:28px;font-weight:700;letter-spacing:-.01em;}
+  .page-subtitle{margin:4px 0 0;color:var(--ink-soft);font-size:14px;}
+  .primary-btn{padding:11px 18px;background:var(--primary);border:1px solid var(--primary);border-radius:8px;font-size:13px;color:#fff;cursor:pointer;font-weight:600;}
+  .secondary-btn{padding:11px 16px;background:var(--paper);border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--ink);cursor:pointer;font-weight:500;}
+
+  .kpi-strip{display:flex;gap:34px;padding:16px 22px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:14px;flex-wrap:wrap;}
+  .kpi{display:flex;flex-direction:column;gap:2px;}
+  .kpi-value{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.1;}
+  .kpi-label{font-size:10.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;font-weight:600;white-space:nowrap;}
+  .kpi.warn .kpi-value{color:#b45309;}
+
+  .pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background:var(--paper);border:1px solid var(--line);border-radius:999px;font-size:13px;font-weight:500;color:var(--ink-soft);cursor:pointer;}
+  .pill .count{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink-faint);font-size:12px;}
+  .pill.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+  .pill.active .count{color:rgba(255,255,255,.7);}
+  .pill.warn{background:var(--amber-soft);border-color:#fbbf24;color:#92400e;}
+
+  .search{margin-bottom:14px;}
+  .search input{width:100%;padding:12px 14px;background:var(--paper);border:1px solid var(--line);border-radius:8px;font-size:14px;outline:none;}
+
+  /* Product cards (simplified) */
+  .list{display:flex;flex-direction:column;gap:8px;}
+  .pcard{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:all .12s;}
+  .pcard:hover{border-color:var(--line-strong);box-shadow:0 4px 12px rgba(26,46,38,.06);}
+  .pcard.open{border-color:var(--primary);}
+  .pcard-head{display:flex;align-items:center;gap:14px;}
+  .pcard-name{font-weight:700;font-size:15px;flex:1;}
+  .pcard-state{font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;letter-spacing:.03em;}
+  .pcard-state.ok{background:var(--green-soft);color:#065f46;}
+  .pcard-state.low{background:var(--amber-soft);color:#92400e;}
+  .pcard-state.def{background:var(--red-soft);color:#991b1b;}
+  .pcard-num{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;min-width:90px;text-align:right;}
+  .pcard-num small{font-size:11px;color:var(--ink-faint);font-weight:600;}
+  /* stock bar */
+  .bar{height:8px;border-radius:4px;background:#eee9dd;overflow:hidden;margin-top:10px;display:flex;}
+  .bar-avail{background:var(--green);}
+  .bar-commit{background:var(--amber);}
+  .bar-legend{display:flex;gap:14px;margin-top:7px;font-size:11.5px;color:var(--ink-soft);}
+  .bar-legend .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle;}
+  /* expanded pieces */
+  .pieces{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);display:grid;gap:6px;}
+  .piece{display:flex;align-items:center;gap:10px;padding:7px 12px;background:#fdfcfa;border:1px solid #ece8de;border-radius:8px;font-size:13px;}
+  .piece-type{font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:4px;letter-spacing:.03em;text-transform:uppercase;}
+  .piece-type.roll{background:var(--blue-soft);color:#1e40af;}
+  .piece-type.res{background:var(--purple-soft);color:#5b21b6;}
+  .piece-dim{flex:1;color:var(--ink-soft);}
+  .piece-state{font-size:10px;font-weight:700;}
+  .piece-state.disp{color:var(--green);}
+  .piece-state.imp{color:var(--amber);}
+
+  /* Right: guided allocation panel */
+  .panel{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:18px;position:sticky;top:16px;}
+  .panel-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:4px;}
+  .panel h3{margin:0 0 2px;font-size:18px;}
+  .panel-sub{color:var(--ink-soft);font-size:13px;margin:0 0 16px;}
+  /* steps */
+  .step{display:flex;gap:12px;margin-bottom:14px;}
+  .step-num{width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .step-num.done{background:var(--green);}
+  .step-num.todo{background:#eee9dd;color:var(--ink-faint);}
+  .step-body{flex:1;}
+  .step-title{font-weight:600;font-size:14px;margin-bottom:6px;}
+  .req-box{background:var(--primary-soft);border-radius:10px;padding:11px 14px;font-size:13px;color:var(--primary);font-weight:600;margin-bottom:10px;}
+  .suggest-box{background:#fdfcfa;border:1px solid #ece8de;border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+  .suggest-row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;}
+  .suggest-row .lbl{color:var(--ink-soft);}
+  .suggest-row .val{font-weight:600;font-variant-numeric:tabular-nums;}
+  .residue-chip{display:inline-flex;align-items:center;gap:6px;background:var(--purple-soft);color:#5b21b6;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;margin-top:4px;}
+  .step-btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;}
+  .step-btn.primary{background:var(--primary);color:#fff;}
+  .step-btn.green{background:var(--green);color:#fff;}
+  .step-btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink-soft);}
+  .status-banner{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;margin:8px 0;}
+  .status-banner.imp{background:var(--amber-soft);color:#92400e;}
+  .status-banner.evaso{background:var(--green-soft);color:#065f46;}
+
+  .mock-note{grid-column:1/-1;margin-top:30px;padding:18px 22px;background:#fff8e1;border:1px dashed var(--line-strong);border-radius:var(--radius);color:#6e5c1a;font-size:13px;line-height:1.6;}
+  .mock-note h3{margin:0 0 8px;font-size:14px;color:#5a4a14;}
+  .mock-note ul{margin:0;padding-left:20px;}
+  .mock-note li{margin-bottom:4px;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Inventario</h1>
+      <p class="page-subtitle">Rotoli e residui in magazzino · disponibilità per ordine</p>
+    </div>
+    <button class="primary-btn">+ Carica rotolo</button>
+  </div>
+
+  <div class="layout">
+    <!-- SINISTRA: magazzino -->
+    <div>
+      <div class="kpi-strip">
+        <div class="kpi"><span class="kpi-value">1.240 <small style="font-size:13px;color:#8a9690">mq</small></span><span class="kpi-label">Disponibili</span></div>
+        <div class="kpi"><span class="kpi-value">187 <small style="font-size:13px;color:#8a9690">mq</small></span><span class="kpi-label">Impegnati</span></div>
+        <div class="kpi warn"><span class="kpi-value">3</span><span class="kpi-label">Sotto scorta</span></div>
+        <div class="kpi"><span class="kpi-value">42</span><span class="kpi-label">Residui</span></div>
+        <div class="kpi"><span class="kpi-value">11</span><span class="kpi-label">Prodotti</span></div>
+      </div>
+
+      <div class="pills">
+        <div class="pill active">Tutti <span class="count">11</span></div>
+        <div class="pill warn">Sotto scorta <span class="count">3</span></div>
+        <div class="pill">Solo rotoli <span class="count">8</span></div>
+        <div class="pill">Solo residui <span class="count">42</span></div>
+        <div class="pill">Con domanda <span class="count">5</span></div>
+      </div>
+
+      <div class="search"><input type="text" placeholder="Cerca prodotto…" /></div>
+
+      <div class="list">
+        <!-- Prodotto disponibile, espanso -->
+        <div class="pcard open">
+          <div class="pcard-head">
+            <span class="pcard-name">Ginepro 45 mm</span>
+            <span class="pcard-state ok">Disponibile</span>
+            <span class="pcard-num">186 <small>mq</small></span>
+          </div>
+          <div class="bar">
+            <div class="bar-avail" style="width:78%"></div>
+            <div class="bar-commit" style="width:22%"></div>
+          </div>
+          <div class="bar-legend">
+            <span><span class="dot" style="background:var(--green)"></span>Disponibile 186 mq</span>
+            <span><span class="dot" style="background:var(--amber)"></span>Impegnato 54 mq</span>
+            <span style="margin-left:auto;color:var(--ink-faint)">7 pezzi</span>
+          </div>
+          <div class="pieces">
+            <div class="piece"><span class="piece-type roll">Rotolo</span><span class="piece-dim">2 × 25 m · 50 mq</span><span class="piece-state disp">Disponibile</span></div>
+            <div class="piece"><span class="piece-type roll">Rotolo</span><span class="piece-dim">2 × 25 m · 50 mq</span><span class="piece-state disp">Disponibile</span></div>
+            <div class="piece"><span class="piece-type roll">Rotolo</span><span class="piece-dim">2 × 25 m · 50 mq</span><span class="piece-state imp">Impegnato · #2768</span></div>
+            <div class="piece"><span class="piece-type res">Residuo</span><span class="piece-dim">2 × 11,5 m · 23 mq</span><span class="piece-state disp">Disponibile</span></div>
+          </div>
+        </div>
+
+        <!-- Sotto scorta -->
+        <div class="pcard">
+          <div class="pcard-head">
+            <span class="pcard-name">Abete 30 mm</span>
+            <span class="pcard-state low">Sotto scorta</span>
+            <span class="pcard-num">18 <small>mq</small></span>
+          </div>
+          <div class="bar"><div class="bar-avail" style="width:25%"></div><div class="bar-commit" style="width:60%"></div></div>
+          <div class="bar-legend"><span><span class="dot" style="background:var(--green)"></span>Disp. 18 mq</span><span><span class="dot" style="background:var(--amber)"></span>Imp. 44 mq</span><span style="margin-left:auto;color:var(--ink-faint)">2 pezzi · 3 ordini in attesa</span></div>
+        </div>
+
+        <!-- Fabbisogno non coperto -->
+        <div class="pcard">
+          <div class="pcard-head">
+            <span class="pcard-name">Cedro 30 mm</span>
+            <span class="pcard-state def">Fabbisogno scoperto</span>
+            <span class="pcard-num">0 <small>mq</small></span>
+          </div>
+          <div class="bar"><div class="bar-commit" style="width:100%"></div></div>
+          <div class="bar-legend"><span style="color:#991b1b;font-weight:600">⚠ 2 ordini richiedono 96 mq — nessun pezzo disponibile</span></div>
+        </div>
+
+        <!-- Materiale a unità -->
+        <div class="pcard">
+          <div class="pcard-head">
+            <span class="pcard-name">Colla bi-componente (A+B) 6 Kg</span>
+            <span class="pcard-state ok">Disponibile</span>
+            <span class="pcard-num">14 <small>u</small></span>
+          </div>
+          <div class="bar"><div class="bar-avail" style="width:88%"></div><div class="bar-commit" style="width:12%"></div></div>
+          <div class="bar-legend"><span><span class="dot" style="background:var(--green)"></span>Disp. 14 u</span><span><span class="dot" style="background:var(--amber)"></span>Imp. 2 u</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESTRA: flusso guidato di allocazione su un ordine -->
+    <div class="panel">
+      <div class="panel-eyebrow">Allocazione materiale</div>
+      <h3>oberboersch, daniel · #2768</h3>
+      <p class="panel-sub">Ginepro 45 mm · 27 mq</p>
+
+      <!-- Step 1: fabbisogno + proposta -->
+      <div class="step">
+        <div class="step-num done">✓</div>
+        <div class="step-body">
+          <div class="step-title">Materiale necessario</div>
+          <div class="req-box">Ginepro 45 mm — serve 1 pezzo da 2 × 13,5 m (27 mq)</div>
+        </div>
+      </div>
+
+      <!-- Step 2: proposta e impegno -->
+      <div class="step">
+        <div class="step-num done">✓</div>
+        <div class="step-body">
+          <div class="step-title">Rotolo selezionato e impegnato</div>
+          <div class="suggest-box">
+            <div class="suggest-row"><span class="lbl">Rotolo</span><span class="val">2 × 25 m (50 mq)</span></div>
+            <div class="suggest-row"><span class="lbl">Taglio per l'ordine</span><span class="val">13,5 m → 27 mq</span></div>
+            <div class="residue-chip">↩ Rientra residuo: 2 × 11,5 m (23 mq)</div>
+          </div>
+          <div class="status-banner imp"><span>🟡</span> Impegnato a questo ordine</div>
+        </div>
+      </div>
+
+      <!-- Step 3: scarico -->
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Scarica merce dal magazzino</div>
+          <p style="margin:0 0 10px;font-size:12.5px;color:var(--ink-soft)">Quando il materiale esce fisicamente (corriere, ritiro o furgone), conferma lo scarico. Il residuo resta disponibile in magazzino.</p>
+          <button class="step-btn green">✓ Scarica merce</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="step-btn ghost" style="flex:1">↩ Rilascia (annulla impegno)</button>
+      </div>
+    </div>
+
+    <div class="mock-note">
+      <h3>Note di lettura — cosa cambia</h3>
+      <ul>
+        <li><b>Card prodotto semplificata</b>: un numero solo (mq o unità), barra disponibile/impegnato, badge stato. Click → espande i pezzi (rotoli + residui). Niente più 150 righe di branching.</li>
+        <li><b>Pezzi chiari</b>: tag <b>Rotolo</b> (blu) vs <b>Residuo</b> (viola), dimensioni, stato (disponibile / impegnato a #ordine). Un solo vocabolario.</li>
+        <li><b>KPI</b>: mq disponibili · impegnati · sotto scorta · residui · prodotti. A colpo d'occhio lo stato del magazzino.</li>
+        <li><b>Flusso guidato</b> nel pannello ordine (3 step numerati): <b>1)</b> materiale necessario → <b>2)</b> rotolo selezionato + taglio + residuo che rientra → <b>3)</b> scarico merce. Niente più bottoni sparsi senza ordine.</li>
+        <li><b>Residuo evidenziato</b>: vedi subito quanto rientra in magazzino dopo il taglio (es. 11,5 m / 23 mq), così non si perde nulla.</li>
+        <li><b>Banner stato</b> sempre visibile: 🟡 Impegnato / 🟢 Scaricato. + bottone "Rilascia" per annullare.</li>
+        <li><b>Sotto scorta / fabbisogno scoperto</b>: card in ambra/rosso con "N ordini richiedono X mq, disponibili Y" — chi compra sa subito cosa riordinare.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>
