@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260608-ordini-routing-fix";
+const APP_SHELL_VERSION = "20260609-ordini-uncheck-posa";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -23025,8 +23025,12 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
       preparationDate: nextDate,
     },
     installation: {
+      // Il checkbox "Visibile in posa" è AUTORITATIVO: l'utente deve poter togliere
+      // la spunta. Prima required = installSelected || prevRequired bloccava la
+      // rimozione (una volta true, isRoutedToInstallation restava true per sempre).
+      // Ora selected E required seguono entrambi lo stato del checkbox.
       selected: installSelected,
-      required: installSelected || Boolean(order?.operations?.installation?.required),
+      required: installSelected,
     },
   };
 }
@@ -24972,6 +24976,19 @@ function handleGlobalClick(event) {
   if (action === "open-inventory-for-order") {
     state.selectedOrderId = id;
     setView("warehouse");
+    // Porta l'utente direttamente al pannello di assegnazione rotoli dell'ordine
+    // (non solo alla lista inventario) + guida visiva.
+    requestAnimationFrame(() => {
+      const detail = document.querySelector("#warehouse .warehouse-detail-panel, #warehouse .detail-panel");
+      if (detail) detail.scrollIntoView({ behavior: "smooth", block: "start" });
+      showToast(
+        state.lang === "it"
+          ? "Seleziona i rotoli da scaricare per questo ordine nel pannello a destra."
+          : "Select the rolls to dispatch for this order in the right panel.",
+        "info",
+        3500,
+      );
+    });
     return;
   }
   if (action === "save-inbox-flow") {
