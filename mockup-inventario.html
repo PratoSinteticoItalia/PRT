@@ -69,6 +69,23 @@
   .piece-state.disp{color:var(--green);}
   .piece-state.imp{color:var(--amber);}
 
+  /* GRUPPI pezzi identici (grandi giacenze) */
+  .groups-label{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);margin:8px 0 2px;}
+  .pgroup{display:flex;align-items:center;gap:12px;padding:10px 13px;background:#fdfcfa;border:1px solid #ece8de;border-radius:9px;}
+  .pgroup-type{font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:4px;letter-spacing:.03em;text-transform:uppercase;flex-shrink:0;}
+  .pgroup-type.roll{background:var(--blue-soft);color:#1e40af;}
+  .pgroup-type.res{background:var(--purple-soft);color:#5b21b6;}
+  .pgroup-dim{flex:1;font-weight:600;font-size:13px;}
+  .pgroup-dim small{display:block;font-weight:400;color:var(--ink-faint);font-size:11px;margin-top:1px;}
+  .pgroup-counts{display:flex;gap:6px;}
+  .cbadge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;font-variant-numeric:tabular-nums;}
+  .cbadge.disp{background:var(--green-soft);color:#065f46;}
+  .cbadge.imp{background:var(--amber-soft);color:#92400e;}
+  .res-row{display:flex;justify-content:space-between;padding:7px 13px;background:#faf9ff;border:1px solid #ece9fb;border-radius:8px;margin-bottom:4px;font-size:12.5px;}
+  .res-row .dim{color:#5b21b6;font-weight:600;}
+  .res-row .cnt{font-weight:700;font-variant-numeric:tabular-nums;color:#5b21b6;}
+  .show-singles{margin-top:8px;font-size:12px;color:var(--primary);font-weight:600;cursor:pointer;}
+
   /* Right: guided allocation panel */
   .panel{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:18px;position:sticky;top:16px;}
   .panel-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:4px;}
@@ -138,22 +155,29 @@
           <div class="pcard-head">
             <span class="pcard-name">Ginepro 45 mm</span>
             <span class="pcard-state ok">Disponibile</span>
-            <span class="pcard-num">186 <small>mq</small></span>
+            <span class="pcard-num">2.090 <small>mq</small></span>
           </div>
           <div class="bar">
-            <div class="bar-avail" style="width:78%"></div>
-            <div class="bar-commit" style="width:22%"></div>
+            <div class="bar-avail" style="width:90%"></div>
+            <div class="bar-commit" style="width:10%"></div>
           </div>
           <div class="bar-legend">
-            <span><span class="dot" style="background:var(--green)"></span>Disponibile 186 mq</span>
-            <span><span class="dot" style="background:var(--amber)"></span>Impegnato 54 mq</span>
-            <span style="margin-left:auto;color:var(--ink-faint)">7 pezzi</span>
+            <span><span class="dot" style="background:var(--green)"></span>Disponibile 2.090 mq</span>
+            <span><span class="dot" style="background:var(--amber)"></span>Impegnato 200 mq</span>
+            <span style="margin-left:auto;color:var(--ink-faint)">44 pezzi · 4 ordini in attesa</span>
           </div>
           <div class="pieces">
-            <div class="piece"><span class="piece-type roll">Rotolo</span><span class="piece-dim">2 × 25 m · 50 mq</span><span class="piece-state disp">Disponibile</span></div>
-            <div class="piece"><span class="piece-type roll">Rotolo</span><span class="piece-dim">2 × 25 m · 50 mq</span><span class="piece-state disp">Disponibile</span></div>
-            <div class="piece"><span class="piece-type roll">Rotolo</span><span class="piece-dim">2 × 25 m · 50 mq</span><span class="piece-state imp">Impegnato · #2768</span></div>
-            <div class="piece"><span class="piece-type res">Residuo</span><span class="piece-dim">2 × 11,5 m · 23 mq</span><span class="piece-state disp">Disponibile</span></div>
+            <div class="groups-label">Rotoli interi</div>
+            <div class="pgroup">
+              <span class="pgroup-type roll">Rotolo</span>
+              <span class="pgroup-dim">2 × 25 m <small>50 mq cad.</small></span>
+              <div class="pgroup-counts"><span class="cbadge disp">38 disp.</span><span class="cbadge imp">4 imp.</span></div>
+            </div>
+            <div class="groups-label">Residui</div>
+            <div class="res-row"><span class="dim">2 × 11,5 m · 23 mq</span><span class="cnt">×3 disp.</span></div>
+            <div class="res-row"><span class="dim">2 × 8 m · 16 mq</span><span class="cnt">×2 disp.</span></div>
+            <div class="res-row"><span class="dim">2 × 4,5 m · 9 mq</span><span class="cnt">×1 disp.</span></div>
+            <span class="show-singles">⌄ Mostra i 44 pezzi singoli (per impegnarne uno specifico)</span>
           </div>
         </div>
 
