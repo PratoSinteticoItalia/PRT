@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260609-fix-routing-logistica-pose";
+const APP_SHELL_VERSION = "20260609-fix-routing-explicit";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9301,9 +9301,12 @@ function orderNeedsInboxAttention(order) {
 }
 
 function orderNeedsInstallationAction(order) {
-  // La posa è indipendente da Shopify: un ordine "fulfilled" su Shopify può avere
-  // ancora la posa da fare. Esclude solo se posa già completata.
-  if (!order || !isRoutedToInstallation(order) || isInstallationOrderCompleted(order)) return false;
+  if (!order || isInstallationOrderCompleted(order)) return false;
+  // Esplicito (checkbox posa) → conta sempre fino a completamento; auto → rispetta Shopify.
+  const explicit = order.operations?.installation?.selected === true;
+  if (!explicit) {
+    if (!isRoutedToInstallation(order) || isOrderFulfilledOrClosed(order)) return false;
+  }
   const install = order.operations?.installation || {};
   const status = String(install.status || "").trim();
   if (!install.installDate || !install.crew || !install.clientConfirmed) return true;
@@ -9923,17 +9926,20 @@ function filterOrdersForView(kind) {
     }
     if (kind === "shipping") {
       const sample = isSampleOrder(order);
-      // "Gestito operativamente" = spedito / ritirato / passato al corriere, OPPURE
-      // ordine chiuso. NON nascondiamo per il solo "fulfilled" di Shopify: un ordine
-      // instradato in logistica resta visibile finché non è fisicamente evaso qui.
+      const fulfilledOrClosed = isOrderFulfilledOrClosed(order);
+      // Instradamento ESPLICITO in logistica (checkbox "Visibile in logistica" = selected):
+      // resta visibile finché non è gestito OPERATIVAMENTE (spedito/ritirato/corriere
+      // passato) o l'ordine è chiuso — anche se Shopify lo dà "fulfilled".
       const wh = order.operations?.warehouse || {};
+      const explicit = wh.selected === true;
       const logisticsHandled = Boolean(
         wh.shipped
         || String(wh.status || "").trim() === "ritirato"
         || (String(wh.fulfillmentMode || "").trim() === "corriere" && wh.carrierPassed)
       ) || isOrderClosed(order);
-      if (filter === "completed") return logisticsHandled || isOrderFulfilledOrClosed(order);
-      if (logisticsHandled) return false;
+      if (filter === "completed") return fulfilledOrClosed || logisticsHandled;
+      // Nascondi: gli esplici solo se gestiti operativamente; gli auto se conclusi su Shopify.
+      if (explicit ? logisticsHandled : fulfilledOrClosed) return false;
       if (filter === "sample") return sample;
       if (filter === "all") return true;
       if (sample) return false;
@@ -10056,11 +10062,15 @@ function getActiveInstallationCrewFilter() {
 function filterInstallations() {
   const activeCrewFilter = getActiveInstallationCrewFilter();
   return state.orders
-    // Visibile in Pose = instradato alla posa E posa non ancora completata.
-    // NON usiamo isOrderFulfilledOrClosed: la posa è un servizio indipendente
-    // dallo stato Shopify (un ordine "fulfilled+paid" su Shopify può avere ancora
-    // la posa da pianificare/eseguire). Il completamento posa = status "completata".
-    .filter((order) => isRoutedToInstallation(order) && !isInstallationOrderCompleted(order))
+    .filter((order) => {
+      if (isInstallationOrderCompleted(order)) return false; // posa già eseguita
+      // Instradamento ESPLICITO dall'ufficio (checkbox "Visibile in posa" = selected):
+      // resta visibile finché la posa non è completata, indipendentemente da Shopify.
+      if (order.operations?.installation?.selected === true) return true;
+      // Auto (servizio fornitura+posa, niente checkbox): rispetta lo stato Shopify
+      // così gli ordini storici già conclusi non intasano il backlog.
+      return isRoutedToInstallation(order) && !isOrderFulfilledOrClosed(order);
+    })
     .filter((order) => {
       if (!activeCrewFilter) return true;
       return orderBelongsToCrew(order, activeCrewFilter);
