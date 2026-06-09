@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Inventario: grandi giacenze</title>
+<style>
+  :root{
+    --bg:#f5f3ee;--paper:#fff;--ink:#1a2e26;--ink-soft:#5a6e63;--ink-faint:#8a9690;
+    --line:#e5e1d6;--line-strong:#d4cebd;--primary:#1f4d3d;--primary-soft:#e8f0ec;
+    --blue:#3b82f6;--blue-soft:#e0edff;--amber:#f59e0b;--amber-soft:#fef3c7;
+    --purple:#8b5cf6;--purple-soft:#ede9fe;--green:#10b981;--green-soft:#d1fae5;
+    --red:#ef4444;--red-soft:#fee2e2;--radius:12px;
+    font-family:-apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:radial-gradient(circle at 1px 1px,rgba(31,77,61,.05) 1px,transparent 0) 0 0/24px 24px,var(--bg);color:var(--ink);font-size:14px;line-height:1.45;}
+  .page{max-width:760px;margin:0 auto;padding:30px 24px 80px;}
+  h1{font-size:24px;margin:0 0 4px;}
+  .sub{color:var(--ink-soft);margin:0 0 24px;font-size:14px;}
+
+  .pcard{background:var(--paper);border:1px solid var(--primary);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px;}
+  .pcard-head{display:flex;align-items:center;gap:14px;}
+  .pcard-name{font-weight:700;font-size:16px;flex:1;}
+  .pcard-state{font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;letter-spacing:.03em;}
+  .pcard-state.ok{background:var(--green-soft);color:#065f46;}
+  .pcard-num{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;min-width:100px;text-align:right;}
+  .pcard-num small{font-size:11px;color:var(--ink-faint);font-weight:600;}
+  .bar{height:8px;border-radius:4px;background:#eee9dd;overflow:hidden;margin-top:12px;display:flex;}
+  .bar-avail{background:var(--green);}
+  .bar-commit{background:var(--amber);}
+  .bar-legend{display:flex;gap:14px;margin-top:7px;font-size:11.5px;color:var(--ink-soft);}
+  .bar-legend .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle;}
+
+  /* GRUPPI di pezzi identici (la chiave per le grandi giacenze) */
+  .groups{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line);display:grid;gap:8px;}
+  .groups-label{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:2px;}
+  .pgroup{display:flex;align-items:center;gap:12px;padding:11px 14px;background:#fdfcfa;border:1px solid #ece8de;border-radius:10px;}
+  .pgroup-type{font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:4px;letter-spacing:.03em;text-transform:uppercase;flex-shrink:0;}
+  .pgroup-type.roll{background:var(--blue-soft);color:#1e40af;}
+  .pgroup-type.res{background:var(--purple-soft);color:#5b21b6;}
+  .pgroup-dim{flex:1;font-weight:600;}
+  .pgroup-dim small{display:block;font-weight:400;color:var(--ink-faint);font-size:11.5px;margin-top:1px;}
+  /* contatori per stato dentro al gruppo */
+  .pgroup-counts{display:flex;gap:8px;align-items:center;}
+  .cbadge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;font-variant-numeric:tabular-nums;}
+  .cbadge.disp{background:var(--green-soft);color:#065f46;}
+  .cbadge.imp{background:var(--amber-soft);color:#92400e;}
+  .cbadge.evaso{background:#f0f0ef;color:#6b7280;}
+
+  .residue-summary{margin-top:8px;}
+  .res-row{display:flex;justify-content:space-between;padding:8px 14px;background:#faf9ff;border:1px solid #ece9fb;border-radius:8px;margin-bottom:5px;font-size:13px;}
+  .res-row .dim{color:#5b21b6;font-weight:600;}
+  .res-row .cnt{font-weight:700;font-variant-numeric:tabular-nums;color:#5b21b6;}
+
+  .show-singles{margin-top:6px;font-size:12.5px;color:var(--primary);font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;}
+
+  .note{margin-top:26px;padding:18px 22px;background:#fff8e1;border:1px dashed var(--line-strong);border-radius:var(--radius);color:#6e5c1a;font-size:13px;line-height:1.6;}
+  .note h3{margin:0 0 8px;font-size:14px;color:#5a4a14;}
+  .note ul{margin:0;padding-left:20px;}
+  .note li{margin-bottom:5px;}
+  .bad-eg{margin-top:22px;padding:14px 18px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);}
+  .bad-eg .tag{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--red);}
+  .bad-row{font-size:12.5px;color:var(--ink-faint);padding:3px 0;border-bottom:1px dotted var(--line);}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Grandi giacenze — esempio</h1>
+  <p class="sub">Tasso 30 mm: 40 rotoli da 2 × 25 m disponibili + residui di varie misure. Come si gestisce graficamente senza 40 righe.</p>
+
+  <!-- LA SOLUZIONE: gruppi -->
+  <div class="pcard">
+    <div class="pcard-head">
+      <span class="pcard-name">Tasso 30 mm</span>
+      <span class="pcard-state ok">Disponibile</span>
+      <span class="pcard-num">2.090 <small>mq</small></span>
+    </div>
+    <div class="bar">
+      <div class="bar-avail" style="width:90%"></div>
+      <div class="bar-commit" style="width:10%"></div>
+    </div>
+    <div class="bar-legend">
+      <span><span class="dot" style="background:var(--green)"></span>Disponibile 2.090 mq</span>
+      <span><span class="dot" style="background:var(--amber)"></span>Impegnato 200 mq</span>
+      <span style="margin-left:auto;color:var(--ink-faint)">44 pezzi · 4 ordini in attesa</span>
+    </div>
+
+    <div class="groups">
+      <div class="groups-label">Rotoli interi</div>
+      <div class="pgroup">
+        <span class="pgroup-type roll">Rotolo</span>
+        <span class="pgroup-dim">2 × 25 m <small>50 mq cad.</small></span>
+        <div class="pgroup-counts">
+          <span class="cbadge disp">38 disp.</span>
+          <span class="cbadge imp">4 imp.</span>
+        </div>
+      </div>
+
+      <div class="groups-label" style="margin-top:6px">Residui</div>
+      <div class="residue-summary">
+        <div class="res-row"><span class="dim">2 × 11,5 m · 23 mq</span><span class="cnt">×3 disp.</span></div>
+        <div class="res-row"><span class="dim">2 × 8 m · 16 mq</span><span class="cnt">×2 disp.</span></div>
+        <div class="res-row"><span class="dim">2 × 4,5 m · 9 mq</span><span class="cnt">×1 disp.</span></div>
+      </div>
+      <span class="show-singles">⌄ Mostra i 44 pezzi singoli (per impegnare un pezzo specifico)</span>
+    </div>
+  </div>
+
+  <!-- Confronto: come SAREBBE male -->
+  <div class="bad-eg">
+    <div class="tag">✗ Come NON va fatto (la lista attuale)</div>
+    <div class="bad-row">Rotolo · 2 × 25 m · 50 mq · Disponibile</div>
+    <div class="bad-row">Rotolo · 2 × 25 m · 50 mq · Disponibile</div>
+    <div class="bad-row">Rotolo · 2 × 25 m · 50 mq · Disponibile</div>
+    <div class="bad-row">Rotolo · 2 × 25 m · 50 mq · Disponibile</div>
+    <div class="bad-row" style="color:var(--ink-faint)">…altre 36 righe identiche…</div>
+    <div class="bad-row">Residuo · 2 × 11,5 m · Disponibile</div>
+    <div class="bad-row" style="color:var(--ink-faint)">…ecc — illeggibile, devi scrollare all'infinito</div>
+  </div>
+
+  <div class="note">
+    <h3>Come gestisco le grandi giacenze</h3>
+    <ul>
+      <li><b>Raggruppo i pezzi identici</b> (stessa misura + tipo) in UNA riga con i contatori per stato: <b>38 disp. · 4 imp.</b> invece di 42 righe separate.</li>
+      <li><b>I residui</b> (che hanno misure diverse) sono riassunti per misura: "2×11,5m ×3", "2×8m ×2"… — compatto ma completo.</li>
+      <li><b>Numero grande in alto</b> = mq totali disponibili (2.090), così sai subito la capienza senza contare i rotoli.</li>
+      <li><b>La barra</b> mostra a colpo d'occhio quanto è impegnato vs disponibile, anche con 44 pezzi.</li>
+      <li><b>"Mostra i pezzi singoli"</b> = espandi solo quando devi impegnare/eliminare UN pezzo specifico (raro). Nel 99% dei casi il sistema sceglie da solo quale rotolo tagliare.</li>
+      <li><b>In allocazione</b>: non scegli "quale dei 40 rotoli" — il sistema ne impegna uno automaticamente. Tu vedi solo "Rotolo 2×25m → taglio 13,5m → residuo 11,5m".</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
