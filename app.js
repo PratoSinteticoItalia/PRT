@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260609-marketing-multifoto-nav";
+const APP_SHELL_VERSION = "20260609-marketing-schedule-server";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -22262,7 +22262,12 @@ async function publishMarketingItemViaApi(item, button = null, mode = "publish")
       : entry);
     state.marketingItems = nextItems;
     saveMarketingItems();
-    showToast(mode === "schedule" ? "Contenuto programmato via API" : `Pubblicazione confermata da ${result.provider || "provider API"}`, "success");
+    if (mode === "schedule") {
+      const when = result.scheduledAt ? new Date(result.scheduledAt).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "";
+      showToast(`✓ Programmato${when ? ` per il ${when}` : ""} — il portale lo pubblicherà automaticamente.`, "success", 5000);
+    } else {
+      showToast(`Pubblicazione confermata da ${result.provider || "provider API"}`, "success");
+    }
     renderMarketing();
   } catch (error) {
     const reason = error?.payload?.reason || error?.payload?.error || error?.message || "";

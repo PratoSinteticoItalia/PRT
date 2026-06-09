@@ -3662,6 +3662,72 @@ function startOutboxProcessor(intervalMs = 30_000) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Cron programmazione marketing: pubblica i post programmati all'ora scelta.
+// Instagram non supporta la schedule nativa di Meta → la gestiamo qui, usando il
+// flusso immediato di pubblicazione (che funziona per IG e FB).
+let _marketingScheduleTimer = null;
+async function processMarketingScheduledOnce() {
+  let store;
+  try {
+    store = await readJson(STORE_PATH, {});
+  } catch { return; }
+  const list = Array.isArray(store.marketingScheduled) ? store.marketingScheduled : [];
+  if (!list.length) return;
+  const now = Date.now();
+  const due = list.filter((r) => r && r.status === "pending"
+    && r.scheduledAt && new Date(r.scheduledAt).getTime() <= now);
+  if (!due.length) return;
+  let changed = false;
+  for (const rec of due) {
+    rec.attempts = (rec.attempts || 0) + 1;
+    try {
+      // Ricostruisci un req sintetico dal baseUrl salvato (per gli URL pubblici).
+      const bu = String(rec.baseUrl || process.env.PUBLIC_BASE_URL || "https://portale.pratosinteticoitalia.it");
+      const parsed = new URL(bu);
+      const fakeReq = { headers: { host: parsed.host, "x-forwarded-proto": parsed.protocol.replace(":", "") } };
+      const prepared = await prepareMarketingItemForPublish(store, rec.item || {}, fakeReq);
+      if (prepared.error) {
+        rec.status = "failed";
+        rec.lastError = String(prepared.error);
+        changed = true;
+        continue;
+      }
+      const result = await publishMarketingItem(prepared.item, "publish");
+      if (result.ok) {
+        rec.status = "published";
+        rec.publishedAt = new Date().toISOString();
+        rec.providerUrl = String(result.providerUrl || result.messageId || "");
+        rec.lastError = "";
+      } else {
+        rec.lastError = `${result.reason || ""} ${result.details || ""}`.trim();
+        // riprova fino a 3 tentativi, poi segna fallito
+        rec.status = rec.attempts >= 3 ? "failed" : "pending";
+      }
+      changed = true;
+    } catch (err) {
+      rec.lastError = String(err?.message || err);
+      rec.status = rec.attempts >= 3 ? "failed" : "pending";
+      changed = true;
+    }
+  }
+  if (changed) {
+    try { await writeJson(STORE_PATH, store); } catch (e) { console.error("[marketing-schedule] persist failed:", e?.message || e); }
+  }
+}
+
+function startMarketingScheduleProcessor(intervalMs = 60_000) {
+  if (_marketingScheduleTimer) return;
+  // Primo tick dopo 15s (lascia respirare lo startup).
+  setTimeout(() => {
+    processMarketingScheduledOnce().catch((err) => console.error("[marketing-schedule] tick failed:", err?.message || err));
+  }, 15_000);
+  _marketingScheduleTimer = setInterval(() => {
+    processMarketingScheduledOnce().catch((err) => console.error("[marketing-schedule] tick failed:", err?.message || err));
+  }, intervalMs);
+  console.log(`[marketing-schedule] processor avviato (tick=${intervalMs}ms)`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Registrazione handler outbox per sales_request (Step 2).
 // Posizionati DOPO il blocco outbox per non incappare in TDZ su OUTBOX_HANDLERS.
 // Payload: { request, userId } per upsert, { id } per delete.
@@ -4024,6 +4090,7 @@ function buildDefaultStore() {
     salesRequests: [],
     salesContents: [],
     marketingPublicAssets: [],
+    marketingScheduled: [],
     usageEvents: [],
     salesRequestSource: {
       spreadsheetInput: DEFAULT_SALES_REQUEST_SPREADSHEET,
@@ -10719,14 +10786,57 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const item = body?.item || body || {};
     const mode = body?.mode === "schedule" ? "schedule" : "publish";
+    const channel = String(item.channel || "").trim();
+
+    // ── MODALITÀ SCHEDULE → programmazione LATO SERVER ──────────────────────
+    // Instagram NON supporta scheduled_publish_time (è solo per Facebook), quindi
+    // la "schedule" via Meta non funziona per IG. Soluzione uniforme: salviamo il
+    // post programmato nello store e un cron lo pubblica all'ora scelta con il
+    // flusso immediato (che funziona per IG e FB).
+    if (mode === "schedule") {
+      const scheduledAt = getMarketingScheduleIso(item);
+      if (!scheduledAt) {
+        return sendJson(res, 400, { ok: false, reason: "missing_schedule_datetime", mode, channel });
+      }
+      if (!["Instagram", "Facebook", "WhatsApp"].includes(channel)) {
+        return sendJson(res, 400, { ok: false, reason: "unsupported_channel", mode, channel });
+      }
+      // Conserviamo l'item COMPLETO (incl. assetDataUrls): il public-asset prep
+      // e la pubblicazione avverranno al momento dovuto, nel cron.
+      const scheduledRecord = {
+        id: String(item.id || randomUUID()),
+        scheduledAt,
+        channel,
+        status: "pending",
+        item: { ...item },
+        baseUrl: (process.env.PUBLIC_BASE_URL || getRequestBaseUrl(req)).replace(/\/+$/, ""),
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser?.email || "",
+        publishedAt: "",
+        providerUrl: "",
+        lastError: "",
+        attempts: 0,
+      };
+      store.marketingScheduled = [
+        scheduledRecord,
+        ...(Array.isArray(store.marketingScheduled) ? store.marketingScheduled : [])
+          .filter((r) => r.id !== scheduledRecord.id), // sostituisci se ri-programmi lo stesso post
+      ].slice(0, 500);
+      await writeJson(STORE_PATH, store);
+      return sendJson(res, 200, {
+        ok: true,
+        provider: "server-schedule",
+        mode,
+        channel,
+        scheduledAt,
+        scheduleId: scheduledRecord.id,
+      });
+    }
+
+    // ── MODALITÀ PUBLISH immediata ──────────────────────────────────────────
     const prepared = await prepareMarketingItemForPublish(store, item, req);
     if (prepared.error) {
-      return sendJson(res, 400, {
-        ok: false,
-        reason: prepared.error,
-        mode,
-        channel: String(item.channel || "").trim(),
-      });
+      return sendJson(res, 400, { ok: false, reason: prepared.error, mode, channel });
     }
     if (prepared.changed) {
       await writeJson(STORE_PATH, store);
@@ -10736,11 +10846,36 @@ async function handleApi(req, res, url) {
     return sendJson(res, status, {
       ...result,
       mode,
-      channel: String(item.channel || "").trim(),
+      channel,
       publicAssetUrl: prepared.publicAssetUrl || prepared.item.publicAssetUrl || "",
       publishedAt: result.ok ? new Date().toISOString() : "",
       scheduledAt: result.scheduledAt || "",
     });
+  }
+
+  // GET /api/marketing/scheduled — elenco post programmati (per il client)
+  if (url.pathname === "/api/marketing/scheduled" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const list = (Array.isArray(store.marketingScheduled) ? store.marketingScheduled : [])
+      .map((r) => ({
+        id: r.id, scheduledAt: r.scheduledAt, channel: r.channel, status: r.status,
+        title: r.item?.title || "", publishedAt: r.publishedAt || "", providerUrl: r.providerUrl || "",
+        lastError: r.lastError || "", attempts: r.attempts || 0,
+      }))
+      .sort((a, b) => String(a.scheduledAt).localeCompare(String(b.scheduledAt)));
+    return sendJson(res, 200, { scheduled: list });
+  }
+
+  // DELETE /api/marketing/scheduled/:id — annulla una programmazione
+  if (url.pathname.match(/^\/api\/marketing\/scheduled\/[^/]+$/) && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const schedId = decodeURIComponent(url.pathname.split("/")[4]);
+    const before = (store.marketingScheduled || []).length;
+    store.marketingScheduled = (store.marketingScheduled || []).filter((r) => r.id !== schedId);
+    if (store.marketingScheduled.length !== before) await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true, removed: before - store.marketingScheduled.length });
   }
 
   if (url.pathname === "/api/communications/threads" && req.method === "GET") {
@@ -14927,4 +15062,8 @@ server.listen(PORT, HOST, () => {
       .catch((err) => console.error("[db] relational schema init failed", err));
     readJson(STORE_PATH, {}).catch((err) => console.error("[store-cache] warm-up failed", err));
   }
+  // Cron programmazione marketing (IG/FB): pubblica i post all'ora scelta.
+  // Indipendente da Postgres — funziona anche in modalità blob.
+  try { startMarketingScheduleProcessor(60_000); }
+  catch (err) { console.warn("[marketing-schedule] start failed:", err?.message || err); }
 });
