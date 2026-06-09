@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260609-inventario-v2-alloc-panel";
+const APP_SHELL_VERSION = "20260609-marketing-multifoto-nav";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2755,6 +2755,17 @@ function handleResponsiveResize() {
 
 function syncSidebarLayout(role = state.currentUser?.role || "office") {
   if (!ui.sidebar) return;
+  // Preserva lo scroll del menu laterale: il riordino dei nodi con appendChild
+  // (sotto) resetterebbe scrollTop a 0 ad ogni updateShell (= ogni click nav),
+  // riportando l'utente in cima al menu. Ripristina dopo il reflow.
+  const _savedSidebarScroll = ui.sidebar.scrollTop;
+  if (_savedSidebarScroll > 0) {
+    requestAnimationFrame(() => {
+      if (ui.sidebar && ui.sidebar.scrollTop !== _savedSidebarScroll) {
+        ui.sidebar.scrollTop = _savedSidebarScroll;
+      }
+    });
+  }
   const normalizedRole = normalizeUserRole(role);
   const mobileSafe = window.innerWidth <= 980;
   const defaultSequence = [
@@ -21486,6 +21497,30 @@ function renderMarketingPlatformPreview(item = {}) {
   `;
 }
 
+// Asset foto del form marketing attualmente aperto (supporto multi-foto).
+// Array di { dataUrl, name }. Popolato in openMarketingForm e dal file input.
+let _marketingFormAssets = [];
+const MARKETING_ASSETS_MAX = 8;
+
+// Rende le anteprime delle foto caricate, con bottone × per rimuovere.
+function renderMarketingFormAssets() {
+  const preview = document.getElementById("marketing-asset-preview");
+  if (!preview) return;
+  if (!_marketingFormAssets.length) { preview.innerHTML = ""; return; }
+  preview.innerHTML = `
+    <div class="marketing-assets-grid">
+      ${_marketingFormAssets.map((a, i) => `
+        <div class="marketing-asset-thumb">
+          <img src="${escapeHtml(a.dataUrl)}" alt="">
+          <button type="button" class="marketing-asset-remove" data-marketing-asset-remove="${i}" title="Rimuovi foto" aria-label="Rimuovi foto">×</button>
+          ${i === 0 ? `<span class="marketing-asset-cover">Copertina</span>` : ""}
+        </div>
+      `).join("")}
+    </div>
+    <small class="marketing-field-hint">${_marketingFormAssets.length} foto · la prima è la copertina. Trascina non disponibile: rimuovi e ricarica per riordinare.</small>
+  `;
+}
+
 function readMarketingAssetFile(file) {
   return new Promise((resolve, reject) => {
     if (!file) {
@@ -21617,6 +21652,7 @@ function renderMarketing() {
               <div class="marketing-list-card-inner">
                 <div class="marketing-list-asset">
                   ${item.assetDataUrl || item.assetUrl ? `<img src="${escapeHtml(item.assetDataUrl || item.assetUrl)}" alt="">` : `<span>${channelIcon(item.channel)}</span>`}
+                  ${Array.isArray(item.assetDataUrls) && item.assetDataUrls.length > 1 ? `<span class="marketing-asset-count">+${item.assetDataUrls.length - 1}</span>` : ""}
                 </div>
                 <div class="marketing-list-main">
                   <div class="marketing-list-head">
@@ -21840,10 +21876,10 @@ function renderMarketing() {
             <input class="text-input" name="assetName" placeholder="Es. prato-sintetico-promo.jpg" />
           </label>
           <label class="field field-full">
-            <span>Carica file dal PC</span>
-            <input class="text-input" name="assetFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+            <span>Carica foto dal PC (puoi sceglierne più di una)</span>
+            <input class="text-input" name="assetFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple />
             <input type="hidden" name="assetDataUrl" />
-            <small class="marketing-field-hint">Consigliato: usa un link Drive/Canva per file definitivi. Il caricamento locale salva una copia nel browser, max 1,5 MB.</small>
+            <small class="marketing-field-hint">Puoi aggiungere più foto (max 1,5 MB ciascuna). Clicca di nuovo per aggiungerne altre. Per file definitivi usa un link Drive/Canva.</small>
           </label>
           <div class="marketing-asset-preview field-full" id="marketing-asset-preview"></div>
           <label class="field field-full">
@@ -21992,34 +22028,55 @@ function renderMarketing() {
     const fileInput = form.elements.assetFile;
     if (fileInput) {
       fileInput.addEventListener("change", async () => {
-        try {
-          const file = fileInput.files?.[0];
-          const dataUrl = await readMarketingAssetFile(file);
-          form.elements.assetDataUrl.value = dataUrl;
-          if (file && form.elements.assetName && !form.elements.assetName.value) form.elements.assetName.value = file.name;
-          updateMarketingAssetPreview(dataUrl, file?.name || form.elements.assetName?.value || "");
+        const files = Array.from(fileInput.files || []);
+        if (!files.length) return;
+        let added = 0;
+        for (const file of files) {
+          if (_marketingFormAssets.length >= MARKETING_ASSETS_MAX) {
+            showToast(`Massimo ${MARKETING_ASSETS_MAX} foto per post.`, "warning");
+            break;
+          }
+          try {
+            const dataUrl = await readMarketingAssetFile(file);
+            if (dataUrl) {
+              _marketingFormAssets.push({ dataUrl, name: file.name || "" });
+              added++;
+            }
+          } catch (error) {
+            showToast(`${file.name}: ${error?.message || "file non valido"}`, "warning");
+          }
+        }
+        fileInput.value = ""; // reset così puoi riselezionare/aggiungere altre foto
+        // Sincronizza i campi legacy (prima foto = copertina)
+        if (form.elements.assetDataUrl) form.elements.assetDataUrl.value = _marketingFormAssets[0]?.dataUrl || "";
+        if (added && form.elements.assetName && !form.elements.assetName.value) {
+          form.elements.assetName.value = _marketingFormAssets[0]?.name || "";
+        }
+        renderMarketingFormAssets();
+        updateMarketingLivePreview(form);
+      });
+    }
+    // Rimozione foto dalla griglia anteprime (delegazione)
+    const assetPreview = document.getElementById("marketing-asset-preview");
+    if (assetPreview) {
+      assetPreview.addEventListener("click", (ev) => {
+        const btn = ev.target.closest("[data-marketing-asset-remove]");
+        if (!btn) return;
+        const idx = Number(btn.dataset.marketingAssetRemove);
+        if (Number.isInteger(idx)) {
+          _marketingFormAssets.splice(idx, 1);
+          if (form.elements.assetDataUrl) form.elements.assetDataUrl.value = _marketingFormAssets[0]?.dataUrl || "";
+          renderMarketingFormAssets();
           updateMarketingLivePreview(form);
-        } catch (error) {
-          fileInput.value = "";
-          form.elements.assetDataUrl.value = "";
-          updateMarketingAssetPreview("", "");
-          showToast(error?.message || "File immagine non valido", "warning");
         }
       });
     }
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(form);
-      let assetDataUrl = fd.get("assetDataUrl") || "";
-      const file = form.elements.assetFile?.files?.[0];
-      if (file) {
-        try {
-          assetDataUrl = await readMarketingAssetFile(file);
-        } catch (error) {
-          showToast(error?.message || "File immagine non valido", "warning");
-          return;
-        }
-      }
+      // Multi-foto: l'array vive in _marketingFormAssets (caricato dal file input).
+      const assetDataUrls = _marketingFormAssets.map((a) => a.dataUrl).filter(Boolean);
+      const assetDataUrl = assetDataUrls[0] || fd.get("assetDataUrl") || ""; // copertina / retrocompat
       const id = fd.get("id") || crypto.randomUUID();
       const item = {
         id,
@@ -22034,6 +22091,7 @@ function renderMarketing() {
         assetUrl: fd.get("assetUrl") || "",
         assetName: fd.get("assetName") || "",
         assetDataUrl,
+        assetDataUrls,
         caption: fd.get("caption") || "",
         cta: fd.get("cta") || "",
         hashtags: fd.get("hashtags") || "",
@@ -22081,7 +22139,11 @@ function openMarketingForm(item, options = {}) {
     if (form.elements.hashtags) form.elements.hashtags.value = item.hashtags || "";
     if (form.elements.target) form.elements.target.value = item.target || "";
     form.elements.notes.value = item.notes || "";
-    updateMarketingAssetPreview(item.assetDataUrl || item.assetUrl || "", item.assetName || "");
+    // Inizializza l'array foto: da assetDataUrls (nuovo) o assetDataUrl singolo (legacy)
+    _marketingFormAssets = Array.isArray(item.assetDataUrls) && item.assetDataUrls.length
+      ? item.assetDataUrls.map((u, i) => ({ dataUrl: u, name: i === 0 ? (item.assetName || "") : "" }))
+      : (item.assetDataUrl ? [{ dataUrl: item.assetDataUrl, name: item.assetName || "" }] : []);
+    renderMarketingFormAssets();
     updateMarketingLivePreview(form);
   } else {
     form.elements.id.value = "";
@@ -22089,7 +22151,8 @@ function openMarketingForm(item, options = {}) {
     if (def && form.elements.date) form.elements.date.value = def;
     if (form.elements.objective) form.elements.objective.value = "";
     if (form.elements.assetDataUrl) form.elements.assetDataUrl.value = "";
-    updateMarketingAssetPreview("", "");
+    _marketingFormAssets = [];
+    renderMarketingFormAssets();
     updateMarketingLivePreview(form);
   }
 }
