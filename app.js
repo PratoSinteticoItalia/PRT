@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260609-marketing-schedule-tz";
+const APP_SHELL_VERSION = "20260609-fix-routing-logistica-pose";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9301,7 +9301,9 @@ function orderNeedsInboxAttention(order) {
 }
 
 function orderNeedsInstallationAction(order) {
-  if (!order || !isRoutedToInstallation(order) || isShopifyFullyDone(order) || isOrderClosed(order) || isInstallationOrderCompleted(order)) return false;
+  // La posa è indipendente da Shopify: un ordine "fulfilled" su Shopify può avere
+  // ancora la posa da fare. Esclude solo se posa già completata.
+  if (!order || !isRoutedToInstallation(order) || isInstallationOrderCompleted(order)) return false;
   const install = order.operations?.installation || {};
   const status = String(install.status || "").trim();
   if (!install.installDate || !install.crew || !install.clientConfirmed) return true;
@@ -9921,9 +9923,17 @@ function filterOrdersForView(kind) {
     }
     if (kind === "shipping") {
       const sample = isSampleOrder(order);
-      const fulfilledOrClosed = isOrderFulfilledOrClosed(order);
-      if (filter === "completed") return fulfilledOrClosed;
-      if (fulfilledOrClosed) return false;
+      // "Gestito operativamente" = spedito / ritirato / passato al corriere, OPPURE
+      // ordine chiuso. NON nascondiamo per il solo "fulfilled" di Shopify: un ordine
+      // instradato in logistica resta visibile finché non è fisicamente evaso qui.
+      const wh = order.operations?.warehouse || {};
+      const logisticsHandled = Boolean(
+        wh.shipped
+        || String(wh.status || "").trim() === "ritirato"
+        || (String(wh.fulfillmentMode || "").trim() === "corriere" && wh.carrierPassed)
+      ) || isOrderClosed(order);
+      if (filter === "completed") return logisticsHandled || isOrderFulfilledOrClosed(order);
+      if (logisticsHandled) return false;
       if (filter === "sample") return sample;
       if (filter === "all") return true;
       if (sample) return false;
@@ -10046,7 +10056,11 @@ function getActiveInstallationCrewFilter() {
 function filterInstallations() {
   const activeCrewFilter = getActiveInstallationCrewFilter();
   return state.orders
-    .filter((order) => isRoutedToInstallation(order) && !isOrderFulfilledOrClosed(order))
+    // Visibile in Pose = instradato alla posa E posa non ancora completata.
+    // NON usiamo isOrderFulfilledOrClosed: la posa è un servizio indipendente
+    // dallo stato Shopify (un ordine "fulfilled+paid" su Shopify può avere ancora
+    // la posa da pianificare/eseguire). Il completamento posa = status "completata".
+    .filter((order) => isRoutedToInstallation(order) && !isInstallationOrderCompleted(order))
     .filter((order) => {
       if (!activeCrewFilter) return true;
       return orderBelongsToCrew(order, activeCrewFilter);
