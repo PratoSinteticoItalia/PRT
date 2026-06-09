@@ -6695,38 +6695,20 @@ function buildMarketingPublicAssetUrl(req, assetId = "") {
   return new URL(`/api/public/marketing-assets/${encodeURIComponent(normalizedAssetId)}`, baseUrl).toString();
 }
 
-async function prepareMarketingItemForPublish(store, item = {}, req) {
-  const channel = String(item.channel || "").trim();
-  if (!["Facebook", "Instagram"].includes(channel)) {
-    return { item, changed: false, publicAssetUrl: getMarketingPublishAssetUrl(item) };
-  }
-
-  const existingPublicUrl = normalizePublicMarketingAssetUrl(item.publicAssetUrl || "")
-    || (String(item.assetDataUrl || "").trim() ? "" : normalizePublicMarketingAssetUrl(item.assetUrl || ""));
-  if (existingPublicUrl) {
-    return {
-      item: { ...item, publicAssetUrl: existingPublicUrl },
-      changed: false,
-      publicAssetUrl: existingPublicUrl,
-    };
-  }
-
-  const parsed = parseDataUrl(item.assetDataUrl || "");
-  if (!parsed?.buffer?.length) {
-    return { item, changed: false, publicAssetUrl: "" };
-  }
-
+// Carica UNA data URL su URL pubblico (Meta scarica per URL). Ritorna { url, changed, error }.
+async function uploadMarketingDataUrlToPublic(store, dataUrl, name, req) {
+  const parsed = parseDataUrl(dataUrl || "");
+  if (!parsed?.buffer?.length) return { url: "", changed: false };
   const contentType = String(parsed.contentType || "").trim().toLowerCase();
   if (!/^image\/(png|jpe?g|webp|gif)$/.test(contentType)) {
-    return { item, changed: false, publicAssetUrl: "", error: "invalid_marketing_asset_type" };
+    return { url: "", changed: false, error: "invalid_marketing_asset_type" };
   }
-
   const assetId = randomUUID();
   const savedAttachment = await storeAttachmentBuffer(
     assetId,
     {
       id: assetId,
-      name: String(item.assetName || item.title || "marketing-image").trim() || "marketing-image",
+      name: String(name || "marketing-image").trim() || "marketing-image",
       type: contentType,
       size: parsed.buffer.length,
       context: "marketing-public",
@@ -6745,11 +6727,52 @@ async function prepareMarketingItemForPublish(store, item = {}, req) {
     publicRecord,
     ...normalizeMarketingPublicAssets(store.marketingPublicAssets),
   ].slice(0, 200);
-  const publicAssetUrl = buildMarketingPublicAssetUrl(req, assetId);
+  return { url: buildMarketingPublicAssetUrl(req, assetId), changed: true };
+}
+
+async function prepareMarketingItemForPublish(store, item = {}, req) {
+  const channel = String(item.channel || "").trim();
+  if (!["Facebook", "Instagram"].includes(channel)) {
+    return { item, changed: false, publicAssetUrl: getMarketingPublishAssetUrl(item), publicAssetUrls: [] };
+  }
+
+  // Raccogli le foto da caricare: array multi-foto (nuovo) o singola cover (legacy).
+  const dataUrls = (Array.isArray(item.assetDataUrls) && item.assetDataUrls.length
+    ? item.assetDataUrls
+    : (String(item.assetDataUrl || "").trim() ? [item.assetDataUrl] : []))
+    .filter((u) => String(u || "").trim());
+
+  // Nessuna data URL: usa eventuale URL pubblico/asset già pronto.
+  if (!dataUrls.length) {
+    const existingPublicUrl = normalizePublicMarketingAssetUrl(item.publicAssetUrl || item.assetUrl || "");
+    const arr = existingPublicUrl ? [existingPublicUrl] : [];
+    return {
+      item: { ...item, publicAssetUrl: existingPublicUrl, publicAssetUrls: arr },
+      changed: false,
+      publicAssetUrl: existingPublicUrl,
+      publicAssetUrls: arr,
+    };
+  }
+
+  // Carica OGNI foto su URL pubblico (max 10 = limite carosello Meta).
+  const publicAssetUrls = [];
+  let changed = false;
+  const baseName = String(item.assetName || item.title || "marketing-image").trim() || "marketing-image";
+  for (let i = 0; i < Math.min(dataUrls.length, 10); i++) {
+    const up = await uploadMarketingDataUrlToPublic(store, dataUrls[i], `${baseName}-${i + 1}`, req);
+    if (up.error) {
+      return { item, changed: false, publicAssetUrl: "", publicAssetUrls: [], error: up.error };
+    }
+    if (up.url) { publicAssetUrls.push(up.url); changed = changed || up.changed; }
+  }
+  if (!publicAssetUrls.length) {
+    return { item, changed: false, publicAssetUrl: "", publicAssetUrls: [] };
+  }
   return {
-    item: { ...item, publicAssetUrl },
-    changed: true,
-    publicAssetUrl,
+    item: { ...item, publicAssetUrl: publicAssetUrls[0], publicAssetUrls },
+    changed,
+    publicAssetUrl: publicAssetUrls[0],
+    publicAssetUrls,
   };
 }
 
@@ -6943,23 +6966,48 @@ async function publishFacebookMarketingItem(item = {}, mode = "publish") {
   }
   const message = buildMarketingPublishText(item);
   if (!message) return { ok: false, reason: "missing_message" };
-  const assetUrl = getMarketingPublishAssetUrl(item);
+  const assetUrls = (Array.isArray(item.publicAssetUrls) && item.publicAssetUrls.length
+    ? item.publicAssetUrls
+    : (getMarketingPublishAssetUrl(item) ? [getMarketingPublishAssetUrl(item)] : [])).slice(0, 10);
   const scheduledAt = mode === "schedule" ? getMarketingScheduleIso(item) : "";
   const scheduledUnix = mode === "schedule" ? getMarketingScheduleUnix(item) : 0;
   if (mode === "schedule" && !scheduledUnix) return { ok: false, reason: "missing_schedule_datetime" };
-  const path = assetUrl ? `${META_PAGE_ID}/photos` : `${META_PAGE_ID}/feed`;
-  const params = assetUrl
-    ? {
-        url: assetUrl,
-        caption: message,
-        published: mode === "schedule" ? "false" : "true",
-        scheduled_publish_time: scheduledUnix || undefined,
-      }
-    : {
-        message,
-        published: mode === "schedule" ? "false" : "true",
-        scheduled_publish_time: scheduledUnix || undefined,
-  };
+
+  let path, params;
+  if (assetUrls.length > 1) {
+    // MULTI-FOTO: carica ogni foto non pubblicata, poi un post feed con attached_media.
+    const attached = [];
+    for (const url of assetUrls) {
+      const up = await callMetaGraphApi(`${META_PAGE_ID}/photos`, { url, published: "false" });
+      if (!up.ok) return up;
+      const pid = String(up.payload?.id || "").trim();
+      if (!pid) return { ok: false, reason: "provider_error", details: "Missing Facebook photo id" };
+      attached.push({ media_fbid: pid });
+    }
+    path = `${META_PAGE_ID}/feed`;
+    params = {
+      message,
+      attached_media: JSON.stringify(attached),
+      published: mode === "schedule" ? "false" : "true",
+      scheduled_publish_time: scheduledUnix || undefined,
+    };
+  } else {
+    // Singola foto (o solo testo) — flusso originale.
+    const assetUrl = assetUrls[0] || "";
+    path = assetUrl ? `${META_PAGE_ID}/photos` : `${META_PAGE_ID}/feed`;
+    params = assetUrl
+      ? {
+          url: assetUrl,
+          caption: message,
+          published: mode === "schedule" ? "false" : "true",
+          scheduled_publish_time: scheduledUnix || undefined,
+        }
+      : {
+          message,
+          published: mode === "schedule" ? "false" : "true",
+          scheduled_publish_time: scheduledUnix || undefined,
+        };
+  }
   const result = await callMetaGraphApi(path, params);
   if (!result.ok) return result;
   const providerId = String(result.payload?.post_id || result.payload?.id || "").trim();
@@ -6992,21 +7040,52 @@ async function publishInstagramMarketingItem(item = {}, mode = "publish") {
   if (!META_MARKETING_ACCESS_TOKEN || !META_INSTAGRAM_BUSINESS_ACCOUNT_ID) {
     return { ok: false, reason: "missing_meta_instagram_config" };
   }
-  const assetUrl = getMarketingPublishAssetUrl(item);
-  if (!assetUrl) return { ok: false, reason: "missing_public_asset_url" };
+  // Foto: array pubblico (multi → carosello) o singola cover (retrocompat).
+  const assetUrls = (Array.isArray(item.publicAssetUrls) && item.publicAssetUrls.length
+    ? item.publicAssetUrls
+    : (getMarketingPublishAssetUrl(item) ? [getMarketingPublishAssetUrl(item)] : [])).slice(0, 10);
+  if (!assetUrls.length) return { ok: false, reason: "missing_public_asset_url" };
   const caption = buildMarketingPublishText(item);
   if (!caption) return { ok: false, reason: "missing_message" };
   const scheduledAt = mode === "schedule" ? getMarketingScheduleIso(item) : "";
   const scheduledUnix = mode === "schedule" ? getMarketingScheduleUnix(item) : 0;
   if (mode === "schedule" && !scheduledUnix) return { ok: false, reason: "missing_schedule_datetime" };
-  const createResult = await callMetaGraphApi(`${META_INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`, {
-    image_url: assetUrl,
-    caption,
-    published: mode === "schedule" ? "false" : undefined,
-    scheduled_publish_time: scheduledUnix || undefined,
-  });
-  if (!createResult.ok) return createResult;
-  const creationId = String(createResult.payload?.id || "").trim();
+
+  let creationId = "";
+  if (assetUrls.length === 1) {
+    // Singola foto (flusso originale)
+    const createResult = await callMetaGraphApi(`${META_INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`, {
+      image_url: assetUrls[0],
+      caption,
+      published: mode === "schedule" ? "false" : undefined,
+      scheduled_publish_time: scheduledUnix || undefined,
+    });
+    if (!createResult.ok) return createResult;
+    creationId = String(createResult.payload?.id || "").trim();
+  } else {
+    // CAROSELLO: 1) crea un child container per ogni foto (is_carousel_item=true)
+    const childIds = [];
+    for (const url of assetUrls) {
+      const child = await callMetaGraphApi(`${META_INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`, {
+        image_url: url,
+        is_carousel_item: "true",
+      });
+      if (!child.ok) return child;
+      const cid = String(child.payload?.id || "").trim();
+      if (!cid) return { ok: false, reason: "provider_error", details: "Missing carousel child id" };
+      childIds.push(cid);
+    }
+    // 2) crea il container CAROUSEL con i children + caption
+    const carousel = await callMetaGraphApi(`${META_INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`, {
+      media_type: "CAROUSEL",
+      children: childIds.join(","),
+      caption,
+      published: mode === "schedule" ? "false" : undefined,
+      scheduled_publish_time: scheduledUnix || undefined,
+    });
+    if (!carousel.ok) return carousel;
+    creationId = String(carousel.payload?.id || "").trim();
+  }
   if (!creationId) return { ok: false, reason: "provider_error", details: "Missing Instagram creation id" };
   if (mode === "schedule") {
     return {
