@@ -10050,51 +10050,27 @@ async function getSessionContextFromUsers(req, users = []) {
 }
 
 function buildInventoryItemsFromBody(body = {}) {
-  const quantity = Math.max(1, Math.round(toNumber(body.quantity || 1)));
+  // Conteggio: accetta sia "quantity" sia "units" (alias) per coerenza UI↔API.
+  const count = Math.max(1, Math.round(toNumber(body.quantity ?? body.units ?? 1)));
   const product = String(body.product || "").trim();
   const width = toNumber(body.width || 0);
   const length = toNumber(body.length || 0);
   const note = String(body.note || "");
-  const status = normalizeInventoryPieceType(body.pieceType || body.status);
+  const variant = String(body.variant || "");
+  const pieceType = normalizeInventoryPieceType(body.pieceType || body.status);
   const measured = body.measured !== false && body.measured !== "false";
   if (!product) {
     return { error: "invalid_inventory_payload", created: [] };
   }
+  // UN SOLO stampo: tutti i pezzi passano da normalizeInventoryPieceRecord
+  // (single source of truth per la forma del pezzo: pieceType + pieceState +
+  // status derivato + dimensioni). Niente più oggetti costruiti a mano.
+  const base = { product, width, length, variant, note, pieceType, pieceState: "disponibile" };
   const created = measured
-    ? Array.from({ length: quantity }, () => ({
-      id: randomUUID(),
-      product,
-      width,
-      length,
-      sqm: width && length ? Number((width * length).toFixed(2)) : 0,
-      variant: String(body.variant || ""),
-      status: status === "taglio" ? "residuo" : status,
-      pieceType: status,
-      pieceState: "disponibile",
-      committedOrderId: "",
-      committedOrderNumber: "",
-      allocationId: "",
-      note,
-      units: 1,
-      createdAt: new Date().toISOString(),
-    }))
-    : [{
-      id: randomUUID(),
-      product,
-      width,
-      length,
-      sqm: 0,
-      variant: String(body.variant || ""),
-      status: status === "taglio" ? "residuo" : status,
-      pieceType: status,
-      pieceState: "disponibile",
-      committedOrderId: "",
-      committedOrderNumber: "",
-      allocationId: "",
-      note,
-      units: quantity,
-      createdAt: new Date().toISOString(),
-    }];
+    // Misurato (rotolo): "count" rotoli distinti, ognuno units=1
+    ? Array.from({ length: count }, () => normalizeInventoryPieceRecord({ ...base, units: 1 }))
+    // Non misurato (materiale a unità): 1 lotto con units=count
+    : [normalizeInventoryPieceRecord({ ...base, units: count })];
   return { error: "", created };
 }
 

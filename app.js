@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260609-inventario-v2-cards";
+const APP_SHELL_VERSION = "20260609-inventario-v2-struttura";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9818,14 +9818,17 @@ function buildMaterialInventorySlots(group) {
   const slots = new Map();
   group.pieces.forEach((item) => {
     if (getInventoryPieceState(item) === "evaso") return;
+    // Usa l'astrazione getInventoryPieceType (pieceType canonico) invece di
+    // leggere item.status grezzo: così il modello è coerente ovunque.
+    const pieceType = getInventoryPieceType(item);
     const slotKey = [
-      item.status || "intero",
+      pieceType,
       item.variant || "",
       item.note || "",
     ].join("|");
     const existing = slots.get(slotKey) || {
       id: item.id,
-      status: item.status || "intero",
+      status: pieceType,
       variant: item.variant || "",
       note: item.note || "",
       units: 0,
