@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260609-ordini-btn-spacing";
+const APP_SHELL_VERSION = "20260609-inventario-v2-cards";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14323,6 +14323,33 @@ async function removeSalesContentAttachment(contentId, attachmentIndex, attachme
   }
 }
 
+// Raggruppa i pezzi misurati identici (stesso tipo + dimensioni) con i conteggi
+// per stato. Evita di elencare 40 rotoli uguali uno per uno (grandi giacenze).
+function groupInventoryPiecesForDisplay(pieces = []) {
+  const map = new Map();
+  pieces.forEach((p) => {
+    const state = getInventoryPieceState(p);
+    if (state === "evaso") return; // non mostrare gli scaricati
+    const type = getInventoryPieceType(p); // "intero" | "residuo"
+    const w = Number(p.width || 0);
+    const l = Number(p.length || 0);
+    const key = `${type}|${w}|${l}`;
+    const g = map.get(key) || {
+      type, width: w, length: l, sqm: toNumber(p.sqm),
+      disp: 0, imp: 0, dispIds: [], impIds: [],
+    };
+    const units = Math.max(1, Number(p.units || 1));
+    if (state === "disponibile") { g.disp += units; g.dispIds.push(p.id); }
+    else if (state === "impegnato") { g.imp += units; g.impIds.push(p.id); }
+    map.set(key, g);
+  });
+  const all = [...map.values()];
+  return {
+    rolls: all.filter((g) => g.type !== "residuo").sort((a, b) => b.sqm - a.sqm),
+    residues: all.filter((g) => g.type === "residuo").sort((a, b) => b.sqm - a.sqm),
+  };
+}
+
 function renderInventoryCard(group) {
   const totalPieces = group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso").length;
   const availablePieces = group.pieces.filter((item) => getInventoryPieceState(item) === "disponibile").length;
@@ -14400,103 +14427,107 @@ function renderInventoryCard(group) {
       <div class="wh-stock-bar-available" style="width:${availableBarPct}%; left:${committedBarPct}%"></div>
     </div>`;
 
+  // ── CRM v2 inventory card (raggruppata, stile Richieste) ──────────────────
+  // Pallino stato: verde disponibile / ambra sotto scorta / rosso scoperto
+  const dotClass = hasDeficit || (!hasStock && hasDemand)
+    ? "def"
+    : (hasDemand && stockValue < (isMeasured ? group.totalSqm : group.totalUnits) * 0.3)
+      ? "low"
+      : !hasStock ? "low" : "ok";
+  const stateBadgeClass = dotClass; // ok | low | def
+  const unitSuffix = isMeasured ? "mq" : "u";
+  const bigNumber = isMeasured ? Math.round(Math.max(0, group.availableSqm)) : Math.max(0, group.availableUnits);
+  const committedDisplay = isMeasured ? Math.round(committedPhysicalValue) : committedPhysicalValue;
+
+  const grouped = isMeasured ? groupInventoryPiecesForDisplay(group.pieces) : { rolls: [], residues: [] };
+  const fmtDim = (g) => `${formatInventoryNumber(g.width)} × ${formatInventoryNumber(g.length)} m`;
+
+  const rollsHtml = grouped.rolls.length
+    ? `<div class="inv-groups-label">${state.lang === "it" ? "Rotoli interi" : "Whole rolls"}</div>
+       ${grouped.rolls.map((g) => `
+        <div class="inv-pgroup">
+          <span class="inv-ptype roll">${state.lang === "it" ? "Rotolo" : "Roll"}</span>
+          <span class="inv-pdim">${fmtDim(g)} <small>${formatInventoryNumber(g.sqm)} mq cad.</small></span>
+          <span class="inv-pcounts">
+            ${g.disp > 0 ? `<span class="inv-cbadge disp">${g.disp} disp.</span>` : ""}
+            ${g.imp > 0 ? `<span class="inv-cbadge imp">${g.imp} imp.</span>` : ""}
+          </span>
+        </div>`).join("")}`
+    : "";
+  const residuesHtml = grouped.residues.length
+    ? `<div class="inv-groups-label">${state.lang === "it" ? "Residui" : "Offcuts"}</div>
+       ${grouped.residues.map((g) => `
+        <div class="inv-res-row">
+          <span class="dim">${fmtDim(g)} · ${formatInventoryNumber(g.sqm)} mq</span>
+          <span class="cnt">×${g.disp || g.imp}${g.imp > 0 && g.disp > 0 ? "" : ""} ${g.disp > 0 ? "disp." : "imp."}</span>
+        </div>`).join("")}`
+    : "";
+
+  // Pezzi singoli (per delete puntuale) in <details> nativo — zero JS extra
+  const singlePieces = isMeasured
+    ? group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso")
+    : [];
+  const singlesHtml = singlePieces.length
+    ? `<details class="inv-singles">
+        <summary>${state.lang === "it" ? `Mostra i ${totalPieces} pezzi singoli` : `Show ${totalPieces} single pieces`}</summary>
+        <div class="inv-singles-list">
+          ${singlePieces.map((item) => {
+            const ps = getInventoryPieceState(item);
+            const pt = getInventoryPieceType(item);
+            const canDel = ps === "disponibile";
+            return `<div class="inv-single ${pt === "residuo" ? "res" : "roll"}">
+              <span class="inv-ptype ${pt === "residuo" ? "res" : "roll"}">${pt === "residuo" ? (state.lang === "it" ? "Residuo" : "Offcut") : (state.lang === "it" ? "Rotolo" : "Roll")}</span>
+              <span class="inv-single-dim">${formatPieceLabel(item)} · ${formatInventoryNumber(item.sqm)} mq</span>
+              <span class="inv-single-state ${ps}">${ps === "impegnato" ? `${state.lang === "it" ? "Imp." : "Comm."} ${item.committedOrderNumber || ""}` : state.lang === "it" ? "Disp." : "Avail."}</span>
+              ${canDel ? `<button class="inv-single-del" type="button" data-action="delete-inventory-piece" data-id="${item.id}" title="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}" aria-label="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}">×</button>` : ""}
+            </div>`;
+          }).join("")}
+        </div>
+      </details>`
+    : "";
+
+  // Materiale a unità (non misurato): slot semplici
+  const materialHtml = !isMeasured
+    ? (materialSlots.length
+        ? `<div class="inv-material-slots">${materialSlots.map((slot) => `
+            <div class="inv-material-slot">
+              <span class="inv-material-name">${escapeHtml(slot.variant || (state.lang === "it" ? "Slot magazzino" : "Warehouse slot"))}</span>
+              <span class="inv-material-qty">${slot.units} ${unitDetailLabel}</span>
+              <button class="inv-single-del" type="button" data-action="delete-inventory-piece" data-id="${slot.id}" title="${state.lang === "it" ? "Rimuovi lotto" : "Remove slot"}">×</button>
+            </div>`).join("")}</div>`
+        : `<div class="inv-empty">${state.lang === "it" ? "Nessuna unità caricata." : "No units loaded."}</div>`)
+    : "";
+
+  const deficitLine = (hasDeficit || (!hasStock && hasDemand))
+    ? `<div class="inv-deficit">⚠ ${group.demandOrders.length} ${state.lang === "it" ? "ordini richiedono" : "orders require"} ${demandLabel} — ${hasStock ? `${state.lang === "it" ? "disponibili solo" : "only"} ${availableMeasureLabel}` : (state.lang === "it" ? "nessun pezzo disponibile" : "no pieces available")}</div>`
+    : "";
+
+  const totalCountLabel = isMeasured
+    ? `${totalPieces} ${state.lang === "it" ? "pezzi" : "pieces"}`
+    : `${group.totalUnits} ${unitDetailLabel}`;
+  const demandOrdersLabel = group.demandOrders.length
+    ? ` · ${group.demandOrders.length} ${state.lang === "it" ? "ordini in attesa" : "orders waiting"}`
+    : "";
+
   return `
-    <article class="wh-product">
-      <div class="wh-product-header">
-        <div>
-          <div class="wh-product-name">${group.product}</div>
-          <div class="wh-product-total">${isMeasured
-            ? `${totalPieces} pezzi fisici · ${dimensionsSummary || `${Math.round(group.totalSqm)} mq totali`} · ${group.fullCount} interi, ${group.residualCount} residui${group.isModel ? (group.grossPriceConfigured ? ` · ${state.lang === "it" ? "immobilizzato" : "immobilized"} ${immobilizedValueLabel}` : ` · ${state.lang === "it" ? "listino ivato non configurato" : "gross price not configured"}`) : ""}`
-            : `${group.totalUnits} unità caricate`}</div>
-        </div>
-        <div class="wh-actions">
-          <span class="action-badge ${badgeClass}">${stockState}</span>
-          <button class="btn" data-action="prefill-inventory" data-product="${group.product}">${state.lang === "it" ? "Carica giacenza" : "Load stock"}</button>
-        </div>
+    <article class="inv-card" data-product="${escapeHtml(group.product)}">
+      <div class="inv-head">
+        <span class="inv-dot ${dotClass}"></span>
+        <span class="inv-name">${escapeHtml(group.product)}</span>
+        <span class="inv-state ${stateBadgeClass}">${stockState}</span>
+        <span class="inv-num">${bigNumber.toLocaleString("it-IT")} <small>${unitSuffix}</small></span>
       </div>
-      ${stockBarHtml}
-      ${deficitAlert}
-      ${linkedDemandOrders.length ? `
-        <div class="wh-demand-orders">
-          <div class="wh-demand-orders-head">
-            <strong>${state.lang === "it" ? "Ordini che impegnano questa giacenza" : "Orders reserving this stock"}</strong>
-            <span>${group.demandOrders.length} ${state.lang === "it" ? "ordini" : "orders"}</span>
-          </div>
-          <div class="wh-demand-order-list">
-            ${linkedDemandOrders.map((order) => `
-              <button class="wh-demand-order" data-action="open-modal" data-id="${order.id}">
-                <strong>${composeClientName(order)} <small>${getOrderNumber(order)}</small></strong>
-                <span>${order.operations?.product || undefinedText()} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
-                <small>${getUnifiedOrderStage(order).label} · ${getShippingTargetLabel(order)}</small>
-              </button>
-            `).join("")}
-            ${remainingDemandCount > 0 ? `<div class="wh-demand-more">+${remainingDemandCount} ${state.lang === "it" ? "ordini collegati" : "linked orders"}</div>` : ""}
-          </div>
-        </div>
-      ` : ""}
-      <div class="wh-pieces${!isMeasured ? " wh-pieces-material" : ""}">
-        ${isMeasured && group.pieces.length ? group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso").map((item) => {
-          const pieceState = getInventoryPieceState(item);
-          const pieceType = getInventoryPieceType(item);
-          const canDeletePiece = pieceState === "disponibile";
-          return `
-          <div class="wh-piece ${pieceType === "residuo" ? "residuo" : "intero"} ${pieceState === "impegnato" ? "is-committed" : ""} ${pieceState === "evaso" ? "is-fulfilled" : ""}">
-            ${canDeletePiece ? `<button
-              class="wh-piece-remove"
-              type="button"
-              data-action="delete-inventory-piece"
-              data-id="${item.id}"
-              title="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}"
-              aria-label="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}"
-            >×</button>` : ""}
-            <strong>${formatPieceLabel(item)}</strong>
-            <small>${formatInventoryNumber(item.sqm)} mq</small>
-          </div>
-        `; }).join("") : !isMeasured && materialSlots.length ? materialSlots.map((slot) => `
-          <div class="wh-piece material-slot ${slot.status === "residuo" ? "residuo" : "intero"}">
-            <button
-              class="wh-piece-remove"
-              type="button"
-              data-action="delete-inventory-piece"
-              data-id="${slot.id}"
-              title="${state.lang === "it" ? "Rimuovi lotto" : "Remove slot"}"
-              aria-label="${state.lang === "it" ? "Rimuovi lotto" : "Remove slot"}"
-            >×</button>
-            <strong>${slot.variant || (state.lang === "it" ? "Slot magazzino" : "Warehouse slot")}</strong>
-            <span>${slot.note || (state.lang === "it" ? "Quantita aggregata a magazzino" : "Aggregated stock quantity")}</span>
-            <small class="material-slot-qty">${slot.units} ${unitDetailLabel}</small>
-          </div>
-        `).join("") : `<div class="wh-empty">${state.lang === "it" ? "Nessun pezzo caricato." : "No pieces loaded."}</div>`}
+      ${stockBarHtml.replace("wh-stock-bar", "inv-bar").replace("wh-stock-bar-committed", "inv-bar-commit").replace("wh-stock-bar-available", "inv-bar-avail")}
+      <div class="inv-bar-legend">
+        <span><span class="ld" style="background:#10b981"></span>${state.lang === "it" ? "Disponibile" : "Available"} ${bigNumber.toLocaleString("it-IT")} ${unitSuffix}</span>
+        ${committedDisplay > 0 ? `<span><span class="ld" style="background:#f59e0b"></span>${state.lang === "it" ? "Impegnato" : "Committed"} ${committedDisplay.toLocaleString("it-IT")} ${unitSuffix}</span>` : ""}
+        <span class="inv-legend-right">${totalCountLabel}${demandOrdersLabel}</span>
       </div>
-      <div class="wh-piece-tools">
-        <button
-          class="btn ghost-button danger-button"
-          type="button"
-          data-action="clear-inventory-product"
-          data-product="${escapeHtml(group.product)}"
-          ${group.pieces.some((item) => getInventoryPieceState(item) === "disponibile") ? "" : "disabled"}
-        >
-          ${state.lang === "it" ? "Azzera giacenza" : "Clear stock"}
-        </button>
-      </div>
-      <div class="wh-stats">
-        <div class="wh-stat soft">
-          <div class="wh-stat-label">${state.lang === "it" ? "Giacenza reale" : "Physical stock"}</div>
-          <div class="wh-stat-value">${stockLabel}</div>
-          <div class="wh-stat-sub">${isMeasured ? `${totalPieces} pezzi fisici · ${dimensionsSummary || (state.lang === "it" ? "dimensioni sui pezzi" : "dimensions on pieces")}` : `${materialSlots.length} ${state.lang === "it" ? "slot" : "slots"} · ${group.totalUnits} ${unitDetailLabel} ${state.lang === "it" ? "fisicamente caricati" : "physically loaded"}`}</div>
-        </div>
-        <div class="wh-stat ${hasDemand ? "danger" : "soft"}" ${demandActionAttrs}>
-          <div class="wh-stat-label">${state.lang === "it" ? "Impegnato su ordini" : "Committed to orders"}</div>
-          <div class="wh-stat-value" ${hasDemand && hasDeficit ? 'style="color:#dc2626"' : ""}>${committedLabel}</div>
-          <div class="wh-stat-sub">${isMeasured ? `${Math.round(committedPhysicalValue)} mq impegnati · ` : ""}${group.demandOrders.length} ${state.lang === "it" ? "ordini aperti" : "open orders"}${firstDemandOrderId ? ` · ${state.lang === "it" ? "clicca per aprire" : "click to open"}` : ""}</div>
-        </div>
-        <div class="wh-stat ${hasDeficit ? "danger" : "neutral"}">
-          <div class="wh-stat-label">${state.lang === "it" ? "Disponibile per nuovi ordini" : "Available for new orders"}</div>
-          <div class="wh-stat-value" ${hasDeficit ? 'style="color:#dc2626"' : netValue > 0 ? 'style="color:#16a34a"' : ""}>${hasDeficit ? (state.lang === "it" ? `Mancano ${deficitMeasureLabel}` : `Missing ${deficitMeasureLabel}`) : netLabel}</div>
-          <div class="wh-stat-sub">${isMeasured
-            ? `${Math.round(Math.max(0, group.availableSqm))} mq disponibili · ${group.fullCount} ${state.lang === "it" ? "interi" : "full"} · ${group.residualCount} ${state.lang === "it" ? "residui" : "residual"}${group.isModel ? (group.grossPriceConfigured ? ` · ${immobilizedValueLabel}` : ` · ${state.lang === "it" ? "prezzo ivato mancante" : "gross price missing"}`) : ""}`
-            : `${group.totalUnits} ${unitDetailLabel}`}</div>
-        </div>
+      ${deficitLine}
+      ${isMeasured ? `<div class="inv-pieces">${rollsHtml}${residuesHtml}${singlesHtml || `<div class="inv-empty">${state.lang === "it" ? "Nessun pezzo caricato." : "No pieces loaded."}</div>`}</div>` : `<div class="inv-pieces">${materialHtml}</div>`}
+      <div class="inv-tools">
+        <button class="ghost-button small-button" type="button" data-action="prefill-inventory" data-product="${escapeHtml(group.product)}">${state.lang === "it" ? "+ Carica giacenza" : "+ Load stock"}</button>
+        <button class="ghost-button small-button inv-clear" type="button" data-action="clear-inventory-product" data-product="${escapeHtml(group.product)}" ${group.pieces.some((item) => getInventoryPieceState(item) === "disponibile") ? "" : "disabled"}>${state.lang === "it" ? "Azzera" : "Clear"}</button>
       </div>
     </article>
   `;
