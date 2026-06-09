@@ -6723,6 +6723,17 @@ function buildMarketingPublishText(item = {}) {
 }
 
 function getMarketingScheduleIso(item = {}) {
+  // Preferito: ISO assoluto calcolato dal client nel fuso dell'utente
+  // (evita ambiguità: il server gira in UTC, "19:08" senza fuso sarebbe 19:08 UTC).
+  const iso = String(item.scheduledAtIso || "").trim();
+  if (iso) {
+    const d = new Date(iso);
+    if (Number.isFinite(d.getTime()) && d.getTime() > Date.now() + 60_000) {
+      return d.toISOString();
+    }
+    // se l'ISO c'è ma è nel passato (o invalido), cade al fallback sotto
+  }
+  // Fallback legacy: date+time interpretati nel fuso del runtime (UTC su Render).
   const date = String(item.date || "").trim();
   const time = String(item.time || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return "";

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260609-marketing-schedule-server";
+const APP_SHELL_VERSION = "20260609-marketing-schedule-tz";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -22233,9 +22233,19 @@ async function publishMarketingItemViaApi(item, button = null, mode = "publish")
   state.marketingPublishingMode = mode === "schedule" ? "schedule" : "publish";
   renderMarketing();
   try {
+    // Per la programmazione: calcola l'orario ASSOLUTO nel fuso del browser
+    // (il tuo, italiano) e invialo come ISO. Evita che il server (UTC)
+    // interpreti "19:08" come 19:08 UTC = 21:08 ora italiana.
+    let sendItem = item;
+    if (mode === "schedule" && item.date && item.time) {
+      const local = new Date(`${item.date}T${item.time}:00`); // fuso del browser
+      if (!Number.isNaN(local.getTime())) {
+        sendItem = { ...item, scheduledAtIso: local.toISOString() };
+      }
+    }
     const result = await apiFetch("/api/marketing/publish", {
       method: "POST",
-      body: JSON.stringify({ item, mode }),
+      body: JSON.stringify({ item: sendItem, mode }),
     });
     if (!result?.ok) {
       const error = new Error(result?.reason || "provider_missing_confirmation");
