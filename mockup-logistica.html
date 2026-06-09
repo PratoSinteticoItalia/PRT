@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Logistica (stile v2)</title>
+<style>
+  :root{
+    --bg:#f5f3ee;--paper:#fff;--ink:#1a2e26;--ink-soft:#5a6e63;--ink-faint:#8a9690;
+    --line:#e5e1d6;--line-strong:#d4cebd;--primary:#1f4d3d;--primary-soft:#e8f0ec;
+    --blue:#3b82f6;--blue-soft:#e0edff;--amber:#f59e0b;--amber-soft:#fef3c7;
+    --purple:#8b5cf6;--purple-soft:#ede9fe;--green:#10b981;--green-soft:#d1fae5;
+    --red:#ef4444;--red-soft:#fee2e2;--radius:12px;
+    font-family:-apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:radial-gradient(circle at 1px 1px,rgba(31,77,61,.05) 1px,transparent 0) 0 0/24px 24px,var(--bg);color:var(--ink);font-size:14px;line-height:1.45;min-height:100vh;}
+  .page{max-width:1400px;margin:0 auto;padding:24px 28px 80px;}
+  .layout{display:grid;grid-template-columns:1fr 440px;gap:18px;align-items:start;}
+  .page-header{display:flex;justify-content:space-between;align-items:end;margin-bottom:18px;}
+  .page-title{margin:0;font-size:28px;font-weight:700;letter-spacing:-.01em;}
+  .page-subtitle{margin:4px 0 0;color:var(--ink-soft);font-size:14px;}
+  .primary-btn{padding:11px 18px;background:var(--primary);border:1px solid var(--primary);border-radius:8px;font-size:13px;color:#fff;cursor:pointer;font-weight:600;}
+
+  /* KPI strip */
+  .kpi-strip{display:flex;gap:34px;padding:16px 22px;background:var(--paper);border:1px solid #ece8de;border-radius:var(--radius);margin-bottom:14px;flex-wrap:wrap;}
+  .kpi{display:flex;flex-direction:column;gap:2px;}
+  .kpi-value{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.1;}
+  .kpi-label{font-size:10.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;font-weight:600;white-space:nowrap;}
+  .kpi.warn .kpi-value{color:#b45309;}
+  .kpi-trend{font-size:11px;font-weight:600;color:var(--green);}
+
+  /* Pills */
+  .pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background:var(--paper);border:1px solid var(--line);border-radius:999px;font-size:13px;font-weight:500;color:var(--ink-soft);cursor:pointer;}
+  .pill .count{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink-faint);font-size:12px;}
+  .pill.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+  .pill.active .count{color:rgba(255,255,255,.7);}
+  .pill.warn{background:var(--amber-soft);border-color:#fbbf24;color:#92400e;}
+  .pill.warn .count{color:#b45309;}
+
+  .search{margin-bottom:14px;}
+  .search input{width:100%;padding:12px 14px;background:var(--paper);border:1px solid var(--line);border-radius:8px;font-size:14px;outline:none;}
+
+  /* Gruppo per modalità */
+  .group-label{display:flex;align-items:center;gap:8px;margin:18px 0 8px;}
+  .group-label h3{margin:0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);}
+  .group-label .gc{font-size:11px;font-weight:700;background:#ece8de;color:var(--ink-soft);padding:1px 8px;border-radius:10px;}
+
+  /* Righe ordine — stile v2 */
+  .list{display:flex;flex-direction:column;gap:6px;}
+  .row{display:grid;grid-template-columns:14px 1fr auto auto;align-items:center;gap:14px;padding:13px 16px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);cursor:pointer;transition:all .12s;}
+  .row:hover{border-color:var(--line-strong);box-shadow:0 4px 12px rgba(26,46,38,.06);transform:translateY(-1px);}
+  .row.selected{border-color:var(--primary);border-left:3px solid var(--primary);padding-left:14px;}
+  .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+  .dot.prep{background:var(--amber);box-shadow:0 0 0 3px var(--amber-soft);}
+  .dot.work{background:var(--blue);box-shadow:0 0 0 3px var(--blue-soft);}
+  .dot.ready{background:var(--green);box-shadow:0 0 0 3px var(--green-soft);}
+  .dot.block{background:var(--red);box-shadow:0 0 0 3px var(--red-soft);}
+  .main{min-width:0;}
+  .name-line{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;}
+  .name{font-weight:600;font-size:14.5px;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ordernum{font-size:12px;color:var(--ink-faint);font-variant-numeric:tabular-nums;flex-shrink:0;}
+  .meta{display:flex;gap:6px;align-items:center;color:var(--ink-soft);font-size:12.5px;flex-wrap:wrap;}
+  .meta .sep{color:var(--ink-faint);}
+  .mode-tag{padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;}
+  .mode-tag.courier{background:var(--blue-soft);color:#1e40af;}
+  .mode-tag.pickup{background:#fff7ed;color:#9a3412;}
+  .mode-tag.van{background:var(--primary-soft);color:var(--primary);}
+  .badge{padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;}
+  .badge.ddt{background:#f0f0ef;color:#6b7280;}
+  .badge.ddtok{background:var(--green-soft);color:#065f46;}
+  .aside{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right;min-width:110px;}
+  .date{font-size:11.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums;}
+  .chip{font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;letter-spacing:.03em;}
+  .chip.prep{background:var(--amber-soft);color:#92400e;}
+  .chip.ready{background:var(--green-soft);color:#065f46;}
+  .chip.work{background:var(--blue-soft);color:#1e40af;}
+  .row-action{padding:8px 13px;background:var(--ink);color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;opacity:0;transition:opacity .15s;}
+  .row:hover .row-action,.row.selected .row-action{opacity:1;}
+  .row-action.green{background:var(--green);}
+
+  /* Pannello dettaglio — sezioni eyebrow+card */
+  .detail{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:18px;position:sticky;top:16px;}
+  .detail-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);}
+  .detail-title{font-size:20px;font-weight:700;margin:2px 0 1px;letter-spacing:-.01em;}
+  .detail-sub{color:var(--ink-soft);font-size:13px;margin:0 0 16px;}
+  .section{background:#fdfcfa;border:1px solid #ece8de;border-radius:12px;padding:14px 16px;margin-bottom:12px;}
+  .section-label{margin:0 0 12px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);display:flex;justify-content:space-between;align-items:center;}
+  .field-label{font-size:12px;color:var(--ink-soft);margin-bottom:6px;display:block;}
+  .field-box{background:#f1efe9;border:1px solid #e5e1d6;border-radius:9px;padding:11px 13px;font-size:14px;font-weight:600;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+  .field-row:last-child{margin-bottom:0;}
+  .mini-btn{padding:6px 11px;background:#fff;border:1px solid var(--line);border-radius:7px;font-size:11.5px;cursor:pointer;font-weight:600;}
+  .prep-line{display:flex;justify-content:space-between;padding:8px 12px;background:#fff;border:1px solid #e5e1d6;border-radius:8px;margin-bottom:5px;font-size:13px;}
+  .prep-line .ok{color:var(--green);font-weight:700;font-size:11px;}
+  .save-btn{padding:11px 16px;background:var(--primary);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;width:100%;}
+  .ddt-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .ddt-grid .field-label{margin-bottom:3px;}
+  .ddt-grid input{width:100%;padding:9px 11px;border:1px solid #e5e1d6;border-radius:7px;font-size:13px;}
+  .quick-actions{display:flex;gap:8px;margin-bottom:14px;}
+  .quick-actions button{flex:1;padding:9px;background:var(--paper);border:1px solid var(--line);border-radius:8px;font-size:12px;cursor:pointer;font-weight:500;}
+
+  .note{grid-column:1/-1;margin-top:30px;padding:18px 22px;background:#fff8e1;border:1px dashed var(--line-strong);border-radius:var(--radius);color:#6e5c1a;font-size:13px;line-height:1.6;}
+  .note h3{margin:0 0 8px;font-size:14px;color:#5a4a14;}
+  .note ul{margin:0;padding-left:20px;}
+  .note li{margin-bottom:4px;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Logistica</h1>
+      <p class="page-subtitle">Corrieri, ritiri, furgoni e bancali · preparazione e DDT</p>
+    </div>
+  </div>
+
+  <div class="layout">
+    <!-- SINISTRA -->
+    <div>
+      <div class="kpi-strip">
+        <div class="kpi"><span class="kpi-value">8</span><span class="kpi-label">In coda</span></div>
+        <div class="kpi warn"><span class="kpi-value">3</span><span class="kpi-label">Da preparare</span><span class="kpi-trend" style="color:#d97706">↑ 2 oggi</span></div>
+        <div class="kpi"><span class="kpi-value">4</span><span class="kpi-label">Pronti uscita</span></div>
+        <div class="kpi"><span class="kpi-value">2</span><span class="kpi-label">DDT da creare</span></div>
+        <div class="kpi"><span class="kpi-value">12</span><span class="kpi-label">Righe materiali</span></div>
+      </div>
+
+      <div class="pills">
+        <div class="pill active">Tutti <span class="count">8</span></div>
+        <div class="pill">Corriere <span class="count">3</span></div>
+        <div class="pill">Ritiro <span class="count">2</span></div>
+        <div class="pill">Furgone <span class="count">3</span></div>
+        <div class="pill">Box campioni <span class="count">1</span></div>
+        <div class="pill">Evasi / chiusi <span class="count">41</span></div>
+      </div>
+
+      <div class="search"><input type="text" placeholder="Cerca ordine, cliente, vettore o tipo spedizione…" /></div>
+
+      <!-- GRUPPO CORRIERE -->
+      <div class="group-label"><h3>🚚 Corriere</h3><span class="gc">3</span></div>
+      <div class="list">
+        <div class="row selected">
+          <span class="dot prep"></span>
+          <div class="main">
+            <div class="name-line"><span class="name">Massimo Emmeci Edilizia srls</span><span class="ordernum">#2871</span></div>
+            <div class="meta"><span>Abete 45mm · 100mq</span><span class="sep">·</span><span>P.za Masaniello 31, Napoli</span><span class="sep">·</span><span class="mode-tag courier">Corriere</span><span class="badge ddt">DDT da creare</span></div>
+          </div>
+          <div class="aside"><span class="date">prep. 11/06</span><span class="chip prep">DA PREPARARE</span></div>
+          <button class="row-action">Prepara</button>
+        </div>
+        <div class="row">
+          <span class="dot ready"></span>
+          <div class="main">
+            <div class="name-line"><span class="name">Luca Salmoiraghi</span><span class="ordernum">#2642</span></div>
+            <div class="meta"><span>Bonsai 20mm · 111mq</span><span class="sep">·</span><span>Via G. Osculati 8, Milano</span><span class="sep">·</span><span class="mode-tag courier">Corriere</span><span class="badge ddtok">DDT-1042</span></div>
+          </div>
+          <div class="aside"><span class="date">pronto</span><span class="chip ready">PRONTO USCITA</span></div>
+          <button class="row-action green">Segna spedito</button>
+        </div>
+      </div>
+
+      <!-- GRUPPO RITIRO -->
+      <div class="group-label"><h3>📦 Ritiro cliente</h3><span class="gc">2</span></div>
+      <div class="list">
+        <div class="row">
+          <span class="dot work"></span>
+          <div class="main">
+            <div class="name-line"><span class="name">Luigi Pontillo</span><span class="ordernum">#2870</span></div>
+            <div class="meta"><span>Cedro 30mm · 120mq</span><span class="sep">·</span><span>Indirizzo da completare</span><span class="sep">·</span><span class="mode-tag pickup">Ritiro</span></div>
+          </div>
+          <div class="aside"><span class="date">in attesa ritiro</span><span class="chip work">DA RITIRARE</span></div>
+          <button class="row-action green">Segna ritirato</button>
+        </div>
+      </div>
+
+      <!-- GRUPPO FURGONE -->
+      <div class="group-label"><h3>🚐 Furgone (posa)</h3><span class="gc">3</span></div>
+      <div class="list">
+        <div class="row">
+          <span class="dot prep"></span>
+          <div class="main">
+            <div class="name-line"><span class="name">Giorgio Reale</span><span class="ordernum">#2873</span></div>
+            <div class="meta"><span>Palma 40mm · 80mq</span><span class="sep">·</span><span>Via G. Marconi 47, San Giorgio a Cremano</span><span class="sep">·</span><span class="mode-tag van">Furgone</span></div>
+          </div>
+          <div class="aside"><span class="date">carico 12/06</span><span class="chip prep">DA CARICARE</span></div>
+          <button class="row-action">Prepara carico</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESTRA: dettaglio -->
+    <div class="detail">
+      <div class="detail-eyebrow">Dettaglio spedizione</div>
+      <div class="detail-title">Massimo Emmeci Edilizia srls</div>
+      <div class="detail-sub">Ordine #2871 · Corriere · 100 mq · 2.491,85 €</div>
+
+      <div class="quick-actions">
+        <button>Apri su Shopify ↗</button>
+        <button>Apri Maps</button>
+        <button>Chiama</button>
+      </div>
+
+      <!-- Materiale e preparazione -->
+      <div class="section">
+        <p class="section-label">Materiale da preparare <span class="mini-btn">Salva preparazione</span></p>
+        <div class="prep-line"><span>Abete 45mm · 2×25m · ×2</span><span class="ok">✓ incluso</span></div>
+        <div class="prep-line"><span>Banda di giunzione 25m · ×1</span><span class="ok">✓ incluso</span></div>
+        <div class="prep-line"><span>Colla bi-componente 6kg · ×2</span><span class="ok">✓ incluso</span></div>
+      </div>
+
+      <!-- Spedizione -->
+      <div class="section">
+        <p class="section-label">Spedizione</p>
+        <div class="field-row">
+          <div><span class="field-label">Vettore / modalità</span><div class="field-box">Corriere</div></div>
+          <div><span class="field-label">Data preparazione</span><div class="field-box">11/06/2026</div></div>
+        </div>
+        <span class="field-label">Destinazione</span>
+        <div class="field-box" style="font-weight:500;font-size:13px">P.za Masaniello 31, 80142 Napoli (NA)</div>
+      </div>
+
+      <!-- DDT -->
+      <div class="section">
+        <p class="section-label">DDT <span class="mini-btn">Crea PDF DDT</span></p>
+        <div class="ddt-grid">
+          <div><span class="field-label">N. DDT</span><input placeholder="DDT-1043" /></div>
+          <div><span class="field-label">Peso bancale</span><input placeholder="kg" /></div>
+          <div><span class="field-label">Lung. bancale</span><input placeholder="120 cm" /></div>
+          <div><span class="field-label">Larg. bancale</span><input placeholder="80 cm" /></div>
+        </div>
+      </div>
+
+      <button class="save-btn">✓ Segna pronto per l'uscita</button>
+    </div>
+
+    <div class="note">
+      <h3>Note di lettura — Logistica v2</h3>
+      <ul>
+        <li><b>KPI strip</b> specifici della logistica: In coda · Da preparare · Pronti uscita · DDT da creare · Righe materiali.</li>
+        <li><b>Pillole</b> = gli stessi filtri attuali (Corriere / Ritiro / Furgone / Box campioni / Evasi), look uniforme.</li>
+        <li><b>Righe pulite</b> con pallino stadio (🟡 da preparare / 🔵 in lavorazione / 🟢 pronto / 🔴 blocco), nome+#ordine, prodotto·mq·indirizzo, tag modalità + badge DDT. A destra data + chip stato + azione contestuale (<i>Prepara / Segna spedito / Segna ritirato / Prepara carico</i>).</li>
+        <li><b>Raggruppamento per modalità</b> (Corriere / Ritiro / Furgone) mantenuto come intestazioni di sezione — utile per il magazzino che lavora per "ondate".</li>
+        <li><b>Pannello dettaglio</b> a sezioni eyebrow+card come Richieste/Inventario: azioni rapide (Shopify/Maps/Chiama) · Materiale da preparare (riuso della stessa lista materiali) · Spedizione (vettore, data, destinazione) · DDT (form compatto). Bottone primario "Segna pronto per l'uscita".</li>
+        <li><b>Nessuna funzione persa</b>: preparazione materiali, DDT/PDF, stati spedizione, destinazione — tutto resta, solo riorganizzato.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>
