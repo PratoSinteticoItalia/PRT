@@ -10637,6 +10637,82 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, buildUsageReport(store));
   }
 
+  // GET /api/marketing/meta-diagnostic — diagnostica config Meta:
+  // valida il token, mostra a cosa è associato, le Pagine accessibili,
+  // i Page Access Token e gli account Instagram Business collegati.
+  // Aiuta a capire l'errore "#3 User must be on whitelist".
+  if (url.pathname === "/api/marketing/meta-diagnostic" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const out = {
+      config: {
+        hasToken: Boolean(META_MARKETING_ACCESS_TOKEN),
+        tokenPreview: META_MARKETING_ACCESS_TOKEN ? `${META_MARKETING_ACCESS_TOKEN.slice(0, 8)}…${META_MARKETING_ACCESS_TOKEN.slice(-4)}` : "",
+        graphVersion: WHATSAPP_GRAPH_API_VERSION,
+        META_PAGE_ID: META_PAGE_ID || "(non impostato)",
+        META_INSTAGRAM_BUSINESS_ACCOUNT_ID: META_INSTAGRAM_BUSINESS_ACCOUNT_ID || "(non impostato)",
+      },
+      token: null,
+      me: null,
+      pages: [],
+      errors: [],
+    };
+    if (!META_MARKETING_ACCESS_TOKEN) {
+      out.errors.push("Nessun token configurato (META_MARKETING_ACCESS_TOKEN).");
+      return sendJson(res, 200, out);
+    }
+    const graphGet = async (path, fields) => {
+      try {
+        const u = new URL(`https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${path}`);
+        if (fields) u.searchParams.set("fields", fields);
+        u.searchParams.set("access_token", META_MARKETING_ACCESS_TOKEN);
+        const r = await fetchWithTimeout(u.toString(), { method: "GET" }, WHATSAPP_GRAPH_TIMEOUT_MS);
+        const txt = await r.text().catch(() => "");
+        let json = {}; try { json = JSON.parse(txt); } catch { json = { raw: txt }; }
+        return { ok: r.ok, status: r.status, json };
+      } catch (e) { return { ok: false, status: 0, json: { error: { message: String(e?.message || e) } } }; }
+    };
+    // 1) chi è il token (utente o pagina?)
+    const me = await graphGet("me", "id,name");
+    if (me.ok) out.me = me.json; else out.errors.push(`/me: ${me.json?.error?.message || me.status}`);
+    // 2) token scopes/validità (debug_token con il token stesso)
+    const dbg = await graphGet("debug_token", "");
+    // debug_token vuole input_token+access_token; lo facciamo a parte
+    try {
+      const u = new URL(`https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/debug_token`);
+      u.searchParams.set("input_token", META_MARKETING_ACCESS_TOKEN);
+      u.searchParams.set("access_token", META_MARKETING_ACCESS_TOKEN);
+      const r = await fetchWithTimeout(u.toString(), { method: "GET" }, WHATSAPP_GRAPH_TIMEOUT_MS);
+      const j = await r.json().catch(() => ({}));
+      if (j?.data) {
+        out.token = {
+          type: j.data.type,
+          app_id: j.data.app_id,
+          application: j.data.application,
+          is_valid: j.data.is_valid,
+          scopes: j.data.scopes || [],
+          expires_at: j.data.expires_at ? new Date(j.data.expires_at * 1000).toISOString() : "(mai / long-lived)",
+        };
+      }
+    } catch (e) { out.errors.push(`debug_token: ${String(e?.message || e)}`); }
+    // 3) Pagine accessibili + IG business + page token
+    const pages = await graphGet("me/accounts", "id,name,access_token,instagram_business_account{id,username},tasks");
+    if (pages.ok && Array.isArray(pages.json?.data)) {
+      out.pages = pages.json.data.map((p) => ({
+        pageId: p.id,
+        pageName: p.name,
+        hasPageToken: Boolean(p.access_token),
+        pageTokenPreview: p.access_token ? `${String(p.access_token).slice(0, 8)}…${String(p.access_token).slice(-4)}` : "",
+        instagramBusinessAccountId: p.instagram_business_account?.id || "(nessuno collegato)",
+        instagramUsername: p.instagram_business_account?.username || "",
+        tasks: p.tasks || [],
+      }));
+    } else {
+      out.errors.push(`/me/accounts: ${pages.json?.error?.message || pages.status}`);
+    }
+    return sendJson(res, 200, out);
+  }
+
   if (url.pathname === "/api/marketing/publish" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
