@@ -20692,3 +20692,31 @@ body {
   border-color: #fbbf24;
   color: #92400e;
 }
+
+/* ── Inbox Ordini: respiro per CTA inventario + salva preparazione ── */
+.order-flow-inventory-cta {
+  margin-top: 14px !important;
+  padding: 14px !important;
+  background: #f7f6f2;
+  border: 1px solid #ece8de;
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+}
+.order-flow-inventory-cta .primary-button {
+  width: 100%;
+  padding: 11px 16px !important;
+}
+/* Save preparazione: sticky in cima alla sezione materiali così è sempre
+   raggiungibile senza scrollare in fondo a una lista lunga. */
+#orders .panel-subsection-prep .subsection-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card, #fff);
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+}
+#orders .panel-subsection-prep .subsection-head .primary-button {
+  padding: 9px 16px !important;
+}
