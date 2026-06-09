@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260609-inventario-v2-struttura";
+const APP_SHELL_VERSION = "20260609-inventario-v2-alloc-panel";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14654,31 +14654,55 @@ function renderOrderInventoryAllocationPanel(order) {
       ? (state.lang === "it" ? "Ricalcola" : "Recalculate")
       : (state.lang === "it" ? "Calcola proposta" : "Suggest pieces");
 
+  // ── Stato del flusso → banner + bottone primario contestuale ──────────────
+  // 1) niente proposta → "Calcola proposta"
+  // 2) proposta pronta, non impegnata → "Impegna" (verde)
+  // 3) impegnata → "Scarica merce" (verde)
+  const isCommitted = committedAllocations.length > 0;
+  let banner, primaryBtn;
+  if (isCommitted) {
+    banner = `<div class="inv-alloc-banner imp"><span>🟡</span> ${activeAllocations.length} ${state.lang === "it" ? "pezzi impegnati" : "pieces committed"} · ${Math.round(allocationSummary)} mq</div>`;
+    primaryBtn = `<button class="inv-alloc-primary green${pending ? " is-busy" : ""}" type="button" data-action="fulfill-inventory-order" data-id="${escapeHtml(order.id)}" ${!pending ? "" : "disabled"}>${state.lang === "it" ? "✓ Scarica merce dal magazzino" : "✓ Fulfill from warehouse"}</button>`;
+  } else if (canCommit) {
+    banner = `<div class="inv-alloc-banner ready"><span>✓</span> ${state.lang === "it" ? "Proposta pronta — conferma per impegnare i pezzi" : "Suggestion ready — confirm to commit"}</div>`;
+    primaryBtn = `<button class="inv-alloc-primary${pending ? " is-busy" : ""}" type="button" data-action="commit-inventory-order" data-id="${escapeHtml(order.id)}">${state.lang === "it" ? "Impegna i pezzi proposti" : "Commit suggested pieces"}</button>`;
+  } else {
+    banner = missingRows.length
+      ? `<div class="inv-alloc-banner def"><span>⚠</span> ${state.lang === "it" ? "Mancano pezzi a magazzino per coprire l'ordine" : "Missing stock to cover the order"}</div>`
+      : `<div class="inv-alloc-banner pending"><span>⏳</span> ${state.lang === "it" ? "Nessun pezzo assegnato — calcola la proposta" : "No pieces assigned — calculate suggestion"}</div>`;
+    primaryBtn = `<button class="inv-alloc-primary${pending ? " is-busy" : ""}" type="button" data-action="suggest-inventory-order" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>${suggestLabel}</button>`;
+  }
+
+  // Azioni secondarie contestuali
+  const secondaryBtns = [];
+  if (isCommitted) {
+    secondaryBtns.push(`<button class="ghost-button small-button" type="button" data-action="release-inventory-order" data-id="${escapeHtml(order.id)}" ${!pending ? "" : "disabled"}>${state.lang === "it" ? "↩ Libera impegni" : "↩ Release"}</button>`);
+  }
+  if (hasSuggestions && !isCommitted) {
+    secondaryBtns.push(`<button class="ghost-button small-button" type="button" data-action="suggest-inventory-order" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>${state.lang === "it" ? "↻ Ricalcola" : "↻ Recalculate"}</button>`);
+  }
+
   return `
-    <div class="warehouse-allocation-card">
-      <div class="warehouse-allocation-head">
-        <div>
-          <strong>${state.lang === "it" ? "Pezzi assegnati all'ordine" : "Assigned physical pieces"}</strong>
-          <span>${allocationSummaryLabel}</span>
+    <div class="inv-alloc">
+      <div class="inv-alloc-eyebrow">${state.lang === "it" ? "Allocazione materiale" : "Material allocation"}</div>
+      ${banner}
+      ${suggestionRows.length || missingRows.length ? `
+        <div class="inv-section">
+          <p class="inv-section-label">${state.lang === "it" ? "Proposta di taglio" : "Cut suggestion"}</p>
+          ${suggestionList}
+          ${missingRows.length ? `<p class="inv-alloc-warning">${state.lang === "it" ? "Non si può impegnare finché ci sono pezzi mancanti." : "Cannot commit while pieces are missing."}</p>` : ""}
         </div>
-        <div class="warehouse-allocation-actions">
-          <button class="${hasSuggestions || activeAllocations.length ? "ghost-button" : "primary-button"} small-button${pending ? " is-busy" : ""}" type="button" data-action="suggest-inventory-order" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>
-            ${suggestLabel}
-          </button>
-          <button class="primary-button small-button${pending ? " is-busy" : ""}" type="button" data-action="commit-inventory-order" data-id="${escapeHtml(order.id)}" ${canCommit ? "" : "disabled"}>
-            ${pending ? (state.lang === "it" ? "Caricamento..." : "Loading...") : (state.lang === "it" ? "Impegna" : "Commit")}
-          </button>
-          <button class="ghost-button small-button" type="button" data-action="release-inventory-order" data-id="${escapeHtml(order.id)}" ${committedAllocations.length && !pending ? "" : "disabled"}>
-            ${state.lang === "it" ? "Libera impegni" : "Release"}
-          </button>
-          <button class="ghost-button small-button" type="button" data-action="fulfill-inventory-order" data-id="${escapeHtml(order.id)}" ${committedAllocations.length && !pending ? "" : "disabled"}>
-            ${state.lang === "it" ? "Scarica ora" : "Fulfill now"}
-          </button>
+      ` : ""}
+      ${activeAllocations.length ? `
+        <div class="inv-section">
+          <p class="inv-section-label">${state.lang === "it" ? "Pezzi assegnati" : "Assigned pieces"}</p>
+          ${allocationList}
         </div>
+      ` : ""}
+      <div class="inv-alloc-actions">
+        ${primaryBtn}
+        ${secondaryBtns.length ? `<div class="inv-alloc-secondary">${secondaryBtns.join("")}</div>` : ""}
       </div>
-      ${allocationList}
-      ${suggestionList}
-      ${missingRows.length ? `<p class="inventory-allocation-warning">${state.lang === "it" ? "La proposta non puo essere impegnata finche ci sono pezzi mancanti." : "The suggestion cannot be committed while pieces are missing."}</p>` : ""}
     </div>
   `;
 }

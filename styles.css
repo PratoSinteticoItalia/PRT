@@ -20795,3 +20795,45 @@ body {
 .inv-tools { display: flex; gap: 8px; margin-top: 12px; }
 .inv-tools .inv-clear { margin-left: auto; color: #b91c1c; }
 .inv-tools .inv-clear:disabled { color: #c9bfa8; cursor: not-allowed; }
+
+/* ── Inventario v2 — pannello allocazione guidato (stile sezioni Richieste) ── */
+.inv-alloc { display: flex; flex-direction: column; gap: 0; }
+.inv-alloc-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8a9690; margin-bottom: 10px; }
+
+.inv-alloc-banner { display: flex; align-items: center; gap: 9px; padding: 11px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.inv-alloc-banner.imp     { background: #fef3c7; color: #92400e; }
+.inv-alloc-banner.ready   { background: #d1fae5; color: #065f46; }
+.inv-alloc-banner.pending { background: #f1efe9; color: #5a6e63; }
+.inv-alloc-banner.def     { background: #fee2e2; color: #991b1b; }
+
+.inv-section { background: #fdfcfa; border: 1px solid #ece8de; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+.inv-section-label { margin: 0 0 12px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8a9690; }
+
+/* lista proposta / allocazioni dentro le sezioni */
+.inv-section .inventory-suggestion-list { display: grid; gap: 8px; }
+.inv-section .inventory-suggestion-row,
+.inv-section .inventory-allocation-row {
+  background: #fff; border: 1px solid #e5e1d6; border-radius: 9px; padding: 10px 12px;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+}
+.inv-section .inventory-suggestion-row.is-missing { background: #fef2f2; border-color: #f0c9c9; }
+.inv-section .inventory-suggestion-row strong,
+.inv-section .inventory-allocation-row strong { display: block; font-size: 13.5px; font-weight: 600; color: #1a2e26; }
+.inv-section .inventory-suggestion-row span,
+.inv-section .inventory-allocation-row span { font-size: 12.5px; color: #5a6e63; }
+.inv-section .inventory-suggestion-row em,
+.inv-section .inventory-allocation-row em { display: block; font-size: 11.5px; color: #8a9690; font-style: normal; margin-top: 2px; }
+.inv-section .inventory-allocation-empty { color: #8a9690; font-size: 13px; }
+.inv-section .inventory-source-picker { display: block; margin-top: 8px; }
+.inv-section .inventory-source-picker span { font-size: 11px; color: #8a9690; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; display: block; margin-bottom: 4px; }
+.inv-section .inventory-source-picker select { width: 100%; padding: 8px 10px; border: 1px solid #e5e1d6; border-radius: 7px; font-size: 12.5px; background: #fff; }
+
+.inv-alloc-warning { margin: 8px 0 0; font-size: 12px; color: #991b1b; font-weight: 600; }
+
+.inv-alloc-actions { margin-top: 4px; }
+.inv-alloc-primary { width: 100%; padding: 13px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; background: #1f4d3d; color: #fff; }
+.inv-alloc-primary.green { background: #10b981; }
+.inv-alloc-primary:disabled { opacity: .55; cursor: not-allowed; }
+.inv-alloc-primary.is-busy { opacity: .7; cursor: wait; }
+.inv-alloc-secondary { display: flex; gap: 8px; margin-top: 8px; }
+.inv-alloc-secondary .ghost-button { flex: 1; }
