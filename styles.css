@@ -20917,3 +20917,85 @@ body {
   .shp-row { grid-template-columns: 12px 1fr auto; }
   .shp-row .shp-action { grid-column: 1 / -1; width: 100%; opacity: 1; margin-top: 4px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Logistica v2 — pannello dettaglio (restyle CSS, struttura invariata)
+   Allinea il pannello destro alle sezioni eyebrow+card delle Richieste.
+   ═══════════════════════════════════════════════════════════════════ */
+#shipping-standard-detail-panel { display: flex; flex-direction: column; gap: 12px; padding: 4px; }
+
+/* Ogni subsection → card beige con bordo */
+#shipping-standard-detail-panel .panel-subsection {
+  background: #fdfcfa;
+  border: 1px solid #ece8de;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0;
+}
+/* annulla card annidate (estimate dentro vettore) */
+#shipping-standard-detail-panel .panel-subsection .panel-subsection {
+  background: #fff;
+  margin-top: 12px;
+}
+
+/* Header sezione → eyebrow maiuscoletto */
+#shipping-standard-detail-panel .subsection-head { margin-bottom: 12px; align-items: center; }
+#shipping-standard-detail-panel .subsection-head h4 {
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #8a9690 !important;
+  margin: 0;
+}
+#shipping-standard-detail-panel .section-inline-title {
+  font-size: 16px; font-weight: 700; color: #1a2e26; margin: 0 0 12px;
+}
+
+/* Campi e input puliti */
+#shipping-standard-detail-panel .field > span {
+  font-size: 12px; color: #5a6e63; margin-bottom: 5px; display: block; font-weight: 500;
+}
+#shipping-standard-detail-panel .text-input {
+  background: #f1efe9;
+  border: 1px solid #e5e1d6;
+  border-radius: 9px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+}
+#shipping-standard-detail-panel .text-input:focus {
+  background: #fff; border-color: #1f4d3d; outline: none;
+}
+#shipping-standard-detail-panel textarea.text-input { min-height: 70px; resize: vertical; }
+
+/* Checkbox stato → righe leggibili */
+#shipping-standard-detail-panel .checkline {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 13px; background: #fff; border: 1px solid #e5e1d6;
+  border-radius: 9px; margin-top: 6px; font-size: 13.5px; font-weight: 500; cursor: pointer;
+}
+#shipping-standard-detail-panel .checkline:hover { border-color: #d4cebd; }
+#shipping-standard-detail-panel .checkline input[type="checkbox"] { width: 18px; height: 18px; accent-color: #1f4d3d; }
+
+/* Bottoni */
+#shipping-standard-detail-panel .primary-button {
+  background: #1f4d3d; border-color: #1f4d3d; border-radius: 9px; font-weight: 600;
+}
+#shipping-standard-detail-panel .subsection-head .primary-button.small-button {
+  padding: 7px 13px;
+}
+#shipping-standard-detail-panel .inline-actions { margin-top: 12px; gap: 8px; display: flex; }
+#shipping-standard-detail-panel #warehouse-ddt-status {
+  display: block; margin-top: 10px; font-size: 11.5px; color: #8a9690;
+  background: #f7f6f2; border: 1px dashed #d4cebd; border-radius: 8px; padding: 8px 12px;
+}
+
+/* Form grid a 2 colonne dove sta */
+#shipping-standard-detail-panel .inline-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+#shipping-standard-detail-panel .inline-form-grid .field-full,
+#shipping-standard-detail-panel .inline-form-grid .checkline,
+#shipping-standard-detail-panel .inline-form-grid .inline-actions,
+#shipping-standard-detail-panel .inline-form-grid .panel-note { grid-column: 1 / -1; }
+@media (max-width: 560px) {
+  #shipping-standard-detail-panel .inline-form-grid { grid-template-columns: 1fr; }
+}
