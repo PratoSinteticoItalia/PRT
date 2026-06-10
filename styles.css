@@ -20857,3 +20857,63 @@ body {
   position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,.65); color: #fff;
   font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Logistica v2 — KPI strip, gruppi, righe pulite (stile Richieste/Inventario)
+   ═══════════════════════════════════════════════════════════════════ */
+.shp-kpi-strip { display: flex; gap: 34px; padding: 16px 22px; background: #fff; border: 1px solid #ece8de; border-radius: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.shp-kpi { display: flex; flex-direction: column; gap: 2px; }
+.shp-kpi-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1.1; color: #1a2e26; }
+.shp-kpi-label { font-size: 10.5px; color: #8a9690; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; white-space: nowrap; }
+.shp-kpi.warn .shp-kpi-value { color: #b45309; }
+
+.shp-groups { display: flex; flex-direction: column; }
+.shp-group-label { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; }
+.shp-group-label h3 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a9690; }
+.shp-gc { font-size: 11px; font-weight: 700; background: #ece8de; color: #5a6e63; padding: 1px 8px; border-radius: 10px; }
+.shp-group-list { display: flex; flex-direction: column; gap: 6px; }
+
+.shp-row { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 14px; padding: 13px 16px; background: #fff; border: 1px solid #e5e1d6; border-radius: 12px; cursor: pointer; transition: border-color .12s, box-shadow .12s, transform .12s; }
+.shp-row:hover { border-color: #d4cebd; box-shadow: 0 4px 12px rgba(26,46,38,.06); transform: translateY(-1px); }
+.shp-row.selected { border-color: #1f4d3d; border-left: 3px solid #1f4d3d; padding-left: 14px; box-shadow: 0 2px 8px rgba(31,77,61,.08); }
+.shp-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.shp-dot.prep { background: #f59e0b; box-shadow: 0 0 0 3px #fef3c7; }
+.shp-dot.work { background: #3b82f6; box-shadow: 0 0 0 3px #e0edff; }
+.shp-dot.ready { background: #10b981; box-shadow: 0 0 0 3px #d1fae5; }
+.shp-dot.block { background: #ef4444; box-shadow: 0 0 0 3px #fee2e2; }
+.shp-main { min-width: 0; }
+.shp-name-line { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+.shp-name { font-weight: 600; font-size: 14.5px; color: #1a2e26; letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shp-num { font-size: 12px; color: #8a9690; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.shp-meta { display: flex; gap: 6px; align-items: center; color: #5a6e63; font-size: 12.5px; flex-wrap: wrap; }
+.shp-meta .shp-sep { color: #8a9690; }
+.shp-mode-tag { padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+.shp-mode-tag.courier { background: #e0edff; color: #1e40af; }
+.shp-mode-tag.pickup { background: #fff7ed; color: #9a3412; }
+.shp-mode-tag.van { background: #e8f0ec; color: #1f4d3d; }
+.shp-badge { padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; background: #f0f0ef; color: #6b7280; }
+.shp-badge.ok { background: #d1fae5; color: #065f46; }
+.shp-aside { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; min-width: 100px; }
+.shp-date { font-size: 11.5px; color: #8a9690; font-variant-numeric: tabular-nums; }
+.shp-chip { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 5px; letter-spacing: .03em; }
+.shp-chip.prep { background: #fef3c7; color: #92400e; }
+.shp-chip.ready { background: #d1fae5; color: #065f46; }
+.shp-chip.work { background: #e0edff; color: #1e40af; }
+.shp-chip.block { background: #fee2e2; color: #991b1b; }
+.shp-action { padding: 8px 13px; background: #1a2e26; color: #fff; border: none; border-radius: 7px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; opacity: 0; transition: opacity .15s; }
+.shp-row:hover .shp-action, .shp-row.selected .shp-action { opacity: 1; }
+.shp-action.green { background: #10b981; }
+
+/* Pillole filtro Logistica (riusa .filter-bar ma allineato a v2) */
+#shipping .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; }
+#shipping .filter-bar .filter-btn { padding: 8px 14px; background: #fff; border: 1px solid #e5e1d6; border-radius: 999px; font-size: 13px; font-weight: 500; color: #5a6e63; cursor: pointer; }
+#shipping .filter-bar .filter-btn:hover { border-color: #d4cebd; color: #1a2e26; }
+#shipping .filter-bar .filter-btn.is-active { background: #1f4d3d; color: #fff; border-color: #1f4d3d; }
+#shipping #shipping-search { width: 100%; padding: 12px 14px; background: #fff; border: 1px solid #e5e1d6; border-radius: 8px; font-size: 14px; }
+
+/* Mobile */
+@media (max-width: 980px) {
+  .shp-kpi-strip { flex-wrap: nowrap; overflow-x: auto; gap: 22px; }
+  .shp-row { grid-template-columns: 12px 1fr auto; }
+  .shp-row .shp-action { grid-column: 1 / -1; width: 100%; opacity: 1; margin-top: 4px; }
+}

@@ -8877,12 +8877,33 @@ function buildDefaultOperations(order, linkedJob = null) {
   };
 }
 
+// Riconciliazione difensiva degli stati operativi: impedisce combinazioni
+// impossibili che confondono le viste (es. "da preparare" ma flag spedito/pronto).
+// NON tocca la semantica "concluso" — solo coerenza interna.
+function reconcileOperationsConsistency(ops) {
+  if (!ops || typeof ops !== "object") return ops;
+  const wh = ops.warehouse;
+  if (wh && typeof wh === "object") {
+    const status = String(wh.status || "").trim();
+    // Stati iniziali: non si può essere pronti/spediti/passati al corriere se
+    // l'ordine è ancora da preparare o in preparazione.
+    if (status === "da-preparare" || status === "in-preparazione") {
+      wh.readyToShip = false;
+      wh.shipped = false;
+      wh.carrierPassed = false;
+    }
+    // Una data preparazione nel passato + status iniziale resta valida (è la data
+    // pianificata); non la tocchiamo. Coerenza modalità↔stato lasciata ai flussi.
+  }
+  return ops;
+}
+
 function normalizeOperations(order, linkedJob = null) {
   const defaults = buildDefaultOperations(order, linkedJob);
   const current = order.operations || {};
   const currentProduct = String(current.product || "").trim();
   const shouldUseDefaultProduct = !currentProduct || /^da definire$/i.test(currentProduct);
-  return {
+  return reconcileOperationsConsistency({
     officeStatus: current.officeStatus || defaults.officeStatus,
     product: shouldUseDefaultProduct ? defaults.product : currentProduct,
     sqm: Number(current.sqm || defaults.sqm || 0),
@@ -8943,7 +8964,7 @@ function normalizeOperations(order, linkedJob = null) {
       ),
       profitSplit: normalizeProfitSplitRecord(current.installation?.profitSplit),
     },
-  };
+  });
 }
 
 function reconcileStoreData(store) {

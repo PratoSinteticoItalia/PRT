@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260609-fix-routing-explicit";
+const APP_SHELL_VERSION = "20260609-logistica-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -18891,27 +18891,31 @@ function getShippingQueueGroupMeta(mode) {
   if (mode === "corriere") {
     return {
       key: "corriere",
-      title: state.lang === "it" ? "Ordini corriere" : "Courier orders",
+      icon: "🚚",
+      title: state.lang === "it" ? "Corriere" : "Courier",
       copy: state.lang === "it" ? "Merce da bancalare e affidare al vettore." : "Goods to palletize and hand to the carrier.",
     };
   }
   if (mode === "ritiro") {
     return {
       key: "ritiro",
-      title: state.lang === "it" ? "Ordini ritiro" : "Pickup orders",
+      icon: "📦",
+      title: state.lang === "it" ? "Ritiro cliente" : "Customer pickup",
       copy: state.lang === "it" ? "Merce pronta in sede per ritiro cliente." : "Goods ready at HQ for customer pickup.",
     };
   }
   if (mode === "furgone") {
     return {
       key: "furgone",
-      title: state.lang === "it" ? "Ordini furgone / posa" : "Van / installation orders",
+      icon: "🚐",
+      title: state.lang === "it" ? "Furgone (posa)" : "Van (install)",
       copy: state.lang === "it" ? "Merce da caricare sul furgone per uscita squadra." : "Goods to load on the van for crew departure.",
     };
   }
   return {
     key: "altro",
-    title: state.lang === "it" ? "Ordini da definire" : "Orders to define",
+    icon: "📋",
+    title: state.lang === "it" ? "Da definire" : "To define",
     copy: state.lang === "it" ? "Flusso logistico ancora da completare." : "Logistics flow still to be completed.",
   };
 }
@@ -18959,6 +18963,30 @@ function getShippingNextAction(order) {
   return state.lang === "it" ? "Verifica chiusura logistica" : "Verify logistics closure";
 }
 
+// Pallino stadio per la riga Logistica (mappa il tone dello stage al colore).
+function getShippingDotClass(stage) {
+  if (stage.tone === "green") return "ready";
+  if (stage.tone === "red") return "block";
+  if (stage.tone === "blue") return "work";
+  return "prep"; // amber / default
+}
+
+// Azione contestuale sulla riga in base a modalità + stato magazzino.
+function getShippingRowAction(order) {
+  const wh = order.operations?.warehouse || {};
+  const mode = String(wh.fulfillmentMode || "").trim();
+  const status = String(wh.status || "").trim();
+  const ready = status === "pronto" || wh.readyToShip;
+  if (ready) {
+    if (mode === "corriere") return { label: state.lang === "it" ? "Segna spedito" : "Mark shipped", tone: "green" };
+    if (mode === "ritiro") return { label: state.lang === "it" ? "Segna ritirato" : "Mark collected", tone: "green" };
+    if (mode === "furgone") return { label: state.lang === "it" ? "Prepara carico" : "Prep load", tone: "" };
+    return { label: state.lang === "it" ? "Apri" : "Open", tone: "" };
+  }
+  if (mode === "furgone") return { label: state.lang === "it" ? "Prepara carico" : "Prep load", tone: "" };
+  return { label: state.lang === "it" ? "Prepara" : "Prepare", tone: "" };
+}
+
 function renderShippingQueueCard(order) {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const sampleOrder = isSampleOrder(order);
@@ -18967,32 +18995,39 @@ function renderShippingQueueCard(order) {
   const routeLabel = getShippingModeLabel(order);
   const targetLabel = getShippingTargetLabel(order);
   const destination = composeAddress(order) || addressIncompleteText();
-  const ddtOrSampleLabel = sampleOrder
+  const ddtNumber = order.operations?.warehouse?.ddt?.number || "";
+  const ddtBadge = sampleOrder
     ? (hasSampleLdvAttachment(order)
-      ? (state.lang === "it" ? "LDV allegata" : "Waybill attached")
-      : (state.lang === "it" ? "LDV da caricare" : "Upload waybill"))
-    : (order.operations?.warehouse?.ddt?.number || (state.lang === "it" ? "DDT da creare" : "DDT to create"));
-  const badgeTone = stage.tone === "green" ? "badge-success"
-    : stage.tone === "red" ? "badge-urgent"
-    : stage.tone === "blue" ? "badge-info"
-    : "badge-warning";
-  const modeTone = mode === "corriere" ? "type-spedizione"
-    : mode === "ritiro" ? "type-ritiro"
-    : "type-posa";
+      ? `<span class="shp-badge ok">${state.lang === "it" ? "LDV ok" : "Waybill ok"}</span>`
+      : `<span class="shp-badge">${state.lang === "it" ? "LDV da caricare" : "Upload waybill"}</span>`)
+    : (ddtNumber
+      ? `<span class="shp-badge ok">${escapeHtml(ddtNumber)}</span>`
+      : `<span class="shp-badge">${state.lang === "it" ? "DDT da creare" : "DDT to create"}</span>`);
+  const dotClass = getShippingDotClass(stage);
+  const chipClass = stage.tone === "green" ? "ready" : stage.tone === "blue" ? "work" : stage.tone === "red" ? "block" : "prep";
+  const modeTagClass = mode === "corriere" ? "courier" : mode === "ritiro" ? "pickup" : "van";
+  const action = getShippingRowAction(order);
   return `
-    <article class="order-row shipping-row ${selected} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping">
-      <div>
-        <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-        <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${destination}</div>
+    <article class="shp-row ${selected ? "selected" : ""} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping">
+      <span class="shp-dot ${dotClass}"></span>
+      <div class="shp-main">
+        <div class="shp-name-line">
+          <span class="shp-name">${escapeHtml(composeClientName(order))}</span>
+          <span class="shp-num">${escapeHtml(getOrderNumber(order))}</span>
+        </div>
+        <div class="shp-meta">
+          <span>${escapeHtml(order.operations?.product || t("undefined"))} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
+          <span class="shp-sep">·</span>
+          <span>${escapeHtml(destination)}</span>
+          <span class="shp-mode-tag ${modeTagClass}">${escapeHtml(routeLabel)}</span>
+          ${ddtBadge}
+        </div>
       </div>
-      <div class="order-badges-stack">
-        <div class="order-type-badge ${modeTone}">${routeLabel}</div>
-        <div class="action-badge ${badgeTone}">${stage.label}</div>
+      <div class="shp-aside">
+        <span class="shp-date">${escapeHtml(targetLabel)}</span>
+        <span class="shp-chip ${chipClass}">${escapeHtml(stage.label)}</span>
       </div>
-      <div class="shipping-row-footer">
-        <span class="shipping-prep-date">${targetLabel}</span>
-        <span>${ddtOrSampleLabel}</span>
-      </div>
+      <button class="shp-action ${action.tone}" type="button" data-action="select-order" data-id="${order.id}" data-view="shipping">${escapeHtml(action.label)}</button>
     </article>
   `;
 }
@@ -19198,31 +19233,27 @@ function renderShipping() {
         }),
       })).filter((group) => group.orders.length);
       const totalPreparedLines = orders.reduce((sum, order) => sum + getWarehousePreparedLines(order).length, 0);
+      // KPI logistica
+      const kpiToPrepare = orders.filter((o) => ["da-preparare", "in-preparazione"].includes(String(o.operations?.warehouse?.status || "").trim())).length;
+      const kpiReady = orders.filter((o) => String(o.operations?.warehouse?.status || "").trim() === "pronto" || o.operations?.warehouse?.readyToShip).length;
+      const kpiDdtTodo = orders.filter((o) => !isSampleOrder(o) && !String(o.operations?.warehouse?.ddt?.number || "").trim()).length;
       ui.shippingList.innerHTML = orders.length
         ? `
-          <div class="shipping-queue-summary">
-            ${renderDetailBox({
-              label: state.lang === "it" ? "Ordini in coda" : "Queued orders",
-              value: String(orders.length),
-              meta: state.lang === "it" ? "Lista ordini da gestire in logistica." : "Order list to handle in logistics.",
-            })}
-            ${renderDetailBox({
-              label: state.lang === "it" ? "Righe da preparare" : "Lines to prepare",
-              value: String(totalPreparedLines),
-              meta: state.lang === "it" ? "Somma delle righe materiali pronte o da verificare." : "Combined material lines ready or to verify.",
-            })}
+          <div class="shp-kpi-strip">
+            <div class="shp-kpi"><span class="shp-kpi-value">${orders.length}</span><span class="shp-kpi-label">${state.lang === "it" ? "In coda" : "Queued"}</span></div>
+            <div class="shp-kpi ${kpiToPrepare > 0 ? "warn" : ""}"><span class="shp-kpi-value">${kpiToPrepare}</span><span class="shp-kpi-label">${state.lang === "it" ? "Da preparare" : "To prepare"}</span></div>
+            <div class="shp-kpi"><span class="shp-kpi-value">${kpiReady}</span><span class="shp-kpi-label">${state.lang === "it" ? "Pronti uscita" : "Ready"}</span></div>
+            <div class="shp-kpi"><span class="shp-kpi-value">${kpiDdtTodo}</span><span class="shp-kpi-label">${state.lang === "it" ? "DDT da creare" : "DDT to create"}</span></div>
+            <div class="shp-kpi"><span class="shp-kpi-value">${totalPreparedLines}</span><span class="shp-kpi-label">${state.lang === "it" ? "Righe materiali" : "Material lines"}</span></div>
           </div>
-          <div class="shipping-queue-groups">
+          <div class="shp-groups">
             ${groupedOrders.map((group) => `
-              <section class="shipping-queue-group">
-                <div class="shipping-queue-group-head">
-                  <div>
-                    <h4>${group.title}</h4>
-                    <p>${group.copy}</p>
-                  </div>
-                  <span class="search-pill compact-pill">${group.orders.length}</span>
+              <section class="shp-group">
+                <div class="shp-group-label">
+                  <h3>${escapeHtml(group.icon || "")} ${escapeHtml(group.title)}</h3>
+                  <span class="shp-gc">${group.orders.length}</span>
                 </div>
-                <div class="shipping-queue-list">
+                <div class="shp-group-list">
                   ${group.orders.map(renderShippingQueueCard).join("")}
                 </div>
               </section>
