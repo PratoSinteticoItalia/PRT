@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260609-logistica-v2-detail";
+const APP_SHELL_VERSION = "20260610-logistica-v3-snello";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -19301,16 +19301,16 @@ function renderShipping() {
   const stage = getUnifiedOrderStage(order);
   const nextAction = getShippingNextAction(order);
   if (ui.shippingDetailFields) {
-    ui.shippingDetailFields.innerHTML = [
+    // Pannello asciutto: un banner "cosa fare ora" + solo le 3 info essenziali.
+    // Le info su DDT, destinazione tariffaria e classe sono già nei rispettivi
+    // riquadri sotto (form DDT + calcolatore costo), quindi non le ripetiamo qui.
+    const essentials = [
       {
-        label: state.lang === "it" ? "Prodotto" : "Product",
-        value: order.operations?.product || undefinedText(),
-        meta: `${order.operations?.sqm || 0} mq · ${composeAddress(order) || addressIncompleteText()}`,
-      },
-      {
-        label: state.lang === "it" ? "Fase logistica" : "Logistics stage",
-        value: stage.label,
-        meta: nextAction,
+        label: state.lang === "it" ? "Destinazione" : "Destination",
+        value: composeAddress(order) || addressIncompleteText(),
+        meta: destination.provinceCode
+          ? `${destination.provinceCode}${destination.region ? " · " + destination.region : (destination.postalCode ? " · " + destination.postalCode : "")}`
+          : (state.lang === "it" ? "Provincia / CAP da completare" : "Province / ZIP to complete"),
       },
       {
         label: "Gestione",
@@ -19321,34 +19321,17 @@ function renderShipping() {
         label: "Preparazione",
         value: getShippingTargetLabel(order),
         meta: order.operations?.warehouse?.preparationDate
-          ? (state.lang === "it"
-              ? `Calendario preparazione fissato per ${formatDate(order.operations?.warehouse?.preparationDate)}`
-              : `Prep calendar set for ${formatDate(order.operations?.warehouse?.preparationDate)}`)
-          : (state.lang === "it" ? "Calendario preparazione ancora da definire." : "Prep calendar not set yet."),
+          ? formatDate(order.operations?.warehouse?.preparationDate)
+          : (state.lang === "it" ? "Data da definire" : "Date to set"),
       },
-      {
-        label: "DDT",
-        value: order.operations?.warehouse?.ddt?.number || "Da creare",
-        meta: order.operations?.warehouse?.ddt?.createdAt ? formatDate(order.operations?.warehouse?.ddt?.createdAt) : "Non ancora generato",
-      },
-      {
-        label: state.lang === "it" ? "Destinazione tariffaria" : "Tariff destination",
-        value: destination.provinceCode || (state.lang === "it" ? "Provincia mancante" : "Missing province"),
-        meta: destination.region || destination.province || (state.lang === "it" ? "Compila provincia o CAP per il calcolo automatico." : "Fill province or ZIP for automatic pricing."),
-      },
-      {
-        label: t("shipmentState"),
-        value: getShipmentStateLabel(order),
-        meta: order.operations?.warehouse?.trackingNumber || order.operations?.warehouse?.warehouseNote || "Nessuna nota logistica",
-      },
-      {
-        label: state.lang === "it" ? "Classe stimata" : "Estimated class",
-        value: estimate.mode === "oneexpress-auto" ? (estimate.palletClass || "—") : (state.lang === "it" ? "Manuale" : "Manual"),
-        meta: estimate.mode === "oneexpress-auto"
-          ? `${estimate.profile === "silver" ? "Silver" : "Gold"} · ${estimate.resa || "—"}`
-          : (state.lang === "it" ? "Fallback per fasce peso." : "Weight-band fallback."),
-      },
-    ].map(renderDetailBox).join("");
+    ];
+    const noAction = isOrderFulfilledOrClosed(order) || isLogisticsOrderCompleted(order);
+    ui.shippingDetailFields.innerHTML =
+      `<article class="shp-next-action shp-tone-${stage.tone}${noAction ? " is-done" : ""}">
+        <span class="panel-eyebrow">${state.lang === "it" ? "Cosa fare ora" : "Next action"}</span>
+        <strong>${nextAction}</strong>
+      </article>` +
+      essentials.map(renderDetailBox).join("");
   }
   renderShippingMaterialPreview(order);
   if (ui.shippingForm) {
