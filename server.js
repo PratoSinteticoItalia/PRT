@@ -10559,7 +10559,27 @@ async function handleApi(req, res, url) {
         return sessionOrders.filter((o) => normalizeCrewName(o.operations?.installation?.crew || "") === sessionCrewNorm);
       }
       if (sessionRole === "warehouse") {
-        return sessionOrders.filter((o) => (o.operations?.officeStatus || "bozza") !== "bozza");
+        // Il magazziniere vede gli ordini NON in bozza OPPURE quelli già
+        // instradati in logistica/posa (anche se l'ufficio non li ha confermati
+        // oltre la bozza) — altrimenti la sua Logistica resta vuota. Predicato
+        // allineato a isRoutedToWarehouse / isRoutedToInstallation lato client.
+        const routedToLogistics = (o) => {
+          const wh = o.operations?.warehouse || {};
+          const inst = o.operations?.installation || {};
+          return Boolean(
+            wh.selected
+            || (wh.fulfillmentMode && wh.fulfillmentMode !== "da-definire")
+            || (wh.preparationDate && String(wh.preparationDate).trim())
+            || (wh.status && wh.status !== "da-preparare")
+            || wh.readyToShip || wh.carrierPassed || wh.shipped
+            || (wh.trackingNumber && String(wh.trackingNumber).trim())
+            || inst.required || inst.selected
+            || (inst.installDate && String(inst.installDate).trim())
+            || (inst.crew && String(inst.crew).trim())
+            || (inst.status && !["", "da-pianificare"].includes(String(inst.status).trim())),
+          );
+        };
+        return sessionOrders.filter((o) => (o.operations?.officeStatus || "bozza") !== "bozza" || routedToLogistics(o));
       }
       return sessionOrders;
     })();
