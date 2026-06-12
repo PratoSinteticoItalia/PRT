@@ -20898,7 +20898,9 @@ body {
 
 /* === Drawer dettaglio Logistica === */
 #shipping .order-grid { grid-template-columns: 1fr; }
-#shipping .order-grid > div:first-child { max-height: none; overflow: visible; padding-right: 0; }
+/* La board scrolla internamente: la pagina non cresce e il drawer (fixed,
+   full-height) resta sempre in vista anche scegliendo una card in fondo. */
+#shipping .order-grid > div:first-child { max-height: calc(100vh - 200px); overflow-y: auto; padding-right: 6px; }
 #shipping .shipping-standard-detail-panel,
 #shipping .sample-detail-panel {
   position: fixed; top: 0; right: 0; height: 100vh; width: 470px; max-width: 94vw;
@@ -20913,6 +20915,22 @@ body {
 .shipping-drawer-scrim.is-open { opacity: 1; pointer-events: auto; }
 .shipping-drawer-close { position: absolute; top: 14px; right: 16px; z-index: 2; width: 32px; height: 32px; border: none; border-radius: 8px; background: #f1efe7; color: #5a6e63; font-size: 16px; cursor: pointer; }
 .shipping-drawer-close:hover { background: #e7e3d8; color: #1a2e26; }
+
+/* Contenuto drawer: compatto e niente testo che esce dalle box (drawer stretto) */
+#shipping .shipping-standard-detail-panel .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+#shipping .shipping-standard-detail-panel .detail-box { border-radius: 12px; padding: 11px 12px; min-width: 0; overflow: hidden; }
+#shipping .shipping-standard-detail-panel .detail-box strong { font-size: 14.5px; line-height: 1.3; margin-bottom: 3px; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+#shipping .shipping-standard-detail-panel .detail-box p,
+#shipping .shipping-standard-detail-panel .detail-box small { font-size: 12px; overflow-wrap: anywhere; }
+#shipping .shipping-standard-detail-panel .panel-eyebrow { font-size: 10px; letter-spacing: .06em; }
+#shipping .shipping-standard-detail-panel .section-inline-title { overflow-wrap: anywhere; }
+/* Anteprima materiali: chip che vanno a capo invece di sforare */
+#shipping .shipping-standard-detail-panel .shipping-material-hero { flex-wrap: wrap; gap: 8px; }
+#shipping .shipping-standard-detail-panel .shipping-material-badges { flex-wrap: wrap; }
+#shipping .shipping-standard-detail-panel .search-pill { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+#shipping .shipping-standard-detail-panel .shipping-material-line span { overflow-wrap: anywhere; }
+/* Form spedizione: campi a piena larghezza nel drawer */
+#shipping .shipping-standard-detail-panel .inline-form-grid { grid-template-columns: 1fr; }
 
 @media (max-width: 900px) {
   .shp-groups { grid-template-columns: 1fr; }

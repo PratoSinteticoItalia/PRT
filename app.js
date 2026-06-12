@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260612-logistica-kanban-drawer";
+const APP_SHELL_VERSION = "20260612-logistica-drawer-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
