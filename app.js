@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260612-logistica-drawer-top";
+const APP_SHELL_VERSION = "20260612-ddt-sort-marketing-guard";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -19642,10 +19642,17 @@ function getDdtFilteredOrders() {
     orders = orders.filter((o) =>
       `${composeClientName(o)} ${getOrderNumber(o)} ${o.operations?.warehouse?.ddt?.number || ""}`.toLowerCase().includes(search));
   }
-  // Da emettere prima, poi per nome
-  orders.sort((a, b) => (ddtOrderHasNumber(a) === ddtOrderHasNumber(b)
-    ? composeClientName(a).localeCompare(composeClientName(b))
-    : (ddtOrderHasNumber(a) ? 1 : -1)));
+  // Ordine cronologico come su Shopify: dal più recente al meno recente.
+  const orderTs = (o) => {
+    const t = new Date(o.createdAt || o.updatedAt || 0).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+  orders.sort((a, b) => {
+    const d = orderTs(b) - orderTs(a);
+    if (d !== 0) return d;
+    // Tiebreak: numero ordine decrescente (i numeri Shopify sono progressivi)
+    return String(getOrderNumber(b)).localeCompare(String(getOrderNumber(a)), undefined, { numeric: true });
+  });
   return orders;
 }
 
@@ -21942,6 +21949,11 @@ function readMarketingAssetFile(file) {
 function renderMarketing() {
   const container = document.getElementById("marketing-content");
   if (!container) return;
+  // Guard anti-perdita dati: se il compositore è aperto (l'utente sta scrivendo/
+  // programmando un post) NON ricostruire la vista — un refresh realtime
+  // (store-revision SSE) azzererebbe il form. Si renderizza alla chiusura/salvataggio.
+  const _openComposer = document.getElementById("marketing-form-shell");
+  if (_openComposer && !_openComposer.classList.contains("hidden")) return;
 
   const items = state.marketingItems || [];
   const channels = ["Tutti", "Instagram", "Facebook", "WhatsApp", "TikTok", "Email", "Altro"];
@@ -22412,6 +22424,7 @@ function renderMarketing() {
     if (!id) return;
     state.marketingItems = (state.marketingItems || []).filter(i => i.id !== id);
     saveMarketingItems();
+    document.getElementById("marketing-form-shell")?.classList.add("hidden");
     renderMarketing();
   });
 
@@ -22502,6 +22515,7 @@ function renderMarketing() {
       else existing.push(item);
       state.marketingItems = existing;
       saveMarketingItems();
+      document.getElementById("marketing-form-shell")?.classList.add("hidden");
       renderMarketing();
     });
   }
