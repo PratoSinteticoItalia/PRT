@@ -20898,9 +20898,26 @@ body {
 
 /* === Drawer dettaglio Logistica === */
 #shipping .order-grid { grid-template-columns: 1fr; }
-/* La board scrolla internamente: la pagina non cresce e il drawer (fixed,
-   full-height) resta sempre in vista anche scegliendo una card in fondo. */
-#shipping .order-grid > div:first-child { max-height: calc(100vh - 200px); overflow-y: auto; padding-right: 6px; }
+/* Kanban classica: il contenitore ha altezza fissa e NON scrolla; scrollano le
+   singole colonne in modo indipendente (la pagina non cresce, il drawer fixed
+   resta sempre in vista). */
+#shipping .order-grid > div:first-child {
+  max-height: calc(100vh - 150px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-right: 0;
+}
+#shipping .shp-kpi-strip { flex: 0 0 auto; }
+#shipping .shp-groups { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+#shipping .shp-group { display: flex; flex-direction: column; min-height: 0; max-height: 100%; }
+#shipping .shp-group-label { flex: 0 0 auto; }
+#shipping .shp-group-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+/* Drag-and-drop kanban */
+#shipping .shp-row { cursor: grab; }
+#shipping .shp-row:active { cursor: grabbing; }
+.shp-row.is-dragging { opacity: .45; }
+.shp-group.is-drop-over { background: rgba(34,197,94,.08); outline: 2px dashed #86efac; outline-offset: -4px; border-radius: 14px; }
 #shipping .shipping-standard-detail-panel,
 #shipping .sample-detail-panel {
   position: fixed; top: 0; right: 0; height: 100vh; width: 470px; max-width: 94vw;
@@ -20934,6 +20951,9 @@ body {
 
 @media (max-width: 900px) {
   .shp-groups { grid-template-columns: 1fr; }
+  /* Su mobile niente kanban a colonne con scroll interno: la pagina scorre. */
+  #shipping .order-grid > div:first-child { max-height: none; overflow: visible; display: block; }
+  #shipping .shp-group, #shipping .shp-group-list { max-height: none; overflow: visible; }
 }
 
 /* === Pagina DDT dedicata === */

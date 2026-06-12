@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260612-ddt-page";
+const APP_SHELL_VERSION = "20260612-logistica-kanban-dnd";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -19061,7 +19061,7 @@ function renderShippingQueueCard(order) {
   const modeIcon = getShippingQueueGroupMeta(["corriere", "ritiro", "furgone"].includes(mode) ? mode : "altro").icon || "";
   const action = getShippingRowAction(order);
   return `
-    <article class="shp-row ${selected ? "selected" : ""} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping">
+    <article class="shp-row ${selected ? "selected" : ""} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping" draggable="true" data-shipping-drag-id="${escapeAttr(order.id)}">
       <span class="shp-dot ${dotClass}"></span>
       <div class="shp-main">
         <div class="shp-name-line">
@@ -19261,6 +19261,37 @@ function openSampleLdvFile(order) {
   window.open(fileUrl, "_blank", "noopener,noreferrer");
 }
 
+// Sposta un ordine in un'altra corsia/fase (drag-and-drop kanban): imposta i
+// flag e lo stato coerenti con la fase target e salva. Il reconcile lato server
+// mantiene la coerenza (bidirezionale).
+async function moveShippingOrderToLane(orderId, lane) {
+  const order = (state.orders || []).find((o) => o.id === orderId);
+  if (!order) return;
+  if (getShippingStageLane(order) === lane) return; // già nella corsia
+  const mode = String(order.operations?.warehouse?.fulfillmentMode || "").trim();
+  let wh;
+  if (lane === "prepare") {
+    wh = { readyToShip: false, carrierPassed: false, shipped: false, status: "da-preparare" };
+  } else if (lane === "ready") {
+    wh = { readyToShip: true, carrierPassed: false, shipped: false, status: "pronto" };
+  } else { // done
+    wh = { readyToShip: true, shipped: true, carrierPassed: mode === "corriere", status: "pronto" };
+  }
+  if (order.id) orderPendingPatchIds.add(order.id);
+  try {
+    const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
+      method: "POST",
+      body: JSON.stringify({ warehouse: wh }),
+    });
+    state.orders = state.orders.map((o) => (o.id === saved.id ? saved : o));
+    renderShipping();
+  } catch (error) {
+    showToast(state.lang === "it" ? `Spostamento non riuscito: ${String(error?.message || "").trim()}` : `Move failed: ${String(error?.message || "").trim()}`, "error");
+  } finally {
+    if (order.id) orderPendingPatchIds.delete(order.id);
+  }
+}
+
 function applyShippingDrawerState() {
   const open = Boolean(state.shippingDrawerOpen) && state.currentView === "shipping";
   const scrim = document.getElementById("shipping-drawer-scrim");
@@ -19290,12 +19321,12 @@ function renderShipping() {
     } else {
       // Raggruppamento per FASE (pipeline), non per modalità: la modalità è
       // read-only (impostata dall'ufficio) e resta come chip sulla card.
+      // Tutte e 3 le corsie sempre presenti (anche vuote): sono drop-target del kanban.
       const groupedOrders = ["prepare", "ready", "done"]
         .map((lane) => ({
           ...getShippingLaneMeta(lane),
           orders: orders.filter((order) => getShippingStageLane(order) === lane),
-        }))
-        .filter((group) => group.orders.length);
+        }));
       const totalPreparedLines = orders.reduce((sum, order) => sum + getWarehousePreparedLines(order).length, 0);
       // KPI logistica allineati alle 3 fasi della pipeline
       const kpiPrepare = orders.filter((o) => getShippingStageLane(o) === "prepare").length;
@@ -19312,7 +19343,7 @@ function renderShipping() {
           </div>
           <div class="shp-groups">
             ${groupedOrders.map((group) => `
-              <section class="shp-group shp-lane-${group.key}">
+              <section class="shp-group shp-lane-${group.key}" data-shp-lane-drop="${group.key}">
                 <div class="shp-group-label">
                   <h3>${escapeHtml(group.icon || "")} ${escapeHtml(group.title)}</h3>
                   <span class="shp-gc">${group.orders.length}</span>
@@ -26078,6 +26109,41 @@ document.addEventListener("drop", (event) => {
     return;
   }
   updateOrderRoutingById(orderId, { warehouse: { selected: false }, installation: { selected: false } });
+});
+
+// === Drag-and-drop kanban Logistica: trascina una card in un'altra corsia/fase ===
+document.addEventListener("dragstart", (event) => {
+  const card = event.target.closest?.("[data-shipping-drag-id]");
+  if (!card || !event.dataTransfer) return;
+  card.classList.add("is-dragging");
+  event.dataTransfer.setData("application/x-shp-order", card.dataset.shippingDragId || "");
+  event.dataTransfer.setData("text/plain", card.dataset.shippingDragId || "");
+  event.dataTransfer.effectAllowed = "move";
+});
+document.addEventListener("dragend", (event) => {
+  event.target.closest?.("[data-shipping-drag-id]")?.classList.remove("is-dragging");
+  document.querySelectorAll(".shp-group.is-drop-over").forEach((n) => n.classList.remove("is-drop-over"));
+});
+document.addEventListener("dragover", (event) => {
+  const zone = event.target.closest?.("[data-shp-lane-drop]");
+  if (!zone) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  zone.classList.add("is-drop-over");
+});
+document.addEventListener("dragleave", (event) => {
+  const zone = event.target.closest?.("[data-shp-lane-drop]");
+  if (zone && !zone.contains(event.relatedTarget)) zone.classList.remove("is-drop-over");
+});
+document.addEventListener("drop", (event) => {
+  const zone = event.target.closest?.("[data-shp-lane-drop]");
+  if (!zone || !event.dataTransfer) return;
+  const orderId = event.dataTransfer.getData("application/x-shp-order") || event.dataTransfer.getData("text/plain");
+  const lane = zone.dataset.shpLaneDrop;
+  if (!orderId || !lane) return;
+  event.preventDefault();
+  zone.classList.remove("is-drop-over");
+  void moveShippingOrderToLane(orderId, lane);
 });
 
 document.addEventListener("click", (event) => {

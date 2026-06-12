@@ -8885,19 +8885,20 @@ function reconcileOperationsConsistency(ops) {
   const wh = ops.warehouse;
   if (wh && typeof wh === "object") {
     const status = String(wh.status || "").trim();
-    // Coerenza FORWARD (non distruttiva): se l'utente ha marcato un progresso
-    // (pronto / passato al corriere / spedito) ma lo stato testuale è ancora
-    // iniziale, AVANZA lo stato a "pronto" invece di azzerare i flag.
-    //
-    // La versione precedente azzerava readyToShip/shipped/carrierPassed quando
-    // status era "da-preparare"/"in-preparazione": ma i checkbox del pannello
-    // Logistica impostano quei flag SENZA cambiare la stringa status, quindi il
-    // reset cancellava ogni cambio di stato fatto dall'utente (bug "non prende
-    // più i cambi di stato"). Avanzare lo stato preserva l'azione e mantiene
-    // comunque la coerenza interna.
-    if ((status === "da-preparare" || status === "in-preparazione")
-        && (wh.readyToShip || wh.carrierPassed || wh.shipped)) {
-      wh.status = "pronto";
+    // Coerenza BIDIREZIONALE e non distruttiva tra flag e stato testuale, ma
+    // SOLO sugli stati logistici standard (non tocca "bloccato" o stati speciali).
+    // I checkbox del pannello/drag della kanban sono la fonte di verità:
+    //   - se c'è progresso (pronto/corriere/spedito) ma lo stato è iniziale → avanza a "pronto";
+    //   - se NON c'è alcun progresso ma lo stato era avanzato a pronto/ritirare → torna a "da-preparare".
+    // Questo permette di riportare un ordine indietro deselezionando le spunte.
+    const standardStatuses = ["", "da-preparare", "in-preparazione", "pronto", "da-ritirare", "in-attesa-di-ritiro"];
+    if (standardStatuses.includes(status)) {
+      const hasProgress = Boolean(wh.readyToShip || wh.carrierPassed || wh.shipped);
+      if (hasProgress) {
+        if (status === "" || status === "da-preparare" || status === "in-preparazione") wh.status = "pronto";
+      } else if (status === "pronto" || status === "da-ritirare" || status === "in-attesa-di-ritiro") {
+        wh.status = "da-preparare";
+      }
     }
     // Una data preparazione nel passato + status iniziale resta valida (è la data
     // pianificata); non la tocchiamo. Coerenza modalità↔stato lasciata ai flussi.
