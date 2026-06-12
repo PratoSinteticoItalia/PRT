@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260612-logistica-drawer-viewport";
+const APP_SHELL_VERSION = "20260612-logistica-drawer-top";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
