@@ -8954,6 +8954,20 @@ function normalizeOperations(order, linkedJob = null) {
         palletHeight: current.warehouse?.ddt?.palletHeight || defaults.warehouse.ddt.palletHeight,
         palletWeight: current.warehouse?.ddt?.palletWeight || defaults.warehouse.ddt.palletWeight,
         createdAt: current.warehouse?.ddt?.createdAt || defaults.warehouse.ddt.createdAt,
+        // Fase 2 DDT editabile: righe articoli + destinatario override + note.
+        // Vanno preservati esplicitamente (altrimenti la normalizzazione li scarta).
+        lines: Array.isArray(current.warehouse?.ddt?.lines)
+          ? current.warehouse.ddt.lines.map((l) => ({
+              title: String(l?.title || "").trim(),
+              quantity: Number(l?.quantity || 0) || 0,
+              um: String(l?.um || "").trim(),
+              note: String(l?.note || "").trim(),
+            })).filter((l) => l.title || l.quantity || l.note)
+          : [],
+        recipient: (current.warehouse?.ddt?.recipient && typeof current.warehouse.ddt.recipient === "object")
+          ? current.warehouse.ddt.recipient
+          : null,
+        note: String(current.warehouse?.ddt?.note || ""),
       },
     },
     installation: {
@@ -14375,7 +14389,15 @@ async function handleApi(req, res, url) {
                 palletWidth: body.palletWidth || currentDdt.palletWidth || "",
                 palletHeight: body.palletHeight || currentDdt.palletHeight || "",
                 palletWeight: body.palletWeight || currentDdt.palletWeight || "",
-                createdAt,
+                // Fase 2: righe editabili, destinatario override, note, data emissione
+                lines: Array.isArray(body.lines) ? body.lines : (currentDdt.lines || []),
+                recipient: (body.recipient && typeof body.recipient === "object") ? body.recipient : (currentDdt.recipient || null),
+                note: typeof body.note === "string" ? body.note : (currentDdt.note || ""),
+                createdAt: (() => {
+                  if (!body.date) return createdAt;
+                  const t = new Date(body.date);
+                  return Number.isFinite(t.getTime()) ? t.toISOString() : createdAt;
+                })(),
               },
             },
           },

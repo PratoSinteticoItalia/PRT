@@ -20936,6 +20936,30 @@ body {
   .shp-groups { grid-template-columns: 1fr; }
 }
 
+/* === Pagina DDT dedicata === */
+.shipping-ddt-panel { display: none; } /* DDT spostato nella pagina dedicata */
+.shipping-ddt-link .ddt-hint { margin-top: 6px; }
+#ddt .order-grid { grid-template-columns: minmax(0, 1.02fr) minmax(380px, 0.98fr); }
+#ddt .order-grid > div:first-child { align-self: start; max-height: calc(100vh - 200px); overflow-y: auto; padding-right: 6px; }
+.ddt-order-list { display: flex; flex-direction: column; gap: 9px; }
+.ddt-head-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ddt-rec-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ddt-rec-grid .field-full { grid-column: 1 / -1; }
+.ddt-pallet-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.ddt-lines-head, .ddt-line { display: grid; grid-template-columns: 1fr 64px 58px 1fr 30px; gap: 8px; align-items: center; }
+.ddt-lines-head { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #8a9690; margin: 8px 2px 4px; }
+.ddt-lines { display: flex; flex-direction: column; gap: 8px; }
+.ddt-line .text-input { padding: 8px 10px; min-width: 0; }
+.ddt-line-del { border: none; background: #f6eceb; color: #b91c1c; width: 30px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.ddt-line-del:hover { background: #f3d9d7; }
+.ddt-hint { font-size: 11.5px; color: #8a9690; margin: 8px 2px 0; }
+@media (max-width: 900px) {
+  #ddt .order-grid { grid-template-columns: 1fr; }
+  .ddt-lines-head { display: none; }
+  .ddt-line { grid-template-columns: 1fr 1fr 30px; }
+  .ddt-line [data-ddt-line-field='note'] { grid-column: 1 / -1; }
+}
+
 .shp-row { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 14px; padding: 13px 16px; background: #fff; border: 1px solid #e5e1d6; border-radius: 12px; cursor: pointer; transition: border-color .12s, box-shadow .12s, transform .12s; }
 .shp-row:hover { border-color: #d4cebd; box-shadow: 0 4px 12px rgba(26,46,38,.06); transform: translateY(-1px); }
 .shp-row.selected { border-color: #1f4d3d; border-left: 3px solid #1f4d3d; padding-left: 14px; box-shadow: 0 2px 8px rgba(31,77,61,.08); }

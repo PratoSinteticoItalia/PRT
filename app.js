@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260612-logistica-drawer-fix";
+const APP_SHELL_VERSION = "20260612-ddt-page";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -325,12 +325,12 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
-  warehouse: ["dashboard", "warehouse", "shipping", "communications", "timesheet-me"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
+  warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
   crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "sales-generator", "communications", "garden-planner"],
   seller: ["dashboard", "sales-requests", "sales-generator", "sales-content", "communications", "timesheet-me"],
 };
-const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner"]);
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -368,6 +368,7 @@ const translations = {
     accounting: "Contabilità",
     "profit-split": "Conti posa",
     shipping: "Logistica",
+    ddt: "DDT",
     "reseller-report": "Report rivenditori",
     settings: "Impostazioni",
     marketing: "Marketing",
@@ -623,6 +624,7 @@ const translations = {
     accounting: "Accounting",
     "profit-split": "Install splits",
     shipping: "Shipping",
+    ddt: "DDT",
     "reseller-report": "Reseller report",
     settings: "Settings",
     marketing: "Marketing",
@@ -1211,6 +1213,7 @@ const state = {
     installation: "all",
     accounting: "all",
     shipping: "all",
+    ddt: "all",
     salesRequestAssignment: "all",
     salesRequestStatus: "all",
     salesRequestQuick: "all",
@@ -1220,9 +1223,12 @@ const state = {
     warehouse: "",
     accounting: "",
     shipping: "",
+    ddt: "",
     salesRequests: "",
     salesContent: "",
   },
+  selectedDdtOrderId: null,
+  ddtDraft: null,
   pendingAttachmentTarget: null,
   showOrderImport: false,
   showSalesRequestImport: false,
@@ -1661,6 +1667,10 @@ const ui = {
   shippingSearch: document.getElementById("shipping-search"),
   shippingFilterTags: Array.from(document.querySelectorAll(".shipping-filter-tag")),
   shippingList: document.getElementById("shipping-list"),
+  ddtList: document.getElementById("ddt-list"),
+  ddtEditorBody: document.getElementById("ddt-editor-body"),
+  ddtSearch: document.getElementById("ddt-search"),
+  ddtFilterTags: Array.from(document.querySelectorAll(".ddt-filter-tag")),
   shippingStandardDetailPanel: document.getElementById("shipping-standard-detail-panel"),
   shippingDetailTitle: document.getElementById("shipping-detail-title"),
   shippingDetailFields: document.getElementById("shipping-detail-fields"),
@@ -16845,6 +16855,7 @@ const VIEW_ICONS = {
   "sales-content": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>',
   marketing: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
   shipping: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+  ddt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg>',
   accounting: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
   "profit-split": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><line x1="12" y1="6" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="18"/></svg>',
   "reseller-report": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
@@ -19435,6 +19446,247 @@ function renderShipping() {
   applyShippingDrawerState();
 }
 
+/* ===================== Pagina DDT dedicata (Fase 2) ===================== */
+
+// Ordini che possono avere un DDT: instradati in logistica/posa con merce fisica.
+function getDdtEligibleOrders() {
+  const all = Array.isArray(state.orders) ? state.orders : [];
+  return all.filter((o) =>
+    (isRoutedToWarehouse(o) || isRoutedToInstallation(o))
+    && getWarehousePreparedLines(o).length > 0
+    && !isSampleOrder(o));
+}
+
+function ddtOrderHasNumber(order) {
+  return Boolean(String(order?.operations?.warehouse?.ddt?.number || "").trim());
+}
+
+function deriveDdtRecipient(order) {
+  const dest = getShippingDestination(order) || {};
+  return {
+    name: String(composeClientName(order) || "").trim(),
+    address: String(composeAddress(order) || "").trim(),
+    postalCode: String(dest.postalCode || "").trim(),
+    city: String(order.city || "").trim(),
+    province: String(dest.provinceCode || "").trim(),
+    phone: String(order.phone || "").trim(),
+    email: String(order.email || order.customerEmail || "").trim(),
+  };
+}
+
+function initDdtDraft(order) {
+  const ddt = order.operations?.warehouse?.ddt || {};
+  const lines = (Array.isArray(ddt.lines) && ddt.lines.length)
+    ? ddt.lines.map((l) => ({ title: l.title || "", quantity: Number(l.quantity || 1) || 1, um: l.um || "", note: l.note || "" }))
+    : getWarehousePreparedLines(order).map((l) => ({ title: l.title || "", quantity: Number(l.quantity || 1) || 1, um: l.um || "pz", note: l.note || "" }));
+  const recipient = (ddt.recipient && typeof ddt.recipient === "object")
+    ? { ...deriveDdtRecipient(order), ...ddt.recipient }
+    : deriveDdtRecipient(order);
+  return {
+    orderId: order.id,
+    number: String(ddt.number || "").trim(),
+    date: ddt.createdAt ? String(new Date(ddt.createdAt).toISOString()).slice(0, 10) : new Date().toISOString().slice(0, 10),
+    palletLength: ddt.palletLength || "",
+    palletWidth: ddt.palletWidth || "",
+    palletHeight: ddt.palletHeight || "",
+    palletWeight: ddt.palletWeight || "",
+    recipient,
+    lines,
+    note: ddt.note || "",
+  };
+}
+
+// Legge i valori correnti del form DDT nel draft (chiamato prima di re-render o salvataggio).
+function readDdtFormIntoDraft() {
+  const root = ui.ddtEditorBody;
+  if (!root || !state.ddtDraft) return state.ddtDraft;
+  const val = (sel) => root.querySelector(sel)?.value ?? "";
+  const d = state.ddtDraft;
+  d.number = val("[data-ddt='number']").trim();
+  d.date = val("[data-ddt='date']");
+  d.palletLength = val("[data-ddt='palletLength']").trim();
+  d.palletWidth = val("[data-ddt='palletWidth']").trim();
+  d.palletHeight = val("[data-ddt='palletHeight']").trim();
+  d.palletWeight = val("[data-ddt='palletWeight']").trim();
+  d.note = val("[data-ddt='note']").trim();
+  d.recipient = {
+    name: val("[data-ddt-rec='name']").trim(),
+    address: val("[data-ddt-rec='address']").trim(),
+    postalCode: val("[data-ddt-rec='postalCode']").trim(),
+    city: val("[data-ddt-rec='city']").trim(),
+    province: val("[data-ddt-rec='province']").trim(),
+    phone: val("[data-ddt-rec='phone']").trim(),
+    email: val("[data-ddt-rec='email']").trim(),
+  };
+  d.lines = Array.from(root.querySelectorAll("[data-ddt-line]")).map((row) => ({
+    title: (row.querySelector("[data-ddt-line-field='title']")?.value || "").trim(),
+    quantity: Number(row.querySelector("[data-ddt-line-field='quantity']")?.value || 0) || 0,
+    um: (row.querySelector("[data-ddt-line-field='um']")?.value || "").trim(),
+    note: (row.querySelector("[data-ddt-line-field='note']")?.value || "").trim(),
+  })).filter((l) => l.title || l.quantity || l.note);
+  return d;
+}
+
+function renderDdtListCard(order) {
+  const num = String(order.operations?.warehouse?.ddt?.number || "").trim();
+  const selected = order.id === state.selectedDdtOrderId ? "selected" : "";
+  const badge = num
+    ? `<span class="shp-badge ok">${escapeHtml(num)}</span>`
+    : `<span class="shp-badge">${state.lang === "it" ? "Da emettere" : "To issue"}</span>`;
+  return `
+    <article class="shp-row ${selected}" data-action="select-ddt-order" data-id="${escapeAttr(order.id)}">
+      <span class="shp-dot ${num ? "ready" : "prep"}"></span>
+      <div class="shp-main">
+        <div class="shp-name-line"><span class="shp-name">${escapeHtml(composeClientName(order))}</span><span class="shp-num">${escapeHtml(getOrderNumber(order))}</span></div>
+        <div class="shp-meta"><span>${escapeHtml(order.operations?.product || t("undefined"))} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span></div>
+      </div>
+      <div class="shp-aside">${badge}</div>
+    </article>`;
+}
+
+function renderDdtEditor(order) {
+  const d = state.ddtDraft;
+  if (!ui.ddtEditorBody || !d) return;
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  const lineRows = d.lines.map((line, i) => `
+    <div class="ddt-line" data-ddt-line data-idx="${i}">
+      <input class="text-input" data-ddt-line-field="title" value="${escapeAttr(line.title || "")}" placeholder="${L("Descrizione articolo", "Item description")}" />
+      <input class="text-input ddt-qty" data-ddt-line-field="quantity" value="${escapeAttr(String(line.quantity ?? ""))}" inputmode="decimal" placeholder="Qta" />
+      <input class="text-input ddt-um" data-ddt-line-field="um" value="${escapeAttr(line.um || "")}" placeholder="UM" />
+      <input class="text-input" data-ddt-line-field="note" value="${escapeAttr(line.note || "")}" placeholder="${L("Note / tagli", "Notes / cuts")}" />
+      <button type="button" class="ddt-line-del" data-action="ddt-remove-line" data-idx="${i}" aria-label="${L("Rimuovi", "Remove")}">✕</button>
+    </div>`).join("");
+  ui.ddtEditorBody.innerHTML = `
+    <div class="panel-subsection">
+      <div class="subsection-head"><h4>${L("Documento di trasporto", "Delivery note")}</h4></div>
+      <h3 class="section-inline-title">${escapeHtml(composeClientName(order))} · ${escapeHtml(getOrderNumber(order))}</h3>
+      <div class="ddt-head-grid">
+        <label class="field"><span>${L("N. DDT", "DDT no.")}</span><input class="text-input" data-ddt="number" value="${escapeAttr(d.number)}" placeholder="${L("Automatico se vuoto", "Auto if empty")}" /></label>
+        <label class="field"><span>${L("Data", "Date")}</span><input class="text-input" type="date" data-ddt="date" value="${escapeAttr(d.date)}" /></label>
+      </div>
+    </div>
+    <div class="panel-subsection">
+      <div class="subsection-head"><h4>${L("Destinatario / spedizione", "Recipient / shipment")}</h4></div>
+      <div class="ddt-rec-grid">
+        <label class="field field-full"><span>${L("Ragione sociale / nome", "Name")}</span><input class="text-input" data-ddt-rec="name" value="${escapeAttr(d.recipient.name)}" /></label>
+        <label class="field field-full"><span>${L("Indirizzo", "Address")}</span><input class="text-input" data-ddt-rec="address" value="${escapeAttr(d.recipient.address)}" /></label>
+        <label class="field"><span>CAP</span><input class="text-input" data-ddt-rec="postalCode" value="${escapeAttr(d.recipient.postalCode)}" /></label>
+        <label class="field"><span>${L("Città", "City")}</span><input class="text-input" data-ddt-rec="city" value="${escapeAttr(d.recipient.city)}" /></label>
+        <label class="field"><span>${L("Prov.", "Prov.")}</span><input class="text-input" data-ddt-rec="province" value="${escapeAttr(d.recipient.province)}" /></label>
+        <label class="field"><span>${L("Telefono", "Phone")}</span><input class="text-input" data-ddt-rec="phone" value="${escapeAttr(d.recipient.phone)}" /></label>
+        <label class="field field-full"><span>Email</span><input class="text-input" data-ddt-rec="email" value="${escapeAttr(d.recipient.email)}" /></label>
+      </div>
+    </div>
+    <div class="panel-subsection">
+      <div class="subsection-head"><h4>${L("Articoli trasportati", "Transported items")}</h4>
+        <button type="button" class="ghost-button small-button" data-action="ddt-add-line">${L("+ Riga", "+ Row")}</button></div>
+      <div class="ddt-lines-head"><span>${L("Descrizione", "Description")}</span><span>${L("Qta", "Qty")}</span><span>UM</span><span>${L("Note", "Notes")}</span><span></span></div>
+      <div class="ddt-lines">${lineRows || `<div class="info-card">${L("Nessuna riga — aggiungine una.", "No rows — add one.")}</div>`}</div>
+      <p class="ddt-hint">${L("Solo merce fisica che viaggia su bancale, mai servizi o posa.", "Physical goods on pallet only — never services or install.")}</p>
+    </div>
+    <div class="panel-subsection">
+      <div class="subsection-head"><h4>${L("Bancale / trasporto", "Pallet / transport")}</h4></div>
+      <div class="ddt-pallet-grid">
+        <label class="field"><span>${L("Lungh. bancale", "Pallet length")}</span><input class="text-input" data-ddt="palletLength" value="${escapeAttr(d.palletLength)}" placeholder="120 cm" /></label>
+        <label class="field"><span>${L("Largh. bancale", "Pallet width")}</span><input class="text-input" data-ddt="palletWidth" value="${escapeAttr(d.palletWidth)}" placeholder="80 cm" /></label>
+        <label class="field"><span>${L("Alt. bancale", "Pallet height")}</span><input class="text-input" data-ddt="palletHeight" value="${escapeAttr(d.palletHeight)}" placeholder="95 cm" /></label>
+        <label class="field"><span>${L("Peso", "Weight")}</span><input class="text-input" data-ddt="palletWeight" value="${escapeAttr(d.palletWeight)}" placeholder="180 kg" /></label>
+      </div>
+      <label class="field field-full"><span>${L("Note DDT", "DDT notes")}</span><textarea class="text-input" data-ddt="note" rows="2">${escapeHtml(d.note || "")}</textarea></label>
+    </div>
+    <div id="ddt-status" class="panel-note hidden"></div>
+    <div class="inline-actions">
+      <button type="button" class="ghost-button small-button" data-action="ddt-save">${L("Salva bozza", "Save draft")}</button>
+      <button type="button" class="primary-button small-button" data-action="ddt-generate">${L("Genera PDF DDT", "Generate DDT PDF")}</button>
+    </div>`;
+}
+
+function getDdtFilteredOrders() {
+  const filter = state.filters.ddt || "all";
+  const search = String(state.search.ddt || "").trim().toLowerCase();
+  let orders = getDdtEligibleOrders();
+  if (filter === "todo") orders = orders.filter((o) => !ddtOrderHasNumber(o));
+  else if (filter === "issued") orders = orders.filter((o) => ddtOrderHasNumber(o));
+  if (search) {
+    orders = orders.filter((o) =>
+      `${composeClientName(o)} ${getOrderNumber(o)} ${o.operations?.warehouse?.ddt?.number || ""}`.toLowerCase().includes(search));
+  }
+  // Da emettere prima, poi per nome
+  orders.sort((a, b) => (ddtOrderHasNumber(a) === ddtOrderHasNumber(b)
+    ? composeClientName(a).localeCompare(composeClientName(b))
+    : (ddtOrderHasNumber(a) ? 1 : -1)));
+  return orders;
+}
+
+// Solo la lista (per ricerca/filtro): NON tocca l'editor, così le modifiche
+// non salvate nel form DDT non vengono perse.
+function renderDdtListView() {
+  if (!ui.ddtList) return;
+  const orders = getDdtFilteredOrders();
+  ui.ddtList.innerHTML = orders.length
+    ? orders.map(renderDdtListCard).join("")
+    : `<div class="info-card">${state.lang === "it" ? "Nessun ordine con merce da trasportare per questo filtro." : "No orders with goods to transport for this filter."}</div>`;
+}
+
+function renderDdt() {
+  renderDdtListView();
+  const orders = getDdtFilteredOrders();
+  const order = orders.find((o) => o.id === state.selectedDdtOrderId)
+    || (state.orders || []).find((o) => o.id === state.selectedDdtOrderId)
+    || orders[0] || null;
+  if (order && order.id !== state.selectedDdtOrderId) state.selectedDdtOrderId = order.id;
+  if (!order) {
+    state.selectedDdtOrderId = null;
+    state.ddtDraft = null;
+    if (ui.ddtEditorBody) ui.ddtEditorBody.innerHTML = `<div class="info-card">${state.lang === "it" ? "Seleziona un ordine per preparare il DDT." : "Select an order to prepare the DDT."}</div>`;
+    return;
+  }
+  if (!state.ddtDraft || state.ddtDraft.orderId !== order.id) state.ddtDraft = initDdtDraft(order);
+  renderDdtEditor(order);
+}
+
+async function saveDdtDraft({ download = false } = {}) {
+  const order = (state.orders || []).find((o) => o.id === state.selectedDdtOrderId);
+  if (!order || !state.ddtDraft) return;
+  readDdtFormIntoDraft();
+  const d = state.ddtDraft;
+  try {
+    const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/create-ddt`, {
+      method: "POST",
+      body: JSON.stringify({
+        number: d.number,
+        date: d.date,
+        palletLength: d.palletLength,
+        palletWidth: d.palletWidth,
+        palletHeight: d.palletHeight,
+        palletWeight: d.palletWeight,
+        lines: d.lines,
+        recipient: d.recipient,
+        note: d.note,
+      }),
+    });
+    state.orders = state.orders.map((o) => (o.id === saved.id ? saved : o));
+    state.ddtDraft = null; // re-init dal salvato al prossimo render
+    renderDdt();
+    if (download) {
+      trackUsageEvent("ddt_generated", { orderId: saved.id, ddtNumber: saved.operations?.warehouse?.ddt?.number || "" });
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+      await downloadDdtPdf(saved);
+    }
+    showToast(
+      download
+        ? (state.lang === "it" ? "DDT generato e scaricato." : "DDT generated and downloaded.")
+        : (state.lang === "it" ? "DDT salvato." : "DDT saved."),
+      "success",
+    );
+  } catch (error) {
+    showToast(
+      state.lang === "it" ? `Errore DDT: ${String(error?.message || "").trim()}` : `DDT error: ${String(error?.message || "").trim()}`,
+      "error",
+    );
+  }
+}
+
 function renderSettings() {
   ui.settingsForm.storeDomain.value = state.settings.storeDomain || "";
   ui.settingsForm.clientId.value = state.settings.clientId || "";
@@ -21440,6 +21692,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "accounting": renderAccounting(); break;
       case "profit-split": renderProfitSplitWorkspace(); break;
       case "shipping": renderShipping(); break;
+      case "ddt": renderDdt(); break;
       case "reseller-report": renderResellerReport(); break;
       case "settings": renderSettings(); break;
       case "marketing": renderMarketing(); break;
@@ -23770,22 +24023,29 @@ async function loadLogoJpeg() {
 async function downloadDdtPdf(order) {
   const ddt = order.operations?.warehouse?.ddt || {};
   const logo = await loadLogoJpeg();
-  const physicalLines = getWarehousePreparedLines(order);
+  // Fase 2: usa le righe DDT editate se presenti, altrimenti deriva dall'ordine.
+  const physicalLines = (Array.isArray(ddt.lines) && ddt.lines.length)
+    ? ddt.lines
+    : getWarehousePreparedLines(order);
   const estimate = calculateShippingEstimate(order, ddt);
   const destination = getShippingDestination(order);
+  // Fase 2: usa il destinatario DDT override se presente, altrimenti i dati ordine.
+  const rec = (ddt.recipient && typeof ddt.recipient === "object") ? ddt.recipient : null;
   const recipientRows = [];
-  const customerName = String(composeClientName(order) || "").trim();
+  const customerName = String((rec?.name) || composeClientName(order) || "").trim();
   if (customerName) recipientRows.push(customerName);
-  const addressRows = splitPdfTextLines(composeAddress(order) || addressIncompleteText(), 52);
+  const addressRows = splitPdfTextLines((rec?.address) || composeAddress(order) || addressIncompleteText(), 52);
   recipientRows.push(...addressRows);
   const cityRow = [
-    destination.postalCode || "",
-    order.city || "",
-    destination.provinceCode ? `(${destination.provinceCode})` : "",
+    (rec?.postalCode) || destination.postalCode || "",
+    (rec?.city) || order.city || "",
+    (rec?.province) ? `(${rec.province})` : (destination.provinceCode ? `(${destination.provinceCode})` : ""),
   ].filter(Boolean).join(" ");
   if (cityRow) recipientRows.push(cityRow);
-  recipientRows.push(order.phone ? `Tel: ${order.phone} · ${phoneNoticeText().toUpperCase()}` : `Tel: ${phoneIncompleteText()} · ${phoneNoticeText().toUpperCase()}`);
-  if (order.email) recipientRows.push(`Email: ${order.email}`);
+  const recPhone = (rec?.phone) || order.phone;
+  recipientRows.push(recPhone ? `Tel: ${recPhone} · ${phoneNoticeText().toUpperCase()}` : `Tel: ${phoneIncompleteText()} · ${phoneNoticeText().toUpperCase()}`);
+  const recEmail = (rec?.email) || order.email;
+  if (recEmail) recipientRows.push(`Email: ${recEmail}`);
   const lines = [];
   const pushText = (x, y, size, value) => {
     lines.push(`BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(value)}) Tj ET`);
@@ -25469,6 +25729,38 @@ function handleGlobalClick(event) {
   if (action === "close-shipping-drawer") {
     state.shippingDrawerOpen = false;
     applyShippingDrawerState();
+    return;
+  }
+  if (action === "select-ddt-order") {
+    state.selectedDdtOrderId = id;
+    state.ddtDraft = null; // forza re-init dal nuovo ordine
+    renderDdt();
+    return;
+  }
+  if (action === "ddt-add-line") {
+    readDdtFormIntoDraft();
+    if (state.ddtDraft) state.ddtDraft.lines.push({ title: "", quantity: 1, um: "pz", note: "" });
+    const ddtOrder = (state.orders || []).find((o) => o.id === state.selectedDdtOrderId);
+    if (ddtOrder) renderDdtEditor(ddtOrder);
+    return;
+  }
+  if (action === "ddt-remove-line") {
+    readDdtFormIntoDraft();
+    const idx = Number(button.dataset.idx);
+    if (state.ddtDraft && Number.isInteger(idx)) state.ddtDraft.lines.splice(idx, 1);
+    const ddtOrder = (state.orders || []).find((o) => o.id === state.selectedDdtOrderId);
+    if (ddtOrder) renderDdtEditor(ddtOrder);
+    return;
+  }
+  if (action === "ddt-save") { void saveDdtDraft({ download: false }); return; }
+  if (action === "ddt-generate") { void saveDdtDraft({ download: true }); return; }
+  if (action === "open-ddt-for-order") {
+    if (state.selectedOrderId) {
+      state.selectedDdtOrderId = state.selectedOrderId;
+      state.ddtDraft = null;
+    }
+    state.shippingDrawerOpen = false;
+    setView("ddt");
     return;
   }
   if (action === "select-order") {
@@ -27250,6 +27542,19 @@ if (ui.shippingFilterTags?.length) {
     ui.shippingFilterTags.forEach((item) => item.classList.toggle("is-active", item === button));
     renderShipping();
   }));
+}
+if (ui.ddtFilterTags?.length) {
+  ui.ddtFilterTags.forEach((button) => button.addEventListener("click", () => {
+    state.filters.ddt = button.dataset.ddtFilter;
+    ui.ddtFilterTags.forEach((item) => item.classList.toggle("is-active", item === button));
+    renderDdtListView();
+  }));
+}
+if (ui.ddtSearch) {
+  ui.ddtSearch.addEventListener("input", (event) => {
+    state.search.ddt = event.target.value || "";
+    renderDdtListView();
+  });
 }
 bindEvent(ui.orderAttachmentButton, "click", () => openAttachmentPicker("order"));
 bindEvent(ui.shippingAttachmentButton, "click", () => openAttachmentPicker("shipping"));

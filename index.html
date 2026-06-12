@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260612-logistica-drawer-fix" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260612-logistica-drawer-fix" />
+    <link rel="preload" href="./styles.css?v=20260612-ddt-page" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260612-ddt-page" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -352,6 +352,10 @@
           <button class="nav-link" data-view="shipping">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg></span>
             <span class="nav-label">Logistica</span>
+          </button>
+          <button class="nav-link" data-view="ddt">
+            <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line><line x1="8" y1="9" x2="10" y2="9"></line></svg></span>
+            <span class="nav-label">DDT</span>
           </button>
           <button class="nav-link" data-view="reseller-report">
             <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"></path><path d="M7 15l4-4 3 3 5-7"></path><path d="M7 19v-4"></path><path d="M11 19v-8"></path><path d="M15 19v-5"></path><path d="M19 19V7"></path></svg></span>
@@ -871,7 +875,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260612-logistica-drawer-fix&shell=20260612-logistica-drawer-fix"
+                src="./sales-suite/generator.html?embedded=1&v=20260612-ddt-page&shell=20260612-ddt-page"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -1124,6 +1128,14 @@
                 <div id="shipping-material-preview" class="detail-stack"></div>
               </div>
 
+              <div class="panel-subsection shipping-ddt-link">
+                <div class="subsection-head">
+                  <h4>DDT</h4>
+                  <button type="button" class="primary-button small-button" data-action="open-ddt-for-order">Apri DDT</button>
+                </div>
+                <p class="ddt-hint">Il DDT (numero, destinatario, articoli, bancale) si gestisce nella pagina dedicata.</p>
+              </div>
+
               <div class="panel-subsection shipping-ddt-panel">
                 <div class="subsection-head">
                   <h4>DDT ordine selezionato</h4>
@@ -1250,6 +1262,32 @@
                 </form>
                 <div id="sample-attachments" class="attachment-grid"></div>
               </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="ddt">
+          <div class="page-header">
+            <div>
+              <h1>DDT</h1>
+              <div class="page-header-sub">Documenti di trasporto — registro e generazione</div>
+            </div>
+          </div>
+          <div class="view-toolbar">
+            <label class="field toolbar-input view-search-field">
+              <span class="hidden">Cerca DDT</span>
+              <input id="ddt-search" class="text-input view-search-input" placeholder="Cerca ordine, cliente o numero DDT" />
+            </label>
+            <div class="filter-bar">
+              <button class="filter-btn ddt-filter-tag is-active" data-ddt-filter="all">Tutti</button>
+              <button class="filter-btn ddt-filter-tag" data-ddt-filter="todo">Da emettere</button>
+              <button class="filter-btn ddt-filter-tag" data-ddt-filter="issued">Emessi</button>
+            </div>
+          </div>
+          <div class="order-grid">
+            <div id="ddt-list" class="order-list ddt-order-list"></div>
+            <section id="ddt-editor" class="detail-panel ddt-editor-panel">
+              <div id="ddt-editor-body"></div>
             </section>
           </div>
         </section>
@@ -2446,7 +2484,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260612-logistica-drawer-fix" defer></script>
-    <script src="./app.js?v=20260612-logistica-drawer-fix" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260612-ddt-page" defer></script>
+    <script src="./app.js?v=20260612-ddt-page" type="module"></script>
   </body>
 </html>
