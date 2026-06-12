@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260612-ddt-sort-marketing-guard";
+const APP_SHELL_VERSION = "20260612-richieste-marketing-ddt-fixes";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4602,8 +4602,13 @@ function getSalesRequestHeightLabel(value = "") {
 
 function getSalesRequestServiceLabel(service = "") {
   const value = String(service || "").trim().toLowerCase();
-  if (value === "posa") return state.lang === "it" ? "Fornitura + posa" : "Supply + install";
-  if (value === "fornitura") return state.lang === "it" ? "Solo fornitura" : "Supply only";
+  if (!value) return state.lang === "it" ? "Da definire" : "To define";
+  // Match a sottostringa: i lead IMAP arrivano con valori grezzi
+  // ("Solo Fornitura", "Fornitura e Posa", "Fornitura + Posa"…) che con il
+  // match esatto finivano erroneamente in "Da definire".
+  const hasPosa = value.includes("posa") || value.includes("install");
+  if (hasPosa) return state.lang === "it" ? "Fornitura + posa" : "Supply + install";
+  if (value.includes("fornitura") || value.includes("supply")) return state.lang === "it" ? "Solo fornitura" : "Supply only";
   return state.lang === "it" ? "Da definire" : "To define";
 }
 
@@ -5140,18 +5145,11 @@ function buildWhatsAppWebSendUrl(phone = "", message = "") {
   const normalizedPhone = normalizePhoneForWhatsApp(phone);
   if (!normalizedPhone) return "";
   const waPhone = normalizedPhone.replace(/[^\d]/g, "");
-  // Device-aware: su mobile/tablet usa wa.me (apre l'APP WhatsApp nativa),
-  // su desktop usa web.whatsapp.com (WhatsApp Web nel browser).
-  const deviceType = getClientDeviceType();
-  if (deviceType === "mobile" || deviceType === "tablet") {
-    // wa.me/<numero>?text=<messaggio> → universal link che apre l'app
-    const base = `https://wa.me/${waPhone}`;
-    return message ? `${base}?text=${encodeURIComponent(message)}` : base;
-  }
-  const targetUrl = new URL("https://web.whatsapp.com/send");
-  targetUrl.searchParams.set("phone", waPhone);
-  if (message) targetUrl.searchParams.set("text", message);
-  return targetUrl.toString();
+  // Usa SEMPRE wa.me/<numero>?text=<messaggio>: è l'universal link ufficiale
+  // che funziona sia su mobile (apre l'app) sia su desktop (apre WhatsApp Web),
+  // evitando l'errore "Sorry, something went wrong" di web.whatsapp.com/send.
+  const base = `https://wa.me/${waPhone}`;
+  return message ? `${base}?text=${encodeURIComponent(message)}` : base;
 }
 
 function getSalesRequestServiceIntent(value = "") {
@@ -19623,6 +19621,7 @@ function renderDdtEditor(order) {
         <label class="field"><span>${L("Alt. bancale", "Pallet height")}</span><input class="text-input" data-ddt="palletHeight" value="${escapeAttr(d.palletHeight)}" placeholder="95 cm" /></label>
         <label class="field"><span>${L("Peso", "Weight")}</span><input class="text-input" data-ddt="palletWeight" value="${escapeAttr(d.palletWeight)}" placeholder="180 kg" /></label>
       </div>
+      <div id="ddt-estimate-slot">${renderDdtEstimateHtml(order)}</div>
       <label class="field field-full"><span>${L("Note DDT", "DDT notes")}</span><textarea class="text-input" data-ddt="note" rows="2">${escapeHtml(d.note || "")}</textarea></label>
     </div>
     <div id="ddt-status" class="panel-note hidden"></div>
@@ -19630,6 +19629,42 @@ function renderDdtEditor(order) {
       <button type="button" class="ghost-button small-button" data-action="ddt-save">${L("Salva bozza", "Save draft")}</button>
       <button type="button" class="primary-button small-button" data-action="ddt-generate">${L("Genera PDF DDT", "Generate DDT PDF")}</button>
     </div>`;
+  // Stima One Express aggiornata live al variare delle misure/peso bancale.
+  const estSlot = ui.ddtEditorBody.querySelector("#ddt-estimate-slot");
+  if (estSlot) {
+    ui.ddtEditorBody.querySelectorAll('[data-ddt="palletLength"],[data-ddt="palletWidth"],[data-ddt="palletHeight"],[data-ddt="palletWeight"]').forEach((inp) => {
+      inp.addEventListener("input", () => {
+        readDdtFormIntoDraft();
+        estSlot.innerHTML = renderDdtEstimateHtml(order);
+      });
+    });
+  }
+}
+
+// Box stima spedizione One Express per l'editor DDT, calcolata dal draft.
+function renderDdtEstimateHtml(order) {
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  const d = state.ddtDraft || {};
+  const ddt = {
+    palletLength: d.palletLength, palletWidth: d.palletWidth,
+    palletHeight: d.palletHeight, palletWeight: d.palletWeight,
+  };
+  let est;
+  try { est = calculateShippingEstimate(order, ddt); } catch { est = null; }
+  if (!est || est.unsupported || !(est.estimatedCost > 0)) {
+    const reason = est?.missingReason === "missing_destination"
+      ? L("Provincia destinazione mancante", "Missing destination province")
+      : est?.missingReason === "unsupported_pallet"
+        ? L("Misure/peso fuori dai limiti One Express", "Pallet out of One Express limits")
+        : L("Inserisci misure e peso bancale per la stima", "Enter pallet size & weight for the estimate");
+    return `<div class="ddt-estimate is-missing"><span class="panel-eyebrow">${L("Stima spedizione One Express", "One Express estimate")}</span><strong>—</strong><span>${escapeHtml(reason)}</span></div>`;
+  }
+  const meta = [
+    est.billableWeight ? `${L("Peso tassabile", "Billable weight")}: ${est.billableWeight} kg` : "",
+    est.provinceCode ? est.provinceCode : "",
+    est.palletClass ? `${L("Classe", "Class")} ${est.palletClass}` : "",
+  ].filter(Boolean).join(" · ");
+  return `<div class="ddt-estimate"><span class="panel-eyebrow">${L("Stima spedizione One Express", "One Express estimate")}</span><strong>${formatCurrency(est.estimatedCost)}</strong><span>${escapeHtml(meta)}</span></div>`;
 }
 
 function getDdtFilteredOrders() {
@@ -22300,6 +22335,10 @@ function renderMarketing() {
             <input class="text-input" name="cta" placeholder="Es. Richiedi preventivo gratuito" />
           </label>
           <label class="field">
+            <span>🎵 Canzone / audio</span>
+            <input class="text-input" name="song" placeholder="Es. Artista - Titolo (audio reel)" />
+          </label>
+          <label class="field">
             <span>Hashtag / keyword</span>
             <input class="text-input" name="hashtags" placeholder="#pratosintetico #giardino" />
           </label>
@@ -22504,6 +22543,7 @@ function renderMarketing() {
         assetDataUrls,
         caption: fd.get("caption") || "",
         cta: fd.get("cta") || "",
+        song: fd.get("song") || "",
         hashtags: fd.get("hashtags") || "",
         target: fd.get("target") || "",
         notes: fd.get("notes") || "",
@@ -22547,6 +22587,7 @@ function openMarketingForm(item, options = {}) {
     if (form.elements.assetDataUrl) form.elements.assetDataUrl.value = item.assetDataUrl || "";
     if (form.elements.caption) form.elements.caption.value = item.caption || "";
     if (form.elements.cta) form.elements.cta.value = item.cta || "";
+    if (form.elements.song) form.elements.song.value = item.song || "";
     if (form.elements.hashtags) form.elements.hashtags.value = item.hashtags || "";
     if (form.elements.target) form.elements.target.value = item.target || "";
     form.elements.notes.value = item.notes || "";
@@ -22583,6 +22624,7 @@ function getMarketingFormDraft(form) {
     assetDataUrl: form.elements.assetDataUrl?.value || "",
     caption: form.elements.caption?.value || "",
     cta: form.elements.cta?.value || "",
+    song: form.elements.song?.value || "",
     hashtags: form.elements.hashtags?.value || "",
     notes: form.elements.notes?.value || "",
   };

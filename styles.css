@@ -20972,6 +20972,11 @@ body {
 .ddt-line-del { border: none; background: #f6eceb; color: #b91c1c; width: 30px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 14px; }
 .ddt-line-del:hover { background: #f3d9d7; }
 .ddt-hint { font-size: 11.5px; color: #8a9690; margin: 8px 2px 0; }
+.ddt-estimate { margin-top: 12px; padding: 12px 14px; border: 1px solid #d1e7dc; background: #f3faf6; border-radius: 12px; display: flex; flex-direction: column; gap: 2px; }
+.ddt-estimate.is-missing { border-color: #e5e1d6; background: #faf9f5; }
+.ddt-estimate strong { font-size: 20px; color: #145c3a; }
+.ddt-estimate.is-missing strong { color: #8a9690; }
+.ddt-estimate span:last-child { font-size: 12px; color: #5a6e63; }
 @media (max-width: 900px) {
   #ddt .order-grid { grid-template-columns: 1fr; }
   .ddt-lines-head { display: none; }
