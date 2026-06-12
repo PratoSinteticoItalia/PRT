@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260612-logistica-drawer-no-estimate";
+const APP_SHELL_VERSION = "20260613-sidebar-registry-unico";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -580,7 +580,9 @@ const translations = {
     mobileMenuTitle: "Menu operativo",
     operationsSection: "Operativo",
     salesSection: "Vendite",
+    logisticsSection: "Logistica & documenti",
     adminSection: "Amministrazione",
+    teamSection: "Team",
     "sales-requests": "Richieste",
     "sales-generator": "Generatore",
     "sales-content": "Contenuti",
@@ -836,7 +838,9 @@ const translations = {
     mobileMenuTitle: "Operations menu",
     operationsSection: "Operations",
     salesSection: "Sales",
+    logisticsSection: "Logistics & documents",
     adminSection: "Administration",
+    teamSection: "Team",
     "sales-requests": "Requests",
     "sales-generator": "Generator",
     "sales-content": "Content",
@@ -1401,18 +1405,9 @@ const ui = {
   sidebarBrandBlock: document.querySelector(".sidebar-brand-block"),
   userCard: document.querySelector(".user-card"),
   mainContent: document.querySelector(".main-content"),
-  sidebarOperationalLabel: document.getElementById("sidebar-operational-label"),
-  sidebarOperationalNav: document.getElementById("sidebar-operational-nav"),
-  sidebarSalesDivider: document.getElementById("sidebar-sales-divider"),
-  sidebarSalesLabel: document.getElementById("sidebar-sales-label"),
-  sidebarSalesNav: document.getElementById("sidebar-sales-nav"),
-  sidebarAdminDivider: document.getElementById("sidebar-admin-divider"),
-  sidebarAdminLabel: document.getElementById("sidebar-admin-label"),
-  sidebarAdminNav: document.getElementById("sidebar-admin-nav"),
-  sidebarToolsDivider: document.getElementById("sidebar-tools-divider"),
-  sidebarToolsLabel: document.getElementById("sidebar-tools-label"),
-  sidebarToolsNav: document.getElementById("sidebar-tools-nav"),
-  navLinks: Array.from(document.querySelectorAll(".nav-link")),
+  sidebarSections: document.getElementById("sidebar-sections"),
+  sidebarPinned: document.getElementById("sidebar-pinned"),
+  navLinks: [],
   views: Array.from(document.querySelectorAll(".view")),
   viewTitle: document.getElementById("view-title"),
   currentUserName: document.getElementById("current-user-name"),
@@ -2767,11 +2762,12 @@ function handleResponsiveResize() {
   lastResponsiveIsMobile = isMobile;
 }
 
-function syncSidebarLayout(role = state.currentUser?.role || "office") {
+function syncSidebarLayout(_role = state.currentUser?.role || "office") {
   if (!ui.sidebar) return;
-  // Preserva lo scroll del menu laterale: il riordino dei nodi con appendChild
-  // (sotto) resetterebbe scrollTop a 0 ad ogni updateShell (= ogni click nav),
-  // riportando l'utente in cima al menu. Ripristina dopo il reflow.
+  // L'ordine delle sezioni è ora fisso (registro unico NAV_SECTIONS) e il gating
+  // per ruolo è gestito in updateShell. Qui resta solo la conservazione dello
+  // scroll del menu: senza, ogni updateShell (= ogni click nav) lo riporterebbe
+  // in cima.
   const _savedSidebarScroll = ui.sidebar.scrollTop;
   if (_savedSidebarScroll > 0) {
     requestAnimationFrame(() => {
@@ -2780,85 +2776,6 @@ function syncSidebarLayout(role = state.currentUser?.role || "office") {
       }
     });
   }
-  const normalizedRole = normalizeUserRole(role);
-  const mobileSafe = window.innerWidth <= 980;
-  const defaultSequence = [
-    ui.sidebarMobileHead,
-    ui.sidebarBrandBlock,
-    ui.userCard,
-    ui.sidebarOperationalLabel,
-    ui.sidebarOperationalNav,
-    ui.sidebarSalesDivider,
-    ui.sidebarSalesLabel,
-    ui.sidebarSalesNav,
-    ui.sidebarAdminDivider,
-    ui.sidebarAdminLabel,
-    ui.sidebarAdminNav,
-    ui.sidebarToolsDivider,
-    ui.sidebarToolsLabel,
-    ui.sidebarToolsNav,
-    ui.sidebarMobileTools,
-    ui.sidebarCard,
-  ];
-  const officeMobileSequence = [
-    ui.sidebarMobileHead,
-    ui.sidebarBrandBlock,
-    ui.userCard,
-    ui.sidebarOperationalLabel,
-    ui.sidebarOperationalNav,
-    ui.sidebarSalesDivider,
-    ui.sidebarSalesLabel,
-    ui.sidebarSalesNav,
-    ui.sidebarAdminDivider,
-    ui.sidebarAdminLabel,
-    ui.sidebarAdminNav,
-    ui.sidebarToolsDivider,
-    ui.sidebarToolsLabel,
-    ui.sidebarToolsNav,
-    ui.sidebarMobileTools,
-    ui.sidebarCard,
-  ];
-  const sequence = mobileSafe && normalizedRole === "office" ? officeMobileSequence : defaultSequence;
-  sequence.forEach((node) => {
-    if (node && node.parentElement === ui.sidebar) {
-      ui.sidebar.appendChild(node);
-    }
-  });
-  if (!(mobileSafe && normalizedRole === "office")) return;
-  if (ui.sidebar && ui.sidebarAdminDivider) {
-    [ui.sidebarSalesDivider, ui.sidebarSalesLabel, ui.sidebarSalesNav].forEach((node) => {
-      if (node && node.parentElement === ui.sidebar) {
-        ui.sidebar.insertBefore(node, ui.sidebarAdminDivider);
-      }
-    });
-  }
-  const officeViews = new Set(roleViews.office);
-  ui.navLinks.forEach((button) => {
-    if (!officeViews.has(button.dataset.view)) return;
-    button.hidden = false;
-    button.classList.remove("hidden");
-    button.setAttribute("aria-hidden", "false");
-    forceMobileVisibility(button, true, "grid");
-  });
-  [
-    [ui.sidebarOperationalLabel, "block"],
-    [ui.sidebarOperationalNav, "grid"],
-    [ui.sidebarAdminDivider, "block"],
-    [ui.sidebarAdminLabel, "block"],
-    [ui.sidebarAdminNav, "grid"],
-    [ui.sidebarSalesDivider, "block"],
-    [ui.sidebarSalesLabel, "block"],
-    [ui.sidebarSalesNav, "grid"],
-    [ui.sidebarToolsDivider, "block"],
-    [ui.sidebarToolsLabel, "block"],
-    [ui.sidebarToolsNav, "grid"],
-    [ui.sidebarMobileTools, "grid"],
-  ].forEach(([node, displayValue]) => {
-    if (!node) return;
-    node.hidden = false;
-    node.classList.remove("hidden");
-    forceMobileVisibility(node, true, displayValue);
-  });
 }
 
 function toNumber(value) {
@@ -10118,9 +10035,7 @@ function applyStaticTranslations() {
     if (label) label.textContent = t(button.dataset.view);
     else button.textContent = t(button.dataset.view);
   });
-  setText("sidebar-operational-label", t("operationsSection"));
-  setText("sidebar-sales-label", t("salesSection"));
-  setText("sidebar-admin-label", t("adminSection"));
+  NAV_SECTIONS.forEach((sec) => setText(`sidebar-${sec.id}-label`, t(sec.labelKey)));
   setSubheading("#orders .panel-subsection-office h4", t("officeOperations"));
   setSubheading("#orders .panel-subsection-items h4", t("orderItems"));
   setSubheading("#orders .panel-subsection-prep h4", t("officePreparation"));
@@ -10208,41 +10123,14 @@ function updateShell() {
     button.setAttribute("aria-hidden", visible ? "false" : "true");
     forceMobileVisibility(button, visible, "grid");
   });
-  const adminVisible = Array.from(ui.sidebarAdminNav?.querySelectorAll(".nav-link") || []).some((button) => !button.hidden);
-  if (ui.sidebarAdminDivider) {
-    ui.sidebarAdminDivider.classList.toggle("hidden", !adminVisible);
-    forceMobileVisibility(ui.sidebarAdminDivider, adminVisible, "block");
-  }
-  if (ui.sidebarAdminLabel) {
-    ui.sidebarAdminLabel.classList.toggle("hidden", !adminVisible);
-    forceMobileVisibility(ui.sidebarAdminLabel, adminVisible, "block");
-  }
-  if (ui.sidebarAdminNav) {
-    ui.sidebarAdminNav.classList.toggle("hidden", !adminVisible);
-    forceMobileVisibility(ui.sidebarAdminNav, adminVisible, "grid");
-  }
-  const operationalVisible = Array.from(ui.sidebarOperationalNav?.querySelectorAll(".nav-link") || []).some((button) => !button.hidden);
-  if (ui.sidebarOperationalLabel) {
-    ui.sidebarOperationalLabel.classList.toggle("hidden", !operationalVisible);
-    forceMobileVisibility(ui.sidebarOperationalLabel, operationalVisible, "block");
-  }
-  if (ui.sidebarOperationalNav) {
-    ui.sidebarOperationalNav.classList.toggle("hidden", !operationalVisible);
-    forceMobileVisibility(ui.sidebarOperationalNav, operationalVisible, "grid");
-  }
-  const salesVisible = Array.from(ui.sidebarSalesNav?.querySelectorAll(".nav-link") || []).some((button) => !button.hidden);
-  if (ui.sidebarSalesDivider) {
-    ui.sidebarSalesDivider.classList.toggle("hidden", !salesVisible);
-    forceMobileVisibility(ui.sidebarSalesDivider, salesVisible, "block");
-  }
-  if (ui.sidebarSalesLabel) {
-    ui.sidebarSalesLabel.classList.toggle("hidden", !salesVisible);
-    forceMobileVisibility(ui.sidebarSalesLabel, salesVisible, "block");
-  }
-  if (ui.sidebarSalesNav) {
-    ui.sidebarSalesNav.classList.toggle("hidden", !salesVisible);
-    forceMobileVisibility(ui.sidebarSalesNav, salesVisible, "grid");
-  }
+  // Gating per-sezione generico (registro unico): nasconde l'intera sezione
+  // quando nessuna delle sue voci è permessa per il ruolo corrente. Copre tutte
+  // le sezioni, inclusa Team che prima restava orfana.
+  (ui.sidebarSections?.querySelectorAll(".sidebar-section") || []).forEach((sectionEl) => {
+    const anyVisible = Array.from(sectionEl.querySelectorAll(".nav-link")).some((button) => !button.hidden);
+    sectionEl.classList.toggle("hidden", !anyVisible);
+    forceMobileVisibility(sectionEl, anyVisible, "block");
+  });
   ui.views.forEach((view) => view.classList.toggle("is-active", view.id === state.currentView));
   ui.viewTitle.textContent = t(state.currentView);
   ui.currentUserName.textContent = state.currentUser?.name || "-";
@@ -16843,6 +16731,7 @@ const VIEW_ICONS = {
   warehouse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
   installations: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
   "installations-todo": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  "installations-live": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4"/></svg>',
   "installations-scheduled": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="8 14 11 17 16 12"/></svg>',
   "installations-repairs": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
   communications: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
@@ -16861,6 +16750,120 @@ const VIEW_ICONS = {
   "timesheet-office": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="12" cy="15" r="2"/></svg>',
   more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>',
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REGISTRO UNICO DI NAVIGAZIONE (single source of truth)
+//
+// Definisce struttura, ordine, sezioni e icone della shell. Da qui si generano
+// la sidebar desktop, il gating per ruolo (insieme a roleViews) e la sheet
+// "Altro" mobile. roleViews resta l'autorità su CHI vede COSA; questo registro
+// definisce COME è disposto. Aggiungere/spostare una voce qui la propaga a
+// desktop e mobile insieme — niente più definizioni parallele che divergono.
+// ═══════════════════════════════════════════════════════════════════════════
+const NAV_SECTIONS = [
+  { id: "operational", labelKey: "operationsSection", defaultOpen: true, items: [
+    { view: "dashboard" },
+    { view: "orders" },
+    { view: "warehouse" },
+    { view: "installations", group: ["installations-live", "installations-scheduled", "installations-repairs"] },
+  ] },
+  { id: "sales", labelKey: "salesSection", defaultOpen: true, items: [
+    { view: "sales-requests" },
+    { view: "sales-generator" },
+    { view: "sales-content" },
+    { view: "marketing" },
+    { view: "garden-planner" },
+  ] },
+  { id: "logistics", labelKey: "logisticsSection", defaultOpen: false, items: [
+    { view: "shipping" },
+    { view: "ddt" },
+  ] },
+  { id: "admin", labelKey: "adminSection", defaultOpen: false, items: [
+    { view: "accounting" },
+    { view: "profit-split" },
+    { view: "reseller-report" },
+  ] },
+  { id: "team", labelKey: "teamSection", defaultOpen: false, items: [
+    { view: "communications" },
+    { view: "timesheet-me" },
+    { view: "timesheet-office" },
+  ] },
+];
+const NAV_PINNED = ["settings"];
+
+function navIconHtml(view) {
+  return `<span class="nav-icon" aria-hidden="true">${VIEW_ICONS[view] || VIEW_ICONS.more}</span>`;
+}
+function navLinkHtml(view, extraClass = "") {
+  return `<button class="nav-link${extraClass ? " " + extraClass : ""}" data-view="${view}">`
+    + navIconHtml(view)
+    + `<span class="nav-label">${escapeHtml(t(view))}</span></button>`;
+}
+function navGroupHtml(item) {
+  const subs = item.group.map((sv) =>
+    `<button class="nav-link nav-sub" data-view="${sv}"><span class="nav-sub-dot">·</span><span class="nav-label">${escapeHtml(t(sv))}</span></button>`
+  ).join("");
+  return `<div class="nav-group" data-nav-group="${item.view}">`
+    + `<button class="nav-link nav-group-toggle" data-view="${item.view}" aria-expanded="true">`
+    + navIconHtml(item.view)
+    + `<span class="nav-label">${escapeHtml(t(item.view))}</span>`
+    + `<span class="nav-chevron" aria-hidden="true">▾</span></button>`
+    + `<div class="nav-subgroup" data-nav-subgroup="${item.view}">${subs}</div>`
+    + `</div>`;
+}
+function renderSidebarSections() {
+  if (!ui.sidebarSections) return;
+  ui.sidebarSections.innerHTML = NAV_SECTIONS.map((sec) => {
+    const items = sec.items.map((it) => (it.group ? navGroupHtml(it) : navLinkHtml(it.view))).join("");
+    return `<section class="sidebar-section" data-section="${sec.id}">`
+      + `<button class="sidebar-section-head" type="button" data-section-toggle="${sec.id}" aria-expanded="true">`
+      + `<span id="sidebar-${sec.id}-label" class="sidebar-section-label">${escapeHtml(t(sec.labelKey))}</span>`
+      + `<span class="sidebar-section-chevron" aria-hidden="true">▾</span></button>`
+      + `<nav id="sidebar-${sec.id}-nav" class="nav sidebar-section-body">${items}</nav>`
+      + `</section>`;
+  }).join("");
+  if (ui.sidebarPinned) {
+    ui.sidebarPinned.innerHTML = NAV_PINNED.map((v) => navLinkHtml(v)).join("");
+  }
+  ui.navLinks = Array.from(document.querySelectorAll(".nav-link"));
+}
+
+// ── Collasso sezioni sidebar (accordion) — stato persistito per utente ───────
+const NAV_SECTION_LS_KEY = "psi-nav-section-state";
+function getNavSectionState() {
+  try { return JSON.parse(window.localStorage.getItem(NAV_SECTION_LS_KEY) || "{}"); } catch { return {}; }
+}
+function setNavSectionState(s) {
+  try { window.localStorage.setItem(NAV_SECTION_LS_KEY, JSON.stringify(s || {})); } catch {}
+}
+function applySectionCollapseState() {
+  const stateMap = getNavSectionState();
+  NAV_SECTIONS.forEach((sec) => {
+    const el = document.querySelector(`.sidebar-section[data-section="${sec.id}"]`);
+    if (!el) return;
+    let open = stateMap[sec.id];
+    if (open === undefined) open = !!sec.defaultOpen;
+    el.classList.toggle("is-section-collapsed", !open);
+    const head = el.querySelector(".sidebar-section-head");
+    if (head) head.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+}
+document.addEventListener("click", (ev) => {
+  const head = ev.target.closest?.(".sidebar-section-head");
+  if (!head) return;
+  const sec = head.closest(".sidebar-section");
+  if (!sec) return;
+  ev.preventDefault();
+  const id = sec.dataset.section;
+  const stateMap = getNavSectionState();
+  const collapsed = sec.classList.toggle("is-section-collapsed");
+  stateMap[id] = !collapsed;
+  setNavSectionState(stateMap);
+  head.setAttribute("aria-expanded", !collapsed ? "true" : "false");
+});
+
+renderSidebarSections();
+applySectionCollapseState();
 
 function renderMobileBottomNav() {
   const nav = document.getElementById("mobile-bottom-nav");
@@ -16898,25 +16901,15 @@ function renderMobileBottomNav() {
   nav.innerHTML = html;
 }
 
-// Definizione macroaree per la sheet "Altro" — corrispondono alla sidebar desktop
-const MORE_SHEET_SECTIONS = [
-  {
-    label: "Operativo",
-    views: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-todo", "installations-scheduled", "installations-repairs", "communications"],
-  },
-  {
-    label: "Vendite",
-    views: ["sales-requests", "sales-generator", "sales-content", "marketing"],
-  },
-  {
-    label: "Amministrazione",
-    views: ["accounting", "profit-split", "shipping", "reseller-report", "settings", "timesheet-office"],
-  },
-  {
-    label: "Strumenti",
-    views: ["garden-planner", "timesheet-me"],
-  },
-];
+// Macroaree per la sheet "Altro" mobile — DERIVATE dal registro unico NAV_SECTIONS,
+// così non possono più divergere dalla sidebar desktop. Le voci pinned (Impostazioni)
+// vengono accodate alla sezione Amministrazione.
+const MORE_SHEET_SECTIONS = NAV_SECTIONS.map((sec) => ({
+  label: t(sec.labelKey),
+  views: sec.items
+    .flatMap((it) => (it.group ? [it.view, ...it.group] : [it.view]))
+    .concat(sec.id === "admin" ? NAV_PINNED : []),
+}));
 
 function openMoreSheet() {
   const sheet = document.getElementById("mobile-more-sheet");

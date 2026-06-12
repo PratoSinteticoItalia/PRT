@@ -862,6 +862,60 @@ button.is-feedback,
   margin: 8px 12px;
 }
 
+/* ── Sidebar: sezioni collassabili (generate dal registro unico NAV_SECTIONS) ── */
+.sidebar-section {
+  display: block;
+}
+.sidebar-section.hidden {
+  display: none;
+}
+.sidebar-section + .sidebar-section {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.sidebar-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.sidebar-section-head .sidebar-section-label {
+  flex: 1;
+  margin: 0;
+}
+.sidebar-section-head:hover .sidebar-section-label {
+  color: var(--brand);
+}
+.sidebar-section-chevron {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+  color: #9c9c96;
+  padding-right: 12px;
+  transition: transform 0.18s ease;
+}
+.sidebar-section.is-section-collapsed .sidebar-section-chevron {
+  transform: rotate(-90deg);
+}
+.sidebar-section.is-section-collapsed .sidebar-section-body {
+  display: none !important;
+}
+.sidebar-pinned {
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
 .mobile-pill-shell {
   display: none;
 }
