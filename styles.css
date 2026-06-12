@@ -20898,21 +20898,14 @@ body {
 
 /* === Drawer dettaglio Logistica === */
 #shipping .order-grid { grid-template-columns: 1fr; }
-/* Kanban classica: il contenitore ha altezza fissa e NON scrolla; scrollano le
-   singole colonne in modo indipendente (la pagina non cresce, il drawer fixed
-   resta sempre in vista). */
-#shipping .order-grid > div:first-child {
-  max-height: calc(100vh - 150px);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  padding-right: 0;
-}
-#shipping .shp-kpi-strip { flex: 0 0 auto; }
-#shipping .shp-groups { flex: 1 1 auto; min-height: 0; align-items: stretch; }
-#shipping .shp-group { display: flex; flex-direction: column; min-height: 0; max-height: 100%; }
-#shipping .shp-group-label { flex: 0 0 auto; }
-#shipping .shp-group-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+/* Board a flusso naturale: le colonne crescono col contenuto e la pagina
+   scorre normalmente. Il drawer dettaglio è fixed, quindi resta sempre in vista
+   anche scrollando — niente "riquadro" ad altezza fissa. */
+#shipping .order-grid > div:first-child { max-height: none; overflow: visible; padding-right: 0; }
+/* Colonne dimensionate sul contenuto (niente scatola fissa): se hanno pochi
+   ordini restano corte, se ne hanno tanti la LISTA scrolla internamente. */
+#shipping .shp-groups { align-items: start; }
+#shipping .shp-group-list { min-height: 56px; max-height: calc(100vh - 290px); overflow-y: auto; padding-right: 4px; }
 /* Drag-and-drop kanban */
 #shipping .shp-row { cursor: grab; }
 #shipping .shp-row:active { cursor: grabbing; }
@@ -20920,12 +20913,16 @@ body {
 .shp-group.is-drop-over { background: rgba(34,197,94,.08); outline: 2px dashed #86efac; outline-offset: -4px; border-radius: 14px; }
 #shipping .shipping-standard-detail-panel,
 #shipping .sample-detail-panel {
-  position: fixed; top: 0; right: 0; height: 100vh; width: 470px; max-width: 94vw;
+  position: fixed; top: 0; right: 0; height: 100vh; width: 440px; max-width: 94vw;
   max-height: 100vh; margin: 0; border-radius: 0; border-left: 1px solid #e5e1d6;
   background: #fff; box-shadow: -18px 0 46px rgba(20,40,30,.16);
   transform: translateX(100%); transition: transform .22s cubic-bezier(.4,0,.2,1);
-  z-index: 60; overflow-y: auto; padding: 20px;
+  z-index: 60; overflow-y: auto; padding: 16px 16px 28px;
 }
+/* Drawer: spaziatura interna compatta, niente margine sprecato */
+#shipping .shipping-standard-detail-panel .panel-subsection { margin-top: 12px; padding-top: 12px; }
+#shipping .shipping-standard-detail-panel .panel-subsection:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+#shipping .shipping-standard-detail-panel .section-inline-title { margin: 2px 0 10px; }
 #shipping .shipping-standard-detail-panel.is-open,
 #shipping .sample-detail-panel.is-open { transform: translateX(0); }
 .shipping-drawer-scrim { position: fixed; inset: 0; background: rgba(20,30,25,.30); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 55; }
