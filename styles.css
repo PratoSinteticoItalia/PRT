@@ -20869,11 +20869,13 @@ body {
 
 /* === Logistica KANBAN: board a 3 colonne-fase === */
 .shp-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
-.shp-group { background: rgba(255,255,255,.55); border: 1px solid #e5e1d6; border-radius: 14px; padding: 10px 10px 12px; }
-.shp-group.shp-lane-prepare { border-top: 3px solid #f59e0b; }
-.shp-group.shp-lane-ready { border-top: 3px solid #22c55e; }
-.shp-group.shp-lane-done { border-top: 3px solid #9ca3af; }
-.shp-group-label { display: flex; align-items: center; gap: 8px; margin: 4px 4px 10px; }
+/* Colonne SENZA scatola pesante: header con sottolineatura colorata + lista card.
+   Le colonne si dimensionano sul contenuto; quelle vuote sono solo l'intestazione. */
+.shp-group { background: transparent; border: none; border-radius: 0; padding: 0; }
+.shp-group-label { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding-bottom: 8px; border-bottom: 2px solid #e5e1d6; }
+.shp-lane-prepare .shp-group-label { border-bottom-color: #f59e0b; }
+.shp-lane-ready .shp-group-label { border-bottom-color: #22c55e; }
+.shp-lane-done .shp-group-label { border-bottom-color: #9ca3af; }
 .shp-group-label h3 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #8a9690; }
 .shp-gc { font-size: 11px; font-weight: 800; background: #ece8de; color: #5a6e63; padding: 1px 9px; border-radius: 999px; }
 .shp-group-list { display: flex; flex-direction: column; gap: 9px; min-height: 40px; }
@@ -20910,7 +20912,7 @@ body {
 #shipping .shp-row { cursor: grab; }
 #shipping .shp-row:active { cursor: grabbing; }
 .shp-row.is-dragging { opacity: .45; }
-.shp-group.is-drop-over { background: rgba(34,197,94,.08); outline: 2px dashed #86efac; outline-offset: -4px; border-radius: 14px; }
+.shp-group.is-drop-over .shp-group-list { background: rgba(34,197,94,.08); outline: 2px dashed #86efac; outline-offset: 3px; border-radius: 12px; }
 #shipping .shipping-standard-detail-panel,
 #shipping .sample-detail-panel {
   position: fixed; top: 0; right: 0; height: 100vh; width: 440px; max-width: 94vw;
@@ -20930,8 +20932,8 @@ body {
 .shipping-drawer-close { position: absolute; top: 14px; right: 16px; z-index: 2; width: 32px; height: 32px; border: none; border-radius: 8px; background: #f1efe7; color: #5a6e63; font-size: 16px; cursor: pointer; }
 .shipping-drawer-close:hover { background: #e7e3d8; color: #1a2e26; }
 
-/* Contenuto drawer: compatto e niente testo che esce dalle box (drawer stretto) */
-#shipping .shipping-standard-detail-panel .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+/* Contenuto drawer: box a piena larghezza (niente cella vuota/"padding" a destra) */
+#shipping .shipping-standard-detail-panel .detail-grid { grid-template-columns: 1fr; gap: 10px; }
 #shipping .shipping-standard-detail-panel .detail-box { border-radius: 12px; padding: 11px 12px; min-width: 0; overflow: hidden; }
 #shipping .shipping-standard-detail-panel .detail-box strong { font-size: 14.5px; line-height: 1.3; margin-bottom: 3px; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 #shipping .shipping-standard-detail-panel .detail-box p,
