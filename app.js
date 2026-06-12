@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260612-magazziniere-logistica-fix";
+const APP_SHELL_VERSION = "20260612-richieste-fornitura-ddt-cleanup";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4602,14 +4602,12 @@ function getSalesRequestHeightLabel(value = "") {
 
 function getSalesRequestServiceLabel(service = "") {
   const value = String(service || "").trim().toLowerCase();
-  if (!value) return state.lang === "it" ? "Da definire" : "To define";
-  // Match a sottostringa: i lead IMAP arrivano con valori grezzi
-  // ("Solo Fornitura", "Fornitura e Posa", "Fornitura + Posa"…) che con il
-  // match esatto finivano erroneamente in "Da definire".
+  // Default a "Solo fornitura": se non è indicata la posa, è una fornitura.
+  // (Match a sottostringa per i valori grezzi dei lead IMAP: "Solo Fornitura",
+  // "Fornitura e Posa", "Fornitura + Posa"…)
   const hasPosa = value.includes("posa") || value.includes("install");
   if (hasPosa) return state.lang === "it" ? "Fornitura + posa" : "Supply + install";
-  if (value.includes("fornitura") || value.includes("supply")) return state.lang === "it" ? "Solo fornitura" : "Supply only";
-  return state.lang === "it" ? "Da definire" : "To define";
+  return state.lang === "it" ? "Solo fornitura" : "Supply only";
 }
 
 function getSalesRequestSurfaceLabel(surface = "") {
@@ -19651,7 +19649,9 @@ function renderDdtEstimateHtml(order) {
   };
   let est;
   try { est = calculateShippingEstimate(order, ddt); } catch { est = null; }
-  if (!est || est.unsupported || !(est.estimatedCost > 0)) {
+  // Mostra il costo se c'è (come in Logistica), anche quando il pallet è
+  // "fuori dai limiti automatici" ma una tariffa base è comunque calcolata.
+  if (!est || !(est.estimatedCost > 0)) {
     const reason = est?.missingReason === "missing_destination"
       ? L("Provincia destinazione mancante", "Missing destination province")
       : est?.missingReason === "unsupported_pallet"
@@ -19659,10 +19659,14 @@ function renderDdtEstimateHtml(order) {
         : L("Inserisci misure e peso bancale per la stima", "Enter pallet size & weight for the estimate");
     return `<div class="ddt-estimate is-missing"><span class="panel-eyebrow">${L("Stima spedizione One Express", "One Express estimate")}</span><strong>—</strong><span>${escapeHtml(reason)}</span></div>`;
   }
+  const note = est.unsupported
+    ? L("Tariffa base · misure/peso fuori dai limiti automatici", "Base tariff · pallet out of automatic limits")
+    : "";
   const meta = [
-    est.billableWeight ? `${L("Peso tassabile", "Billable weight")}: ${est.billableWeight} kg` : "",
     est.provinceCode ? est.provinceCode : "",
     est.palletClass ? `${L("Classe", "Class")} ${est.palletClass}` : "",
+    est.billableWeight ? `${L("Peso tassabile", "Billable")}: ${est.billableWeight} kg` : "",
+    note,
   ].filter(Boolean).join(" · ");
   return `<div class="ddt-estimate"><span class="panel-eyebrow">${L("Stima spedizione One Express", "One Express estimate")}</span><strong>${formatCurrency(est.estimatedCost)}</strong><span>${escapeHtml(meta)}</span></div>`;
 }

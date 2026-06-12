@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260612-magazziniere-logistica-fix" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260612-magazziniere-logistica-fix" />
+    <link rel="preload" href="./styles.css?v=20260612-richieste-fornitura-ddt-cleanup" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260612-richieste-fornitura-ddt-cleanup" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -875,7 +875,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260612-magazziniere-logistica-fix&shell=20260612-magazziniere-logistica-fix"
+                src="./sales-suite/generator.html?embedded=1&v=20260612-richieste-fornitura-ddt-cleanup&shell=20260612-richieste-fornitura-ddt-cleanup"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -1134,37 +1134,6 @@
                   <button type="button" class="primary-button small-button" data-action="open-ddt-for-order">Apri DDT</button>
                 </div>
                 <p class="ddt-hint">Il DDT (numero, destinatario, articoli, bancale) si gestisce nella pagina dedicata.</p>
-              </div>
-
-              <div class="panel-subsection shipping-ddt-panel">
-                <div class="subsection-head">
-                  <h4>DDT ordine selezionato</h4>
-                  <button id="create-ddt-button" class="primary-button small-button">Crea PDF DDT</button>
-                </div>
-                <form id="ddt-form" class="inline-form-grid">
-                  <label class="field">
-                    <span>N. DDT</span>
-                    <input class="text-input" name="number" placeholder="DDT-1001" />
-                  </label>
-                  <label class="field">
-                    <span>Lunghezza bancale</span>
-                    <input class="text-input" name="palletLength" placeholder="120 cm" />
-                  </label>
-                  <label class="field">
-                    <span>Larghezza bancale</span>
-                    <input class="text-input" name="palletWidth" placeholder="80 cm" />
-                  </label>
-                  <label class="field">
-                    <span>Altezza bancale</span>
-                    <input class="text-input" name="palletHeight" placeholder="95 cm" />
-                  </label>
-                  <label class="field">
-                    <span>Peso bancale</span>
-                    <input class="text-input" name="palletWeight" placeholder="180 kg" />
-                  </label>
-                </form>
-                <div id="ddt-items-preview" class="detail-stack"></div>
-                <div id="warehouse-ddt-status" class="search-pill compact-pill">Il DDT riporta solo la merce fisica che viaggia su bancale, mai servizi o posa.</div>
               </div>
 
               <div class="panel-subsection">
@@ -2484,7 +2453,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260612-magazziniere-logistica-fix" defer></script>
-    <script src="./app.js?v=20260612-magazziniere-logistica-fix" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260612-richieste-fornitura-ddt-cleanup" defer></script>
+    <script src="./app.js?v=20260612-richieste-fornitura-ddt-cleanup" type="module"></script>
   </body>
 </html>
