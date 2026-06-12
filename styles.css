@@ -20913,40 +20913,40 @@ body {
 #shipping .shp-row:active { cursor: grabbing; }
 .shp-row.is-dragging { opacity: .45; }
 .shp-group.is-drop-over .shp-group-list { background: rgba(34,197,94,.08); outline: 2px dashed #86efac; outline-offset: 3px; border-radius: 12px; }
-#shipping .shipping-standard-detail-panel,
-#shipping .sample-detail-panel {
-  position: fixed; top: 0; right: 0; height: 100vh; width: 440px; max-width: 94vw;
-  max-height: 100vh; margin: 0; border-radius: 0; border-left: 1px solid #e5e1d6;
+.shipping-standard-detail-panel,
+.sample-detail-panel {
+  position: fixed; top: 56px; right: 0; height: calc(100vh - 56px); width: 440px; max-width: 94vw;
+  max-height: calc(100vh - 56px); margin: 0; border-radius: 0; border-left: 1px solid #e5e1d6;
   background: #fff; box-shadow: -18px 0 46px rgba(20,40,30,.16);
   transform: translateX(100%); transition: transform .22s cubic-bezier(.4,0,.2,1);
-  z-index: 60; overflow-y: auto; padding: 16px 16px 28px;
+  z-index: 70; overflow-y: auto; padding: 16px 16px 28px;
 }
 /* Drawer: spaziatura interna compatta, niente margine sprecato */
-#shipping .shipping-standard-detail-panel .panel-subsection { margin-top: 12px; padding-top: 12px; }
-#shipping .shipping-standard-detail-panel .panel-subsection:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
-#shipping .shipping-standard-detail-panel .section-inline-title { margin: 2px 0 10px; }
-#shipping .shipping-standard-detail-panel.is-open,
-#shipping .sample-detail-panel.is-open { transform: translateX(0); }
-.shipping-drawer-scrim { position: fixed; inset: 0; background: rgba(20,30,25,.30); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 55; }
+.shipping-standard-detail-panel .panel-subsection { margin-top: 12px; padding-top: 12px; }
+.shipping-standard-detail-panel .panel-subsection:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+.shipping-standard-detail-panel .section-inline-title { margin: 2px 0 10px; }
+.shipping-standard-detail-panel.is-open,
+.sample-detail-panel.is-open { transform: translateX(0); }
+.shipping-drawer-scrim { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; background: rgba(20,30,25,.28); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 65; }
 .shipping-drawer-scrim.is-open { opacity: 1; pointer-events: auto; }
 .shipping-drawer-close { position: absolute; top: 14px; right: 16px; z-index: 2; width: 32px; height: 32px; border: none; border-radius: 8px; background: #f1efe7; color: #5a6e63; font-size: 16px; cursor: pointer; }
 .shipping-drawer-close:hover { background: #e7e3d8; color: #1a2e26; }
 
 /* Contenuto drawer: box a piena larghezza (niente cella vuota/"padding" a destra) */
-#shipping .shipping-standard-detail-panel .detail-grid { grid-template-columns: 1fr; gap: 10px; }
-#shipping .shipping-standard-detail-panel .detail-box { border-radius: 12px; padding: 11px 12px; min-width: 0; overflow: hidden; }
-#shipping .shipping-standard-detail-panel .detail-box strong { font-size: 14.5px; line-height: 1.3; margin-bottom: 3px; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
-#shipping .shipping-standard-detail-panel .detail-box p,
-#shipping .shipping-standard-detail-panel .detail-box small { font-size: 12px; overflow-wrap: anywhere; }
-#shipping .shipping-standard-detail-panel .panel-eyebrow { font-size: 10px; letter-spacing: .06em; }
-#shipping .shipping-standard-detail-panel .section-inline-title { overflow-wrap: anywhere; }
+.shipping-standard-detail-panel .detail-grid { grid-template-columns: 1fr; gap: 10px; }
+.shipping-standard-detail-panel .detail-box { border-radius: 12px; padding: 11px 12px; min-width: 0; overflow: hidden; }
+.shipping-standard-detail-panel .detail-box strong { font-size: 14.5px; line-height: 1.3; margin-bottom: 3px; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+.shipping-standard-detail-panel .detail-box p,
+.shipping-standard-detail-panel .detail-box small { font-size: 12px; overflow-wrap: anywhere; }
+.shipping-standard-detail-panel .panel-eyebrow { font-size: 10px; letter-spacing: .06em; }
+.shipping-standard-detail-panel .section-inline-title { overflow-wrap: anywhere; }
 /* Anteprima materiali: chip che vanno a capo invece di sforare */
-#shipping .shipping-standard-detail-panel .shipping-material-hero { flex-wrap: wrap; gap: 8px; }
-#shipping .shipping-standard-detail-panel .shipping-material-badges { flex-wrap: wrap; }
-#shipping .shipping-standard-detail-panel .search-pill { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-#shipping .shipping-standard-detail-panel .shipping-material-line span { overflow-wrap: anywhere; }
+.shipping-standard-detail-panel .shipping-material-hero { flex-wrap: wrap; gap: 8px; }
+.shipping-standard-detail-panel .shipping-material-badges { flex-wrap: wrap; }
+.shipping-standard-detail-panel .search-pill { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.shipping-standard-detail-panel .shipping-material-line span { overflow-wrap: anywhere; }
 /* Form spedizione: campi a piena larghezza nel drawer */
-#shipping .shipping-standard-detail-panel .inline-form-grid { grid-template-columns: 1fr; }
+.shipping-standard-detail-panel .inline-form-grid { grid-template-columns: 1fr; }
 
 @media (max-width: 900px) {
   .shp-groups { grid-template-columns: 1fr; }

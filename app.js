@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260612-logistica-kanban-clean";
+const APP_SHELL_VERSION = "20260612-logistica-drawer-viewport";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -26110,6 +26110,16 @@ document.addEventListener("drop", (event) => {
   }
   updateOrderRoutingById(orderId, { warehouse: { selected: false }, installation: { selected: false } });
 });
+
+// Sposta drawer + scrim Logistica fuori dal .view (che ha `contain: paint` e
+// intrappolerebbe/ritaglierebbe il position:fixed): agganciandoli a <body> il
+// drawer torna relativo al viewport → full-height e attaccato al bordo destro.
+(function detachShippingDrawerToBody() {
+  ["shipping-drawer-scrim", "shipping-standard-detail-panel", "sample-detail-panel"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && el.parentElement !== document.body) document.body.appendChild(el);
+  });
+})();
 
 // === Drag-and-drop kanban Logistica: trascina una card in un'altra corsia/fase ===
 document.addEventListener("dragstart", (event) => {
