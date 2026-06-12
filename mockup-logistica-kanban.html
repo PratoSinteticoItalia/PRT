@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Logistica Kanban (v1: board + drawer)</title>
+<style>
+  :root {
+    --bg: #f5f3ee; --paper: #ffffff; --ink: #1a2e26; --ink-soft: #5a6e63;
+    --ink-faint: #8a9690; --line: #e5e1d6; --line-strong: #d4cebd;
+    --primary: #1f4d3d; --primary-soft: #e8f0ec;
+    --amber: #b45309; --amber-soft: #fef3c7;
+    --green: #15803d; --green-soft: #dcfce7;
+    --grey: #6b7280; --grey-soft: #eef0f2;
+    --blue: #1e40af; --blue-soft: #e0edff;
+    --orange: #9a3412; --orange-soft: #fff7ed;
+    --radius: 14px; --radius-sm: 9px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); font-size: 14px;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 28px 28px; }
+  .topbar { background: #14271f; color: #e7efe9; padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+  .topbar .brand { font-weight: 800; letter-spacing: .01em; }
+  .topbar .brand small { font-weight: 500; opacity: .6; margin-left: 6px; }
+  .topbar .search { flex: 1; background: #1d352b; border: 1px solid #2a473b; border-radius: 999px; padding: 9px 16px; color: #9fb4aa; }
+  .wrap { padding: 22px 24px; }
+  h1 { margin: 0 0 2px; font-size: 26px; }
+  .sub { color: var(--ink-faint); margin-bottom: 16px; }
+
+  /* Toolbar: ricerca + pillole filtro TRASVERSALI */
+  .toolbar { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px 16px; display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+  .toolbar input { flex: 1; border: 1px solid var(--line); border-radius: 999px; padding: 10px 16px; font-size: 14px; outline: none; }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill { border: 1px solid var(--line-strong); background: var(--paper); border-radius: 999px; padding: 7px 15px;
+    font-size: 13px; font-weight: 600; color: var(--ink-soft); cursor: pointer; }
+  .pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .pill .ct { opacity: .6; font-weight: 700; margin-left: 5px; }
+  .hint { font-size: 12px; color: var(--ink-faint); margin: 0 2px 14px; }
+
+  /* KPI strip */
+  .kpis { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 20px; display: flex; gap: 36px; margin-bottom: 16px; }
+  .kpi .v { font-size: 26px; font-weight: 800; line-height: 1; }
+  .kpi .l { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); margin-top: 6px; }
+  .kpi.warn .v { color: var(--amber); }
+
+  /* KANBAN board full-width */
+  .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
+  .col { background: rgba(255,255,255,.55); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+  .col-head { display: flex; align-items: center; gap: 8px; padding: 4px 6px 12px; }
+  .col-head h3 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+  .col-head .ct { font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 9px; }
+  .col.prepare .col-head h3 { color: var(--amber); } .col.prepare .col-head .ct { background: var(--amber-soft); color: var(--amber); }
+  .col.ready   .col-head h3 { color: var(--green); } .col.ready   .col-head .ct { background: var(--green-soft); color: var(--green); }
+  .col.done    .col-head h3 { color: var(--grey); }  .col.done    .col-head .ct { background: var(--grey-soft); color: var(--grey); }
+  .col.prepare { border-top: 3px solid #f59e0b; } .col.ready { border-top: 3px solid #22c55e; } .col.done { border-top: 3px solid #9ca3af; }
+  .col-body { display: flex; flex-direction: column; gap: 9px; min-height: 60px; }
+
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 11px 12px; cursor: pointer; transition: .12s; }
+  .card:hover { border-color: var(--line-strong); box-shadow: 0 3px 10px rgba(20,40,30,.06); }
+  .card.sel { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+  .card .name { font-weight: 700; }
+  .card .num { color: var(--ink-faint); font-weight: 600; font-size: 12px; margin-left: 4px; }
+  .card .meta { color: var(--ink-soft); font-size: 12px; margin-top: 4px; }
+  .card .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; align-items: center; }
+  .chip { font-size: 10px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; border-radius: 4px; padding: 2px 7px; }
+  .chip.courier { background: var(--blue-soft); color: var(--blue); }
+  .chip.pickup  { background: var(--orange-soft); color: var(--orange); }
+  .chip.van     { background: var(--green-soft); color: #1f4d3d; }
+  .chip.ddt     { background: #f1efe7; color: var(--ink-soft); }
+  .chip.ddtok   { background: var(--green-soft); color: var(--green); }
+  .card .date { font-size: 11px; color: var(--ink-faint); margin-top: 8px; }
+  .card .act { margin-top: 9px; }
+  .btn { border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .btn.green { background: var(--green); border-color: var(--green); color: #fff; }
+  .btn.dark { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+  /* DRAWER dettaglio */
+  .scrim { position: fixed; inset: 0; background: rgba(20,30,25,.28); opacity: 0; pointer-events: none; transition: .18s; z-index: 40; }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  .drawer { position: fixed; top: 0; right: 0; height: 100vh; width: 440px; max-width: 92vw; background: var(--paper);
+    border-left: 1px solid var(--line); box-shadow: -16px 0 40px rgba(20,40,30,.12); transform: translateX(100%);
+    transition: .22s cubic-bezier(.4,0,.2,1); z-index: 50; overflow-y: auto; padding: 20px; }
+  .drawer.open { transform: translateX(0); }
+  .drawer .dh { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .drawer .eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+  .drawer h2 { margin: 2px 0 16px; font-size: 20px; }
+  .close { border: none; background: #f1efe7; border-radius: 8px; width: 30px; height: 30px; cursor: pointer; font-size: 16px; color: var(--ink-soft); }
+  .nextbox { border: 1px solid var(--amber-soft); background: #fffdf6; border-left: 3px solid #f59e0b; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .nextbox.done { border-color: var(--green-soft); background: #f6fbf7; border-left-color: #22c55e; }
+  .nextbox .eyebrow { display: block; margin-bottom: 4px; }
+  .nextbox strong { font-size: 15px; }
+  .boxgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .ibox { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .ibox .eyebrow { display: block; margin-bottom: 3px; }
+  .ibox b { font-weight: 700; }
+  .ibox span { color: var(--ink-faint); font-size: 12px; }
+  .section-t { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); margin: 6px 0 8px; }
+  .checkline { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; cursor: pointer; }
+  .checkline input { width: 17px; height: 17px; accent-color: var(--primary); }
+  .checkline.hidden { display: none; }
+  .matbox { background: var(--green-soft); border-radius: 12px; padding: 14px 16px; margin-top: 14px; }
+  .matbox .big { font-size: 22px; font-weight: 800; color: #145c3a; }
+  .save { margin-top: 16px; display: flex; gap: 10px; }
+  .archive-note { background: var(--paper); border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 22px; text-align: center; color: var(--ink-faint); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">Prato Sintetico Italia <small>Portale operativo · MOCKUP Logistica Kanban</small></div>
+    <div class="search">Cerca ordine, cliente, vettore o tipo spedizione…</div>
+  </div>
+
+  <div class="wrap">
+    <h1>Logistica</h1>
+    <div class="sub">Board per fase · la modalità (corriere/ritiro/furgone) la imposta l'ufficio</div>
+
+    <div class="toolbar">
+      <input placeholder="Cerca ordine, cliente, vettore…" oninput="onSearch(this.value)" />
+      <div class="pills" id="pills">
+        <button class="pill active" data-f="all" onclick="setFilter('all')">Tutti <span class="ct">16</span></button>
+        <button class="pill" data-f="corriere" onclick="setFilter('corriere')">Corriere <span class="ct">7</span></button>
+        <button class="pill" data-f="ritiro" onclick="setFilter('ritiro')">Ritiro <span class="ct">3</span></button>
+        <button class="pill" data-f="furgone" onclick="setFilter('furgone')">Furgone <span class="ct">6</span></button>
+        <button class="pill" data-f="sample" onclick="setFilter('sample')">Box campioni <span class="ct">2</span></button>
+        <button class="pill" data-f="closed" onclick="setFilter('closed')">Evasi / chiusi <span class="ct">81</span></button>
+      </div>
+    </div>
+    <p class="hint" id="hint">Le <b>colonne</b> sono le fasi · le <b>pillole</b> filtrano in modo trasversale (modalità, campioni, archivio) · la ricerca filtra le card.</p>
+
+    <div class="kpis">
+      <div class="kpi"><div class="v">16</div><div class="l">In coda</div></div>
+      <div class="kpi warn"><div class="v" id="k-prep">6</div><div class="l">Da preparare</div></div>
+      <div class="kpi"><div class="v" id="k-ready">3</div><div class="l">Pronti uscita</div></div>
+      <div class="kpi"><div class="v" id="k-done">7</div><div class="l">Usciti / Ritirati</div></div>
+      <div class="kpi"><div class="v">81</div><div class="l">Righe materiali</div></div>
+    </div>
+
+    <div id="boardWrap">
+      <div class="board" id="board"></div>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim" onclick="closeDrawer()"></div>
+  <aside class="drawer" id="drawer"></aside>
+
+<script>
+  const MODE = {
+    corriere: { label: "Corriere", icon: "🚚", cls: "courier" },
+    ritiro:   { label: "Ritiro cliente", icon: "📦", cls: "pickup" },
+    furgone:  { label: "Carico su furgone", icon: "🚐", cls: "van" },
+  };
+  // lane: prepare | ready | done
+  const ORDERS = [
+    { id: "2871", name: "massimo emmeci edilizia srls", mode: "furgone", lane: "prepare", prod: "Abete 45mm Multidir. · 100 mq", addr: "Piazza Masaniello 31, Napoli", date: "Data preparazione da definire", ddt: "", rows: 4 },
+    { id: "2863", name: "sabatino todaro", mode: "furgone", lane: "prepare", prod: "Cipresso 40mm · 30 mq", addr: "Viale S. Ignazio 206, Napoli", date: "Data preparazione da definire", ddt: "", rows: 3 },
+    { id: "2846", name: "Luciano De Luca", mode: "furgone", lane: "prepare", prod: "Rovere 40mm · 301 mq", addr: "Piazza Duca degli Abruzzi 59, Pescara", date: "Data preparazione da definire", ddt: "", rows: 3 },
+    { id: "2901", name: "Marco Rossi", mode: "corriere", lane: "prepare", prod: "Faggio 30mm · 45 mq", addr: "Via Verdi 12, Bologna", date: "Preparare entro 14 giu 2026", ddt: "", rows: 2 },
+    { id: "2765", name: "giovanni gallo", mode: "furgone", lane: "ready", prod: "Ginepro 45mm · 10 mq", addr: "Via del Mare 6, Marano di Napoli", date: "Preparare entro 01 giu 2026", ddt: "DDT 2820", rows: 2 },
+    { id: "2888", name: "Elena Bruno", mode: "corriere", lane: "ready", prod: "Betulla 35mm · 60 mq", addr: "Via Roma 5, Torino", date: "Pronto · in attesa corriere", ddt: "DDT 2825", rows: 3 },
+    { id: "2890", name: "Carla Neri", mode: "ritiro", lane: "ready", prod: "Pino 25mm · 18 mq", addr: "Ritiro in sede", date: "Pronto per ritiro cliente", ddt: "DDT 2826", rows: 1 },
+    { id: "2873", name: "giorgio reale", mode: "furgone", lane: "done", prod: "Palma 40mm · 80 mq", addr: "Via Marconi 47, San Giorgio a Cremano", date: "Caricato 11 giu 2026", ddt: "DDT 2821", rows: 3 },
+    { id: "2840", name: "Antonio Verdi", mode: "corriere", lane: "done", prod: "Quercia 40mm · 120 mq", addr: "Via Dante 9, Bari", date: "Spedito 10 giu 2026", ddt: "DDT 2810", rows: 4 },
+    { id: "2835", name: "Sofia Marino", mode: "ritiro", lane: "done", prod: "Cedro 30mm · 22 mq", addr: "Ritirato in sede", date: "Ritirato 09 giu 2026", ddt: "DDT 2808", rows: 1 },
+  ];
+  const LANES = [
+    { key: "prepare", title: "🛠️ Da preparare" },
+    { key: "ready", title: "📤 Pronti per uscita / ritiro" },
+    { key: "done", title: "✅ Usciti / Ritirati" },
+  ];
+  let filter = "all", search = "", selId = null;
+
+  function rowAction(o) {
+    if (o.lane === "ready") {
+      if (o.mode === "corriere") return { l: "Segna spedito", c: "green" };
+      if (o.mode === "ritiro") return { l: "Segna ritirato", c: "green" };
+      return { l: "Segna caricato", c: "green" };
+    }
+    if (o.lane === "prepare") return { l: "Prepara", c: "dark" };
+    return { l: "Apri", c: "" };
+  }
+  function visible(o) {
+    if (filter === "closed" || filter === "sample") return false; // gestiti a parte
+    if (filter !== "all" && o.mode !== filter) return false;
+    if (search && !(`${o.name} ${o.id} ${o.addr} ${MODE[o.mode].label}`.toLowerCase().includes(search))) return false;
+    return true;
+  }
+  function card(o) {
+    const m = MODE[o.mode]; const a = rowAction(o);
+    const ddt = o.ddt ? `<span class="chip ddtok">${o.ddt}</span>` : `<span class="chip ddt">DDT da creare</span>`;
+    return `<div class="card ${selId===o.id?'sel':''}" onclick="openDrawer('${o.id}')">
+      <div><span class="name">${o.name}</span><span class="num">#${o.id}</span></div>
+      <div class="meta">${o.prod}</div>
+      <div class="meta">${o.addr}</div>
+      <div class="tags"><span class="chip ${m.cls}">${m.icon} ${m.label}</span>${ddt}</div>
+      <div class="date">${o.date}</div>
+      <div class="act"><button class="btn ${a.c}" onclick="event.stopPropagation();openDrawer('${o.id}')">${a.l}</button></div>
+    </div>`;
+  }
+  function render() {
+    const wrap = document.getElementById("boardWrap");
+    if (filter === "closed") {
+      wrap.innerHTML = `<div class="archive-note">📁 <b>Archivio Evasi / chiusi</b><br/>Qui il kanban a 3 fasi non si applica: ordini chiusi mostrati come <b>lista archivio</b> filtrabile (81 record).</div>`;
+      return;
+    }
+    if (filter === "sample") {
+      wrap.innerHTML = `<div class="archive-note">📦 <b>Box campioni</b><br/>Flusso campioni dedicato (RDF · lettera di vettura), mostrato come lista separata (2 record).</div>`;
+      return;
+    }
+    wrap.innerHTML = `<div class="board">${LANES.map(L => {
+      const items = ORDERS.filter(o => o.lane === L.key && visible(o));
+      return `<section class="col ${L.key}">
+        <div class="col-head"><h3>${L.title}</h3><span class="ct">${items.length}</span></div>
+        <div class="col-body">${items.map(card).join("") || `<div style="color:#aaa;font-size:12px;padding:8px">—</div>`}</div>
+      </section>`;
+    }).join("")}</div>`;
+  }
+  function setFilter(f) {
+    filter = f;
+    document.querySelectorAll(".pill").forEach(p => p.classList.toggle("active", p.dataset.f === f));
+    render();
+  }
+  function onSearch(v) { search = v.trim().toLowerCase(); render(); }
+
+  function checkline(id, label, checked, hidden) {
+    return `<label class="checkline ${hidden?'hidden':''}"><input type="checkbox" ${checked?'checked':''}/> <span>${label}</span></label>`;
+  }
+  function openDrawer(id) {
+    const o = ORDERS.find(x => x.id === id); if (!o) return;
+    selId = id; render();
+    const m = MODE[o.mode];
+    const next = o.lane === "prepare" ? "Definisci/conferma la preparazione merce"
+      : o.lane === "ready" ? (o.mode === "corriere" ? "Affida al corriere e segna spedito" : o.mode === "ritiro" ? "Consegna al cliente e segna ritirato" : "Carica sul furgone e segna uscita squadra")
+      : "Logistica completata — verifica chiusura";
+    const shippedLabel = o.mode === "ritiro" ? "Ritirato dal cliente" : o.mode === "furgone" ? "Caricato su furgone (uscita squadra)" : "Spedito / evaso";
+    document.getElementById("drawer").innerHTML = `
+      <div class="dh"><span class="eyebrow">Dettaglio ordine</span><button class="close" onclick="closeDrawer()">✕</button></div>
+      <h2>${o.name} · #${o.id}</h2>
+      <div class="nextbox ${o.lane==='done'?'done':''}"><span class="eyebrow">Cosa fare ora</span><strong>${next}</strong></div>
+      <div class="boxgrid">
+        <div class="ibox"><span class="eyebrow">Destinazione</span><b>${o.addr}</b></div>
+        <div class="ibox"><span class="eyebrow">Modalità (ufficio)</span><b>${m.icon} ${m.label}</b><br/><span>read-only</span></div>
+      </div>
+      <div class="section-t">Avanzamento</div>
+      ${checkline("ready", "Merce pronta da evadere", o.lane!=='prepare', false)}
+      ${checkline("carrier", "Affidato al corriere", o.lane==='done'&&o.mode==='corriere', o.mode!=='corriere')}
+      ${checkline("shipped", shippedLabel, o.lane==='done', false)}
+      <div class="matbox"><div class="big">${o.rows} righe materiali</div><div style="color:#1f4d3d;font-size:12px;margin-top:2px">${o.prod}</div></div>
+      <div class="save"><button class="btn">Carica foto partenza</button><button class="btn dark">Salva</button></div>
+    `;
+    document.getElementById("drawer").classList.add("open");
+    document.getElementById("scrim").classList.add("open");
+  }
+  function closeDrawer() {
+    selId = null; render();
+    document.getElementById("drawer").classList.remove("open");
+    document.getElementById("scrim").classList.remove("open");
+  }
+  render();
+</script>
+</body>
+</html>

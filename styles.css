@@ -20867,19 +20867,56 @@ body {
 .shp-kpi-label { font-size: 10.5px; color: #8a9690; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; white-space: nowrap; }
 .shp-kpi.warn .shp-kpi-value { color: #b45309; }
 
-.shp-groups { display: flex; flex-direction: column; }
-.shp-group-label { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; }
-.shp-group-label h3 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a9690; }
-.shp-gc { font-size: 11px; font-weight: 700; background: #ece8de; color: #5a6e63; padding: 1px 8px; border-radius: 10px; }
-.shp-group-list { display: flex; flex-direction: column; gap: 6px; }
-/* Toni-fase delle corsie Logistica (coerenti con la palette crm-kanban) */
+/* === Logistica KANBAN: board a 3 colonne-fase === */
+.shp-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.shp-group { background: rgba(255,255,255,.55); border: 1px solid #e5e1d6; border-radius: 14px; padding: 10px 10px 12px; }
+.shp-group.shp-lane-prepare { border-top: 3px solid #f59e0b; }
+.shp-group.shp-lane-ready { border-top: 3px solid #22c55e; }
+.shp-group.shp-lane-done { border-top: 3px solid #9ca3af; }
+.shp-group-label { display: flex; align-items: center; gap: 8px; margin: 4px 4px 10px; }
+.shp-group-label h3 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #8a9690; }
+.shp-gc { font-size: 11px; font-weight: 800; background: #ece8de; color: #5a6e63; padding: 1px 9px; border-radius: 999px; }
+.shp-group-list { display: flex; flex-direction: column; gap: 9px; min-height: 40px; }
+/* Toni-fase coerenti con la palette crm-kanban */
 .shp-lane-prepare .shp-group-label h3 { color: #b45309; }
 .shp-lane-prepare .shp-gc { background: #fef3c7; color: #92400e; }
 .shp-lane-ready .shp-group-label h3 { color: #15803d; }
 .shp-lane-ready .shp-gc { background: #dcfce7; color: #166534; }
 .shp-lane-done .shp-group-label h3 { color: #6b7280; }
 .shp-lane-done .shp-gc { background: #eef0f2; color: #4b5563; }
-.shp-lane-done .shp-group-list { opacity: .82; }
+.shp-lane-done .shp-group-list { opacity: .88; }
+
+/* Le righe diventano card VERTICALI dentro le colonne kanban */
+.shp-groups .shp-row { grid-template-columns: 1fr; gap: 7px; padding: 11px 12px; align-items: stretch; }
+.shp-groups .shp-row .shp-dot { display: none; }
+.shp-groups .shp-row.selected { border-left-width: 1px; padding-left: 12px; }
+.shp-groups .shp-aside { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; text-align: left; }
+.shp-groups .shp-action { width: 100%; opacity: 1; }
+
+/* Vista archivio (Evasi/chiusi) e campioni: lista piatta a colonna singola */
+.shp-archive { display: flex; flex-direction: column; gap: 9px; max-width: 760px; }
+
+/* === Drawer dettaglio Logistica === */
+#shipping .order-grid { grid-template-columns: 1fr; }
+#shipping .order-grid > div:first-child { max-height: none; overflow: visible; padding-right: 0; }
+#shipping .shipping-standard-detail-panel,
+#shipping .sample-detail-panel {
+  position: fixed; top: 0; right: 0; height: 100vh; width: 470px; max-width: 94vw;
+  max-height: 100vh; margin: 0; border-radius: 0; border-left: 1px solid #e5e1d6;
+  background: #fff; box-shadow: -18px 0 46px rgba(20,40,30,.16);
+  transform: translateX(100%); transition: transform .22s cubic-bezier(.4,0,.2,1);
+  z-index: 60; overflow-y: auto; padding: 20px;
+}
+#shipping .shipping-standard-detail-panel.is-open,
+#shipping .sample-detail-panel.is-open { transform: translateX(0); }
+.shipping-drawer-scrim { position: fixed; inset: 0; background: rgba(20,30,25,.30); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 55; }
+.shipping-drawer-scrim.is-open { opacity: 1; pointer-events: auto; }
+.shipping-drawer-close { position: absolute; top: 14px; right: 16px; z-index: 2; width: 32px; height: 32px; border: none; border-radius: 8px; background: #f1efe7; color: #5a6e63; font-size: 16px; cursor: pointer; }
+.shipping-drawer-close:hover { background: #e7e3d8; color: #1a2e26; }
+
+@media (max-width: 900px) {
+  .shp-groups { grid-template-columns: 1fr; }
+}
 
 .shp-row { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 14px; padding: 13px 16px; background: #fff; border: 1px solid #e5e1d6; border-radius: 12px; cursor: pointer; transition: border-color .12s, box-shadow .12s, transform .12s; }
 .shp-row:hover { border-color: #d4cebd; box-shadow: 0 4px 12px rgba(26,46,38,.06); transform: translateY(-1px); }

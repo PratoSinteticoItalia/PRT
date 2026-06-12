@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260612-logistica-pipeline-fasi";
+const APP_SHELL_VERSION = "20260612-logistica-kanban-drawer";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -19250,9 +19250,20 @@ function openSampleLdvFile(order) {
   window.open(fileUrl, "_blank", "noopener,noreferrer");
 }
 
+function applyShippingDrawerState() {
+  const open = Boolean(state.shippingDrawerOpen) && state.currentView === "shipping";
+  const scrim = document.getElementById("shipping-drawer-scrim");
+  if (scrim) scrim.classList.toggle("is-open", open);
+  const std = ui.shippingStandardDetailPanel;
+  const smp = ui.sampleDetailPanel;
+  if (std) std.classList.toggle("is-open", open && !std.classList.contains("hidden"));
+  if (smp) smp.classList.toggle("is-open", open && !smp.classList.contains("hidden"));
+}
+
 function renderShipping() {
   const orders = filterOrdersForView("shipping");
   const isSampleFilter = state.filters.shipping === "sample";
+  const isCompletedFilter = state.filters.shipping === "completed";
   const shippingGrid = ui.shippingList?.closest(".order-grid");
   if (shippingGrid) shippingGrid.classList.toggle("is-empty", orders.length === 0);
   if (ui.shippingList) {
@@ -19260,6 +19271,11 @@ function renderShipping() {
       ui.shippingList.innerHTML = orders.length
         ? `<div class="sample-list">${orders.map(renderSampleShippingRow).join("")}</div>`
         : `<div class="info-card">${state.lang === "it" ? "Nessun ordine Box campioni con questo filtro." : "No sample-box orders for this filter."}</div>`;
+    } else if (isCompletedFilter) {
+      // Archivio Evasi/chiusi: lista piatta (il kanban a 3 fasi non si applica).
+      ui.shippingList.innerHTML = orders.length
+        ? `<div class="shp-archive">${orders.map(renderShippingQueueCard).join("")}</div>`
+        : `<div class="info-card">${state.lang === "it" ? "Nessun ordine evaso o chiuso." : "No fulfilled or closed orders."}</div>`;
     } else {
       // Raggruppamento per FASE (pipeline), non per modalità: la modalità è
       // read-only (impostata dall'ufficio) e resta come chip sulla card.
@@ -19314,6 +19330,8 @@ function renderShipping() {
     clearStatus(ui.sampleStatus);
     renderSampleShippingDetail(null);
     if (ui.ddtItemsPreview) renderDdtPreview(null);
+    state.shippingDrawerOpen = false;
+    applyShippingDrawerState();
     return;
   }
 
@@ -19414,6 +19432,7 @@ function renderShipping() {
     ui.ddtForm.palletWeight.value = ddt.palletWeight || "";
   }
   renderDdtPreview(order);
+  applyShippingDrawerState();
 }
 
 function renderSettings() {
@@ -22486,6 +22505,8 @@ function setView(view, { pushHistory = true } = {}) {
       document.body.classList.remove("crm-drawer-body-lock");
     }
   }
+  // Cambiando vista, il drawer Logistica parte sempre chiuso.
+  if (nextView !== previousView) state.shippingDrawerOpen = false;
   if (currentViewRenderFrame) {
     window.cancelAnimationFrame(currentViewRenderFrame);
     currentViewRenderFrame = 0;
@@ -25445,9 +25466,16 @@ function handleGlobalClick(event) {
   }
   const order = state.orders.find((item) => item.id === id) || getSelectedOrder();
   if (!order) return;
+  if (action === "close-shipping-drawer") {
+    state.shippingDrawerOpen = false;
+    applyShippingDrawerState();
+    return;
+  }
   if (action === "select-order") {
     state.selectedOrderId = id;
     const nextView = button.dataset.view || state.currentView;
+    // Logistica kanban: cliccando una card si apre il drawer dettaglio a destra.
+    if (nextView === "shipping") state.shippingDrawerOpen = true;
     if (nextView === "accounting") {
       state.accountingMobilePane = "summary";
     }
@@ -27218,6 +27246,7 @@ ui.accountingFilterTags.forEach((button) => button.addEventListener("click", () 
 if (ui.shippingFilterTags?.length) {
   ui.shippingFilterTags.forEach((button) => button.addEventListener("click", () => {
     state.filters.shipping = button.dataset.shippingFilter;
+    state.shippingDrawerOpen = false; // cambio filtro → chiudi il drawer
     ui.shippingFilterTags.forEach((item) => item.classList.toggle("is-active", item === button));
     renderShipping();
   }));
