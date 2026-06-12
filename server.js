@@ -8885,12 +8885,19 @@ function reconcileOperationsConsistency(ops) {
   const wh = ops.warehouse;
   if (wh && typeof wh === "object") {
     const status = String(wh.status || "").trim();
-    // Stati iniziali: non si può essere pronti/spediti/passati al corriere se
-    // l'ordine è ancora da preparare o in preparazione.
-    if (status === "da-preparare" || status === "in-preparazione") {
-      wh.readyToShip = false;
-      wh.shipped = false;
-      wh.carrierPassed = false;
+    // Coerenza FORWARD (non distruttiva): se l'utente ha marcato un progresso
+    // (pronto / passato al corriere / spedito) ma lo stato testuale è ancora
+    // iniziale, AVANZA lo stato a "pronto" invece di azzerare i flag.
+    //
+    // La versione precedente azzerava readyToShip/shipped/carrierPassed quando
+    // status era "da-preparare"/"in-preparazione": ma i checkbox del pannello
+    // Logistica impostano quei flag SENZA cambiare la stringa status, quindi il
+    // reset cancellava ogni cambio di stato fatto dall'utente (bug "non prende
+    // più i cambi di stato"). Avanzare lo stato preserva l'azione e mantiene
+    // comunque la coerenza interna.
+    if ((status === "da-preparare" || status === "in-preparazione")
+        && (wh.readyToShip || wh.carrierPassed || wh.shipped)) {
+      wh.status = "pronto";
     }
     // Una data preparazione nel passato + status iniziale resta valida (è la data
     // pianificata); non la tocchiamo. Coerenza modalità↔stato lasciata ai flussi.
