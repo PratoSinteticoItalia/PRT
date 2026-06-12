@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260610-logistica-v3-snello" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260610-logistica-v3-snello" />
+    <link rel="preload" href="./styles.css?v=20260612-logistica-pipeline-fasi" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260612-logistica-pipeline-fasi" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -871,7 +871,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260610-logistica-v3-snello&shell=20260610-logistica-v3-snello"
+                src="./sales-suite/generator.html?embedded=1&v=20260612-logistica-pipeline-fasi&shell=20260612-logistica-pipeline-fasi"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -1174,9 +1174,9 @@
                   <span>Note magazzino</span>
                   <textarea class="text-input" name="warehouseNote" rows="3" placeholder="Mancano colli, ritiro oggi, bancale pronto..."></textarea>
                 </label>
-                  <label class="checkline"><input type="checkbox" name="readyToShip" /> <span>Merce pronta da evadere</span></label>
-                  <label class="checkline"><input type="checkbox" name="carrierPassed" /> <span>Ritiro / affidamento completato</span></label>
-                  <label class="checkline"><input type="checkbox" name="shipped" /> <span>Ordine evaso</span></label>
+                  <label class="checkline" id="chk-ready"><input type="checkbox" name="readyToShip" /> <span id="chk-ready-label">Merce pronta da evadere</span></label>
+                  <label class="checkline" id="chk-carrier"><input type="checkbox" name="carrierPassed" /> <span id="chk-carrier-label">Affidato al corriere</span></label>
+                  <label class="checkline" id="chk-shipped"><input type="checkbox" name="shipped" /> <span id="chk-shipped-label">Ordine evaso</span></label>
                   <div id="shipping-status" class="panel-note hidden field-full"></div>
                   <div class="inline-actions field-full">
                     <button type="button" id="shipping-attachment-button" class="ghost-button small-button">Carica foto partenza</button>
@@ -2443,7 +2443,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260610-logistica-v3-snello" defer></script>
-    <script src="./app.js?v=20260610-logistica-v3-snello" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260612-logistica-pipeline-fasi" defer></script>
+    <script src="./app.js?v=20260612-logistica-pipeline-fasi" type="module"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260610-logistica-v3-snello";
+const APP_SHELL_VERSION = "20260612-logistica-pipeline-fasi";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1590,6 +1590,10 @@ const ui = {
   ddtForm: document.getElementById("ddt-form"),
   ddtItemsPreview: document.getElementById("ddt-items-preview"),
   createDdtButton: document.getElementById("create-ddt-button"),
+  chkCarrierRow: document.getElementById("chk-carrier"),
+  chkReadyLabel: document.getElementById("chk-ready-label"),
+  chkCarrierLabel: document.getElementById("chk-carrier-label"),
+  chkShippedLabel: document.getElementById("chk-shipped-label"),
   warehouseDdtStatus: document.getElementById("warehouse-ddt-status"),
   installationFilterTags: Array.from(document.querySelectorAll(".installation-filter-tag")),
   coveragePanel: document.querySelector(".coverage-panel"),
@@ -9938,8 +9942,12 @@ function filterOrdersForView(kind) {
         || (String(wh.fulfillmentMode || "").trim() === "corriere" && wh.carrierPassed)
       ) || isOrderClosed(order);
       if (filter === "completed") return fulfilledOrClosed || logisticsHandled;
-      // Nascondi: gli esplici solo se gestiti operativamente; gli auto se conclusi su Shopify.
-      if (explicit ? logisticsHandled : fulfilledOrClosed) return false;
+      // Pipeline operativa: i gestiti-ma-NON-chiusi restano visibili nella corsia
+      // "Usciti / Ritirati" (prima sparivano subito in Evasi/chiusi). Nascondi
+      // sempre i chiusi/archiviati; per gli ordini auto (non esplici) nascondi
+      // anche i fulfilled Shopify per non intasare la pipeline.
+      if (isOrderClosed(order)) return false;
+      if (!explicit && fulfilledOrClosed) return false;
       if (filter === "sample") return sample;
       if (filter === "all") return true;
       if (sample) return false;
@@ -18980,11 +18988,43 @@ function getShippingRowAction(order) {
   if (ready) {
     if (mode === "corriere") return { label: state.lang === "it" ? "Segna spedito" : "Mark shipped", tone: "green" };
     if (mode === "ritiro") return { label: state.lang === "it" ? "Segna ritirato" : "Mark collected", tone: "green" };
-    if (mode === "furgone") return { label: state.lang === "it" ? "Prepara carico" : "Prep load", tone: "" };
+    if (mode === "furgone") return { label: state.lang === "it" ? "Segna caricato" : "Mark loaded", tone: "green" };
     return { label: state.lang === "it" ? "Apri" : "Open", tone: "" };
   }
-  if (mode === "furgone") return { label: state.lang === "it" ? "Prepara carico" : "Prep load", tone: "" };
   return { label: state.lang === "it" ? "Prepara" : "Prepare", tone: "" };
+}
+
+// Corsia della pipeline Logistica (FASE, non modalità). Mappa lo stage unificato
+// in 3 fasi: da preparare → pronti per uscita/ritiro → usciti/ritirati.
+// La modalità (corriere/ritiro/furgone) la imposta l'ufficio ed è read-only qui.
+function getShippingStageLane(order) {
+  const stage = getUnifiedOrderStage(order);
+  const doneKeys = ["goods-collected", "van-loaded", "install-progress", "install-completed", "closed"];
+  if (doneKeys.includes(stage.key)) return "done";
+  if (stage.key === "warehouse-ready") return "ready";
+  return "prepare";
+}
+
+function getShippingLaneMeta(lane) {
+  if (lane === "ready") {
+    return {
+      key: "ready", tone: "ready",
+      icon: "📤",
+      title: state.lang === "it" ? "Pronti per uscita / ritiro" : "Ready to dispatch / collect",
+    };
+  }
+  if (lane === "done") {
+    return {
+      key: "done", tone: "done",
+      icon: "✅",
+      title: state.lang === "it" ? "Usciti / Ritirati" : "Dispatched / collected",
+    };
+  }
+  return {
+    key: "prepare", tone: "prep",
+    icon: "🛠️",
+    title: state.lang === "it" ? "Da preparare" : "To prepare",
+  };
 }
 
 function renderShippingQueueCard(order) {
@@ -19006,6 +19046,8 @@ function renderShippingQueueCard(order) {
   const dotClass = getShippingDotClass(stage);
   const chipClass = stage.tone === "green" ? "ready" : stage.tone === "blue" ? "work" : stage.tone === "red" ? "block" : "prep";
   const modeTagClass = mode === "corriere" ? "courier" : mode === "ritiro" ? "pickup" : "van";
+  // Icona modalità (read-only): la modalità la imposta l'ufficio, qui è solo informativa.
+  const modeIcon = getShippingQueueGroupMeta(["corriere", "ritiro", "furgone"].includes(mode) ? mode : "altro").icon || "";
   const action = getShippingRowAction(order);
   return `
     <article class="shp-row ${selected ? "selected" : ""} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping">
@@ -19019,7 +19061,7 @@ function renderShippingQueueCard(order) {
           <span>${escapeHtml(order.operations?.product || t("undefined"))} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
           <span class="shp-sep">·</span>
           <span>${escapeHtml(destination)}</span>
-          <span class="shp-mode-tag ${modeTagClass}">${escapeHtml(routeLabel)}</span>
+          <span class="shp-mode-tag ${modeTagClass}">${modeIcon} ${escapeHtml(routeLabel)}</span>
           ${ddtBadge}
         </div>
       </div>
@@ -19219,36 +19261,31 @@ function renderShipping() {
         ? `<div class="sample-list">${orders.map(renderSampleShippingRow).join("")}</div>`
         : `<div class="info-card">${state.lang === "it" ? "Nessun ordine Box campioni con questo filtro." : "No sample-box orders for this filter."}</div>`;
     } else {
-      const groupedOrders = [
-        getShippingQueueGroupMeta("corriere"),
-        getShippingQueueGroupMeta("ritiro"),
-        getShippingQueueGroupMeta("furgone"),
-        getShippingQueueGroupMeta("altro"),
-      ].map((group) => ({
-        ...group,
-        orders: orders.filter((order) => {
-          const mode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
-          if (group.key === "altro") return !["corriere", "ritiro", "furgone"].includes(mode);
-          return mode === group.key;
-        }),
-      })).filter((group) => group.orders.length);
+      // Raggruppamento per FASE (pipeline), non per modalità: la modalità è
+      // read-only (impostata dall'ufficio) e resta come chip sulla card.
+      const groupedOrders = ["prepare", "ready", "done"]
+        .map((lane) => ({
+          ...getShippingLaneMeta(lane),
+          orders: orders.filter((order) => getShippingStageLane(order) === lane),
+        }))
+        .filter((group) => group.orders.length);
       const totalPreparedLines = orders.reduce((sum, order) => sum + getWarehousePreparedLines(order).length, 0);
-      // KPI logistica
-      const kpiToPrepare = orders.filter((o) => ["da-preparare", "in-preparazione"].includes(String(o.operations?.warehouse?.status || "").trim())).length;
-      const kpiReady = orders.filter((o) => String(o.operations?.warehouse?.status || "").trim() === "pronto" || o.operations?.warehouse?.readyToShip).length;
-      const kpiDdtTodo = orders.filter((o) => !isSampleOrder(o) && !String(o.operations?.warehouse?.ddt?.number || "").trim()).length;
+      // KPI logistica allineati alle 3 fasi della pipeline
+      const kpiPrepare = orders.filter((o) => getShippingStageLane(o) === "prepare").length;
+      const kpiReady = orders.filter((o) => getShippingStageLane(o) === "ready").length;
+      const kpiDone = orders.filter((o) => getShippingStageLane(o) === "done").length;
       ui.shippingList.innerHTML = orders.length
         ? `
           <div class="shp-kpi-strip">
             <div class="shp-kpi"><span class="shp-kpi-value">${orders.length}</span><span class="shp-kpi-label">${state.lang === "it" ? "In coda" : "Queued"}</span></div>
-            <div class="shp-kpi ${kpiToPrepare > 0 ? "warn" : ""}"><span class="shp-kpi-value">${kpiToPrepare}</span><span class="shp-kpi-label">${state.lang === "it" ? "Da preparare" : "To prepare"}</span></div>
+            <div class="shp-kpi ${kpiPrepare > 0 ? "warn" : ""}"><span class="shp-kpi-value">${kpiPrepare}</span><span class="shp-kpi-label">${state.lang === "it" ? "Da preparare" : "To prepare"}</span></div>
             <div class="shp-kpi"><span class="shp-kpi-value">${kpiReady}</span><span class="shp-kpi-label">${state.lang === "it" ? "Pronti uscita" : "Ready"}</span></div>
-            <div class="shp-kpi"><span class="shp-kpi-value">${kpiDdtTodo}</span><span class="shp-kpi-label">${state.lang === "it" ? "DDT da creare" : "DDT to create"}</span></div>
+            <div class="shp-kpi"><span class="shp-kpi-value">${kpiDone}</span><span class="shp-kpi-label">${state.lang === "it" ? "Usciti / Ritirati" : "Dispatched"}</span></div>
             <div class="shp-kpi"><span class="shp-kpi-value">${totalPreparedLines}</span><span class="shp-kpi-label">${state.lang === "it" ? "Righe materiali" : "Material lines"}</span></div>
           </div>
           <div class="shp-groups">
             ${groupedOrders.map((group) => `
-              <section class="shp-group">
+              <section class="shp-group shp-lane-${group.key}">
                 <div class="shp-group-label">
                   <h3>${escapeHtml(group.icon || "")} ${escapeHtml(group.title)}</h3>
                   <span class="shp-gc">${group.orders.length}</span>
@@ -19342,6 +19379,25 @@ function renderShipping() {
     ui.shippingForm.readyToShip.checked = Boolean(order.operations?.warehouse?.readyToShip);
     ui.shippingForm.carrierPassed.checked = Boolean(order.operations?.warehouse?.carrierPassed);
     ui.shippingForm.shipped.checked = Boolean(order.operations?.warehouse?.shipped);
+    // Etichette/visibilità mode-aware: la modalità la imposta l'ufficio (read-only).
+    const whMode = String(order.operations?.warehouse?.fulfillmentMode || "").trim();
+    if (ui.chkReadyLabel) {
+      ui.chkReadyLabel.textContent = state.lang === "it" ? "Merce pronta da evadere" : "Goods ready to dispatch";
+    }
+    if (ui.chkCarrierRow) {
+      // "Affidato al corriere" ha senso solo per la modalità corriere.
+      ui.chkCarrierRow.classList.toggle("hidden", whMode !== "corriere");
+    }
+    if (ui.chkCarrierLabel) {
+      ui.chkCarrierLabel.textContent = state.lang === "it" ? "Affidato al corriere" : "Handed to carrier";
+    }
+    if (ui.chkShippedLabel) {
+      ui.chkShippedLabel.textContent = whMode === "ritiro"
+        ? (state.lang === "it" ? "Ritirato dal cliente" : "Collected by customer")
+        : whMode === "furgone"
+          ? (state.lang === "it" ? "Caricato su furgone (uscita squadra)" : "Loaded on van (crew out)")
+          : (state.lang === "it" ? "Spedito / evaso" : "Shipped / fulfilled");
+    }
   }
   if (ui.shippingAttachments) {
     ui.shippingAttachments.innerHTML = renderAttachmentGrid(mapAttachmentsForContext(order, "shipping"), order.id);

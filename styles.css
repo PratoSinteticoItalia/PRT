@@ -20872,6 +20872,14 @@ body {
 .shp-group-label h3 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a9690; }
 .shp-gc { font-size: 11px; font-weight: 700; background: #ece8de; color: #5a6e63; padding: 1px 8px; border-radius: 10px; }
 .shp-group-list { display: flex; flex-direction: column; gap: 6px; }
+/* Toni-fase delle corsie Logistica (coerenti con la palette crm-kanban) */
+.shp-lane-prepare .shp-group-label h3 { color: #b45309; }
+.shp-lane-prepare .shp-gc { background: #fef3c7; color: #92400e; }
+.shp-lane-ready .shp-group-label h3 { color: #15803d; }
+.shp-lane-ready .shp-gc { background: #dcfce7; color: #166534; }
+.shp-lane-done .shp-group-label h3 { color: #6b7280; }
+.shp-lane-done .shp-gc { background: #eef0f2; color: #4b5563; }
+.shp-lane-done .shp-group-list { opacity: .82; }
 
 .shp-row { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 14px; padding: 13px 16px; background: #fff; border: 1px solid #e5e1d6; border-radius: 12px; cursor: pointer; transition: border-color .12s, box-shadow .12s, transform .12s; }
 .shp-row:hover { border-color: #d4cebd; box-shadow: 0 4px 12px rgba(26,46,38,.06); transform: translateY(-1px); }
