@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260613-marketing-persistenza-server";
+const APP_SHELL_VERSION = "20260613-inbox-drawer-redesign";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9885,9 +9885,11 @@ function filterOrdersForView(kind) {
 }
 
 function renderInboxFlowControls(order) {
-  const jobNeedsInstall = Boolean(order.operations?.installation?.required);
-  const warehouseSelected = isRoutedToWarehouse(order) || jobNeedsInstall;
-  const installSelected = isRoutedToInstallation(order) || jobNeedsInstall;
+  // "Da posare" è una scelta MANUALE (non più derivata dal tipo servizio): parte da No.
+  const installSelected = isRoutedToInstallation(order);
+  // "In logistica" è manuale; se l'ordine è da posare resta comunque in logistica
+  // (il materiale va comunque preparato e caricato sul furgone).
+  const warehouseSelected = isRoutedToWarehouse(order) || installSelected;
   const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
   const allocations = getOrderInventoryAllocations(order);
@@ -9903,80 +9905,66 @@ function renderInboxFlowControls(order) {
   const preparationDate = getShippingTargetDate(order);
   const stage = getUnifiedOrderStage(order);
   const nextAction = getNextOrderAction(order);
-  // Banner di stato instradamento: conferma visiva permanente + colore semantico.
-  const routeBanner = installSelected
-    ? { cls: "is-install", icon: "🔧", text: (state.lang === "it" ? "Instradato a: Ufficio · Logistica · Posa" : "Routed to: Office · Logistics · Installation") }
-    : warehouseSelected
-      ? { cls: "is-logistics", icon: "📦", text: (state.lang === "it" ? "Instradato a: Ufficio · Logistica / Magazzino" : "Routed to: Office · Logistics / Warehouse") }
-      : { cls: "is-pending", icon: "⏳", text: (state.lang === "it" ? "Non ancora instradato — spunta logistica o posa qui sotto" : "Not routed yet — check logistics or installation below") };
+  const statusOptions = [
+    ["da-preparare", state.lang === "it" ? "Da preparare" : "To prepare"],
+    ["in-preparazione", state.lang === "it" ? "In preparazione" : "Preparing"],
+    ["pronto", state.lang === "it" ? "Pronto" : "Ready"],
+    ["in-attesa-di-ritiro", state.lang === "it" ? "In attesa di ritiro" : "Waiting for pickup"],
+    ["da-ritirare", state.lang === "it" ? "Da ritirare" : "Ready for pickup"],
+    ["ritirato", state.lang === "it" ? "Ritirato" : "Collected"],
+  ];
+  const modeOptions = [
+    ["da-definire", state.lang === "it" ? "Da definire" : "To define"],
+    ["corriere", state.lang === "it" ? "Corriere" : "Courier"],
+    ["furgone", state.lang === "it" ? "Furgone" : "Van"],
+    ["ritiro", state.lang === "it" ? "Ritiro" : "Pickup"],
+  ];
+  // Gruppo di chip a selezione singola (sostituisce i menu a tendina): il chip attivo
+  // ha il contorno evidenziato, così da Inbox si vede che l'ordine è stato gestito.
+  const chipGroup = (attr, value, options) => `
+    <div class="flow-chip-group" ${attr}="${order.id}" data-value="${escapeHtml(value)}">
+      ${options.map(([v, label]) => `<button type="button" class="flow-chip ${value === v ? "is-active" : ""}" data-v="${v}">${escapeHtml(label)}</button>`).join("")}
+    </div>`;
   return `
     <article class="guidance-card order-flow-card">
-      <span class="panel-eyebrow">${state.lang === "it" ? "Processo operativo" : "Operational flow"}</span>
+      <span class="panel-eyebrow">${state.lang === "it" ? "Preparazione & instradamento" : "Preparation & routing"}</span>
       <div class="detail-grid detail-grid-tight">
         ${renderInfoLine(state.lang === "it" ? "Fase attuale" : "Current stage", stage.label)}
         ${renderInfoLine(state.lang === "it" ? "Prossimo passo" : "Next step", nextAction)}
-        ${renderInfoLine(state.lang === "it" ? "Percorso ordine" : "Order route", getInboxRouteLabel(order))}
-        ${renderInfoLine(state.lang === "it" ? "Visibilità moduli" : "Module visibility", getInboxVisibilityLabel(order))}
       </div>
-      <div class="route-status-banner ${routeBanner.cls}">
-        <span class="route-status-icon">${routeBanner.icon}</span>
-        <span class="route-status-text">${routeBanner.text}</span>
+      <div class="route-switch-grid">
+        <button type="button" class="route-switch ${warehouseSelected ? "is-on" : ""}" data-order-flow-warehouse="${order.id}" data-on="${warehouseSelected ? "1" : "0"}" aria-pressed="${warehouseSelected ? "true" : "false"}">
+          <span class="route-switch-row">
+            <span class="route-switch-label">${state.lang === "it" ? "In logistica" : "In logistics"}</span>
+            <span class="route-switch-toggle" aria-hidden="true"></span>
+          </span>
+          <small class="route-switch-copy">${state.lang === "it" ? "Da preparare / spedire in sede" : "Prepare / ship at HQ"}</small>
+        </button>
+        <button type="button" class="route-switch ${installSelected ? "is-on" : ""}" data-order-flow-installation="${order.id}" data-on="${installSelected ? "1" : "0"}" aria-pressed="${installSelected ? "true" : "false"}">
+          <span class="route-switch-row">
+            <span class="route-switch-label">${state.lang === "it" ? "Da posare" : "To install"}</span>
+            <span class="route-switch-toggle" aria-hidden="true"></span>
+          </span>
+          <small class="route-switch-copy">${state.lang === "it" ? "Entra nel planning squadra" : "Enters crew planning"}</small>
+        </button>
       </div>
-      <div class="route-visibility-grid">
-        <label class="route-toggle-card ${warehouseSelected ? "is-active" : ""}">
-          <div class="route-toggle-head">
-            <input type="checkbox" data-order-flow-warehouse="${order.id}" ${warehouseSelected ? "checked" : ""} />
-            <span>${state.lang === "it" ? "Visibile in logistica" : "Visible in logistics"}</span>
-          </div>
-          <small class="route-toggle-copy">
-            ${state.lang === "it"
-              ? "Ordine da preparare in sede, spedire, ritirare oppure caricare sul furgone."
-              : "Order to prepare at HQ, ship, pick up, or load onto the van."}
-          </small>
-        </label>
-        <label class="route-toggle-card ${installSelected ? "is-active" : ""}">
-          <div class="route-toggle-head">
-            <input type="checkbox" data-order-flow-installation="${order.id}" ${installSelected ? "checked" : ""} />
-            <span>${state.lang === "it" ? "Visibile in posa" : "Visible in installation"}</span>
-          </div>
-          <small class="route-toggle-copy">
-            ${jobNeedsInstall
-              ? (state.lang === "it" ? "Da comunicare alla squadra con data, orario e uscita materiale dalla sede centrale." : "To be shared with the crew with date, time, and material departure from HQ.")
-              : (state.lang === "it" ? "Attivalo solo se questo ordine deve entrare davvero nel planning della squadra." : "Enable only if this order must enter the crew planning board.")}
-          </small>
-        </label>
-      </div>
-      <div class="order-flow-grid">
-        <label class="field">
+      <div class="order-flow-controls">
+        <div class="field">
           <span>${state.lang === "it" ? "Stato preparazione" : "Preparation status"}</span>
-          <select class="text-input" data-order-flow-status="${order.id}">
-            <option value="da-preparare" ${warehouseStatus === "da-preparare" ? "selected" : ""}>${state.lang === "it" ? "Da preparare" : "To prepare"}</option>
-            <option value="in-preparazione" ${warehouseStatus === "in-preparazione" ? "selected" : ""}>${state.lang === "it" ? "In preparazione" : "Preparing"}</option>
-            <option value="pronto" ${warehouseStatus === "pronto" ? "selected" : ""}>${state.lang === "it" ? "Pronto" : "Ready"}</option>
-            <option value="in-attesa-di-ritiro" ${warehouseStatus === "in-attesa-di-ritiro" ? "selected" : ""}>${state.lang === "it" ? "In attesa di ritiro" : "Waiting for pickup"}</option>
-            <option value="da-ritirare" ${warehouseStatus === "da-ritirare" ? "selected" : ""}>${state.lang === "it" ? "Da ritirare" : "Ready for pickup"}</option>
-            <option value="ritirato" ${warehouseStatus === "ritirato" ? "selected" : ""}>${state.lang === "it" ? "Ritirato" : "Collected"}</option>
-          </select>
-        </label>
-        <label class="field">
+          ${chipGroup("data-order-flow-status", warehouseStatus, statusOptions)}
+        </div>
+        <div class="field">
           <span>${state.lang === "it" ? "Uscita merce" : "Goods exit mode"}</span>
-          <select class="text-input" data-order-flow-mode="${order.id}">
-            <option value="da-definire" ${fulfillmentMode === "da-definire" ? "selected" : ""}>${state.lang === "it" ? "Da definire" : "To define"}</option>
-            <option value="corriere" ${fulfillmentMode === "corriere" ? "selected" : ""}>${state.lang === "it" ? "Corriere" : "Courier"}</option>
-            <option value="ritiro" ${fulfillmentMode === "ritiro" ? "selected" : ""}>${state.lang === "it" ? "Ritiro" : "Pickup"}</option>
-            <option value="furgone" ${fulfillmentMode === "furgone" ? "selected" : ""}>${state.lang === "it" ? "Furgone" : "Van"}</option>
-          </select>
-        </label>
-        <label class="field">
+          ${chipGroup("data-order-flow-mode", fulfillmentMode, modeOptions)}
+        </div>
+        <div class="field flow-date-field">
           <span>${state.lang === "it" ? "Data preparazione merce" : "Goods preparation date"}</span>
           <input class="text-input" type="date" data-order-flow-date="${order.id}" value="${preparationDate || ""}" />
-        </label>
+        </div>
       </div>
       ${inventoryCta ? `<div class="order-flow-inventory-cta">${inventoryCta}</div>` : ""}
-      <div class="flow-helper-note">
-        ${state.lang === "it"
-          ? "Sede centrale Orta di Atella: la merce da spedire parte su pallet per corrieri o ritiro cliente, la merce da posare viene preparata e caricata sul furgone."
-          : "HQ in Orta di Atella: shipment-only goods leave on pallets for couriers or pickup, installation goods are prepared and loaded onto the van."}
+      <div class="flow-helper-note flow-autosave-note">
+        ${state.lang === "it" ? "Tutto si salva da solo — nessun bottone Salva." : "Everything saves automatically — no Save button."}
       </div>
     </article>
   `;
@@ -11921,21 +11909,22 @@ function renderOrders() {
       ${order.phone && isOrderFulfilledOrClosed(order) ? `<button class="btn" data-action="request-order-review" data-id="${order.id}">${state.lang === "it" ? "Chiedi recensione" : "Request review"}</button>` : ""}
     </div>
   `;
-  // Checkbox di instradamento (logistica/posa): salvataggio IMMEDIATO + toast.
-  // I checkbox sono azioni discrete, non testo: niente debounce (che causava
-  // "spunte che non si salvano" se il pannello si ri-renderizzava prima dei 400ms).
+  // Interruttori di instradamento (In logistica / Da posare): sono <button> con
+  // data-on. Salvataggio IMMEDIATO al click (azione discreta) + toast.
   ui.orderDetailSummary.querySelectorAll(
     "[data-order-flow-warehouse], [data-order-flow-installation]"
-  ).forEach((input) => {
-    input.addEventListener("change", () => {
-      const isInstall = input.hasAttribute("data-order-flow-installation");
-      const isChecked = input.checked;
-      // Salva subito (no debounce) e mostra conferma visiva
+  ).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const isInstall = btn.hasAttribute("data-order-flow-installation");
+      const on = btn.dataset.on !== "1";
+      btn.dataset.on = on ? "1" : "0";
+      btn.classList.toggle("is-on", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
       saveInboxOrderFlow(order.id).then(() => {
         const dest = isInstall
           ? (state.lang === "it" ? "Posa" : "Installation")
           : (state.lang === "it" ? "Logistica" : "Logistics");
-        if (isChecked) {
+        if (on) {
           showToast(state.lang === "it" ? `✓ Ordine instradato a ${dest}` : `✓ Order routed to ${dest}`, "success", 2500);
         } else {
           showToast(state.lang === "it" ? `Ordine rimosso da ${dest}` : `Order removed from ${dest}`, "info", 2500);
@@ -11943,10 +11932,24 @@ function renderOrders() {
       });
     });
   });
-  // Select/data: mantengono il debounce (cambiano spesso durante l'editing)
+  // Chip Stato preparazione / Uscita merce: selezione singola → salvataggio immediato.
   ui.orderDetailSummary.querySelectorAll(
-    "[data-order-flow-status], [data-order-flow-mode], [data-order-flow-date]"
-  ).forEach((input) => {
+    "[data-order-flow-status], [data-order-flow-mode]"
+  ).forEach((group) => {
+    group.addEventListener("click", (ev) => {
+      const chipBtn = ev.target.closest(".flow-chip");
+      if (!chipBtn || !group.contains(chipBtn)) return;
+      if (chipBtn.classList.contains("is-active")) return;
+      group.querySelectorAll(".flow-chip").forEach((c) => c.classList.remove("is-active"));
+      chipBtn.classList.add("is-active");
+      group.dataset.value = chipBtn.dataset.v || "";
+      // Debounce: selezioni ravvicinate (stato + uscita merce) si fondono in un
+      // solo salvataggio che rilegge entrambi i valori dal DOM.
+      debouncedSaveInboxOrderFlow(order.id);
+    });
+  });
+  // Data preparazione: campo testo → debounce
+  ui.orderDetailSummary.querySelectorAll("[data-order-flow-date]").forEach((input) => {
     input.addEventListener("change", () => {
       debouncedSaveInboxOrderFlow(order.id);
     });
@@ -12009,6 +12012,15 @@ function renderOrders() {
         </div>`
       : "";
     ui.orderPrepList.innerHTML = prepHtml + serviceHtml;
+    // Auto-save della checklist (niente più bottone "Salva preparazione"):
+    // spunta → salva subito; nota → salva al blur (change) per non perdere il
+    // focus mentre si scrive.
+    ui.orderPrepList.querySelectorAll('[data-prep-field="included"]').forEach((cb) => {
+      cb.addEventListener("change", () => { savePrepList().catch(() => {}); });
+    });
+    ui.orderPrepList.querySelectorAll('[data-prep-field="note"]').forEach((inp) => {
+      inp.addEventListener("change", () => { savePrepList().catch(() => {}); });
+    });
   }
   ui.orderAttachments.innerHTML = renderAttachmentGrid(order.attachments || [], order.id);
   if (order.id) {
@@ -23660,10 +23672,14 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
   const warehouseToggle = document.querySelector(`[data-order-flow-warehouse="${orderId}"]`);
   const installToggle = document.querySelector(`[data-order-flow-installation="${orderId}"]`);
   if (!statusInput && !modeInput && !dateInput && !warehouseToggle && !installToggle) return null;
-  const nextStatus = statusInput?.value || "da-preparare";
-  const installSelected = Boolean(installToggle?.checked);
-  const warehouseSelected = Boolean(warehouseToggle?.checked) || installSelected;
-  const nextModeRaw = modeInput?.value || "da-definire";
+  // Interruttori = <button data-on="0|1"> (fallback a checkbox.checked per retrocompat).
+  const readToggle = (el) => el ? (el.dataset?.on !== undefined ? el.dataset.on === "1" : Boolean(el.checked)) : false;
+  // Chip group = <div data-value="..."> (fallback a select.value per retrocompat).
+  const readGroup = (el, fb) => el ? (el.dataset?.value || el.value || fb) : fb;
+  const nextStatus = readGroup(statusInput, "da-preparare");
+  const installSelected = readToggle(installToggle);
+  const warehouseSelected = readToggle(warehouseToggle) || installSelected;
+  const nextModeRaw = readGroup(modeInput, "da-definire");
   const nextMode = installSelected && nextModeRaw === "da-definire" ? "furgone" : nextModeRaw;
   const nextDate = dateInput?.value || "";
   const shouldRouteWarehouse = Boolean(

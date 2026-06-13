@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260613-marketing-persistenza-server" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260613-marketing-persistenza-server" />
+    <link rel="preload" href="./styles.css?v=20260613-inbox-drawer-redesign" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260613-inbox-drawer-redesign" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -488,7 +488,8 @@
                     <h4>Materiali ordine</h4>
                     <p class="subsection-copy">Spunta cosa il magazzino deve davvero preparare. I servizi (es. posa) sono mostrati come riferimento.</p>
                   </div>
-                  <button id="save-prep-list-button" class="primary-button small-button">Salva preparazione</button>
+                  <button id="save-prep-list-button" class="primary-button small-button" hidden>Salva preparazione</button>
+                  <span class="prep-autosave-hint">Si salva da solo</span>
                 </div>
                 <div id="order-prep-list" class="prep-list"></div>
                 <!-- Lista articoli Shopify unita qui sopra: elemento mantenuto nascosto
@@ -764,7 +765,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260613-marketing-persistenza-server&shell=20260613-marketing-persistenza-server"
+                src="./sales-suite/generator.html?embedded=1&v=20260613-inbox-drawer-redesign&shell=20260613-inbox-drawer-redesign"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2336,7 +2337,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260613-marketing-persistenza-server" defer></script>
-    <script src="./app.js?v=20260613-marketing-persistenza-server" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260613-inbox-drawer-redesign" defer></script>
+    <script src="./app.js?v=20260613-inbox-drawer-redesign" type="module"></script>
   </body>
 </html>
