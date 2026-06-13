@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260613-pose-revert-twocol";
+const APP_SHELL_VERSION = "20260614-pose-detail-drawer";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15573,6 +15573,7 @@ function renderInstallations() {
     }
     clearInstallationDetail();
     updateInstallationPaneVisibility();
+    applyInstallDrawerState();
     return;
   }
   if (!state.selectedInstallationCrew && order.operations?.installation?.crew) {
@@ -15626,6 +15627,7 @@ function renderInstallations() {
   renderClientTrackingSection(order);
   clearStatus(ui.installationStatus);
   updateInstallationPaneVisibility();
+  applyInstallDrawerState();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -19315,6 +19317,23 @@ function applyShippingDrawerState() {
   if (smp) smp.classList.toggle("is-open", open && !smp.classList.contains("hidden"));
 }
 
+// Drawer dettaglio Pose (desktop/tablet): il pannello diventa overlay a destra,
+// così calendario + backlog restano a tutta larghezza. Su mobile <=768px resta
+// il drill-down fullscreen, quindi qui applichiamo il drawer solo sopra soglia.
+function applyInstallDrawerState() {
+  const panel = document.querySelector("#installations .install-detail-panel");
+  const scrim = document.getElementById("install-drawer-scrim");
+  if (!panel) return;
+  const isDesktop = window.innerWidth > MOBILE_DRILL_BREAKPOINT;
+  panel.classList.toggle("is-drawer", isDesktop);
+  const open = isDesktop
+    && Boolean(state.installDrawerOpen)
+    && state.currentView === "installations"
+    && Boolean(state.selectedOrderId);
+  panel.classList.toggle("is-open", open);
+  if (scrim) scrim.classList.toggle("is-open", open);
+}
+
 function renderShipping() {
   const orders = filterOrdersForView("shipping");
   const isSampleFilter = state.filters.shipping === "sample";
@@ -22935,6 +22954,7 @@ function setView(view, { pushHistory = true } = {}) {
   }
   // Cambiando vista, il drawer Logistica parte sempre chiuso.
   if (nextView !== previousView) state.shippingDrawerOpen = false;
+  if (nextView !== "installations") state.installDrawerOpen = false;
   if (currentViewRenderFrame) {
     window.cancelAnimationFrame(currentViewRenderFrame);
     currentViewRenderFrame = 0;
@@ -25903,6 +25923,11 @@ function handleGlobalClick(event) {
     setAccountingPane(button.dataset.pane || "summary");
     return;
   }
+  if (action === "close-install-drawer") {
+    state.installDrawerOpen = false;
+    applyInstallDrawerState();
+    return;
+  }
   const order = state.orders.find((item) => item.id === id) || getSelectedOrder();
   if (!order) return;
   if (action === "close-shipping-drawer") {
@@ -25952,6 +25977,9 @@ function handleGlobalClick(event) {
     }
     if (nextView === "installations") {
       state.installationMobilePane = "summary";
+      // Desktop/tablet: cliccando un job si apre il drawer dettaglio a destra
+      // (su mobile <=768px subentra il drill-down fullscreen, vedi sotto).
+      if (window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.installDrawerOpen = true;
     }
     if (window.innerWidth <= 980) {
       state.mobileMenuOpen = false;
