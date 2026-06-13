@@ -4091,6 +4091,7 @@ function buildDefaultStore() {
     salesContents: [],
     marketingPublicAssets: [],
     marketingScheduled: [],
+    marketingItems: [],
     usageEvents: [],
     salesRequestSource: {
       spreadsheetInput: DEFAULT_SALES_REQUEST_SPREADSHEET,
@@ -6814,13 +6815,17 @@ async function prepareMarketingItemForPublish(store, item = {}, req) {
     return { item, changed: false, publicAssetUrl: getMarketingPublishAssetUrl(item), publicAssetUrls: [] };
   }
 
-  // Raccogli le foto da caricare: array multi-foto (nuovo) o singola cover (legacy).
+  // Raccogli le foto: data URL (base64 da uploadare) e/o URL pubblici già pronti
+  // (post persistiti sul server hanno assetUrls = URL R2, niente più base64).
   const dataUrls = (Array.isArray(item.assetDataUrls) && item.assetDataUrls.length
     ? item.assetDataUrls
-    : (String(item.assetDataUrl || "").trim() ? [item.assetDataUrl] : []))
+    : (Array.isArray(item.assetUrls) && item.assetUrls.length
+      ? item.assetUrls
+      : (String(item.assetDataUrl || "").trim() ? [item.assetDataUrl]
+        : (String(item.assetUrl || "").trim() ? [item.assetUrl] : []))))
     .filter((u) => String(u || "").trim());
 
-  // Nessuna data URL: usa eventuale URL pubblico/asset già pronto.
+  // Nessuna foto: usa eventuale URL pubblico/asset già pronto.
   if (!dataUrls.length) {
     const existingPublicUrl = normalizePublicMarketingAssetUrl(item.publicAssetUrl || item.assetUrl || "");
     const arr = existingPublicUrl ? [existingPublicUrl] : [];
@@ -6837,11 +6842,19 @@ async function prepareMarketingItemForPublish(store, item = {}, req) {
   let changed = false;
   const baseName = String(item.assetName || item.title || "marketing-image").trim() || "marketing-image";
   for (let i = 0; i < Math.min(dataUrls.length, 10); i++) {
-    const up = await uploadMarketingDataUrlToPublic(store, dataUrls[i], `${baseName}-${i + 1}`, req);
-    if (up.error) {
-      return { item, changed: false, publicAssetUrl: "", publicAssetUrls: [], error: up.error };
+    const entry = String(dataUrls[i] || "").trim();
+    if (!entry) continue;
+    if (entry.startsWith("data:")) {
+      const up = await uploadMarketingDataUrlToPublic(store, entry, `${baseName}-${i + 1}`, req);
+      if (up.error) {
+        return { item, changed: false, publicAssetUrl: "", publicAssetUrls: [], error: up.error };
+      }
+      if (up.url) { publicAssetUrls.push(up.url); changed = changed || up.changed; }
+    } else {
+      // URL già pubblico (R2/asset salvato): usalo direttamente, niente re-upload.
+      const norm = normalizePublicMarketingAssetUrl(entry) || entry;
+      if (norm) publicAssetUrls.push(norm);
     }
-    if (up.url) { publicAssetUrls.push(up.url); changed = changed || up.changed; }
   }
   if (!publicAssetUrls.length) {
     return { item, changed: false, publicAssetUrl: "", publicAssetUrls: [] };
@@ -10925,6 +10938,67 @@ async function handleApi(req, res, url) {
       publishedAt: result.ok ? new Date().toISOString() : "",
       scheduledAt: result.scheduledAt || "",
     });
+  }
+
+  // GET /api/marketing/items — contenuti marketing persistiti sul server
+  if (url.pathname === "/api/marketing/items" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const items = Array.isArray(store.marketingItems) ? store.marketingItems : [];
+    return sendJson(res, 200, { items });
+  }
+
+  // POST /api/marketing/items — upsert di un contenuto marketing.
+  // Le foto in data URL (base64) vengono caricate su R2 e sostituite con URL
+  // pubblici: lo store NON conserva base64, così niente quota saturata né perdite.
+  if (url.pathname === "/api/marketing/items" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const item = body?.item || body || {};
+    const incoming = (Array.isArray(item.assetDataUrls) && item.assetDataUrls.length
+      ? item.assetDataUrls
+      : (String(item.assetDataUrl || "").trim() ? [item.assetDataUrl] : []))
+      .filter((u) => String(u || "").trim());
+    const assetUrls = [];
+    const baseName = String(item.assetName || item.title || "marketing-image").trim() || "marketing-image";
+    for (let i = 0; i < Math.min(incoming.length, 10); i++) {
+      const entry = String(incoming[i] || "").trim();
+      if (!entry) continue;
+      if (entry.startsWith("data:")) {
+        const up = await uploadMarketingDataUrlToPublic(store, entry, `${baseName}-${i + 1}`, req);
+        if (up.error) return sendJson(res, 400, { error: up.error });
+        if (up.url) assetUrls.push(up.url);
+      } else {
+        // già un URL (R2 o esterno): mantienilo senza re-upload
+        assetUrls.push(normalizePublicMarketingAssetUrl(entry) || entry);
+      }
+    }
+    const clean = { ...item };
+    delete clean.assetDataUrls;
+    delete clean.assetDataUrl;
+    clean.id = String(item.id || randomUUID());
+    clean.assetUrls = assetUrls;
+    clean.assetUrl = assetUrls[0] || (String(item.assetUrl || "").startsWith("data:") ? "" : String(item.assetUrl || ""));
+    clean.assetName = String(item.assetName || "");
+    clean.updatedAt = new Date().toISOString();
+    const list = Array.isArray(store.marketingItems) ? store.marketingItems : [];
+    const idx = list.findIndex((r) => r.id === clean.id);
+    if (idx >= 0) list[idx] = clean; else list.unshift(clean);
+    store.marketingItems = list.slice(0, 1000);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true, item: clean });
+  }
+
+  // DELETE /api/marketing/items/:id — elimina un contenuto marketing
+  if (url.pathname.match(/^\/api\/marketing\/items\/[^/]+$/) && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const itemId = decodeURIComponent(url.pathname.split("/")[4]);
+    const before = (store.marketingItems || []).length;
+    store.marketingItems = (store.marketingItems || []).filter((r) => r.id !== itemId);
+    if (store.marketingItems.length !== before) await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true, removed: before - store.marketingItems.length });
   }
 
   // GET /api/marketing/scheduled — elenco post programmati (per il client)

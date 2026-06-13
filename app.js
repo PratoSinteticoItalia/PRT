@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260613-sidebar-header-affordance";
+const APP_SHELL_VERSION = "20260613-marketing-persistenza-server";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21987,6 +21987,10 @@ function renderMarketing() {
   const _openComposer = document.getElementById("marketing-form-shell");
   if (_openComposer && !_openComposer.classList.contains("hidden")) return;
 
+  // Allinea col server una volta per sessione (fire-and-forget): aggiorna lo stato
+  // e ri-renderizza appena arrivano i dati, senza bloccare il primo paint.
+  syncMarketingItems().catch(() => {});
+
   const items = state.marketingItems || [];
   const channels = ["Tutti", "Instagram", "Facebook", "WhatsApp", "TikTok", "Email", "Altro"];
   const activeChannel = state.marketingChannelFilter || "Tutti";
@@ -22092,8 +22096,8 @@ function renderMarketing() {
             <article class="panel marketing-list-card${isPublishing ? " is-publishing" : ""}" data-action="open-marketing-item" data-id="${escapeHtml(item.id)}">
               <div class="marketing-list-card-inner">
                 <div class="marketing-list-asset">
-                  ${item.assetDataUrl || item.assetUrl ? `<img src="${escapeHtml(item.assetDataUrl || item.assetUrl)}" alt="">` : `<span>${channelIcon(item.channel)}</span>`}
-                  ${Array.isArray(item.assetDataUrls) && item.assetDataUrls.length > 1 ? `<span class="marketing-asset-count">+${item.assetDataUrls.length - 1}</span>` : ""}
+                  ${item.assetUrl || item.assetDataUrl ? `<img src="${escapeHtml(item.assetUrl || item.assetDataUrl)}" alt="">` : `<span>${channelIcon(item.channel)}</span>`}
+                  ${(() => { const n = (Array.isArray(item.assetUrls) && item.assetUrls.length) || (Array.isArray(item.assetDataUrls) && item.assetDataUrls.length) || 0; return n > 1 ? `<span class="marketing-asset-count">+${n - 1}</span>` : ""; })()}
                 </div>
                 <div class="marketing-list-main">
                   <div class="marketing-list-head">
@@ -22454,14 +22458,19 @@ function renderMarketing() {
 
   // delete
   const deleteBtn = container.querySelector("[data-action='delete-marketing-item']");
-  if (deleteBtn) deleteBtn.addEventListener("click", () => {
+  if (deleteBtn) deleteBtn.addEventListener("click", async () => {
     const form = document.getElementById("marketing-item-form");
     const id = form?.elements?.id?.value;
     if (!id) return;
-    state.marketingItems = (state.marketingItems || []).filter(i => i.id !== id);
-    saveMarketingItems();
-    document.getElementById("marketing-form-shell")?.classList.add("hidden");
-    renderMarketing();
+    try {
+      await deleteMarketingItemOnServer(id);
+      state.marketingItems = (state.marketingItems || []).filter(i => i.id !== id);
+      saveMarketingItems();
+      document.getElementById("marketing-form-shell")?.classList.add("hidden");
+      renderMarketing();
+    } catch (err) {
+      showToast(`Eliminazione non riuscita (${err?.message || "errore"}).`, "warning");
+    }
   });
 
   // submit form
@@ -22546,14 +22555,27 @@ function renderMarketing() {
         notes: fd.get("notes") || "",
         updatedAt: new Date().toISOString(),
       };
-      const existing = state.marketingItems || [];
-      const idx = existing.findIndex(i => i.id === id);
-      if (idx >= 0) existing[idx] = item;
-      else existing.push(item);
-      state.marketingItems = existing;
-      saveMarketingItems();
-      document.getElementById("marketing-form-shell")?.classList.add("hidden");
-      renderMarketing();
+      // Salvataggio sul SERVER (le foto vanno su R2, niente più base64 in locale).
+      // Se fallisce lo diciamo: niente più perdita silenziosa di post.
+      const submitBtn = form.querySelector('[type="submit"]');
+      const submitLabel = submitBtn ? submitBtn.textContent : "";
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add("is-busy"); submitBtn.textContent = "Salvataggio..."; }
+      try {
+        const saved = await pushMarketingItemToServer(item);
+        const existing = state.marketingItems || [];
+        const idx = existing.findIndex(i => i.id === saved.id);
+        if (idx >= 0) existing[idx] = saved;
+        else existing.unshift(saved);
+        state.marketingItems = existing;
+        saveMarketingItems();
+        document.getElementById("marketing-form-shell")?.classList.add("hidden");
+        renderMarketing();
+        showToast("Contenuto salvato", "success");
+      } catch (err) {
+        showToast(`Salvataggio non riuscito (${err?.message || "errore"}). Il post NON è stato salvato: riprova.`, "warning", 6000);
+      } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove("is-busy"); submitBtn.textContent = submitLabel; }
+      }
     });
   }
 }
@@ -22588,10 +22610,15 @@ function openMarketingForm(item, options = {}) {
     if (form.elements.hashtags) form.elements.hashtags.value = item.hashtags || "";
     if (form.elements.target) form.elements.target.value = item.target || "";
     form.elements.notes.value = item.notes || "";
-    // Inizializza l'array foto: da assetDataUrls (nuovo) o assetDataUrl singolo (legacy)
-    _marketingFormAssets = Array.isArray(item.assetDataUrls) && item.assetDataUrls.length
-      ? item.assetDataUrls.map((u, i) => ({ dataUrl: u, name: i === 0 ? (item.assetName || "") : "" }))
-      : (item.assetDataUrl ? [{ dataUrl: item.assetDataUrl, name: item.assetName || "" }] : []);
+    // Inizializza l'array foto: URL R2 salvati (nuovo) → assetDataUrls (legacy locale)
+    // → singola cover. Gli URL si rivisualizzano come anteprima e, al re-save, il
+    // server li mantiene così come sono (nessun re-upload).
+    const editAssets = (Array.isArray(item.assetUrls) && item.assetUrls.length)
+      ? item.assetUrls
+      : (Array.isArray(item.assetDataUrls) && item.assetDataUrls.length)
+        ? item.assetDataUrls
+        : ((item.assetDataUrl || item.assetUrl) ? [item.assetDataUrl || item.assetUrl] : []);
+    _marketingFormAssets = editAssets.map((u, i) => ({ dataUrl: u, name: i === 0 ? (item.assetName || "") : "" }));
     renderMarketingFormAssets();
     updateMarketingLivePreview(form);
   } else {
@@ -22722,6 +22749,10 @@ async function publishMarketingItemViaApi(item, button = null, mode = "publish")
       : entry);
     state.marketingItems = nextItems;
     saveMarketingItems();
+    // Persisti sul server il nuovo stato (pubblicato/programmato), altrimenti al
+    // prossimo sync il server lo sovrascriverebbe con lo stato precedente.
+    const _publishedEntry = nextItems.find((e) => e.id === item.id);
+    if (_publishedEntry) { try { await pushMarketingItemToServer(_publishedEntry); } catch {} }
     if (mode === "schedule") {
       const when = result.scheduledAt ? new Date(result.scheduledAt).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "";
       showToast(`✓ Programmato${when ? ` per il ${when}` : ""} — il portale lo pubblicherà automaticamente.`, "success", 5000);
@@ -22752,6 +22783,42 @@ function saveMarketingItems() {
 
 function loadMarketingItems() {
   try { return JSON.parse(localStorage.getItem("psi-marketing-items-v1") || "[]"); } catch { return []; }
+}
+
+// ── Persistenza marketing lato SERVER (sostituisce il solo localStorage) ──────
+// localStorage resta come cache per il primo paint; il server è la fonte di verità,
+// così i post sopravvivono ai reload e si vedono da tutti i dispositivi.
+async function fetchMarketingItemsFromServer() {
+  try {
+    const data = await apiFetch("/api/marketing/items");
+    return Array.isArray(data?.items) ? data.items : null;
+  } catch { return null; }
+}
+async function pushMarketingItemToServer(item) {
+  const data = await apiFetch("/api/marketing/items", { method: "POST", body: JSON.stringify({ item }) });
+  return data?.item || item;
+}
+async function deleteMarketingItemOnServer(id) {
+  await apiFetch(`/api/marketing/items/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+let _marketingSynced = false;
+async function syncMarketingItems({ force = false } = {}) {
+  if (_marketingSynced && !force) return;
+  const serverItems = await fetchMarketingItemsFromServer();
+  if (serverItems === null) return; // offline/errore: tieni la cache locale
+  // Recupera SEMPRE gli items presenti solo in locale (non ancora sul server) e
+  // migrali: così nessun post va perso, nemmeno nel passaggio a multi-dispositivo.
+  const serverIds = new Set(serverItems.map((i) => i.id));
+  const localOnly = loadMarketingItems().filter((i) => i && i.id && !serverIds.has(i.id));
+  const migrated = [];
+  for (const it of localOnly) {
+    try { migrated.push(await pushMarketingItemToServer(it)); }
+    catch { migrated.push(it); }
+  }
+  state.marketingItems = [...serverItems, ...migrated];
+  _marketingSynced = true;
+  saveMarketingItems();
+  if (state.currentView === "marketing") renderMarketing();
 }
 
 function renderGardenPlannerView() {
