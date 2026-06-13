@@ -3973,6 +3973,17 @@ button.is-feedback,
   margin-bottom: 20px;
 }
 
+/* Pallino colore squadra (coerente col coverage planner) accanto al badge squadra */
+.crew-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  flex: 0 0 auto;
+}
+
 .cal-day {
   min-height: 182px;
   background: #fff;

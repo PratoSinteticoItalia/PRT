@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260613-inbox-drawer-redesign";
+const APP_SHELL_VERSION = "20260613-pose-crew-colors";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6471,6 +6471,18 @@ function getTravelExpenseLabel(category = "") {
 
 function getCoverageDefaultColor(index = 0) {
   return COVERAGE_DEFAULT_COLORS[index % COVERAGE_DEFAULT_COLORS.length];
+}
+
+// Colore identificativo della squadra: riusa quello del coverage planner così
+// calendario, backlog e mappa territori restano coerenti. Fallback deterministico
+// (stesso colore ad ogni render per la stessa squadra). Grigio = da assegnare.
+function getCrewColor(crewName = "") {
+  const name = String(crewName || "").trim();
+  if (!name) return "#888780";
+  const teamColor = state.coveragePlanner?.teams?.[name]?.color;
+  if (teamColor) return teamColor;
+  const idx = Math.max(0, getInstallationCrewNames().indexOf(name));
+  return getCoverageDefaultColor(idx);
 }
 
 function ensureCoverageTeam(teamName, options = {}) {
@@ -15450,7 +15462,7 @@ function buildInstallationCalendar(orders, crewName = "") {
           </button>` : ""}
         ${items.length
           ? items.map((order) => `
-            <button class="cal-item" data-action="select-order" data-id="${order.id}" data-view="installations">
+            <button class="cal-item" data-action="select-order" data-id="${order.id}" data-view="installations" style="border-left:3px solid ${getCrewColor(order.operations?.installation?.crew)}">
               <strong>${composeClientName(order)} · ${getOrderNumber(order)}</strong>
               <span>${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
             </button>
@@ -15538,7 +15550,7 @@ function renderInstallations() {
               <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
               <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
             </div>
-            <div class="order-type-badge type-posa">${escapeHtml(crewBadge)}</div>
+            <div class="order-type-badge type-posa"><span class="crew-dot" style="background:${getCrewColor(install.crew)}"></span>${escapeHtml(crewBadge)}</div>
             <div class="order-amount">${detailLabel}</div>
             <div class="action-badge ${badgeClass}">${badgeLabel}</div>
           </article>
