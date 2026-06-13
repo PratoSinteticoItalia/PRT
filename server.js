@@ -7105,16 +7105,14 @@ async function publishFacebookMarketingItem(item = {}, mode = "publish") {
   if (!providerId) {
     return { ok: false, reason: "provider_missing_confirmation", details: "Meta response missing Facebook post id." };
   }
+  // Come per Instagram: ottenuto il post id, la pubblicazione È avvenuta. La verifica
+  // del permalink è best-effort e non deve declassare un publish riuscito a fallito.
   let providerUrl = "";
+  let verifiedOk = false;
   if (mode === "publish") {
     const verification = await verifyMetaPublishedObject(providerId, "id,permalink_url,created_time", "Facebook");
-    if (!verification.ok) {
-      return {
-        ...verification,
-        details: `Meta ha risposto al publish ma non riesco a verificare il post Facebook finale (${providerId}). ${verification.details || ""}`.trim(),
-      };
-    }
     providerUrl = String(verification.payload?.permalink_url || "").trim();
+    verifiedOk = Boolean(verification.ok && providerUrl);
   }
   return {
     ok: true,
@@ -7122,7 +7120,7 @@ async function publishFacebookMarketingItem(item = {}, mode = "publish") {
     messageId: mode === "publish" ? providerId : "",
     scheduleId: mode === "schedule" ? providerId : "",
     providerUrl,
-    verified: mode === "publish",
+    verified: mode === "publish" ? verifiedOk : true,
     scheduledAt,
   };
 }
@@ -7194,27 +7192,19 @@ async function publishInstagramMarketingItem(item = {}, mode = "publish") {
   if (!mediaId) {
     return { ok: false, reason: "provider_missing_confirmation", details: "Meta response missing Instagram media id." };
   }
+  // media_publish ha restituito l'ID del post → la pubblicazione È avvenuta.
+  // La verifica del permalink è BEST-EFFORT: se non riesce (latenza/permessi nei
+  // secondi subito dopo il publish) NON deve far risultare la pubblicazione come
+  // fallita, altrimenti il post resta "bozza" pur essendo già live su Instagram.
+  // In quel caso torniamo ok:true ma verified:false → l'UI mostra "Da verificare".
   const verification = await verifyMetaPublishedObject(mediaId, "id,permalink,timestamp,media_type", "Instagram");
-  if (!verification.ok) {
-    return {
-      ...verification,
-      details: `Meta ha risposto al publish ma non riesco a verificare il post Instagram finale (${mediaId}). ${verification.details || ""}`.trim(),
-    };
-  }
   const providerUrl = String(verification.payload?.permalink || "").trim();
-  if (!providerUrl) {
-    return {
-      ok: false,
-      reason: "provider_missing_confirmation",
-      details: `Meta ha restituito l'ID Instagram ${mediaId}, ma non un permalink verificabile al post pubblicato.`,
-    };
-  }
   return {
     ok: true,
     provider: "instagram",
     messageId: mediaId,
     providerUrl,
-    verified: true,
+    verified: Boolean(verification.ok && providerUrl),
   };
 }
 
