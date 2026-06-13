@@ -3984,37 +3984,6 @@ button.is-feedback,
   flex: 0 0 auto;
 }
 
-/* Pose ufficio: su desktop largo, master-detail a due colonne con dettaglio
-   sticky a destra (calendario + backlog a sinistra). Sotto la soglia resta la
-   pila verticale attuale → nessuna regressione su mobile/tablet. */
-@media (min-width: 1200px) {
-  #installations {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 400px;
-    grid-template-areas:
-      "header header"
-      "toolbar toolbar"
-      "cal detail"
-      "backlog detail"
-      "coverage coverage";
-    column-gap: 20px;
-    align-items: start;
-  }
-  #installations > .page-header { grid-area: header; }
-  #installations > .view-toolbar { grid-area: toolbar; }
-  #installations > #installation-calendar { grid-area: cal; margin-bottom: 12px; }
-  #installations > .section { grid-area: backlog; }
-  #installations > .coverage-panel { grid-area: coverage; }
-  #installations > .install-detail-panel {
-    grid-area: detail;
-    position: sticky;
-    top: 84px;
-    align-self: start;
-    max-height: calc(100vh - 100px);
-    overflow: auto;
-    margin-top: 0;
-  }
-}
 
 .cal-day {
   min-height: 182px;
