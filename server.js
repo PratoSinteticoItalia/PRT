@@ -8,10 +8,29 @@ import { gzipSync } from "node:zlib";
 import { startImapWorker, getImapWorkerStatus, isImapWorkerEnabled, hasImapWorkerConfig, getImapWorkerConfig } from "./imap-worker.js";
 import { reconcileShadowLeads, buildLeadFingerprint, fingerprintIsComplete, findMatchingSalesRequest } from "./lead-fingerprint.mjs";
 import { generateWorkReportPdf } from "./lib/work-report-pdf.js";
+import { createWriteGuard } from "./lib/safe-write.js";
 import webPush from "web-push";
 
 const PORT = Number(process.env.PORT || 4178);
 const HOST = process.env.HOST || "0.0.0.0";
+
+// ── Visibilità errori (Fase 1 hardening) ────────────────────────────────────
+// Log strutturato: timestamp ISO + contesto + meta. Sostituisce i `catch(()=>{})`
+// silenziosi sui punti che contano (le scritture dati).
+function logError(context, error, meta = {}) {
+  const ts = new Date().toISOString();
+  const msg = error?.stack || error?.message || String(error);
+  const hasMeta = meta && Object.keys(meta).length > 0;
+  console.error(`[error][${ts}] ${context}: ${msg}${hasMeta ? ` | ${JSON.stringify(meta)}` : ""}`);
+}
+
+// Guardia per le scritture best-effort: retry transitorio + log forte + contatore
+// (esposto da /api/healthz). Niente più scritture che spariscono in silenzio.
+const writeGuard = createWriteGuard({
+  retries: 1,
+  delayMs: 300,
+  onError: (label, err, meta) => logError(`write:${label}`, err, meta),
+});
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const FALLBACK_DATA_DIR = resolve(join(ROOT, "data"));
 let DATA_DIR = resolve(process.env.DATA_DIR || FALLBACK_DATA_DIR);
@@ -1869,7 +1888,7 @@ async function upsertOrderToDb(order, userId = null) {
     // Notifica le altre istanze di invalidare la loro cache ordini
     pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'orders')").catch(() => {});
   } catch (err) {
-    console.warn("[db] upsertOrderToDb:", err?.message);
+    writeGuard.recordFailure("upsertOrder", err, { id: order?.id });
   }
 }
 
@@ -1900,7 +1919,7 @@ async function upsertInventoryItemToDb(item) {
     ]);
     pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'inventory')").catch(() => {});
   } catch (err) {
-    console.warn("[db] upsertInventoryItemToDb:", err?.message);
+    writeGuard.recordFailure("upsertInventory", err, { id: item?.id });
   }
 }
 
@@ -1912,7 +1931,7 @@ async function deleteInventoryItemFromDb(id) {
     await pool.query("DELETE FROM inventory_items WHERE id = $1", [String(id)]);
     pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'inventory')").catch(() => {});
   } catch (err) {
-    console.warn("[db] deleteInventoryItemFromDb:", err?.message);
+    writeGuard.recordFailure("deleteInventory", err);
   }
 }
 
@@ -1949,7 +1968,7 @@ async function upsertJobToDb(job) {
     ]);
     pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'jobs')").catch(() => {});
   } catch (err) {
-    console.warn("[db] upsertJobToDb:", err?.message);
+    writeGuard.recordFailure("upsertJob", err);
   }
 }
 
@@ -1961,7 +1980,7 @@ async function deleteJobFromDb(id) {
     await pool.query("DELETE FROM jobs WHERE id = $1", [String(id)]);
     pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'jobs')").catch(() => {});
   } catch (err) {
-    console.warn("[db] deleteJobFromDb:", err?.message);
+    writeGuard.recordFailure("deleteJob", err);
   }
 }
 
@@ -2045,7 +2064,7 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
     // Notifica le altre istanze di invalidare la loro cache leads
     pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'sales_requests')").catch(() => {});
   } catch (err) {
-    console.warn("[db] upsertSalesRequestToDb:", err?.message);
+    writeGuard.recordFailure("upsertSalesRequest", err, { id: request?.id });
     // opts.rethrow=true → usato dai call sites critici (via outbox) per
     // distinguere "salvato" da "fallito" invece di silent fail.
     if (opts && opts.rethrow) throw err;
@@ -2108,7 +2127,7 @@ async function deleteSalesRequestFromDb(id, opts = {}) {
     const pool = await getPgPool();
     await pool.query("DELETE FROM sales_requests WHERE id = $1", [String(id)]);
   } catch (err) {
-    console.warn("[db] deleteSalesRequestFromDb:", err?.message);
+    writeGuard.recordFailure("deleteSalesRequest", err);
     if (opts && opts.rethrow) throw err;
   }
 }
@@ -3198,7 +3217,7 @@ async function writeAuditLog(entityType, entityId, action, diff, userId) {
       [String(entityType), String(entityId), userId ? String(userId) : null, String(action), JSON.stringify(diff || {})],
     );
   } catch (err) {
-    console.warn("[db] writeAuditLog:", err?.message);
+    writeGuard.recordFailure("auditLog", err, { entityType, entityId, action });
   }
 }
 
@@ -4328,7 +4347,7 @@ async function sendPushToUser(store, userId, payload) {
   }));
   if (dead.length) {
     store.pushSubscriptions = (store.pushSubscriptions || []).filter((s) => !dead.includes(s.endpoint));
-    writeJson(STORE_PATH, store).catch(() => {});
+    writeGuard.safeWrite("storePush", () => writeJson(STORE_PATH, store));
   }
 }
 
@@ -10356,10 +10375,15 @@ async function handleFastInventoryItemsPost(req, res) {
 
 async function handleApi(req, res, url) {
   if (url.pathname === "/api/healthz" && req.method === "GET") {
+    // Fallimenti scritture dati (Fase 1): se non vuoto, qualche salvataggio è
+    // andato perso o ha ritentato. Prima erano invisibili (console.warn).
+    const writeFailures = writeGuard.getFailureCounts();
     return sendJson(res, 200, {
       ok: true,
       service: "vertex-ops-pose-system",
       timestamp: new Date().toISOString(),
+      writeFailures,
+      writeFailuresTotal: writeGuard.totalFailures(),
       buildTag: "coverage-planner-sql-2026-05-16-j",
       fixes: [
         "reconcileStoreData-persists-missing-piece-ids",

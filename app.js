@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260614-hardening-fase0";
+} from "./lib/order-money.js?v=20260614-hardening-fase1";
 
-const APP_SHELL_VERSION = "20260614-hardening-fase0";
+const APP_SHELL_VERSION = "20260614-hardening-fase1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4253,7 +4253,7 @@ function bulkOpenSalesRequestFollowUpWhatsApp() {
   });
   opened_items.forEach((item) => {
     if (String(item.status || "").trim().toLowerCase() !== "follow up eseguito") {
-      persistSalesRequestRecordPatch(item, { status: "follow up eseguito" }).catch(() => {});
+      persistSalesRequestRecordPatch(item, { status: "follow up eseguito" }).catch((e) => reportError("crm:statusPatch", e, { notify: true }));
     }
   });
   setStatus(
@@ -11965,10 +11965,10 @@ function renderOrders() {
     // spunta → salva subito; nota → salva al blur (change) per non perdere il
     // focus mentre si scrive.
     ui.orderPrepList.querySelectorAll('[data-prep-field="included"]').forEach((cb) => {
-      cb.addEventListener("change", () => { savePrepList().catch(() => {}); });
+      cb.addEventListener("change", () => { savePrepList().catch((e) => reportError("warehouse:savePrepList", e, { notify: true })); });
     });
     ui.orderPrepList.querySelectorAll('[data-prep-field="note"]').forEach((inp) => {
-      inp.addEventListener("change", () => { savePrepList().catch(() => {}); });
+      inp.addEventListener("change", () => { savePrepList().catch((e) => reportError("warehouse:savePrepList", e, { notify: true })); });
     });
   }
   ui.orderAttachments.innerHTML = renderAttachmentGrid(order.attachments || [], order.id);
@@ -21988,7 +21988,7 @@ function renderMarketing() {
 
   // Allinea col server una volta per sessione (fire-and-forget): aggiorna lo stato
   // e ri-renderizza appena arrivano i dati, senza bloccare il primo paint.
-  syncMarketingItems().catch(() => {});
+  syncMarketingItems().catch((e) => reportError("marketing:sync", e));
 
   const items = state.marketingItems || [];
   const channels = ["Tutti", "Instagram", "Facebook", "WhatsApp", "TikTok", "Email", "Altro"];
@@ -22982,6 +22982,43 @@ function dismissToast(div) {
   div.addEventListener("transitionend", () => div.remove(), { once: true });
 }
 
+// ── Visibilità errori client (Fase 1 hardening) ─────────────────────────────
+// Reporter centrale: sostituisce i `.catch(() => {})` silenziosi. Logga sempre
+// in console con contesto; con { notify: true } mostra anche un toast all'utente
+// (per i fallimenti di SALVATAGGIO che altrimenti farebbero credere "fatto").
+function reportError(context, error, { notify = false } = {}) {
+  try {
+    console.error(`[client-error] ${context}:`, error);
+  } catch {}
+  if (notify) {
+    const msg = state.lang === "it"
+      ? "Salvataggio non riuscito, riprova."
+      : "Save failed, please try again.";
+    try { showToast(msg, "error"); } catch {}
+  }
+}
+
+// Rete globale: errori non catturati e promise rejection non gestite. Prima
+// finivano nel nulla (schermo rotto senza segnale). Ora li logghiamo e — con un
+// throttle per non spammare — avvisiamo l'utente che qualcosa è andato storto.
+let _lastErrorToastAt = 0;
+function notifyUncaught(label, payload) {
+  reportError(label, payload);
+  const now = Date.now();
+  if (now - _lastErrorToastAt < 8000) return; // max 1 toast ogni 8s
+  _lastErrorToastAt = now;
+  const msg = state.lang === "it"
+    ? "Si è verificato un problema imprevisto."
+    : "An unexpected error occurred.";
+  try { showToast(msg, "error"); } catch {}
+}
+window.addEventListener("error", (event) => {
+  notifyUncaught("window.error", event?.error || event?.message || event);
+});
+window.addEventListener("unhandledrejection", (event) => {
+  notifyUncaught("unhandledrejection", event?.reason || event);
+});
+
 async function copyContentLink(url, title = "") {
   if (!url) return;
   const successMsg = state.lang === "it" ? "Link copiato negli appunti" : "Link copied to clipboard";
@@ -23240,7 +23277,7 @@ async function saveOrder(event) {
           && String(req.status || "").toLowerCase() !== "ordine eseguito";
       });
       if (match) {
-        persistSalesRequestRecordPatch(match, { status: "ordine eseguito" }).catch(() => {});
+        persistSalesRequestRecordPatch(match, { status: "ordine eseguito" }).catch((e) => reportError("crm:statusPatch", e, { notify: true }));
       }
     }
   }
@@ -25552,7 +25589,7 @@ function handleGlobalClick(event) {
     }
     openSalesRequestWhatsAppTab(url);
     if (String(request.status || "").trim().toLowerCase() !== "follow up eseguito") {
-      persistSalesRequestRecordPatch(request, { status: "follow up eseguito" }).catch(() => {});
+      persistSalesRequestRecordPatch(request, { status: "follow up eseguito" }).catch((e) => reportError("crm:statusPatch", e, { notify: true }));
     }
     return;
   }
@@ -26007,7 +26044,7 @@ function handleGlobalClick(event) {
     if (!cat || !val) return;
     removeCatalogItem(cat, val).then(() => {
       loadCatalogItems(cat);
-    }).catch(() => {});
+    }).catch((e) => reportError("settings:removeCatalogItem", e, { notify: true }));
     return;
   }
 }
@@ -28136,7 +28173,7 @@ if (crewCatalogForm) {
       label: value,
       position: 0,
       metadata: { capacity },
-    }).catch(() => {});
+    }).catch((e) => reportError("settings:saveCrewCatalog", e, { notify: true }));
     crewCatalogForm.reset();
     crewCatalogForm.querySelector("[name='capacity']").value = "120";
     await loadCatalogItems("crew");
@@ -28155,7 +28192,7 @@ if (assignmentCatalogForm) {
       label: value,
       position: 0,
       metadata: {},
-    }).catch(() => {});
+    }).catch((e) => reportError("settings:saveAssignmentCatalog", e, { notify: true }));
     assignmentCatalogForm.reset();
     await loadCatalogItems("sales_assignment");
   });
