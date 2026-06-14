@@ -18130,37 +18130,8 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
   border: 0;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   ROLLBACK preventivo v2 — nasconde tutta la UI v2 in attesa di stabilizzarla
-   Quando il commit PSI_PREVENTIVO_V2_DISABLED viene rimosso, rimuovere anche
-   queste regole.
-   ───────────────────────────────────────────────────────────────────────── */
-.sales-generator-toolbar,
-.sales-generator-toolbar-hint,
-.sales-generator-custom-model,
-#preventivo-v2-preview-frame,
-#psi-preview-section,
-.preventivo-v2-preview-frame {
-  display: none !important;
-}
-
-/* ROLLBACK v2 — selettori aggiuntivi (più specifici per essere certi) */
-.quote-p2-toggle,
-#quote-include-p2,
-label.quote-p2-toggle,
-.sales-generator-frame-panel > .sales-generator-toolbar,
-.sales-generator-frame-panel .sales-generator-toolbar,
-.sales-generator-frame-panel .quote-p2-toggle,
-.sales-generator-frame-panel .sales-generator-custom-model {
-  display: none !important;
-  visibility: hidden !important;
-  height: 0 !important;
-  width: 0 !important;
-  overflow: hidden !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-}
+/* Preventivo v2 RIATTIVATO (PSI_PREVENTIVO_V2_DISABLED = false): rimosse le
+   regole di rollback che nascondevano la UI v2 e l'anteprima #psi-preview-section. */
 
 /* ─────────────────────────────────────────────────────────────────────────
    VERBALI FINE CANTIERE — UI work_completion_reports (MVP)

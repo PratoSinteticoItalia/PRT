@@ -12,7 +12,7 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260614-preventivo-redesign";
+} from "./lib/order-money.js?v=20260615-preventivo-v2-on";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -22,9 +22,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260614-preventivo-redesign";
+} from "./lib/profit-split.js?v=20260615-preventivo-v2-on";
 
-const APP_SHELL_VERSION = "20260614-preventivo-redesign";
+const APP_SHELL_VERSION = "20260615-preventivo-v2-on";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -27671,7 +27671,7 @@ function initQuoteGenerator() {
 // FEATURE FLAG: il preventivo v2 e i suoi intercept sono temporaneamente
 // DISABILITATI per ripristinare il flusso originale del generatore React
 // (PDF jsPDF). Quando v2 sarà pronto e stabile, basta rimettere a false.
-const PSI_PREVENTIVO_V2_DISABLED = true;
+const PSI_PREVENTIVO_V2_DISABLED = false;
 
 function _interceptReactGenerateButton(doc) {
   // Intercetta click su "Genera Preventivo →" di React → mostra il nostro template
