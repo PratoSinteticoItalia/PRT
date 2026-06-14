@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260614-sidebar-top-spacing" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260614-sidebar-top-spacing" />
+    <link rel="preload" href="./styles.css?v=20260614-conti-pose-storico-saldi" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260614-conti-pose-storico-saldi" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -765,7 +765,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260614-sidebar-top-spacing&shell=20260614-sidebar-top-spacing"
+                src="./sales-suite/generator.html?embedded=1&v=20260614-conti-pose-storico-saldi&shell=20260614-conti-pose-storico-saldi"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -1697,6 +1697,26 @@
             <div id="profit-split-breakdown" class="profit-split-breakdown"></div>
           </section>
 
+          <section class="panel profit-split-balances-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">Saldi collaboratori</p>
+                <h3>Quanto spetta a ciascuno sul totale delle pose</h3>
+              </div>
+            </div>
+            <div id="profit-split-partner-balances" class="profit-split-partner-balances"></div>
+          </section>
+
+          <section class="panel profit-split-history-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">Storico conti</p>
+                <h3>Conti salvati sulle commesse</h3>
+              </div>
+            </div>
+            <div id="profit-split-history" class="profit-split-history"></div>
+          </section>
+
           <section id="profit-split-coverage-mount" class="profit-split-coverage-mount"></section>
         </section>
 
@@ -2341,7 +2361,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260614-sidebar-top-spacing" defer></script>
-    <script src="./app.js?v=20260614-sidebar-top-spacing" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260614-conti-pose-storico-saldi" defer></script>
+    <script src="./app.js?v=20260614-conti-pose-storico-saldi" type="module"></script>
   </body>
 </html>

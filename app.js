@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260614-sidebar-top-spacing";
+} from "./lib/order-money.js?v=20260614-conti-pose-storico-saldi";
 
-const APP_SHELL_VERSION = "20260614-sidebar-top-spacing";
+const APP_SHELL_VERSION = "20260614-conti-pose-storico-saldi";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1734,6 +1734,8 @@ const ui = {
   profitSplitDistributionBar: document.getElementById("profit-split-distribution-bar"),
   profitSplitLiveRevenue: document.getElementById("profit-split-live-revenue"),
   profitSplitLiveJobLabel: document.getElementById("profit-split-live-job-label"),
+  profitSplitPartnerBalances: document.getElementById("profit-split-partner-balances"),
+  profitSplitHistory: document.getElementById("profit-split-history"),
   authDemo: document.getElementById("auth-demo"),
   cmdKOverlay: document.getElementById("cmd-k-overlay"),
   cmdKInput: document.getElementById("cmd-k-input"),
@@ -3301,6 +3303,8 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
 
   if (syncForm) syncProfitSplitDraftFromState();
   renderProfitSplitContextCard();
+  renderProfitSplitPartnerBalances();
+  renderProfitSplitHistory();
   const draft = normalizeProfitSplitDraft(state.profitSplitDraft);
   const result = computeProfitSplitScenario(draft);
   const partnerLabel = result.partnerName || (state.lang === "it" ? "Collaboratore" : "Partner");
@@ -3444,6 +3448,101 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
       </section>
     </div>
   `;
+}
+
+// ── Storico conti pose & saldi collaboratori ──────────────────────────────────
+// Lo storico è derivato: scansiona le commesse con un profitSplit salvato
+// (order.operations.installation.profitSplit) e ricalcola lo scenario. Niente
+// archivio separato — la commessa è già la fonte di verità.
+function getSavedProfitSplits() {
+  return (state.orders || [])
+    .map((order) => {
+      const draft = getStoredProfitSplitForOrder(order);
+      if (!draft) return null;
+      const result = computeProfitSplitScenario(draft);
+      return {
+        orderId: order.id,
+        order,
+        draft,
+        result,
+        partnerName: result.partnerName || (state.lang === "it" ? "Senza nome" : "Unnamed"),
+        savedAt: String(draft.savedAt || ""),
+        jobLabel: String(draft.jobLabel || "").trim() || buildProfitSplitOrderLabel(order),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => String(right.savedAt).localeCompare(String(left.savedAt)));
+}
+
+// Aggrega i conti per collaboratore: numero pose, ricavo totale e totale spettante.
+function getProfitSplitPartnerBalances(entries = getSavedProfitSplits()) {
+  const map = new Map();
+  entries.forEach((entry) => {
+    const key = entry.partnerName;
+    const acc = map.get(key) || { partnerName: key, count: 0, revenue: 0, partnerDue: 0 };
+    acc.count += 1;
+    acc.revenue = Number((acc.revenue + entry.result.revenue).toFixed(2));
+    acc.partnerDue = Number((acc.partnerDue + entry.result.partnerDue).toFixed(2));
+    map.set(key, acc);
+  });
+  return Array.from(map.values()).sort((left, right) => right.partnerDue - left.partnerDue);
+}
+
+function renderProfitSplitPartnerBalances() {
+  if (!ui.profitSplitPartnerBalances) return;
+  const balances = getProfitSplitPartnerBalances();
+  if (!balances.length) {
+    ui.profitSplitPartnerBalances.innerHTML = `<div class="info-card profit-split-empty">${state.lang === "it"
+      ? "Nessun saldo ancora: salva un conto su una commessa e comparirà qui."
+      : "No balances yet: save a split on a job and it will show up here."}</div>`;
+    return;
+  }
+  const maxDue = Math.max(...balances.map((item) => item.partnerDue), 1);
+  ui.profitSplitPartnerBalances.innerHTML = balances.map((item) => {
+    const pct = Math.max(2, Math.round((item.partnerDue / maxDue) * 100));
+    const poseLabel = state.lang === "it"
+      ? `${item.count} ${item.count === 1 ? "posa" : "pose"}`
+      : `${item.count} ${item.count === 1 ? "job" : "jobs"}`;
+    return `
+      <article class="profit-split-partner-card">
+        <div class="profit-split-partner-head">
+          <span class="profit-split-partner-avatar">${escapeHtml(getUserInitials(item.partnerName))}</span>
+          <div>
+            <strong>${escapeHtml(item.partnerName)}</strong>
+            <span class="profit-split-partner-meta">${escapeHtml(poseLabel)}</span>
+          </div>
+        </div>
+        <div class="profit-split-partner-amount">${escapeHtml(formatCurrency(item.partnerDue))}</div>
+        <div class="profit-split-partner-bar"><span style="width:${pct}%"></span></div>
+      </article>`;
+  }).join("");
+}
+
+function renderProfitSplitHistory() {
+  if (!ui.profitSplitHistory) return;
+  const entries = getSavedProfitSplits();
+  if (!entries.length) {
+    ui.profitSplitHistory.innerHTML = `<div class="info-card profit-split-empty">${state.lang === "it"
+      ? "Ancora nessun conto salvato su commessa."
+      : "No splits saved on a job yet."}</div>`;
+    return;
+  }
+  ui.profitSplitHistory.innerHTML = entries.map((entry) => {
+    const active = entry.orderId === state.profitSplitContextOrderId ? " is-active" : "";
+    const dateText = entry.savedAt ? formatDate(entry.savedAt) : "—";
+    const subline = `${dateText} · ${escapeHtml(entry.partnerName)}`;
+    return `
+      <button type="button" class="profit-split-history-row${active}" data-profit-split-open-order="${escapeHtml(entry.orderId)}">
+        <span class="profit-split-history-main">
+          <span class="profit-split-history-label">${escapeHtml(entry.jobLabel)}</span>
+          <span class="profit-split-history-sub">${subline}</span>
+        </span>
+        <span class="profit-split-history-figures">
+          <span class="profit-split-history-due">${escapeHtml(formatCurrency(entry.result.partnerDue))}</span>
+          <span class="profit-split-history-rev">${state.lang === "it" ? "su" : "of"} ${escapeHtml(formatCurrency(entry.result.revenue))}</span>
+        </span>
+      </button>`;
+  }).join("");
 }
 
 function composeClientName(order) {
@@ -27980,6 +28079,15 @@ bindEvent(ui.profitSplitForm, "input", () => {
 bindEvent(ui.profitSplitForm, "change", () => {
   syncProfitSplitDraftAfterInput(readProfitSplitDraftFromForm());
   renderProfitSplitCalculator({ syncForm: false });
+});
+bindEvent(ui.profitSplitHistory, "click", (event) => {
+  const row = event.target.closest("[data-profit-split-open-order]");
+  if (!row) return;
+  event.preventDefault();
+  const orderId = row.getAttribute("data-profit-split-open-order");
+  if (!setProfitSplitContextOrder(orderId, { preferStored: true })) return;
+  renderProfitSplitCalculator();
+  ui.profitSplitForm?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 bindEvent(ui.profitSplitResetButton, "click", () => {
   if (isProfitSplitOrderLinked()) {
