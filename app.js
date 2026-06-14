@@ -12,9 +12,19 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260614-conti-pose-storico-saldi";
+} from "./lib/order-money.js?v=20260614-conti-pose-pdf";
+// Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
+// testata (test/profit-split.test.js). Vedi nota in cima a quel file.
+import {
+  getDefaultProfitSplitExpenseLine,
+  getProfitSplitLegacyExpenseLines,
+  normalizeProfitSplitExpenseLines,
+  isProfitSplitExpenseLineBlank,
+  addProfitSplitExpenseLine,
+  computeProfitSplitScenario as computeProfitSplitScenarioPure,
+} from "./lib/profit-split.js?v=20260614-conti-pose-pdf";
 
-const APP_SHELL_VERSION = "20260614-conti-pose-storico-saldi";
+const APP_SHELL_VERSION = "20260614-conti-pose-pdf";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -893,81 +903,9 @@ const translations = {
   },
 };
 
-function getDefaultProfitSplitExpenseLine(overrides = {}) {
-  const payer = ["owner", "partner", "shared"].includes(String(overrides.payer || "").trim())
-    ? String(overrides.payer || "").trim()
-    : "owner";
-  return {
-    id: String(overrides.id || crypto.randomUUID()),
-    label: String(overrides.label ?? ""),
-    amount: String(overrides.amount ?? ""),
-    payer,
-  };
-}
-
-function getProfitSplitLegacyExpenseLines(input = {}) {
-  const lines = [];
-  const legacyRows = [
-    {
-      amount: input.ownerPaidExpenses,
-      payer: "owner",
-      label: "Spesa pagata da te",
-    },
-    {
-      amount: input.partnerPaidExpenses,
-      payer: "partner",
-      label: "Spesa pagata dal collaboratore",
-    },
-    {
-      amount: input.sharedJobCosts,
-      payer: "shared",
-      label: "Costo condiviso",
-    },
-  ];
-  legacyRows.forEach((row) => {
-    const rawAmount = String(row.amount ?? "").trim();
-    if (!rawAmount || Math.abs(toNumber(rawAmount || 0)) <= 0) return;
-    lines.push(getDefaultProfitSplitExpenseLine(row));
-  });
-  return lines;
-}
-
-function normalizeProfitSplitExpenseLines(lines = [], legacyInput = {}) {
-  const sourceLines = Array.isArray(lines) && lines.length
-    ? lines
-    : getProfitSplitLegacyExpenseLines(legacyInput);
-  const normalizedLines = sourceLines.map((line) => getDefaultProfitSplitExpenseLine(line));
-  return normalizedLines.length ? normalizedLines : [getDefaultProfitSplitExpenseLine()];
-}
-
-function isProfitSplitExpenseLineBlank(line = {}) {
-  const label = String(line.label || "").trim();
-  const amount = Number(toNumber(line.amount || 0).toFixed(2));
-  return !label && Math.abs(amount) <= 0;
-}
-
-function addProfitSplitExpenseLine(lines = [], overrides = {}) {
-  const normalizedLines = normalizeProfitSplitExpenseLines(lines);
-  const nextLine = getDefaultProfitSplitExpenseLine(overrides);
-  const blankIndex = normalizedLines.findLastIndex
-    ? normalizedLines.findLastIndex((line) => isProfitSplitExpenseLineBlank(line))
-    : (() => {
-        for (let index = normalizedLines.length - 1; index >= 0; index -= 1) {
-          if (isProfitSplitExpenseLineBlank(normalizedLines[index])) return index;
-        }
-        return -1;
-      })();
-  if (blankIndex >= 0) {
-    normalizedLines[blankIndex] = {
-      ...normalizedLines[blankIndex],
-      ...nextLine,
-      id: normalizedLines[blankIndex].id,
-      amount: overrides.amount ?? normalizedLines[blankIndex].amount,
-    };
-    return normalizedLines;
-  }
-  return [...normalizedLines, nextLine];
-}
+// getDefaultProfitSplitExpenseLine, getProfitSplitLegacyExpenseLines,
+// normalizeProfitSplitExpenseLines, isProfitSplitExpenseLineBlank e
+// addProfitSplitExpenseLine sono ora importate da lib/profit-split.js (sopra).
 
 function getDefaultProfitSplitDraft() {
   return {
@@ -1736,6 +1674,7 @@ const ui = {
   profitSplitLiveJobLabel: document.getElementById("profit-split-live-job-label"),
   profitSplitPartnerBalances: document.getElementById("profit-split-partner-balances"),
   profitSplitHistory: document.getElementById("profit-split-history"),
+  profitSplitPdfButton: document.getElementById("profit-split-pdf-button"),
   authDemo: document.getElementById("auth-demo"),
   cmdKOverlay: document.getElementById("cmd-k-overlay"),
   cmdKInput: document.getElementById("cmd-k-input"),
@@ -2938,86 +2877,10 @@ function isProfitSplitContextDirty() {
   return getProfitSplitComparablePayload(state.profitSplitDraft) !== getProfitSplitComparablePayload(baseline);
 }
 
+// Wrapper sottile: la formula vive in lib/profit-split.js (condivisa col server
+// per il PDF). Qui passiamo solo la lingua corrente per le etichette di fallback.
 function computeProfitSplitScenario(draft = {}) {
-  const partnerName = String(draft.partnerName || "").trim();
-  const revenue = Number(toNumber(draft.revenue || 0).toFixed(2));
-  const partnerDailyFixed = Number(toNumber(draft.partnerDailyFixed || 0).toFixed(2));
-  const partnerDays = Math.max(0, Number(toNumber(draft.partnerDays || 0).toFixed(2)));
-  const partnerSharePct = Math.min(100, Math.max(0, Number(toNumber(draft.partnerSharePct || 50).toFixed(2))));
-  const ownerSharePct = Number((100 - partnerSharePct).toFixed(2));
-  const expenseLines = normalizeProfitSplitExpenseLines(draft.expenseLines, draft)
-    .map((line) => {
-      const payer = ["owner", "partner", "shared"].includes(String(line.payer || "").trim())
-        ? String(line.payer || "").trim()
-        : "owner";
-      const label = String(line.label || "").trim();
-      const amountValue = Number(toNumber(line.amount || 0).toFixed(2));
-      const fallbackLabel = payer === "partner"
-        ? (state.lang === "it" ? "Spesa collaboratore" : "Partner expense")
-        : payer === "shared"
-          ? (state.lang === "it" ? "Costo condiviso" : "Shared cost")
-          : (state.lang === "it" ? "Spesa tua" : "Your expense");
-      const isFilled = Boolean(label) || Math.abs(amountValue) > 0;
-      return {
-        ...line,
-        payer,
-        label,
-        amountValue,
-        displayLabel: label || fallbackLabel,
-        isFilled,
-      };
-    });
-  const ownerExpenseLines = expenseLines.filter((line) => line.payer === "owner" && line.isFilled);
-  const partnerExpenseLines = expenseLines.filter((line) => line.payer === "partner" && line.isFilled);
-  const sharedExpenseLines = expenseLines.filter((line) => line.payer === "shared" && line.isFilled);
-  const sumExpenseLines = (lines) => Number(lines.reduce((sum, line) => sum + line.amountValue, 0).toFixed(2));
-  const ownerPaidExpenses = sumExpenseLines(ownerExpenseLines);
-  const partnerPaidExpenses = sumExpenseLines(partnerExpenseLines);
-  const sharedJobCosts = sumExpenseLines(sharedExpenseLines);
-  const ownerRecovery = Number(toNumber(draft.ownerRecovery || 0).toFixed(2));
-  const partnerRecovery = Number(toNumber(draft.partnerRecovery || 0).toFixed(2));
-  const partnerFixedTotal = Number((partnerDailyFixed * partnerDays).toFixed(2));
-  const deductibleCosts = Number((
-    ownerPaidExpenses
-    + partnerPaidExpenses
-    + sharedJobCosts
-    + ownerRecovery
-    + partnerRecovery
-    + partnerFixedTotal
-  ).toFixed(2));
-  const divisibleProfit = Number((revenue - deductibleCosts).toFixed(2));
-  const partnerProfitShare = Number(((divisibleProfit * partnerSharePct) / 100).toFixed(2));
-  const ownerProfitShare = Number((divisibleProfit - partnerProfitShare).toFixed(2));
-  const partnerDue = Number((partnerPaidExpenses + partnerRecovery + partnerFixedTotal + partnerProfitShare).toFixed(2));
-  const ownerDue = Number((ownerPaidExpenses + ownerRecovery + ownerProfitShare).toFixed(2));
-  const reconciliationGap = Number((revenue - sharedJobCosts - partnerDue - ownerDue).toFixed(2));
-
-  return {
-    partnerName,
-    expenseLines,
-    ownerExpenseLines,
-    partnerExpenseLines,
-    sharedExpenseLines,
-    expenseLineCount: expenseLines.filter((line) => line.isFilled).length,
-    revenue,
-    partnerDailyFixed,
-    partnerDays,
-    partnerSharePct,
-    ownerSharePct,
-    ownerPaidExpenses,
-    partnerPaidExpenses,
-    sharedJobCosts,
-    ownerRecovery,
-    partnerRecovery,
-    partnerFixedTotal,
-    deductibleCosts,
-    divisibleProfit,
-    partnerProfitShare,
-    ownerProfitShare,
-    partnerDue,
-    ownerDue,
-    reconciliationGap,
-  };
+  return computeProfitSplitScenarioPure(draft, state.lang);
 }
 
 function renderProfitSplitExpenseRows(lines = []) {
@@ -3514,6 +3377,7 @@ function renderProfitSplitPartnerBalances() {
         </div>
         <div class="profit-split-partner-amount">${escapeHtml(formatCurrency(item.partnerDue))}</div>
         <div class="profit-split-partner-bar"><span style="width:${pct}%"></span></div>
+        <button type="button" class="ghost-button small-button profit-split-partner-pdf" data-profit-split-statement-partner="${escapeHtml(item.partnerName)}">${state.lang === "it" ? "Estratto PDF" : "PDF statement"}</button>
       </article>`;
   }).join("");
 }
@@ -3532,17 +3396,87 @@ function renderProfitSplitHistory() {
     const dateText = entry.savedAt ? formatDate(entry.savedAt) : "—";
     const subline = `${dateText} · ${escapeHtml(entry.partnerName)}`;
     return `
-      <button type="button" class="profit-split-history-row${active}" data-profit-split-open-order="${escapeHtml(entry.orderId)}">
-        <span class="profit-split-history-main">
-          <span class="profit-split-history-label">${escapeHtml(entry.jobLabel)}</span>
-          <span class="profit-split-history-sub">${subline}</span>
-        </span>
-        <span class="profit-split-history-figures">
-          <span class="profit-split-history-due">${escapeHtml(formatCurrency(entry.result.partnerDue))}</span>
-          <span class="profit-split-history-rev">${state.lang === "it" ? "su" : "of"} ${escapeHtml(formatCurrency(entry.result.revenue))}</span>
-        </span>
-      </button>`;
+      <div class="profit-split-history-row${active}">
+        <button type="button" class="profit-split-history-open" data-profit-split-open-order="${escapeHtml(entry.orderId)}">
+          <span class="profit-split-history-main">
+            <span class="profit-split-history-label">${escapeHtml(entry.jobLabel)}</span>
+            <span class="profit-split-history-sub">${subline}</span>
+          </span>
+          <span class="profit-split-history-figures">
+            <span class="profit-split-history-due">${escapeHtml(formatCurrency(entry.result.partnerDue))}</span>
+            <span class="profit-split-history-rev">${state.lang === "it" ? "su" : "of"} ${escapeHtml(formatCurrency(entry.result.revenue))}</span>
+          </span>
+        </button>
+        <button type="button" class="profit-split-history-pdf ghost-button small-button" data-profit-split-pdf-order="${escapeHtml(entry.orderId)}" aria-label="${state.lang === "it" ? "Scarica PDF conto" : "Download conto PDF"}">PDF</button>
+      </div>`;
   }).join("");
+}
+
+// ── Export PDF conti pose ─────────────────────────────────────────────────────
+// I numeri li ricalcola il server dal draft (vedi lib/profit-split.js); qui
+// aggiungiamo solo i campi display per l'intestazione del documento.
+function buildProfitSplitContoPayload(draft, order) {
+  const base = normalizeProfitSplitDraft(draft);
+  return {
+    ...base,
+    orderNumber: order ? getOrderNumber(order) : "",
+    clientName: order ? composeClientName(order) : "",
+    city: order?.city || "",
+  };
+}
+
+async function downloadProfitSplitPdf(endpoint, payload, filename) {
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (err) {
+    console.error("[profit-split] download PDF fallito:", err);
+    window.alert(state.lang === "it" ? "Generazione PDF non riuscita." : "PDF generation failed.");
+  }
+}
+
+function downloadProfitSplitContoForOrder(orderId) {
+  const order = state.orders.find((item) => item.id === orderId);
+  if (!order) return;
+  const draft = getStoredProfitSplitForOrder(order);
+  if (!draft) return;
+  const payload = buildProfitSplitContoPayload(draft, order);
+  const num = String(payload.orderNumber || order.id).replace(/[^\w#-]+/g, "-");
+  downloadProfitSplitPdf("/api/profit-split/conto-pdf", payload, `conto-posa-${num}.pdf`);
+}
+
+function downloadProfitSplitContoCurrent() {
+  const draft = readProfitSplitDraftFromForm();
+  const order = getProfitSplitContextOrder();
+  const payload = buildProfitSplitContoPayload(draft, order);
+  const num = String(payload.orderNumber || "conto").replace(/[^\w#-]+/g, "-");
+  downloadProfitSplitPdf("/api/profit-split/conto-pdf", payload, `conto-posa-${num}.pdf`);
+}
+
+function downloadProfitSplitStatement(partnerName) {
+  const name = String(partnerName || "").trim();
+  const conti = getSavedProfitSplits()
+    .filter((entry) => entry.partnerName === name)
+    .map((entry) => ({
+      ...entry.draft,
+      orderNumber: getOrderNumber(entry.order),
+      jobLabel: entry.jobLabel,
+    }));
+  const safe = (name || "collaboratore").replace(/[^\w-]+/g, "-");
+  downloadProfitSplitPdf("/api/profit-split/statement-pdf", { partnerName: name, conti }, `estratto-${safe}.pdf`);
 }
 
 function composeClientName(order) {
@@ -28081,6 +28015,12 @@ bindEvent(ui.profitSplitForm, "change", () => {
   renderProfitSplitCalculator({ syncForm: false });
 });
 bindEvent(ui.profitSplitHistory, "click", (event) => {
+  const pdfBtn = event.target.closest("[data-profit-split-pdf-order]");
+  if (pdfBtn) {
+    event.preventDefault();
+    downloadProfitSplitContoForOrder(pdfBtn.getAttribute("data-profit-split-pdf-order"));
+    return;
+  }
   const row = event.target.closest("[data-profit-split-open-order]");
   if (!row) return;
   event.preventDefault();
@@ -28088,6 +28028,16 @@ bindEvent(ui.profitSplitHistory, "click", (event) => {
   if (!setProfitSplitContextOrder(orderId, { preferStored: true })) return;
   renderProfitSplitCalculator();
   ui.profitSplitForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+bindEvent(ui.profitSplitPartnerBalances, "click", (event) => {
+  const btn = event.target.closest("[data-profit-split-statement-partner]");
+  if (!btn) return;
+  event.preventDefault();
+  downloadProfitSplitStatement(btn.getAttribute("data-profit-split-statement-partner"));
+});
+bindEvent(ui.profitSplitPdfButton, "click", (event) => {
+  event.preventDefault();
+  downloadProfitSplitContoCurrent();
 });
 bindEvent(ui.profitSplitResetButton, "click", () => {
   if (isProfitSplitOrderLinked()) {

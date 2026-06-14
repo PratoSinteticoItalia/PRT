@@ -8,6 +8,8 @@ import { gzipSync } from "node:zlib";
 import { startImapWorker, getImapWorkerStatus, isImapWorkerEnabled, hasImapWorkerConfig, getImapWorkerConfig } from "./imap-worker.js";
 import { reconcileShadowLeads, buildLeadFingerprint, fingerprintIsComplete, findMatchingSalesRequest } from "./lead-fingerprint.mjs";
 import { generateWorkReportPdf } from "./lib/work-report-pdf.js";
+import { generateProfitSplitContoPdf, generateProfitSplitStatementPdf } from "./lib/profit-split-pdf.js";
+import { computeProfitSplitScenario } from "./lib/profit-split.js";
 import { createWriteGuard } from "./lib/safe-write.js";
 import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
 import { buildSnapshot, snapshotFileName } from "./lib/backup.js";
@@ -14410,6 +14412,70 @@ async function handleApi(req, res, url) {
     await writeJson(STORE_PATH, store);
     upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
+  }
+
+  // POST /api/profit-split/conto-pdf → PDF di un singolo conto (versione completa).
+  // Body: draft del conto + campi display (orderNumber, clientName, city, jobLabel, savedAt).
+  // Il server ricalcola i numeri dal draft (non si fida della matematica client).
+  if (url.pathname === "/api/profit-split/conto-pdf" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    try {
+      const logoBuffer = await getCachedLogoBuffer();
+      const pdf = await generateProfitSplitContoPdf(body || {}, { logoBuffer });
+      const safe = String(body?.orderNumber || "conto").replace(/[^\w#-]+/g, "-");
+      res.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Length": String(pdf.length),
+        "Content-Disposition": `attachment; filename="conto-posa-${safe}.pdf"`,
+      });
+      res.end(pdf);
+    } catch (err) {
+      console.error("[profit-split] conto pdf failed:", err?.message || err);
+      return sendJson(res, 500, { error: "pdf_failed" });
+    }
+    return;
+  }
+
+  // POST /api/profit-split/statement-pdf → estratto collaboratore (tutte le sue pose).
+  // Body: { partnerName, conti: [draft...] }. Totali e quote ricalcolati qui.
+  if (url.pathname === "/api/profit-split/statement-pdf" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    try {
+      const partnerName = String(body?.partnerName || "").trim();
+      const conti = Array.isArray(body?.conti) ? body.conti : [];
+      const entries = conti.map((c) => {
+        const r = computeProfitSplitScenario(c || {});
+        return {
+          jobLabel: String(c?.jobLabel || c?.orderNumber || "").trim(),
+          orderNumber: c?.orderNumber || "",
+          savedAt: c?.savedAt || "",
+          revenue: r.revenue,
+          partnerDue: r.partnerDue,
+        };
+      }).sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
+      const totalDue = Number(entries.reduce((sum, e) => sum + e.partnerDue, 0).toFixed(2));
+      const totalRevenue = Number(entries.reduce((sum, e) => sum + e.revenue, 0).toFixed(2));
+      const logoBuffer = await getCachedLogoBuffer();
+      const pdf = await generateProfitSplitStatementPdf(
+        { partnerName, entries, totalDue, totalRevenue, generatedAt: new Date().toISOString() },
+        { logoBuffer },
+      );
+      const safe = (partnerName || "collaboratore").replace(/[^\w-]+/g, "-");
+      res.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Length": String(pdf.length),
+        "Content-Disposition": `attachment; filename="estratto-${safe}.pdf"`,
+      });
+      res.end(pdf);
+    } catch (err) {
+      console.error("[profit-split] statement pdf failed:", err?.message || err);
+      return sendJson(res, 500, { error: "pdf_failed" });
+    }
+    return;
   }
 
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/operations$/) && req.method === "POST") {
