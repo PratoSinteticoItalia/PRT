@@ -121,10 +121,9 @@ test("getOpenBalance: residuo sotto 0,05 € è considerato saldato", () => {
   assert.equal(getOpenBalance(order), 0); // 0,03 € residuo → saldato
 
   const order2 = { totals: { grossTotal: 100 }, accounting: { payments: [{ id: "a", amount: 99.90 }] } };
-  // NOTA: getOpenBalance NON arrotonda il residuo a 2 decimali → ritorna un float
-  // grezzo (qui 0.0999999…). Per il display formatCurrency arrotonda, ma sarebbe
-  // più pulito arrotondare alla fonte → candidato hardening Fase 2.
-  assert.ok(Math.abs(getOpenBalance(order2) - 0.1) < 0.001); // ~0,10 € → resta aperto
+  // Fase 2: il residuo è arrotondato a 2 decimali alla fonte (niente più
+  // float-fantasma tipo 0.0999999…).
+  assert.equal(getOpenBalance(order2), 0.1); // 0,10 € → resta aperto, valore pulito
 });
 
 test("getCollectedAmount: incassato = totale - residuo", () => {

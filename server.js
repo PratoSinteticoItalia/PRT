@@ -9,6 +9,7 @@ import { startImapWorker, getImapWorkerStatus, isImapWorkerEnabled, hasImapWorke
 import { reconcileShadowLeads, buildLeadFingerprint, fingerprintIsComplete, findMatchingSalesRequest } from "./lead-fingerprint.mjs";
 import { generateWorkReportPdf } from "./lib/work-report-pdf.js";
 import { createWriteGuard } from "./lib/safe-write.js";
+import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
 import webPush from "web-push";
 
 const PORT = Number(process.env.PORT || 4178);
@@ -11214,25 +11215,12 @@ async function handleApi(req, res, url) {
       );
       const importedRequests = sourcePayload.requests.map((item) => {
         const existing = existingById.get(item.id) || null;
-        // For records already in the store, the portal is the authoritative status owner.
-        // Preserve app-edited fields so a pending async sheet-write cannot race-overwrite them.
-        const assignment = existing ? existing.assignment : (item.assignment || "");
-        const status = existing?.status || item.status || "new";
-        return normalizeSalesRequestRecord({
-          ...item,
-          requestedHeight: item.requestedHeight,
-          assignment,
-          status,
-          note: item.note || existing?.note || "",
-          whatsappTemplate: item.whatsappTemplate || existing?.whatsappTemplate || "",
-          whatsappUrl: item.whatsappUrl || existing?.whatsappUrl || "",
-          firstContactState: existing?.firstContactState || "",
-          firstContactScheduledAt: existing?.firstContactScheduledAt || "",
-          firstContactSentAt: existing?.firstContactSentAt || "",
-          firstContactBy: existing ? existing.firstContactBy : assignment,
-          createdAt: existing?.createdAt || item.createdAt || now,
-          updatedAt: now,
-        });
+        // Merge con ownership esplicita (lib/sales-merge.js, testata): il portale
+        // è autorevole su status/assignment/note/primo-contatto E sul TELEFONO
+        // (prima il sync lo sovrascriveva → numeri persi). Vedi test/sales-merge.test.js.
+        return normalizeSalesRequestRecord(
+          mergeSheetSalesRequestRecord(item, existing, { now }),
+        );
       });
       const manualRequests = (Array.isArray(store.salesRequests) ? store.salesRequests : [])
         .filter((item) => String(item.source || "") !== "google-sheets");
