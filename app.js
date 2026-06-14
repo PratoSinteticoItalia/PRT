@@ -1,4 +1,20 @@
-const APP_SHELL_VERSION = "20260614-accounting-drawer";
+// Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
+// pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
+import {
+  toNumber,
+  normalizeAccountingPaymentEntry,
+  getAccountingPayments,
+  getInternalPaidAmount,
+  getShopifyPaidAmount,
+  isShopifyPaid,
+  getOrderGrossTotal,
+  getOrderTaxTotal,
+  getOrderNetSubtotal,
+  getOpenBalance,
+  getCollectedAmount,
+} from "./lib/order-money.js?v=20260614-hardening-fase0";
+
+const APP_SHELL_VERSION = "20260614-hardening-fase0";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2778,11 +2794,6 @@ function syncSidebarLayout(_role = state.currentUser?.role || "office") {
       }
     });
   }
-}
-
-function toNumber(value) {
-  const parsed = Number(String(value || "").replace(",", ".").replace(/[^\d.-]/g, ""));
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function formatCurrency(value) {
@@ -7482,52 +7493,8 @@ function paginateAccounting(items) {
   };
 }
 
-function normalizeAccountingPaymentEntry(entry = {}, index = 0, fallbackMethod = "") {
-  const amount = Number(toNumber(entry.amount ?? entry.value ?? 0).toFixed(2));
-  if (amount <= 0) return null;
-  const type = ["deposit", "balance", "manual"].includes(String(entry.type || "").trim())
-    ? String(entry.type || "").trim()
-    : "manual";
-  return {
-    id: String(entry.id || `payment-${Date.now()}-${index}`),
-    type,
-    amount,
-    method: String(entry.method || fallbackMethod || "").trim(),
-    date: String(entry.date || "").trim(),
-    note: String(entry.note || "").trim(),
-  };
-}
-
-function getAccountingPayments(order) {
-  const accounting = order?.accounting || {};
-  const explicit = Array.isArray(accounting.payments)
-    ? accounting.payments.map((entry, index) => normalizeAccountingPaymentEntry(entry, index, accounting.paymentMethod || order?.paymentMethod || ""))
-      .filter(Boolean)
-    : [];
-  if (explicit.length) return explicit;
-
-  const legacy = [];
-  const paymentMethod = accounting.paymentMethod || order?.paymentMethod || "";
-  const depositPaid = Number(toNumber(accounting.depositPaid || 0).toFixed(2));
-  const balancePaid = Number(toNumber(accounting.balancePaid || 0).toFixed(2));
-  if (depositPaid > 0) {
-    legacy.push(normalizeAccountingPaymentEntry({
-      id: `legacy-deposit-${order?.id || "order"}`,
-      type: "deposit",
-      amount: depositPaid,
-      method: paymentMethod,
-    }, 0, paymentMethod));
-  }
-  if (balancePaid > 0) {
-    legacy.push(normalizeAccountingPaymentEntry({
-      id: `legacy-balance-${order?.id || "order"}`,
-      type: "balance",
-      amount: balancePaid,
-      method: paymentMethod,
-    }, 1, paymentMethod));
-  }
-  return legacy.filter(Boolean);
-}
+// toNumber / normalizeAccountingPaymentEntry / getAccountingPayments →
+// importati da lib/order-money.js (vedi cima file).
 
 function getAccountingPaymentTypeLabel(type = "manual") {
   if (type === "deposit") return state.lang === "it" ? "Acconto registrato" : "Recorded deposit";
@@ -7616,30 +7583,8 @@ function removeAccountingPaymentRow(paymentId) {
   renderAccountingPaymentEditor(order, draft);
 }
 
-function getOpenBalance(order) {
-  const total = getOrderGrossTotal(order);
-  const effectivePaid = Math.max(getShopifyPaidAmount(order), getInternalPaidAmount(order));
-  const residual = Math.max(0, total - effectivePaid);
-  return residual < 0.05 ? 0 : residual;
-}
-
-function getShopifyPaidAmount(order) {
-  const normalized = String(order.financialStatus || "").toLowerCase();
-  if (normalized.includes("paid") && !normalized.includes("partial")) return toNumber(order.total);
-  return 0;
-}
-
-function isShopifyPaid(order) {
-  return getShopifyPaidAmount(order) > 0;
-}
-
-function getInternalPaidAmount(order) {
-  return Number(getAccountingPayments(order).reduce((sum, payment) => sum + toNumber(payment.amount || 0), 0).toFixed(2));
-}
-
-function getCollectedAmount(order) {
-  return Math.max(0, toNumber(order.total) - getOpenBalance(order));
-}
+// getOpenBalance / getShopifyPaidAmount / isShopifyPaid / getInternalPaidAmount /
+// getCollectedAmount → importati da lib/order-money.js (vedi cima file).
 
 function getAccountingNote(order) {
   if (isShopifyPaid(order) && !getInternalPaidAmount(order)) {
@@ -7663,13 +7608,7 @@ function getOrderLineSummary(order) {
   };
 }
 
-function getOrderGrossTotal(order) {
-  return toNumber(order?.totals?.grossTotal ?? order?.total ?? 0);
-}
-
-function getOrderTaxTotal(order) {
-  return toNumber(order?.totals?.taxTotal ?? 0);
-}
+// getOrderGrossTotal / getOrderTaxTotal → importati da lib/order-money.js.
 
 function isLikelyFlatShopifyVatFallback(order) {
   if (!isShopifyBackedOrder(order)) return false;
@@ -7749,11 +7688,7 @@ function getDisplayedNetSubtotal(order) {
   return getOrderNetSubtotal(order);
 }
 
-function getOrderNetSubtotal(order) {
-  const explicitNet = order?.totals?.netSubtotal;
-  if (explicitNet != null) return toNumber(explicitNet);
-  return Math.max(0, Number((getOrderGrossTotal(order) - getOrderTaxTotal(order)).toFixed(2)));
-}
+// getOrderNetSubtotal → importato da lib/order-money.js.
 
 function getOrderTaxDisplay(order) {
   if (isShopifyBackedOrder(order) && !hasReliableTaxData(order)) {
