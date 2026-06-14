@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260614-pose-drawer-contain-fix";
+const APP_SHELL_VERSION = "20260614-accounting-drawer";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1244,6 +1244,7 @@ const state = {
   navCounts: {},
   orderPage: 1,
   accountingPage: 1,
+  accountingDrawerOpen: false,
   salesRequestPage: 1,
   salesRequestCompactMode: false,
   salesContentPage: 1,
@@ -2751,6 +2752,7 @@ function handleResponsiveResize() {
   const isMobile = window.innerWidth <= 980;
   applyMobileSafeMode();
   updateAccountingPaneVisibility();
+  applyAccountingDrawerState();
   syncMobilePillNav();
   if (isMobile !== lastResponsiveIsMobile && state.currentUser) {
     renderCurrentViewOnly(state.currentView);
@@ -18656,6 +18658,7 @@ function renderAccounting() {
     ui.accountingMeta.innerHTML = "";
     if (ui.accountingPaymentsEditor) ui.accountingPaymentsEditor.innerHTML = "";
     updateAccountingPaneVisibility();
+    applyAccountingDrawerState();
     return;
   }
   if (needsShopifyFinancialRefresh(order)) {
@@ -18779,6 +18782,7 @@ function renderAccounting() {
     order.accounting?.accountingNote ? `<div class="info-card"><strong>${t("accountingDetailSubtitle")}</strong><p>${order.accounting.accountingNote}</p></div>` : "",
   ].join("");
   updateAccountingPaneVisibility();
+  applyAccountingDrawerState();
 }
 
 async function importShopifyPayment() {
@@ -19329,6 +19333,23 @@ function applyInstallDrawerState() {
   const open = isDesktop
     && Boolean(state.installDrawerOpen)
     && state.currentView === "installations"
+    && Boolean(state.selectedOrderId);
+  panel.classList.toggle("is-open", open);
+  if (scrim) scrim.classList.toggle("is-open", open);
+}
+
+// Drawer dettaglio Contabilità (desktop/tablet): il pannello diventa overlay a
+// destra, così la lista resta a tutta larghezza. Su mobile <=768px resta il
+// layout impilato, quindi applichiamo il drawer solo sopra soglia.
+function applyAccountingDrawerState() {
+  const panel = document.querySelector("#accounting .accounting-detail-panel");
+  const scrim = document.getElementById("accounting-drawer-scrim");
+  if (!panel) return;
+  const isDesktop = window.innerWidth > MOBILE_DRILL_BREAKPOINT;
+  panel.classList.toggle("is-drawer", isDesktop);
+  const open = isDesktop
+    && Boolean(state.accountingDrawerOpen)
+    && state.currentView === "accounting"
     && Boolean(state.selectedOrderId);
   panel.classList.toggle("is-open", open);
   if (scrim) scrim.classList.toggle("is-open", open);
@@ -22955,6 +22976,7 @@ function setView(view, { pushHistory = true } = {}) {
   // Cambiando vista, il drawer Logistica parte sempre chiuso.
   if (nextView !== previousView) state.shippingDrawerOpen = false;
   if (nextView !== "installations") state.installDrawerOpen = false;
+  if (nextView !== "accounting") state.accountingDrawerOpen = false;
   if (currentViewRenderFrame) {
     window.cancelAnimationFrame(currentViewRenderFrame);
     currentViewRenderFrame = 0;
@@ -25399,12 +25421,14 @@ function handleGlobalClick(event) {
   }
   if (action === "accounting-prev-page") {
     state.accountingPage = Math.max(1, (state.accountingPage || 1) - 1);
+    state.accountingDrawerOpen = false; // cambio pagina → chiudi il drawer
     renderAccounting();
     ui.accountingList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
   if (action === "accounting-next-page") {
     state.accountingPage = (state.accountingPage || 1) + 1;
+    state.accountingDrawerOpen = false; // cambio pagina → chiudi il drawer
     renderAccounting();
     ui.accountingList?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
@@ -25928,6 +25952,11 @@ function handleGlobalClick(event) {
     applyInstallDrawerState();
     return;
   }
+  if (action === "close-accounting-drawer") {
+    state.accountingDrawerOpen = false;
+    applyAccountingDrawerState();
+    return;
+  }
   const order = state.orders.find((item) => item.id === id) || getSelectedOrder();
   if (!order) return;
   if (action === "close-shipping-drawer") {
@@ -25974,6 +26003,9 @@ function handleGlobalClick(event) {
     if (nextView === "shipping") state.shippingDrawerOpen = true;
     if (nextView === "accounting") {
       state.accountingMobilePane = "summary";
+      // Desktop/tablet: cliccando una riga si apre il drawer dettaglio a destra
+      // (su mobile <=768px resta il layout impilato).
+      if (window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.accountingDrawerOpen = true;
     }
     if (nextView === "installations") {
       state.installationMobilePane = "summary";
@@ -27784,6 +27816,7 @@ ui.installationFilterTags.forEach((button) => button.addEventListener("click", (
 ui.accountingFilterTags.forEach((button) => button.addEventListener("click", () => {
   state.filters.accounting = button.dataset.accountingFilter;
   state.accountingPage = 1;
+  state.accountingDrawerOpen = false; // cambio filtro → chiudi il drawer
   ui.accountingFilterTags.forEach((item) => item.classList.toggle("is-active", item === button));
   renderAccounting();
 }));

@@ -21118,6 +21118,28 @@ body {
 #installations .install-detail-panel.is-drawer .install-drawer-close { display: block; }
 .install-drawer-close:hover { background: #e7e3d8; color: #1a2e26; }
 
+/* Drawer dettaglio Contabilità (desktop/tablet) — stesso pattern di Pose/Logistica.
+   Su mobile <=768px non si applica (is-drawer non viene aggiunto): la lista e il
+   pannello restano impilati come prima. */
+/* Quando il drawer desktop è attivo: lista a tutta larghezza (la 2ª colonna del
+   grid non serve più, il dettaglio è un overlay fixed) e contain neutralizzato
+   sulla view per far uscire il fixed dal containing block (vedi nota in Pose). */
+.view.is-active#accounting:has(.accounting-detail-panel.is-drawer) { contain: none; }
+.view.is-active#accounting:has(.accounting-detail-panel.is-drawer) .order-grid { grid-template-columns: 1fr; }
+#accounting .accounting-detail-panel.is-drawer {
+  position: fixed; top: 0; right: 0; height: 100vh; width: 520px; max-width: 94vw;
+  max-height: 100vh; margin: 0; border-radius: 0; border-left: 1px solid #e5e1d6;
+  background: #fff; box-shadow: -18px 0 46px rgba(20,40,30,.16);
+  transform: translateX(100%); transition: transform .22s cubic-bezier(.4,0,.2,1);
+  z-index: 110; overflow-y: auto; padding: 16px 16px 28px;
+}
+#accounting .accounting-detail-panel.is-drawer.is-open { transform: translateX(0); }
+.accounting-drawer-scrim { position: fixed; inset: 0; background: rgba(20,30,25,.28); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 105; }
+.accounting-drawer-scrim.is-open { opacity: 1; pointer-events: auto; }
+.accounting-drawer-close { display: none; position: absolute; top: 14px; right: 16px; z-index: 2; width: 32px; height: 32px; border: none; border-radius: 8px; background: #f1efe7; color: #5a6e63; font-size: 16px; cursor: pointer; }
+#accounting .accounting-detail-panel.is-drawer .accounting-drawer-close { display: block; }
+.accounting-drawer-close:hover { background: #e7e3d8; color: #1a2e26; }
+
 /* Contenuto drawer: box a piena larghezza (niente cella vuota/"padding" a destra) */
 .shipping-standard-detail-panel .detail-grid { grid-template-columns: 1fr; gap: 10px; }
 .shipping-standard-detail-panel .detail-box { border-radius: 12px; padding: 11px 12px; min-width: 0; overflow: hidden; }

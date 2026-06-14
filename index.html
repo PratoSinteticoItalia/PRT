@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260614-pose-drawer-contain-fix" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260614-pose-drawer-contain-fix" />
+    <link rel="preload" href="./styles.css?v=20260614-accounting-drawer" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260614-accounting-drawer" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -765,7 +765,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260614-pose-drawer-contain-fix&shell=20260614-pose-drawer-contain-fix"
+                src="./sales-suite/generator.html?embedded=1&v=20260614-accounting-drawer&shell=20260614-accounting-drawer"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -1479,7 +1479,9 @@
               <div id="accounting-pagination" class="list-pagination"></div>
             </div>
 
-            <section class="detail-panel">
+            <div id="accounting-drawer-scrim" class="accounting-drawer-scrim" data-action="close-accounting-drawer"></div>
+            <section class="detail-panel accounting-detail-panel">
+              <button type="button" class="accounting-drawer-close" data-action="close-accounting-drawer" aria-label="Chiudi">✕</button>
               <div class="detail-header">
                 <div>
                   <div class="detail-title" id="accounting-detail-title">Seleziona un ordine</div>
@@ -2339,7 +2341,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260614-pose-drawer-contain-fix" defer></script>
-    <script src="./app.js?v=20260614-pose-drawer-contain-fix" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260614-accounting-drawer" defer></script>
+    <script src="./app.js?v=20260614-accounting-drawer" type="module"></script>
   </body>
 </html>
