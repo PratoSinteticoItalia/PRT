@@ -21096,6 +21096,14 @@ body {
 /* Drawer dettaglio Pose (desktop/tablet) — stesso pattern del drawer Logistica.
    Su mobile <=768px non si applica (is-drawer non viene aggiunto): resta il
    drill-down fullscreen. */
+/* Il .view attivo ha `contain: layout paint`, che rende il .view il containing
+   block dei figli position:fixed E li ritaglia: senza questo override il drawer
+   restava ancorato/clippato al riquadro della view (il "quadrato nero" tagliato
+   su fondo e destra). Logistica lo risolve spostando il drawer su <body>; qui il
+   pannello deve restare dentro #installations per il drill-down mobile, quindi
+   neutralizziamo il contain solo quando il drawer desktop è attivo (is-drawer),
+   così il fixed torna relativo al viewport → full-height e flush a destra. */
+.view.is-active#installations:has(.install-detail-panel.is-drawer) { contain: none; }
 #installations .install-detail-panel.is-drawer {
   position: fixed; top: 0; right: 0; height: 100vh; width: 500px; max-width: 94vw;
   max-height: 100vh; margin: 0; border-radius: 0; border-left: 1px solid #e5e1d6;

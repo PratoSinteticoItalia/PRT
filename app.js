@@ -1,4 +1,4 @@
-const APP_SHELL_VERSION = "20260614-pose-detail-drawer";
+const APP_SHELL_VERSION = "20260614-pose-drawer-contain-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
