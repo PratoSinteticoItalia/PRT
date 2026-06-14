@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260614-hardening-fase2";
+} from "./lib/order-money.js?v=20260614-sidebar-top-spacing";
 
-const APP_SHELL_VERSION = "20260614-hardening-fase2";
+const APP_SHELL_VERSION = "20260614-sidebar-top-spacing";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
