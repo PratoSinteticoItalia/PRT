@@ -85,3 +85,29 @@ Dopo il deploy verifica:
 - Ad ogni salvataggio di `store.json` il server crea anche backup automatici rotanti in `DATA_DIR/backups`.
 - Per un uso aziendale serio, più avanti conviene comunque passare da file JSON a database.
 - Se vuoi usare un dominio tuo tipo `ops.pratosinteticoitalia.com`, puoi collegarlo dopo direttamente su Render.
+
+## 8. Backup e ripristino (resilienza)
+
+Tre livelli di protezione dati:
+
+1. **Backup automatici locali** — ad ogni salvataggio il server scrive snapshot
+   rotanti dello store in `DATA_DIR/backups` (tiene gli ultimi 30). Stanno sul
+   disco Render.
+2. **Export off-site** — da loggato come ufficio, scarica uno snapshot completo
+   (tabelle DB + store) da `GET /api/admin/backup`. Tienine una copia FUORI da
+   Render (es. Drive/disco locale): è la protezione contro la perdita del disco.
+3. **Database gestito** — il Postgres su Render ha i propri backup/PITR: è la via
+   primaria per recuperare il database a tabelle non vuote.
+
+**Ripristino dello store da uno snapshot** (`scripts/restore-snapshot.mjs`):
+
+```bash
+# dry-run: valida e mostra i conteggi, NON scrive nulla
+node scripts/restore-snapshot.mjs snapshot-2026-06-14T....json
+
+# ripristino effettivo: salva una copia dello store attuale, poi sovrascrive
+DATA_DIR=/var/data/vertex-ops node scripts/restore-snapshot.mjs snapshot-....json --confirm
+```
+
+Lo script ripristina il **blob store**; il DB si ripopola dal blob all'avvio se
+vuoto. Per ripristinare il DB a tabelle già popolate, usa il PITR di Render.

@@ -10,6 +10,7 @@ import { reconcileShadowLeads, buildLeadFingerprint, fingerprintIsComplete, find
 import { generateWorkReportPdf } from "./lib/work-report-pdf.js";
 import { createWriteGuard } from "./lib/safe-write.js";
 import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
+import { buildSnapshot, snapshotFileName } from "./lib/backup.js";
 import webPush from "web-push";
 
 const PORT = Number(process.env.PORT || 4178);
@@ -4661,6 +4662,8 @@ function sendJson(res, status, payload, headers = {}) {
     "X-Frame-Options": "DENY",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Content-Security-Policy": "default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self' https://*.myshopify.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    // HSTS solo in produzione (HTTPS): forza HTTPS per 1 anno. Fase 3 hardening.
+    ...(IS_PUBLIC_DEPLOY ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" } : {}),
   };
   if (res.__acceptsGzip && body.length >= 4096) {
     try {
@@ -4707,6 +4710,7 @@ function getStaticHeaders(contentType, { versioned = false, isHtml = false } = {
     "Cache-Control": cacheControl,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
+    ...(IS_PUBLIC_DEPLOY ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" } : {}),
   };
 }
 
@@ -12398,6 +12402,37 @@ async function handleApi(req, res, url) {
       return sendJson(res, 200, { requests: rows });
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "list_failed") });
+    }
+  }
+
+  // GET /api/admin/backup — export scaricabile di uno snapshot completo
+  // (tabelle DB autorevoli + intero store blob). Serve per tenere una copia
+  // FUORI dal disco Render. Office-only. Fase 3 resilienza.
+  if (url.pathname === "/api/admin/backup" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const [orders, inventory, jobs, salesRequests] = await Promise.all([
+        getOrdersFromDb().catch(() => []),
+        getInventoryFromDb().catch(() => []),
+        getJobsFromDb().catch(() => []),
+        getSalesRequestsFromDb().catch(() => []),
+      ]);
+      const snapshot = buildSnapshot({ orders, inventory, jobs, salesRequests, store });
+      const fileName = snapshotFileName(snapshot.createdAt);
+      const bodyStr = JSON.stringify(snapshot);
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Length": String(Buffer.byteLength(bodyStr)),
+      });
+      res.end(bodyStr);
+      return;
+    } catch (error) {
+      logError("admin:backup", error);
+      return sendJson(res, 500, { error: String(error?.message || "backup_failed") });
     }
   }
 
