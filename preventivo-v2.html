@@ -590,6 +590,81 @@
     }
     .p2-footer-info { font-size: 8.5px; color: rgba(255,255,255,.7); }
     .p2-footer-page { font-size: 8.5px; color: rgba(255,255,255,.55); white-space: nowrap; }
+  /* ═══════════════ Redesign pagina 1 (premium sobrio) — scopato in .offer-v3 ═══════════════ */
+  .offer-v3{ --v3-green:#1f4d3d; --v3-green-d:#15362a; --v3-green-l:#3c6b58; --v3-ink:#1b2a23;
+    --v3-muted:#6f7e74; --v3-faint:#9aa79e; --v3-sand:#f6f3ec; --v3-line:#e7e1d4; --v3-gold:#b0894a; --v3-gold-soft:#f3ead6; --v3-ok:#2f7d5b; }
+  .offer-v3 .eyebrow{font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--v3-faint);font-weight:700}
+  /* Meta cliente/validità */
+  .offer-v3 .meta{display:flex;justify-content:space-between;gap:30px;margin:22px 2px 6px}
+  .offer-v3 .meta .eyebrow{margin-bottom:9px}
+  .offer-v3 .kv{display:flex;gap:8px;font-size:12.5px;margin-bottom:4px}
+  .offer-v3 .kv .k{color:var(--v3-muted);min-width:46px}
+  .offer-v3 .kv .v{font-weight:600;color:var(--v3-ink)}
+  .offer-v3 .valid{text-align:right}
+  .offer-v3 .valid .range{font-size:13px;font-weight:700;color:var(--v3-green-d)}
+  .offer-v3 .valid .range span{color:var(--v3-muted);font-weight:500}
+  /* Hero */
+  .offer-v3 .v3hero{margin:24px 0 14px}
+  .offer-v3 .v3hero .eyebrow{margin-bottom:5px}
+  .offer-v3 .v3hero h1{font-size:29px;font-weight:800;letter-spacing:-.01em;color:var(--v3-green-d)}
+  .offer-v3 .v3hero h1 b{color:var(--v3-gold)}
+  .offer-v3 .v3hero p{font-size:12.5px;color:var(--v3-muted);margin-top:6px;max-width:70%}
+  /* Cards */
+  .offer-v3 .cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:8px;align-items:stretch}
+  .offer-v3 .card{border:1px solid var(--v3-line);border-radius:14px;background:#fff;padding:0 0 16px;display:flex;flex-direction:column;overflow:hidden;position:relative}
+  .offer-v3 .card.reco{border-color:var(--v3-gold);box-shadow:0 10px 26px rgba(176,137,74,.16)}
+  .offer-v3 .card .ph{height:112px;position:relative;overflow:hidden;background:#e9ece7}
+  .offer-v3 .card .ph img{width:100%;height:100%;object-fit:cover;display:block}
+  .offer-v3 .card .ph .grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,40,30,0) 45%,rgba(20,40,30,.28))}
+  .offer-v3 .card .badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--v3-gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;padding:5px 13px;border-radius:999px;white-space:nowrap;box-shadow:0 3px 10px rgba(20,30,25,.45);z-index:2}
+  .offer-v3 .card .cbody{padding:15px 16px 0;text-align:center}
+  .offer-v3 .card .pname{font-size:16px;font-weight:800;color:var(--v3-green-d)}
+  .offer-v3 .card .pdesc{font-size:11px;color:var(--v3-muted);margin-top:2px}
+  .offer-v3 .card .price{margin-top:12px}
+  .offer-v3 .card .price .big{font-size:29px;font-weight:800;color:var(--v3-ink);letter-spacing:-.02em}
+  .offer-v3 .card.reco .price .big{color:var(--v3-green-d)}
+  .offer-v3 .card .price .u{font-size:12px;color:var(--v3-muted);font-weight:600}
+  .offer-v3 .card .price .sub{font-size:10.5px;color:var(--v3-faint);margin-top:1px}
+  .offer-v3 .card .tot{margin-top:10px;padding-top:10px;border-top:1px dashed var(--v3-line);font-size:12.5px}
+  .offer-v3 .card .tot .tv{font-weight:800;color:var(--v3-ink);font-size:15px}
+  .offer-v3 .card .brk{margin:11px 16px 0;padding-top:10px;border-top:1px solid var(--v3-line);display:flex;flex-direction:column;gap:4px}
+  .offer-v3 .card .brk .br{display:flex;justify-content:space-between;font-size:10.5px;color:var(--v3-muted)}
+  .offer-v3 .card .brk .br b{color:var(--v3-ink);font-weight:700}
+  .offer-v3 .card .incl{margin:11px 14px 0;padding-top:10px;border-top:1px solid var(--v3-line);text-align:left;display:flex;flex-direction:column;gap:5px}
+  .offer-v3 .card .incl .li{font-size:10.5px;color:var(--v3-muted);display:flex;gap:7px;align-items:center}
+  .offer-v3 .card .incl .li svg{flex:0 0 auto;color:var(--v3-ok)}
+  .offer-v3 .card .incl .disc{color:var(--v3-gold);font-weight:700}
+  /* Sezioni */
+  .offer-v3 .sect{margin-top:24px}
+  .offer-v3 .sect-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .offer-v3 .sect-h .eyebrow{color:var(--v3-green-l)}
+  .offer-v3 .sect-h .rule{flex:1;height:1px;background:var(--v3-line)}
+  .offer-v3 .matwrap{background:var(--v3-sand);border:1px solid var(--v3-line);border-radius:14px;padding:18px 20px}
+  .offer-v3 .matwrap .desc{font-size:12px;color:var(--v3-ink);line-height:1.55;max-width:90%}
+  .offer-v3 .matgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 26px;margin-top:14px}
+  .offer-v3 .matgrid .m{display:flex;justify-content:space-between;font-size:12px;border-bottom:1px dotted var(--v3-line);padding-bottom:5px}
+  .offer-v3 .matgrid .m .mk{color:var(--v3-muted)}
+  .offer-v3 .matgrid .m .mv{font-weight:700;color:var(--v3-ink)}
+  .offer-v3 .matnote{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:11px;color:var(--v3-muted)}
+  .offer-v3 .pill{background:var(--v3-gold-soft);color:var(--v3-gold);font-weight:800;font-size:11px;padding:4px 11px;border-radius:999px}
+  /* Trust */
+  .offer-v3 .trust{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:22px}
+  .offer-v3 .trust .b{border:1px solid var(--v3-line);border-radius:12px;padding:15px 10px;text-align:center}
+  .offer-v3 .trust .b svg{color:var(--v3-green);margin-bottom:7px}
+  .offer-v3 .trust .b .n{font-size:16px;font-weight:800;color:var(--v3-green-d);line-height:1}
+  .offer-v3 .trust .b .c{font-size:10px;color:var(--v3-muted);margin-top:4px}
+  /* Finance */
+  .offer-v3 .finance{display:flex;align-items:center;gap:24px;margin-top:22px;border-radius:16px;padding:22px 28px;background:linear-gradient(115deg,var(--v3-green-d) 0%,var(--v3-green) 70%);color:#fff;overflow:hidden}
+  .offer-v3 .finance .fl{flex:1}
+  .offer-v3 .finance .fl .fe{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.65);font-weight:700}
+  .offer-v3 .finance .fl .ft{font-size:18px;font-weight:800;margin-top:4px;letter-spacing:-.01em}
+  .offer-v3 .finance .fl .fx{font-size:11.5px;color:rgba(255,255,255,.82);margin-top:6px;line-height:1.55;max-width:92%}
+  .offer-v3 .finance .fr{flex:0 0 auto;text-align:right;padding-left:24px;border-left:1px solid rgba(255,255,255,.22)}
+  .offer-v3 .finance .fr .amt{font-size:33px;font-weight:800;line-height:1;letter-spacing:-.02em}
+  .offer-v3 .finance .fr .amt small{font-size:15px;font-weight:700;opacity:.85}
+  .offer-v3 .finance .fr .lbl{font-size:11px;color:rgba(255,255,255,.82);margin-top:5px}
+  .offer-v3 .finance .fr .zero{display:inline-block;margin-top:9px;background:var(--v3-gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:4px 11px;border-radius:999px}
+  .offer-v3 .ivanote{text-align:center;font-size:10px;color:var(--v3-faint);margin-top:14px;letter-spacing:.04em}
   </style>
 </head>
 <body>
@@ -599,7 +674,7 @@
   <button type="button" class="ghost" onclick="window.close()">Chiudi</button>
 </div>
 
-<div class="page">
+<div class="page offer-v3">
   <!-- HEADER -->
   <div class="hdr">
     <div class="hdr-left">
@@ -620,54 +695,42 @@
     </div>
   </div>
 
-  <!-- CLIENTE / VALIDITÀ -->
-  <div class="info-row">
-    <div class="ibox">
-      <div class="ibox-t">Cliente</div>
-      <div class="ibox-body">
-        <div class="cgrid">
-          <div class="cf"><span class="cf-l">Nome:</span><span class="cf-v" data-field="customerName">—</span></div>
-          <div class="cf"><span class="cf-l">Città:</span><span class="cf-v" data-field="customerCity">—</span></div>
-          <div class="cf"><span class="cf-l">Tel:</span><span class="cf-v" data-field="customerPhone">—</span></div>
-          <div class="cf"><span class="cf-l">Email:</span><span class="cf-v" data-field="customerEmail">—</span></div>
-        </div>
-      </div>
+  <!-- META: cliente / validità -->
+  <div class="meta">
+    <div class="col">
+      <div class="eyebrow">Cliente</div>
+      <div class="kv"><span class="k">Nome</span><span class="v" data-field="customerName">—</span></div>
+      <div class="kv"><span class="k">Città</span><span class="v" data-field="customerCity">—</span></div>
+      <div class="kv"><span class="k">Tel</span><span class="v" data-field="customerPhone">—</span></div>
+      <div class="kv"><span class="k">Email</span><span class="v" data-field="customerEmail">—</span></div>
     </div>
-    <div class="ibox">
-      <div class="ibox-t">Validità</div>
-      <div class="ibox-body v">
-        <div class="vrow"><span>Dal</span> <strong data-field="validFrom">—</strong></div>
-        <div class="vrow"><span>Al</span> <strong data-field="validTo">—</strong></div>
-      </div>
+    <div class="col valid">
+      <div class="eyebrow">Validità offerta</div>
+      <div class="range"><span>Dal</span> <strong data-field="validFrom">—</strong></div>
+      <div class="range"><span>Al</span> <strong data-field="validTo">—</strong></div>
     </div>
   </div>
 
   <!-- HERO -->
-  <div class="hero" data-field="offerTitle">OFFERTA</div>
+  <div class="v3hero">
+    <div class="eyebrow">La tua offerta su misura</div>
+    <h1>Prato sintetico per <b data-field="offerTitle">—</b></h1>
+    <p data-field="offerIntro">Scegli la finitura che preferisci: il prezzo è chiavi in mano, IVA e spedizione comprese.</p>
+  </div>
 
-  <!-- TABELLA -->
-  <table class="mt">
-    <thead>
-      <tr id="mt-head">
-        <!-- Le colonne sono generate dinamicamente in base alla modalità (Solo fornitura / Fornitura+posa) -->
-      </tr>
-    </thead>
-    <tbody data-field="optionsTable"></tbody>
-  </table>
+  <!-- PRODUCT CARDS -->
+  <div class="cards" data-field="optionsTable"></div>
 
-  <!-- DETTAGLI MATERIALI (compatto) -->
-  <div class="mat" data-field="materialsBox">
-    <div class="mat-hdr">Dettagli materiali inclusi</div>
-    <div class="mat-desc" data-field="materialsDesc">—</div>
-    <div class="mat-discount-row" data-field="materialsDiscountRow" style="display:none;">
-      <span class="mat-discount-l">Sconto materiali applicato</span>
-      <span class="mat-discount-v" data-field="materialsDiscountValue">—</span>
-    </div>
-    <div class="mat-list" data-field="materialsList"></div>
-    <div class="mat-det" data-field="materialsDet"></div>
-    <div class="mat-disc-wrap" data-field="materialsDiscWrap" style="display:none">
-      <div class="mat-disc-lbl">Sconti commerciali applicati</div>
-      <div class="mat-disc-grid" data-field="materialsDiscGrid"></div>
+  <!-- MATERIALI INCLUSI -->
+  <div class="sect" data-field="materialsBox">
+    <div class="sect-h"><span class="eyebrow">Materiali e lavorazioni incluse</span><span class="rule"></span></div>
+    <div class="matwrap">
+      <div class="desc" data-field="materialsDesc">—</div>
+      <div class="matgrid" data-field="materialsList"></div>
+      <div class="matnote" data-field="materialsDiscountRow" style="display:none">
+        <span>Sconto materiali già applicato ai totali</span>
+        <span class="pill" data-field="materialsDiscountValue">—</span>
+      </div>
     </div>
   </div>
 
@@ -692,24 +755,13 @@
     </table>
   </div>
 
-  <!-- BADGES -->
-  <div class="badges" data-field="badges"></div>
+  <!-- TRUST -->
+  <div class="trust" data-field="badges"></div>
 
-  <!-- PRICE CARDS (al mq finale) -->
-  <div class="pc-row" data-field="priceCards"></div>
+  <!-- FINANCE (rate HeyLight, alto impatto) -->
+  <div class="finance" data-field="hlBlock"></div>
 
-  <!-- METODI DI PAGAMENTO -->
-  <div class="pay">
-    <div class="pay-t">Metodi di pagamento</div>
-    <div class="pay-d1" data-field="paymentMain">Pagamento disponibile con carta, PayPal, bonifico bancario, Scalapay e HeyLight.</div>
-    <div class="pay-d2" data-field="paymentHeyLight">Con HeyLight puoi suddividere il preventivo in 3 o 5 rate senza interessi.</div>
-  </div>
-
-  <!-- SIMULAZIONE HEYLIGHT -->
-  <div class="hl-sim" data-field="hlBlock">
-    <div class="hl-sim-t" data-field="hlTitle">Simulazione 5 rate HeyLight</div>
-    <div class="hl-row" data-field="hlCards"></div>
-  </div>
+  <div class="ivanote">Tutti i prezzi sono IVA inclusa · Offerta valida nel periodo indicato</div>
 
   <!-- FIRMA + LOGOS -->
   <div class="firma-row">
@@ -964,44 +1016,54 @@
     return { isPosa, vat: data.vat };
   }
 
+  // Redesign v3: 3 card prodotto (foto, prezzo al m², scomposizione leggera,
+  // "Consigliato" pilotato da data.suggestedSlug — scelto a mano dall'ufficio).
   function renderOptionsTable(data) {
-    const tbody = document.querySelector('[data-field="optionsTable"]');
-    if (!tbody) return;
-    const { isPosa, vat } = renderHeader(data);
+    const wrap = document.querySelector('[data-field="optionsTable"]');
+    if (!wrap) return;
+    const isPosa = String(data.mode || "").includes("posa");
     const suggestedSlug = data.suggestedSlug || "";
-    tbody.innerHTML = data.options.map((opt) => {
-      const isSuggested = opt.slug && opt.slug === suggestedSlug;
-      const rowCls = isSuggested ? "suggested" : "";
-      // Mostra pill solo se c'è uno sconto reale; altrimenti segno neutro
-      const discountCell = opt.discount > 0
-        ? `<div class="disc">${opt.discount}%</div>`
-        : `<span style="color:var(--gl);font-size:10px;">—</span>`;
-      const suggestedBadge = isSuggested
-        ? `<span class="suggested-badge">⭐ Consigliato</span>`
-        : "";
-      const cellPosa = isPosa
-        ? `<td><div class="price-val">${fmtEur(opt.installation)}</div><div class="price-vat">IVA ${vat}%</div></td>`
-        : "";
+    const CHECK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    const opts = (data.options || []).slice(0, 3);
+    wrap.style.gridTemplateColumns = `repeat(${Math.max(1, opts.length)}, 1fr)`;
+    const noSym = (n) => fmtEur(n).replace(" €", "");
+    wrap.innerHTML = opts.map((opt) => {
+      const reco = opt.slug && opt.slug === suggestedSlug;
+      const sub = opt.discount > 0
+        ? `prezzo listino ${noSym(opt.pricePerSqm)} €/m² · sconto ${opt.discount}% incluso`
+        : `prezzo materiale ${noSym(opt.pricePerSqm)} €/m²`;
+      const imgSrc = String(opt.imageDataUrl || "").trim() || `./product-images/${opt.slug}.png`;
+      const incl = [
+        `<div class="li">${CHECK} ${isPosa ? "Posa professionale inclusa" : "Materiale certificato"}</div>`,
+        `<div class="li">${CHECK} Spedizione ${escHtml(String(opt.shippingLabel || "inclusa").toLowerCase())}</div>`,
+        opt.discount > 0 ? `<div class="li disc">${CHECK} Sconto commerciale ${opt.discount}%</div>` : "",
+      ].join("");
+      const brk = `
+        <div class="brk">
+          <div class="br"><span>Materiale prato</span><b>${noSym(opt.pricePerSqm)} €/m²</b></div>
+          ${isPosa ? `<div class="br"><span>Posa professionale</span><b>${noSym(opt.installation)} €/m²</b></div>` : ""}
+          <div class="br"><span>Spedizione</span><b>${escHtml(opt.shippingLabel || "—")}</b></div>
+        </div>`;
       return `
-        <tr class="${rowCls}">
-          <td>
-            <div class="m-cell">
-              ${productThumb(opt, isSuggested)}
-              <div>
-                <div class="m-name">${escHtml(opt.name)}${suggestedBadge}</div>
-                <div class="m-tag">${escHtml(opt.tagline || "")}</div>
-              </div>
+        <div class="card${reco ? " reco" : ""}">
+          <div class="ph">
+            <img src="${escHtml(imgSrc)}" alt="${escHtml(opt.name)}" onerror="this.style.display='none'">
+            <div class="grad"></div>
+            ${reco ? '<div class="badge">★ Consigliato</div>' : ""}
+          </div>
+          <div class="cbody">
+            <div class="pname">${escHtml(opt.name)}</div>
+            <div class="pdesc">${escHtml(opt.tagline || "")}</div>
+            <div class="price">
+              <div><span class="big">${fmtEur(opt.finalSqmPrice)}</span></div>
+              <div class="u">al m² finale</div>
+              <div class="sub">${sub}</div>
             </div>
-          </td>
-          <td><div class="price-val">${fmtEur(opt.pricePerSqm)}</div><div class="price-vat">IVA ${vat}%</div></td>
-          <td>${discountCell}</td>
-          <td><div class="price-val">${fmtEur(opt.materials)}</div><div class="price-vat">IVA ${vat}%</div></td>
-          ${cellPosa}
-          <td><div class="ship-free">${escHtml(opt.shippingLabel || "—")}</div><div class="price-vat">IVA ${vat}%</div></td>
-          <td><div class="total-net">${fmtEur(opt.net)}</div></td>
-          <td class="tot-col"><div class="total-grand">${fmtEur(opt.total)}</div></td>
-        </tr>
-      `;
+            <div class="tot"><span class="t">Totale chiavi in mano </span><span class="tv">${fmtEur(opt.total)}</span></div>
+          </div>
+          ${brk}
+          <div class="incl">${incl}</div>
+        </div>`;
     }).join("");
   }
 
@@ -1014,45 +1076,22 @@
     }
     if (box) box.style.display = "";
     setField("materialsDesc", mat.desc || "");
-    // Sconto materiali — mostrato solo se > 0
+    const grid = document.querySelector('[data-field="materialsList"]');
+    if (grid) {
+      grid.innerHTML = (mat.list || []).map((it) => `
+        <div class="m"><span class="mk">${escHtml(it.name)}</span><span class="mv">${escHtml(it.qty)}</span></div>
+      `).join("");
+    }
+    // Sconto materiali — pill mostrata solo se > 0
     const discountRow = document.querySelector('[data-field="materialsDiscountRow"]');
     const discountValue = document.querySelector('[data-field="materialsDiscountValue"]');
     const discPct = Number(mat.discount || 0);
     if (discountRow && discountValue) {
       if (discPct > 0) {
         discountRow.style.display = "";
-        discountValue.textContent = `−${String(discPct).replace(".", ",")}%`;
+        discountValue.textContent = `−${String(discPct).replace(".", ",")}% materiali`;
       } else {
         discountRow.style.display = "none";
-      }
-    }
-    const list = document.querySelector('[data-field="materialsList"]');
-    if (list) {
-      list.innerHTML = (mat.list || []).map((it) => `
-        <div class="mat-li"><span class="mat-li-n">${escHtml(it.name)}</span><span class="mat-li-v">${escHtml(it.qty)}</span></div>
-      `).join("");
-    }
-    const det = document.querySelector('[data-field="materialsDet"]');
-    if (det) {
-      det.innerHTML = mat.det
-        ? `<strong>Dettagli materiali:</strong> ${escHtml(mat.det)}`
-        : "";
-    }
-    // Sconti commerciali per prodotto — mostra solo quelli con sconto > 0
-    const discWrap = document.querySelector('[data-field="materialsDiscWrap"]');
-    const discGrid = document.querySelector('[data-field="materialsDiscGrid"]');
-    if (discWrap && discGrid) {
-      const optsWithDisc = (data.options || []).filter((o) => Number(o.discount) > 0);
-      if (optsWithDisc.length) {
-        discGrid.innerHTML = optsWithDisc.map((o) => `
-          <div class="mat-disc-item">
-            <span class="mat-disc-name">${escHtml(o.name)}</span>
-            <span class="mat-disc-val">−${o.discount}%</span>
-          </div>
-        `).join("");
-        discWrap.style.display = "";
-      } else {
-        discWrap.style.display = "none";
       }
     }
   }
@@ -1121,13 +1160,25 @@
     const row = document.querySelector('[data-field="badges"]');
     if (!row) return;
     const badges = (data.badges || []).slice(0, 4);
-    row.style.gridTemplateColumns = `repeat(${Math.max(1, badges.length)}, 1fr)`;
+    if (!badges.length) { row.style.display = "none"; return; }
+    row.style.display = "";
+    row.style.gridTemplateColumns = `repeat(${badges.length}, 1fr)`;
+    const ICONS = {
+      star: '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg>',
+      home: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M9 21v-6h6v6"/></svg>',
+      truck: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+      shield: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/></svg>',
+    };
+    const pickIcon = (b) => {
+      const s = `${b.icon || ""} ${b.value || ""} ${b.sub || ""}`.toLowerCase();
+      if (/⭐|★|google|recension|stell|valutaz/.test(s)) return ICONS.star;
+      if (/🏡|🏠|giardin|realizz|home/.test(s)) return ICONS.home;
+      if (/📦|🚚|spedizion|giorni|consegn|truck/.test(s)) return ICONS.truck;
+      if (/🛡|garanzia|anni|warranty|shield/.test(s)) return ICONS.shield;
+      return ICONS.star;
+    };
     row.innerHTML = badges.map((b) => `
-      <div class="badge">
-        <div class="badge-icon">${escHtml(b.icon || "•")}</div>
-        <div class="badge-v">${escHtml(b.value || "—")}</div>
-        <div class="badge-s">${escHtml(b.sub || "")}</div>
-      </div>
+      <div class="b">${pickIcon(b)}<div class="n">${escHtml(b.value || "—")}</div><div class="c">${escHtml(b.sub || "")}</div></div>
     `).join("");
   }
 
@@ -1162,27 +1213,28 @@
     }).join("");
   }
 
+  // Redesign v3: fascia rate unica ad alto impatto, basata sull'opzione
+  // consigliata (o la prima). Riusa data-field="hlBlock".
   function renderHeyLight(data) {
     const block = document.querySelector('[data-field="hlBlock"]');
     if (!block) return;
-    const opts = (data.options || []).filter((o) => Number(o.heylightInstallment) > 0);
-    if (!opts.length) {
-      block.style.display = "none";
-      return;
-    }
+    const opts = (data.options || []);
+    const reco = opts.find((o) => o.slug && o.slug === (data.suggestedSlug || "")) || opts[0];
+    const rate = reco ? Number(reco.heylightInstallment || 0) : 0;
+    if (!rate) { block.style.display = "none"; return; }
     block.style.display = "";
-    const installments = Number(data.heylight?.installments || 5);
-    setField("hlTitle", data.heylight?.title || `Simulazione ${installments} rate HeyLight`);
-    const cards = document.querySelector('[data-field="hlCards"]');
-    if (cards) {
-      cards.setAttribute("data-count", String(Math.min(3, opts.length)));
-      cards.innerHTML = opts.map((opt) => `
-        <div class="hl-card">
-          <div class="hl-m">${escHtml(opt.name)}</div>
-          <div class="hl-v">HeyLight: ${installments} rate da ${fmtEur(opt.heylightInstallment)}</div>
-        </div>
-      `).join("");
-    }
+    const n = Number(data.heylight?.installments || 5);
+    block.innerHTML = `
+      <div class="fl">
+        <div class="fe">Pagamento flessibile</div>
+        <div class="ft">Rateizza con HeyLight, interessi zero</div>
+        <div class="fx">Disponibile anche carta, PayPal, bonifico bancario e Scalapay. La rata mostrata si riferisce all'opzione ${escHtml(reco.name)}.</div>
+      </div>
+      <div class="fr">
+        <div class="amt">${n}<small> ×</small> ${fmtEur(rate)}</div>
+        <div class="lbl">oppure 3 rate · TAN 0% · TAEG 0%</div>
+        <div class="zero">★ Zero interessi</div>
+      </div>`;
   }
 
   function renderTechCards(data) {
@@ -1292,7 +1344,10 @@
     setField("customerEmail", data.customer?.email || "—");
     setField("validFrom", data.validFrom || "—");
     setField("validTo", data.validTo || "—");
-    setField("offerTitle", `OFFERTA PER ${data.sqm || 0} MQ`);
+    setField("offerTitle", `${data.sqm || 0} m²`);
+    setField("offerIntro", String(data.mode || "").includes("posa")
+      ? "Tre soluzioni con posa professionale inclusa. Il prezzo è chiavi in mano, IVA e spedizione comprese."
+      : "Tre soluzioni di sola fornitura. Il prezzo è IVA e spedizione comprese.");
     setField("paymentMain", data.payment?.main || "");
     setField("paymentHeyLight", data.payment?.heylight || "");
     const modeLabel = String(data.mode || "").includes("posa") ? "Fornitura + posa" : "Solo fornitura";
@@ -1302,7 +1357,6 @@
     renderAccessories(data);
     renderExtraServices(data);
     renderBadges(data);
-    renderPriceCards(data);
     renderHeyLight(data);
     renderTechCards(data);
     renderCertifications(data);

@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Preventivo — mockup v3 (premium sobrio)</title>
+<style>
+  :root{
+    --green:#1f4d3d; --green-d:#15362a; --green-l:#3c6b58;
+    --ink:#1b2a23; --muted:#6f7e74; --faint:#9aa79e;
+    --sand:#f6f3ec; --paper:#ffffff; --line:#e7e1d4;
+    --gold:#b0894a; --gold-soft:#f3ead6;
+    --ok:#2f7d5b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#9fa89f;font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;padding:28px 0}
+  .page{width:794px;min-height:1123px;margin:0 auto;background:var(--paper);box-shadow:0 18px 60px rgba(0,0,0,.22);padding:46px 50px 40px;position:relative}
+  .eyebrow{font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);font-weight:700}
+
+  /* Header */
+  .head{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:20px;border-bottom:2px solid var(--green)}
+  .brand{display:flex;gap:14px;align-items:center}
+  .brand img{width:54px;height:46px;object-fit:contain}
+  .brand .name{font-size:20px;font-weight:800;letter-spacing:.02em;line-height:1;color:var(--green-d)}
+  .brand .name small{display:block;font-size:12px;font-weight:700;letter-spacing:.32em;color:var(--green-l);margin-top:3px}
+  .brand .tag{font-size:10.5px;color:var(--muted);margin-top:7px;letter-spacing:.02em}
+  .qnum{text-align:right}
+  .qnum .lbl{font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .qnum .val{font-size:25px;font-weight:800;color:var(--green-d);line-height:1.05;margin-top:2px}
+  .qnum .co{font-size:10px;color:var(--muted);margin-top:5px}
+
+  /* Meta */
+  .meta{display:flex;justify-content:space-between;gap:30px;margin:22px 2px 6px}
+  .meta .col .eyebrow{margin-bottom:9px}
+  .kv{display:flex;gap:8px;font-size:12.5px;margin-bottom:4px}
+  .kv .k{color:var(--muted);min-width:42px}
+  .kv .v{font-weight:600}
+  .valid{text-align:right}
+  .valid .range{font-size:13px;font-weight:700;color:var(--green-d)}
+  .valid .range span{color:var(--muted);font-weight:500}
+
+  /* Hero */
+  .hero{margin:26px 0 16px}
+  .hero .eyebrow{margin-bottom:5px}
+  .hero h1{font-size:30px;font-weight:800;letter-spacing:-.01em;color:var(--green-d)}
+  .hero h1 b{color:var(--gold)}
+  .hero p{font-size:12.5px;color:var(--muted);margin-top:6px;max-width:62%}
+
+  /* Product cards */
+  .cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:10px;align-items:stretch}
+  .card{border:1px solid var(--line);border-radius:14px;background:var(--paper);padding:0 0 16px;display:flex;flex-direction:column;overflow:hidden;position:relative}
+  .card.reco{border-color:var(--gold);box-shadow:0 10px 26px rgba(176,137,74,.16);transform:translateY(-6px)}
+  .card .ph{height:112px;position:relative;overflow:hidden;background:#e9ece7}
+  .card .ph img{width:100%;height:100%;object-fit:cover;display:block}
+  .card .ph .grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,40,30,0) 45%,rgba(20,40,30,.28))}
+  .card.reco .badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;padding:5px 13px;border-radius:999px;white-space:nowrap;box-shadow:0 3px 10px rgba(20,30,25,.45);z-index:2}
+  .card .body{padding:16px 16px 0;text-align:center}
+  .card .pname{font-size:16px;font-weight:800;color:var(--green-d)}
+  .card .pdesc{font-size:11px;color:var(--muted);margin-top:2px}
+  .card .price{margin-top:13px}
+  .card .price .big{font-size:30px;font-weight:800;color:var(--ink);letter-spacing:-.02em}
+  .card.reco .price .big{color:var(--green-d)}
+  .card .price .u{font-size:12px;color:var(--muted);font-weight:600}
+  .card .price .sub{font-size:10.5px;color:var(--faint);margin-top:1px;letter-spacing:.04em}
+  .card .tot{margin-top:11px;padding-top:11px;border-top:1px dashed var(--line);font-size:12.5px}
+  .card .tot .t{color:var(--muted)}
+  .card .tot .tv{font-weight:800;color:var(--ink);font-size:15px}
+  .card .incl{margin:12px 14px 0;padding-top:11px;border-top:1px solid var(--line);text-align:left;display:flex;flex-direction:column;gap:5px}
+  .card .incl .li{font-size:10.5px;color:var(--muted);display:flex;gap:7px;align-items:center}
+  .card .incl .li svg{flex:0 0 auto;color:var(--ok)}
+  .card .incl .disc{color:var(--gold);font-weight:700}
+  /* riga scomposizione costi (leggera, trasparenza senza dominare) */
+  .card .brk{margin:11px 16px 0;padding-top:10px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+  .card .brk .br{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)}
+  .card .brk .br b{color:var(--ink);font-weight:700}
+
+  /* Materiali */
+  .sect{margin-top:26px}
+  .sect-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .sect-h .eyebrow{color:var(--green-l)}
+  .sect-h .rule{flex:1;height:1px;background:var(--line)}
+  .matwrap{background:var(--sand);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .matwrap .desc{font-size:12px;color:var(--ink);line-height:1.55;max-width:88%}
+  .matgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 26px;margin-top:14px}
+  .matgrid .m{display:flex;justify-content:space-between;font-size:12px;border-bottom:1px dotted var(--line);padding-bottom:5px}
+  .matgrid .m .mk{color:var(--muted)}
+  .matgrid .m .mv{font-weight:700}
+  .matnote{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:11px;color:var(--muted)}
+  .pill{background:var(--gold-soft);color:var(--gold);font-weight:800;font-size:11px;padding:4px 11px;border-radius:999px}
+
+  /* Trust */
+  .trust{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:24px}
+  .trust .b{border:1px solid var(--line);border-radius:12px;padding:15px 10px;text-align:center}
+  .trust .b svg{color:var(--green);margin-bottom:7px}
+  .trust .b .n{font-size:16px;font-weight:800;color:var(--green-d);line-height:1}
+  .trust .b .c{font-size:10px;color:var(--muted);margin-top:4px}
+
+  /* Pay + footer */
+  /* Fascia rate — alto impatto */
+  .finance{display:flex;align-items:center;gap:24px;margin-top:24px;border-radius:16px;padding:22px 28px;
+    background:linear-gradient(115deg,var(--green-d) 0%,var(--green) 70%);color:#fff;position:relative;overflow:hidden}
+  .finance .fl{flex:1}
+  .finance .fl .fe{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.65);font-weight:700}
+  .finance .fl .ft{font-size:18px;font-weight:800;margin-top:4px;letter-spacing:-.01em}
+  .finance .fl .fx{font-size:11.5px;color:rgba(255,255,255,.82);margin-top:6px;line-height:1.55;max-width:90%}
+  .finance .fr{flex:0 0 auto;text-align:right;padding-left:24px;border-left:1px solid rgba(255,255,255,.22)}
+  .finance .fr .amt{font-size:34px;font-weight:800;line-height:1;letter-spacing:-.02em}
+  .finance .fr .amt small{font-size:15px;font-weight:700;opacity:.85}
+  .finance .fr .lbl{font-size:11px;color:rgba(255,255,255,.82);margin-top:5px}
+  .finance .fr .zero{display:inline-block;margin-top:9px;background:var(--gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:4px 11px;border-radius:999px}
+  .foot{margin-top:20px;display:flex;justify-content:space-between;font-size:10px;color:var(--faint);border-top:1px solid var(--line);padding-top:12px}
+  .ivanote{text-align:center;font-size:10px;color:var(--faint);margin-top:10px;letter-spacing:.04em}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="head">
+    <div class="brand">
+      <img src="./logo-prato.png" alt="" onerror="this.style.display='none'">
+      <div>
+        <div class="name">PRATO SINTETICO<small>ITALIA</small></div>
+        <div class="tag">Dal 2016 · Fornitura e Posa Professionale</div>
+      </div>
+    </div>
+    <div class="qnum">
+      <div class="lbl">Preventivo</div>
+      <div class="val">FP-1377-28</div>
+      <div class="co">VERTEX SRLS · P.IVA 04863610616</div>
+    </div>
+  </div>
+
+  <!-- META -->
+  <div class="meta">
+    <div class="col">
+      <div class="eyebrow">Cliente</div>
+      <div class="kv"><span class="k">Nome</span><span class="v">Stefano Valsecchi</span></div>
+      <div class="kv"><span class="k">Città</span><span class="v">Cisano Bergamasco</span></div>
+      <div class="kv"><span class="k">Tel</span><span class="v">340 570 0518</span></div>
+      <div class="kv"><span class="k">Email</span><span class="v">valstefano66@libero.it</span></div>
+    </div>
+    <div class="col valid">
+      <div class="eyebrow">Validità offerta</div>
+      <div class="range"><span>Dal</span> 16/05/2026</div>
+      <div class="range"><span>Al</span> 15/06/2026</div>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="eyebrow">La tua offerta su misura</div>
+    <h1>Prato sintetico per <b>15 m²</b></h1>
+    <p>Tre soluzioni con posa professionale inclusa. Scegli la finitura che preferisci: il prezzo è chiavi in mano, IVA e spedizione comprese.</p>
+  </div>
+
+  <!-- PRODUCT CARDS (data-driven) -->
+  <div class="cards" id="cards"></div>
+
+  <!-- MATERIALI -->
+  <div class="sect">
+    <div class="sect-h"><span class="eyebrow">Materiali e lavorazioni incluse</span><span class="rule"></span></div>
+    <div class="matwrap">
+      <div class="desc">La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm, telo separatore, giunzioni, fissaggi e finiture perimetrali. Il materiale è quantificato in base ai metri quadri inseriti.</div>
+      <div class="matgrid">
+        <div class="m"><span class="mk">Pietrisco drenante</span><span class="mv">0,45 m³</span></div>
+        <div class="m"><span class="mk">Telo isolante</span><span class="mv">15,00 m²</span></div>
+        <div class="m"><span class="mk">Bande di giunzione</span><span class="mv">1 pz</span></div>
+        <div class="m"><span class="mk">Colla bicomponente</span><span class="mv">1 secchio 6 kg</span></div>
+        <div class="m"><span class="mk">Picchetti a U</span><span class="mv">50 pz</span></div>
+        <div class="m"><span class="mk">Finiture perimetrali</span><span class="mv">incluse</span></div>
+      </div>
+      <div class="matnote"><span>Sconto materiali già applicato ai totali</span><span class="pill">−10% materiali</span></div>
+    </div>
+  </div>
+
+  <!-- TRUST -->
+  <div class="trust">
+    <div class="b">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg>
+      <div class="n">4,8 / 5</div><div class="c">111+ recensioni Google</div>
+    </div>
+    <div class="b">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M9 21v-6h6v6"/></svg>
+      <div class="n">1.500+</div><div class="c">giardini realizzati</div>
+    </div>
+    <div class="b">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      <div class="n">3–5 giorni</div><div class="c">spedizione in Italia</div>
+    </div>
+    <div class="b">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/></svg>
+      <div class="n">8 anni</div><div class="c">garanzia prodotto</div>
+    </div>
+  </div>
+
+  <!-- FINANCING -->
+  <div class="finance" id="finance"></div>
+
+  <div class="ivanote">Tutti i prezzi sono IVA 22% inclusa · Offerta valida nel periodo indicato</div>
+
+  <div class="foot">
+    <span>Prato Sintetico Italia · VERTEX SRLS · P.IVA 04863610616</span>
+    <span>Pag. 1 / 2</span>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  // Payload con la STESSA forma del preventivo-v2.html reale (estratto).
+  const data = {
+    sqm: 15, mode: "fornitura+posa", vat: 22,
+    suggestedSlug: "cedro-30mm", // ← scelto a mano dall'ufficio
+    options: [
+      { slug:"faggio-25mm", name:"Faggio 25 mm", tagline:"Resistente · ideale traffico intenso",
+        pricePerSqm:10.90, discount:0, materials:127.50, installation:25.00, shippingLabel:"Gratuita",
+        total:812.52, finalSqmPrice:54.17, heylightInstallment:162.50 },
+      { slug:"cedro-30mm", name:"Cedro 30 mm", tagline:"Versatile · il più scelto",
+        pricePerSqm:13.90, discount:5, materials:127.50, installation:25.00, shippingLabel:"Gratuita",
+        total:854.70, finalSqmPrice:56.98, heylightInstallment:170.94 },
+      { slug:"abete-45mm", name:"Abete 45 mm", tagline:"Naturale · massimo realismo",
+        pricePerSqm:13.90, discount:5, materials:127.50, installation:25.00, shippingLabel:"Gratuita",
+        total:854.70, finalSqmPrice:56.98, heylightInstallment:170.94 },
+    ],
+    heylight: { installments: 5 },
+  };
+
+  const eur = (n) => Number(n||0).toFixed(2).replace(".", ",") + " €";
+  const eurc = (n) => Number(n||0).toFixed(2).replace(".", ","); // senza simbolo
+  const CHECK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const isPosa = String(data.mode||"").includes("posa");
+
+  document.getElementById("cards").innerHTML = data.options.map((o) => {
+    const reco = o.slug && o.slug === data.suggestedSlug;
+    const sub = o.discount > 0
+      ? `prezzo listino ${eurc(o.pricePerSqm)} €/m² · sconto ${o.discount}% incluso`
+      : `prezzo materiale ${eurc(o.pricePerSqm)} €/m²`;
+    const incl = [
+      `<div class="li">${CHECK} ${isPosa ? "Posa professionale inclusa" : "Materiale certificato"}</div>`,
+      `<div class="li">${CHECK} Spedizione gratuita</div>`,
+      o.discount > 0 ? `<div class="li disc">${CHECK} Sconto commerciale ${o.discount}%</div>` : "",
+    ].join("");
+    // Riga scomposizione: trasparenza leggera, NON un tabellone
+    const brk = `
+      <div class="brk">
+        <div class="br"><span>Materiale prato</span><b>${eurc(o.pricePerSqm)} €/m²</b></div>
+        ${isPosa ? `<div class="br"><span>Posa professionale</span><b>${eurc(o.installation)} €/m²</b></div>` : ""}
+        <div class="br"><span>Spedizione</span><b>${o.shippingLabel||"—"}</b></div>
+      </div>`;
+    return `
+      <div class="card${reco ? " reco" : ""}">
+        <div class="ph">
+          <img src="./product-images/${o.slug}.png" alt="${o.name}" onerror="this.style.display='none'">
+          <div class="grad"></div>
+          ${reco ? '<div class="badge">★ Consigliato</div>' : ""}
+        </div>
+        <div class="body">
+          <div class="pname">${o.name}</div>
+          <div class="pdesc">${o.tagline||""}</div>
+          <div class="price">
+            <div><span class="big">${eur(o.finalSqmPrice)}</span></div>
+            <div class="u">al m² finale</div>
+            <div class="sub">${sub}</div>
+          </div>
+          <div class="tot"><span class="t">Totale chiavi in mano </span><span class="tv">${eur(o.total)}</span></div>
+        </div>
+        ${brk}
+        <div class="incl">${incl}</div>
+      </div>`;
+  }).join("");
+
+  // Fascia rate — usa l'opzione consigliata (o la prima) come riferimento
+  const reco = data.options.find(o => o.slug === data.suggestedSlug) || data.options[0];
+  const nRate = data.heylight?.installments || 5;
+  document.getElementById("finance").innerHTML = `
+    <div class="fl">
+      <div class="fe">Pagamento flessibile</div>
+      <div class="ft">Rateizza con HeyLight, interessi zero</div>
+      <div class="fx">Disponibile anche carta, PayPal, bonifico bancario e Scalapay. La rata mostrata si riferisce all'opzione ${reco.name}.</div>
+    </div>
+    <div class="fr">
+      <div class="amt">${nRate}<small> ×</small> ${eur(reco.heylightInstallment)}</div>
+      <div class="lbl">oppure 3 rate · TAN 0% · TAEG 0%</div>
+      <div class="zero">★ Zero interessi</div>
+    </div>`;
+})();
+</script>
+</body>
+</html>
