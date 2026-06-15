@@ -12,7 +12,7 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260615-preventivo-single-extra-align";
+} from "./lib/order-money.js?v=20260615-preventivo-consigliato-premium";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -22,9 +22,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260615-preventivo-single-extra-align";
+} from "./lib/profit-split.js?v=20260615-preventivo-consigliato-premium";
 
-const APP_SHELL_VERSION = "20260615-preventivo-single-extra-align";
+const APP_SHELL_VERSION = "20260615-preventivo-consigliato-premium";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -27621,12 +27621,30 @@ function getIncludeP2() {
   return cb ? cb.checked : true;
 }
 
+// Selettore "Consigliato" lato ufficio: imposta quale prodotto è suggerito
+// (suggestedSlug) nel preventivo v2. Persistito in memoria finché si lavora.
+let previewSuggestedSlug = "";
+function populatePreviewRecoSelect(options) {
+  const sel = document.getElementById("psi-preview-reco");
+  if (!sel) return;
+  const opts = (options || []).filter((o) => o && o.slug);
+  const noneLabel = state.lang === "it" ? "Nessuno" : "None";
+  sel.innerHTML = `<option value="">${escapeHtml(noneLabel)}</option>`
+    + opts.map((o) => `<option value="${escapeHtml(o.slug)}">${escapeHtml(o.name || o.slug)}</option>`).join("");
+  if (!opts.some((o) => o.slug === previewSuggestedSlug)) previewSuggestedSlug = "";
+  sel.value = previewSuggestedSlug;
+}
+
 function showPreventivoPreview() {
   const reactIframe = document.getElementById("sales-generator-frame");
   const previewSection = document.getElementById("psi-preview-section");
   const previewIframe = document.getElementById("psi-preview-iframe");
   if (!previewSection || !previewIframe) return;
   const payload = extractGeneratorPayloadFromIframe();
+  if (payload) {
+    populatePreviewRecoSelect(payload.options || []);
+    payload.suggestedSlug = previewSuggestedSlug || "";
+  }
   try {
     if (payload) window.localStorage.setItem("psi:preventivo-v2:data", JSON.stringify(payload));
     else window.localStorage.removeItem("psi:preventivo-v2:data");
@@ -27708,6 +27726,13 @@ document.addEventListener("click", (e) => {
     const w = document.getElementById("psi-preview-iframe")?.contentWindow;
     if (w && typeof w.psiDownloadPdf === "function") w.psiDownloadPdf();
     else w?.print();
+  }
+});
+// Cambio del prodotto "Consigliato": rigenera l'anteprima evidenziando la card scelta
+document.addEventListener("change", (e) => {
+  if (e.target && e.target.id === "psi-preview-reco") {
+    previewSuggestedSlug = e.target.value || "";
+    showPreventivoPreview();
   }
 });
 

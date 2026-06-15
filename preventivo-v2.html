@@ -612,7 +612,7 @@
   /* Cards */
   .offer-v3 .cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:4px;align-items:stretch}
   .offer-v3 .card{border:1px solid var(--v3-line);border-radius:14px;background:#fff;padding:0 0 11px;display:flex;flex-direction:column;overflow:hidden;position:relative}
-  .offer-v3 .card.reco{border-color:var(--v3-gold);box-shadow:0 10px 26px rgba(176,137,74,.16)}
+  .offer-v3 .card.reco{border:2px solid var(--v3-gold);box-shadow:0 10px 26px rgba(176,137,74,.16);margin-top:-6px}
   .offer-v3 .card .ph{height:68px;position:relative;overflow:hidden;background:#e9ece7}
   .offer-v3 .card .ph img{width:100%;height:100%;object-fit:cover;object-position:center 38%;display:block}
   /* Card multiple (>1): la foto in una fascia bassa non rende → card testuali
@@ -622,8 +622,9 @@
      in cima a OGNI card una barra-nome verde, stile scheda tecnica. */
   .offer-v3 .card .ph{display:none}
   .offer-v3 .card .cbody{padding-top:12px}
-  .offer-v3 .card .cardbar{display:block;background:var(--v3-green-d);color:#fff;padding:9px 12px;text-align:center;font-size:14px;font-weight:800;letter-spacing:.2px;line-height:1.2}
+  .offer-v3 .card .cardbar{display:flex;flex-direction:column;align-items:center;gap:1px;background:var(--v3-green-d);color:#fff;padding:9px 12px;text-align:center;font-size:14px;font-weight:800;letter-spacing:.2px;line-height:1.2}
   .offer-v3 .card.reco .cardbar{background:var(--v3-gold)}
+  .offer-v3 .card .cardbar .reco-eyebrow{font-size:8.5px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;opacity:.92}
   .offer-v3 .card .pname{display:none}
   .offer-v3 .card .ph .grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,40,30,0) 45%,rgba(20,40,30,.28))}
   .offer-v3 .card .badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--v3-gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;padding:5px 13px;border-radius:999px;white-space:nowrap;box-shadow:0 3px 10px rgba(20,30,25,.45);z-index:2}
@@ -632,7 +633,7 @@
   .offer-v3 .card .pdesc{font-size:11px;color:var(--v3-muted);margin-top:2px}
   .offer-v3 .card .price{margin-top:8px}
   .offer-v3 .card .price .big{font-size:27px;font-weight:800;color:var(--v3-green-d);letter-spacing:-.02em}
-  .offer-v3 .card.reco .price .big{color:var(--v3-gold)}
+  .offer-v3 .card.reco .price .big{color:var(--v3-gold);font-size:30px}
   .offer-v3 .card .price .u{font-size:12px;color:var(--v3-muted);font-weight:600}
   .offer-v3 .card .price .sub{font-size:10.5px;color:var(--v3-faint);margin-top:1px}
   .offer-v3 .card .tot{margin-top:7px;padding-top:7px;border-top:1px dashed var(--v3-line);font-size:12.5px}
@@ -675,7 +676,7 @@
   .offer-v3 .trust .b .n{font-size:14px;font-weight:800;color:var(--v3-green-d);line-height:1}
   .offer-v3 .trust .b .c{font-size:10px;color:var(--v3-muted);margin-top:4px}
   /* Finance */
-  .offer-v3 .finance{display:flex;align-items:center;gap:24px;margin-top:8px;border-radius:16px;padding:9px 24px;background:linear-gradient(115deg,var(--v3-green-d) 0%,var(--v3-green) 70%);color:#fff;overflow:hidden}
+  .offer-v3 .finance{display:flex;align-items:center;gap:24px;margin-top:8px;border-radius:16px;border-top:3px solid var(--v3-gold);padding:9px 24px;background:linear-gradient(115deg,var(--v3-green-d) 0%,var(--v3-green) 70%);color:#fff;overflow:hidden}
   .offer-v3 .finance .fl{flex:1}
   .offer-v3 .finance .fl .fe{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.65);font-weight:700}
   .offer-v3 .finance .fl .ft{font-size:15px;font-weight:800;margin-top:3px;letter-spacing:-.01em}
@@ -894,7 +895,7 @@
     sqm: 15,
     mode: "fornitura+posa", // "solo-fornitura" | "fornitura+posa"
     vat: 22,
-    suggestedSlug: "",  // opzionale, es. "abete-45mm" → riga + card evidenziata
+    suggestedSlug: "cedro-30mm",  // opzionale, es. "abete-45mm" → riga + card evidenziata
     options: [
       {
         slug: "faggio-25mm",
@@ -1077,7 +1078,7 @@
         </div>`;
       return `
         <div class="card${reco ? " reco" : ""}">
-          <div class="cardbar">${reco ? "★ " : ""}${escHtml(opt.name)}</div>
+          <div class="cardbar">${reco ? '<span class="reco-eyebrow">★ Consigliato</span>' : ''}<span>${escHtml(opt.name)}</span></div>
           <div class="ph">
             <img src="${escHtml(imgSrc)}" alt="${escHtml(opt.name)}" onerror="this.style.display='none'">
             <div class="grad"></div>

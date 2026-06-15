@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260615-preventivo-single-extra-align" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260615-preventivo-single-extra-align" />
+    <link rel="preload" href="./styles.css?v=20260615-preventivo-consigliato-premium" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260615-preventivo-consigliato-premium" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -765,12 +765,18 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260615-preventivo-single-extra-align&shell=20260615-preventivo-single-extra-align"
+                src="./sales-suite/generator.html?embedded=1&v=20260615-preventivo-consigliato-premium&shell=20260615-preventivo-consigliato-premium"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
                 <div class="psi-preview-toolbar">
                   <button id="psi-preview-back" type="button" class="psi-preview-back-btn">← Modifica</button>
+                  <label class="psi-preview-reco-wrap" style="display:flex;align-items:center;gap:8px;color:#fff;font-size:12px;font-weight:600;">
+                    Consigliato
+                    <select id="psi-preview-reco" class="psi-preview-reco" style="font-size:12px;font-weight:600;padding:5px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff;cursor:pointer;">
+                      <option value="">Nessuno</option>
+                    </select>
+                  </label>
                   <button id="psi-preview-print" type="button" class="psi-preview-print-btn">⬇ Salva PDF</button>
                 </div>
                 <iframe id="psi-preview-iframe" class="psi-preview-iframe" src="" title="Preventivo"></iframe>
@@ -2362,7 +2368,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260615-preventivo-single-extra-align" defer></script>
-    <script src="./app.js?v=20260615-preventivo-single-extra-align" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260615-preventivo-consigliato-premium" defer></script>
+    <script src="./app.js?v=20260615-preventivo-consigliato-premium" type="module"></script>
   </body>
 </html>
