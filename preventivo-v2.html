@@ -681,12 +681,21 @@
   .offer-v3 .finance .fr .lbl{font-size:11px;color:rgba(255,255,255,.82);margin-top:5px}
   .offer-v3 .finance .fr .zero{display:inline-block;margin-top:9px;background:var(--v3-gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:4px 11px;border-radius:999px}
   .offer-v3 .ivanote{text-align:center;font-size:10px;color:var(--v3-faint);margin-top:9px;letter-spacing:.04em}
+  /* Export PDF (html2pdf): forza il layout A4 e nasconde la toolbar in cattura */
+  html.pdf-exporting .toolbar { display: none !important; }
+  html.pdf-exporting body { background: #fff; }
+  html.pdf-exporting .page,
+  html.pdf-exporting.psi-embedded .page {
+    width: 210mm !important; max-width: 210mm !important;
+    margin: 0 !important; box-shadow: none !important; border-radius: 0 !important;
+  }
   </style>
+  <script src="./vendor/html2pdf.bundle.min.js?v=20260615-preventivo-salvapdf"></script>
 </head>
 <body>
 
 <div class="toolbar">
-  <button type="button" class="primary" onclick="window.print()">🖨 Stampa / Salva PDF</button>
+  <button type="button" class="primary" onclick="window.psiDownloadPdf && window.psiDownloadPdf()">⬇ Salva PDF</button>
   <button type="button" class="ghost" onclick="window.close()">Chiudi</button>
 </div>
 
@@ -1422,6 +1431,39 @@
       if (page2) page2.style.display = "none";
     }
   }
+
+  // Download diretto del PDF (1 click, niente dialogo di stampa) via html2pdf.
+  // Forza il layout A4 durante la cattura; nasconde la toolbar; salto pagina
+  // prima della pagina 2. Se html2pdf manca o fallisce → fallback a window.print().
+  window.psiDownloadPdf = async function psiDownloadPdf() {
+    if (typeof window.html2pdf === "undefined") { window.print(); return; }
+    const root = document.documentElement;
+    const num = String(document.querySelector('[data-field="quoteNumber"]')?.textContent || "PSI").trim().replace(/[^\w-]+/g, "") || "PSI";
+    root.classList.add("pdf-exporting");
+    try {
+      // Cattura OGNI pagina come foglio A4 separato → esattamente N pagine,
+      // niente fogli bianchi da slicing automatico del canvas unico.
+      const pages = [...document.querySelectorAll(".page")].filter((p) => getComputedStyle(p).display !== "none");
+      const c = { scale: 2, useCORS: true, backgroundColor: "#ffffff" };
+      // Pagina 1: pipeline completa → ottengo l'istanza jsPDF
+      const pdf = await window.html2pdf().set({ margin: 0, image: { type: "jpeg", quality: 0.98 }, html2canvas: c, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" } }).from(pages[0]).toPdf().get("pdf");
+      const W = pdf.internal.pageSize.getWidth();
+      const H = pdf.internal.pageSize.getHeight();
+      // Pagine successive: canvas → immagine → nuovo foglio
+      for (let i = 1; i < pages.length; i++) {
+        const canvas = await window.html2pdf().set({ image: { type: "jpeg", quality: 0.98 }, html2canvas: c }).from(pages[i]).toCanvas().get("canvas");
+        const img = canvas.toDataURL("image/jpeg", 0.98);
+        const hmm = Math.min(H, W * (canvas.height / canvas.width));
+        pdf.addPage();
+        pdf.addImage(img, "JPEG", 0, 0, W, hmm);
+      }
+      pdf.save(`Preventivo-${num}.pdf`);
+    } catch (e) {
+      window.print();
+    } finally {
+      root.classList.remove("pdf-exporting");
+    }
+  };
 
   document.addEventListener("DOMContentLoaded", () => {
     applyEmbeddedMode();
