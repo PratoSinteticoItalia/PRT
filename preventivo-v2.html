@@ -633,8 +633,8 @@
   .offer-v3 .card .pname{font-size:16px;font-weight:800;color:var(--v3-green-d)}
   .offer-v3 .card .pdesc{font-size:11px;color:var(--v3-muted);margin-top:2px}
   .offer-v3 .card .price{margin-top:8px}
-  .offer-v3 .card .price .big{font-size:25px;font-weight:800;color:var(--v3-ink);letter-spacing:-.02em}
-  .offer-v3 .card.reco .price .big{color:var(--v3-green-d)}
+  .offer-v3 .card .price .big{font-size:27px;font-weight:800;color:var(--v3-green-d);letter-spacing:-.02em}
+  .offer-v3 .card.reco .price .big{color:var(--v3-gold)}
   .offer-v3 .card .price .u{font-size:12px;color:var(--v3-muted);font-weight:600}
   .offer-v3 .card .price .sub{font-size:10.5px;color:var(--v3-faint);margin-top:1px}
   .offer-v3 .card .tot{margin-top:7px;padding-top:7px;border-top:1px dashed var(--v3-line);font-size:12.5px}
@@ -647,7 +647,7 @@
   .offer-v3 .card .incl .li svg{flex:0 0 auto;color:var(--v3-ok)}
   .offer-v3 .card .incl .disc{color:var(--v3-gold);font-weight:700}
   /* Prodotto singolo: card orizzontale (foto grande a sx, dettagli a dx) */
-  .offer-v3 .cards[data-count="1"]{grid-template-columns:1fr;max-width:580px;margin-left:auto;margin-right:auto}
+  .offer-v3 .cards[data-count="1"]{grid-template-columns:1fr;max-width:620px;margin-left:0;margin-right:auto}
   .offer-v3 .cards[data-count="1"] .card{display:grid;grid-template-columns:240px 1fr;grid-template-areas:"ph body" "ph brk" "ph incl";align-items:start;padding:0}
   .offer-v3 .cards[data-count="1"] .ph{grid-area:ph;height:100%;min-height:236px}
   .offer-v3 .cards[data-count="1"] .badge{left:auto;right:12px;transform:none}
@@ -663,10 +663,10 @@
   .offer-v3 .sect-h .rule{flex:1;height:1px;background:var(--v3-line)}
   .offer-v3 .matwrap{background:var(--v3-sand);border:1px solid var(--v3-line);border-radius:14px;padding:9px 16px}
   .offer-v3 .matwrap .desc{font-size:11px;color:var(--v3-ink);line-height:1.4;max-width:100%}
-  .offer-v3 .matgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 26px;margin-top:10px}
-  .offer-v3 .matgrid .m{display:flex;justify-content:space-between;font-size:12px;border-bottom:1px dotted var(--v3-line);padding-bottom:5px}
-  .offer-v3 .matgrid .m .mk{color:var(--v3-muted)}
-  .offer-v3 .matgrid .m .mv{font-weight:700;color:var(--v3-ink)}
+  .offer-v3 .matgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px 40px;margin-top:10px}
+  .offer-v3 .matgrid .m{display:flex;justify-content:space-between;gap:14px;align-items:baseline;font-size:12px;border-bottom:1px dotted var(--v3-line);padding-bottom:5px}
+  .offer-v3 .matgrid .m .mk{color:var(--v3-muted);white-space:nowrap;flex:0 0 auto}
+  .offer-v3 .matgrid .m .mv{font-weight:700;color:var(--v3-ink);text-align:right;min-width:0}
   .offer-v3 .matnote{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:11px;color:var(--v3-muted)}
   .offer-v3 .pill{background:var(--v3-gold-soft);color:var(--v3-gold);font-weight:800;font-size:11px;padding:4px 11px;border-radius:999px}
   /* Trust */
