@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260615-regione-richiesta";
+} from "./lib/order-money.js?v=20260615-preventivo-fix2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260615-regione-richiesta";
+import { regionForCity } from "./lib/geo.js?v=20260615-preventivo-fix2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260615-regione-richiesta";
+} from "./lib/profit-split.js?v=20260615-preventivo-fix2";
 
-const APP_SHELL_VERSION = "20260615-regione-richiesta";
+const APP_SHELL_VERSION = "20260615-preventivo-fix2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -26722,7 +26722,7 @@ const PREVENTIVO_STATIC_DEFAULTS = Object.freeze({
       { title: "Telo separatore", text: "Posizionamento del telo isolante anti-radice per evitare la crescita di infestanti." },
       { title: "Posa del prato", text: "Stesa dei rotoli con allineamento del verso del filato, taglio perimetrale a misura e giunzioni con bande e colla bicomponente." },
       { title: "Fissaggio e finitura", text: "Fissaggio con picchetti a U lungo il perimetro, intaso facoltativo, spazzolatura finale per ottimizzare la resa estetica." },
-      { title: "Consegna e pulizia", text: "Verifica finale insieme al cliente, rimozione degli scarti dal cantiere e consegna del prato pronto all'uso." },
+      { title: "Consegna e pulizia", text: "Verifica finale insieme al cliente, rimozione degli scarti del prato dal cantiere e consegna del prato pronto all'uso. Lo smaltimento del terreno di risulta non è compreso ed è da quantificare a parte." },
     ],
     note: "Tempi medi di posa: 1–3 giorni lavorativi a seconda della metratura e delle condizioni del fondo. La squadra è coperta da assicurazione RC professionale.",
   },
