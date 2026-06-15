@@ -457,16 +457,17 @@
       border: 1px solid var(--br); border-radius: 12px; overflow: hidden; background: #fff;
     }
     .tech-card.suggested { border: 1.5px solid #b0894a; box-shadow: 0 8px 20px rgba(176,137,74,.14); }
-    .tech-card-photo { height: 150px; background: #e9ece7; position: relative; overflow: hidden; }
-    .tech-card-photo img { width: 100%; height: 100%; object-fit: cover; object-position: center 42%; display: block; }
-    .tech-card-photo .tp-badge {
-      position: absolute; top: 9px; right: 9px; background: #b0894a; color: #fff;
-      font-size: 8px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
-      padding: 4px 10px; border-radius: 999px; box-shadow: 0 2px 6px rgba(20,30,25,.35);
+    /* Foto prodotto come ICONA (thumbnail) accanto al nome, non banner di sfondo */
+    .tech-card-head { display: flex; align-items: center; gap: 10px; padding: 11px 13px 7px; background: #fff; }
+    .tech-card-thumb {
+      width: 44px; height: 44px; border-radius: 9px; flex: 0 0 auto;
+      object-fit: cover; object-position: center 42%;
+      background: #e9ece7; border: 1px solid var(--br);
     }
-    .tech-card-head { padding: 10px 13px 5px; background: #fff; }
+    .tech-card-headtext { min-width: 0; }
     .tech-card-head .name { font-size: 13px; font-weight: 800; color: var(--gd); }
     .tech-card-head .code { font-size: 8.5px; color: var(--gl); margin-top: 1px; font-weight: 600; letter-spacing: .04em; }
+    .tech-mini-badge { color: #b0894a; margin-left: 5px; font-size: 11px; }
     .tech-card-body {
       padding: 2px 13px 4px;
     }
@@ -696,7 +697,7 @@
     margin: 0 !important; box-shadow: none !important; border-radius: 0 !important;
   }
   </style>
-  <script src="./vendor/html2pdf.bundle.min.js?v=20260615-preventivo-salvapdf"></script>
+  <script src="./vendor/html2pdf.bundle.min.js?v=20260615-preventivo-foto-icone"></script>
 </head>
 <body>
 
@@ -1290,13 +1291,12 @@
       const t = opt.tech || {};
       return `
         <div class="${cardCls}">
-          <div class="tech-card-photo">
-            <img src="${escHtml(imgSrc)}" alt="${escHtml(opt.name)}" onerror="this.parentElement.style.display='none'">
-            ${isSuggested ? '<div class="tp-badge">★ Consigliato</div>' : ''}
-          </div>
           <div class="tech-card-head">
-            <div class="name">${escHtml(opt.name)}</div>
-            ${code}
+            <img class="tech-card-thumb" src="${escHtml(imgSrc)}" alt="${escHtml(opt.name)}" onerror="this.style.display='none'">
+            <div class="tech-card-headtext">
+              <div class="name">${escHtml(opt.name)}${isSuggested ? '<span class="tech-mini-badge" title="Consigliato">★</span>' : ''}</div>
+              ${code}
+            </div>
           </div>
           <div class="tech-card-body">
             <div class="tech-row"><span class="l">Struttura</span><span class="v">${escHtml(t.struttura || "—")}</span></div>
