@@ -455,22 +455,21 @@
     .tech-grid[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
     .tech-grid[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
     .tech-card {
-      border: 1px solid var(--br); border-radius: 7px; overflow: hidden;
+      border: 1px solid var(--br); border-radius: 12px; overflow: hidden; background: #fff;
     }
-    .tech-card.suggested { border: 2px solid var(--gd); }
-    .tech-card-head {
-      background: var(--gd); padding: 8px 12px;
-      display: flex; align-items: center; justify-content: space-between;
+    .tech-card.suggested { border: 1.5px solid #b0894a; box-shadow: 0 8px 20px rgba(176,137,74,.14); }
+    .tech-card-photo { height: 150px; background: #e9ece7; position: relative; overflow: hidden; }
+    .tech-card-photo img { width: 100%; height: 100%; object-fit: cover; object-position: center 42%; display: block; }
+    .tech-card-photo .tp-badge {
+      position: absolute; top: 9px; right: 9px; background: #b0894a; color: #fff;
+      font-size: 8px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px; box-shadow: 0 2px 6px rgba(20,30,25,.35);
     }
-    .tech-card-head-l .name { font-size: 11.5px; font-weight: 800; color: #fff; }
-    .tech-card-head-l .code { font-size: 8.5px; color: var(--ga); margin-top: 1px; font-weight: 600; }
-    .tech-pill {
-      background: var(--ga); color: #fff; font-size: 7.5px; font-weight: 800;
-      letter-spacing: .5px; text-transform: uppercase;
-      padding: 3px 8px; border-radius: 20px;
-    }
+    .tech-card-head { padding: 10px 13px 5px; background: #fff; }
+    .tech-card-head .name { font-size: 13px; font-weight: 800; color: var(--gd); }
+    .tech-card-head .code { font-size: 8.5px; color: var(--gl); margin-top: 1px; font-weight: 600; letter-spacing: .04em; }
     .tech-card-body {
-      padding: 4px 12px;
+      padding: 2px 13px 4px;
     }
     .tech-row {
       display: flex; align-items: baseline; justify-content: space-between;
@@ -503,7 +502,8 @@
     .cert {
       background: #fff; padding: 10px 10px; text-align: center;
     }
-    .cert-icon { font-size: 16px; margin-bottom: 3px; }
+    .cert-icon { color: #b0894a; margin-bottom: 2px; line-height: 0; }
+    .cert-icon svg { vertical-align: middle; }
     .cert-name { font-size: 8.5px; font-weight: 800; color: var(--gd); letter-spacing: .3px; }
     .cert-sub { font-size: 7.5px; color: var(--gl); margin-top: 2px; }
     /* Condizioni vendita */
@@ -820,7 +820,7 @@
 
   <!-- Schede tecniche prodotti -->
   <div data-field="techBlock">
-    <div class="section-eyebrow">📋 Scheda tecnica prodotti offerti</div>
+    <div class="section-eyebrow">Scheda tecnica prodotti offerti</div>
     <div class="tech-grid" data-field="techCards"></div>
   </div>
 
@@ -830,7 +830,6 @@
   <!-- Cosa include il servizio di posa (solo se mode = fornitura+posa) -->
   <div class="install-work" data-field="installWorkBox" style="display:none;">
     <div class="install-work-head">
-      <span class="install-work-icon">🔧</span>
       <span class="install-work-title" data-field="installWorkTitle">Cosa include il servizio di posa</span>
     </div>
     <div class="install-work-intro" data-field="installWorkIntro">—</div>
@@ -840,7 +839,7 @@
 
   <!-- Condizioni generali di vendita -->
   <div class="conds">
-    <div class="conds-t">📄 Condizioni generali di vendita</div>
+    <div class="conds-t">Condizioni generali di vendita</div>
     <div class="conds-grid" data-field="condsGrid"></div>
   </div>
 
@@ -1270,17 +1269,18 @@
     grid.innerHTML = withTech.map((opt) => {
       const isSuggested = opt.slug && opt.slug === suggestedSlug;
       const cardCls = isSuggested ? "tech-card suggested" : "tech-card";
-      const pill = isSuggested ? `<span class="tech-pill">★ Top</span>` : "";
       const code = opt.code ? `<div class="code">COD. ${escHtml(opt.code)}</div>` : "";
+      const imgSrc = String(opt.imageDataUrl || "").trim() || `./product-images/${opt.slug}.png`;
       const t = opt.tech || {};
       return `
         <div class="${cardCls}">
+          <div class="tech-card-photo">
+            <img src="${escHtml(imgSrc)}" alt="${escHtml(opt.name)}" onerror="this.parentElement.style.display='none'">
+            ${isSuggested ? '<div class="tp-badge">★ Consigliato</div>' : ''}
+          </div>
           <div class="tech-card-head">
-            <div class="tech-card-head-l">
-              <div class="name">${escHtml(opt.name)}</div>
-              ${code}
-            </div>
-            ${pill}
+            <div class="name">${escHtml(opt.name)}</div>
+            ${code}
           </div>
           <div class="tech-card-body">
             <div class="tech-row"><span class="l">Struttura</span><span class="v">${escHtml(t.struttura || "—")}</span></div>
@@ -1301,9 +1301,11 @@
     const certs = data.certifications || [];
     if (!certs.length) { row.style.display = "none"; return; }
     row.style.gridTemplateColumns = `repeat(${certs.length}, 1fr)`;
+    // Sigillo SVG uniforme (premium) al posto delle emoji
+    const SEAL = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><path d="M9 13.5 7.5 22l4.5-2.5L16.5 22 15 13.5"/><path d="m9.5 9 1.7 1.7L14.5 7"/></svg>';
     row.innerHTML = certs.map((c) => `
       <div class="cert">
-        <div class="cert-icon">${escHtml(c.icon || "•")}</div>
+        <div class="cert-icon">${SEAL}</div>
         <div class="cert-name">${escHtml(c.name || "—")}</div>
         <div class="cert-sub">${escHtml(c.sub || "")}</div>
       </div>
