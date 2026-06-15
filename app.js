@@ -12,7 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260615-preventivo-foto-icone";
+} from "./lib/order-money.js?v=20260615-regione-richiesta";
+// Derivazione regione dalla città (i clienti lasciano solo la località).
+import { regionForCity } from "./lib/geo.js?v=20260615-regione-richiesta";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -22,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260615-preventivo-foto-icone";
+} from "./lib/profit-split.js?v=20260615-regione-richiesta";
 
-const APP_SHELL_VERSION = "20260615-preventivo-foto-icone";
+const APP_SHELL_VERSION = "20260615-regione-richiesta";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12388,6 +12390,7 @@ function renderCrmV2Row(item, selected, bulkSelectedIds) {
   const action = getCrmV2PrimaryAction(item);
   const sourceIcon = getCrmV2SourceIcon(item);
   const cityLabel = item.city || (state.lang === "it" ? "—" : "—");
+  const regionLabel = regionForCity(item.city); // regione derivata dalla città
   // Popover NON inline: viene renderizzato al body via openCrmV2StatusPopoverPortal
 
   return `
@@ -12405,7 +12408,7 @@ function renderCrmV2Row(item, selected, bulkSelectedIds) {
       <div class="crm-row-main">
         <div class="crm-row-name">${escapeHtml(getSalesRequestDisplayName(item))}</div>
         <div class="crm-row-meta">
-          <span>${escapeHtml(cityLabel)}</span>
+          <span>${escapeHtml(cityLabel)}${regionLabel ? ` <span class="crm-row-region">· ${escapeHtml(regionLabel)}</span>` : ""}</span>
           ${serviceLabel ? `<span class="crm-row-meta-dot">·</span><span class="crm-row-service-tag">${escapeHtml(serviceLabel)}</span>` : ""}
           ${specsText ? `<span class="crm-row-meta-dot">·</span><span>${escapeHtml(specsText)}</span>` : ""}
         </div>
