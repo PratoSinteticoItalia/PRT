@@ -616,6 +616,11 @@
   .offer-v3 .card.reco{border-color:var(--v3-gold);box-shadow:0 10px 26px rgba(176,137,74,.16)}
   .offer-v3 .card .ph{height:68px;position:relative;overflow:hidden;background:#e9ece7}
   .offer-v3 .card .ph img{width:100%;height:100%;object-fit:cover;object-position:center 38%;display:block}
+  /* Card multiple (>1): la foto in una fascia bassa non rende → card testuali
+     pulite. La foto resta solo nel prodotto singolo (count=1, sotto) dove c'è
+     spazio per mostrarla per intero. Le foto multiple vanno in pagina 2. */
+  .offer-v3 .cards:not([data-count="1"]) .card .ph{display:none}
+  .offer-v3 .cards:not([data-count="1"]) .card .cbody{padding-top:16px}
   .offer-v3 .card .ph .grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,40,30,0) 45%,rgba(20,40,30,.28))}
   .offer-v3 .card .badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--v3-gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;padding:5px 13px;border-radius:999px;white-space:nowrap;box-shadow:0 3px 10px rgba(20,30,25,.45);z-index:2}
   .offer-v3 .card .cbody{padding:11px 16px 0;text-align:center}
