@@ -620,7 +620,13 @@
      pulite. La foto resta solo nel prodotto singolo (count=1, sotto) dove c'è
      spazio per mostrarla per intero. Le foto multiple vanno in pagina 2. */
   .offer-v3 .cards:not([data-count="1"]) .card .ph{display:none}
-  .offer-v3 .cards:not([data-count="1"]) .card .cbody{padding-top:16px}
+  .offer-v3 .cards:not([data-count="1"]) .card .cbody{padding-top:12px}
+  /* Barra-nome in cima alle card multiple: sostituisce la foto, allinea i "tetti"
+     e richiama lo stile della scheda tecnica di pagina 2. */
+  .offer-v3 .card .cardbar{display:none}
+  .offer-v3 .cards:not([data-count="1"]) .card .cardbar{display:block;background:var(--v3-green-d);color:#fff;padding:9px 12px;text-align:center;font-size:14px;font-weight:800;letter-spacing:.2px;line-height:1.2}
+  .offer-v3 .cards:not([data-count="1"]) .card.reco .cardbar{background:var(--v3-gold)}
+  .offer-v3 .cards:not([data-count="1"]) .card .pname{display:none}
   .offer-v3 .card .ph .grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,40,30,0) 45%,rgba(20,40,30,.28))}
   .offer-v3 .card .badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--v3-gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;padding:5px 13px;border-radius:999px;white-space:nowrap;box-shadow:0 3px 10px rgba(20,30,25,.45);z-index:2}
   .offer-v3 .card .cbody{padding:11px 16px 0;text-align:center}
@@ -1072,6 +1078,7 @@
         </div>`;
       return `
         <div class="card${reco ? " reco" : ""}">
+          <div class="cardbar">${reco ? "★ " : ""}${escHtml(opt.name)}</div>
           <div class="ph">
             <img src="${escHtml(imgSrc)}" alt="${escHtml(opt.name)}" onerror="this.style.display='none'">
             <div class="grad"></div>
