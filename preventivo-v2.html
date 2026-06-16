@@ -1024,8 +1024,8 @@
   }
 
   function productThumb(opt, suggested) {
-    // Priorità: imageDataUrl (caricata da Impostazioni) → product-images/<slug>.png filesystem → placeholder
-    const src = String(opt.imageDataUrl || "").trim() || `./product-images/${opt.slug}.png`;
+    // Priorità: imageDataUrl (caricata da Impostazioni) → product-images/<slug>.jpg filesystem → placeholder
+    const src = String(opt.imageDataUrl || "").trim() || `./product-images/${opt.slug}.jpg`;
     const cls = suggested ? "m-thumb suggested" : "m-thumb";
     return `<img src="${escHtml(src)}" alt="${escHtml(opt.name)}" class="${cls}" onerror="this.outerHTML='<div class=\\'m-thumb-ph\\'>🌿</div>';">`;
   }
@@ -1065,7 +1065,7 @@
       const sub = opt.discount > 0
         ? `prezzo listino ${noSym(opt.pricePerSqm)} €/m² · sconto ${opt.discount}% incluso`
         : `prezzo materiale ${noSym(opt.pricePerSqm)} €/m²`;
-      const imgSrc = String(opt.imageDataUrl || "").trim() || `./product-images/${opt.slug}.png`;
+      const imgSrc = String(opt.imageDataUrl || "").trim() || `./product-images/${opt.slug}.jpg`;
       const incl = [
         `<div class="li">${CHECK} ${isPosa ? "Posa professionale inclusa" : "Materiale certificato"}</div>`,
         `<div class="li">${CHECK} Spedizione ${escHtml(String(opt.shippingLabel || "inclusa").toLowerCase())}</div>`,
@@ -1287,7 +1287,7 @@
       const isSuggested = opt.slug && opt.slug === suggestedSlug;
       const cardCls = isSuggested ? "tech-card suggested" : "tech-card";
       const code = opt.code ? `<div class="code">COD. ${escHtml(opt.code)}</div>` : "";
-      const imgSrc = String(opt.imageDataUrl || "").trim() || `./product-images/${opt.slug}.png`;
+      const imgSrc = String(opt.imageDataUrl || "").trim() || `./product-images/${opt.slug}.jpg`;
       const t = opt.tech || {};
       return `
         <div class="${cardCls}">

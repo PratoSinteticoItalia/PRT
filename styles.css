@@ -20765,19 +20765,18 @@ body {
      Su tablet 769-979: drawer dal basso (bottom sheet).
      Vedi anche openMobileDrillDetail in app.js. */
 
-  /* KPI strip: scroll orizzontale invece di wrap */
+  /* KPI strip: griglia a 2 colonne — tutte le statistiche visibili senza
+     scroll orizzontale (evita il troncamento di "Questa settimana"). */
   #sales-requests #sales-request-insights.crm-kpi-strip {
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    gap: 22px !important;
-    padding: 12px 14px !important;
-    scrollbar-width: thin;
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px 16px !important;
+    padding: 14px !important;
+    overflow: visible !important;
   }
-  #sales-requests #sales-request-insights.crm-kpi-strip::-webkit-scrollbar { height: 4px; }
-  #sales-requests .crm-kpi { flex-shrink: 0; min-width: max-content; }
+  #sales-requests .crm-kpi { min-width: 0; }
   #sales-requests .crm-kpi-value { font-size: 20px !important; }
-  #sales-requests .crm-kpi-label { font-size: 9.5px !important; }
+  #sales-requests .crm-kpi-label { font-size: 9.5px !important; white-space: normal !important; }
 
   /* Pillole filtro: scroll orizzontale */
   #sales-requests #sales-request-quick-filters {
@@ -21499,4 +21498,72 @@ body {
 #shipping-standard-detail-panel .shp-next-action.is-done .panel-eyebrow { color: #1f4d3d; }
 @media (max-width: 560px) {
   #shipping-standard-detail-panel #shipping-detail-fields { grid-template-columns: 1fr; }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Action overflow menu — raccoglie azioni secondarie/manutenzione fuori dalla
+   testata primaria (Richieste, Ordini). Basato su <details>/<summary>: niente
+   JS richiesto per aprire; la chiusura "click fuori / dopo azione" è in app.js.
+   ─────────────────────────────────────────────────────────────────────────── */
+.action-overflow {
+  position: relative;
+  display: inline-block;
+}
+.action-overflow > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.action-overflow > summary::-webkit-details-marker { display: none; }
+.action-overflow > summary::marker { content: ""; }
+.action-overflow[open] > summary {
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.2);
+}
+.action-overflow-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--card, #fff);
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg, 0 18px 50px rgba(0,0,0,0.14));
+}
+.action-overflow-label {
+  margin: 2px 8px 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #6b6b66);
+}
+.action-overflow-menu > button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+}
+.action-overflow-menu > button:hover {
+  background: var(--brand-soft, rgba(45,106,79,0.10));
+  border-color: transparent;
+}
+/* Azione primaria nelle action-list (es. "Nuova richiesta") */
+.action-list .action-primary {
+  background: var(--brand, #2d6a4f);
+  border-color: var(--brand, #2d6a4f);
+  color: #fff;
+}
+.action-list .action-primary:hover {
+  background: var(--brand-strong, #1a2e23);
+  border-color: var(--brand-strong, #1a2e23);
+}
+@media (max-width: 720px) {
+  .action-overflow-menu { right: auto; left: 0; min-width: 200px; }
 }

@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260615-preventivo-fix2";
+} from "./lib/order-money.js?v=20260617-ui-overflow-img-mobile";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260615-preventivo-fix2";
+import { regionForCity } from "./lib/geo.js?v=20260617-ui-overflow-img-mobile";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260615-preventivo-fix2";
+} from "./lib/profit-split.js?v=20260617-ui-overflow-img-mobile";
 
-const APP_SHELL_VERSION = "20260615-preventivo-fix2";
+const APP_SHELL_VERSION = "20260617-ui-overflow-img-mobile";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -26897,7 +26897,7 @@ function fillPreventivoProductForm() {
     const field = form.elements?.[k];
     if (field) field.value = String(saved[k] || "");
   });
-  // Immagine prodotto: ripristina dataUrl o cerca file in product-images/<slug>.png
+  // Immagine prodotto: ripristina dataUrl o cerca file in product-images/<slug>.jpg
   const dataUrl = String(saved.imageDataUrl || "");
   if (ui.productImageDataUrl) ui.productImageDataUrl.value = dataUrl;
   if (dataUrl) {
@@ -26905,9 +26905,9 @@ function fillPreventivoProductForm() {
   } else {
     // Prova a precaricare il file filesystem se esiste (fallback per i 3 modelli pre-popolati)
     const img = new Image();
-    img.onload = () => renderProductImagePreview(`./product-images/${slug}.png`);
+    img.onload = () => renderProductImagePreview(`./product-images/${slug}.jpg`);
     img.onerror = () => renderProductImagePreview("");
-    img.src = `./product-images/${slug}.png`;
+    img.src = `./product-images/${slug}.jpg`;
   }
   if (ui.productImageInput) ui.productImageInput.value = "";
 }
@@ -28287,3 +28287,28 @@ if (assignmentCatalogForm) {
     await loadCatalogItems("sales_assignment");
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action overflow menu (<details class="action-overflow">): chiusura "click
+// fuori" e "dopo aver scelto un'azione". L'apertura è nativa via <summary>.
+// ─────────────────────────────────────────────────────────────────────────────
+(function initActionOverflowMenus() {
+  document.addEventListener("click", (event) => {
+    const openMenus = document.querySelectorAll("details.action-overflow[open]");
+    if (!openMenus.length) return;
+    openMenus.forEach((menu) => {
+      const insideMenu = event.target.closest(".action-overflow-menu");
+      const onSummary = event.target.closest("summary");
+      // chiudi se: click fuori dal menu, oppure click su un bottone-azione interno
+      if (menu.contains(event.target)) {
+        if (insideMenu && event.target.closest("button")) menu.open = false;
+        return; // click sul summary o dentro: gestito nativamente
+      }
+      if (!onSummary) menu.open = false;
+    });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    document.querySelectorAll("details.action-overflow[open]").forEach((m) => { m.open = false; });
+  });
+})();

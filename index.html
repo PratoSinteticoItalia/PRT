@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260615-preventivo-fix2" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260615-preventivo-fix2" />
+    <link rel="preload" href="./styles.css?v=20260617-ui-overflow-img-mobile" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260617-ui-overflow-img-mobile" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -419,8 +419,14 @@
             </div>
             <div class="detail-actions">
               <button id="orders-sync-button" class="btn primary">Sincronizza Shopify</button>
-              <button id="orders-import-button" class="btn">Importa JSON</button>
-              <button id="orders-clear-manual-button" class="btn">Pulisci manuali</button>
+              <details class="action-overflow">
+                <summary class="btn">⚙ Manutenzione</summary>
+                <div class="action-overflow-menu">
+                  <p class="action-overflow-label">Strumenti</p>
+                  <button id="orders-import-button" class="btn">Importa JSON</button>
+                  <button id="orders-clear-manual-button" class="btn">Pulisci manuali</button>
+                </div>
+              </details>
             </div>
           </div>
 
@@ -523,12 +529,18 @@
               <p id="sales-requests-subtitle">Gestisci richieste commerciali e prepara il passaggio verso il generatore.</p>
             </div>
             <div class="action-list">
-              <button id="sales-request-restore-dates-button" class="ghost-button small-button" type="button" title="Ripristina le date reali dalla coda IMAP (corregge le date '08 giu' artificiali)">Ripristina date</button>
-              <button id="sales-request-restore-names-button" class="ghost-button small-button" type="button" title="Completa nomi/cognomi/MQ mancanti dai dati shadow IMAP">Ripristina nomi</button>
-              <button id="sales-request-fix-dup-names-button" class="ghost-button small-button" type="button" title="Sistema i nomi duplicati (es. 'Platania Platania')">Fix doppi</button>
-              <button id="sales-request-dedup-button" class="ghost-button small-button" type="button" title="Trova e rimuovi richieste duplicate con lo stesso numero di telefono">Rimuovi duplicati</button>
+              <details class="action-overflow">
+                <summary class="ghost-button small-button" title="Strumenti di manutenzione dati">⚙ Manutenzione</summary>
+                <div class="action-overflow-menu">
+                  <p class="action-overflow-label">Manutenzione dati</p>
+                  <button id="sales-request-restore-dates-button" class="ghost-button small-button" type="button" title="Ripristina le date reali dalla coda IMAP (corregge le date '08 giu' artificiali)">Ripristina date</button>
+                  <button id="sales-request-restore-names-button" class="ghost-button small-button" type="button" title="Completa nomi/cognomi/MQ mancanti dai dati shadow IMAP">Ripristina nomi</button>
+                  <button id="sales-request-fix-dup-names-button" class="ghost-button small-button" type="button" title="Sistema i nomi duplicati (es. 'Platania Platania')">Fix doppi</button>
+                  <button id="sales-request-dedup-button" class="ghost-button small-button" type="button" title="Trova e rimuovi richieste duplicate con lo stesso numero di telefono">Rimuovi duplicati</button>
+                </div>
+              </details>
               <button id="sales-request-import-button" class="ghost-button small-button" type="button">Importa richieste</button>
-              <button id="sales-request-new-button" class="ghost-button small-button" type="button">Nuova richiesta</button>
+              <button id="sales-request-new-button" class="ghost-button small-button action-primary" type="button">Nuova richiesta</button>
             </div>
           </div>
           <div class="crm-drawer-backdrop" data-action="close-crm-detail" aria-hidden="true"></div>
@@ -765,7 +777,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260615-preventivo-fix2&shell=20260615-preventivo-fix2"
+                src="./sales-suite/generator.html?embedded=1&v=20260617-ui-overflow-img-mobile&shell=20260617-ui-overflow-img-mobile"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2368,7 +2380,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260615-preventivo-fix2" defer></script>
-    <script src="./app.js?v=20260615-preventivo-fix2" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260617-ui-overflow-img-mobile" defer></script>
+    <script src="./app.js?v=20260617-ui-overflow-img-mobile" type="module"></script>
   </body>
 </html>
