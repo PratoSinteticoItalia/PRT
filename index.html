@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260617-preventivo-posa-pavimentazione" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260617-preventivo-posa-pavimentazione" />
+    <link rel="preload" href="./styles.css?v=20260617-push-notifiche-attive" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260617-push-notifiche-attive" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -777,7 +777,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260617-preventivo-posa-pavimentazione&shell=20260617-preventivo-posa-pavimentazione"
+                src="./sales-suite/generator.html?embedded=1&v=20260617-push-notifiche-attive&shell=20260617-push-notifiche-attive"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -1862,6 +1862,19 @@
               <section class="panel">
                 <div class="panel-head">
                   <div>
+                    <p class="panel-eyebrow">Notifiche</p>
+                    <h3>Notifiche push</h3>
+                  </div>
+                </div>
+                <p class="panel-note">Ricevi un avviso su questo dispositivo per lavori assegnati, ordini pronti e aggiornamenti di stato — anche con l'app chiusa.</p>
+                <div class="inline-actions" style="margin-top:10px;">
+                  <button type="button" class="primary-button small-button" data-action="settings-enable-push">Attiva notifiche su questo dispositivo</button>
+                </div>
+                <div id="push-status" class="panel-note hidden"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
                     <p class="panel-eyebrow">Branding</p>
                     <h3>Testi preventivo</h3>
                   </div>
@@ -2384,7 +2397,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260617-preventivo-posa-pavimentazione" defer></script>
-    <script src="./app.js?v=20260617-preventivo-posa-pavimentazione" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260617-push-notifiche-attive" defer></script>
+    <script src="./app.js?v=20260617-push-notifiche-attive" type="module"></script>
   </body>
 </html>

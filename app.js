@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260617-preventivo-posa-pavimentazione";
+} from "./lib/order-money.js?v=20260617-push-notifiche-attive";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260617-preventivo-posa-pavimentazione";
+import { regionForCity } from "./lib/geo.js?v=20260617-push-notifiche-attive";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260617-preventivo-posa-pavimentazione";
+} from "./lib/profit-split.js?v=20260617-push-notifiche-attive";
 
-const APP_SHELL_VERSION = "20260617-preventivo-posa-pavimentazione";
+const APP_SHELL_VERSION = "20260617-push-notifiche-attive";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2021,6 +2021,21 @@ function registerServiceWorker() {
   });
 }
 
+// La Push API richiede applicationServerKey come Uint8Array, non come stringa
+// base64url: senza questa conversione subscribe() fallisce su Chrome/Firefox.
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+// Al login: rinnova SOLO una subscription già esistente lato server (può essere
+// scaduta). Nessun prompt di permesso qui — quello parte da un gesto utente
+// (bottone "Attiva notifiche" in onboarding o Impostazioni) per non bruciare il
+// permesso con un prompt automatico.
 async function registerPushSubscription() {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   try {
@@ -2029,26 +2044,59 @@ async function registerPushSubscription() {
     const registration = await navigator.serviceWorker.ready;
     const existing = await registration.pushManager.getSubscription();
     if (existing) {
-      // Rinnova la subscription lato server (potrebbe essere scaduta)
       await apiFetch("/api/push/subscribe", {
         method: "POST",
         body: JSON.stringify(existing.toJSON()),
       }).catch(() => {});
-      return;
     }
+  } catch (err) {
+    console.warn("push_renew_failed", err?.message || err);
+  }
+}
+
+// Su gesto utente: chiede il permesso e crea/sincronizza la subscription.
+// Ritorna lo stato: granted | denied | not_configured | unsupported | error.
+async function enablePushNotifications() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    return "unsupported";
+  }
+  try {
+    const { publicKey } = await apiFetch("/api/push/vapid-public-key");
+    if (!publicKey) return "not_configured";
+    const registration = await navigator.serviceWorker.ready;
     const permission = await Notification.requestPermission();
-    if (permission !== "granted") return;
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: publicKey,
-    });
+    if (permission !== "granted") return "denied";
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+    }
     await apiFetch("/api/push/subscribe", {
       method: "POST",
       body: JSON.stringify(subscription.toJSON()),
     });
+    return "granted";
   } catch (err) {
     console.warn("push_subscribe_failed", err?.message || err);
+    return "error";
   }
+}
+
+// Feedback condiviso (toast) per onboarding e Impostazioni.
+async function enablePushNotificationsWithFeedback() {
+  const status = await enablePushNotifications();
+  const messages = {
+    granted: ["Notifiche attivate", "success"],
+    denied: ["Permesso negato dal browser", "error"],
+    not_configured: ["Notifiche non ancora configurate sul server", "error"],
+    unsupported: ["Questo dispositivo non supporta le notifiche push", "error"],
+    error: ["Attivazione notifiche non riuscita", "error"],
+  };
+  const [msg, tone] = messages[status] || messages.error;
+  showToast(msg, tone);
+  return status;
 }
 
 navigator.serviceWorker?.addEventListener("message", (event) => {
@@ -16685,13 +16733,30 @@ document.addEventListener("click", (ev) => {
       break;
     case "onboarding-enable-push":
       ev.preventDefault();
-      if ("Notification" in window) {
-        Notification.requestPermission().then((p) => {
-          if (p === "granted") showToast("Notifiche attivate", "success");
-          else showToast("Permesso negato", "error");
-        });
-      }
+      void enablePushNotificationsWithFeedback();
       break;
+    case "settings-enable-push": {
+      ev.preventDefault();
+      const btn = target;
+      const statusEl = document.getElementById("push-status");
+      btn.disabled = true;
+      enablePushNotificationsWithFeedback().then((status) => {
+        btn.disabled = false;
+        if (statusEl) {
+          const labels = {
+            granted: ["success", "✓ Notifiche attive su questo dispositivo."],
+            denied: ["error", "Permesso negato. Riattivale dalle impostazioni del browser per questo sito."],
+            not_configured: ["error", "Le notifiche non sono ancora configurate sul server (chiavi VAPID mancanti)."],
+            unsupported: ["error", "Questo dispositivo/browser non supporta le notifiche push."],
+            error: ["error", "Attivazione non riuscita. Riprova."],
+          };
+          const [tone, msg] = labels[status] || labels.error;
+          setStatus(statusEl, tone, msg);
+        }
+        if (status === "granted") btn.textContent = "Notifiche attive ✓";
+      });
+      break;
+    }
     case "pwa-install":
       ev.preventDefault();
       if (_deferredInstallPrompt) {
