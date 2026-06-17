@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260617-push-notifiche-attive";
+} from "./lib/order-money.js?v=20260618-logistica-done-push-test";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260617-push-notifiche-attive";
+import { regionForCity } from "./lib/geo.js?v=20260618-logistica-done-push-test";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260617-push-notifiche-attive";
+} from "./lib/profit-split.js?v=20260618-logistica-done-push-test";
 
-const APP_SHELL_VERSION = "20260617-push-notifiche-attive";
+const APP_SHELL_VERSION = "20260618-logistica-done-push-test";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -16757,6 +16757,26 @@ document.addEventListener("click", (ev) => {
       });
       break;
     }
+    case "settings-test-push": {
+      ev.preventDefault();
+      const statusEl = document.getElementById("push-status");
+      apiFetch("/api/push/test", { method: "POST" })
+        .then((data) => {
+          showToast("Notifica di prova inviata", "success");
+          if (statusEl) setStatus(statusEl, "success", `Inviata a ${data?.sent || 1} dispositivo/i. Se non arriva, controlla i permessi del browser e del sistema operativo.`);
+        })
+        .catch((err) => {
+          const code = String(err?.message || "");
+          const msg = code === "no_subscription"
+            ? "Prima attiva le notifiche su questo dispositivo."
+            : code === "push_not_configured"
+              ? "Notifiche non configurate sul server (chiavi VAPID mancanti)."
+              : "Invio della notifica di prova non riuscito.";
+          showToast(msg, "error");
+          if (statusEl) setStatus(statusEl, "error", msg);
+        });
+      break;
+    }
     case "pwa-install":
       ev.preventDefault();
       if (_deferredInstallPrompt) {
@@ -19050,6 +19070,15 @@ function getShippingRowAction(order) {
   const wh = order.operations?.warehouse || {};
   const mode = String(wh.fulfillmentMode || "").trim();
   const status = String(wh.status || "").trim();
+  // Ordini già usciti / ritirati / chiusi (corsia "done"): non c'è più un'azione
+  // di uscita. Mostra lo stato raggiunto (passato), non "Segna caricato" che
+  // confonde — il bottone serve solo ad aprire il dettaglio.
+  if (getShippingStageLane(order) === "done") {
+    if (mode === "corriere") return { label: state.lang === "it" ? "Spedito" : "Shipped", tone: "done" };
+    if (mode === "ritiro")   return { label: state.lang === "it" ? "Ritirato" : "Collected", tone: "done" };
+    if (mode === "furgone")  return { label: state.lang === "it" ? "Caricato" : "Loaded", tone: "done" };
+    return { label: state.lang === "it" ? "Evaso" : "Done", tone: "done" };
+  }
   const ready = status === "pronto" || wh.readyToShip;
   if (ready) {
     if (mode === "corriere") return { label: state.lang === "it" ? "Segna spedito" : "Mark shipped", tone: "green" };

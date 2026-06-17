@@ -15010,6 +15010,22 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true });
   }
 
+  // Notifica di prova: invia una push all'utente corrente per verificare che il
+  // dispositivo la riceva (indipendente dagli eventi operativi).
+  if (url.pathname === "/api/push/test" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return sendJson(res, 503, { error: "push_not_configured" });
+    const subs = (store.pushSubscriptions || []).filter((s) => s.userId === String(currentUser.id));
+    if (!subs.length) return sendJson(res, 409, { error: "no_subscription" });
+    await sendPushToUser(store, currentUser.id, {
+      type: "test",
+      title: "Notifiche attive ✓",
+      body: "Questa è una notifica di prova da PSI Ops.",
+      data: { view: "settings" },
+    });
+    return sendJson(res, 200, { ok: true, sent: subs.length });
+  }
+
   // ─── Crew job endpoints ──────────────────────────────────────────────────────
 
   if (url.pathname === "/api/crew/jobs" && req.method === "GET") {
