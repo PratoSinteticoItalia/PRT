@@ -3665,10 +3665,13 @@
       const keRaw = Array.isArray(hooks?.[30]?.memoizedState) ? hooks[30].memoizedState : [];
       const extraServices = keRaw.filter((e) => String(e?.description || "").trim());
       const materialsText = String(hooks?.[27]?.memoizedState || "");
+      // hooks[17] = superficie selezionata: "terra" | "pavimentazione". Serve ad app.js
+      // per scegliere la descrizione lavorazione e gli step posa corretti nel PDF.
+      const surface = String(hooks?.[17]?.memoizedState || "terra");
 
-      return { accessories, extraServices, materialsText };
+      return { accessories, extraServices, materialsText, surface };
     } catch (_) {
-      return { accessories: [], extraServices: [], materialsText: "" };
+      return { accessories: [], extraServices: [], materialsText: "", surface: "terra" };
     }
   };
 })();

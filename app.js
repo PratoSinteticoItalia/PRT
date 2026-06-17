@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260617-ui-overflow-img-mobile";
+} from "./lib/order-money.js?v=20260617-preventivo-posa-pavimentazione";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260617-ui-overflow-img-mobile";
+import { regionForCity } from "./lib/geo.js?v=20260617-preventivo-posa-pavimentazione";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260617-ui-overflow-img-mobile";
+} from "./lib/profit-split.js?v=20260617-preventivo-posa-pavimentazione";
 
-const APP_SHELL_VERSION = "20260617-ui-overflow-img-mobile";
+const APP_SHELL_VERSION = "20260617-preventivo-posa-pavimentazione";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -26726,6 +26726,21 @@ const PREVENTIVO_STATIC_DEFAULTS = Object.freeze({
     ],
     note: "Tempi medi di posa: 1–3 giorni lavorativi a seconda della metratura e delle condizioni del fondo. La squadra è coperta da assicurazione RC professionale.",
   },
+  // Variante posa su PAVIMENTAZIONE (cemento, mattonelle, massetto): niente fondo
+  // drenante né telo anti-radice — il prato si incolla direttamente sul piano esistente.
+  installationWorkPavimentazione: {
+    title: "Cosa include il servizio di posa",
+    intro: "La posa è eseguita da tecnici specializzati con pluriennale esperienza nel settore. L'intervento è completo e prevede le seguenti fasi:",
+    steps: [
+      { title: "Sopralluogo e preparazione", text: "Verifica delle misure reali in cantiere e controllo della planarità e pulizia del piano esistente." },
+      { title: "Pulizia dell'area", text: "Rimozione di detriti e residui dalla pavimentazione per garantire una buona adesione del prato." },
+      { title: "Posa del prato", text: "Stesa dei rotoli con allineamento del verso del filato e taglio perimetrale a misura." },
+      { title: "Incollaggio delle giunzioni", text: "Unione dei teli con bande di giunzione e colla bicomponente per giunti stabili e invisibili." },
+      { title: "Incollaggio perimetrale", text: "Fissaggio del perimetro mediante incollaggio diretto sulla pavimentazione." },
+      { title: "Spazzolatura e consegna", text: "Spazzolatura finale per ravvivare il filato, verifica insieme al cliente e pulizia del cantiere." },
+    ],
+    note: "Tempi medi di posa: 1–2 giorni lavorativi a seconda della metratura. La squadra è coperta da assicurazione RC professionale.",
+  },
 });
 
 function defaultProductTech(modelName = "") {
@@ -26750,6 +26765,7 @@ const PREVENTIVO_TEXTS_DEFAULTS = Object.freeze({
   brandCompany: "VERTEX SRLS · P.IVA 04863610616",
   materialsDescFornitura: "La fornitura viene preparata in rotoli da 2 metri di larghezza, con lunghezza a scelta in base alle misure del progetto. La spedizione avviene in 3/5 giorni lavorativi ed è gratuita per ordini superiori a 500 euro di imponibile.",
   materialsDescPosa: "La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm, telo separatore, giunte, fissaggi e finiture perimetrali. Il materiale è quantificato in base ai metri quadri inseriti.",
+  materialsDescPosaPavimentazione: "La posa su pavimentazione prevede pulizia dell'area, posa del prato, incollaggio delle giunture e incollaggio perimetrale, con spazzolatura finale. Il materiale è quantificato in base ai metri quadri inseriti.",
   paymentMain: "Pagamento disponibile con carta, PayPal, bonifico bancario, Scalapay e HeyLight.",
   paymentHeyLight: "Con HeyLight puoi suddividere il preventivo in 3 o 5 rate senza interessi.",
   footerInfo: "VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com",
@@ -27427,6 +27443,10 @@ function extractGeneratorPayloadFromIframe() {
     // Tipologia attiva (Solo Fornitura / Fornitura + Posa)
     const tipoActive = getActiveSegmentButton(doc, ["Solo Fornitura", "Fornitura + Posa"]);
     const isPosa = tipoActive && /posa/i.test(tipoActive.textContent || "");
+    // Superficie selezionata nel generatore (hooks[17] esposto dal bridge): terra | pavimentazione.
+    // Determina la descrizione lavorazione (pag.1) e gli step "Cosa include il servizio di posa" (pag.2).
+    const surface = String(bridgeState.surface || "terra").trim().toLowerCase();
+    const isPavimentazione = isPosa && surface === "pavimentazione";
     const mode = isPosa ? "fornitura+posa" : "solo-fornitura";
 
     // ── Model selects ──────────────────────────────────────────────────────────
@@ -27560,7 +27580,9 @@ function extractGeneratorPayloadFromIframe() {
       suggestedSlug: "",
       options,
       materials: {
-        desc: isPosa ? customTexts.materialsDescPosa : customTexts.materialsDescFornitura,
+        desc: isPosa
+          ? (isPavimentazione ? customTexts.materialsDescPosaPavimentazione : customTexts.materialsDescPosa)
+          : customTexts.materialsDescFornitura,
         discount: materialsDiscountPct || 0,
         // det: testo grezzo "Telo: 100 mq × 1,50 €/mq; Colla: 2 sec × 45,00 €/sec; ..."
         det: materialsText,
@@ -27601,7 +27623,9 @@ function extractGeneratorPayloadFromIframe() {
       },
       certifications: PREVENTIVO_STATIC_DEFAULTS.certifications,
       conditions: PREVENTIVO_STATIC_DEFAULTS.conditions,
-      installationWork: isPosa ? PREVENTIVO_STATIC_DEFAULTS.installationWork : null,
+      installationWork: isPosa
+        ? (isPavimentazione ? PREVENTIVO_STATIC_DEFAULTS.installationWorkPavimentazione : PREVENTIVO_STATIC_DEFAULTS.installationWork)
+        : null,
       // Logo partner/squadra dell'utente corrente (se crew o se ha brand caricato)
       partner: (() => {
         try {
