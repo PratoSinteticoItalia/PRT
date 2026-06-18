@@ -13860,7 +13860,9 @@ body.mobile-safe-mode .main-content {
     grid-column: 1 / -1 !important;
     grid-row: 3 !important;
     grid-area: main !important;
-    padding: 8px 12px calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+    /* Spazio in fondo per scavalcare la bottom-nav fissa (~62px) + safe-area iOS,
+       così l'ultima card non resta nascosta sotto il menu. */
+    padding: 8px 12px calc(88px + env(safe-area-inset-bottom, 0px)) !important;
   }
 }
 

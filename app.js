@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260618-catalogo-prodotti-fix-eur";
+} from "./lib/order-money.js?v=20260618-mobile-ios-viewport-safearea";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260618-catalogo-prodotti-fix-eur";
+import { regionForCity } from "./lib/geo.js?v=20260618-mobile-ios-viewport-safearea";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260618-catalogo-prodotti-fix-eur";
+} from "./lib/profit-split.js?v=20260618-mobile-ios-viewport-safearea";
 
-const APP_SHELL_VERSION = "20260618-catalogo-prodotti-fix-eur";
+const APP_SHELL_VERSION = "20260618-mobile-ios-viewport-safearea";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
