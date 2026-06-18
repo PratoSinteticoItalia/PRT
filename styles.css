@@ -27,7 +27,10 @@
    + width: 100% o min-width nascosto causa shift orizzontale dell'intera pagina.
    ───────────────────────────────────────────────────────────────────────── */
 html, body {
-  overflow-x: hidden;
+  /* clip (non hidden): nasconde l'overflow orizzontale SENZA forzare overflow-y
+     a "auto". Con "hidden" su iOS il body diventa un contenitore di scroll che
+     non scende (pagina bloccata in standalone). "clip" non ha questo effetto. */
+  overflow-x: clip;
   /* Previene il pull-to-refresh nativo del browser (reload involontario che
      riporta in alto) quando si scrolla oltre il bordo superiore su mobile.
      Funziona su Chrome Android e PWA standalone. */
@@ -6879,7 +6882,7 @@ select:focus {
 html,
 body {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .app-shell,
@@ -9607,9 +9610,12 @@ button:active,
   body {
     height: auto !important;
     min-height: 100%;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
+    /* Su mobile annulla l'overflow:hidden desktop del body e lascia lo scroll
+       NATURALE del viewport: overflow-y:visible su html+body (non "auto", che
+       creerebbe scroller annidati che iOS standalone non scrolla). clip-x evita
+       lo scroll orizzontale senza bloccare quello verticale. */
+    overflow-x: clip !important;
+    overflow-y: visible !important;
   }
 
   .app-shell {
@@ -10636,7 +10642,7 @@ button:active,
 
 @media (max-width: 980px) {
   body.mobile-safe-mode {
-    overflow-x: hidden !important;
+    overflow-x: clip !important;
   }
 
   body.mobile-safe-mode.mobile-menu-open {
@@ -13541,7 +13547,9 @@ body.mobile-safe-mode[data-user-role="warehouse"] #new-order-button {
   body.mobile-safe-mode .main-content,
   body.mobile-safe-mode .view {
     max-width: 100vw !important;
-    overflow-x: hidden !important;
+    /* clip, non hidden: evita di rendere questi elementi contenitori di scroll
+       (su iOS blocca lo scorrimento verticale della pagina). */
+    overflow-x: clip !important;
   }
 
   body.mobile-safe-mode .sidebar {
@@ -21585,3 +21593,18 @@ body {
 }
 .product-catalog-row strong { font-weight: 600; }
 .product-catalog-price { margin-left: 10px; font-size: 12px; color: var(--muted, #6b6b66); }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Fix mobile: i drawer dettaglio Logistica/Campioni (figli di <body>) sono
+   overlay FISSI (slide da destra) anche su mobile. Il "position: static" generico
+   applicato ai .detail-panel su mobile li faceva cadere nel flusso sotto la pagina,
+   creando uno spazio vuoto enorme in fondo (scroll a vuoto). Restano fixed:
+   chiusi → translateX(100%) fuori schermo (nessun impatto sul flusso),
+   aperti (.is-open) → translateX(0).
+   ─────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 980px) {
+  body.mobile-safe-mode .shipping-standard-detail-panel,
+  body.mobile-safe-mode .sample-detail-panel {
+    position: fixed !important;
+  }
+}
