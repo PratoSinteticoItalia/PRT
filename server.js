@@ -4342,17 +4342,24 @@ async function sendPushToUser(store, userId, payload) {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
   const subscriptions = (store.pushSubscriptions || []).filter((s) => s.userId === String(userId));
   const dead = [];
+  let delivered = 0;
   await Promise.allSettled(subscriptions.map(async (sub) => {
     try {
       await webPush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, JSON.stringify(payload));
+      delivered += 1;
     } catch (err) {
-      if (err.statusCode === 410 || err.statusCode === 404) dead.push(sub.endpoint);
+      // Pota ogni iscrizione permanentemente invalida: 4xx (gone/not found/VAPID
+      // non corrispondente/payload non valido), tranne il rate-limit 429 che è
+      // transitorio. I 5xx sono errori temporanei del push service → si tengono.
+      const code = Number(err.statusCode || 0);
+      if (code >= 400 && code < 500 && code !== 429) dead.push(sub.endpoint);
     }
   }));
   if (dead.length) {
     store.pushSubscriptions = (store.pushSubscriptions || []).filter((s) => !dead.includes(s.endpoint));
     writeGuard.safeWrite("storePush", () => writeJson(STORE_PATH, store));
   }
+  return { total: subscriptions.length, delivered, pruned: dead.length };
 }
 
 async function sendPushToRole(store, role, payload, exceptUserId = null) {
@@ -9110,6 +9117,7 @@ function reconcileStoreData(store) {
   store.coveragePlanner = normalizeCoveragePlanner(store.coveragePlanner || defaults.coveragePlanner);
   store.securityEvents = Array.isArray(store.securityEvents) ? store.securityEvents : [];
   store.pushSubscriptions = Array.isArray(store.pushSubscriptions) ? store.pushSubscriptions : [];
+  store.customProducts = Array.isArray(store.customProducts) ? store.customProducts : [];
   store.shopifySettings = {
     ...defaults.shopifySettings,
     ...(store.shopifySettings || {}),
@@ -14994,6 +15002,19 @@ async function handleApi(req, res, url) {
       keys: { p256dh: keys.p256dh, auth: keys.auth },
       createdAt: new Date().toISOString(),
     });
+    // Tetto anti-accumulo: tieni solo le ultime 10 iscrizioni per utente.
+    const MAX_SUBS_PER_USER = 10;
+    const mine = store.pushSubscriptions.filter((s) => s.userId === String(currentUser.id));
+    if (mine.length > MAX_SUBS_PER_USER) {
+      const keep = new Set(
+        mine.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+          .slice(0, MAX_SUBS_PER_USER)
+          .map((s) => s.endpoint)
+      );
+      store.pushSubscriptions = store.pushSubscriptions.filter(
+        (s) => s.userId !== String(currentUser.id) || keep.has(s.endpoint)
+      );
+    }
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, { ok: true });
   }
@@ -15017,13 +15038,60 @@ async function handleApi(req, res, url) {
     if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return sendJson(res, 503, { error: "push_not_configured" });
     const subs = (store.pushSubscriptions || []).filter((s) => s.userId === String(currentUser.id));
     if (!subs.length) return sendJson(res, 409, { error: "no_subscription" });
-    await sendPushToUser(store, currentUser.id, {
+    const result = await sendPushToUser(store, currentUser.id, {
       type: "test",
       title: "Notifiche attive ✓",
       body: "Questa è una notifica di prova da PSI Ops.",
       data: { view: "settings" },
     });
-    return sendJson(res, 200, { ok: true, sent: subs.length });
+    return sendJson(res, 200, { ok: true, delivered: result?.delivered || 0, pruned: result?.pruned || 0, total: result?.total || subs.length });
+  }
+
+  // Azzera tutte le iscrizioni push dell'utente (pulizia "su tutti i dispositivi").
+  if (url.pathname === "/api/push/reset" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const before = (store.pushSubscriptions || []).length;
+    store.pushSubscriptions = (store.pushSubscriptions || []).filter((s) => s.userId !== String(currentUser.id));
+    const removed = before - store.pushSubscriptions.length;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true, removed });
+  }
+
+  // ─── Catalogo prodotti inventario (gestito da Impostazioni, blob store) ───────
+  // Prodotti prato aggiuntivi creati dall'ufficio: si uniscono al catalogo fisso
+  // dell'inventario. Salvati nel blob → persistono anche senza Postgres.
+  if (url.pathname === "/api/products" && req.method === "GET") {
+    return sendJson(res, 200, Array.isArray(store.customProducts) ? store.customProducts : []);
+  }
+  if (url.pathname === "/api/products" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const label = String(body?.label || "").trim();
+    if (!label) return sendJson(res, 400, { error: "label_required" });
+    const slugify = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const key = slugify(body?.key) || slugify(label);
+    if (!key) return sendJson(res, 400, { error: "invalid_label" });
+    const price = Number(String(body?.grossPricePerSqm ?? "").replace(",", "."));
+    const product = { key, label, type: "turf", custom: true, updatedAt: new Date().toISOString() };
+    if (Number.isFinite(price) && price > 0) product.grossPricePerSqm = price;
+    const list = Array.isArray(store.customProducts) ? store.customProducts : [];
+    const idx = list.findIndex((p) => p.key === key);
+    if (idx >= 0) list[idx] = { ...list[idx], ...product };
+    else list.push(product);
+    store.customProducts = list;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true, product });
+  }
+  if (url.pathname.startsWith("/api/products/") && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const key = decodeURIComponent(url.pathname.slice("/api/products/".length));
+    const before = (store.customProducts || []).length;
+    store.customProducts = (store.customProducts || []).filter((p) => p.key !== key);
+    const removed = before - store.customProducts.length;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true, removed });
   }
 
   // ─── Crew job endpoints ──────────────────────────────────────────────────────

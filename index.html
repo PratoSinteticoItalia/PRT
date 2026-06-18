@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260618-logistica-done-push-test" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260618-logistica-done-push-test" />
+    <link rel="preload" href="./styles.css?v=20260618-catalogo-prodotti-fix-eur" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260618-catalogo-prodotti-fix-eur" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -777,7 +777,7 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260618-logistica-done-push-test&shell=20260618-logistica-done-push-test"
+                src="./sales-suite/generator.html?embedded=1&v=20260618-catalogo-prodotti-fix-eur&shell=20260618-catalogo-prodotti-fix-eur"
                 scrolling="no"
               ></iframe>
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -1870,8 +1870,33 @@
                 <div class="inline-actions" style="margin-top:10px;">
                   <button type="button" class="primary-button small-button" data-action="settings-enable-push">Attiva notifiche su questo dispositivo</button>
                   <button type="button" class="ghost-button small-button" data-action="settings-test-push">Invia notifica di prova</button>
+                  <button type="button" class="ghost-button small-button" data-action="settings-reset-push">Disattiva su tutti i dispositivi</button>
                 </div>
                 <div id="push-status" class="panel-note hidden"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow">Inventario</p>
+                    <h3>Catalogo prodotti</h3>
+                  </div>
+                </div>
+                <p class="panel-note">Aggiungi nuovi modelli di prato. Compaiono subito nell'inventario (autocomplete e prezzo). I 15 modelli predefiniti restano sempre disponibili.</p>
+                <form id="product-catalog-form" class="inline-form-grid" style="margin-top:10px;">
+                  <label class="field">
+                    <span>Nome prodotto</span>
+                    <input class="text-input" name="label" type="text" placeholder="Es. Quercia 30 mm" required />
+                  </label>
+                  <label class="field">
+                    <span>Prezzo €/mq (lordo)</span>
+                    <input class="text-input" name="grossPricePerSqm" type="text" inputmode="decimal" placeholder="Es. 5,50" />
+                  </label>
+                  <div class="inline-actions field-full">
+                    <button type="submit" class="primary-button small-button">Aggiungi prodotto</button>
+                  </div>
+                </form>
+                <div id="product-catalog-status" class="panel-note hidden"></div>
+                <div id="product-catalog-list" class="product-catalog-list" style="margin-top:10px;"></div>
               </section>
               <section class="panel">
                 <div class="panel-head">
@@ -2398,7 +2423,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260618-logistica-done-push-test" defer></script>
-    <script src="./app.js?v=20260618-logistica-done-push-test" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260618-catalogo-prodotti-fix-eur" defer></script>
+    <script src="./app.js?v=20260618-catalogo-prodotti-fix-eur" type="module"></script>
   </body>
 </html>

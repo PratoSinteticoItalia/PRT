@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260618-logistica-done-push-test";
+} from "./lib/order-money.js?v=20260618-catalogo-prodotti-fix-eur";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260618-logistica-done-push-test";
+import { regionForCity } from "./lib/geo.js?v=20260618-catalogo-prodotti-fix-eur";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260618-logistica-done-push-test";
+} from "./lib/profit-split.js?v=20260618-catalogo-prodotti-fix-eur";
 
-const APP_SHELL_VERSION = "20260618-logistica-done-push-test";
+const APP_SHELL_VERSION = "20260618-catalogo-prodotti-fix-eur";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1145,6 +1145,7 @@ const state = {
   dashboardDateRange: "7d",
   preventivoTexts: null, // popolato all'init da /api/catalog/preventivo_branding
   preventivoCatalog: {}, // slug -> { code, tech: {struttura, densita, dtex, drenaggio, peso, note}, label }
+  customProducts: [], // prodotti prato aggiunti dall'ufficio (GET /api/products), uniti a INVENTORY_CATALOG
   selectedOrderId: null,
   selectedSalesRequestId: "",
   selectedSalesRequestBulkIds: new Set(),
@@ -1490,6 +1491,9 @@ const ui = {
   preventivoTextsForm: document.getElementById("preventivo-texts-form"),
   preventivoTextsResetButton: document.getElementById("preventivo-texts-reset"),
   preventivoTextsStatus: document.getElementById("preventivo-texts-status"),
+  productCatalogForm: document.getElementById("product-catalog-form"),
+  productCatalogList: document.getElementById("product-catalog-list"),
+  productCatalogStatus: document.getElementById("product-catalog-status"),
   preventivoProductForm: document.getElementById("preventivo-product-form"),
   preventivoProductSelect: document.getElementById("preventivo-product-select"),
   preventivoProductSavedList: document.getElementById("preventivo-product-saved-list"),
@@ -7989,7 +7993,32 @@ function inferCatalogEntry(value) {
   if (/bordura/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "bordura-pvc");
   if (/detergente/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "detergente");
   if (/spazzolatrice/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "spazzolatrice");
+  // Prodotti prato custom (aggiunti dall'ufficio in Impostazioni): match per label.
+  const customMatch = (state.customProducts || []).find((p) => {
+    const lbl = String(p.label || "").toLowerCase().trim();
+    return lbl && label.includes(lbl);
+  });
+  if (customMatch) {
+    return {
+      key: customMatch.key,
+      label: customMatch.label,
+      type: "turf",
+      ...(customMatch.grossPricePerSqm != null ? { grossPricePerSqm: customMatch.grossPricePerSqm } : {}),
+    };
+  }
   return null;
+}
+
+// Catalogo inventario effettivo = catalogo fisso + prodotti prato custom.
+function getInventoryCatalog() {
+  const custom = (state.customProducts || []).map((p) => ({
+    key: p.key,
+    label: p.label,
+    type: "turf",
+    custom: true,
+    ...(p.grossPricePerSqm != null ? { grossPricePerSqm: p.grossPricePerSqm } : {}),
+  }));
+  return [...INVENTORY_CATALOG, ...custom];
 }
 
 function isTurfModel(value) {
@@ -9703,7 +9732,7 @@ function buildInventoryGroups() {
     groups.set(key, existing);
   });
 
-  INVENTORY_CATALOG.forEach((item) => {
+  getInventoryCatalog().forEach((item) => {
     const key = normalizeProductName(item.label);
     if (!groups.has(key)) {
       groups.set(key, {
@@ -9785,7 +9814,8 @@ function buildInventoryGroups() {
     })
     .sort((a, b) => {
       if (a.isModel !== b.isModel) return a.isModel ? -1 : 1;
-      return INVENTORY_CATALOG.findIndex((item) => item.label === a.product) - INVENTORY_CATALOG.findIndex((item) => item.label === b.product);
+      const cat = getInventoryCatalog();
+      return cat.findIndex((item) => item.label === a.product) - cat.findIndex((item) => item.label === b.product);
     });
 }
 
@@ -16762,8 +16792,15 @@ document.addEventListener("click", (ev) => {
       const statusEl = document.getElementById("push-status");
       apiFetch("/api/push/test", { method: "POST" })
         .then((data) => {
-          showToast("Notifica di prova inviata", "success");
-          if (statusEl) setStatus(statusEl, "success", `Inviata a ${data?.sent || 1} dispositivo/i. Se non arriva, controlla i permessi del browser e del sistema operativo.`);
+          const delivered = data?.delivered || 0;
+          const pruned = data?.pruned || 0;
+          if (delivered > 0) {
+            showToast("Notifica di prova inviata", "success");
+            if (statusEl) setStatus(statusEl, "success", `Consegnata a ${delivered} dispositivo/i${pruned ? ` (rimosse ${pruned} iscrizioni non valide)` : ""}. Se non la vedi, controlla i permessi del browser e del sistema operativo.`);
+          } else {
+            showToast("Nessuna consegna riuscita", "error");
+            if (statusEl) setStatus(statusEl, "error", `Nessun dispositivo ha ricevuto la notifica${pruned ? ` (rimosse ${pruned} iscrizioni non valide)` : ""}. Di solito significa chiavi VAPID non corrispondenti sul server: riattiva le notifiche su questo dispositivo e riprova.`);
+          }
         })
         .catch((err) => {
           const code = String(err?.message || "");
@@ -16775,6 +16812,27 @@ document.addEventListener("click", (ev) => {
           showToast(msg, "error");
           if (statusEl) setStatus(statusEl, "error", msg);
         });
+      break;
+    }
+    case "settings-reset-push": {
+      ev.preventDefault();
+      const statusEl = document.getElementById("push-status");
+      (async () => {
+        // Annulla anche la subscription locale di questo browser, poi azzera il server.
+        try {
+          const reg = await navigator.serviceWorker?.ready;
+          const sub = await reg?.pushManager.getSubscription();
+          if (sub) await sub.unsubscribe();
+        } catch (_) {}
+        try {
+          const data = await apiFetch("/api/push/reset", { method: "POST" });
+          showToast("Iscrizioni notifiche azzerate", "success");
+          if (statusEl) setStatus(statusEl, "success", `Rimosse ${data?.removed || 0} iscrizioni. Riattiva le notifiche sui dispositivi che usi davvero.`);
+        } catch (_) {
+          showToast("Reset non riuscito", "error");
+          if (statusEl) setStatus(statusEl, "error", "Reset non riuscito. Riprova.");
+        }
+      })();
       break;
     }
     case "pwa-install":
@@ -20377,10 +20435,11 @@ function renderAttachmentGrid(items, orderId = "") {
 
 function populateInventoryOptions() {
   if (!ui.inventoryProductOptions) return;
-  const signature = INVENTORY_CATALOG.map((item) => item.label).join("|");
+  const catalog = getInventoryCatalog();
+  const signature = catalog.map((item) => item.label).join("|");
   if (ui.inventoryProductOptions.dataset.signature === signature) return;
-  ui.inventoryProductOptions.innerHTML = INVENTORY_CATALOG
-    .map((item) => `<option value="${item.label}"></option>`)
+  ui.inventoryProductOptions.innerHTML = catalog
+    .map((item) => `<option value="${escapeHtml(item.label)}"></option>`)
     .join("");
   ui.inventoryProductOptions.dataset.signature = signature;
 }
@@ -20898,6 +20957,8 @@ function showApp() {
     void loadPreventivoTexts();
     void loadPreventivoCatalog();
   }
+  // Prodotti custom: servono anche al magazzino (autocomplete inventario).
+  void loadCustomProducts();
   void registerPushSubscription();
   initQuoteGenerator();
   clearPendingCurrentViewRefresh();
@@ -25745,6 +25806,10 @@ function handleGlobalClick(event) {
     });
     return;
   }
+  if (action === "delete-product") {
+    deleteProduct(String(button.dataset.key || "").trim());
+    return;
+  }
   if (action === "clear-inventory-product") {
     const product = String(button.dataset.product || "").trim();
     if (!product) return;
@@ -26932,6 +26997,80 @@ function resetPreventivoTexts() {
   setStatus(ui.preventivoTextsStatus, "success", state.lang === "it" ? "Default ripristinati nei campi. Clicca Salva per confermare." : "Defaults restored in fields. Click Save to confirm.");
 }
 
+// ─── Catalogo prodotti inventario (gestione da Impostazioni) ──────────────────
+async function loadCustomProducts() {
+  try {
+    const items = await apiFetch("/api/products");
+    state.customProducts = Array.isArray(items) ? items : [];
+  } catch (err) {
+    console.warn("[products] load failed:", err?.message);
+    state.customProducts = [];
+  }
+  renderProductCatalogList();
+  try { populateInventoryOptions(); } catch {}
+}
+
+function renderProductCatalogList() {
+  const el = ui.productCatalogList;
+  if (!el) return;
+  const list = state.customProducts || [];
+  if (!list.length) {
+    el.innerHTML = `<div class="info-card">Nessun prodotto aggiunto. I 15 modelli predefiniti restano sempre disponibili.</div>`;
+    return;
+  }
+  el.innerHTML = list.map((p) => {
+    const price = p.grossPricePerSqm != null ? `${formatEuroSimple(p.grossPricePerSqm)}/mq` : "prezzo non impostato";
+    return `<div class="product-catalog-row">
+      <div>
+        <strong>${escapeHtml(p.label)}</strong>
+        <span class="product-catalog-price">${escapeHtml(price)}</span>
+      </div>
+      <button type="button" class="ghost-button small-button" data-action="delete-product" data-key="${escapeAttr(p.key)}">Elimina</button>
+    </div>`;
+  }).join("");
+}
+
+async function saveProduct(event) {
+  if (event) event.preventDefault();
+  const form = ui.productCatalogForm;
+  if (!form) return;
+  const fd = new FormData(form);
+  const label = String(fd.get("label") || "").trim();
+  const price = String(fd.get("grossPricePerSqm") || "").trim();
+  if (!label) {
+    setStatus(ui.productCatalogStatus, "error", "Inserisci il nome del prodotto.");
+    return;
+  }
+  setStatus(ui.productCatalogStatus, "success", "Salvataggio in corso…");
+  try {
+    await apiFetch("/api/products", {
+      method: "POST",
+      body: JSON.stringify({ label, grossPricePerSqm: price }),
+    });
+    form.reset();
+    await loadCustomProducts();
+    setStatus(ui.productCatalogStatus, "success", `✓ "${label}" aggiunto. Ora è disponibile nell'inventario.`);
+    showToast("Prodotto aggiunto al catalogo", "success");
+  } catch (err) {
+    const msg = err?.status === 403 ? "Solo l'ufficio può gestire il catalogo." : "Salvataggio non riuscito.";
+    setStatus(ui.productCatalogStatus, "error", msg);
+    showToast(msg, "error");
+  }
+}
+
+async function deleteProduct(key) {
+  if (!key) return;
+  const prod = (state.customProducts || []).find((p) => p.key === key);
+  if (!confirm(`Eliminare "${prod?.label || key}" dal catalogo? Le giacenze già caricate non vengono toccate.`)) return;
+  try {
+    await apiFetch(`/api/products/${encodeURIComponent(key)}`, { method: "DELETE" });
+    await loadCustomProducts();
+    showToast("Prodotto rimosso", "success");
+  } catch (err) {
+    showToast("Rimozione non riuscita", "error");
+  }
+}
+
 // ─── Catalogo prodotti — Dati tecnici ────────────────────────────────────────
 
 const PREVENTIVO_PRODUCT_DEFAULTS = Object.freeze([
@@ -27832,6 +27971,7 @@ function _interceptReactGenerateButton(doc) {
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
 bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);
 bindEvent(ui.preventivoProductForm, "submit", savePreventivoProduct);
+bindEvent(ui.productCatalogForm, "submit", saveProduct);
 bindEvent(ui.preventivoProductSelect, "change", fillPreventivoProductForm);
 bindEvent(ui.productImageInput, "change", handleProductImageChange);
 bindEvent(ui.productImageClear, "click", handleProductImageClear);
