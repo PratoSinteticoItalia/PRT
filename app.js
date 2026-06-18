@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260618-mobile-drawer-flow-fix";
+} from "./lib/order-money.js?v=20260619-mobile-preserve-scroll-2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260618-mobile-drawer-flow-fix";
+import { regionForCity } from "./lib/geo.js?v=20260619-mobile-preserve-scroll-2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260618-mobile-drawer-flow-fix";
+} from "./lib/profit-split.js?v=20260619-mobile-preserve-scroll-2";
 
-const APP_SHELL_VERSION = "20260618-mobile-drawer-flow-fix";
+const APP_SHELL_VERSION = "20260619-mobile-preserve-scroll-2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -23046,13 +23046,39 @@ function flushPendingCurrentViewRefresh({ force = false } = {}) {
   return true;
 }
 
+// Cattura/ripristina la posizione di scroll attiva attorno a un re-render.
+// Mobile = scrolla il viewport (window); desktop = scrolla .main-content.
+// Impostiamo entrambi: quello non-attivo è a 0 e resta un no-op.
+function captureActiveScroll() {
+  const main = document.querySelector(".main-content");
+  return { win: window.scrollY || window.pageYOffset || 0, main: main ? main.scrollTop : 0 };
+}
+function restoreActiveScroll(pos) {
+  if (!pos || (!pos.win && !pos.main)) return;
+  const apply = () => {
+    const main = document.querySelector(".main-content");
+    // Se il contenuto non ha ancora raggiunto l'altezza finale, scrollTo viene
+    // clampato: ri-applichiamo su più frame finché il layout è completo.
+    if (pos.main && main) main.scrollTop = pos.main;
+    if (pos.win) window.scrollTo(0, pos.win);
+  };
+  apply();
+  requestAnimationFrame(apply);
+  window.setTimeout(apply, 80);
+  window.setTimeout(apply, 200);
+}
+
 function refreshCurrentView({ allowDefer = false } = {}) {
   if (allowDefer && (isActiveElementInsideCurrentViewForm() || isSalesRequestInteractionLocked())) {
     state.pendingCurrentViewRefresh = true;
     return false;
   }
   clearPendingCurrentViewRefresh();
+  // "Refresh in place": un aggiornamento dati realtime non deve far saltare lo
+  // scroll in cima (su liste lunghe sembrava un reload e le rendeva inutilizzabili).
+  const scroll = captureActiveScroll();
   renderCurrentViewOnly(state.currentView);
+  restoreActiveScroll(scroll);
   return true;
 }
 
