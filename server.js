@@ -1480,8 +1480,10 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
     if (_statusLc === "new") {
       where.push(`(status IS NULL OR status = '' OR LOWER(status) = 'new' OR LOWER(status) LIKE '%nuovo contatto%')`);
     } else if (_statusLc === "contacted") {
-      where.push(`(LOWER(coalesce(status,'')) LIKE '%1° contatto%' OR LOWER(coalesce(status,'')) LIKE '%1 contatto%'
-                   OR LOWER(coalesce(status,'')) LIKE '%follow%' OR LOWER(coalesce(status,'')) LIKE '%richiam%'
+      // Solo "1° contatto" (il follow-up è ora una categoria separata).
+      where.push(`(LOWER(coalesce(status,'')) LIKE '%1° contatto%' OR LOWER(coalesce(status,'')) LIKE '%1 contatto%')`);
+    } else if (_statusLc === "followup") {
+      where.push(`(LOWER(coalesce(status,'')) LIKE '%follow%' OR LOWER(coalesce(status,'')) LIKE '%richiam%'
                    OR LOWER(coalesce(status,'')) LIKE '%attesa%' OR LOWER(coalesce(status,'')) LIKE '%ricontatt%'
                    OR LOWER(coalesce(status,'')) LIKE '%nessuna risposta%')`);
     } else if (_statusLc === "quoted") {

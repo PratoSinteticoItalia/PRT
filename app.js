@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260619-crm-salva-rubrica-vcard";
+} from "./lib/order-money.js?v=20260619-crm-filtro-followup-prefill";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260619-crm-salva-rubrica-vcard";
+import { regionForCity } from "./lib/geo.js?v=20260619-crm-filtro-followup-prefill";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260619-crm-salva-rubrica-vcard";
+} from "./lib/profit-split.js?v=20260619-crm-filtro-followup-prefill";
 
-const APP_SHELL_VERSION = "20260619-crm-salva-rubrica-vcard";
+const APP_SHELL_VERSION = "20260619-crm-filtro-followup-prefill";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4460,7 +4460,8 @@ function getSalesRequestStatusFilterOptions(items = state.salesRequests) {
   return [
     { value: "all",       label: state.lang === "it" ? "Tutti gli stati" : "All statuses" },
     { value: "new",       label: state.lang === "it" ? "🔵 Nuovo contatto" : "🔵 New" },
-    { value: "contacted", label: state.lang === "it" ? "🟡 1° contatto / Follow-up" : "🟡 1st contact / Follow-up" },
+    { value: "contacted", label: state.lang === "it" ? "🟡 1° contatto" : "🟡 1st contact" },
+    { value: "followup",  label: state.lang === "it" ? "🟠 Follow-up / Richiamo" : "🟠 Follow-up" },
     { value: "quoted",    label: state.lang === "it" ? "🟣 Preventivo inviato" : "🟣 Quote sent" },
     { value: "won",       label: state.lang === "it" ? "🟢 Confermato / Ordine" : "🟢 Confirmed / Won" },
     { value: "lost",      label: state.lang === "it" ? "🔴 Perso / Declinato" : "🔴 Lost" },
@@ -12141,6 +12142,21 @@ function renderOrders() {
   }
 }
 
+// Match stato → categoria filtro (rispecchia server.js searchSalesRequestsFromDb).
+// "followup" è separato da "contacted" (1° contatto) per poterli filtrare distinti.
+function matchesSalesRequestStatusCategory(rawStatus, category) {
+  const s = String(rawStatus || "").toLowerCase();
+  switch (category) {
+    case "new":       return !s || s === "new" || s.includes("nuovo contatto");
+    case "contacted": return s.includes("1° contatto") || s.includes("1 contatto");
+    case "followup":  return s.includes("follow") || s.includes("richiam") || s.includes("attesa") || s.includes("ricontatt") || s.includes("nessuna risposta");
+    case "quoted":    return s.includes("preventivo inviato") || s.includes("preventivo da inviare") || s.includes("offerta inviata");
+    case "won":       return s.includes("preventivo confermato") || s.includes("ordine confermato") || s.includes("ordine eseguito") || s.includes("campione acquistato");
+    case "lost":      return s.includes("declinata") || s.includes("lead non qualificato") || s.includes("perso") || s === "chiuso";
+    default:          return normalizeLooseString(rawStatus) === category; // match esatto legacy
+  }
+}
+
 function getFilteredSalesRequests({ ignoreQuickFilter = false } = {}) {
   const query = String(state.search.salesRequests || "").trim().toLowerCase();
   const assignmentFilter = String(state.filters.salesRequestAssignment || "all");
@@ -12162,7 +12178,7 @@ function getFilteredSalesRequests({ ignoreQuickFilter = false } = {}) {
       const assignment = normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
       if (assignmentFilter === "unassigned" && assignment) return false;
       if (!["all", "unassigned"].includes(assignmentFilter) && normalizeLooseString(assignment) !== assignmentFilter) return false;
-      if (statusFilter !== "all" && normalizeLooseString(item.status || "") !== statusFilter) return false;
+      if (statusFilter !== "all" && !matchesSalesRequestStatusCategory(item.status || "", statusFilter)) return false;
       if (!skipQuick && !matchesSalesRequestQuickFilter(item, quickFilter)) return false;
       if (!query) return true;
       const haystack = [
@@ -14230,12 +14246,15 @@ function useSelectedSalesRequestInGenerator() {
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;
   state.lastSalesGeneratorSignature = "";
+  // Imposta SEMPRE il prefill (localStorage + postMessage) PRIMA di cambiare vista:
+  // così quando l'iframe del generatore si carica trova già i dati pronti in
+  // localStorage, eliminando la race per cui "a volte" non venivano riportati.
+  pushSalesRequestToGenerator(true);
   if (state.currentView === "sales-generator") {
-    pushSalesRequestToGenerator(true);
     renderSalesGenerator();
-    return;
+  } else {
+    setView("sales-generator");
   }
-  setView("sales-generator");
 }
 
 function toggleSalesGeneratorFreeMode() {
