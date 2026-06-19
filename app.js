@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260619-crm-assegna-drill-mobile";
+} from "./lib/order-money.js?v=20260619-crm-salva-rubrica-vcard";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260619-crm-assegna-drill-mobile";
+import { regionForCity } from "./lib/geo.js?v=20260619-crm-salva-rubrica-vcard";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260619-crm-assegna-drill-mobile";
+} from "./lib/profit-split.js?v=20260619-crm-salva-rubrica-vcard";
 
-const APP_SHELL_VERSION = "20260619-crm-assegna-drill-mobile";
+const APP_SHELL_VERSION = "20260619-crm-salva-rubrica-vcard";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1473,6 +1473,7 @@ const ui = {
   salesRequestNewButton: document.getElementById("sales-request-new-button"),
   salesRequestDeleteButton: document.getElementById("sales-request-delete-button"),
   salesRequestUseGeneratorButton: document.getElementById("sales-request-use-generator-button"),
+  salesRequestVcardButton: document.getElementById("sales-request-vcard-button"),
   salesRequestDetailTitle: document.getElementById("sales-request-detail-title"),
   salesRequestDetailMeta: document.getElementById("sales-request-detail-meta"),
   salesRequestWhatsAppButton: document.getElementById("sales-request-whatsapp-button"),
@@ -4674,6 +4675,56 @@ function getSelectedSalesRequest() {
 
 function getSelectedSalesContent() {
   return state.salesContents.find((item) => item.id === state.selectedSalesContentId) || null;
+}
+
+// Escape per i valori vCard 3.0 (RFC 2426).
+function vcardEscape(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+}
+
+// "Salva in rubrica": genera un file .vcf dal contatto della richiesta selezionata.
+// Su iPhone/Android, aprendo il file il telefono propone "Aggiungi contatto".
+function saveSalesRequestVCard() {
+  const req = getSelectedSalesRequest();
+  if (!req) {
+    showToast(state.lang === "it" ? "Nessuna richiesta selezionata" : "No request selected", "error");
+    return;
+  }
+  const name = String(req.name || "").trim();
+  const surname = String(req.surname || "").trim();
+  const full = [name, surname].filter(Boolean).join(" ").trim() || (state.lang === "it" ? "Contatto" : "Contact");
+  const phone = String(req.phone || "").trim();
+  const email = String(req.email || "").trim();
+  const city = String(req.city || "").trim();
+  if (!phone && !email) {
+    showToast(state.lang === "it" ? "Manca telefono ed email su questa richiesta" : "No phone or email on this request", "error");
+    return;
+  }
+  const sqm = req.sqm ? `${req.sqm} mq` : "";
+  const noteParts = [city, sqm, String(req.service || "").trim()].filter(Boolean);
+  const note = (state.lang === "it" ? "Richiesta PSI" : "PSI request") + (noteParts.length ? " · " + noteParts.join(" · ") : "");
+  const lines = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `N:${vcardEscape(surname)};${vcardEscape(name)};;;`,
+    `FN:${vcardEscape(full)}`,
+  ];
+  if (phone) lines.push(`TEL;TYPE=CELL:${vcardEscape(phone)}`);
+  if (email) lines.push(`EMAIL;TYPE=INTERNET:${vcardEscape(email)}`);
+  if (city) lines.push(`ADR;TYPE=HOME:;;;${vcardEscape(city)};;;`);
+  lines.push(`NOTE:${vcardEscape(note)}`, "END:VCARD");
+  const vcard = lines.join("\r\n");
+  const blob = new Blob([vcard], { type: "text/vcard;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${(full.replace(/[^\w\s-]/g, "").trim() || "contatto")}.vcf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  showToast(state.lang === "it" ? "Contatto pronto: apri il file per aggiungerlo alla rubrica" : "Contact ready", "success");
 }
 
 function ensureSelectedSalesRequest() {
@@ -26799,6 +26850,7 @@ bindEvent(ui.salesRequestForm, "submit", saveSalesRequest);
 bindEvent(ui.salesRequestNewButton, "click", createNewSalesRequest);
 bindEvent(ui.salesRequestDeleteButton, "click", deleteSalesRequest);
 bindEvent(ui.salesRequestUseGeneratorButton, "click", useSelectedSalesRequestInGenerator);
+bindEvent(ui.salesRequestVcardButton, "click", saveSalesRequestVCard);
 bindEvent(document.getElementById("sales-request-storia-tab-btn"), "click", () => {
   const requestId = state.selectedSalesRequestId;
   if (requestId) void loadAuditTrail("sales_request", requestId, "sales-request-audit-trail");
