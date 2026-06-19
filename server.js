@@ -46,6 +46,12 @@ const salesRequestSheetColumnsCache = new Map();
 const pendingSalesRequestSheetSyncRecords = new Map();
 let pendingSalesRequestSheetSyncConfig = null;
 let salesRequestSheetSyncTimer = null;
+// Il portale NON aggiunge più righe nuove al foglio: il foglio è l'inbox delle
+// richieste reali (web/Make) in ordine cronologico; il portale si limita ad
+// AGGIORNARE lo stato/assegnazione delle righe esistenti (incluse quelle
+// ri-agganciate per telefono/email dal pre-link). Mettere a true solo se si
+// rivuole il mirror Portal→Sheets con append di nuove righe.
+const MIRROR_APPEND_NEW_ROWS = false;
 let salesRequestSheetSyncInFlight = false;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const R2_ACCOUNT_ID = String(process.env.R2_ACCOUNT_ID || "").trim();
@@ -8134,8 +8140,10 @@ async function syncSalesRequestsToGoogleSheet(config = {}, records = []) {
   }
 
   // ─── APPEND: record orfani (imap/manual) non ancora su Sheets ────────────
-  // Fase 5 mirror Portal→Sheets. Risolviamo lo spreadsheet attivo dal config.
-  if (orphanRecords.length) {
+  // Disattivato: il portale non aggiunge più righe nuove (vedi MIRROR_APPEND_NEW_ROWS).
+  // Gli orfani che corrispondono a una riga esistente sono già stati ri-agganciati
+  // dal pre-link e finiscono nell'UPDATE; quelli senza riga restano fuori dal foglio.
+  if (MIRROR_APPEND_NEW_ROWS && orphanRecords.length) {
     try {
       if (normalizedConfig.spreadsheetInput) {
         const spreadsheetId = resolveSpreadsheetId(normalizedConfig.spreadsheetInput);
