@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260619-mobile-preserve-scroll-2";
+} from "./lib/order-money.js?v=20260619-crm-assegna-drill-mobile";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260619-mobile-preserve-scroll-2";
+import { regionForCity } from "./lib/geo.js?v=20260619-crm-assegna-drill-mobile";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260619-mobile-preserve-scroll-2";
+} from "./lib/profit-split.js?v=20260619-crm-assegna-drill-mobile";
 
-const APP_SHELL_VERSION = "20260619-mobile-preserve-scroll-2";
+const APP_SHELL_VERSION = "20260619-crm-assegna-drill-mobile";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -25681,6 +25681,11 @@ function handleGlobalClick(event) {
     state.selectedSalesRequestId = rowId;
     document.getElementById("sales-requests")?.classList.add("crm-detail-open");
     renderSalesRequests();
+    // Su mobile apri il dettaglio a TUTTA PAGINA (drill), come la selezione card:
+    // senza, il pannello dettaglio restava inline in fondo alla lista (inutilizzabile).
+    if (window.innerWidth <= 768) {
+      openMobileDrillDetail("sales-requests", rowId);
+    }
     // Comportamento contestuale in base al label del bottone
     const actionLabel = String(button?.textContent || "").trim().toLowerCase();
     window.setTimeout(() => {
