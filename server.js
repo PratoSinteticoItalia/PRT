@@ -8002,6 +8002,54 @@ async function syncSalesRequestsToGoogleSheet(config = {}, records = []) {
   const allRecords = (Array.isArray(records) ? records : [])
     .map(normalizeSalesRequestRecord)
     .map((r) => backfillSheetSourceFields(r, normalizedConfig));
+
+  // ─── PRE-LINK orfani → riga esistente (anti-duplicazione) ────────────────────
+  // BUG storico: le richieste nate nel portale (source != "google-sheets") non
+  // venivano mai ricollegate alla loro riga sul foglio, quindi OGNI cambio di
+  // stato APPENDEVA una nuova riga (stesso contatto replicato N volte).
+  // Qui, prima dello split, cerchiamo per telefono/email una riga già presente
+  // sul foglio: se la troviamo, marchiamo il record come "google-sheets" con la
+  // sua riga → finisce nel percorso UPDATE (aggiorna la riga) invece di APPEND.
+  // È auto-correttivo: nessuno stato da persistere, si ri-aggancia ad ogni sync.
+  const unlinked = allRecords.filter((r) =>
+    !getGoogleSheetRequestRecordKey(r)
+    && String(r.source || "").toLowerCase() !== "google-sheets"
+    && (r.phone || r.email) && (r.name || r.surname)
+  );
+  if (unlinked.length) {
+    try {
+      const sheetData = await loadGoogleSheetSalesRequests(normalizedConfig);
+      const existing = Array.isArray(sheetData?.requests) ? sheetData.requests : [];
+      const byPhone = new Map();
+      const byEmail = new Map();
+      for (const row of existing) {
+        if (Number(row.sourceRowNumber) < 2) continue;
+        const ph = normalizePhoneForWhatsApp(row.phone || "");
+        const em = String(row.email || "").trim().toLowerCase();
+        // Prima riga (più in alto) per chiave: se esistono già doppioni ne
+        // aggiorniamo una sola e smettiamo di crearne altre.
+        if (ph && !byPhone.has(ph)) byPhone.set(ph, row);
+        if (em && !byEmail.has(em)) byEmail.set(em, row);
+      }
+      let linked = 0;
+      for (const rec of unlinked) {
+        const ph = normalizePhoneForWhatsApp(rec.phone || "");
+        const em = String(rec.email || "").trim().toLowerCase();
+        const match = (ph && byPhone.get(ph)) || (em && byEmail.get(em)) || null;
+        if (match && Number(match.sourceRowNumber) >= 2) {
+          rec.sourceSpreadsheetId = match.sourceSpreadsheetId;
+          rec.sourceSheetName = match.sourceSheetName;
+          rec.sourceRowNumber = match.sourceRowNumber;
+          rec.source = "google-sheets"; // solo sulla COPIA di sync → percorso UPDATE
+          linked += 1;
+        }
+      }
+      if (linked) console.log("[mirror-sheets] pre-link orfani→riga esistente:", linked);
+    } catch (err) {
+      console.warn("[mirror-sheets] pre-link orfani fallito (fallback append):", err?.message || err);
+    }
+  }
+
   // I record già provenienti da Sheets vengono UPDATE-ati alla loro riga esistente.
   const googleRecords = allRecords.filter((record) => getGoogleSheetRequestRecordKey(record));
   // I record di altra origine (imap/manual) che NON sono ancora su Sheets
