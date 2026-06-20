@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260619-crm-filtro-followup-prefill";
+} from "./lib/order-money.js?v=20260620-fix-msg-password-corta";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260619-crm-filtro-followup-prefill";
+import { regionForCity } from "./lib/geo.js?v=20260620-fix-msg-password-corta";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260619-crm-filtro-followup-prefill";
+} from "./lib/profit-split.js?v=20260620-fix-msg-password-corta";
 
-const APP_SHELL_VERSION = "20260619-crm-filtro-followup-prefill";
+const APP_SHELL_VERSION = "20260620-fix-msg-password-corta";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -25026,6 +25026,8 @@ async function createManagedAccount(event) {
         ? (state.lang === "it" ? "Carica un logo squadra in formato PNG, JPG, WebP o SVG." : "Upload a crew logo in PNG, JPG, WebP, or SVG format.")
       : error.message === "crew_logo_too_large"
         ? (state.lang === "it" ? "Il logo squadra è troppo pesante. Usa un file più leggero." : "The crew logo is too large. Use a lighter file.")
+      : error.message === "weak_password_length"
+        ? (state.lang === "it" ? "La password deve essere di almeno 12 caratteri." : "The password must be at least 12 characters long.")
       : error.message === "weak_password_case"
         ? (state.lang === "it" ? "La password deve contenere maiuscole e minuscole." : "The password must contain uppercase and lowercase letters.")
       : error.message === "weak_password_number"
