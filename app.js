@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260620-fix-msg-password-corta";
+} from "./lib/order-money.js?v=20260622-account-errori-precisi";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260620-fix-msg-password-corta";
+import { regionForCity } from "./lib/geo.js?v=20260622-account-errori-precisi";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260620-fix-msg-password-corta";
+} from "./lib/profit-split.js?v=20260622-account-errori-precisi";
 
-const APP_SHELL_VERSION = "20260620-fix-msg-password-corta";
+const APP_SHELL_VERSION = "20260622-account-errori-precisi";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -24988,6 +24988,24 @@ async function createManagedAccount(event) {
   const role = String(form.get("role") || "");
   const crewName = String(form.get("crewName") || form.get("name") || "").trim();
   const dailyCapacity = toNumber(form.get("dailyCapacity") || DEFAULT_CREW_DAILY_CAPACITY);
+  // Validazione lato client con messaggi PRECISI (prima dava un generico
+  // "Compila tutti i campi..." che nominava la password anche quando il problema
+  // era un campo vuoto, confondendo).
+  const accName = String(form.get("name") || "").trim();
+  const accEmail = String(form.get("email") || "").trim();
+  const accPassword = String(form.get("password") || "");
+  const missingFields = [];
+  if (!accName) missingFields.push(state.lang === "it" ? "Nome utente" : "Username");
+  if (!accEmail) missingFields.push("Email");
+  if (role === "crew" && !crewName) missingFields.push(state.lang === "it" ? "Nome squadra" : "Crew name");
+  if (missingFields.length) {
+    setStatus(ui.accountsStatus, "error", (state.lang === "it" ? "Campi obbligatori mancanti: " : "Missing required fields: ") + missingFields.join(", ") + ".");
+    return;
+  }
+  if (accPassword.length < 12) {
+    setStatus(ui.accountsStatus, "error", state.lang === "it" ? "La password deve essere di almeno 12 caratteri." : "Password must be at least 12 characters.");
+    return;
+  }
   try {
     const crewLogoDataUrl = role === "crew"
       ? await readCrewLogoDataUrlFromForm(ui.accountCreateForm)
@@ -25033,7 +25051,7 @@ async function createManagedAccount(event) {
       : error.message === "weak_password_number"
           ? (state.lang === "it" ? "La password deve contenere almeno un numero." : "The password must contain at least one number.")
       : error.message === "invalid_account_payload"
-        ? (state.lang === "it" ? "Compila tutti i campi e usa una password di almeno 12 caratteri." : "Fill in all fields and use a password with at least 12 characters.")
+        ? (state.lang === "it" ? "Compila i campi obbligatori: nome utente, email e (per le squadre) nome squadra." : "Fill in the required fields: username, email and (for crews) crew name.")
         : (state.lang === "it" ? "Creazione account fallita." : "Account creation failed.");
     setStatus(ui.accountsStatus, "error", message);
   }
