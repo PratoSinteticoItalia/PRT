@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260623-pose-apri-completati";
+} from "./lib/order-money.js?v=20260623-pose-sezione-completati";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260623-pose-apri-completati";
+import { regionForCity } from "./lib/geo.js?v=20260623-pose-sezione-completati";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260623-pose-apri-completati";
+} from "./lib/profit-split.js?v=20260623-pose-sezione-completati";
 
-const APP_SHELL_VERSION = "20260623-pose-apri-completati";
+const APP_SHELL_VERSION = "20260623-pose-sezione-completati";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -353,9 +353,9 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
-  crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "sales-generator", "communications", "garden-planner"],
+  crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "communications", "garden-planner"],
   seller: ["dashboard", "sales-requests", "sales-generator", "sales-content", "communications", "timesheet-me"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt"]);
@@ -406,6 +406,7 @@ const translations = {
     "installations-scheduled": "Programmate",
     "installations-repairs": "Sistemazioni",
     "installations-live": "Cantieri Live",
+    "installations-completed": "Completati",
     office: "Ufficio",
     warehouseRole: "Inventario",
     crewRole: "Squadra",
@@ -664,6 +665,7 @@ const translations = {
     "installations-scheduled": "Scheduled",
     "installations-repairs": "Repairs",
     "installations-live": "Live sites",
+    "installations-completed": "Completed",
     office: "Office",
     warehouseRole: "Inventory",
     crewRole: "Crew",
@@ -15615,13 +15617,9 @@ function renderInstallations() {
   }
   const weekOrders = orders.filter(isInstallationInCurrentWeek);
   const backlogOrders = orders.filter((order) => !isInstallationInCurrentWeek(order));
-  let listOrders = isCrewView ? orders : backlogOrders;
-  // Posa completata aperta esplicitamente (Apri in posa/ricerca): rendila visibile
-  // ed evidenziata in cima alla lista, anche se non è nel backlog attivo.
-  if (state.selectedOrderId && !listOrders.some((o) => o.id === state.selectedOrderId)) {
-    const sel = state.orders.find((o) => o.id === state.selectedOrderId);
-    if (sel && isInstallationOrderCompleted(sel)) listOrders = [sel, ...listOrders];
-  }
+  // Backlog "pulito": solo lavori attivi. I completati si consultano nella
+  // sotto-vista dedicata "Completati" (renderInstallationsCompleted).
+  const listOrders = isCrewView ? orders : backlogOrders;
   if (ui.installationCrewField) ui.installationCrewField.classList.toggle("hidden", isCrewView);
   if (ui.installationEmailButton) ui.installationEmailButton.classList.toggle("hidden", isCrewView);
   if (ui.installationSubmitButton) ui.installationSubmitButton.textContent = isCrewView
@@ -15872,6 +15870,30 @@ function renderInstallationsScheduled() {
     html += `<h3 class="install-week-head">${escapeHtml(label)} · ${items.length} ${items.length === 1 ? "posa" : "pose"}</h3>`;
     html += `<div class="install-list">${items.map(renderInstallationOrderRow).join("")}</div>`;
   }
+  root.innerHTML = html;
+}
+
+// COMPLETATI — lavori con posa completata, SOLO quelli spuntati per posa
+// (getInstallationsList = filterOrdersForView("installations") già li filtra).
+function renderInstallationsCompleted() {
+  const root = document.getElementById("installations-completed-content");
+  if (!root) return;
+  const list = getInstallationsList().filter(isInstallationCompleted);
+  // Più recenti in alto (per data posa, fallback su aggiornamento).
+  list.sort((a, b) => {
+    const da = getInstallDate(a), db = getInstallDate(b);
+    if (da && db && da !== db) return db.localeCompare(da);
+    return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+  });
+  if (!list.length) {
+    root.innerHTML = `<div class="install-empty">
+      <h2>${state.lang === "it" ? "Nessuna posa completata" : "No completed installs"}</h2>
+      <p>${state.lang === "it" ? "I lavori con posa completata appariranno qui." : "Jobs with a completed installation will show up here."}</p>
+    </div>`;
+    return;
+  }
+  let html = `<div class="install-stats"><span class="install-stat"><strong>${list.length}</strong> ${state.lang === "it" ? "completate" : "completed"}</span></div>`;
+  html += `<div class="install-list">${list.map(renderInstallationOrderRow).join("")}</div>`;
   root.innerHTML = html;
 }
 
@@ -16957,6 +16979,7 @@ const VIEW_ICONS = {
   "installations-live": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4"/></svg>',
   "installations-scheduled": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="8 14 11 17 16 12"/></svg>',
   "installations-repairs": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+  "installations-completed": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
   communications: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
   "sales-requests": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
   "sales-generator": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15 8.5 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.5 12 2"/></svg>',
@@ -16988,7 +17011,7 @@ const NAV_SECTIONS = [
     { view: "dashboard" },
     { view: "orders" },
     { view: "warehouse" },
-    { view: "installations", group: ["installations-live", "installations-scheduled", "installations-repairs"] },
+    { view: "installations", group: ["installations-live", "installations-scheduled", "installations-repairs", "installations-completed"] },
   ] },
   { id: "sales", labelKey: "salesSection", defaultOpen: true, items: [
     { view: "sales-requests" },
@@ -17225,7 +17248,7 @@ function setNavGroupState(state) {
 function applyNavGroupState() {
   const groups = document.querySelectorAll(".nav-group[data-nav-group]");
   const stateMap = getNavGroupState();
-  const installViews = new Set(["installations", "installations-todo", "installations-scheduled", "installations-repairs"]);
+  const installViews = new Set(["installations", "installations-todo", "installations-scheduled", "installations-repairs", "installations-completed", "installations-live"]);
   const currentView = window?.state?.currentView || "";
   groups.forEach((g) => {
     const key = g.dataset.navGroup;
@@ -22055,6 +22078,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "installations-todo": renderInstallationsTodo(); break;
       case "installations-scheduled": renderInstallationsScheduled(); break;
       case "installations-repairs": _renderInstallationsRepairsFull(); break;
+      case "installations-completed": renderInstallationsCompleted(); break;
       case "installations-live": renderInstallationsLive(); break;
       default: renderDashboard(); break;
     }
