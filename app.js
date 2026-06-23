@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260622-account-errori-precisi";
+} from "./lib/order-money.js?v=20260623-generatore-totale-accessori";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260622-account-errori-precisi";
+import { regionForCity } from "./lib/geo.js?v=20260623-generatore-totale-accessori";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260622-account-errori-precisi";
+} from "./lib/profit-split.js?v=20260623-generatore-totale-accessori";
 
-const APP_SHELL_VERSION = "20260622-account-errori-precisi";
+const APP_SHELL_VERSION = "20260623-generatore-totale-accessori";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -27918,6 +27918,22 @@ function extractGeneratorPayloadFromIframe() {
       }
     }
     if (!options.length) return null;
+
+    // BUG FIX: gli accessori / prodotti extra (sezione 5) erano mostrati a parte
+    // ma il loro netto NON veniva sommato al "Totale chiavi in mano" → totale
+    // sottostimato. Sono parte del prezzo che paga il cliente, quindi li aggiungiamo
+    // al totale di OGNI opzione (prezzi "IVA inclusa" come il resto del documento).
+    const accessoriesTotal = accessories.reduce(
+      (sum, a) => sum + (Number(a.price || 0) * (1 - Number(a.discount || 0) / 100)) * Number(a.qty || 1),
+      0,
+    );
+    if (accessoriesTotal > 0) {
+      for (const o of options) {
+        o.total += accessoriesTotal;
+        o.finalSqmPrice = sqm > 0 ? o.total / sqm : 0;
+        o.heylightInstallment = o.total > 0 ? o.total / 5 : 0;
+      }
+    }
 
     return {
       quoteNumber: quoteNumber || "F-0000-00",
