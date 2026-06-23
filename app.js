@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260623-generatore-totale-accessori";
+} from "./lib/order-money.js?v=20260623-pose-apri-completati";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260623-generatore-totale-accessori";
+import { regionForCity } from "./lib/geo.js?v=20260623-pose-apri-completati";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260623-generatore-totale-accessori";
+} from "./lib/profit-split.js?v=20260623-pose-apri-completati";
 
-const APP_SHELL_VERSION = "20260623-generatore-totale-accessori";
+const APP_SHELL_VERSION = "20260623-pose-apri-completati";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15615,7 +15615,13 @@ function renderInstallations() {
   }
   const weekOrders = orders.filter(isInstallationInCurrentWeek);
   const backlogOrders = orders.filter((order) => !isInstallationInCurrentWeek(order));
-  const listOrders = isCrewView ? orders : backlogOrders;
+  let listOrders = isCrewView ? orders : backlogOrders;
+  // Posa completata aperta esplicitamente (Apri in posa/ricerca): rendila visibile
+  // ed evidenziata in cima alla lista, anche se non è nel backlog attivo.
+  if (state.selectedOrderId && !listOrders.some((o) => o.id === state.selectedOrderId)) {
+    const sel = state.orders.find((o) => o.id === state.selectedOrderId);
+    if (sel && isInstallationOrderCompleted(sel)) listOrders = [sel, ...listOrders];
+  }
   if (ui.installationCrewField) ui.installationCrewField.classList.toggle("hidden", isCrewView);
   if (ui.installationEmailButton) ui.installationEmailButton.classList.toggle("hidden", isCrewView);
   if (ui.installationSubmitButton) ui.installationSubmitButton.textContent = isCrewView
@@ -15682,7 +15688,12 @@ function renderInstallations() {
       : (state.lang === "it" ? "Nessuna posa in backlog per la settimana selezionata." : "No backlog installs for the selected week.")}</div>`;
   });
 
-  const order = orders.find((item) => item.id === state.selectedOrderId) || weekOrders[0] || listOrders[0] || null;
+  // Se l'ordine selezionato è una posa COMPLETATA, non è nei filtrati (orders):
+  // cercalo comunque tra TUTTI gli ordini così "Apri in posa" / la ricerca lo
+  // mostrano davvero, invece di ripiegare su un ordine sbagliato del backlog.
+  const order = orders.find((item) => item.id === state.selectedOrderId)
+    || (state.selectedOrderId ? state.orders.find((item) => item.id === state.selectedOrderId) : null)
+    || weekOrders[0] || listOrders[0] || null;
   if (state.currentView === "installations" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     state.selectedOrderId = null;
