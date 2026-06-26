@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260626-generatore-iva-accessori-e-sconto-materiali";
+} from "./lib/order-money.js?v=20260626-generatore-iva-per-componente";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260626-generatore-iva-accessori-e-sconto-materiali";
+import { regionForCity } from "./lib/geo.js?v=20260626-generatore-iva-per-componente";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260626-generatore-iva-accessori-e-sconto-materiali";
+} from "./lib/profit-split.js?v=20260626-generatore-iva-per-componente";
 
-const APP_SHELL_VERSION = "20260626-generatore-iva-accessori-e-sconto-materiali";
+const APP_SHELL_VERSION = "20260626-generatore-iva-per-componente";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -27895,6 +27895,36 @@ function extractGeneratorPayloadFromIframe() {
     };
 
     const vat = 22;
+    const ivaMult = 1 + vat / 100; // 1.22
+    // applyIva() del generatore React: on === false → niente IVA, altrimenti +22%.
+    const applyComponentIva = (amount, on) => (on === false ? amount : amount * ivaMult);
+
+    // Legge lo stato del ToggleIvaButton ("IVA ON" / "IVA OFF") associato a una
+    // label: il generatore consente IVA on/off per singola componente (prato per
+    // proposta, materiali, posa, spedizione) e l'utente li usa davvero. Sale di
+    // qualche livello dal label finché trova il bottone "IVA ON/OFF" della riga.
+    // Ritorna true = IVA attiva, false = IVA esclusa, null = non trovato.
+    const readIvaToggleNearLabel = (labelText) => {
+      const exp = normLbl(labelText);
+      if (!exp) return null;
+      for (const lbl of doc.querySelectorAll("label")) {
+        const t = normLbl(lbl.textContent);
+        if (t !== exp && !t.startsWith(exp + " ")) continue;
+        let node = lbl.parentElement;
+        for (let depth = 0; node && depth < 3; depth++, node = node.parentElement) {
+          const btn = Array.from(node.querySelectorAll("button"))
+            .find((b) => /\biva\s*(on|off)\b/i.test(b.textContent || ""));
+          if (btn) return !/off/i.test(btn.textContent || "");
+        }
+      }
+      return null;
+    };
+
+    // Flag IVA globali (non cambiano per proposta). null → default true (come React).
+    const materialsIva = readIvaToggleNearLabel("Materiali totali") ?? true;
+    const posaIva = readIvaToggleNearLabel("Posa") ?? true;
+    const shippingIva = readIvaToggleNearLabel("Costo spedizione") ?? true;
+
     const options = [];
 
     for (let i = 0; i < Math.min(modelSelects.length, 3); i++) {
@@ -27912,7 +27942,13 @@ function extractGeneratorPayloadFromIframe() {
       const installationCost = isPosa ? (installPerSqm || 0) * sqm : 0;
       const shipping = shippingCost || 0;
       const netTotal = discountedPrice + materialsAfterDisc + installationCost + shipping;
-      const grandTotal = netTotal * (1 + vat / 100);
+      // IVA per-componente (rispetta i toggle ON/OFF del generatore) invece di un
+      // ×1.22 unico: il prato ha il flag della SUA proposta, le altre voci i flag globali.
+      const optIva = readIvaToggleNearLabel(`Opzione ${i + 1}`) ?? true;
+      const grandTotal = applyComponentIva(discountedPrice, optIva)
+        + applyComponentIva(materialsAfterDisc, materialsIva)
+        + applyComponentIva(installationCost, posaIva)
+        + applyComponentIva(shipping, shippingIva);
       const slug = slugifyModelName(parsed.name);
       const catalogData = buildProductTechFromCatalog(parsed.name);
       const heightMatch = parsed.name.match(/(\d+)\s*mm/i);
@@ -27948,7 +27984,12 @@ function extractGeneratorPayloadFromIframe() {
       const installationCost = isPosa ? (installPerSqm || 0) * sqm : 0;
       const shipping = shippingCost || 0;
       const netTotal = discountedPrice + materialsAfterDisc + installationCost + shipping;
-      const grandTotal = netTotal * (1 + vat / 100);
+      // IVA per-componente: il modello custom eredita il flag IVA della proposta che sostituisce.
+      const customOptIva = readIvaToggleNearLabel(`Opzione ${idx + 1}`) ?? true;
+      const grandTotal = applyComponentIva(discountedPrice, customOptIva)
+        + applyComponentIva(materialsAfterDisc, materialsIva)
+        + applyComponentIva(installationCost, posaIva)
+        + applyComponentIva(shipping, shippingIva);
       const customOption = {
         slug: slugifyModelName(customModel.name),
         name: customModel.name,
@@ -27986,16 +28027,15 @@ function extractGeneratorPayloadFromIframe() {
     // Bug precedenti: (1) accessori sommati al NETTO → totale sottostimato del 22%
     // (es. 4172,44 invece di 4251,62); (2) i lavori extra non venivano sommati
     // affatto al totale (erano solo mostrati). Ora il PDF combacia col generatore.
-    const ivaMult = 1 + vat / 100; // 1.22
-    const applyVoiceIva = (net, applyIva) => (applyIva === false ? net : net * ivaMult);
+    // Ogni voce rispetta il proprio flag applyIva (default true) via applyComponentIva.
     const accessoriesGross = accessories.reduce((sum, a) => {
       const net = (Number(a.price || 0) * (1 - Number(a.discount || 0) / 100)) * Number(a.qty || 1);
-      return sum + applyVoiceIva(net, a.applyIva);
+      return sum + applyComponentIva(net, a.applyIva);
     }, 0);
     // Lavori extra (ke nel generatore): net = parseFloat(cost) come nel React.
     const extraServicesGross = extraServices.reduce((sum, s) => {
       const net = parseFloat(s.cost) || 0;
-      return sum + applyVoiceIva(net, s.applyIva);
+      return sum + applyComponentIva(net, s.applyIva);
     }, 0);
     const extrasGrandTotal = accessoriesGross + extraServicesGross;
     if (extrasGrandTotal > 0) {
