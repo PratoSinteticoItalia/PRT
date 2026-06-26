@@ -793,7 +793,7 @@
   <!-- FINANCE (rate HeyLight, alto impatto) -->
   <div class="finance" data-field="hlBlock"></div>
 
-  <div class="ivanote">Tutti i prezzi sono IVA inclusa · Offerta valida nel periodo indicato</div>
+  <div class="ivanote" data-field="ivaNote">Tutti i prezzi sono IVA inclusa · Offerta valida nel periodo indicato</div>
 
   <!-- FIRMA + LOGOS -->
   <div class="firma-row">
@@ -1383,9 +1383,19 @@
     setField("offerTitle", `${data.sqm || 0} m²`);
     const nOpts = (data.options || []).length;
     const lead = nOpts === 1 ? "La soluzione" : nOpts === 2 ? "Due soluzioni" : nOpts >= 3 ? "Tre soluzioni" : "Soluzione";
+    // Dicitura IVA dinamica: l'IVA può essere applicata/esclusa per singola voce.
+    const ivaStatus = String(data.ivaStatus || "inclusa");
+    const ivaClause = ivaStatus === "esclusa" ? "IVA esclusa"
+      : ivaStatus === "mista" ? "IVA applicata solo su alcune voci"
+      : "IVA inclusa";
     setField("offerIntro", String(data.mode || "").includes("posa")
-      ? `${lead} con posa professionale inclusa. Il prezzo è chiavi in mano, IVA e spedizione comprese.`
-      : `${lead} di sola fornitura. Il prezzo è IVA e spedizione comprese.`);
+      ? `${lead} con posa professionale inclusa. Prezzo chiavi in mano · ${ivaClause}.`
+      : `${lead} di sola fornitura. ${ivaClause}.`);
+    setField("ivaNote", `${
+      ivaStatus === "esclusa" ? "Tutti i prezzi sono IVA esclusa"
+      : ivaStatus === "mista" ? "IVA applicata solo su alcune voci (vedi dettaglio)"
+      : "Tutti i prezzi sono IVA inclusa"
+    } · Offerta valida nel periodo indicato`);
     setField("paymentMain", data.payment?.main || "");
     setField("paymentHeyLight", data.payment?.heylight || "");
     const modeLabel = String(data.mode || "").includes("posa") ? "Fornitura + posa" : "Solo fornitura";

@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260626-generatore-iva-per-componente";
+} from "./lib/order-money.js?v=20260626-generatore-dicitura-iva-dinamica";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260626-generatore-iva-per-componente";
+import { regionForCity } from "./lib/geo.js?v=20260626-generatore-dicitura-iva-dinamica";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260626-generatore-iva-per-componente";
+} from "./lib/profit-split.js?v=20260626-generatore-dicitura-iva-dinamica";
 
-const APP_SHELL_VERSION = "20260626-generatore-iva-per-componente";
+const APP_SHELL_VERSION = "20260626-generatore-dicitura-iva-dinamica";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -27925,6 +27925,11 @@ function extractGeneratorPayloadFromIframe() {
     const posaIva = readIvaToggleNearLabel("Posa") ?? true;
     const shippingIva = readIvaToggleNearLabel("Costo spedizione") ?? true;
 
+    // Raccoglie i flag IVA delle voci con importo > 0 per derivare lo stato IVA
+    // complessivo del documento (tutto inclusa / tutto esclusa / mista) → dicitura
+    // dinamica nel PDF. I duplicati (stesso flag su più proposte) non alterano l'esito.
+    const ivaContribFlags = [];
+
     const options = [];
 
     for (let i = 0; i < Math.min(modelSelects.length, 3); i++) {
@@ -27945,6 +27950,7 @@ function extractGeneratorPayloadFromIframe() {
       // IVA per-componente (rispetta i toggle ON/OFF del generatore) invece di un
       // ×1.22 unico: il prato ha il flag della SUA proposta, le altre voci i flag globali.
       const optIva = readIvaToggleNearLabel(`Opzione ${i + 1}`) ?? true;
+      if (discountedPrice > 0) ivaContribFlags.push(optIva);
       const grandTotal = applyComponentIva(discountedPrice, optIva)
         + applyComponentIva(materialsAfterDisc, materialsIva)
         + applyComponentIva(installationCost, posaIva)
@@ -27986,6 +27992,7 @@ function extractGeneratorPayloadFromIframe() {
       const netTotal = discountedPrice + materialsAfterDisc + installationCost + shipping;
       // IVA per-componente: il modello custom eredita il flag IVA della proposta che sostituisce.
       const customOptIva = readIvaToggleNearLabel(`Opzione ${idx + 1}`) ?? true;
+      if (discountedPrice > 0) ivaContribFlags.push(customOptIva);
       const grandTotal = applyComponentIva(discountedPrice, customOptIva)
         + applyComponentIva(materialsAfterDisc, materialsIva)
         + applyComponentIva(installationCost, posaIva)
@@ -28030,11 +28037,13 @@ function extractGeneratorPayloadFromIframe() {
     // Ogni voce rispetta il proprio flag applyIva (default true) via applyComponentIva.
     const accessoriesGross = accessories.reduce((sum, a) => {
       const net = (Number(a.price || 0) * (1 - Number(a.discount || 0) / 100)) * Number(a.qty || 1);
+      if (net > 0) ivaContribFlags.push(a.applyIva !== false);
       return sum + applyComponentIva(net, a.applyIva);
     }, 0);
     // Lavori extra (ke nel generatore): net = parseFloat(cost) come nel React.
     const extraServicesGross = extraServices.reduce((sum, s) => {
       const net = parseFloat(s.cost) || 0;
+      if (net > 0) ivaContribFlags.push(s.applyIva !== false);
       return sum + applyComponentIva(net, s.applyIva);
     }, 0);
     const extrasGrandTotal = accessoriesGross + extraServicesGross;
@@ -28045,6 +28054,21 @@ function extractGeneratorPayloadFromIframe() {
         o.heylightInstallment = o.total > 0 ? o.total / 5 : 0;
       }
     }
+
+    // Voci globali (materiali/posa/spedizione) con importo > 0: un flag ciascuna.
+    const materialsNet = (materialsTotal || 0) * (1 - (materialsDiscountPct || 0) / 100);
+    if (materialsNet > 0) ivaContribFlags.push(materialsIva);
+    if (isPosa && (installPerSqm || 0) * sqm > 0) ivaContribFlags.push(posaIva);
+    if ((shippingCost || 0) > 0) ivaContribFlags.push(shippingIva);
+
+    // Stato IVA complessivo per la dicitura dinamica nel PDF.
+    const ivaStatus = ivaContribFlags.length === 0
+      ? "inclusa"
+      : ivaContribFlags.every(Boolean)
+        ? "inclusa"
+        : ivaContribFlags.every((v) => !v)
+          ? "esclusa"
+          : "mista";
 
     return {
       quoteNumber: quoteNumber || "F-0000-00",
@@ -28059,6 +28083,8 @@ function extractGeneratorPayloadFromIframe() {
       sqm,
       mode,
       vat,
+      // "inclusa" | "esclusa" | "mista" → dicitura IVA dinamica nel PDF (v2).
+      ivaStatus,
       suggestedSlug: "",
       options,
       materials: {
