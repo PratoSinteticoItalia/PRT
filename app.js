@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260623-pose-sezione-completati";
+} from "./lib/order-money.js?v=20260626-generatore-iva-accessori-e-sconto-materiali";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260623-pose-sezione-completati";
+import { regionForCity } from "./lib/geo.js?v=20260626-generatore-iva-accessori-e-sconto-materiali";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260623-pose-sezione-completati";
+} from "./lib/profit-split.js?v=20260626-generatore-iva-accessori-e-sconto-materiali";
 
-const APP_SHELL_VERSION = "20260623-pose-sezione-completati";
+const APP_SHELL_VERSION = "20260626-generatore-iva-accessori-e-sconto-materiali";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -27776,6 +27776,26 @@ function extractGeneratorPayloadFromIframe() {
       return null;
     };
 
+    // Variante STRETTA: matcha solo se il testo cercato è uguale alla label o ne è
+    // un prefisso (es. "Materiali totali" → "Materiali totali auto €"). NON usa la
+    // condizione inversa exp.startsWith(t) di byLabel, che è troppo golosa: cercando
+    // "Sconto materiali" matchava la label proposta "Sconto %" (normalizzata
+    // "sconto", prefisso di "sconto materiali") che nel DOM viene PRIMA → il PDF
+    // applicava/mostrava lo sconto della 1ª proposta al posto dello sconto materiali.
+    const byLabelStrict = (text) => {
+      const exp = normLbl(text);
+      if (!exp) return null;
+      for (const lbl of doc.querySelectorAll("label")) {
+        const t = normLbl(lbl.textContent);
+        if (t === exp || t.startsWith(exp + " ")) {
+          const f = lbl.querySelector("input, textarea, select")
+                 || lbl.parentElement?.querySelector("input, textarea, select");
+          if (f) return f;
+        }
+      }
+      return null;
+    };
+
     // MQ è il campo obbligatorio — se mancante non c'è preventivo da generare
     const sqm = Number(byLabel("Metri Quadri")?.value || 0);
     if (!sqm || sqm <= 0) return null;
@@ -27801,11 +27821,13 @@ function extractGeneratorPayloadFromIframe() {
                        || byLabel("Società")?.value
                        || allInputs[9]?.value || "").trim();
     const shippingCost = parseEuroNumber(byLabel("Costo spedizione")?.value || allInputs[13]?.value);
-    const materialsTotal = parseEuroNumber(byLabel("Materiali totali")?.value || allInputs[14]?.value);
-
-    // "Sconto materiali %" — normLbl produce "sconto materiali", byLabel("Sconto materiali") è esatto
+    // Materiali: usano byLabelStrict per non agganciare per errore campi proposta.
+    // Label React: "Materiali totali auto €" e "Sconto materiali %".
+    const materialsTotal = parseEuroNumber(
+      (byLabelStrict("Materiali totali") || allInputs[14])?.value
+    );
     const materialsDiscountPct = Number(
-      byLabel("Sconto materiali")?.value || allInputs[15]?.value || 0
+      (byLabelStrict("Sconto materiali") || allInputs[15])?.value || 0
     );
 
     // Costo posa €/mq — label nel generatore React: "Posa €/mq"
@@ -27954,17 +27976,31 @@ function extractGeneratorPayloadFromIframe() {
     }
     if (!options.length) return null;
 
-    // BUG FIX: gli accessori / prodotti extra (sezione 5) erano mostrati a parte
-    // ma il loro netto NON veniva sommato al "Totale chiavi in mano" → totale
-    // sottostimato. Sono parte del prezzo che paga il cliente, quindi li aggiungiamo
-    // al totale di OGNI opzione (prezzi "IVA inclusa" come il resto del documento).
-    const accessoriesTotal = accessories.reduce(
-      (sum, a) => sum + (Number(a.price || 0) * (1 - Number(a.discount || 0) / 100)) * Number(a.qty || 1),
-      0,
-    );
-    if (accessoriesTotal > 0) {
+    // Accessori (sezione 5) e lavori extra fanno parte del prezzo che paga il
+    // cliente, quindi vanno sommati al "Totale chiavi in mano" di OGNI opzione.
+    // CRUCIALE: replichiamo ESATTAMENTE applyIva() del generatore React
+    // (sales-suite, sorgente in ~/preventivi): ogni voce con applyIva !== false
+    // porta +IVA come il resto del documento ("Tutti i prezzi sono IVA inclusa").
+    //   React: gross = net * (applyIva ? 1.22 : 1);  grandGross = … + extrasGross
+    //          + extraWorksGross.
+    // Bug precedenti: (1) accessori sommati al NETTO → totale sottostimato del 22%
+    // (es. 4172,44 invece di 4251,62); (2) i lavori extra non venivano sommati
+    // affatto al totale (erano solo mostrati). Ora il PDF combacia col generatore.
+    const ivaMult = 1 + vat / 100; // 1.22
+    const applyVoiceIva = (net, applyIva) => (applyIva === false ? net : net * ivaMult);
+    const accessoriesGross = accessories.reduce((sum, a) => {
+      const net = (Number(a.price || 0) * (1 - Number(a.discount || 0) / 100)) * Number(a.qty || 1);
+      return sum + applyVoiceIva(net, a.applyIva);
+    }, 0);
+    // Lavori extra (ke nel generatore): net = parseFloat(cost) come nel React.
+    const extraServicesGross = extraServices.reduce((sum, s) => {
+      const net = parseFloat(s.cost) || 0;
+      return sum + applyVoiceIva(net, s.applyIva);
+    }, 0);
+    const extrasGrandTotal = accessoriesGross + extraServicesGross;
+    if (extrasGrandTotal > 0) {
       for (const o of options) {
-        o.total += accessoriesTotal;
+        o.total += extrasGrandTotal;
         o.finalSqmPrice = sqm > 0 ? o.total / sqm : 0;
         o.heylightInstallment = o.total > 0 ? o.total / 5 : 0;
       }
