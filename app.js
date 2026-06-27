@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260627-pose-vista-kanban";
+} from "./lib/order-money.js?v=20260627-pose-kanban-fix-fonte-e-filtro-squadra";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260627-pose-vista-kanban";
+import { regionForCity } from "./lib/geo.js?v=20260627-pose-kanban-fix-fonte-e-filtro-squadra";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260627-pose-vista-kanban";
+} from "./lib/profit-split.js?v=20260627-pose-kanban-fix-fonte-e-filtro-squadra";
 
-const APP_SHELL_VERSION = "20260627-pose-vista-kanban";
+const APP_SHELL_VERSION = "20260627-pose-kanban-fix-fonte-e-filtro-squadra";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15795,7 +15795,13 @@ function renderInstallations() {
   withScrollPreservation(ui.installationList, () => {
   if (!isCrewView) {
     // Vista ufficio = KANBAN per stato (board principale delle Pose).
-    ui.installationList.innerHTML = renderInstallationsKanban(getInstallationsList());
+    // Rispetta il filtro squadra selezionato (chip in alto): se attivo, mostra
+    // solo i lavori di quella squadra.
+    const kanbanCrewFilter = getActiveInstallationCrewFilter();
+    const kanbanOrders = kanbanCrewFilter
+      ? getInstallationsList().filter((o) => orderBelongsToCrew(o, kanbanCrewFilter))
+      : getInstallationsList();
+    ui.installationList.innerHTML = renderInstallationsKanban(kanbanOrders);
   } else {
   ui.installationList.innerHTML = listOrders.length
     ? listOrders.map((order) => {
@@ -15908,11 +15914,20 @@ function renderInstallations() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getInstallationsList() {
-  // Riusa filterOrdersForView se disponibile, altrimenti fallback a state.orders.
-  try {
-    if (typeof filterOrdersForView === "function") return filterOrdersForView("installations") || [];
-  } catch {}
-  return Array.isArray(state.orders) ? state.orders : [];
+  // SOLO gli ordini instradati in posa (non tutti). Stessa logica di
+  // filterInstallations() ma MANTIENE i completati (servono alla corsia/sezione
+  // "Completate"). NB: filterOrdersForView("installations") non esiste come ramo
+  // dedicato → restituiva tutti gli ordini (bug: 1056 "da pianificare").
+  if (!Array.isArray(state.orders)) return [];
+  return state.orders.filter((order) => {
+    // Instradamento ESPLICITO in posa (checkbox ufficio): sempre incluso.
+    if (order.operations?.installation?.selected === true) return true;
+    // Posa già completata che era instradata: resta visibile (corsia Completate).
+    if (isInstallationOrderCompleted(order)) return isRoutedToInstallation(order);
+    // Auto (servizio fornitura+posa, senza checkbox): solo se non chiuso/evaso su
+    // Shopify, per non intasare con ordini storici già conclusi.
+    return isRoutedToInstallation(order) && !isOrderFulfilledOrClosed(order);
+  });
 }
 
 function getInstallDate(order) {
