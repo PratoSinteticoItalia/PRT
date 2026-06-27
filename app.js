@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260627-disponibilita-squadre-sync-bidirezionale";
+} from "./lib/order-money.js?v=20260627-pose-vista-kanban";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260627-disponibilita-squadre-sync-bidirezionale";
+import { regionForCity } from "./lib/geo.js?v=20260627-pose-vista-kanban";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260627-disponibilita-squadre-sync-bidirezionale";
+} from "./lib/profit-split.js?v=20260627-pose-vista-kanban";
 
-const APP_SHELL_VERSION = "20260627-disponibilita-squadre-sync-bidirezionale";
+const APP_SHELL_VERSION = "20260627-pose-vista-kanban";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15604,6 +15604,133 @@ function buildInstallationCalendar(orders, crewName = "") {
   }).join("");
 }
 
+// ─── KANBAN POSE ─────────────────────────────────────────────────────────────
+// Vista principale delle Pose come board per stato (stesso pattern visivo della
+// Logistica, classi .shp-*). 4 corsie derivate dallo stato installazione.
+// Drag&drop: la stessa card si trascina su un GIORNO del calendario (programma per
+// data, riusa text/plain + handleInstallationCalendarDrop) OPPURE su una CORSIA
+// (cambia stato, moveInstallationToLane). Una sola sorgente, due semantiche.
+const INSTALLATION_LANES = ["backlog", "scheduled", "progress", "done"];
+
+function getInstallationLane(order) {
+  const st = String(order?.operations?.installation?.status || "").trim();
+  if (st === "completata" || st === "completed") return "done";
+  if (st === "in-corso") return "progress";
+  if (order?.operations?.installation?.installDate) return "scheduled";
+  return "backlog";
+}
+
+function getInstallationLaneMeta(lane) {
+  const it = state.lang === "it";
+  switch (lane) {
+    case "backlog":   return { key: "backlog",   icon: "🗂️", title: it ? "Da pianificare" : "To schedule" };
+    case "scheduled": return { key: "scheduled", icon: "📅", title: it ? "Programmate" : "Scheduled" };
+    case "progress":  return { key: "progress",  icon: "🔧", title: it ? "In corso" : "In progress" };
+    default:          return { key: "done",      icon: "✅", title: it ? "Completate" : "Completed" };
+  }
+}
+
+function renderInstallationKanbanCard(order) {
+  const install = order.operations?.installation || {};
+  const selected = order.id === state.selectedOrderId ? "selected" : "";
+  const dateLabel = install.installDate
+    ? `${formatDate(install.installDate)}${install.installTime ? ` · ${install.installTime}` : ""}`
+    : (state.lang === "it" ? "Data da definire" : "Date to set");
+  const installStatus = String(install.status || "").trim();
+  const badgeLabel = getInstallationStatusLabel(installStatus, Boolean(install.installDate));
+  const badgeClass = installStatus === "in-corso" ? "badge-warning"
+    : installStatus === "completata" ? "badge-success"
+    : installStatus === "problema" ? "badge-danger"
+    : install.installDate ? "badge-info" : "badge-warning";
+  const crewBadge = install.crew || (state.lang === "it" ? "Squadra da assegnare" : "Crew to assign");
+  // data-installation-drag-id → riusa il drag esistente verso il calendario.
+  return `
+    <article class="order-row installation-row installation-kanban-card ${selected}" data-action="select-order" data-id="${order.id}" data-view="installations" draggable="true" data-installation-drag-id="${order.id}">
+      <div>
+        <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
+        <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
+      </div>
+      <div class="order-type-badge type-posa"><span class="crew-dot" style="background:${getCrewColor(install.crew)}"></span>${escapeHtml(crewBadge)}</div>
+      <div class="order-amount">${dateLabel}</div>
+      <div class="action-badge ${badgeClass}">${badgeLabel}</div>
+    </article>
+  `;
+}
+
+function renderInstallationsKanban(listOrders) {
+  const it = state.lang === "it";
+  const lanes = INSTALLATION_LANES.map((lane) => ({
+    ...getInstallationLaneMeta(lane),
+    orders: listOrders.filter((o) => getInstallationLane(o) === lane),
+  }));
+  const counts = Object.fromEntries(lanes.map((l) => [l.key, l.orders.length]));
+  const kpi = (val, label, warn) =>
+    `<div class="shp-kpi ${warn ? "warn" : ""}"><span class="shp-kpi-value">${val}</span><span class="shp-kpi-label">${label}</span></div>`;
+  return `
+    <div class="shp-kpi-strip">
+      ${kpi(listOrders.length, it ? "Totale pose" : "Total")}
+      ${kpi(counts.backlog, it ? "Da pianificare" : "To schedule", counts.backlog > 0)}
+      ${kpi(counts.scheduled, it ? "Programmate" : "Scheduled")}
+      ${kpi(counts.progress, it ? "In corso" : "In progress")}
+      ${kpi(counts.done, it ? "Completate" : "Completed")}
+    </div>
+    <div class="shp-groups inst-kanban-groups">
+      ${lanes.map((g) => `
+        <section class="shp-group shp-lane-${g.key} inst-lane-${g.key}" data-install-lane-drop="${g.key}">
+          <div class="shp-group-label"><h3>${g.icon} ${escapeHtml(g.title)}</h3><span class="shp-gc">${g.orders.length}</span></div>
+          <div class="shp-group-list">
+            ${g.orders.length
+              ? g.orders.map(renderInstallationKanbanCard).join("")
+              : `<div class="cal-empty">${it ? "Nessuna" : "None"}</div>`}
+          </div>
+        </section>
+      `).join("")}
+    </div>
+  `;
+}
+
+// Sposta una posa in una corsia cambiando lo stato installazione. Il backend
+// fa merge dei campi installation, quindi i patch parziali non perdono data/squadra.
+async function moveInstallationToLane(orderId, lane) {
+  const order = (state.orders || []).find((o) => o.id === orderId);
+  if (!order) return;
+  if (getInstallationLane(order) === lane) return;
+  const install = order.operations?.installation || {};
+  let patch = null;
+  if (lane === "progress") patch = { status: "in-corso" };
+  else if (lane === "done") patch = { status: "completata" };
+  else if (lane === "backlog") patch = { status: "da-pianificare", installDate: "", installTime: "" };
+  else if (lane === "scheduled") {
+    if (install.installDate) {
+      patch = { status: "programmata" };
+    } else {
+      // Senza data non si può programmare al volo: apri l'ordine e invita a sceglierla.
+      state.selectedOrderId = orderId;
+      showToast(state.lang === "it"
+        ? "Trascina sul giorno nel calendario (o imposta una data) per programmare."
+        : "Drop it on a calendar day (or set a date) to schedule.", "info");
+      renderInstallations();
+      return;
+    }
+  }
+  if (!patch) return;
+  if (order.id) orderPendingPatchIds.add(order.id);
+  try {
+    const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
+      method: "POST",
+      body: JSON.stringify({ installation: patch }),
+    });
+    state.orders = state.orders.map((o) => (o.id === saved.id ? saved : o));
+    renderInstallations();
+  } catch (error) {
+    showToast(state.lang === "it"
+      ? `Spostamento non riuscito: ${String(error?.message || "").trim()}`
+      : `Move failed: ${String(error?.message || "").trim()}`, "error");
+  } finally {
+    if (order.id) orderPendingPatchIds.delete(order.id);
+  }
+}
+
 function renderInstallations() {
   const isCrewView = state.currentUser?.role === "crew";
   const crewName = isCrewView ? getCrewForCurrentUser() : "";
@@ -15648,7 +15775,7 @@ function renderInstallations() {
   if (sectionTitle) {
     sectionTitle.textContent = isCrewView
       ? (state.lang === "it" ? "Le tue pose" : "Your installs")
-      : (state.lang === "it" ? "Da pianificare (backlog)" : "To schedule (backlog)");
+      : (state.lang === "it" ? "Bacheca pose — trascina per cambiare stato o sul calendario per programmare" : "Installation board — drag to change status or onto a day to schedule");
   }
   getSelectedInstallationCrew();
   scheduleCoverageRender();
@@ -15666,6 +15793,10 @@ function renderInstallations() {
     ui.installationNextWeekButton.dataset.weekEnd = end.toISOString().slice(0, 10);
   }
   withScrollPreservation(ui.installationList, () => {
+  if (!isCrewView) {
+    // Vista ufficio = KANBAN per stato (board principale delle Pose).
+    ui.installationList.innerHTML = renderInstallationsKanban(getInstallationsList());
+  } else {
   ui.installationList.innerHTML = listOrders.length
     ? listOrders.map((order) => {
         const selected = order.id === state.selectedOrderId ? "selected" : "";
@@ -15692,6 +15823,7 @@ function renderInstallations() {
     : `<div class="info-card">${isCrewView
       ? (state.lang === "it" ? "Nessuna posa assegnata a questa squadra." : "No installs assigned to this crew.")
       : (state.lang === "it" ? "Nessuna posa in backlog per la settimana selezionata." : "No backlog installs for the selected week.")}</div>`;
+  }
   });
 
   // Se l'ordine selezionato è una posa COMPLETATA, non è nei filtrati (orders):
@@ -26698,6 +26830,30 @@ document.addEventListener("drop", (event) => {
   event.preventDefault();
   zone.classList.remove("is-drop-over");
   void moveShippingOrderToLane(orderId, lane);
+});
+
+// Kanban Pose: drop di una card su una CORSIA → cambio stato. Riusa text/plain
+// (stessa sorgente del drag verso il calendario, vedi handleInstallationBacklogDragStart).
+document.addEventListener("dragover", (event) => {
+  const zone = event.target.closest?.("[data-install-lane-drop]");
+  if (!zone) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  zone.classList.add("is-drop-over");
+});
+document.addEventListener("dragleave", (event) => {
+  const zone = event.target.closest?.("[data-install-lane-drop]");
+  if (zone && !zone.contains(event.relatedTarget)) zone.classList.remove("is-drop-over");
+});
+document.addEventListener("drop", (event) => {
+  const zone = event.target.closest?.("[data-install-lane-drop]");
+  if (!zone || !event.dataTransfer) return;
+  const orderId = event.dataTransfer.getData("text/plain");
+  const lane = zone.dataset.installLaneDrop;
+  if (!orderId || !lane) return;
+  event.preventDefault();
+  zone.classList.remove("is-drop-over");
+  void moveInstallationToLane(orderId, lane);
 });
 
 document.addEventListener("click", (event) => {
