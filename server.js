@@ -10855,9 +10855,25 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/coverage-planner" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
-    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
-    store.coveragePlanner = normalizeCoveragePlanner(body || {});
+    if (currentUser.role === "office") {
+      // L'ufficio è l'autorità: scrive l'intero planner (squadre, aree, disponibilità).
+      store.coveragePlanner = normalizeCoveragePlanner(body || {});
+    } else if (currentUser.role === "crew") {
+      // Una squadra può scrivere SOLO la propria disponibilità (date indisponibili),
+      // senza toccare squadre/aree o la disponibilità di altre squadre.
+      const crewKey = String(currentUser.crewName || currentUser.name || "").trim();
+      if (!crewKey) return sendJson(res, 403, { error: "forbidden" });
+      const incoming = normalizeCoveragePlanner(body || {});
+      const current = normalizeCoveragePlanner(store.coveragePlanner || {});
+      current.availability = {
+        ...(current.availability || {}),
+        [crewKey]: (incoming.availability && incoming.availability[crewKey]) || {},
+      };
+      store.coveragePlanner = current;
+    } else {
+      return sendJson(res, 403, { error: "forbidden" });
+    }
     await writeJson(STORE_PATH, store);
     saveCoveragePlannerToDb(store.coveragePlanner).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.coveragePlanner);

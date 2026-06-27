@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260626-generatore-dicitura-iva-dinamica";
+} from "./lib/order-money.js?v=20260627-disponibilita-squadre-sync-bidirezionale";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260626-generatore-dicitura-iva-dinamica";
+import { regionForCity } from "./lib/geo.js?v=20260627-disponibilita-squadre-sync-bidirezionale";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260626-generatore-dicitura-iva-dinamica";
+} from "./lib/profit-split.js?v=20260627-disponibilita-squadre-sync-bidirezionale";
 
-const APP_SHELL_VERSION = "20260626-generatore-dicitura-iva-dinamica";
+const APP_SHELL_VERSION = "20260627-disponibilita-squadre-sync-bidirezionale";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6493,7 +6493,7 @@ function loadCoveragePlannerState() {
 }
 
 function saveCoveragePlannerState() {
-  if (!canManageCoveragePlanner()) return false;
+  if (!canEditCoveragePlanner()) return false;
   try {
     const normalized = normalizeCoveragePlannerState(state.coveragePlanner);
     state.coveragePlanner = normalized;
@@ -6520,7 +6520,7 @@ function saveCoverageGeocodeCache() {
 }
 
 function queueCoveragePlannerSync() {
-  if (!state.currentUser || !canManageCoveragePlanner()) return;
+  if (!state.currentUser || !canEditCoveragePlanner()) return;
   coverageSyncQueued = true;
   window.clearTimeout(coverageSyncTimer);
   coverageSyncTimer = window.setTimeout(() => {
@@ -6529,7 +6529,7 @@ function queueCoveragePlannerSync() {
 }
 
 async function syncCoveragePlannerState() {
-  if (!state.currentUser || !canManageCoveragePlanner()) return;
+  if (!state.currentUser || !canEditCoveragePlanner()) return;
   if (coverageSyncInFlight) {
     coverageSyncQueued = true;
     return;
@@ -6560,6 +6560,14 @@ async function syncCoveragePlannerState() {
 
 function canManageCoveragePlanner() {
   return normalizeUserRole(state.currentUser?.role || "") === "office";
+}
+
+// Chi può PERSISTERE/sincronizzare il coverage planner: l'ufficio (tutto) e le
+// squadre (solo la propria disponibilità — lo scoping è applicato lato server).
+// Distinto da canManageCoveragePlanner (gestione squadre/aree, solo ufficio).
+function canEditCoveragePlanner() {
+  const role = normalizeUserRole(state.currentUser?.role || "");
+  return role === "office" || role === "crew";
 }
 
 function getInstallationCrewNames() {
@@ -26085,8 +26093,13 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "toggle-crew-unavailable") {
-    if (state.currentUser?.role !== "crew") return;
-    const crewName = getCrewForCurrentUser();
+    const role = normalizeUserRole(state.currentUser?.role || "");
+    // Squadra: agisce sulla PROPRIA disponibilità. Ufficio: sulla squadra
+    // attualmente selezionata nel calendario (lo scope che mostra il pulsante).
+    let crewName = "";
+    if (role === "crew") crewName = getCrewForCurrentUser();
+    else if (role === "office") crewName = getActiveInstallationCrewFilter() || getSelectedInstallationCrew();
+    if (!crewName) return;
     const dateKey = button.dataset.date || "";
     toggleCrewUnavailable(crewName, dateKey);
     return;
