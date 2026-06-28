@@ -6430,6 +6430,16 @@ body {
     grid-template-columns: 1fr;
   }
 
+  /* Su mobile la colonna lista NON deve avere un'altezza cappata con scroll
+     interno: creava una finestrella di scroll dentro la pagina, difficile da
+     usare. Si scorre l'intera pagina (come già fa la Logistica). */
+  #orders .order-grid > div:first-child,
+  #accounting .order-grid > div:first-child {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
   .detail-panel,
   .order-detail-panel,
   .install-detail-panel {
@@ -11982,19 +11992,41 @@ body.mobile-filter-sheet-open {
     display: none !important;
   }
 
-  /* ORDERS — nascondi page-header + lista (primo .detail-panel), mostra solo .order-detail-panel */
+  /* ORDERS — fullscreen drill: nascondi page-header, la colonna lista e ogni
+     altra sezione (sync/search), mostra SOLO il pannello dettaglio a tutta pagina.
+     NB: il pannello richiede !important per battere i `position: static !important`
+     del layout drawer (come fa già SALES-REQUESTS); senza, il dettaglio restava
+     statico in fondo alla pagina e non si capiva dove comparissero i dati. */
   body[data-drill-module="orders"] #orders .page-header,
+  body[data-drill-module="orders"] #orders .order-grid > div:first-child {
+    display: none !important;
+  }
   body[data-drill-module="orders"] #orders > *:not(:has(.order-detail-panel)) {
     display: none !important;
   }
+  body[data-drill-module="orders"] #orders .order-grid {
+    grid-template-columns: 1fr !important;
+  }
   body[data-drill-module="orders"] #orders .order-detail-panel {
-    position: relative;
+    position: relative !important;
+    transform: none !important;
+    visibility: visible !important;
+    transition: none !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100dvh;
     z-index: 1;
     box-shadow: none;
     border-radius: 0;
     margin: 0;
-    padding-top: 12px;
-    max-height: none;
+    padding: 16px !important;
+    max-height: none !important;
+    border: none !important;
+    background: #fdfcfa !important;
   }
 
   /* WAREHOUSE — nascondi page-header + lista panel, mostra solo detail-panel */

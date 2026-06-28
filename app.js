@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260627-pose-kanban-fix-fonte-e-filtro-squadra";
+} from "./lib/order-money.js?v=20260628-mobile-orders-dettaglio-fullpage";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260627-pose-kanban-fix-fonte-e-filtro-squadra";
+import { regionForCity } from "./lib/geo.js?v=20260628-mobile-orders-dettaglio-fullpage";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260627-pose-kanban-fix-fonte-e-filtro-squadra";
+} from "./lib/profit-split.js?v=20260628-mobile-orders-dettaglio-fullpage";
 
-const APP_SHELL_VERSION = "20260627-pose-kanban-fix-fonte-e-filtro-squadra";
+const APP_SHELL_VERSION = "20260628-mobile-orders-dettaglio-fullpage";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15857,16 +15857,38 @@ function renderInstallations() {
   }
   scheduleCoverageRender();
   ui.installationDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
+  // Telefono VISIBILE: il numero finisce nell'etichetta del pulsante "Chiama"
+  // così è leggibile (e copiabile da chi vuole) anche senza avviare la chiamata,
+  // che su mobile apre il dialer chiedendo permessi.
+  if (ui.installationCallButton) {
+    const phone = String(order.phone || order.customerPhone || order.telefono || "").trim();
+    if (phone) {
+      ui.installationCallButton.textContent = `${state.lang === "it" ? "Chiama" : "Call"} ${phone}`;
+      ui.installationCallButton.disabled = false;
+    } else {
+      ui.installationCallButton.textContent = state.lang === "it" ? "Telefono mancante" : "No phone";
+      ui.installationCallButton.disabled = true;
+    }
+  }
   if (ui.installationDetailMeta) {
     ui.installationDetailMeta.textContent = isCrewView
       ? `${order.operations?.product || undefinedText()} · ${composeAddress(order) || addressIncompleteText()}`
       : t("installationPlanningDetail");
   }
   if (ui.installationDetailSummary) {
+    // Numero di telefono come riga VISIBILE e selezionabile nel dettaglio (oltre
+    // al pulsante "Chiama"): utile soprattutto alla squadra in cantiere.
+    const detailPhone = String(order.phone || order.customerPhone || order.telefono || "").trim();
+    const phoneCard = {
+      label: state.lang === "it" ? "Telefono cliente" : "Customer phone",
+      value: detailPhone || "—",
+      meta: detailPhone ? (state.lang === "it" ? "Tieni premuto per copiare · oppure usa Chiama" : "Long-press to copy · or use Call") : "",
+    };
     const summaryCards = isCrewView
       ? [
           { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || undefinedText(), meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || (state.lang === "it" ? "terra" : "ground")}` },
           { label: state.lang === "it" ? "Cantiere" : "Site", value: composeAddress(order) || addressIncompleteText(), meta: composeClientName(order) },
+          phoneCard,
           { label: state.lang === "it" ? "Programmazione" : "Schedule", value: order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : t("installationDatePending"), meta: order.operations?.installation?.installTime || t("timePending") },
           { label: state.lang === "it" ? "Stato cantiere" : "Site status", value: getUnifiedOrderStage(order).label, meta: String(order.operations?.installation?.status || "").trim() || t("updateNeeded") },
           { label: state.lang === "it" ? "Materiale in uscita" : "Outbound goods", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
@@ -15874,6 +15896,7 @@ function renderInstallations() {
       : [
           { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || undefinedText(), meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || (state.lang === "it" ? "terra" : "ground")}` },
           { label: state.lang === "it" ? "Cliente" : "Customer", value: composeClientName(order), meta: composeAddress(order) || addressIncompleteText() },
+          phoneCard,
           { label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
           { label: state.lang === "it" ? "Gestione logistica" : "Logistics handling", value: getShippingModeLabel(order), meta: order.operations?.installation?.installDate ? `${formatDate(order.operations.installation.installDate)} · ${order.operations?.installation?.installTime || t("timePending")}` : t("installationDatePending") },
         ];
