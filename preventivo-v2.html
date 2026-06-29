@@ -450,7 +450,9 @@
     }
     /* Schede tecniche prodotti */
     .tech-grid { display: grid; gap: 9px; margin-bottom: 12px; }
-    .tech-grid[data-count="1"] { grid-template-columns: 1fr; max-width: 320px; }
+    /* Scheda tecnica con un solo prodotto: stessa larghezza/allineamento della
+       card singola di pagina 1 (coerenza visiva). */
+    .tech-grid[data-count="1"] { grid-template-columns: 1fr; max-width: 560px; margin-left: 0; margin-right: auto; }
     .tech-grid[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
     .tech-grid[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
     .tech-card {
