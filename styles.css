@@ -4029,18 +4029,24 @@ button.is-feedback,
 /* Toggle "Segna indisponibile" come piccolo bottone-icona discreto */
 .cal-unavail-toggle {
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  border: 1px solid #e6ebe1;
-  background: #fbfcfa;
-  color: #aeb6ac;
+  border: 1px solid #dde4d8;
+  background: #f4f6f1;
+  color: #8a948a;
   cursor: pointer;
   padding: 0;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* L'icona NON deve intercettare il click: senza questo, cliccando sull'SVG
+   l'event.target era una <line>/<circle> e il toggle non scattava. */
+.cal-unavail-toggle svg {
+  pointer-events: none;
 }
 
 .cal-unavail-toggle:hover {

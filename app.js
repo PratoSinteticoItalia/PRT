@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260629-pose-calendario-compatto";
+} from "./lib/order-money.js?v=20260629-pose-fix-toggle-indisponibilita";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260629-pose-calendario-compatto";
+import { regionForCity } from "./lib/geo.js?v=20260629-pose-fix-toggle-indisponibilita";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260629-pose-calendario-compatto";
+} from "./lib/profit-split.js?v=20260629-pose-fix-toggle-indisponibilita";
 
-const APP_SHELL_VERSION = "20260629-pose-calendario-compatto";
+const APP_SHELL_VERSION = "20260629-pose-fix-toggle-indisponibilita";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15771,9 +15771,11 @@ function renderInstallations() {
   if (ui.installationCapacityHint) {
     const capacityValue = Math.round(getInstallationCapacityForScope(calendarCrewScope));
     const crewCount = getInstallationCrewNames().length;
+    // Senza una squadra selezionata non si può segnare l'indisponibilità (è per
+    // squadra): lo diciamo nel sottotitolo capacità così l'utente sa cosa fare.
     ui.installationCapacityHint.textContent = calendarCrewScope
       ? `${calendarCrewScope} · ${capacityValue} mq/${state.lang === "it" ? "giorno" : "day"}`
-      : `${crewCount} ${state.lang === "it" ? "squadre attive" : "active crews"} · ${capacityValue} mq/${state.lang === "it" ? "giorno complessivi" : "day total"}`;
+      : `${crewCount} ${state.lang === "it" ? "squadre attive" : "active crews"} · ${capacityValue} mq/${state.lang === "it" ? "giorno · seleziona una squadra per segnarne l’indisponibilità" : "day · pick a crew to set its availability"}`;
   }
   const sectionTitle = document.querySelector("#installations .section-title");
   if (sectionTitle) {
