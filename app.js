@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260628-mobile-warehouse-dettaglio-fullpage";
+} from "./lib/order-money.js?v=20260629-pose-calendario-compatto";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260628-mobile-warehouse-dettaglio-fullpage";
+import { regionForCity } from "./lib/geo.js?v=20260629-pose-calendario-compatto";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260628-mobile-warehouse-dettaglio-fullpage";
+} from "./lib/profit-split.js?v=20260629-pose-calendario-compatto";
 
-const APP_SHELL_VERSION = "20260628-mobile-warehouse-dettaglio-fullpage";
+const APP_SHELL_VERSION = "20260629-pose-calendario-compatto";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15579,26 +15579,30 @@ function buildInstallationCalendar(orders, crewName = "") {
     const gaugeTone = getInstallationSaturationTone(fillRatio);
     const unavailable = Boolean(crewName && isCrewUnavailable(crewName, key));
     const isToday = key === todayKey;
+    const unavailLabel = unavailable
+      ? (state.lang === "it" ? "Rendi disponibile" : "Mark available")
+      : (state.lang === "it" ? "Segna indisponibile" : "Mark unavailable");
     return `
       <article class="cal-day ${unavailable ? "is-unavailable" : ""} ${isToday ? "cal-day-today" : ""}" data-date="${key}" data-drop-date="${key}">
-        <div class="cal-day-header">
-          <div class="cal-day-date">${formatDate(key)}</div>
-          <div class="cal-day-capacity">${Math.round(totalSqm)}/${Math.round(dailyCapacity)} mq</div>
-          <div class="cal-capacity-pill ${gaugeTone}">${getInstallationCapacityBadgeCopy(fillRatio)}</div>
+        <div class="cal-day-top">
+          <span class="cal-day-date">${formatDate(key)}</span>
+          ${crewName ? `
+            <button class="cal-unavail-toggle ${unavailable ? "is-active" : ""}" type="button" data-action="toggle-crew-unavailable" data-date="${key}" title="${unavailLabel}" aria-label="${unavailLabel}" aria-pressed="${unavailable}">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><line x1="6.2" y1="6.2" x2="17.8" y2="17.8"/></svg>
+            </button>` : ""}
+        </div>
+        <div class="cal-day-meta">
+          <span class="cal-day-capacity">${Math.round(totalSqm)}/${Math.round(dailyCapacity)} mq</span>
+          <span class="cal-capacity-pill ${gaugeTone}">${getInstallationCapacityBadgeCopy(fillRatio)}</span>
         </div>
         <div class="cal-gauge"><div class="cal-gauge-fill ${gaugeTone}" style="width:${fillPct}%"></div></div>
-        ${crewName ? `
-          <button class="cal-unavailable-btn ${unavailable ? "is-active" : ""}" type="button" data-action="toggle-crew-unavailable" data-date="${key}">
-            ${unavailable ? (state.lang === "it" ? "Non disponibile" : "Unavailable") : (state.lang === "it" ? "Segna indisponibile" : "Mark unavailable")}
-          </button>` : ""}
-        ${items.length
-          ? items.map((order) => `
-            <button class="cal-item" data-action="select-order" data-id="${order.id}" data-view="installations" style="border-left:3px solid ${getCrewColor(order.operations?.installation?.crew)}">
-              <strong>${composeClientName(order)} · ${getOrderNumber(order)}</strong>
-              <span>${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
-            </button>
-          `).join("")
-          : `<div class="cal-empty">${state.lang === "it" ? "Nessuna posa" : "No installs"}</div>`}
+        ${unavailable ? `<div class="cal-unavail-tag">${state.lang === "it" ? "Non disponibile" : "Unavailable"}</div>` : ""}
+        ${items.map((order) => `
+          <button class="cal-item" data-action="select-order" data-id="${order.id}" data-view="installations" style="border-left:3px solid ${getCrewColor(order.operations?.installation?.crew)}">
+            <strong>${composeClientName(order)} · ${getOrderNumber(order)}</strong>
+            <span>${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
+          </button>
+        `).join("")}
       </article>
     `;
   }).join("");
@@ -15775,7 +15779,7 @@ function renderInstallations() {
   if (sectionTitle) {
     sectionTitle.textContent = isCrewView
       ? (state.lang === "it" ? "Le tue pose" : "Your installs")
-      : (state.lang === "it" ? "Bacheca pose — trascina per cambiare stato o sul calendario per programmare" : "Installation board — drag to change status or onto a day to schedule");
+      : (state.lang === "it" ? "Bacheca pose" : "Installation board");
   }
   getSelectedInstallationCrew();
   scheduleCoverageRender();

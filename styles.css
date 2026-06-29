@@ -3990,11 +3990,15 @@ button.is-feedback,
 
 
 .cal-day {
-  min-height: 182px;
+  /* Compatto e in linea con la bacheca kanban: niente più altezza fissa alta. */
+  min-height: 0;
   background: #fff;
-  border: 1px solid #e1e8dc;
-  border-radius: 18px;
-  padding: 14px;
+  border: 1px solid #e6ebe1;
+  border-radius: 14px;
+  padding: 10px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
 
 .cal-day.cal-day-today {
@@ -4007,32 +4011,83 @@ button.is-feedback,
   color: #2d6a4f;
 }
 
-.cal-day-header {
+/* Riga superiore: data + toggle indisponibilità discreto (icona) */
+.cal-day-top {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   gap: 6px;
-  margin-bottom: 10px;
 }
 
 .cal-day-date {
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 13.5px;
+  font-weight: 700;
   color: #1a2e1f;
+  letter-spacing: -0.01em;
+}
+
+/* Toggle "Segna indisponibile" come piccolo bottone-icona discreto */
+.cal-unavail-toggle {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid #e6ebe1;
+  background: #fbfcfa;
+  color: #aeb6ac;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.cal-unavail-toggle:hover {
+  color: #b43c3c;
+  border-color: #f0caca;
+  background: #fdf3f3;
+}
+
+.cal-unavail-toggle.is-active {
+  color: #b43c3c;
+  border-color: #ecbcbc;
+  background: #fce8e8;
+}
+
+.cal-day-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .cal-day-capacity {
   color: #89958c;
-  font-size: 13px;
+  font-size: 11.5px;
   font-weight: 700;
+}
+
+/* Tag "Non disponibile" piccolo e discreto (compare solo se la squadra è bloccata) */
+.cal-unavail-tag {
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #b43c3c;
+  background: #fce8e8;
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
 .cal-gauge {
   width: 100%;
-  height: 5px;
+  height: 4px;
   border-radius: 999px;
   background: #edf1eb;
   overflow: hidden;
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
 .cal-gauge-fill {
@@ -9824,13 +9879,13 @@ button:active,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: flex-start;
-  min-height: 24px;
-  padding: 4px 10px;
+  align-self: center;
+  min-height: 0;
+  padding: 2px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
