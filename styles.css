@@ -12004,6 +12004,9 @@ body.mobile-filter-sheet-open {
   text-overflow: ellipsis;
 }
 
+@keyframes drillDrawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes drillScrimIn { from { opacity: 0; } to { opacity: 1; } }
+
 @media (max-width: 768px) {
   /* Back bar visibile solo quando un drill-down e' attivo + spazio sopra
      per evitare che il contenuto inizi sotto la back-bar fixed */
@@ -12053,41 +12056,52 @@ body.mobile-filter-sheet-open {
     display: none !important;
   }
 
-  /* ORDERS — fullscreen drill: nascondi page-header, la colonna lista e ogni
-     altra sezione (sync/search), mostra SOLO il pannello dettaglio a tutta pagina.
-     NB: il pannello richiede !important per battere i `position: static !important`
-     del layout drawer (come fa già SALES-REQUESTS); senza, il dettaglio restava
-     statico in fondo alla pagina e non si capiva dove comparissero i dati. */
+  /* ORDERS — il dettaglio entra come DRAWER laterale da destra (scorrevole),
+     invece di occupare tutta la pagina. Dietro resta la lista ordini, oscurata
+     da uno scrim. Nasconde solo header/sync/search (non la lista). */
   body[data-drill-module="orders"] #orders .page-header,
-  body[data-drill-module="orders"] #orders .order-grid > div:first-child {
-    display: none !important;
-  }
   body[data-drill-module="orders"] #orders > *:not(:has(.order-detail-panel)) {
     display: none !important;
   }
   body[data-drill-module="orders"] #orders .order-grid {
     grid-template-columns: 1fr !important;
   }
+  body[data-drill-module="orders"] #orders::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 26, 20, 0.44);
+    z-index: 1082;
+    animation: drillScrimIn 0.2s ease;
+  }
   body[data-drill-module="orders"] #orders .order-detail-panel {
-    position: relative !important;
+    position: fixed !important;
+    top: var(--mobile-back-bar-h) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: 94vw !important;
+    max-width: 460px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    z-index: 1086;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    background: #fdfcfa !important;
+    border: none !important;
+    border-radius: 16px 0 0 16px;
+    box-shadow: -14px 0 36px rgba(0, 0, 0, 0.28);
+    padding: 16px !important;
     transform: none !important;
     visibility: visible !important;
     transition: none !important;
-    top: auto !important;
-    bottom: auto !important;
-    left: auto !important;
-    right: auto !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 100dvh;
-    z-index: 1;
-    box-shadow: none;
-    border-radius: 0;
-    margin: 0;
-    padding: 16px !important;
-    max-height: none !important;
-    border: none !important;
-    background: #fdfcfa !important;
+    animation: drillDrawerIn 0.26s ease;
+  }
+  /* header azioni sticky: ancorato in cima al DRAWER (non alla viewport) */
+  body[data-drill-module="orders"] #orders .order-detail-panel .detail-header {
+    top: 0 !important;
   }
 
   /* WAREHOUSE — nascondi page-header + lista panel, mostra solo detail-panel */
@@ -12100,45 +12114,54 @@ body.mobile-filter-sheet-open {
   body[data-drill-module="warehouse"] #warehouse section:has(#warehouse-list) {
     display: none !important;
   }
-  body[data-drill-module="warehouse"] #warehouse .detail-panel {
-    /* !important per battere `position: static !important` del layout drawer
-       (stesso fix degli ordini); senza, il dettaglio restava statico in fondo. */
-    position: relative !important;
+  body[data-drill-module="warehouse"] #warehouse::before,
+  body[data-drill-module="installations"] #installations::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 26, 20, 0.44);
+    z-index: 1082;
+    animation: drillScrimIn 0.2s ease;
+  }
+  body[data-drill-module="warehouse"] #warehouse .detail-panel,
+  body[data-drill-module="installations"] #installations .install-detail-panel {
+    /* DRAWER laterale da destra (scorrevole), come gli ordini. */
+    position: fixed !important;
+    top: var(--mobile-back-bar-h) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: 94vw !important;
+    max-width: 460px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    z-index: 1086;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    background: #fdfcfa !important;
+    border: none !important;
+    border-radius: 16px 0 0 16px;
+    box-shadow: -14px 0 36px rgba(0, 0, 0, 0.28);
+    padding: 16px !important;
     transform: none !important;
     visibility: visible !important;
     transition: none !important;
-    top: auto !important;
-    bottom: auto !important;
-    left: auto !important;
-    right: auto !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 100dvh;
-    z-index: 1;
-    box-shadow: none;
-    border-radius: 0;
-    margin: 0;
-    padding: 16px !important;
-    max-height: none !important;
-    border: none !important;
-    background: #fdfcfa !important;
+    animation: drillDrawerIn 0.26s ease;
+  }
+  body[data-drill-module="warehouse"] #warehouse .detail-panel .detail-header,
+  body[data-drill-module="installations"] #installations .install-detail-panel .detail-header {
+    top: 0 !important;
   }
 
-  /* INSTALLATIONS — nascondi page-header + coverage + lista, mostra solo install-detail-panel */
+  /* INSTALLATIONS — nascondi page-header + coverage + toolbar + lista (dietro al
+     drawer resta lo sfondo oscurato dallo scrim). */
   body[data-drill-module="installations"] #installations .page-header,
   body[data-drill-module="installations"] #installations .coverage-panel,
   body[data-drill-module="installations"] #installations .installation-toolbar,
   body[data-drill-module="installations"] #installations section:has(#installation-list) {
     display: none !important;
-  }
-  body[data-drill-module="installations"] #installations .install-detail-panel {
-    position: relative;
-    z-index: 1;
-    box-shadow: none;
-    border-radius: 0;
-    margin: 0;
-    padding-top: 12px;
-    max-height: none;
   }
 
   /* ────────────────────────────────────────────────────────────────────────
