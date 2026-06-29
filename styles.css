@@ -21437,8 +21437,30 @@ body {
   #installation-list .shp-groups.inst-kanban-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 680px) {
-  #installation-list .shp-groups.inst-kanban-groups { grid-template-columns: 1fr; }
-  #installation-list .shp-group-list { max-height: none; overflow: visible; }
+  /* Su mobile il kanban scorre ORIZZONTALMENTE (corsie affiancate, swipe), non
+     impilato in verticale. Ogni corsia ~84vw con scroll-snap; le card scorrono
+     verticalmente dentro la corsia. */
+  #installation-list .shp-groups.inst-kanban-groups {
+    display: flex;
+    grid-template-columns: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 12px;
+    align-items: flex-start;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 10px;
+  }
+  #installation-list .inst-kanban-groups > .shp-group {
+    flex: 0 0 84vw;
+    max-width: 84vw;
+    scroll-snap-align: start;
+  }
+  #installation-list .shp-group-list {
+    height: 58vh;
+    max-height: none;
+    overflow-y: auto;
+  }
 }
 .shipping-standard-detail-panel,
 .sample-detail-panel {
@@ -21523,10 +21545,33 @@ body {
 .shipping-standard-detail-panel .inline-form-grid { grid-template-columns: 1fr; }
 
 @media (max-width: 900px) {
-  .shp-groups { grid-template-columns: 1fr; }
-  /* Su mobile niente kanban a colonne con scroll interno: la pagina scorre. */
   #shipping .order-grid > div:first-child { max-height: none; overflow: visible; display: block; }
-  #shipping .shp-group, #shipping .shp-group-list { max-height: none; overflow: visible; }
+}
+
+@media (max-width: 768px) {
+  /* Kanban Logistica: scroll ORIZZONTALE su mobile (corsie affiancate, swipe),
+     come la bacheca Pose. */
+  #shipping .shp-groups {
+    display: flex;
+    grid-template-columns: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 12px;
+    align-items: flex-start;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 10px;
+  }
+  #shipping .shp-groups > .shp-group {
+    flex: 0 0 84vw;
+    max-width: 84vw;
+    scroll-snap-align: start;
+  }
+  #shipping .shp-group-list {
+    height: 58vh;
+    max-height: none;
+    overflow-y: auto;
+  }
 }
 
 /* === Pagina DDT dedicata === */
