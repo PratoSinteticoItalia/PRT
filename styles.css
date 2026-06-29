@@ -21324,6 +21324,89 @@ body {
 #shipping .shp-row { cursor: grab; }
 #shipping .shp-row:active { cursor: grabbing; }
 .shp-row.is-dragging { opacity: .45; }
+
+/* Maniglia di trascinamento touch: invisibile su desktop (drag nativo sulla card),
+   visibile nelle bacheche su mobile dove l'HTML5 drag non funziona. */
+.shp-grip { display: none; }
+@media (max-width: 768px) {
+  .shp-groups .shp-row { position: relative; }
+  .shp-groups .shp-name-line { padding-right: 38px; }
+  .shp-groups .shp-grip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    border: 1px solid #e5e1d6;
+    background: #fafbf8;
+    color: #a7afa4;
+    touch-action: none;
+    cursor: grab;
+    padding: 0;
+    z-index: 3;
+  }
+  .shp-groups .shp-grip:active {
+    background: #eef1ec;
+    color: #4a5c4e;
+  }
+}
+
+/* Bottom-sheet "Sposta in…" (tap sulla maniglia card su mobile) */
+.kanban-move-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 30, 24, 0.4);
+  z-index: 1200;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.kanban-move-scrim.is-open { opacity: 1; }
+.kanban-move-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1201;
+  margin: 0 auto;
+  max-width: 560px;
+  background: #fff;
+  border-radius: 18px 18px 0 0;
+  padding: 12px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
+  transform: translateY(100%);
+  transition: transform 0.22s ease;
+}
+.kanban-move-sheet.is-open { transform: translateY(0); }
+.kanban-move-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #1a2e26;
+  padding: 6px 4px 12px;
+}
+.kanban-move-head span { font-size: 12px; font-weight: 600; color: #8a9690; }
+.kanban-move-opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px;
+  margin-bottom: 8px;
+  border: 1px solid #e6ebe1;
+  border-radius: 12px;
+  background: #fbfcfa;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a2e26;
+  cursor: pointer;
+}
+.kanban-move-opt:active { background: #eef1ec; }
+.kanban-move-opt.is-current { opacity: 0.5; }
 .shp-group.is-drop-over .shp-group-list { background: rgba(34,197,94,.08); outline: 2px dashed #86efac; outline-offset: 3px; border-radius: 12px; }
 
 /* ─── Kanban Pose (riusa .shp-* della Logistica, 4 corsie per stato) ─── */
@@ -21493,6 +21576,8 @@ body {
 .shp-mode-tag.courier { background: #e0edff; color: #1e40af; }
 .shp-mode-tag.pickup { background: #fff7ed; color: #9a3412; }
 .shp-mode-tag.van { background: #e8f0ec; color: #1f4d3d; }
+/* Tag squadra nelle card Pose (kanban): neutro, con pallino colore squadra */
+.shp-mode-tag.shp-crew-tag { background: #eef1ee; color: #3a4b40; text-transform: none; letter-spacing: 0; display: inline-flex; align-items: center; }
 .shp-badge { padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; background: #f0f0ef; color: #6b7280; }
 .shp-badge.ok { background: #d1fae5; color: #065f46; }
 .shp-aside { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; min-width: 100px; }

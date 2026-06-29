@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260629-pose-fix-toggle-indisponibilita";
+} from "./lib/order-money.js?v=20260629-kanban-mobile-tap-to-move";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260629-pose-fix-toggle-indisponibilita";
+import { regionForCity } from "./lib/geo.js?v=20260629-kanban-mobile-tap-to-move";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260629-pose-fix-toggle-indisponibilita";
+} from "./lib/profit-split.js?v=20260629-kanban-mobile-tap-to-move";
 
-const APP_SHELL_VERSION = "20260629-pose-fix-toggle-indisponibilita";
+const APP_SHELL_VERSION = "20260629-kanban-mobile-tap-to-move";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15641,24 +15641,47 @@ function renderInstallationKanbanCard(order) {
     ? `${formatDate(install.installDate)}${install.installTime ? ` · ${install.installTime}` : ""}`
     : (state.lang === "it" ? "Data da definire" : "Date to set");
   const installStatus = String(install.status || "").trim();
-  const badgeLabel = getInstallationStatusLabel(installStatus, Boolean(install.installDate));
-  const badgeClass = installStatus === "in-corso" ? "badge-warning"
-    : installStatus === "completata" ? "badge-success"
-    : installStatus === "problema" ? "badge-danger"
-    : install.installDate ? "badge-info" : "badge-warning";
-  const crewBadge = install.crew || (state.lang === "it" ? "Squadra da assegnare" : "Crew to assign");
-  // data-installation-drag-id → riusa il drag esistente verso il calendario.
+  const statusLabel = getInstallationStatusLabel(installStatus, Boolean(install.installDate));
+  // Stesso schema cromatico dei chip/dot della Logistica (.shp-chip/.shp-dot)
+  const toneClass = installStatus === "completata" ? "ready"
+    : installStatus === "in-corso" ? "work"
+    : installStatus === "problema" ? "block"
+    : "prep";
+  const crewLabel = install.crew || (state.lang === "it" ? "Squadra da assegnare" : "Crew to assign");
+  const crewColor = getCrewColor(install.crew);
+  const destination = composeAddress(order) || addressIncompleteText();
+  // Card IDENTICA alla Logistica (.shp-row): dentro .shp-groups si impila da sola.
+  // data-installation-drag-id → riusa il drag esistente verso calendario/corsie.
   return `
-    <article class="order-row installation-row installation-kanban-card ${selected}" data-action="select-order" data-id="${order.id}" data-view="installations" draggable="true" data-installation-drag-id="${order.id}">
-      <div>
-        <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-        <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
+    <article class="shp-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="installations" draggable="true" data-installation-drag-id="${order.id}">
+      <span class="shp-dot ${toneClass}"></span>
+      <div class="shp-main">
+        <div class="shp-name-line">
+          <span class="shp-name">${escapeHtml(composeClientName(order))}</span>
+          <span class="shp-num">${escapeHtml(getOrderNumber(order))}</span>
+        </div>
+        <div class="shp-meta">
+          <span>${escapeHtml(order.operations?.product || t("undefined"))} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
+          <span class="shp-sep">·</span>
+          <span>${escapeHtml(destination)}</span>
+          <span class="shp-mode-tag shp-crew-tag"><span class="crew-dot" style="background:${crewColor}"></span>${escapeHtml(crewLabel)}</span>
+        </div>
       </div>
-      <div class="order-type-badge type-posa"><span class="crew-dot" style="background:${getCrewColor(install.crew)}"></span>${escapeHtml(crewBadge)}</div>
-      <div class="order-amount">${dateLabel}</div>
-      <div class="action-badge ${badgeClass}">${badgeLabel}</div>
+      <div class="shp-aside">
+        <span class="shp-date">${escapeHtml(dateLabel)}</span>
+        <span class="shp-chip ${toneClass}">${escapeHtml(statusLabel)}</span>
+      </div>
+      ${kanbanGripHandle(order.id, "installation")}
     </article>
   `;
+}
+
+// Maniglia card per il MOBILE: l'HTML5 drag&drop non parte su touch, quindi qui
+// si TOCCA la maniglia e si sceglie la corsia da un menu (openKanbanMoveSheet).
+// Nascosta su desktop (lì funziona il drag nativo sulla card).
+function kanbanGripHandle(id, kind) {
+  const label = state.lang === "it" ? "Sposta" : "Move";
+  return `<button class="shp-grip" type="button" data-action="kanban-move" data-id="${id}" data-kind="${kind}" aria-label="${label}" title="${label}"><svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><circle cx="5" cy="3" r="1.4"/><circle cx="11" cy="3" r="1.4"/><circle cx="5" cy="8" r="1.4"/><circle cx="11" cy="8" r="1.4"/><circle cx="5" cy="13" r="1.4"/><circle cx="11" cy="13" r="1.4"/></svg></button>`;
 }
 
 function renderInstallationsKanban(listOrders) {
@@ -19511,6 +19534,7 @@ function renderShippingQueueCard(order) {
         <span class="shp-chip ${chipClass}">${escapeHtml(stage.label)}</span>
       </div>
       <button class="shp-action ${action.tone}" type="button" data-action="select-order" data-id="${order.id}" data-view="shipping">${escapeHtml(action.label)}</button>
+      ${kanbanGripHandle(order.id, "shipping")}
     </article>
   `;
 }
@@ -26268,6 +26292,11 @@ function handleGlobalClick(event) {
     setView("profit-split");
     return;
   }
+  if (action === "kanban-move") {
+    // Maniglia card su mobile → apre il menu per spostare la card di corsia.
+    openKanbanMoveSheet(button.dataset.id, button.dataset.kind || "installation");
+    return;
+  }
   if (action === "toggle-crew-unavailable") {
     const role = normalizeUserRole(state.currentUser?.role || "");
     // Squadra: agisce sulla PROPRIA disponibilità. Ufficio: sulla squadra
@@ -26899,6 +26928,51 @@ document.addEventListener("drop", (event) => {
   zone.classList.remove("is-drop-over");
   void moveInstallationToLane(orderId, lane);
 });
+
+// ─── SPOSTA card su MOBILE (tap-to-move) ─────────────────────────────────────
+// L'HTML5 drag&drop NON parte su touch e, con le corsie impilate, trascinare tra
+// corsie lontane (fuori schermo) è impraticabile. Su mobile quindi si TOCCA la
+// maniglia .shp-grip della card e si sceglie la corsia di destinazione da un
+// piccolo bottom-sheet. Stesse funzioni del drop desktop (moveInstallationToLane
+// / moveShippingOrderToLane). Su desktop la maniglia è nascosta (drag nativo).
+function closeKanbanMoveSheet() {
+  document.querySelectorAll(".kanban-move-sheet, .kanban-move-scrim").forEach((n) => n.remove());
+}
+
+function openKanbanMoveSheet(id, kind) {
+  const order = (state.orders || []).find((o) => o.id === id);
+  if (!order) return;
+  const it = state.lang === "it";
+  let lanes; let current; let move;
+  if (kind === "shipping") {
+    lanes = ["prepare", "ready", "done"].map(getShippingLaneMeta);
+    current = getShippingStageLane(order);
+    move = (lane) => moveShippingOrderToLane(id, lane);
+  } else {
+    lanes = INSTALLATION_LANES.map(getInstallationLaneMeta);
+    current = getInstallationLane(order);
+    move = (lane) => moveInstallationToLane(id, lane);
+  }
+  closeKanbanMoveSheet();
+  const scrim = document.createElement("div");
+  scrim.className = "kanban-move-scrim";
+  const sheet = document.createElement("div");
+  sheet.className = "kanban-move-sheet";
+  sheet.innerHTML =
+    `<div class="kanban-move-head">${it ? "Sposta in…" : "Move to…"}<span>${escapeHtml(composeClientName(order))} · ${escapeHtml(getOrderNumber(order))}</span></div>` +
+    lanes.map((l) => `<button class="kanban-move-opt ${l.key === current ? "is-current" : ""}" type="button" data-kanban-move-to="${l.key}">${l.icon || ""} ${escapeHtml(l.title)}${l.key === current ? ` · ${it ? "attuale" : "current"}` : ""}</button>`).join("");
+  document.body.appendChild(scrim);
+  document.body.appendChild(sheet);
+  scrim.addEventListener("click", closeKanbanMoveSheet);
+  sheet.addEventListener("click", (e) => {
+    const opt = e.target.closest("[data-kanban-move-to]");
+    if (!opt) return;
+    const lane = opt.dataset.kanbanMoveTo;
+    closeKanbanMoveSheet();
+    if (lane !== current) void move(lane);
+  });
+  requestAnimationFrame(() => { scrim.classList.add("is-open"); sheet.classList.add("is-open"); });
+}
 
 document.addEventListener("click", (event) => {
   const control = event.target.closest("button, .btn, .topbar-btn, .filter-btn, .primary-button, .mini-action, a.topbar-btn");
