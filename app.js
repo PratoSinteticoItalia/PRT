@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260701-portfolio-grid-sempre-visibile";
+} from "./lib/order-money.js?v=20260701-logistica-salva-spedizione-no-redirect";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260701-portfolio-grid-sempre-visibile";
+import { regionForCity } from "./lib/geo.js?v=20260701-logistica-salva-spedizione-no-redirect";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260701-portfolio-grid-sempre-visibile";
+} from "./lib/profit-split.js?v=20260701-logistica-salva-spedizione-no-redirect";
 
-const APP_SHELL_VERSION = "20260701-portfolio-grid-sempre-visibile";
+const APP_SHELL_VERSION = "20260701-logistica-salva-spedizione-no-redirect";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -24677,22 +24677,26 @@ async function saveShipping(event) {
       : " Inventory was not auto-updated: use Fulfill now in inventory.";
   }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  // Se l'ordine è stato marcato come spedito ma non ha allocazioni inventario,
-  // porta l'utente alla vista warehouse per completare l'impegno
+  // Re-render PRIMA di ogni redirect: così l'ordine spedito passa subito in
+  // "Usciti / Ritirati" nella board Logistica.
+  renderCurrentViewOnly(state.currentView);
+  // Spedito senza allocazioni inventario: NON portiamo più via l'utente in
+  // Inventario (comportamento precedente, fastidioso). Restiamo in Logistica e
+  // mostriamo solo un avviso — l'inventario si scarica a parte quando serve.
+  let inventoryNote = "";
   if (nextShipped) {
     const savedAllocations = getOrderInventoryAllocations(saved);
     const hasPhysicalLines = getPhysicalOrderLines(saved).length > 0 || toNumber(saved.operations?.sqm || 0) > 0;
     if (savedAllocations.length === 0 && hasPhysicalLines) {
-      state.selectedOrderId = saved.id;
-      setView("warehouse");
-      return;
+      inventoryNote = state.lang === "it"
+        ? " Nota: nessun rotolo allocato, l'inventario non è stato scaricato — fallo da Inventario se necessario."
+        : " Note: no rolls allocated, inventory was not deducted — do it from Inventory if needed.";
     }
   }
-  renderCurrentViewOnly(state.currentView);
   setStatus(
     ui.shippingStatus,
-    "success",
-    `${state.lang === "it" ? "Spedizione aggiornata correttamente." : "Shipping updated successfully."}${shopifyMessage}`,
+    inventoryNote ? "warning" : "success",
+    `${state.lang === "it" ? "Spedizione aggiornata correttamente." : "Shipping updated successfully."}${shopifyMessage}${inventoryNote}`,
   );
 }
 
