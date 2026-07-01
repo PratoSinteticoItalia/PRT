@@ -2455,6 +2455,34 @@
     }
   }
 
+  // WORKAROUND materiali all'apertura: nel bundle deployato, all'avvio i materiali
+  // automatici vengono calcolati con la superficie sbagliata finché l'utente non
+  // "gira" il select Superficie (pavimentazione→terra). Qui replichiamo quel giro
+  // UNA sola volta appena i hook React sono disponibili: dispatchiamo l'altra
+  // superficie e poi torniamo a quella corrente, forzando il useEffect dei
+  // materiali senza cambiare la scelta finale dell'utente.
+  let _codexMaterialsKickDone = false;
+  function forceMaterialsSurfaceKickOnce() {
+    if (_codexMaterialsKickDone) return;
+    const hooks = findGeneratorHooks();
+    const surfaceHook = hooks && hooks[17];
+    if (!surfaceHook?.queue?.dispatch) return;
+    const current = String(surfaceHook.memoizedState || "");
+    if (current !== "terra" && current !== "pavimentazione") return;
+    _codexMaterialsKickDone = true;
+    const other = current === "terra" ? "pavimentazione" : "terra";
+    dispatchHookAction(surfaceHook, other);
+    setTimeout(() => {
+      const h2 = findGeneratorHooks();
+      if (h2 && h2[17]) dispatchHookAction(h2[17], current);
+    }, 90);
+  }
+  function scheduleMaterialsSurfaceKick(attempts) {
+    if (_codexMaterialsKickDone || attempts <= 0) return;
+    forceMaterialsSurfaceKickOnce();
+    if (!_codexMaterialsKickDone) setTimeout(() => scheduleMaterialsSurfaceKick(attempts - 1), 300);
+  }
+
   function isPreviewModeVisible() {
     const modifyButton = findElementByText("button, a, div, span", "Modifica");
     const downloadButton = findElementByText("button, a, div, span", "Scarica PDF");
@@ -3565,6 +3593,9 @@
       subtree: true,
     });
     requestBridgeSyncBurst(6);
+    // Forza il ricalcolo materiali con la superficie corretta appena il generatore
+    // è montato (una sola volta). Vedi forceMaterialsSurfaceKickOnce.
+    scheduleMaterialsSurfaceKick(24);
   }
 
   window.addEventListener("message", (event) => {
