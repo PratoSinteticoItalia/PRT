@@ -8617,6 +8617,10 @@ function normalizeSalesContentRecord(item = {}) {
     id: contentId,
     title: String(item.title || "").trim() || "Contenuto",
     category: String(item.category || "documentazione").trim() || "documentazione",
+    // Portfolio per prodotto: i record con category "portfolio" sono legati a uno
+    // slug prodotto e hanno una lista di id allegato/chiave foto "in vetrina".
+    product: String(item.product || "").trim(),
+    featured: Array.isArray(item.featured) ? item.featured.map((v) => String(v)).filter(Boolean) : [],
     description: String(item.description || "").trim(),
     link: String(item.link || "").trim(),
     createdAt: String(item.createdAt || new Date().toISOString()),
@@ -11941,6 +11945,44 @@ async function handleApi(req, res, url) {
       console.error("[work-reports] create failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "create_failed") });
     }
+  }
+
+  // GET /api/portfolio/:slug/job-photos?label=... → foto dai lavori COMPLETATI con
+  // quel prodotto (aggregazione on-demand dai verbali fine cantiere). Office-only.
+  if (url.pathname.match(/^\/api\/portfolio\/[^/]+\/job-photos$/) && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const slug = decodeURIComponent(url.pathname.split("/")[3]);
+    const label = url.searchParams.get("label") || "";
+    const norm = (v) => String(v || "")
+      .toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "");
+    const targets = new Set([norm(slug), norm(label)].filter(Boolean));
+    if (!targets.size) return sendJson(res, 200, { photos: [] });
+    const matchingOrders = (store.orders || []).filter((o) => {
+      const prod = norm(o.operations?.product);
+      if (!prod || !targets.has(prod)) return false;
+      return String(o.operations?.installation?.status || "").trim() === "completata";
+    });
+    const photos = [];
+    for (const order of matchingOrders) {
+      try {
+        const reports = await listWorkReportsFromDb({ orderId: order.id });
+        for (const rep of reports || []) {
+          for (const ph of rep.photos || []) {
+            if (!ph?.id) continue;
+            photos.push({
+              id: ph.id,
+              url: `/api/work-reports/${encodeURIComponent(rep.id)}/photos/${encodeURIComponent(ph.id)}/file`,
+              orderId: order.id,
+              orderNumber: order.orderNumber || order.name || "",
+              cliente: [order.firstName, order.lastName].filter(Boolean).join(" ").trim() || order.name || "",
+              date: ph.taken_at || rep.createdAt || "",
+            });
+          }
+        }
+      } catch (_) { /* DB assente in alcuni env → nessuna foto */ }
+    }
+    return sendJson(res, 200, { photos });
   }
 
   // GET /api/work-reports?orderId=X&status=Y → lista

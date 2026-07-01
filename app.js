@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260629-kanban-mobile-corsie-altezza-uniforme";
+} from "./lib/order-money.js?v=20260701-portfolio-grid-sempre-visibile";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260629-kanban-mobile-corsie-altezza-uniforme";
+import { regionForCity } from "./lib/geo.js?v=20260701-portfolio-grid-sempre-visibile";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260629-kanban-mobile-corsie-altezza-uniforme";
+} from "./lib/profit-split.js?v=20260701-portfolio-grid-sempre-visibile";
 
-const APP_SHELL_VERSION = "20260629-kanban-mobile-corsie-altezza-uniforme";
+const APP_SHELL_VERSION = "20260701-portfolio-grid-sempre-visibile";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1208,6 +1208,11 @@ const state = {
   salesRequestCompactMode: false,
   salesContentPage: 1,
   salesContentCategory: "all",
+  // Sezione Contenuti: scheda attiva ("documenti" | "portfolio") e prodotto aperto
+  // nel portfolio (slug catalogo; "" = griglia prodotti). Cache foto-da-lavori per slug.
+  salesContentTab: "documenti",
+  portfolioSelectedProduct: "",
+  portfolioJobPhotos: {},
   sessionRevision: "",
   mobileMenuOpen: false,
   // Drill-down mobile: { module, itemId, listScrollY, title, subtitle } | null
@@ -1520,6 +1525,8 @@ const ui = {
   salesContentCategoryFilters: document.getElementById("sales-content-category-filters"),
   salesContentInsights: document.getElementById("sales-content-insights"),
   salesContentList: document.getElementById("sales-content-list"),
+  salesContentTabs: document.getElementById("sales-content-tabs"),
+  salesContentPortfolio: document.getElementById("sales-content-portfolio"),
   salesContentPagination: document.getElementById("sales-content-pagination"),
   salesContentForm: document.getElementById("sales-content-form"),
   salesContentNewButton: document.getElementById("sales-content-new-button"),
@@ -4123,6 +4130,9 @@ function normalizeSalesContentRecord(item = {}) {
     id: String(item.id || crypto.randomUUID()),
     title: String(item.title || "").trim(),
     category: String(item.category || "documentazione").trim().toLowerCase() || "documentazione",
+    // Portfolio per prodotto (category "portfolio"): slug prodotto + foto in vetrina.
+    product: String(item.product || "").trim(),
+    featured: Array.isArray(item.featured) ? item.featured.map((v) => String(v)).filter(Boolean) : [],
     description: String(item.description || "").trim(),
     link: String(item.link || "").trim(),
     attachments: Array.isArray(item.attachments) ? item.attachments : [],
@@ -12219,6 +12229,9 @@ function getFilteredSalesContents({ ignoreCategory = false } = {}) {
   const query = String(state.search.salesContent || "").trim().toLowerCase();
   const categoryFilter = normalizeSalesContentCategoryFilter(state.salesContentCategory);
   return [...state.salesContents]
+    // I record "portfolio" (foto per prodotto) vivono nella scheda Portfolio, non
+    // nell'elenco Documenti: li escludiamo sempre da qui.
+    .filter((item) => normalizeSalesContentCategoryFilter(item.category || "") !== "portfolio")
     .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))
     .filter((item) => {
       if (!ignoreCategory && categoryFilter !== "all") {
@@ -13193,7 +13206,221 @@ function renderSalesContentAttachments(items = [], contentId = "") {
   }).join("");
 }
 
+// ─── PORTFOLIO PRODOTTI (scheda "Portfolio" della sezione Contenuti) ─────────
+// Un "portfolio prodotto" è un record salesContent con category "portfolio" e
+// product = slug catalogo; i suoi attachments sono le foto caricate a mano e
+// `featured` gli id/chiavi messi in vetrina. Le foto "dai lavori" arrivano
+// dall'endpoint job-photos (cache in state.portfolioJobPhotos[slug]).
+function getPortfolioRecord(slug) {
+  const s = String(slug || "").trim();
+  if (!s) return null;
+  return (state.salesContents || []).find(
+    (item) => String(item.category || "").toLowerCase() === "portfolio" && String(item.product || "").trim() === s,
+  ) || null;
+}
+
+function portfolioManualImages(record) {
+  // _idx = indice REALE nell'array attachments (serve a remove-sales-content-attachment).
+  return (record?.attachments || [])
+    .map((a, idx) => ({ ...a, _idx: idx }))
+    .filter((a) => isImageAttachment(a) && (a.url || a.dataUrl));
+}
+
+function portfolioJobImages(slug) {
+  const entry = state.portfolioJobPhotos?.[String(slug || "")];
+  return Array.isArray(entry?.photos) ? entry.photos : [];
+}
+
+function portfolioPhotoId(photo) {
+  return String(photo?.id || photo?.key || "");
+}
+
+function portfolioCatalogCover(slug) {
+  const meta = state.preventivoCatalog?.[slug] || {};
+  return String(meta.imageDataUrl || meta.image || meta.coverUrl || "").trim();
+}
+
+function portfolioCover(slug) {
+  const record = getPortfolioRecord(slug);
+  const featured = record?.featured || [];
+  const manual = portfolioManualImages(record);
+  const job = portfolioJobImages(slug);
+  const all = [...manual, ...job];
+  const feat = all.find((p) => featured.includes(portfolioPhotoId(p)));
+  const cover = feat || manual[0] || job[0] || null;
+  return cover ? (cover.url || cover.dataUrl) : portfolioCatalogCover(slug);
+}
+
+function portfolioPhotoCount(slug) {
+  return portfolioManualImages(getPortfolioRecord(slug)).length + portfolioJobImages(slug).length;
+}
+
+function renderSalesContentPortfolio() {
+  const root = ui.salesContentPortfolio;
+  if (!root) return;
+  // Il catalogo prodotti alimenta la griglia: caricalo in BACKGROUND una sola volta
+  // se assente, senza bloccare il render (la griglia mostra comunque i prodotti che
+  // hanno già un record portfolio, poi si arricchisce quando il catalogo arriva).
+  if ((!state.preventivoCatalog || !Object.keys(state.preventivoCatalog).length)
+    && typeof loadPreventivoCatalog === "function"
+    && !state._portfolioCatalogLoading && !state._portfolioCatalogLoaded) {
+    state._portfolioCatalogLoading = true;
+    Promise.resolve(loadPreventivoCatalog()).finally(() => {
+      state._portfolioCatalogLoading = false;
+      state._portfolioCatalogLoaded = true;
+      if (state.currentView === "sales-content" && state.salesContentTab === "portfolio") renderSalesContentPortfolio();
+    });
+  }
+  root.innerHTML = state.portfolioSelectedProduct
+    ? renderPortfolioProduct(state.portfolioSelectedProduct)
+    : renderPortfolioGrid();
+}
+
+function renderPortfolioGrid() {
+  const it = state.lang === "it";
+  // Prodotti = catalogo generatore UNION prodotti che hanno già un record
+  // portfolio (così non spariscono se rinominati/rimossi dal catalogo).
+  const catalog = state.preventivoCatalog || {};
+  const map = new Map();
+  Object.entries(catalog).forEach(([slug, meta]) => map.set(slug, meta.label || slug));
+  (state.salesContents || []).forEach((r) => {
+    if (String(r.category || "").toLowerCase() === "portfolio" && r.product && !map.has(r.product)) {
+      map.set(r.product, catalog[r.product]?.label || r.product);
+    }
+  });
+  const entries = [...map.entries()]
+    .map(([slug, label]) => ({ slug, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  if (!entries.length) {
+    return `<div class="info-card">${it ? "Nessun prodotto a catalogo. Aggiungili in Impostazioni." : "No catalog products yet."}</div>`;
+  }
+  const cards = entries.map(({ slug, label }) => {
+    const cover = portfolioCover(slug);
+    const count = portfolioPhotoCount(slug);
+    return `
+      <button type="button" class="portfolio-card" data-action="open-portfolio-product" data-product="${escapeAttr(slug)}">
+        <div class="portfolio-card-cover">
+          ${cover ? `<img src="${escapeHtml(cover)}" alt="${escapeHtml(label)}" loading="lazy" decoding="async" />` : `<span class="portfolio-card-empty">${escapeHtml(label.slice(0, 2).toUpperCase())}</span>`}
+          <span class="portfolio-card-count">${count} ${it ? "foto" : "photos"}</span>
+        </div>
+        <div class="portfolio-card-label">${escapeHtml(label)}</div>
+      </button>`;
+  }).join("");
+  return `<div class="portfolio-grid">${cards}</div>`;
+}
+
+function portfolioThumb(photo, { slug, featured, removable, recordId, index }) {
+  const id = portfolioPhotoId(photo);
+  const url = photo.url || photo.dataUrl || "";
+  const isFeat = featured.includes(id);
+  const sub = photo._jobLabel ? `<span class="portfolio-thumb-sub">${escapeHtml(photo._jobLabel)}</span>` : "";
+  return `
+    <figure class="portfolio-thumb ${isFeat ? "is-featured" : ""}">
+      <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" /></a>
+      ${sub}
+      <div class="portfolio-thumb-actions">
+        <button type="button" class="portfolio-star ${isFeat ? "is-on" : ""}" data-action="toggle-portfolio-featured" data-product="${escapeAttr(slug)}" data-photo="${escapeAttr(id)}" title="${state.lang === "it" ? "In vetrina" : "Featured"}">★</button>
+        ${removable ? `<button type="button" class="portfolio-remove" data-action="remove-sales-content-attachment" data-id="${escapeAttr(recordId)}" data-index="${photo._idx ?? index}" data-attachment-id="${escapeAttr(id)}" title="${state.lang === "it" ? "Rimuovi" : "Remove"}">×</button>` : ""}
+      </div>
+    </figure>`;
+}
+
+function renderPortfolioProduct(slug) {
+  const it = state.lang === "it";
+  const meta = state.preventivoCatalog?.[slug] || {};
+  const label = meta.label || slug;
+  const record = getPortfolioRecord(slug);
+  const featured = record?.featured || [];
+  const manual = portfolioManualImages(record);
+  const job = portfolioJobImages(slug);
+  const jobState = state.portfolioJobPhotos?.[slug];
+  const featuredPhotos = [...manual, ...job].filter((p) => featured.includes(portfolioPhotoId(p)));
+
+  const section = (title, photos, opts) => photos.length
+    ? `<div class="portfolio-section"><h4>${escapeHtml(title)} <span>${photos.length}</span></h4><div class="portfolio-thumbs">${photos.map((p, i) => portfolioThumb(p, { ...opts, index: i })).join("")}</div></div>`
+    : "";
+
+  const manualOpts = { slug, featured, removable: true, recordId: record?.id || "" };
+  const jobOpts = { slug, featured, removable: false };
+
+  return `
+    <div class="portfolio-detail-head">
+      <button type="button" class="ghost-button small-button" data-action="portfolio-back">← ${it ? "Prodotti" : "Products"}</button>
+      <h2>${escapeHtml(label)}</h2>
+      <button type="button" class="primary-button small-button" data-action="portfolio-upload" data-product="${escapeAttr(slug)}">${it ? "Carica foto" : "Upload photo"}</button>
+    </div>
+    <div id="portfolio-detail-status" class="panel-note hidden"></div>
+    ${featuredPhotos.length ? `<div class="portfolio-section is-featured-section"><h4>★ ${it ? "In vetrina" : "Featured"} <span>${featuredPhotos.length}</span></h4><div class="portfolio-thumbs">${featuredPhotos.map((p) => portfolioThumb(p, { slug, featured, removable: false })).join("")}</div></div>` : ""}
+    ${section(it ? "Caricate a mano" : "Uploaded", manual, manualOpts)}
+    ${section(it ? "Dai lavori" : "From jobs", job, jobOpts)}
+    ${jobState === undefined ? `<div class="info-card">${it ? "Carico le foto dai lavori completati…" : "Loading photos from completed jobs…"}</div>` : ""}
+    ${!manual.length && !job.length && jobState !== undefined ? `<div class="info-card">${it ? "Ancora nessuna foto. Usa “Carica foto” o segnale dai lavori completati." : "No photos yet."}</div>` : ""}
+  `;
+}
+
+async function ensurePortfolioRecord(slug) {
+  const existing = getPortfolioRecord(slug);
+  if (existing) return existing;
+  const label = state.preventivoCatalog?.[slug]?.label || slug;
+  const saved = await apiFetch("/api/sales/content-items", {
+    method: "POST",
+    body: JSON.stringify({ title: `Portfolio · ${label}`, category: "portfolio", product: slug, description: "" }),
+  });
+  upsertSalesContent(saved, { skipOpsRender: true });
+  return getPortfolioRecord(slug) || normalizeSalesContentRecord(saved);
+}
+
+async function togglePortfolioFeatured(slug, photoId) {
+  const record = await ensurePortfolioRecord(slug);
+  if (!record) return;
+  const current = Array.isArray(record.featured) ? record.featured.slice() : [];
+  const next = current.includes(photoId) ? current.filter((id) => id !== photoId) : [...current, photoId];
+  const saved = await apiFetch("/api/sales/content-items", {
+    method: "POST",
+    body: JSON.stringify({ ...record, featured: next }),
+  });
+  upsertSalesContent(saved, { skipOpsRender: true });
+  renderSalesContent();
+}
+
+// Carica le foto dai lavori completati con quel prodotto (endpoint server).
+// Cache per slug in state.portfolioJobPhotos. Tollera l'assenza dell'endpoint.
+async function loadPortfolioJobPhotos(slug) {
+  const s = String(slug || "").trim();
+  if (!s) return;
+  try {
+    const label = state.preventivoCatalog?.[s]?.label || "";
+    const data = await apiFetch(`/api/portfolio/${encodeURIComponent(s)}/job-photos?label=${encodeURIComponent(label)}`);
+    const photos = (Array.isArray(data?.photos) ? data.photos : [])
+      .filter((p) => p && p.url)
+      .map((p) => ({ ...p, _jobLabel: p.cliente || p.orderNumber || "" }));
+    state.portfolioJobPhotos = { ...state.portfolioJobPhotos, [s]: { photos, loadedAt: Date.now() } };
+  } catch (_) {
+    state.portfolioJobPhotos = { ...state.portfolioJobPhotos, [s]: { photos: [], loadedAt: Date.now() } };
+  }
+  if (state.currentView === "sales-content" && state.salesContentTab === "portfolio" && state.portfolioSelectedProduct === s) {
+    renderSalesContent();
+  }
+}
+
 function renderSalesContent() {
+  // Scheda Portfolio prodotti: griglia/galleria al posto dell'elenco Documenti.
+  const tab = state.salesContentTab === "portfolio" ? "portfolio" : "documenti";
+  if (ui.salesContentTabs) {
+    ui.salesContentTabs.querySelectorAll(".sales-content-tab").forEach((b) => b.classList.toggle("is-active", b.dataset.tab === tab));
+  }
+  const dashGrid = document.querySelector("#sales-content .sales-dashboard-grid");
+  if (tab === "portfolio") {
+    if (dashGrid) dashGrid.classList.add("hidden");
+    if (ui.salesContentNewButton) ui.salesContentNewButton.classList.add("hidden");
+    if (ui.salesContentPortfolio) ui.salesContentPortfolio.classList.remove("hidden");
+    renderSalesContentPortfolio();
+    return;
+  }
+  if (dashGrid) dashGrid.classList.remove("hidden");
+  if (ui.salesContentNewButton) ui.salesContentNewButton.classList.remove("hidden");
+  if (ui.salesContentPortfolio) ui.salesContentPortfolio.classList.add("hidden");
+
   let selected = ensureSelectedSalesContent();
   const filteredBase = getFilteredSalesContents({ ignoreCategory: true });
   const activeCategory = normalizeSalesContentCategoryFilter(state.salesContentCategory);
@@ -26424,6 +26651,44 @@ function handleGlobalClick(event) {
     } else {
       closeCrmDrawer();
     }
+    return;
+  }
+  if (action === "set-sales-content-tab") {
+    state.salesContentTab = button.dataset.tab === "portfolio" ? "portfolio" : "documenti";
+    state.portfolioSelectedProduct = "";
+    renderSalesContent();
+    return;
+  }
+  if (action === "open-portfolio-product") {
+    state.portfolioSelectedProduct = button.dataset.product || "";
+    renderSalesContent();
+    if (state.portfolioSelectedProduct) void loadPortfolioJobPhotos(state.portfolioSelectedProduct);
+    return;
+  }
+  if (action === "portfolio-back") {
+    state.portfolioSelectedProduct = "";
+    renderSalesContent();
+    return;
+  }
+  if (action === "portfolio-upload") {
+    const slug = button.dataset.product || state.portfolioSelectedProduct;
+    if (!slug) return;
+    (async () => {
+      try {
+        const rec = await ensurePortfolioRecord(slug);
+        state.pendingAttachmentTarget = { type: "sales-content", id: rec.id };
+        ui.attachmentInput.value = "";
+        ui.attachmentInput.click();
+      } catch (_) {
+        showToast(state.lang === "it" ? "Impossibile preparare il portfolio." : "Unable to prepare portfolio.", "error");
+      }
+    })();
+    return;
+  }
+  if (action === "toggle-portfolio-featured") {
+    const slug = button.dataset.product || state.portfolioSelectedProduct;
+    const photoId = button.dataset.photo || "";
+    if (slug && photoId) void togglePortfolioFeatured(slug, photoId);
     return;
   }
   if (action === "select-sales-content") {
