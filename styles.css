@@ -3132,7 +3132,10 @@ button.is-feedback,
    Logistica, per un'interazione di rendering con `contain: paint` + le colonne
    a scroll interno). La ridipingiamo qui, identica al body, così le righe
    quadrettate compaiono dietro la board come nel kanban Logistica. */
-.installation-kanban-section {
+/* Specificità (0,3,0): DEVE vincere su `.section.section-flat { background:
+   transparent }` (0,2,0), la cui scorciatoia `background` azzererebbe la
+   background-image. Senza questa specificità la griglia veniva cancellata. */
+.section.section-flat.installation-kanban-section {
   background-color: transparent;
   background-image:
     repeating-linear-gradient(

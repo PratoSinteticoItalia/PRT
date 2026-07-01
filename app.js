@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260701-pose-kanban-grid";
+} from "./lib/order-money.js?v=20260702-pose-kanban-grid-fix";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260701-pose-kanban-grid";
+import { regionForCity } from "./lib/geo.js?v=20260702-pose-kanban-grid-fix";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260701-pose-kanban-grid";
+} from "./lib/profit-split.js?v=20260702-pose-kanban-grid-fix";
 
-const APP_SHELL_VERSION = "20260701-pose-kanban-grid";
+const APP_SHELL_VERSION = "20260702-pose-kanban-grid-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
