@@ -3128,6 +3128,29 @@ button.is-feedback,
   box-shadow: none;
 }
 
+/* La griglia del body non traspare dietro la bacheca Pose (diversamente dalla
+   Logistica, per un'interazione di rendering con `contain: paint` + le colonne
+   a scroll interno). La ridipingiamo qui, identica al body, così le righe
+   quadrettate compaiono dietro la board come nel kanban Logistica. */
+.installation-kanban-section {
+  background-color: transparent;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 31px,
+      rgba(65, 68, 72, 0.18) 31px,
+      rgba(65, 68, 72, 0.18) 32px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 31px,
+      rgba(65, 68, 72, 0.18) 31px,
+      rgba(65, 68, 72, 0.18) 32px
+    );
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
