@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260701-logistica-salva-spedizione-no-redirect";
+} from "./lib/order-money.js?v=20260701-logistica-usciti-e-portfolio-ordine-download";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260701-logistica-salva-spedizione-no-redirect";
+import { regionForCity } from "./lib/geo.js?v=20260701-logistica-usciti-e-portfolio-ordine-download";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260701-logistica-salva-spedizione-no-redirect";
+} from "./lib/profit-split.js?v=20260701-logistica-usciti-e-portfolio-ordine-download";
 
-const APP_SHELL_VERSION = "20260701-logistica-salva-spedizione-no-redirect";
+const APP_SHELL_VERSION = "20260701-logistica-usciti-e-portfolio-ordine-download";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -13288,9 +13288,11 @@ function renderPortfolioGrid() {
       map.set(r.product, catalog[r.product]?.label || r.product);
     }
   });
+  // Ordine crescente per spessore filo (12 mm → 50 mm), poi alfabetico.
+  const mmOf = (s) => { const m = String(s).match(/(\d+)\s*mm/i); return m ? Number(m[1]) : 9999; };
   const entries = [...map.entries()]
     .map(([slug, label]) => ({ slug, label }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+    .sort((a, b) => (mmOf(a.label) - mmOf(b.label)) || a.label.localeCompare(b.label));
   if (!entries.length) {
     return `<div class="info-card">${it ? "Nessun prodotto a catalogo. Aggiungili in Impostazioni." : "No catalog products yet."}</div>`;
   }
@@ -13320,6 +13322,7 @@ function portfolioThumb(photo, { slug, featured, removable, recordId, index }) {
       ${sub}
       <div class="portfolio-thumb-actions">
         <button type="button" class="portfolio-star ${isFeat ? "is-on" : ""}" data-action="toggle-portfolio-featured" data-product="${escapeAttr(slug)}" data-photo="${escapeAttr(id)}" title="${state.lang === "it" ? "In vetrina" : "Featured"}">★</button>
+        <button type="button" class="portfolio-share" data-action="share-portfolio-photo" data-url="${escapeAttr(url)}" data-name="${escapeAttr(photo.name || photo._jobLabel || "foto")}" title="${state.lang === "it" ? "Condividi / scarica" : "Share / download"}">⤓</button>
         ${removable ? `<button type="button" class="portfolio-remove" data-action="remove-sales-content-attachment" data-id="${escapeAttr(recordId)}" data-index="${photo._idx ?? index}" data-attachment-id="${escapeAttr(id)}" title="${state.lang === "it" ? "Rimuovi" : "Remove"}">×</button>` : ""}
       </div>
     </figure>`;
@@ -19689,6 +19692,17 @@ function getShippingRowAction(order) {
 // in 3 fasi: da preparare → pronti per uscita/ritiro → usciti/ritirati.
 // La modalità (corriere/ritiro/furgone) la imposta l'ufficio ed è read-only qui.
 function getShippingStageLane(order) {
+  // Una spedizione GESTITA (spedita / ritirata / caricata su furgone / corriere
+  // passato) va in "Usciti / Ritirati" ANCHE se l'ordine è instradato in posa
+  // (stage "install-planned"): senza questo, spuntare "spedito/evaso" non spostava
+  // l'ordine perché getUnifiedOrderStage dà priorità alla posa pianificata.
+  const wh = order.operations?.warehouse || {};
+  const logisticsHandled = Boolean(
+    wh.shipped
+    || String(wh.status || "").trim() === "ritirato"
+    || (String(wh.fulfillmentMode || "").trim() === "corriere" && wh.carrierPassed),
+  );
+  if (logisticsHandled) return "done";
   const stage = getUnifiedOrderStage(order);
   const doneKeys = ["goods-collected", "van-loaded", "install-progress", "install-completed", "closed"];
   if (doneKeys.includes(stage.key)) return "done";
@@ -26693,6 +26707,26 @@ function handleGlobalClick(event) {
     const slug = button.dataset.product || state.portfolioSelectedProduct;
     const photoId = button.dataset.photo || "";
     if (slug && photoId) void togglePortfolioFeatured(slug, photoId);
+    return;
+  }
+  if (action === "share-portfolio-photo") {
+    const url = button.dataset.url || "";
+    const rawName = button.dataset.name || "foto";
+    if (!url) return;
+    const fileName = /\.(jpg|jpeg|png|webp)$/i.test(rawName) ? rawName : `${rawName}.jpg`;
+    (async () => {
+      // Condivisione nativa (mobile) col file se possibile; altrimenti scarica.
+      try {
+        if (navigator.share && navigator.canShare) {
+          const blob = await fetch(url).then((r) => r.blob());
+          const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
+          if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; }
+        }
+      } catch (_) { /* fallback sotto */ }
+      const a = document.createElement("a");
+      a.href = url; a.download = fileName; a.target = "_blank"; a.rel = "noreferrer";
+      document.body.appendChild(a); a.click(); a.remove();
+    })();
     return;
   }
   if (action === "select-sales-content") {
