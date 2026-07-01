@@ -3117,6 +3117,17 @@ button.is-feedback,
   margin-bottom: 18px;
 }
 
+/* Variante "piatta": la bacheca Pose deve stare sulla pagina come il kanban
+   Logistica (niente box bianco/bordo/ombra), non dentro una card.
+   `.section.section-flat` per vincere su altre regole `.section` più in basso. */
+.section.section-flat {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
