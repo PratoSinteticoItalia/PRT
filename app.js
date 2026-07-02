@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260702-pose-kanban-grid-fix";
+} from "./lib/order-money.js?v=20260702-logistica-mobile-tabs";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260702-pose-kanban-grid-fix";
+import { regionForCity } from "./lib/geo.js?v=20260702-logistica-mobile-tabs";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260702-pose-kanban-grid-fix";
+} from "./lib/profit-split.js?v=20260702-logistica-mobile-tabs";
 
-const APP_SHELL_VERSION = "20260702-pose-kanban-grid-fix";
+const APP_SHELL_VERSION = "20260702-logistica-mobile-tabs";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -20061,6 +20061,8 @@ function renderShipping() {
       const kpiPrepare = orders.filter((o) => getShippingStageLane(o) === "prepare").length;
       const kpiReady = orders.filter((o) => getShippingStageLane(o) === "ready").length;
       const kpiDone = orders.filter((o) => getShippingStageLane(o) === "done").length;
+      // Corsia visibile su mobile (pattern a tab): default "Da preparare".
+      const shippingMobileLane = state.shippingMobileLane || "prepare";
       ui.shippingList.innerHTML = orders.length
         ? `
           <div class="shp-kpi-strip">
@@ -20070,7 +20072,13 @@ function renderShipping() {
             <div class="shp-kpi"><span class="shp-kpi-value">${kpiDone}</span><span class="shp-kpi-label">${state.lang === "it" ? "Usciti / Ritirati" : "Dispatched"}</span></div>
             <div class="shp-kpi"><span class="shp-kpi-value">${totalPreparedLines}</span><span class="shp-kpi-label">${state.lang === "it" ? "Righe materiali" : "Material lines"}</span></div>
           </div>
-          <div class="shp-groups">
+          <div class="shp-lane-tabs" role="tablist">
+            ${groupedOrders.map((group) => {
+              const shortLabel = { prepare: state.lang === "it" ? "Da preparare" : "To prepare", ready: state.lang === "it" ? "Pronti" : "Ready", done: state.lang === "it" ? "Usciti" : "Out" }[group.key] || group.title;
+              return `<button type="button" class="shp-lane-tab ${group.key === shippingMobileLane ? "is-active" : ""}" data-action="shp-set-lane" data-lane="${escapeAttr(group.key)}">${escapeHtml(shortLabel)} <span class="shp-lane-tab-c">${group.orders.length}</span></button>`;
+            }).join("")}
+          </div>
+          <div class="shp-groups" data-mobile-lane="${escapeAttr(shippingMobileLane)}">
             ${groupedOrders.map((group) => `
               <section class="shp-group shp-lane-${group.key}" data-shp-lane-drop="${group.key}">
                 <div class="shp-group-label">
@@ -26806,6 +26814,15 @@ function handleGlobalClick(event) {
   if (action === "close-shipping-drawer") {
     state.shippingDrawerOpen = false;
     applyShippingDrawerState();
+    return;
+  }
+  if (action === "shp-set-lane") {
+    // Tab corsie Logistica su mobile: mostra solo la corsia scelta (no re-render).
+    state.shippingMobileLane = button.dataset.lane || "prepare";
+    const groups = document.querySelector("#shipping .shp-groups");
+    if (groups) groups.setAttribute("data-mobile-lane", state.shippingMobileLane);
+    document.querySelectorAll("#shipping .shp-lane-tab").forEach((t) =>
+      t.classList.toggle("is-active", t.dataset.lane === state.shippingMobileLane));
     return;
   }
   if (action === "select-ddt-order") {
