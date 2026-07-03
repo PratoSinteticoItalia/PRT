@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260703-pose-mobile-kanban-tab-come-logistica";
+} from "./lib/order-money.js?v=20260703-generatore-accessori-materiali-nativi";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260703-pose-mobile-kanban-tab-come-logistica";
+import { regionForCity } from "./lib/geo.js?v=20260703-generatore-accessori-materiali-nativi";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,18 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260703-pose-mobile-kanban-tab-come-logistica";
+} from "./lib/profit-split.js?v=20260703-generatore-accessori-materiali-nativi";
+// Motore di prezzo del preventivo — unica copia PURA e testata in
+// lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
+// riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
+// l'estrattore del payload PDF e, in futuro, la form nativa.
+import {
+  applyIva as applyIvaPure,
+  getMaterialBreakdown as getMaterialBreakdownPure,
+  ACCESSORIES as PREVENTIVO_ACCESSORIES,
+} from "./lib/preventivo-pricing.js?v=20260703-generatore-accessori-materiali-nativi";
 
-const APP_SHELL_VERSION = "20260703-pose-mobile-kanban-tab-come-logistica";
+const APP_SHELL_VERSION = "20260703-generatore-accessori-materiali-nativi";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1518,6 +1527,13 @@ const ui = {
   customModelName: document.getElementById("custom-model-name"),
   customModelPrice: document.getElementById("custom-model-price"),
   customModelToggle: document.getElementById("sales-generator-custom-model"),
+  nativeExtrasPanel: document.getElementById("sales-generator-native-extras"),
+  nativeMaterialsExcludes: document.getElementById("native-materials-excludes"),
+  nativeAccList: document.getElementById("native-acc-list"),
+  nativeAccEmpty: document.getElementById("native-acc-empty"),
+  nativeAccTotal: document.getElementById("native-acc-total"),
+  nativeAccCatalog: document.getElementById("native-acc-catalog"),
+  nativeAccAddBtn: document.getElementById("native-acc-add-btn"),
   salesGeneratorEmailButton: document.getElementById("sales-generator-email-button"),
   salesContentSearch: document.getElementById("sales-content-search"),
   salesContentSearchClear: document.getElementById("sales-content-search-clear"),
@@ -13000,6 +13016,7 @@ function renderSalesGeneratorPlannerMaterials(reference) {
 }
 
 function renderSalesGenerator() {
+  wireNativeExtrasPanel();
   const generatorOnlyMode = state.currentUser?.role === "crew";
   const selected = ensureSelectedSalesRequest();
   const plannerBridge = !generatorOnlyMode ? getGardenPlannerQuoteBridge() : null;
@@ -28111,6 +28128,153 @@ function handleBrandLogoClear() {
 
 // ─── Modello custom (fuori catalogo) — toolbar generatore ─────────────────────
 
+// ─── Pannello nativo: accessori extra + esclusione materiali (Fase 2 rewrite) ─
+// Gli accessori e l'esclusione dei singoli materiali sono gestiti NEL PORTALE
+// (non nell'iframe React), quindi i dati sono affidabili e la matematica passa
+// dal motore testato (lib/preventivo-pricing.js). A "Genera" sostituiscono le
+// letture fragili del bridge. Shape accessorio = { name, price, discount, qty,
+// applyIva } — identica a quella attesa da preventivo-v2.html e dal calcolo in
+// extractGeneratorPayloadFromIframe.
+let preventivoNativeAccessories = [];
+let _nativeExtrasWired = false;
+
+// Match tra key materiale del motore e le voci testuali della distinta del bridge
+// (per togliere dalla lista del PDF ciò che il cliente ha già).
+const MATERIAL_EXCLUDE_MATCHERS = {
+  pietrisco: /pietrisc/i,
+  telo: /telo|pacciam/i,
+  bande: /band/i,
+  colla: /coll/i,
+  picchetti: /picchett/i,
+};
+
+function getExcludedMaterialKeys() {
+  if (!ui.nativeMaterialsExcludes) return [];
+  return Array.from(ui.nativeMaterialsExcludes.querySelectorAll("input[type='checkbox']:checked"))
+    .map((cb) => cb.getAttribute("data-material-key"))
+    .filter(Boolean);
+}
+
+// Rimuove dalla stringa materiali del bridge le voci escluse (lista nel PDF).
+function filterMaterialsTextByExclusions(text, excludeKeys) {
+  if (!text || !excludeKeys.length) return text;
+  const matchers = excludeKeys.map((k) => MATERIAL_EXCLUDE_MATCHERS[k]).filter(Boolean);
+  return String(text)
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((seg) => !matchers.some((re) => re.test(seg)))
+    .join("; ");
+}
+
+function getNativeAccessoriesForPayload() {
+  return preventivoNativeAccessories
+    .map((a) => ({
+      name: String(a.name || "").trim(),
+      price: Number(a.price) || 0,
+      discount: Number(a.discount) || 0,
+      qty: Number(a.qty) || 1,
+      applyIva: a.applyIva !== false,
+    }))
+    .filter((a) => a.price > 0 || a.name);
+}
+
+function nativeAccessoryNet(a) {
+  return (Number(a.price) || 0) * (1 - (Number(a.discount) || 0) / 100) * (Number(a.qty) || 1);
+}
+
+function updateNativeAccTotal() {
+  if (!ui.nativeAccTotal) return;
+  if (!preventivoNativeAccessories.length) { ui.nativeAccTotal.textContent = ""; return; }
+  const net = preventivoNativeAccessories.reduce((s, a) => s + nativeAccessoryNet(a), 0);
+  const gross = preventivoNativeAccessories.reduce((s, a) => s + applyIvaPure(nativeAccessoryNet(a), a.applyIva), 0);
+  ui.nativeAccTotal.textContent = `Totale accessori: ${formatCurrency(net)} netto · ${formatCurrency(gross)} IVA inclusa`;
+}
+
+function renderNativeAccessories() {
+  const list = ui.nativeAccList;
+  if (!list) return;
+  list.innerHTML = preventivoNativeAccessories.map((a, i) => `
+    <div class="native-acc-row" data-idx="${i}">
+      <input class="text-input native-acc-name" type="text" placeholder="Accessorio" value="${escapeHtml(a.name || "")}" data-field="name" />
+      <label class="native-acc-cell"><span>€</span><input class="text-input native-acc-price" type="number" step="0.01" min="0" placeholder="0,00" value="${a.price != null && a.price !== "" ? escapeHtml(String(a.price)) : ""}" data-field="price" /></label>
+      <label class="native-acc-cell"><span>sc%</span><input class="text-input native-acc-disc" type="number" step="1" min="0" max="100" placeholder="0" value="${a.discount ? escapeHtml(String(a.discount)) : ""}" data-field="discount" /></label>
+      <label class="native-acc-cell"><span>qtà</span><input class="text-input native-acc-qty" type="number" step="1" min="1" value="${escapeHtml(String(a.qty || 1))}" data-field="qty" /></label>
+      <button type="button" class="native-acc-iva ${a.applyIva !== false ? "on" : "off"}" data-field="iva" title="IVA su questo accessorio">${a.applyIva !== false ? "IVA ON" : "IVA OFF"}</button>
+      <span class="native-acc-net">${formatCurrency(nativeAccessoryNet(a))}</span>
+      <button type="button" class="native-acc-remove" data-field="remove" title="Rimuovi">✕</button>
+    </div>
+  `).join("");
+  if (ui.nativeAccEmpty) ui.nativeAccEmpty.style.display = preventivoNativeAccessories.length ? "none" : "";
+  updateNativeAccTotal();
+}
+
+function addNativeAccessory(seed = {}) {
+  preventivoNativeAccessories.push({
+    name: seed.name || "",
+    price: seed.price != null ? Number(seed.price) : "",
+    discount: 0,
+    qty: 1,
+    applyIva: true,
+  });
+  renderNativeAccessories();
+}
+
+function wireNativeExtrasPanel() {
+  if (_nativeExtrasWired) return;
+  _nativeExtrasWired = true;
+
+  // Catalogo rapido accessori dal listino del motore.
+  if (ui.nativeAccCatalog && ui.nativeAccCatalog.options.length <= 1) {
+    for (const acc of PREVENTIVO_ACCESSORIES) {
+      const opt = document.createElement("option");
+      opt.value = acc.id;
+      opt.textContent = `${acc.name} — ${formatCurrency(acc.price)}`;
+      ui.nativeAccCatalog.appendChild(opt);
+    }
+  }
+
+  ui.nativeAccCatalog?.addEventListener("change", () => {
+    const acc = PREVENTIVO_ACCESSORIES.find((x) => x.id === ui.nativeAccCatalog.value);
+    if (acc) addNativeAccessory({ name: acc.name, price: acc.price });
+    ui.nativeAccCatalog.value = "";
+  });
+
+  ui.nativeAccAddBtn?.addEventListener("click", () => addNativeAccessory());
+
+  // Edit inline senza ridisegnare gli input (per non perdere il focus).
+  ui.nativeAccList?.addEventListener("input", (e) => {
+    const row = e.target.closest(".native-acc-row");
+    if (!row) return;
+    const acc = preventivoNativeAccessories[Number(row.getAttribute("data-idx"))];
+    if (!acc) return;
+    const field = e.target.getAttribute("data-field");
+    if (field === "name") acc.name = e.target.value;
+    else if (field === "price") acc.price = e.target.value === "" ? "" : Number(e.target.value);
+    else if (field === "discount") acc.discount = Number(e.target.value) || 0;
+    else if (field === "qty") acc.qty = Math.max(1, Number(e.target.value) || 1);
+    const netEl = row.querySelector(".native-acc-net");
+    if (netEl) netEl.textContent = formatCurrency(nativeAccessoryNet(acc));
+    updateNativeAccTotal();
+  });
+
+  ui.nativeAccList?.addEventListener("click", (e) => {
+    const row = e.target.closest(".native-acc-row");
+    if (!row) return;
+    const idx = Number(row.getAttribute("data-idx"));
+    const field = e.target.getAttribute("data-field");
+    if (field === "remove") {
+      preventivoNativeAccessories.splice(idx, 1);
+      renderNativeAccessories();
+    } else if (field === "iva") {
+      const acc = preventivoNativeAccessories[idx];
+      if (acc) { acc.applyIva = acc.applyIva === false; renderNativeAccessories(); }
+    }
+  });
+
+  renderNativeAccessories();
+}
+
 function getCustomModelOverride() {
   const name = String(ui.customModelName?.value || "").trim();
   const priceRaw = String(ui.customModelPrice?.value || "").trim();
@@ -28472,8 +28636,14 @@ function extractGeneratorPayloadFromIframe() {
             ?.parentElement?.querySelector("textarea")?.value || ""
         );
 
-    // Accessori (Z) e servizi/lavori extra (ke) dal bridge React
-    const accessories  = Array.isArray(bridgeState.accessories)   ? bridgeState.accessories  : [];
+    // Accessori: SORGENTE NATIVA (pannello portale) — affidabile, sostituisce la
+    // lettura fragile del bridge. Fallback al bridge solo se il pannello è vuoto
+    // (retro-compatibilità per chi non usa ancora il pannello nativo).
+    const nativeAccessories = getNativeAccessoriesForPayload();
+    const accessories = nativeAccessories.length
+      ? nativeAccessories
+      : (Array.isArray(bridgeState.accessories) ? bridgeState.accessories : []);
+    // Servizi/lavori extra (ke) restano dal bridge React per ora.
     const extraServices = Array.isArray(bridgeState.extraServices) ? bridgeState.extraServices : [];
 
     // Tipologia attiva (Solo Fornitura / Fornitura + Posa)
@@ -28484,6 +28654,23 @@ function extractGeneratorPayloadFromIframe() {
     const surface = String(bridgeState.surface || "terra").trim().toLowerCase();
     const isPavimentazione = isPosa && surface === "pavimentazione";
     const mode = isPosa ? "fornitura+posa" : "solo-fornitura";
+
+    // ── Esclusione materiali per voce (pannello nativo) ─────────────────────────
+    // Il cliente ha già alcuni materiali (es. telo/pietrisco): li togliamo dal
+    // COSTO (sottraendo la quota calcolata dal motore testato) e dalla LISTA nel
+    // PDF. Sottraiamo dal totale dell'iframe così, senza esclusioni, il numero
+    // resta identico a prima (nessuna deriva).
+    const excludedMaterialKeys = getExcludedMaterialKeys();
+    let materialsTotalEffective = materialsTotal;
+    let materialsTextEffective = materialsText;
+    if (excludedMaterialKeys.length) {
+      const fullBreakdown = getMaterialBreakdownPure(surface, sqm, isPosa ? "posa" : "fornitura");
+      const excludedCost = fullBreakdown.items
+        .filter((it) => excludedMaterialKeys.includes(it.key))
+        .reduce((sum, it) => sum + it.total, 0);
+      materialsTotalEffective = Math.max(0, (materialsTotal || 0) - excludedCost);
+      materialsTextEffective = filterMaterialsTextByExclusions(materialsText, excludedMaterialKeys);
+    }
 
     // ── Model selects ──────────────────────────────────────────────────────────
     // Nuovo generatore: trova i select le cui option contengono il pattern "€/mq"
@@ -28519,9 +28706,10 @@ function extractGeneratorPayloadFromIframe() {
     };
 
     const vat = 22;
-    const ivaMult = 1 + vat / 100; // 1.22
     // applyIva() del generatore React: on === false → niente IVA, altrimenti +22%.
-    const applyComponentIva = (amount, on) => (on === false ? amount : amount * ivaMult);
+    // Ora delega alla primitiva PURA e TESTATA lib/preventivo-pricing.js (unico
+    // punto verità del calcolo IVA, condiviso col futuro generatore nativo).
+    const applyComponentIva = (amount, on) => applyIvaPure(amount, on);
 
     // Legge lo stato del ToggleIvaButton ("IVA ON" / "IVA OFF") associato a una
     // label: il generatore consente IVA on/off per singola componente (prato per
@@ -28566,7 +28754,7 @@ function extractGeneratorPayloadFromIframe() {
       const discount = getScontoForIndex(i);
       const grossPrice = parsed.pricePerSqm * sqm;
       const discountedPrice = grossPrice * (1 - discount / 100);
-      const materialsBase = materialsTotal || 0;
+      const materialsBase = materialsTotalEffective || 0;
       const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
       const installationCost = isPosa ? (installPerSqm || 0) * sqm : 0;
       const shipping = shippingCost || 0;
@@ -28609,7 +28797,7 @@ function extractGeneratorPayloadFromIframe() {
       const customDiscount = options[idx]?.discount || 0;
       const grossPrice = customModel.pricePerSqm * sqm;
       const discountedPrice = grossPrice * (1 - customDiscount / 100);
-      const materialsBase = materialsTotal || 0;
+      const materialsBase = materialsTotalEffective || 0;
       const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
       const installationCost = isPosa ? (installPerSqm || 0) * sqm : 0;
       const shipping = shippingCost || 0;
@@ -28680,7 +28868,7 @@ function extractGeneratorPayloadFromIframe() {
     }
 
     // Voci globali (materiali/posa/spedizione) con importo > 0: un flag ciascuna.
-    const materialsNet = (materialsTotal || 0) * (1 - (materialsDiscountPct || 0) / 100);
+    const materialsNet = (materialsTotalEffective || 0) * (1 - (materialsDiscountPct || 0) / 100);
     if (materialsNet > 0) ivaContribFlags.push(materialsIva);
     if (isPosa && (installPerSqm || 0) * sqm > 0) ivaContribFlags.push(posaIva);
     if ((shippingCost || 0) > 0) ivaContribFlags.push(shippingIva);
@@ -28716,11 +28904,11 @@ function extractGeneratorPayloadFromIframe() {
           ? (isPavimentazione ? customTexts.materialsDescPosaPavimentazione : customTexts.materialsDescPosa)
           : customTexts.materialsDescFornitura,
         discount: materialsDiscountPct || 0,
-        // det: testo grezzo "Telo: 100 mq × 1,50 €/mq; Colla: 2 sec × 45,00 €/sec; ..."
-        det: materialsText,
+        // det: testo grezzo "Telo: 100 mq × 1,50 €/mq; ..." (voci escluse rimosse)
+        det: materialsTextEffective,
         // list: array [{name, qty}] parsato da det (per bullet-list nel PDF)
-        list: materialsText
-          ? materialsText.split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
+        list: materialsTextEffective
+          ? materialsTextEffective.split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
               const mm = item.match(/^([^:]+):\s*([^×x]+(?:[×x].+)?)/);
               return mm ? { name: mm[1].trim(), qty: mm[2].trim() } : { name: item, qty: "" };
             })
