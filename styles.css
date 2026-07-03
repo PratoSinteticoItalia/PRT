@@ -12151,8 +12151,7 @@ body.mobile-filter-sheet-open {
   body[data-drill-module="warehouse"] #warehouse section:has(#warehouse-list) {
     display: none !important;
   }
-  body[data-drill-module="warehouse"] #warehouse::before,
-  body[data-drill-module="installations"] #installations::before {
+  body[data-drill-module="warehouse"] #warehouse::before {
     content: "";
     position: fixed;
     inset: 0;
@@ -12160,8 +12159,7 @@ body.mobile-filter-sheet-open {
     z-index: 1082;
     animation: drillScrimIn 0.2s ease;
   }
-  body[data-drill-module="warehouse"] #warehouse .detail-panel,
-  body[data-drill-module="installations"] #installations .install-detail-panel {
+  body[data-drill-module="warehouse"] #warehouse .detail-panel {
     /* DRAWER laterale da destra (scorrevole), come gli ordini. */
     position: fixed !important;
     top: var(--mobile-back-bar-h) !important;
@@ -12187,13 +12185,40 @@ body.mobile-filter-sheet-open {
     transition: none !important;
     animation: drillDrawerIn 0.26s ease;
   }
-  body[data-drill-module="warehouse"] #warehouse .detail-panel .detail-header,
+  body[data-drill-module="warehouse"] #warehouse .detail-panel .detail-header {
+    top: 0 !important;
+  }
+
+  /* INSTALLATIONS (Pose) — dettaglio a TUTTA PAGINA, NON drawer laterale (il
+     drawer aveva un bug di scroll e non era navigabile). Scorre come una pagina
+     normale. Nasconde board/calendario/toolbar, mostra solo il dettaglio. */
+  body[data-drill-module="installations"] #installations .install-detail-panel {
+    position: relative !important;
+    transform: none !important;
+    visibility: visible !important;
+    transition: none !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100dvh;
+    max-height: none !important;
+    z-index: 1;
+    box-shadow: none;
+    border-radius: 0;
+    margin: 0;
+    padding: 16px !important;
+    border: none !important;
+    background: #fdfcfa !important;
+  }
   body[data-drill-module="installations"] #installations .install-detail-panel .detail-header {
     top: 0 !important;
   }
 
-  /* INSTALLATIONS — nascondi page-header + coverage + toolbar + lista (dietro al
-     drawer resta lo sfondo oscurato dallo scrim). */
+  /* INSTALLATIONS — nascondi page-header + coverage + toolbar + lista (a tutta
+     pagina resta solo il dettaglio). */
   body[data-drill-module="installations"] #installations .page-header,
   body[data-drill-module="installations"] #installations .coverage-panel,
   body[data-drill-module="installations"] #installations .installation-toolbar,
@@ -21531,31 +21556,30 @@ body {
 @media (max-width: 1100px) {
   #installation-list .shp-groups.inst-kanban-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 680px) {
-  /* Su mobile il kanban scorre ORIZZONTALMENTE (corsie affiancate, swipe), non
-     impilato in verticale. Ogni corsia ~84vw con scroll-snap; le card scorrono
-     verticalmente dentro la corsia. */
+@media (max-width: 768px) {
+  /* Kanban Pose su mobile: pattern a TAB (una corsia alla volta, a tutta
+     larghezza) come la Logistica — comodo col pollice, niente swipe orizzontale. */
   #installation-list .shp-groups.inst-kanban-groups {
-    display: flex;
+    display: block;
     grid-template-columns: none;
-    overflow-x: auto;
-    overflow-y: hidden;
-    gap: 12px;
-    align-items: flex-start;
-    scroll-snap-type: x proximity;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 10px;
+    overflow-x: visible;
   }
   #installation-list .inst-kanban-groups > .shp-group {
-    flex: 0 0 84vw;
-    max-width: 84vw;
-    scroll-snap-align: start;
+    max-width: 100%;
+    width: 100%;
   }
   #installation-list .shp-group-list {
-    height: 58vh;
     max-height: none;
-    overflow-y: auto;
+    overflow: visible;
   }
+  /* mostra solo la corsia selezionata dal tab */
+  #installation-list .inst-kanban-groups[data-mobile-lane="backlog"] .shp-group:not(.inst-lane-backlog),
+  #installation-list .inst-kanban-groups[data-mobile-lane="scheduled"] .shp-group:not(.inst-lane-scheduled),
+  #installation-list .inst-kanban-groups[data-mobile-lane="progress"] .shp-group:not(.inst-lane-progress),
+  #installation-list .inst-kanban-groups[data-mobile-lane="done"] .shp-group:not(.inst-lane-done) { display: none; }
+  /* Il pannello dettaglio NON deve stare sotto la board su mobile: appare solo a
+     tutta pagina quando si apre un ordine (drill). Fuori dal drill è nascosto. */
+  body:not([data-drill-module]) #installations .install-detail-panel { display: none !important; }
 }
 .shipping-standard-detail-panel,
 .sample-detail-panel {

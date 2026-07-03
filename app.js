@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260702-logistica-mobile-tabs";
+} from "./lib/order-money.js?v=20260703-pose-mobile-kanban-tab-come-logistica";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260702-logistica-mobile-tabs";
+import { regionForCity } from "./lib/geo.js?v=20260703-pose-mobile-kanban-tab-come-logistica";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,9 +24,9 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260702-logistica-mobile-tabs";
+} from "./lib/profit-split.js?v=20260703-pose-mobile-kanban-tab-come-logistica";
 
-const APP_SHELL_VERSION = "20260702-logistica-mobile-tabs";
+const APP_SHELL_VERSION = "20260703-pose-mobile-kanban-tab-come-logistica";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2227,10 +2227,6 @@ const MOBILE_FILTER_CONFIGS = {
   "warehouse": {
     toolbarSelector: "#warehouse .view-toolbar",
     title: "Filtri magazzino",
-  },
-  "installations": {
-    toolbarSelector: "#installations .installation-toolbar",
-    title: "Filtri pose",
   },
   "accounting": {
     toolbarSelector: "#accounting .view-toolbar",
@@ -15923,6 +15919,14 @@ function renderInstallationsKanban(listOrders) {
   const counts = Object.fromEntries(lanes.map((l) => [l.key, l.orders.length]));
   const kpi = (val, label, warn) =>
     `<div class="shp-kpi ${warn ? "warn" : ""}"><span class="shp-kpi-value">${val}</span><span class="shp-kpi-label">${label}</span></div>`;
+  // Corsia visibile su mobile (pattern a TAB come Logistica). Default "Da pianificare".
+  const mobileLane = state.installMobileLane || "backlog";
+  const shortLabels = {
+    backlog: it ? "Da pian." : "To sched.",
+    scheduled: it ? "Program." : "Scheduled",
+    progress: it ? "In corso" : "In progress",
+    done: it ? "Complet." : "Done",
+  };
   return `
     <div class="shp-kpi-strip">
       ${kpi(listOrders.length, it ? "Totale pose" : "Total")}
@@ -15931,7 +15935,10 @@ function renderInstallationsKanban(listOrders) {
       ${kpi(counts.progress, it ? "In corso" : "In progress")}
       ${kpi(counts.done, it ? "Completate" : "Completed")}
     </div>
-    <div class="shp-groups inst-kanban-groups">
+    <div class="shp-lane-tabs" role="tablist">
+      ${lanes.map((g) => `<button type="button" class="shp-lane-tab ${g.key === mobileLane ? "is-active" : ""}" data-action="install-set-lane" data-lane="${escapeAttr(g.key)}">${escapeHtml(shortLabels[g.key] || g.title)} <span class="shp-lane-tab-c">${g.orders.length}</span></button>`).join("")}
+    </div>
+    <div class="shp-groups inst-kanban-groups" data-mobile-lane="${escapeAttr(mobileLane)}">
       ${lanes.map((g) => `
         <section class="shp-group shp-lane-${g.key} inst-lane-${g.key}" data-install-lane-drop="${g.key}">
           <div class="shp-group-label"><h3>${g.icon} ${escapeHtml(g.title)}</h3><span class="shp-gc">${g.orders.length}</span></div>
@@ -26823,6 +26830,16 @@ function handleGlobalClick(event) {
     if (groups) groups.setAttribute("data-mobile-lane", state.shippingMobileLane);
     document.querySelectorAll("#shipping .shp-lane-tab").forEach((t) =>
       t.classList.toggle("is-active", t.dataset.lane === state.shippingMobileLane));
+    return;
+  }
+  if (action === "install-set-lane") {
+    // Tab corsie Pose su mobile (stesso pattern della Logistica): mostra solo la
+    // corsia scelta senza re-render.
+    state.installMobileLane = button.dataset.lane || "backlog";
+    const groups = document.querySelector("#installation-list .inst-kanban-groups");
+    if (groups) groups.setAttribute("data-mobile-lane", state.installMobileLane);
+    document.querySelectorAll("#installation-list .shp-lane-tab").forEach((t) =>
+      t.classList.toggle("is-active", t.dataset.lane === state.installMobileLane));
     return;
   }
   if (action === "select-ddt-order") {
