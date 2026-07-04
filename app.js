@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260704-generatore-nativo-default-prefill";
+} from "./lib/order-money.js?v=20260704-generatore-form-nativa-ui-migliorata";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260704-generatore-nativo-default-prefill";
+import { regionForCity } from "./lib/geo.js?v=20260704-generatore-form-nativa-ui-migliorata";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260704-generatore-nativo-default-prefill";
+} from "./lib/profit-split.js?v=20260704-generatore-form-nativa-ui-migliorata";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260704-generatore-nativo-default-prefill";
+} from "./lib/preventivo-pricing.js?v=20260704-generatore-form-nativa-ui-migliorata";
 
-const APP_SHELL_VERSION = "20260704-generatore-nativo-default-prefill";
+const APP_SHELL_VERSION = "20260704-generatore-form-nativa-ui-migliorata";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1543,7 +1543,8 @@ const ui = {
   nativeForm: document.getElementById("sales-generator-native-form"),
   nfOptions: document.getElementById("nf-options"),
   nfMaterialsAuto: document.getElementById("nf-materials-auto"),
-  nfMatExcludes: document.getElementById("nf-mat-excludes"),
+  nfMatList: document.getElementById("nf-mat-list"),
+  nfNewNumber: document.getElementById("nf-new-number"),
   nfAccList: document.getElementById("nf-acc-list"),
   nfAccEmpty: document.getElementById("nf-acc-empty"),
   nfAccCatalog: document.getElementById("nf-acc-catalog"),
@@ -28332,9 +28333,20 @@ function defaultPreventivoForm() {
     shippingCost: 0, shippingIva: true,
     posaPerSqm: 25, posaIva: true,
     materialsDiscountPct: 0, materialsIva: true,
+    excludedMaterials: [], // key materiali NON inclusi (il cliente li ha già)
     accessories: [],  // { name, price, discount, qty, applyIva }
     extraWorks: [],   // { description, cost, applyIva }
   };
+}
+
+// Numero preventivo progressivo (persistito). Formato F-<anno>-<seq 4 cifre>.
+function nextPreventivoNumber() {
+  const KEY = "psi:preventivo-counter";
+  let n = 0;
+  try { n = parseInt(window.localStorage.getItem(KEY) || "0", 10) || 0; } catch {}
+  n += 1;
+  try { window.localStorage.setItem(KEY, String(n)); } catch {}
+  return `F-${new Date().getFullYear()}-${String(n).padStart(4, "0")}`;
 }
 
 function ensurePreventivoForm() {
@@ -28347,9 +28359,21 @@ function nfProductBySlug(slug) {
 }
 
 function nfExcludedMaterialKeys() {
-  if (!ui.nfMatExcludes) return [];
-  return Array.from(ui.nfMatExcludes.querySelectorAll("input[type='checkbox']:checked"))
-    .map((cb) => cb.getAttribute("data-material-key")).filter(Boolean);
+  return ensurePreventivoForm().excludedMaterials || [];
+}
+
+// Materiali INCLUSI (checkbox spuntate = incluse). Mostra solo quelli previsti
+// dalla superficie/tipologia correnti; togliendo la spunta si escludono.
+function renderNfMaterials() {
+  const wrap = ui.nfMatList;
+  if (!wrap) return;
+  const f = ensurePreventivoForm();
+  const breakdown = getMaterialBreakdownPure(f.surface, Number(f.sqm) || 1, f.quoteType);
+  const excluded = new Set(f.excludedMaterials || []);
+  wrap.innerHTML = breakdown.items.map((it) => {
+    const on = !excluded.has(it.key);
+    return `<label class="native-mat-ex ${on ? "" : "is-off"}"><input type="checkbox" data-material-key="${it.key}" ${on ? "checked" : ""} /><span>${escapeHtml(it.label)}</span></label>`;
+  }).join("");
 }
 
 // Costruisce l'input per computeQuote dallo stato della form.
@@ -28415,7 +28439,7 @@ function applyPrefillToNativeForm(payload) {
 // Reset "preventivo libero": svuota cliente + mq, mantiene i default tecnici.
 function clearNativeForm() {
   const f = ensurePreventivoForm();
-  Object.assign(f, { nome: "", cognome: "", citta: "", tel: "", email: "", ragione: "", sqm: 0 });
+  Object.assign(f, { nome: "", cognome: "", citta: "", tel: "", email: "", ragione: "", sqm: 0, excludedMaterials: [], accessories: [], extraWorks: [], quoteNumber: nextPreventivoNumber() });
   if (state.preventivoNativeFormMode && state.currentView === "sales-generator") renderNativePreventivoForm();
 }
 
@@ -28483,12 +28507,32 @@ function wireNativePreventivoForm() {
       seg.querySelectorAll("button").forEach((b) => b.classList.toggle("is-active", b === btn));
       applyNfPosaVisibility();
       renderNfOptions();      // il prezzo dipende dal listino cliente/rivenditore
+      if (key === "surface" || key === "quoteType") renderNfMaterials(); // cambiano i materiali previsti
       updateNativeFormTotals();
     });
   };
   bindSeg("nf-tipologia", "quoteType");
   bindSeg("nf-surface", "surface");
   bindSeg("nf-customer-type", "customerType");
+
+  // Materiali inclusi: togliere la spunta = escludere quella voce.
+  ui.nfMatList?.addEventListener("change", (e) => {
+    const cb = e.target.closest("input[type='checkbox']");
+    if (!cb) return;
+    const key = cb.getAttribute("data-material-key");
+    const set = new Set(f.excludedMaterials || []);
+    if (cb.checked) set.delete(key); else set.add(key);
+    f.excludedMaterials = Array.from(set);
+    cb.closest(".native-mat-ex")?.classList.toggle("is-off", !cb.checked);
+    updateNativeFormTotals();
+  });
+
+  // Nuovo numero preventivo.
+  ui.nfNewNumber?.addEventListener("click", () => {
+    f.quoteNumber = nextPreventivoNumber();
+    const el = document.getElementById("nf-quote-number");
+    if (el) el.value = f.quoteNumber;
+  });
 
   // Toggle IVA globali (spedizione / posa / materiali).
   const bindIva = (id, key) => {
@@ -28657,6 +28701,7 @@ function updateNativeFormTotals() {
 function renderNativePreventivoForm() {
   wireNativePreventivoForm();
   const f = ensurePreventivoForm();
+  if (!f.quoteNumber) f.quoteNumber = nextPreventivoNumber(); // numero automatico
   const setVal = (id, v) => { const el = document.getElementById(id); if (el && el.value !== String(v ?? "")) el.value = v ?? ""; };
   setVal("nf-quote-number", f.quoteNumber);
   setVal("nf-data-dal", f.dataDal);
@@ -28669,6 +28714,7 @@ function renderNativePreventivoForm() {
   setSeg("nf-tipologia", f.quoteType); setSeg("nf-surface", f.surface); setSeg("nf-customer-type", f.customerType);
   applyNfPosaVisibility();
   renderNfOptions();
+  renderNfMaterials();
   renderNfAccessories();
   renderNfExtraWorks();
   updateNativeFormTotals();
