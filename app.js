@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260703-generatore-accessori-materiali-nativi";
+} from "./lib/order-money.js?v=20260704-generatore-nativo-default-prefill";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260703-generatore-accessori-materiali-nativi";
+import { regionForCity } from "./lib/geo.js?v=20260704-generatore-nativo-default-prefill";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260703-generatore-accessori-materiali-nativi";
+} from "./lib/profit-split.js?v=20260704-generatore-nativo-default-prefill";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -32,10 +32,13 @@ import {
 import {
   applyIva as applyIvaPure,
   getMaterialBreakdown as getMaterialBreakdownPure,
+  computeQuote as computeQuotePure,
+  getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
-} from "./lib/preventivo-pricing.js?v=20260703-generatore-accessori-materiali-nativi";
+  PRODUCTS as PREVENTIVO_PRODUCTS,
+} from "./lib/preventivo-pricing.js?v=20260704-generatore-nativo-default-prefill";
 
-const APP_SHELL_VERSION = "20260703-generatore-accessori-materiali-nativi";
+const APP_SHELL_VERSION = "20260704-generatore-nativo-default-prefill";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1156,6 +1159,8 @@ const state = {
   dashboardDateRange: "7d",
   preventivoTexts: null, // popolato all'init da /api/catalog/preventivo_branding
   preventivoCatalog: {}, // slug -> { code, tech: {struttura, densita, dtex, drenaggio, peso, note}, label }
+  preventivoNativeFormMode: true, // true = form vanilla nativa (default). L'iframe React resta come fallback dietro il toggle (Fase 3, 1 release)
+  preventivoForm: null, // stato della form nativa (creato al primo render da defaultPreventivoForm())
   customProducts: [], // prodotti prato aggiunti dall'ufficio (GET /api/products), uniti a INVENTORY_CATALOG
   selectedOrderId: null,
   selectedSalesRequestId: "",
@@ -1534,6 +1539,20 @@ const ui = {
   nativeAccTotal: document.getElementById("native-acc-total"),
   nativeAccCatalog: document.getElementById("native-acc-catalog"),
   nativeAccAddBtn: document.getElementById("native-acc-add-btn"),
+  nfModeToggle: document.getElementById("nf-mode-toggle"),
+  nativeForm: document.getElementById("sales-generator-native-form"),
+  nfOptions: document.getElementById("nf-options"),
+  nfMaterialsAuto: document.getElementById("nf-materials-auto"),
+  nfMatExcludes: document.getElementById("nf-mat-excludes"),
+  nfAccList: document.getElementById("nf-acc-list"),
+  nfAccEmpty: document.getElementById("nf-acc-empty"),
+  nfAccCatalog: document.getElementById("nf-acc-catalog"),
+  nfAccAddBtn: document.getElementById("nf-acc-add-btn"),
+  nfWorkList: document.getElementById("nf-work-list"),
+  nfWorkEmpty: document.getElementById("nf-work-empty"),
+  nfWorkAddBtn: document.getElementById("nf-work-add-btn"),
+  nfSummary: document.getElementById("nf-summary"),
+  nfGenerate: document.getElementById("nf-generate"),
   salesGeneratorEmailButton: document.getElementById("sales-generator-email-button"),
   salesContentSearch: document.getElementById("sales-content-search"),
   salesContentSearchClear: document.getElementById("sales-content-search-clear"),
@@ -5027,6 +5046,7 @@ function pushPlannerPrefillToGenerator(force = false) {
       window.localStorage.removeItem(SALES_GENERATOR_PLANNER_REPORT_KEY);
     }
   } catch {}
+  applyPrefillToNativeForm(payload); // form nativa (Fase 3)
   try {
     ui.salesGeneratorFrame?.contentWindow?.postMessage({
       type: "quote-generator:prefill-request",
@@ -5674,6 +5694,7 @@ function clearSalesRequestPrefillInGenerator({ keepFreeMode = true } = {}) {
   if (keepFreeMode) state.salesGeneratorFreeMode = true;
   state.salesGeneratorPlannerMode = false;
   state.lastSalesGeneratorSignature = "";
+  clearNativeForm(); // svuota la form nativa (Fase 3)
   try {
     window.localStorage.removeItem(SALES_PREFILL_STORAGE_KEY);
   } catch {}
@@ -5714,6 +5735,7 @@ function pushSalesRequestToGenerator(force = false) {
   try {
     window.localStorage.removeItem(SALES_GENERATOR_PLANNER_REPORT_KEY);
   } catch {}
+  applyPrefillToNativeForm(payload); // form nativa (Fase 3)
   try {
     ui.salesGeneratorFrame?.contentWindow?.postMessage({
       type: "quote-generator:prefill-request",
@@ -13017,6 +13039,9 @@ function renderSalesGeneratorPlannerMaterials(reference) {
 
 function renderSalesGenerator() {
   wireNativeExtrasPanel();
+  // Applica la modalità nativa solo se la form non è già visibile, per non
+  // ri-renderizzarla (e rubare il focus) ad ogni chiamata di renderSalesGenerator.
+  if (state.preventivoNativeFormMode && ui.nativeForm && ui.nativeForm.hidden) setPreventivoNativeFormMode(true);
   const generatorOnlyMode = state.currentUser?.role === "crew";
   const selected = ensureSelectedSalesRequest();
   const plannerBridge = !generatorOnlyMode ? getGardenPlannerQuoteBridge() : null;
@@ -28275,6 +28300,515 @@ function wireNativeExtrasPanel() {
   renderNativeAccessories();
 }
 
+// ═══ Form preventivo NATIVA (Fase 2 rewrite) ═══════════════════════════════
+// Form vanilla che replica il generatore React senza iframe/bridge: legge dal
+// DOM lo stato in state.preventivoForm, calcola i totali col motore testato
+// (computeQuote) e produce lo STESSO payload di extractGeneratorPayloadFromIframe
+// per preventivo-v2.html. Attivabile con il toggle "Form nativa" (l'iframe resta
+// come fallback finché non completiamo la Fase 3).
+
+const NF_ISO = (d) => {
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - off).toISOString().slice(0, 10);
+};
+
+function defaultPreventivoForm() {
+  const today = new Date();
+  const plus30 = new Date(today.getTime() + 30 * 86400000);
+  return {
+    quoteNumber: "",
+    dataDal: NF_ISO(today),
+    dataAl: NF_ISO(plus30),
+    nome: "", cognome: "", citta: "", tel: "", email: "", ragione: "",
+    sqm: 0,
+    quoteType: "fornitura",  // "fornitura" | "posa"
+    surface: "terra",        // "terra" | "pavimentazione"
+    customerType: "cliente", // "cliente" | "rivenditore"
+    options: [
+      { slug: "cedro-30mm", discount: 0, applyIva: true },
+      { slug: "", discount: 0, applyIva: true },
+      { slug: "", discount: 0, applyIva: true },
+    ],
+    shippingCost: 0, shippingIva: true,
+    posaPerSqm: 25, posaIva: true,
+    materialsDiscountPct: 0, materialsIva: true,
+    accessories: [],  // { name, price, discount, qty, applyIva }
+    extraWorks: [],   // { description, cost, applyIva }
+  };
+}
+
+function ensurePreventivoForm() {
+  if (!state.preventivoForm) state.preventivoForm = defaultPreventivoForm();
+  return state.preventivoForm;
+}
+
+function nfProductBySlug(slug) {
+  return PREVENTIVO_PRODUCTS.find((p) => p.slug === slug) || null;
+}
+
+function nfExcludedMaterialKeys() {
+  if (!ui.nfMatExcludes) return [];
+  return Array.from(ui.nfMatExcludes.querySelectorAll("input[type='checkbox']:checked"))
+    .map((cb) => cb.getAttribute("data-material-key")).filter(Boolean);
+}
+
+// Costruisce l'input per computeQuote dallo stato della form.
+function nfComputeInput() {
+  const f = ensurePreventivoForm();
+  const isPosa = f.quoteType === "posa";
+  return {
+    mq: Number(f.sqm) || 0,
+    quoteType: f.quoteType,
+    surface: f.surface,
+    customerType: f.customerType,
+    options: f.options.map((o) => {
+      const p = nfProductBySlug(o.slug);
+      return { pricePerSqm: p ? getProductPricePure(p, f.customerType) : 0, discount: Number(o.discount) || 0, applyIva: o.applyIva !== false, slug: o.slug };
+    }),
+    materials: { include: true, discountPct: Number(f.materialsDiscountPct) || 0, applyIva: f.materialsIva !== false, exclude: nfExcludedMaterialKeys() },
+    shipping: { cost: Number(f.shippingCost) || 0, applyIva: f.shippingIva !== false },
+    posa: { pricePerSqm: isPosa ? (Number(f.posaPerSqm) || 0) : 0, applyIva: f.posaIva !== false },
+    accessories: f.accessories.map((a) => ({ price: Number(a.price) || 0, discount: Number(a.discount) || 0, qty: Number(a.qty) || 1, applyIva: a.applyIva !== false })),
+    extraWorks: f.extraWorks.map((w) => ({ cost: Number(w.cost) || 0, applyIva: w.applyIva !== false })),
+  };
+}
+
+// Distinta materiali in formato testo come quella del bridge, per la lista PDF.
+function nfMaterialsText(breakdown) {
+  const num = (n, dec) => Number(n).toFixed(dec).replace(".", ",");
+  return breakdown.items.filter((it) => !it.excluded).map((it) => {
+    const price = num(it.unitPrice, 2);
+    if (it.key === "colla") return `${it.label}: ${it.qty} secchi (${it.glueKg} kg) × ${price} €/ secchi`;
+    if (it.key === "telo") return `${it.label}: ${num(it.qty, 2)} × ${price} €/ ${it.unit}`;
+    return `${it.label}: ${it.qty} × ${price} €/ ${it.unit}`;
+  }).join("; ");
+}
+
+// Applica un prefill (richiesta commerciale o Garden Planner) alla form nativa.
+// Il payload è quello di buildSalesRequestPrefill: { nome, cognome, citta,
+// telefono, email, mq, altezza, servizio ("fornitura"|"posa"), fondo
+// ("terra"|"pavimentazione") }.
+function applyPrefillToNativeForm(payload) {
+  if (!payload) return;
+  const f = ensurePreventivoForm();
+  if (payload.nome != null) f.nome = payload.nome || "";
+  if (payload.cognome != null) f.cognome = payload.cognome || "";
+  if (payload.citta != null) f.citta = payload.citta || "";
+  if (payload.telefono != null) f.tel = payload.telefono || "";
+  if (payload.email != null) f.email = payload.email || "";
+  const mq = Number(payload.mq);
+  if (Number.isFinite(mq) && mq > 0) f.sqm = mq;
+  const svc = String(payload.servizio || payload.service || "").trim().toLowerCase();
+  if (svc === "posa") f.quoteType = "posa";
+  else if (svc === "fornitura") f.quoteType = "fornitura";
+  const fondo = String(payload.fondo || payload.surface || "").trim().toLowerCase();
+  if (fondo === "pavimentazione" || fondo === "terra") f.surface = fondo;
+  // Altezza richiesta → prova a preselezionare un prodotto con quell'altezza.
+  const hMatch = String(payload.altezza || "").match(/(\d+)/);
+  if (hMatch) {
+    const match = PREVENTIVO_PRODUCTS.find((p) => new RegExp(`\\b${hMatch[1]}\\s*mm`, "i").test(p.name));
+    if (match) f.options[0].slug = match.slug;
+  }
+  if (state.preventivoNativeFormMode && state.currentView === "sales-generator") renderNativePreventivoForm();
+}
+
+// Reset "preventivo libero": svuota cliente + mq, mantiene i default tecnici.
+function clearNativeForm() {
+  const f = ensurePreventivoForm();
+  Object.assign(f, { nome: "", cognome: "", citta: "", tel: "", email: "", ragione: "", sqm: 0 });
+  if (state.preventivoNativeFormMode && state.currentView === "sales-generator") renderNativePreventivoForm();
+}
+
+function setPreventivoNativeFormMode(on) {
+  state.preventivoNativeFormMode = !!on;
+  const iframe = document.getElementById("sales-generator-frame");
+  if (iframe) iframe.style.display = on ? "none" : "";
+  if (ui.nativeExtrasPanel) ui.nativeExtrasPanel.style.display = on ? "none" : "";
+  if (ui.customModelToggle) ui.customModelToggle.style.display = on ? "none" : "";
+  if (ui.nativeForm) ui.nativeForm.hidden = !on;
+  if (ui.nfModeToggle) {
+    ui.nfModeToggle.classList.toggle("is-active", on);
+    ui.nfModeToggle.textContent = on ? "↩ Torna all'iframe" : "🧪 Form nativa";
+  }
+  if (on) renderNativePreventivoForm();
+}
+
+let _nfWired = false;
+
+function wireNativePreventivoForm() {
+  if (_nfWired) return;
+  _nfWired = true;
+  const f = ensurePreventivoForm();
+
+  // Catalogo rapido accessori (uguale al pannello).
+  if (ui.nfAccCatalog && ui.nfAccCatalog.options.length <= 1) {
+    for (const acc of PREVENTIVO_ACCESSORIES) {
+      const opt = document.createElement("option");
+      opt.value = acc.id; opt.textContent = `${acc.name} — ${formatCurrency(acc.price)}`;
+      ui.nfAccCatalog.appendChild(opt);
+    }
+  }
+
+  // Campi scalari testuali/numerici.
+  const bindField = (id, key, isNum) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("input", () => {
+      f[key] = isNum ? (el.value === "" ? "" : Number(el.value)) : el.value;
+      updateNativeFormTotals();
+    });
+  };
+  bindField("nf-quote-number", "quoteNumber");
+  bindField("nf-data-dal", "dataDal");
+  bindField("nf-data-al", "dataAl");
+  bindField("nf-nome", "nome");
+  bindField("nf-cognome", "cognome");
+  bindField("nf-citta", "citta");
+  bindField("nf-tel", "tel");
+  bindField("nf-email", "email");
+  bindField("nf-ragione", "ragione");
+  bindField("nf-sqm", "sqm", true);
+  bindField("nf-shipping", "shippingCost", true);
+  bindField("nf-posa", "posaPerSqm", true);
+  bindField("nf-materials-disc", "materialsDiscountPct", true);
+
+  // Segmenti (tipologia / superficie / listino).
+  const bindSeg = (id, key) => {
+    const seg = document.getElementById(id);
+    if (!seg) return;
+    seg.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-val]");
+      if (!btn) return;
+      f[key] = btn.getAttribute("data-val");
+      seg.querySelectorAll("button").forEach((b) => b.classList.toggle("is-active", b === btn));
+      applyNfPosaVisibility();
+      renderNfOptions();      // il prezzo dipende dal listino cliente/rivenditore
+      updateNativeFormTotals();
+    });
+  };
+  bindSeg("nf-tipologia", "quoteType");
+  bindSeg("nf-surface", "surface");
+  bindSeg("nf-customer-type", "customerType");
+
+  // Toggle IVA globali (spedizione / posa / materiali).
+  const bindIva = (id, key) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      f[key] = !(f[key] !== false);
+      btn.classList.toggle("on", f[key] !== false);
+      btn.classList.toggle("off", f[key] === false);
+      btn.textContent = f[key] !== false ? "IVA ON" : "IVA OFF";
+      updateNativeFormTotals();
+    });
+  };
+  bindIva("nf-shipping-iva", "shippingIva");
+  bindIva("nf-posa-iva", "posaIva");
+  bindIva("nf-materials-iva", "materialsIva");
+
+  // Esclusione materiali.
+  ui.nfMatExcludes?.addEventListener("change", updateNativeFormTotals);
+
+  // Opzioni prodotto (delegation su select/sconto/iva).
+  ui.nfOptions?.addEventListener("input", (e) => {
+    const row = e.target.closest(".nf-opt-row"); if (!row) return;
+    const i = Number(row.getAttribute("data-idx")); const opt = f.options[i]; if (!opt) return;
+    const field = e.target.getAttribute("data-field");
+    if (field === "product") opt.slug = e.target.value;
+    else if (field === "discount") opt.discount = Number(e.target.value) || 0;
+    if (field === "product") renderNfOptions();
+    updateNativeFormTotals();
+  });
+  ui.nfOptions?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-field='iva']"); if (!btn) return;
+    const row = btn.closest(".nf-opt-row"); const i = Number(row.getAttribute("data-idx"));
+    const opt = f.options[i]; if (!opt) return;
+    opt.applyIva = opt.applyIva === false;
+    renderNfOptions(); updateNativeFormTotals();
+  });
+
+  // Accessori nativi della form.
+  ui.nfAccCatalog?.addEventListener("change", () => {
+    const acc = PREVENTIVO_ACCESSORIES.find((x) => x.id === ui.nfAccCatalog.value);
+    if (acc) { f.accessories.push({ name: acc.name, price: acc.price, discount: 0, qty: 1, applyIva: true }); renderNfAccessories(); updateNativeFormTotals(); }
+    ui.nfAccCatalog.value = "";
+  });
+  ui.nfAccAddBtn?.addEventListener("click", () => { f.accessories.push({ name: "", price: "", discount: 0, qty: 1, applyIva: true }); renderNfAccessories(); updateNativeFormTotals(); });
+  ui.nfAccList?.addEventListener("input", (e) => {
+    const row = e.target.closest(".native-acc-row"); if (!row) return;
+    const acc = f.accessories[Number(row.getAttribute("data-idx"))]; if (!acc) return;
+    const field = e.target.getAttribute("data-field");
+    if (field === "name") acc.name = e.target.value;
+    else if (field === "price") acc.price = e.target.value === "" ? "" : Number(e.target.value);
+    else if (field === "discount") acc.discount = Number(e.target.value) || 0;
+    else if (field === "qty") acc.qty = Math.max(1, Number(e.target.value) || 1);
+    const netEl = row.querySelector(".native-acc-net");
+    if (netEl) netEl.textContent = formatCurrency((Number(acc.price) || 0) * (1 - (Number(acc.discount) || 0) / 100) * (Number(acc.qty) || 1));
+    updateNativeFormTotals();
+  });
+  ui.nfAccList?.addEventListener("click", (e) => {
+    const row = e.target.closest(".native-acc-row"); if (!row) return;
+    const idx = Number(row.getAttribute("data-idx")); const field = e.target.getAttribute("data-field");
+    if (field === "remove") { f.accessories.splice(idx, 1); renderNfAccessories(); updateNativeFormTotals(); }
+    else if (field === "iva") { const acc = f.accessories[idx]; if (acc) { acc.applyIva = acc.applyIva === false; renderNfAccessories(); updateNativeFormTotals(); } }
+  });
+
+  // Lavori extra (posa).
+  ui.nfWorkAddBtn?.addEventListener("click", () => { f.extraWorks.push({ description: "", cost: "", applyIva: true }); renderNfExtraWorks(); updateNativeFormTotals(); });
+  ui.nfWorkList?.addEventListener("input", (e) => {
+    const row = e.target.closest(".native-acc-row"); if (!row) return;
+    const w = f.extraWorks[Number(row.getAttribute("data-idx"))]; if (!w) return;
+    const field = e.target.getAttribute("data-field");
+    if (field === "desc") w.description = e.target.value;
+    else if (field === "cost") w.cost = e.target.value === "" ? "" : Number(e.target.value);
+    updateNativeFormTotals();
+  });
+  ui.nfWorkList?.addEventListener("click", (e) => {
+    const row = e.target.closest(".native-acc-row"); if (!row) return;
+    const idx = Number(row.getAttribute("data-idx")); const field = e.target.getAttribute("data-field");
+    if (field === "remove") { f.extraWorks.splice(idx, 1); renderNfExtraWorks(); updateNativeFormTotals(); }
+    else if (field === "iva") { const w = f.extraWorks[idx]; if (w) { w.applyIva = w.applyIva === false; renderNfExtraWorks(); updateNativeFormTotals(); } }
+  });
+
+  ui.nfGenerate?.addEventListener("click", () => showPreventivoPreview());
+}
+
+function applyNfPosaVisibility() {
+  const isPosa = ensurePreventivoForm().quoteType === "posa";
+  if (ui.nativeForm) ui.nativeForm.querySelectorAll(".nf-posa-only").forEach((el) => { el.style.display = isPosa ? "" : "none"; });
+}
+
+function renderNfOptions() {
+  if (!ui.nfOptions) return;
+  const f = ensurePreventivoForm();
+  const productOptionsHtml = (selSlug) =>
+    `<option value="">— nessuno —</option>` + PREVENTIVO_PRODUCTS.map((p) => {
+      const price = getProductPricePure(p, f.customerType);
+      return `<option value="${p.slug}" ${p.slug === selSlug ? "selected" : ""}>${escapeHtml(p.name)} — ${formatCurrency(price)}/m²</option>`;
+    }).join("");
+  ui.nfOptions.innerHTML = f.options.map((o, i) => `
+    <div class="nf-opt-row" data-idx="${i}">
+      <span class="nf-opt-num">${i + 1}</span>
+      <select class="text-input nf-opt-product" data-field="product">${productOptionsHtml(o.slug)}</select>
+      <label class="native-acc-cell"><span>sc%</span><input class="text-input nf-opt-disc" type="number" min="0" max="100" step="1" value="${o.discount ? escapeHtml(String(o.discount)) : ""}" placeholder="0" data-field="discount" /></label>
+      <button type="button" class="native-acc-iva ${o.applyIva !== false ? "on" : "off"}" data-field="iva">${o.applyIva !== false ? "IVA ON" : "IVA OFF"}</button>
+      <span class="nf-opt-total" data-role="opt-total"></span>
+    </div>`).join("");
+}
+
+function renderNfAccessories() {
+  if (!ui.nfAccList) return;
+  const f = ensurePreventivoForm();
+  ui.nfAccList.innerHTML = f.accessories.map((a, i) => `
+    <div class="native-acc-row" data-idx="${i}">
+      <input class="text-input native-acc-name" type="text" placeholder="Accessorio" value="${escapeHtml(a.name || "")}" data-field="name" />
+      <label class="native-acc-cell"><span>€</span><input class="text-input" type="number" step="0.01" min="0" placeholder="0,00" value="${a.price !== "" && a.price != null ? escapeHtml(String(a.price)) : ""}" data-field="price" /></label>
+      <label class="native-acc-cell"><span>sc%</span><input class="text-input" type="number" step="1" min="0" max="100" placeholder="0" value="${a.discount ? escapeHtml(String(a.discount)) : ""}" data-field="discount" /></label>
+      <label class="native-acc-cell"><span>qtà</span><input class="text-input" type="number" step="1" min="1" value="${escapeHtml(String(a.qty || 1))}" data-field="qty" /></label>
+      <button type="button" class="native-acc-iva ${a.applyIva !== false ? "on" : "off"}" data-field="iva">${a.applyIva !== false ? "IVA ON" : "IVA OFF"}</button>
+      <span class="native-acc-net">${formatCurrency((Number(a.price) || 0) * (1 - (Number(a.discount) || 0) / 100) * (Number(a.qty) || 1))}</span>
+      <button type="button" class="native-acc-remove" data-field="remove">✕</button>
+    </div>`).join("");
+  if (ui.nfAccEmpty) ui.nfAccEmpty.style.display = f.accessories.length ? "none" : "";
+}
+
+function renderNfExtraWorks() {
+  if (!ui.nfWorkList) return;
+  const f = ensurePreventivoForm();
+  ui.nfWorkList.innerHTML = f.extraWorks.map((w, i) => `
+    <div class="native-acc-row" data-idx="${i}">
+      <input class="text-input native-acc-name" type="text" placeholder="Descrizione lavoro" value="${escapeHtml(w.description || "")}" data-field="desc" />
+      <label class="native-acc-cell"><span>€</span><input class="text-input" type="number" step="0.01" min="0" placeholder="0,00" value="${w.cost !== "" && w.cost != null ? escapeHtml(String(w.cost)) : ""}" data-field="cost" /></label>
+      <button type="button" class="native-acc-iva ${w.applyIva !== false ? "on" : "off"}" data-field="iva">${w.applyIva !== false ? "IVA ON" : "IVA OFF"}</button>
+      <button type="button" class="native-acc-remove" data-field="remove">✕</button>
+    </div>`).join("");
+  if (ui.nfWorkEmpty) ui.nfWorkEmpty.style.display = f.extraWorks.length ? "none" : "";
+}
+
+// Ricalcola e mostra i totali live (materiali auto + totale per opzione + riepilogo).
+function updateNativeFormTotals() {
+  if (!ui.nativeForm) return;
+  const f = ensurePreventivoForm();
+  const input = nfComputeInput();
+  const cq = computeQuotePure(input);
+  if (ui.nfMaterialsAuto) ui.nfMaterialsAuto.textContent = formatCurrency(cq.materials.autoTotal);
+  // totale per riga opzione
+  ui.nfOptions?.querySelectorAll(".nf-opt-row").forEach((row) => {
+    const i = Number(row.getAttribute("data-idx"));
+    const cell = row.querySelector("[data-role='opt-total']");
+    const p = nfProductBySlug(f.options[i]?.slug);
+    if (cell) cell.textContent = p && cq.options[i] ? formatCurrency(cq.options[i].grandGross) : "—";
+  });
+  // riepilogo
+  if (ui.nfSummary) {
+    const valid = cq.options.filter((o, i) => nfProductBySlug(f.options[i]?.slug));
+    if (!Number(f.sqm) || !valid.length) {
+      ui.nfSummary.innerHTML = `<span class="nf-summary-hint">Inserisci metri quadri e almeno un prodotto per vedere i totali.</span>`;
+    } else {
+      ui.nfSummary.innerHTML = valid.map((o) => {
+        const idx = cq.options.indexOf(o);
+        const name = nfProductBySlug(f.options[idx]?.slug)?.name || "";
+        return `<div class="nf-summary-line"><span>${escapeHtml(name)}</span><strong>${formatCurrency(o.grandGross)}</strong><em>${formatCurrency(o.perMqGross)}/m²</em></div>`;
+      }).join("");
+    }
+  }
+}
+
+function renderNativePreventivoForm() {
+  wireNativePreventivoForm();
+  const f = ensurePreventivoForm();
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el && el.value !== String(v ?? "")) el.value = v ?? ""; };
+  setVal("nf-quote-number", f.quoteNumber);
+  setVal("nf-data-dal", f.dataDal);
+  setVal("nf-data-al", f.dataAl);
+  setVal("nf-nome", f.nome); setVal("nf-cognome", f.cognome); setVal("nf-citta", f.citta);
+  setVal("nf-tel", f.tel); setVal("nf-email", f.email); setVal("nf-ragione", f.ragione);
+  setVal("nf-sqm", f.sqm || ""); setVal("nf-shipping", f.shippingCost || "");
+  setVal("nf-posa", f.posaPerSqm || ""); setVal("nf-materials-disc", f.materialsDiscountPct || "");
+  const setSeg = (id, val) => { const seg = document.getElementById(id); seg?.querySelectorAll("button").forEach((b) => b.classList.toggle("is-active", b.getAttribute("data-val") === val)); };
+  setSeg("nf-tipologia", f.quoteType); setSeg("nf-surface", f.surface); setSeg("nf-customer-type", f.customerType);
+  applyNfPosaVisibility();
+  renderNfOptions();
+  renderNfAccessories();
+  renderNfExtraWorks();
+  updateNativeFormTotals();
+}
+
+// Costruisce il payload preventivo-v2 dalla FORM nativa (stessa shape di
+// extractGeneratorPayloadFromIframe). Ritorna null se dati insufficienti.
+function buildNativePreventivoPayload() {
+  try {
+    const f = ensurePreventivoForm();
+    const sqm = Number(f.sqm) || 0;
+    if (!sqm || sqm <= 0) { showToast?.("Inserisci i metri quadri", "warning"); return null; }
+    const isPosa = f.quoteType === "posa";
+    const isPavimentazione = isPosa && f.surface === "pavimentazione";
+    const mode = isPosa ? "fornitura+posa" : "solo-fornitura";
+    const customTexts = getPreventivoTexts();
+
+    const input = nfComputeInput();
+    const cq = computeQuotePure(input);
+    const breakdown = getMaterialBreakdownPure(f.surface, sqm, f.quoteType, nfExcludedMaterialKeys());
+    const materialsText = nfMaterialsText(breakdown);
+    const materialsAfterDisc = cq.materials.net;
+
+    const shipping = Number(f.shippingCost) || 0;
+
+    const options = [];
+    const ivaContribFlags = [];
+    f.options.forEach((o, i) => {
+      const product = nfProductBySlug(o.slug);
+      if (!product) return;
+      const cqOpt = cq.options[i];
+      if (!cqOpt || cqOpt.pricePerSqm <= 0) return;
+      const discount = Number(o.discount) || 0;
+      if (cqOpt.pratoNet > 0) ivaContribFlags.push(o.applyIva !== false);
+      const catalogData = buildProductTechFromCatalog(product.name);
+      const heightMatch = product.name.match(/(\d+)\s*mm/i);
+      const fallbackCode = `${product.name.split(/\s+/)[0].substring(0, 3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
+      options.push({
+        slug: product.slug,
+        name: product.name,
+        code: catalogData?.code || fallbackCode,
+        tagline: discount > 0 ? `Sconto ${discount}%` : "",
+        pricePerSqm: cqOpt.pricePerSqm,
+        discount,
+        materials: materialsAfterDisc,
+        installation: isPosa ? (Number(f.posaPerSqm) || 0) : 0,
+        shippingLabel: shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita",
+        net: cqOpt.totalNet,
+        total: cqOpt.grandGross,
+        finalSqmPrice: sqm > 0 ? cqOpt.grandGross / sqm : 0,
+        heylightInstallment: cqOpt.grandGross > 0 ? cqOpt.grandGross / 5 : 0,
+        tech: catalogData?.tech || defaultProductTech(product.name),
+        imageDataUrl: catalogData?.imageDataUrl || "",
+      });
+    });
+    if (!options.length) { showToast?.("Seleziona almeno un prodotto", "warning"); return null; }
+
+    // Flag IVA per la dicitura dinamica (voci con importo > 0).
+    if (materialsAfterDisc > 0) ivaContribFlags.push(f.materialsIva !== false);
+    if (isPosa && (Number(f.posaPerSqm) || 0) * sqm > 0) ivaContribFlags.push(f.posaIva !== false);
+    if (shipping > 0) ivaContribFlags.push(f.shippingIva !== false);
+    for (const a of f.accessories) {
+      const net = (Number(a.price) || 0) * (1 - (Number(a.discount) || 0) / 100) * (Number(a.qty) || 1);
+      if (net > 0) ivaContribFlags.push(a.applyIva !== false);
+    }
+    for (const w of f.extraWorks) {
+      if ((Number(w.cost) || 0) > 0) ivaContribFlags.push(w.applyIva !== false);
+    }
+    const ivaStatus = ivaContribFlags.length === 0 ? "inclusa"
+      : ivaContribFlags.every(Boolean) ? "inclusa"
+      : ivaContribFlags.every((v) => !v) ? "esclusa" : "mista";
+
+    const accessories = f.accessories
+      .map((a) => ({ name: String(a.name || "").trim(), price: Number(a.price) || 0, discount: Number(a.discount) || 0, qty: Number(a.qty) || 1, applyIva: a.applyIva !== false }))
+      .filter((a) => a.price > 0 || a.name);
+    const extraServices = f.extraWorks
+      .map((w) => ({ description: String(w.description || "").trim(), cost: Number(w.cost) || 0, applyIva: w.applyIva !== false }))
+      .filter((w) => w.cost > 0 || w.description);
+
+    return {
+      quoteNumber: f.quoteNumber || "F-0000-00",
+      customer: {
+        name: [f.nome, f.cognome].filter(Boolean).join(" ").trim() || f.ragione || "—",
+        city: f.citta || "—",
+        phone: f.tel || "—",
+        email: f.email || "—",
+      },
+      validFrom: formatItalianDateShort(f.dataDal),
+      validTo: formatItalianDateShort(f.dataAl),
+      sqm,
+      mode,
+      vat: 22,
+      ivaStatus,
+      suggestedSlug: "",
+      options,
+      materials: {
+        desc: isPosa
+          ? (isPavimentazione ? customTexts.materialsDescPosaPavimentazione : customTexts.materialsDescPosa)
+          : customTexts.materialsDescFornitura,
+        discount: Number(f.materialsDiscountPct) || 0,
+        det: materialsText,
+        list: materialsText
+          ? materialsText.split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
+              const mm = item.match(/^([^:]+):\s*([^×x]+(?:[×x].+)?)/);
+              return mm ? { name: mm[1].trim(), qty: mm[2].trim() } : { name: item, qty: "" };
+            })
+          : [],
+        accessories,
+        extraServices,
+      },
+      heylight: { installments: 5, title: "Simulazione 5 rate HeyLight" },
+      branding: {
+        tagline: customTexts.brandTagline,
+        company: customTexts.brandCompany,
+        logoDataUrl: (() => {
+          const crewLogo = buildSalesGeneratorBrandingPayload().crewLogoDataUrl;
+          return String(crewLogo || "").trimStart().startsWith("data:image/") && crewLogo.length > 200 ? crewLogo : "";
+        })(),
+      },
+      payment: { main: customTexts.paymentMain, heylight: customTexts.paymentHeyLight },
+      page2Footer: { info: customTexts.footerInfo, firmaAzienda: "Firma e timbro VERTEX SRLS" },
+      certifications: PREVENTIVO_STATIC_DEFAULTS.certifications,
+      conditions: PREVENTIVO_STATIC_DEFAULTS.conditions,
+      installationWork: isPosa
+        ? (isPavimentazione ? PREVENTIVO_STATIC_DEFAULTS.installationWorkPavimentazione : PREVENTIVO_STATIC_DEFAULTS.installationWork)
+        : null,
+      partner: (() => {
+        try {
+          const branding = buildSalesGeneratorBrandingPayload();
+          if (branding?.crewLogoDataUrl || branding?.crewName) return { logoDataUrl: branding.crewLogoDataUrl, name: branding.crewName };
+        } catch {}
+        return null;
+      })(),
+    };
+  } catch (err) {
+    console.warn("[preventivo-v2] build nativo fallito:", err?.message);
+    return null;
+  }
+}
+
 function getCustomModelOverride() {
   const name = String(ui.customModelName?.value || "").trim();
   const priceRaw = String(ui.customModelPrice?.value || "").trim();
@@ -28987,7 +29521,9 @@ function showPreventivoPreview() {
   const previewSection = document.getElementById("psi-preview-section");
   const previewIframe = document.getElementById("psi-preview-iframe");
   if (!previewSection || !previewIframe) return;
-  const payload = extractGeneratorPayloadFromIframe();
+  const payload = state.preventivoNativeFormMode
+    ? buildNativePreventivoPayload()
+    : extractGeneratorPayloadFromIframe();
   if (payload) {
     populatePreviewRecoSelect(payload.options || []);
     payload.suggestedSlug = previewSuggestedSlug || "";
@@ -29098,6 +29634,7 @@ if (iframeEl) {
   }, 1500);
 }
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
+bindEvent(ui.nfModeToggle, "click", () => setPreventivoNativeFormMode(!state.preventivoNativeFormMode));
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
   state.salesGeneratorFreeMode = false;
