@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260704-generatore-form-nativa-ui-migliorata" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260704-generatore-form-nativa-ui-migliorata" />
+    <link rel="preload" href="./styles.css?v=20260704-generatore-form-nativa-fix-preview-toggle" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260704-generatore-form-nativa-fix-preview-toggle" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -813,14 +813,14 @@
                 id="sales-generator-frame"
                 class="sales-generator-frame"
                 title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260704-generatore-form-nativa-ui-migliorata&shell=20260704-generatore-form-nativa-ui-migliorata"
+                src="./sales-suite/generator.html?embedded=1&v=20260704-generatore-form-nativa-fix-preview-toggle&shell=20260704-generatore-form-nativa-fix-preview-toggle"
                 scrolling="no"
               ></iframe>
 
               <!-- ── Form preventivo NATIVA (Fase 2/3) — generatore vanilla ── -->
               <div id="sales-generator-native-form" class="native-form" hidden>
-                <fieldset class="nf-section">
-                  <legend><span class="nf-legend-txt">Dati preventivo</span></legend>
+                <section class="nf-section">
+                  <div class="nf-section-head"><span class="nf-legend-txt">Dati preventivo</span></div>
                   <div class="nf-row">
                     <label class="field nf-quote"><span>Nr. Preventivo</span>
                       <div class="nf-inline-input">
@@ -852,10 +852,10 @@
                       </div>
                     </div>
                   </div>
-                </fieldset>
+                </section>
 
-                <fieldset class="nf-section">
-                  <legend><span class="nf-legend-txt">Cliente</span></legend>
+                <section class="nf-section">
+                  <div class="nf-section-head"><span class="nf-legend-txt">Cliente</span></div>
                   <div class="nf-row">
                     <label class="field"><span>Nome</span><input class="text-input" id="nf-nome" type="text" /></label>
                     <label class="field"><span>Cognome</span><input class="text-input" id="nf-cognome" type="text" /></label>
@@ -866,15 +866,15 @@
                     <label class="field"><span>Email</span><input class="text-input" id="nf-email" type="email" /></label>
                     <label class="field"><span>Società / Ragione sociale</span><input class="text-input" id="nf-ragione" type="text" /></label>
                   </div>
-                </fieldset>
+                </section>
 
-                <fieldset class="nf-section">
-                  <legend><span class="nf-legend-txt">Opzioni prodotto</span><span class="nf-legend-hint">fino a 3 proposte</span></legend>
+                <section class="nf-section">
+                  <div class="nf-section-head"><span class="nf-legend-txt">Opzioni prodotto</span><span class="nf-legend-hint">fino a 3 proposte</span></div>
                   <div id="nf-options" class="nf-options"></div>
-                </fieldset>
+                </section>
 
-                <fieldset class="nf-section">
-                  <legend><span class="nf-legend-txt">Costi aggiuntivi e materiali</span></legend>
+                <section class="nf-section">
+                  <div class="nf-section-head"><span class="nf-legend-txt">Costi aggiuntivi e materiali</span></div>
                   <div class="nf-row">
                     <label class="field nf-narrow"><span>Costo spedizione €</span><input class="text-input" id="nf-shipping" type="number" min="0" step="0.01" placeholder="0,00" /></label>
                     <div class="field nf-iva-field"><span>IVA</span><button type="button" class="native-acc-iva on" id="nf-shipping-iva" data-on="1">IVA ON</button></div>
@@ -893,28 +893,28 @@
                         <div class="field nf-iva-field"><span>IVA</span><button type="button" class="native-acc-iva on" id="nf-materials-iva" data-on="1">IVA ON</button></div>
                       </div>
                     </div>
-                    <div class="native-materials-excludes" id="nf-mat-list"></div>
+                    <div class="nf-materials-rows" id="nf-mat-list"></div>
                   </div>
-                </fieldset>
+                </section>
 
-                <fieldset class="nf-section">
-                  <legend><span class="nf-legend-txt">Accessori extra</span><span class="nf-legend-hint">opzionale</span></legend>
+                <section class="nf-section">
+                  <div class="nf-section-head"><span class="nf-legend-txt">Accessori extra</span><span class="nf-legend-hint">opzionale</span></div>
                   <div class="native-acc-list" id="nf-acc-list"></div>
                   <p class="native-acc-empty cm-note" id="nf-acc-empty">Nessun accessorio aggiunto.</p>
                   <div class="nf-add-row">
                     <button type="button" id="nf-acc-add-btn" class="nf-add-btn">+ Aggiungi accessorio</button>
                     <select id="nf-acc-catalog" class="text-input nf-catalog-select"><option value="">…oppure scegli dal catalogo</option></select>
                   </div>
-                </fieldset>
+                </section>
 
-                <fieldset class="nf-section nf-posa-only">
-                  <legend><span class="nf-legend-txt">Lavori extra</span><span class="nf-legend-hint">solo posa</span></legend>
+                <section class="nf-section nf-posa-only">
+                  <div class="nf-section-head"><span class="nf-legend-txt">Lavori extra</span><span class="nf-legend-hint">solo posa</span></div>
                   <div class="native-acc-list" id="nf-work-list"></div>
                   <p class="native-acc-empty cm-note" id="nf-work-empty">Nessun lavoro extra.</p>
                   <div class="nf-add-row">
                     <button type="button" id="nf-work-add-btn" class="nf-add-btn">+ Aggiungi lavoro extra</button>
                   </div>
-                </fieldset>
+                </section>
 
                 <div class="nf-summary" id="nf-summary"></div>
                 <div class="nf-actions">
@@ -2580,7 +2580,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260704-generatore-form-nativa-ui-migliorata" defer></script>
-    <script src="./app.js?v=20260704-generatore-form-nativa-ui-migliorata" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260704-generatore-form-nativa-fix-preview-toggle" defer></script>
+    <script src="./app.js?v=20260704-generatore-form-nativa-fix-preview-toggle" type="module"></script>
   </body>
 </html>

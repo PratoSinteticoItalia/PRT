@@ -18380,16 +18380,16 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
 .nf-mode-toggle.is-active { background: var(--brand, #2d6a4f); color: #fff; border-color: var(--brand, #2d6a4f); }
 
 /* ── Form preventivo nativa ── */
-.native-form { padding: 8px 6px 6px; counter-reset: nfsec; }
+.native-form { padding: 4px 2px; counter-reset: nfsec; }
 .native-form .nf-section {
-  border: 1px solid rgba(31,70,55,0.12); border-radius: 16px;
-  padding: 16px 18px 18px; margin: 0 0 14px; background: #fff;
+  border: 1px solid rgba(31,70,55,0.12); border-radius: 14px;
+  padding: 14px 16px 16px; margin: 0 0 10px; background: #fff;
   box-shadow: 0 1px 2px rgba(31,70,55,0.04);
 }
-.native-form .nf-section > legend {
-  display: flex; align-items: center; gap: 9px; padding: 0 6px; margin-bottom: 2px;
+.native-form .nf-section-head {
+  display: flex; align-items: center; gap: 9px; margin-bottom: 12px;
 }
-.native-form .nf-section > legend::before {
+.native-form .nf-section-head::before {
   counter-increment: nfsec; content: counter(nfsec);
   width: 22px; height: 22px; border-radius: 50%;
   background: var(--brand, #2d6a4f); color: #fff;
@@ -18456,22 +18456,38 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
 .nf-materials-head > div:first-child { flex: 1 1 240px; }
 .nf-materials-head strong { font-size: 12.5px; color: #1f4637; }
 .nf-materials-figures { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
-.native-form .nf-materials-excludes,
-.native-form #nf-mat-list {
-  display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px;
+.nf-materials-rows {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 12px;
   padding-top: 12px; border-top: 1px dashed rgba(31,70,55,0.14);
 }
-.native-form .native-mat-ex {
-  display: inline-flex; align-items: center; gap: 8px;
-  font-size: 12.5px; font-weight: 600; color: #1f4637; cursor: pointer;
-  padding: 5px 10px; border-radius: 8px; background: rgba(45,106,79,0.08);
-  border: 1px solid rgba(45,106,79,0.18); transition: opacity .15s, background .15s;
+.nf-mat-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 6px 8px; border-radius: 9px; background: rgba(248,250,247,0.7);
+  border: 1px solid rgba(31,70,55,0.08);
 }
-.native-form .native-mat-ex input { width: 15px; height: 15px; accent-color: var(--brand, #2d6a4f); cursor: pointer; }
-.native-form .native-mat-ex.is-off {
-  background: #f4f5f4; border-color: rgba(31,70,55,0.12);
-  color: #9aa79f; text-decoration: line-through; opacity: 0.75;
+.nf-mat-check {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  flex: 1 1 170px; min-width: 150px; font-size: 12.5px; font-weight: 700; color: #1f4637;
 }
+.nf-mat-check input { width: 16px; height: 16px; accent-color: var(--brand, #2d6a4f); cursor: pointer; flex: 0 0 auto; }
+.nf-mat-fields { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6e7d72; margin-left: auto; }
+.nf-mat-fields .text-input { min-height: 30px; font-size: 12.5px; padding: 4px 6px; text-align: right; }
+.nf-mat-fields .nf-mat-qty { width: 62px; }
+.nf-mat-fields .nf-mat-price { width: 64px; }
+.nf-mat-fields .nf-mat-unit { min-width: 34px; }
+.nf-mat-fields .nf-mat-total { min-width: 78px; text-align: right; font-weight: 800; color: #1f4637; font-size: 12.5px; }
+.nf-mat-row.is-off { opacity: 0.55; }
+.nf-mat-row.is-off .nf-mat-check span { text-decoration: line-through; color: #9aa79f; }
+
+/* Opzione prodotto fuori catalogo */
+.nf-opt-custom {
+  display: flex; gap: 8px; flex-wrap: wrap; width: 100%;
+  margin-top: 6px; padding: 8px; border-radius: 8px;
+  background: rgba(240,196,60,0.08); border: 1px dashed rgba(200,150,30,0.4);
+}
+.nf-opt-custom .nf-opt-custom-name { flex: 1 1 200px; min-width: 150px; }
+.nf-opt-custom .nf-opt-custom-price { width: 110px; }
+.nf-opt-custom label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #6e7d72; font-weight: 600; }
 
 /* Riga "aggiungi accessorio" / catalogo */
 .nf-add-row { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }

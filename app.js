@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260704-generatore-form-nativa-ui-migliorata";
+} from "./lib/order-money.js?v=20260704-generatore-form-nativa-fix-preview-toggle";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260704-generatore-form-nativa-ui-migliorata";
+import { regionForCity } from "./lib/geo.js?v=20260704-generatore-form-nativa-fix-preview-toggle";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260704-generatore-form-nativa-ui-migliorata";
+} from "./lib/profit-split.js?v=20260704-generatore-form-nativa-fix-preview-toggle";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260704-generatore-form-nativa-ui-migliorata";
+} from "./lib/preventivo-pricing.js?v=20260704-generatore-form-nativa-fix-preview-toggle";
 
-const APP_SHELL_VERSION = "20260704-generatore-form-nativa-ui-migliorata";
+const APP_SHELL_VERSION = "20260704-generatore-form-nativa-fix-preview-toggle";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -28326,14 +28326,15 @@ function defaultPreventivoForm() {
     surface: "terra",        // "terra" | "pavimentazione"
     customerType: "cliente", // "cliente" | "rivenditore"
     options: [
-      { slug: "cedro-30mm", discount: 0, applyIva: true },
-      { slug: "", discount: 0, applyIva: true },
-      { slug: "", discount: 0, applyIva: true },
+      { slug: "cedro-30mm", discount: 0, applyIva: true, customName: "", customPrice: "" },
+      { slug: "", discount: 0, applyIva: true, customName: "", customPrice: "" },
+      { slug: "", discount: 0, applyIva: true, customName: "", customPrice: "" },
     ],
     shippingCost: 0, shippingIva: true,
     posaPerSqm: 25, posaIva: true,
     materialsDiscountPct: 0, materialsIva: true,
     excludedMaterials: [], // key materiali NON inclusi (il cliente li ha già)
+    materialOverrides: {},  // key -> { qty?, unitPrice? } override manuale (es. pietrisco)
     accessories: [],  // { name, price, discount, qty, applyIva }
     extraWorks: [],   // { description, cost, applyIva }
   };
@@ -28358,22 +28359,68 @@ function nfProductBySlug(slug) {
   return PREVENTIVO_PRODUCTS.find((p) => p.slug === slug) || null;
 }
 
+// Un'opzione ha un prodotto valido? (catalogo con prezzo o fuori-catalogo con prezzo)
+function nfOptionHasProduct(o) {
+  if (!o) return false;
+  if (o.slug === "__custom__") return (Number(o.customPrice) || 0) > 0;
+  return !!nfProductBySlug(o.slug);
+}
+
+function nfOptionPrice(o, customerType) {
+  if (!o) return 0;
+  if (o.slug === "__custom__") return Number(o.customPrice) || 0;
+  const p = nfProductBySlug(o.slug);
+  return p ? getProductPricePure(p, customerType) : 0;
+}
+
+function nfOptionName(o) {
+  if (!o) return "";
+  if (o.slug === "__custom__") return String(o.customName || "").trim() || "Prodotto fuori catalogo";
+  return nfProductBySlug(o.slug)?.name || "";
+}
+
 function nfExcludedMaterialKeys() {
   return ensurePreventivoForm().excludedMaterials || [];
 }
 
-// Materiali INCLUSI (checkbox spuntate = incluse). Mostra solo quelli previsti
-// dalla superficie/tipologia correnti; togliendo la spunta si escludono.
+// Distinta materiali EFFETTIVA: parte dal motore ma applica gli override manuali
+// (quantità/prezzo per voce, es. pietrisco) e le esclusioni. Ritorna items con
+// qty/unitPrice/total effettivi + total complessivo (voci incluse).
+function nfEffectiveMaterials() {
+  const f = ensurePreventivoForm();
+  const breakdown = getMaterialBreakdownPure(f.surface, Number(f.sqm) || 0, f.quoteType);
+  const excluded = new Set(f.excludedMaterials || []);
+  const overrides = f.materialOverrides || {};
+  const items = breakdown.items.map((it) => {
+    const o = overrides[it.key] || {};
+    const qty = o.qty != null && o.qty !== "" ? Number(o.qty) : it.qty;
+    const unitPrice = o.unitPrice != null && o.unitPrice !== "" ? Number(o.unitPrice) : it.unitPrice;
+    return { ...it, qty, unitPrice, total: qty * unitPrice, excluded: excluded.has(it.key) };
+  });
+  const total = items.reduce((sum, it) => sum + (it.excluded ? 0 : it.total), 0);
+  return { items, total };
+}
+
+// Valore numerico per input type=number (punto decimale, mai virgola).
+function nfNumVal(n) { return String(Math.round(Number(n) * 100) / 100); }
+
+// Materiali INCLUSI + editabili (qty/prezzo per voce). Solo quelli previsti dalla
+// superficie/tipologia; togliendo la spunta si escludono.
 function renderNfMaterials() {
   const wrap = ui.nfMatList;
   if (!wrap) return;
-  const f = ensurePreventivoForm();
-  const breakdown = getMaterialBreakdownPure(f.surface, Number(f.sqm) || 1, f.quoteType);
-  const excluded = new Set(f.excludedMaterials || []);
-  wrap.innerHTML = breakdown.items.map((it) => {
-    const on = !excluded.has(it.key);
-    return `<label class="native-mat-ex ${on ? "" : "is-off"}"><input type="checkbox" data-material-key="${it.key}" ${on ? "checked" : ""} /><span>${escapeHtml(it.label)}</span></label>`;
-  }).join("");
+  const eff = nfEffectiveMaterials();
+  wrap.innerHTML = eff.items.map((it) => `
+    <div class="nf-mat-row ${it.excluded ? "is-off" : ""}" data-key="${it.key}">
+      <label class="nf-mat-check"><input type="checkbox" data-material-key="${it.key}" ${it.excluded ? "" : "checked"} /><span>${escapeHtml(it.label)}</span></label>
+      <span class="nf-mat-fields">
+        <input class="text-input nf-mat-qty" type="number" min="0" step="0.01" value="${nfNumVal(it.qty)}" data-field="qty" title="Quantità" />
+        <span class="nf-mat-unit">${escapeHtml(it.unit)}</span>
+        ×
+        <input class="text-input nf-mat-price" type="number" min="0" step="0.01" value="${nfNumVal(it.unitPrice)}" data-field="unitPrice" title="Prezzo unitario €" />€
+        <span class="nf-mat-total" data-role="mat-total">${formatCurrency(it.total)}</span>
+      </span>
+    </div>`).join("");
 }
 
 // Costruisce l'input per computeQuote dallo stato della form.
@@ -28386,10 +28433,10 @@ function nfComputeInput() {
     surface: f.surface,
     customerType: f.customerType,
     options: f.options.map((o) => {
-      const p = nfProductBySlug(o.slug);
-      return { pricePerSqm: p ? getProductPricePure(p, f.customerType) : 0, discount: Number(o.discount) || 0, applyIva: o.applyIva !== false, slug: o.slug };
+      return { pricePerSqm: nfOptionPrice(o, f.customerType), discount: Number(o.discount) || 0, applyIva: o.applyIva !== false, slug: o.slug };
     }),
-    materials: { include: true, discountPct: Number(f.materialsDiscountPct) || 0, applyIva: f.materialsIva !== false, exclude: nfExcludedMaterialKeys() },
+    // Totale materiali EFFETTIVO (override qty/prezzo + esclusioni già applicati).
+    materials: { include: true, discountPct: Number(f.materialsDiscountPct) || 0, applyIva: f.materialsIva !== false, autoTotal: nfEffectiveMaterials().total },
     shipping: { cost: Number(f.shippingCost) || 0, applyIva: f.shippingIva !== false },
     posa: { pricePerSqm: isPosa ? (Number(f.posaPerSqm) || 0) : 0, applyIva: f.posaIva !== false },
     accessories: f.accessories.map((a) => ({ price: Number(a.price) || 0, discount: Number(a.discount) || 0, qty: Number(a.qty) || 1, applyIva: a.applyIva !== false })),
@@ -28439,7 +28486,7 @@ function applyPrefillToNativeForm(payload) {
 // Reset "preventivo libero": svuota cliente + mq, mantiene i default tecnici.
 function clearNativeForm() {
   const f = ensurePreventivoForm();
-  Object.assign(f, { nome: "", cognome: "", citta: "", tel: "", email: "", ragione: "", sqm: 0, excludedMaterials: [], accessories: [], extraWorks: [], quoteNumber: nextPreventivoNumber() });
+  Object.assign(f, { nome: "", cognome: "", citta: "", tel: "", email: "", ragione: "", sqm: 0, excludedMaterials: [], materialOverrides: {}, accessories: [], extraWorks: [], quoteNumber: nextPreventivoNumber() });
   if (state.preventivoNativeFormMode && state.currentView === "sales-generator") renderNativePreventivoForm();
 }
 
@@ -28492,6 +28539,9 @@ function wireNativePreventivoForm() {
   bindField("nf-email", "email");
   bindField("nf-ragione", "ragione");
   bindField("nf-sqm", "sqm", true);
+  // I mq cambiano le quantità dei materiali auto → ridisegna la distinta (le
+  // righe non sono in focus mentre si digita nei mq, quindi è sicuro).
+  document.getElementById("nf-sqm")?.addEventListener("input", () => renderNfMaterials());
   bindField("nf-shipping", "shippingCost", true);
   bindField("nf-posa", "posaPerSqm", true);
   bindField("nf-materials-disc", "materialsDiscountPct", true);
@@ -28523,7 +28573,24 @@ function wireNativePreventivoForm() {
     const set = new Set(f.excludedMaterials || []);
     if (cb.checked) set.delete(key); else set.add(key);
     f.excludedMaterials = Array.from(set);
-    cb.closest(".native-mat-ex")?.classList.toggle("is-off", !cb.checked);
+    cb.closest(".nf-mat-row")?.classList.toggle("is-off", !cb.checked);
+    updateNativeFormTotals();
+  });
+  // Override quantità/prezzo per voce materiale (es. pietrisco).
+  ui.nfMatList?.addEventListener("input", (e) => {
+    const inp = e.target.closest("input[data-field='qty'], input[data-field='unitPrice']");
+    if (!inp) return;
+    const row = inp.closest(".nf-mat-row"); if (!row) return;
+    const key = row.getAttribute("data-key");
+    const field = inp.getAttribute("data-field");
+    f.materialOverrides = f.materialOverrides || {};
+    f.materialOverrides[key] = f.materialOverrides[key] || {};
+    f.materialOverrides[key][field] = inp.value === "" ? "" : Number(String(inp.value).replace(",", "."));
+    // aggiorna il totale della riga senza ridisegnare (per non perdere il focus)
+    const eff = nfEffectiveMaterials();
+    const it = eff.items.find((x) => x.key === key);
+    const totEl = row.querySelector("[data-role='mat-total']");
+    if (it && totEl) totEl.textContent = formatCurrency(it.total);
     updateNativeFormTotals();
   });
 
@@ -28560,7 +28627,9 @@ function wireNativePreventivoForm() {
     const field = e.target.getAttribute("data-field");
     if (field === "product") opt.slug = e.target.value;
     else if (field === "discount") opt.discount = Number(e.target.value) || 0;
-    if (field === "product") renderNfOptions();
+    else if (field === "customName") opt.customName = e.target.value;
+    else if (field === "customPrice") opt.customPrice = e.target.value === "" ? "" : Number(e.target.value);
+    if (field === "product") renderNfOptions(); // mostra/nasconde i campi fuori catalogo
     updateNativeFormTotals();
   });
   ui.nfOptions?.addEventListener("click", (e) => {
@@ -28629,7 +28698,7 @@ function renderNfOptions() {
     `<option value="">— nessuno —</option>` + PREVENTIVO_PRODUCTS.map((p) => {
       const price = getProductPricePure(p, f.customerType);
       return `<option value="${p.slug}" ${p.slug === selSlug ? "selected" : ""}>${escapeHtml(p.name)} — ${formatCurrency(price)}/m²</option>`;
-    }).join("");
+    }).join("") + `<option value="__custom__" ${selSlug === "__custom__" ? "selected" : ""}>✏️ Fuori catalogo…</option>`;
   ui.nfOptions.innerHTML = f.options.map((o, i) => `
     <div class="nf-opt-row" data-idx="${i}">
       <span class="nf-opt-num">${i + 1}</span>
@@ -28637,6 +28706,11 @@ function renderNfOptions() {
       <label class="native-acc-cell"><span>sc%</span><input class="text-input nf-opt-disc" type="number" min="0" max="100" step="1" value="${o.discount ? escapeHtml(String(o.discount)) : ""}" placeholder="0" data-field="discount" /></label>
       <button type="button" class="native-acc-iva ${o.applyIva !== false ? "on" : "off"}" data-field="iva">${o.applyIva !== false ? "IVA ON" : "IVA OFF"}</button>
       <span class="nf-opt-total" data-role="opt-total"></span>
+      ${o.slug === "__custom__" ? `
+      <div class="nf-opt-custom">
+        <label class="nf-opt-custom-name"><span>Nome prodotto fuori catalogo</span><input class="text-input" type="text" placeholder="Es. Sportgreen Plus 45mm" value="${escapeHtml(o.customName || "")}" data-field="customName" /></label>
+        <label class="nf-opt-custom-price"><span>Prezzo €/m²</span><input class="text-input" type="number" min="0" step="0.01" placeholder="0,00" value="${o.customPrice !== "" && o.customPrice != null ? escapeHtml(String(o.customPrice)) : ""}" data-field="customPrice" /></label>
+      </div>` : ""}
     </div>`).join("");
 }
 
@@ -28680,19 +28754,18 @@ function updateNativeFormTotals() {
   ui.nfOptions?.querySelectorAll(".nf-opt-row").forEach((row) => {
     const i = Number(row.getAttribute("data-idx"));
     const cell = row.querySelector("[data-role='opt-total']");
-    const p = nfProductBySlug(f.options[i]?.slug);
-    if (cell) cell.textContent = p && cq.options[i] ? formatCurrency(cq.options[i].grandGross) : "—";
+    const has = nfOptionHasProduct(f.options[i]);
+    if (cell) cell.textContent = has && cq.options[i] ? formatCurrency(cq.options[i].grandGross) : "—";
   });
   // riepilogo
   if (ui.nfSummary) {
-    const valid = cq.options.filter((o, i) => nfProductBySlug(f.options[i]?.slug));
-    if (!Number(f.sqm) || !valid.length) {
+    const validIdx = f.options.map((o, i) => (nfOptionHasProduct(o) ? i : -1)).filter((i) => i >= 0);
+    if (!Number(f.sqm) || !validIdx.length) {
       ui.nfSummary.innerHTML = `<span class="nf-summary-hint">Inserisci metri quadri e almeno un prodotto per vedere i totali.</span>`;
     } else {
-      ui.nfSummary.innerHTML = valid.map((o) => {
-        const idx = cq.options.indexOf(o);
-        const name = nfProductBySlug(f.options[idx]?.slug)?.name || "";
-        return `<div class="nf-summary-line"><span>${escapeHtml(name)}</span><strong>${formatCurrency(o.grandGross)}</strong><em>${formatCurrency(o.perMqGross)}/m²</em></div>`;
+      ui.nfSummary.innerHTML = validIdx.map((i) => {
+        const o = cq.options[i];
+        return `<div class="nf-summary-line"><span>${escapeHtml(nfOptionName(f.options[i]))}</span><strong>${formatCurrency(o.grandGross)}</strong><em>${formatCurrency(o.perMqGross)}/m²</em></div>`;
       }).join("");
     }
   }
@@ -28734,8 +28807,7 @@ function buildNativePreventivoPayload() {
 
     const input = nfComputeInput();
     const cq = computeQuotePure(input);
-    const breakdown = getMaterialBreakdownPure(f.surface, sqm, f.quoteType, nfExcludedMaterialKeys());
-    const materialsText = nfMaterialsText(breakdown);
+    const materialsText = nfMaterialsText(nfEffectiveMaterials());
     const materialsAfterDisc = cq.materials.net;
 
     const shipping = Number(f.shippingCost) || 0;
@@ -28743,20 +28815,23 @@ function buildNativePreventivoPayload() {
     const options = [];
     const ivaContribFlags = [];
     f.options.forEach((o, i) => {
-      const product = nfProductBySlug(o.slug);
-      if (!product) return;
+      if (!nfOptionHasProduct(o)) return;
       const cqOpt = cq.options[i];
       if (!cqOpt || cqOpt.pricePerSqm <= 0) return;
       const discount = Number(o.discount) || 0;
       if (cqOpt.pratoNet > 0) ivaContribFlags.push(o.applyIva !== false);
-      const catalogData = buildProductTechFromCatalog(product.name);
-      const heightMatch = product.name.match(/(\d+)\s*mm/i);
-      const fallbackCode = `${product.name.split(/\s+/)[0].substring(0, 3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
+      const isCustom = o.slug === "__custom__";
+      const name = nfOptionName(o);
+      const catalogData = isCustom ? null : buildProductTechFromCatalog(name);
+      const heightMatch = name.match(/(\d+)\s*mm/i);
+      const fallbackCode = isCustom ? "—" : `${name.split(/\s+/)[0].substring(0, 3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
       options.push({
-        slug: product.slug,
-        name: product.name,
+        slug: isCustom ? slugifyModelName(name) : o.slug,
+        name,
         code: catalogData?.code || fallbackCode,
-        tagline: discount > 0 ? `Sconto ${discount}%` : "",
+        tagline: isCustom
+          ? (discount > 0 ? `Fuori catalogo · sconto ${discount}%` : "Fuori catalogo")
+          : (discount > 0 ? `Sconto ${discount}%` : ""),
         pricePerSqm: cqOpt.pricePerSqm,
         discount,
         materials: materialsAfterDisc,
@@ -28766,7 +28841,7 @@ function buildNativePreventivoPayload() {
         total: cqOpt.grandGross,
         finalSqmPrice: sqm > 0 ? cqOpt.grandGross / sqm : 0,
         heylightInstallment: cqOpt.grandGross > 0 ? cqOpt.grandGross / 5 : 0,
-        tech: catalogData?.tech || defaultProductTech(product.name),
+        tech: catalogData?.tech || defaultProductTech(name),
         imageDataUrl: catalogData?.imageDataUrl || "",
       });
     });
@@ -29591,6 +29666,9 @@ function showPreventivoPreview() {
     reactIframe.style.setProperty("display", "none", "important");
     reactIframe.setAttribute("data-psi-preview", "1");
   }
+  // Nasconde anche l'editor (iframe o form nativa) mentre si mostra l'anteprima.
+  const nativeFormEl = document.getElementById("sales-generator-native-form");
+  if (nativeFormEl) nativeFormEl.style.setProperty("display", "none", "important");
   previewSection.hidden = false;
   trackUsageEvent("quote_template_generate", {
     template: "v2-swap",
@@ -29603,12 +29681,13 @@ function hidePreventivoPreview() {
   const reactIframe = document.getElementById("sales-generator-frame");
   const previewSection = document.getElementById("psi-preview-section");
   const previewIframe = document.getElementById("psi-preview-iframe");
+  const nativeFormEl = document.getElementById("sales-generator-native-form");
   if (previewIframe) previewIframe.src = "";
   if (previewSection) previewSection.hidden = true;
-  if (reactIframe) {
-    reactIframe.style.removeProperty("display");
-    reactIframe.removeAttribute("data-psi-preview");
-  }
+  if (reactIframe) reactIframe.removeAttribute("data-psi-preview");
+  if (nativeFormEl) nativeFormEl.style.removeProperty("display");
+  // Ripristina la vista corretta (form nativa o iframe) — mai entrambe insieme.
+  setPreventivoNativeFormMode(state.preventivoNativeFormMode);
 }
 
 function initQuoteGenerator() {
