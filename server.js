@@ -10883,6 +10883,42 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, store.coveragePlanner);
   }
 
+  // Numero preventivo progressivo ATOMICO e condiviso tra dispositivi/utenti.
+  // In Postgres usa un incremento atomico su app_documents (chiave per anno) →
+  // niente collisioni tra venditori su PC diversi. In modalità file (dev) usa il
+  // contatore in-memory + writeJson (processo singolo, quindi sicuro).
+  if (url.pathname === "/api/preventivo/next-number" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const year = new Date().getFullYear();
+    let seq = 1;
+    try {
+      if (USE_POSTGRES) {
+        const pool = await getPgPool();
+        const { rows } = await pool.query(
+          `INSERT INTO app_documents (key, payload, updated_at)
+             VALUES ($1, jsonb_build_object('seq', 1), NOW())
+           ON CONFLICT (key) DO UPDATE
+             SET payload = jsonb_set(app_documents.payload, '{seq}',
+                   to_jsonb(COALESCE((app_documents.payload->>'seq')::int, 0) + 1)),
+                 updated_at = NOW()
+           RETURNING (payload->>'seq')::int AS seq`,
+          [`preventivo-counter:${year}`],
+        );
+        seq = rows[0]?.seq || 1;
+      } else {
+        store.preventivoCounters = store.preventivoCounters || {};
+        seq = (Number(store.preventivoCounters[year]) || 0) + 1;
+        store.preventivoCounters[year] = seq;
+        await writeJson(STORE_PATH, store);
+      }
+    } catch (err) {
+      console.warn("[preventivo-number] fallback:", err?.message);
+      seq = Number(String(Date.now()).slice(-4)); // fallback non-collidente best-effort
+    }
+    const number = `F-${year}-${String(seq).padStart(4, "0")}`;
+    return sendJson(res, 200, { number, year, seq });
+  }
+
   if (url.pathname === "/api/usage/events" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     const body = await readBody(req);

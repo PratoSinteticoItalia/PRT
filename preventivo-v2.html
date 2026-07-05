@@ -1457,7 +1457,16 @@
   window.psiDownloadPdf = async function psiDownloadPdf() {
     if (typeof window.html2pdf === "undefined") { window.print(); return; }
     const root = document.documentElement;
-    const num = String(document.querySelector('[data-field="quoteNumber"]')?.textContent || "PSI").trim().replace(/[^\w-]+/g, "") || "PSI";
+    const numText = String(document.querySelector('[data-field="quoteNumber"]')?.textContent || "").trim();
+    const num = numText.replace(/[^\w-]+/g, "") || "PSI";
+    // Nome file: se c'è il cliente → "Marco Rossi Preventivo nr F-2026-0007.pdf",
+    // altrimenti "Preventivo-<numero>.pdf". Ripuliamo i caratteri non validi nei nomi file.
+    const rawName = String(document.querySelector('[data-field="customerName"]')?.textContent || "").trim();
+    const cleanName = (rawName && rawName !== "—") ? rawName.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() : "";
+    const safeNum = (numText || num).replace(/[\\/:*?"<>|]+/g, "").trim();
+    const pdfFilename = cleanName
+      ? `${cleanName} Preventivo nr ${safeNum}.pdf`
+      : `Preventivo-${num}.pdf`;
     root.classList.add("pdf-exporting");
     try {
       // Cattura OGNI pagina come foglio A4 separato → esattamente N pagine,
@@ -1476,7 +1485,7 @@
         pdf.addPage();
         pdf.addImage(img, "JPEG", 0, 0, W, hmm);
       }
-      pdf.save(`Preventivo-${num}.pdf`);
+      pdf.save(pdfFilename);
     } catch (e) {
       window.print();
     } finally {
