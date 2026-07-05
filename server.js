@@ -713,6 +713,16 @@ async function ensureDatabaseStorage() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // Base numerazione preventivi 2026: continua la serie storica dell'azienda →
+    // il PROSSIMO numero emesso è 2256 (seq=2255). Alza il contatore solo se è
+    // sotto 2255: non abbassa mai un valore già più alto (idempotente ai riavvii).
+    await pool.query(`
+      INSERT INTO app_documents (key, payload, updated_at)
+        VALUES ('preventivo-counter:2026', jsonb_build_object('seq', 2255), NOW())
+      ON CONFLICT (key) DO UPDATE
+        SET payload = jsonb_set(app_documents.payload, '{seq}', to_jsonb(2255)), updated_at = NOW()
+        WHERE COALESCE((app_documents.payload->>'seq')::int, 0) < 2255
+    `);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ${SESSION_TABLE} (
         session_id TEXT PRIMARY KEY,
@@ -10907,6 +10917,10 @@ async function handleApi(req, res, url) {
         seq = rows[0]?.seq || 1;
       } else {
         store.preventivoCounters = store.preventivoCounters || {};
+        // Stessa base 2256 del seed Postgres, anche in modalità file (dev).
+        if (year === 2026 && (Number(store.preventivoCounters[year]) || 0) < 2255) {
+          store.preventivoCounters[year] = 2255;
+        }
         seq = (Number(store.preventivoCounters[year]) || 0) + 1;
         store.preventivoCounters[year] = seq;
         await writeJson(STORE_PATH, store);

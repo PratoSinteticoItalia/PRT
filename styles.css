@@ -18478,6 +18478,20 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
 .nf-mat-fields .nf-mat-total { min-width: 78px; text-align: right; font-weight: 800; color: #1f4637; font-size: 12.5px; }
 .nf-mat-row.is-off { opacity: 0.55; }
 .nf-mat-row.is-off .nf-mat-check span { text-decoration: line-through; color: #9aa79f; }
+.nf-mat-reset {
+  border: 1px solid rgba(31,70,55,0.2); background: #fff; color: #4a5d51;
+  border-radius: 7px; cursor: pointer; font-size: 13px; line-height: 1;
+  width: 26px; height: 26px; flex: 0 0 auto;
+}
+.nf-mat-reset:hover { background: rgba(45,106,79,0.1); color: #1f4637; }
+
+/* Materiali su schermi stretti: la voce va a capo sotto la checkbox */
+@media (max-width: 640px) {
+  .nf-mat-row { align-items: stretch; }
+  .nf-mat-check { flex: 1 1 100%; }
+  .nf-mat-fields { margin-left: 0; width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+  .nf-mat-fields .nf-mat-total { min-width: 70px; }
+}
 
 /* Opzione prodotto fuori catalogo */
 .nf-opt-custom {

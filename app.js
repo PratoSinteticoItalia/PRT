@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260705-generatore-numerazione-server-nome-file";
+} from "./lib/order-money.js?v=20260705-generatore-fix-numero-inflight";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260705-generatore-numerazione-server-nome-file";
+import { regionForCity } from "./lib/geo.js?v=20260705-generatore-fix-numero-inflight";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260705-generatore-numerazione-server-nome-file";
+} from "./lib/profit-split.js?v=20260705-generatore-fix-numero-inflight";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260705-generatore-numerazione-server-nome-file";
+} from "./lib/preventivo-pricing.js?v=20260705-generatore-fix-numero-inflight";
 
-const APP_SHELL_VERSION = "20260705-generatore-numerazione-server-nome-file";
+const APP_SHELL_VERSION = "20260705-generatore-fix-numero-inflight";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -28352,13 +28352,21 @@ async function fetchNextPreventivoNumber() {
   return `F-${new Date().getFullYear()}-L${String(Date.now()).slice(-4)}`; // L = locale/offline
 }
 
-// Assegna un nuovo numero alla form nativa (async) e aggiorna il campo.
+// Assegna un nuovo numero alla form nativa (async) e aggiorna il campo. Guard
+// "in-flight" per evitare che render ripetuti al caricamento brucino più numeri.
+let _assigningPreventivoNumber = false;
 async function assignPreventivoNumber() {
-  const f = ensurePreventivoForm();
-  const num = await fetchNextPreventivoNumber();
-  f.quoteNumber = num;
-  const el = document.getElementById("nf-quote-number");
-  if (el) el.value = num;
+  if (_assigningPreventivoNumber) return;
+  _assigningPreventivoNumber = true;
+  try {
+    const f = ensurePreventivoForm();
+    const num = await fetchNextPreventivoNumber();
+    f.quoteNumber = num;
+    const el = document.getElementById("nf-quote-number");
+    if (el) el.value = num;
+  } finally {
+    _assigningPreventivoNumber = false;
+  }
 }
 
 function ensurePreventivoForm() {
@@ -28390,13 +28398,10 @@ function nfOptionName(o) {
   return nfProductBySlug(o.slug)?.name || "";
 }
 
-function nfExcludedMaterialKeys() {
-  return ensurePreventivoForm().excludedMaterials || [];
-}
-
 // Distinta materiali EFFETTIVA: parte dal motore ma applica gli override manuali
 // (quantità/prezzo per voce, es. pietrisco) e le esclusioni. Ritorna items con
-// qty/unitPrice/total effettivi + total complessivo (voci incluse).
+// qty/unitPrice/total effettivi (+ flag overridden per il tasto ripristino) e il
+// total complessivo (voci incluse). I kg colla si riscalano con la quantità.
 function nfEffectiveMaterials() {
   const f = ensurePreventivoForm();
   const breakdown = getMaterialBreakdownPure(f.surface, Number(f.sqm) || 0, f.quoteType);
@@ -28404,9 +28409,12 @@ function nfEffectiveMaterials() {
   const overrides = f.materialOverrides || {};
   const items = breakdown.items.map((it) => {
     const o = overrides[it.key] || {};
-    const qty = o.qty != null && o.qty !== "" ? Number(o.qty) : it.qty;
-    const unitPrice = o.unitPrice != null && o.unitPrice !== "" ? Number(o.unitPrice) : it.unitPrice;
-    return { ...it, qty, unitPrice, total: qty * unitPrice, excluded: excluded.has(it.key) };
+    const qtyOverridden = o.qty != null && o.qty !== "";
+    const priceOverridden = o.unitPrice != null && o.unitPrice !== "";
+    const qty = qtyOverridden ? Number(o.qty) : it.qty;
+    const unitPrice = priceOverridden ? Number(o.unitPrice) : it.unitPrice;
+    const glueKg = it.glueKg != null && it.qty ? Math.round((it.glueKg / it.qty) * qty) : it.glueKg;
+    return { ...it, qty, unitPrice, glueKg, total: qty * unitPrice, excluded: excluded.has(it.key), overridden: qtyOverridden || priceOverridden };
   });
   const total = items.reduce((sum, it) => sum + (it.excluded ? 0 : it.total), 0);
   return { items, total };
@@ -28430,6 +28438,7 @@ function renderNfMaterials() {
         ×
         <input class="text-input nf-mat-price" type="number" min="0" step="0.01" value="${nfNumVal(it.unitPrice)}" data-field="unitPrice" title="Prezzo unitario €" />€
         <span class="nf-mat-total" data-role="mat-total">${formatCurrency(it.total)}</span>
+        <button type="button" class="nf-mat-reset" data-field="reset" title="Ripristina quantità e prezzo automatici" ${it.overridden ? "" : "hidden"}>↺</button>
       </span>
     </div>`).join("");
 }
@@ -28604,6 +28613,16 @@ function wireNativePreventivoForm() {
     const it = eff.items.find((x) => x.key === key);
     const totEl = row.querySelector("[data-role='mat-total']");
     if (it && totEl) totEl.textContent = formatCurrency(it.total);
+    row.querySelector(".nf-mat-reset")?.removeAttribute("hidden"); // ora è modificato → mostra ↺
+    updateNativeFormTotals();
+  });
+  // Ripristina quantità/prezzo automatici di una voce materiale.
+  ui.nfMatList?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-field='reset']");
+    if (!btn) return;
+    const key = btn.closest(".nf-mat-row")?.getAttribute("data-key");
+    if (key && f.materialOverrides) delete f.materialOverrides[key];
+    renderNfMaterials();
     updateNativeFormTotals();
   });
 
