@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260705-generatore-fix-numero-inflight" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260705-generatore-fix-numero-inflight" />
+    <link rel="preload" href="./styles.css?v=20260706-generatore-fase3-fix-render-trigger" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260706-generatore-fase3-fix-render-trigger" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -745,79 +745,9 @@
                   <input type="checkbox" id="quote-include-p2" checked />
                   <span>📋 Schede tecniche</span>
                 </label>
-                <button type="button" id="nf-mode-toggle" class="nf-mode-toggle" title="Passa alla form nativa (senza iframe) — beta">🧪 Form nativa</button>
               </div>
-              <details class="sales-generator-custom-model" id="sales-generator-custom-model">
-                <summary>
-                  <span class="cm-summary-icon">+</span>
-                  <span class="cm-summary-label">Inserisci un modello fuori catalogo</span>
-                  <span class="cm-summary-hint">opzionale, per prati non in collezione</span>
-                </summary>
-                <div class="sales-generator-custom-model-body">
-                  <div class="cm-row">
-                    <label class="field">
-                      <span>Sostituisci l'opzione</span>
-                      <select id="custom-model-target" class="text-input">
-                        <option value="1">Opzione 1</option>
-                        <option value="2">Opzione 2</option>
-                        <option value="3">Opzione 3</option>
-                      </select>
-                    </label>
-                    <label class="field" style="flex:2;">
-                      <span>Nome modello</span>
-                      <input id="custom-model-name" class="text-input" type="text" placeholder="Es. Sportgreen Plus 45mm" />
-                    </label>
-                    <label class="field">
-                      <span>Prezzo €/mq</span>
-                      <input id="custom-model-price" class="text-input" type="number" step="0.01" placeholder="0,00" />
-                    </label>
-                  </div>
-                  <p class="cm-note">Verrà usato solo quando clicchi Genera. I dati live del form normale rimangono.</p>
-                </div>
-              </details>
-              <details class="sales-generator-native-extras" id="sales-generator-native-extras">
-                <summary>
-                  <span class="cm-summary-icon">✎</span>
-                  <span class="cm-summary-label">Accessori e materiali</span>
-                  <span class="cm-summary-hint">gestione affidabile — sostituisce i box dell'iframe</span>
-                </summary>
-                <div class="native-extras-body">
-                  <div class="native-extras-section">
-                    <h4 class="native-extras-title">Materiali da escludere</h4>
-                    <p class="cm-note">Spunta i materiali che il cliente ha già preparato: verranno tolti dal costo e dalla lista nel PDF. Valgono solo quelli previsti dalla superficie scelta.</p>
-                    <div class="native-materials-excludes" id="native-materials-excludes">
-                      <label class="native-mat-ex"><input type="checkbox" data-material-key="pietrisco" /><span>Pietrisco (fondo drenante)</span></label>
-                      <label class="native-mat-ex"><input type="checkbox" data-material-key="telo" /><span>Telo isolante / pacciamatura</span></label>
-                      <label class="native-mat-ex"><input type="checkbox" data-material-key="bande" /><span>Bande di giunzione</span></label>
-                      <label class="native-mat-ex"><input type="checkbox" data-material-key="colla" /><span>Colla bicomponente</span></label>
-                      <label class="native-mat-ex"><input type="checkbox" data-material-key="picchetti" /><span>Picchetti a U</span></label>
-                    </div>
-                  </div>
-                  <div class="native-extras-section">
-                    <div class="native-extras-head">
-                      <h4 class="native-extras-title">Accessori extra</h4>
-                      <div class="native-acc-add">
-                        <select id="native-acc-catalog" class="text-input">
-                          <option value="">+ Da catalogo…</option>
-                        </select>
-                        <button type="button" id="native-acc-add-btn" class="ghost-button small-button">+ Riga vuota</button>
-                      </div>
-                    </div>
-                    <div class="native-acc-list" id="native-acc-list"></div>
-                    <p class="native-acc-empty cm-note" id="native-acc-empty">Nessun accessorio. Aggiungine dal catalogo o con "Riga vuota".</p>
-                    <div class="native-acc-total" id="native-acc-total"></div>
-                  </div>
-                </div>
-              </details>
-              <iframe
-                id="sales-generator-frame"
-                class="sales-generator-frame"
-                title="Generatore Preventivi"
-                src="./sales-suite/generator.html?embedded=1&v=20260705-generatore-fix-numero-inflight&shell=20260705-generatore-fix-numero-inflight"
-                scrolling="no"
-              ></iframe>
 
-              <!-- ── Form preventivo NATIVA (Fase 2/3) — generatore vanilla ── -->
+              <!-- ── Form preventivo NATIVA — unico generatore (vanilla) ── -->
               <div id="sales-generator-native-form" class="native-form" hidden>
                 <section class="nf-section">
                   <div class="nf-section-head"><span class="nf-legend-txt">Dati preventivo</span></div>
@@ -2580,7 +2510,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260705-generatore-fix-numero-inflight" defer></script>
-    <script src="./app.js?v=20260705-generatore-fix-numero-inflight" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260706-generatore-fase3-fix-render-trigger" defer></script>
+    <script src="./app.js?v=20260706-generatore-fase3-fix-render-trigger" type="module"></script>
   </body>
 </html>

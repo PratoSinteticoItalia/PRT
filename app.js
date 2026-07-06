@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260705-generatore-fix-numero-inflight";
+} from "./lib/order-money.js?v=20260706-generatore-fase3-fix-render-trigger";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260705-generatore-fix-numero-inflight";
+import { regionForCity } from "./lib/geo.js?v=20260706-generatore-fase3-fix-render-trigger";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260705-generatore-fix-numero-inflight";
+} from "./lib/profit-split.js?v=20260706-generatore-fase3-fix-render-trigger";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260705-generatore-fix-numero-inflight";
+} from "./lib/preventivo-pricing.js?v=20260706-generatore-fase3-fix-render-trigger";
 
-const APP_SHELL_VERSION = "20260705-generatore-fix-numero-inflight";
+const APP_SHELL_VERSION = "20260706-generatore-fase3-fix-render-trigger";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -92,9 +92,6 @@ const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
 const SALES_GENERATOR_PLANNER_REPORT_KEY = "quote-generator-planner-report";
-const SALES_GENERATOR_FRAME_MIN_HEIGHT = 560;
-const SALES_GENERATOR_FRAME_DEFAULT_HEIGHT = 760;
-const SALES_GENERATOR_FRAME_MAX_HEIGHT = 8000;
 const SW_UPDATE_CHECK_INTERVAL_MS = 1000 * 60 * 10;
 const SHELL_PENDING_FAILSAFE_MS = 1000 * 15;
 const COVERAGE_MAP_SIZE = { width: 1558, height: 1420 };
@@ -1159,7 +1156,6 @@ const state = {
   dashboardDateRange: "7d",
   preventivoTexts: null, // popolato all'init da /api/catalog/preventivo_branding
   preventivoCatalog: {}, // slug -> { code, tech: {struttura, densita, dtex, drenaggio, peso, note}, label }
-  preventivoNativeFormMode: true, // true = form vanilla nativa (default). L'iframe React resta come fallback dietro il toggle (Fase 3, 1 release)
   preventivoForm: null, // stato della form nativa (creato al primo render da defaultPreventivoForm())
   customProducts: [], // prodotti prato aggiunti dall'ufficio (GET /api/products), uniti a INVENTORY_CATALOG
   selectedOrderId: null,
@@ -1501,7 +1497,6 @@ const ui = {
   salesRequestWhatsAppHint: document.getElementById("sales-request-whatsapp-hint"),
   salesRequestFollowUpButton: document.getElementById("sales-request-followup-button"),
   salesGeneratorContextPanel: document.getElementById("sales-generator-context-panel"),
-  salesGeneratorFrame: document.getElementById("sales-generator-frame"),
   salesGeneratorRequestCard: document.getElementById("sales-generator-request-card"),
   salesGeneratorOpenRequestButton: document.getElementById("sales-generator-open-request-button"),
   salesGeneratorPrefillButton: document.getElementById("sales-generator-prefill-button"),
@@ -1528,18 +1523,6 @@ const ui = {
   brandLogoPreview: document.getElementById("brand-logo-preview"),
   brandLogoClear: document.getElementById("brand-logo-clear"),
   brandLogoDataUrl: document.getElementById("brand-logo-data-url"),
-  customModelTarget: document.getElementById("custom-model-target"),
-  customModelName: document.getElementById("custom-model-name"),
-  customModelPrice: document.getElementById("custom-model-price"),
-  customModelToggle: document.getElementById("sales-generator-custom-model"),
-  nativeExtrasPanel: document.getElementById("sales-generator-native-extras"),
-  nativeMaterialsExcludes: document.getElementById("native-materials-excludes"),
-  nativeAccList: document.getElementById("native-acc-list"),
-  nativeAccEmpty: document.getElementById("native-acc-empty"),
-  nativeAccTotal: document.getElementById("native-acc-total"),
-  nativeAccCatalog: document.getElementById("native-acc-catalog"),
-  nativeAccAddBtn: document.getElementById("native-acc-add-btn"),
-  nfModeToggle: document.getElementById("nf-mode-toggle"),
   nativeForm: document.getElementById("sales-generator-native-form"),
   nfOptions: document.getElementById("nf-options"),
   nfMaterialsAuto: document.getElementById("nf-materials-auto"),
@@ -4992,37 +4975,6 @@ function openSelectedSalesRequestInGardenPlanner() {
   return true;
 }
 
-function getSalesGeneratorFrameBaseSrc() {
-  const frame = ui.salesGeneratorFrame;
-  if (!frame) return "";
-  if (!frame.dataset.baseSrc) {
-    const raw = frame.getAttribute("src") || frame.src || "";
-    frame.dataset.baseSrc = raw.replace(/([?&])session=[^&]*/g, "$1").replace(/([?&])planner=[^&]*/g, "$1").replace(/[?&]$/, "");
-  }
-  return frame.dataset.baseSrc || "";
-}
-
-function buildSalesGeneratorFrameSrc({ plannerMode = false } = {}) {
-  const base = getSalesGeneratorFrameBaseSrc();
-  if (!base) return "";
-  const targetUrl = new URL(base, window.location.href);
-  targetUrl.searchParams.set("session", String(Date.now()));
-  targetUrl.searchParams.set("planner", plannerMode ? "1" : "0");
-  return targetUrl.toString();
-}
-
-function reloadSalesGeneratorFrameSession({ plannerMode = false, force = false } = {}) {
-  if (!ui.salesGeneratorFrame) return false;
-  const currentSrc = ui.salesGeneratorFrame.getAttribute("src") || ui.salesGeneratorFrame.src || "";
-  if (currentSrc && !force) return true;
-  const nextSrc = buildSalesGeneratorFrameSrc({ plannerMode });
-  if (!nextSrc) return false;
-  state.lastSalesGeneratorSignature = "";
-  applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
-  ui.salesGeneratorFrame.src = nextSrc;
-  return true;
-}
-
 function pushPlannerPrefillToGenerator(force = false) {
   const bridge = getGardenPlannerQuoteBridge();
   const payload = bridge?.payload;
@@ -5047,22 +4999,7 @@ function pushPlannerPrefillToGenerator(force = false) {
       window.localStorage.removeItem(SALES_GENERATOR_PLANNER_REPORT_KEY);
     }
   } catch {}
-  applyPrefillToNativeForm(payload); // form nativa (Fase 3)
-  try {
-    ui.salesGeneratorFrame?.contentWindow?.postMessage({
-      type: "quote-generator:prefill-request",
-      payload,
-      source: "garden-planner",
-      force,
-    }, "*");
-  } catch {}
-  try {
-    ui.salesGeneratorFrame?.contentWindow?.postMessage({
-      type: "quote-generator:planner-report",
-      payload: plannerReport,
-      force,
-    }, "*");
-  } catch {}
+  applyPrefillToNativeForm(payload); // form nativa
   return true;
 }
 
@@ -5672,47 +5609,16 @@ function buildSalesGeneratorBrandingPayload() {
   };
 }
 
-function pushSalesGeneratorBranding(force = false) {
-  const payload = buildSalesGeneratorBrandingPayload();
-  const signature = JSON.stringify(payload);
-  if (!force && state.lastSalesGeneratorBrandingSignature === signature) return;
-  state.lastSalesGeneratorBrandingSignature = signature;
-  try {
-    window.localStorage.setItem(SALES_BRANDING_STORAGE_KEY, JSON.stringify({
-      runId: Date.now(),
-      payload,
-    }));
-  } catch {}
-  try {
-    ui.salesGeneratorFrame?.contentWindow?.postMessage({
-      type: "quote-generator:branding",
-      payload,
-    }, "*");
-  } catch {}
-}
-
 function clearSalesRequestPrefillInGenerator({ keepFreeMode = true } = {}) {
   if (keepFreeMode) state.salesGeneratorFreeMode = true;
   state.salesGeneratorPlannerMode = false;
   state.lastSalesGeneratorSignature = "";
-  clearNativeForm(); // svuota la form nativa (Fase 3)
+  clearNativeForm(); // svuota la form nativa
   try {
     window.localStorage.removeItem(SALES_PREFILL_STORAGE_KEY);
   } catch {}
   try {
     window.localStorage.removeItem(SALES_GENERATOR_PLANNER_REPORT_KEY);
-  } catch {}
-  try {
-    ui.salesGeneratorFrame?.contentWindow?.postMessage({
-      type: "quote-generator:clear-prefill",
-      source: "free-quote",
-    }, "*");
-  } catch {}
-  try {
-    ui.salesGeneratorFrame?.contentWindow?.postMessage({
-      type: "quote-generator:planner-report",
-      payload: null,
-    }, "*");
   } catch {}
 }
 
@@ -5736,21 +5642,7 @@ function pushSalesRequestToGenerator(force = false) {
   try {
     window.localStorage.removeItem(SALES_GENERATOR_PLANNER_REPORT_KEY);
   } catch {}
-  applyPrefillToNativeForm(payload); // form nativa (Fase 3)
-  try {
-    ui.salesGeneratorFrame?.contentWindow?.postMessage({
-      type: "quote-generator:prefill-request",
-      payload,
-      source: "sales-request",
-      force,
-    }, "*");
-  } catch {}
-  try {
-    ui.salesGeneratorFrame?.contentWindow?.postMessage({
-      type: "quote-generator:planner-report",
-      payload: null,
-    }, "*");
-  } catch {}
+  applyPrefillToNativeForm(payload); // form nativa
   trackUsageEvent("quote_prefill_applied", {
     source: "sales-request",
     requestId: payload?.requestId || payload?.id || "",
@@ -5760,28 +5652,6 @@ function pushSalesRequestToGenerator(force = false) {
     key: `quote-prefill:${payload?.requestId || payload?.id || "selected"}`,
   });
 }
-
-function applySalesGeneratorFrameHeight(rawHeight) {
-  if (!ui.salesGeneratorFrame) return;
-  const next = Math.max(
-    SALES_GENERATOR_FRAME_MIN_HEIGHT,
-    Math.min(SALES_GENERATOR_FRAME_MAX_HEIGHT, Number(rawHeight) || SALES_GENERATOR_FRAME_DEFAULT_HEIGHT),
-  );
-  const current = Number(ui.salesGeneratorFrame.dataset.measuredHeight || 0);
-  if (current && Math.abs(current - next) < 8) return;
-  ui.salesGeneratorFrame.style.height = `${next}px`;
-  ui.salesGeneratorFrame.dataset.measuredHeight = String(next);
-}
-
-window.addEventListener("message", (event) => {
-  if (event.data?.type === "quote-generator:content-height") {
-    applySalesGeneratorFrameHeight(event.data?.height);
-    return;
-  }
-  if (event.data?.type === "quote-generator:usage-event") {
-    trackUsageEvent(event.data.eventType, event.data.meta || {});
-  }
-});
 
 function getDashboardSubtitle() {
   const locale = state.lang === "it" ? "it-IT" : "en-GB";
@@ -13039,10 +12909,13 @@ function renderSalesGeneratorPlannerMaterials(reference) {
 }
 
 function renderSalesGenerator() {
-  wireNativeExtrasPanel();
-  // Applica la modalità nativa solo se la form non è già visibile, per non
-  // ri-renderizzarla (e rubare il focus) ad ogni chiamata di renderSalesGenerator.
-  if (state.preventivoNativeFormMode && ui.nativeForm && ui.nativeForm.hidden) setPreventivoNativeFormMode(true);
+  // La form nativa è l'UNICO generatore. La mostra sempre e la (ri)renderizza,
+  // TRANNE quando l'utente sta scrivendo dentro la form (focus interno) — così
+  // non gli rubiamo il focus ad ogni renderSalesGenerator incidentale.
+  if (ui.nativeForm) {
+    ui.nativeForm.hidden = false;
+    if (!ui.nativeForm.contains(document.activeElement)) renderNativePreventivoForm();
+  }
   const generatorOnlyMode = state.currentUser?.role === "crew";
   const selected = ensureSelectedSalesRequest();
   const plannerBridge = !generatorOnlyMode ? getGardenPlannerQuoteBridge() : null;
@@ -13187,11 +13060,6 @@ function renderSalesGenerator() {
       mode: plannerMode ? "planner" : freeMode ? "free" : "sales-request",
       hasRequest: Boolean(selected),
     }, { oncePerSession: true, key: "quote-generator-opened" });
-    const measuredHeight = Number(ui.salesGeneratorFrame?.dataset.measuredHeight || 0);
-    if (!measuredHeight || measuredHeight > 2400) {
-      applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
-    }
-    window.setTimeout(() => pushSalesGeneratorBranding(false), 20);
   }
   if (state.currentView === "sales-generator" && plannerMode) {
     window.setTimeout(() => pushPlannerPrefillToGenerator(false), 40);
@@ -23747,9 +23615,6 @@ function setView(view, { pushHistory = true } = {}) {
   }
   if (nextView === "accounting") state.accountingMobilePane = "summary";
   if (nextView === "installations") state.installationMobilePane = "summary";
-  if (nextView === "sales-generator" && nextView !== previousView) {
-    reloadSalesGeneratorFrameSession({ force: true });
-  }
   if (nextView === "shipping" && nextView !== previousView) {
     state.filters.shipping = "all";
     ui.shippingFilterTags?.forEach((btn) => btn.classList.toggle("is-active", btn.dataset.shippingFilter === "all"));
@@ -28152,161 +28017,10 @@ function handleBrandLogoClear() {
   renderBrandLogoPreview("");
 }
 
-// ─── Modello custom (fuori catalogo) — toolbar generatore ─────────────────────
-
-// ─── Pannello nativo: accessori extra + esclusione materiali (Fase 2 rewrite) ─
-// Gli accessori e l'esclusione dei singoli materiali sono gestiti NEL PORTALE
-// (non nell'iframe React), quindi i dati sono affidabili e la matematica passa
-// dal motore testato (lib/preventivo-pricing.js). A "Genera" sostituiscono le
-// letture fragili del bridge. Shape accessorio = { name, price, discount, qty,
-// applyIva } — identica a quella attesa da preventivo-v2.html e dal calcolo in
-// extractGeneratorPayloadFromIframe.
-let preventivoNativeAccessories = [];
-let _nativeExtrasWired = false;
-
-// Match tra key materiale del motore e le voci testuali della distinta del bridge
-// (per togliere dalla lista del PDF ciò che il cliente ha già).
-const MATERIAL_EXCLUDE_MATCHERS = {
-  pietrisco: /pietrisc/i,
-  telo: /telo|pacciam/i,
-  bande: /band/i,
-  colla: /coll/i,
-  picchetti: /picchett/i,
-};
-
-function getExcludedMaterialKeys() {
-  if (!ui.nativeMaterialsExcludes) return [];
-  return Array.from(ui.nativeMaterialsExcludes.querySelectorAll("input[type='checkbox']:checked"))
-    .map((cb) => cb.getAttribute("data-material-key"))
-    .filter(Boolean);
-}
-
-// Rimuove dalla stringa materiali del bridge le voci escluse (lista nel PDF).
-function filterMaterialsTextByExclusions(text, excludeKeys) {
-  if (!text || !excludeKeys.length) return text;
-  const matchers = excludeKeys.map((k) => MATERIAL_EXCLUDE_MATCHERS[k]).filter(Boolean);
-  return String(text)
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .filter((seg) => !matchers.some((re) => re.test(seg)))
-    .join("; ");
-}
-
-function getNativeAccessoriesForPayload() {
-  return preventivoNativeAccessories
-    .map((a) => ({
-      name: String(a.name || "").trim(),
-      price: Number(a.price) || 0,
-      discount: Number(a.discount) || 0,
-      qty: Number(a.qty) || 1,
-      applyIva: a.applyIva !== false,
-    }))
-    .filter((a) => a.price > 0 || a.name);
-}
-
-function nativeAccessoryNet(a) {
-  return (Number(a.price) || 0) * (1 - (Number(a.discount) || 0) / 100) * (Number(a.qty) || 1);
-}
-
-function updateNativeAccTotal() {
-  if (!ui.nativeAccTotal) return;
-  if (!preventivoNativeAccessories.length) { ui.nativeAccTotal.textContent = ""; return; }
-  const net = preventivoNativeAccessories.reduce((s, a) => s + nativeAccessoryNet(a), 0);
-  const gross = preventivoNativeAccessories.reduce((s, a) => s + applyIvaPure(nativeAccessoryNet(a), a.applyIva), 0);
-  ui.nativeAccTotal.textContent = `Totale accessori: ${formatCurrency(net)} netto · ${formatCurrency(gross)} IVA inclusa`;
-}
-
-function renderNativeAccessories() {
-  const list = ui.nativeAccList;
-  if (!list) return;
-  list.innerHTML = preventivoNativeAccessories.map((a, i) => `
-    <div class="native-acc-row" data-idx="${i}">
-      <input class="text-input native-acc-name" type="text" placeholder="Accessorio" value="${escapeHtml(a.name || "")}" data-field="name" />
-      <label class="native-acc-cell"><span>€</span><input class="text-input native-acc-price" type="number" step="0.01" min="0" placeholder="0,00" value="${a.price != null && a.price !== "" ? escapeHtml(String(a.price)) : ""}" data-field="price" /></label>
-      <label class="native-acc-cell"><span>sc%</span><input class="text-input native-acc-disc" type="number" step="1" min="0" max="100" placeholder="0" value="${a.discount ? escapeHtml(String(a.discount)) : ""}" data-field="discount" /></label>
-      <label class="native-acc-cell"><span>qtà</span><input class="text-input native-acc-qty" type="number" step="1" min="1" value="${escapeHtml(String(a.qty || 1))}" data-field="qty" /></label>
-      <button type="button" class="native-acc-iva ${a.applyIva !== false ? "on" : "off"}" data-field="iva" title="IVA su questo accessorio">${a.applyIva !== false ? "IVA ON" : "IVA OFF"}</button>
-      <span class="native-acc-net">${formatCurrency(nativeAccessoryNet(a))}</span>
-      <button type="button" class="native-acc-remove" data-field="remove" title="Rimuovi">✕</button>
-    </div>
-  `).join("");
-  if (ui.nativeAccEmpty) ui.nativeAccEmpty.style.display = preventivoNativeAccessories.length ? "none" : "";
-  updateNativeAccTotal();
-}
-
-function addNativeAccessory(seed = {}) {
-  preventivoNativeAccessories.push({
-    name: seed.name || "",
-    price: seed.price != null ? Number(seed.price) : "",
-    discount: 0,
-    qty: 1,
-    applyIva: true,
-  });
-  renderNativeAccessories();
-}
-
-function wireNativeExtrasPanel() {
-  if (_nativeExtrasWired) return;
-  _nativeExtrasWired = true;
-
-  // Catalogo rapido accessori dal listino del motore.
-  if (ui.nativeAccCatalog && ui.nativeAccCatalog.options.length <= 1) {
-    for (const acc of PREVENTIVO_ACCESSORIES) {
-      const opt = document.createElement("option");
-      opt.value = acc.id;
-      opt.textContent = `${acc.name} — ${formatCurrency(acc.price)}`;
-      ui.nativeAccCatalog.appendChild(opt);
-    }
-  }
-
-  ui.nativeAccCatalog?.addEventListener("change", () => {
-    const acc = PREVENTIVO_ACCESSORIES.find((x) => x.id === ui.nativeAccCatalog.value);
-    if (acc) addNativeAccessory({ name: acc.name, price: acc.price });
-    ui.nativeAccCatalog.value = "";
-  });
-
-  ui.nativeAccAddBtn?.addEventListener("click", () => addNativeAccessory());
-
-  // Edit inline senza ridisegnare gli input (per non perdere il focus).
-  ui.nativeAccList?.addEventListener("input", (e) => {
-    const row = e.target.closest(".native-acc-row");
-    if (!row) return;
-    const acc = preventivoNativeAccessories[Number(row.getAttribute("data-idx"))];
-    if (!acc) return;
-    const field = e.target.getAttribute("data-field");
-    if (field === "name") acc.name = e.target.value;
-    else if (field === "price") acc.price = e.target.value === "" ? "" : Number(e.target.value);
-    else if (field === "discount") acc.discount = Number(e.target.value) || 0;
-    else if (field === "qty") acc.qty = Math.max(1, Number(e.target.value) || 1);
-    const netEl = row.querySelector(".native-acc-net");
-    if (netEl) netEl.textContent = formatCurrency(nativeAccessoryNet(acc));
-    updateNativeAccTotal();
-  });
-
-  ui.nativeAccList?.addEventListener("click", (e) => {
-    const row = e.target.closest(".native-acc-row");
-    if (!row) return;
-    const idx = Number(row.getAttribute("data-idx"));
-    const field = e.target.getAttribute("data-field");
-    if (field === "remove") {
-      preventivoNativeAccessories.splice(idx, 1);
-      renderNativeAccessories();
-    } else if (field === "iva") {
-      const acc = preventivoNativeAccessories[idx];
-      if (acc) { acc.applyIva = acc.applyIva === false; renderNativeAccessories(); }
-    }
-  });
-
-  renderNativeAccessories();
-}
-
-// ═══ Form preventivo NATIVA (Fase 2 rewrite) ═══════════════════════════════
-// Form vanilla che replica il generatore React senza iframe/bridge: legge dal
-// DOM lo stato in state.preventivoForm, calcola i totali col motore testato
-// (computeQuote) e produce lo STESSO payload di extractGeneratorPayloadFromIframe
-// per preventivo-v2.html. Attivabile con il toggle "Form nativa" (l'iframe resta
-// come fallback finché non completiamo la Fase 3).
+// ═══ Form preventivo NATIVA — UNICO generatore (vanilla, no iframe/bridge) ═══
+// Legge lo stato in state.preventivoForm, calcola i totali col motore testato
+// (lib/preventivo-pricing.js, computeQuote) e produce il payload per
+// preventivo-v2.html tramite buildNativePreventivoPayload().
 
 const NF_ISO = (d) => {
   const off = d.getTimezoneOffset() * 60000;
@@ -28500,7 +28214,7 @@ function applyPrefillToNativeForm(payload) {
     const match = PREVENTIVO_PRODUCTS.find((p) => new RegExp(`\\b${hMatch[1]}\\s*mm`, "i").test(p.name));
     if (match) f.options[0].slug = match.slug;
   }
-  if (state.preventivoNativeFormMode && state.currentView === "sales-generator") renderNativePreventivoForm();
+  if (state.currentView === "sales-generator") renderNativePreventivoForm();
 }
 
 // Reset "preventivo libero": svuota cliente + mq, mantiene i default tecnici.
@@ -28508,23 +28222,10 @@ function clearNativeForm() {
   const f = ensurePreventivoForm();
   Object.assign(f, { nome: "", cognome: "", citta: "", tel: "", email: "", ragione: "", sqm: 0, excludedMaterials: [], materialOverrides: {}, accessories: [], extraWorks: [], quoteNumber: "" });
   // quoteNumber vuoto → renderNativePreventivoForm ne assegna uno nuovo dal server.
-  if (state.preventivoNativeFormMode && state.currentView === "sales-generator") renderNativePreventivoForm();
+  if (state.currentView === "sales-generator") renderNativePreventivoForm();
   else assignPreventivoNumber();
 }
 
-function setPreventivoNativeFormMode(on) {
-  state.preventivoNativeFormMode = !!on;
-  const iframe = document.getElementById("sales-generator-frame");
-  if (iframe) iframe.style.display = on ? "none" : "";
-  if (ui.nativeExtrasPanel) ui.nativeExtrasPanel.style.display = on ? "none" : "";
-  if (ui.customModelToggle) ui.customModelToggle.style.display = on ? "none" : "";
-  if (ui.nativeForm) ui.nativeForm.hidden = !on;
-  if (ui.nfModeToggle) {
-    ui.nfModeToggle.classList.toggle("is-active", on);
-    ui.nfModeToggle.textContent = on ? "↩ Torna all'iframe" : "🧪 Form nativa";
-  }
-  if (on) renderNativePreventivoForm();
-}
 
 let _nfWired = false;
 
@@ -28821,8 +28522,8 @@ function renderNativePreventivoForm() {
   updateNativeFormTotals();
 }
 
-// Costruisce il payload preventivo-v2 dalla FORM nativa (stessa shape di
-// extractGeneratorPayloadFromIframe). Ritorna null se dati insufficienti.
+// Costruisce il payload per preventivo-v2.html dalla FORM nativa.
+// Ritorna null se dati insufficienti.
 function buildNativePreventivoPayload() {
   try {
     const f = ensurePreventivoForm();
@@ -28958,209 +28659,6 @@ function buildNativePreventivoPayload() {
   }
 }
 
-function getCustomModelOverride() {
-  const name = String(ui.customModelName?.value || "").trim();
-  const priceRaw = String(ui.customModelPrice?.value || "").trim();
-  const price = parseFloat(priceRaw.replace(",", "."));
-  const target = parseInt(String(ui.customModelTarget?.value || "1"), 10);
-  if (!name || !Number.isFinite(price) || price <= 0) return null;
-  const isOpen = ui.customModelToggle?.open;
-  if (!isOpen) return null;
-  return { target: target >= 1 && target <= 3 ? target : 1, name, pricePerSqm: price };
-}
-
-// ─── Nascondi "Modello libero" dell'iframe React (sostituito dalla toolbar) ───
-
-let _iframeStyleInjected = false;
-
-function injectIframePolishStyles() {
-  // CSS migliorativo + hide "Modello libero" nell'iframe del generator React.
-  // Non tocca il flusso del PDF jsPDF, solo l'anteprima HTML embedded.
-  try {
-    const iframe = document.getElementById("sales-generator-frame");
-    const doc = iframe?.contentDocument;
-    if (!doc) return;
-
-    // STYLE CSS UNICO
-    let style = doc.getElementById("psi-polish-style");
-    if (!style) {
-      style = doc.createElement("style");
-      style.id = "psi-polish-style";
-      doc.head.appendChild(style);
-    }
-    style.textContent = `
-      /* Soft-border per box con bordo scuro inline */
-      [style*="border: 1px solid #000"],
-      [style*="border:1px solid #000"],
-      [style*="border: 2px solid #000"],
-      [style*="border:2px solid #000"],
-      [style*="border: 1px solid black"],
-      [style*="border:1px solid black"],
-      [style*="border: 2px solid black"],
-      [style*="border:2px solid black"] {
-        border-color: #d8e4da !important;
-      }
-      /* Box cliente / validità: griglie più compatte se valori vuoti */
-      [data-psi-hide-modello-libero] { display: none !important; }
-      /* Nascondi pannello "Modello libero" (sempre, non dipende da v2) */
-      .codex-custom-turf-panel { display: none !important; }
-      /* Toolbar verde — override background navy #0f172a = rgb(15,23,42) iniettato da React.
-         Usa selettore CSS-inline così regge anche dopo un re-render React che rimonta l'elemento.
-         Copre varianti con/senza spazio e con/senza 0x prefix. */
-      [style*="rgb(15, 23, 42)"],
-      [style*="rgb(15,23,42)"] {
-        background: #2d6a4f !important;
-        background-color: #2d6a4f !important;
-      }
-      [data-psi-toolbar-green] {
-        background: #2d6a4f !important;
-        background-color: #2d6a4f !important;
-      }
-      /* Compattazione box cliente — meno padding, più equilibrio */
-      [data-psi-customer-compact] {
-        padding: 14px 22px !important;
-      }
-      [data-psi-customer-compact] [style*="grid-template-columns"] {
-        gap: 4px 12px !important;
-      }
-    `;
-
-    // HIDE "Modello libero" — solo quando v2 è abilitato.
-    // Con PSI_PREVENTIVO_V2_DISABLED=true il generator React mostra la sezione
-    // liberamente, quindi NON va nascosta (causava display:none sul root React).
-    if (!PSI_PREVENTIVO_V2_DISABLED && !doc._psiHideMlInjected) {
-      const tryHideMl = () => {
-        if (doc._psiHideMlInjected) return;
-        let anchor = doc.querySelector('input[placeholder*="Sportgreen"]')
-                  || doc.querySelector('input[placeholder*="Plus 45"]')
-                  || doc.querySelector('input[placeholder*="Es. Sport"]');
-        if (!anchor) {
-          // Strategy 2: cerca label "Modello libero"
-          const els = Array.from(doc.querySelectorAll("label, div, span, p, h1, h2, h3, h4"));
-          anchor = els.find((el) => /^modello libero/i.test(String(el.textContent || "").trim()));
-        }
-        if (!anchor) return;
-        // Risali al container "bar" — il primo nodo con padding/background
-        // Safety: non salire oltre 6 livelli né oltre il body
-        let container = anchor;
-        const root = doc.body || doc.documentElement;
-        for (let i = 0; i < 6 && container.parentElement && container.parentElement !== root; i++) {
-          container = container.parentElement;
-          const cs = doc.defaultView.getComputedStyle(container);
-          const padOk = parseFloat(cs.paddingTop) >= 6 || parseFloat(cs.paddingBottom) >= 6;
-          const bgOk = cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent";
-          if (padOk && (bgOk || cs.borderRadius)) break;
-        }
-        // Abort se siamo finiti troppo vicino alla radice
-        if (container === root || container === doc.documentElement) return;
-        container.setAttribute("data-psi-hide-modello-libero", "true");
-        doc._psiHideMlInjected = true;
-      };
-      tryHideMl();
-      if (!doc._psiHideMlInjected) {
-        setTimeout(tryHideMl, 400);
-        setTimeout(tryHideMl, 1200);
-        setTimeout(tryHideMl, 2500);
-      }
-    }
-
-    // TOOLBAR VERDE — trova il parent del bottone "Scarica PDF" e cambia sfondo da navy a verde
-    if (!doc._psiToolbarGreenInjected) {
-      const tryGreenToolbar = () => {
-        if (doc._psiToolbarGreenInjected) return;
-        const btn = Array.from(doc.querySelectorAll("button"))
-          .find((b) => /scarica\s*pdf/i.test(String(b.textContent || "").trim()));
-        if (!btn) return;
-        const host = btn.parentElement;
-        if (!host) return;
-        host.setAttribute("data-psi-toolbar-green", "true");
-        // Forza anche inline per battere eventuali re-render React
-        host.style.setProperty("background", "#2d6a4f", "important");
-        host.style.setProperty("background-color", "#2d6a4f", "important");
-        doc._psiToolbarGreenInjected = true;
-      };
-      tryGreenToolbar();
-      if (!doc._psiToolbarGreenInjected) {
-        setTimeout(tryGreenToolbar, 400);
-        setTimeout(tryGreenToolbar, 1200);
-        setTimeout(tryGreenToolbar, 2500);
-      }
-    }
-
-    // COMPATTA box cliente — trova un div che contiene label tipo "Nome:" e "Tel:" come testo
-    if (!doc._psiCustomerCompactInjected) {
-      const tryCompact = () => {
-        if (doc._psiCustomerCompactInjected) return;
-        // Cerca un container che contiene il testo "CLIENTE" (header del box)
-        const all = Array.from(doc.querySelectorAll("div, section"));
-        const candidate = all.find((el) => {
-          const txt = String(el.textContent || "").trim();
-          return /CLIENTE/.test(txt) && /Nome\s*:/i.test(txt) && /Email\s*:/i.test(txt) && txt.length < 600;
-        });
-        if (!candidate) return;
-        candidate.setAttribute("data-psi-customer-compact", "true");
-        doc._psiCustomerCompactInjected = true;
-      };
-      tryCompact();
-      if (!doc._psiCustomerCompactInjected) {
-        setTimeout(tryCompact, 600);
-        setTimeout(tryCompact, 1800);
-        setTimeout(tryCompact, 3500);
-      }
-    }
-  } catch {}
-}
-
-function injectIframeHideStyles() {
-  // Mentre PSI_PREVENTIVO_V2_DISABLED è attivo, non manipoliamo il DOM del
-  // generatore React — l'utente deve vedere e usare la UI originale completa
-  // (Modello libero, Modello consigliato, Scarica PDF, anteprima ecc.)
-  // L'unica eccezione è il polish CSS (non è hide, migliora solo bordi e spacing)
-  injectIframePolishStyles();
-  if (PSI_PREVENTIVO_V2_DISABLED) return;
-  if (_iframeStyleInjected) return;
-  const iframe = document.getElementById("sales-generator-frame");
-  if (!iframe || !iframe.contentDocument) return;
-  const doc = iframe.contentDocument;
-  const tryInject = () => {
-    if (_iframeStyleInjected) return;
-    // Strategia 1: trova input con placeholder "Es. Sportgreen Plus 45mm"
-    let anchor = doc.querySelector('input[placeholder*="Sportgreen"]')
-              || doc.querySelector('input[placeholder*="Plus 45"]')
-              || doc.querySelector('input[placeholder*="Es. Sport"]');
-    // Strategia 2: cerca testo "Modello libero" in label/div/span
-    if (!anchor) {
-      const els = Array.from(doc.querySelectorAll("label, div, span, p, h1, h2, h3, h4"));
-      anchor = els.find((el) => /^modello libero/i.test(String(el.textContent || "").trim()));
-    }
-    if (!anchor) return;
-    // Risali al container con sfondo scuro (la "barra" del modello libero è
-    // tipicamente in un wrapper con background colorato distinto)
-    let container = anchor;
-    for (let i = 0; i < 10 && container.parentElement; i++) {
-      container = container.parentElement;
-      const cs = doc.defaultView.getComputedStyle(container);
-      const hasPaddingBlock = parseFloat(cs.paddingTop) >= 8 || parseFloat(cs.paddingBottom) >= 8;
-      const hasBg = cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent";
-      if (hasPaddingBlock && (hasBg || cs.borderRadius)) break;
-    }
-    container.setAttribute("data-psi-hide", "modello-libero");
-    if (!doc.getElementById("psi-injected-hide-style")) {
-      const style = doc.createElement("style");
-      style.id = "psi-injected-hide-style";
-      style.textContent = `[data-psi-hide="modello-libero"] { display: none !important; }`;
-      doc.head.appendChild(style);
-    }
-    _iframeStyleInjected = true;
-  };
-  tryInject();
-  if (!_iframeStyleInjected) {
-    setTimeout(tryInject, 400);
-    setTimeout(tryInject, 1200);
-    setTimeout(tryInject, 2500);
-    setTimeout(tryInject, 5000);
-  }
-}
 
 function parseEuroNumber(raw) {
   if (raw == null) return 0;
@@ -29187,464 +28685,7 @@ function slugifyModelName(name) {
     .replace(/^-|-$/g, "");
 }
 
-function parseModelOptionLabel(label = "") {
-  // "Faggio 25 mm — 10,90 €/mq" → { name: "Faggio 25 mm", pricePerSqm: 10.90 }
-  const text = String(label || "").trim();
-  const match = text.match(/^(.+?)\s*[—–-]\s*([\d.,]+)\s*€\/mq/i);
-  if (match) {
-    return { name: match[1].trim(), pricePerSqm: parseEuroNumber(match[2]) };
-  }
-  return { name: text, pricePerSqm: 0 };
-}
 
-function getActiveSegmentButton(doc, segmentTexts = []) {
-  // Trova il button "attivo" tra un set di alternative (es. "Solo Fornitura" / "Fornitura + Posa").
-  // Considera attivo quello con background colorato (verde scuro) o classe is-active.
-  const buttons = Array.from(doc.querySelectorAll("button")).filter((b) => {
-    const t = String(b.textContent || "").trim();
-    return segmentTexts.some((s) => t.toLowerCase() === s.toLowerCase());
-  });
-  if (!buttons.length) return null;
-  // Strategia: il button "attivo" ha solitamente un background scuro (verde Prato Sintetico)
-  // e un font color chiaro. Confronto il colore di sfondo per identificarlo.
-  const active = buttons.find((b) => {
-    const bg = b.style.background || b.style.backgroundColor || "";
-    const cs = b.ownerDocument.defaultView.getComputedStyle(b);
-    const computedBg = cs.backgroundColor || "";
-    // Rilevante quando il background è scuro (R+G+B basso) e non trasparente
-    const rgb = computedBg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
-    if (!rgb) return false;
-    const sum = parseInt(rgb[1]) + parseInt(rgb[2]) + parseInt(rgb[3]);
-    return sum < 350; // soglia: verde scuro Prato Sintetico ~28+66+41 = 135
-  });
-  return active || buttons[0];
-}
-
-function extractGeneratorPayloadFromIframe() {
-  try {
-    const iframe = document.getElementById("sales-generator-frame");
-    if (!iframe || !iframe.contentDocument) return null;
-    const doc = iframe.contentDocument;
-
-    // Normalizza testo label (specula generator-bridge.js normalizeLabel)
-    const normLbl = (v) => String(v || "")
-      .normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-
-    // Trova il campo input/select/textarea più vicino a una label col testo dato.
-    // Supporta sia <label>Testo<input/></label> che strutture con parentElement.
-    const byLabel = (text) => {
-      const exp = normLbl(text);
-      if (!exp) return null;
-      for (const lbl of doc.querySelectorAll("label")) {
-        const t = normLbl(lbl.textContent);
-        if (t === exp || t.startsWith(exp + " ") || exp.startsWith(t.replace(/ ?%$/, "").trimEnd())) {
-          const f = lbl.querySelector("input, textarea, select")
-                 || lbl.parentElement?.querySelector("input, textarea, select");
-          if (f) return f;
-        }
-      }
-      return null;
-    };
-
-    // Variante STRETTA: matcha solo se il testo cercato è uguale alla label o ne è
-    // un prefisso (es. "Materiali totali" → "Materiali totali auto €"). NON usa la
-    // condizione inversa exp.startsWith(t) di byLabel, che è troppo golosa: cercando
-    // "Sconto materiali" matchava la label proposta "Sconto %" (normalizzata
-    // "sconto", prefisso di "sconto materiali") che nel DOM viene PRIMA → il PDF
-    // applicava/mostrava lo sconto della 1ª proposta al posto dello sconto materiali.
-    const byLabelStrict = (text) => {
-      const exp = normLbl(text);
-      if (!exp) return null;
-      for (const lbl of doc.querySelectorAll("label")) {
-        const t = normLbl(lbl.textContent);
-        if (t === exp || t.startsWith(exp + " ")) {
-          const f = lbl.querySelector("input, textarea, select")
-                 || lbl.parentElement?.querySelector("input, textarea, select");
-          if (f) return f;
-        }
-      }
-      return null;
-    };
-
-    // MQ è il campo obbligatorio — se mancante non c'è preventivo da generare
-    const sqm = Number(byLabel("Metri Quadri")?.value || 0);
-    if (!sqm || sqm <= 0) return null;
-
-    const customTexts = getPreventivoTexts();
-
-    // Campi scalari con fallback a indici legacy per compatibilità con vecchio generatore
-    const allInputs = Array.from(doc.querySelectorAll("input"));
-    const byLabelOrIdx = (labelText, fallbackIdx) =>
-      byLabel(labelText) || (Number.isInteger(fallbackIdx) ? allInputs[fallbackIdx] : null);
-
-    const quoteNumber  = String(byLabelOrIdx("Nr. Preventivo", 0)?.value || "").trim();
-    const dataDal      = byLabelOrIdx("Data", 2)?.value || "";
-    const dataAl       = byLabel("Validità fino a")?.value || byLabel("Validità")?.value
-                       || allInputs[3]?.value || "";
-    const nome         = String(byLabelOrIdx("Nome", 4)?.value || "").trim();
-    const cognome      = String(byLabelOrIdx("Cognome", 5)?.value || "").trim();
-    const citta        = String(byLabelOrIdx("Città", 6)?.value || "").trim();
-    const tel          = String(byLabelOrIdx("Telefono", 7)?.value || "").trim();
-    const email        = String(byLabelOrIdx("Email", 8)?.value || "").trim();
-    const ragione      = String(byLabel("Società / Ragione Sociale")?.value
-                       || byLabel("Ragione Sociale")?.value
-                       || byLabel("Società")?.value
-                       || allInputs[9]?.value || "").trim();
-    const shippingCost = parseEuroNumber(byLabel("Costo spedizione")?.value || allInputs[13]?.value);
-    // Materiali: usano byLabelStrict per non agganciare per errore campi proposta.
-    // Label React: "Materiali totali auto €" e "Sconto materiali %".
-    const materialsTotal = parseEuroNumber(
-      (byLabelStrict("Materiali totali") || allInputs[14])?.value
-    );
-    const materialsDiscountPct = Number(
-      (byLabelStrict("Sconto materiali") || allInputs[15])?.value || 0
-    );
-
-    // Costo posa €/mq — label nel generatore React: "Posa €/mq"
-    const installPerSqm = parseEuroNumber(
-      byLabel("Posa €/mq")?.value || byLabel("Posa")?.value || byLabel("Costo posa")?.value || 0
-    );
-
-    // Testo materiali calcolati automaticamente:
-    //   1) dal bridge (hook Te — già calcolato da React useEffect)
-    //   2) dalla textarea etichettata "Materiali calcolati automaticamente" (fallback DOM)
-    const bridgeState = (() => {
-      try { return iframe.contentWindow?.__codexGetGeneratorState?.() || {}; } catch (_) { return {}; }
-    })();
-    const materialsText = String(bridgeState.materialsText || "")
-      || String(
-          Array.from(doc.querySelectorAll("label"))
-            .find((lbl) => /materiali.*automaticamente/i.test(lbl.textContent || ""))
-            ?.parentElement?.querySelector("textarea")?.value || ""
-        );
-
-    // Accessori: SORGENTE NATIVA (pannello portale) — affidabile, sostituisce la
-    // lettura fragile del bridge. Fallback al bridge solo se il pannello è vuoto
-    // (retro-compatibilità per chi non usa ancora il pannello nativo).
-    const nativeAccessories = getNativeAccessoriesForPayload();
-    const accessories = nativeAccessories.length
-      ? nativeAccessories
-      : (Array.isArray(bridgeState.accessories) ? bridgeState.accessories : []);
-    // Servizi/lavori extra (ke) restano dal bridge React per ora.
-    const extraServices = Array.isArray(bridgeState.extraServices) ? bridgeState.extraServices : [];
-
-    // Tipologia attiva (Solo Fornitura / Fornitura + Posa)
-    const tipoActive = getActiveSegmentButton(doc, ["Solo Fornitura", "Fornitura + Posa"]);
-    const isPosa = tipoActive && /posa/i.test(tipoActive.textContent || "");
-    // Superficie selezionata nel generatore (hooks[17] esposto dal bridge): terra | pavimentazione.
-    // Determina la descrizione lavorazione (pag.1) e gli step "Cosa include il servizio di posa" (pag.2).
-    const surface = String(bridgeState.surface || "terra").trim().toLowerCase();
-    const isPavimentazione = isPosa && surface === "pavimentazione";
-    const mode = isPosa ? "fornitura+posa" : "solo-fornitura";
-
-    // ── Esclusione materiali per voce (pannello nativo) ─────────────────────────
-    // Il cliente ha già alcuni materiali (es. telo/pietrisco): li togliamo dal
-    // COSTO (sottraendo la quota calcolata dal motore testato) e dalla LISTA nel
-    // PDF. Sottraiamo dal totale dell'iframe così, senza esclusioni, il numero
-    // resta identico a prima (nessuna deriva).
-    const excludedMaterialKeys = getExcludedMaterialKeys();
-    let materialsTotalEffective = materialsTotal;
-    let materialsTextEffective = materialsText;
-    if (excludedMaterialKeys.length) {
-      const fullBreakdown = getMaterialBreakdownPure(surface, sqm, isPosa ? "posa" : "fornitura");
-      const excludedCost = fullBreakdown.items
-        .filter((it) => excludedMaterialKeys.includes(it.key))
-        .reduce((sum, it) => sum + it.total, 0);
-      materialsTotalEffective = Math.max(0, (materialsTotal || 0) - excludedCost);
-      materialsTextEffective = filterMaterialsTextByExclusions(materialsText, excludedMaterialKeys);
-    }
-
-    // ── Model selects ──────────────────────────────────────────────────────────
-    // Nuovo generatore: trova i select le cui option contengono il pattern "€/mq"
-    // Vecchio generatore fallback: select[1], [2], [3] (dopo quello superficie)
-    const allSelects = Array.from(doc.querySelectorAll("select"));
-    let modelSelects = allSelects.filter((sel) =>
-      Array.from(sel.options).some((o) => /€[^a-z\d]{0,4}mq/i.test(o.textContent))
-    );
-    if (!modelSelects.length) {
-      // Fallback legacy: superficie=0, modelli=1..3
-      modelSelects = allSelects.slice(1, 4);
-    }
-
-    // ── Sconto per proposta ────────────────────────────────────────────────────
-    // Nuovo generatore: input numerici con label "Sconto %" dentro la stessa riga del select
-    // Vecchio generatore fallback: allInputs[10],[11],[12]
-    const proposalScontoInputs = Array.from(doc.querySelectorAll("label"))
-      .filter((lbl) => {
-        const t = normLbl(lbl.textContent);
-        // "sconto" esatto o "sconto %" — esclude "sconto materiali"
-        return (t === "sconto" || t === "sconto %") && !t.includes("materiali");
-      })
-      .map((lbl) =>
-        lbl.querySelector("input[type='number'], input[type='text']")
-        || lbl.parentElement?.querySelector("input[type='number'], input[type='text']")
-      )
-      .filter(Boolean);
-
-    const getScontoForIndex = (i) => {
-      if (proposalScontoInputs[i]) return Number(proposalScontoInputs[i].value || 0);
-      // Fallback legacy
-      return Number(allInputs[10 + i]?.value || 0);
-    };
-
-    const vat = 22;
-    // applyIva() del generatore React: on === false → niente IVA, altrimenti +22%.
-    // Ora delega alla primitiva PURA e TESTATA lib/preventivo-pricing.js (unico
-    // punto verità del calcolo IVA, condiviso col futuro generatore nativo).
-    const applyComponentIva = (amount, on) => applyIvaPure(amount, on);
-
-    // Legge lo stato del ToggleIvaButton ("IVA ON" / "IVA OFF") associato a una
-    // label: il generatore consente IVA on/off per singola componente (prato per
-    // proposta, materiali, posa, spedizione) e l'utente li usa davvero. Sale di
-    // qualche livello dal label finché trova il bottone "IVA ON/OFF" della riga.
-    // Ritorna true = IVA attiva, false = IVA esclusa, null = non trovato.
-    const readIvaToggleNearLabel = (labelText) => {
-      const exp = normLbl(labelText);
-      if (!exp) return null;
-      for (const lbl of doc.querySelectorAll("label")) {
-        const t = normLbl(lbl.textContent);
-        if (t !== exp && !t.startsWith(exp + " ")) continue;
-        let node = lbl.parentElement;
-        for (let depth = 0; node && depth < 3; depth++, node = node.parentElement) {
-          const btn = Array.from(node.querySelectorAll("button"))
-            .find((b) => /\biva\s*(on|off)\b/i.test(b.textContent || ""));
-          if (btn) return !/off/i.test(btn.textContent || "");
-        }
-      }
-      return null;
-    };
-
-    // Flag IVA globali (non cambiano per proposta). null → default true (come React).
-    const materialsIva = readIvaToggleNearLabel("Materiali totali") ?? true;
-    const posaIva = readIvaToggleNearLabel("Posa") ?? true;
-    const shippingIva = readIvaToggleNearLabel("Costo spedizione") ?? true;
-
-    // Raccoglie i flag IVA delle voci con importo > 0 per derivare lo stato IVA
-    // complessivo del documento (tutto inclusa / tutto esclusa / mista) → dicitura
-    // dinamica nel PDF. I duplicati (stesso flag su più proposte) non alterano l'esito.
-    const ivaContribFlags = [];
-
-    const options = [];
-
-    for (let i = 0; i < Math.min(modelSelects.length, 3); i++) {
-      const sel = modelSelects[i];
-      if (!sel) continue;
-      const opt = sel.options?.[sel.selectedIndex];
-      if (!opt) continue;
-      const parsed = parseModelOptionLabel(opt.textContent || "");
-      if (!parsed.name || parsed.pricePerSqm <= 0) continue;
-      const discount = getScontoForIndex(i);
-      const grossPrice = parsed.pricePerSqm * sqm;
-      const discountedPrice = grossPrice * (1 - discount / 100);
-      const materialsBase = materialsTotalEffective || 0;
-      const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
-      const installationCost = isPosa ? (installPerSqm || 0) * sqm : 0;
-      const shipping = shippingCost || 0;
-      const netTotal = discountedPrice + materialsAfterDisc + installationCost + shipping;
-      // IVA per-componente (rispetta i toggle ON/OFF del generatore) invece di un
-      // ×1.22 unico: il prato ha il flag della SUA proposta, le altre voci i flag globali.
-      const optIva = readIvaToggleNearLabel(`Opzione ${i + 1}`) ?? true;
-      if (discountedPrice > 0) ivaContribFlags.push(optIva);
-      const grandTotal = applyComponentIva(discountedPrice, optIva)
-        + applyComponentIva(materialsAfterDisc, materialsIva)
-        + applyComponentIva(installationCost, posaIva)
-        + applyComponentIva(shipping, shippingIva);
-      const slug = slugifyModelName(parsed.name);
-      const catalogData = buildProductTechFromCatalog(parsed.name);
-      const heightMatch = parsed.name.match(/(\d+)\s*mm/i);
-      const fallbackCode = `${parsed.name.split(/\s+/)[0].substring(0, 3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
-      options.push({
-        slug,
-        name: parsed.name,
-        code: catalogData?.code || fallbackCode,
-        tagline: discount > 0 ? `Sconto ${discount}%` : "",
-        pricePerSqm: parsed.pricePerSqm,
-        discount,
-        materials: materialsAfterDisc,
-        installation: isPosa ? (installPerSqm || 0) : 0,
-        shippingLabel: shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita",
-        net: netTotal,
-        total: grandTotal,
-        finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
-        heylightInstallment: grandTotal > 0 ? grandTotal / 5 : 0,
-        tech: catalogData?.tech || defaultProductTech(parsed.name),
-        imageDataUrl: catalogData?.imageDataUrl || "",
-      });
-    }
-
-    // Applica modello custom (sostituisce un'opzione esistente o l'aggiunge se vuota)
-    const customModel = getCustomModelOverride();
-    if (customModel) {
-      const idx = customModel.target - 1;
-      const customDiscount = options[idx]?.discount || 0;
-      const grossPrice = customModel.pricePerSqm * sqm;
-      const discountedPrice = grossPrice * (1 - customDiscount / 100);
-      const materialsBase = materialsTotalEffective || 0;
-      const materialsAfterDisc = materialsBase * (1 - (materialsDiscountPct || 0) / 100);
-      const installationCost = isPosa ? (installPerSqm || 0) * sqm : 0;
-      const shipping = shippingCost || 0;
-      const netTotal = discountedPrice + materialsAfterDisc + installationCost + shipping;
-      // IVA per-componente: il modello custom eredita il flag IVA della proposta che sostituisce.
-      const customOptIva = readIvaToggleNearLabel(`Opzione ${idx + 1}`) ?? true;
-      if (discountedPrice > 0) ivaContribFlags.push(customOptIva);
-      const grandTotal = applyComponentIva(discountedPrice, customOptIva)
-        + applyComponentIva(materialsAfterDisc, materialsIva)
-        + applyComponentIva(installationCost, posaIva)
-        + applyComponentIva(shipping, shippingIva);
-      const customOption = {
-        slug: slugifyModelName(customModel.name),
-        name: customModel.name,
-        code: "—",
-        tagline: `Fuori catalogo${customDiscount > 0 ? ` · sconto ${customDiscount}%` : ""}`,
-        pricePerSqm: customModel.pricePerSqm,
-        discount: customDiscount,
-        materials: materialsAfterDisc,
-        installation: isPosa ? (installPerSqm || 0) : 0,
-        shippingLabel: shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita",
-        net: netTotal,
-        total: grandTotal,
-        finalSqmPrice: sqm > 0 ? (grandTotal / sqm) : 0,
-        heylightInstallment: grandTotal > 0 ? grandTotal / 5 : 0,
-        tech: defaultProductTech(customModel.name),
-        imageDataUrl: "",
-      };
-      if (options[idx]) {
-        options[idx] = { ...options[idx], ...customOption };
-      } else {
-        while (options.length < idx) options.push(null);
-        options[idx] = customOption;
-        options.splice(0, options.length, ...options.filter(Boolean));
-      }
-    }
-    if (!options.length) return null;
-
-    // Accessori (sezione 5) e lavori extra fanno parte del prezzo che paga il
-    // cliente, quindi vanno sommati al "Totale chiavi in mano" di OGNI opzione.
-    // CRUCIALE: replichiamo ESATTAMENTE applyIva() del generatore React
-    // (sales-suite, sorgente in ~/preventivi): ogni voce con applyIva !== false
-    // porta +IVA come il resto del documento ("Tutti i prezzi sono IVA inclusa").
-    //   React: gross = net * (applyIva ? 1.22 : 1);  grandGross = … + extrasGross
-    //          + extraWorksGross.
-    // Bug precedenti: (1) accessori sommati al NETTO → totale sottostimato del 22%
-    // (es. 4172,44 invece di 4251,62); (2) i lavori extra non venivano sommati
-    // affatto al totale (erano solo mostrati). Ora il PDF combacia col generatore.
-    // Ogni voce rispetta il proprio flag applyIva (default true) via applyComponentIva.
-    const accessoriesGross = accessories.reduce((sum, a) => {
-      const net = (Number(a.price || 0) * (1 - Number(a.discount || 0) / 100)) * Number(a.qty || 1);
-      if (net > 0) ivaContribFlags.push(a.applyIva !== false);
-      return sum + applyComponentIva(net, a.applyIva);
-    }, 0);
-    // Lavori extra (ke nel generatore): net = parseFloat(cost) come nel React.
-    const extraServicesGross = extraServices.reduce((sum, s) => {
-      const net = parseFloat(s.cost) || 0;
-      if (net > 0) ivaContribFlags.push(s.applyIva !== false);
-      return sum + applyComponentIva(net, s.applyIva);
-    }, 0);
-    const extrasGrandTotal = accessoriesGross + extraServicesGross;
-    if (extrasGrandTotal > 0) {
-      for (const o of options) {
-        o.total += extrasGrandTotal;
-        o.finalSqmPrice = sqm > 0 ? o.total / sqm : 0;
-        o.heylightInstallment = o.total > 0 ? o.total / 5 : 0;
-      }
-    }
-
-    // Voci globali (materiali/posa/spedizione) con importo > 0: un flag ciascuna.
-    const materialsNet = (materialsTotalEffective || 0) * (1 - (materialsDiscountPct || 0) / 100);
-    if (materialsNet > 0) ivaContribFlags.push(materialsIva);
-    if (isPosa && (installPerSqm || 0) * sqm > 0) ivaContribFlags.push(posaIva);
-    if ((shippingCost || 0) > 0) ivaContribFlags.push(shippingIva);
-
-    // Stato IVA complessivo per la dicitura dinamica nel PDF.
-    const ivaStatus = ivaContribFlags.length === 0
-      ? "inclusa"
-      : ivaContribFlags.every(Boolean)
-        ? "inclusa"
-        : ivaContribFlags.every((v) => !v)
-          ? "esclusa"
-          : "mista";
-
-    return {
-      quoteNumber: quoteNumber || "F-0000-00",
-      customer: {
-        name: [nome, cognome].filter(Boolean).join(" ").trim() || ragione || "—",
-        city: citta || "—",
-        phone: tel || "—",
-        email: email || "—",
-      },
-      validFrom: formatItalianDateShort(dataDal),
-      validTo: formatItalianDateShort(dataAl),
-      sqm,
-      mode,
-      vat,
-      // "inclusa" | "esclusa" | "mista" → dicitura IVA dinamica nel PDF (v2).
-      ivaStatus,
-      suggestedSlug: "",
-      options,
-      materials: {
-        desc: isPosa
-          ? (isPavimentazione ? customTexts.materialsDescPosaPavimentazione : customTexts.materialsDescPosa)
-          : customTexts.materialsDescFornitura,
-        discount: materialsDiscountPct || 0,
-        // det: testo grezzo "Telo: 100 mq × 1,50 €/mq; ..." (voci escluse rimosse)
-        det: materialsTextEffective,
-        // list: array [{name, qty}] parsato da det (per bullet-list nel PDF)
-        list: materialsTextEffective
-          ? materialsTextEffective.split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
-              const mm = item.match(/^([^:]+):\s*([^×x]+(?:[×x].+)?)/);
-              return mm ? { name: mm[1].trim(), qty: mm[2].trim() } : { name: item, qty: "" };
-            })
-          : [],
-        // accessories: prodotti extra / accessori aggiunti dall'utente nella sezione 5
-        accessories,
-        // extraServices: lavori extra (solo modalità posa)
-        extraServices,
-      },
-      heylight: { installments: 5, title: "Simulazione 5 rate HeyLight" },
-      branding: {
-        tagline: customTexts.brandTagline,
-        company: customTexts.brandCompany,
-        // Logo nell'header CENTRO del preventivo = logo della SQUADRA di posa
-        // (solo se l'utente loggato è "crew" con logo configurato nel proprio account).
-        // Per utenti office NON viene mostrato — il logo aziendale generico
-        // configurato in "Testi preventivo" non è destinato a questo spazio.
-        logoDataUrl: (() => {
-          const crewLogo = buildSalesGeneratorBrandingPayload().crewLogoDataUrl;
-          return String(crewLogo || "").trimStart().startsWith("data:image/") && crewLogo.length > 200
-            ? crewLogo
-            : "";
-        })(),
-      },
-      payment: {
-        main: customTexts.paymentMain,
-        heylight: customTexts.paymentHeyLight,
-      },
-      page2Footer: {
-        info: customTexts.footerInfo,
-        firmaAzienda: "Firma e timbro VERTEX SRLS",
-      },
-      certifications: PREVENTIVO_STATIC_DEFAULTS.certifications,
-      conditions: PREVENTIVO_STATIC_DEFAULTS.conditions,
-      installationWork: isPosa
-        ? (isPavimentazione ? PREVENTIVO_STATIC_DEFAULTS.installationWorkPavimentazione : PREVENTIVO_STATIC_DEFAULTS.installationWork)
-        : null,
-      // Logo partner/squadra dell'utente corrente (se crew o se ha brand caricato)
-      partner: (() => {
-        try {
-          const branding = buildSalesGeneratorBrandingPayload();
-          if (branding?.crewLogoDataUrl || branding?.crewName) {
-            return { logoDataUrl: branding.crewLogoDataUrl, name: branding.crewName };
-          }
-        } catch {}
-        return null;
-      })(),
-    };
-  } catch (err) {
-    console.warn("[preventivo-v2] estrazione dal generatore fallita:", err?.message);
-    return null;
-  }
-}
 
 function getIncludeP2() {
   const cb = document.getElementById("quote-include-p2");
@@ -29666,13 +28707,10 @@ function populatePreviewRecoSelect(options) {
 }
 
 function showPreventivoPreview() {
-  const reactIframe = document.getElementById("sales-generator-frame");
   const previewSection = document.getElementById("psi-preview-section");
   const previewIframe = document.getElementById("psi-preview-iframe");
   if (!previewSection || !previewIframe) return;
-  const payload = state.preventivoNativeFormMode
-    ? buildNativePreventivoPayload()
-    : extractGeneratorPayloadFromIframe();
+  const payload = buildNativePreventivoPayload();
   if (payload) {
     populatePreviewRecoSelect(payload.options || []);
     payload.suggestedSlug = previewSuggestedSlug || "";
@@ -29690,11 +28728,7 @@ function showPreventivoPreview() {
     } catch {}
   };
   previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=${APP_SHELL_VERSION}`;
-  if (reactIframe) {
-    reactIframe.style.setProperty("display", "none", "important");
-    reactIframe.setAttribute("data-psi-preview", "1");
-  }
-  // Nasconde anche l'editor (iframe o form nativa) mentre si mostra l'anteprima.
+  // Nasconde la form nativa mentre si mostra l'anteprima.
   const nativeFormEl = document.getElementById("sales-generator-native-form");
   if (nativeFormEl) nativeFormEl.style.setProperty("display", "none", "important");
   previewSection.hidden = false;
@@ -29706,16 +28740,12 @@ function showPreventivoPreview() {
 }
 
 function hidePreventivoPreview() {
-  const reactIframe = document.getElementById("sales-generator-frame");
   const previewSection = document.getElementById("psi-preview-section");
   const previewIframe = document.getElementById("psi-preview-iframe");
   const nativeFormEl = document.getElementById("sales-generator-native-form");
   if (previewIframe) previewIframe.src = "";
   if (previewSection) previewSection.hidden = true;
-  if (reactIframe) reactIframe.removeAttribute("data-psi-preview");
-  if (nativeFormEl) nativeFormEl.style.removeProperty("display");
-  // Ripristina la vista corretta (form nativa o iframe) — mai entrambe insieme.
-  setPreventivoNativeFormMode(state.preventivoNativeFormMode);
+  if (nativeFormEl) { nativeFormEl.style.removeProperty("display"); nativeFormEl.hidden = false; }
 }
 
 function initQuoteGenerator() {
@@ -29727,22 +28757,6 @@ function initQuoteGenerator() {
 // (PDF jsPDF). Quando v2 sarà pronto e stabile, basta rimettere a false.
 const PSI_PREVENTIVO_V2_DISABLED = false;
 
-function _interceptReactGenerateButton(doc) {
-  // Intercetta click su "Genera Preventivo →" di React → mostra il nostro template
-  if (PSI_PREVENTIVO_V2_DISABLED) return; // ripristina comportamento React originale
-  try {
-    if (!doc || doc._psiIntercepted) return;
-    doc._psiIntercepted = true;
-    doc.addEventListener("click", (e) => {
-      const btn = e.target.closest("button");
-      if (btn && /genera preventivo/i.test((btn.textContent || "").trim())) {
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        showPreventivoPreview();
-      }
-    }, true);
-  } catch {}
-}
 
 bindEvent(ui.preventivoTextsForm, "submit", savePreventivoTexts);
 bindEvent(ui.preventivoTextsResetButton, "click", resetPreventivoTexts);
@@ -29773,21 +28787,7 @@ document.addEventListener("change", (e) => {
   }
 });
 
-// Inietta CSS per nascondere "Modello libero" + intercetta "Genera Preventivo →" React
-const iframeEl = document.getElementById("sales-generator-frame");
-if (iframeEl) {
-  iframeEl.addEventListener("load", () => {
-    _iframeStyleInjected = false;
-    injectIframeHideStyles();
-    _interceptReactGenerateButton(iframeEl.contentDocument);
-  });
-  setTimeout(() => {
-    injectIframeHideStyles();
-    _interceptReactGenerateButton(iframeEl.contentDocument);
-  }, 1500);
-}
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
-bindEvent(ui.nfModeToggle, "click", () => setPreventivoNativeFormMode(!state.preventivoNativeFormMode));
 bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
   state.salesGeneratorFreeMode = false;
@@ -29797,17 +28797,6 @@ bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
   renderSalesGenerator();
 });
 bindEvent(ui.salesGeneratorFreeQuoteButton, "click", toggleSalesGeneratorFreeMode);
-bindEvent(ui.salesGeneratorFrame, "load", () => {
-  applySalesGeneratorFrameHeight(SALES_GENERATOR_FRAME_DEFAULT_HEIGHT);
-  pushSalesGeneratorBranding(true);
-  if (state.salesGeneratorPlannerMode) {
-    pushPlannerPrefillToGenerator(true);
-  } else if (state.salesGeneratorFreeMode) {
-    clearSalesRequestPrefillInGenerator({ keepFreeMode: true });
-  } else {
-    pushSalesRequestToGenerator(true);
-  }
-});
 bindEvent(ui.salesContentSearch, "input", (event) => {
   state.search.salesContent = event.target.value;
   state.salesContentPage = 1;

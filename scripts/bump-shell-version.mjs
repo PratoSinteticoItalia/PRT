@@ -9,8 +9,7 @@
  * Sostituisce TUTTE le occorrenze della versione corrente in:
  *   - app.js          (APP_SHELL_VERSION)
  *   - sw.js           (CACHE_NAME + APP_SHELL entries)
- *   - index.html      (preload, stylesheet, iframe, script app.js)
- *   - sales-suite/generator.html (generator-bridge.js)
+ *   - index.html      (preload, stylesheet, script app.js)
  *
  * Esegue poi `npm run check` per validare allineamento.
  *
@@ -31,7 +30,6 @@ const FILES_TO_BUMP = [
   "app.js",
   "sw.js",
   "index.html",
-  "sales-suite/generator.html",
 ];
 
 function todayStampRome() {

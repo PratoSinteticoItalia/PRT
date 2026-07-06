@@ -25,13 +25,11 @@ async function main() {
   const appJsPath = resolve(ROOT, "app.js");
   const indexPath = resolve(ROOT, "index.html");
   const swPath = resolve(ROOT, "sw.js");
-  const generatorHtmlPath = resolve(ROOT, "sales-suite/generator.html");
 
-  const [appJs, indexHtml, swJs, generatorHtml] = await Promise.all([
+  const [appJs, indexHtml, swJs] = await Promise.all([
     readText(appJsPath),
     readText(indexPath),
     readText(swPath),
-    readText(generatorHtmlPath),
   ]);
 
   const shellVersion = extractShellVersion(appJs);
@@ -83,18 +81,6 @@ async function main() {
   );
   assertMatches(
     swJs,
-    new RegExp(`/sales-suite/generator-bridge\\.js\\?v=${escapedVersion}`),
-    "sw.js missing versioned sales-suite/generator-bridge.js entry",
-    errors,
-  );
-  assertMatches(
-    swJs,
-    new RegExp(`/sales-suite/generator\\.html\\?embedded=1&v=${escapedVersion}&shell=${escapedVersion}`),
-    "sw.js missing versioned sales-suite/generator.html entry",
-    errors,
-  );
-  assertMatches(
-    swJs,
     new RegExp(`/vendor/signature_pad\\.umd\\.min\\.js\\?v=${escapedVersion}`),
     "sw.js missing versioned vendor/signature_pad.umd.min.js entry",
     errors,
@@ -105,16 +91,6 @@ async function main() {
     indexHtml,
     new RegExp(`vendor/signature_pad\\.umd\\.min\\.js\\?v=${escapedVersion}`),
     "index.html missing signature_pad shell version",
-    errors,
-  );
-
-  // --- sales-suite/generator.html ---
-  // Il bridge è codice "nostro" (non Vite) e deve seguire APP_SHELL_VERSION.
-  // Gli asset Vite (./assets/index-*.js|css) hanno hash nel nome → versioning indipendente, non controllato qui.
-  assertMatches(
-    generatorHtml,
-    new RegExp(`generator-bridge\\.js\\?v=${escapedVersion}`),
-    "sales-suite/generator.html missing generator-bridge.js shell version",
     errors,
   );
 
