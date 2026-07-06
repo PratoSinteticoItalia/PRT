@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260706-generatore-sezioni-fascia-colorata";
+} from "./lib/order-money.js?v=20260706-shell-macrosezioni-evidenziate-fix";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260706-generatore-sezioni-fascia-colorata";
+import { regionForCity } from "./lib/geo.js?v=20260706-shell-macrosezioni-evidenziate-fix";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260706-generatore-sezioni-fascia-colorata";
+} from "./lib/profit-split.js?v=20260706-shell-macrosezioni-evidenziate-fix";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260706-generatore-sezioni-fascia-colorata";
+} from "./lib/preventivo-pricing.js?v=20260706-shell-macrosezioni-evidenziate-fix";
 
-const APP_SHELL_VERSION = "20260706-generatore-sezioni-fascia-colorata";
+const APP_SHELL_VERSION = "20260706-shell-macrosezioni-evidenziate-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
