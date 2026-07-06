@@ -18383,23 +18383,30 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
 .native-form { padding: 4px 2px; counter-reset: nfsec; }
 .native-form .nf-section {
   border: 1px solid rgba(31,70,55,0.12); border-radius: 14px;
-  padding: 14px 16px 16px; margin: 0 0 10px; background: #fff;
-  box-shadow: 0 1px 2px rgba(31,70,55,0.04);
+  padding: 0 16px 16px; margin: 0 0 14px; background: #fff;
+  box-shadow: 0 1px 3px rgba(31,70,55,0.06);
+  overflow: hidden; /* la fascia intestazione rispetta gli angoli arrotondati */
 }
+/* Fascia intestazione colorata a tutta larghezza: separa nettamente le sezioni */
 .native-form .nf-section-head {
-  display: flex; align-items: center; gap: 9px; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 -16px 14px; padding: 11px 16px;
+  background: linear-gradient(90deg, rgba(45,106,79,0.16), rgba(45,106,79,0.05));
+  border-bottom: 1px solid rgba(45,106,79,0.22);
+  border-left: 3px solid var(--brand, #2d6a4f);
 }
 .native-form .nf-section-head::before {
   counter-increment: nfsec; content: counter(nfsec);
-  width: 22px; height: 22px; border-radius: 50%;
+  width: 23px; height: 23px; border-radius: 50%;
   background: var(--brand, #2d6a4f); color: #fff;
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 800; flex: 0 0 auto;
+  box-shadow: 0 1px 2px rgba(31,70,55,0.25);
 }
 .native-form .nf-legend-txt {
-  font-size: 13px; font-weight: 800; letter-spacing: 0.02em; color: #1f4637;
+  font-size: 13.5px; font-weight: 800; letter-spacing: 0.02em; color: #16352a; text-transform: uppercase;
 }
-.native-form .nf-legend-hint { font-size: 11px; color: #8a9990; font-weight: 600; }
+.native-form .nf-legend-hint { font-size: 11px; color: #6e8378; font-weight: 600; margin-left: auto; }
 .native-form .nf-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .native-form .nf-row + .nf-row { margin-top: 10px; }
 .native-form .field { flex: 1; min-width: 150px; margin: 0; display: flex; flex-direction: column; gap: 4px; }
