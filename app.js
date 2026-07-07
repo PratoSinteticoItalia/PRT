@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260707-shell-macroaree-piu-evidenti";
+} from "./lib/order-money.js?v=20260707-inventario-fix-delete-sticky";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260707-shell-macroaree-piu-evidenti";
+import { regionForCity } from "./lib/geo.js?v=20260707-inventario-fix-delete-sticky";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260707-shell-macroaree-piu-evidenti";
+} from "./lib/profit-split.js?v=20260707-inventario-fix-delete-sticky";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260707-shell-macroaree-piu-evidenti";
+} from "./lib/preventivo-pricing.js?v=20260707-inventario-fix-delete-sticky";
 
-const APP_SHELL_VERSION = "20260707-shell-macroaree-piu-evidenti";
+const APP_SHELL_VERSION = "20260707-inventario-fix-delete-sticky";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1326,6 +1326,27 @@ function _getSalesRequestsSorted() {
 const _salesRequestPatchVersions = {};
 const orderPendingPatchIds = new Set();
 const inventoryPendingOps = new Set();
+// Prodotti con la lista "pezzi singoli" espansa: persiste tra i re-render così la
+// sezione non si richiude ad ogni eliminazione. Popolato dall'evento toggle.
+const inventorySinglesOpen = new Set();
+// Pezzi appena eliminati (id → scadenza). Un reload in background (es. /api/session
+// o SSE) potrebbe ricaricare uno snapshot ancora con il pezzo → lo filtriamo per
+// qualche secondo così non "torna indietro". Vedi filterRecentlyDeletedInventory.
+const recentlyDeletedInventoryIds = new Map();
+const RECENT_DELETE_TTL_MS = 8000;
+function markInventoryDeleted(id) {
+  recentlyDeletedInventoryIds.set(String(id || ""), Date.now() + RECENT_DELETE_TTL_MS);
+}
+function unmarkInventoryDeleted(id) {
+  recentlyDeletedInventoryIds.delete(String(id || ""));
+}
+function filterRecentlyDeletedInventory(list) {
+  if (!Array.isArray(list)) return Array.isArray(list) ? list : [];
+  const now = Date.now();
+  for (const [id, exp] of recentlyDeletedInventoryIds) if (exp < now) recentlyDeletedInventoryIds.delete(id);
+  if (!recentlyDeletedInventoryIds.size) return list;
+  return list.filter((it) => !recentlyDeletedInventoryIds.has(String(it?.id || "")));
+}
 const inventoryAllocationPendingOrderIds = new Set();
 const inventoryAutoSuggestedOrderIds = new Set();
 const salesContentAttachmentDeleteInFlight = new Set();
@@ -14582,6 +14603,16 @@ function groupInventoryPiecesForDisplay(pieces = []) {
   };
 }
 
+// Ordine per cui un pezzo di magazzino è impegnato (da committedOrderId).
+// Ritorna { orderId, num, name } o null.
+function getPieceCommittedOrder(piece) {
+  const oid = piece && piece.committedOrderId ? String(piece.committedOrderId) : "";
+  if (!oid) return null;
+  const order = state.orders.find((o) => String(o.id) === oid);
+  const num = String((order ? getOrderNumber(order) : piece.committedOrderNumber) || "").replace(/^#/, "");
+  return { orderId: oid, num, name: order ? composeClientName(order) : "" };
+}
+
 function renderInventoryCard(group) {
   const totalPieces = group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso").length;
   const availablePieces = group.pieces.filter((item) => getInventoryPieceState(item) === "disponibile").length;
@@ -14699,18 +14730,26 @@ function renderInventoryCard(group) {
   const singlePieces = isMeasured
     ? group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso")
     : [];
+  const singlesOpen = inventorySinglesOpen.has(group.product);
   const singlesHtml = singlePieces.length
-    ? `<details class="inv-singles">
+    ? `<details class="inv-singles" data-inv-singles="${escapeHtml(group.product)}"${singlesOpen ? " open" : ""}>
         <summary>${state.lang === "it" ? `Mostra i ${totalPieces} pezzi singoli` : `Show ${totalPieces} single pieces`}</summary>
         <div class="inv-singles-list">
           ${singlePieces.map((item) => {
             const ps = getInventoryPieceState(item);
             const pt = getInventoryPieceType(item);
             const canDel = ps === "disponibile";
+            // Impegnato → chip cliccabile con l'ordine per cui è riservato il pezzo.
+            const committed = ps === "impegnato" ? getPieceCommittedOrder(item) : null;
+            const stateCell = committed
+              ? `<button type="button" class="inv-single-order" data-action="open-modal" data-id="${escapeHtml(committed.orderId)}" title="${state.lang === "it" ? "Apri ordine collegato" : "Open linked order"}">→ ${committed.num ? `#${escapeHtml(committed.num)}` : (state.lang === "it" ? "ordine" : "order")}${committed.name ? ` · ${escapeHtml(committed.name)}` : ""}</button>`
+              : ps === "impegnato"
+                ? `<span class="inv-single-state impegnato">${state.lang === "it" ? "Impegnato" : "Committed"}</span>`
+                : `<span class="inv-single-state disponibile">${state.lang === "it" ? "Disp." : "Avail."}</span>`;
             return `<div class="inv-single ${pt === "residuo" ? "res" : "roll"}">
               <span class="inv-ptype ${pt === "residuo" ? "res" : "roll"}">${pt === "residuo" ? (state.lang === "it" ? "Residuo" : "Offcut") : (state.lang === "it" ? "Rotolo" : "Roll")}</span>
               <span class="inv-single-dim">${formatPieceLabel(item)} · ${formatInventoryNumber(item.sqm)} mq</span>
-              <span class="inv-single-state ${ps}">${ps === "impegnato" ? `${state.lang === "it" ? "Imp." : "Comm."} ${item.committedOrderNumber || ""}` : state.lang === "it" ? "Disp." : "Avail."}</span>
+              ${stateCell}
               ${canDel ? `<button class="inv-single-del" type="button" data-action="delete-inventory-piece" data-id="${item.id}" title="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}" aria-label="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}">×</button>` : ""}
             </div>`;
           }).join("")}
@@ -16966,6 +17005,18 @@ document.addEventListener("visibilitychange", () => {
     renderInstallationsLive();
   }
 });
+
+// Ricorda quali "pezzi singoli" dell'inventario sono espansi (l'evento toggle non
+// fa bubbling → capture). Così la sezione resta aperta dopo un re-render (es. dopo
+// l'eliminazione di un pezzo).
+document.addEventListener("toggle", (ev) => {
+  const d = ev.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.classList.contains("inv-singles")) return;
+  const key = d.getAttribute("data-inv-singles") || "";
+  if (!key) return;
+  if (d.open) inventorySinglesOpen.add(key);
+  else inventorySinglesOpen.delete(key);
+}, true);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TRACKING CLIENTE — generazione manuale link pubblico (solo office, solo
@@ -20949,7 +21000,9 @@ function applySessionPayload(session = {}) {
   if (inventoryPendingOps.size && preserveEditingState) {
     // skip overwrite while inventory add/delete is in flight
   } else {
-    state.inventory = session.inventory || [];
+    // Filtra i pezzi appena eliminati: uno snapshot di sessione può essere ancora
+    // indietro e li farebbe "tornare indietro".
+    state.inventory = filterRecentlyDeletedInventory(session.inventory || []);
   }
   state.salesRequests = Array.isArray(session.salesRequests) ? session.salesRequests.map(normalizeSalesRequestRecord) : [];
   if (salesRequestPendingPatchIds.size) {
@@ -24132,7 +24185,7 @@ async function commitInventoryForOrder(orderId = "") {
         suggestions: Array.isArray(suggestion?.suggestions) ? suggestion.suggestions : undefined,
       }),
     });
-    if (Array.isArray(result.inventory)) state.inventory = result.inventory;
+    if (Array.isArray(result.inventory)) state.inventory = filterRecentlyDeletedInventory(result.inventory);
     state.inventorySuggestions = {};
     if (result.order) {
       state.orders = state.orders.map((item) => (item.id === result.order.id ? result.order : item));
@@ -24175,7 +24228,7 @@ async function releaseInventoryForOrder(orderId = "") {
       timeoutMs: 15_000,
       body: JSON.stringify({}),
     });
-    if (Array.isArray(result.inventory)) state.inventory = result.inventory;
+    if (Array.isArray(result.inventory)) state.inventory = filterRecentlyDeletedInventory(result.inventory);
     state.inventorySuggestions = {};
     if (result.order) {
       state.orders = state.orders.map((item) => (item.id === result.order.id ? result.order : item));
@@ -24204,7 +24257,7 @@ async function fulfillInventoryForOrder(orderId = "") {
       timeoutMs: 15_000,
       body: JSON.stringify({}),
     });
-    if (Array.isArray(result.inventory)) state.inventory = result.inventory;
+    if (Array.isArray(result.inventory)) state.inventory = filterRecentlyDeletedInventory(result.inventory);
     state.inventorySuggestions = {};
     if (result.order) {
       state.orders = state.orders.map((item) => (item.id === result.order.id ? result.order : item));
@@ -24236,7 +24289,7 @@ async function syncInventoryFulfillmentForOrder(order = null) {
     timeoutMs: 15_000,
     body: JSON.stringify({}),
   });
-  if (Array.isArray(result.inventory)) state.inventory = result.inventory;
+  if (Array.isArray(result.inventory)) state.inventory = filterRecentlyDeletedInventory(result.inventory);
   if (result.order) {
     state.orders = state.orders.map((item) => (item.id === result.order.id ? result.order : item));
     return result.order;
@@ -24257,16 +24310,23 @@ async function removeInventoryPieceById(itemId = "") {
   const normalizedId = String(itemId || "").trim();
   if (!normalizedId) return false;
   const previousInventory = [...state.inventory];
+  markInventoryDeleted(normalizedId); // evita che un reload lo faccia "tornare"
   state.inventory = state.inventory.filter((item) => String(item.id || "") !== normalizedId);
   scheduleRender("warehouse");
   const _invOpKey = `del-${normalizedId}`;
   inventoryPendingOps.add(_invOpKey);
   try {
     const nextInventory = await apiFetch(`/api/inventory/items/${encodeURIComponent(normalizedId)}`, { method: "DELETE" });
-    state.inventory = nextInventory;
+    // Filtra pezzi con delete pendente (× in rapida successione) + quelli appena
+    // eliminati (in caso lo snapshot server sia ancora indietro).
+    state.inventory = filterRecentlyDeletedInventory(
+      (Array.isArray(nextInventory) ? nextInventory : [])
+        .filter((it) => !inventoryPendingOps.has(`del-${String(it?.id || "")}`)),
+    );
     state.inventorySuggestions = {};
     scheduleRender("warehouse");
   } catch (error) {
+    unmarkInventoryDeleted(normalizedId); // fallito → il pezzo esiste ancora
     state.inventory = previousInventory;
     scheduleRender("warehouse");
     throw error;
