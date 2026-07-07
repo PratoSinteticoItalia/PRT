@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260707-inventario-fix-delete-sticky";
+} from "./lib/order-money.js?v=20260707-inventario-chip-ordine-allocato";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260707-inventario-fix-delete-sticky";
+import { regionForCity } from "./lib/geo.js?v=20260707-inventario-chip-ordine-allocato";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260707-inventario-fix-delete-sticky";
+} from "./lib/profit-split.js?v=20260707-inventario-chip-ordine-allocato";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260707-inventario-fix-delete-sticky";
+} from "./lib/preventivo-pricing.js?v=20260707-inventario-chip-ordine-allocato";
 
-const APP_SHELL_VERSION = "20260707-inventario-fix-delete-sticky";
+const APP_SHELL_VERSION = "20260707-inventario-chip-ordine-allocato";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14603,12 +14603,28 @@ function groupInventoryPiecesForDisplay(pieces = []) {
   };
 }
 
-// Ordine per cui un pezzo di magazzino è impegnato (da committedOrderId).
-// Ritorna { orderId, num, name } o null.
+// Ordine per cui un pezzo di magazzino è impegnato. Prima prova il link diretto
+// (committedOrderId sul pezzo), poi la RICERCA INVERSA: il pezzo non porta l'id
+// dell'ordine, ma l'ordine ha un'allocazione con sourcePieceId = piece.id (è così
+// che il server marca "impegnato"). Ritorna { orderId, num, name } o null.
 function getPieceCommittedOrder(piece) {
-  const oid = piece && piece.committedOrderId ? String(piece.committedOrderId) : "";
+  if (!piece) return null;
+  // Il pezzo può portare il link diretto in committedOrderId (blob) o
+  // allocatedToOrderId (SQL, colonna allocated_to_order_id).
+  const directId = String(piece.committedOrderId || piece.allocatedToOrderId || "");
+  let order = directId ? state.orders.find((o) => String(o.id) === directId) : null;
+  if (!order) {
+    const pid = String(piece.id || "");
+    if (pid) {
+      order = state.orders.find((o) =>
+        (o.operations?.warehouse?.inventoryAllocations || []).some(
+          (a) => String(a.sourcePieceId || a.pieceId || "") === pid && String(a.status || "") !== "evaso",
+        ),
+      ) || null;
+    }
+  }
+  const oid = order ? String(order.id) : directId;
   if (!oid) return null;
-  const order = state.orders.find((o) => String(o.id) === oid);
   const num = String((order ? getOrderNumber(order) : piece.committedOrderNumber) || "").replace(/^#/, "");
   return { orderId: oid, num, name: order ? composeClientName(order) : "" };
 }
