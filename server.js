@@ -5656,13 +5656,15 @@ function releaseInventoryCommitmentsForOrder(store = {}, order = {}) {
 
 function shouldFulfillInventoryForOrder(order = {}) {
   const warehouse = order.operations?.warehouse || {};
-  const status = String(warehouse.status || "").trim();
+  const installation = order.operations?.installation || {};
   const mode = String(warehouse.fulfillmentMode || "").trim();
   // Only trigger on explicit local signals — Shopify fulfillmentStatus alone
-  // must not auto-discharge inventory (it can be set automatically by webhooks)
+  // must not auto-discharge inventory (it can be set automatically by webhooks).
+  // La posa completata è un segnale di consumo materiale al pari di spedizione/ritiro.
   return Boolean(
     warehouse.shipped
     || (mode === "corriere" && warehouse.carrierPassed)
+    || String(installation.status || "").trim() === "completata"
   );
 }
 
