@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260708-sidebar-spedizioni-v2";
+} from "./lib/order-money.js?v=20260708-fix-badge-spedizioni-v3";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260708-sidebar-spedizioni-v2";
+import { regionForCity } from "./lib/geo.js?v=20260708-fix-badge-spedizioni-v3";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260708-sidebar-spedizioni-v2";
+} from "./lib/profit-split.js?v=20260708-fix-badge-spedizioni-v3";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260708-sidebar-spedizioni-v2";
+} from "./lib/preventivo-pricing.js?v=20260708-fix-badge-spedizioni-v3";
 
-const APP_SHELL_VERSION = "20260708-sidebar-spedizioni-v2";
+const APP_SHELL_VERSION = "20260708-fix-badge-spedizioni-v3";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9300,22 +9300,20 @@ function orderNeedsAccountingAction(order) {
   return getOpenBalance(order) > 0 || Boolean(order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
 }
 
+// Stessa idoneità ed esclusioni della vista Spedizioni (filterOrdersForView("shipping")
+// con filtro "Tutti") + stessa pipeline a 3 fasi (getShippingStageLane), così il badge
+// combacia sempre con "Da preparare" + "Pronti per uscita/ritiro" mostrati nella vista.
+// In precedenza questa funzione reimplementava la logica per conto suo (branch dedicato
+// per i box campione, mode ristretto a corriere/ritiro/furgone, stato finale limitato a
+// "ritirato") ed era finita fuori sincrono col resto, contando ordini diversi da quelli
+// visibili nella bacheca.
 function orderNeedsShippingAction(order) {
-  if (!order || isOrderFulfilledOrClosed(order)) return false;
+  if (!order || isOrderClosed(order)) return false;
   const warehouse = order.operations?.warehouse || {};
-  const mode = String(warehouse.fulfillmentMode || "").trim();
-  if (isSampleOrder(order)) {
-    return Boolean(
-      !hasSampleLdvAttachment(order)
-      || !String(warehouse.trackingNumber || "").trim()
-      || (!warehouse.shipped && !warehouse.shippedAt),
-    );
-  }
-  if (!["corriere", "ritiro", "furgone"].includes(mode)) return false;
-  if (getWarehousePreparedLines(order).length === 0) return true;
-  if (!warehouse.preparationDate || !warehouse.readyToShip) return true;
-  if (mode === "corriere") return !warehouse.carrierPassed;
-  return String(warehouse.status || "").trim() !== "ritirato";
+  const explicit = warehouse.selected === true;
+  if (!explicit && isOrderFulfilledOrClosed(order)) return false;
+  if (!isRoutedToWarehouse(order) && !isRoutedToInstallation(order)) return false;
+  return getShippingStageLane(order) !== "done";
 }
 
 function isSalesRequestNewContactUnassigned(item = {}) {
