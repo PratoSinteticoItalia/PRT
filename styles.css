@@ -945,6 +945,23 @@ body.mobile-safe-mode .sidebar-section-head .sidebar-section-label {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Dashboard: voce fuori dalle macroaree, in cima alla sidebar. */
+.sidebar-top {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.sidebar-top .nav-link {
+  padding: 10px 12px;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.sidebar-top .nav-link .nav-icon,
+.sidebar-top .nav-link .nav-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    SIDEBAR VERDE SCURO — stacco netto dal contenuto chiaro.
    Scoped su .sidebar (alta specificità) → vince sui temi base a variabili.

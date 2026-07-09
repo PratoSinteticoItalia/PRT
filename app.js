@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260707-inventario-chip-ordine-allocato";
+} from "./lib/order-money.js?v=20260708-sidebar-spedizioni-v2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260707-inventario-chip-ordine-allocato";
+import { regionForCity } from "./lib/geo.js?v=20260708-sidebar-spedizioni-v2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260707-inventario-chip-ordine-allocato";
+} from "./lib/profit-split.js?v=20260708-sidebar-spedizioni-v2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260707-inventario-chip-ordine-allocato";
+} from "./lib/preventivo-pricing.js?v=20260708-sidebar-spedizioni-v2";
 
-const APP_SHELL_VERSION = "20260707-inventario-chip-ordine-allocato";
+const APP_SHELL_VERSION = "20260708-sidebar-spedizioni-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -404,7 +404,7 @@ const translations = {
     communications: "Comunicazioni",
     accounting: "Contabilità",
     "profit-split": "Conti posa",
-    shipping: "Logistica",
+    shipping: "Spedizioni",
     ddt: "DDT",
     "reseller-report": "Report rivenditori",
     settings: "Impostazioni",
@@ -564,7 +564,7 @@ const translations = {
     estimatedCost: "Costo stimato",
     noRateConfigured: "Inserisci i noli del vettore nelle impostazioni per ottenere la stima.",
     pricingSettingsHint: "Configura il vettore e le fasce nolo nelle impostazioni.",
-    shipmentReadiness: "Lettura logistica",
+    shipmentReadiness: "Lettura spedizioni",
     ddtReady: "DDT pronto",
     fillPalletData: "Compila bancale e peso per la stima.",
     carrierConfigured: "Vettore configurato",
@@ -589,7 +589,7 @@ const translations = {
     stockFlowTitle: "Giacenze, residui e fabbisogni",
     warehouseGuideTitle: "Come caricare le giacenze iniziali",
     warehouseGuideCopy: "Seleziona un modello o un articolo, inserisci quanti pezzi fisici hai in magazzino e, per i prati, indica larghezza e lunghezza del rotolo o del residuo. Gli ordini Shopify scaleranno il fabbisogno aperto per aiutarti a capire cosa manca.",
-    shippingTitle: "Logistica, DDT e bancali",
+    shippingTitle: "Spedizioni, DDT e bancali",
     shippingSearch: "Cerca ordine, cliente, vettore o tipo spedizione",
     salesRequestsTitle: "Richieste Preventivo",
     salesRequestsSubtitle: "Gestisci richieste commerciali e prepara il passaggio verso il generatore.",
@@ -618,7 +618,6 @@ const translations = {
     mobileMenuTitle: "Menu operativo",
     operationsSection: "Operativo",
     salesSection: "Vendite",
-    logisticsSection: "Logistica & documenti",
     adminSection: "Amministrazione",
     teamSection: "Team",
     "sales-requests": "Richieste",
@@ -877,7 +876,6 @@ const translations = {
     mobileMenuTitle: "Operations menu",
     operationsSection: "Operations",
     salesSection: "Sales",
-    logisticsSection: "Logistics & documents",
     adminSection: "Administration",
     teamSection: "Team",
     "sales-requests": "Requests",
@@ -1401,6 +1399,7 @@ const ui = {
   sidebarBrandBlock: document.querySelector(".sidebar-brand-block"),
   userCard: document.querySelector(".user-card"),
   mainContent: document.querySelector(".main-content"),
+  sidebarTop: document.getElementById("sidebar-top"),
   sidebarSections: document.getElementById("sidebar-sections"),
   sidebarPinned: document.getElementById("sidebar-pinned"),
   navLinks: [],
@@ -1802,7 +1801,7 @@ function normalizeUserRole(role = "") {
     .trim();
   if (!compact) return "office";
   if (/(^|\s)(crew|squadra|team|posa|posatore|posatori|installer|installatori)(\s|$)/.test(compact)) return "crew";
-  if (/(^|\s)(warehouse|magazzino|inventory|logistica)(\s|$)/.test(compact)) return "warehouse";
+  if (/(^|\s)(warehouse|magazzino|inventory|logistica|spedizioni|spedizione)(\s|$)/.test(compact)) return "warehouse";
   if (/(^|\s)(office|ufficio|admin|amministrazione|commerciale)(\s|$)/.test(compact)) return "office";
   return "office";
 }
@@ -2365,17 +2364,14 @@ function computeMobileDrillHeader(module, itemId) {
     if (!order) {
       return { title: state.lang === "it" ? "Ordine" : "Order", subtitle: "" };
     }
-    const customerName = String(
-      order.customerName
-      || [order.customerFirstName, order.customerLastName].filter(Boolean).join(" ")
-      || order.customer?.name
-      || "",
-    ).trim();
-    const orderNumber = order.number || order.name || order.id || "";
-    const title = customerName
-      || (orderNumber ? `${state.lang === "it" ? "Ordine" : "Order"} ${orderNumber}` : (state.lang === "it" ? "Ordine" : "Order"));
+    const customerName = composeClientName(order);
+    const hasCustomerName = Boolean(customerName) && customerName !== customerPendingText();
+    const orderNumber = getOrderNumber(order);
+    const title = hasCustomerName
+      ? customerName
+      : `${state.lang === "it" ? "Ordine" : "Order"} ${orderNumber}`;
     const parts = [];
-    if (orderNumber && customerName) parts.push(String(orderNumber));
+    if (hasCustomerName) parts.push(orderNumber);
     if (order.city || order.customer?.city) parts.push(String(order.city || order.customer?.city));
     const sqmTotal = Number(order.sqmTotal || order.sqm || 0);
     if (sqmTotal > 0) parts.push(`${Math.round(sqmTotal)} mq`);
@@ -7939,7 +7935,7 @@ function isImageAttachment(item = {}) {
 
 function getAttachmentContextLabel(context = "") {
   if (context === "installation") return state.lang === "it" ? "Posa" : "Install";
-  if (context === "shipping") return state.lang === "it" ? "Logistica" : "Shipping";
+  if (context === "shipping") return state.lang === "it" ? "Spedizioni" : "Shipping";
   if (context === "sample-ldv") return state.lang === "it" ? "LDV" : "Waybill";
   if (context === "sales-content") return state.lang === "it" ? "Contenuti" : "Content";
   return state.lang === "it" ? "Ordine" : "Order";
@@ -9579,7 +9575,7 @@ function getInboxRouteLabel(order) {
   const installSelected = isRoutedToInstallation(order);
   const mode = String(order.operations?.warehouse?.fulfillmentMode || "").trim();
   if (installSelected) {
-    return state.lang === "it" ? "Ufficio -> Magazzino/Logistica -> Posa" : "Office -> Warehouse/Logistics -> Installation";
+    return state.lang === "it" ? "Ufficio -> Magazzino/Spedizioni -> Posa" : "Office -> Warehouse/Logistics -> Installation";
   }
   if (mode === "corriere") {
     return state.lang === "it" ? "Ufficio -> Magazzino -> Corriere" : "Office -> Warehouse -> Courier";
@@ -9598,7 +9594,7 @@ function getInboxRouteLabel(order) {
 
 function getInboxVisibilityLabel(order) {
   const targets = [];
-  if (isRoutedToWarehouse(order)) targets.push(state.lang === "it" ? "Logistica" : "Logistics");
+  if (isRoutedToWarehouse(order)) targets.push(state.lang === "it" ? "Spedizioni" : "Logistics");
   if (isRoutedToInstallation(order)) targets.push(state.lang === "it" ? "Posa" : "Installation");
   return targets.length ? targets.join(" + ") : (state.lang === "it" ? "Solo ufficio" : "Office only");
 }
@@ -9995,7 +9991,7 @@ function renderInboxFlowControls(order) {
       <div class="route-switch-grid">
         <button type="button" class="route-switch ${warehouseSelected ? "is-on" : ""}" data-order-flow-warehouse="${order.id}" data-on="${warehouseSelected ? "1" : "0"}" aria-pressed="${warehouseSelected ? "true" : "false"}">
           <span class="route-switch-row">
-            <span class="route-switch-label">${state.lang === "it" ? "In logistica" : "In logistics"}</span>
+            <span class="route-switch-label">${state.lang === "it" ? "In spedizione" : "In logistics"}</span>
             <span class="route-switch-toggle" aria-hidden="true"></span>
           </span>
           <small class="route-switch-copy">${state.lang === "it" ? "Da preparare / spedire in sede" : "Prepare / ship at HQ"}</small>
@@ -10384,7 +10380,7 @@ function renderOps() {
   setText("ops-stock-label", state.lang === "it" ? "Giacenza prato" : "Turf stock");
   setText("ops-installations-label", state.lang === "it" ? "Pose" : "Installs");
   setText("ops-accounting-label", state.lang === "it" ? "Da incassare" : "To collect");
-  setText("ops-shipping-label", state.lang === "it" ? "Logistica" : "Logistics");
+  setText("ops-shipping-label", state.lang === "it" ? "Spedizioni" : "Logistics");
   setText("ops-closed-label", state.lang === "it" ? "Chiusi" : "Closed");
 }
 
@@ -11983,7 +11979,7 @@ function renderOrders() {
       saveInboxOrderFlow(order.id).then(() => {
         const dest = isInstall
           ? (state.lang === "it" ? "Posa" : "Installation")
-          : (state.lang === "it" ? "Logistica" : "Logistics");
+          : (state.lang === "it" ? "Spedizioni" : "Logistics");
         if (on) {
           showToast(state.lang === "it" ? `✓ Ordine instradato a ${dest}` : `✓ Order routed to ${dest}`, "success", 2500);
         } else {
@@ -16130,7 +16126,7 @@ function renderInstallations() {
           { label: state.lang === "it" ? "Cliente" : "Customer", value: composeClientName(order), meta: composeAddress(order) || addressIncompleteText() },
           phoneCard,
           { label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
-          { label: state.lang === "it" ? "Gestione logistica" : "Logistics handling", value: getShippingModeLabel(order), meta: order.operations?.installation?.installDate ? `${formatDate(order.operations.installation.installDate)} · ${order.operations?.installation?.installTime || t("timePending")}` : t("installationDatePending") },
+          { label: state.lang === "it" ? "Gestione spedizione" : "Logistics handling", value: getShippingModeLabel(order), meta: order.operations?.installation?.installDate ? `${formatDate(order.operations.installation.installDate)} · ${order.operations?.installation?.installTime || t("timePending")}` : t("installationDatePending") },
         ];
     ui.installationDetailSummary.innerHTML = summaryCards.map(renderDetailBox).join("");
   }
@@ -17430,9 +17426,9 @@ const VIEW_ICONS = {
 // ═══════════════════════════════════════════════════════════════════════════
 const NAV_SECTIONS = [
   { id: "operational", labelKey: "operationsSection", defaultOpen: true, items: [
-    { view: "dashboard" },
     { view: "orders" },
     { view: "warehouse" },
+    { view: "shipping" },
     { view: "installations", group: ["installations-live", "installations-scheduled", "installations-repairs", "installations-completed"] },
   ] },
   { id: "sales", labelKey: "salesSection", defaultOpen: true, items: [
@@ -17442,12 +17438,9 @@ const NAV_SECTIONS = [
     { view: "marketing" },
     { view: "garden-planner" },
   ] },
-  { id: "logistics", labelKey: "logisticsSection", defaultOpen: false, items: [
-    { view: "shipping" },
-    { view: "ddt" },
-  ] },
   { id: "admin", labelKey: "adminSection", defaultOpen: false, items: [
     { view: "accounting" },
+    { view: "ddt" },
     { view: "profit-split" },
     { view: "reseller-report" },
   ] },
@@ -17457,6 +17450,8 @@ const NAV_SECTIONS = [
     { view: "timesheet-office" },
   ] },
 ];
+// Voce fuori dalle macroaree, ancorata in cima alla sidebar (vedi NAV_PINNED per l'analogo in fondo).
+const NAV_TOP = ["dashboard"];
 const NAV_PINNED = ["settings"];
 
 function navIconHtml(view) {
@@ -17490,6 +17485,9 @@ function renderSidebarSections() {
       + `<nav id="sidebar-${sec.id}-nav" class="nav sidebar-section-body">${items}</nav>`
       + `</section>`;
   }).join("");
+  if (ui.sidebarTop) {
+    ui.sidebarTop.innerHTML = NAV_TOP.map((v) => navLinkHtml(v, "nav-link-top")).join("");
+  }
   if (ui.sidebarPinned) {
     ui.sidebarPinned.innerHTML = NAV_PINNED.map((v) => navLinkHtml(v)).join("");
   }
@@ -19600,7 +19598,7 @@ function getShippingQueueGroupMeta(mode) {
 
 function getShippingNextAction(order) {
   if (isOrderFulfilledOrClosed(order)) {
-    return state.lang === "it" ? "Ordine completato: nessuna azione logistica aperta" : "Order completed: no open logistics action";
+    return state.lang === "it" ? "Ordine completato: nessuna azione di spedizione aperta" : "Order completed: no open logistics action";
   }
   if (isLogisticsOrderCompleted(order)) {
     return state.lang === "it" ? "Uscita completata: resta solo verifica finale" : "Dispatch completed: only final verification remains";
@@ -19615,7 +19613,7 @@ function getShippingNextAction(order) {
     if (!order.operations?.warehouse?.shipped && !order.operations?.warehouse?.shippedAt) {
       return state.lang === "it" ? "Conferma box spedito" : "Confirm sample box shipped";
     }
-    return state.lang === "it" ? "Verifica chiusura logistica" : "Verify logistics closure";
+    return state.lang === "it" ? "Verifica chiusura spedizione" : "Verify logistics closure";
   }
   if (getWarehousePreparedLines(order).length === 0) {
     return state.lang === "it" ? "Completa le righe da preparare" : "Complete the preparation lines";
@@ -19638,7 +19636,7 @@ function getShippingNextAction(order) {
   if (order.operations?.warehouse?.fulfillmentMode === "furgone" && String(order.operations?.warehouse?.status || "").trim() !== "ritirato") {
     return state.lang === "it" ? "Carica il furgone e marca uscita squadra" : "Load the van and mark crew departure";
   }
-  return state.lang === "it" ? "Verifica chiusura logistica" : "Verify logistics closure";
+  return state.lang === "it" ? "Verifica chiusura spedizione" : "Verify logistics closure";
 }
 
 // Pallino stadio per la riga Logistica (mappa il tone dello stage al colore).
@@ -20089,7 +20087,7 @@ function renderShipping() {
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
     if (ui.shippingMaterialPreview) renderShippingMaterialPreview(null);
     if (ui.shippingEstimate) ui.shippingEstimate.innerHTML = "";
-    if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato logistico." : "No shipping attachments."}</div>`;
+    if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato spedizione." : "No shipping attachments."}</div>`;
     clearStatus(ui.shippingStatus);
     clearStatus(ui.sampleStatus);
     renderSampleShippingDetail(null);
@@ -20105,7 +20103,7 @@ function renderShipping() {
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
     if (ui.shippingMaterialPreview) renderShippingMaterialPreview(null);
     if (ui.shippingEstimate) ui.shippingEstimate.innerHTML = "";
-    if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato logistico." : "No shipping attachments."}</div>`;
+    if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato spedizione." : "No shipping attachments."}</div>`;
     if (ui.ddtItemsPreview) renderDdtPreview(null);
     clearStatus(ui.shippingStatus);
     return;
@@ -21731,7 +21729,7 @@ function renderResellerReport() {
   const sections = [
     renderSection("Ufficio", "office", groupedByRole.office, "Nessun account ufficio attivo."),
     renderSection("Posatori", "crew", groupedByRole.crew, "Nessun posatore attivo."),
-    renderSection("Magazzino / Logistica", "warehouse", groupedByRole.warehouse, "Nessun account magazzino attivo."),
+    renderSection("Magazzino / Spedizioni", "warehouse", groupedByRole.warehouse, "Nessun account magazzino attivo."),
   ];
   if (groupedByRole.other.length) {
     sections.push(renderSection("Altri", "other", groupedByRole.other, ""));
@@ -24639,7 +24637,7 @@ async function saveShipping(event) {
       ui.shippingStatus,
       "error",
       state.lang === "it"
-        ? `Impossibile salvare la logistica. ${String(error.message || "").trim()}`
+        ? `Impossibile salvare la spedizione. ${String(error.message || "").trim()}`
         : `Unable to save logistics. ${String(error.message || "").trim()}`,
     );
     return;
@@ -25906,7 +25904,7 @@ async function handleAttachmentChange(event) {
       targetStatus,
       "success",
       resolvedTarget.type === "shipping"
-        ? (state.lang === "it" ? "Foto logistica caricata correttamente." : "Shipping photo uploaded successfully.")
+        ? (state.lang === "it" ? "Foto spedizione caricata correttamente." : "Shipping photo uploaded successfully.")
         : resolvedTarget.type === "sample-ldv"
           ? (state.lang === "it" ? "LDV caricata correttamente." : "Waybill uploaded successfully.")
         : resolvedTarget.type === "installation"
