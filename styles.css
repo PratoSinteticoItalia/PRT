@@ -10875,6 +10875,14 @@ button:active,
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     padding: 12px;
+    /* Bug noto WebKit/iOS Safari: gli elementi sticky/fixed a volte non vengono
+       ripitturati correttamente durante lo scroll, lasciando un "ghosting" del
+       contenuto sottostante visibile dietro l'header. Promuovere l'elemento su
+       un layer di compositing dedicato (GPU) elimina l'artefatto. */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
   }
 
   body.mobile-safe-mode .topbar-left {
@@ -12088,6 +12096,12 @@ body.mobile-filter-sheet-open {
   box-shadow: 0 2px 10px rgba(28, 66, 41, 0.22);
   min-height: var(--mobile-back-bar-h);
   box-sizing: border-box;
+  /* Vedi nota su .topbar: stesso workaround per il ghosting da ripittura
+     mancata di WebKit sugli elementi fixed durante lo scroll. */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .mobile-drill-back-btn {
@@ -12193,6 +12207,16 @@ body.mobile-filter-sheet-open {
   /* ORDERS — il dettaglio entra come DRAWER laterale da destra (scorrevole),
      invece di occupare tutta la pagina. Dietro resta la lista ordini, oscurata
      da uno scrim. Nasconde solo header/sync/search (non la lista). */
+  /* #orders (.view attivo) ha `contain: layout paint`, che lo rende containing
+     block dei figli position:fixed (stesso problema documentato più sotto per
+     Pose/Contabilità): senza questo override .order-detail-panel resta ancorato
+     al riquadro di #orders invece che al viewport, e il pannello — pur avendo
+     overflow-y:auto — riceve top/bottom relativi a un contenitore che può
+     essere più alto o corto dello schermo reale, risultando non scrollabile
+     o tagliato. Neutralizziamo il contain solo in drill-down mobile. */
+  body[data-drill-module="orders"] #orders {
+    contain: none;
+  }
   body[data-drill-module="orders"] #orders .page-header,
   body[data-drill-module="orders"] #orders > *:not(:has(.order-detail-panel)) {
     display: none !important;
@@ -12239,6 +12263,12 @@ body.mobile-filter-sheet-open {
   }
 
   /* WAREHOUSE — nascondi page-header + lista panel, mostra solo detail-panel */
+  /* Stesso problema di contain documentato sopra per #orders: .detail-panel
+     qui sotto è position:fixed, senza neutralizzare il contain di #warehouse
+     resterebbe ancorato al riquadro della view invece che al viewport. */
+  body[data-drill-module="warehouse"] #warehouse {
+    contain: none;
+  }
   body[data-drill-module="warehouse"] #warehouse .page-header,
   body[data-drill-module="warehouse"] #warehouse > *:not(:has(.detail-panel)) {
     display: none !important;
@@ -18744,7 +18774,7 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
 .wizard-shell { position: relative; z-index: 1; width: 100%; max-width: 760px; background: var(--surface-color, #fff); display: flex; flex-direction: column; max-height: 100vh; overflow: hidden; }
 @media (min-width: 768px) { .wizard-shell { margin: auto; max-height: 90vh; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.4); } }
 
-.wizard-head { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--border-color, #e5e5e5); background: var(--surface-color, #fff); position: sticky; top: 0; z-index: 2; }
+.wizard-head { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--border-color, #e5e5e5); background: var(--surface-color, #fff); position: sticky; top: 0; z-index: 2; transform: translateZ(0); -webkit-transform: translateZ(0); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 .wizard-back { width: 40px; height: 40px; min-width: 40px; border: none; background: rgba(0,0,0,.05); border-radius: 50%; font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .wizard-back:active { background: rgba(0,0,0,.12); }
 .wizard-title-group { flex: 1; min-width: 0; }
