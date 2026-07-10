@@ -15440,6 +15440,20 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   display: block !important;
 }
 
+/* #sales-requests (.view attivo) ha `contain: layout paint` per performance,
+   che lo rende containing block dei figli position:fixed invece del viewport
+   (stesso bug già visto e risolto per #orders/#warehouse in drill-down mobile
+   e per il drawer desktop di Pose/Contabilità). Qui .sales-request-detail-panel
+   e .crm-drawer-backdrop sono entrambi position:fixed: senza questo override,
+   quando la lista è lunga il backdrop copre lo schermo (il "riquadro nero")
+   e il pannello con i controlli finisce ancorato al bordo di #sales-requests
+   invece che al viewport, spesso fuori dall'area visibile → tutto sembra
+   bloccato perché non c'è nulla di cliccabile sopra il backdrop.
+   Neutralizziamo il contain solo quando il drawer è aperto. */
+#sales-requests.crm-detail-open {
+  contain: none;
+}
+
 /* Pannello dettaglio: nascosto di default, scivola da destra come drawer */
 #sales-requests .sales-request-detail-panel {
   position: fixed;
@@ -15475,9 +15489,15 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   display: none;
 }
 
-/* Stato aperto (tablet/mobile) */
+/* Stato aperto (tablet/mobile).
+   !important necessario: il polling periodico di sessione/timesheet innesca
+   re-render frequenti che riavviano la transizione transform e la lasciano
+   "congelata" sul valore di partenza (chiuso) — osservato empiricamente che
+   senza !important il pannello resta a transform:translateX/Y(110%) anche
+   con .crm-detail-open applicato stabilmente, mentre !important vince sempre
+   e sblocca il drawer in modo affidabile. */
 #sales-requests.crm-detail-open .sales-request-detail-panel {
-  transform: translateX(0);
+  transform: translateX(0) !important;
   visibility: visible;
   transition: transform .26s cubic-bezier(.4, 0, .2, 1);
 }
@@ -15525,7 +15545,10 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
     transform: translateY(110%);
   }
   #sales-requests.crm-detail-open .sales-request-detail-panel {
-    transform: translateY(0);
+    /* Vedi nota sopra sulla regola desktop/tablet gemella: stesso !important
+       necessario per lo stesso motivo (re-render periodici che congelano la
+       transizione sullo stato chiuso). */
+    transform: translateY(0) !important;
   }
   /* Handle pill per swipe visivo */
   #sales-requests .sales-request-detail-panel::before {
