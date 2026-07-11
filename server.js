@@ -10340,6 +10340,54 @@ async function advanceInstallationStatus(store, orderId, targetStatus, userEmail
   return true;
 }
 
+// Backfill/riconciliazione: allinea lo stato delle pose ai segnali di campo GIÀ
+// registrati (eventi cantiere + verbali) creati PRIMA dell'introduzione
+// dell'avanzamento automatico, che altrimenti resterebbero incastrati su
+// "Programmato". advanceInstallationStatus è idempotente (avanza-solo), quindi
+// rieseguire questo è sicuro. Gira una volta allo startup (PG-only).
+async function reconcileInstallationStatusesFromField() {
+  if (!USE_POSTGRES) return;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    if (!pool) return;
+    const target = new Map();
+    const bump = (orderId, status) => {
+      const id = String(orderId || "");
+      if (!id || !(status in INSTALLATION_STATUS_RANK)) return;
+      const prev = target.get(id);
+      if (prev == null || INSTALLATION_STATUS_RANK[status] > INSTALLATION_STATUS_RANK[prev]) target.set(id, status);
+    };
+    // Eventi cantiere: posa avviata/in corso → almeno "in-corso" (coerente con
+    // il trigger live che avanza su work_start).
+    const ev = await pool.query(
+      `SELECT DISTINCT order_id FROM job_events
+        WHERE event_type IN ('work_start','work_end','return') AND order_id IS NOT NULL`,
+    );
+    for (const r of ev.rows) bump(r.order_id, "in-corso");
+    // Verbali fine cantiere: bozza → in-corso; firmato/archiviato → completata.
+    const wr = await pool.query(
+      `SELECT order_id, status FROM work_completion_reports WHERE order_id IS NOT NULL`,
+    );
+    for (const r of wr.rows) {
+      const st = String(r.status || "").toLowerCase();
+      bump(r.order_id, (st === "signed" || st === "archived") ? "completata" : "in-corso");
+    }
+    if (!target.size) return;
+    const store = await readJson(STORE_PATH, {});
+    let advanced = 0;
+    for (const [orderId, wantStatus] of target) {
+      const ok = await advanceInstallationStatus(store, orderId, wantStatus, "reconcile-install");
+      if (ok) advanced++;
+    }
+    if (advanced > 0) {
+      console.log(`[reconcile-install] allineate ${advanced} pose ai segnali di campo (eventi cantiere/verbali)`);
+    }
+  } catch (err) {
+    console.warn("[reconcile-install] failed:", err?.message || err);
+  }
+}
+
 function verifyShopifyWebhook(rawBody, hmacHeader, secret) {
   if (!hmacHeader || !secret) return false;
   const digest = createHmac("sha256", secret).update(rawBody).digest("base64");
@@ -15638,6 +15686,11 @@ server.listen(PORT, HOST, () => {
         // ogni 30s. Handler registrati in Step 2 vicino agli use case.
         try { startOutboxProcessor(30_000); }
         catch (err) { console.warn("[outbox] start failed:", err?.message || err); }
+        // Backfill una-tantum: allinea le pose i cui segnali di campo (eventi
+        // cantiere / verbali) sono anteriori all'avanzamento automatico e sono
+        // quindi rimaste bloccate su "Programmato".
+        reconcileInstallationStatusesFromField()
+          .catch((err) => console.warn("[reconcile-install] startup run failed:", err?.message || err));
       })
       .catch((err) => console.error("[db] relational schema init failed", err));
     readJson(STORE_PATH, {}).catch((err) => console.error("[store-cache] warm-up failed", err));
