@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260711-mobile-overflow-v2";
+} from "./lib/order-money.js?v=20260711-comunicazioni-v1";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260711-mobile-overflow-v2";
+import { regionForCity } from "./lib/geo.js?v=20260711-comunicazioni-v1";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260711-mobile-overflow-v2";
+} from "./lib/profit-split.js?v=20260711-comunicazioni-v1";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260711-mobile-overflow-v2";
+} from "./lib/preventivo-pricing.js?v=20260711-comunicazioni-v1";
 
-const APP_SHELL_VERSION = "20260711-mobile-overflow-v2";
+const APP_SHELL_VERSION = "20260711-comunicazioni-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21808,6 +21808,26 @@ function formatCommunicationTime(value = "") {
   }).format(date);
 }
 
+// Orario compatto (solo ora:minuti) per la bolla — la data è nei separatori.
+function formatCommunicationClock(value = "") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+// Etichetta separatore data tra gruppi di messaggi di giorni diversi.
+function communicationDaySeparatorLabel(value = "") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const yday = new Date(now);
+  yday.setDate(yday.getDate() - 1);
+  if (date.toDateString() === now.toDateString()) return state.lang === "it" ? "Oggi" : "Today";
+  if (date.toDateString() === yday.toDateString()) return state.lang === "it" ? "Ieri" : "Yesterday";
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "long", ...(sameYear ? {} : { year: "numeric" }) }).format(date);
+}
+
 function formatThreadTime(value = "") {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -21911,8 +21931,20 @@ function renderCommunicationThreadListHtml(threads = state.communicationThreads 
 }
 
 function renderCommunicationMessagesHtml(messages = getCommunicationMessagesForSelectedThread(), participantById = getCommunicationParticipantMap()) {
-  return messages.map((message) => renderSingleCommunicationMessageHtml(message, participantById)).join("")
-    || `<div class="communications-empty">Scrivi il primo messaggio.</div>`;
+  if (!messages.length) {
+    return `<div class="communications-empty">${state.lang === "it" ? "Scrivi il primo messaggio." : "Write the first message."}</div>`;
+  }
+  // Inietta un separatore data quando cambia il giorno tra un messaggio e il precedente.
+  let lastDay = "";
+  return messages.map((message) => {
+    const day = new Date(message.createdAt).toDateString();
+    let sep = "";
+    if (day !== "Invalid Date" && day !== lastDay) {
+      lastDay = day;
+      sep = `<div class="communications-day-sep"><span>${escapeHtml(communicationDaySeparatorLabel(message.createdAt))}</span></div>`;
+    }
+    return sep + renderSingleCommunicationMessageHtml(message, participantById);
+  }).join("");
 }
 
 function renderCommunicationsChatBodyHtml() {
@@ -21920,27 +21952,36 @@ function renderCommunicationsChatBodyHtml() {
   const selectedOther = selectedThread?.otherUser || null;
   const messagesForSelectedThread = getCommunicationMessagesForSelectedThread();
   const participantById = getCommunicationParticipantMap();
+  const quickReplies = state.lang === "it"
+    ? ["In arrivo", "Fatto ✓", "Ricevuto", "Ti chiamo", "Ritardo 15 min"]
+    : ["On the way", "Done ✓", "Got it", "I'll call you", "15 min late"];
+  const otherLabel = communicationUserLabel(selectedOther || {});
   return selectedThread ? `
     <button type="button" class="communications-back-btn" data-action="communications-back">
-      ← ${state.lang === "it" ? "Chat" : "Back"}
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>${state.lang === "it" ? "Chat" : "Back"}
     </button>
     <div class="communications-chat-head">
-      <div>
-        <strong>${escapeHtml(communicationUserLabel(selectedOther || {}))}</strong>
+      <span class="communications-avatar communications-chat-avatar">${escapeHtml(getUserInitials(otherLabel))}</span>
+      <div class="communications-chat-head-copy">
+        <strong>${escapeHtml(otherLabel)}</strong>
         <span>${escapeHtml(communicationRoleLabel(selectedOther?.role || ""))}</span>
       </div>
     </div>
     <div class="communications-messages" id="communications-messages" data-signature="${escapeHtml(getCommunicationMessagesSignature(messagesForSelectedThread))}">
       ${renderCommunicationMessagesHtml(messagesForSelectedThread, participantById)}
     </div>
+    <div class="communications-quick-replies">
+      ${quickReplies.map((q) => `<button type="button" class="communications-quick-reply" data-action="communications-quick-reply" data-text="${escapeAttr(q)}">${escapeHtml(q)}</button>`).join("")}
+    </div>
     <form class="communications-composer" id="communications-message-form">
-      <textarea class="text-input" name="body" rows="2" maxlength="2000" placeholder="Scrivi un messaggio privato..."></textarea>
-      <button type="submit" class="primary-button small-button" data-action="communications-send-message">Invia</button>
+      <textarea class="text-input" name="body" rows="1" maxlength="2000" placeholder="${state.lang === "it" ? "Scrivi un messaggio" : "Write a message"}"></textarea>
+      <button type="submit" class="communications-send-btn" data-action="communications-send-message" aria-label="${state.lang === "it" ? "Invia" : "Send"}"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
     </form>
   ` : `
     <div class="communications-chat-placeholder">
-      <h3>Seleziona o apri una chat</h3>
-      <p>Le conversazioni sono private e visibili solo ai partecipanti.</p>
+      <span class="communications-placeholder-icon"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+      <h3>${state.lang === "it" ? "Seleziona una chat" : "Select a chat"}</h3>
+      <p>${state.lang === "it" ? "Le conversazioni sono private e visibili solo ai partecipanti." : "Conversations are private and visible only to participants."}</p>
     </div>
   `;
 }
@@ -22052,6 +22093,27 @@ function bindCommunicationsActions(container = document) {
   bindCommunicationsRefreshAction(container);
   bindCommunicationsMessageForm(container);
   bindCommunicationsBackAction(container);
+  bindCommunicationsQuickReplies();
+}
+
+// Risposte rapide: prefillano il composer col testo scelto. Delegato su
+// #communications-content (elemento stabile, non ricreato da renderCommunications)
+// così basta legarlo una volta sola, sopravvive ai re-render del contenuto.
+function bindCommunicationsQuickReplies() {
+  const host = document.getElementById("communications-content");
+  if (!host || host.dataset.quickBound === "true") return;
+  host.dataset.quickBound = "true";
+  host.addEventListener("click", (ev) => {
+    const btn = ev.target.closest?.("[data-action='communications-quick-reply']");
+    if (!btn) return;
+    ev.preventDefault();
+    const textarea = host.querySelector("#communications-message-form textarea[name='body']");
+    if (!textarea) return;
+    const text = btn.dataset.text || "";
+    textarea.value = textarea.value.trim() ? `${textarea.value.replace(/\s+$/, "")} ${text}` : text;
+    textarea.focus();
+    if (typeof autosizeTextarea === "function") autosizeTextarea(textarea);
+  });
 }
 
 function updateCommunicationThreadsDom() {
@@ -22069,15 +22131,27 @@ function updateCommunicationThreadsDom() {
 // Rende un singolo messaggio (estratto da renderCommunicationMessagesHtml per riuso
 // in append-only diff). DEVE produrre identico markup, altrimenti il diff si rompe.
 function renderSingleCommunicationMessageHtml(message, participantById) {
-  const author = participantById.get(String(message.authorId)) || {};
   const mine = String(message.authorId) === String(state.currentUser?.id || "");
-  const pendingLabel = message.pending ? (state.lang === "it" ? " · invio..." : " · sending...") : "";
+  // Chat 1-a-1: il nome è già nell'header, non lo ripetiamo in ogni bolla.
+  // Spunte di lettura solo sui MIEI messaggi: doppia (verde) se l'altro
+  // partecipante ha letto, singola se solo inviato.
+  let statusHtml = "";
+  if (mine) {
+    if (message.pending) {
+      statusHtml = `<span class="communications-tick" aria-label="${state.lang === "it" ? "In invio" : "Sending"}"><svg viewBox="0 0 16 12" width="15" height="11" aria-hidden="true"><circle cx="8" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="3 3"/></svg></span>`;
+    } else {
+      const otherId = String(getSelectedCommunicationThread()?.otherUser?.id || "");
+      const readByOther = otherId && Array.isArray(message.readBy) && message.readBy.map(String).includes(otherId);
+      statusHtml = readByOther
+        ? `<span class="communications-tick is-read" aria-label="${state.lang === "it" ? "Letto" : "Read"}"><svg viewBox="0 0 18 12" width="16" height="11" aria-hidden="true"><path d="M1 6.5 4 9.5 9.5 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 9.5 8 8.5M9.5 6 14.5 1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`
+        : `<span class="communications-tick" aria-label="${state.lang === "it" ? "Inviato" : "Sent"}"><svg viewBox="0 0 12 12" width="12" height="11" aria-hidden="true"><path d="M1 6.5 4 9.5 10.5 2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+    }
+  }
   return `
       <div class="communications-message ${mine ? "is-mine" : ""}${message.pending ? " is-pending" : ""}" data-msg-id="${escapeAttr(String(message.id || ""))}">
         <div class="communications-message-bubble">
-          <strong>${escapeHtml(mine ? "Tu" : communicationUserLabel(author))}</strong>
           <p>${escapeHtml(message.body)}</p>
-          <small>${escapeHtml(formatCommunicationTime(message.createdAt))}${pendingLabel}</small>
+          <span class="communications-message-meta"><span class="communications-message-time">${escapeHtml(formatCommunicationClock(message.createdAt))}</span>${statusHtml}</span>
         </div>
       </div>
     `;
