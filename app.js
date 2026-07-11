@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260711-comunicazioni-v3";
+} from "./lib/order-money.js?v=20260711-presenze-v1";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260711-comunicazioni-v3";
+import { regionForCity } from "./lib/geo.js?v=20260711-presenze-v1";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260711-comunicazioni-v3";
+} from "./lib/profit-split.js?v=20260711-presenze-v1";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260711-comunicazioni-v3";
+} from "./lib/preventivo-pricing.js?v=20260711-presenze-v1";
 
-const APP_SHELL_VERSION = "20260711-comunicazioni-v3";
+const APP_SHELL_VERSION = "20260711-presenze-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -19076,16 +19076,27 @@ async function renderTimesheetMe() {
 
 // ── View office "Presenze" ──────────────────────────────────────────────────
 
+// Intensità colore cella in base alle ore lavorate (stessa scala della heatmap
+// "Le mie presenze"): <4h, 4-6h, 6-8h, >=8h.
+function timesheetHourIntensity(minutes = 0) {
+  if (minutes >= 480) return 4;
+  if (minutes >= 360) return 3;
+  if (minutes >= 240) return 2;
+  if (minutes > 0) return 1;
+  return 0;
+}
+
 async function renderTimesheetOffice() {
   const root = document.getElementById("timesheet-office-content");
   if (!root) return;
   root.innerHTML = '<div class="ts-loading">Caricamento…</div>';
   try {
-    // Settimana corrente (lun→dom in TZ Europe/Rome)
+    // Settimana visualizzata: offset in settimane rispetto a quella corrente.
+    const weekOffset = Number(state.timesheetOfficeWeekOffset || 0);
     const now = new Date();
     const dow = (now.getDay() + 6) % 7; // L=0
     const monday = new Date(now);
-    monday.setDate(now.getDate() - dow);
+    monday.setDate(now.getDate() - dow + weekOffset * 7);
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     const fmt = (d) => d.toISOString().slice(0, 10);
@@ -19111,40 +19122,81 @@ async function renderTimesheetOffice() {
       return { date: fmt(d), label: new Intl.DateTimeFormat("it-IT", { weekday: "short", day: "numeric" }).format(d) };
     });
 
-    if (byUser.size === 0) {
-      root.innerHTML = `<div class="ts-empty-state">
-        <h2>Nessuna timbratura questa settimana</h2>
-        <p>Le presenze appariranno qui appena i dipendenti iniziano a timbrare.</p>
+    const isCurrentWeek = weekOffset === 0;
+    const todayStr = fmt(now);
+    const weekLabel = `${new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short" }).format(monday)} – ${new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", year: "numeric" }).format(sunday)}`;
+    const chevron = (dir) => `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="${dir === "left" ? "15 18 9 12 15 6" : "9 18 15 12 9 6"}"/></svg>`;
+    const toolbar = `
+      <div class="ts-office-bar">
+        <div class="ts-week-nav">
+          <button type="button" class="ts-week-btn" data-action="ts-week-prev" aria-label="Settimana precedente">${chevron("left")}</button>
+          <span class="ts-week-label">${escapeHtml(weekLabel)}</span>
+          <button type="button" class="ts-week-btn" data-action="ts-week-next" aria-label="Settimana successiva">${chevron("right")}</button>
+          ${!isCurrentWeek ? `<button type="button" class="ts-week-today" data-action="ts-week-today">Oggi</button>` : ""}
+        </div>
       </div>`;
-      return;
-    }
 
-    // Determina se geofence è attivo (almeno uno shift ha tag geo)
+    // Geofence attivo? (almeno uno shift con tag geo/network)
     const geofenceActive = shifts.some((s) => {
       const f = s.anomalyFlags || [];
       return f.includes("geo_verified_in") || f.includes("geo_off_site_in")
         || f.includes("geo_verified_out") || f.includes("geo_off_site_out")
-        || f.includes("in_office_in") || f.includes("off_network_in"); // legacy network
+        || f.includes("in_office_in") || f.includes("off_network_in");
     });
 
-    let html = `
-      <div class="ts-office-toolbar">
-        <strong>Settimana ${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short"}).format(monday)} - ${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short",year:"numeric"}).format(sunday)}</strong>
-      </div>
-      ${!geofenceActive ? `
+    // Riepilogo settimana
+    const teamMinutes = shifts.reduce((a, s) => a + (s.workedMinutes || 0), 0);
+    const anomalyCount = shifts.filter((s) => classifyTimesheetShift(s).offSite).length;
+    const totalUsers = (Array.isArray(state.users) ? state.users.filter((u) => u.role !== "office") : []).length || byUser.size;
+    const presentTodayCount = isCurrentWeek
+      ? new Set(shifts.filter((s) => s.shiftDate === todayStr && s.clockInAt).map((s) => s.userId)).size
+      : 0;
+    const summary = `
+      <div class="ts-summary-grid">
+        <div class="ts-summary-card">
+          <span class="ts-summary-label">Ore team</span>
+          <strong class="ts-summary-value">${escapeHtml(formatMinutesToHM(teamMinutes))}</strong>
+        </div>
+        <div class="ts-summary-card">
+          <span class="ts-summary-label">${isCurrentWeek ? "Presenti oggi" : "Dipendenti attivi"}</span>
+          <strong class="ts-summary-value">${isCurrentWeek ? `${presentTodayCount} <span class="ts-summary-sub">/ ${totalUsers}</span>` : String(byUser.size)}</strong>
+        </div>
+        <div class="ts-summary-card ${anomalyCount ? "is-warn" : ""}">
+          <span class="ts-summary-label">Anomalie</span>
+          <strong class="ts-summary-value">${anomalyCount}</strong>
+        </div>
+      </div>`;
+
+    const warnBanner = `
       <div class="ts-warn-banner">
         <strong>⚠️ Geofence non configurato.</strong>
         Le timbrature non vengono verificate per posizione "in sede".
         Configura le variabili <code>COMPANY_OFFICE_LAT</code>, <code>COMPANY_OFFICE_LNG</code> e
         <code>COMPANY_OFFICE_RADIUS_M</code> (default 200m) su Render con le coordinate del capannone
         per attivare il check automatico.
-      </div>` : ""}
+      </div>`;
+
+    if (byUser.size === 0) {
+      root.innerHTML = toolbar + summary + `<div class="ts-empty-state">
+        <h2>Nessuna timbratura ${isCurrentWeek ? "questa settimana" : "in questa settimana"}</h2>
+        <p>Le presenze appariranno qui appena i dipendenti iniziano a timbrare${!isCurrentWeek ? ", oppure torna alla settimana corrente." : "."}</p>
+      </div>`;
+      bindTimesheetOfficeNav(root, weekOffset);
+      return;
+    }
+
+    const okBadge = `<svg class="ts-hbadge ok" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
+    const warnBadge = `<svg class="ts-hbadge off" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><line x1="12" y1="10" x2="12" y2="14.5"/><line x1="12" y1="17.5" x2="12" y2="17.6"/></svg>`;
+
+    const dayTotals = weekDays.map((d) => shifts.filter((s) => s.shiftDate === d.date).reduce((a, s) => a + (s.workedMinutes || 0), 0));
+
+    let html = toolbar + summary + (geofenceActive ? "" : warnBanner) + `
       <div class="ts-office-table-wrap">
-        <table class="ts-office-table">
+        <table class="ts-office-table ts-office-table-v2">
           <thead>
             <tr>
               <th>Dipendente</th>
-              ${weekDays.map((d) => `<th>${escapeHtml(d.label)}</th>`).join("")}
+              ${weekDays.map((d) => `<th class="${d.date === todayStr ? "is-today" : ""}">${escapeHtml(d.label)}</th>`).join("")}
               <th>Totale</th>
             </tr>
           </thead>
@@ -19160,55 +19212,72 @@ async function renderTimesheetOffice() {
           <small>${escapeHtml(user.role || "")}</small>
         </td>`;
       for (const d of weekDays) {
+        const isToday = d.date === todayStr;
         const s = byDate.get(d.date);
-        if (!s) { html += '<td class="ts-cell empty">—</td>'; continue; }
-        const flags = s.anomalyFlags || [];
-        // Priorità: geo_* (nuovo) > network_* (legacy)
-        const geoOffIn = flags.includes("geo_off_site_in");
-        const geoOffOut = flags.includes("geo_off_site_out");
-        const geoOff = geoOffIn || geoOffOut;
-        const geoOkIn = flags.includes("geo_verified_in");
-        const geoOkOut = flags.includes("geo_verified_out");
-        const geoOk = geoOkIn || geoOkOut;
-        // Fallback legacy network (per shift vecchi precedenti alla migrazione)
-        const netOffIn = flags.includes("off_network_in");
-        const netOffOut = flags.includes("off_network_out");
-        const netOff = netOffIn || netOffOut;
-        const netOk = flags.includes("in_office_in") || flags.includes("in_office_out");
-        const offSite = geoOff || (!geoOk && netOff);
-        const verified = geoOk || (!geoOff && netOk);
-        // ✓ se verificata, ⚠️ se off-site, niente se non classificata
-        let networkBadge = "";
-        if (offSite) {
-          const where = geoOffIn && geoOffOut ? "in/out" : geoOffIn || netOffIn ? "entrata" : "uscita";
-          networkBadge = `<span class="ts-net-badge off" title="Off-site (${escapeAttr(where)})">⚠️</span>`;
-        } else if (verified && s.clockInAt) {
-          networkBadge = `<span class="ts-net-badge ok" title="Timbratura in sede (GPS verificato)">✓</span>`;
-        }
-        const displayValue = s.workedMinutes
-          ? formatMinutesToHM(s.workedMinutes)
-          : (s.clockInAt && !s.clockOutAt ? "in turno" : "—");
-        html += `<td class="ts-cell ${s.workedMinutes ? "worked" : ""} ${offSite ? "anomaly" : ""} ${s.clockInAt && !s.clockOutAt ? "open" : ""}">
-          <strong>${escapeHtml(displayValue)}</strong>
-          ${networkBadge}
-        </td>`;
+        if (!s) { html += `<td class="ts-hcell ${isToday ? "is-today" : ""}"><span class="ts-hcell-empty">—</span></td>`; continue; }
+        const { offSite, verified, open } = classifyTimesheetShift(s);
+        const intensity = timesheetHourIntensity(s.workedMinutes || 0);
+        const displayValue = s.workedMinutes ? formatMinutesToHM(s.workedMinutes) : (open ? "in turno" : "—");
+        const chipClass = open ? "is-open" : offSite ? "is-anomaly" : `i${intensity}`;
+        const badge = offSite ? warnBadge : (verified && s.clockInAt ? okBadge : "");
+        const title = offSite ? "Timbratura fuori sede" : (verified ? "Timbratura in sede (GPS verificato)" : "");
+        html += `<td class="ts-hcell ${isToday ? "is-today" : ""}"><span class="ts-hchip ${chipClass}" ${title ? `title="${escapeAttr(title)}"` : ""}>${escapeHtml(displayValue)}${badge}</span></td>`;
       }
-      html += `<td class="ts-cell total"><strong>${formatMinutesToHM(totalMinutes)}</strong></td>`;
+      html += `<td class="ts-hcell ts-hcell-total"><strong>${escapeHtml(formatMinutesToHM(totalMinutes))}</strong></td>`;
       html += `</tr>`;
     }
     html += `
           </tbody>
+          <tfoot>
+            <tr class="ts-office-foot">
+              <td>Totale giorno</td>
+              ${dayTotals.map((m, i) => `<td class="${weekDays[i].date === todayStr ? "is-today" : ""}">${m ? escapeHtml(formatMinutesToHM(m)) : `<span class="ts-hcell-empty">0</span>`}</td>`).join("")}
+              <td><strong>${escapeHtml(formatMinutesToHM(dayTotals.reduce((a, b) => a + b, 0)))}</strong></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
       <div class="ts-legend-row">
-        <span>✓ rete in sede</span>
-        <span>⚠️ off-network (clic per dettagli e rettifica)</span>
+        <span><span class="ts-legend-swatch i2"></span> meno ore</span>
+        <span><span class="ts-legend-swatch i4"></span> più ore</span>
+        <span>${warnBadge} fuori sede</span>
+        <span>${okBadge} in sede (GPS)</span>
       </div>
     `;
     root.innerHTML = html;
+    bindTimesheetOfficeNav(root, weekOffset);
   } catch (err) {
     root.innerHTML = `<div class="ts-empty-state error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
   }
+}
+
+// Classificazione anomalia/verifica di uno shift (geo_* nuovo, network_* legacy).
+function classifyTimesheetShift(s = {}) {
+  const f = s.anomalyFlags || [];
+  const geoOff = f.includes("geo_off_site_in") || f.includes("geo_off_site_out");
+  const geoOk = f.includes("geo_verified_in") || f.includes("geo_verified_out");
+  const netOff = f.includes("off_network_in") || f.includes("off_network_out");
+  const netOk = f.includes("in_office_in") || f.includes("in_office_out");
+  return {
+    offSite: geoOff || (!geoOk && netOff),
+    verified: geoOk || (!geoOff && netOk),
+    open: Boolean(s.clockInAt && !s.clockOutAt),
+  };
+}
+
+function bindTimesheetOfficeNav(root, weekOffset) {
+  root.querySelector('[data-action="ts-week-prev"]')?.addEventListener("click", () => {
+    state.timesheetOfficeWeekOffset = weekOffset - 1;
+    renderTimesheetOffice();
+  });
+  root.querySelector('[data-action="ts-week-next"]')?.addEventListener("click", () => {
+    state.timesheetOfficeWeekOffset = weekOffset + 1;
+    renderTimesheetOffice();
+  });
+  root.querySelector('[data-action="ts-week-today"]')?.addEventListener("click", () => {
+    state.timesheetOfficeWeekOffset = 0;
+    renderTimesheetOffice();
+  });
 }
 
 // Handler export CSV

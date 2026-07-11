@@ -19773,6 +19773,101 @@ body {
 
 /* Office: tabella settimanale */
 .ts-office-toolbar { margin-bottom: var(--space-4); font-size: 14px; }
+
+/* ── Presenze ufficio (redesign) ─────────────────────────────────────────── */
+.ts-office-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.ts-week-nav { display: flex; align-items: center; gap: 8px; }
+.ts-week-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.ts-week-btn:hover { background: var(--bg2, rgba(0,0,0,0.03)); }
+.ts-week-label { font-size: 15px; font-weight: 700; min-width: 168px; text-align: center; }
+.ts-week-today {
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand, #1f4636);
+  cursor: pointer;
+}
+.ts-week-today:hover { background: var(--brand-soft, rgba(238,247,239,0.9)); }
+.ts-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 620px) { .ts-summary-grid { grid-template-columns: 1fr; } }
+.ts-summary-card {
+  background: rgba(248, 250, 247, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 15px;
+}
+.ts-summary-card.is-warn {
+  background: #fff8eb;
+  border-color: #f5d8a0;
+}
+.ts-summary-label { display: block; font-size: 13px; color: var(--muted); }
+.ts-summary-value { display: block; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.ts-summary-card.is-warn .ts-summary-value { color: #b06f00; }
+.ts-summary-sub { font-size: 14px; font-weight: 600; color: var(--muted); }
+
+.ts-office-table-v2 { font-size: 12.5px; }
+.ts-office-table-v2 th, .ts-office-table-v2 td { padding: 9px 6px; text-align: center; }
+.ts-office-table-v2 th:first-child, .ts-office-table-v2 td:first-child { text-align: left; padding-left: 14px; }
+.ts-office-table-v2 th.is-today { color: var(--brand, #1f4636); }
+.ts-office-table-v2 .ts-hcell.is-today, .ts-office-table-v2 th.is-today, .ts-office-table-v2 tfoot td.is-today {
+  background: rgba(76, 118, 93, 0.05);
+}
+.ts-hchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 46px;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-weight: 700;
+  color: #173404;
+  white-space: nowrap;
+}
+.ts-hchip.i1 { background: #E6EFD8; }
+.ts-hchip.i2 { background: #C0DD97; }
+.ts-hchip.i3 { background: #97C459; }
+.ts-hchip.i4 { background: #639922; color: #fff; }
+.ts-hchip.is-anomaly { background: #fbe6c2; color: #8a5300; }
+.ts-hchip.is-open { background: #E6F1FB; color: #185FA5; }
+.ts-hcell-empty { color: var(--muted); }
+.ts-hcell-total strong { font-weight: 800; font-variant-numeric: tabular-nums; }
+.ts-hbadge.ok { color: #2f8f5b; }
+.ts-hbadge.off { color: #c07d10; }
+.ts-office-foot td { border-top: 2px solid var(--line); font-weight: 800; background: rgba(0,0,0,0.02); font-variant-numeric: tabular-nums; }
+.ts-legend-swatch { display: inline-block; width: 22px; height: 12px; border-radius: 3px; vertical-align: -1px; }
+.ts-legend-swatch.i2 { background: #C0DD97; }
+.ts-legend-swatch.i4 { background: #639922; }
+.ts-legend-row .ts-hbadge { vertical-align: -1px; }
+
 .ts-office-table-wrap {
   overflow-x: auto;
   background: #fff;
