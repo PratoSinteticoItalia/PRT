@@ -12121,9 +12121,18 @@ async function handleApi(req, res, url) {
       .toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "");
     const targets = new Set([norm(slug), norm(label)].filter(Boolean));
     if (!targets.size) return sendJson(res, 200, { photos: [] });
+    // Match tollerante base↔variante: l'ordine spesso porta il prodotto in forma
+    // estesa ("Abete 45mm Multidirezionale - 2m / 15m") mentre il portfolio è
+    // indicizzato sul prodotto BASE a catalogo ("Abete 45mm"). L'uguaglianza
+    // esatta mancava questi casi → foto assenti dal portfolio. Ora accettiamo
+    // anche quando il prodotto dell'ordine INIZIA con il prodotto base (guardia
+    // di lunghezza ≥4 per evitare falsi positivi su prefissi troppo corti).
+    const targetPrefixes = [...targets].filter((t) => t.length >= 4);
     const matchingOrders = (store.orders || []).filter((o) => {
       const prod = norm(o.operations?.product);
-      if (!prod || !targets.has(prod)) return false;
+      if (!prod) return false;
+      const matchesProduct = targets.has(prod) || targetPrefixes.some((t) => prod.startsWith(t));
+      if (!matchesProduct) return false;
       return String(o.operations?.installation?.status || "").trim() === "completata";
     });
     const photos = [];
