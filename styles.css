@@ -18648,6 +18648,13 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
   .nf-mat-check { flex: 1 1 100%; }
   .nf-mat-fields { margin-left: 0; width: 100%; justify-content: flex-end; flex-wrap: wrap; }
   .nf-mat-fields .nf-mat-total { min-width: 70px; }
+  /* I campi con segmented control (Tipologia / Superficie / Listino) prendono
+     tutta la riga e i due bottoni si dividono equamente lo spazio: altrimenti
+     a 375px un seg accanto al campo "Metri quadri" stretto sforava il viewport
+     (es. "Solo Fornitura | Fornitura + Posa" arrivava a ~412px). */
+  .native-form .field:has(.nf-seg) { flex: 1 0 100%; min-width: 0; }
+  .native-form .nf-seg { display: flex; width: 100%; }
+  .native-form .nf-seg button { flex: 1 1 0; min-width: 0; text-align: center; }
 }
 
 /* Opzione prodotto fuori catalogo */
@@ -22117,17 +22124,22 @@ body {
   /* Kanban Logistica su mobile: pattern a TAB (una corsia alla volta, a tutta
      larghezza) invece dello swipe orizzontale — più comodo col pollice. */
   .shp-lane-tabs {
-    display: flex; gap: 6px; margin-bottom: 12px;
-    background: #fff; border: 1px solid #ece8de; border-radius: 12px; padding: 5px;
+    /* gap/padding ridotti: la Bacheca pose ha 4 corsie (vs 3 della Logistica) e
+       a 375px 4 tab con gap 6 + padding 6 sforavano il viewport (~405px). */
+    display: flex; gap: 4px; margin-bottom: 12px;
+    background: #fff; border: 1px solid #ece8de; border-radius: 12px; padding: 4px;
   }
   .shp-lane-tab {
-    flex: 1; border: none; background: transparent; border-radius: 9px;
-    padding: 10px 6px; font: 700 12.5px/1 "DM Sans", sans-serif; color: #6b7d72;
+    /* flex:1 + min-width:0 permette ai 4 tab di comprimersi equamente per stare
+       nella riga; overflow:hidden evita che il testo nowrap sbordi dal bottone. */
+    flex: 1 1 0; min-width: 0; overflow: hidden;
+    border: none; background: transparent; border-radius: 9px;
+    padding: 9px 4px; font: 700 11.5px/1 "DM Sans", sans-serif; color: #6b7d72;
     cursor: pointer; display: flex; align-items: center; justify-content: center;
-    gap: 6px; min-height: 42px; white-space: nowrap;
+    gap: 4px; min-height: 42px; white-space: nowrap;
   }
   .shp-lane-tab.is-active { background: #1f4d3d; color: #fff; }
-  .shp-lane-tab-c { font-size: 11px; font-weight: 700; background: rgba(0,0,0,.08); padding: 1px 7px; border-radius: 999px; }
+  .shp-lane-tab-c { flex-shrink: 0; font-size: 11px; font-weight: 700; background: rgba(0,0,0,.08); padding: 1px 5px; border-radius: 999px; }
   .shp-lane-tab.is-active .shp-lane-tab-c { background: rgba(255,255,255,.22); }
   #shipping .shp-groups { display: block; grid-template-columns: none; overflow-x: visible; }
   #shipping .shp-groups > .shp-group { max-width: 100%; width: 100%; }
