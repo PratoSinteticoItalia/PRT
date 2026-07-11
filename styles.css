@@ -17321,11 +17321,102 @@ textarea.text-input {
 .communications-quick-reply:active { transform: scale(0.97); }
 .communications-composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 9px;
   padding-top: 6px;
 }
+.communications-attach-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(35, 49, 33, 0.12);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--text2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.communications-attach-btn:hover { background: var(--brand-soft, rgba(238,247,239,0.9)); color: #1f4636; }
+.communications-attach-btn:active { transform: scale(0.94); }
+/* Striscia allegati in coda all'invio */
+.communications-pending { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 2px; }
+.communications-pending:empty { display: none; }
+.communications-pending-item {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 10px;
+  border: 1px solid rgba(35, 49, 33, 0.12);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.communications-pending-item img { width: 100%; height: 100%; object-fit: cover; }
+.communications-pending-file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  color: var(--text2);
+  padding: 4px;
+  text-align: center;
+  line-height: 1.1;
+  overflow: hidden;
+}
+.communications-pending-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(15, 23, 30, 0.62);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Allegati dentro la bolla */
+.communications-message-bubble.has-only-attachments { padding: 5px; }
+.communications-att-grid {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 4px;
+  border-radius: 11px;
+  overflow: hidden;
+  max-width: 260px;
+}
+.communications-att-grid[data-count="1"] { grid-template-columns: 1fr; }
+.communications-att-grid:not([data-count="1"]) { grid-template-columns: 1fr 1fr; }
+.communications-att-img { display: block; }
+.communications-att-grid[data-count="1"] .communications-att-img img { max-height: 280px; width: 100%; object-fit: cover; }
+.communications-att-img img { display: block; width: 100%; height: 118px; object-fit: cover; }
+.communications-att-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text1);
+  text-decoration: none;
+  max-width: 260px;
+}
+.communications-message.is-mine .communications-att-file { background: rgba(255, 255, 255, 0.5); }
+.communications-att-file-ic { color: #4c765d; flex-shrink: 0; display: inline-flex; }
+.communications-att-file-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .communications-composer textarea {
   resize: none;
   min-height: 44px;

@@ -4292,12 +4292,19 @@ function normalizeCommunicationThread(thread = {}) {
 
 function normalizeCommunicationMessage(message = {}) {
   const body = String(message.body || "").trim();
-  if (!body) return null;
+  const id = String(message.id || randomUUID());
+  // Allegati già salvati (via storeAttachmentAsset). Ri-normalizzati per
+  // ricostruire l'url proxy. Un messaggio può essere di soli allegati (body vuoto).
+  const attachments = Array.isArray(message.attachments)
+    ? message.attachments.map((a) => normalizeAttachmentRecord(a, id, "communications")).filter(Boolean)
+    : [];
+  if (!body && !attachments.length) return null;
   return {
-    id: String(message.id || randomUUID()),
+    id,
     threadId: String(message.threadId || "").trim(),
     authorId: String(message.authorId || "").trim(),
     body: body.slice(0, 2000),
+    attachments,
     createdAt: String(message.createdAt || new Date().toISOString()),
     readBy: Array.isArray(message.readBy)
       ? Array.from(new Set(message.readBy.map((id) => String(id || "").trim()).filter(Boolean)))
@@ -8505,6 +8512,9 @@ function buildAttachmentProxyPath(ownerId, attachmentId, resource = "orders") {
   if (resource === "sales-content") {
     return `/api/sales/content-items/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
   }
+  if (resource === "communications") {
+    return `/api/communications/messages/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
+  }
   return `/api/orders/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
 }
 
@@ -11363,24 +11373,65 @@ async function handleApi(req, res, url) {
     if (!thread) return sendJson(res, 404, { error: "thread_not_found" });
     const body = await readBody(req);
     const text = String(body?.body || "").trim();
-    if (!text) return sendJson(res, 400, { error: "missing_message" });
+    const rawAttachments = Array.isArray(body?.attachments) ? body.attachments.slice(0, 10) : [];
+    if (!text && !rawAttachments.length) return sendJson(res, 400, { error: "missing_message" });
     store.communications = normalizeCommunicationsStore(store.communications || {});
     const nowIso = new Date().toISOString();
+    const messageId = randomUUID();
+    // Archivia gli allegati (foto/file) riusando la pipeline esistente
+    // (R2 in produzione, file/inline in locale). Cap 8MB per allegato.
+    const attachments = [];
+    for (const a of rawAttachments) {
+      const dataUrl = String(a?.dataUrl || "");
+      if (!dataUrl.startsWith("data:")) continue;
+      if (dataUrl.length > 8_500_000) continue;
+      try {
+        attachments.push(await storeAttachmentAsset(messageId, {
+          name: String(a?.name || "allegato").slice(0, 180),
+          type: String(a?.type || "").slice(0, 120),
+          dataUrl,
+          size: Number(a?.size || 0),
+        }, "communications"));
+      } catch (err) {
+        console.warn("[communications] attachment store failed:", err?.message || err);
+      }
+    }
     const message = {
-      id: randomUUID(),
+      id: messageId,
       threadId: thread.id,
       authorId: String(currentUser.id || ""),
       body: text.slice(0, 2000),
+      attachments,
       createdAt: nowIso,
       readBy: [String(currentUser.id || "")],
     };
     store.communications.messages.push(message);
     store.communications.messages = store.communications.messages.slice(-5000);
+    const preview = text ? text.slice(0, 160) : (attachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : "📎 Allegato");
     store.communications.threads = store.communications.threads.map((item) => item.id === thread.id
-      ? { ...item, updatedAt: nowIso, lastMessagePreview: message.body.slice(0, 160) }
+      ? { ...item, updatedAt: nowIso, lastMessagePreview: preview }
       : item);
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, message);
+  }
+
+  // GET /api/communications/messages/:msgId/attachments/:attId/file → stream allegato.
+  // Accesso solo ai partecipanti del thread del messaggio.
+  const msgAttMatch = url.pathname.match(/^\/api\/communications\/messages\/([^/]+)\/attachments\/([^/]+)\/file$/);
+  if (msgAttMatch && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const msgId = decodeURIComponent(msgAttMatch[1]);
+    const attId = decodeURIComponent(msgAttMatch[2]);
+    const comm = normalizeCommunicationsStore(store.communications || {});
+    const message = comm.messages.find((m) => m.id === msgId);
+    if (!message) return sendJson(res, 404, { error: "message_not_found" });
+    const thread = comm.threads.find((t) => t.id === message.threadId);
+    if (!thread || !thread.participantIds.includes(String(currentUser.id || ""))) {
+      return sendJson(res, 403, { error: "forbidden" });
+    }
+    const att = (message.attachments || []).find((a) => a.id === attId);
+    if (!att) return sendJson(res, 404, { error: "attachment_not_found" });
+    return streamAttachmentAsset(res, att, { cacheControl: "private, max-age=3600" });
   }
 
   const readMatch = url.pathname.match(/^\/api\/communications\/threads\/([^/]+)\/read$/);

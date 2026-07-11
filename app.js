@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260711-presenze-v1";
+} from "./lib/order-money.js?v=20260711-chat-allegati-v2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260711-presenze-v1";
+import { regionForCity } from "./lib/geo.js?v=20260711-chat-allegati-v2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260711-presenze-v1";
+} from "./lib/profit-split.js?v=20260711-chat-allegati-v2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260711-presenze-v1";
+} from "./lib/preventivo-pricing.js?v=20260711-chat-allegati-v2";
 
-const APP_SHELL_VERSION = "20260711-presenze-v1";
+const APP_SHELL_VERSION = "20260711-chat-allegati-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -22048,7 +22048,10 @@ function renderCommunicationsChatBodyHtml() {
     <div class="communications-quick-replies">
       ${quickReplies.map((q) => `<button type="button" class="communications-quick-reply" data-action="communications-quick-reply" data-text="${escapeAttr(q)}">${escapeHtml(q)}</button>`).join("")}
     </div>
+    <div class="communications-pending" id="communications-pending">${renderCommunicationsPendingAttachmentsHtml()}</div>
     <form class="communications-composer" id="communications-message-form">
+      <button type="button" class="communications-attach-btn" data-action="communications-attach" aria-label="${state.lang === "it" ? "Allega foto o file" : "Attach photo or file"}"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+      <input type="file" id="communications-file-input" accept="image/*,application/pdf" multiple hidden />
       <textarea class="text-input" name="body" rows="1" maxlength="2000" placeholder="${state.lang === "it" ? "Scrivi un messaggio" : "Write a message"}"></textarea>
       <button type="submit" class="communications-send-btn" data-action="communications-send-message" aria-label="${state.lang === "it" ? "Invia" : "Send"}"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
     </form>
@@ -22171,9 +22174,43 @@ function bindCommunicationsActions(container = document) {
   bindCommunicationsQuickReplies();
 }
 
-// Interazioni sidebar + risposte rapide. Delegato su #communications-content
-// (elemento stabile, non ricreato da renderCommunications) → legato una volta
-// sola, sopravvive ai re-render del contenuto.
+// ── Allegati in composer (foto/file) ────────────────────────────────────────
+function renderCommunicationsPendingAttachmentsHtml() {
+  const pend = state.communicationsPendingAttachments || [];
+  if (!pend.length) return "";
+  return pend.map((a, i) => `
+    <div class="communications-pending-item">
+      ${/^image\//i.test(a.type) ? `<img src="${escapeAttr(a.dataUrl)}" alt="" />` : `<span class="communications-pending-file"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${escapeHtml((a.name || "file").slice(0, 18))}</span>`}
+      <button type="button" class="communications-pending-remove" data-action="communications-remove-attachment" data-index="${i}" aria-label="${state.lang === "it" ? "Rimuovi" : "Remove"}">×</button>
+    </div>`).join("");
+}
+
+function updateCommunicationsPendingStrip() {
+  const strip = document.getElementById("communications-pending");
+  if (strip) strip.innerHTML = renderCommunicationsPendingAttachmentsHtml();
+}
+
+async function stageCommunicationAttachments(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  if (!Array.isArray(state.communicationsPendingAttachments)) state.communicationsPendingAttachments = [];
+  for (const file of files) {
+    if (state.communicationsPendingAttachments.length >= 10) break;
+    if (file.size > 8_000_000) {
+      showToast(state.lang === "it" ? `"${file.name}" supera 8MB e non è stato allegato.` : `"${file.name}" exceeds 8MB.`, "warning");
+      continue;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      state.communicationsPendingAttachments.push({ name: file.name, type: file.type || "application/octet-stream", size: file.size, dataUrl });
+    } catch { /* skip file non leggibile */ }
+  }
+  updateCommunicationsPendingStrip();
+}
+
+// Interazioni sidebar + risposte rapide + allegati. Delegato su
+// #communications-content (elemento stabile, non ricreato da
+// renderCommunications) → legato una volta sola, sopravvive ai re-render.
 function bindCommunicationsQuickReplies() {
   const host = document.getElementById("communications-content");
   if (!host || host.dataset.quickBound === "true") return;
@@ -22205,6 +22242,22 @@ function bindCommunicationsQuickReplies() {
       host.querySelectorAll("[data-action='communications-filter']").forEach((b) => {
         b.classList.toggle("is-active", b.dataset.filter === state.communicationsListFilter);
       });
+      return;
+    }
+    const attachBtn = ev.target.closest?.("[data-action='communications-attach']");
+    if (attachBtn) {
+      ev.preventDefault();
+      host.querySelector("#communications-file-input")?.click();
+      return;
+    }
+    const removeAtt = ev.target.closest?.("[data-action='communications-remove-attachment']");
+    if (removeAtt) {
+      ev.preventDefault();
+      const idx = Number(removeAtt.dataset.index);
+      if (Array.isArray(state.communicationsPendingAttachments) && idx >= 0) {
+        state.communicationsPendingAttachments.splice(idx, 1);
+        updateCommunicationsPendingStrip();
+      }
     }
   });
   host.addEventListener("input", (ev) => {
@@ -22212,6 +22265,11 @@ function bindCommunicationsQuickReplies() {
     if (!search) return;
     state.communicationsSearch = search.value || "";
     updateCommunicationThreadsDom();
+  });
+  host.addEventListener("change", (ev) => {
+    const fileInput = ev.target.closest?.("#communications-file-input");
+    if (!fileInput) return;
+    void stageCommunicationAttachments(fileInput.files).finally(() => { fileInput.value = ""; });
   });
 }
 
@@ -22248,10 +22306,27 @@ function renderSingleCommunicationMessageHtml(message, participantById) {
         : `<span class="communications-tick" aria-label="${state.lang === "it" ? "Inviato" : "Sent"}"><svg viewBox="0 0 12 12" width="12" height="11" aria-hidden="true"><path d="M1 6.5 4 9.5 10.5 2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
     }
   }
+  const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+  const images = attachments.filter((a) => /^image\//i.test(a.type || ""));
+  const files = attachments.filter((a) => !/^image\//i.test(a.type || ""));
+  let attachHtml = "";
+  if (images.length) {
+    attachHtml += `<div class="communications-att-grid" data-count="${images.length}">${images.map((a) => {
+      const src = escapeAttr(a.url || a.dataUrl || "");
+      return `<a class="communications-att-img" href="${src}" target="_blank" rel="noreferrer"><img src="${src}" alt="${escapeAttr(a.name || "")}" loading="lazy" decoding="async" /></a>`;
+    }).join("")}</div>`;
+  }
+  if (files.length) {
+    attachHtml += files.map((a) => {
+      const src = escapeAttr(a.url || a.dataUrl || "");
+      return `<a class="communications-att-file" href="${src}" target="_blank" rel="noreferrer"><span class="communications-att-file-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="communications-att-file-name">${escapeHtml(a.name || "file")}</span></a>`;
+    }).join("");
+  }
+  const bodyHtml = message.body ? `<p>${escapeHtml(message.body)}</p>` : "";
   return `
       <div class="communications-message ${mine ? "is-mine" : ""}${message.pending ? " is-pending" : ""}" data-msg-id="${escapeAttr(String(message.id || ""))}">
-        <div class="communications-message-bubble">
-          <p>${escapeHtml(message.body)}</p>
+        <div class="communications-message-bubble${attachHtml && !message.body ? " has-only-attachments" : ""}">
+          ${attachHtml}${bodyHtml}
           <span class="communications-message-meta"><span class="communications-message-time">${escapeHtml(formatCommunicationClock(message.createdAt))}</span>${statusHtml}</span>
         </div>
       </div>
@@ -22464,8 +22539,9 @@ async function sendCommunicationMessage(form) {
   if (!form) return;
   const body = String(new FormData(form).get("body") || "").trim();
   const threadId = String(state.selectedCommunicationThreadId || "").trim();
-  if (!body || !threadId) {
-    showToast(!threadId ? "Seleziona una chat prima di inviare." : "Scrivi un messaggio prima di inviare.", "warning");
+  const pending = Array.isArray(state.communicationsPendingAttachments) ? state.communicationsPendingAttachments.slice() : [];
+  if ((!body && !pending.length) || !threadId) {
+    showToast(!threadId ? "Seleziona una chat prima di inviare." : "Scrivi un messaggio o allega un file.", "warning");
     return;
   }
   const button = form.querySelector("button[type='submit']");
@@ -22473,44 +22549,53 @@ async function sendCommunicationMessage(form) {
   if (button) button.disabled = true;
   const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const nowIso = new Date().toISOString();
+  // Anteprima ottimistica: usa i dataUrl locali finché il server non risponde.
+  const optimisticAttachments = pending.map((a, i) => ({ id: `local-att-${i}`, name: a.name, type: a.type, url: a.dataUrl, dataUrl: a.dataUrl }));
   const optimisticMessage = {
     id: optimisticId,
     threadId,
     authorId: String(state.currentUser?.id || ""),
     body,
+    attachments: optimisticAttachments,
     createdAt: nowIso,
     readBy: [String(state.currentUser?.id || "")].filter(Boolean),
     pending: true,
   };
+  const previewText = body || (optimisticAttachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : "📎 Allegato");
   state.loadedCommunicationThreadId = threadId;
   state.communicationMessages = sortCommunicationMessages([
     ...(state.communicationMessages || []).filter((item) => item.id !== optimisticId),
     optimisticMessage,
   ]);
   state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === threadId
-    ? { ...thread, lastMessagePreview: body, updatedAt: nowIso, unreadCount: 0 }
+    ? { ...thread, lastMessagePreview: previewText, updatedAt: nowIso, unreadCount: 0 }
     : thread);
+  state.communicationsPendingAttachments = [];
   form.reset();
+  updateCommunicationsPendingStrip();
   refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: true });
   try {
     const message = await apiFetch(`/api/communications/threads/${encodeURIComponent(threadId)}/messages`, {
       method: "POST",
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, attachments: pending.map((a) => ({ name: a.name, type: a.type, size: a.size, dataUrl: a.dataUrl })) }),
     });
     if (message?.id) {
       state.communicationMessages = sortCommunicationMessages([
         ...(state.communicationMessages || []).filter((item) => item.id !== optimisticId && item.id !== message.id),
         message,
       ]);
+      const serverPreview = message.body || ((message.attachments || []).some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : (message.attachments || []).length ? "📎 Allegato" : "");
       state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === threadId
-        ? { ...thread, lastMessagePreview: message.body, updatedAt: message.createdAt, unreadCount: 0 }
+        ? { ...thread, lastMessagePreview: serverPreview, updatedAt: message.createdAt, unreadCount: 0 }
         : thread);
       if (state.currentView === "communications") refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: true });
     }
   } catch (error) {
     state.communicationMessages = (state.communicationMessages || []).filter((item) => item.id !== optimisticId);
     if (textarea && !String(textarea.value || "").trim()) textarea.value = body;
-    if (state.currentView === "communications") refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: true });
+    // Ripristina gli allegati staged così l'utente può riprovare senza riselezionarli.
+    if (pending.length) { state.communicationsPendingAttachments = pending; }
+    if (state.currentView === "communications") { refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: true }); updateCommunicationsPendingStrip(); }
     const reason = error?.payload?.error || error?.message || "";
     showToast(reason === "thread_not_found" ? "Chat non trovata. Riapri la conversazione." : reason === "unauthorized" ? "Sessione scaduta. Effettua di nuovo l'accesso." : "Messaggio non inviato. Riprova.", "warning");
   } finally {
