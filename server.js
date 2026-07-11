@@ -10289,6 +10289,57 @@ function upsertOrderRecord(store, order) {
   return { order: created, job: null };
 }
 
+// Avanzamento automatico dello stato posa in base ai segnali di campo (eventi
+// cantiere del posatore, creazione/firma del verbale). Fa AVANZARE lo stato ma
+// non lo fa mai REGREDIRE, e non scavalca mai uno stato manuale "problema".
+// Motivazione: prima gli eventi cantiere (work_start) e i verbali vivevano in
+// tabelle separate e non toccavano operations.installation.status, da cui dipende
+// la corsia della Bacheca pose → un cantiere con posatore arrivato / verbale
+// generato restava incastrato in "Programmato".
+const INSTALLATION_STATUS_RANK = {
+  "": 0,
+  "da-pianificare": 0,
+  programmata: 1,
+  "in-corso": 2,
+  completata: 3,
+};
+
+async function advanceInstallationStatus(store, orderId, targetStatus, userEmail = null) {
+  if (!store || !orderId) return false;
+  if (!(targetStatus in INSTALLATION_STATUS_RANK)) return false;
+  const idx = (store.orders || []).findIndex((o) => o.id === orderId);
+  if (idx < 0) return false;
+  const order = store.orders[idx];
+  const install = order.operations?.installation || {};
+  const current = String(install.status || "").trim();
+  // "problema" è uno stato manuale fuori-sequenza: non lo tocchiamo mai in automatico.
+  if (current === "problema") return false;
+  const currentRank = current in INSTALLATION_STATUS_RANK ? INSTALLATION_STATUS_RANK[current] : 0;
+  if (INSTALLATION_STATUS_RANK[targetStatus] <= currentRank) return false;
+  store.orders[idx] = {
+    ...order,
+    operations: {
+      ...order.operations,
+      installation: {
+        ...install,
+        status: targetStatus,
+      },
+    },
+  };
+  // Stesso pattern del POST /operations: scrivi in PG, invalida la cache, poi
+  // scrivi il blob store (che emette il broadcast NOTIFY ai client → la Bacheca
+  // pose dell'ufficio si aggiorna da sola).
+  upsertOrderToDb(store.orders[idx], userEmail)
+    .catch(() => {})
+    .finally(() => {
+      invalidateOrdersDbCache();
+      writeJson(STORE_PATH, store).catch((err) => {
+        console.error("[installation-status] persist failed:", err?.message || err);
+      });
+    });
+  return true;
+}
+
 function verifyShopifyWebhook(rawBody, hmacHeader, secret) {
   if (!hmacHeader || !secret) return false;
   const digest = createHmac("sha256", secret).update(rawBody).digest("base64");
@@ -11752,6 +11803,12 @@ async function handleApi(req, res, url) {
       writeAuditLog("job_event", String(event.id), "create", {
         orderId, eventType: event.eventType, hasGps: event.lat != null,
       }, currentUser.email || null).catch(() => {});
+      // Il posatore che marca "Inizio posa" (work_start) fa avanzare la posa a
+      // "in-corso" → così la Bacheca pose la sposta da Programmate a In corso
+      // senza intervento manuale dell'ufficio.
+      if (event.eventType === "work_start") {
+        advanceInstallationStatus(store, orderId, "in-corso", currentUser.email || null).catch(() => {});
+      }
       return sendJson(res, 201, event);
     } catch (err) {
       console.error("[job-events] create failed:", err?.message || err);
@@ -11992,6 +12049,12 @@ async function handleApi(req, res, url) {
       }, { rethrow: true });
       if (!created) return sendJson(res, 500, { error: "create_failed" });
       writeAuditLog("work_report", created.id, "create", { orderId: created.orderId, crewName: created.crewName }, currentUser.email || null).catch(() => {});
+      // Creare il verbale (anche solo in bozza) significa che il cantiere è in
+      // lavorazione: fai avanzare la posa a "in-corso" se era ancora indietro,
+      // così un ordine con verbale generato non resta bloccato in "Programmato".
+      if (created.orderId) {
+        advanceInstallationStatus(store, created.orderId, "in-corso", currentUser.email || null).catch(() => {});
+      }
       return sendJson(res, 201, created);
     } catch (err) {
       console.error("[work-reports] create failed:", err?.message || err);
@@ -12249,6 +12312,12 @@ async function handleApi(req, res, url) {
       }, { rethrow: true });
       if (!signed) return sendJson(res, 500, { error: "sign_failed" });
       writeAuditLog("work_report", id, "sign", { customer: !!customerAtt.objectKey, crew: !!crewAtt.objectKey }, currentUser.email || null).catch(() => {});
+      // Verbale firmato dal cliente = lavoro concluso e documentato: chiude la
+      // posa a "completata" automaticamente. Rimuove la frizione del dover poi
+      // cliccare manualmente "terminato" nel dettaglio (segnalata dall'utente).
+      if (signed.orderId) {
+        advanceInstallationStatus(store, signed.orderId, "completata", currentUser.email || null).catch(() => {});
+      }
       // Enqueue PDF generation in background. Handler registrato in Step 5.
       // Se non c'è ancora handler, finirà in dead → visibile da /api/diagnostic/outbox.
       await enqueueOutboxJob("generate_work_report_pdf", { workReportId: id });
