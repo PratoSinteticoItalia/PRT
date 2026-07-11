@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260711-comunicazioni-v1";
+} from "./lib/order-money.js?v=20260711-comunicazioni-v3";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260711-comunicazioni-v1";
+import { regionForCity } from "./lib/geo.js?v=20260711-comunicazioni-v3";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260711-comunicazioni-v1";
+} from "./lib/profit-split.js?v=20260711-comunicazioni-v3";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260711-comunicazioni-v1";
+} from "./lib/preventivo-pricing.js?v=20260711-comunicazioni-v3";
 
-const APP_SHELL_VERSION = "20260711-comunicazioni-v1";
+const APP_SHELL_VERSION = "20260711-comunicazioni-v3";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21927,7 +21927,13 @@ function renderCommunicationThreadListHtml(threads = state.communicationThreads 
         ${thread.updatedAt ? `<span class="communications-thread-time">${escapeHtml(formatThreadTime(thread.updatedAt))}</span>` : ""}
       </span>
     </button>
-  `).join("") : `<div class="communications-empty">Nessuna chat privata. Aprine una scegliendo un account autorizzato.</div>`;
+  `).join("") : (() => {
+    const it = state.lang === "it";
+    const hasAny = (state.communicationThreads || []).length > 0;
+    const filtering = Boolean(String(state.communicationsSearch || "").trim()) || (state.communicationsListFilter || "all") !== "all";
+    if (hasAny && filtering) return `<div class="communications-empty">${it ? "Nessuna chat trovata." : "No chat found."}</div>`;
+    return `<div class="communications-empty">${it ? "Nessuna chat. Tocca “Nuova” per aprirne una." : "No chats yet. Tap “New” to start one."}</div>`;
+  })();
 }
 
 function renderCommunicationMessagesHtml(messages = getCommunicationMessagesForSelectedThread(), participantById = getCommunicationParticipantMap()) {
@@ -22096,23 +22102,47 @@ function bindCommunicationsActions(container = document) {
   bindCommunicationsQuickReplies();
 }
 
-// Risposte rapide: prefillano il composer col testo scelto. Delegato su
-// #communications-content (elemento stabile, non ricreato da renderCommunications)
-// così basta legarlo una volta sola, sopravvive ai re-render del contenuto.
+// Interazioni sidebar + risposte rapide. Delegato su #communications-content
+// (elemento stabile, non ricreato da renderCommunications) → legato una volta
+// sola, sopravvive ai re-render del contenuto.
 function bindCommunicationsQuickReplies() {
   const host = document.getElementById("communications-content");
   if (!host || host.dataset.quickBound === "true") return;
   host.dataset.quickBound = "true";
   host.addEventListener("click", (ev) => {
-    const btn = ev.target.closest?.("[data-action='communications-quick-reply']");
-    if (!btn) return;
-    ev.preventDefault();
-    const textarea = host.querySelector("#communications-message-form textarea[name='body']");
-    if (!textarea) return;
-    const text = btn.dataset.text || "";
-    textarea.value = textarea.value.trim() ? `${textarea.value.replace(/\s+$/, "")} ${text}` : text;
-    textarea.focus();
-    if (typeof autosizeTextarea === "function") autosizeTextarea(textarea);
+    const quick = ev.target.closest?.("[data-action='communications-quick-reply']");
+    if (quick) {
+      ev.preventDefault();
+      const textarea = host.querySelector("#communications-message-form textarea[name='body']");
+      if (!textarea) return;
+      const text = quick.dataset.text || "";
+      textarea.value = textarea.value.trim() ? `${textarea.value.replace(/\s+$/, "")} ${text}` : text;
+      textarea.focus();
+      if (typeof autosizeTextarea === "function") autosizeTextarea(textarea);
+      return;
+    }
+    const toggleNew = ev.target.closest?.("[data-action='communications-toggle-new']");
+    if (toggleNew) {
+      ev.preventDefault();
+      state.communicationsNewOpen = !state.communicationsNewOpen;
+      renderCommunications();
+      return;
+    }
+    const filterBtn = ev.target.closest?.("[data-action='communications-filter']");
+    if (filterBtn) {
+      ev.preventDefault();
+      state.communicationsListFilter = filterBtn.dataset.filter || "all";
+      updateCommunicationThreadsDom();
+      host.querySelectorAll("[data-action='communications-filter']").forEach((b) => {
+        b.classList.toggle("is-active", b.dataset.filter === state.communicationsListFilter);
+      });
+    }
+  });
+  host.addEventListener("input", (ev) => {
+    const search = ev.target.closest?.("[data-action='communications-search']");
+    if (!search) return;
+    state.communicationsSearch = search.value || "";
+    updateCommunicationThreadsDom();
   });
 }
 
@@ -22120,9 +22150,11 @@ function updateCommunicationThreadsDom() {
   const container = document.getElementById("communications-content");
   const list = container?.querySelector(".communications-thread-list");
   if (!list) return false;
-  const signature = getCommunicationThreadsSignature(state.communicationThreads || []);
+  const filtered = getFilteredCommunicationThreads();
+  const filter = state.communicationsListFilter || "all";
+  const signature = `${getCommunicationThreadsSignature(filtered)}|${filter}|${String(state.communicationsSearch || "")}`;
   if (list.dataset.signature === signature) return true;
-  list.innerHTML = renderCommunicationThreadListHtml(state.communicationThreads || []);
+  list.innerHTML = renderCommunicationThreadListHtml(filtered);
   list.dataset.signature = signature;
   bindCommunicationThreadSelectActions(container);
   return true;
@@ -22497,30 +22529,62 @@ function renderCommunicationsNewFormHtml(targets, threads) {
     </form>`;
 }
 
+// Filtro lato client dell'elenco chat: per testo (nome) e per non-letti.
+function getFilteredCommunicationThreads() {
+  const threads = state.communicationThreads || [];
+  const filter = state.communicationsListFilter || "all";
+  const search = String(state.communicationsSearch || "").trim().toLowerCase();
+  return threads.filter((th) => {
+    if (filter === "unread" && !(Number(th.unreadCount || 0) > 0)) return false;
+    if (search) {
+      const hay = `${communicationUserLabel(th.otherUser || {})} ${th.lastMessagePreview || ""}`.toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+}
+
 function renderCommunications() {
   const container = document.getElementById("communications-content");
   if (!container) return;
+  const it = state.lang === "it";
   const threads = state.communicationThreads || [];
   const targets = state.communicationTargets || [];
+  const filteredThreads = getFilteredCommunicationThreads();
+  const totalUnread = threads.reduce((sum, th) => sum + (Number(th.unreadCount || 0) > 0 ? 1 : 0), 0);
+  const filter = state.communicationsListFilter || "all";
   const isMobile = window.innerWidth <= 900;
   const mobileView = isMobile && state.selectedCommunicationThreadId ? "chat" : "list";
-  // Nascondi la sezione "nuova chat" su mobile se esiste già un thread con quell'unico target
-  const hideSidebarForm = isMobile && targets.length === 1 && threads.some((th) => String(th.otherUser?.id || "") === String(targets[0]?.id || ""));
+  const newOpen = Boolean(state.communicationsNewOpen);
   container.innerHTML = `
     <div class="page-header">
       <div>
-        <h1>${state.lang === "it" ? "Comunicazioni" : "Communications"}</h1>
-        <div class="page-header-sub">${state.lang === "it" ? "Chat private tra account autorizzati." : "Private chats between authorised accounts."}</div>
+        <h1>${it ? "Comunicazioni" : "Communications"}</h1>
+        <div class="page-header-sub">${it ? "Chat private tra account autorizzati." : "Private chats between authorised accounts."}</div>
       </div>
-      <button type="button" class="ghost-button small-button" data-action="communications-refresh">${state.lang === "it" ? "Aggiorna" : "Refresh"}</button>
+      <button type="button" class="ghost-button small-button" data-action="communications-refresh">${it ? "Aggiorna" : "Refresh"}</button>
     </div>
     <section class="communications-shell panel"
       data-mobile-view="${isMobile ? mobileView : ""}"
       ${threads.length ? "data-has-threads" : ""}>
       <aside class="communications-sidebar">
-        ${hideSidebarForm ? "" : renderCommunicationsNewFormHtml(targets, threads)}
-        <div class="communications-thread-list" data-signature="${escapeHtml(getCommunicationThreadsSignature(threads))}">
-          ${renderCommunicationThreadListHtml(threads)}
+        <div class="communications-sidebar-head">
+          <span class="communications-sidebar-title">${it ? "Messaggi" : "Messages"}</span>
+          <button type="button" class="communications-new-btn ${newOpen ? "is-open" : ""}" data-action="communications-toggle-new">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>${it ? "Nuova" : "New"}
+          </button>
+        </div>
+        ${newOpen ? `<div class="communications-new-wrap">${renderCommunicationsNewFormHtml(targets, threads)}</div>` : ""}
+        <label class="communications-search">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" placeholder="${it ? "Cerca una chat" : "Search a chat"}" data-action="communications-search" value="${escapeAttr(state.communicationsSearch || "")}" />
+        </label>
+        <div class="communications-list-tabs" role="tablist">
+          <button type="button" class="communications-list-tab ${filter === "all" ? "is-active" : ""}" data-action="communications-filter" data-filter="all">${it ? "Tutte" : "All"}</button>
+          <button type="button" class="communications-list-tab ${filter === "unread" ? "is-active" : ""}" data-action="communications-filter" data-filter="unread">${it ? "Non lette" : "Unread"}${totalUnread ? ` <span class="communications-tab-count">${totalUnread}</span>` : ""}</button>
+        </div>
+        <div class="communications-thread-list" data-signature="${escapeHtml(getCommunicationThreadsSignature(filteredThreads))}|${escapeAttr(filter)}|${escapeAttr(state.communicationsSearch || "")}">
+          ${renderCommunicationThreadListHtml(filteredThreads)}
         </div>
       </aside>
       <div class="communications-chat" data-thread-id="${escapeHtml(state.selectedCommunicationThreadId || "")}">

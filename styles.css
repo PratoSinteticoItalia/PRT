@@ -16995,12 +16995,111 @@ textarea.text-input {
 .communications-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 11px;
   min-width: 0;
   min-height: 0;
   border-right: 1px solid rgba(35, 49, 33, 0.08);
   padding-right: 16px;
   overflow: hidden;
+}
+.communications-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.communications-sidebar-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text1);
+}
+.communications-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(76, 118, 93, 0.28);
+  background: rgba(238, 247, 239, 0.7);
+  color: #1f4636;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.communications-new-btn:hover { background: rgba(219, 239, 215, 0.95); }
+.communications-new-btn.is-open {
+  background: #1f4636;
+  border-color: #1f4636;
+  color: #fff;
+}
+.communications-new-btn.is-open svg { transform: rotate(45deg); transition: transform 0.15s ease; }
+.communications-new-wrap {
+  background: rgba(248, 250, 247, 0.9);
+  border: 1px solid rgba(35, 49, 33, 0.09);
+  border-radius: 14px;
+  padding: 12px;
+}
+.communications-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(35, 49, 33, 0.1);
+  border-radius: 12px;
+  padding: 0 12px;
+  color: var(--muted);
+}
+.communications-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 9px 0;
+  font-size: 13px;
+  color: var(--text1);
+  outline: none;
+}
+.communications-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.communications-list-tabs {
+  display: flex;
+  gap: 6px;
+}
+.communications-list-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(35, 49, 33, 0.1);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--text2);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.communications-list-tab.is-active {
+  background: #1f4636;
+  border-color: #1f4636;
+  color: #fff;
+}
+.communications-tab-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(35, 49, 33, 0.12);
+  color: inherit;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.communications-list-tab.is-active .communications-tab-count {
+  background: rgba(255, 255, 255, 0.24);
 }
 .communications-new {
   display: grid;
@@ -17298,6 +17397,14 @@ textarea.text-input {
     padding-bottom: 14px;
     max-height: none;
     overflow: visible;
+  }
+  /* Su mobile la sidebar ha altezza automatica: la lista NON deve usare
+     flex:1 1 0 (collasserebbe a 0), ma prendere l'altezza naturale dei suoi
+     item e lasciar scorrere la pagina. */
+  .communications-sidebar .communications-thread-list {
+    flex: 0 0 auto;
+    overflow: visible;
+    min-height: 0;
   }
   /* Drill-down mobile: mostra solo lista O solo chat, non entrambe */
   .communications-shell[data-mobile-view="chat"] .communications-sidebar {
