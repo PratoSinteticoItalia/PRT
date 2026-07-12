@@ -22921,3 +22921,138 @@ body {
     position: fixed !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FORNITORI — prezzi da fatture (elenco + confronto per materiale)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.sp-tabs { display: flex; gap: 7px; margin-bottom: 14px; }
+.sp-tab {
+  border: 1px solid rgba(35, 49, 33, 0.12);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.sp-tab.is-active { background: #1f4636; border-color: #1f4636; color: #fff; }
+
+.sp-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.sp-filter-input {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(35, 49, 33, 0.14);
+  border-radius: 10px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.sp-table { display: flex; flex-direction: column; gap: 6px; }
+.sp-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1.3fr 1fr 0.9fr 0.9fr 0.6fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(35, 49, 33, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+}
+.sp-row-head {
+  background: transparent;
+  border: none;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text2);
+}
+.sp-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-cell-price small { color: var(--text2); font-weight: 400; }
+.sp-cell-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: normal; }
+.sp-att-link { color: #4c765d; display: inline-flex; align-items: center; }
+.sp-att-none { color: var(--text3); }
+.sp-delete-btn:hover { color: #b3392c; border-color: rgba(179, 57, 44, 0.35); }
+
+.sp-form-panel {
+  background: rgba(248, 250, 247, 0.9);
+  border: 1px solid rgba(35, 49, 33, 0.1);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.sp-form-panel h3 { margin: 0 0 12px; font-size: 15px; }
+.sp-form-panel .inline-form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+.sp-form-panel .field-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.sp-attachment-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.sp-compare { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.sp-compare-card {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(35, 49, 33, 0.08);
+  border-radius: 14px;
+  padding: 14px;
+}
+.sp-compare-card h4 { margin: 0 0 10px; font-size: 14px; }
+.sp-compare-suppliers { display: grid; gap: 10px; }
+.sp-compare-row {
+  border: 1px solid rgba(35, 49, 33, 0.08);
+  border-radius: 10px;
+  padding: 10px;
+  position: relative;
+}
+.sp-compare-row.is-best { border-color: rgba(76, 118, 93, 0.4); background: rgba(238, 247, 239, 0.6); }
+.sp-best-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #1f4636;
+  background: rgba(76, 118, 93, 0.18);
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-bottom: 4px;
+}
+.sp-compare-supplier { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.sp-compare-supplier small { color: var(--text2); }
+.sp-compare-figures { display: flex; gap: 18px; flex-wrap: wrap; }
+.sp-compare-figure-label { display: block; font-size: 11px; color: var(--text2); }
+.sp-compare-figure-value { display: block; font-size: 14px; font-weight: 700; }
+.sp-compare-figure-value small { font-weight: 400; font-size: 11px; color: var(--text2); }
+.sp-compare-years { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sp-year-chip {
+  font-size: 11px;
+  background: rgba(35, 49, 33, 0.06);
+  border-radius: 999px;
+  padding: 3px 9px;
+  color: var(--text2);
+}
+
+@media (max-width: 900px) {
+  .sp-row { grid-template-columns: 1fr 1fr; }
+  .sp-row-head { display: none; }
+  .sp-cell { white-space: normal; }
+  .sp-cell-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}

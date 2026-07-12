@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260712-portfolio-cover-v1";
+} from "./lib/order-money.js?v=20260712-fornitori-v2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260712-portfolio-cover-v1";
+import { regionForCity } from "./lib/geo.js?v=20260712-fornitori-v2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260712-portfolio-cover-v1";
+} from "./lib/profit-split.js?v=20260712-fornitori-v2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260712-portfolio-cover-v1";
+} from "./lib/preventivo-pricing.js?v=20260712-fornitori-v2";
 
-const APP_SHELL_VERSION = "20260712-portfolio-cover-v1";
+const APP_SHELL_VERSION = "20260712-fornitori-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -362,12 +362,12 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
   crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "communications", "garden-planner"],
   seller: ["dashboard", "sales-requests", "sales-generator", "sales-content", "communications", "timesheet-me"],
 };
-const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt"]);
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -407,6 +407,7 @@ const translations = {
     shipping: "Spedizioni",
     ddt: "DDT",
     "reseller-report": "Report rivenditori",
+    "supplier-prices": "Fornitori",
     settings: "Impostazioni",
     marketing: "Marketing",
     "garden-planner": "Garden Planner",
@@ -665,6 +666,7 @@ const translations = {
     shipping: "Shipping",
     ddt: "DDT",
     "reseller-report": "Reseller report",
+    "supplier-prices": "Suppliers",
     settings: "Settings",
     marketing: "Marketing",
     "garden-planner": "Garden Planner",
@@ -1221,6 +1223,15 @@ const state = {
   salesContentTab: "documenti",
   portfolioSelectedProduct: "",
   portfolioJobPhotos: {},
+  // Sezione Fornitori: voci prezzo da fatture (elenco + confronto per materiale).
+  supplierPriceEntries: [],
+  supplierPricesLoaded: false,
+  supplierPricesLoading: false,
+  supplierPricesView: "list",
+  supplierPricesFilter: { supplier: "", material: "", from: "", to: "" },
+  supplierPriceFormOpen: false,
+  supplierPriceEditingId: "",
+  supplierPricePendingAttachment: null,
   sessionRevision: "",
   mobileMenuOpen: false,
   // Drill-down mobile: { module, itemId, listScrollY, title, subtitle } | null
@@ -13345,6 +13356,472 @@ async function loadPortfolioJobPhotos(slug) {
   }
 }
 
+// ─── FORNITORI — prezzi da fatture (elenco + confronto per materiale) ───────
+// Voce = { id, supplierName, material, unitPrice, unit, quantity, invoiceDate,
+// invoiceNumber, note, attachment, createdAt, updatedAt }. Storage: array
+// piatto nello store (come salesRequests/salesContents), niente tabella SQL
+// dedicata — inserimento MANUALE assistito da allegato (nessun parsing AI).
+
+function normalizeSupplierPriceKey(s) {
+  return String(s || "").trim().toLowerCase();
+}
+
+function getSupplierPriceEntries() {
+  return Array.isArray(state.supplierPriceEntries) ? state.supplierPriceEntries : [];
+}
+
+function getFilteredSupplierPriceEntries() {
+  const f = state.supplierPricesFilter || {};
+  const supplierQ = normalizeSupplierPriceKey(f.supplier);
+  const materialQ = normalizeSupplierPriceKey(f.material);
+  return getSupplierPriceEntries().filter((e) => {
+    if (supplierQ && !normalizeSupplierPriceKey(e.supplierName).includes(supplierQ)) return false;
+    if (materialQ && !normalizeSupplierPriceKey(e.material).includes(materialQ)) return false;
+    if (f.from && String(e.invoiceDate || "").slice(0, 10) < f.from) return false;
+    if (f.to && String(e.invoiceDate || "").slice(0, 10) > f.to) return false;
+    return true;
+  }).sort((a, b) => String(b.invoiceDate || "").localeCompare(String(a.invoiceDate || "")));
+}
+
+function getSupplierPriceSuggestions(field) {
+  const set = new Set();
+  getSupplierPriceEntries().forEach((e) => {
+    const v = String(e[field] || "").trim();
+    if (v) set.add(v);
+  });
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+// Raggruppa per materiale → per fornitore: prezzo più recente + media
+// complessiva + media per anno (così si vede il trend, non solo lo storico).
+function computeSupplierPriceComparison() {
+  const entries = getFilteredSupplierPriceEntries();
+  const byMaterial = new Map();
+  entries.forEach((e) => {
+    const matKey = normalizeSupplierPriceKey(e.material) || "—";
+    if (!byMaterial.has(matKey)) byMaterial.set(matKey, { label: e.material || "—", bySupplier: new Map() });
+    const matGroup = byMaterial.get(matKey);
+    const supKey = normalizeSupplierPriceKey(e.supplierName) || "—";
+    if (!matGroup.bySupplier.has(supKey)) matGroup.bySupplier.set(supKey, { label: e.supplierName || "—", entries: [] });
+    matGroup.bySupplier.get(supKey).entries.push(e);
+  });
+  return [...byMaterial.values()].map((matGroup) => {
+    const suppliers = [...matGroup.bySupplier.values()].map((supGroup) => {
+      const sorted = [...supGroup.entries].sort((a, b) => String(b.invoiceDate || "").localeCompare(String(a.invoiceDate || "")));
+      const prices = sorted.map((e) => Number(e.unitPrice) || 0).filter((n) => n > 0);
+      const avg = prices.length ? prices.reduce((s, n) => s + n, 0) / prices.length : 0;
+      const byYear = new Map();
+      sorted.forEach((e) => {
+        const year = String(e.invoiceDate || "").slice(0, 4) || "—";
+        if (!byYear.has(year)) byYear.set(year, []);
+        const p = Number(e.unitPrice) || 0;
+        if (p > 0) byYear.get(year).push(p);
+      });
+      const yearAverages = [...byYear.entries()]
+        .filter(([, list]) => list.length)
+        .map(([year, list]) => ({ year, avg: list.reduce((s, n) => s + n, 0) / list.length }))
+        .sort((a, b) => a.year.localeCompare(b.year));
+      return {
+        label: supGroup.label,
+        count: sorted.length,
+        lastPrice: sorted[0]?.unitPrice || 0,
+        lastDate: sorted[0]?.invoiceDate || "",
+        unit: sorted[0]?.unit || "",
+        avg,
+        yearAverages,
+      };
+    }).sort((a, b) => a.avg - b.avg);
+    return { label: matGroup.label, suppliers };
+  }).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+async function loadSupplierPriceEntries() {
+  if (state.supplierPricesLoading) return;
+  state.supplierPricesLoading = true;
+  try {
+    const data = await apiFetch("/api/supplier-prices");
+    state.supplierPriceEntries = Array.isArray(data?.entries) ? data.entries : [];
+    state.supplierPricesLoaded = true;
+  } catch (err) {
+    console.error("supplier_prices_load_failed", err);
+    showToast(state.lang === "it" ? "Caricamento prezzi fornitori non riuscito." : "Failed to load supplier prices.", "warning");
+  } finally {
+    state.supplierPricesLoading = false;
+  }
+  if (state.currentView === "supplier-prices") renderSupplierPrices();
+}
+
+function supplierPriceUnitLabel(unit) {
+  const map = { kg: "kg", pz: "pz", mq: "mq", mc: "m³", litro: "L", rotolo: "rotolo", metro: "m", confezione: "conf." };
+  return map[unit] || unit || "";
+}
+
+const SUPPLIER_PRICE_UNITS = [
+  ["kg", "kg"], ["pz", "pz"], ["mq", "mq"], ["mc", "m³"], ["litro", "litro"],
+  ["rotolo", "rotolo"], ["metro", "metro"], ["confezione", "confezione"],
+];
+
+function renderSupplierPriceRowHtml(entry) {
+  const att = entry.attachment;
+  const attHtml = att
+    ? `<a class="sp-att-link" href="/api/supplier-prices/${escapeAttr(entry.id)}/attachment/file" target="_blank" rel="noreferrer" title="${state.lang === "it" ? "Apri fattura" : "Open invoice"}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></a>`
+    : `<span class="sp-att-none">—</span>`;
+  return `
+    <div class="sp-row" data-id="${escapeAttr(entry.id)}">
+      <span class="sp-cell sp-cell-supplier">${escapeHtml(entry.supplierName || "—")}</span>
+      <span class="sp-cell sp-cell-material">${escapeHtml(entry.material || "—")}</span>
+      <span class="sp-cell sp-cell-price">${escapeHtml(formatCurrency(entry.unitPrice))}<small>/${escapeHtml(supplierPriceUnitLabel(entry.unit))}</small></span>
+      <span class="sp-cell sp-cell-date">${escapeHtml(formatDate(entry.invoiceDate))}</span>
+      <span class="sp-cell sp-cell-invoice">${escapeHtml(entry.invoiceNumber || "—")}</span>
+      <span class="sp-cell sp-cell-att">${attHtml}</span>
+      <span class="sp-cell sp-cell-actions">
+        <button type="button" class="ghost-button small-button" data-action="sp-edit" data-id="${escapeAttr(entry.id)}">${state.lang === "it" ? "Modifica" : "Edit"}</button>
+        <button type="button" class="ghost-button small-button sp-delete-btn" data-action="sp-delete" data-id="${escapeAttr(entry.id)}">${state.lang === "it" ? "Elimina" : "Delete"}</button>
+      </span>
+    </div>`;
+}
+
+function renderSupplierPriceFiltersHtml() {
+  const f = state.supplierPricesFilter || {};
+  return `
+    <div class="sp-filters">
+      <input type="search" class="sp-filter-input" data-field="supplier" placeholder="${state.lang === "it" ? "Cerca fornitore" : "Search supplier"}" value="${escapeAttr(f.supplier || "")}" />
+      <input type="search" class="sp-filter-input" data-field="material" placeholder="${state.lang === "it" ? "Cerca materiale" : "Search material"}" value="${escapeAttr(f.material || "")}" />
+      <input type="date" class="sp-filter-input" data-field="from" value="${escapeAttr(f.from || "")}" />
+      <input type="date" class="sp-filter-input" data-field="to" value="${escapeAttr(f.to || "")}" />
+    </div>`;
+}
+
+function renderSupplierPriceListHtml() {
+  const entries = getFilteredSupplierPriceEntries();
+  const rows = entries.length
+    ? entries.map(renderSupplierPriceRowHtml).join("")
+    : `<div class="info-card">${state.lang === "it" ? "Nessuna voce prezzo trovata." : "No price entries found."}</div>`;
+  return `
+    <div class="sp-table">
+      <div class="sp-row sp-row-head">
+        <span class="sp-cell">${state.lang === "it" ? "Fornitore" : "Supplier"}</span>
+        <span class="sp-cell">${state.lang === "it" ? "Materiale" : "Material"}</span>
+        <span class="sp-cell">${state.lang === "it" ? "Prezzo" : "Price"}</span>
+        <span class="sp-cell">${state.lang === "it" ? "Data fattura" : "Invoice date"}</span>
+        <span class="sp-cell">${state.lang === "it" ? "N. fattura" : "Invoice no."}</span>
+        <span class="sp-cell">${state.lang === "it" ? "Allegato" : "Attachment"}</span>
+        <span class="sp-cell"></span>
+      </div>
+      ${rows}
+    </div>`;
+}
+
+function renderSupplierPriceCompareHtml() {
+  const materials = computeSupplierPriceComparison();
+  if (!materials.length) {
+    return `<div class="info-card">${state.lang === "it" ? "Nessun dato ancora per il confronto. Aggiungi qualche voce prezzo." : "No data yet to compare. Add some price entries."}</div>`;
+  }
+  return `<div class="sp-compare">${materials.map((mat) => `
+    <div class="sp-compare-card">
+      <h4>${escapeHtml(mat.label)}</h4>
+      <div class="sp-compare-suppliers">
+        ${mat.suppliers.map((sup, idx) => `
+          <div class="sp-compare-row ${idx === 0 ? "is-best" : ""}">
+            <div class="sp-compare-supplier">
+              ${idx === 0 ? `<span class="sp-best-badge">${state.lang === "it" ? "più conveniente" : "cheapest"}</span>` : ""}
+              <strong>${escapeHtml(sup.label)}</strong>
+              <small>${sup.count} ${state.lang === "it" ? "voci" : "entries"}</small>
+            </div>
+            <div class="sp-compare-figures">
+              <div><span class="sp-compare-figure-label">${state.lang === "it" ? "Media" : "Average"}</span><span class="sp-compare-figure-value">${escapeHtml(formatCurrency(sup.avg))}/${escapeHtml(supplierPriceUnitLabel(sup.unit))}</span></div>
+              <div><span class="sp-compare-figure-label">${state.lang === "it" ? "Ultimo prezzo" : "Last price"}</span><span class="sp-compare-figure-value">${escapeHtml(formatCurrency(sup.lastPrice))} <small>(${escapeHtml(formatDate(sup.lastDate))})</small></span></div>
+            </div>
+            ${sup.yearAverages.length > 1 ? `<div class="sp-compare-years">${sup.yearAverages.map((y) => `<span class="sp-year-chip">${escapeHtml(y.year)}: ${escapeHtml(formatCurrency(y.avg))}</span>`).join("")}</div>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `).join("")}</div>`;
+}
+
+// Contenuto dell'area allegato, isolato in una funzione propria: va
+// rigenerato quando si allega/rimuove un file SENZA ridisegnare l'intero
+// form (altrimenti i campi già digitati da chi sta compilando andrebbero
+// persi, perché il form non tiene una bozza in state finché non si salva).
+function renderSupplierPriceAttachmentAreaHtml() {
+  const editing = state.supplierPriceEditingId
+    ? getSupplierPriceEntries().find((e) => e.id === state.supplierPriceEditingId)
+    : null;
+  const pending = state.supplierPricePendingAttachment;
+  const attachmentPreviewHtml = pending
+    ? `<div class="sp-attachment-preview"><span>${escapeHtml(pending.name)}</span><button type="button" class="ghost-button small-button" data-action="sp-remove-pending-attachment">${state.lang === "it" ? "Rimuovi" : "Remove"}</button></div>`
+    : (editing?.attachment
+      ? `<div class="sp-attachment-preview"><a href="/api/supplier-prices/${escapeAttr(editing.id)}/attachment/file" target="_blank" rel="noreferrer">${escapeHtml(editing.attachment.name || "fattura")}</a></div>`
+      : "");
+  return `
+    <label>${state.lang === "it" ? "Allegato fattura (opzionale)" : "Invoice attachment (optional)"}</label>
+    <input type="file" id="sp-attachment-input" accept="application/pdf,image/*" hidden />
+    <button type="button" class="ghost-button small-button" data-action="sp-attach-click">${state.lang === "it" ? "📎 Allega fattura" : "📎 Attach invoice"}</button>
+    ${attachmentPreviewHtml}`;
+}
+
+function updateSupplierPriceAttachmentAreaDom() {
+  const root = document.getElementById("sp-attachment-area");
+  if (root) root.innerHTML = renderSupplierPriceAttachmentAreaHtml();
+}
+
+function renderSupplierPriceFormHtml() {
+  if (!state.supplierPriceFormOpen) return "";
+  const editing = state.supplierPriceEditingId
+    ? getSupplierPriceEntries().find((e) => e.id === state.supplierPriceEditingId)
+    : null;
+  const d = editing || {};
+  const suppliers = getSupplierPriceSuggestions("supplierName");
+  const materials = getSupplierPriceSuggestions("material");
+  return `
+    <div class="sp-form-panel">
+      <h3>${editing ? (state.lang === "it" ? "Modifica voce" : "Edit entry") : (state.lang === "it" ? "Nuova voce prezzo" : "New price entry")}</h3>
+      <form id="sp-entry-form" class="inline-form-grid" data-editing-id="${escapeAttr(state.supplierPriceEditingId || "")}">
+        <div class="field">
+          <label>${state.lang === "it" ? "Fornitore" : "Supplier"}</label>
+          <input type="text" name="supplierName" list="sp-suppliers-list" required value="${escapeAttr(d.supplierName || "")}" />
+        </div>
+        <div class="field">
+          <label>${state.lang === "it" ? "Materiale" : "Material"}</label>
+          <input type="text" name="material" list="sp-materials-list" required value="${escapeAttr(d.material || "")}" />
+        </div>
+        <div class="field">
+          <label>${state.lang === "it" ? "Prezzo unitario (€)" : "Unit price (€)"}</label>
+          <input type="number" step="0.01" min="0" name="unitPrice" required value="${escapeAttr(d.unitPrice != null ? String(d.unitPrice) : "")}" />
+        </div>
+        <div class="field">
+          <label>${state.lang === "it" ? "Unità" : "Unit"}</label>
+          <select name="unit">
+            ${SUPPLIER_PRICE_UNITS.map(([v, label]) => `<option value="${v}" ${d.unit === v ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label>${state.lang === "it" ? "Quantità (opzionale)" : "Quantity (optional)"}</label>
+          <input type="number" step="0.01" min="0" name="quantity" value="${escapeAttr(d.quantity != null ? String(d.quantity) : "")}" />
+        </div>
+        <div class="field">
+          <label>${state.lang === "it" ? "Data fattura" : "Invoice date"}</label>
+          <input type="date" name="invoiceDate" required value="${escapeAttr((d.invoiceDate || "").slice(0, 10))}" />
+        </div>
+        <div class="field">
+          <label>${state.lang === "it" ? "N. fattura (opzionale)" : "Invoice no. (optional)"}</label>
+          <input type="text" name="invoiceNumber" value="${escapeAttr(d.invoiceNumber || "")}" />
+        </div>
+        <div class="field field-full">
+          <label>${state.lang === "it" ? "Nota (opzionale)" : "Note (optional)"}</label>
+          <textarea name="note">${escapeHtml(d.note || "")}</textarea>
+        </div>
+        <div class="field field-full" id="sp-attachment-area">
+          ${renderSupplierPriceAttachmentAreaHtml()}
+        </div>
+        <div class="field field-full field-actions">
+          <button type="button" class="ghost-button" data-action="sp-cancel-form">${state.lang === "it" ? "Annulla" : "Cancel"}</button>
+          <button type="submit" class="primary-button">${state.lang === "it" ? "Salva" : "Save"}</button>
+        </div>
+      </form>
+      <datalist id="sp-suppliers-list">${suppliers.map((s) => `<option value="${escapeAttr(s)}"></option>`).join("")}</datalist>
+      <datalist id="sp-materials-list">${materials.map((m) => `<option value="${escapeAttr(m)}"></option>`).join("")}</datalist>
+    </div>`;
+}
+
+function renderSupplierPriceResultsHtml() {
+  return state.supplierPricesView === "compare" ? renderSupplierPriceCompareHtml() : renderSupplierPriceListHtml();
+}
+
+// Aggiorna SOLO i risultati (tabella/confronto), non i campi filtro: se si
+// rifacesse l'innerHTML dell'intero pannello a ogni tasto digitato, l'input di
+// ricerca perderebbe il focus (visto e corretto oggi sullo stesso pattern in
+// Comunicazioni). I filtri restano stabili, cambia solo ciò che c'è sotto.
+function updateSupplierPricesResultsDom() {
+  const root = document.getElementById("sp-results");
+  if (root) root.innerHTML = renderSupplierPriceResultsHtml();
+}
+
+function renderSupplierPricesHtml() {
+  const view = state.supplierPricesView === "compare" ? "compare" : "list";
+  return `
+    <div class="page-header">
+      <div>
+        <h1>${state.lang === "it" ? "Fornitori" : "Suppliers"}</h1>
+        <div class="page-header-sub">${state.lang === "it" ? "Prezzi e fatture fornitori: storico, confronto e prezzo medio nel tempo" : "Supplier prices and invoices: history, comparison and average price over time"}</div>
+      </div>
+      <button type="button" class="primary-button" data-action="sp-toggle-form">${state.supplierPriceFormOpen ? (state.lang === "it" ? "Chiudi" : "Close") : (state.lang === "it" ? "+ Nuova voce" : "+ New entry")}</button>
+    </div>
+    ${renderSupplierPriceFormHtml()}
+    <div class="sp-tabs">
+      <button type="button" class="sp-tab ${view === "list" ? "is-active" : ""}" data-action="sp-set-view" data-view="list">${state.lang === "it" ? "Elenco" : "List"}</button>
+      <button type="button" class="sp-tab ${view === "compare" ? "is-active" : ""}" data-action="sp-set-view" data-view="compare">${state.lang === "it" ? "Confronto per materiale" : "Compare by material"}</button>
+    </div>
+    ${renderSupplierPriceFiltersHtml()}
+    <div id="sp-results">${renderSupplierPriceResultsHtml()}</div>
+  `;
+}
+
+async function stageSupplierPriceAttachment(file) {
+  if (!file) return;
+  if (file.size > 8_000_000) {
+    showToast(state.lang === "it" ? `"${file.name}" supera 8MB e non è stato allegato.` : `"${file.name}" exceeds 8MB.`, "warning");
+    return;
+  }
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    state.supplierPricePendingAttachment = { name: file.name, type: file.type || "application/octet-stream", size: file.size, dataUrl };
+    updateSupplierPriceAttachmentAreaDom();
+  } catch { /* file non leggibile, ignora */ }
+}
+
+async function submitSupplierPriceForm(form) {
+  const fd = new FormData(form);
+  const editingId = form.dataset.editingId || "";
+  const payload = {
+    supplierName: String(fd.get("supplierName") || "").trim(),
+    material: String(fd.get("material") || "").trim(),
+    unitPrice: Number(fd.get("unitPrice")) || 0,
+    unit: String(fd.get("unit") || "").trim(),
+    quantity: fd.get("quantity") ? Number(fd.get("quantity")) : null,
+    invoiceDate: String(fd.get("invoiceDate") || "").trim(),
+    invoiceNumber: String(fd.get("invoiceNumber") || "").trim(),
+    note: String(fd.get("note") || "").trim(),
+  };
+  if (!payload.supplierName || !payload.material || !payload.unitPrice || !payload.invoiceDate) {
+    showToast(state.lang === "it" ? "Compila fornitore, materiale, prezzo e data fattura." : "Fill in supplier, material, price and invoice date.", "warning");
+    return;
+  }
+  const pending = state.supplierPricePendingAttachment;
+  if (pending) {
+    payload.attachment = { name: pending.name, type: pending.type, size: pending.size, dataUrl: pending.dataUrl };
+  }
+  const submitBtn = form.querySelector("button[type='submit']");
+  if (submitBtn) submitBtn.disabled = true;
+  try {
+    const saved = editingId
+      ? await apiFetch(`/api/supplier-prices/${encodeURIComponent(editingId)}`, { method: "PATCH", body: JSON.stringify(payload) })
+      : await apiFetch("/api/supplier-prices", { method: "POST", body: JSON.stringify(payload) });
+    const list = getSupplierPriceEntries().filter((e) => e.id !== saved.id);
+    state.supplierPriceEntries = [saved, ...list];
+    state.supplierPriceFormOpen = false;
+    state.supplierPriceEditingId = "";
+    state.supplierPricePendingAttachment = null;
+    showToast(state.lang === "it" ? "Voce salvata." : "Entry saved.", "success");
+    renderSupplierPrices();
+  } catch (err) {
+    showToast(state.lang === "it" ? "Salvataggio non riuscito. Riprova." : "Save failed. Try again.", "warning");
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function deleteSupplierPriceEntry(id) {
+  if (!id) return;
+  if (!window.confirm(state.lang === "it" ? "Eliminare questa voce prezzo?" : "Delete this price entry?")) return;
+  try {
+    await apiFetch(`/api/supplier-prices/${encodeURIComponent(id)}`, { method: "DELETE" });
+    state.supplierPriceEntries = getSupplierPriceEntries().filter((e) => e.id !== id);
+    renderSupplierPrices();
+  } catch {
+    showToast(state.lang === "it" ? "Eliminazione non riuscita." : "Delete failed.", "warning");
+  }
+}
+
+function bindSupplierPricesEvents() {
+  const host = document.getElementById("supplier-prices-content");
+  if (!host || host.dataset.spBound === "true") return;
+  host.dataset.spBound = "true";
+  host.addEventListener("click", (ev) => {
+    const toggleForm = ev.target.closest?.("[data-action='sp-toggle-form']");
+    if (toggleForm) {
+      ev.preventDefault();
+      state.supplierPriceFormOpen = !state.supplierPriceFormOpen;
+      if (!state.supplierPriceFormOpen) {
+        state.supplierPriceEditingId = "";
+        state.supplierPricePendingAttachment = null;
+      }
+      renderSupplierPrices();
+      return;
+    }
+    const cancelForm = ev.target.closest?.("[data-action='sp-cancel-form']");
+    if (cancelForm) {
+      ev.preventDefault();
+      state.supplierPriceFormOpen = false;
+      state.supplierPriceEditingId = "";
+      state.supplierPricePendingAttachment = null;
+      renderSupplierPrices();
+      return;
+    }
+    const setView = ev.target.closest?.("[data-action='sp-set-view']");
+    if (setView) {
+      ev.preventDefault();
+      state.supplierPricesView = setView.dataset.view === "compare" ? "compare" : "list";
+      host.querySelectorAll(".sp-tab").forEach((tab) => tab.classList.toggle("is-active", tab.dataset.view === state.supplierPricesView));
+      updateSupplierPricesResultsDom();
+      return;
+    }
+    const attachClick = ev.target.closest?.("[data-action='sp-attach-click']");
+    if (attachClick) {
+      ev.preventDefault();
+      host.querySelector("#sp-attachment-input")?.click();
+      return;
+    }
+    const removePending = ev.target.closest?.("[data-action='sp-remove-pending-attachment']");
+    if (removePending) {
+      ev.preventDefault();
+      state.supplierPricePendingAttachment = null;
+      updateSupplierPriceAttachmentAreaDom();
+      return;
+    }
+    const editBtn = ev.target.closest?.("[data-action='sp-edit']");
+    if (editBtn) {
+      ev.preventDefault();
+      state.supplierPriceEditingId = editBtn.dataset.id || "";
+      state.supplierPriceFormOpen = true;
+      state.supplierPricePendingAttachment = null;
+      renderSupplierPrices();
+      host.querySelector(".sp-form-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    const deleteBtn = ev.target.closest?.("[data-action='sp-delete']");
+    if (deleteBtn) {
+      ev.preventDefault();
+      void deleteSupplierPriceEntry(deleteBtn.dataset.id || "");
+      return;
+    }
+  });
+  host.addEventListener("change", (ev) => {
+    const fileInput = ev.target.closest?.("#sp-attachment-input");
+    if (fileInput) {
+      const file = fileInput.files?.[0] || null;
+      void stageSupplierPriceAttachment(file).finally(() => { fileInput.value = ""; });
+    }
+  });
+  // "input" (non "change"): filtro live mentre si digita, aggiornando SOLO
+  // #sp-results così il campo di ricerca non perde mai il focus.
+  host.addEventListener("input", (ev) => {
+    const filterInput = ev.target.closest?.(".sp-filter-input");
+    if (!filterInput) return;
+    const field = filterInput.dataset.field;
+    if (!field) return;
+    state.supplierPricesFilter = { ...state.supplierPricesFilter, [field]: filterInput.value };
+    updateSupplierPricesResultsDom();
+  });
+  host.addEventListener("submit", (ev) => {
+    const form = ev.target.closest?.("#sp-entry-form");
+    if (!form) return;
+    ev.preventDefault();
+    void submitSupplierPriceForm(form);
+  });
+}
+
+function renderSupplierPrices() {
+  const root = document.getElementById("supplier-prices-content");
+  if (!root) return;
+  if (!state.supplierPricesLoaded && !state.supplierPricesLoading) {
+    void loadSupplierPriceEntries();
+  }
+  root.innerHTML = renderSupplierPricesHtml();
+  bindSupplierPricesEvents();
+}
+
 function renderSalesContent() {
   // Scheda Portfolio prodotti: griglia/galleria al posto dell'elenco Documenti.
   const tab = state.salesContentTab === "portfolio" ? "portfolio" : "documenti";
@@ -17423,6 +17900,7 @@ const VIEW_ICONS = {
   accounting: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
   "profit-split": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><line x1="12" y1="6" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="18"/></svg>',
   "reseller-report": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+  "supplier-prices": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   "garden-planner": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V12"/><path d="M5 3a7 7 0 0 0 14 0"/><path d="M5 3c0 3.866 3.134 7 7 7s7-3.134 7-7"/></svg>',
   "timesheet-me": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 7 12 12 15 14"/></svg>',
@@ -17457,6 +17935,7 @@ const NAV_SECTIONS = [
     { view: "accounting" },
     { view: "ddt" },
     { view: "profit-split" },
+    { view: "supplier-prices" },
     { view: "reseller-report" },
   ] },
   { id: "team", labelKey: "teamSection", defaultOpen: false, items: [
@@ -22843,6 +23322,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "shipping": renderShipping(); break;
       case "ddt": renderDdt(); break;
       case "reseller-report": renderResellerReport(); break;
+      case "supplier-prices": renderSupplierPrices(); break;
       case "settings": renderSettings(); break;
       case "marketing": renderMarketing(); break;
       case "communications":

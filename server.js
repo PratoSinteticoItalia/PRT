@@ -4130,6 +4130,7 @@ function buildDefaultStore() {
     inventory: [],
     salesRequests: [],
     salesContents: [],
+    supplierPriceEntries: [],
     marketingPublicAssets: [],
     marketingScheduled: [],
     marketingItems: [],
@@ -8515,6 +8516,9 @@ function buildAttachmentProxyPath(ownerId, attachmentId, resource = "orders") {
   if (resource === "communications") {
     return `/api/communications/messages/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
   }
+  if (resource === "supplier-prices") {
+    return `/api/supplier-prices/${encodeURIComponent(ownerId)}/attachment/file`;
+  }
   return `/api/orders/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
 }
 
@@ -8650,6 +8654,36 @@ function normalizeSalesContentRecord(item = {}) {
     attachments: Array.isArray(item.attachments)
       ? item.attachments.map((attachment) => normalizeAttachmentRecord(attachment, contentId, "sales-content"))
       : [],
+  };
+}
+
+// Voce prezzo fornitore da fattura: inserimento MANUALE (nessun parsing AI),
+// un solo allegato per voce. Storage: array piatto nello store, stesso
+// pattern di salesRequests/salesContents — niente tabella SQL dedicata.
+function normalizeSupplierPriceEntry(item = {}) {
+  const entryId = String(item.id || randomUUID());
+  return {
+    id: entryId,
+    supplierName: String(item.supplierName || "").trim(),
+    material: String(item.material || "").trim(),
+    unitPrice: Number(item.unitPrice) || 0,
+    unit: String(item.unit || "").trim(),
+    quantity: item.quantity != null && item.quantity !== "" ? Number(item.quantity) : null,
+    invoiceDate: String(item.invoiceDate || "").trim(),
+    invoiceNumber: String(item.invoiceNumber || "").trim(),
+    note: String(item.note || "").trim(),
+    attachment: item.attachment ? normalizeAttachmentRecord(item.attachment, entryId, "supplier-prices") : null,
+    createdAt: String(item.createdAt || new Date().toISOString()),
+    updatedAt: String(item.updatedAt || new Date().toISOString()),
+    createdBy: String(item.createdBy || ""),
+  };
+}
+
+function serializeSupplierPriceEntryForClient(item = {}) {
+  const normalized = normalizeSupplierPriceEntry(item);
+  return {
+    ...normalized,
+    attachment: normalized.attachment ? serializeAttachmentForClient(normalized.attachment) : null,
   };
 }
 
@@ -9174,6 +9208,10 @@ function reconcileStoreData(store) {
           attachments: attachmentResult.attachments,
         };
     })
+    : [];
+
+  store.supplierPriceEntries = Array.isArray(store.supplierPriceEntries)
+    ? store.supplierPriceEntries.map((item) => normalizeSupplierPriceEntry(item))
     : [];
 
   store.marketingPublicAssets = normalizeMarketingPublicAssets(store.marketingPublicAssets);
@@ -13948,6 +13986,81 @@ async function handleApi(req, res, url) {
     await writeJson(STORE_PATH, store);
     scheduleAttachmentAssetRemoval([removedAttachment], "sales_content_attachment_delete_failed");
     return sendJson(res, 200, serializeSalesContentForClient(store.salesContents[contentIndex]));
+  }
+
+  // ─── Fornitori: prezzi da fatture (elenco + confronto per materiale) ──────
+  // Office-only. Inserimento manuale (nessun parsing AI dell'allegato).
+  if (url.pathname === "/api/supplier-prices" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const entries = (store.supplierPriceEntries || []).map(serializeSupplierPriceEntryForClient);
+    return sendJson(res, 200, { entries });
+  }
+
+  if (url.pathname === "/api/supplier-prices" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    if (!String(body.supplierName || "").trim() || !String(body.material || "").trim()
+      || !Number(body.unitPrice) || !String(body.invoiceDate || "").trim()) {
+      return sendJson(res, 400, { error: "missing_fields" });
+    }
+    const now = new Date().toISOString();
+    const entryId = randomUUID();
+    let attachment = null;
+    if (body.attachment?.dataUrl) {
+      attachment = await storeAttachmentAsset(entryId, body.attachment, "supplier-prices");
+    }
+    const entry = normalizeSupplierPriceEntry({
+      ...body, id: entryId, attachment, createdAt: now, updatedAt: now, createdBy: currentUser.email || currentUser.id,
+    });
+    store.supplierPriceEntries = [entry, ...(store.supplierPriceEntries || [])];
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, serializeSupplierPriceEntryForClient(entry));
+  }
+
+  if (url.pathname.match(/^\/api\/supplier-prices\/[^/]+$/) && req.method === "PATCH") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.split("/")[3]);
+    const index = (store.supplierPriceEntries || []).findIndex((e) => e.id === id);
+    if (index < 0) return sendJson(res, 404, { error: "not_found" });
+    const body = await readBody(req);
+    const current = store.supplierPriceEntries[index];
+    let attachment = current.attachment || null;
+    if (body.attachment?.dataUrl) {
+      attachment = await storeAttachmentAsset(id, body.attachment, "supplier-prices");
+    }
+    const updated = normalizeSupplierPriceEntry({
+      ...current, ...body, id, attachment, createdAt: current.createdAt, updatedAt: new Date().toISOString(),
+    });
+    store.supplierPriceEntries[index] = updated;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, serializeSupplierPriceEntryForClient(updated));
+  }
+
+  if (url.pathname.match(/^\/api\/supplier-prices\/[^/]+$/) && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.split("/")[3]);
+    const index = (store.supplierPriceEntries || []).findIndex((e) => e.id === id);
+    if (index < 0) return sendJson(res, 404, { error: "not_found" });
+    const [removed] = store.supplierPriceEntries.splice(index, 1);
+    await writeJson(STORE_PATH, store);
+    if (removed.attachment) scheduleAttachmentAssetRemoval([removed.attachment], "supplier_price_attachment_delete_failed");
+    return sendJson(res, 200, { ok: true });
+  }
+
+  // GET .../attachment/file: percorso distinto da /api/supplier-prices/:id
+  // (niente handler generico "GET /api/supplier-prices/:id" che potrebbe
+  // intercettarlo per sbaglio — vedi il bug analogo risolto oggi sui verbali).
+  if (url.pathname.match(/^\/api\/supplier-prices\/[^/]+\/attachment\/file$/) && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.split("/")[3]);
+    const entry = (store.supplierPriceEntries || []).find((e) => e.id === id);
+    if (!entry || !entry.attachment) return sendJson(res, 404, { error: "attachment_not_found" });
+    return streamAttachmentAsset(res, entry.attachment, { cacheControl: "private, max-age=3600" });
   }
 
   if (url.pathname === "/api/account/password" && req.method === "POST") {
