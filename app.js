@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260711-chat-allegati-v2";
+} from "./lib/order-money.js?v=20260712-chat-fix-v4";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260711-chat-allegati-v2";
+import { regionForCity } from "./lib/geo.js?v=20260712-chat-fix-v4";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260711-chat-allegati-v2";
+} from "./lib/profit-split.js?v=20260712-chat-fix-v4";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260711-chat-allegati-v2";
+} from "./lib/preventivo-pricing.js?v=20260712-chat-fix-v4";
 
-const APP_SHELL_VERSION = "20260711-chat-allegati-v2";
+const APP_SHELL_VERSION = "20260712-chat-fix-v4";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -17536,7 +17536,11 @@ function renderMobileBottomNav() {
   if (!nav) return;
   const role = state.currentUser?.role || "office";
   const isMobile = window.innerWidth <= 980;
-  if (!state.currentUser || !isMobile) {
+  // La chat Comunicazioni su mobile diventa un pannello fullscreen (vedi CSS
+  // .communications-shell[data-mobile-view="chat"]): la bottom-nav va nascosta
+  // per non lasciare la barra fissa sospesa sopra la tastiera con un vuoto sotto.
+  const inCommunicationsChat = state.currentView === "communications" && window.innerWidth <= 900 && Boolean(state.selectedCommunicationThreadId);
+  if (!state.currentUser || !isMobile || inCommunicationsChat) {
     nav.classList.add("hidden");
     return;
   }
@@ -21922,6 +21926,7 @@ function syncCommunicationsMobileView() {
   } else {
     shell.dataset.mobileView = state.selectedCommunicationThreadId ? "chat" : "list";
   }
+  try { renderMobileBottomNav(); } catch {}
   if (isMobile && (state.communicationThreads || []).length > 0) {
     shell.setAttribute("data-has-threads", "");
   } else {
@@ -22190,12 +22195,38 @@ function updateCommunicationsPendingStrip() {
   if (strip) strip.innerHTML = renderCommunicationsPendingAttachmentsHtml();
 }
 
+// Le foto scattate da smartphone (12MP+) spesso superano da sole il limite di
+// 8MB, facendo scartare l'allegato in silenzio (solo un toast facile da perdere
+// sul campo) e costringendo l'utente a ritentare più volte. Ridimensioniamo lato
+// client prima del controllo dimensione: dopo il resize una foto reale scende a
+// poche centinaia di KB, ben sotto il limite.
+async function compressImageForAttachment(file, { maxDim = 1600, quality = 0.82 } = {}) {
+  if (!/^image\//i.test(file.type || "") || file.type === "image/gif") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
 async function stageCommunicationAttachments(fileList) {
   const files = Array.from(fileList || []);
   if (!files.length) return;
   if (!Array.isArray(state.communicationsPendingAttachments)) state.communicationsPendingAttachments = [];
-  for (const file of files) {
+  for (const rawFile of files) {
     if (state.communicationsPendingAttachments.length >= 10) break;
+    const file = await compressImageForAttachment(rawFile);
     if (file.size > 8_000_000) {
       showToast(state.lang === "it" ? `"${file.name}" supera 8MB e non è stato allegato.` : `"${file.name}" exceeds 8MB.`, "warning");
       continue;
@@ -22313,7 +22344,11 @@ function renderSingleCommunicationMessageHtml(message, participantById) {
   if (images.length) {
     attachHtml += `<div class="communications-att-grid" data-count="${images.length}">${images.map((a) => {
       const src = escapeAttr(a.url || a.dataUrl || "");
-      return `<a class="communications-att-img" href="${src}" target="_blank" rel="noreferrer"><img src="${src}" alt="${escapeAttr(a.name || "")}" loading="lazy" decoding="async" /></a>`;
+      const downloadName = escapeAttr(a.name || "foto.jpg");
+      return `<div class="communications-att-img">
+        <a href="${src}" target="_blank" rel="noreferrer"><img src="${src}" alt="${escapeAttr(a.name || "")}" loading="lazy" decoding="async" /></a>
+        <a class="communications-att-download" href="${src}" download="${downloadName}" aria-label="${state.lang === "it" ? "Scarica foto" : "Download photo"}" title="${state.lang === "it" ? "Scarica" : "Download"}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5"/><path d="M4 21h16"/></svg></a>
+      </div>`;
     }).join("")}</div>`;
   }
   if (files.length) {

@@ -17395,13 +17395,29 @@ textarea.text-input {
   margin-bottom: 4px;
   border-radius: 11px;
   overflow: hidden;
-  max-width: 260px;
+  max-width: min(360px, 100%);
 }
 .communications-att-grid[data-count="1"] { grid-template-columns: 1fr; }
 .communications-att-grid:not([data-count="1"]) { grid-template-columns: 1fr 1fr; }
-.communications-att-img { display: block; }
-.communications-att-grid[data-count="1"] .communications-att-img img { max-height: 280px; width: 100%; object-fit: cover; }
-.communications-att-img img { display: block; width: 100%; height: 118px; object-fit: cover; }
+.communications-att-img { display: block; position: relative; }
+.communications-att-grid[data-count="1"] .communications-att-img img { max-height: 360px; width: 100%; object-fit: cover; }
+.communications-att-img img { display: block; width: 100%; height: 150px; object-fit: cover; }
+.communications-att-download {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(15, 23, 30, 0.58);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: background 0.12s ease;
+}
+.communications-att-download:hover { background: rgba(15, 23, 30, 0.8); }
 .communications-att-file {
   display: flex;
   align-items: center;
@@ -17505,16 +17521,48 @@ textarea.text-input {
   .communications-shell:not([data-mobile-view]) .communications-chat {
     display: none;
   }
-  .communications-chat {
-    /* 4 righe: back-btn + head + messages(1fr) + composer */
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
-    /* Altezza dinamica: viewport − contenuto sopra(~230px) − bottom-nav(~70px) − margini(~50px) */
-    height: min(calc(100dvh - 350px), 560px);
-    min-height: min(260px, calc(100dvh - 350px));
-    display: grid;
+  /* Chat aperta su mobile = pannello fullscreen fisso (come una vera app di
+     chat), non più un riquadro in-flow con altezza calcolata a formula fissa
+     (calc(100dvh - 350px)): quel valore presumeva ~230px di contenuto sopra +
+     70px di bottom-nav + margini, ma con tastiera aperta o header di altezza
+     diversa lasciava un vuoto bianco tra il composer e la bottom-nav (che
+     restava visibile sopra la tastiera). position:fixed + inset:0 elimina la
+     stima e occupa sempre l'intero viewport; richiede neutralizzare il
+     `contain: layout paint` della .view attiva (vedi nota Pose/Contabilità
+     più sotto), altrimenti il fixed resta ritagliato dentro il riquadro della
+     view invece che a tutto schermo. */
+  .communications-shell[data-mobile-view="chat"] .communications-chat {
+    position: fixed;
+    inset: 0;
+    /* Il topbar mobile è sticky con z-index 1080 (body.mobile-safe-mode): sotto
+       quella soglia il topbar restava sopra il pannello fullscreen. */
+    z-index: 1101;
+    background: #fdfdfb;
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    min-height: 0;
   }
-  .communications-chat {
-    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  .communications-shell[data-mobile-view="chat"] .communications-back-btn {
+    flex: 0 0 auto;
+    margin: calc(10px + env(safe-area-inset-top, 0px)) 12px 0;
+  }
+  .communications-shell[data-mobile-view="chat"] .communications-chat-head {
+    flex: 0 0 auto;
+    padding: 0 12px 10px;
+  }
+  .communications-shell[data-mobile-view="chat"] .communications-messages {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 8px;
+  }
+  .communications-shell[data-mobile-view="chat"] .communications-quick-replies {
+    flex: 0 0 auto;
+    padding-left: 10px;
+  }
+  .communications-shell[data-mobile-view="chat"] .communications-composer {
+    flex: 0 0 auto;
+    padding: 6px 10px calc(10px + env(safe-area-inset-bottom, 0px));
   }
   /* Page header comunicazioni: compatto su mobile per liberare spazio verticale */
   #communications-content .page-header {
@@ -22495,6 +22543,11 @@ body {
    sulla view per far uscire il fixed dal containing block (vedi nota in Pose). */
 .view.is-active#accounting:has(.accounting-detail-panel.is-drawer) { contain: none; }
 .view.is-active#accounting:has(.accounting-detail-panel.is-drawer) .order-grid { grid-template-columns: 1fr; }
+
+/* Chat Comunicazioni fullscreen su mobile (vedi blocco @media 900px sopra):
+   stesso motivo del contain:none di Pose/Contabilità — senza questo il
+   position:fixed della chat resta ritagliato dentro il riquadro della view. */
+.view.is-active#communications:has(.communications-shell[data-mobile-view="chat"]) { contain: none; }
 #accounting .accounting-detail-panel.is-drawer {
   position: fixed; top: 0; right: 0; height: 100vh; width: 520px; max-width: 94vw;
   max-height: 100vh; margin: 0; border-radius: 0; border-left: 1px solid #e5e1d6;
