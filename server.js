@@ -12264,7 +12264,11 @@ async function handleApi(req, res, url) {
   }
 
   // GET /api/work-reports/:id → dettaglio
-  if (url.pathname.startsWith("/api/work-reports/") && req.method === "GET" && !url.pathname.endsWith("/pdf") && !url.pathname.endsWith("/photos") && !url.pathname.endsWith("/sign")) {
+  // Esclude anche "/file" (foto del verbale, .../photos/:photoId/file): senza
+  // questa esclusione questo handler generico intercettava PRIMA di quello
+  // specifico più sotto, trattando l'intero path residuo come un id di verbale
+  // (mai valido) → 404 garantito per ogni foto di ogni verbale, sempre.
+  if (url.pathname.startsWith("/api/work-reports/") && req.method === "GET" && !url.pathname.endsWith("/pdf") && !url.pathname.endsWith("/photos") && !url.pathname.endsWith("/sign") && !url.pathname.endsWith("/file")) {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (!["office", "warehouse", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
     const id = decodeURIComponent(url.pathname.slice("/api/work-reports/".length));
@@ -12368,14 +12372,37 @@ async function handleApi(req, res, url) {
     const parts = url.pathname.split("/");
     const id = decodeURIComponent(parts[3]);
     const photoId = decodeURIComponent(parts[5]);
+    const debug = url.searchParams.get("debug") === "1" && currentUser.role === "office";
     try {
       const report = await getWorkReportFromDb(id);
-      if (!report) return sendJson(res, 404, { error: "not_found" });
+      if (!report) {
+        if (debug) return sendJson(res, 200, { debug: { reportFound: false, id } });
+        return sendJson(res, 404, { error: "not_found" });
+      }
       if (currentUser.role === "crew" && report.crewUserId !== currentUser.id) {
         return sendJson(res, 403, { error: "forbidden" });
       }
       const photo = (report.photos || []).find((p) => String(p.id || "") === photoId);
-      if (!photo) return sendJson(res, 404, { error: "photo_not_found" });
+      if (!photo) {
+        if (debug) {
+          return sendJson(res, 200, {
+            debug: {
+              reportFound: true, status: report.status, photoId,
+              knownPhotoIds: (report.photos || []).map((p) => String(p.id || "")),
+            },
+          });
+        }
+        return sendJson(res, 404, { error: "photo_not_found" });
+      }
+      if (debug) {
+        return sendJson(res, 200, {
+          debug: {
+            reportFound: true, photoFound: true, storage: photo.storage || "",
+            objectKey: photo.objectKey || "", localPath: photo.localPath || "",
+            hasDataUrl: Boolean(photo.dataUrl), size: photo.size || 0,
+          },
+        });
+      }
       return streamAttachmentAsset(res, photo);
     } catch (err) {
       console.error("[work-reports] photo file failed:", err?.message || err);
