@@ -12189,19 +12189,39 @@ async function handleApi(req, res, url) {
     });
     // Diagnostica on-demand (?debug=1, office-only): mostra perché un ordine
     // atteso non compare, senza dover ispezionare il DB di produzione a mano.
+    // Include anche l'esito reale di listWorkReportsFromDb per ogni ordine che
+    // supera il filtro prodotto+stato, per capire se il problema è a monte (match)
+    // o a valle (verbali/foto assenti o non recuperati).
     if (url.searchParams.get("debug") === "1") {
       const needle = (targetPrefixes[0] || [...targets][0] || "").slice(0, 6);
-      const candidates = (store.orders || [])
-        .filter((o) => needle && norm(o.operations?.product).includes(needle))
-        .map((o) => ({
+      const candidates = [];
+      for (const o of (store.orders || [])) {
+        if (!needle || !norm(o.operations?.product).includes(needle)) continue;
+        const matches = matchesOrderProduct(o);
+        const installationStatus = o.operations?.installation?.status || "";
+        const entry = {
           orderId: o.id,
           orderNumber: o.orderNumber || o.name || "",
           cliente: [o.firstName, o.lastName].filter(Boolean).join(" ").trim(),
           product: o.operations?.product || "",
           normProduct: norm(o.operations?.product),
-          installationStatus: o.operations?.installation?.status || "",
-          matchesProduct: matchesOrderProduct(o),
-        }));
+          installationStatus,
+          matchesProduct: matches,
+        };
+        if (matches && String(installationStatus).trim() === "completata") {
+          try {
+            const reports = await listWorkReportsFromDb({ orderId: o.id });
+            entry.workReports = (reports || []).map((rep) => ({
+              id: rep.id,
+              status: rep.status || "",
+              photoCount: (rep.photos || []).length,
+            }));
+          } catch (err) {
+            entry.workReportsError = String(err?.message || err);
+          }
+        }
+        candidates.push(entry);
+      }
       return sendJson(res, 200, { photos: [], debug: { slug, label, targets: [...targets], targetPrefixes, candidates } });
     }
     const photos = [];
