@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260712-orders-fix-v1";
+} from "./lib/order-money.js?v=20260712-portfolio-cover-v1";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260712-orders-fix-v1";
+import { regionForCity } from "./lib/geo.js?v=20260712-portfolio-cover-v1";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260712-orders-fix-v1";
+} from "./lib/profit-split.js?v=20260712-portfolio-cover-v1";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260712-orders-fix-v1";
+} from "./lib/preventivo-pricing.js?v=20260712-portfolio-cover-v1";
 
-const APP_SHELL_VERSION = "20260712-orders-fix-v1";
+const APP_SHELL_VERSION = "20260712-portfolio-cover-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -13178,8 +13178,16 @@ function portfolioCover(slug) {
   const job = portfolioJobImages(slug);
   const all = [...manual, ...job];
   const feat = all.find((p) => featured.includes(portfolioPhotoId(p)));
-  const cover = feat || manual[0] || job[0] || null;
-  return cover ? (cover.url || cover.dataUrl) : portfolioCatalogCover(slug);
+  // In griglia la copertina di default è la foto still-life del catalogo (look
+  // professionale uniforme tra tutti i prodotti): una foto reale caricata a
+  // mano o dai lavori NON deve sostituirla a sorpresa. Una foto messa
+  // ESPLICITAMENTE in vetrina (★) vince comunque, perché è una scelta
+  // intenzionale dell'utente.
+  if (feat) return feat.url || feat.dataUrl;
+  const catalogCover = portfolioCatalogCover(slug);
+  if (catalogCover) return catalogCover;
+  const fallback = manual[0] || job[0] || null;
+  return fallback ? (fallback.url || fallback.dataUrl) : "";
 }
 
 function portfolioPhotoCount(slug) {
