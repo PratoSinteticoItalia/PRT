@@ -12179,13 +12179,31 @@ async function handleApi(req, res, url) {
     // anche quando il prodotto dell'ordine INIZIA con il prodotto base (guardia
     // di lunghezza ≥4 per evitare falsi positivi su prefissi troppo corti).
     const targetPrefixes = [...targets].filter((t) => t.length >= 4);
-    const matchingOrders = (store.orders || []).filter((o) => {
+    const matchesOrderProduct = (o) => {
       const prod = norm(o.operations?.product);
-      if (!prod) return false;
-      const matchesProduct = targets.has(prod) || targetPrefixes.some((t) => prod.startsWith(t));
-      if (!matchesProduct) return false;
+      return Boolean(prod) && (targets.has(prod) || targetPrefixes.some((t) => prod.startsWith(t)));
+    };
+    const matchingOrders = (store.orders || []).filter((o) => {
+      if (!matchesOrderProduct(o)) return false;
       return String(o.operations?.installation?.status || "").trim() === "completata";
     });
+    // Diagnostica on-demand (?debug=1, office-only): mostra perché un ordine
+    // atteso non compare, senza dover ispezionare il DB di produzione a mano.
+    if (url.searchParams.get("debug") === "1") {
+      const needle = (targetPrefixes[0] || [...targets][0] || "").slice(0, 6);
+      const candidates = (store.orders || [])
+        .filter((o) => needle && norm(o.operations?.product).includes(needle))
+        .map((o) => ({
+          orderId: o.id,
+          orderNumber: o.orderNumber || o.name || "",
+          cliente: [o.firstName, o.lastName].filter(Boolean).join(" ").trim(),
+          product: o.operations?.product || "",
+          normProduct: norm(o.operations?.product),
+          installationStatus: o.operations?.installation?.status || "",
+          matchesProduct: matchesOrderProduct(o),
+        }));
+      return sendJson(res, 200, { photos: [], debug: { slug, label, targets: [...targets], targetPrefixes, candidates } });
+    }
     const photos = [];
     for (const order of matchingOrders) {
       try {
