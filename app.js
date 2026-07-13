@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260713-aggancio-ordine-v4";
+} from "./lib/order-money.js?v=20260713-fornitori-multiriga-v1";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260713-aggancio-ordine-v4";
+import { regionForCity } from "./lib/geo.js?v=20260713-fornitori-multiriga-v1";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260713-aggancio-ordine-v4";
+} from "./lib/profit-split.js?v=20260713-fornitori-multiriga-v1";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260713-aggancio-ordine-v4";
+} from "./lib/preventivo-pricing.js?v=20260713-fornitori-multiriga-v1";
 
-const APP_SHELL_VERSION = "20260713-aggancio-ordine-v4";
+const APP_SHELL_VERSION = "20260713-fornitori-multiriga-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1237,6 +1237,9 @@ const state = {
   supplierPriceFormOpen: false,
   supplierPriceEditingId: "",
   supplierPricePendingAttachment: null,
+  // Righe materiale della NUOVA voce (una fattura può avere più prodotti dallo
+  // stesso fornitore): ognuna { material, unitPrice, unit, quantity }.
+  supplierPriceFormLines: [],
   sessionRevision: "",
   mobileMenuOpen: false,
   // Drill-down mobile: { module, itemId, listScrollY, title, subtitle } | null
@@ -13590,60 +13593,153 @@ function updateSupplierPriceAttachmentAreaDom() {
   if (root) root.innerHTML = renderSupplierPriceAttachmentAreaHtml();
 }
 
-function renderSupplierPriceFormHtml() {
-  if (!state.supplierPriceFormOpen) return "";
-  const editing = state.supplierPriceEditingId
-    ? getSupplierPriceEntries().find((e) => e.id === state.supplierPriceEditingId)
-    : null;
-  const d = editing || {};
-  const suppliers = getSupplierPriceSuggestions("supplierName");
-  const materials = getSupplierPriceSuggestions("material");
+function renderSupplierPriceLineRowHtml(line, idx) {
+  const l = line || {};
+  const canRemove = (state.supplierPriceFormLines || []).length > 1;
   return `
-    <div class="sp-form-panel">
-      <h3>${editing ? (state.lang === "it" ? "Modifica voce" : "Edit entry") : (state.lang === "it" ? "Nuova voce prezzo" : "New price entry")}</h3>
-      <form id="sp-entry-form" class="inline-form-grid" data-editing-id="${escapeAttr(state.supplierPriceEditingId || "")}">
+    <div class="sp-line" data-line-index="${idx}">
+      <input type="text" class="sp-line-field" data-line-field="material" list="sp-materials-list" placeholder="${state.lang === "it" ? "Materiale" : "Material"}" value="${escapeAttr(l.material || "")}" />
+      <input type="number" step="0.01" min="0" class="sp-line-field" data-line-field="unitPrice" placeholder="${state.lang === "it" ? "Prezzo €" : "Price €"}" value="${escapeAttr(l.unitPrice != null ? String(l.unitPrice) : "")}" />
+      <select class="sp-line-field" data-line-field="unit">
+        ${SUPPLIER_PRICE_UNITS.map(([v, label]) => `<option value="${v}" ${l.unit === v ? "selected" : ""}>${label}</option>`).join("")}
+      </select>
+      <input type="number" step="0.01" min="0" class="sp-line-field" data-line-field="quantity" placeholder="${state.lang === "it" ? "Qtà" : "Qty"}" value="${escapeAttr(l.quantity != null ? String(l.quantity) : "")}" />
+      <button type="button" class="sp-line-remove" data-action="sp-remove-line" data-index="${idx}" aria-label="${state.lang === "it" ? "Rimuovi riga" : "Remove row"}" ${canRemove ? "" : "disabled"}>×</button>
+    </div>`;
+}
+
+function renderSupplierPriceLinesHtml() {
+  const lines = (state.supplierPriceFormLines && state.supplierPriceFormLines.length)
+    ? state.supplierPriceFormLines
+    : [{ material: "", unitPrice: "", unit: "kg", quantity: "" }];
+  return lines.map((l, i) => renderSupplierPriceLineRowHtml(l, i)).join("");
+}
+
+function updateSupplierPriceLinesDom() {
+  const root = document.getElementById("sp-lines");
+  if (root) root.innerHTML = renderSupplierPriceLinesHtml();
+}
+
+// Legge i valori digitati nelle righe materiale dal DOM verso lo stato, così
+// aggiungere/rimuovere una riga non perde ciò che è già stato scritto nelle
+// altre (il form non è state-backed a ogni tasto — stesso motivo dell'area
+// allegato isolata).
+function syncSupplierPriceLinesFromDom() {
+  const rows = Array.from(document.querySelectorAll("#sp-lines .sp-line"));
+  if (!rows.length) return;
+  state.supplierPriceFormLines = rows.map((row) => ({
+    material: row.querySelector('[data-line-field="material"]')?.value || "",
+    unitPrice: row.querySelector('[data-line-field="unitPrice"]')?.value || "",
+    unit: row.querySelector('[data-line-field="unit"]')?.value || "kg",
+    quantity: row.querySelector('[data-line-field="quantity"]')?.value || "",
+  }));
+}
+
+function renderSupplierPriceEditFormHtml(editing) {
+  const d = editing || {};
+  return `
+    <form id="sp-entry-form" class="inline-form-grid" data-editing-id="${escapeAttr(state.supplierPriceEditingId || "")}">
+      <div class="field">
+        <label>${state.lang === "it" ? "Fornitore" : "Supplier"}</label>
+        <input type="text" name="supplierName" list="sp-suppliers-list" required value="${escapeAttr(d.supplierName || "")}" />
+      </div>
+      <div class="field">
+        <label>${state.lang === "it" ? "Materiale" : "Material"}</label>
+        <input type="text" name="material" list="sp-materials-list" required value="${escapeAttr(d.material || "")}" />
+      </div>
+      <div class="field">
+        <label>${state.lang === "it" ? "Prezzo unitario (€)" : "Unit price (€)"}</label>
+        <input type="number" step="0.01" min="0" name="unitPrice" required value="${escapeAttr(d.unitPrice != null ? String(d.unitPrice) : "")}" />
+      </div>
+      <div class="field">
+        <label>${state.lang === "it" ? "Unità" : "Unit"}</label>
+        <select name="unit">
+          ${SUPPLIER_PRICE_UNITS.map(([v, label]) => `<option value="${v}" ${d.unit === v ? "selected" : ""}>${label}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field">
+        <label>${state.lang === "it" ? "Quantità (opzionale)" : "Quantity (optional)"}</label>
+        <input type="number" step="0.01" min="0" name="quantity" value="${escapeAttr(d.quantity != null ? String(d.quantity) : "")}" />
+      </div>
+      <div class="field">
+        <label>${state.lang === "it" ? "Data fattura" : "Invoice date"}</label>
+        <input type="date" name="invoiceDate" required value="${escapeAttr((d.invoiceDate || "").slice(0, 10))}" />
+      </div>
+      <div class="field">
+        <label>${state.lang === "it" ? "N. fattura (opzionale)" : "Invoice no. (optional)"}</label>
+        <input type="text" name="invoiceNumber" value="${escapeAttr(d.invoiceNumber || "")}" />
+      </div>
+      <div class="field field-full">
+        <label>${state.lang === "it" ? "Nota (opzionale)" : "Note (optional)"}</label>
+        <textarea name="note">${escapeHtml(d.note || "")}</textarea>
+      </div>
+      <div class="field field-full" id="sp-attachment-area">
+        ${renderSupplierPriceAttachmentAreaHtml()}
+      </div>
+      <div class="field field-full field-actions">
+        <button type="button" class="ghost-button" data-action="sp-cancel-form">${state.lang === "it" ? "Annulla" : "Cancel"}</button>
+        <button type="submit" class="primary-button">${state.lang === "it" ? "Salva" : "Save"}</button>
+      </div>
+    </form>`;
+}
+
+function renderSupplierPriceNewFormHtml() {
+  return `
+    <form id="sp-entry-form" data-editing-id="">
+      <div class="inline-form-grid sp-header-grid">
         <div class="field">
           <label>${state.lang === "it" ? "Fornitore" : "Supplier"}</label>
-          <input type="text" name="supplierName" list="sp-suppliers-list" required value="${escapeAttr(d.supplierName || "")}" />
-        </div>
-        <div class="field">
-          <label>${state.lang === "it" ? "Materiale" : "Material"}</label>
-          <input type="text" name="material" list="sp-materials-list" required value="${escapeAttr(d.material || "")}" />
-        </div>
-        <div class="field">
-          <label>${state.lang === "it" ? "Prezzo unitario (€)" : "Unit price (€)"}</label>
-          <input type="number" step="0.01" min="0" name="unitPrice" required value="${escapeAttr(d.unitPrice != null ? String(d.unitPrice) : "")}" />
-        </div>
-        <div class="field">
-          <label>${state.lang === "it" ? "Unità" : "Unit"}</label>
-          <select name="unit">
-            ${SUPPLIER_PRICE_UNITS.map(([v, label]) => `<option value="${v}" ${d.unit === v ? "selected" : ""}>${label}</option>`).join("")}
-          </select>
-        </div>
-        <div class="field">
-          <label>${state.lang === "it" ? "Quantità (opzionale)" : "Quantity (optional)"}</label>
-          <input type="number" step="0.01" min="0" name="quantity" value="${escapeAttr(d.quantity != null ? String(d.quantity) : "")}" />
+          <input type="text" name="supplierName" list="sp-suppliers-list" required placeholder="${state.lang === "it" ? "Es. WMG Grass" : "e.g. WMG Grass"}" />
         </div>
         <div class="field">
           <label>${state.lang === "it" ? "Data fattura" : "Invoice date"}</label>
-          <input type="date" name="invoiceDate" required value="${escapeAttr((d.invoiceDate || "").slice(0, 10))}" />
+          <input type="date" name="invoiceDate" required />
         </div>
         <div class="field">
           <label>${state.lang === "it" ? "N. fattura (opzionale)" : "Invoice no. (optional)"}</label>
-          <input type="text" name="invoiceNumber" value="${escapeAttr(d.invoiceNumber || "")}" />
+          <input type="text" name="invoiceNumber" />
         </div>
+      </div>
+      <div class="sp-lines-section">
+        <div class="sp-lines-head">
+          <span>${state.lang === "it" ? "Materiali della fattura" : "Invoice materials"}</span>
+          <span class="sp-lines-cols">
+            <small>${state.lang === "it" ? "Materiale" : "Material"}</small>
+            <small>${state.lang === "it" ? "Prezzo €" : "Price €"}</small>
+            <small>${state.lang === "it" ? "Unità" : "Unit"}</small>
+            <small>${state.lang === "it" ? "Qtà" : "Qty"}</small>
+          </span>
+        </div>
+        <div id="sp-lines">${renderSupplierPriceLinesHtml()}</div>
+        <button type="button" class="ghost-button small-button sp-add-line-btn" data-action="sp-add-line">+ ${state.lang === "it" ? "Aggiungi materiale" : "Add material"}</button>
+      </div>
+      <div class="inline-form-grid">
         <div class="field field-full">
           <label>${state.lang === "it" ? "Nota (opzionale)" : "Note (optional)"}</label>
-          <textarea name="note">${escapeHtml(d.note || "")}</textarea>
+          <textarea name="note"></textarea>
         </div>
         <div class="field field-full" id="sp-attachment-area">
           ${renderSupplierPriceAttachmentAreaHtml()}
         </div>
         <div class="field field-full field-actions">
           <button type="button" class="ghost-button" data-action="sp-cancel-form">${state.lang === "it" ? "Annulla" : "Cancel"}</button>
-          <button type="submit" class="primary-button">${state.lang === "it" ? "Salva" : "Save"}</button>
+          <button type="submit" class="primary-button">${state.lang === "it" ? "Salva fattura" : "Save invoice"}</button>
         </div>
-      </form>
+      </div>
+    </form>`;
+}
+
+function renderSupplierPriceFormHtml() {
+  if (!state.supplierPriceFormOpen) return "";
+  const editing = state.supplierPriceEditingId
+    ? getSupplierPriceEntries().find((e) => e.id === state.supplierPriceEditingId)
+    : null;
+  const suppliers = getSupplierPriceSuggestions("supplierName");
+  const materials = getSupplierPriceSuggestions("material");
+  return `
+    <div class="sp-form-panel">
+      <h3>${editing ? (state.lang === "it" ? "Modifica voce" : "Edit entry") : (state.lang === "it" ? "Nuova fattura fornitore" : "New supplier invoice")}</h3>
+      ${editing ? renderSupplierPriceEditFormHtml(editing) : renderSupplierPriceNewFormHtml()}
       <datalist id="sp-suppliers-list">${suppliers.map((s) => `<option value="${escapeAttr(s)}"></option>`).join("")}</datalist>
       <datalist id="sp-materials-list">${materials.map((m) => `<option value="${escapeAttr(m)}"></option>`).join("")}</datalist>
     </div>`;
@@ -13698,36 +13794,79 @@ async function stageSupplierPriceAttachment(file) {
 async function submitSupplierPriceForm(form) {
   const fd = new FormData(form);
   const editingId = form.dataset.editingId || "";
-  const payload = {
-    supplierName: String(fd.get("supplierName") || "").trim(),
-    material: String(fd.get("material") || "").trim(),
-    unitPrice: Number(fd.get("unitPrice")) || 0,
-    unit: String(fd.get("unit") || "").trim(),
-    quantity: fd.get("quantity") ? Number(fd.get("quantity")) : null,
-    invoiceDate: String(fd.get("invoiceDate") || "").trim(),
-    invoiceNumber: String(fd.get("invoiceNumber") || "").trim(),
-    note: String(fd.get("note") || "").trim(),
-  };
-  if (!payload.supplierName || !payload.material || !payload.unitPrice || !payload.invoiceDate) {
-    showToast(state.lang === "it" ? "Compila fornitore, materiale, prezzo e data fattura." : "Fill in supplier, material, price and invoice date.", "warning");
+  const pending = state.supplierPricePendingAttachment;
+  const attachment = pending
+    ? { name: pending.name, type: pending.type, size: pending.size, dataUrl: pending.dataUrl }
+    : null;
+  const submitBtn = form.querySelector("button[type='submit']");
+  const supplierName = String(fd.get("supplierName") || "").trim();
+  const invoiceDate = String(fd.get("invoiceDate") || "").trim();
+  const invoiceNumber = String(fd.get("invoiceNumber") || "").trim();
+  const note = String(fd.get("note") || "").trim();
+
+  if (editingId) {
+    // Modifica singola voce: campi materiale/prezzo/unità/quantità inline.
+    const payload = {
+      supplierName, invoiceDate, invoiceNumber, note,
+      material: String(fd.get("material") || "").trim(),
+      unitPrice: Number(fd.get("unitPrice")) || 0,
+      unit: String(fd.get("unit") || "").trim(),
+      quantity: fd.get("quantity") ? Number(fd.get("quantity")) : null,
+    };
+    if (!payload.supplierName || !payload.material || !payload.unitPrice || !payload.invoiceDate) {
+      showToast(state.lang === "it" ? "Compila fornitore, materiale, prezzo e data fattura." : "Fill in supplier, material, price and invoice date.", "warning");
+      return;
+    }
+    if (attachment) payload.attachment = attachment;
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const saved = await apiFetch(`/api/supplier-prices/${encodeURIComponent(editingId)}`, { method: "PATCH", body: JSON.stringify(payload) });
+      const list = getSupplierPriceEntries().filter((e) => e.id !== saved.id);
+      state.supplierPriceEntries = [saved, ...list];
+      state.supplierPriceFormOpen = false;
+      state.supplierPriceEditingId = "";
+      state.supplierPricePendingAttachment = null;
+      showToast(state.lang === "it" ? "Voce salvata." : "Entry saved.", "success");
+      renderSupplierPrices();
+    } catch (err) {
+      showToast(state.lang === "it" ? "Salvataggio non riuscito. Riprova." : "Save failed. Try again.", "warning");
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
     return;
   }
-  const pending = state.supplierPricePendingAttachment;
-  if (pending) {
-    payload.attachment = { name: pending.name, type: pending.type, size: pending.size, dataUrl: pending.dataUrl };
+
+  // Nuova fattura: intestazione condivisa + N righe materiale → N voci.
+  syncSupplierPriceLinesFromDom();
+  const lines = (state.supplierPriceFormLines || [])
+    .map((l) => ({
+      material: String(l.material || "").trim(),
+      unitPrice: Number(l.unitPrice) || 0,
+      unit: String(l.unit || "").trim() || "kg",
+      quantity: l.quantity !== "" && l.quantity != null ? Number(l.quantity) : null,
+    }))
+    .filter((l) => l.material && l.unitPrice > 0);
+  if (!supplierName || !invoiceDate) {
+    showToast(state.lang === "it" ? "Compila fornitore e data fattura." : "Fill in supplier and invoice date.", "warning");
+    return;
   }
-  const submitBtn = form.querySelector("button[type='submit']");
+  if (!lines.length) {
+    showToast(state.lang === "it" ? "Aggiungi almeno un materiale con prezzo." : "Add at least one material with a price.", "warning");
+    return;
+  }
   if (submitBtn) submitBtn.disabled = true;
   try {
-    const saved = editingId
-      ? await apiFetch(`/api/supplier-prices/${encodeURIComponent(editingId)}`, { method: "PATCH", body: JSON.stringify(payload) })
-      : await apiFetch("/api/supplier-prices", { method: "POST", body: JSON.stringify(payload) });
-    const list = getSupplierPriceEntries().filter((e) => e.id !== saved.id);
-    state.supplierPriceEntries = [saved, ...list];
+    const res = await apiFetch("/api/supplier-prices/batch", {
+      method: "POST",
+      body: JSON.stringify({ supplierName, invoiceDate, invoiceNumber, note, attachment, lines }),
+    });
+    const created = Array.isArray(res?.entries) ? res.entries : [];
+    state.supplierPriceEntries = [...created, ...getSupplierPriceEntries()];
     state.supplierPriceFormOpen = false;
     state.supplierPriceEditingId = "";
     state.supplierPricePendingAttachment = null;
-    showToast(state.lang === "it" ? "Voce salvata." : "Entry saved.", "success");
+    state.supplierPriceFormLines = [];
+    showToast(state.lang === "it" ? `${created.length} ${created.length === 1 ? "voce salvata" : "voci salvate"}.` : `${created.length} ${created.length === 1 ? "entry" : "entries"} saved.`, "success");
     renderSupplierPrices();
   } catch (err) {
     showToast(state.lang === "it" ? "Salvataggio non riuscito. Riprova." : "Save failed. Try again.", "warning");
@@ -13757,11 +13896,43 @@ function bindSupplierPricesEvents() {
     if (toggleForm) {
       ev.preventDefault();
       state.supplierPriceFormOpen = !state.supplierPriceFormOpen;
-      if (!state.supplierPriceFormOpen) {
+      if (state.supplierPriceFormOpen) {
+        // Apertura NUOVA fattura: parte da una riga materiale vuota.
+        state.supplierPriceEditingId = "";
+        state.supplierPricePendingAttachment = null;
+        state.supplierPriceFormLines = [{ material: "", unitPrice: "", unit: "kg", quantity: "" }];
+      } else {
         state.supplierPriceEditingId = "";
         state.supplierPricePendingAttachment = null;
       }
       renderSupplierPrices();
+      return;
+    }
+    const addLine = ev.target.closest?.("[data-action='sp-add-line']");
+    if (addLine) {
+      ev.preventDefault();
+      syncSupplierPriceLinesFromDom();
+      if (!Array.isArray(state.supplierPriceFormLines) || !state.supplierPriceFormLines.length) {
+        state.supplierPriceFormLines = [{ material: "", unitPrice: "", unit: "kg", quantity: "" }];
+      }
+      // Nuova riga eredita l'unità dell'ultima (spesso lo stesso fornitore usa la stessa).
+      const lastUnit = state.supplierPriceFormLines[state.supplierPriceFormLines.length - 1]?.unit || "kg";
+      state.supplierPriceFormLines.push({ material: "", unitPrice: "", unit: lastUnit, quantity: "" });
+      updateSupplierPriceLinesDom();
+      return;
+    }
+    const removeLine = ev.target.closest?.("[data-action='sp-remove-line']");
+    if (removeLine) {
+      ev.preventDefault();
+      syncSupplierPriceLinesFromDom();
+      const idx = Number(removeLine.dataset.index);
+      if (Array.isArray(state.supplierPriceFormLines) && idx >= 0) {
+        state.supplierPriceFormLines.splice(idx, 1);
+        if (!state.supplierPriceFormLines.length) {
+          state.supplierPriceFormLines = [{ material: "", unitPrice: "", unit: "kg", quantity: "" }];
+        }
+        updateSupplierPriceLinesDom();
+      }
       return;
     }
     const cancelForm = ev.target.closest?.("[data-action='sp-cancel-form']");

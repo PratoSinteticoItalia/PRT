@@ -23077,6 +23077,78 @@ body {
   margin-top: 8px;
   font-size: 13px;
 }
+/* Nuova fattura multi-materiale: intestazione + righe ripetibili */
+.sp-form-panel .sp-header-grid { margin-bottom: 14px; }
+.sp-lines-section {
+  border: 1px solid rgba(35, 49, 33, 0.1);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 14px;
+  background: rgba(255, 255, 255, 0.55);
+}
+.sp-lines-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.sp-lines-head > span:first-child { font-size: 13px; font-weight: 700; color: var(--text1); }
+.sp-lines-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr) 34px;
+  gap: 8px;
+  flex: 1 1 auto;
+  max-width: 560px;
+}
+.sp-lines-cols small { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text2); }
+.sp-line {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr) 34px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.sp-line-field {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(35, 49, 33, 0.14);
+  border-radius: 9px;
+  font-size: 13px;
+  background: #fff;
+}
+.sp-line-remove {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(35, 49, 33, 0.12);
+  background: #fff;
+  color: var(--text2);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sp-line-remove:hover:not([disabled]) { background: rgba(179, 57, 44, 0.08); color: #b3392c; border-color: rgba(179, 57, 44, 0.3); }
+.sp-line-remove[disabled] { opacity: 0.35; cursor: default; }
+.sp-add-line-btn { margin-top: 4px; }
+@media (max-width: 720px) {
+  .sp-lines-cols { display: none; }
+  .sp-line {
+    grid-template-columns: 1fr 1fr 34px;
+    grid-template-areas: "material material remove" "price unit qty";
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid rgba(35, 49, 33, 0.08);
+    border-radius: 10px;
+    background: #fff;
+  }
+  .sp-line [data-line-field="material"] { grid-area: material; }
+  .sp-line [data-line-field="unitPrice"] { grid-area: price; }
+  .sp-line [data-line-field="unit"] { grid-area: unit; }
+  .sp-line [data-line-field="quantity"] { grid-area: qty; }
+  .sp-line-remove { grid-area: remove; }
+}
 
 .sp-compare { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .sp-compare-card {

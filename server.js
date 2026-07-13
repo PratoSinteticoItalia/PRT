@@ -8685,6 +8685,9 @@ function normalizeSupplierPriceEntry(item = {}) {
     invoiceDate: String(item.invoiceDate || "").trim(),
     invoiceNumber: String(item.invoiceNumber || "").trim(),
     note: String(item.note || "").trim(),
+    // Voci create nello stesso inserimento (una fattura con più materiali)
+    // condividono invoiceId — utile per raggrupparle/gestirle insieme in futuro.
+    invoiceId: String(item.invoiceId || "").trim(),
     attachment: item.attachment ? normalizeAttachmentRecord(item.attachment, entryId, "supplier-prices") : null,
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || new Date().toISOString()),
@@ -14099,6 +14102,57 @@ async function handleApi(req, res, url) {
     store.supplierPriceEntries = [entry, ...(store.supplierPriceEntries || [])];
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, serializeSupplierPriceEntryForClient(entry));
+  }
+
+  // POST /api/supplier-prices/batch → una fattura con più materiali dallo stesso
+  // fornitore: intestazione condivisa (fornitore/data/n.fattura/nota/allegato) +
+  // N righe → N voci. L'allegato è archiviato UNA sola volta e referenziato da
+  // tutte le voci (stesso objectKey/localPath), non duplicato.
+  if (url.pathname === "/api/supplier-prices/batch" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const supplierName = String(body.supplierName || "").trim();
+    const invoiceDate = String(body.invoiceDate || "").trim();
+    const rawLines = Array.isArray(body.lines) ? body.lines : [];
+    const lines = rawLines.filter((l) => String(l?.material || "").trim() && Number(l?.unitPrice) > 0);
+    if (!supplierName || !invoiceDate || !lines.length) {
+      return sendJson(res, 400, { error: "missing_fields" });
+    }
+    if (!Array.isArray(store.supplierPriceEntries)) store.supplierPriceEntries = [];
+    const now = new Date().toISOString();
+    const invoiceId = randomUUID();
+    // Allegato archiviato una volta sola (owner = invoiceId); ogni voce ne
+    // riceve una copia del record con url azzerato, così normalizeSupplierPriceEntry
+    // la ricostruisce con il PROPRIO id (endpoint file valido per ogni voce).
+    let storedAttachment = null;
+    if (body.attachment?.dataUrl) {
+      storedAttachment = await storeAttachmentAsset(invoiceId, body.attachment, "supplier-prices");
+    }
+    const created = [];
+    for (const l of lines) {
+      const entryId = randomUUID();
+      const entry = normalizeSupplierPriceEntry({
+        id: entryId,
+        supplierName,
+        material: String(l.material).trim(),
+        unitPrice: Number(l.unitPrice) || 0,
+        unit: String(l.unit || "").trim(),
+        quantity: l.quantity != null && l.quantity !== "" ? Number(l.quantity) : null,
+        invoiceDate,
+        invoiceNumber: String(body.invoiceNumber || "").trim(),
+        note: String(body.note || "").trim(),
+        invoiceId,
+        attachment: storedAttachment ? { ...storedAttachment, url: "" } : null,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: currentUser.email || currentUser.id,
+      });
+      store.supplierPriceEntries.unshift(entry);
+      created.push(entry);
+    }
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { entries: created.map(serializeSupplierPriceEntryForClient) });
   }
 
   if (url.pathname.match(/^\/api\/supplier-prices\/[^/]+$/) && req.method === "PATCH") {
