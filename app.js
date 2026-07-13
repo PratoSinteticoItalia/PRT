@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260713-fornitori-multiriga-v1";
+} from "./lib/order-money.js?v=20260714-fornitori-layout-v2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260713-fornitori-multiriga-v1";
+import { regionForCity } from "./lib/geo.js?v=20260714-fornitori-layout-v2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260713-fornitori-multiriga-v1";
+} from "./lib/profit-split.js?v=20260714-fornitori-layout-v2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260713-fornitori-multiriga-v1";
+} from "./lib/preventivo-pricing.js?v=20260714-fornitori-layout-v2";
 
-const APP_SHELL_VERSION = "20260713-fornitori-multiriga-v1";
+const APP_SHELL_VERSION = "20260714-fornitori-layout-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -13701,14 +13701,13 @@ function renderSupplierPriceNewFormHtml() {
         </div>
       </div>
       <div class="sp-lines-section">
-        <div class="sp-lines-head">
-          <span>${state.lang === "it" ? "Materiali della fattura" : "Invoice materials"}</span>
-          <span class="sp-lines-cols">
-            <small>${state.lang === "it" ? "Materiale" : "Material"}</small>
-            <small>${state.lang === "it" ? "Prezzo €" : "Price €"}</small>
-            <small>${state.lang === "it" ? "Unità" : "Unit"}</small>
-            <small>${state.lang === "it" ? "Qtà" : "Qty"}</small>
-          </span>
+        <div class="sp-lines-title">${state.lang === "it" ? "Materiali della fattura" : "Invoice materials"}</div>
+        <div class="sp-line sp-line-head" aria-hidden="true">
+          <span>${state.lang === "it" ? "Materiale" : "Material"}</span>
+          <span>${state.lang === "it" ? "Prezzo €" : "Price €"}</span>
+          <span>${state.lang === "it" ? "Unità" : "Unit"}</span>
+          <span>${state.lang === "it" ? "Qtà" : "Qty"}</span>
+          <span></span>
         </div>
         <div id="sp-lines">${renderSupplierPriceLinesHtml()}</div>
         <button type="button" class="ghost-button small-button sp-add-line-btn" data-action="sp-add-line">+ ${state.lang === "it" ? "Aggiungi materiale" : "Add material"}</button>

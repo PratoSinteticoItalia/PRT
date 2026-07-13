@@ -23077,50 +23077,57 @@ body {
   margin-top: 8px;
   font-size: 13px;
 }
-/* Nuova fattura multi-materiale: intestazione + righe ripetibili */
-.sp-form-panel .sp-header-grid { margin-bottom: 14px; }
+/* Nuova fattura multi-materiale: intestazione + righe ripetibili.
+   La colonna-header (.sp-line-head) riusa la STESSA grid di .sp-line, così le
+   etichette Materiale/Prezzo/Unità/Qtà cadono esatte sopra i rispettivi input
+   (prima erano un blocco separato a destra, disallineato). */
+.sp-form-panel .sp-header-grid { margin-bottom: 16px; }
 .sp-lines-section {
   border: 1px solid rgba(35, 49, 33, 0.1);
   border-radius: 12px;
-  padding: 12px;
-  margin-bottom: 14px;
-  background: rgba(255, 255, 255, 0.55);
+  padding: 14px;
+  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.5);
 }
-.sp-lines-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+.sp-lines-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text1);
   margin-bottom: 10px;
 }
-.sp-lines-head > span:first-child { font-size: 13px; font-weight: 700; color: var(--text1); }
-.sp-lines-cols {
-  display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr) 34px;
-  gap: 8px;
-  flex: 1 1 auto;
-  max-width: 560px;
-}
-.sp-lines-cols small { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text2); }
 .sp-line {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr) 34px;
+  grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) 32px;
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
 }
+.sp-line-head {
+  margin-bottom: 6px;
+}
+.sp-line-head span {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text2);
+  padding: 0 2px;
+}
 .sp-line-field {
   width: 100%;
   min-width: 0;
+  height: 38px;
   padding: 8px 10px;
   border: 1px solid rgba(35, 49, 33, 0.14);
   border-radius: 9px;
   font-size: 13px;
   background: #fff;
 }
+select.sp-line-field { cursor: pointer; }
+.sp-line-field:focus { outline: none; border-color: rgba(76, 118, 93, 0.55); box-shadow: 0 0 0 3px rgba(76, 118, 93, 0.12); }
 .sp-line-remove {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   border: 1px solid rgba(35, 49, 33, 0.12);
   background: #fff;
@@ -23128,18 +23135,24 @@ body {
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 .sp-line-remove:hover:not([disabled]) { background: rgba(179, 57, 44, 0.08); color: #b3392c; border-color: rgba(179, 57, 44, 0.3); }
-.sp-line-remove[disabled] { opacity: 0.35; cursor: default; }
-.sp-add-line-btn { margin-top: 4px; }
+.sp-line-remove[disabled] { opacity: 0.3; cursor: default; }
+.sp-add-line-btn { margin-top: 6px; }
 @media (max-width: 720px) {
-  .sp-lines-cols { display: none; }
+  .sp-line-head { display: none; }
+  /* 6 colonne di base: riga 1 = materiale (5) + × (1); riga 2 = prezzo/unità/
+     qtà (2 ciascuno) — così la quantità non finisce più schiacciata in 32px. */
   .sp-line {
-    grid-template-columns: 1fr 1fr 34px;
-    grid-template-areas: "material material remove" "price unit qty";
+    grid-template-columns: repeat(6, 1fr);
+    grid-template-areas:
+      "material material material material material remove"
+      "price price unit unit qty qty";
     gap: 6px;
-    padding: 8px;
-    border: 1px solid rgba(35, 49, 33, 0.08);
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid rgba(35, 49, 33, 0.1);
     border-radius: 10px;
     background: #fff;
   }
@@ -23147,7 +23160,7 @@ body {
   .sp-line [data-line-field="unitPrice"] { grid-area: price; }
   .sp-line [data-line-field="unit"] { grid-area: unit; }
   .sp-line [data-line-field="quantity"] { grid-area: qty; }
-  .sp-line-remove { grid-area: remove; }
+  .sp-line-remove { grid-area: remove; justify-self: end; align-self: center; }
 }
 
 .sp-compare { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
