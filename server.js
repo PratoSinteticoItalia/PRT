@@ -11476,7 +11476,7 @@ async function handleApi(req, res, url) {
     store.communications.messages = store.communications.messages.slice(-5000);
     const preview = text
       ? text.slice(0, 160)
-      : (attachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : (attachments.length ? "📎 Allegato" : (orderRef ? `🔗 Ordine #${orderRef.orderNumber || ""}` : "")));
+      : (attachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : (attachments.length ? "📎 Allegato" : (orderRef ? `🔗 Ordine #${String(orderRef.orderNumber || "").replace(/^#+/, "")}` : "")));
     store.communications.threads = store.communications.threads.map((item) => item.id === thread.id
       ? { ...item, updatedAt: nowIso, lastMessagePreview: preview }
       : item);

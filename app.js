@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260713-aggancio-ordine-v1";
+} from "./lib/order-money.js?v=20260713-aggancio-ordine-v3";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260713-aggancio-ordine-v1";
+import { regionForCity } from "./lib/geo.js?v=20260713-aggancio-ordine-v3";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260713-aggancio-ordine-v1";
+} from "./lib/profit-split.js?v=20260713-aggancio-ordine-v3";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260713-aggancio-ordine-v1";
+} from "./lib/preventivo-pricing.js?v=20260713-aggancio-ordine-v3";
 
-const APP_SHELL_VERSION = "20260713-aggancio-ordine-v1";
+const APP_SHELL_VERSION = "20260713-aggancio-ordine-v3";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2483,6 +2483,25 @@ function closeMobileDrillDetail({ skipHistory = false } = {}) {
 
 function getAllowedViewsForRole(role = state.currentUser?.role || "office") {
   return roleViews[normalizeUserRole(role)] || roleViews.office;
+}
+
+// La card ordine in chat (Aggancio operativo) deve aprire l'ordine nella vista
+// di dettaglio che il RUOLO dell'utente può DAVVERO vedere: office/seller →
+// Inbox Ordini, magazzino → Inventario, squadra → Pose. Senza questo, un
+// magazziniere che clicca il chip finiva rimbalzato in Dashboard (setView
+// ripiega su allowed[0]) perché "orders" non è tra le sue viste permesse.
+// Ritorna "" se il ruolo non ha alcuna vista ordine (es. seller) → chip non
+// navigabile.
+function getOrderLinkTargetView() {
+  const allowed = getAllowedViewsForRole();
+  // Ordine di preferenza per VISIBILITÀ del dettaglio ordine: office → Inbox
+  // Ordini; magazzino → Spedizioni (drawer dettaglio pulito, l'ordine si vede
+  // subito — meglio dell'Inventario dov'è sepolto sotto il form giacenza);
+  // squadra → Pose.
+  for (const v of ["orders", "shipping", "installations", "warehouse"]) {
+    if (allowed.includes(v)) return v;
+  }
+  return "";
 }
 
 /* ── CRM Drawer (overlay panel dettaglio richiesta) ──────────────────────── */
@@ -15541,10 +15560,14 @@ function renderWarehouse() {
       : `<div class="info-card">${state.lang === "it" ? "Nessuna giacenza caricata. Inserisci i primi rotoli o residui dal pannello a destra." : "No stock loaded yet. Add the first rolls or offcuts from the right panel."}</div>`;
   }
 
-  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
+  // Fallback all'elenco COMPLETO (state.orders) quando l'ordine selezionato non
+  // è nel filtro magazzino: es. un ordine collegato via chip che non richiede
+  // lavoro di magazzino andrebbe altrimenti perso, mostrando un ordine diverso.
+  // Stesso pattern già usato in renderOrders/renderInstallations.
+  const order = orders.find((item) => item.id === state.selectedOrderId)
+    || (state.selectedOrderId ? state.orders.find((item) => item.id === state.selectedOrderId) : null)
+    || orders[0] || null;
   if (state.currentView === "warehouse" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
-  if (order) {
-  }
   // Nota: l'auto-suggest inventario è stato rimosso — era fastidioso perché mostrava
   // l'avviso "mancano N pezzi" appena si apriva l'inventario. L'utente può richiedere
   // la proposta esplicitamente con il pulsante dedicato.
@@ -22702,7 +22725,7 @@ function renderCommunicationsPendingOrderRefHtml() {
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
       <span class="communications-pending-order-copy">
         <strong>${escapeHtml(ref.cliente || "—")}</strong>
-        <small>#${escapeHtml(ref.orderNumber || "")}${ref.product ? " · " + escapeHtml(ref.product) : ""}</small>
+        <small>#${escapeHtml(String(ref.orderNumber || "").replace(/^#+/, ""))}${ref.product ? " · " + escapeHtml(ref.product) : ""}</small>
       </span>
       <button type="button" class="communications-pending-remove" data-action="communications-remove-order-ref" aria-label="${state.lang === "it" ? "Rimuovi" : "Remove"}">×</button>
     </div>`;
@@ -22954,15 +22977,23 @@ function renderSingleCommunicationMessageHtml(message, participantById) {
   // Chip "collega ordine" (solo lettura): riusa la stessa azione già usata
   // in TUTTA l'app per aprire un ordine (data-action="select-order"), quindi
   // il click funziona gratis tramite il dispatcher globale già esistente,
-  // senza bisogno di logica di navigazione dedicata qui.
-  const orderChipHtml = message.orderRef?.id ? `
-    <button type="button" class="communications-order-chip" data-action="select-order" data-id="${escapeAttr(message.orderRef.id)}" data-view="orders" title="${state.lang === "it" ? "Apri ordine" : "Open order"}">
+  // senza bisogno di logica di navigazione dedicata qui. La vista target è
+  // scelta in base al RUOLO (getOrderLinkTargetView) così anche magazzino/
+  // squadra aprono l'ordine invece di essere rimbalzati in Dashboard.
+  let orderChipHtml = "";
+  if (message.orderRef?.id) {
+    const targetView = getOrderLinkTargetView();
+    const num = String(message.orderRef.orderNumber || "").replace(/^#+/, "");
+    const chipInner = `
       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
       <span class="communications-order-chip-copy">
         <strong>${escapeHtml(message.orderRef.cliente || "—")}</strong>
-        <small>#${escapeHtml(message.orderRef.orderNumber || "")}${message.orderRef.product ? " · " + escapeHtml(message.orderRef.product) : ""}</small>
-      </span>
-    </button>` : "";
+        <small>#${escapeHtml(num)}${message.orderRef.product ? " · " + escapeHtml(message.orderRef.product) : ""}</small>
+      </span>`;
+    orderChipHtml = targetView
+      ? `<button type="button" class="communications-order-chip" data-action="select-order" data-id="${escapeAttr(message.orderRef.id)}" data-view="${escapeAttr(targetView)}" title="${state.lang === "it" ? "Apri ordine" : "Open order"}">${chipInner}</button>`
+      : `<div class="communications-order-chip is-static">${chipInner}</div>`;
+  }
   const bodyHtml = message.body ? `<p>${escapeHtml(message.body)}</p>` : "";
   return `
       <div class="communications-message ${mine ? "is-mine" : ""}${message.pending ? " is-pending" : ""}" data-msg-id="${escapeAttr(String(message.id || ""))}">
@@ -23205,7 +23236,7 @@ async function sendCommunicationMessage(form) {
     pending: true,
   };
   const previewText = body
-    || (optimisticAttachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : optimisticAttachments.length ? "📎 Allegato" : (orderRef ? `🔗 Ordine #${orderRef.orderNumber || ""}` : ""));
+    || (optimisticAttachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : optimisticAttachments.length ? "📎 Allegato" : (orderRef ? `🔗 Ordine #${String(orderRef.orderNumber || "").replace(/^#+/, "")}` : ""));
   state.loadedCommunicationThreadId = threadId;
   state.communicationMessages = sortCommunicationMessages([
     ...(state.communicationMessages || []).filter((item) => item.id !== optimisticId),
@@ -23233,7 +23264,7 @@ async function sendCommunicationMessage(form) {
         ...(state.communicationMessages || []).filter((item) => item.id !== optimisticId && item.id !== message.id),
         message,
       ]);
-      const serverPreview = message.body || ((message.attachments || []).some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : (message.attachments || []).length ? "📎 Allegato" : (message.orderRef ? `🔗 Ordine #${message.orderRef.orderNumber || ""}` : ""));
+      const serverPreview = message.body || ((message.attachments || []).some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : (message.attachments || []).length ? "📎 Allegato" : (message.orderRef ? `🔗 Ordine #${String(message.orderRef.orderNumber || "").replace(/^#+/, "")}` : ""));
       state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === threadId
         ? { ...thread, lastMessagePreview: serverPreview, updatedAt: message.createdAt, unreadCount: 0 }
         : thread);
