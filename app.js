@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260712-fornitori-v2";
+} from "./lib/order-money.js?v=20260713-aggancio-ordine-v1";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260712-fornitori-v2";
+import { regionForCity } from "./lib/geo.js?v=20260713-aggancio-ordine-v1";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260712-fornitori-v2";
+} from "./lib/profit-split.js?v=20260713-aggancio-ordine-v1";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260712-fornitori-v2";
+} from "./lib/preventivo-pricing.js?v=20260713-aggancio-ordine-v1";
 
-const APP_SHELL_VERSION = "20260712-fornitori-v2";
+const APP_SHELL_VERSION = "20260713-aggancio-ordine-v1";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1146,6 +1146,11 @@ const state = {
   communicationsUnreadCount: 0,
   communicationsLoading: false,
   communicationsInitialized: false,
+  // Chip "collega ordine" (solo lettura, vedi Aggancio operativo): ricerca +
+  // ordine in sospeso da agganciare al prossimo messaggio.
+  communicationsOrderPickerOpen: false,
+  communicationsOrderPickerResults: [],
+  communicationsPendingOrderRef: null,
   securityEvents: [],
   securityPolicy: {},
   usageReport: null,
@@ -22547,9 +22552,14 @@ function renderCommunicationsChatBodyHtml() {
     <div class="communications-quick-replies">
       ${quickReplies.map((q) => `<button type="button" class="communications-quick-reply" data-action="communications-quick-reply" data-text="${escapeAttr(q)}">${escapeHtml(q)}</button>`).join("")}
     </div>
-    <div class="communications-pending" id="communications-pending">${renderCommunicationsPendingAttachmentsHtml()}</div>
+    <div class="communications-pending" id="communications-pending">${renderCommunicationsPendingAttachmentsHtml()}${renderCommunicationsPendingOrderRefHtml()}</div>
+    <div class="communications-order-picker ${state.communicationsOrderPickerOpen ? "" : "hidden"}" id="communications-order-picker">
+      <input type="text" class="communications-order-picker-input" id="communications-order-picker-input" placeholder="${state.lang === "it" ? "Cerca ordine per cliente, numero o prodotto" : "Search order by client, number or product"}" autocomplete="off" />
+      <div class="communications-order-picker-results" id="communications-order-picker-results"></div>
+    </div>
     <form class="communications-composer" id="communications-message-form">
       <button type="button" class="communications-attach-btn" data-action="communications-attach" aria-label="${state.lang === "it" ? "Allega foto o file" : "Attach photo or file"}"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+      <button type="button" class="communications-attach-btn ${state.communicationsOrderPickerOpen ? "is-active" : ""}" data-action="communications-toggle-order-picker" aria-label="${state.lang === "it" ? "Collega ordine" : "Link order"}" title="${state.lang === "it" ? "Collega ordine" : "Link order"}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>
       <input type="file" id="communications-file-input" accept="image/*,application/pdf" multiple hidden />
       <textarea class="text-input" name="body" rows="1" maxlength="2000" placeholder="${state.lang === "it" ? "Scrivi un messaggio" : "Write a message"}"></textarea>
       <button type="submit" class="communications-send-btn" data-action="communications-send-message" aria-label="${state.lang === "it" ? "Invia" : "Send"}"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
@@ -22684,10 +22694,55 @@ function renderCommunicationsPendingAttachmentsHtml() {
     </div>`).join("");
 }
 
+function renderCommunicationsPendingOrderRefHtml() {
+  const ref = state.communicationsPendingOrderRef;
+  if (!ref) return "";
+  return `
+    <div class="communications-pending-order">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      <span class="communications-pending-order-copy">
+        <strong>${escapeHtml(ref.cliente || "—")}</strong>
+        <small>#${escapeHtml(ref.orderNumber || "")}${ref.product ? " · " + escapeHtml(ref.product) : ""}</small>
+      </span>
+      <button type="button" class="communications-pending-remove" data-action="communications-remove-order-ref" aria-label="${state.lang === "it" ? "Rimuovi" : "Remove"}">×</button>
+    </div>`;
+}
+
 function updateCommunicationsPendingStrip() {
   const strip = document.getElementById("communications-pending");
-  if (strip) strip.innerHTML = renderCommunicationsPendingAttachmentsHtml();
+  if (strip) strip.innerHTML = renderCommunicationsPendingAttachmentsHtml() + renderCommunicationsPendingOrderRefHtml();
 }
+
+// Ricerca ordini per il chip "collega ordine" (solo lettura): aggiorna SOLO
+// #communications-order-picker-results, mai l'intero pannello, altrimenti
+// l'input di ricerca perderebbe il focus a ogni carattere digitato (stesso
+// bug visto e corretto oggi in Fornitori).
+async function searchCommunicationOrderLookup(query) {
+  const resultsEl = document.getElementById("communications-order-picker-results");
+  if (!resultsEl) return;
+  const q = String(query || "").trim();
+  if (!q) {
+    resultsEl.innerHTML = `<div class="communications-order-picker-hint">${state.lang === "it" ? "Scrivi per cercare un ordine." : "Type to search an order."}</div>`;
+    return;
+  }
+  resultsEl.innerHTML = `<div class="communications-order-picker-hint">${state.lang === "it" ? "Cerco…" : "Searching…"}</div>`;
+  try {
+    const data = await apiFetch(`/api/communications/order-lookup?q=${encodeURIComponent(q)}`);
+    const results = Array.isArray(data?.results) ? data.results : [];
+    if (!results.length) {
+      resultsEl.innerHTML = `<div class="communications-order-picker-hint">${state.lang === "it" ? "Nessun ordine trovato." : "No orders found."}</div>`;
+      return;
+    }
+    resultsEl.innerHTML = results.map((o) => `
+      <button type="button" class="communications-order-picker-item" data-action="communications-select-order-ref" data-id="${escapeAttr(o.id)}" data-order-number="${escapeAttr(o.orderNumber)}" data-cliente="${escapeAttr(o.cliente)}" data-product="${escapeAttr(o.product)}">
+        <strong>${escapeHtml(o.cliente || "—")}</strong>
+        <small>#${escapeHtml(o.orderNumber)}${o.product ? " · " + escapeHtml(o.product) : ""}${o.city ? " · " + escapeHtml(o.city) : ""}</small>
+      </button>`).join("");
+  } catch {
+    resultsEl.innerHTML = `<div class="communications-order-picker-hint">${state.lang === "it" ? "Ricerca non riuscita." : "Search failed."}</div>`;
+  }
+}
+let _communicationsOrderSearchTimer = null;
 
 // Le foto scattate da smartphone (12MP+) spesso superano da sole il limite di
 // 8MB, facendo scartare l'allegato in silenzio (solo un toast facile da perdere
@@ -22783,13 +22838,58 @@ function bindCommunicationsQuickReplies() {
         state.communicationsPendingAttachments.splice(idx, 1);
         updateCommunicationsPendingStrip();
       }
+      return;
+    }
+    const toggleOrderPicker = ev.target.closest?.("[data-action='communications-toggle-order-picker']");
+    if (toggleOrderPicker) {
+      ev.preventDefault();
+      state.communicationsOrderPickerOpen = !state.communicationsOrderPickerOpen;
+      const picker = host.querySelector("#communications-order-picker");
+      if (picker) picker.classList.toggle("hidden", !state.communicationsOrderPickerOpen);
+      toggleOrderPicker.classList.toggle("is-active", state.communicationsOrderPickerOpen);
+      if (state.communicationsOrderPickerOpen) {
+        const input = host.querySelector("#communications-order-picker-input");
+        input?.focus();
+        void searchCommunicationOrderLookup(input?.value || "");
+      }
+      return;
+    }
+    const selectOrderRef = ev.target.closest?.("[data-action='communications-select-order-ref']");
+    if (selectOrderRef) {
+      ev.preventDefault();
+      state.communicationsPendingOrderRef = {
+        id: selectOrderRef.dataset.id || "",
+        orderNumber: selectOrderRef.dataset.orderNumber || "",
+        cliente: selectOrderRef.dataset.cliente || "",
+        product: selectOrderRef.dataset.product || "",
+      };
+      state.communicationsOrderPickerOpen = false;
+      host.querySelector("#communications-order-picker")?.classList.add("hidden");
+      host.querySelector("[data-action='communications-toggle-order-picker']")?.classList.remove("is-active");
+      updateCommunicationsPendingStrip();
+      return;
+    }
+    const removeOrderRef = ev.target.closest?.("[data-action='communications-remove-order-ref']");
+    if (removeOrderRef) {
+      ev.preventDefault();
+      state.communicationsPendingOrderRef = null;
+      updateCommunicationsPendingStrip();
+      return;
     }
   });
   host.addEventListener("input", (ev) => {
     const search = ev.target.closest?.("[data-action='communications-search']");
-    if (!search) return;
-    state.communicationsSearch = search.value || "";
-    updateCommunicationThreadsDom();
+    if (search) {
+      state.communicationsSearch = search.value || "";
+      updateCommunicationThreadsDom();
+      return;
+    }
+    const orderPickerInput = ev.target.closest?.("#communications-order-picker-input");
+    if (orderPickerInput) {
+      clearTimeout(_communicationsOrderSearchTimer);
+      const value = orderPickerInput.value;
+      _communicationsOrderSearchTimer = setTimeout(() => { void searchCommunicationOrderLookup(value); }, 250);
+    }
   });
   host.addEventListener("change", (ev) => {
     const fileInput = ev.target.closest?.("#communications-file-input");
@@ -22851,11 +22951,23 @@ function renderSingleCommunicationMessageHtml(message, participantById) {
       return `<a class="communications-att-file" href="${src}" target="_blank" rel="noreferrer"><span class="communications-att-file-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="communications-att-file-name">${escapeHtml(a.name || "file")}</span></a>`;
     }).join("");
   }
+  // Chip "collega ordine" (solo lettura): riusa la stessa azione già usata
+  // in TUTTA l'app per aprire un ordine (data-action="select-order"), quindi
+  // il click funziona gratis tramite il dispatcher globale già esistente,
+  // senza bisogno di logica di navigazione dedicata qui.
+  const orderChipHtml = message.orderRef?.id ? `
+    <button type="button" class="communications-order-chip" data-action="select-order" data-id="${escapeAttr(message.orderRef.id)}" data-view="orders" title="${state.lang === "it" ? "Apri ordine" : "Open order"}">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      <span class="communications-order-chip-copy">
+        <strong>${escapeHtml(message.orderRef.cliente || "—")}</strong>
+        <small>#${escapeHtml(message.orderRef.orderNumber || "")}${message.orderRef.product ? " · " + escapeHtml(message.orderRef.product) : ""}</small>
+      </span>
+    </button>` : "";
   const bodyHtml = message.body ? `<p>${escapeHtml(message.body)}</p>` : "";
   return `
       <div class="communications-message ${mine ? "is-mine" : ""}${message.pending ? " is-pending" : ""}" data-msg-id="${escapeAttr(String(message.id || ""))}">
         <div class="communications-message-bubble${attachHtml && !message.body ? " has-only-attachments" : ""}">
-          ${attachHtml}${bodyHtml}
+          ${orderChipHtml}${attachHtml}${bodyHtml}
           <span class="communications-message-meta"><span class="communications-message-time">${escapeHtml(formatCommunicationClock(message.createdAt))}</span>${statusHtml}</span>
         </div>
       </div>
@@ -23069,8 +23181,9 @@ async function sendCommunicationMessage(form) {
   const body = String(new FormData(form).get("body") || "").trim();
   const threadId = String(state.selectedCommunicationThreadId || "").trim();
   const pending = Array.isArray(state.communicationsPendingAttachments) ? state.communicationsPendingAttachments.slice() : [];
-  if ((!body && !pending.length) || !threadId) {
-    showToast(!threadId ? "Seleziona una chat prima di inviare." : "Scrivi un messaggio o allega un file.", "warning");
+  const orderRef = state.communicationsPendingOrderRef || null;
+  if ((!body && !pending.length && !orderRef) || !threadId) {
+    showToast(!threadId ? "Seleziona una chat prima di inviare." : "Scrivi un messaggio, allega un file o collega un ordine.", "warning");
     return;
   }
   const button = form.querySelector("button[type='submit']");
@@ -23086,11 +23199,13 @@ async function sendCommunicationMessage(form) {
     authorId: String(state.currentUser?.id || ""),
     body,
     attachments: optimisticAttachments,
+    orderRef,
     createdAt: nowIso,
     readBy: [String(state.currentUser?.id || "")].filter(Boolean),
     pending: true,
   };
-  const previewText = body || (optimisticAttachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : "📎 Allegato");
+  const previewText = body
+    || (optimisticAttachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : optimisticAttachments.length ? "📎 Allegato" : (orderRef ? `🔗 Ordine #${orderRef.orderNumber || ""}` : ""));
   state.loadedCommunicationThreadId = threadId;
   state.communicationMessages = sortCommunicationMessages([
     ...(state.communicationMessages || []).filter((item) => item.id !== optimisticId),
@@ -23100,20 +23215,25 @@ async function sendCommunicationMessage(form) {
     ? { ...thread, lastMessagePreview: previewText, updatedAt: nowIso, unreadCount: 0 }
     : thread);
   state.communicationsPendingAttachments = [];
+  state.communicationsPendingOrderRef = null;
   form.reset();
   updateCommunicationsPendingStrip();
   refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: true });
   try {
     const message = await apiFetch(`/api/communications/threads/${encodeURIComponent(threadId)}/messages`, {
       method: "POST",
-      body: JSON.stringify({ body, attachments: pending.map((a) => ({ name: a.name, type: a.type, size: a.size, dataUrl: a.dataUrl })) }),
+      body: JSON.stringify({
+        body,
+        attachments: pending.map((a) => ({ name: a.name, type: a.type, size: a.size, dataUrl: a.dataUrl })),
+        orderRefId: orderRef?.id || "",
+      }),
     });
     if (message?.id) {
       state.communicationMessages = sortCommunicationMessages([
         ...(state.communicationMessages || []).filter((item) => item.id !== optimisticId && item.id !== message.id),
         message,
       ]);
-      const serverPreview = message.body || ((message.attachments || []).some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : (message.attachments || []).length ? "📎 Allegato" : "");
+      const serverPreview = message.body || ((message.attachments || []).some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : (message.attachments || []).length ? "📎 Allegato" : (message.orderRef ? `🔗 Ordine #${message.orderRef.orderNumber || ""}` : ""));
       state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === threadId
         ? { ...thread, lastMessagePreview: serverPreview, updatedAt: message.createdAt, unreadCount: 0 }
         : thread);
@@ -23122,8 +23242,9 @@ async function sendCommunicationMessage(form) {
   } catch (error) {
     state.communicationMessages = (state.communicationMessages || []).filter((item) => item.id !== optimisticId);
     if (textarea && !String(textarea.value || "").trim()) textarea.value = body;
-    // Ripristina gli allegati staged così l'utente può riprovare senza riselezionarli.
+    // Ripristina gli allegati e l'ordine agganciato così l'utente può riprovare senza rifare tutto.
     if (pending.length) { state.communicationsPendingAttachments = pending; }
+    if (orderRef) { state.communicationsPendingOrderRef = orderRef; }
     if (state.currentView === "communications") { refreshCommunicationsDom({ updateThreads: true, updateMessages: true, forceMessages: true }); updateCommunicationsPendingStrip(); }
     const reason = error?.payload?.error || error?.message || "";
     showToast(reason === "thread_not_found" ? "Chat non trovata. Riapri la conversazione." : reason === "unauthorized" ? "Sessione scaduta. Effettua di nuovo l'accesso." : "Messaggio non inviato. Riprova.", "warning");

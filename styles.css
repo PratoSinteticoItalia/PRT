@@ -17342,9 +17342,80 @@ textarea.text-input {
 }
 .communications-attach-btn:hover { background: var(--brand-soft, rgba(238,247,239,0.9)); color: #1f4636; }
 .communications-attach-btn:active { transform: scale(0.94); }
+.communications-attach-btn.is-active { background: #1f4636; border-color: #1f4636; color: #fff; }
 /* Striscia allegati in coda all'invio */
 .communications-pending { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 2px; }
 .communications-pending:empty { display: none; }
+/* Chip ordine in sospeso (Aggancio operativo) — pillola larga, non un
+   quadrato come le miniature foto, perché porta testo (cliente + numero). */
+.communications-pending-order {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(76, 118, 93, 0.28);
+  background: rgba(238, 247, 239, 0.7);
+  color: #1f4636;
+  font-size: 12px;
+}
+.communications-pending-order-copy { display: flex; flex-direction: column; line-height: 1.2; }
+.communications-pending-order-copy small { color: #3c6350; font-weight: 500; }
+/* Picker ricerca ordine, sopra al composer */
+.communications-order-picker {
+  border: 1px solid rgba(35, 49, 33, 0.12);
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px;
+  margin-bottom: 6px;
+}
+.communications-order-picker.hidden { display: none; }
+.communications-order-picker-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid rgba(35, 49, 33, 0.14);
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.communications-order-picker-results { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.communications-order-picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.communications-order-picker-item:hover { background: rgba(76, 118, 93, 0.1); }
+.communications-order-picker-item small { color: var(--text2); }
+.communications-order-picker-hint { padding: 8px 10px; font-size: 12.5px; color: var(--text2); }
+/* Chip ordine dentro la bolla messaggio (solo collegamento, nessuna azione
+   che scrive stato — vedi nota Aggancio operativo) */
+.communications-order-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(76, 118, 93, 0.25);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #1f4636;
+  cursor: pointer;
+  text-align: left;
+}
+.communications-message.is-mine .communications-order-chip { background: rgba(255, 255, 255, 0.45); }
+.communications-order-chip:hover { background: rgba(238, 247, 239, 0.9); }
+.communications-order-chip svg { flex-shrink: 0; }
+.communications-order-chip-copy { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.communications-order-chip-copy strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.communications-order-chip-copy small { color: var(--text2); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .communications-pending-item {
   position: relative;
   width: 60px;

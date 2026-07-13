@@ -4300,12 +4300,25 @@ function normalizeCommunicationMessage(message = {}) {
     ? message.attachments.map((a) => normalizeAttachmentRecord(a, id, "communications")).filter(Boolean)
     : [];
   if (!body && !attachments.length) return null;
+  // Chip "collega ordine" (solo lettura): snapshot dei campi utili a mostrare
+  // la card in chat, costruito dal server dall'ordine reale al momento
+  // dell'invio (mai fidarsi di stringhe display arbitrarie dal client — vedi
+  // il POST del messaggio, dove orderRef viene costruito da store.orders).
+  const orderRef = message.orderRef && message.orderRef.id
+    ? {
+      id: String(message.orderRef.id),
+      orderNumber: String(message.orderRef.orderNumber || ""),
+      cliente: String(message.orderRef.cliente || ""),
+      product: String(message.orderRef.product || ""),
+    }
+    : null;
   return {
     id,
     threadId: String(message.threadId || "").trim(),
     authorId: String(message.authorId || "").trim(),
     body: body.slice(0, 2000),
     attachments,
+    orderRef,
     createdAt: String(message.createdAt || new Date().toISOString()),
     readBy: Array.isArray(message.readBy)
       ? Array.from(new Set(message.readBy.map((id) => String(id || "").trim()).filter(Boolean)))
@@ -11412,7 +11425,22 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const text = String(body?.body || "").trim();
     const rawAttachments = Array.isArray(body?.attachments) ? body.attachments.slice(0, 10) : [];
-    if (!text && !rawAttachments.length) return sendJson(res, 400, { error: "missing_message" });
+    if (!text && !rawAttachments.length && !body?.orderRefId) return sendJson(res, 400, { error: "missing_message" });
+    // Chip "collega ordine": il client manda SOLO l'id, il server ricostruisce
+    // la card dall'ordine reale — mai fidarsi di testo display dal client
+    // (rischio di far comparire in chat un nome cliente/prodotto fabbricato).
+    let orderRef = null;
+    if (body?.orderRefId) {
+      const refOrder = (store.orders || []).find((o) => o.id === String(body.orderRefId));
+      if (refOrder) {
+        orderRef = {
+          id: refOrder.id,
+          orderNumber: refOrder.orderNumber || refOrder.name || "",
+          cliente: [refOrder.firstName, refOrder.lastName].filter(Boolean).join(" ").trim(),
+          product: refOrder.operations?.product || "",
+        };
+      }
+    }
     store.communications = normalizeCommunicationsStore(store.communications || {});
     const nowIso = new Date().toISOString();
     const messageId = randomUUID();
@@ -11440,12 +11468,15 @@ async function handleApi(req, res, url) {
       authorId: String(currentUser.id || ""),
       body: text.slice(0, 2000),
       attachments,
+      orderRef,
       createdAt: nowIso,
       readBy: [String(currentUser.id || "")],
     };
     store.communications.messages.push(message);
     store.communications.messages = store.communications.messages.slice(-5000);
-    const preview = text ? text.slice(0, 160) : (attachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : "📎 Allegato");
+    const preview = text
+      ? text.slice(0, 160)
+      : (attachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : (attachments.length ? "📎 Allegato" : (orderRef ? `🔗 Ordine #${orderRef.orderNumber || ""}` : "")));
     store.communications.threads = store.communications.threads.map((item) => item.id === thread.id
       ? { ...item, updatedAt: nowIso, lastMessagePreview: preview }
       : item);
@@ -13986,6 +14017,57 @@ async function handleApi(req, res, url) {
     await writeJson(STORE_PATH, store);
     scheduleAttachmentAssetRemoval([removedAttachment], "sales_content_attachment_delete_failed");
     return sendJson(res, 200, serializeSalesContentForClient(store.salesContents[contentIndex]));
+  }
+
+  // GET /api/communications/order-lookup?q=... → ricerca leggera ordini per il
+  // chip "collega ordine" in chat. Visibilità per ruolo identica a quella già
+  // usata in /api/session (crew solo i propri, warehouse solo instradati,
+  // office/seller tutti) — evita di esporre in chat ordini/clienti di altre
+  // squadre.
+  if (url.pathname === "/api/communications/order-lookup" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "warehouse", "crew", "seller"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
+    const qDigits = q.replace(/\D+/g, "");
+    let pool = store.orders || [];
+    if (currentUser.role === "crew") {
+      const crewNorm = normalizeCrewName(currentUser.crewName || "");
+      pool = crewNorm ? pool.filter((o) => normalizeCrewName(o.operations?.installation?.crew || "") === crewNorm) : [];
+    } else if (currentUser.role === "warehouse") {
+      pool = pool.filter((o) => {
+        const wh = o.operations?.warehouse || {};
+        const inst = o.operations?.installation || {};
+        const notDraft = (o.operations?.officeStatus || "bozza") !== "bozza";
+        const routed = Boolean(
+          wh.selected || (wh.fulfillmentMode && wh.fulfillmentMode !== "da-definire")
+          || (wh.preparationDate && String(wh.preparationDate).trim())
+          || (wh.status && wh.status !== "da-preparare")
+          || wh.readyToShip || wh.carrierPassed || wh.shipped
+          || (wh.trackingNumber && String(wh.trackingNumber).trim())
+          || inst.required || inst.selected
+          || (inst.installDate && String(inst.installDate).trim())
+          || (inst.crew && String(inst.crew).trim())
+          || (inst.status && !["", "da-pianificare"].includes(String(inst.status).trim())),
+        );
+        return notDraft || routed;
+      });
+    }
+    if (q) {
+      pool = pool.filter((o) => {
+        const haystack = [o.orderNumber, o.firstName, o.lastName, o.operations?.product, o.city, o.phone].join(" ").toLowerCase();
+        const textMatch = haystack.includes(q);
+        const phoneMatch = qDigits.length >= 4 && haystack.replace(/\D+/g, "").includes(qDigits);
+        return textMatch || phoneMatch;
+      });
+    }
+    const results = pool.slice(0, 8).map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber || o.name || "",
+      cliente: [o.firstName, o.lastName].filter(Boolean).join(" ").trim(),
+      product: o.operations?.product || "",
+      city: o.city || "",
+    }));
+    return sendJson(res, 200, { results });
   }
 
   // ─── Fornitori: prezzi da fatture (elenco + confronto per materiale) ──────
