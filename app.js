@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260714-fornitori-layout-v2";
+} from "./lib/order-money.js?v=20260714-note-vocali-v2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260714-fornitori-layout-v2";
+import { regionForCity } from "./lib/geo.js?v=20260714-note-vocali-v2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260714-fornitori-layout-v2";
+} from "./lib/profit-split.js?v=20260714-note-vocali-v2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260714-fornitori-layout-v2";
+} from "./lib/preventivo-pricing.js?v=20260714-note-vocali-v2";
 
-const APP_SHELL_VERSION = "20260714-fornitori-layout-v2";
+const APP_SHELL_VERSION = "20260714-note-vocali-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1151,6 +1151,8 @@ const state = {
   communicationsOrderPickerOpen: false,
   communicationsOrderPickerResults: [],
   communicationsPendingOrderRef: null,
+  // Nota vocale: registrazione microfono in corso (MediaRecorder).
+  communicationsRecording: false,
   securityEvents: [],
   securityPolicy: {},
   usageReport: null,
@@ -22750,9 +22752,19 @@ function renderCommunicationsChatBodyHtml() {
       <input type="text" class="communications-order-picker-input" id="communications-order-picker-input" placeholder="${state.lang === "it" ? "Cerca ordine per cliente, numero o prodotto" : "Search order by client, number or product"}" autocomplete="off" />
       <div class="communications-order-picker-results" id="communications-order-picker-results"></div>
     </div>
+    <div class="communications-recording-bar hidden" id="communications-recording-bar">
+      <span class="rec-dot" aria-hidden="true"></span>
+      <span class="rec-label">${state.lang === "it" ? "Registrazione…" : "Recording…"}</span>
+      <span class="rec-time" id="communications-rec-time">0:00</span>
+      <button type="button" class="rec-btn rec-cancel" data-action="communications-cancel-recording" aria-label="${state.lang === "it" ? "Annulla" : "Cancel"}" title="${state.lang === "it" ? "Annulla" : "Cancel"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+      <button type="button" class="rec-btn rec-stop" data-action="communications-stop-recording" aria-label="${state.lang === "it" ? "Ferma e allega" : "Stop and attach"}" title="${state.lang === "it" ? "Ferma e allega" : "Stop and attach"}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+    </div>
     <form class="communications-composer" id="communications-message-form">
-      <button type="button" class="communications-attach-btn" data-action="communications-attach" aria-label="${state.lang === "it" ? "Allega foto o file" : "Attach photo or file"}"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-      <button type="button" class="communications-attach-btn ${state.communicationsOrderPickerOpen ? "is-active" : ""}" data-action="communications-toggle-order-picker" aria-label="${state.lang === "it" ? "Collega ordine" : "Link order"}" title="${state.lang === "it" ? "Collega ordine" : "Link order"}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>
+      <div class="communications-composer-tools">
+        <button type="button" class="communications-attach-btn" data-action="communications-attach" aria-label="${state.lang === "it" ? "Allega foto o file" : "Attach photo or file"}"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+        <button type="button" class="communications-attach-btn ${state.communicationsOrderPickerOpen ? "is-active" : ""}" data-action="communications-toggle-order-picker" aria-label="${state.lang === "it" ? "Collega ordine" : "Link order"}" title="${state.lang === "it" ? "Collega ordine" : "Link order"}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>
+        <button type="button" class="communications-attach-btn" data-action="communications-record" aria-label="${state.lang === "it" ? "Nota vocale" : "Voice note"}" title="${state.lang === "it" ? "Nota vocale" : "Voice note"}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+      </div>
       <input type="file" id="communications-file-input" accept="image/*,application/pdf" multiple hidden />
       <textarea class="text-input" name="body" rows="1" maxlength="2000" placeholder="${state.lang === "it" ? "Scrivi un messaggio" : "Write a message"}"></textarea>
       <button type="submit" class="communications-send-btn" data-action="communications-send-message" aria-label="${state.lang === "it" ? "Invia" : "Send"}"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
@@ -22880,11 +22892,21 @@ function bindCommunicationsActions(container = document) {
 function renderCommunicationsPendingAttachmentsHtml() {
   const pend = state.communicationsPendingAttachments || [];
   if (!pend.length) return "";
-  return pend.map((a, i) => `
+  return pend.map((a, i) => {
+    let inner;
+    if (/^image\//i.test(a.type)) {
+      inner = `<img src="${escapeAttr(a.dataUrl)}" alt="" />`;
+    } else if (/^audio\//i.test(a.type)) {
+      inner = `<span class="communications-pending-file"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>${state.lang === "it" ? "Vocale" : "Voice"}</span>`;
+    } else {
+      inner = `<span class="communications-pending-file"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${escapeHtml((a.name || "file").slice(0, 18))}</span>`;
+    }
+    return `
     <div class="communications-pending-item">
-      ${/^image\//i.test(a.type) ? `<img src="${escapeAttr(a.dataUrl)}" alt="" />` : `<span class="communications-pending-file"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${escapeHtml((a.name || "file").slice(0, 18))}</span>`}
+      ${inner}
       <button type="button" class="communications-pending-remove" data-action="communications-remove-attachment" data-index="${i}" aria-label="${state.lang === "it" ? "Rimuovi" : "Remove"}">×</button>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 function renderCommunicationsPendingOrderRefHtml() {
@@ -22962,6 +22984,95 @@ async function compressImageForAttachment(file, { maxDim = 1600, quality = 0.82 
   }
 }
 
+// ─── Note vocali (registrazione microfono → allegato audio) ─────────────────
+let _commMediaRecorder = null;
+let _commRecStream = null;
+let _commRecChunks = [];
+let _commRecStart = 0;
+let _commRecTimerId = null;
+
+function showCommunicationsRecordingBar(show) {
+  const bar = document.getElementById("communications-recording-bar");
+  const form = document.getElementById("communications-message-form");
+  if (bar) bar.classList.toggle("hidden", !show);
+  if (form) form.classList.toggle("hidden", show);
+}
+
+function startCommRecTimer() {
+  const tick = () => {
+    const el = document.getElementById("communications-rec-time");
+    if (!el) return;
+    const s = Math.floor((Date.now() - (_commRecStart || Date.now())) / 1000);
+    el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+  tick();
+  _commRecTimerId = window.setInterval(tick, 500);
+}
+function stopCommRecTimer() {
+  if (_commRecTimerId) { window.clearInterval(_commRecTimerId); _commRecTimerId = null; }
+}
+
+async function startVoiceRecording() {
+  if (state.communicationsRecording) return;
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    showToast(state.lang === "it" ? "Registrazione audio non supportata su questo dispositivo." : "Audio recording not supported here.", "warning");
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
+      : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "";
+    _commMediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    _commRecStream = stream;
+    _commRecChunks = [];
+    _commMediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) _commRecChunks.push(e.data); };
+    _commMediaRecorder.start();
+    _commRecStart = Date.now();
+    state.communicationsRecording = true;
+    showCommunicationsRecordingBar(true);
+    startCommRecTimer();
+  } catch (err) {
+    showToast(state.lang === "it" ? "Permesso microfono negato o non disponibile." : "Microphone permission denied or unavailable.", "warning");
+  }
+}
+
+// attach=true → allega la nota vocale; false → scarta. In entrambi i casi
+// ferma il recorder, rilascia il microfono e ripristina il composer.
+function stopVoiceRecording(attach) {
+  const rec = _commMediaRecorder;
+  const durationMs = Date.now() - (_commRecStart || Date.now());
+  const cleanup = () => {
+    stopCommRecTimer();
+    (_commRecStream?.getTracks() || []).forEach((t) => t.stop());
+    _commRecStream = null;
+    _commMediaRecorder = null;
+    state.communicationsRecording = false;
+    showCommunicationsRecordingBar(false);
+  };
+  if (!rec) { cleanup(); return; }
+  rec.onstop = async () => {
+    const chunks = _commRecChunks;
+    _commRecChunks = [];
+    cleanup();
+    if (!attach) return;
+    if (durationMs < 700) {
+      showToast(state.lang === "it" ? "Registrazione troppo breve." : "Recording too short.", "warning");
+      return;
+    }
+    const type = rec.mimeType || "audio/webm";
+    const blob = new Blob(chunks, { type });
+    if (blob.size > 8_000_000) {
+      showToast(state.lang === "it" ? "Nota vocale troppo lunga." : "Voice note too long.", "warning");
+      return;
+    }
+    const ext = type.includes("mp4") ? "m4a" : "webm";
+    const secs = Math.max(1, Math.round(durationMs / 1000));
+    const file = new File([blob], `nota-vocale-${secs}s.${ext}`, { type });
+    await stageCommunicationAttachments([file]);
+  };
+  try { rec.stop(); } catch { cleanup(); }
+}
+
 async function stageCommunicationAttachments(fileList) {
   const files = Array.from(fileList || []);
   if (!files.length) return;
@@ -23021,6 +23132,24 @@ function bindCommunicationsQuickReplies() {
     if (attachBtn) {
       ev.preventDefault();
       host.querySelector("#communications-file-input")?.click();
+      return;
+    }
+    const recordBtn = ev.target.closest?.("[data-action='communications-record']");
+    if (recordBtn) {
+      ev.preventDefault();
+      void startVoiceRecording();
+      return;
+    }
+    const stopRec = ev.target.closest?.("[data-action='communications-stop-recording']");
+    if (stopRec) {
+      ev.preventDefault();
+      stopVoiceRecording(true);
+      return;
+    }
+    const cancelRec = ev.target.closest?.("[data-action='communications-cancel-recording']");
+    if (cancelRec) {
+      ev.preventDefault();
+      stopVoiceRecording(false);
       return;
     }
     const removeAtt = ev.target.closest?.("[data-action='communications-remove-attachment']");
@@ -23126,8 +23255,15 @@ function renderSingleCommunicationMessageHtml(message, participantById) {
   }
   const attachments = Array.isArray(message.attachments) ? message.attachments : [];
   const images = attachments.filter((a) => /^image\//i.test(a.type || ""));
-  const files = attachments.filter((a) => !/^image\//i.test(a.type || ""));
+  const audios = attachments.filter((a) => /^audio\//i.test(a.type || ""));
+  const files = attachments.filter((a) => !/^image\//i.test(a.type || "") && !/^audio\//i.test(a.type || ""));
   let attachHtml = "";
+  if (audios.length) {
+    attachHtml += audios.map((a) => {
+      const src = escapeAttr(a.url || a.dataUrl || "");
+      return `<audio class="communications-att-audio" controls preload="metadata" src="${src}"></audio>`;
+    }).join("");
+  }
   if (images.length) {
     attachHtml += `<div class="communications-att-grid" data-count="${images.length}">${images.map((a) => {
       const src = escapeAttr(a.url || a.dataUrl || "");
@@ -23406,7 +23542,7 @@ async function sendCommunicationMessage(form) {
     pending: true,
   };
   const previewText = body
-    || (optimisticAttachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : optimisticAttachments.length ? "📎 Allegato" : (orderRef ? `🔗 Ordine #${String(orderRef.orderNumber || "").replace(/^#+/, "")}` : ""));
+    || (optimisticAttachments.some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : optimisticAttachments.some((x) => /^audio\//i.test(x.type)) ? "🎤 Nota vocale" : optimisticAttachments.length ? "📎 Allegato" : (orderRef ? `🔗 Ordine #${String(orderRef.orderNumber || "").replace(/^#+/, "")}` : ""));
   state.loadedCommunicationThreadId = threadId;
   state.communicationMessages = sortCommunicationMessages([
     ...(state.communicationMessages || []).filter((item) => item.id !== optimisticId),
@@ -23434,7 +23570,7 @@ async function sendCommunicationMessage(form) {
         ...(state.communicationMessages || []).filter((item) => item.id !== optimisticId && item.id !== message.id),
         message,
       ]);
-      const serverPreview = message.body || ((message.attachments || []).some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : (message.attachments || []).length ? "📎 Allegato" : (message.orderRef ? `🔗 Ordine #${String(message.orderRef.orderNumber || "").replace(/^#+/, "")}` : ""));
+      const serverPreview = message.body || ((message.attachments || []).some((x) => /^image\//i.test(x.type)) ? "📷 Foto" : (message.attachments || []).some((x) => /^audio\//i.test(x.type)) ? "🎤 Nota vocale" : (message.attachments || []).length ? "📎 Allegato" : (message.orderRef ? `🔗 Ordine #${String(message.orderRef.orderNumber || "").replace(/^#+/, "")}` : ""));
       state.communicationThreads = (state.communicationThreads || []).map((thread) => thread.id === threadId
         ? { ...thread, lastMessagePreview: serverPreview, updatedAt: message.createdAt, unreadCount: 0 }
         : thread);
