@@ -13,6 +13,19 @@
       "runtimeArgs": ["server.js"],
       "port": 4179,
       "cwd": ".claude/worktrees/ecstatic-pike-75c837"
+    },
+    {
+      "name": "psi-inspect",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "port": 4181,
+      "env": {
+        "PORT": "4181",
+        "DATA_DIR": "/tmp/psi-inspect-kanban",
+        "VAPID_PUBLIC_KEY": "BDXh5tuJDxwG3tAJeijIPrL3eGZpM1zWrSMm-0qsSrvBP8sKSOa6qKjBdgDWNLYydKlG0Fmd5uNHfn_HTHOaZgA",
+        "VAPID_PRIVATE_KEY": "pQ7-kk-QTWGxcU02wHBtfrF5pl4XsvmNG0L8SJ4O8VA",
+        "VAPID_SUBJECT": "mailto:test@vertex.local"
+      }
     }
   ]
 }

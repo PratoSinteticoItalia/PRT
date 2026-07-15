@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260714-note-vocali-v2";
+} from "./lib/order-money.js?v=20260715-ios-zoom-input-fix";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260714-note-vocali-v2";
+import { regionForCity } from "./lib/geo.js?v=20260715-ios-zoom-input-fix";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260714-note-vocali-v2";
+} from "./lib/profit-split.js?v=20260715-ios-zoom-input-fix";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260714-note-vocali-v2";
+} from "./lib/preventivo-pricing.js?v=20260715-ios-zoom-input-fix";
 
-const APP_SHELL_VERSION = "20260714-note-vocali-v2";
+const APP_SHELL_VERSION = "20260715-ios-zoom-input-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2381,8 +2381,8 @@ function computeMobileDrillHeader(module, itemId) {
       subtitle: meta,
     };
   }
-  // orders / warehouse / installations condividono lo stesso item type (Order)
-  if (module === "orders" || module === "warehouse" || module === "installations") {
+  // orders / warehouse / installations / accounting condividono lo stesso item type (Order)
+  if (module === "orders" || module === "warehouse" || module === "installations" || module === "accounting") {
     const order = (state.orders || []).find((o) => o.id === itemId);
     if (!order) {
       return { title: state.lang === "it" ? "Ordine" : "Order", subtitle: "" };
@@ -2458,6 +2458,20 @@ function openMobileDrillDetail(module, itemId) {
 
 function closeMobileDrillDetail({ skipHistory = false } = {}) {
   if (!state.mobileDrillDetail) return false;
+  // Se dobbiamo far scattare noi lo history.back() (tap sul bottone "Indietro",
+  // non swipe/back fisico che arriva già via popstate): NON puliamo subito lo
+  // stato. Il popstate handler deve ancora trovare state.mobileDrillDetail
+  // valorizzato per imboccare il ramo drill-down — altrimenti casca nel ramo
+  // generico e la view di arrivo dipende da event.state.view, che può mancare
+  // (es. dopo un deep-link ?view=, la cui history entry ha state {} dopo
+  // clearHandledLaunchParams) → si finiva sbalzati in Dashboard invece che
+  // tornare alla lista da cui si era aperto il dettaglio.
+  if (!skipHistory) {
+    const histState = window.history.state;
+    if (histState && histState.mobileDrill) {
+      try { window.history.back(); return true; } catch {}
+    }
+  }
   const { listScrollY } = state.mobileDrillDetail;
   state.mobileDrillDetail = null;
   document.body.removeAttribute("data-drill-module");
@@ -2472,17 +2486,6 @@ function closeMobileDrillDetail({ skipHistory = false } = {}) {
       try { window.scrollTo({ top: listScrollY, left: 0, behavior: "auto" }); } catch {}
     });
   });
-  if (!skipHistory) {
-    try {
-      // Se siamo arrivati qui con il bottone "Indietro" interno (non da popstate),
-      // chiamiamo history.back() così rimuoviamo il record di stack che abbiamo
-      // pushato in openMobileDrillDetail.
-      const state = window.history.state;
-      if (state && state.mobileDrill) {
-        window.history.back();
-      }
-    } catch {}
-  }
   return true;
 }
 
@@ -16900,7 +16903,7 @@ function renderInstallationOrderRow(order) {
     <article class="install-row ${stageClass}" data-action="select-order-install" data-order-id="${escapeAttr(order.id)}">
       <header class="install-row-head">
         <strong>${escapeHtml(customer)}</strong>
-        <span class="install-row-num">#${escapeHtml(orderNum)}</span>
+        <span class="install-row-num">${escapeHtml(orderNum)}</span>
         <span class="install-row-badge ${stageClass}">${escapeHtml(stageBadge)}</span>
       </header>
       <div class="install-row-body">
@@ -17680,7 +17683,6 @@ async function renderInstallationsLive() {
   root.innerHTML = '<div class="live-loading">Caricamento cantieri live…</div>';
   try {
     const res = await apiListLiveJobs();
-    console.log("[cantieri-live] fetch result:", res);
     state.jobEvents.live.groups = res?.groups || [];
     state.jobEvents.live.loadedAt = Date.now();
     _renderLiveInner(root);
@@ -22295,6 +22297,11 @@ function showApp() {
   ui.authScreen.classList.add("hidden");
   ui.appShell.classList.remove("hidden");
   renderCurrentViewOnly(state.currentView);
+  // La bottom-nav mobile è stata renderizzata una prima volta prima del login
+  // (currentView ancora sul default "dashboard") — va aggiornata ora che
+  // launchParams.requestedView è stato applicato, altrimenti un deep-link
+  // (?view=warehouse ecc.) mostra il contenuto giusto ma la tab attiva sbagliata.
+  try { renderMobileBottomNav(); } catch {}
   requestAnimationFrame(() => {
     scrollCurrentViewToTop();
     focusViewTarget(state.currentView);
@@ -24981,6 +24988,11 @@ function setView(view, { pushHistory = true } = {}) {
     _skipScrollPreservationOnce = true;
   }
   renderCurrentViewOnly(nextView);
+  // Aggiorna la tab attiva della bottom-nav mobile anche quando la view cambia
+  // in modo programmatico (deep-link ?view=, chip ordine in chat, drill-down...)
+  // e non solo via click diretto su .nav-link/.mbn-tab (vedi hook dedicato più
+  // sotto, che diventerebbe l'unica fonte di aggiornamento altrimenti).
+  try { renderMobileBottomNav(); } catch {}
   if (nextView === "sales-requests" && nextView !== previousView && canAutoRefreshSalesRequests()) {
     triggerSalesRequestAutoSync({ force: true });
   }
@@ -25122,7 +25134,11 @@ window.addEventListener("popstate", (event) => {
     setView(targetView, { pushHistory: false });
     return;
   }
-  const view = event.state?.view || "dashboard";
+  // Fallback sulla view corrente (non "dashboard" fisso): una history entry
+  // può non avere {view} salvato — es. dopo un deep-link ?view=X, la cui entry
+  // viene ripulita con replaceState({}, ...) — e in quel caso è più corretto
+  // restare dove si è piuttosto che saltare altrove a sorpresa.
+  const view = event.state?.view || state.currentView;
   // No-op se la view di destinazione è già quella corrente: evita un re-render
   // inutile che resetterebbe lo scroll (es. dopo history.back() del bottone Indietro).
   if (view === state.currentView) return;
@@ -28168,11 +28184,12 @@ function handleGlobalClick(event) {
       renderCurrentViewOnly(state.currentView);
       focusViewTarget(state.currentView);
     }
-    // Drill-down mobile per i moduli order-based: orders, warehouse, installations.
-    // Su <=768px nascondi la lista e mostra il dettaglio fullscreen.
+    // Drill-down mobile per i moduli order-based: orders, warehouse,
+    // installations, accounting. Su <=768px nascondi la lista e mostra il
+    // dettaglio fullscreen (prima Contabilità restava impilata sotto la lista).
     if (
       window.innerWidth <= MOBILE_DRILL_BREAKPOINT
-      && (nextView === "orders" || nextView === "warehouse" || nextView === "installations")
+      && (nextView === "orders" || nextView === "warehouse" || nextView === "installations" || nextView === "accounting")
     ) {
       openMobileDrillDetail(nextView, id);
     } else {

@@ -8571,7 +8571,10 @@ function sanitizeAttachmentName(name = "", fallbackExtension = "") {
 }
 
 function parseDataUrl(value = "") {
-  const match = String(value || "").match(/^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,(.+)$/i);
+  // Il tipo MIME può avere più parametri oltre a charset (es. "audio/webm;codecs=opus"
+  // dalle note vocali registrate con MediaRecorder) — matcha una sequenza di
+  // ";param=valore" qualsiasi prima di ";base64,", non solo ";charset=...".
+  const match = String(value || "").match(/^data:([^;,]*)(?:;[^;,]+)*;base64,(.+)$/i);
   if (!match) return null;
   return {
     contentType: String(match[1] || "application/octet-stream").trim().toLowerCase(),
@@ -8589,6 +8592,7 @@ function buildLocalAttachmentRecord(ownerId = "", attachment = {}, parsed = null
     ? "sales-content"
     : resource === "marketing-public" ? "marketing-public"
     : resource === "work-reports" ? "work-reports"
+    : resource === "communications" ? "communications"
     : "orders";
   const ownerSegment = String(ownerId || resource).replace(/[^\w.-]+/g, "_");
   const relativePath = normalizeAttachmentLocalPath(`${bucketPrefix}/${ownerSegment}/${attachmentId}-${safeName}`);
@@ -8829,6 +8833,7 @@ async function storeAttachmentBuffer(ownerId, attachment = {}, buffer = Buffer.a
     ? "sales-content"
     : resource === "marketing-public" ? "marketing-public"
     : resource === "work-reports" ? "work-reports"
+    : resource === "communications" ? "communications"
     : "orders";
   const objectKey = `${bucketPrefix}/${String(ownerId || resource).replace(/[^\w.-]+/g, "_")}/${attachmentId}-${safeName}`;
 

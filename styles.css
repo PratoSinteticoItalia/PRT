@@ -36,6 +36,15 @@ html, body {
      Funziona su Chrome Android e PWA standalone. */
   overscroll-behavior-y: contain;
 }
+/* Toglie il flash grigio/blu di default su ogni tap (Safari/Chrome mobile):
+   senza questo OGNI bottone/riga/card della webapp lampeggia al tocco, il
+   tell più immediato che "è un sito", non un'app nativa. Era già impostato
+   solo su .mbn-tab (bottom nav); qui lo estendiamo a tutto. Il feedback al
+   tocco resta affidato ai fade su fondo/bordo definiti da :active nei singoli
+   componenti, non al highlight di sistema del browser. */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
 /* min-width: 0 sui figli di grid/flex evita che il contenuto interno
    (testo lungo, immagini, input) forzi l'allargamento del container. */
 :where(.detail-grid, .form-grid, .inline-form-grid, .wizard-grid,
@@ -12353,6 +12362,62 @@ body.mobile-filter-sheet-open {
     display: none !important;
   }
 
+  /* ACCOUNTING (Contabilità) — stesso pattern di #orders: drawer dettaglio a
+     tutta pagina da destra, per non lasciare il dettaglio impilato sotto la
+     lista su mobile (era l'ultimo modulo order-based senza drill-down). */
+  body[data-drill-module="accounting"] #accounting {
+    contain: none;
+  }
+  body[data-drill-module="accounting"] #accounting > *:not(:has(.accounting-detail-panel)) {
+    display: none !important;
+  }
+  body[data-drill-module="accounting"] #accounting .order-grid {
+    grid-template-columns: 1fr !important;
+  }
+  body[data-drill-module="accounting"] #accounting .order-grid > div:has(#accounting-list) {
+    display: none !important;
+  }
+  /* Scrim del drawer DESKTOP: fuori dal drill non serve, e potrebbe coprire */
+  body[data-drill-module="accounting"] #accounting .accounting-drawer-scrim {
+    display: none !important;
+  }
+  body[data-drill-module="accounting"] #accounting::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 26, 20, 0.44);
+    z-index: 1082;
+    animation: drillScrimIn 0.2s ease;
+  }
+  body[data-drill-module="accounting"] #accounting .accounting-detail-panel {
+    position: fixed !important;
+    top: var(--mobile-back-bar-h) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: 94vw !important;
+    max-width: 460px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    z-index: 1086;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    background: #fdfcfa !important;
+    border: none !important;
+    border-radius: 16px 0 0 16px;
+    box-shadow: -14px 0 36px rgba(0, 0, 0, 0.28);
+    padding: 16px !important;
+    transform: none !important;
+    visibility: visible !important;
+    transition: none !important;
+    animation: drillDrawerIn 0.26s ease;
+  }
+  body[data-drill-module="accounting"] #accounting .accounting-detail-panel .detail-header {
+    top: 0 !important;
+  }
+
   /* ────────────────────────────────────────────────────────────────────────
      STICKY ACTIONS — intervento 2.2
      ────────────────────────────────────────────────────────────────────────
@@ -12370,6 +12435,7 @@ body.mobile-filter-sheet-open {
   body[data-drill-module] .sales-request-detail-panel .panel-head,
   body[data-drill-module] .order-detail-panel .detail-header,
   body[data-drill-module] #warehouse .detail-panel .detail-header,
+  body[data-drill-module] #accounting .accounting-detail-panel .detail-header,
   body[data-drill-module] .install-detail-panel .detail-header {
     position: sticky !important;
     top: var(--mobile-back-bar-h);
@@ -23020,11 +23086,50 @@ body {
    creando uno spazio vuoto enorme in fondo (scroll a vuoto). Restano fixed:
    chiusi → translateX(100%) fuori schermo (nessun impatto sul flusso),
    aperti (.is-open) → translateX(0).
+
+   Stesso problema per i drawer "is-drawer" di Contabilità/Pose: sono usati solo
+   tra 769px e 980px (sotto 768 subentra il drill-down fullscreen, che ha già le
+   sue regole dedicate e non è toccato da questo blocco — vedi .is-drawer sotto è
+   applicato dal JS solo quando window.innerWidth > 768). In quella fascia stretta
+   "tablet/telefono in landscape" il reset generico ".detail-panel" li rendeva
+   completamente invisibili (position:static, in fondo alla pagina).
    ─────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 980px) {
   body.mobile-safe-mode .shipping-standard-detail-panel,
-  body.mobile-safe-mode .sample-detail-panel {
+  body.mobile-safe-mode .sample-detail-panel,
+  body.mobile-safe-mode .accounting-detail-panel.is-drawer,
+  body.mobile-safe-mode .install-detail-panel.is-drawer {
     position: fixed !important;
+    /* Il reset generico ".detail-panel" (vedi sopra, position:static!important
+       su mobile) porta con sé anche top/bottom/overflow:auto/visible!important:
+       ripristinarli qui, altrimenti il drawer torna "fixed" ma con top:auto →
+       il browser usa la sua posizione statica (in fondo al body, dopo tutto il
+       resto del contenuto) invece di ancorarlo in alto — il pannello risultava
+       invisibile, fuori schermo sotto migliaia di px di contenuto. */
+    top: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    max-height: 100vh !important;
+    overflow-y: auto !important;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Fix mobile: niente zoom automatico di Safari sui form. iOS ingrandisce
+   l'intera pagina quando l'utente tocca un input/select/textarea con
+   font-size calcolato <16px — un salto visivo vistoso, il segnale più chiaro
+   di "non è un'app nativa". Diversi form pensati per desktop restano sotto
+   soglia: tabelle materiali dense del generatore preventivi (.native-acc-row,
+   .nf-mat-fields, 12-13px) e il form Fornitori/Spedizioni che usa <input>
+   senza classe .text-input (font di default del browser, 13.3px). Vince con
+   !important su tutto: la leggibilità battuta digitando conta più della
+   densità visiva pensata per mouse+desktop.
+   ─────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 980px) {
+  body.mobile-safe-mode input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  body.mobile-safe-mode select,
+  body.mobile-safe-mode textarea {
+    font-size: 16px !important;
   }
 }
 
