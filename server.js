@@ -868,6 +868,31 @@ async function backfillSalesRequestCreatedAtToDb() {
   }
 }
 
+// inventory_items in Postgres è rimasta per anni allo schema minimo (vedi le
+// ALTER TABLE aggiunte sopra): sqm, note, residuo generato da un taglio ecc.
+// non venivano mai scritti, quindi chi legge da SQL (getInventoryFromDb) li ha
+// sempre visti vuoti anche per pezzi il cui blob JSON li aveva correttamente.
+// Backfill una tantum: ririscrive ogni pezzo del blob (fonte primaria, mai
+// stata lossy) nella tabella relazionale ora che le colonne esistono.
+let _inventoryRelationalBackfillDone = false;
+async function backfillInventoryRelationalFields() {
+  if (_inventoryRelationalBackfillDone || !USE_POSTGRES) return;
+  _inventoryRelationalBackfillDone = true;
+  try {
+    await ensureRelationalSchema();
+    const rawStore = await readJson(STORE_PATH, {});
+    const pieces = Array.isArray(rawStore.inventory) ? rawStore.inventory : [];
+    if (!pieces.length) return;
+    for (const piece of pieces) {
+      await upsertInventoryItemToDb(normalizeInventoryPieceRecord(piece));
+    }
+    console.log(`[db] backfill inventory relational fields: ${pieces.length} pezzi risincronizzati`);
+  } catch (err) {
+    _inventoryRelationalBackfillDone = false; // consenti retry al prossimo avvio
+    console.warn("[db] backfillInventoryRelationalFields:", err?.message);
+  }
+}
+
 let relationalSchemaBootstrapPromise = null;
 async function ensureRelationalSchema() {
   if (!USE_POSTGRES) return;
@@ -959,6 +984,22 @@ async function ensureRelationalSchema() {
       CREATE UNIQUE INDEX IF NOT EXISTS orders_tracking_token_idx ON orders (tracking_token) WHERE tracking_token IS NOT NULL;
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS requested_height TEXT DEFAULT '';
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS quoted_at TIMESTAMPTZ;
+      -- inventory_items era rimasta allo schema minimo iniziale: mancavano tutti i
+      -- campi aggiunti dopo (residuo generato da un taglio, nota pezzo, numero
+      -- ordine impegnato, timestamp): upsertInventoryItemToDb non li scriveva mai,
+      -- quindi chi legge da Postgres (dbRowToInventoryItem) li vedeva sempre vuoti
+      -- anche se il modello JS/JSON li calcola correttamente — es. il collegamento
+      -- "taglio -> residuo generato" in Inventario spariva silenziosamente.
+      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS sqm NUMERIC;
+      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS variant TEXT DEFAULT '';
+      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS committed_order_number TEXT DEFAULT '';
+      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS allocation_id TEXT DEFAULT '';
+      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS parent_piece_id TEXT DEFAULT '';
+      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS residue_from_piece_id TEXT DEFAULT '';
+      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS committed_at TEXT DEFAULT '';
+      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS fulfilled_at TEXT DEFAULT '';
+      ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS note TEXT DEFAULT '';
+      CREATE INDEX IF NOT EXISTS inventory_residue_from_idx ON inventory_items (residue_from_piece_id) WHERE residue_from_piece_id != '';
       CREATE INDEX IF NOT EXISTS orders_shopify_id_idx       ON orders (shopify_numeric_id);
       CREATE INDEX IF NOT EXISTS orders_updated_at_idx       ON orders (updated_at DESC);
       CREATE INDEX IF NOT EXISTS orders_financial_status_idx ON orders (financial_status);
@@ -1292,6 +1333,17 @@ function dbRowToInventoryItem(row) {
     units: row.units || "",
     label: row.label || "",
     allocatedToOrderId: row.allocated_to_order_id || null,
+    sqm: row.sqm != null ? Number(row.sqm) : null,
+    variant: row.variant || "",
+    committedOrderId: row.allocated_to_order_id || "",
+    committedOrderNumber: row.committed_order_number || "",
+    allocationId: row.allocation_id || "",
+    parentPieceId: row.parent_piece_id || "",
+    residueFromPieceId: row.residue_from_piece_id || "",
+    committedAt: row.committed_at || "",
+    fulfilledAt: row.fulfilled_at || "",
+    note: row.note || "",
+    createdAt: row.created_at || "",
   };
 }
 
@@ -1921,14 +1973,25 @@ async function upsertInventoryItemToDb(item) {
     await ensureRelationalSchema();
     const pool = await getPgPool();
     await pool.query(`
-      INSERT INTO inventory_items (id, product, family, piece_type, piece_state, width, length, units, label, allocated_to_order_id, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+      INSERT INTO inventory_items (
+        id, product, family, piece_type, piece_state, width, length, units, label, allocated_to_order_id,
+        sqm, variant, committed_order_number, allocation_id, parent_piece_id, residue_from_piece_id,
+        committed_at, fulfilled_at, note, updated_at
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW())
       ON CONFLICT (id) DO UPDATE SET
         product=EXCLUDED.product, family=EXCLUDED.family,
         piece_type=EXCLUDED.piece_type, piece_state=EXCLUDED.piece_state,
         width=EXCLUDED.width, length=EXCLUDED.length,
         units=EXCLUDED.units, label=EXCLUDED.label,
         allocated_to_order_id=EXCLUDED.allocated_to_order_id,
+        sqm=EXCLUDED.sqm, variant=EXCLUDED.variant,
+        committed_order_number=EXCLUDED.committed_order_number,
+        allocation_id=EXCLUDED.allocation_id,
+        parent_piece_id=EXCLUDED.parent_piece_id,
+        residue_from_piece_id=EXCLUDED.residue_from_piece_id,
+        committed_at=EXCLUDED.committed_at, fulfilled_at=EXCLUDED.fulfilled_at,
+        note=EXCLUDED.note,
         updated_at=NOW()
     `, [
       String(item.id),
@@ -1938,6 +2001,15 @@ async function upsertInventoryItemToDb(item) {
       item.length != null ? Number(item.length) : null,
       String(item.units || ""), String(item.label || ""),
       item.committedOrderId ? String(item.committedOrderId) : (item.allocatedToOrderId ? String(item.allocatedToOrderId) : null),
+      item.sqm != null ? Number(item.sqm) : null,
+      String(item.variant || ""),
+      String(item.committedOrderNumber || ""),
+      String(item.allocationId || ""),
+      String(item.parentPieceId || ""),
+      String(item.residueFromPieceId || ""),
+      String(item.committedAt || ""),
+      String(item.fulfilledAt || ""),
+      String(item.note || ""),
     ]);
     pool.query("SELECT pg_notify('psi_ops_cache_invalidate', 'inventory')").catch(() => {});
   } catch (err) {
@@ -10781,6 +10853,8 @@ async function handleApi(req, res, url) {
     backfillSalesRequestHeightToDb().catch(() => {});
     // Backfill created_at: corregge date di import errate (eseguito una sola volta)
     backfillSalesRequestCreatedAtToDb().catch(() => {});
+    // Backfill campi inventario mancanti in SQL (sqm, note, residuo da taglio...)
+    backfillInventoryRelationalFields().catch(() => {});
     // Per gli ordini: usa la stessa logica merge di GET /api/orders
     // (blob è fonte primaria per Shopify data; SQL override solo per operations significativi)
     const sessionOrders = (() => {
