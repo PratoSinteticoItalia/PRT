@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260716-inventario-visual-refresh" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260716-inventario-visual-refresh" />
+    <link rel="preload" href="./styles.css?v=20260716-inventario-fix-apri-v4" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260716-inventario-fix-apri-v4" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -988,6 +988,8 @@
             </div>
           </div>
 
+          <div id="warehouse-kpi-strip" class="inv-kpi-strip"></div>
+
           <div class="view-toolbar">
             <label class="field toolbar-input view-search-field">
               <span class="hidden">Cerca giacenze</span>
@@ -1022,6 +1024,20 @@
                   <div class="detail-title" id="warehouse-detail-title">Ordini da preparare</div>
                   <div class="detail-id">Seleziona un ordine per vedere il dettaglio e caricare la giacenza.</div>
                 </div>
+              </div>
+
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Ordini da preparare</h4>
+                </div>
+                <div id="warehouse-list" class="warehouse-list"></div>
+              </div>
+
+              <div class="panel-subsection">
+                <div class="subsection-head">
+                  <h4>Ordine selezionato</h4>
+                </div>
+                <div id="warehouse-detail-fields" class="detail-grid"></div>
               </div>
 
               <div class="panel-subsection">
@@ -1064,20 +1080,6 @@
                     <textarea class="text-input" name="note" rows="2" placeholder="Rotolo nuovo, residuo da ordine #2791, taglio utile..."></textarea>
                   </label>
                 </form>
-              </div>
-
-              <div class="panel-subsection">
-                <div class="subsection-head">
-                  <h4>Ordine selezionato</h4>
-                </div>
-                <div id="warehouse-detail-fields" class="detail-grid"></div>
-              </div>
-
-              <div class="panel-subsection">
-                <div class="subsection-head">
-                  <h4>Ordini da preparare</h4>
-                </div>
-                <div id="warehouse-list" class="warehouse-list"></div>
               </div>
             </section>
           </div>
@@ -2522,7 +2524,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260716-inventario-visual-refresh" defer></script>
-    <script src="./app.js?v=20260716-inventario-visual-refresh" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260716-inventario-fix-apri-v4" defer></script>
+    <script src="./app.js?v=20260716-inventario-fix-apri-v4" type="module"></script>
   </body>
 </html>

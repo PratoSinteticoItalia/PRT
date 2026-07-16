@@ -22342,6 +22342,36 @@ body {
    ═══════════════════════════════════════════════════════════════════ */
 #warehouse .inventory-catalog { display: flex; flex-direction: column; gap: 6px; }
 
+.inv-kpi-strip {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  background: #fff;
+  border: 1px solid #e5e1d6;
+  border-radius: 14px;
+  margin-bottom: 12px;
+}
+.inv-kpi-strip:empty { display: none; }
+.inv-kpi { display: flex; flex-direction: column; gap: 2px; }
+.inv-kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  line-height: 1.1;
+}
+.inv-kpi-value small { font-size: 12px; color: #8a9690; font-weight: 600; }
+.inv-kpi-label {
+  font-size: 10.5px;
+  color: #8a9690;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.inv-kpi.warn .inv-kpi-value { color: #b45309; }
+
 .inv-card {
   background: #fff;
   border: 1px solid #e5e1d6;

@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260716-inventario-visual-refresh";
+} from "./lib/order-money.js?v=20260716-inventario-fix-apri-v4";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260716-inventario-visual-refresh";
+import { regionForCity } from "./lib/geo.js?v=20260716-inventario-fix-apri-v4";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260716-inventario-visual-refresh";
+} from "./lib/profit-split.js?v=20260716-inventario-fix-apri-v4";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260716-inventario-visual-refresh";
+} from "./lib/preventivo-pricing.js?v=20260716-inventario-fix-apri-v4";
 
-const APP_SHELL_VERSION = "20260716-inventario-visual-refresh";
+const APP_SHELL_VERSION = "20260716-inventario-fix-apri-v4";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1616,6 +1616,7 @@ const ui = {
   warehouseList: document.getElementById("warehouse-list"),
   warehouseDetailTitle: document.getElementById("warehouse-detail-title"),
   warehouseDetailFields: document.getElementById("warehouse-detail-fields"),
+  warehouseKpiStrip: document.getElementById("warehouse-kpi-strip"),
   inventorySummary: document.getElementById("inventory-summary"),
   inventoryForm: document.getElementById("inventory-form"),
   inventorySubmitButton: document.getElementById("inventory-submit-button"),
@@ -15301,6 +15302,7 @@ function groupInventoryPiecesForDisplay(pieces = []) {
     if (!linked.length) return;
     g.pairedResidueSqm = Number(linked.reduce((sum, r) => sum + toNumber(r.sqm || 0), 0).toFixed(2));
     g.pairedResidueAvailable = linked.filter((r) => getInventoryPieceState(r) === "disponibile").length;
+    g.pairedResidueCount = linked.length;
   });
   return {
     rolls: all.filter((g) => g.type !== "residuo").sort((a, b) => b.sqm - a.sqm),
@@ -15433,8 +15435,19 @@ function renderInventoryCard(group) {
          // Un taglio che ha generato un residuo ancora disponibile: mostralo
          // subito sotto, così è ovvio che quei metri non sono "spariti" ma
          // sono un rotolo più corto pronto per un altro ordine (vedi Residui).
+         // Con più tagli della stessa misura (es. da ordini diversi in momenti
+         // diversi) la somma è un aggregato, non il risultato di un solo taglio:
+         // la frase deve dirlo esplicitamente, altrimenti sembra che un taglio
+         // da poche decine di mq abbia generato più residuo di quanto possibile.
+         const availableTail = g.pairedResidueAvailable
+           ? (state.lang === "it" ? " — disponibile qui sotto ↓" : " — available below ↓")
+           : "";
          const linkLine = isCut && g.pairedResidueSqm
-           ? `<div class="inv-pgroup-link">↳ ${state.lang === "it" ? "ha generato" : "generated"} <strong>${formatInventoryNumber(g.pairedResidueSqm)} mq</strong> ${state.lang === "it" ? "di residuo" : "of offcut"}${g.pairedResidueAvailable ? (state.lang === "it" ? " — disponibile qui sotto ↓" : " — available below ↓") : ""}</div>`
+           ? g.pairedResidueCount > 1
+             ? `<div class="inv-pgroup-link">↳ ${state.lang === "it"
+                 ? `questi <strong>${g.pairedResidueCount}</strong> tagli hanno generato <strong>${formatInventoryNumber(g.pairedResidueSqm)} mq</strong> di residuo in totale`
+                 : `these <strong>${g.pairedResidueCount}</strong> cuts generated <strong>${formatInventoryNumber(g.pairedResidueSqm)} mq</strong> of offcut in total`}${availableTail}</div>`
+             : `<div class="inv-pgroup-link">↳ ${state.lang === "it" ? "ha generato" : "generated"} <strong>${formatInventoryNumber(g.pairedResidueSqm)} mq</strong> ${state.lang === "it" ? "di residuo" : "of offcut"}${availableTail}</div>`
            : "";
          return `
         <div class="inv-pgroup ${isCut ? "is-cut" : ""}">
@@ -15709,6 +15722,18 @@ function renderWarehouse() {
   ui.warehouseFilterTags.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.warehouseFilter === state.filters.warehouse);
   });
+  // Riepilogo sempre sull'inventario intero, non sul filtro/ricerca attivi:
+  // deve dare un colpo d'occhio stabile, non cambiare mentre si esplora la lista.
+  if (ui.warehouseKpiStrip) {
+    const snapshot = getDashboardInventorySnapshot();
+    const turfCount = getInventorySummary().filter((group) => group.isModel).length;
+    ui.warehouseKpiStrip.innerHTML = `
+      <div class="inv-kpi"><span class="inv-kpi-value">${Math.round(snapshot.totalAvailableSqm).toLocaleString("it-IT")} <small>mq</small></span><span class="inv-kpi-label">${state.lang === "it" ? "Disponibili" : "Available"}</span></div>
+      <div class="inv-kpi"><span class="inv-kpi-value">${Math.round(snapshot.totalCommittedSqm).toLocaleString("it-IT")} <small>mq</small></span><span class="inv-kpi-label">${state.lang === "it" ? "Impegnati" : "Committed"}</span></div>
+      <div class="inv-kpi${snapshot.uncovered > 0 ? " warn" : ""}"><span class="inv-kpi-value">${snapshot.uncovered}</span><span class="inv-kpi-label">${state.lang === "it" ? "Sotto scorta" : "Low stock"}</span></div>
+      <div class="inv-kpi"><span class="inv-kpi-value">${turfCount}</span><span class="inv-kpi-label">${state.lang === "it" ? "Prodotti prato" : "Turf products"}</span></div>
+    `;
+  }
   const orders = filterOrdersForView("warehouse");
   const groups = getInventorySummary().filter((group) => {
     const search = (state.search.warehouse || "").toLowerCase();
@@ -28225,11 +28250,46 @@ function handleGlobalClick(event) {
     // Reset only the detail-panel internal scroll. List column has its own
     // max-height + overflow so the page itself doesn't scroll, matching the
     // Richieste UX the user wants everywhere.
-    requestAnimationFrame(() => {
-      document.querySelectorAll(`#${nextView} .detail-panel, #${nextView} .order-detail-panel, #${nextView} .install-detail-panel`).forEach((panel) => {
-        if (panel.scrollTop > 0) panel.scrollTop = 0;
+    // renderWarehouse/renderOrders/renderInstallations/renderAccounting
+    // re-renderizzano la LORO lista interna (es. "Ordini da preparare") dentro
+    // withScrollPreservation(ui.xList, ...) — che risale al primo antenato con
+    // overflow:auto, cioè proprio questo .detail-panel, e ne RIPRISTINA lo
+    // scrollTop pre-render nel suo rAF doppio annidato (si risolve un frame
+    // DOPO il nostro rAF singolo). Risultato: selezionare un ordine da una
+    // lista già scrollata riportava il pannello alla vecchia posizione invece
+    // di mostrare il dettaglio dall'alto. Tre livelli di rAF garantiscono che
+    // il nostro reset vinca sempre, eseguendo un frame dopo quel ripristino.
+    // Magazzino escluso qui sotto: ha il suo scroll dedicato subito dopo,
+    // un reset a 0 mostrerebbe la lista "Ordini da preparare" e non i dati
+    // appena caricati in "Ordine selezionato".
+    if (nextView !== "warehouse") {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            document.querySelectorAll(`#${nextView} .detail-panel, #${nextView} .order-detail-panel, #${nextView} .install-detail-panel`).forEach((panel) => {
+              if (panel.scrollTop > 0) panel.scrollTop = 0;
+            });
+          });
+        });
       });
-    });
+    }
+    // Magazzino: la lista "Ordini da preparare" e il dettaglio ordine
+    // condividono lo stesso .detail-panel scrollabile, e "Ordine selezionato"
+    // non è in cima al pannello — un reset a 0 mostrerebbe comunque la lista,
+    // non i dati appena caricati. Un setTimeout, che gira sempre dopo
+    // qualunque catena di rAF di withScrollPreservation sia già in corso,
+    // vince sempre la gara contro il suo doppio rAF di ripristino.
+    if (nextView === "warehouse") {
+      setTimeout(() => {
+        const warehouseDetail = document.getElementById("warehouse-detail-fields");
+        const panel = warehouseDetail?.closest(".detail-panel");
+        if (!warehouseDetail || !panel) return;
+        const delta = warehouseDetail.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+        // behavior:"smooth" qui non anima in modo affidabile — istantaneo
+        // come il resto dei ripristini scroll di questa vista (vedi sopra).
+        panel.scrollTop += delta;
+      }, 80);
+    }
     return;
   }
   if (action === "open-modal") {
