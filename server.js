@@ -14822,8 +14822,17 @@ async function handleApi(req, res, url) {
       });
       const committedOrder = store.orders.find((o) => o.id === orderId);
       if (committedOrder) upsertOrderToDb(committedOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
-      // Dual-write delle inventory piece coinvolte nel commit
-      const commitPieceIds = new Set((result.allocations || []).map((a) => a.pieceId).filter(Boolean));
+      // Dual-write delle inventory piece coinvolte nel commit — deve includere
+      // anche residuePieceId, non solo pieceId: altrimenti il residuo generato
+      // dal taglio (nuovo pezzo, mai scritto prima nella tabella relazionale)
+      // resta assente da quella tabella, e /api/session lo legge da lì in
+      // preferenza al blob — il residuo sparisce dalla UI al prossimo refresh
+      // anche se nel blob store è salvato correttamente.
+      const commitPieceIds = new Set();
+      (result.allocations || []).forEach((a) => {
+        if (a.pieceId) commitPieceIds.add(a.pieceId);
+        if (a.residuePieceId) commitPieceIds.add(a.residuePieceId);
+      });
       store.inventory.filter((p) => commitPieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
       return sendJson(res, 200, {
         order: result.order,
