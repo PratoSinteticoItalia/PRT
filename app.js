@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260715-ios-zoom-input-fix";
+} from "./lib/order-money.js?v=20260716-inventario-refresh-taglio-residuo";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260715-ios-zoom-input-fix";
+import { regionForCity } from "./lib/geo.js?v=20260716-inventario-refresh-taglio-residuo";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260715-ios-zoom-input-fix";
+} from "./lib/profit-split.js?v=20260716-inventario-refresh-taglio-residuo";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260715-ios-zoom-input-fix";
+} from "./lib/preventivo-pricing.js?v=20260716-inventario-refresh-taglio-residuo";
 
-const APP_SHELL_VERSION = "20260715-ios-zoom-input-fix";
+const APP_SHELL_VERSION = "20260716-inventario-refresh-taglio-residuo";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15284,6 +15284,24 @@ function groupInventoryPiecesForDisplay(pieces = []) {
     map.set(key, g);
   });
   const all = [...map.values()];
+  // Collega ogni gruppo "taglio" (il pezzo impegnato ritagliato da un rotolo
+  // intero — vedi applyInventoryCommitment in server.js) al residuo che quel
+  // taglio ha generato, tramite residueFromPieceId che punta all'id del pezzo
+  // taglio stesso. Senza questo, "tagliato 12,5m" e "residuo 12,5m disponibile"
+  // finiscono in due sezioni separate (Rotoli interi / Residui) senza nessun
+  // segnale che sono la stessa operazione — è il motivo per cui un taglio
+  // sembra "far sparire" i metri invece di lasciare un resto utilizzabile.
+  const residuoPieces = pieces.filter((p) => (
+    getInventoryPieceType(p) === "residuo" && getInventoryPieceState(p) !== "evaso"
+  ));
+  all.forEach((g) => {
+    if (g.type !== "taglio") return;
+    const sourceIds = new Set([...g.dispIds, ...g.impIds]);
+    const linked = residuoPieces.filter((r) => sourceIds.has(r.residueFromPieceId));
+    if (!linked.length) return;
+    g.pairedResidueSqm = Number(linked.reduce((sum, r) => sum + toNumber(r.sqm || 0), 0).toFixed(2));
+    g.pairedResidueAvailable = linked.filter((r) => getInventoryPieceState(r) === "disponibile").length;
+  });
   return {
     rolls: all.filter((g) => g.type !== "residuo").sort((a, b) => b.sqm - a.sqm),
     residues: all.filter((g) => g.type === "residuo").sort((a, b) => b.sqm - a.sqm),
@@ -15410,18 +15428,27 @@ function renderInventoryCard(group) {
 
   const rollsHtml = grouped.rolls.length
     ? `<div class="inv-groups-label">${state.lang === "it" ? "Rotoli interi" : "Whole rolls"}</div>
-       ${grouped.rolls.map((g) => `
-        <div class="inv-pgroup">
-          <span class="inv-ptype roll">${state.lang === "it" ? "Rotolo" : "Roll"}</span>
+       ${grouped.rolls.map((g) => {
+         const isCut = g.type === "taglio";
+         // Un taglio che ha generato un residuo ancora disponibile: mostralo
+         // subito sotto, così è ovvio che quei metri non sono "spariti" ma
+         // sono un rotolo più corto pronto per un altro ordine (vedi Residui).
+         const linkLine = isCut && g.pairedResidueSqm
+           ? `<div class="inv-pgroup-link">↳ ${state.lang === "it" ? "ha generato" : "generated"} <strong>${formatInventoryNumber(g.pairedResidueSqm)} mq</strong> ${state.lang === "it" ? "di residuo" : "of offcut"}${g.pairedResidueAvailable ? (state.lang === "it" ? " — disponibile qui sotto ↓" : " — available below ↓") : ""}</div>`
+           : "";
+         return `
+        <div class="inv-pgroup ${isCut ? "is-cut" : ""}">
+          <span class="inv-ptype ${isCut ? "cut" : "roll"}">${isCut ? (state.lang === "it" ? "Taglio" : "Cut") : (state.lang === "it" ? "Rotolo" : "Roll")}</span>
           <span class="inv-pdim">${fmtDim(g)} <small>${formatInventoryNumber(g.sqm)} mq cad.</small></span>
           <span class="inv-pcounts">
             ${g.disp > 0 ? `<span class="inv-cbadge disp">${g.disp} disp.</span>` : ""}
             ${g.imp > 0 ? `<span class="inv-cbadge imp">${g.imp} imp.</span>` : ""}
           </span>
-        </div>`).join("")}`
+        </div>${linkLine}`;
+       }).join("")}`
     : "";
   const residuesHtml = grouped.residues.length
-    ? `<div class="inv-groups-label">${state.lang === "it" ? "Residui" : "Offcuts"}</div>
+    ? `<div class="inv-groups-label res">${state.lang === "it" ? "Residui" : "Offcuts"}</div>
        ${grouped.residues.map((g) => `
         <div class="inv-res-row">
           <span class="dim">${fmtDim(g)} · ${formatInventoryNumber(g.sqm)} mq</span>

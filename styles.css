@@ -22361,11 +22361,32 @@ body {
 .inv-deficit { color: #991b1b; font-weight: 600; font-size: 12.5px; margin-top: 8px; }
 
 .inv-pieces { margin-top: 13px; padding-top: 13px; border-top: 1px dashed #e5e1d6; }
-.inv-groups-label { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a9690; margin: 6px 0 6px; }
+.inv-groups-label { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a9690; margin: 6px 0 6px; }
+/* Un po' di respiro tra le sezioni (Rotoli interi / Residui / Pezzi singoli)
+   quando non è la prima della card — altrimenti tutto si legge come un unico
+   blocco indistinto invece di gruppi separati. */
+.inv-groups-label:not(:first-child) { margin-top: 16px; }
+/* Pallino colore prima dell'etichetta di sezione: stesso codice colore dei
+   badge (blu rotoli, viola residui) per riconoscere il gruppo a colpo d'occhio
+   prima ancora di leggere il testo. */
+.inv-groups-label::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #93b4e8; flex-shrink: 0; }
+.inv-groups-label.res::before { background: #b9a3ea; }
 .inv-pgroup { display: flex; align-items: center; gap: 12px; padding: 10px 13px; background: #fdfcfa; border: 1px solid #ece8de; border-radius: 9px; margin-bottom: 6px; }
+/* Taglio con residuo collegato: nessun margine sotto, così la riga di link si
+   legge come continuazione della card taglio invece che come riga a sé. */
+.inv-pgroup.is-cut:has(+ .inv-pgroup-link) { margin-bottom: 0; border-radius: 9px 9px 0 0; }
 .inv-ptype { font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 4px; letter-spacing: .03em; text-transform: uppercase; flex-shrink: 0; }
 .inv-ptype.roll { background: #e0edff; color: #1e40af; }
+.inv-ptype.cut  { background: #fef3c7; color: #92400e; }
 .inv-ptype.res  { background: #ede9fe; color: #5b21b6; }
+/* Riga di collegamento taglio → residuo generato: stesso family-color del
+   badge Residui (viola) così l'occhio associa le due sezioni della card. */
+.inv-pgroup-link {
+  font-size: 11.5px; color: #5b21b6; background: #faf9ff;
+  border: 1px solid #ece9fb; border-top: none; border-radius: 0 0 9px 9px;
+  padding: 6px 13px 8px; margin: -6px 0 6px;
+}
+.inv-pgroup-link strong { font-weight: 700; }
 .inv-pdim { flex: 1; font-weight: 600; font-size: 13px; color: #1a2e26; }
 .inv-pdim small { display: block; font-weight: 400; color: #8a9690; font-size: 11px; margin-top: 1px; }
 .inv-pcounts { display: flex; gap: 6px; }
