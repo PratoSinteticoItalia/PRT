@@ -2777,7 +2777,9 @@ body.mobile-safe-mode .sidebar-section-head .sidebar-section-label {
 
 .inventory-guide-card {
   margin-bottom: 18px;
+  border-left: 3px solid #93b4e8;
 }
+.inventory-guide-card strong { color: #1e40af; }
 
 .compact-catalog .inventory-product-card {
   padding: 16px;
@@ -8973,6 +8975,16 @@ body {
 #warehouse .inventory-section-head {
   align-items: center;
   gap: 12px;
+}
+
+/* "Aggiungi giacenza" è la prima sotto-sezione del pannello dettaglio: un
+   fondo leggermente tinto la distingue subito da "Ordine selezionato" e
+   "Ordini da preparare" sotto, invece di un unico blocco bianco indistinto. */
+#warehouse .detail-panel .panel-subsection:first-of-type {
+  background: linear-gradient(180deg, rgba(240,247,255,.55), rgba(255,255,255,0));
+  border-radius: 14px;
+  margin: -4px -4px 12px;
+  padding: 4px 4px 12px;
 }
 
 #warehouse #inventory-form.inline-form-grid {
@@ -22333,44 +22345,60 @@ body {
 .inv-card {
   background: #fff;
   border: 1px solid #e5e1d6;
-  border-radius: 12px;
-  padding: 14px 16px;
-  transition: border-color .12s, box-shadow .12s, transform .12s;
+  border-left: 4px solid #d8d2c4;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 2px rgba(26,46,38,.03);
+  transition: border-color .12s, box-shadow .16s, transform .16s;
 }
-.inv-card:hover { border-color: #d4cebd; box-shadow: 0 4px 12px rgba(26,46,38,.06); }
+/* Il bordo a sinistra rispecchia lo stato scorta della card (stesso codice
+   colore del pallino/badge) — leggibile scorrendo la pagina senza dover
+   fermarsi a leggere ogni etichetta, come sulle card ordine altrove nell'app. */
+.inv-card-ok  { border-left-color: #10b981; }
+.inv-card-low { border-left-color: #f59e0b; }
+.inv-card-def { border-left-color: #ef4444; }
+.inv-card:hover { border-color: #d4cebd; box-shadow: 0 6px 18px rgba(26,46,38,.08); transform: translateY(-1px); }
+.inv-card:hover.inv-card-ok  { border-left-color: #10b981; }
+.inv-card:hover.inv-card-low { border-left-color: #f59e0b; }
+.inv-card:hover.inv-card-def { border-left-color: #ef4444; }
 
 .inv-head { display: flex; align-items: center; gap: 13px; }
 .inv-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 .inv-dot.ok  { background: #10b981; box-shadow: 0 0 0 3px #d1fae5; }
 .inv-dot.low { background: #f59e0b; box-shadow: 0 0 0 3px #fef3c7; }
 .inv-dot.def { background: #ef4444; box-shadow: 0 0 0 3px #fee2e2; }
-.inv-name { font-weight: 600; font-size: 14.5px; flex: 1; color: #1a2e26; letter-spacing: -.005em; }
-.inv-state { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 5px; letter-spacing: .03em; }
+.inv-name { font-weight: 700; font-size: 15.5px; flex: 1; color: #16261f; letter-spacing: -.01em; }
+.inv-state { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 999px; letter-spacing: .03em; }
 .inv-state.ok  { background: #d1fae5; color: #065f46; }
 .inv-state.low { background: #fef3c7; color: #92400e; }
 .inv-state.def { background: #fee2e2; color: #991b1b; }
-.inv-num { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; min-width: 80px; text-align: right; color: #1a2e26; }
+.inv-num { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; min-width: 80px; text-align: right; color: #16261f; }
 .inv-num small { font-size: 11px; color: #8a9690; font-weight: 600; }
 
-.inv-bar { height: 7px; border-radius: 4px; background: #eee9dd; overflow: hidden; margin-top: 11px; position: relative; }
+.inv-bar { height: 10px; border-radius: 999px; background: #eee9dd; overflow: hidden; margin-top: 13px; position: relative; box-shadow: inset 0 1px 2px rgba(0,0,0,.04); }
 .inv-bar-commit { position: absolute; height: 100%; background: #f59e0b; top: 0; }
 .inv-bar-avail { position: absolute; height: 100%; background: #10b981; top: 0; }
-.inv-bar-legend { display: flex; gap: 14px; margin-top: 7px; font-size: 11.5px; color: #5a6e63; align-items: center; }
+.inv-bar-legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11.5px; color: #5a6e63; align-items: center; }
 .inv-bar-legend .ld { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
 .inv-legend-right { margin-left: auto; color: #8a9690; }
-.inv-deficit { color: #991b1b; font-weight: 600; font-size: 12.5px; margin-top: 8px; }
+.inv-deficit { color: #991b1b; font-weight: 600; font-size: 12.5px; margin-top: 8px; background: #fef2f2; border: 1px solid #f8d7d7; border-radius: 8px; padding: 7px 11px; }
 
-.inv-pieces { margin-top: 13px; padding-top: 13px; border-top: 1px dashed #e5e1d6; }
-.inv-groups-label { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a9690; margin: 6px 0 6px; }
+.inv-pieces { margin-top: 15px; padding-top: 15px; border-top: 1px dashed #e5e1d6; }
+/* Etichette sezione come chip colorati (non più semplice testo maiuscolo):
+   ogni gruppo (Rotoli interi / Residui) diventa una zona riconoscibile a colpo
+   d'occhio, con lo stesso codice colore dei badge che contiene. */
+.inv-groups-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: #3557a3; background: #eaf1ff; border-radius: 999px;
+  padding: 4px 11px; margin: 6px 0 8px;
+}
+.inv-groups-label.res { color: #6d3fb0; background: #f3edfd; }
 /* Un po' di respiro tra le sezioni (Rotoli interi / Residui / Pezzi singoli)
    quando non è la prima della card — altrimenti tutto si legge come un unico
    blocco indistinto invece di gruppi separati. */
-.inv-groups-label:not(:first-child) { margin-top: 16px; }
-/* Pallino colore prima dell'etichetta di sezione: stesso codice colore dei
-   badge (blu rotoli, viola residui) per riconoscere il gruppo a colpo d'occhio
-   prima ancora di leggere il testo. */
-.inv-groups-label::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #93b4e8; flex-shrink: 0; }
-.inv-groups-label.res::before { background: #b9a3ea; }
+.inv-groups-label:not(:first-child) { margin-top: 18px; }
+.inv-groups-label::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; opacity: .7; }
 .inv-pgroup { display: flex; align-items: center; gap: 12px; padding: 10px 13px; background: #fdfcfa; border: 1px solid #ece8de; border-radius: 9px; margin-bottom: 6px; }
 /* Taglio con residuo collegato: nessun margine sotto, così la riga di link si
    legge come continuazione della card taglio invece che come riga a sé. */
