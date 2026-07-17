@@ -4223,6 +4223,7 @@ function buildDefaultStore() {
     inventory: [],
     salesRequests: [],
     salesContents: [],
+    resellerOrderRequests: [],
     supplierPriceEntries: [],
     marketingPublicAssets: [],
     marketingScheduled: [],
@@ -8815,6 +8816,40 @@ function normalizeSupplierPriceEntry(item = {}) {
   };
 }
 
+const RESELLER_ORDER_REQUEST_STATUSES = new Set(["pending", "in-lavorazione", "evasa", "rifiutata"]);
+
+// Ordine di materiale che un rivenditore manda internamente all'azienda —
+// SOLO tracking (nessuna scrittura verso Shopify): l'ufficio valuta la
+// richiesta qui, poi crea l'ordine vero su Shopify a mano e marca questa
+// come evasa. Stesso pattern "coda blob-store" di salesContents/
+// supplierPriceEntries: niente tabella SQL, non è un volume di dati per cui
+// serva — se in futuro crescesse molto, valutare la migrazione.
+function normalizeResellerOrderRequest(item = {}) {
+  const rawStatus = String(item.status || "pending").trim();
+  return {
+    id: String(item.id || randomUUID()),
+    // resellerId va sempre impostato server-side dalla sessione autenticata
+    // in creazione — mai fidarsi di un valore mandato dal client.
+    resellerId: String(item.resellerId || "").trim(),
+    resellerName: String(item.resellerName || "").trim(),
+    product: String(item.product || "").trim(),
+    quantity: String(item.quantity || "").trim(),
+    sqm: item.sqm != null && item.sqm !== "" ? Number(item.sqm) || 0 : null,
+    endCustomerName: String(item.endCustomerName || "").trim(),
+    endCustomerPhone: String(item.endCustomerPhone || "").trim(),
+    address: String(item.address || "").trim(),
+    city: String(item.city || "").trim(),
+    desiredDate: String(item.desiredDate || "").trim(),
+    notes: String(item.notes || "").trim(),
+    status: RESELLER_ORDER_REQUEST_STATUSES.has(rawStatus) ? rawStatus : "pending",
+    handledBy: String(item.handledBy || "").trim(),
+    handledAt: String(item.handledAt || "").trim(),
+    handlingNotes: String(item.handlingNotes || "").trim(),
+    createdAt: String(item.createdAt || new Date().toISOString()),
+    updatedAt: String(item.updatedAt || new Date().toISOString()),
+  };
+}
+
 function serializeSupplierPriceEntryForClient(item = {}) {
   const normalized = normalizeSupplierPriceEntry(item);
   return {
@@ -9358,6 +9393,10 @@ function reconcileStoreData(store) {
 
   store.supplierPriceEntries = Array.isArray(store.supplierPriceEntries)
     ? store.supplierPriceEntries.map((item) => normalizeSupplierPriceEntry(item))
+    : [];
+
+  store.resellerOrderRequests = Array.isArray(store.resellerOrderRequests)
+    ? store.resellerOrderRequests.map((item) => normalizeResellerOrderRequest(item))
     : [];
 
   store.marketingPublicAssets = normalizeMarketingPublicAssets(store.marketingPublicAssets);
@@ -13791,7 +13830,11 @@ async function handleApi(req, res, url) {
     const draftRecord = normalizeSalesRequestRecord({
       ...(existingRequest || {}),
       ...body,
-      resellerId: currentUser.role === "rivenditore" ? String(currentUser.id) : (existingRequest?.resellerId || String(body.resellerId || "")),
+      // Rivenditore: sempre forzato alla propria sessione, mai dal body.
+      // Office: libero di impostare/cambiare/rimuovere l'assegnazione — NON
+      // va preferito il valore esistente sul body, altrimenti l'ufficio non
+      // potrebbe mai riassegnare o togliere un rivenditore già impostato.
+      resellerId: currentUser.role === "rivenditore" ? String(currentUser.id) : String(body.resellerId || ""),
       createdAt: existingRequest?.createdAt || body.createdAt || now,
       updatedAt: now,
     });
@@ -14265,6 +14308,72 @@ async function handleApi(req, res, url) {
     store.supplierPriceEntries = [entry, ...(store.supplierPriceEntries || [])];
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, serializeSupplierPriceEntryForClient(entry));
+  }
+
+  // Ordini materiale rivenditore → ufficio (solo tracking interno, nessuna
+  // scrittura verso Shopify — vedi commento su normalizeResellerOrderRequest).
+  if (url.pathname === "/api/reseller/order-requests" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "rivenditore"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const all = store.resellerOrderRequests || [];
+    // Un rivenditore vede SOLO le proprie — mai un id passato dal client.
+    const items = currentUser.role === "rivenditore"
+      ? all.filter((item) => item.resellerId === currentUser.id)
+      : all;
+    return sendJson(res, 200, { items });
+  }
+
+  if (url.pathname === "/api/reseller/order-requests" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "rivenditore") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    if (!String(body.product || "").trim()) {
+      return sendJson(res, 400, { error: "missing_product" });
+    }
+    const now = new Date().toISOString();
+    const entry = normalizeResellerOrderRequest({
+      ...body,
+      id: randomUUID(),
+      resellerId: currentUser.id,
+      resellerName: currentUser.resellerCompanyName || currentUser.name || "",
+      status: "pending",
+      handledBy: "",
+      handledAt: "",
+      handlingNotes: "",
+      createdAt: now,
+      updatedAt: now,
+    });
+    store.resellerOrderRequests = [entry, ...(store.resellerOrderRequests || [])];
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("reseller_order_request", entry.id, "create", { resellerId: entry.resellerId, product: entry.product }, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, entry);
+  }
+
+  if (url.pathname.match(/^\/api\/reseller\/order-requests\/[^/]+$/) && req.method === "PATCH") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const requestId = decodeURIComponent(url.pathname.split("/")[4]);
+    const index = (store.resellerOrderRequests || []).findIndex((item) => item.id === requestId);
+    if (index < 0) return sendJson(res, 404, { error: "not_found" });
+    const body = await readBody(req);
+    const current = store.resellerOrderRequests[index];
+    const nextStatus = String(body.status || current.status || "pending").trim();
+    if (!RESELLER_ORDER_REQUEST_STATUSES.has(nextStatus)) {
+      return sendJson(res, 400, { error: "invalid_status" });
+    }
+    const now = new Date().toISOString();
+    const updated = normalizeResellerOrderRequest({
+      ...current,
+      status: nextStatus,
+      handledBy: currentUser.email || currentUser.id,
+      handledAt: now,
+      handlingNotes: body.handlingNotes != null ? String(body.handlingNotes) : current.handlingNotes,
+      updatedAt: now,
+    });
+    store.resellerOrderRequests[index] = updated;
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("reseller_order_request", updated.id, "update", { status: updated.status }, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, updated);
   }
 
   // POST /api/supplier-prices/batch → una fattura con più materiali dallo stesso

@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260717-rivenditore-fase5";
+} from "./lib/order-money.js?v=20260718-rivenditore-ordina-materiali";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260717-rivenditore-fase5";
+import { regionForCity } from "./lib/geo.js?v=20260718-rivenditore-ordina-materiali";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260717-rivenditore-fase5";
+} from "./lib/profit-split.js?v=20260718-rivenditore-ordina-materiali";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260717-rivenditore-fase5";
+} from "./lib/preventivo-pricing.js?v=20260718-rivenditore-ordina-materiali";
 
-const APP_SHELL_VERSION = "20260717-rivenditore-fase5";
+const APP_SHELL_VERSION = "20260718-rivenditore-ordina-materiali";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -362,7 +362,7 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "communications", "sales-requests", "sales-generator", "sales-content", "reseller-orders", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
   crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "communications", "garden-planner"],
   seller: ["dashboard", "sales-requests", "sales-generator", "sales-content", "communications", "timesheet-me"],
@@ -372,9 +372,9 @@ const roleViews = {
   // "installations-live" (Cantieri Live) resta fuori: è il work-report con
   // spese/rimborsi squadra, un flusso di compenso interno che non c'entra
   // con un account rivenditore esterno, a differenza dello stato posa base.
-  rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "garden-planner", "communications"],
+  rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "order-requests", "garden-planner", "communications"],
 };
-const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices"]);
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -632,6 +632,8 @@ const translations = {
     "sales-requests": "Richieste",
     "sales-generator": "Generatore",
     "sales-content": "Contenuti",
+    "order-requests": "Ordina materiali",
+    "reseller-orders": "Ordini rivenditori",
     topbarSearch: "Cerca ordini, clienti, prodotti...",
     ordersSubtitle: "Ordini Shopify sincronizzati e in lavorazione",
     installationsCalendarTitle: "Calendario Pose",
@@ -892,6 +894,8 @@ const translations = {
     "sales-requests": "Requests",
     "sales-generator": "Generator",
     "sales-content": "Content",
+    "order-requests": "Order materials",
+    "reseller-orders": "Reseller orders",
     topbarSearch: "Search orders, customers, products...",
     ordersSubtitle: "Shopify orders synced and in progress",
     installationsCalendarTitle: "Installation calendar",
@@ -3982,6 +3986,7 @@ function buildSalesRequestPayloadFromRecord(record = {}, patch = {}) {
     service: merged.service,
     surface: merged.surface,
     assignment: normalizeSalesRequestAssignment(merged.assignment),
+    resellerId: String(merged.resellerId || "").trim(),
     status: merged.status,
     note: merged.note,
     whatsappTemplate: merged.whatsappTemplate,
@@ -4149,6 +4154,7 @@ function normalizeSalesRequestRecord(item = {}) {
     firstContactSentAt: normalizeIsoDateTime(item.firstContactSentAt || item.firstContact?.sentAt || ""),
     firstContactBy: normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
     quotedAt: normalizeIsoDateTime(item.quotedAt || ""),
+    resellerId: String(item.resellerId || "").trim(),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
   };
@@ -4894,6 +4900,28 @@ function syncSalesRequestAssignmentField(value = "") {
   });
   field.replaceChildren(fragment);
   field.value = nextValue;
+}
+
+// Assegna una richiesta esistente a un account rivenditore — separato dal
+// campo "assignment" (venditori interni Ivan/Gabriele): un rivenditore può
+// lavorare una richiesta che resta comunque assegnata internamente.
+function syncSalesRequestResellerField(value = "") {
+  const field = ui.salesRequestForm?.resellerId;
+  if (!field || field.tagName !== "SELECT") return;
+  const resellers = state.users.filter((u) => u.role === "rivenditore");
+  const fragment = document.createDocumentFragment();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = state.lang === "it" ? "Nessuno" : "None";
+  fragment.append(placeholder);
+  resellers.forEach((u) => {
+    const option = document.createElement("option");
+    option.value = u.id;
+    option.textContent = u.resellerCompanyName || u.name;
+    fragment.append(option);
+  });
+  field.replaceChildren(fragment);
+  field.value = String(value || "");
 }
 
 function getSalesRequestsPageSize() {
@@ -11183,11 +11211,22 @@ function renderResellerSalesRequests() {
     <div class="page-header">
       <div>
         <h1>${state.lang === "it" ? "Richieste" : "Requests"}</h1>
-        <p>${state.lang === "it" ? "Manda una richiesta di preventivo per un tuo cliente e segui lo stato." : "Send a quote request for your client and track its status."}</p>
+        <p>${state.lang === "it" ? "Le richieste che l'ufficio ti ha assegnato — segui lo stato e resta in contatto con il cliente." : "The requests the office has assigned to you — track status and stay in touch with the client."}</p>
       </div>
     </div>
-    <div class="panel" style="margin-bottom:16px;">
-      <div class="panel-head"><div><h3>${state.lang === "it" ? "Nuova richiesta" : "New request"}</h3></div></div>
+    <div class="detail-stack" style="margin-bottom:16px;">
+      ${items.length ? items.map((item) => `
+        <article class="detail-box">
+          <strong>${escapeHtml([item.name, item.surname].filter(Boolean).join(" ") || (state.lang === "it" ? "Cliente" : "Client"))}</strong>
+          <span class="action-badge badge-info">${escapeHtml(item.status || (state.lang === "it" ? "Nuova" : "New"))}</span>
+          <p>${escapeHtml(item.city || "")}${item.sqm ? ` · ${escapeHtml(String(item.sqm))} mq` : ""}${item.phone ? ` · ${escapeHtml(item.phone)}` : ""} · ${formatDate(item.createdAt)}</p>
+          ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
+        </article>
+      `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta assegnata al momento." : "No requests assigned yet."}</div>`}
+    </div>
+    <details class="panel">
+      <summary class="panel-head" style="cursor:pointer;"><h3 style="display:inline;">${state.lang === "it" ? "Segnala una richiesta" : "Report a lead"}</h3></summary>
+      <p style="padding:0 16px;color:var(--ink-soft, #666);font-size:13px;">${state.lang === "it" ? "Hai un cliente interessato che non è ancora nel sistema? Segnalalo qui, lo aggiungiamo alle tue richieste." : "Have an interested client not yet in the system? Report it here, we'll add it to your requests."}</p>
       <form id="reseller-sales-request-form" class="inline-form-grid">
         <label class="field"><span>${state.lang === "it" ? "Nome cliente" : "Client name"}</span><input class="text-input" name="name" required /></label>
         <label class="field"><span>${state.lang === "it" ? "Cognome cliente" : "Client surname"}</span><input class="text-input" name="surname" /></label>
@@ -11197,21 +11236,11 @@ function renderResellerSalesRequests() {
         <label class="field"><span>Mq</span><input class="text-input" name="sqm" placeholder="60" /></label>
         <label class="field field-full"><span>${state.lang === "it" ? "Note" : "Notes"}</span><textarea class="text-input" name="note" rows="3"></textarea></label>
         <div class="inline-actions field-full">
-          <button type="submit" class="primary-button small-button">${state.lang === "it" ? "Invia richiesta" : "Send request"}</button>
+          <button type="submit" class="primary-button small-button">${state.lang === "it" ? "Invia segnalazione" : "Send"}</button>
         </div>
         <div id="reseller-sales-request-status" class="panel-note hidden field-full"></div>
       </form>
-    </div>
-    <div class="detail-stack">
-      ${items.length ? items.map((item) => `
-        <article class="detail-box">
-          <strong>${escapeHtml([item.name, item.surname].filter(Boolean).join(" ") || (state.lang === "it" ? "Cliente" : "Client"))}</strong>
-          <span class="action-badge badge-info">${escapeHtml(item.status || (state.lang === "it" ? "Nuova" : "New"))}</span>
-          <p>${escapeHtml(item.city || "")}${item.sqm ? ` · ${escapeHtml(String(item.sqm))} mq` : ""} · ${formatDate(item.createdAt)}</p>
-          ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
-        </article>
-      `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta inviata finora." : "No requests sent yet."}</div>`}
-    </div>
+    </details>
   `;
   const form = document.getElementById("reseller-sales-request-form");
   if (form) form.addEventListener("submit", submitResellerSalesRequest);
@@ -11242,6 +11271,176 @@ async function submitResellerSalesRequest(event) {
     await loadResellerSalesRequests();
   } catch (error) {
     setStatus(statusEl, "error", state.lang === "it" ? "Impossibile inviare la richiesta." : "Unable to send the request.");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Ordina materiali — rivenditore invia, ufficio gestisce (solo tracking
+// interno, nessuna scrittura verso Shopify: l'ufficio crea l'ordine vero
+// a mano e poi marca la richiesta come evasa qui).
+// ─────────────────────────────────────────────────────────────────────────
+const RESELLER_ORDER_REQUEST_STATUS_LABELS = {
+  it: { pending: "In attesa", "in-lavorazione": "In lavorazione", evasa: "Evasa", rifiutata: "Rifiutata" },
+  en: { pending: "Pending", "in-lavorazione": "In progress", evasa: "Fulfilled", rifiutata: "Rejected" },
+};
+function resellerOrderRequestStatusLabel(status) {
+  const dict = RESELLER_ORDER_REQUEST_STATUS_LABELS[state.lang === "it" ? "it" : "en"];
+  return dict[status] || status;
+}
+
+async function loadResellerOrderRequests() {
+  try {
+    const result = await apiFetch("/api/reseller/order-requests");
+    state.resellerOrderRequests = Array.isArray(result?.items) ? result.items : [];
+  } catch {
+    state.resellerOrderRequests = state.resellerOrderRequests || [];
+  }
+  state.resellerOrderRequestsLoadedAt = Date.now();
+  renderCurrentViewOnly(state.currentView);
+}
+
+function renderResellerOrderRequests() {
+  const container = document.getElementById("order-requests");
+  if (!container) return;
+  if (!state.resellerOrderRequestsLoadedAt) {
+    container.innerHTML = `<div class="page-header"><div><h1>${state.lang === "it" ? "Ordina materiali" : "Order materials"}</h1></div></div><div class="info-card">${state.lang === "it" ? "Caricamento..." : "Loading..."}</div>`;
+    loadResellerOrderRequests();
+    return;
+  }
+  const items = state.resellerOrderRequests || [];
+  container.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1>${state.lang === "it" ? "Ordina materiali" : "Order materials"}</h1>
+        <p>${state.lang === "it" ? "Manda una richiesta d'ordine materiale all'azienda — l'ufficio la valuta e la elabora." : "Send a materials order request to the company — the office will review and process it."}</p>
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-head"><div><h3>${state.lang === "it" ? "Nuovo ordine" : "New order"}</h3></div></div>
+      <form id="reseller-order-request-form" class="inline-form-grid">
+        <label class="field field-full"><span>${state.lang === "it" ? "Prodotto" : "Product"}</span><input class="text-input" name="product" placeholder="Rovere 40 mm" required /></label>
+        <label class="field"><span>${state.lang === "it" ? "Quantità" : "Quantity"}</span><input class="text-input" name="quantity" placeholder="2 rotoli" /></label>
+        <label class="field"><span>Mq</span><input class="text-input" name="sqm" placeholder="60" /></label>
+        <label class="field"><span>${state.lang === "it" ? "Data desiderata" : "Desired date"}</span><input class="text-input" type="date" name="desiredDate" /></label>
+        <label class="field"><span>${state.lang === "it" ? "Cliente finale" : "End customer"}</span><input class="text-input" name="endCustomerName" /></label>
+        <label class="field"><span>${state.lang === "it" ? "Telefono cliente" : "Customer phone"}</span><input class="text-input" name="endCustomerPhone" /></label>
+        <label class="field"><span>${state.lang === "it" ? "Indirizzo" : "Address"}</span><input class="text-input" name="address" /></label>
+        <label class="field"><span>${state.lang === "it" ? "Città" : "City"}</span><input class="text-input" name="city" /></label>
+        <label class="field field-full"><span>${state.lang === "it" ? "Note" : "Notes"}</span><textarea class="text-input" name="notes" rows="3"></textarea></label>
+        <div class="inline-actions field-full">
+          <button type="submit" class="primary-button small-button">${state.lang === "it" ? "Invia ordine" : "Send order"}</button>
+        </div>
+        <div id="reseller-order-request-status" class="panel-note hidden field-full"></div>
+      </form>
+    </div>
+    <div class="detail-stack">
+      ${items.length ? items.map((item) => `
+        <article class="detail-box">
+          <strong>${escapeHtml(item.product || "")}</strong>
+          <span class="action-badge ${item.status === "evasa" ? "badge-success" : item.status === "rifiutata" ? "badge-urgent" : "badge-info"}">${escapeHtml(resellerOrderRequestStatusLabel(item.status))}</span>
+          <p>${[item.quantity, item.sqm ? `${item.sqm} mq` : "", item.city].filter(Boolean).map(escapeHtml).join(" · ")} · ${formatDate(item.createdAt)}</p>
+          ${item.endCustomerName ? `<p>${state.lang === "it" ? "Cliente" : "Customer"}: ${escapeHtml(item.endCustomerName)}</p>` : ""}
+          ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
+          ${item.handlingNotes ? `<p><em>${state.lang === "it" ? "Nota ufficio" : "Office note"}: ${escapeHtml(item.handlingNotes)}</em></p>` : ""}
+        </article>
+      `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessun ordine inviato finora." : "No orders sent yet."}</div>`}
+    </div>
+  `;
+  const form = document.getElementById("reseller-order-request-form");
+  if (form) form.addEventListener("submit", submitResellerOrderRequest);
+}
+
+async function submitResellerOrderRequest(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const statusEl = document.getElementById("reseller-order-request-status");
+  const data = new FormData(form);
+  clearStatus(statusEl);
+  try {
+    await apiFetch("/api/reseller/order-requests", {
+      method: "POST",
+      body: JSON.stringify({
+        product: data.get("product"),
+        quantity: data.get("quantity"),
+        sqm: data.get("sqm"),
+        desiredDate: data.get("desiredDate"),
+        endCustomerName: data.get("endCustomerName"),
+        endCustomerPhone: data.get("endCustomerPhone"),
+        address: data.get("address"),
+        city: data.get("city"),
+        notes: data.get("notes"),
+      }),
+    });
+    form.reset();
+    setStatus(statusEl, "success", state.lang === "it" ? "Ordine inviato." : "Order sent.");
+    await loadResellerOrderRequests();
+  } catch (error) {
+    setStatus(statusEl, "error", state.lang === "it" ? "Impossibile inviare l'ordine." : "Unable to send the order.");
+  }
+}
+
+// ── Vista ufficio: coda ordini rivenditori ─────────────────────────────
+async function loadOfficeResellerOrders() {
+  try {
+    const result = await apiFetch("/api/reseller/order-requests");
+    state.officeResellerOrders = Array.isArray(result?.items) ? result.items : [];
+  } catch {
+    state.officeResellerOrders = state.officeResellerOrders || [];
+  }
+  state.officeResellerOrdersLoadedAt = Date.now();
+  renderCurrentViewOnly(state.currentView);
+}
+
+function renderOfficeResellerOrders() {
+  const container = document.getElementById("reseller-orders");
+  if (!container) return;
+  if (!state.officeResellerOrdersLoadedAt) {
+    container.innerHTML = `<div class="page-header"><div><h1>${state.lang === "it" ? "Ordini rivenditori" : "Reseller orders"}</h1></div></div><div class="info-card">${state.lang === "it" ? "Caricamento..." : "Loading..."}</div>`;
+    loadOfficeResellerOrders();
+    return;
+  }
+  const filter = state.officeResellerOrdersFilter || "all";
+  const all = state.officeResellerOrders || [];
+  const items = filter === "all" ? all : all.filter((item) => item.status === filter);
+  const statuses = ["all", "pending", "in-lavorazione", "evasa", "rifiutata"];
+  container.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1>${state.lang === "it" ? "Ordini rivenditori" : "Reseller orders"}</h1>
+        <p>${state.lang === "it" ? "Richieste di materiale ricevute dai rivenditori — valuta e processa su Shopify a mano, poi marca qui." : "Material requests received from resellers — review and process on Shopify by hand, then mark here."}</p>
+      </div>
+    </div>
+    <div class="filter-bar" style="margin-bottom:16px;">
+      ${statuses.map((s) => `<button class="filter-btn${filter === s ? " is-active" : ""}" type="button" data-action="filter-reseller-orders" data-status="${s}">${s === "all" ? (state.lang === "it" ? "Tutti" : "All") : escapeHtml(resellerOrderRequestStatusLabel(s))}</button>`).join("")}
+    </div>
+    <div class="detail-stack">
+      ${items.length ? items.map((item) => `
+        <article class="detail-box">
+          <strong>${escapeHtml(item.resellerName || "")} — ${escapeHtml(item.product || "")}</strong>
+          <span class="action-badge ${item.status === "evasa" ? "badge-success" : item.status === "rifiutata" ? "badge-urgent" : "badge-info"}">${escapeHtml(resellerOrderRequestStatusLabel(item.status))}</span>
+          <p>${[item.quantity, item.sqm ? `${item.sqm} mq` : "", item.city].filter(Boolean).map(escapeHtml).join(" · ")} · ${formatDate(item.createdAt)}</p>
+          ${item.endCustomerName ? `<p>${state.lang === "it" ? "Cliente finale" : "End customer"}: ${escapeHtml(item.endCustomerName)}${item.endCustomerPhone ? ` · ${escapeHtml(item.endCustomerPhone)}` : ""}${item.address ? ` · ${escapeHtml(item.address)}` : ""}</p>` : ""}
+          ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
+          <div class="inline-actions">
+            ${item.status !== "in-lavorazione" ? `<button class="ghost-button small-button" type="button" data-action="update-reseller-order-status" data-id="${escapeHtml(item.id)}" data-status="in-lavorazione">${state.lang === "it" ? "Segna in lavorazione" : "Mark in progress"}</button>` : ""}
+            ${item.status !== "evasa" ? `<button class="ghost-button small-button" type="button" data-action="update-reseller-order-status" data-id="${escapeHtml(item.id)}" data-status="evasa">${state.lang === "it" ? "Segna evasa" : "Mark fulfilled"}</button>` : ""}
+            ${item.status !== "rifiutata" ? `<button class="ghost-button small-button" type="button" data-action="update-reseller-order-status" data-id="${escapeHtml(item.id)}" data-status="rifiutata">${state.lang === "it" ? "Rifiuta" : "Reject"}</button>` : ""}
+          </div>
+        </article>
+      `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessun ordine in questa categoria." : "No orders in this category."}</div>`}
+    </div>
+  `;
+}
+
+async function updateResellerOrderStatus(id, status) {
+  try {
+    await apiFetch(`/api/reseller/order-requests/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+    await loadOfficeResellerOrders();
+  } catch {
+    showToast(state.lang === "it" ? "Impossibile aggiornare l'ordine." : "Unable to update the order.", "error");
   }
 }
 
@@ -13093,6 +13292,7 @@ function renderSalesRequestsDetailPanel(selected = null) {
     ui.salesRequestForm.service.value = selected?.service || "";
     ui.salesRequestForm.surface.value = selected?.surface || "";
     syncSalesRequestAssignmentField(selected?.assignment || "");
+    syncSalesRequestResellerField(selected?.resellerId || "");
     syncSalesRequestStatusField(selected?.status || "");
     ui.salesRequestForm.note.value = selected?.note || "";
     if (ui.salesRequestForm.whatsappTemplate) {
@@ -14702,6 +14902,7 @@ function collectSalesRequestDraftFromForm() {
     service: form.get("service"),
     surface: form.get("surface"),
     assignment: normalizeSalesRequestAssignment(form.get("assignment")),
+    resellerId: String(form.get("resellerId") || ""),
     status: nextStatus,
     note: form.get("note"),
     whatsappTemplate: form.get("whatsappTemplate"),
@@ -18387,6 +18588,8 @@ const VIEW_ICONS = {
   "sales-generator": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15 8.5 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.5 12 2"/></svg>',
   "sales-content": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>',
   marketing: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+  "order-requests": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>',
+  "reseller-orders": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>',
   shipping: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
   ddt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg>',
   accounting: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
@@ -18420,6 +18623,8 @@ const NAV_SECTIONS = [
     { view: "sales-requests" },
     { view: "sales-generator" },
     { view: "sales-content" },
+    { view: "order-requests" },
+    { view: "reseller-orders" },
     { view: "marketing" },
     { view: "garden-planner" },
   ] },
@@ -24082,6 +24287,8 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "sales-requests": renderSalesRequests(); break;
       case "sales-generator": renderSalesGenerator(); break;
       case "sales-content": renderSalesContent(); break;
+      case "order-requests": renderResellerOrderRequests(); break;
+      case "reseller-orders": renderOfficeResellerOrders(); break;
       case "warehouse": renderWarehouse(); break;
       case "installations": renderInstallations(); break;
       case "accounting": renderAccounting(); break;
@@ -28067,6 +28274,15 @@ function handleGlobalClick(event) {
   }
   if (action === "fulfill-inventory-order") {
     fulfillInventoryForOrder(id);
+    return;
+  }
+  if (action === "filter-reseller-orders") {
+    state.officeResellerOrdersFilter = button.dataset.status || "all";
+    renderOfficeResellerOrders();
+    return;
+  }
+  if (action === "update-reseller-order-status") {
+    updateResellerOrderStatus(id, button.dataset.status);
     return;
   }
   if (action === "remove-attachment") {

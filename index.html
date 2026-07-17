@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260717-rivenditore-fase5" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260717-rivenditore-fase5" />
+    <link rel="preload" href="./styles.css?v=20260718-rivenditore-ordina-materiali" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260718-rivenditore-ordina-materiali" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -654,6 +654,12 @@
                       </select>
                     </label>
                     <label class="field sales-request-routing-field crm-top-field">
+                      <span>Rivenditore</span>
+                      <select class="text-input" name="resellerId">
+                        <option value="">Nessuno</option>
+                      </select>
+                    </label>
+                    <label class="field sales-request-routing-field crm-top-field">
                       <span>Stato</span>
                       <select class="text-input" name="status">
                         <option value="new">Nuova</option>
@@ -1010,6 +1016,16 @@
             </section>
           </div>
         </section>
+
+        <!-- Rivenditore: ordina materiali all'azienda (solo tracking interno,
+             nessuna scrittura verso Shopify). Contenuto costruito interamente
+             via JS in renderResellerOrderRequests(), stesso pattern di
+             #sales-requests/#sales-content per il ruolo rivenditore. -->
+        <section class="view" id="order-requests"></section>
+
+        <!-- Ufficio: coda degli ordini materiale ricevuti dai rivenditori.
+             Contenuto via JS in renderOfficeResellerOrders(). -->
+        <section class="view" id="reseller-orders"></section>
 
         <section class="view" id="warehouse">
           <div class="page-header">
@@ -2572,7 +2588,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260717-rivenditore-fase5" defer></script>
-    <script src="./app.js?v=20260717-rivenditore-fase5" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260718-rivenditore-ordina-materiali" defer></script>
+    <script src="./app.js?v=20260718-rivenditore-ordina-materiali" type="module"></script>
   </body>
 </html>
