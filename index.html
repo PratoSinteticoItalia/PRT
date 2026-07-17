@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260716-inventario-fix-apri-v4" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260716-inventario-fix-apri-v4" />
+    <link rel="preload" href="./styles.css?v=20260717-rivenditore-fase3" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260717-rivenditore-fase3" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -415,6 +415,37 @@
                 </div>
               </header>
               <div id="dashboard-crew-messages" class="dash-action-list"></div>
+            </section>
+          </div>
+
+          <!-- RESELLER VIEW -->
+          <div class="dash-role-view" data-dashboard-role="rivenditore" hidden>
+            <section class="dash-card dash-card-week">
+              <header class="dash-card-head">
+                <div>
+                  <span class="dash-card-eyebrow">Oggi</span>
+                  <h2 class="dash-card-title">Le tue pose</h2>
+                </div>
+              </header>
+              <div id="dashboard-reseller-today" class="dash-action-list"></div>
+            </section>
+            <section class="dash-card">
+              <header class="dash-card-head">
+                <div>
+                  <span class="dash-card-eyebrow">Settimana</span>
+                  <h2 class="dash-card-title">Carico programmato</h2>
+                </div>
+              </header>
+              <div id="dashboard-reseller-week" class="dash-week-summary"></div>
+            </section>
+            <section class="dash-card">
+              <header class="dash-card-head">
+                <div>
+                  <span class="dash-card-eyebrow" id="dashboard-reseller-messages-eyebrow">Comunicazioni</span>
+                  <h2 class="dash-card-title" id="dashboard-reseller-messages-title">Chat diretta</h2>
+                </div>
+              </header>
+              <div id="dashboard-reseller-messages" class="dash-action-list"></div>
             </section>
           </div>
         </section>
@@ -1330,6 +1361,10 @@
                   <span>Squadra</span>
                   <select class="text-input" name="crew"></select>
                 </label>
+                <label class="field" id="installation-reseller-field" hidden>
+                  <span>Rivenditore assegnato</span>
+                  <select class="text-input" name="reseller"></select>
+                </label>
                 <label class="field field-full">
                   <span>Note squadra / cantiere</span>
                   <textarea class="text-input" name="reportNote" rows="4" placeholder="Accesso, riprogrammazione, note posa, report cantiere..."></textarea>
@@ -1880,6 +1915,7 @@
                       <option value="office">Office</option>
                       <option value="warehouse">Inventario</option>
                       <option value="crew">Squadra</option>
+                      <option value="rivenditore">Rivenditore</option>
                     </select>
                   </label>
                   <label class="field">
@@ -1908,6 +1944,14 @@
                     </div>
                     <input class="text-input" name="crewLogoFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" />
                     <small class="field-hint">PNG, JPG, WebP o SVG. Comparira nel PDF del generatore squadra accanto al logo PSI.</small>
+                  </label>
+                  <label class="field field-full reseller-account-field hidden" data-reseller-field>
+                    <span>Ragione sociale</span>
+                    <input class="text-input" name="resellerCompanyName" placeholder="Verde Giardini SRL" />
+                  </label>
+                  <label class="field field-full reseller-account-field hidden" data-reseller-field>
+                    <span>Referente / contatto</span>
+                    <input class="text-input" name="resellerContact" placeholder="Nome referente, telefono..." />
                   </label>
                   <label class="checkline field-full">
                     <input type="checkbox" name="mustChangePassword" />
@@ -2524,7 +2568,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260716-inventario-fix-apri-v4" defer></script>
-    <script src="./app.js?v=20260716-inventario-fix-apri-v4" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260717-rivenditore-fase3" defer></script>
+    <script src="./app.js?v=20260717-rivenditore-fase3" type="module"></script>
   </body>
 </html>

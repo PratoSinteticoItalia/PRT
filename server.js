@@ -362,6 +362,7 @@ function normalizeUserRole(role = "") {
   if (/(^|\s)(crew|squadra|team|posa|posatore|posatori|installer|installatori)(\s|$)/.test(compact)) return "crew";
   if (/(^|\s)(warehouse|magazzino|inventory|logistica)(\s|$)/.test(compact)) return "warehouse";
   if (/(^|\s)(office|ufficio|admin|amministrazione|commerciale)(\s|$)/.test(compact)) return "office";
+  if (/(^|\s)(rivenditore|rivenditori|reseller|dealer)(\s|$)/.test(compact)) return "rivenditore";
   return "";
 }
 
@@ -412,6 +413,10 @@ function sanitizePasswordUser(user = {}) {
   nextUser.crewLogoDataUrl = nextUser.role === "crew"
     ? sanitizeCrewLogoDataUrl(nextUser.crewLogoDataUrl || "")
     : "";
+  // Anagrafica minima del rivenditore: campi liberi sull'utente stesso, non
+  // una tabella a parte — un rivenditore è 1 account = 1 azienda, niente join.
+  nextUser.resellerCompanyName = nextUser.role === "rivenditore" ? String(nextUser.resellerCompanyName || "").trim() : "";
+  nextUser.resellerContact = nextUser.role === "rivenditore" ? String(nextUser.resellerContact || "").trim() : "";
   delete nextUser.password;
   return nextUser;
 }
@@ -4314,6 +4319,8 @@ function sanitizeUser(user) {
     crewName: String(user.crewName || ""),
     dailyCapacity: Math.max(0, Number(user.dailyCapacity || 0)),
     crewLogoDataUrl: normalizedRole === "crew" ? sanitizeCrewLogoDataUrl(user.crewLogoDataUrl || "") : "",
+    resellerCompanyName: normalizedRole === "rivenditore" ? String(user.resellerCompanyName || "") : "",
+    resellerContact: normalizedRole === "rivenditore" ? String(user.resellerContact || "") : "",
     status: user.status === "suspended" ? "suspended" : "active",
     mustChangePassword: Boolean(user.mustChangePassword),
   };
@@ -4344,6 +4351,7 @@ function canStartPrivateCommunication(currentUser = null, targetUser = null) {
   if (currentRole === "office") return true;
   if (currentRole === "warehouse") return ["office", "crew"].includes(targetRole);
   if (currentRole === "crew") return targetRole === "office";
+  if (currentRole === "rivenditore") return targetRole === "office";
   return false;
 }
 
@@ -4447,6 +4455,22 @@ function normalizeCrewName(value = "") {
     .replace(/\b(squadra|team|crew)\b/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+// Scoping ordini/jobs per rivenditore — id diretto (nessuna normalizzazione
+// fuzzy come per crew: il rivenditore è assegnato per id utente, non per nome
+// libero). Helper condiviso tra GET /api/session e POST /api/login così la
+// regola non possa divergere tra i due endpoint come già capitato altrove.
+function filterOrdersForReseller(orders, resellerId) {
+  if (!resellerId) return [];
+  return orders.filter((o) => String(o.operations?.reseller?.id || "") === resellerId);
+}
+// I job (tabella legacy separata dagli ordini) non hanno una colonna
+// reseller propria — niente ALTER TABLE: si derivano dall'ordine di origine
+// (sourceOrderId), riusando gli ordini già filtrati per rivenditore.
+function filterJobsForReseller(jobs, resellerOrderIds) {
+  if (!resellerOrderIds || !resellerOrderIds.size) return [];
+  return jobs.filter((j) => resellerOrderIds.has(String(j.sourceOrderId || "")));
 }
 
 async function sendPushToUser(store, userId, payload) {
@@ -9233,6 +9257,13 @@ function normalizeOperations(order, linkedJob = null) {
       ),
       profitSplit: normalizeProfitSplitRecord(current.installation?.profitSplit),
     },
+    // Rivenditore a cui è assegnato l'ordine (assente = nessuno, es. tutti gli
+    // ordini storici pre-esistenti a questa feature) — sibling di installation,
+    // non lo sostituisce: un ordine può avere squadra di posa E rivenditore.
+    reseller: {
+      id: String(current.reseller?.id || "").trim(),
+      name: String(current.reseller?.name || "").trim(),
+    },
   });
 }
 
@@ -9256,6 +9287,8 @@ function reconcileStoreData(store) {
           crewName: String(user.crewName || defaults.users[index]?.crewName || ""),
           dailyCapacity: user.dailyCapacity ?? defaults.users[index]?.dailyCapacity ?? 0,
           crewLogoDataUrl: String(user.crewLogoDataUrl || defaults.users[index]?.crewLogoDataUrl || ""),
+          resellerCompanyName: String(user.resellerCompanyName || defaults.users[index]?.resellerCompanyName || ""),
+          resellerContact: String(user.resellerContact || defaults.users[index]?.resellerContact || ""),
           status: String(user.status || defaults.users[index]?.status || "active").trim(),
           mustChangePassword: Boolean(user.mustChangePassword ?? defaults.users[index]?.mustChangePassword),
           sessionVersion: Number(user.sessionVersion || defaults.users[index]?.sessionVersion || 1),
@@ -10916,6 +10949,9 @@ async function handleApi(req, res, url) {
         if (!sessionCrewNorm) return [];
         return sessionOrders.filter((o) => normalizeCrewName(o.operations?.installation?.crew || "") === sessionCrewNorm);
       }
+      if (sessionRole === "rivenditore") {
+        return filterOrdersForReseller(sessionOrders, String(currentUser.id || ""));
+      }
       if (sessionRole === "warehouse") {
         // Il magazziniere vede gli ordini NON in bozza OPPURE quelli già
         // instradati in logistica/posa (anche se l'ufficio non li ha confermati
@@ -10947,9 +10983,12 @@ async function handleApi(req, res, url) {
         if (!sessionCrewNorm) return [];
         return sessionJobs.filter((j) => normalizeCrewName(j.crew || "") === sessionCrewNorm);
       }
+      if (sessionRole === "rivenditore") {
+        return filterJobsForReseller(sessionJobs, new Set(roleFilteredOrders.map((o) => String(o.id))));
+      }
       return sessionJobs;
     })();
-    const roleFilteredInventory = sessionRole === "crew" ? [] : (currentUser ? sessionInventory : []);
+    const roleFilteredInventory = ["crew", "rivenditore"].includes(sessionRole) ? [] : (currentUser ? sessionInventory : []);
     return sendJson(res, 200, {
       revision: getStoreRevision(store),
       user: sanitizeUser(currentUser),
@@ -11044,6 +11083,9 @@ async function handleApi(req, res, url) {
         if (!loginCrewNorm) return [];
         return store.orders.filter((o) => normalizeCrewName(o.operations?.installation?.crew || "") === loginCrewNorm);
       }
+      if (loginRole === "rivenditore") {
+        return filterOrdersForReseller(store.orders, String(user.id || ""));
+      }
       if (loginRole === "warehouse") {
         return store.orders.filter((o) => (o.operations?.officeStatus || "bozza") !== "bozza");
       }
@@ -11051,8 +11093,10 @@ async function handleApi(req, res, url) {
     })();
     const loginJobs = loginRole === "crew"
       ? store.jobs.filter((j) => normalizeCrewName(j.crew || "") === loginCrewNorm)
-      : store.jobs;
-    const loginInventory = loginRole === "crew" ? [] : store.inventory;
+      : loginRole === "rivenditore"
+        ? filterJobsForReseller(store.jobs, new Set(loginOrders.map((o) => String(o.id))))
+        : store.jobs;
+    const loginInventory = ["crew", "rivenditore"].includes(loginRole) ? [] : store.inventory;
     return sendJson(
       res,
       200,
@@ -14517,6 +14561,10 @@ async function handleApi(req, res, url) {
     if (role === "crew" && submittedCrewLogoDataUrl && !crewLogoDataUrl) {
       return sendJson(res, 400, { error: "invalid_crew_logo_file" });
     }
+    // Anagrafica rivenditore: campi liberi, nessun vincolo di unicità (a
+    // differenza di crewName non serve, un'azienda può avere più account).
+    const resellerCompanyName = role === "rivenditore" ? String(body.resellerCompanyName || "").trim() : "";
+    const resellerContact = role === "rivenditore" ? String(body.resellerContact || "").trim() : "";
     if (!name || !email || !isValidRole(role)) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
     }
@@ -14545,6 +14593,8 @@ async function handleApi(req, res, url) {
       crewName,
       dailyCapacity,
       crewLogoDataUrl,
+      resellerCompanyName,
+      resellerContact,
       status,
       mustChangePassword,
       sessionVersion: 1,
@@ -14560,6 +14610,7 @@ async function handleApi(req, res, url) {
       crewName,
       dailyCapacity,
       hasCrewLogo: Boolean(crewLogoDataUrl),
+      resellerCompanyName,
     });
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, sanitizeUser(created));
@@ -14593,6 +14644,12 @@ async function handleApi(req, res, url) {
     const nextCrewLogoDataUrl = nextRole === "crew"
       ? (shouldRemoveCrewLogo ? "" : (submittedCrewLogoDataUrl || sanitizeCrewLogoDataUrl(current.crewLogoDataUrl || "")))
       : "";
+    const nextResellerCompanyName = nextRole === "rivenditore"
+      ? String(body.resellerCompanyName ?? current.resellerCompanyName ?? "").trim()
+      : "";
+    const nextResellerContact = nextRole === "rivenditore"
+      ? String(body.resellerContact ?? current.resellerContact ?? "").trim()
+      : "";
     if (!nextName || !nextEmail || !isValidRole(nextRole)) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
     }
@@ -14617,6 +14674,8 @@ async function handleApi(req, res, url) {
       crewName: nextCrewName,
       dailyCapacity: nextDailyCapacity,
       crewLogoDataUrl: nextCrewLogoDataUrl,
+      resellerCompanyName: nextResellerCompanyName,
+      resellerContact: nextResellerContact,
       status: nextStatus,
       mustChangePassword: mustChangePassword || current.mustChangePassword,
     };

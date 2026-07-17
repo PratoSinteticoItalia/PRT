@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260716-inventario-fix-apri-v4";
+} from "./lib/order-money.js?v=20260717-rivenditore-fase3";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260716-inventario-fix-apri-v4";
+import { regionForCity } from "./lib/geo.js?v=20260717-rivenditore-fase3";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260716-inventario-fix-apri-v4";
+} from "./lib/profit-split.js?v=20260717-rivenditore-fase3";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260716-inventario-fix-apri-v4";
+} from "./lib/preventivo-pricing.js?v=20260717-rivenditore-fase3";
 
-const APP_SHELL_VERSION = "20260716-inventario-fix-apri-v4";
+const APP_SHELL_VERSION = "20260717-rivenditore-fase3";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -366,6 +366,13 @@ const roleViews = {
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
   crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "communications", "garden-planner"],
   seller: ["dashboard", "sales-requests", "sales-generator", "sales-content", "communications", "timesheet-me"],
+  // sales-content, sales-requests e order-requests si aggiungono quando il
+  // backend relativo è pronto a scoparli per rivenditore (vedi piano fasi
+  // successive) — finché non lo è, tenerli fuori evita di esporre viste rotte.
+  // "installations-live" (Cantieri Live) resta fuori: è il work-report con
+  // spese/rimborsi squadra, un flusso di compenso interno che non c'entra
+  // con un account rivenditore esterno, a differenza dello stato posa base.
+  rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "garden-planner", "communications"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
@@ -420,6 +427,7 @@ const translations = {
     office: "Ufficio",
     warehouseRole: "Inventario",
     crewRole: "Squadra",
+    resellerRole: "Rivenditore",
     paid: "Pagato",
     pending: "In attesa",
     fulfilled: "Evaso",
@@ -679,6 +687,7 @@ const translations = {
     office: "Office",
     warehouseRole: "Inventory",
     crewRole: "Crew",
+    resellerRole: "Reseller",
     paid: "Paid",
     pending: "Pending",
     fulfilled: "Fulfilled",
@@ -1664,6 +1673,8 @@ const ui = {
   installationForm: document.getElementById("installation-form"),
   installationCrew: document.querySelector("#installation-form [name='crew']"),
   installationCrewField: document.querySelector("#installation-form [name='crew']")?.closest("label"),
+  installationReseller: document.querySelector("#installation-form [name='reseller']"),
+  installationResellerField: document.getElementById("installation-reseller-field"),
   installationStatusField: document.querySelector("#installation-form [name='status']")?.closest("label"),
   installationSubmitButton: document.querySelector("#installation-form button[type='submit']"),
   installationStatus: document.getElementById("installation-status"),
@@ -1813,6 +1824,7 @@ function roleLabel(role) {
   const normalizedRole = normalizeUserRole(role);
   if (normalizedRole === "warehouse") return t("warehouseRole");
   if (normalizedRole === "crew") return t("crewRole");
+  if (normalizedRole === "rivenditore") return t("resellerRole");
   return t("office");
 }
 
@@ -1827,6 +1839,7 @@ function normalizeUserRole(role = "") {
   if (/(^|\s)(crew|squadra|team|posa|posatore|posatori|installer|installatori)(\s|$)/.test(compact)) return "crew";
   if (/(^|\s)(warehouse|magazzino|inventory|logistica|spedizioni|spedizione)(\s|$)/.test(compact)) return "warehouse";
   if (/(^|\s)(office|ufficio|admin|amministrazione|commerciale)(\s|$)/.test(compact)) return "office";
+  if (/(^|\s)(rivenditore|rivenditori|reseller|dealer)(\s|$)/.test(compact)) return "rivenditore";
   return "office";
 }
 
@@ -10261,9 +10274,12 @@ function updateShell() {
   }
   if (ui.sidebarMobileTools) {
     ui.sidebarMobileTools.hidden = false;
-    ui.sidebarMobileTools.classList.remove("hidden", "is-office-mode", "is-crew-mode", "is-warehouse-mode");
+    ui.sidebarMobileTools.classList.remove("hidden", "is-office-mode", "is-crew-mode", "is-warehouse-mode", "is-reseller-mode");
     ui.sidebarMobileTools.classList.add(
-      currentRole === "crew" ? "is-crew-mode" : currentRole === "warehouse" ? "is-warehouse-mode" : "is-office-mode",
+      currentRole === "crew" ? "is-crew-mode"
+        : currentRole === "warehouse" ? "is-warehouse-mode"
+        : currentRole === "rivenditore" ? "is-reseller-mode"
+        : "is-office-mode",
     );
     forceMobileVisibility(ui.sidebarMobileTools, true, "grid");
   }
@@ -10478,7 +10494,7 @@ function filterByDashboardDateRange(items = [], dateField = "createdAt") {
 
 function getActiveDashboardRole() {
   const role = normalizeUserRole(state.currentUser?.role || "office");
-  return ["office", "warehouse", "crew"].includes(role) ? role : "office";
+  return ["office", "warehouse", "crew", "rivenditore"].includes(role) ? role : "office";
 }
 
 function toggleDashboardRoleViews(activeRole) {
@@ -11068,6 +11084,78 @@ function renderDashboardCrewView() {
   }
 }
 
+// Stessa forma di renderDashboardCrewView, ma filtra per operations.reseller.id
+// invece che per nome squadra — il campo viene popolato lato ufficio a partire
+// dalla Fase 3 del piano rivenditore; finché non esiste su nessun ordine,
+// questa vista mostra correttamente "nessuna posa" invece di rompersi.
+function renderDashboardResellerView() {
+  const me = state.currentUser || {};
+  const resellerId = String(me.id || "");
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayInstalls = (state.orders || []).filter((o) => {
+    if (o.operations?.installation?.installDate !== todayKey) return false;
+    return String(o.operations?.reseller?.id || "") === resellerId;
+  });
+  const todayEl = document.getElementById("dashboard-reseller-today");
+  if (todayEl) {
+    todayEl.innerHTML = todayInstalls.length
+      ? todayInstalls.map((o) => `
+          <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="installations">
+            <div class="dash-action-dot tone-green"></div>
+            <div class="dash-action-content">
+              <div class="dash-action-title">${escapeHtml(composeClientName(o))}</div>
+              <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq · ${escapeHtml(o.operations?.product || "—")}</div>
+            </div>
+            <span class="dash-action-tag tone-green">${state.lang === "it" ? "Oggi" : "Today"}</span>
+          </article>
+        `).join("")
+      : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna posa programmata per oggi." : "No installs scheduled for today."}</div>`;
+  }
+
+  const weekEl = document.getElementById("dashboard-reseller-week");
+  if (weekEl) {
+    const ownerFilter = (order) => String(order.operations?.reseller?.id || "") === resellerId;
+    renderDashboardWeekSummary(weekEl, ownerFilter);
+  }
+
+  // Widget comunicazioni: stessa logica del ruolo crew (chat diretta con office).
+  const messagesEl = document.getElementById("dashboard-reseller-messages");
+  const msgEyebrow = document.getElementById("dashboard-reseller-messages-eyebrow");
+  const msgTitle = document.getElementById("dashboard-reseller-messages-title");
+  if (messagesEl) {
+    const it = state.lang !== "en";
+    const unread = Number(state.communicationsUnreadCount || 0);
+    const threads = state.communicationThreads || [];
+    const firstThread = threads.find((t) => Number(t.unreadCount || 0) > 0) || threads[0];
+    const contactName = firstThread?.otherUser ? communicationUserLabel(firstThread.otherUser) : (it ? "Ufficio" : "Office");
+    if (unread > 0) {
+      if (msgEyebrow) msgEyebrow.textContent = it ? "Messaggi" : "Messages";
+      if (msgTitle) msgTitle.textContent = it ? `${unread} non lett${unread === 1 ? "o" : "i"}` : `${unread} unread`;
+      messagesEl.innerHTML = `
+        <button class="dash-action-row" type="button" data-action="go-communications" style="width:100%;cursor:pointer">
+          <div class="dash-action-dot tone-amber"></div>
+          <div class="dash-action-content">
+            <div class="dash-action-title">${escapeHtml(contactName)}</div>
+            <div class="dash-action-sub">${unread === 1 ? (it ? "1 messaggio non letto" : "1 unread message") : (it ? `${unread} messaggi non letti` : `${unread} unread messages`)}</div>
+          </div>
+          <span class="dash-action-tag tone-amber">${it ? "Apri →" : "Open →"}</span>
+        </button>`;
+    } else {
+      if (msgEyebrow) msgEyebrow.textContent = it ? "Comunicazioni" : "Chat";
+      if (msgTitle) msgTitle.textContent = it ? "Chat diretta" : "Direct chat";
+      messagesEl.innerHTML = `
+        <button class="dash-action-row" type="button" data-action="go-communications" style="width:100%;cursor:pointer">
+          <div class="dash-action-dot"></div>
+          <div class="dash-action-content">
+            <div class="dash-action-title">${it ? "Scrivi all'ufficio" : "Message the office"}</div>
+            <div class="dash-action-sub">${firstThread ? (it ? "Chat attiva — nessun nuovo messaggio" : "Active chat — no new messages") : (it ? "Apri la chat privata con l'ufficio" : "Open a private chat with the office")}</div>
+          </div>
+          <span class="dash-action-arrow" style="color:var(--brand);font-weight:700">→</span>
+        </button>`;
+    }
+  }
+}
+
 function renderDashboard() {
   const role = getActiveDashboardRole();
   toggleDashboardRoleViews(role);
@@ -11090,6 +11178,10 @@ function renderDashboard() {
   }
   if (role === "crew") {
     renderDashboardCrewView();
+    return;
+  }
+  if (role === "rivenditore") {
+    renderDashboardResellerView();
     return;
   }
 }
@@ -16887,6 +16979,20 @@ function renderInstallations() {
     ui.installationCrew.value = getCrewForCurrentUser() || order.operations?.installation?.crew || "";
     ui.installationCrew.disabled = state.currentUser?.role === "crew";
   }
+  // Assegnazione rivenditore: solo l'ufficio può cambiarla, sullo stesso
+  // modello del campo squadra (disabilitato per chi non è office).
+  if (ui.installationResellerField) {
+    ui.installationResellerField.hidden = state.currentUser?.role !== "office";
+  }
+  if (ui.installationReseller) {
+    const resellers = state.users.filter((u) => u.role === "rivenditore");
+    const selectedResellerId = order.operations?.reseller?.id || "";
+    ui.installationReseller.innerHTML = [`<option value="">${state.lang === "it" ? "Nessuno" : "None"}</option>`]
+      .concat(resellers.map((u) => `<option value="${escapeHtml(u.id)}" ${u.id === selectedResellerId ? "selected" : ""}>${escapeHtml(u.resellerCompanyName || u.name)}</option>`))
+      .join("");
+    ui.installationReseller.value = selectedResellerId;
+    ui.installationReseller.disabled = state.currentUser?.role !== "office";
+  }
   ui.installationForm.reportNote.value = order.operations?.installation?.reportNote || "";
   if (ui.installationForm.reportNote) {
     ui.installationForm.reportNote.placeholder = isCrewView
@@ -21530,6 +21636,9 @@ function updateAccountCrewFieldVisibility(form) {
   const crewOnlyFields = form.querySelectorAll("[data-crew-field]");
   const visible = roleInput?.value === "crew";
   crewOnlyFields.forEach((field) => field.classList.toggle("hidden", !visible));
+  const resellerOnlyFields = form.querySelectorAll("[data-reseller-field]");
+  const resellerVisible = roleInput?.value === "rivenditore";
+  resellerOnlyFields.forEach((field) => field.classList.toggle("hidden", !resellerVisible));
 }
 
 function getCrewLogoPreviewImageAlt(form, fallbackLabel = "") {
@@ -21700,6 +21809,7 @@ function renderAccountsManager() {
             <option value="office" ${user.role === "office" ? "selected" : ""}>Office</option>
             <option value="warehouse" ${user.role === "warehouse" ? "selected" : ""}>Magazzino</option>
             <option value="crew" ${user.role === "crew" ? "selected" : ""}>Squadra</option>
+            <option value="rivenditore" ${user.role === "rivenditore" ? "selected" : ""}>Rivenditore</option>
           </select>
         </label>
         <label class="field">
@@ -21734,6 +21844,14 @@ function renderAccountsManager() {
         <label class="checkline field-full crew-account-field ${user.role === "crew" ? "" : "hidden"}" data-crew-field>
           <input type="checkbox" name="removeCrewLogo" />
           <span>Rimuovi logo squadra</span>
+        </label>
+        <label class="field field-full reseller-account-field ${user.role === "rivenditore" ? "" : "hidden"}" data-reseller-field>
+          <span>Ragione sociale</span>
+          <input class="text-input" name="resellerCompanyName" value="${escapeHtml(user.resellerCompanyName || "")}" placeholder="Verde Giardini SRL" />
+        </label>
+        <label class="field field-full reseller-account-field ${user.role === "rivenditore" ? "" : "hidden"}" data-reseller-field>
+          <span>Referente / contatto</span>
+          <input class="text-input" name="resellerContact" value="${escapeHtml(user.resellerContact || "")}" placeholder="Nome referente, telefono..." />
         </label>
         <label class="checkline field-full">
           <input type="checkbox" name="mustChangePassword" ${user.mustChangePassword ? "checked" : ""} />
@@ -26528,6 +26646,13 @@ async function saveInstallation(event) {
   clearStatus(ui.installationStatus);
   let saved;
   try {
+    // resellerId viene inviato solo se l'ufficio ha effettivamente il campo
+    // visibile/editabile (select disabilitata per chi non è office → il
+    // browser non la include in FormData, ma il controllo esplicito qui
+    // evita di mandare comunque un valore residuo letto da altrove).
+    const isOffice = state.currentUser?.role === "office";
+    const resellerId = isOffice ? String(form.get("reseller") || "") : undefined;
+    const selectedResellerUser = resellerId ? state.users.find((u) => u.id === resellerId) : null;
     saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
       method: "POST",
       body: JSON.stringify({
@@ -26538,6 +26663,12 @@ async function saveInstallation(event) {
           crew: getCrewForCurrentUser() || form.get("crew") || activeCrewLabelFromFilter(),
           reportNote: form.get("reportNote"),
         },
+        ...(isOffice ? {
+          reseller: {
+            id: resellerId || "",
+            name: selectedResellerUser ? (selectedResellerUser.resellerCompanyName || selectedResellerUser.name) : "",
+          },
+        } : {}),
       }),
     });
   } catch (error) {
@@ -26859,6 +26990,8 @@ async function createManagedAccount(event) {
         password: form.get("password"),
         crewName: role === "crew" ? crewName : "",
         dailyCapacity: role === "crew" ? dailyCapacity : 0,
+        resellerCompanyName: role === "rivenditore" ? String(form.get("resellerCompanyName") || "").trim() : "",
+        resellerContact: role === "rivenditore" ? String(form.get("resellerContact") || "").trim() : "",
         crewLogoDataUrl,
       }),
     });
@@ -26922,6 +27055,8 @@ async function updateManagedAccount(event) {
         dailyCapacity: nextRole === "crew" ? nextDailyCapacity : 0,
         removeCrewLogo: data.get("removeCrewLogo") === "on",
         crewLogoDataUrl,
+        resellerCompanyName: nextRole === "rivenditore" ? String(data.get("resellerCompanyName") || "").trim() : "",
+        resellerContact: nextRole === "rivenditore" ? String(data.get("resellerContact") || "").trim() : "",
       }),
     });
     if (previousAccount?.role === "crew" && previousAccount?.crewName && saved.role === "crew" && saved.crewName) {
