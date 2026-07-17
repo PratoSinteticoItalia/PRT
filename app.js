@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260717-rivenditore-fase3";
+} from "./lib/order-money.js?v=20260717-rivenditore-fase5";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260717-rivenditore-fase3";
+import { regionForCity } from "./lib/geo.js?v=20260717-rivenditore-fase5";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260717-rivenditore-fase3";
+} from "./lib/profit-split.js?v=20260717-rivenditore-fase5";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260717-rivenditore-fase3";
+} from "./lib/preventivo-pricing.js?v=20260717-rivenditore-fase5";
 
-const APP_SHELL_VERSION = "20260717-rivenditore-fase3";
+const APP_SHELL_VERSION = "20260717-rivenditore-fase5";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -372,7 +372,7 @@ const roleViews = {
   // "installations-live" (Cantieri Live) resta fuori: è il work-report con
   // spese/rimborsi squadra, un flusso di compenso interno che non c'entra
   // con un account rivenditore esterno, a differenza dello stato posa base.
-  rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "garden-planner", "communications"],
+  rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "garden-planner", "communications"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
@@ -11156,6 +11156,122 @@ function renderDashboardResellerView() {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Richieste — vista semplificata per il ruolo rivenditore (Fase 4)
+// ─────────────────────────────────────────────────────────────────────────
+async function loadResellerSalesRequests() {
+  try {
+    const result = await apiFetch("/api/sales/requests?limit=100");
+    state.resellerSalesRequests = Array.isArray(result?.items) ? result.items : [];
+  } catch {
+    state.resellerSalesRequests = state.resellerSalesRequests || [];
+  }
+  state.resellerSalesRequestsLoadedAt = Date.now();
+  renderResellerSalesRequests();
+}
+
+function renderResellerSalesRequests() {
+  const container = document.getElementById("sales-requests");
+  if (!container) return;
+  if (!state.resellerSalesRequestsLoadedAt) {
+    container.innerHTML = `<div class="page-header"><div><h1>${state.lang === "it" ? "Richieste" : "Requests"}</h1></div></div><div class="info-card">${state.lang === "it" ? "Caricamento..." : "Loading..."}</div>`;
+    loadResellerSalesRequests();
+    return;
+  }
+  const items = state.resellerSalesRequests || [];
+  container.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1>${state.lang === "it" ? "Richieste" : "Requests"}</h1>
+        <p>${state.lang === "it" ? "Manda una richiesta di preventivo per un tuo cliente e segui lo stato." : "Send a quote request for your client and track its status."}</p>
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-head"><div><h3>${state.lang === "it" ? "Nuova richiesta" : "New request"}</h3></div></div>
+      <form id="reseller-sales-request-form" class="inline-form-grid">
+        <label class="field"><span>${state.lang === "it" ? "Nome cliente" : "Client name"}</span><input class="text-input" name="name" required /></label>
+        <label class="field"><span>${state.lang === "it" ? "Cognome cliente" : "Client surname"}</span><input class="text-input" name="surname" /></label>
+        <label class="field"><span>${state.lang === "it" ? "Telefono" : "Phone"}</span><input class="text-input" name="phone" /></label>
+        <label class="field"><span>Email</span><input class="text-input" name="email" type="email" /></label>
+        <label class="field"><span>${state.lang === "it" ? "Città" : "City"}</span><input class="text-input" name="city" /></label>
+        <label class="field"><span>Mq</span><input class="text-input" name="sqm" placeholder="60" /></label>
+        <label class="field field-full"><span>${state.lang === "it" ? "Note" : "Notes"}</span><textarea class="text-input" name="note" rows="3"></textarea></label>
+        <div class="inline-actions field-full">
+          <button type="submit" class="primary-button small-button">${state.lang === "it" ? "Invia richiesta" : "Send request"}</button>
+        </div>
+        <div id="reseller-sales-request-status" class="panel-note hidden field-full"></div>
+      </form>
+    </div>
+    <div class="detail-stack">
+      ${items.length ? items.map((item) => `
+        <article class="detail-box">
+          <strong>${escapeHtml([item.name, item.surname].filter(Boolean).join(" ") || (state.lang === "it" ? "Cliente" : "Client"))}</strong>
+          <span class="action-badge badge-info">${escapeHtml(item.status || (state.lang === "it" ? "Nuova" : "New"))}</span>
+          <p>${escapeHtml(item.city || "")}${item.sqm ? ` · ${escapeHtml(String(item.sqm))} mq` : ""} · ${formatDate(item.createdAt)}</p>
+          ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
+        </article>
+      `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta inviata finora." : "No requests sent yet."}</div>`}
+    </div>
+  `;
+  const form = document.getElementById("reseller-sales-request-form");
+  if (form) form.addEventListener("submit", submitResellerSalesRequest);
+}
+
+async function submitResellerSalesRequest(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const statusEl = document.getElementById("reseller-sales-request-status");
+  const data = new FormData(form);
+  clearStatus(statusEl);
+  try {
+    await apiFetch("/api/sales/requests", {
+      method: "POST",
+      body: JSON.stringify({
+        name: data.get("name"),
+        surname: data.get("surname"),
+        phone: data.get("phone"),
+        email: data.get("email"),
+        city: data.get("city"),
+        sqm: data.get("sqm"),
+        note: data.get("note"),
+        source: "reseller-portal",
+      }),
+    });
+    form.reset();
+    setStatus(statusEl, "success", state.lang === "it" ? "Richiesta inviata." : "Request sent.");
+    await loadResellerSalesRequests();
+  } catch (error) {
+    setStatus(statusEl, "error", state.lang === "it" ? "Impossibile inviare la richiesta." : "Unable to send the request.");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Contenuti — griglia sola lettura per il ruolo rivenditore (Fase 5)
+// ─────────────────────────────────────────────────────────────────────────
+function renderResellerSalesContent() {
+  const container = document.getElementById("sales-content");
+  if (!container) return;
+  const items = state.salesContents || [];
+  container.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1>${state.lang === "it" ? "Contenuti" : "Content"}</h1>
+        <p>${state.lang === "it" ? "Materiali condivisi dall'ufficio per la tua attività." : "Materials shared by the office for your business."}</p>
+      </div>
+    </div>
+    <div class="detail-stack">
+      ${items.length ? items.map((item) => `
+        <article class="detail-box">
+          <strong>${escapeHtml(item.title || "")}</strong>
+          <span class="action-badge badge-info">${escapeHtml(item.category || "")}</span>
+          ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}
+          ${item.link ? `<p><a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.link)}</a></p>` : ""}
+        </article>
+      `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessun contenuto condiviso al momento." : "No content shared yet."}</div>`}
+    </div>
+  `;
+}
+
 function renderDashboard() {
   const role = getActiveDashboardRole();
   toggleDashboardRoleViews(role);
@@ -12824,6 +12940,13 @@ function handleCrmV2RecordDeleted(payload = {}) {
 }
 
 function renderSalesRequests() {
+  // Il rivenditore non usa il CRM interno (kanban, dedup, automazioni,
+  // assegnazione Ivan/Gabriele) — vista dedicata, molto più semplice,
+  // sullo stesso endpoint /api/sales/requests ma già scoped lato server.
+  if (state.currentUser?.role === "rivenditore") {
+    renderResellerSalesRequests();
+    return;
+  }
   syncSalesRequestFilters();
   // Vista kanban: delega a renderSalesRequestsKanban()
   if (state.crmViewMode === "kanban") {
@@ -14115,6 +14238,13 @@ function renderSupplierPrices() {
 }
 
 function renderSalesContent() {
+  // Il rivenditore vede solo una griglia sola-lettura dei contenuti che
+  // l'ufficio ha marcato come condivisi — il filtro è già lato server
+  // (salesContents arriva pre-filtrato), qui non serve altro.
+  if (state.currentUser?.role === "rivenditore") {
+    renderResellerSalesContent();
+    return;
+  }
   // Scheda Portfolio prodotti: griglia/galleria al posto dell'elenco Documenti.
   const tab = state.salesContentTab === "portfolio" ? "portfolio" : "documenti";
   if (ui.salesContentTabs) {
@@ -14247,6 +14377,7 @@ function renderSalesContent() {
   ui.salesContentForm.category.value = selected?.category || "documentazione";
   ui.salesContentForm.link.value = selected?.link || "";
   ui.salesContentForm.description.value = selected?.description || "";
+  if (ui.salesContentForm.visibleToResellers) ui.salesContentForm.visibleToResellers.checked = Boolean(selected?.visibleToResellers);
   if (ui.salesContentDetailTitle) {
     ui.salesContentDetailTitle.textContent = selected?.title || (state.lang === "it" ? "Nuovo contenuto" : "New content");
   }
@@ -15256,6 +15387,7 @@ async function saveSalesContent(event) {
         category: form.get("category"),
         link: form.get("link"),
         description: form.get("description"),
+        visibleToResellers: form.get("visibleToResellers") === "on",
       }),
     });
     upsertSalesContent(saved, { skipOpsRender: isUpdate });

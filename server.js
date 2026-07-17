@@ -1017,6 +1017,10 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS sales_requests_updated_at_idx  ON sales_requests (updated_at DESC);
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS surname TEXT DEFAULT '';
+      -- Richieste create da un account rivenditore: id valorizzato SOLO
+      -- server-side dalla sessione autenticata, mai da input client.
+      ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS reseller_id TEXT DEFAULT '';
+      CREATE INDEX IF NOT EXISTS sales_requests_reseller_idx ON sales_requests (reseller_id) WHERE reseller_id != '';
       CREATE INDEX IF NOT EXISTS sales_requests_fts_idx ON sales_requests
         USING gin(to_tsvector('italian',
           coalesce(first_name,'') || ' ' || coalesce(last_name,'') || ' ' ||
@@ -1409,6 +1413,7 @@ function dbRowToSalesRequest(row) {
     attachments: row.attachments || [],
     whatsappThreadId: row.whatsapp_thread_id || null,
     requestedHeight: row.requested_height || "",
+    resellerId: row.reseller_id || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1525,7 +1530,7 @@ function sqlPhoneCanon(col) {
  * CRM server-side search con FTS, filtri e paginazione.
  * Usato da GET /api/sales/requests.
  */
-async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", page = 1, limit = 50 } = {}) {
+async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", resellerId = "", page = 1, limit = 50 } = {}) {
   if (!USE_POSTGRES) return { total: 0, page, limit, items: [] };
   await ensureRelationalSchema();
   const pool = await getPgPool();
@@ -1598,11 +1603,17 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
     params.push(String(dateTo));
     where.push(`created_at < ($${params.length}::date + interval '1 day')`);
   }
+  // Scoping rivenditore: SEMPRE impostato dal chiamante (mai da input utente
+  // non fidato) quando currentUser.role === "rivenditore" — vedi endpoint.
+  if (resellerId) {
+    params.push(String(resellerId));
+    where.push(`reseller_id = $${params.length}`);
+  }
 
   // CRM v2: il where va ribattezzato con prefisso "sr." per il join con shadow
   const whereSrPrefixed = where.length
     ? ` WHERE ${where.join(" AND ")
-        .replace(/\b(first_name|last_name|email|phone|status|assignment|source|note|company|city|created_at)\b/g, "sr.$1")}`
+        .replace(/\b(first_name|last_name|email|phone|status|assignment|source|note|company|city|created_at|reseller_id)\b/g, "sr.$1")}`
     : "";
   const offset = (Math.max(1, Number(page) || 1) - 1) * (Number(limit) || 50);
   const limitN = Math.min(200, Math.max(1, Number(limit) || 50));
@@ -2105,8 +2116,8 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
         company, job_type, surface, sqm, note,
         status, assignment, first_contact_by, first_contact_at, quoted_at,
         source, source_row_number, attachments, whatsapp_thread_id,
-        requested_height, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,COALESCE($27::timestamptz,NOW()),NOW())
+        requested_height, reseller_id, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,COALESCE($28::timestamptz,NOW()),NOW())
       ON CONFLICT (id) DO UPDATE SET
         first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name,
         email=EXCLUDED.email, phone=EXCLUDED.phone,
@@ -2121,6 +2132,10 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
         source=EXCLUDED.source, source_row_number=EXCLUDED.source_row_number,
         attachments=EXCLUDED.attachments, whatsapp_thread_id=EXCLUDED.whatsapp_thread_id,
         requested_height=EXCLUDED.requested_height,
+        -- reseller_id NON viene mai sovrascritto a vuoto da un update successivo
+        -- (es. l'ufficio che aggiorna status/note non deve poter "smarrire"
+        -- l'origine rivenditore per errore, dato che non passa mai per quel campo).
+        reseller_id=CASE WHEN EXCLUDED.reseller_id != '' THEN EXCLUDED.reseller_id ELSE sales_requests.reseller_id END,
         -- Correggi created_at se in PG è più recente dell'originale (fix import bulk)
         created_at=LEAST(sales_requests.created_at, EXCLUDED.created_at),
         updated_at=NOW()
@@ -2146,6 +2161,7 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
       JSON.stringify(Array.isArray(request.attachments) ? request.attachments : []),
       request.whatsappThreadId ? String(request.whatsappThreadId) : null,
       String(request.requestedHeight || ""),
+      String(request.resellerId || ""),
       request.createdAt ? new Date(String(request.createdAt)).toISOString() : null,
     ]);
     // Scrivi audit_log se ci sono cambiamenti nei campi chiave
@@ -8613,6 +8629,7 @@ function normalizeSalesRequestRecord(item = {}) {
     firstContactBy: hasExplicitAssignment && !assignment ? "" : normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
     firstContactAt: normalizeIsoDateTime(item.firstContactAt || item.firstContact?.at || ""),
     quotedAt: normalizeIsoDateTime(item.quotedAt || ""),
+    resellerId: String(item.resellerId || "").trim(),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || new Date().toISOString()),
   };
@@ -8762,6 +8779,9 @@ function normalizeSalesContentRecord(item = {}) {
     featured: Array.isArray(item.featured) ? item.featured.map((v) => String(v)).filter(Boolean) : [],
     description: String(item.description || "").trim(),
     link: String(item.link || "").trim(),
+    // Default false: un contenuto esistente non diventa visibile ai rivenditori
+    // per errore solo perché la feature è stata introdotta — va spuntato a mano.
+    visibleToResellers: Boolean(item.visibleToResellers),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || new Date().toISOString()),
     attachments: Array.isArray(item.attachments)
@@ -11008,7 +11028,11 @@ async function handleApi(req, res, url) {
           thisWeek: reqs.filter((r) => r.createdAt && (now - new Date(r.createdAt).getTime()) < week).length,
         };
       })() : null,
-      salesContents: sessionRole === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
+      salesContents: sessionRole === "office"
+        ? serializeSalesContentsForClient(store.salesContents)
+        : sessionRole === "rivenditore"
+          ? serializeSalesContentsForClient((store.salesContents || []).filter((item) => item.visibleToResellers))
+          : [],
       salesRequestSource: sessionRole === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
       coveragePlanner: currentUser ? normalizeCoveragePlanner(
         (sqlCoveragePlannerResult.status === "fulfilled" && sqlCoveragePlannerResult.value) || store.coveragePlanner
@@ -11118,7 +11142,11 @@ async function handleApi(req, res, url) {
             thisWeek: reqs.filter((r) => r.createdAt && (now - new Date(r.createdAt).getTime()) < week).length,
           };
         })() : null,
-        salesContents: loginRole === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
+        salesContents: loginRole === "office"
+          ? serializeSalesContentsForClient(store.salesContents)
+          : loginRole === "rivenditore"
+            ? serializeSalesContentsForClient((store.salesContents || []).filter((item) => item.visibleToResellers))
+            : [],
         salesRequestSource: loginRole === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
         coveragePlanner: store.coveragePlanner,
         shopifySettings: serializeShopifySettings(store.shopifySettings),
@@ -13721,7 +13749,7 @@ async function handleApi(req, res, url) {
   // GET /api/sales/requests — ricerca CRM server-side con FTS + filtri + paginazione
   if (url.pathname === "/api/sales/requests" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
-    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!["office", "rivenditore"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
     const q            = String(url.searchParams.get("q") || "").trim();
     const status       = String(url.searchParams.get("status") || "").trim();
     const assignment   = String(url.searchParams.get("assignment") || "").trim();
@@ -13732,8 +13760,11 @@ async function handleApi(req, res, url) {
     const dateTo       = String(url.searchParams.get("dateTo") || "").trim();
     const page         = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
     const limit        = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10) || 50));
+    // Un rivenditore vede SOLO le proprie richieste: resellerId è sempre
+    // dalla sessione autenticata, mai dalla query string.
+    const resellerId = currentUser.role === "rivenditore" ? String(currentUser.id) : "";
     try {
-      const result = await searchSalesRequestsFromDb({ q, status, assignment, source, service, contactState, dateFrom, dateTo, page, limit });
+      const result = await searchSalesRequestsFromDb({ q, status, assignment, source, service, contactState, dateFrom, dateTo, resellerId, page, limit });
       return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "search_failed") });
@@ -13742,16 +13773,25 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/sales/requests" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
-    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!["office", "rivenditore"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return sendJson(res, 400, { error: "invalid_sales_request_payload" });
     }
     const now = new Date().toISOString();
     const existingRequest = store.salesRequests.find((item) => item.id === String(body.id || "")) || null;
+    // Un rivenditore può solo creare proprie richieste o aggiornare richieste
+    // già proprie — mai leggere/scrivere quelle di un altro rivenditore o
+    // orfane. resellerId è sempre forzato dalla sessione, mai dal body.
+    if (currentUser.role === "rivenditore") {
+      if (existingRequest && existingRequest.resellerId !== currentUser.id) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+    }
     const draftRecord = normalizeSalesRequestRecord({
       ...(existingRequest || {}),
       ...body,
+      resellerId: currentUser.role === "rivenditore" ? String(currentUser.id) : (existingRequest?.resellerId || String(body.resellerId || "")),
       createdAt: existingRequest?.createdAt || body.createdAt || now,
       updatedAt: now,
     });
@@ -14514,7 +14554,11 @@ async function handleApi(req, res, url) {
       orders: store.orders,
       inventory: store.inventory,
       salesRequests: currentUser?.role === "office" ? store.salesRequests : [],
-      salesContents: currentUser?.role === "office" ? serializeSalesContentsForClient(store.salesContents) : [],
+      salesContents: currentUser?.role === "office"
+        ? serializeSalesContentsForClient(store.salesContents)
+        : currentUser?.role === "rivenditore"
+          ? serializeSalesContentsForClient((store.salesContents || []).filter((item) => item.visibleToResellers))
+          : [],
       salesRequestSource: currentUser?.role === "office" ? sanitizeSalesRequestSourceConfig(store.salesRequestSource) : {},
       shopifySettings: serializeShopifySettings(store.shopifySettings),
       users: currentUser?.role === "office" ? store.users.map(sanitizeUser) : [],
