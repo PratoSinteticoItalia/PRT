@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260718-rivenditore-ordina-materiali";
+} from "./lib/order-money.js?v=20260718-rivenditore-richieste-e-ordini-fix";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260718-rivenditore-ordina-materiali";
+import { regionForCity } from "./lib/geo.js?v=20260718-rivenditore-richieste-e-ordini-fix";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260718-rivenditore-ordina-materiali";
+} from "./lib/profit-split.js?v=20260718-rivenditore-richieste-e-ordini-fix";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260718-rivenditore-ordina-materiali";
+} from "./lib/preventivo-pricing.js?v=20260718-rivenditore-richieste-e-ordini-fix";
 
-const APP_SHELL_VERSION = "20260718-rivenditore-ordina-materiali";
+const APP_SHELL_VERSION = "20260718-rivenditore-richieste-e-ordini-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11216,12 +11216,28 @@ function renderResellerSalesRequests() {
     </div>
     <div class="detail-stack" style="margin-bottom:16px;">
       ${items.length ? items.map((item) => `
-        <article class="detail-box">
-          <strong>${escapeHtml([item.name, item.surname].filter(Boolean).join(" ") || (state.lang === "it" ? "Cliente" : "Client"))}</strong>
-          <span class="action-badge badge-info">${escapeHtml(item.status || (state.lang === "it" ? "Nuova" : "New"))}</span>
-          <p>${escapeHtml(item.city || "")}${item.sqm ? ` · ${escapeHtml(String(item.sqm))} mq` : ""}${item.phone ? ` · ${escapeHtml(item.phone)}` : ""} · ${formatDate(item.createdAt)}</p>
+        <details class="detail-box reseller-request-card">
+          <summary style="cursor:pointer;list-style:none;">
+            <strong>${escapeHtml([item.name, item.surname].filter(Boolean).join(" ") || (state.lang === "it" ? "Cliente" : "Client"))}</strong>
+            <span class="action-badge badge-info">${escapeHtml(getSalesRequestStatusLabel(item.status))}</span>
+            <p>${escapeHtml(item.city || "")}${item.sqm ? ` · ${escapeHtml(String(item.sqm))} mq` : ""}${item.phone ? ` · ${escapeHtml(item.phone)}` : ""} · ${formatDate(item.createdAt)}</p>
+          </summary>
           ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
-        </article>
+          <form class="reseller-request-update-form inline-form-grid" data-id="${escapeHtml(item.id)}" style="margin-top:10px;">
+            <label class="field"><span>${state.lang === "it" ? "Stato" : "Status"}</span>
+              <select class="text-input" name="status">
+                <option value="new" ${item.status === "new" || !item.status ? "selected" : ""}>${state.lang === "it" ? "Nuova" : "New"}</option>
+                <option value="quoted" ${item.status === "quoted" ? "selected" : ""}>${state.lang === "it" ? "In preventivo" : "Quoted"}</option>
+                <option value="followup" ${item.status === "followup" ? "selected" : ""}>Follow-up</option>
+                <option value="closed" ${item.status === "closed" ? "selected" : ""}>${state.lang === "it" ? "Chiusa" : "Closed"}</option>
+              </select>
+            </label>
+            <label class="field field-full"><span>${state.lang === "it" ? "Nota" : "Note"}</span><textarea class="text-input" name="note" rows="2">${escapeHtml(item.note || "")}</textarea></label>
+            <div class="inline-actions field-full">
+              <button type="submit" class="ghost-button small-button">${state.lang === "it" ? "Aggiorna" : "Update"}</button>
+            </div>
+          </form>
+        </details>
       `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta assegnata al momento." : "No requests assigned yet."}</div>`}
     </div>
     <details class="panel">
@@ -11244,6 +11260,29 @@ function renderResellerSalesRequests() {
   `;
   const form = document.getElementById("reseller-sales-request-form");
   if (form) form.addEventListener("submit", submitResellerSalesRequest);
+  container.querySelectorAll(".reseller-request-update-form").forEach((updateForm) => {
+    updateForm.addEventListener("submit", saveResellerSalesRequestStatus);
+    updateForm.addEventListener("click", (event) => event.stopPropagation());
+  });
+}
+
+// Il rivenditore può aggiornare stato/nota su una richiesta già assegnata a
+// sé — il server (POST /api/sales/requests) ignora ogni altro campo per
+// questo ruolo quando l'id esiste già, quindi qui basta mandare id+status+note.
+async function saveResellerSalesRequestStatus(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const id = form.dataset.id;
+  const data = new FormData(form);
+  try {
+    await apiFetch("/api/sales/requests", {
+      method: "POST",
+      body: JSON.stringify({ id, status: data.get("status"), note: data.get("note") }),
+    });
+    await loadResellerSalesRequests();
+  } catch (error) {
+    showToast(state.lang === "it" ? "Impossibile aggiornare la richiesta." : "Unable to update the request.", "error");
+  }
 }
 
 async function submitResellerSalesRequest(event) {
@@ -11322,10 +11361,6 @@ function renderResellerOrderRequests() {
         <label class="field"><span>${state.lang === "it" ? "Quantità" : "Quantity"}</span><input class="text-input" name="quantity" placeholder="2 rotoli" /></label>
         <label class="field"><span>Mq</span><input class="text-input" name="sqm" placeholder="60" /></label>
         <label class="field"><span>${state.lang === "it" ? "Data desiderata" : "Desired date"}</span><input class="text-input" type="date" name="desiredDate" /></label>
-        <label class="field"><span>${state.lang === "it" ? "Cliente finale" : "End customer"}</span><input class="text-input" name="endCustomerName" /></label>
-        <label class="field"><span>${state.lang === "it" ? "Telefono cliente" : "Customer phone"}</span><input class="text-input" name="endCustomerPhone" /></label>
-        <label class="field"><span>${state.lang === "it" ? "Indirizzo" : "Address"}</span><input class="text-input" name="address" /></label>
-        <label class="field"><span>${state.lang === "it" ? "Città" : "City"}</span><input class="text-input" name="city" /></label>
         <label class="field field-full"><span>${state.lang === "it" ? "Note" : "Notes"}</span><textarea class="text-input" name="notes" rows="3"></textarea></label>
         <div class="inline-actions field-full">
           <button type="submit" class="primary-button small-button">${state.lang === "it" ? "Invia ordine" : "Send order"}</button>
@@ -11338,8 +11373,7 @@ function renderResellerOrderRequests() {
         <article class="detail-box">
           <strong>${escapeHtml(item.product || "")}</strong>
           <span class="action-badge ${item.status === "evasa" ? "badge-success" : item.status === "rifiutata" ? "badge-urgent" : "badge-info"}">${escapeHtml(resellerOrderRequestStatusLabel(item.status))}</span>
-          <p>${[item.quantity, item.sqm ? `${item.sqm} mq` : "", item.city].filter(Boolean).map(escapeHtml).join(" · ")} · ${formatDate(item.createdAt)}</p>
-          ${item.endCustomerName ? `<p>${state.lang === "it" ? "Cliente" : "Customer"}: ${escapeHtml(item.endCustomerName)}</p>` : ""}
+          <p>${[item.quantity, item.sqm ? `${item.sqm} mq` : "", item.desiredDate ? formatDate(item.desiredDate) : ""].filter(Boolean).map(escapeHtml).join(" · ")} · ${formatDate(item.createdAt)}</p>
           ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
           ${item.handlingNotes ? `<p><em>${state.lang === "it" ? "Nota ufficio" : "Office note"}: ${escapeHtml(item.handlingNotes)}</em></p>` : ""}
         </article>
@@ -11364,10 +11398,6 @@ async function submitResellerOrderRequest(event) {
         quantity: data.get("quantity"),
         sqm: data.get("sqm"),
         desiredDate: data.get("desiredDate"),
-        endCustomerName: data.get("endCustomerName"),
-        endCustomerPhone: data.get("endCustomerPhone"),
-        address: data.get("address"),
-        city: data.get("city"),
         notes: data.get("notes"),
       }),
     });
@@ -11418,8 +11448,7 @@ function renderOfficeResellerOrders() {
         <article class="detail-box">
           <strong>${escapeHtml(item.resellerName || "")} — ${escapeHtml(item.product || "")}</strong>
           <span class="action-badge ${item.status === "evasa" ? "badge-success" : item.status === "rifiutata" ? "badge-urgent" : "badge-info"}">${escapeHtml(resellerOrderRequestStatusLabel(item.status))}</span>
-          <p>${[item.quantity, item.sqm ? `${item.sqm} mq` : "", item.city].filter(Boolean).map(escapeHtml).join(" · ")} · ${formatDate(item.createdAt)}</p>
-          ${item.endCustomerName ? `<p>${state.lang === "it" ? "Cliente finale" : "End customer"}: ${escapeHtml(item.endCustomerName)}${item.endCustomerPhone ? ` · ${escapeHtml(item.endCustomerPhone)}` : ""}${item.address ? ` · ${escapeHtml(item.address)}` : ""}</p>` : ""}
+          <p>${[item.quantity, item.sqm ? `${item.sqm} mq` : "", item.desiredDate ? formatDate(item.desiredDate) : ""].filter(Boolean).map(escapeHtml).join(" · ")} · ${formatDate(item.createdAt)}</p>
           ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
           <div class="inline-actions">
             ${item.status !== "in-lavorazione" ? `<button class="ghost-button small-button" type="button" data-action="update-reseller-order-status" data-id="${escapeHtml(item.id)}" data-status="in-lavorazione">${state.lang === "it" ? "Segna in lavorazione" : "Mark in progress"}</button>` : ""}

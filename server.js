@@ -8835,10 +8835,8 @@ function normalizeResellerOrderRequest(item = {}) {
     product: String(item.product || "").trim(),
     quantity: String(item.quantity || "").trim(),
     sqm: item.sqm != null && item.sqm !== "" ? Number(item.sqm) || 0 : null,
-    endCustomerName: String(item.endCustomerName || "").trim(),
-    endCustomerPhone: String(item.endCustomerPhone || "").trim(),
-    address: String(item.address || "").trim(),
-    city: String(item.city || "").trim(),
+    // Solo l'ordine materiale del rivenditore verso di noi — niente dati del
+    // suo cliente finale (a chi lo rivende non è di nostro interesse qui).
     desiredDate: String(item.desiredDate || "").trim(),
     notes: String(item.notes || "").trim(),
     status: RESELLER_ORDER_REQUEST_STATUSES.has(rawStatus) ? rawStatus : "pending",
@@ -13822,14 +13820,22 @@ async function handleApi(req, res, url) {
     // Un rivenditore può solo creare proprie richieste o aggiornare richieste
     // già proprie — mai leggere/scrivere quelle di un altro rivenditore o
     // orfane. resellerId è sempre forzato dalla sessione, mai dal body.
+    let effectiveBody = body;
     if (currentUser.role === "rivenditore") {
       if (existingRequest && existingRequest.resellerId !== currentUser.id) {
         return sendJson(res, 403, { error: "forbidden" });
       }
+      // Su una richiesta GIÀ assegnata, il rivenditore può aggiornare solo
+      // stato e nota di lavorazione — non anagrafica cliente, assegnazione
+      // interna o altri campi che restano di competenza dell'ufficio. In
+      // creazione (nessun existingRequest) resta libero di compilare tutto.
+      if (existingRequest) {
+        effectiveBody = { status: body.status, note: body.note };
+      }
     }
     const draftRecord = normalizeSalesRequestRecord({
       ...(existingRequest || {}),
-      ...body,
+      ...effectiveBody,
       // Rivenditore: sempre forzato alla propria sessione, mai dal body.
       // Office: libero di impostare/cambiare/rimuovere l'assegnazione — NON
       // va preferito il valore esistente sul body, altrimenti l'ufficio non
