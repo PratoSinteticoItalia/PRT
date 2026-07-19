@@ -10,6 +10,11 @@ import { reconcileShadowLeads, buildLeadFingerprint, fingerprintIsComplete, find
 import { generateWorkReportPdf } from "./lib/work-report-pdf.js";
 import { generateProfitSplitContoPdf, generateProfitSplitStatementPdf } from "./lib/profit-split-pdf.js";
 import { computeProfitSplitScenario } from "./lib/profit-split.js";
+import {
+  PRODUCTS as RESELLER_ORDER_PRODUCTS,
+  ACCESSORIES as RESELLER_ORDER_ACCESSORIES,
+  getProductPrice as getResellerOrderProductPrice,
+} from "./lib/preventivo-pricing.js";
 import { createWriteGuard } from "./lib/safe-write.js";
 import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
 import { buildSnapshot, snapshotFileName } from "./lib/backup.js";
@@ -8818,6 +8823,54 @@ function normalizeSupplierPriceEntry(item = {}) {
 
 const RESELLER_ORDER_REQUEST_STATUSES = new Set(["pending", "in-lavorazione", "evasa", "rifiutata"]);
 
+// Sanifica una riga carrello già presente su un record (creazione avvenuta,
+// prezzi già risolti in POST /api/reseller/order-requests via
+// resolveResellerOrderItem) — qui NON si ricalcola il prezzo dal catalogo:
+// un cambio di listino non deve alterare retroattivamente ordini già fatti.
+function normalizeResellerOrderItemRow(row = {}) {
+  return {
+    type: row.type === "accessory" ? "accessory" : "turf",
+    refId: String(row.refId || "").trim(),
+    name: String(row.name || "").trim(),
+    unit: String(row.unit || "mq").trim() || "mq",
+    quantity: Math.max(0, Number(row.quantity) || 0),
+    unitPrice: Math.max(0, Number(row.unitPrice) || 0),
+    subtotal: Math.max(0, Number(row.subtotal) || 0),
+    ...(row.legacyFreeText ? { legacyFreeText: true } : {}),
+  };
+}
+
+// Risolve UNA riga carrello mandata dal rivenditore in creazione ordine:
+// legge solo type+refId+quantity dal client e ricostruisce prezzo/nome/unità
+// da zero dal catalogo server-side (RESELLER_ORDER_PRODUCTS/
+// RESELLER_ORDER_ACCESSORIES). Qualunque prezzo/nome/subtotale mandato dal
+// client viene ignorato integralmente — altrimenti un client modificato
+// potrebbe forzare un totale finto più basso. refId sconosciuto o
+// quantity<=0 → riga scartata (null), mai accettata as-is.
+function resolveResellerOrderItem(rawItem = {}) {
+  const type = rawItem.type === "accessory" ? "accessory" : "turf";
+  const quantity = Math.max(0, Number(rawItem.quantity) || 0);
+  if (quantity <= 0) return null;
+  const refId = String(rawItem.refId || "").trim();
+  if (!refId) return null;
+  if (type === "turf") {
+    const product = RESELLER_ORDER_PRODUCTS.find((p) => p.id === refId);
+    if (!product) return null;
+    const unitPrice = getResellerOrderProductPrice(product, "rivenditore");
+    return {
+      type, refId: product.id, name: product.name, unit: "mq", quantity,
+      unitPrice, subtotal: Number((unitPrice * quantity).toFixed(2)),
+    };
+  }
+  const accessory = RESELLER_ORDER_ACCESSORIES.find((a) => a.id === refId);
+  if (!accessory) return null;
+  const unitPrice = Number(accessory.price) || 0;
+  return {
+    type, refId: accessory.id, name: accessory.name, unit: accessory.unit, quantity,
+    unitPrice, subtotal: Number((unitPrice * quantity).toFixed(2)),
+  };
+}
+
 // Ordine di materiale che un rivenditore manda internamente all'azienda —
 // SOLO tracking (nessuna scrittura verso Shopify): l'ufficio valuta la
 // richiesta qui, poi crea l'ordine vero su Shopify a mano e marca questa
@@ -8826,15 +8879,31 @@ const RESELLER_ORDER_REQUEST_STATUSES = new Set(["pending", "in-lavorazione", "e
 // serva — se in futuro crescesse molto, valutare la migrazione.
 function normalizeResellerOrderRequest(item = {}) {
   const rawStatus = String(item.status || "pending").trim();
+  let items = Array.isArray(item.items) ? item.items : null;
+  if (!items && String(item.product || "").trim()) {
+    // Record legacy pre-carrello (schema flat, nessun prezzo mai calcolato):
+    // wrappato in una riga singola marcata, mostrata in UI come "prezzo non
+    // disponibile" invece di inventare un importo.
+    items = [{
+      type: "turf",
+      refId: "",
+      name: String(item.product || "").trim(),
+      unit: item.sqm != null && item.sqm !== "" ? "mq" : (String(item.quantity || "").trim() || "pz"),
+      quantity: item.sqm != null && item.sqm !== "" ? Number(item.sqm) || 1 : 1,
+      unitPrice: 0,
+      subtotal: 0,
+      legacyFreeText: true,
+    }];
+  }
+  const normalizedItems = (items || []).map((row) => normalizeResellerOrderItemRow(row));
   return {
     id: String(item.id || randomUUID()),
     // resellerId va sempre impostato server-side dalla sessione autenticata
     // in creazione — mai fidarsi di un valore mandato dal client.
     resellerId: String(item.resellerId || "").trim(),
     resellerName: String(item.resellerName || "").trim(),
-    product: String(item.product || "").trim(),
-    quantity: String(item.quantity || "").trim(),
-    sqm: item.sqm != null && item.sqm !== "" ? Number(item.sqm) || 0 : null,
+    items: normalizedItems,
+    totalAmount: Number(normalizedItems.reduce((sum, row) => sum + (Number(row.subtotal) || 0), 0).toFixed(2)),
     // Solo l'ordine materiale del rivenditore verso di noi — niente dati del
     // suo cliente finale (a chi lo rivende non è di nostro interesse qui).
     desiredDate: String(item.desiredDate || "").trim(),
@@ -14321,7 +14390,10 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/reseller/order-requests" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (!["office", "rivenditore"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
-    const all = store.resellerOrderRequests || [];
+    // Normalizzati ad ogni lettura (non ci si affida al timing di
+    // reconcileStoreData, che gira una sola volta per processo): un record
+    // scritto prima del redesign a carrello va comunque letto senza crash.
+    const all = (store.resellerOrderRequests || []).map((item) => normalizeResellerOrderRequest(item));
     // Un rivenditore vede SOLO le proprie — mai un id passato dal client.
     const items = currentUser.role === "rivenditore"
       ? all.filter((item) => item.resellerId === currentUser.id)
@@ -14333,12 +14405,18 @@ async function handleApi(req, res, url) {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "rivenditore") return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
-    if (!String(body.product || "").trim()) {
-      return sendJson(res, 400, { error: "missing_product" });
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+    const resolvedItems = rawItems.map(resolveResellerOrderItem).filter(Boolean);
+    if (!resolvedItems.length) {
+      return sendJson(res, 400, { error: "empty_cart" });
     }
+    const totalAmount = Number(resolvedItems.reduce((sum, row) => sum + row.subtotal, 0).toFixed(2));
     const now = new Date().toISOString();
     const entry = normalizeResellerOrderRequest({
-      ...body,
+      desiredDate: body.desiredDate,
+      notes: body.notes,
+      items: resolvedItems,
+      totalAmount,
       id: randomUUID(),
       resellerId: currentUser.id,
       resellerName: currentUser.resellerCompanyName || currentUser.name || "",
@@ -14351,7 +14429,11 @@ async function handleApi(req, res, url) {
     });
     store.resellerOrderRequests = [entry, ...(store.resellerOrderRequests || [])];
     await writeJson(STORE_PATH, store);
-    writeAuditLog("reseller_order_request", entry.id, "create", { resellerId: entry.resellerId, product: entry.product }, currentUser.email || null).catch(() => {});
+    writeAuditLog("reseller_order_request", entry.id, "create", {
+      resellerId: entry.resellerId,
+      items: entry.items.map((row) => ({ refId: row.refId, quantity: row.quantity })),
+      totalAmount: entry.totalAmount,
+    }, currentUser.email || null).catch(() => {});
     return sendJson(res, 200, entry);
   }
 

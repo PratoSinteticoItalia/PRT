@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260718-rivenditore-richieste-e-ordini-fix";
+} from "./lib/order-money.js?v=20260719-rivenditore-catalogo-carrello";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260718-rivenditore-richieste-e-ordini-fix";
+import { regionForCity } from "./lib/geo.js?v=20260719-rivenditore-catalogo-carrello";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260718-rivenditore-richieste-e-ordini-fix";
+} from "./lib/profit-split.js?v=20260719-rivenditore-catalogo-carrello";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260718-rivenditore-richieste-e-ordini-fix";
+} from "./lib/preventivo-pricing.js?v=20260719-rivenditore-catalogo-carrello";
 
-const APP_SHELL_VERSION = "20260718-rivenditore-richieste-e-ordini-fix";
+const APP_SHELL_VERSION = "20260719-rivenditore-catalogo-carrello";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11314,9 +11314,10 @@ async function submitResellerSalesRequest(event) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Ordina materiali — rivenditore invia, ufficio gestisce (solo tracking
-// interno, nessuna scrittura verso Shopify: l'ufficio crea l'ordine vero
-// a mano e poi marca la richiesta come evasa qui).
+// Ordina materiali — rivenditore sfoglia un catalogo, aggiunge al carrello,
+// poi in un secondo passaggio vede il totale (listino rivenditore) e invia.
+// Ufficio gestisce solo tracking interno (nessuna scrittura verso Shopify:
+// l'ufficio crea l'ordine vero a mano e poi marca la richiesta come evasa).
 // ─────────────────────────────────────────────────────────────────────────
 const RESELLER_ORDER_REQUEST_STATUS_LABELS = {
   it: { pending: "In attesa", "in-lavorazione": "In lavorazione", evasa: "Evasa", rifiutata: "Rifiutata" },
@@ -11325,6 +11326,163 @@ const RESELLER_ORDER_REQUEST_STATUS_LABELS = {
 function resellerOrderRequestStatusLabel(status) {
   const dict = RESELLER_ORDER_REQUEST_STATUS_LABELS[state.lang === "it" ? "it" : "en"];
   return dict[status] || status;
+}
+function resellerOrderRequestStatusBadgeClass(status) {
+  return status === "evasa" ? "badge-success" : status === "rifiutata" ? "badge-urgent" : "badge-info";
+}
+
+// Elenco righe di un ordine (prati+accessori) — riusato sia nello storico
+// rivenditore che nella vista ufficio, per non duplicare il markup.
+function renderResellerOrderItemsList(items = []) {
+  if (!items.length) return "";
+  return `<ul class="reseller-order-lines">${items.map((row) => `
+    <li>
+      <span>${escapeHtml(row.name)} · ${formatInventoryNumber(row.quantity)} ${escapeHtml(row.unit)}</span>
+      ${row.legacyFreeText
+        ? `<em>${state.lang === "it" ? "ordine legacy, prezzo non disponibile" : "legacy order, price unavailable"}</em>`
+        : `<span>× ${formatCurrency(row.unitPrice)} = <strong>${formatCurrency(row.subtotal)}</strong></span>`}
+    </li>`).join("")}</ul>`;
+}
+
+const RESELLER_CART_LS_KEY = "psi-reseller-cart";
+function loadResellerCartFromStorage() {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(RESELLER_CART_LS_KEY) || "[]");
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+function saveResellerCartToStorage(cart) {
+  try { window.localStorage.setItem(RESELLER_CART_LS_KEY, JSON.stringify(cart)); } catch {}
+}
+function getResellerCart() {
+  if (!Array.isArray(state.resellerCart)) state.resellerCart = loadResellerCartFromStorage();
+  return state.resellerCart;
+}
+// Il carrello locale salva solo {type, refId, quantity} — nome/prezzo si
+// leggono SEMPRE dal catalogo corrente al render, mai persistiti, così
+// restano validi anche se il listino cambia tra un salvataggio e l'altro.
+function resolveResellerCartLineDisplay(line) {
+  if (line.type === "accessory") {
+    const accessory = PREVENTIVO_ACCESSORIES.find((a) => a.id === line.refId);
+    if (!accessory) return null;
+    const unitPrice = Number(accessory.price) || 0;
+    return { name: accessory.name, unit: accessory.unit, unitPrice, subtotal: Number((unitPrice * line.quantity).toFixed(2)) };
+  }
+  const product = PREVENTIVO_PRODUCTS.find((p) => p.id === line.refId);
+  if (!product) return null;
+  const unitPrice = getProductPricePure(product, "rivenditore");
+  return { name: product.name, unit: "mq", unitPrice, subtotal: Number((unitPrice * line.quantity).toFixed(2)) };
+}
+
+function addToResellerCart(type, refId, quantity) {
+  const qty = Math.max(0, Number(quantity) || 0);
+  if (qty <= 0) {
+    showToast(state.lang === "it" ? "Inserisci una quantità valida." : "Enter a valid quantity.", "error");
+    return;
+  }
+  const cart = getResellerCart();
+  const existing = cart.find((l) => l.type === type && l.refId === refId);
+  if (existing) existing.quantity = Number((existing.quantity + qty).toFixed(2));
+  else cart.push({ type, refId, quantity: qty });
+  saveResellerCartToStorage(cart);
+  showToast(state.lang === "it" ? "Aggiunto al carrello." : "Added to cart.", "success");
+  renderCurrentViewOnly(state.currentView);
+}
+function stepResellerCartLine(index, delta) {
+  const cart = getResellerCart();
+  const line = cart[index];
+  if (!line) return;
+  const nextQty = Number((toNumber(line.quantity) + delta).toFixed(2));
+  if (nextQty <= 0) cart.splice(index, 1);
+  else line.quantity = nextQty;
+  saveResellerCartToStorage(cart);
+  renderCurrentViewOnly(state.currentView);
+}
+function removeResellerCartLine(index) {
+  const cart = getResellerCart();
+  cart.splice(index, 1);
+  saveResellerCartToStorage(cart);
+  renderCurrentViewOnly(state.currentView);
+}
+
+function renderResellerOrderCatalogStepHtml() {
+  const productCards = PREVENTIVO_PRODUCTS.map((p) => `
+    <article class="reseller-product-card" data-slug="${escapeAttr(p.slug)}">
+      <div class="reseller-product-thumb"><img class="reseller-product-img" src="./product-images/${escapeAttr(p.slug)}.jpg" alt="${escapeHtml(p.name)}" loading="lazy" /></div>
+      <div class="reseller-product-body">
+        <strong>${escapeHtml(p.name)}</strong>
+        <span class="reseller-product-desc">${escapeHtml(p.desc || "")}</span>
+        <span class="reseller-product-price">${formatCurrency(getProductPricePure(p, "rivenditore"))} <small>/mq</small></span>
+      </div>
+      <div class="reseller-product-add">
+        <input class="text-input reseller-qty-input" type="number" min="0" step="1" placeholder="mq" data-qty-input />
+        <button class="primary-button small-button" type="button" data-action="reseller-add-to-cart" data-type="turf" data-id="${escapeAttr(p.id)}">${state.lang === "it" ? "Aggiungi" : "Add"}</button>
+      </div>
+    </article>`).join("");
+  const accessoryCards = PREVENTIVO_ACCESSORIES.map((a) => `
+    <article class="reseller-product-card is-accessory">
+      <div class="reseller-product-thumb reseller-product-thumb-placeholder" aria-hidden="true">${escapeHtml(a.name.slice(0, 1))}</div>
+      <div class="reseller-product-body">
+        <strong>${escapeHtml(a.name)}</strong>
+        <span class="reseller-product-price">${formatCurrency(a.price)} <small>/${escapeHtml(a.unit)}</small></span>
+      </div>
+      <div class="reseller-product-add">
+        <input class="text-input reseller-qty-input" type="number" min="0" step="1" value="1" data-qty-input />
+        <button class="primary-button small-button" type="button" data-action="reseller-add-to-cart" data-type="accessory" data-id="${escapeAttr(a.id)}">${state.lang === "it" ? "Aggiungi" : "Add"}</button>
+      </div>
+    </article>`).join("");
+  return `
+    <div class="reseller-catalog-section">
+      <h4>${state.lang === "it" ? "Prato" : "Turf"}</h4>
+      <div class="reseller-catalog-grid">${productCards}</div>
+    </div>
+    <div class="reseller-catalog-section">
+      <h4>${state.lang === "it" ? "Accessori" : "Accessories"}</h4>
+      <div class="reseller-catalog-grid">${accessoryCards}</div>
+    </div>
+  `;
+}
+
+function renderResellerOrderSummaryStepHtml(cartLines) {
+  if (!cartLines.length) {
+    return `<div class="info-card">${state.lang === "it" ? "Il carrello è vuoto — torna al catalogo per aggiungere articoli." : "Your cart is empty — go back to the catalog to add items."}</div>`;
+  }
+  return `
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-head"><div><h3>${state.lang === "it" ? "Riepilogo carrello" : "Cart summary"}</h3></div></div>
+      <div class="reseller-cart-lines">
+        ${cartLines.map((line) => `
+          <div class="reseller-cart-line">
+            <div class="reseller-cart-line-name">
+              <strong>${escapeHtml(line.display.name)}</strong>
+              <span>${formatCurrency(line.display.unitPrice)} / ${escapeHtml(line.display.unit)}</span>
+            </div>
+            <div class="reseller-cart-line-qty">
+              <button class="ghost-button small-button" type="button" data-action="reseller-cart-step" data-index="${line.index}" data-delta="-1">−</button>
+              <span>${formatInventoryNumber(line.quantity)} ${escapeHtml(line.display.unit)}</span>
+              <button class="ghost-button small-button" type="button" data-action="reseller-cart-step" data-index="${line.index}" data-delta="1">+</button>
+            </div>
+            <div class="reseller-cart-line-subtotal">${formatCurrency(line.display.subtotal)}</div>
+            <button class="reseller-cart-line-remove" type="button" data-action="reseller-cart-remove" data-index="${line.index}" title="${state.lang === "it" ? "Rimuovi" : "Remove"}" aria-label="${state.lang === "it" ? "Rimuovi" : "Remove"}">×</button>
+          </div>
+        `).join("")}
+      </div>
+      <div class="reseller-cart-total">
+        <span>${state.lang === "it" ? "Totale stimato" : "Estimated total"}</span>
+        <strong>${formatCurrency(cartLines.reduce((sum, l) => sum + l.display.subtotal, 0))}</strong>
+      </div>
+      <form id="reseller-order-request-form" class="inline-form-grid" style="margin-top:16px;">
+        <label class="field"><span>${state.lang === "it" ? "Data desiderata" : "Desired date"}</span><input class="text-input" type="date" name="desiredDate" /></label>
+        <label class="field field-full"><span>${state.lang === "it" ? "Note" : "Notes"}</span><textarea class="text-input" name="notes" rows="3"></textarea></label>
+        <div class="inline-actions field-full">
+          <button type="submit" class="primary-button small-button">${state.lang === "it" ? "Invia ordine" : "Send order"}</button>
+        </div>
+        <div id="reseller-order-request-status" class="panel-note hidden field-full"></div>
+      </form>
+    </div>
+  `;
 }
 
 async function loadResellerOrderRequests() {
@@ -11346,40 +11504,50 @@ function renderResellerOrderRequests() {
     loadResellerOrderRequests();
     return;
   }
-  const items = state.resellerOrderRequests || [];
+  const step = state.resellerOrderStep === "summary" ? "summary" : "catalog";
+  const cart = getResellerCart();
+  const cartLines = cart
+    .map((line, index) => ({ ...line, index, display: resolveResellerCartLineDisplay(line) }))
+    .filter((line) => line.display);
+  const cartTotal = cartLines.reduce((sum, l) => sum + l.display.subtotal, 0);
+  const orders = state.resellerOrderRequests || [];
+
   container.innerHTML = `
     <div class="page-header">
       <div>
         <h1>${state.lang === "it" ? "Ordina materiali" : "Order materials"}</h1>
-        <p>${state.lang === "it" ? "Manda una richiesta d'ordine materiale all'azienda — l'ufficio la valuta e la elabora." : "Send a materials order request to the company — the office will review and process it."}</p>
+        <p>${state.lang === "it" ? "Sfoglia il catalogo, aggiungi al carrello, poi invia l'ordine all'ufficio." : "Browse the catalog, add to cart, then send the order to the office."}</p>
       </div>
     </div>
-    <div class="panel" style="margin-bottom:16px;">
-      <div class="panel-head"><div><h3>${state.lang === "it" ? "Nuovo ordine" : "New order"}</h3></div></div>
-      <form id="reseller-order-request-form" class="inline-form-grid">
-        <label class="field field-full"><span>${state.lang === "it" ? "Prodotto" : "Product"}</span><input class="text-input" name="product" placeholder="Rovere 40 mm" required /></label>
-        <label class="field"><span>${state.lang === "it" ? "Quantità" : "Quantity"}</span><input class="text-input" name="quantity" placeholder="2 rotoli" /></label>
-        <label class="field"><span>Mq</span><input class="text-input" name="sqm" placeholder="60" /></label>
-        <label class="field"><span>${state.lang === "it" ? "Data desiderata" : "Desired date"}</span><input class="text-input" type="date" name="desiredDate" /></label>
-        <label class="field field-full"><span>${state.lang === "it" ? "Note" : "Notes"}</span><textarea class="text-input" name="notes" rows="3"></textarea></label>
-        <div class="inline-actions field-full">
-          <button type="submit" class="primary-button small-button">${state.lang === "it" ? "Invia ordine" : "Send order"}</button>
-        </div>
-        <div id="reseller-order-request-status" class="panel-note hidden field-full"></div>
-      </form>
+    <div class="reseller-cart-bar">
+      <span>${state.lang === "it" ? "Carrello" : "Cart"}: <strong>${cartLines.length}</strong> ${state.lang === "it" ? "articoli" : "items"} · <strong>${formatCurrency(cartTotal)}</strong></span>
+      ${step === "catalog"
+        ? `<button class="primary-button small-button" type="button" data-action="reseller-cart-go-summary" ${cartLines.length ? "" : "disabled"}>${state.lang === "it" ? "Vai al riepilogo" : "Go to summary"} →</button>`
+        : `<button class="ghost-button small-button" type="button" data-action="reseller-cart-back-catalog">← ${state.lang === "it" ? "Torna al catalogo" : "Back to catalog"}</button>`}
     </div>
-    <div class="detail-stack">
-      ${items.length ? items.map((item) => `
-        <article class="detail-box">
-          <strong>${escapeHtml(item.product || "")}</strong>
-          <span class="action-badge ${item.status === "evasa" ? "badge-success" : item.status === "rifiutata" ? "badge-urgent" : "badge-info"}">${escapeHtml(resellerOrderRequestStatusLabel(item.status))}</span>
-          <p>${[item.quantity, item.sqm ? `${item.sqm} mq` : "", item.desiredDate ? formatDate(item.desiredDate) : ""].filter(Boolean).map(escapeHtml).join(" · ")} · ${formatDate(item.createdAt)}</p>
-          ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
-          ${item.handlingNotes ? `<p><em>${state.lang === "it" ? "Nota ufficio" : "Office note"}: ${escapeHtml(item.handlingNotes)}</em></p>` : ""}
-        </article>
-      `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessun ordine inviato finora." : "No orders sent yet."}</div>`}
+    ${step === "catalog" ? renderResellerOrderCatalogStepHtml() : renderResellerOrderSummaryStepHtml(cartLines)}
+    <div class="panel-subsection" style="margin-top:24px;">
+      <h4>${state.lang === "it" ? "I tuoi ordini" : "Your orders"}</h4>
+      <div class="detail-stack">
+        ${orders.length ? orders.map((item) => `
+          <article class="detail-box">
+            <strong>${formatCurrency(item.totalAmount)}</strong>
+            <span class="action-badge ${resellerOrderRequestStatusBadgeClass(item.status)}">${escapeHtml(resellerOrderRequestStatusLabel(item.status))}</span>
+            ${renderResellerOrderItemsList(item.items)}
+            <p>${[item.desiredDate ? formatDate(item.desiredDate) : "", formatDate(item.createdAt)].filter(Boolean).join(" · ")}</p>
+            ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
+            ${item.handlingNotes ? `<p><em>${state.lang === "it" ? "Nota ufficio" : "Office note"}: ${escapeHtml(item.handlingNotes)}</em></p>` : ""}
+          </article>
+        `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessun ordine inviato finora." : "No orders sent yet."}</div>`}
+      </div>
     </div>
   `;
+  // Fallback immagine prodotto: nessuna verifica server-side sul file,
+  // niente inline onerror (coerente con lo stile del resto del file) —
+  // rimuove semplicemente l'<img> rotta, lasciando il placeholder dietro.
+  container.querySelectorAll(".reseller-product-img").forEach((img) => {
+    img.addEventListener("error", () => img.remove(), { once: true });
+  });
   const form = document.getElementById("reseller-order-request-form");
   if (form) form.addEventListener("submit", submitResellerOrderRequest);
 }
@@ -11389,19 +11557,20 @@ async function submitResellerOrderRequest(event) {
   const form = event.currentTarget;
   const statusEl = document.getElementById("reseller-order-request-status");
   const data = new FormData(form);
+  const cart = getResellerCart();
   clearStatus(statusEl);
   try {
     await apiFetch("/api/reseller/order-requests", {
       method: "POST",
       body: JSON.stringify({
-        product: data.get("product"),
-        quantity: data.get("quantity"),
-        sqm: data.get("sqm"),
+        items: cart.map((line) => ({ type: line.type, refId: line.refId, quantity: line.quantity })),
         desiredDate: data.get("desiredDate"),
         notes: data.get("notes"),
       }),
     });
-    form.reset();
+    state.resellerCart = [];
+    saveResellerCartToStorage([]);
+    state.resellerOrderStep = "catalog";
     setStatus(statusEl, "success", state.lang === "it" ? "Ordine inviato." : "Order sent.");
     await loadResellerOrderRequests();
   } catch (error) {
@@ -11446,9 +11615,10 @@ function renderOfficeResellerOrders() {
     <div class="detail-stack">
       ${items.length ? items.map((item) => `
         <article class="detail-box">
-          <strong>${escapeHtml(item.resellerName || "")} — ${escapeHtml(item.product || "")}</strong>
-          <span class="action-badge ${item.status === "evasa" ? "badge-success" : item.status === "rifiutata" ? "badge-urgent" : "badge-info"}">${escapeHtml(resellerOrderRequestStatusLabel(item.status))}</span>
-          <p>${[item.quantity, item.sqm ? `${item.sqm} mq` : "", item.desiredDate ? formatDate(item.desiredDate) : ""].filter(Boolean).map(escapeHtml).join(" · ")} · ${formatDate(item.createdAt)}</p>
+          <strong>${escapeHtml(item.resellerName || "")} — ${formatCurrency(item.totalAmount)}</strong>
+          <span class="action-badge ${resellerOrderRequestStatusBadgeClass(item.status)}">${escapeHtml(resellerOrderRequestStatusLabel(item.status))}</span>
+          ${renderResellerOrderItemsList(item.items)}
+          <p>${[item.desiredDate ? formatDate(item.desiredDate) : "", formatDate(item.createdAt)].filter(Boolean).join(" · ")}</p>
           ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
           <div class="inline-actions">
             ${item.status !== "in-lavorazione" ? `<button class="ghost-button small-button" type="button" data-action="update-reseller-order-status" data-id="${escapeHtml(item.id)}" data-status="in-lavorazione">${state.lang === "it" ? "Segna in lavorazione" : "Mark in progress"}</button>` : ""}
@@ -28312,6 +28482,30 @@ function handleGlobalClick(event) {
   }
   if (action === "update-reseller-order-status") {
     updateResellerOrderStatus(id, button.dataset.status);
+    return;
+  }
+  if (action === "reseller-add-to-cart") {
+    const qtyInput = button.closest(".reseller-product-card")?.querySelector("[data-qty-input]");
+    addToResellerCart(button.dataset.type, button.dataset.id, qtyInput?.value);
+    if (qtyInput) qtyInput.value = "";
+    return;
+  }
+  if (action === "reseller-cart-step") {
+    stepResellerCartLine(Number(button.dataset.index), Number(button.dataset.delta));
+    return;
+  }
+  if (action === "reseller-cart-remove") {
+    removeResellerCartLine(Number(button.dataset.index));
+    return;
+  }
+  if (action === "reseller-cart-go-summary") {
+    state.resellerOrderStep = "summary";
+    renderResellerOrderRequests();
+    return;
+  }
+  if (action === "reseller-cart-back-catalog") {
+    state.resellerOrderStep = "catalog";
+    renderResellerOrderRequests();
     return;
   }
   if (action === "remove-attachment") {
