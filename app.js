@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260719-rivenditore-catalogo-carrello";
+} from "./lib/order-money.js?v=20260720-rivenditore-dashboard-fase7";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260719-rivenditore-catalogo-carrello";
+import { regionForCity } from "./lib/geo.js?v=20260720-rivenditore-dashboard-fase7";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260719-rivenditore-catalogo-carrello";
+} from "./lib/profit-split.js?v=20260720-rivenditore-dashboard-fase7";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260719-rivenditore-catalogo-carrello";
+} from "./lib/preventivo-pricing.js?v=20260720-rivenditore-dashboard-fase7";
 
-const APP_SHELL_VERSION = "20260719-rivenditore-catalogo-carrello";
+const APP_SHELL_VERSION = "20260720-rivenditore-dashboard-fase7";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11182,6 +11182,33 @@ function renderDashboardResellerView() {
         </button>`;
     }
   }
+
+  // Contatore ordini materiale per stato — riusa gli stessi dati/etichette
+  // della pagina "Ordina materiali" (renderResellerOrderRequests), caricati
+  // qui se non ancora richiesti (l'utente potrebbe non aver mai aperto
+  // quella pagina in questa sessione).
+  const ordersEl = document.getElementById("dashboard-reseller-orders");
+  if (ordersEl) {
+    if (!state.resellerOrderRequestsLoadedAt) {
+      ordersEl.innerHTML = `<div class="dash-action-empty">${state.lang === "it" ? "Caricamento..." : "Loading..."}</div>`;
+      loadResellerOrderRequests();
+    } else {
+      const orders = state.resellerOrderRequests || [];
+      const statuses = ["pending", "in-lavorazione", "evasa", "rifiutata"];
+      const counts = Object.fromEntries(statuses.map((s) => [s, 0]));
+      orders.forEach((o) => { if (counts[o.status] != null) counts[o.status] += 1; });
+      ordersEl.innerHTML = orders.length
+        ? statuses.map((status) => `
+            <button class="dash-action-row" type="button" data-action="go-order-requests" style="width:100%;cursor:pointer">
+              <div class="dash-action-dot ${resellerOrderRequestStatusBadgeClass(status) === "badge-success" ? "tone-green" : resellerOrderRequestStatusBadgeClass(status) === "badge-urgent" ? "tone-red" : "tone-amber"}"></div>
+              <div class="dash-action-content">
+                <div class="dash-action-title">${escapeHtml(resellerOrderRequestStatusLabel(status))}</div>
+              </div>
+              <span class="dash-action-tag">${counts[status]}</span>
+            </button>`).join("")
+        : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun ordine inviato finora." : "No orders sent yet."}</div>`;
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -19022,6 +19049,7 @@ document.addEventListener("click", (ev) => {
   if (action === "open-more-sheet") { ev.preventDefault(); openMoreSheet(); }
   else if (action === "close-more-sheet") { ev.preventDefault(); closeMoreSheet(); }
   else if (action === "go-communications") { ev.preventDefault(); if (typeof setView === "function") setView("communications"); }
+  else if (action === "go-order-requests") { ev.preventDefault(); if (typeof setView === "function") setView("order-requests"); }
 });
 
 // Re-render bottom nav su cambio view, login, resize
