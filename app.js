@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260721-rivenditore-iva-spedizione";
+} from "./lib/order-money.js?v=20260721-marketing-token-health-alert";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260721-rivenditore-iva-spedizione";
+import { regionForCity } from "./lib/geo.js?v=20260721-marketing-token-health-alert";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260721-rivenditore-iva-spedizione";
+} from "./lib/profit-split.js?v=20260721-marketing-token-health-alert";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -37,9 +37,9 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260721-rivenditore-iva-spedizione";
+} from "./lib/preventivo-pricing.js?v=20260721-marketing-token-health-alert";
 
-const APP_SHELL_VERSION = "20260721-rivenditore-iva-spedizione";
+const APP_SHELL_VERSION = "20260721-marketing-token-health-alert";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1283,6 +1283,8 @@ const state = {
   marketingCalendarMonth: "",
   marketingPublishingId: "",
   marketingPublishingMode: "",
+  marketingTokenHealth: null,
+  marketingTokenHealthLoadedAt: 0,
   inventorySuggestions: {},
   // CRM server-side state (paginazione + FTS via GET /api/sales/requests)
   crmServerPage: { total: 0, page: 1, limit: 50, items: [], loading: false, loadedAt: 0, loadError: false },
@@ -10728,6 +10730,23 @@ function renderDashboardMetricsStrip() {
 function buildDashboardNotifications() {
   const notifs = [];
 
+  // Token Meta (Instagram/Facebook) scaduto o in scadenza — i post
+  // programmati falliscono in silenzio finché non lo rinnovi.
+  const tokenHealth = state.marketingTokenHealth;
+  const tokenTone = marketingTokenHealthTone(tokenHealth);
+  if (tokenTone) {
+    const expired = tokenHealth.error || tokenHealth.isValid === false;
+    notifs.push({
+      tone: tokenTone,
+      icon: "🔑",
+      title: expired
+        ? (state.lang === "it" ? "Token Meta scaduto" : "Meta token expired")
+        : (state.lang === "it" ? `Token Meta in scadenza tra ${tokenHealth.daysRemaining}g` : `Meta token expires in ${tokenHealth.daysRemaining}d`),
+      sub: state.lang === "it" ? "I post programmati su Instagram/Facebook rischiano di non pubblicarsi" : "Scheduled Instagram/Facebook posts may fail to publish",
+      view: "marketing",
+    });
+  }
+
   // Stock in esaurimento
   try {
     const stockSnapshot = getDashboardInventorySnapshot();
@@ -11890,6 +11909,7 @@ function renderDashboard() {
   if (ui.dashboardSubtitle) ui.dashboardSubtitle.textContent = getDashboardSubtitle();
 
   if (role === "office") {
+    loadMarketingTokenHealthOnce().catch((e) => reportError("marketing:token-health", e));
     renderDashboardHeroKpis();
     renderDashboardMetricsStrip();
     renderDashboardNotifications();
@@ -24702,6 +24722,9 @@ function renderCurrentViewOnly(view = state.currentView) {
   populateInventoryOptions();
   updateShell();
   renderOps();
+  if (view !== "marketing") {
+    stopMarketingPolling();
+  }
   if (view !== "communications") {
     stopCommunicationsPolling();
   }
@@ -24733,7 +24756,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "reseller-report": renderResellerReport(); break;
       case "supplier-prices": renderSupplierPrices(); break;
       case "settings": renderSettings(); break;
-      case "marketing": renderMarketing(); break;
+      case "marketing": startMarketingPolling(); renderMarketing(); break;
       case "communications":
         startCommunicationsPolling();
         renderCommunications();
@@ -24959,12 +24982,13 @@ function renderMarketing() {
   // Allinea col server una volta per sessione (fire-and-forget): aggiorna lo stato
   // e ri-renderizza appena arrivano i dati, senza bloccare il primo paint.
   syncMarketingItems().catch((e) => reportError("marketing:sync", e));
+  loadMarketingTokenHealthOnce().catch((e) => reportError("marketing:token-health", e));
 
   const items = state.marketingItems || [];
   const channels = ["Tutti", "Instagram", "Facebook", "WhatsApp", "TikTok", "Email", "Altro"];
   const activeChannel = state.marketingChannelFilter || "Tutti";
-  const statusColors = { bozza: "badge-slate", programmato: "badge-info", pubblicato: "badge-success", archiviato: "badge-slate" };
-  const statusLabels = { bozza: "Bozza", programmato: "Programmato", pubblicato: "Pubblicato", archiviato: "Archiviato" };
+  const statusColors = { bozza: "badge-slate", programmato: "badge-info", pubblicato: "badge-success", archiviato: "badge-slate", fallito: "badge-urgent" };
+  const statusLabels = { bozza: "Bozza", programmato: "Programmato", pubblicato: "Pubblicato", archiviato: "Archiviato", fallito: "Fallito" };
 
   let filtered = activeChannel === "Tutti" ? items : items.filter((i) => i.channel === activeChannel);
   const sf = state.marketingStatusFilter || "tutti";
@@ -25084,6 +25108,13 @@ function renderMarketing() {
                     ${item.hashtags ? `<span>${escapeHtml(item.hashtags)}</span>` : ""}
                     ${item.apiProviderUrl ? `<span><a href="${escapeHtml(item.apiProviderUrl)}" target="_blank" rel="noreferrer" data-action="marketing-provider-link">Apri post pubblicato</a></span>` : ""}
                   </div>
+                  ${item.apiLastError ? `
+                    <div class="panel-note error">
+                      ${item.status === "fallito"
+                        ? `Pubblicazione automatica fallita dopo ${item.apiAttempts || 3} tentativi: ${escapeHtml(item.apiLastError)}`
+                        : `Ultimo tentativo automatico fallito, verrà riprovato: ${escapeHtml(item.apiLastError)}`}
+                    </div>
+                  ` : ""}
                   ${isPublishing ? `
                     <div class="marketing-publish-progress" role="status" aria-live="polite">
                       <span>${escapeHtml(publishModeLabel)} su ${escapeHtml(item.channel || "API")}...</span>
@@ -25138,6 +25169,8 @@ function renderMarketing() {
       </div>
       <button class="primary-button small-button" data-action="open-marketing-form">+ Nuovo contenuto</button>
     </div>
+
+    ${renderMarketingTokenBanner()}
 
     ${(kpiTotal + kpiWeek + kpiBozza + kpiAssets) > 0 ? `
     <div class="marketing-kpi-row">
@@ -25339,6 +25372,15 @@ function renderMarketing() {
       </section>
     </div>
   `;
+
+  container.querySelectorAll("[data-action='marketing-token-health-refresh']").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "Verifico...";
+      await fetchMarketingTokenHealth({ force: true });
+      renderMarketing();
+    });
+  });
 
   // bind filter buttons
   container.querySelectorAll("[data-action='marketing-filter']").forEach(btn => {
@@ -25788,6 +25830,70 @@ async function syncMarketingItems({ force = false } = {}) {
   _marketingSynced = true;
   saveMarketingItems();
   if (state.currentView === "marketing") renderMarketing();
+}
+
+// ── Salute token Meta: banner in Marketing + notifica in Dashboard, PRIMA
+// che il token scaduto faccia fallire i post in silenzio (vedi feedback utente).
+async function fetchMarketingTokenHealth({ force = false } = {}) {
+  try {
+    const data = await apiFetch(`/api/marketing/token-health${force ? "?force=1" : ""}`);
+    state.marketingTokenHealth = data;
+  } catch { /* offline/errore: tieni l'ultimo stato noto */ }
+  state.marketingTokenHealthLoadedAt = Date.now();
+  return state.marketingTokenHealth;
+}
+async function loadMarketingTokenHealthOnce() {
+  if (state.marketingTokenHealthLoadedAt) return;
+  state.marketingTokenHealthLoadedAt = Date.now(); // subito, evita fetch concorrenti
+  await fetchMarketingTokenHealth();
+  if (state.currentView === "dashboard" || state.currentView === "marketing") renderCurrentViewOnly(state.currentView);
+}
+function marketingTokenHealthTone(health) {
+  if (!health) return "";
+  if (health.error || health.isValid === false) return "red";
+  if (typeof health.daysRemaining === "number" && health.daysRemaining <= 7) return "amber";
+  return "";
+}
+function renderMarketingTokenBanner() {
+  const health = state.marketingTokenHealth;
+  const tone = marketingTokenHealthTone(health);
+  if (!tone) return "";
+  const expiredAlready = typeof health.daysRemaining === "number" && health.daysRemaining < 0;
+  const title = health.error || health.isValid === false
+    ? "Token Meta scaduto o non valido"
+    : expiredAlready
+      ? "Token Meta scaduto"
+      : `Token Meta in scadenza tra ${health.daysRemaining} giorni`;
+  const sub = health.error || health.isValid === false
+    ? "I post programmati su Instagram/Facebook falliscono in silenzio finché non lo rinnovi. Genera un nuovo token su Meta for Developers e aggiorna META_MARKETING_ACCESS_TOKEN su Render."
+    : `Scade il ${new Date(health.expiresAt).toLocaleDateString("it-IT")} — rinnovalo prima, altrimenti i prossimi post programmati falliranno.`;
+  return `
+    <div class="panel-note ${tone === "red" ? "error" : "warning"} marketing-token-banner">
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <p>${escapeHtml(sub)}</p>
+      </div>
+      <button type="button" class="ghost-button small-button" data-action="marketing-token-health-refresh">Verifica ora</button>
+    </div>
+  `;
+}
+
+const MARKETING_POLL_INTERVAL_MS = 45_000;
+let marketingPollTimer = 0;
+function startMarketingPolling() {
+  if (!state.currentUser || state.currentView !== "marketing") return;
+  if (marketingPollTimer) return;
+  marketingPollTimer = window.setInterval(() => {
+    Promise.all([syncMarketingItems({ force: true }), fetchMarketingTokenHealth({ force: true })])
+      .then(() => { if (state.currentView === "marketing") renderMarketing(); })
+      .catch(() => {});
+  }, MARKETING_POLL_INTERVAL_MS);
+}
+function stopMarketingPolling() {
+  if (marketingPollTimer) {
+    window.clearInterval(marketingPollTimer);
+    marketingPollTimer = 0;
+  }
 }
 
 function renderGardenPlannerView() {

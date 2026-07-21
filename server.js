@@ -3813,6 +3813,37 @@ function startOutboxProcessor(intervalMs = 30_000) {
 // Instagram non supporta la schedule nativa di Meta → la gestiamo qui, usando il
 // flusso immediato di pubblicazione (che funziona per IG e FB).
 let _marketingScheduleTimer = null;
+
+// Riporta l'esito del tentativo di pubblicazione sull'item in store.marketingItems
+// (quello che il client legge/mostra) — senza questo, la card in UI resta
+// bloccata su "Programmato" per sempre, sia in caso di successo che di
+// fallimento, perché store.marketingScheduled è una coda separata che il
+// client non consulta mai direttamente.
+function applyMarketingScheduleResultToItem(store, rec) {
+  const list = Array.isArray(store.marketingItems) ? store.marketingItems : null;
+  if (!list) return;
+  const idx = list.findIndex((it) => it.id === rec.id);
+  if (idx < 0) return;
+  const current = list[idx];
+  if (rec.status === "published") {
+    list[idx] = {
+      ...current,
+      status: "pubblicato",
+      apiPublishedAt: rec.publishedAt || new Date().toISOString(),
+      apiProviderUrl: rec.providerUrl || current.apiProviderUrl || "",
+      apiVerifiedAt: rec.providerUrl ? (rec.publishedAt || new Date().toISOString()) : (current.apiVerifiedAt || ""),
+      apiLastError: "",
+      apiAttempts: rec.attempts || 0,
+    };
+  } else if (rec.status === "failed") {
+    list[idx] = { ...current, status: "fallito", apiLastError: rec.lastError || "", apiAttempts: rec.attempts || 0 };
+  } else {
+    // Ancora "pending" (ritento al prossimo tick): lo status visibile resta
+    // "programmato", ma l'ultimo errore si registra comunque per diagnosi.
+    list[idx] = { ...current, apiLastError: rec.lastError || "", apiAttempts: rec.attempts || 0 };
+  }
+}
+
 async function processMarketingScheduledOnce() {
   let store;
   try {
@@ -3837,6 +3868,7 @@ async function processMarketingScheduledOnce() {
         rec.status = "failed";
         rec.lastError = String(prepared.error);
         changed = true;
+        applyMarketingScheduleResultToItem(store, rec);
         continue;
       }
       const result = await publishMarketingItem(prepared.item, "publish");
@@ -3851,10 +3883,12 @@ async function processMarketingScheduledOnce() {
         rec.status = rec.attempts >= 3 ? "failed" : "pending";
       }
       changed = true;
+      applyMarketingScheduleResultToItem(store, rec);
     } catch (err) {
       rec.lastError = String(err?.message || err);
       rec.status = rec.attempts >= 3 ? "failed" : "pending";
       changed = true;
+      applyMarketingScheduleResultToItem(store, rec);
     }
   }
   if (changed) {
@@ -7179,6 +7213,37 @@ async function verifyMetaPublishedObject(objectId = "", fields = "id", label = "
     statusCode: lastResult?.statusCode,
     details: String(lastResult?.details || `${label}: provider object was not verifiable after publish.`).trim(),
   };
+}
+
+// Salute del token Meta (scadenza/validità) — avvisa PRIMA che i post
+// programmati comincino a fallire in silenzio (vedi processMarketingScheduledOnce).
+// Cache 5 min: chiamato ad ogni apertura di Dashboard/Marketing, non serve
+// interrogare Graph API ad ogni singolo render.
+let _metaTokenHealthCache = null; // { checkedAt, data }
+const META_TOKEN_HEALTH_CACHE_MS = 5 * 60 * 1000;
+async function checkMetaTokenHealth({ force = false } = {}) {
+  if (!force && _metaTokenHealthCache && Date.now() - _metaTokenHealthCache.checkedAt < META_TOKEN_HEALTH_CACHE_MS) {
+    return _metaTokenHealthCache.data;
+  }
+  const data = { hasToken: Boolean(META_MARKETING_ACCESS_TOKEN), isValid: false, expiresAt: "", daysRemaining: null, error: "" };
+  if (!META_MARKETING_ACCESS_TOKEN) {
+    data.error = "missing_token";
+  } else {
+    const result = await readMetaGraphApi("debug_token", { input_token: META_MARKETING_ACCESS_TOKEN });
+    const info = result.ok ? result.payload?.data : null;
+    if (info) {
+      data.isValid = Boolean(info.is_valid);
+      if (info.expires_at) {
+        data.expiresAt = new Date(info.expires_at * 1000).toISOString();
+        data.daysRemaining = Math.floor((info.expires_at * 1000 - Date.now()) / 86_400_000);
+      }
+      if (!data.isValid) data.error = String(info.error?.message || "token_invalid");
+    } else {
+      data.error = String(result.details || "token_check_failed");
+    }
+  }
+  _metaTokenHealthCache = { checkedAt: Date.now(), data };
+  return data;
 }
 
 async function sendMarketingWhatsAppMessage(item = {}) {
@@ -11431,6 +11496,17 @@ async function handleApi(req, res, url) {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     return sendJson(res, 200, buildUsageReport(store));
+  }
+
+  // GET /api/marketing/token-health — quanto manca alla scadenza del token
+  // Meta, per un banner d'avviso PRIMA che i post inizino a fallire (a
+  // differenza di meta-diagnostic non chiama /me e /me/accounts: pensato per
+  // essere interrogato ad ogni apertura di Dashboard/Marketing).
+  if (url.pathname === "/api/marketing/token-health" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const data = await checkMetaTokenHealth({ force: url.searchParams.get("force") === "1" });
+    return sendJson(res, 200, data);
   }
 
   // GET /api/marketing/meta-diagnostic — diagnostica config Meta:

@@ -665,6 +665,21 @@ button.is-feedback,
   padding: 8px 12px;
 }
 
+.panel-note.warning {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.marketing-token-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.marketing-token-banner p { margin: 2px 0 0; font-size: 13px; opacity: 0.9; }
+.marketing-token-banner .ghost-button { flex: 0 0 auto; white-space: nowrap; }
+
 .app-shell {
   height: 100vh;
   height: 100dvh; /* viewport dinamico: in PWA standalone/mobile evita che la bottom-nav finisca fuori dall'area visibile */
