@@ -14,6 +14,7 @@ import {
   PRODUCTS as RESELLER_ORDER_PRODUCTS,
   ACCESSORIES as RESELLER_ORDER_ACCESSORIES,
   getProductPrice as getResellerOrderProductPrice,
+  IVA_RATE as RESELLER_ORDER_IVA_RATE,
 } from "./lib/preventivo-pricing.js";
 import { createWriteGuard } from "./lib/safe-write.js";
 import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
@@ -8868,6 +8869,19 @@ function normalizeResellerOrderItemRow(row = {}) {
 const RESELLER_ROLL_WIDTH = 2;
 const RESELLER_ROLL_LENGTHS = new Set(Array.from({ length: 50 }, (_, i) => Number(((i + 1) * 0.5).toFixed(1))));
 
+// Spedizione rivenditore: 50€ se l'imponibile è sotto soglia, gratis sopra;
+// "Ritiro in sede" è sempre gratis indipendentemente dall'imponibile.
+// Ricalcolata sempre server-side in POST /api/reseller/order-requests, mai
+// fidandosi di un costo mandato dal client (stesso principio di
+// resolveResellerOrderItem).
+const RESELLER_SHIPPING_FREE_THRESHOLD = 500;
+const RESELLER_SHIPPING_COST = 50;
+
+function computeResellerShippingCost(shippingMethod, netAmount) {
+  if (shippingMethod !== "delivery") return 0;
+  return netAmount >= RESELLER_SHIPPING_FREE_THRESHOLD ? 0 : RESELLER_SHIPPING_COST;
+}
+
 function resolveResellerOrderItem(rawItem = {}) {
   const type = rawItem.type === "accessory" ? "accessory" : "turf";
   const refId = String(rawItem.refId || "").trim();
@@ -8922,6 +8936,21 @@ function normalizeResellerOrderRequest(item = {}) {
     }];
   }
   const normalizedItems = (items || []).map((row) => normalizeResellerOrderItemRow(row));
+  // netAmount/shippingCost/vatAmount: se il chiamante (POST handler, in
+  // creazione) li passa già calcolati, si sanificano e basta — MAI
+  // ricalcolati qui in lettura, altrimenti un cambio futuro della regola di
+  // spedizione/IVA altererebbe retroattivamente ordini già fatti. Per i
+  // record del giro precedente (senza netAmount) totalAmount era già il puro
+  // imponibile: si rilegge con il nome giusto, spedizione/IVA a zero.
+  const netAmount = item.netAmount != null
+    ? Math.max(0, Number(item.netAmount) || 0)
+    : Number(normalizedItems.reduce((sum, row) => sum + (Number(row.subtotal) || 0), 0).toFixed(2));
+  const shippingMethod = item.shippingMethod === "delivery" ? "delivery" : "pickup";
+  const shippingCost = Math.max(0, Number(item.shippingCost || 0));
+  const vatAmount = Math.max(0, Number(item.vatAmount || 0));
+  const totalAmount = item.totalAmount != null
+    ? Math.max(0, Number(item.totalAmount) || 0)
+    : Number((netAmount + shippingCost + vatAmount).toFixed(2));
   return {
     id: String(item.id || randomUUID()),
     // resellerId va sempre impostato server-side dalla sessione autenticata
@@ -8929,7 +8958,12 @@ function normalizeResellerOrderRequest(item = {}) {
     resellerId: String(item.resellerId || "").trim(),
     resellerName: String(item.resellerName || "").trim(),
     items: normalizedItems,
-    totalAmount: Number(normalizedItems.reduce((sum, row) => sum + (Number(row.subtotal) || 0), 0).toFixed(2)),
+    netAmount,
+    shippingMethod,
+    shippingAddress: String(item.shippingAddress || "").trim(),
+    shippingCost,
+    vatAmount,
+    totalAmount,
     // Solo l'ordine materiale del rivenditore verso di noi — niente dati del
     // suo cliente finale (a chi lo rivende non è di nostro interesse qui).
     desiredDate: String(item.desiredDate || "").trim(),
@@ -14442,12 +14476,24 @@ async function handleApi(req, res, url) {
     if (!resolvedItems.length) {
       return sendJson(res, 400, { error: "empty_cart" });
     }
-    const totalAmount = Number(resolvedItems.reduce((sum, row) => sum + row.subtotal, 0).toFixed(2));
+    // Imponibile, spedizione, IVA e totale: SEMPRE ricalcolati qui dai dati
+    // server-side (righe risolte dal catalogo + profilo rivenditore) — solo
+    // shippingMethod arriva dal client, mai un costo o un totale.
+    const netAmount = Number(resolvedItems.reduce((sum, row) => sum + row.subtotal, 0).toFixed(2));
+    const shippingMethod = body.shippingMethod === "delivery" ? "delivery" : "pickup";
+    const shippingCost = computeResellerShippingCost(shippingMethod, netAmount);
+    const vatAmount = Number(((netAmount + shippingCost) * RESELLER_ORDER_IVA_RATE).toFixed(2));
+    const totalAmount = Number((netAmount + shippingCost + vatAmount).toFixed(2));
     const now = new Date().toISOString();
     const entry = normalizeResellerOrderRequest({
       desiredDate: body.desiredDate,
       notes: body.notes,
       items: resolvedItems,
+      netAmount,
+      shippingMethod,
+      shippingAddress: shippingMethod === "delivery" ? (currentUser.resellerShippingAddress || "") : "",
+      shippingCost,
+      vatAmount,
       totalAmount,
       id: randomUUID(),
       resellerId: currentUser.id,
@@ -14464,6 +14510,7 @@ async function handleApi(req, res, url) {
     writeAuditLog("reseller_order_request", entry.id, "create", {
       resellerId: entry.resellerId,
       items: entry.items.map((row) => ({ refId: row.refId, quantity: row.quantity })),
+      shippingMethod: entry.shippingMethod,
       totalAmount: entry.totalAmount,
     }, currentUser.email || null).catch(() => {});
     return sendJson(res, 200, entry);

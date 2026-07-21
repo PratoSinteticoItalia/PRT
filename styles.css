@@ -23536,16 +23536,22 @@ select.sp-line-field { cursor: pointer; }
   cursor: pointer;
   padding: 4px 8px;
 }
-.reseller-cart-total {
+.reseller-shipping-method {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 12px;
+  gap: 20px;
+  margin-top: 16px;
   padding-top: 12px;
   border-top: 1px dashed var(--line, #e5e1d6);
-  font-size: 15px;
 }
-.reseller-cart-total strong { font-size: 19px; }
+.radio-option { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.radio-option input { margin: 0; }
+.reseller-order-breakdown {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+.reseller-order-breakdown .detail-row:last-child { border-top: 1px dashed var(--line, #e5e1d6); margin-top: 4px; padding-top: 10px; }
+.reseller-order-breakdown .detail-row-value strong { font-size: 17px; }
 
 .reseller-order-lines { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .reseller-order-lines li {

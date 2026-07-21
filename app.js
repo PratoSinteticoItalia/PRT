@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260721-rivenditore-formato-rotolo";
+} from "./lib/order-money.js?v=20260721-rivenditore-iva-spedizione";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260721-rivenditore-formato-rotolo";
+import { regionForCity } from "./lib/geo.js?v=20260721-rivenditore-iva-spedizione";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260721-rivenditore-formato-rotolo";
+} from "./lib/profit-split.js?v=20260721-rivenditore-iva-spedizione";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,10 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260721-rivenditore-formato-rotolo";
+  IVA_RATE as PREVENTIVO_IVA_RATE,
+} from "./lib/preventivo-pricing.js?v=20260721-rivenditore-iva-spedizione";
 
-const APP_SHELL_VERSION = "20260721-rivenditore-formato-rotolo";
+const APP_SHELL_VERSION = "20260721-rivenditore-iva-spedizione";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11381,6 +11382,23 @@ function renderResellerOrderItemsList(items = []) {
   }).join("")}</ul>`;
 }
 
+// Dettaglio imponibile/spedizione/IVA/totale di un ordine già inviato —
+// riusato sia nello storico rivenditore che nella vista ufficio.
+function renderResellerOrderBreakdownHtml(item) {
+  const shippingLabel = item.shippingMethod === "delivery"
+    ? (state.lang === "it" ? "Spedizione" : "Shipping")
+    : (state.lang === "it" ? "Ritiro in sede" : "Pickup at office");
+  return `
+    <div class="reseller-order-breakdown">
+      <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Imponibile" : "Net subtotal"}</span><span class="detail-row-value">${formatCurrency(item.netAmount)}</span></div>
+      <div class="detail-row"><span class="detail-row-label">${shippingLabel}</span><span class="detail-row-value">${item.shippingMethod === "delivery" ? (item.shippingCost > 0 ? formatCurrency(item.shippingCost) : (state.lang === "it" ? "Gratis" : "Free")) : "—"}</span></div>
+      ${item.shippingMethod === "delivery" && item.shippingAddress ? `<div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Indirizzo" : "Address"}</span><span class="detail-row-value">${escapeHtml(item.shippingAddress)}</span></div>` : ""}
+      <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "IVA 22%" : "VAT 22%"}</span><span class="detail-row-value">${formatCurrency(item.vatAmount)}</span></div>
+      <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Totale" : "Total"}</span><span class="detail-row-value"><strong>${formatCurrency(item.totalAmount)}</strong></span></div>
+    </div>
+  `;
+}
+
 const RESELLER_CART_LS_KEY = "psi-reseller-cart";
 function loadResellerCartFromStorage() {
   try {
@@ -11401,6 +11419,15 @@ function getResellerCart() {
 // invece scelta dal rivenditore tra formati fissi (vedi
 // getResellerRollFormatOptions), non più un mq libero.
 const RESELLER_ROLL_WIDTH = 2;
+// Anteprima spedizione/IVA — SOLO per mostrare un totale stimato prima
+// dell'invio. Il server ricalcola sempre da zero (computeResellerShippingCost
+// in server.js), la stessa regola qui è solo un mirror per la UI.
+const RESELLER_SHIPPING_FREE_THRESHOLD = 500;
+const RESELLER_SHIPPING_COST = 50;
+function computeResellerShippingPreview(shippingMethod, netAmount) {
+  if (shippingMethod !== "delivery") return 0;
+  return netAmount >= RESELLER_SHIPPING_FREE_THRESHOLD ? 0 : RESELLER_SHIPPING_COST;
+}
 function getResellerRollFormatOptions() {
   const options = [];
   for (let i = 1; i <= 50; i += 1) options.push(Number((i * 0.5).toFixed(1)));
@@ -11546,6 +11573,12 @@ function renderResellerOrderSummaryStepHtml(cartLines) {
   if (!cartLines.length) {
     return `<div class="info-card">${state.lang === "it" ? "Il carrello è vuoto — torna al catalogo per aggiungere articoli." : "Your cart is empty — go back to the catalog to add items."}</div>`;
   }
+  const shippingMethod = state.resellerOrderShippingMethod === "delivery" ? "delivery" : "pickup";
+  const netAmount = Number(cartLines.reduce((sum, l) => sum + l.display.subtotal, 0).toFixed(2));
+  const shippingCost = computeResellerShippingPreview(shippingMethod, netAmount);
+  const vatAmount = Number(((netAmount + shippingCost) * PREVENTIVO_IVA_RATE).toFixed(2));
+  const totalAmount = Number((netAmount + shippingCost + vatAmount).toFixed(2));
+  const shippingAddress = String(state.currentUser?.resellerShippingAddress || "").trim();
   return `
     <div class="panel" style="margin-bottom:16px;">
       <div class="panel-head"><div><h3>${state.lang === "it" ? "Riepilogo carrello" : "Cart summary"}</h3></div></div>
@@ -11566,15 +11599,34 @@ function renderResellerOrderSummaryStepHtml(cartLines) {
           </div>
         `).join("")}
       </div>
-      <div class="reseller-cart-total">
-        <span>${state.lang === "it" ? "Totale stimato" : "Estimated total"}</span>
-        <strong>${formatCurrency(cartLines.reduce((sum, l) => sum + l.display.subtotal, 0))}</strong>
+      <div class="reseller-shipping-method">
+        <label class="radio-option">
+          <input type="radio" name="reseller-shipping-method" value="pickup" data-action="reseller-set-shipping-method" ${shippingMethod === "pickup" ? "checked" : ""} />
+          <span>${state.lang === "it" ? "Ritiro in sede" : "Pickup at office"}</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="reseller-shipping-method" value="delivery" data-action="reseller-set-shipping-method" ${shippingMethod === "delivery" ? "checked" : ""} />
+          <span>${state.lang === "it" ? "Consegna" : "Delivery"}</span>
+        </label>
+      </div>
+      ${shippingMethod === "delivery" ? `
+        <div class="panel-note${shippingAddress ? "" : " error"}">
+          ${shippingAddress
+            ? `${state.lang === "it" ? "Indirizzo di spedizione" : "Shipping address"}: ${escapeHtml(shippingAddress)}`
+            : `${state.lang === "it" ? "Nessun indirizzo di spedizione salvato." : "No shipping address saved."} <a href="javascript:void(0)" data-action="open-dashboard-view" data-view="reseller-profile">${state.lang === "it" ? "Completa il profilo" : "Complete your profile"}</a>`}
+        </div>
+      ` : ""}
+      <div class="reseller-order-breakdown" style="margin-top:16px;">
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Imponibile" : "Net subtotal"}</span><span class="detail-row-value">${formatCurrency(netAmount)}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Spedizione" : "Shipping"}</span><span class="detail-row-value">${shippingMethod === "pickup" ? "—" : (shippingCost > 0 ? formatCurrency(shippingCost) : (state.lang === "it" ? "Gratis" : "Free"))}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "IVA 22%" : "VAT 22%"}</span><span class="detail-row-value">${formatCurrency(vatAmount)}</span></div>
+        <div class="detail-row"><span class="detail-row-label">${state.lang === "it" ? "Totale stimato" : "Estimated total"}</span><span class="detail-row-value"><strong>${formatCurrency(totalAmount)}</strong></span></div>
       </div>
       <form id="reseller-order-request-form" class="inline-form-grid" style="margin-top:16px;">
         <label class="field"><span>${state.lang === "it" ? "Data desiderata" : "Desired date"}</span><input class="text-input" type="date" name="desiredDate" /></label>
-        <label class="field field-full"><span>${state.lang === "it" ? "Note" : "Notes"}</span><textarea class="text-input" name="notes" rows="3"></textarea></label>
+        <label class="field field-full"><span>${state.lang === "it" ? "Note" : "Notes"}</span><textarea class="text-input" name="notes" rows="3" placeholder="${state.lang === "it" ? "Es. indirizzo del cliente finale, se diverso" : "E.g. end customer address, if different"}"></textarea></label>
         <div class="inline-actions field-full">
-          <button type="submit" class="primary-button small-button">${state.lang === "it" ? "Invia ordine" : "Send order"}</button>
+          <button type="submit" class="primary-button small-button" ${shippingMethod === "delivery" && !shippingAddress ? "disabled" : ""}>${state.lang === "it" ? "Invia ordine" : "Send order"}</button>
         </div>
         <div id="reseller-order-request-status" class="panel-note hidden field-full"></div>
       </form>
@@ -11631,6 +11683,7 @@ function renderResellerOrderRequests() {
             <strong>${formatCurrency(item.totalAmount)}</strong>
             <span class="action-badge ${resellerOrderRequestStatusBadgeClass(item.status)}">${escapeHtml(resellerOrderRequestStatusLabel(item.status))}</span>
             ${renderResellerOrderItemsList(item.items)}
+            ${renderResellerOrderBreakdownHtml(item)}
             <p>${[item.desiredDate ? formatDate(item.desiredDate) : "", formatDate(item.createdAt)].filter(Boolean).join(" · ")}</p>
             ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
             ${item.handlingNotes ? `<p><em>${state.lang === "it" ? "Nota ufficio" : "Office note"}: ${escapeHtml(item.handlingNotes)}</em></p>` : ""}
@@ -11663,6 +11716,7 @@ async function submitResellerOrderRequest(event) {
         items: cart.map((line) => line.type === "turf"
           ? { type: "turf", refId: line.refId, rollLength: line.rollLength, rollCount: line.rollCount }
           : { type: "accessory", refId: line.refId, quantity: line.quantity }),
+        shippingMethod: state.resellerOrderShippingMethod === "delivery" ? "delivery" : "pickup",
         desiredDate: data.get("desiredDate"),
         notes: data.get("notes"),
       }),
@@ -11670,6 +11724,7 @@ async function submitResellerOrderRequest(event) {
     state.resellerCart = [];
     saveResellerCartToStorage([]);
     state.resellerOrderStep = "catalog";
+    state.resellerOrderShippingMethod = "pickup";
     setStatus(statusEl, "success", state.lang === "it" ? "Ordine inviato." : "Order sent.");
     await loadResellerOrderRequests();
   } catch (error) {
@@ -11717,6 +11772,7 @@ function renderOfficeResellerOrders() {
           <strong>${escapeHtml(item.resellerName || "")} — ${formatCurrency(item.totalAmount)}</strong>
           <span class="action-badge ${resellerOrderRequestStatusBadgeClass(item.status)}">${escapeHtml(resellerOrderRequestStatusLabel(item.status))}</span>
           ${renderResellerOrderItemsList(item.items)}
+          ${renderResellerOrderBreakdownHtml(item)}
           <p>${[item.desiredDate ? formatDate(item.desiredDate) : "", formatDate(item.createdAt)].filter(Boolean).join(" · ")}</p>
           ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
           <div class="inline-actions">
@@ -28698,6 +28754,11 @@ function handleGlobalClick(event) {
   }
   if (action === "reseller-cart-back-catalog") {
     state.resellerOrderStep = "catalog";
+    renderResellerOrderRequests();
+    return;
+  }
+  if (action === "reseller-set-shipping-method") {
+    state.resellerOrderShippingMethod = button.value === "delivery" ? "delivery" : "pickup";
     renderResellerOrderRequests();
     return;
   }
