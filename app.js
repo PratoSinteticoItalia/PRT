@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260721-marketing-fix-caption-link-photo-limit";
+} from "./lib/order-money.js?v=20260721-reseller-catalog-photos-directory";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260721-marketing-fix-caption-link-photo-limit";
+import { regionForCity } from "./lib/geo.js?v=20260721-reseller-catalog-photos-directory";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260721-marketing-fix-caption-link-photo-limit";
+} from "./lib/profit-split.js?v=20260721-reseller-catalog-photos-directory";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -37,9 +37,9 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260721-marketing-fix-caption-link-photo-limit";
+} from "./lib/preventivo-pricing.js?v=20260721-reseller-catalog-photos-directory";
 
-const APP_SHELL_VERSION = "20260721-marketing-fix-caption-link-photo-limit";
+const APP_SHELL_VERSION = "20260721-reseller-catalog-photos-directory";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11548,9 +11548,15 @@ function removeResellerCartLine(index) {
 }
 
 function renderResellerOrderCatalogStepHtml() {
-  const productCards = PREVENTIVO_PRODUCTS.map((p) => `
+  // Foto prodotto: quella caricata da ufficio (Impostazioni → Catalogo → Dati
+  // tecnici prodotti) ha priorità; fallback sul file statico ./product-images/
+  // <slug>.jpg per i pochi modelli che lo hanno già.
+  const productCards = PREVENTIVO_PRODUCTS.map((p) => {
+    const uploadedPhoto = String(state.preventivoCatalog?.[p.slug]?.imageDataUrl || "").trim();
+    const photoSrc = uploadedPhoto || `./product-images/${p.slug}.jpg`;
+    return `
     <article class="reseller-product-card" data-slug="${escapeAttr(p.slug)}">
-      <div class="reseller-product-thumb"><img class="reseller-product-img" src="./product-images/${escapeAttr(p.slug)}.jpg" alt="${escapeHtml(p.name)}" loading="lazy" /></div>
+      <div class="reseller-product-thumb"><img class="reseller-product-img" src="${escapeAttr(photoSrc)}" alt="${escapeHtml(p.name)}" loading="lazy" /></div>
       <div class="reseller-product-body">
         <strong>${escapeHtml(p.name)}</strong>
         <span class="reseller-product-desc">${escapeHtml(p.desc || "")}</span>
@@ -11563,7 +11569,8 @@ function renderResellerOrderCatalogStepHtml() {
           <button class="primary-button small-button" type="button" data-action="reseller-add-to-cart" data-type="turf" data-id="${escapeAttr(p.id)}">${state.lang === "it" ? "Aggiungi" : "Add"}</button>
         </div>
       </div>
-    </article>`).join("");
+    </article>`;
+  }).join("");
   const accessoryCards = PREVENTIVO_ACCESSORIES.map((a) => `
     <article class="reseller-product-card is-accessory">
       <div class="reseller-product-thumb reseller-product-thumb-placeholder" aria-hidden="true">${escapeHtml(a.name.slice(0, 1))}</div>
@@ -11672,6 +11679,18 @@ function renderResellerOrderRequests() {
     loadResellerOrderRequests();
     return;
   }
+  // Foto prodotto caricate da ufficio (Impostazioni → Catalogo): stesso
+  // caricamento lazy-una-volta del portfolio in Contenuti, per mostrarle
+  // anche nel catalogo "Ordina materiali" senza bloccare il primo paint.
+  if ((!state.preventivoCatalog || !Object.keys(state.preventivoCatalog).length)
+    && !state._portfolioCatalogLoading && !state._portfolioCatalogLoaded) {
+    state._portfolioCatalogLoading = true;
+    Promise.resolve(loadPreventivoCatalog()).finally(() => {
+      state._portfolioCatalogLoading = false;
+      state._portfolioCatalogLoaded = true;
+      if (state.currentView === "order-requests") renderResellerOrderRequests();
+    });
+  }
   const step = state.resellerOrderStep === "summary" ? "summary" : "catalog";
   const cart = getResellerCart();
   const cartLines = cart
@@ -11775,6 +11794,9 @@ function renderOfficeResellerOrders() {
   const all = state.officeResellerOrders || [];
   const items = filter === "all" ? all : all.filter((item) => item.status === filter);
   const statuses = ["all", "pending", "in-lavorazione", "evasa", "rifiutata"];
+  const resellers = (state.users || [])
+    .filter((u) => u.role === "rivenditore")
+    .sort((a, b) => String(a.resellerCompanyName || a.name).localeCompare(String(b.resellerCompanyName || b.name), "it"));
   container.innerHTML = `
     <div class="page-header">
       <div>
@@ -11782,6 +11804,20 @@ function renderOfficeResellerOrders() {
         <p>${state.lang === "it" ? "Richieste di materiale ricevute dai rivenditori — valuta e processa su Shopify a mano, poi marca qui." : "Material requests received from resellers — review and process on Shopify by hand, then mark here."}</p>
       </div>
     </div>
+    <details class="panel" style="margin-bottom:24px;" ${resellers.length ? "" : "open"}>
+      <summary class="panel-head" style="cursor:pointer;"><h3 style="display:inline;">${state.lang === "it" ? "Anagrafica rivenditori" : "Reseller directory"} <span class="section-badge">${resellers.length}</span></h3></summary>
+      <div class="detail-stack" style="padding:0 16px 16px;">
+        ${resellers.length ? resellers.map((u) => `
+          <article class="detail-box">
+            <strong>${escapeHtml(u.resellerCompanyName || u.name)}</strong>
+            <p>${[u.resellerContact, u.email].filter(Boolean).map(escapeHtml).join(" · ") || "—"}</p>
+            <p><b>P.IVA</b> ${escapeHtml(u.resellerVatNumber || "—")}</p>
+            <p><b>${state.lang === "it" ? "Fatturazione" : "Billing"}</b> ${escapeHtml(u.resellerBillingAddress || "—")}</p>
+            <p><b>${state.lang === "it" ? "Spedizione" : "Shipping"}</b> ${escapeHtml(u.resellerShippingAddress || "—")}</p>
+          </article>
+        `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessun rivenditore registrato ancora." : "No resellers registered yet."}</div>`}
+      </div>
+    </details>
     <div class="filter-bar" style="margin-bottom:16px;">
       ${statuses.map((s) => `<button class="filter-btn${filter === s ? " is-active" : ""}" type="button" data-action="filter-reseller-orders" data-status="${s}">${s === "all" ? (state.lang === "it" ? "Tutti" : "All") : escapeHtml(resellerOrderRequestStatusLabel(s))}</button>`).join("")}
     </div>

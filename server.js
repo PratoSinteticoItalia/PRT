@@ -16162,8 +16162,12 @@ async function handleApi(req, res, url) {
   // --- Catalog API ---
   const catalogListMatch = url.pathname.match(/^\/api\/catalog\/([^/]+)$/);
   if (catalogListMatch && req.method === "GET") {
-    if (requireOffice(res, currentUser)) return;
     const category = decodeURIComponent(catalogListMatch[1]);
+    // "preventivo_products" contiene solo dati/foto prodotto (niente di
+    // sensibile) — il rivenditore ne ha bisogno per le foto nel catalogo
+    // "Ordina materiali". Le altre categorie restano solo ufficio.
+    const allowReseller = category === "preventivo_products" && currentUser?.role === "rivenditore";
+    if (!allowReseller && requireOffice(res, currentUser)) return;
     if (!USE_POSTGRES) return sendJson(res, 200, []);
     await ensureRelationalSchema();
     const pool = await getPgPool();
