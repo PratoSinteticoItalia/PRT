@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260721-fix-cross-account-data-leak-on-login-switch";
+} from "./lib/order-money.js?v=20260722-reseller-directory-search";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260721-fix-cross-account-data-leak-on-login-switch";
+import { regionForCity } from "./lib/geo.js?v=20260722-reseller-directory-search";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260721-fix-cross-account-data-leak-on-login-switch";
+} from "./lib/profit-split.js?v=20260722-reseller-directory-search";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -37,9 +37,9 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260721-fix-cross-account-data-leak-on-login-switch";
+} from "./lib/preventivo-pricing.js?v=20260722-reseller-directory-search";
 
-const APP_SHELL_VERSION = "20260721-fix-cross-account-data-leak-on-login-switch";
+const APP_SHELL_VERSION = "20260722-reseller-directory-search";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1222,6 +1222,7 @@ const state = {
     ddt: "",
     salesRequests: "",
     salesContent: "",
+    resellerDirectory: "",
   },
   selectedDdtOrderId: null,
   ddtDraft: null,
@@ -11801,6 +11802,7 @@ function renderOfficeResellerOrders() {
   const resellers = (state.users || [])
     .filter((u) => u.role === "rivenditore")
     .sort((a, b) => String(a.resellerCompanyName || a.name).localeCompare(String(b.resellerCompanyName || b.name), "it"));
+  const directoryQuery = String(state.search.resellerDirectory || "").trim();
   container.innerHTML = `
     <div class="page-header">
       <div>
@@ -11810,16 +11812,16 @@ function renderOfficeResellerOrders() {
     </div>
     <details class="panel" style="margin-bottom:24px;" ${resellers.length ? "" : "open"}>
       <summary class="panel-head" style="cursor:pointer;"><h3 style="display:inline;">${state.lang === "it" ? "Anagrafica rivenditori" : "Reseller directory"} <span class="section-badge">${resellers.length}</span></h3></summary>
-      <div class="detail-stack" style="padding:0 16px 16px;">
-        ${resellers.length ? resellers.map((u) => `
-          <article class="detail-box">
-            <strong>${escapeHtml(u.resellerCompanyName || u.name)}</strong>
-            <p>${[u.resellerContact, u.email].filter(Boolean).map(escapeHtml).join(" · ") || "—"}</p>
-            <p><b>P.IVA</b> ${escapeHtml(u.resellerVatNumber || "—")}</p>
-            <p><b>${state.lang === "it" ? "Fatturazione" : "Billing"}</b> ${escapeHtml(u.resellerBillingAddress || "—")}</p>
-            <p><b>${state.lang === "it" ? "Spedizione" : "Shipping"}</b> ${escapeHtml(u.resellerShippingAddress || "—")}</p>
-          </article>
-        `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessun rivenditore registrato ancora." : "No resellers registered yet."}</div>`}
+      <div style="padding:0 16px;">
+        ${resellers.length > 5 ? `
+          <label class="field" style="margin-bottom:12px;">
+            <span>${state.lang === "it" ? "Cerca rivenditore" : "Search reseller"}</span>
+            <input class="text-input" type="search" id="reseller-directory-search" placeholder="${state.lang === "it" ? "Ragione sociale, contatto, email, P.IVA..." : "Company, contact, email, VAT..."}" value="${escapeAttr(directoryQuery)}" />
+          </label>
+        ` : ""}
+      </div>
+      <div id="reseller-directory-list" class="detail-stack" style="padding:0 16px 16px;">
+        ${renderResellerDirectoryCardsHtml(filterResellerDirectory(resellers, directoryQuery), Boolean(directoryQuery))}
       </div>
     </details>
     <div class="filter-bar" style="margin-bottom:16px;">
@@ -11843,6 +11845,44 @@ function renderOfficeResellerOrders() {
       `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessun ordine in questa categoria." : "No orders in this category."}</div>`}
     </div>
   `;
+  // Aggiorna SOLO la lista filtrata (non tutto il container) altrimenti ogni
+  // battitura ricrea l'input e perde il focus/cursore.
+  const searchInput = document.getElementById("reseller-directory-search");
+  if (searchInput) {
+    searchInput.addEventListener("input", (event) => {
+      state.search.resellerDirectory = event.target.value || "";
+      const list = document.getElementById("reseller-directory-list");
+      if (list) list.innerHTML = renderResellerDirectoryCardsHtml(filterResellerDirectory(resellers, state.search.resellerDirectory), Boolean(state.search.resellerDirectory));
+    });
+  }
+}
+
+// Filtra l'anagrafica rivenditori per ragione sociale/contatto/email/P.IVA
+// (sostring case-insensitive, nessuna chiamata server: i dati sono già in
+// state.users lato client).
+function filterResellerDirectory(resellers, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return resellers;
+  return resellers.filter((u) => [u.resellerCompanyName, u.name, u.resellerContact, u.email, u.resellerVatNumber]
+    .some((field) => String(field || "").toLowerCase().includes(q)));
+}
+
+function renderResellerDirectoryCardsHtml(resellers, hasActiveSearch = false) {
+  if (!resellers.length) {
+    const empty = hasActiveSearch
+      ? (state.lang === "it" ? "Nessun rivenditore corrisponde alla ricerca." : "No reseller matches the search.")
+      : (state.lang === "it" ? "Nessun rivenditore registrato ancora." : "No resellers registered yet.");
+    return `<div class="info-card">${empty}</div>`;
+  }
+  return resellers.map((u) => `
+    <article class="detail-box">
+      <strong>${escapeHtml(u.resellerCompanyName || u.name)}</strong>
+      <p>${[u.resellerContact, u.email].filter(Boolean).map(escapeHtml).join(" · ") || "—"}</p>
+      <p><b>P.IVA</b> ${escapeHtml(u.resellerVatNumber || "—")}</p>
+      <p><b>${state.lang === "it" ? "Fatturazione" : "Billing"}</b> ${escapeHtml(u.resellerBillingAddress || "—")}</p>
+      <p><b>${state.lang === "it" ? "Spedizione" : "Shipping"}</b> ${escapeHtml(u.resellerShippingAddress || "—")}</p>
+    </article>
+  `).join("");
 }
 
 async function updateResellerOrderStatus(id, status) {
