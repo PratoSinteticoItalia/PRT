@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260721-rivenditore-anagrafica-profilo";
+} from "./lib/order-money.js?v=20260721-rivenditore-formato-rotolo";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260721-rivenditore-anagrafica-profilo";
+import { regionForCity } from "./lib/geo.js?v=20260721-rivenditore-formato-rotolo";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260721-rivenditore-anagrafica-profilo";
+} from "./lib/profit-split.js?v=20260721-rivenditore-formato-rotolo";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260721-rivenditore-anagrafica-profilo";
+} from "./lib/preventivo-pricing.js?v=20260721-rivenditore-formato-rotolo";
 
-const APP_SHELL_VERSION = "20260721-rivenditore-anagrafica-profilo";
+const APP_SHELL_VERSION = "20260721-rivenditore-formato-rotolo";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11366,13 +11366,19 @@ function resellerOrderRequestStatusBadgeClass(status) {
 // rivenditore che nella vista ufficio, per non duplicare il markup.
 function renderResellerOrderItemsList(items = []) {
   if (!items.length) return "";
-  return `<ul class="reseller-order-lines">${items.map((row) => `
+  return `<ul class="reseller-order-lines">${items.map((row) => {
+    const rollWord = state.lang === "it" ? (row.rollCount === 1 ? "rotolo" : "rotoli") : (row.rollCount === 1 ? "roll" : "rolls");
+    const qtyLabel = row.rollLength
+      ? `${row.rollCount} ${rollWord} 2×${formatInventoryNumber(row.rollLength)}m (${formatInventoryNumber(row.quantity)} mq)`
+      : `${formatInventoryNumber(row.quantity)} ${row.unit}`;
+    return `
     <li>
-      <span>${escapeHtml(row.name)} · ${formatInventoryNumber(row.quantity)} ${escapeHtml(row.unit)}</span>
+      <span>${escapeHtml(row.name)} · ${qtyLabel}</span>
       ${row.legacyFreeText
         ? `<em>${state.lang === "it" ? "ordine legacy, prezzo non disponibile" : "legacy order, price unavailable"}</em>`
         : `<span>× ${formatCurrency(row.unitPrice)} = <strong>${formatCurrency(row.subtotal)}</strong></span>`}
-    </li>`).join("")}</ul>`;
+    </li>`;
+  }).join("")}</ul>`;
 }
 
 const RESELLER_CART_LS_KEY = "psi-reseller-cart";
@@ -11391,32 +11397,83 @@ function getResellerCart() {
   if (!Array.isArray(state.resellerCart)) state.resellerCart = loadResellerCartFromStorage();
   return state.resellerCart;
 }
-// Il carrello locale salva solo {type, refId, quantity} — nome/prezzo si
+// Larghezza rotolo standard (allineata al magazzino) — la lunghezza è
+// invece scelta dal rivenditore tra formati fissi (vedi
+// getResellerRollFormatOptions), non più un mq libero.
+const RESELLER_ROLL_WIDTH = 2;
+function getResellerRollFormatOptions() {
+  const options = [];
+  for (let i = 1; i <= 50; i += 1) options.push(Number((i * 0.5).toFixed(1)));
+  return options;
+}
+function formatResellerRollLabel(length) {
+  const mq = Number((length * RESELLER_ROLL_WIDTH).toFixed(2));
+  return `${RESELLER_ROLL_WIDTH} × ${formatInventoryNumber(length)} m (${formatInventoryNumber(mq)} mq)`;
+}
+// Stringa <option> generata una sola volta e riusata identica per ogni
+// card prato — evita di rigenerare 50 opzioni × 15 prodotti ad ogni render.
+const RESELLER_ROLL_FORMAT_OPTIONS_HTML = getResellerRollFormatOptions()
+  .map((len) => `<option value="${len}" ${len === 25 ? "selected" : ""}>${escapeHtml(formatResellerRollLabel(len))}</option>`)
+  .join("");
+
+// Il carrello locale salva solo {type, refId, ...quantità} — nome/prezzo si
 // leggono SEMPRE dal catalogo corrente al render, mai persistiti, così
 // restano validi anche se il listino cambia tra un salvataggio e l'altro.
+// Righe prato: {type:"turf", refId, rollLength, rollCount}. Righe accessorio:
+// {type:"accessory", refId, quantity}.
 function resolveResellerCartLineDisplay(line) {
   if (line.type === "accessory") {
     const accessory = PREVENTIVO_ACCESSORIES.find((a) => a.id === line.refId);
     if (!accessory) return null;
     const unitPrice = Number(accessory.price) || 0;
-    return { name: accessory.name, unit: accessory.unit, unitPrice, subtotal: Number((unitPrice * line.quantity).toFixed(2)) };
+    const quantity = toNumber(line.quantity);
+    return {
+      name: accessory.name, unit: accessory.unit, quantity, unitPrice,
+      subtotal: Number((unitPrice * quantity).toFixed(2)),
+      stepValue: quantity, stepUnit: accessory.unit,
+      detailLabel: `${formatInventoryNumber(quantity)} ${accessory.unit}`,
+    };
   }
   const product = PREVENTIVO_PRODUCTS.find((p) => p.id === line.refId);
   if (!product) return null;
   const unitPrice = getProductPricePure(product, "rivenditore");
-  return { name: product.name, unit: "mq", unitPrice, subtotal: Number((unitPrice * line.quantity).toFixed(2)) };
+  const rollLength = toNumber(line.rollLength);
+  const rollCount = Math.max(0, Math.round(toNumber(line.rollCount)));
+  const quantity = Number((rollLength * RESELLER_ROLL_WIDTH * rollCount).toFixed(2));
+  const rollWord = state.lang === "it" ? (rollCount === 1 ? "rotolo" : "rotoli") : (rollCount === 1 ? "roll" : "rolls");
+  return {
+    name: product.name, unit: "mq", quantity, unitPrice,
+    subtotal: Number((unitPrice * quantity).toFixed(2)),
+    stepValue: rollCount, stepUnit: rollWord,
+    detailLabel: `${rollCount} ${rollWord} ${RESELLER_ROLL_WIDTH}×${formatInventoryNumber(rollLength)}m (${formatInventoryNumber(quantity)} mq)`,
+  };
 }
 
-function addToResellerCart(type, refId, quantity) {
+function addTurfToResellerCart(refId, rollLength, rollCount) {
+  const length = Number(rollLength) || 0;
+  const count = Math.max(0, Math.round(Number(rollCount) || 0));
+  if (length <= 0 || count <= 0) {
+    showToast(state.lang === "it" ? "Seleziona un formato e una quantità valida." : "Select a format and a valid quantity.", "error");
+    return;
+  }
+  const cart = getResellerCart();
+  const existing = cart.find((l) => l.type === "turf" && l.refId === refId && l.rollLength === length);
+  if (existing) existing.rollCount = Math.round(existing.rollCount) + count;
+  else cart.push({ type: "turf", refId, rollLength: length, rollCount: count });
+  saveResellerCartToStorage(cart);
+  showToast(state.lang === "it" ? "Aggiunto al carrello." : "Added to cart.", "success");
+  renderCurrentViewOnly(state.currentView);
+}
+function addAccessoryToResellerCart(refId, quantity) {
   const qty = Math.max(0, Number(quantity) || 0);
   if (qty <= 0) {
     showToast(state.lang === "it" ? "Inserisci una quantità valida." : "Enter a valid quantity.", "error");
     return;
   }
   const cart = getResellerCart();
-  const existing = cart.find((l) => l.type === type && l.refId === refId);
+  const existing = cart.find((l) => l.type === "accessory" && l.refId === refId);
   if (existing) existing.quantity = Number((existing.quantity + qty).toFixed(2));
-  else cart.push({ type, refId, quantity: qty });
+  else cart.push({ type: "accessory", refId, quantity: qty });
   saveResellerCartToStorage(cart);
   showToast(state.lang === "it" ? "Aggiunto al carrello." : "Added to cart.", "success");
   renderCurrentViewOnly(state.currentView);
@@ -11425,9 +11482,15 @@ function stepResellerCartLine(index, delta) {
   const cart = getResellerCart();
   const line = cart[index];
   if (!line) return;
-  const nextQty = Number((toNumber(line.quantity) + delta).toFixed(2));
-  if (nextQty <= 0) cart.splice(index, 1);
-  else line.quantity = nextQty;
+  if (line.type === "turf") {
+    const nextCount = Math.round(toNumber(line.rollCount)) + delta;
+    if (nextCount <= 0) cart.splice(index, 1);
+    else line.rollCount = nextCount;
+  } else {
+    const nextQty = Number((toNumber(line.quantity) + delta).toFixed(2));
+    if (nextQty <= 0) cart.splice(index, 1);
+    else line.quantity = nextQty;
+  }
   saveResellerCartToStorage(cart);
   renderCurrentViewOnly(state.currentView);
 }
@@ -11447,9 +11510,12 @@ function renderResellerOrderCatalogStepHtml() {
         <span class="reseller-product-desc">${escapeHtml(p.desc || "")}</span>
         <span class="reseller-product-price">${formatCurrency(getProductPricePure(p, "rivenditore"))} <small>/mq</small></span>
       </div>
-      <div class="reseller-product-add">
-        <input class="text-input reseller-qty-input" type="number" min="0" step="1" placeholder="mq" data-qty-input />
-        <button class="primary-button small-button" type="button" data-action="reseller-add-to-cart" data-type="turf" data-id="${escapeAttr(p.id)}">${state.lang === "it" ? "Aggiungi" : "Add"}</button>
+      <div class="reseller-product-add reseller-product-add-turf">
+        <select class="text-input reseller-roll-length" data-roll-length>${RESELLER_ROLL_FORMAT_OPTIONS_HTML}</select>
+        <div class="reseller-product-add-row">
+          <input class="text-input reseller-qty-input" type="number" min="1" step="1" value="1" title="${state.lang === "it" ? "Quantità rotoli" : "Roll count"}" data-roll-count />
+          <button class="primary-button small-button" type="button" data-action="reseller-add-to-cart" data-type="turf" data-id="${escapeAttr(p.id)}">${state.lang === "it" ? "Aggiungi" : "Add"}</button>
+        </div>
       </div>
     </article>`).join("");
   const accessoryCards = PREVENTIVO_ACCESSORIES.map((a) => `
@@ -11488,11 +11554,11 @@ function renderResellerOrderSummaryStepHtml(cartLines) {
           <div class="reseller-cart-line">
             <div class="reseller-cart-line-name">
               <strong>${escapeHtml(line.display.name)}</strong>
-              <span>${formatCurrency(line.display.unitPrice)} / ${escapeHtml(line.display.unit)}</span>
+              <span>${escapeHtml(line.display.detailLabel)} · ${formatCurrency(line.display.unitPrice)}/${escapeHtml(line.display.unit)}</span>
             </div>
             <div class="reseller-cart-line-qty">
               <button class="ghost-button small-button" type="button" data-action="reseller-cart-step" data-index="${line.index}" data-delta="-1">−</button>
-              <span>${formatInventoryNumber(line.quantity)} ${escapeHtml(line.display.unit)}</span>
+              <span>${formatInventoryNumber(line.display.stepValue)} ${escapeHtml(line.display.stepUnit)}</span>
               <button class="ghost-button small-button" type="button" data-action="reseller-cart-step" data-index="${line.index}" data-delta="1">+</button>
             </div>
             <div class="reseller-cart-line-subtotal">${formatCurrency(line.display.subtotal)}</div>
@@ -11594,7 +11660,9 @@ async function submitResellerOrderRequest(event) {
     await apiFetch("/api/reseller/order-requests", {
       method: "POST",
       body: JSON.stringify({
-        items: cart.map((line) => ({ type: line.type, refId: line.refId, quantity: line.quantity })),
+        items: cart.map((line) => line.type === "turf"
+          ? { type: "turf", refId: line.refId, rollLength: line.rollLength, rollCount: line.rollCount }
+          : { type: "accessory", refId: line.refId, quantity: line.quantity }),
         desiredDate: data.get("desiredDate"),
         notes: data.get("notes"),
       }),
@@ -28603,9 +28671,16 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "reseller-add-to-cart") {
-    const qtyInput = button.closest(".reseller-product-card")?.querySelector("[data-qty-input]");
-    addToResellerCart(button.dataset.type, button.dataset.id, qtyInput?.value);
-    if (qtyInput) qtyInput.value = "";
+    const card = button.closest(".reseller-product-card");
+    if (button.dataset.type === "turf") {
+      const lengthSelect = card?.querySelector("[data-roll-length]");
+      const countInput = card?.querySelector("[data-roll-count]");
+      addTurfToResellerCart(button.dataset.id, lengthSelect?.value, countInput?.value);
+    } else {
+      const qtyInput = card?.querySelector("[data-qty-input]");
+      addAccessoryToResellerCart(button.dataset.id, qtyInput?.value);
+      if (qtyInput) qtyInput.value = "";
+    }
     return;
   }
   if (action === "reseller-cart-step") {

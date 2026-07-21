@@ -23503,9 +23503,14 @@ select.sp-line-field { cursor: pointer; }
 .reseller-product-desc { font-size: 12px; color: var(--muted, #8a9690); }
 .reseller-product-price { font-size: 14px; font-weight: 700; }
 .reseller-product-price small { font-weight: 400; font-size: 11px; color: var(--muted, #8a9690); }
-.reseller-product-add { display: flex; gap: 6px; }
+.reseller-product-add { display: flex; gap: 6px; flex-wrap: wrap; }
 .reseller-qty-input { width: 72px; flex: 0 0 auto; text-align: center; }
 .reseller-product-add .primary-button { flex: 1; }
+.reseller-product-add-turf { flex-direction: column; }
+.reseller-product-add-turf .reseller-roll-length { width: 100%; font-size: 12.5px; }
+.reseller-product-add-row { display: flex; gap: 6px; }
+.reseller-product-add-row .reseller-qty-input { width: 56px; }
+.reseller-product-add-row .primary-button { flex: 1; }
 
 .reseller-cart-lines { display: flex; flex-direction: column; gap: 8px; }
 .reseller-cart-line {

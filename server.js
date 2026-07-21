@@ -8846,6 +8846,10 @@ function normalizeResellerOrderItemRow(row = {}) {
     quantity: Math.max(0, Number(row.quantity) || 0),
     unitPrice: Math.max(0, Number(row.unitPrice) || 0),
     subtotal: Math.max(0, Number(row.subtotal) || 0),
+    // Breakdown del taglio reale (solo righe prato) — utile all'ufficio per
+    // sapere cosa preparare fisicamente, non solo il totale mq.
+    ...(row.rollLength != null ? { rollLength: Number(row.rollLength) || 0 } : {}),
+    ...(row.rollCount != null ? { rollCount: Math.max(0, Math.round(Number(row.rollCount) || 0)) } : {}),
     ...(row.legacyFreeText ? { legacyFreeText: true } : {}),
   };
 }
@@ -8857,21 +8861,33 @@ function normalizeResellerOrderItemRow(row = {}) {
 // client viene ignorato integralmente — altrimenti un client modificato
 // potrebbe forzare un totale finto più basso. refId sconosciuto o
 // quantity<=0 → riga scartata (null), mai accettata as-is.
+// Formati rotolo ammessi: larghezza fissa 2 m, lunghezza 0,5→25 m a step di
+// 0,5 (50 valori) — mirror dei formati reali di magazzino. Un rollLength
+// fuori da questo insieme (anche di poco, es. 0.7) viene scartato: non è un
+// taglio che esiste fisicamente, non va accettato as-is dal client.
+const RESELLER_ROLL_WIDTH = 2;
+const RESELLER_ROLL_LENGTHS = new Set(Array.from({ length: 50 }, (_, i) => Number(((i + 1) * 0.5).toFixed(1))));
+
 function resolveResellerOrderItem(rawItem = {}) {
   const type = rawItem.type === "accessory" ? "accessory" : "turf";
-  const quantity = Math.max(0, Number(rawItem.quantity) || 0);
-  if (quantity <= 0) return null;
   const refId = String(rawItem.refId || "").trim();
   if (!refId) return null;
   if (type === "turf") {
     const product = RESELLER_ORDER_PRODUCTS.find((p) => p.id === refId);
     if (!product) return null;
+    const rollLength = Number(rawItem.rollLength);
+    const rollCount = Math.round(Number(rawItem.rollCount) || 0);
+    if (!RESELLER_ROLL_LENGTHS.has(rollLength) || rollCount <= 0) return null;
+    const quantity = Number((rollLength * RESELLER_ROLL_WIDTH * rollCount).toFixed(2));
     const unitPrice = getResellerOrderProductPrice(product, "rivenditore");
     return {
       type, refId: product.id, name: product.name, unit: "mq", quantity,
+      rollLength, rollCount,
       unitPrice, subtotal: Number((unitPrice * quantity).toFixed(2)),
     };
   }
+  const quantity = Math.max(0, Number(rawItem.quantity) || 0);
+  if (quantity <= 0) return null;
   const accessory = RESELLER_ORDER_ACCESSORIES.find((a) => a.id === refId);
   if (!accessory) return null;
   const unitPrice = Number(accessory.price) || 0;
