@@ -135,10 +135,13 @@ const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 30;
 const LOGIN_MAX_ATTEMPTS = 20;
 const SHOPIFY_FETCH_TIMEOUT_MS = 10_000;
 const SHOPIFY_MAX_RETRIES = 2;
-const CONFIGURED_MAX_JSON_BODY_BYTES = Number(process.env.MAX_JSON_BODY_BYTES || 25 * 1024 * 1024);
+// 50MB di default: post marketing con fino a 8 foto a 4MB l'una (limite lato
+// client in readMarketingAssetFile) arrivano a ~43MB una volta codificate in
+// base64 (+33% overhead) dentro il body JSON — 25MB non bastava più.
+const CONFIGURED_MAX_JSON_BODY_BYTES = Number(process.env.MAX_JSON_BODY_BYTES || 50 * 1024 * 1024);
 const MAX_JSON_BODY_BYTES = Number.isFinite(CONFIGURED_MAX_JSON_BODY_BYTES)
   ? Math.max(1024 * 1024, CONFIGURED_MAX_JSON_BODY_BYTES)
-  : 25 * 1024 * 1024;
+  : 50 * 1024 * 1024;
 const IS_PUBLIC_DEPLOY = Boolean(process.env.RENDER || process.env.NODE_ENV === "production");
 const ALLOW_DEMO_FALLBACK = process.env.ALLOW_DEMO_FALLBACK === "true" || !IS_PUBLIC_DEPLOY;
 const PASSWORD_MIN_LENGTH = 12;
@@ -6952,11 +6955,13 @@ async function sendSalesRequestFirstContactWhatsApp({ requestRecord = {}, assign
 }
 
 function buildMarketingPublishText(item = {}) {
+  // item.assetUrl è il link tecnico che Meta usa per scaricare la foto — serve
+  // solo internamente (vedi image_url/url nei payload di pubblicazione), NON
+  // deve mai finire nel testo/caption visibile sul post pubblicato.
   return [
     item.caption || item.title || "",
     item.cta || "",
     item.hashtags || "",
-    item.assetUrl || "",
   ].map((part) => String(part || "").trim()).filter(Boolean).join("\n\n");
 }
 

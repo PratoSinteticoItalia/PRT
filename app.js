@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260721-marketing-token-health-alert";
+} from "./lib/order-money.js?v=20260721-marketing-fix-caption-link-photo-limit";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260721-marketing-token-health-alert";
+import { regionForCity } from "./lib/geo.js?v=20260721-marketing-fix-caption-link-photo-limit";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260721-marketing-token-health-alert";
+} from "./lib/profit-split.js?v=20260721-marketing-fix-caption-link-photo-limit";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -37,9 +37,9 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260721-marketing-token-health-alert";
+} from "./lib/preventivo-pricing.js?v=20260721-marketing-fix-caption-link-photo-limit";
 
-const APP_SHELL_VERSION = "20260721-marketing-token-health-alert";
+const APP_SHELL_VERSION = "20260721-marketing-fix-caption-link-photo-limit";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -24959,8 +24959,8 @@ function readMarketingAssetFile(file) {
       reject(new Error("Formato immagine non supportato. Usa PNG, JPG, WebP o GIF."));
       return;
     }
-    if (file.size > 1500 * 1024) {
-      reject(new Error("Immagine troppo pesante. Usa un link oppure comprimi il file sotto 1,5 MB."));
+    if (file.size > 4000 * 1024) {
+      reject(new Error("Immagine troppo pesante. Usa un link oppure comprimi il file sotto 4 MB."));
       return;
     }
     const reader = new FileReader();
@@ -25326,7 +25326,7 @@ function renderMarketing() {
             <span>Carica foto dal PC (puoi sceglierne più di una)</span>
             <input class="text-input" name="assetFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple />
             <input type="hidden" name="assetDataUrl" />
-            <small class="marketing-field-hint">Puoi aggiungere più foto (max 1,5 MB ciascuna). Clicca di nuovo per aggiungerne altre. Per file definitivi usa un link Drive/Canva.</small>
+            <small class="marketing-field-hint">Puoi aggiungere più foto (max 4 MB ciascuna). Clicca di nuovo per aggiungerne altre. Per file definitivi usa un link Drive/Canva.</small>
           </label>
           <div class="marketing-asset-preview field-full" id="marketing-asset-preview"></div>
           <label class="field field-full">
