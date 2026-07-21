@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260721-reseller-catalog-photos-directory";
+} from "./lib/order-money.js?v=20260721-fix-cross-account-data-leak-on-login-switch";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260721-reseller-catalog-photos-directory";
+import { regionForCity } from "./lib/geo.js?v=20260721-fix-cross-account-data-leak-on-login-switch";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260721-reseller-catalog-photos-directory";
+} from "./lib/profit-split.js?v=20260721-fix-cross-account-data-leak-on-login-switch";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -37,9 +37,9 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260721-reseller-catalog-photos-directory";
+} from "./lib/preventivo-pricing.js?v=20260721-fix-cross-account-data-leak-on-login-switch";
 
-const APP_SHELL_VERSION = "20260721-reseller-catalog-photos-directory";
+const APP_SHELL_VERSION = "20260721-fix-cross-account-data-leak-on-login-switch";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2719,9 +2719,13 @@ function ensureMobilePillShell() {
   }
   if (ui.mobilePillLogoutButton && !ui.mobilePillLogoutButton.dataset.bound) {
     ui.mobilePillLogoutButton.addEventListener("click", async () => {
-      await apiFetch("/api/logout", { method: "POST" });
+      // Stessa sequenza di performOptimisticLogout: senza clearSessionCache()
+      // la sessione cache-ata in localStorage sopravviveva a questo logout,
+      // a differenza del percorso desktop.
+      clearSessionCache();
       applySessionPayload({});
       showAuth();
+      await apiFetch("/api/logout", { method: "POST" }).catch(() => {});
     });
     ui.mobilePillLogoutButton.dataset.bound = "true";
   }
@@ -22832,6 +22836,31 @@ function applySessionPayload(session = {}) {
     // Pulisce dati preventivo condivisi per evitare leakage cross-account
     try { window.localStorage.removeItem("psi:preventivo-v2:data"); } catch {}
     hidePreventivoPreview();
+    // Il logout NON ricarica la pagina (SPA) — qualunque cache "caricata una
+    // volta" (flag *LoadedAt) sopravvive in memoria e, se non svuotata,
+    // rimane leggibile dal prossimo utente che fa login sulla stessa scheda.
+    // Riportare sempre a "dashboard" evita che una view rimasta aperta (con
+    // dati di un altro account) si ridisegni prima del suo refresh naturale.
+    state.currentView = "dashboard";
+    state.officeResellerOrders = [];
+    state.officeResellerOrdersLoadedAt = 0;
+    state.officeResellerOrdersFilter = "all";
+    state.resellerOrderRequests = [];
+    state.resellerOrderRequestsLoadedAt = 0;
+    state.resellerOrderStep = "catalog";
+    state.resellerCart = [];
+    state.resellerSalesRequests = [];
+    state.resellerSalesRequestsLoadedAt = 0;
+    state.crmServerPage = { total: 0, page: 1, limit: 50, items: [], loading: false, loadedAt: 0, loadError: false };
+    state.marketingItems = [];
+    state.marketingTokenHealth = null;
+    state.marketingTokenHealthLoadedAt = 0;
+    state.preventivoCatalog = {};
+    state._portfolioCatalogLoading = false;
+    state._portfolioCatalogLoaded = false;
+    try { window.localStorage.removeItem("psi-marketing-items-v1"); } catch {}
+    try { window.localStorage.removeItem("psi-reseller-cart"); } catch {}
+    resetMarketingSyncFlagOnUserChange();
   }
   state.coveragePlanner = mergeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner, state.coveragePlanner);
   state.settings = session.shopifySettings || {};
@@ -25849,6 +25878,12 @@ async function deleteMarketingItemOnServer(id) {
   await apiFetch(`/api/marketing/items/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 let _marketingSynced = false;
+// Chiamata da applySessionPayload al cambio utente: senza reload di pagina
+// (logout è SPA) questo flag "caricato una volta" sopravvivrebbe in memoria
+// e bloccherebbe il refetch per il prossimo account loggato sulla stessa scheda.
+function resetMarketingSyncFlagOnUserChange() {
+  _marketingSynced = false;
+}
 async function syncMarketingItems({ force = false } = {}) {
   if (_marketingSynced && !force) return;
   const serverItems = await fetchMarketingItemsFromServer();
