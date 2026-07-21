@@ -1535,7 +1535,7 @@ function sqlPhoneCanon(col) {
  * CRM server-side search con FTS, filtri e paginazione.
  * Usato da GET /api/sales/requests.
  */
-async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", resellerId = "", page = 1, limit = 50 } = {}) {
+async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", resellerId = "", resellerAssigned = false, page = 1, limit = 50 } = {}) {
   if (!USE_POSTGRES) return { total: 0, page, limit, items: [] };
   await ensureRelationalSchema();
   const pool = await getPgPool();
@@ -1613,6 +1613,10 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   if (resellerId) {
     params.push(String(resellerId));
     where.push(`reseller_id = $${params.length}`);
+  } else if (resellerAssigned) {
+    // Filtro "Rivenditori" del CRM ufficio: qualunque richiesta assegnata a
+    // un rivenditore, non a uno specifico — nessun parametro, solo IS NOT NULL.
+    where.push(`(reseller_id IS NOT NULL AND reseller_id != '')`);
   }
 
   // CRM v2: il where va ribattezzato con prefisso "sr." per il join con shadow
@@ -13869,8 +13873,11 @@ async function handleApi(req, res, url) {
     // Un rivenditore vede SOLO le proprie richieste: resellerId è sempre
     // dalla sessione autenticata, mai dalla query string.
     const resellerId = currentUser.role === "rivenditore" ? String(currentUser.id) : "";
+    // Filtro "Rivenditori" del CRM ufficio (qualunque rivenditore) — ignorato
+    // se resellerId è già impostato (rivenditore che guarda solo le proprie).
+    const resellerAssigned = currentUser.role === "office" && url.searchParams.get("resellerAssigned") === "1";
     try {
-      const result = await searchSalesRequestsFromDb({ q, status, assignment, source, service, contactState, dateFrom, dateTo, resellerId, page, limit });
+      const result = await searchSalesRequestsFromDb({ q, status, assignment, source, service, contactState, dateFrom, dateTo, resellerId, resellerAssigned, page, limit });
       return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "search_failed") });

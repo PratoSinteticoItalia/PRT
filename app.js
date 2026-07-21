@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260720-rivenditore-dashboard-fase7";
+} from "./lib/order-money.js?v=20260721-rivenditore-crm-badge-filtro";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260720-rivenditore-dashboard-fase7";
+import { regionForCity } from "./lib/geo.js?v=20260721-rivenditore-crm-badge-filtro";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260720-rivenditore-dashboard-fase7";
+} from "./lib/profit-split.js?v=20260721-rivenditore-crm-badge-filtro";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260720-rivenditore-dashboard-fase7";
+} from "./lib/preventivo-pricing.js?v=20260721-rivenditore-crm-badge-filtro";
 
-const APP_SHELL_VERSION = "20260720-rivenditore-dashboard-fase7";
+const APP_SHELL_VERSION = "20260721-rivenditore-crm-badge-filtro";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4626,6 +4626,7 @@ function matchesSalesRequestQuickFilter(item = {}, filter = String(state.filters
   if (quickFilter === "contacted") return ["queued", "sent"].includes(firstContactState);
   if (quickFilter === "fornitura") return String(item.service || "").trim().toLowerCase() === "fornitura";
   if (quickFilter === "posa") return String(item.service || "").trim().toLowerCase() === "posa";
+  if (quickFilter === "resellers") return Boolean(item.resellerId);
   if (quickFilter === "new") return statusCode === "new";
   if (quickFilter === "this-week") {
     const d = item.createdAt ? new Date(item.createdAt) : null;
@@ -4648,6 +4649,7 @@ function getSalesRequestQuickFilterOptions(items = state.salesRequests) {
     { value: "this-week",   label: state.lang === "it" ? "Questa settimana" : "This week", count: stats.thisWeek },
     { value: "fornitura",   label: state.lang === "it" ? "Solo fornitura" : "Supply only" },
     { value: "posa",        label: state.lang === "it" ? "Fornitura + posa" : "Supply + install" },
+    { value: "resellers",   label: state.lang === "it" ? "Rivenditori" : "Resellers" },
   ];
   return options
     .filter((option) => option.value !== "mine" || currentOperator)
@@ -12878,6 +12880,7 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
   const _quickService      = _quick === "fornitura" ? "fornitura" : _quick === "posa" ? "posa" : "";
   const _quickContactState = _quick === "to-contact" ? "to-contact" : _quick === "contacted" ? "contacted" : "";
   const _quickStatus       = _quick === "new" ? "new" : "";
+  const _quickResellerOnly = _quick === "resellers";
   // "this-week": calcola dateFrom = oggi - 7gg (lato client → server)
   let _quickDateFrom = "";
   if (_quick === "this-week") {
@@ -12887,7 +12890,7 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
   // Merge: quick filter > dropdown
   const _finalAssignment = _quickAssignment || assignment;
   const _finalStatus     = _quickStatus || status;
-  const queryKey   = `${page}|${q}|${_finalStatus}|${_finalAssignment}|${source}|${_quick}`;
+  const queryKey   = `${page}|${q}|${_finalStatus}|${_finalAssignment}|${source}|${_quick}|${_quickResellerOnly}`;
   // Notifica subito renderSalesRequests: se ci sono dati cached mostra quelli,
   // altrimenti (loadedAt === 0) mostra lo spinner e ritorna in attesa del fetch.
   renderSalesRequests();
@@ -12900,6 +12903,7 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
     if (_quickService)      params.set("service", _quickService);
     if (_quickContactState) params.set("contactState", _quickContactState);
     if (_quickDateFrom)     params.set("dateFrom", _quickDateFrom);
+    if (_quickResellerOnly) params.set("resellerAssigned", "1");
     const data = await apiFetch(`/api/sales/requests?${params}`);
     // Protezione ottimistica: se un PATCH è in-volo (o nel grace period da 1.5s),
     // mantieni la versione locale per quell'item — la risposta del server potrebbe
@@ -13161,6 +13165,10 @@ function renderCrmV2Row(item, selected, bulkSelectedIds) {
   const specsText = requestSqm > 0
     ? `${requestSqm} mq${item.requestedHeight ? ` · ${item.requestedHeight}` : ""}`
     : "";
+  // Rivenditore: campo indipendente dall'assegnazione interna (Ivan/Gabriele)
+  // — una richiesta può avere entrambi, mostrati come due indicatori distinti.
+  const resellerUser = item.resellerId ? state.users.find((u) => u.id === item.resellerId) : null;
+  const resellerLabel = resellerUser ? (resellerUser.resellerCompanyName || resellerUser.name) : "";
   const action = getCrmV2PrimaryAction(item);
   const sourceIcon = getCrmV2SourceIcon(item);
   const cityLabel = item.city || (state.lang === "it" ? "—" : "—");
@@ -13196,6 +13204,7 @@ function renderCrmV2Row(item, selected, bulkSelectedIds) {
           <span class="crm-row-avatar ${assignmentTone === "is-assigned" ? "" : "is-empty"}">${assignmentInitials}</span>
           ${assignmentTone === "is-assigned" ? escapeHtml(assignmentLabel) : (state.lang === "it" ? "non assegnato" : "unassigned")}
         </div>
+        ${resellerLabel ? `<div class="crm-row-reseller" title="${state.lang === "it" ? "Rivenditore" : "Reseller"}">🏬 ${escapeHtml(resellerLabel)}</div>` : ""}
       </div>
       <button class="crm-row-action ${action.tone}" type="button"
               data-action="crm-row-action" data-id="${item.id}">
