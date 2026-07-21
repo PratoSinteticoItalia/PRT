@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260721-rivenditore-crm-badge-filtro" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260721-rivenditore-crm-badge-filtro" />
+    <link rel="preload" href="./styles.css?v=20260721-rivenditore-anagrafica-profilo" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260721-rivenditore-anagrafica-profilo" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1036,6 +1036,10 @@
              Contenuto via JS in renderOfficeResellerOrders(). -->
         <section class="view" id="reseller-orders"></section>
 
+        <!-- Rivenditore: anagrafica self-service (fatturazione + spedizione).
+             Contenuto via JS in renderResellerProfile(). -->
+        <section class="view" id="reseller-profile"></section>
+
         <section class="view" id="warehouse">
           <div class="page-header">
             <div>
@@ -1982,6 +1986,18 @@
                     <span>Referente / contatto</span>
                     <input class="text-input" name="resellerContact" placeholder="Nome referente, telefono..." />
                   </label>
+                  <label class="field reseller-account-field hidden" data-reseller-field>
+                    <span>P.IVA</span>
+                    <input class="text-input" name="resellerVatNumber" placeholder="IT01234567890" />
+                  </label>
+                  <label class="field field-full reseller-account-field hidden" data-reseller-field>
+                    <span>Indirizzo fatturazione</span>
+                    <input class="text-input" name="resellerBillingAddress" placeholder="Via, città, CAP" />
+                  </label>
+                  <label class="field field-full reseller-account-field hidden" data-reseller-field>
+                    <span>Indirizzo spedizione</span>
+                    <input class="text-input" name="resellerShippingAddress" placeholder="Via, città, CAP (se diverso dalla fatturazione)" />
+                  </label>
                   <label class="checkline field-full">
                     <input type="checkbox" name="mustChangePassword" />
                     <span>Richiedi cambio password al primo accesso</span>
@@ -2597,7 +2613,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260721-rivenditore-crm-badge-filtro" defer></script>
-    <script src="./app.js?v=20260721-rivenditore-crm-badge-filtro" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260721-rivenditore-anagrafica-profilo" defer></script>
+    <script src="./app.js?v=20260721-rivenditore-anagrafica-profilo" type="module"></script>
   </body>
 </html>

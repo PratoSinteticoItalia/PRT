@@ -422,6 +422,9 @@ function sanitizePasswordUser(user = {}) {
   // una tabella a parte — un rivenditore è 1 account = 1 azienda, niente join.
   nextUser.resellerCompanyName = nextUser.role === "rivenditore" ? String(nextUser.resellerCompanyName || "").trim() : "";
   nextUser.resellerContact = nextUser.role === "rivenditore" ? String(nextUser.resellerContact || "").trim() : "";
+  nextUser.resellerVatNumber = nextUser.role === "rivenditore" ? String(nextUser.resellerVatNumber || "").trim() : "";
+  nextUser.resellerBillingAddress = nextUser.role === "rivenditore" ? String(nextUser.resellerBillingAddress || "").trim() : "";
+  nextUser.resellerShippingAddress = nextUser.role === "rivenditore" ? String(nextUser.resellerShippingAddress || "").trim() : "";
   delete nextUser.password;
   return nextUser;
 }
@@ -4347,6 +4350,9 @@ function sanitizeUser(user) {
     crewLogoDataUrl: normalizedRole === "crew" ? sanitizeCrewLogoDataUrl(user.crewLogoDataUrl || "") : "",
     resellerCompanyName: normalizedRole === "rivenditore" ? String(user.resellerCompanyName || "") : "",
     resellerContact: normalizedRole === "rivenditore" ? String(user.resellerContact || "") : "",
+    resellerVatNumber: normalizedRole === "rivenditore" ? String(user.resellerVatNumber || "") : "",
+    resellerBillingAddress: normalizedRole === "rivenditore" ? String(user.resellerBillingAddress || "") : "",
+    resellerShippingAddress: normalizedRole === "rivenditore" ? String(user.resellerShippingAddress || "") : "",
     status: user.status === "suspended" ? "suspended" : "active",
     mustChangePassword: Boolean(user.mustChangePassword),
   };
@@ -9415,6 +9421,9 @@ function reconcileStoreData(store) {
           crewLogoDataUrl: String(user.crewLogoDataUrl || defaults.users[index]?.crewLogoDataUrl || ""),
           resellerCompanyName: String(user.resellerCompanyName || defaults.users[index]?.resellerCompanyName || ""),
           resellerContact: String(user.resellerContact || defaults.users[index]?.resellerContact || ""),
+          resellerVatNumber: String(user.resellerVatNumber || defaults.users[index]?.resellerVatNumber || ""),
+          resellerBillingAddress: String(user.resellerBillingAddress || defaults.users[index]?.resellerBillingAddress || ""),
+          resellerShippingAddress: String(user.resellerShippingAddress || defaults.users[index]?.resellerShippingAddress || ""),
           status: String(user.status || defaults.users[index]?.status || "active").trim(),
           mustChangePassword: Boolean(user.mustChangePassword ?? defaults.users[index]?.mustChangePassword),
           sessionVersion: Number(user.sessionVersion || defaults.users[index]?.sessionVersion || 1),
@@ -14606,6 +14615,33 @@ async function handleApi(req, res, url) {
     });
   }
 
+  // Self-service anagrafica rivenditore ("Il mio profilo") — stesso pattern
+  // di /api/account/password: solo currentUser autenticato, nessun
+  // requireOffice, aggiorna SOLO il proprio record (id === currentUser.id).
+  // Whitelist esplicita dei campi modificabili — mai role/status/email/
+  // password/id, per non trasformare l'endpoint in una via per auto-
+  // modificare i propri permessi.
+  if (url.pathname === "/api/account/profile" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "rivenditore") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const userIndex = store.users.findIndex((item) => item.id === currentUser.id);
+    if (userIndex < 0) return sendJson(res, 404, { error: "user_not_found" });
+    const storedUser = store.users[userIndex];
+    const updated = {
+      ...storedUser,
+      name: String(body.name ?? storedUser.name ?? "").trim() || storedUser.name,
+      resellerCompanyName: String(body.resellerCompanyName ?? "").trim(),
+      resellerContact: String(body.resellerContact ?? "").trim(),
+      resellerVatNumber: String(body.resellerVatNumber ?? "").trim(),
+      resellerBillingAddress: String(body.resellerBillingAddress ?? "").trim(),
+      resellerShippingAddress: String(body.resellerShippingAddress ?? "").trim(),
+    };
+    store.users[userIndex] = updated;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, sanitizeUser(updated));
+  }
+
   if (url.pathname === "/api/webhooks/shopify/orders" && req.method === "POST") {
     const rawBody = await readRawBody(req);
     const hmacHeader = req.headers["x-shopify-hmac-sha256"];
@@ -14813,6 +14849,9 @@ async function handleApi(req, res, url) {
     // differenza di crewName non serve, un'azienda può avere più account).
     const resellerCompanyName = role === "rivenditore" ? String(body.resellerCompanyName || "").trim() : "";
     const resellerContact = role === "rivenditore" ? String(body.resellerContact || "").trim() : "";
+    const resellerVatNumber = role === "rivenditore" ? String(body.resellerVatNumber || "").trim() : "";
+    const resellerBillingAddress = role === "rivenditore" ? String(body.resellerBillingAddress || "").trim() : "";
+    const resellerShippingAddress = role === "rivenditore" ? String(body.resellerShippingAddress || "").trim() : "";
     if (!name || !email || !isValidRole(role)) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
     }
@@ -14843,6 +14882,9 @@ async function handleApi(req, res, url) {
       crewLogoDataUrl,
       resellerCompanyName,
       resellerContact,
+      resellerVatNumber,
+      resellerBillingAddress,
+      resellerShippingAddress,
       status,
       mustChangePassword,
       sessionVersion: 1,
@@ -14898,6 +14940,15 @@ async function handleApi(req, res, url) {
     const nextResellerContact = nextRole === "rivenditore"
       ? String(body.resellerContact ?? current.resellerContact ?? "").trim()
       : "";
+    const nextResellerVatNumber = nextRole === "rivenditore"
+      ? String(body.resellerVatNumber ?? current.resellerVatNumber ?? "").trim()
+      : "";
+    const nextResellerBillingAddress = nextRole === "rivenditore"
+      ? String(body.resellerBillingAddress ?? current.resellerBillingAddress ?? "").trim()
+      : "";
+    const nextResellerShippingAddress = nextRole === "rivenditore"
+      ? String(body.resellerShippingAddress ?? current.resellerShippingAddress ?? "").trim()
+      : "";
     if (!nextName || !nextEmail || !isValidRole(nextRole)) {
       return sendJson(res, 400, { error: "invalid_account_payload" });
     }
@@ -14924,6 +14975,9 @@ async function handleApi(req, res, url) {
       crewLogoDataUrl: nextCrewLogoDataUrl,
       resellerCompanyName: nextResellerCompanyName,
       resellerContact: nextResellerContact,
+      resellerVatNumber: nextResellerVatNumber,
+      resellerBillingAddress: nextResellerBillingAddress,
+      resellerShippingAddress: nextResellerShippingAddress,
       status: nextStatus,
       mustChangePassword: mustChangePassword || current.mustChangePassword,
     };

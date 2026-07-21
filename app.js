@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260721-rivenditore-crm-badge-filtro";
+} from "./lib/order-money.js?v=20260721-rivenditore-anagrafica-profilo";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260721-rivenditore-crm-badge-filtro";
+import { regionForCity } from "./lib/geo.js?v=20260721-rivenditore-anagrafica-profilo";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260721-rivenditore-crm-badge-filtro";
+} from "./lib/profit-split.js?v=20260721-rivenditore-anagrafica-profilo";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -36,9 +36,9 @@ import {
   getProductPrice as getProductPricePure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
-} from "./lib/preventivo-pricing.js?v=20260721-rivenditore-crm-badge-filtro";
+} from "./lib/preventivo-pricing.js?v=20260721-rivenditore-anagrafica-profilo";
 
-const APP_SHELL_VERSION = "20260721-rivenditore-crm-badge-filtro";
+const APP_SHELL_VERSION = "20260721-rivenditore-anagrafica-profilo";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -372,9 +372,9 @@ const roleViews = {
   // "installations-live" (Cantieri Live) resta fuori: è il work-report con
   // spese/rimborsi squadra, un flusso di compenso interno che non c'entra
   // con un account rivenditore esterno, a differenza dello stato posa base.
-  rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "order-requests", "garden-planner", "communications"],
+  rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "order-requests", "garden-planner", "communications", "reseller-profile"],
 };
-const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders"]);
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders", "reseller-profile"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -634,6 +634,7 @@ const translations = {
     "sales-content": "Contenuti",
     "order-requests": "Ordina materiali",
     "reseller-orders": "Ordini rivenditori",
+    "reseller-profile": "Il mio profilo",
     topbarSearch: "Cerca ordini, clienti, prodotti...",
     ordersSubtitle: "Ordini Shopify sincronizzati e in lavorazione",
     installationsCalendarTitle: "Calendario Pose",
@@ -896,6 +897,7 @@ const translations = {
     "sales-content": "Content",
     "order-requests": "Order materials",
     "reseller-orders": "Reseller orders",
+    "reseller-profile": "My profile",
     topbarSearch: "Search orders, customers, products...",
     ordersSubtitle: "Shopify orders synced and in progress",
     installationsCalendarTitle: "Installation calendar",
@@ -11673,6 +11675,64 @@ async function updateResellerOrderStatus(id, status) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Il mio profilo — anagrafica self-service rivenditore (fatturazione +
+// spedizione). Usata anche da "Ordina materiali" per mostrare l'indirizzo
+// di consegna in sola lettura nello step riepilogo.
+// ─────────────────────────────────────────────────────────────────────────
+function renderResellerProfile() {
+  const container = document.getElementById("reseller-profile");
+  if (!container) return;
+  const me = state.currentUser || {};
+  container.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1>${state.lang === "it" ? "Il mio profilo" : "My profile"}</h1>
+        <p>${state.lang === "it" ? "Dati di fatturazione e spedizione — usati per i tuoi ordini materiale." : "Billing and shipping details — used for your material orders."}</p>
+      </div>
+    </div>
+    <div class="panel">
+      <form id="reseller-profile-form" class="inline-form-grid">
+        <label class="field field-full"><span>${state.lang === "it" ? "Ragione sociale" : "Company name"}</span><input class="text-input" name="resellerCompanyName" value="${escapeAttr(me.resellerCompanyName || "")}" placeholder="Verde Giardini SRL" /></label>
+        <label class="field"><span>${state.lang === "it" ? "Referente / contatto" : "Contact"}</span><input class="text-input" name="resellerContact" value="${escapeAttr(me.resellerContact || "")}" placeholder="Nome referente, telefono..." /></label>
+        <label class="field"><span>P.IVA</span><input class="text-input" name="resellerVatNumber" value="${escapeAttr(me.resellerVatNumber || "")}" placeholder="IT01234567890" /></label>
+        <label class="field field-full"><span>${state.lang === "it" ? "Indirizzo fatturazione" : "Billing address"}</span><input class="text-input" name="resellerBillingAddress" value="${escapeAttr(me.resellerBillingAddress || "")}" placeholder="Via, città, CAP" /></label>
+        <label class="field field-full"><span>${state.lang === "it" ? "Indirizzo spedizione" : "Shipping address"}</span><input class="text-input" name="resellerShippingAddress" value="${escapeAttr(me.resellerShippingAddress || "")}" placeholder="${state.lang === "it" ? "Via, città, CAP (se diverso dalla fatturazione)" : "Street, city, ZIP (if different from billing)"}" /></label>
+        <div class="inline-actions field-full">
+          <button type="submit" class="primary-button small-button">${state.lang === "it" ? "Salva" : "Save"}</button>
+        </div>
+        <div id="reseller-profile-status" class="panel-note hidden field-full"></div>
+      </form>
+    </div>
+  `;
+  const form = document.getElementById("reseller-profile-form");
+  if (form) form.addEventListener("submit", saveResellerProfile);
+}
+
+async function saveResellerProfile(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const statusEl = document.getElementById("reseller-profile-status");
+  const data = new FormData(form);
+  clearStatus(statusEl);
+  try {
+    const updated = await apiFetch("/api/account/profile", {
+      method: "POST",
+      body: JSON.stringify({
+        resellerCompanyName: data.get("resellerCompanyName"),
+        resellerContact: data.get("resellerContact"),
+        resellerVatNumber: data.get("resellerVatNumber"),
+        resellerBillingAddress: data.get("resellerBillingAddress"),
+        resellerShippingAddress: data.get("resellerShippingAddress"),
+      }),
+    });
+    state.currentUser = { ...state.currentUser, ...updated };
+    setStatus(statusEl, "success", state.lang === "it" ? "Profilo aggiornato." : "Profile updated.");
+  } catch (error) {
+    setStatus(statusEl, "error", state.lang === "it" ? "Impossibile salvare il profilo." : "Unable to save the profile.");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Contenuti — griglia sola lettura per il ruolo rivenditore (Fase 5)
 // ─────────────────────────────────────────────────────────────────────────
 function renderResellerSalesContent() {
@@ -18825,6 +18885,7 @@ const VIEW_ICONS = {
   marketing: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
   "order-requests": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>',
   "reseller-orders": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>',
+  "reseller-profile": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
   shipping: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
   ddt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/></svg>',
   accounting: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
@@ -18874,6 +18935,7 @@ const NAV_SECTIONS = [
     { view: "communications" },
     { view: "timesheet-me" },
     { view: "timesheet-office" },
+    { view: "reseller-profile" },
   ] },
 ];
 // Voce fuori dalle macroaree, ancorata in cima alla sidebar (vedi NAV_PINNED per l'analogo in fondo).
@@ -22426,6 +22488,18 @@ function renderAccountsManager() {
           <span>Referente / contatto</span>
           <input class="text-input" name="resellerContact" value="${escapeHtml(user.resellerContact || "")}" placeholder="Nome referente, telefono..." />
         </label>
+        <label class="field reseller-account-field ${user.role === "rivenditore" ? "" : "hidden"}" data-reseller-field>
+          <span>P.IVA</span>
+          <input class="text-input" name="resellerVatNumber" value="${escapeHtml(user.resellerVatNumber || "")}" placeholder="IT01234567890" />
+        </label>
+        <label class="field field-full reseller-account-field ${user.role === "rivenditore" ? "" : "hidden"}" data-reseller-field>
+          <span>Indirizzo fatturazione</span>
+          <input class="text-input" name="resellerBillingAddress" value="${escapeHtml(user.resellerBillingAddress || "")}" placeholder="Via, città, CAP" />
+        </label>
+        <label class="field field-full reseller-account-field ${user.role === "rivenditore" ? "" : "hidden"}" data-reseller-field>
+          <span>Indirizzo spedizione</span>
+          <input class="text-input" name="resellerShippingAddress" value="${escapeHtml(user.resellerShippingAddress || "")}" placeholder="Via, città, CAP (se diverso dalla fatturazione)" />
+        </label>
         <label class="checkline field-full">
           <input type="checkbox" name="mustChangePassword" ${user.mustChangePassword ? "checked" : ""} />
           <span>Richiedi cambio password al prossimo accesso</span>
@@ -24525,6 +24599,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "sales-content": renderSalesContent(); break;
       case "order-requests": renderResellerOrderRequests(); break;
       case "reseller-orders": renderOfficeResellerOrders(); break;
+      case "reseller-profile": renderResellerProfile(); break;
       case "warehouse": renderWarehouse(); break;
       case "installations": renderInstallations(); break;
       case "accounting": renderAccounting(); break;
@@ -27567,6 +27642,9 @@ async function createManagedAccount(event) {
         dailyCapacity: role === "crew" ? dailyCapacity : 0,
         resellerCompanyName: role === "rivenditore" ? String(form.get("resellerCompanyName") || "").trim() : "",
         resellerContact: role === "rivenditore" ? String(form.get("resellerContact") || "").trim() : "",
+        resellerVatNumber: role === "rivenditore" ? String(form.get("resellerVatNumber") || "").trim() : "",
+        resellerBillingAddress: role === "rivenditore" ? String(form.get("resellerBillingAddress") || "").trim() : "",
+        resellerShippingAddress: role === "rivenditore" ? String(form.get("resellerShippingAddress") || "").trim() : "",
         crewLogoDataUrl,
       }),
     });
@@ -27632,6 +27710,9 @@ async function updateManagedAccount(event) {
         crewLogoDataUrl,
         resellerCompanyName: nextRole === "rivenditore" ? String(data.get("resellerCompanyName") || "").trim() : "",
         resellerContact: nextRole === "rivenditore" ? String(data.get("resellerContact") || "").trim() : "",
+        resellerVatNumber: nextRole === "rivenditore" ? String(data.get("resellerVatNumber") || "").trim() : "",
+        resellerBillingAddress: nextRole === "rivenditore" ? String(data.get("resellerBillingAddress") || "").trim() : "",
+        resellerShippingAddress: nextRole === "rivenditore" ? String(data.get("resellerShippingAddress") || "").trim() : "",
       }),
     });
     if (previousAccount?.role === "crew" && previousAccount?.crewName && saved.role === "crew" && saved.crewName) {
