@@ -15,7 +15,8 @@ import {
   ACCESSORIES as RESELLER_ORDER_ACCESSORIES,
   getProductPrice as getResellerOrderProductPrice,
   IVA_RATE as RESELLER_ORDER_IVA_RATE,
-  applyProductPriceOverrides,
+  applyProductOverrides,
+  mergeCustomProducts,
 } from "./lib/preventivo-pricing.js";
 import { createWriteGuard } from "./lib/safe-write.js";
 import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
@@ -8953,10 +8954,12 @@ function computeResellerShippingCost(shippingMethod, netAmount) {
   return netAmount >= RESELLER_SHIPPING_FREE_THRESHOLD ? 0 : RESELLER_SHIPPING_COST;
 }
 
-// Override prezzo prato salvati da Impostazioni → Dati tecnici prodotti
-// (stessa tabella/categoria catalog_items usata per scheda tecnica + foto,
-// aggiunta il 21 lug 2026). Cache 2 min: interrogata ad ogni ordine
-// rivenditore, non serve una query per riga carrello.
+// Override prodotto (prezzo/nome/descrizione + eventuali modelli nuovi)
+// salvati da Impostazioni → Dati tecnici prodotti (stessa tabella/categoria
+// catalog_items usata per scheda tecnica + foto, aggiunta il 21 lug 2026).
+// Cache 2 min: interrogata ad ogni ordine rivenditore, non serve una query
+// per riga carrello. Tiene l'intero metadata per slug (non solo i prezzi) così
+// applyProductOverrides/mergeCustomProducts trovano anche name/desc/isCustomProduct.
 let _preventivoPriceOverridesCache = null; // { checkedAt, data }
 const PREVENTIVO_PRICE_OVERRIDES_CACHE_MS = 2 * 60 * 1000;
 async function getPreventivoPriceOverrides({ force = false } = {}) {
@@ -8975,8 +8978,8 @@ async function getPreventivoPriceOverrides({ force = false } = {}) {
       );
       for (const row of result.rows) {
         const meta = typeof row.metadata === "string" ? JSON.parse(row.metadata) : (row.metadata || {});
-        if (meta.priceCliente != null || meta.priceRivenditore != null) {
-          data[row.value] = { priceCliente: meta.priceCliente, priceRivenditore: meta.priceRivenditore };
+        if (Object.keys(meta).length) {
+          data[row.value] = meta;
         }
       }
     } catch (error) {
@@ -14589,7 +14592,7 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const rawItems = Array.isArray(body.items) ? body.items : [];
     const priceOverrides = await getPreventivoPriceOverrides();
-    const effectiveProducts = applyProductPriceOverrides(RESELLER_ORDER_PRODUCTS, priceOverrides);
+    const effectiveProducts = mergeCustomProducts(applyProductOverrides(RESELLER_ORDER_PRODUCTS, priceOverrides), priceOverrides);
     const resolvedItems = rawItems.map((item) => resolveResellerOrderItem(item, effectiveProducts)).filter(Boolean);
     if (!resolvedItems.length) {
       return sendJson(res, 400, { error: "empty_cart" });

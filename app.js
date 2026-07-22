@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260722-editable-turf-prices-settings";
+} from "./lib/order-money.js?v=20260722-new-turf-models-rename";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260722-editable-turf-prices-settings";
+import { regionForCity } from "./lib/geo.js?v=20260722-new-turf-models-rename";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260722-editable-turf-prices-settings";
+} from "./lib/profit-split.js?v=20260722-new-turf-models-rename";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -34,27 +34,26 @@ import {
   getMaterialBreakdown as getMaterialBreakdownPure,
   computeQuote as computeQuotePure,
   getProductPrice as getProductPricePure,
-  applyProductPriceOverrides as applyProductPriceOverridesPure,
+  applyProductOverrides as applyProductOverridesPure,
+  mergeCustomProducts as mergeCustomProductsPure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260722-editable-turf-prices-settings";
+} from "./lib/preventivo-pricing.js?v=20260722-new-turf-models-rename";
 
-// Prezzi prato editabili da Impostazioni → Dati tecnici prodotti: questa è la
-// lista "effettiva" (default + override salvati in state.preventivoCatalog)
-// da usare ovunque il prezzo conta davvero — mai il PREVENTIVO_PRODUCTS
-// statico direttamente per calcoli/visualizzazioni di prezzo.
+// Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
+// prodotti: questa è la lista "effettiva" (default + override + modelli
+// custom salvati in state.preventivoCatalog) da usare ovunque il prezzo
+// conta davvero — mai il PREVENTIVO_PRODUCTS statico direttamente.
 function getEffectivePreventivoProducts() {
   const overrides = {};
   Object.entries(state.preventivoCatalog || {}).forEach(([slug, saved]) => {
-    if (saved && (saved.priceCliente != null || saved.priceRivenditore != null)) {
-      overrides[slug] = { priceCliente: saved.priceCliente, priceRivenditore: saved.priceRivenditore };
-    }
+    if (saved) overrides[slug] = saved;
   });
-  return applyProductPriceOverridesPure(PREVENTIVO_PRODUCTS, overrides);
+  return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260722-editable-turf-prices-settings";
+const APP_SHELL_VERSION = "20260722-new-turf-models-rename";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -30436,7 +30435,7 @@ const PREVENTIVO_PRODUCT_DEFAULTS = Object.freeze([
   { slug: "mogano-50mm",  label: "Mogano 50 mm" },
 ]);
 
-const PREVENTIVO_PRODUCT_FIELDS = ["code", "struttura", "densita", "dtex", "drenaggio", "peso", "note", "priceCliente", "priceRivenditore"];
+const PREVENTIVO_PRODUCT_FIELDS = ["name", "desc", "code", "struttura", "densita", "dtex", "drenaggio", "peso", "note", "priceCliente", "priceRivenditore"];
 
 async function loadPreventivoCatalog() {
   try {
@@ -30460,15 +30459,26 @@ async function loadPreventivoCatalog() {
   populatePreventivoProductSelect();
 }
 
+// Modelli custom (creati da zero da Impostazioni, non tra i 15 di default) —
+// riconosciuti in state.preventivoCatalog dal flag isCustomProduct.
+function getCustomPreventivoProducts() {
+  return Object.entries(state.preventivoCatalog || {})
+    .filter(([, saved]) => saved?.isCustomProduct)
+    .map(([slug, saved]) => ({ slug, label: String(saved.name || slug).trim() }))
+    .sort((a, b) => a.label.localeCompare(b.label, "it"));
+}
+
 function populatePreventivoProductSelect() {
   const sel = ui.preventivoProductSelect;
   if (!sel) return;
+  const selectable = [...PREVENTIVO_PRODUCT_DEFAULTS, ...getCustomPreventivoProducts()];
   const current = sel.value || PREVENTIVO_PRODUCT_DEFAULTS[2].slug; // default su Faggio 25mm
-  sel.innerHTML = PREVENTIVO_PRODUCT_DEFAULTS.map((p) => {
+  sel.innerHTML = selectable.map((p) => {
     const saved = state.preventivoCatalog?.[p.slug];
     const marker = saved && saved.code ? " ✓" : "";
-    return `<option value="${p.slug}">${p.label}${marker}</option>`;
-  }).join("");
+    const label = String(saved?.name || p.label).trim(); // nome effettivo se rinominato
+    return `<option value="${escapeAttr(p.slug)}">${escapeHtml(label)}${marker}</option>`;
+  }).join("") + `<option value="__new__">${state.lang === "it" ? "+ Nuovo modello…" : "+ New model…"}</option>`;
   sel.value = current;
   fillPreventivoProductForm();
   updatePreventivoProductSavedList();
@@ -30486,20 +30496,27 @@ function fillPreventivoProductForm() {
   const sel = ui.preventivoProductSelect;
   if (!form || !sel) return;
   const slug = sel.value;
-  const saved = state.preventivoCatalog?.[slug] || {};
+  const isNew = slug === "__new__";
+  const saved = isNew ? {} : (state.preventivoCatalog?.[slug] || {});
   PREVENTIVO_PRODUCT_FIELDS.forEach((k) => {
     const field = form.elements?.[k];
-    if (field) field.value = String(saved[k] || "");
+    if (field) field.value = isNew ? "" : String(saved[k] || "");
   });
-  // Placeholder prezzo = listino di default statico, così l'ufficio vede cosa
-  // sta sovrascrivendo — vuoto = usa quel default.
-  const defaultProduct = PREVENTIVO_PRODUCTS.find((p) => p.slug === slug);
-  if (form.elements?.priceCliente) form.elements.priceCliente.placeholder = defaultProduct ? String(defaultProduct.priceCliente) : "";
-  if (form.elements?.priceRivenditore) form.elements.priceRivenditore.placeholder = defaultProduct ? String(defaultProduct.priceRivenditore) : "";
+  // Placeholder prezzo/nome = listino di default statico, così l'ufficio vede
+  // cosa sta sovrascrivendo — vuoto = usa quel default. Un modello nuovo o
+  // custom non ha un default a cui appoggiarsi: prezzi obbligatori.
+  const defaultProduct = isNew ? null : PREVENTIVO_PRODUCTS.find((p) => p.slug === slug);
+  const requiredHint = state.lang === "it" ? "obbligatorio" : "required";
+  if (form.elements?.name) form.elements.name.placeholder = isNew ? (state.lang === "it" ? "Es. Prato Extra" : "E.g. Extra Turf") : (defaultProduct?.name || "");
+  if (form.elements?.priceCliente) form.elements.priceCliente.placeholder = defaultProduct ? String(defaultProduct.priceCliente) : requiredHint;
+  if (form.elements?.priceRivenditore) form.elements.priceRivenditore.placeholder = defaultProduct ? String(defaultProduct.priceRivenditore) : requiredHint;
+  if (isNew && form.elements?.name) form.elements.name.focus();
   // Immagine prodotto: ripristina dataUrl o cerca file in product-images/<slug>.jpg
   const dataUrl = String(saved.imageDataUrl || "");
   if (ui.productImageDataUrl) ui.productImageDataUrl.value = dataUrl;
-  if (dataUrl) {
+  if (isNew) {
+    renderProductImagePreview("");
+  } else if (dataUrl) {
     renderProductImagePreview(dataUrl);
   } else {
     // Prova a precaricare il file filesystem se esiste (fallback per i 3 modelli pre-popolati)
@@ -30516,10 +30533,10 @@ async function savePreventivoProduct(event) {
   const form = ui.preventivoProductForm;
   const sel = ui.preventivoProductSelect;
   if (!form || !sel) return;
-  const slug = sel.value;
-  if (!slug) return;
-  const model = PREVENTIVO_PRODUCT_DEFAULTS.find((p) => p.slug === slug);
-  const label = model?.label || slug;
+  const currentSlug = sel.value;
+  if (!currentSlug) return;
+  const isNew = currentSlug === "__new__";
+  const isCustomExisting = !isNew && Boolean(state.preventivoCatalog?.[currentSlug]?.isCustomProduct);
   const formData = new FormData(form);
   const metadata = {};
   PREVENTIVO_PRODUCT_FIELDS.forEach((k) => {
@@ -30528,17 +30545,56 @@ async function savePreventivoProduct(event) {
   });
   const imageDataUrl = String(formData.get("imageDataUrl") || "").trim();
   if (imageDataUrl) metadata.imageDataUrl = imageDataUrl;
+
+  let targetSlug = currentSlug;
+  let label;
+  // Un modello nuovo (o già custom) non ha un listino di default a cui
+  // appoggiarsi — nome ed entrambi i prezzi diventano obbligatori, altrimenti
+  // finirebbe ordinabile a prezzo rotto (stessa regola già applicata
+  // server-side in mergeCustomProducts).
+  if (isNew || isCustomExisting) {
+    const name = String(metadata.name || "").trim();
+    const priceCliente = Number(metadata.priceCliente);
+    const priceRivenditore = Number(metadata.priceRivenditore);
+    if (!name) {
+      setStatus(ui.preventivoProductStatus, "error", state.lang === "it" ? "Il nome del modello è obbligatorio." : "Model name is required.");
+      return;
+    }
+    if (!Number.isFinite(priceCliente) || priceCliente <= 0 || !Number.isFinite(priceRivenditore) || priceRivenditore <= 0) {
+      setStatus(ui.preventivoProductStatus, "error", state.lang === "it" ? "Un modello senza listino di default richiede entrambi i prezzi." : "A model with no default listing needs both prices.");
+      return;
+    }
+    metadata.isCustomProduct = true;
+    if (isNew) {
+      targetSlug = slugifyModelName(name);
+      if (!targetSlug) {
+        setStatus(ui.preventivoProductStatus, "error", state.lang === "it" ? "Nome non valido." : "Invalid name.");
+        return;
+      }
+      const collides = PREVENTIVO_PRODUCT_DEFAULTS.some((p) => p.slug === targetSlug) || Boolean(state.preventivoCatalog?.[targetSlug]);
+      if (collides) {
+        setStatus(ui.preventivoProductStatus, "error", state.lang === "it" ? "Esiste già un modello con questo nome." : "A model with this name already exists.");
+        return;
+      }
+    }
+    label = name;
+  } else {
+    const model = PREVENTIVO_PRODUCT_DEFAULTS.find((p) => p.slug === targetSlug);
+    label = metadata.name || model?.label || targetSlug;
+  }
+
   setStatus(ui.preventivoProductStatus, "success", state.lang === "it" ? "Salvataggio in corso…" : "Saving…");
   try {
     await apiFetch("/api/catalog/preventivo_products", {
       method: "POST",
-      body: JSON.stringify({ value: slug, label, position: 0, metadata }),
+      body: JSON.stringify({ value: targetSlug, label, position: 0, metadata }),
     });
-    state.preventivoCatalog[slug] = { label, ...metadata };
+    state.preventivoCatalog[targetSlug] = { label, ...metadata };
     setStatus(ui.preventivoProductStatus, "success", state.lang === "it" ? `✓ ${label} salvato.` : `✓ ${label} saved.`);
     showToast(state.lang === "it" ? `${label} aggiornato` : `${label} updated`, "success");
     populatePreventivoProductSelect();
-    sel.value = slug;
+    sel.value = targetSlug;
+    fillPreventivoProductForm();
   } catch (err) {
     setStatus(ui.preventivoProductStatus, "error", state.lang === "it" ? "Salvataggio non riuscito." : "Save failed.");
   }

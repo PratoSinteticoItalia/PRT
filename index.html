@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260722-editable-turf-prices-settings" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260722-editable-turf-prices-settings" />
+    <link rel="preload" href="./styles.css?v=20260722-new-turf-models-rename" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260722-new-turf-models-rename" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -2137,11 +2137,19 @@
                     <h3>Dati tecnici prodotti</h3>
                   </div>
                 </div>
-                <p class="panel-note">Configura per ogni modello i dati che appariranno nella scheda tecnica del preventivo PDF (pagina 2). Prezzo vuoto = resta il listino di default (mostrato come suggerimento nel campo).</p>
+                <p class="panel-note">Configura per ogni modello i dati che appariranno nella scheda tecnica del preventivo PDF (pagina 2). Prezzo vuoto = resta il listino di default (mostrato come suggerimento nel campo). Scegli "+ Nuovo modello…" per crearne uno da zero — in quel caso nome ed entrambi i prezzi sono obbligatori.</p>
                 <form id="preventivo-product-form" class="inline-form-grid">
                   <label class="field field-full">
                     <span>Modello</span>
                     <select id="preventivo-product-select" class="text-input" name="slug"></select>
+                  </label>
+                  <label class="field">
+                    <span>Nome prodotto</span>
+                    <input class="text-input" name="name" type="text" placeholder="Es. Cedro 30 mm" />
+                  </label>
+                  <label class="field">
+                    <span>Descrizione breve</span>
+                    <input class="text-input" name="desc" type="text" placeholder="Es. Versatile" />
                   </label>
                   <label class="field">
                     <span>Prezzo cliente (€/mq)</span>
@@ -2621,7 +2629,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260722-editable-turf-prices-settings" defer></script>
-    <script src="./app.js?v=20260722-editable-turf-prices-settings" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260722-new-turf-models-rename" defer></script>
+    <script src="./app.js?v=20260722-new-turf-models-rename" type="module"></script>
   </body>
 </html>

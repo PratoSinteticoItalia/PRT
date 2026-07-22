@@ -9,7 +9,8 @@ import {
   getMaterialBreakdown,
   applyIva,
   getProductPrice,
-  applyProductPriceOverrides,
+  applyProductOverrides,
+  mergeCustomProducts,
   PRODUCTS,
 } from "../lib/preventivo-pricing.js";
 
@@ -135,8 +136,8 @@ test("Rivenditore: usa priceRivenditore", () => {
   assert.equal(getProductPrice(PRODUCTS.find((p) => p.id === "cedro"), "cliente"), 13.9);
 });
 
-test("applyProductPriceOverrides: override valido sostituisce entrambi i prezzi", () => {
-  const out = applyProductPriceOverrides(PRODUCTS, { "cedro-30mm": { priceCliente: 15, priceRivenditore: 12 } });
+test("applyProductOverrides: override valido sostituisce entrambi i prezzi", () => {
+  const out = applyProductOverrides(PRODUCTS, { "cedro-30mm": { priceCliente: 15, priceRivenditore: 12 } });
   const cedro = out.find((p) => p.id === "cedro");
   assert.equal(cedro.priceCliente, 15);
   assert.equal(cedro.priceRivenditore, 12);
@@ -145,22 +146,60 @@ test("applyProductPriceOverrides: override valido sostituisce entrambi i prezzi"
   assert.equal(rovere.priceCliente, PRODUCTS.find((p) => p.id === "rovere").priceCliente);
 });
 
-test("applyProductPriceOverrides: override parziale tocca solo il campo presente", () => {
-  const out = applyProductPriceOverrides(PRODUCTS, { "cedro-30mm": { priceRivenditore: 12 } });
+test("applyProductOverrides: override parziale tocca solo il campo presente", () => {
+  const out = applyProductOverrides(PRODUCTS, { "cedro-30mm": { priceRivenditore: 12 } });
   const cedro = out.find((p) => p.id === "cedro");
   assert.equal(cedro.priceRivenditore, 12);
   assert.equal(cedro.priceCliente, PRODUCTS.find((p) => p.id === "cedro").priceCliente);
 });
 
-test("applyProductPriceOverrides: override non numerico o ≤0 viene ignorato", () => {
-  const out = applyProductPriceOverrides(PRODUCTS, { "cedro-30mm": { priceCliente: "abc", priceRivenditore: -5 } });
+test("applyProductOverrides: override non numerico o ≤0 viene ignorato", () => {
+  const out = applyProductOverrides(PRODUCTS, { "cedro-30mm": { priceCliente: "abc", priceRivenditore: -5 } });
   const cedro = out.find((p) => p.id === "cedro");
   const original = PRODUCTS.find((p) => p.id === "cedro");
   assert.equal(cedro.priceCliente, original.priceCliente);
   assert.equal(cedro.priceRivenditore, original.priceRivenditore);
 });
 
-test("applyProductPriceOverrides: nessun override → array equivalente al default", () => {
-  const out = applyProductPriceOverrides(PRODUCTS, {});
+test("applyProductOverrides: nessun override → array equivalente al default", () => {
+  const out = applyProductOverrides(PRODUCTS, {});
   assert.deepEqual(out, PRODUCTS);
+});
+
+test("applyProductOverrides: rinomina nome/descrizione, vuoto resta il default", () => {
+  const out = applyProductOverrides(PRODUCTS, { "cedro-30mm": { name: "Cedro Deluxe", desc: "" } });
+  const cedro = out.find((p) => p.id === "cedro");
+  const original = PRODUCTS.find((p) => p.id === "cedro");
+  assert.equal(cedro.name, "Cedro Deluxe");
+  assert.equal(cedro.desc, original.desc); // desc vuoto ignorato, resta il default
+});
+
+test("mergeCustomProducts: modello nuovo valido viene aggiunto", () => {
+  const out = mergeCustomProducts(PRODUCTS, {
+    "prato-extra": { isCustomProduct: true, name: "Prato Extra", desc: "Edizione limitata", priceCliente: 20, priceRivenditore: 15 },
+  });
+  assert.equal(out.length, PRODUCTS.length + 1);
+  const extra = out.find((p) => p.slug === "prato-extra");
+  assert.deepEqual(extra, { id: "prato-extra", slug: "prato-extra", name: "Prato Extra", desc: "Edizione limitata", priceCliente: 20, priceRivenditore: 15 });
+});
+
+test("mergeCustomProducts: modello incompleto (manca un prezzo) viene scartato", () => {
+  const out = mergeCustomProducts(PRODUCTS, {
+    "prato-extra": { isCustomProduct: true, name: "Prato Extra", priceCliente: 20 },
+  });
+  assert.equal(out.length, PRODUCTS.length);
+});
+
+test("mergeCustomProducts: slug che collide con un prodotto esistente non viene aggiunto", () => {
+  const out = mergeCustomProducts(PRODUCTS, {
+    "cedro-30mm": { isCustomProduct: true, name: "Cedro Fake", priceCliente: 20, priceRivenditore: 15 },
+  });
+  assert.equal(out.length, PRODUCTS.length);
+});
+
+test("mergeCustomProducts: entry senza isCustomProduct viene ignorata", () => {
+  const out = mergeCustomProducts(PRODUCTS, {
+    "prato-extra": { name: "Prato Extra", priceCliente: 20, priceRivenditore: 15 },
+  });
+  assert.equal(out.length, PRODUCTS.length);
 });
