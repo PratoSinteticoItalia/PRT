@@ -15,6 +15,7 @@ import {
   ACCESSORIES as RESELLER_ORDER_ACCESSORIES,
   getProductPrice as getResellerOrderProductPrice,
   IVA_RATE as RESELLER_ORDER_IVA_RATE,
+  applyProductPriceOverrides,
 } from "./lib/preventivo-pricing.js";
 import { createWriteGuard } from "./lib/safe-write.js";
 import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
@@ -8952,12 +8953,46 @@ function computeResellerShippingCost(shippingMethod, netAmount) {
   return netAmount >= RESELLER_SHIPPING_FREE_THRESHOLD ? 0 : RESELLER_SHIPPING_COST;
 }
 
-function resolveResellerOrderItem(rawItem = {}) {
+// Override prezzo prato salvati da Impostazioni → Dati tecnici prodotti
+// (stessa tabella/categoria catalog_items usata per scheda tecnica + foto,
+// aggiunta il 21 lug 2026). Cache 2 min: interrogata ad ogni ordine
+// rivenditore, non serve una query per riga carrello.
+let _preventivoPriceOverridesCache = null; // { checkedAt, data }
+const PREVENTIVO_PRICE_OVERRIDES_CACHE_MS = 2 * 60 * 1000;
+async function getPreventivoPriceOverrides({ force = false } = {}) {
+  if (!force && _preventivoPriceOverridesCache
+    && Date.now() - _preventivoPriceOverridesCache.checkedAt < PREVENTIVO_PRICE_OVERRIDES_CACHE_MS) {
+    return _preventivoPriceOverridesCache.data;
+  }
+  const data = {};
+  if (USE_POSTGRES) {
+    try {
+      await ensureRelationalSchema();
+      const pool = await getPgPool();
+      const result = await pool.query(
+        "SELECT value, metadata FROM catalog_items WHERE category=$1 AND active=TRUE",
+        ["preventivo_products"],
+      );
+      for (const row of result.rows) {
+        const meta = typeof row.metadata === "string" ? JSON.parse(row.metadata) : (row.metadata || {});
+        if (meta.priceCliente != null || meta.priceRivenditore != null) {
+          data[row.value] = { priceCliente: meta.priceCliente, priceRivenditore: meta.priceRivenditore };
+        }
+      }
+    } catch (error) {
+      console.error("preventivo_price_overrides_load_failed", error);
+    }
+  }
+  _preventivoPriceOverridesCache = { checkedAt: Date.now(), data };
+  return data;
+}
+
+function resolveResellerOrderItem(rawItem = {}, products = RESELLER_ORDER_PRODUCTS) {
   const type = rawItem.type === "accessory" ? "accessory" : "turf";
   const refId = String(rawItem.refId || "").trim();
   if (!refId) return null;
   if (type === "turf") {
-    const product = RESELLER_ORDER_PRODUCTS.find((p) => p.id === refId);
+    const product = products.find((p) => p.id === refId);
     if (!product) return null;
     const rollLength = Number(rawItem.rollLength);
     const rollCount = Math.round(Number(rawItem.rollCount) || 0);
@@ -14553,7 +14588,9 @@ async function handleApi(req, res, url) {
     if (currentUser.role !== "rivenditore") return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
     const rawItems = Array.isArray(body.items) ? body.items : [];
-    const resolvedItems = rawItems.map(resolveResellerOrderItem).filter(Boolean);
+    const priceOverrides = await getPreventivoPriceOverrides();
+    const effectiveProducts = applyProductPriceOverrides(RESELLER_ORDER_PRODUCTS, priceOverrides);
+    const resolvedItems = rawItems.map((item) => resolveResellerOrderItem(item, effectiveProducts)).filter(Boolean);
     if (!resolvedItems.length) {
       return sendJson(res, 400, { error: "empty_cart" });
     }

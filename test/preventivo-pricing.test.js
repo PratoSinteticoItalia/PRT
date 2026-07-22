@@ -9,6 +9,7 @@ import {
   getMaterialBreakdown,
   applyIva,
   getProductPrice,
+  applyProductPriceOverrides,
   PRODUCTS,
 } from "../lib/preventivo-pricing.js";
 
@@ -132,4 +133,34 @@ test("IVA per-componente: materiali IVA off non prende +22%", () => {
 test("Rivenditore: usa priceRivenditore", () => {
   assert.equal(getProductPrice(PRODUCTS.find((p) => p.id === "cedro"), "rivenditore"), 10.9);
   assert.equal(getProductPrice(PRODUCTS.find((p) => p.id === "cedro"), "cliente"), 13.9);
+});
+
+test("applyProductPriceOverrides: override valido sostituisce entrambi i prezzi", () => {
+  const out = applyProductPriceOverrides(PRODUCTS, { "cedro-30mm": { priceCliente: 15, priceRivenditore: 12 } });
+  const cedro = out.find((p) => p.id === "cedro");
+  assert.equal(cedro.priceCliente, 15);
+  assert.equal(cedro.priceRivenditore, 12);
+  // altri prodotti invariati
+  const rovere = out.find((p) => p.id === "rovere");
+  assert.equal(rovere.priceCliente, PRODUCTS.find((p) => p.id === "rovere").priceCliente);
+});
+
+test("applyProductPriceOverrides: override parziale tocca solo il campo presente", () => {
+  const out = applyProductPriceOverrides(PRODUCTS, { "cedro-30mm": { priceRivenditore: 12 } });
+  const cedro = out.find((p) => p.id === "cedro");
+  assert.equal(cedro.priceRivenditore, 12);
+  assert.equal(cedro.priceCliente, PRODUCTS.find((p) => p.id === "cedro").priceCliente);
+});
+
+test("applyProductPriceOverrides: override non numerico o ≤0 viene ignorato", () => {
+  const out = applyProductPriceOverrides(PRODUCTS, { "cedro-30mm": { priceCliente: "abc", priceRivenditore: -5 } });
+  const cedro = out.find((p) => p.id === "cedro");
+  const original = PRODUCTS.find((p) => p.id === "cedro");
+  assert.equal(cedro.priceCliente, original.priceCliente);
+  assert.equal(cedro.priceRivenditore, original.priceRivenditore);
+});
+
+test("applyProductPriceOverrides: nessun override → array equivalente al default", () => {
+  const out = applyProductPriceOverrides(PRODUCTS, {});
+  assert.deepEqual(out, PRODUCTS);
 });

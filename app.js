@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260722-reseller-directory-search";
+} from "./lib/order-money.js?v=20260722-editable-turf-prices-settings";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260722-reseller-directory-search";
+import { regionForCity } from "./lib/geo.js?v=20260722-editable-turf-prices-settings";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260722-reseller-directory-search";
+} from "./lib/profit-split.js?v=20260722-editable-turf-prices-settings";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -34,12 +34,27 @@ import {
   getMaterialBreakdown as getMaterialBreakdownPure,
   computeQuote as computeQuotePure,
   getProductPrice as getProductPricePure,
+  applyProductPriceOverrides as applyProductPriceOverridesPure,
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260722-reseller-directory-search";
+} from "./lib/preventivo-pricing.js?v=20260722-editable-turf-prices-settings";
 
-const APP_SHELL_VERSION = "20260722-reseller-directory-search";
+// Prezzi prato editabili da Impostazioni → Dati tecnici prodotti: questa è la
+// lista "effettiva" (default + override salvati in state.preventivoCatalog)
+// da usare ovunque il prezzo conta davvero — mai il PREVENTIVO_PRODUCTS
+// statico direttamente per calcoli/visualizzazioni di prezzo.
+function getEffectivePreventivoProducts() {
+  const overrides = {};
+  Object.entries(state.preventivoCatalog || {}).forEach(([slug, saved]) => {
+    if (saved && (saved.priceCliente != null || saved.priceRivenditore != null)) {
+      overrides[slug] = { priceCliente: saved.priceCliente, priceRivenditore: saved.priceRivenditore };
+    }
+  });
+  return applyProductPriceOverridesPure(PREVENTIVO_PRODUCTS, overrides);
+}
+
+const APP_SHELL_VERSION = "20260722-editable-turf-prices-settings";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11485,7 +11500,7 @@ function resolveResellerCartLineDisplay(line) {
       detailLabel: `${formatInventoryNumber(quantity)} ${accessory.unit}`,
     };
   }
-  const product = PREVENTIVO_PRODUCTS.find((p) => p.id === line.refId);
+  const product = getEffectivePreventivoProducts().find((p) => p.id === line.refId);
   if (!product) return null;
   const unitPrice = getProductPricePure(product, "rivenditore");
   const rollLength = toNumber(line.rollLength);
@@ -11556,7 +11571,7 @@ function renderResellerOrderCatalogStepHtml() {
   // Foto prodotto: quella caricata da ufficio (Impostazioni → Catalogo → Dati
   // tecnici prodotti) ha priorità; fallback sul file statico ./product-images/
   // <slug>.jpg per i pochi modelli che lo hanno già.
-  const productCards = PREVENTIVO_PRODUCTS.map((p) => {
+  const productCards = getEffectivePreventivoProducts().map((p) => {
     const uploadedPhoto = String(state.preventivoCatalog?.[p.slug]?.imageDataUrl || "").trim();
     const photoSrc = uploadedPhoto || `./product-images/${p.slug}.jpg`;
     return `
@@ -30421,7 +30436,7 @@ const PREVENTIVO_PRODUCT_DEFAULTS = Object.freeze([
   { slug: "mogano-50mm",  label: "Mogano 50 mm" },
 ]);
 
-const PREVENTIVO_PRODUCT_FIELDS = ["code", "struttura", "densita", "dtex", "drenaggio", "peso", "note"];
+const PREVENTIVO_PRODUCT_FIELDS = ["code", "struttura", "densita", "dtex", "drenaggio", "peso", "note", "priceCliente", "priceRivenditore"];
 
 async function loadPreventivoCatalog() {
   try {
@@ -30476,6 +30491,11 @@ function fillPreventivoProductForm() {
     const field = form.elements?.[k];
     if (field) field.value = String(saved[k] || "");
   });
+  // Placeholder prezzo = listino di default statico, così l'ufficio vede cosa
+  // sta sovrascrivendo — vuoto = usa quel default.
+  const defaultProduct = PREVENTIVO_PRODUCTS.find((p) => p.slug === slug);
+  if (form.elements?.priceCliente) form.elements.priceCliente.placeholder = defaultProduct ? String(defaultProduct.priceCliente) : "";
+  if (form.elements?.priceRivenditore) form.elements.priceRivenditore.placeholder = defaultProduct ? String(defaultProduct.priceRivenditore) : "";
   // Immagine prodotto: ripristina dataUrl o cerca file in product-images/<slug>.jpg
   const dataUrl = String(saved.imageDataUrl || "");
   if (ui.productImageDataUrl) ui.productImageDataUrl.value = dataUrl;
@@ -30730,7 +30750,7 @@ function ensurePreventivoForm() {
 }
 
 function nfProductBySlug(slug) {
-  return PREVENTIVO_PRODUCTS.find((p) => p.slug === slug) || null;
+  return getEffectivePreventivoProducts().find((p) => p.slug === slug) || null;
 }
 
 // Un'opzione ha un prodotto valido? (catalogo con prezzo o fuori-catalogo con prezzo)
@@ -31065,7 +31085,7 @@ function renderNfOptions() {
   if (!ui.nfOptions) return;
   const f = ensurePreventivoForm();
   const productOptionsHtml = (selSlug) =>
-    `<option value="">— nessuno —</option>` + PREVENTIVO_PRODUCTS.map((p) => {
+    `<option value="">— nessuno —</option>` + getEffectivePreventivoProducts().map((p) => {
       const price = getProductPricePure(p, f.customerType);
       return `<option value="${p.slug}" ${p.slug === selSlug ? "selected" : ""}>${escapeHtml(p.name)} — ${formatCurrency(price)}/m²</option>`;
     }).join("") + `<option value="__custom__" ${selSlug === "__custom__" ? "selected" : ""}>✏️ Fuori catalogo…</option>`;
