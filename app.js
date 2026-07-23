@@ -9515,10 +9515,15 @@ function getUnifiedOrderStage(order) {
     };
   }
   if (["in-preparazione", "da-preparare", "bloccato"].includes(warehouseStatus) || isRoutedToWarehouse(order)) {
+    const workStageLabels = {
+      "in-preparazione": state.lang === "it" ? "In preparazione" : "Preparing",
+      "da-preparare": state.lang === "it" ? "Da preparare" : "To prepare",
+      bloccato: state.lang === "it" ? "Blocco" : "Blocked",
+    };
     return {
       key: "warehouse-work",
-      label: state.lang === "it" ? "Da preparare" : "To prepare",
-      tone: warehouseStatus === "bloccato" ? "red" : "amber",
+      label: workStageLabels[warehouseStatus] || (state.lang === "it" ? "Da preparare" : "To prepare"),
+      tone: warehouseStatus === "bloccato" ? "red" : warehouseStatus === "in-preparazione" ? "blue" : "amber",
     };
   }
   if (officeStatus === "bozza" || !isRoutedToWarehouse(order)) {
