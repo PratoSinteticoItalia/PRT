@@ -1325,21 +1325,22 @@ function dbRowToOrder(row) {
     accounting: row.accounting || {},
     operations: (() => {
       const stored = row.operations_json || {};
-      // Se operations_json ha già sqm > 0, usalo direttamente
-      if (stored.sqm > 0) return stored;
-      // Altrimenti deriva sqm/product dai lineItems via normalizeOperations,
-      // ma preserva warehouse/installation/status già salvati in stored
-      const base = {
+      // Deriva sqm/product dai lineItems quando mancano, ma passa sempre dalla
+      // normalizzazione per applicare anche la riconciliazione Shopify fulfilled.
+      return normalizeOperations({
         id: row.id,
+        source: row.source || "",
+        shopifyNumericId: row.shopify_numeric_id || "",
+        shopifyGraphqlId: row.shopify_graphql_id || "",
+        fulfillmentStatus: row.fulfillment_status || "unfulfilled",
         lineItems: row.line_items || [],
         lineDetails: row.line_details || [],
         operations: {
           ...stored,            // preserva warehouse, installation, status, note, etc.
-          sqm: 0,              // forza derivazione da lineItems (non usare il cached 0)
+          sqm: stored.sqm > 0 ? stored.sqm : 0,
           product: stored.product || "", // lascia che normalizeOperations usi defaults se vuoto
         },
-      };
-      return normalizeOperations(base);
+      });
     })(),
   };
 }
@@ -9404,6 +9405,8 @@ function buildDefaultOperations(order, linkedJob = null) {
       carrierPassed: false,
       readyToShip: false,
       shipped: false,
+      shippedAt: "",
+      shopifyFulfilled: false,
       pickupLabel: "",
       vanLoadLabel: "",
       warehouseNote: "",
@@ -9438,10 +9441,21 @@ function buildDefaultOperations(order, linkedJob = null) {
   };
 }
 
+function isShopifyFulfillmentComplete(order = {}) {
+  const source = String(order.source || "").toLowerCase();
+  const hasShopifyReference = Boolean(
+    source.startsWith("shopify")
+    || String(order.shopifyNumericId || order.shopify_numeric_id || "").trim()
+    || String(order.shopifyGraphqlId || order.shopify_graphql_id || "").trim()
+  );
+  if (!hasShopifyReference) return false;
+  return String(order.fulfillmentStatus || order.fulfillment_status || "").trim().toLowerCase() === "fulfilled";
+}
+
 // Riconciliazione difensiva degli stati operativi: impedisce combinazioni
 // impossibili che confondono le viste (es. "da preparare" ma flag spedito/pronto).
 // NON tocca la semantica "concluso" — solo coerenza interna.
-function reconcileOperationsConsistency(ops) {
+function reconcileOperationsConsistency(ops, order = {}) {
   if (!ops || typeof ops !== "object") return ops;
   const wh = ops.warehouse;
   if (wh && typeof wh === "object") {
@@ -9463,6 +9477,15 @@ function reconcileOperationsConsistency(ops) {
     }
     // Una data preparazione nel passato + status iniziale resta valida (è la data
     // pianificata); non la tocchiamo. Coerenza modalità↔stato lasciata ai flussi.
+    const shopifyFulfilled = isShopifyFulfillmentComplete(order);
+    wh.shopifyFulfilled = shopifyFulfilled;
+    if (shopifyFulfilled) {
+      // Shopify è fonte esterna di evasione: allineiamo lo stato mostrato in
+      // Inbox/Spedizioni, ma non marchiamo `shipped` per non scaricare inventario
+      // senza un segnale operativo locale esplicito.
+      wh.status = "ritirato";
+      wh.readyToShip = true;
+    }
   }
   return ops;
 }
@@ -9489,6 +9512,8 @@ function normalizeOperations(order, linkedJob = null) {
       carrierPassed: Boolean(current.warehouse?.carrierPassed ?? defaults.warehouse.carrierPassed),
       readyToShip: Boolean(current.warehouse?.readyToShip ?? defaults.warehouse.readyToShip),
       shipped: Boolean(current.warehouse?.shipped ?? defaults.warehouse.shipped),
+      shippedAt: current.warehouse?.shippedAt || defaults.warehouse.shippedAt,
+      shopifyFulfilled: Boolean(current.warehouse?.shopifyFulfilled ?? defaults.warehouse.shopifyFulfilled),
       pickupLabel: current.warehouse?.pickupLabel || defaults.warehouse.pickupLabel,
       vanLoadLabel: current.warehouse?.vanLoadLabel || defaults.warehouse.vanLoadLabel,
       warehouseNote: current.warehouse?.warehouseNote || defaults.warehouse.warehouseNote,
@@ -9554,7 +9579,7 @@ function normalizeOperations(order, linkedJob = null) {
       id: String(current.reseller?.id || "").trim(),
       name: String(current.reseller?.name || "").trim(),
     },
-  });
+  }, order);
 }
 
 function reconcileStoreData(store) {
@@ -14849,7 +14874,12 @@ async function handleApi(req, res, url) {
         if (shopifyId) {
           const idx = store.orders.findIndex((o) => getNormalizedShopifyNumericId(o) === shopifyId || o.id === shopifyId);
           if (idx >= 0) {
-            store.orders[idx] = { ...store.orders[idx], financialStatus: "paid" };
+            const nextOrder = { ...store.orders[idx], financialStatus: "paid" };
+            nextOrder.operations = normalizeOperations(
+              nextOrder,
+              store.jobs.find((job) => job.sourceOrderId === nextOrder.id) || null,
+            );
+            store.orders[idx] = nextOrder;
             await writeJson(STORE_PATH, store);
             upsertOrderToDb(store.orders[idx], "shopify-webhook").catch(() => {});
           }
@@ -14861,7 +14891,12 @@ async function handleApi(req, res, url) {
         if (shopifyId) {
           const idx = store.orders.findIndex((o) => getNormalizedShopifyNumericId(o) === shopifyId || o.id === shopifyId);
           if (idx >= 0) {
-            store.orders[idx] = { ...store.orders[idx], fulfillmentStatus: "cancelled", financialStatus: "voided" };
+            const nextOrder = { ...store.orders[idx], fulfillmentStatus: "cancelled", financialStatus: "voided" };
+            nextOrder.operations = normalizeOperations(
+              nextOrder,
+              store.jobs.find((job) => job.sourceOrderId === nextOrder.id) || null,
+            );
+            store.orders[idx] = nextOrder;
             await writeJson(STORE_PATH, store);
             upsertOrderToDb(store.orders[idx], "shopify-webhook").catch(() => {});
           }
@@ -15994,13 +16029,11 @@ async function handleApi(req, res, url) {
     if (!orders.length) return sendJson(res, 400, { error: "invalid_payload" });
 
     const normalized = orders.map(normalizeOrderPayload);
-    normalized.forEach((order) => {
-      upsertOrderRecord(store, order);
-    });
+    const upsertedOrders = normalized.map((order) => upsertOrderRecord(store, order).order);
     store.orders = sortOrdersByRecency(store.orders);
     await writeJson(STORE_PATH, store);
     // Dual-write SQL per ogni ordine importato
-    for (const order of normalized) {
+    for (const order of upsertedOrders) {
       upsertOrderToDb(order, currentUser?.email || null).catch(() => {});
     }
     return sendJson(res, 200, store.orders);
@@ -16009,13 +16042,11 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/orders/sync-shopify" && req.method === "POST") {
     try {
       const orders = await syncOrdersFromShopify(store);
-      orders.forEach((order) => {
-        upsertOrderRecord(store, order);
-      });
+      const upsertedOrders = orders.map((order) => upsertOrderRecord(store, order).order);
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
       // Dual-write SQL per ogni ordine sincronizzato da Shopify
-      for (const order of orders) {
+      for (const order of upsertedOrders) {
         upsertOrderToDb(order, "shopify-sync").catch(() => {});
       }
       return sendJson(res, 200, store.orders);

@@ -7896,7 +7896,11 @@ function getOrderNetDisplay(order) {
 }
 
 function isShopifyBackedOrder(order) {
-  return String(order?.source || "").toLowerCase().startsWith("shopify");
+  return Boolean(
+    String(order?.source || "").toLowerCase().startsWith("shopify")
+    || String(order?.shopifyNumericId || "").trim()
+    || String(order?.shopifyGraphqlId || "").trim()
+  );
 }
 
 function needsShopifyFinancialRefresh(order) {
@@ -9334,12 +9338,11 @@ function isLogisticsOrderCompleted(order) {
   const warehouse = order.operations?.warehouse || {};
   const status = String(warehouse.status || "").trim();
   const mode = String(warehouse.fulfillmentMode || "").trim();
-  // Trust Shopify fulfillment_status: "fulfilled" as ground truth
-  const shopifyFulfilled = String(order.fulfillmentStatus || "").toLowerCase() === "fulfilled";
   return Boolean(
     warehouse.shipped
+    || status === "ritirato"
     || (mode === "corriere" && warehouse.carrierPassed)
-    || shopifyFulfilled,
+    || isShopifyFulfillmentComplete(order),
   );
 }
 
@@ -9347,19 +9350,22 @@ function isInstallationOrderCompleted(order) {
   return String(order.operations?.installation?.status || "").trim() === "completata";
 }
 
+function isShopifyFulfillmentComplete(order) {
+  if (!isShopifyBackedOrder(order)) return false;
+  return String(order?.fulfillmentStatus || "").toLowerCase().trim() === "fulfilled";
+}
+
 function isShopifyFullyDone(order) {
   // Trust Shopify as ground truth that the order is closed for inbox/shipping.
   // (Pose page keeps its own isOrderClosed for installation tracking.)
   // Shopify GraphQL returns UPPERCASE enums (FULFILLED, PAID, REFUNDED...),
   // REST returns lowercase — normalize both.
-  const fulfillment = String(order.fulfillmentStatus || "").toLowerCase().trim();
   const financial = String(order.financialStatus || "").toLowerCase().trim();
   // Refunded/voided: nothing more to do.
   if (financial === "refunded" || financial === "voided") return true;
   // Fulfilled + (paid OR partially_refunded — partial refunds still settle).
-  const fulfilled = fulfillment === "fulfilled";
   const paidLike = financial === "paid" || financial === "partially_refunded";
-  return fulfilled && paidLike;
+  return isShopifyFulfillmentComplete(order) && paidLike;
 }
 
 function isOrderFulfilledOrClosed(order) {
@@ -10049,8 +10055,9 @@ function renderInboxFlowControls(order) {
   const installSelected = isRoutedToInstallation(order);
   // "In logistica" è manuale; se l'ordine è da posare resta comunque in logistica
   // (il materiale va comunque preparato e caricato sul furgone).
-  const warehouseSelected = isRoutedToWarehouse(order) || installSelected;
-  const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
+  const shopifyFulfilled = isShopifyFulfillmentComplete(order);
+  const warehouseSelected = shopifyFulfilled || isRoutedToWarehouse(order) || installSelected;
+  const warehouseStatus = shopifyFulfilled ? "ritirato" : (order.operations?.warehouse?.status || "da-preparare");
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
   const allocations = getOrderInventoryAllocations(order);
   const hasPendingAllocations = allocations.some((a) => getInventoryPieceState({ pieceState: a.status }) === "impegnato");
@@ -21717,15 +21724,18 @@ function renderShipping() {
   }
   renderShippingMaterialPreview(order);
   if (ui.shippingForm) {
+    const wh = order.operations?.warehouse || {};
+    const whStatus = String(wh.status || "").trim();
+    const shopifyFulfilled = isShopifyFulfillmentComplete(order);
     ui.shippingForm.trackingNumber.value = order.operations?.warehouse?.trackingNumber || "";
     ui.shippingForm.destinationProvinceCode.value = destination.provinceCode || "";
     ui.shippingForm.destinationPostalCode.value = destination.postalCode || "";
     ui.shippingForm.warehouseNote.value = order.operations?.warehouse?.warehouseNote || "";
-    ui.shippingForm.readyToShip.checked = Boolean(order.operations?.warehouse?.readyToShip);
-    ui.shippingForm.carrierPassed.checked = Boolean(order.operations?.warehouse?.carrierPassed);
-    ui.shippingForm.shipped.checked = Boolean(order.operations?.warehouse?.shipped);
+    ui.shippingForm.readyToShip.checked = Boolean(wh.readyToShip || whStatus === "ritirato" || shopifyFulfilled);
+    ui.shippingForm.carrierPassed.checked = Boolean(wh.carrierPassed || (shopifyFulfilled && String(wh.fulfillmentMode || "").trim() === "corriere"));
+    ui.shippingForm.shipped.checked = Boolean(wh.shipped || whStatus === "ritirato" || shopifyFulfilled);
     // Etichette/visibilità mode-aware: la modalità la imposta l'ufficio (read-only).
-    const whMode = String(order.operations?.warehouse?.fulfillmentMode || "").trim();
+    const whMode = String(wh.fulfillmentMode || "").trim();
     if (ui.chkReadyLabel) {
       ui.chkReadyLabel.textContent = state.lang === "it" ? "Merce pronta da evadere" : "Goods ready to dispatch";
     }
@@ -26534,9 +26544,15 @@ async function syncInventoryFulfillmentForOrder(order = null) {
   if (!order?.id || !getOrderInventoryAllocations(order).length) return order;
   const _wh = order.operations?.warehouse || {};
   const _mode = String(_wh.fulfillmentMode || "").trim();
+  const _shopifyOnlyCompleted = Boolean(
+    _wh.shopifyFulfilled
+    && isShopifyFulfillmentComplete(order)
+    && !_wh.shipped
+    && String(_wh.status || "").trim() === "ritirato"
+  );
   const _locallyCompleted = Boolean(
     _wh.shipped
-    || String(_wh.status || "").trim() === "ritirato"
+    || (!_shopifyOnlyCompleted && String(_wh.status || "").trim() === "ritirato")
     || (_mode === "corriere" && _wh.carrierPassed),
   );
   if (!_locallyCompleted) return order;
@@ -26744,6 +26760,7 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
 
 let _inboxFlowSaveTimer = 0;
 const _inboxFlowSaveInFlight = new Set();
+const _inboxFlowLatestPendingSave = new Map();
 
 function debouncedSaveInboxOrderFlow(orderId) {
   clearTimeout(_inboxFlowSaveTimer);
@@ -26755,8 +26772,6 @@ function debouncedSaveInboxOrderFlow(orderId) {
 async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   const payload = patch || buildInboxOrderFlowPayload(orderId);
   if (!payload) return;
-  if (_inboxFlowSaveInFlight.has(orderId)) return;
-  _inboxFlowSaveInFlight.add(orderId);
   const previousOrder = state.orders.find((item) => item.id === orderId) || null;
   // Se l'ordine era stato marcato "shipped" automaticamente (bug vecchio) ma non ha
   // allocazioni evase, resetta shipped:false quando si cambia stato verso un non-terminale
@@ -26769,6 +26784,24 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
       payload.warehouse = { ...payload.warehouse, shipped: false };
     }
   }
+  if (_inboxFlowSaveInFlight.has(orderId)) {
+    // Latest-wins: mentre un POST è in corso, ricordiamo solo l'ultima
+    // intenzione dell'utente per questo ordine. Non accumuliamo una coda.
+    _inboxFlowLatestPendingSave.set(orderId, { payload, triggerButton });
+    if (previousOrder) {
+      const optimistic = {
+        ...previousOrder,
+        operations: {
+          ...previousOrder.operations,
+          warehouse: { ...(previousOrder.operations?.warehouse || {}), ...(payload.warehouse || {}) },
+          installation: { ...(previousOrder.operations?.installation || {}), ...(payload.installation || {}) },
+        },
+      };
+      state.orders = state.orders.map((item) => (item.id === orderId ? optimistic : item));
+    }
+    return;
+  }
+  _inboxFlowSaveInFlight.add(orderId);
   if (previousOrder) {
     const optimistic = {
       ...previousOrder,
@@ -26806,11 +26839,18 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
         : `Unable to save order flow. ${String(error.message || "").trim()}`,
     );
     if (orderId) orderPendingPatchIds.delete(orderId);
+    _inboxFlowLatestPendingSave.delete(orderId);
     _inboxFlowSaveInFlight.delete(orderId);
     return;
   }
-  if (orderId) orderPendingPatchIds.delete(orderId);
   _inboxFlowSaveInFlight.delete(orderId);
+  const latestPendingSave = _inboxFlowLatestPendingSave.get(orderId);
+  if (latestPendingSave) {
+    _inboxFlowLatestPendingSave.delete(orderId);
+    state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+    return saveInboxOrderFlow(orderId, latestPendingSave.payload, latestPendingSave.triggerButton);
+  }
+  if (orderId) orderPendingPatchIds.delete(orderId);
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   state.selectedOrderId = saved.id;
   renderCurrentViewOnly(state.currentView);
@@ -26826,10 +26866,15 @@ async function saveShipping(event) {
   const currentWarehouse = order.operations?.warehouse || {};
   const currentStatus = String(currentWarehouse.status || "").trim();
   const fulfillmentMode = String(currentWarehouse.fulfillmentMode || "").trim();
+  const shopifyOnlyCompleted = Boolean(
+    currentWarehouse.shopifyFulfilled
+    && isShopifyFulfillmentComplete(order)
+    && !currentWarehouse.shipped
+  );
   let nextReadyToShip = form.get("readyToShip") === "on";
   let nextCarrierPassed = form.get("carrierPassed") === "on";
   let nextShipped = form.get("shipped") === "on";
-  const statusImpliesCompleted = currentStatus === "ritirato";
+  const statusImpliesCompleted = currentStatus === "ritirato" && !shopifyOnlyCompleted;
   if (statusImpliesCompleted) {
     nextReadyToShip = true;
     nextShipped = true;
@@ -26838,6 +26883,10 @@ async function saveShipping(event) {
   if (nextShipped) {
     nextReadyToShip = true;
     if (fulfillmentMode === "corriere") nextCarrierPassed = true;
+  }
+  if (shopifyOnlyCompleted) {
+    nextShipped = false;
+    if (!currentWarehouse.carrierPassed) nextCarrierPassed = false;
   }
   const shippingProofAttachments = mapAttachmentsForContext(order, "shipping");
   if (!isSampleOrder(order) && fulfillmentMode === "corriere" && nextShipped && !shippingProofAttachments.length) {
@@ -26960,7 +27009,12 @@ async function saveSampleShipping(event) {
   const sampleStatusNode = ui.sampleStatus || ui.shippingStatus;
   clearStatus(sampleStatusNode);
   const form = new FormData(ui.sampleForm);
-  const nextShipped = form.get("sampleShipped") === "on";
+  const shopifyOnlyCompleted = Boolean(
+    order.operations?.warehouse?.shopifyFulfilled
+    && isShopifyFulfillmentComplete(order)
+    && !order.operations?.warehouse?.shipped
+  );
+  const nextShipped = shopifyOnlyCompleted ? false : form.get("sampleShipped") === "on";
   const carrier = String(form.get("sampleCarrier") || "SDA").trim() || "SDA";
   const trackingNumber = String(form.get("sampleTracking") || "").trim();
   const ldvNumber = String(form.get("sampleLdvNumber") || "").trim();
