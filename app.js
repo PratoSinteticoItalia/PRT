@@ -21252,7 +21252,7 @@ function getShippingRowAction(order) {
 }
 
 // Corsia della pipeline Logistica (FASE, non modalità). Mappa lo stage unificato
-// in 4 fasi: da preparare → in preparazione → pronti → usciti/ritirati.
+// in 3 fasi: da preparare → pronti per uscita/ritiro → usciti/ritirati.
 // La modalità (corriere/ritiro/furgone) la imposta l'ufficio ed è read-only qui.
 function getShippingStageLane(order) {
   // Una spedizione GESTITA (spedita / ritirata / caricata su furgone / corriere
@@ -21267,7 +21267,7 @@ function getShippingStageLane(order) {
   );
   if (logisticsHandled) return "done";
   const status = String(wh.status || "").trim();
-  if (status === "in-preparazione") return "preparing";
+  if (status === "in-preparazione") return "ready";
   const stage = getUnifiedOrderStage(order);
   const doneKeys = ["goods-collected", "van-loaded", "install-progress", "install-completed", "closed"];
   if (doneKeys.includes(stage.key)) return "done";
@@ -21276,13 +21276,6 @@ function getShippingStageLane(order) {
 }
 
 function getShippingLaneMeta(lane) {
-  if (lane === "preparing") {
-    return {
-      key: "preparing", tone: "work",
-      icon: "🔧",
-      title: state.lang === "it" ? "In preparazione" : "Preparing",
-    };
-  }
   if (lane === "ready") {
     return {
       key: "ready", tone: "ready",
@@ -21539,8 +21532,6 @@ async function moveShippingOrderToLane(orderId, lane) {
   let wh;
   if (lane === "prepare") {
     wh = { readyToShip: false, carrierPassed: false, shipped: false, status: "da-preparare" };
-  } else if (lane === "preparing") {
-    wh = { readyToShip: false, carrierPassed: false, shipped: false, status: "in-preparazione" };
   } else if (lane === "ready") {
     wh = { readyToShip: true, carrierPassed: false, shipped: false, status: "pronto" };
   } else { // done
@@ -21624,17 +21615,15 @@ function renderShipping() {
     } else {
       // Raggruppamento per FASE (pipeline), non per modalità: la modalità è
       // read-only (impostata dall'ufficio) e resta come chip sulla card.
-      // Tutte le corsie sempre presenti (anche vuote): sono drop-target del kanban.
-      const shippingLanes = ["prepare", "preparing", "ready", "done"];
-      const groupedOrders = shippingLanes
+      // Tutte e 3 le corsie sempre presenti (anche vuote): sono drop-target del kanban.
+      const groupedOrders = ["prepare", "ready", "done"]
         .map((lane) => ({
           ...getShippingLaneMeta(lane),
           orders: orders.filter((order) => getShippingStageLane(order) === lane),
         }));
       const totalPreparedLines = orders.reduce((sum, order) => sum + getWarehousePreparedLines(order).length, 0);
-      // KPI logistica allineati alle fasi della pipeline
+      // KPI logistica allineati alle 3 fasi della pipeline
       const kpiPrepare = orders.filter((o) => getShippingStageLane(o) === "prepare").length;
-      const kpiPreparing = orders.filter((o) => getShippingStageLane(o) === "preparing").length;
       const kpiReady = orders.filter((o) => getShippingStageLane(o) === "ready").length;
       const kpiDone = orders.filter((o) => getShippingStageLane(o) === "done").length;
       // Corsia visibile su mobile (pattern a tab): default "Da preparare".
@@ -21644,7 +21633,6 @@ function renderShipping() {
           <div class="shp-kpi-strip">
             <div class="shp-kpi"><span class="shp-kpi-value">${orders.length}</span><span class="shp-kpi-label">${state.lang === "it" ? "In coda" : "Queued"}</span></div>
             <div class="shp-kpi ${kpiPrepare > 0 ? "warn" : ""}"><span class="shp-kpi-value">${kpiPrepare}</span><span class="shp-kpi-label">${state.lang === "it" ? "Da preparare" : "To prepare"}</span></div>
-            <div class="shp-kpi ${kpiPreparing > 0 ? "info" : ""}"><span class="shp-kpi-value">${kpiPreparing}</span><span class="shp-kpi-label">${state.lang === "it" ? "In preparazione" : "Preparing"}</span></div>
             <div class="shp-kpi"><span class="shp-kpi-value">${kpiReady}</span><span class="shp-kpi-label">${state.lang === "it" ? "Pronti uscita" : "Ready"}</span></div>
             <div class="shp-kpi"><span class="shp-kpi-value">${kpiDone}</span><span class="shp-kpi-label">${state.lang === "it" ? "Usciti / Ritirati" : "Dispatched"}</span></div>
             <div class="shp-kpi"><span class="shp-kpi-value">${totalPreparedLines}</span><span class="shp-kpi-label">${state.lang === "it" ? "Righe materiali" : "Material lines"}</span></div>
@@ -21652,8 +21640,7 @@ function renderShipping() {
           <div class="shp-lane-tabs" role="tablist">
             ${groupedOrders.map((group) => {
               const shortLabel = {
-                prepare: state.lang === "it" ? "Da prep." : "To prep",
-                preparing: state.lang === "it" ? "In prep." : "Prep.",
+                prepare: state.lang === "it" ? "Da preparare" : "To prepare",
                 ready: state.lang === "it" ? "Pronti" : "Ready",
                 done: state.lang === "it" ? "Usciti" : "Out",
               }[group.key] || group.title;
@@ -29691,7 +29678,7 @@ function openKanbanMoveSheet(id, kind) {
   const it = state.lang === "it";
   let lanes; let current; let move;
   if (kind === "shipping") {
-    lanes = ["prepare", "preparing", "ready", "done"].map(getShippingLaneMeta);
+    lanes = ["prepare", "ready", "done"].map(getShippingLaneMeta);
     current = getShippingStageLane(order);
     move = (lane) => moveShippingOrderToLane(id, lane);
   } else {

@@ -22581,18 +22581,16 @@ body {
 .shp-kpi-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1.1; color: #1a2e26; }
 .shp-kpi-label { font-size: 10.5px; color: #8a9690; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; white-space: nowrap; }
 .shp-kpi.warn .shp-kpi-value { color: #b45309; }
-.shp-kpi.info .shp-kpi-value { color: #1d4ed8; }
 /* Barra a tab delle corsie: solo su mobile (vedi @media), nascosta su desktop. */
 .shp-lane-tabs { display: none; }
 
-/* === Logistica KANBAN: board a 4 colonne-fase === */
-.shp-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: start; }
+/* === Logistica KANBAN: board a 3 colonne-fase === */
+.shp-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
 /* Colonne SENZA scatola pesante: header con sottolineatura colorata + lista card.
    Le colonne si dimensionano sul contenuto; quelle vuote sono solo l'intestazione. */
 .shp-group { background: transparent; border: none; border-radius: 0; padding: 0; }
 .shp-group-label { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding-bottom: 8px; border-bottom: 2px solid #e5e1d6; }
 .shp-lane-prepare .shp-group-label { border-bottom-color: #f59e0b; }
-.shp-lane-preparing .shp-group-label { border-bottom-color: #3b82f6; }
 .shp-lane-ready .shp-group-label { border-bottom-color: #22c55e; }
 .shp-lane-done .shp-group-label { border-bottom-color: #9ca3af; }
 .shp-group-label h3 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #8a9690; }
@@ -22601,8 +22599,6 @@ body {
 /* Toni-fase coerenti con la palette crm-kanban */
 .shp-lane-prepare .shp-group-label h3 { color: #b45309; }
 .shp-lane-prepare .shp-gc { background: #fef3c7; color: #92400e; }
-.shp-lane-preparing .shp-group-label h3 { color: #1d4ed8; }
-.shp-lane-preparing .shp-gc { background: #dbeafe; color: #1e40af; }
 .shp-lane-ready .shp-group-label h3 { color: #15803d; }
 .shp-lane-ready .shp-gc { background: #dcfce7; color: #166534; }
 .shp-lane-done .shp-group-label h3 { color: #6b7280; }
@@ -22859,15 +22855,13 @@ body {
 
 @media (max-width: 900px) {
   #shipping .order-grid > div:first-child { max-height: none; overflow: visible; display: block; }
-  #shipping .shp-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 768px) {
   /* Kanban Logistica su mobile: pattern a TAB (una corsia alla volta, a tutta
      larghezza) invece dello swipe orizzontale — più comodo col pollice. */
   .shp-lane-tabs {
-    /* gap/padding ridotti: la Bacheca pose ha 4 corsie (vs 3 della Logistica) e
-       a 375px 4 tab con gap 6 + padding 6 sforavano il viewport (~405px). */
+    /* gap/padding ridotti: i tab devono restare comodi anche su viewport stretti. */
     display: flex; gap: 4px; margin-bottom: 12px;
     background: #fff; border: 1px solid #ece8de; border-radius: 12px; padding: 4px;
   }
@@ -22887,7 +22881,6 @@ body {
   #shipping .shp-groups > .shp-group { max-width: 100%; width: 100%; }
   /* mostra solo la corsia selezionata dal tab */
   #shipping .shp-groups[data-mobile-lane="prepare"] .shp-group:not(.shp-lane-prepare),
-  #shipping .shp-groups[data-mobile-lane="preparing"] .shp-group:not(.shp-lane-preparing),
   #shipping .shp-groups[data-mobile-lane="ready"] .shp-group:not(.shp-lane-ready),
   #shipping .shp-groups[data-mobile-lane="done"] .shp-group:not(.shp-lane-done) { display: none; }
   /* l'header della corsia è ridondante coi tab → nascosto su mobile */
