@@ -1125,7 +1125,7 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS work_completion_reports_created_idx ON work_completion_reports (created_at DESC);
 
       -- ─────────────────────────────────────────────────────────────────────
-      -- Sistema Presenze (timesheet) — dipendenti aziendali (warehouse, seller,
+      -- Sistema Presenze (timesheet) — dipendenti aziendali (warehouse,
       -- office). Crew esclusi (sono subappaltatori, non dipendenti).
       --
       -- time_entries: log atomico di ogni clock-in/out con fingerprint
@@ -2519,7 +2519,7 @@ async function archiveWorkReportInDb(id, { documentPdfR2Key, documentPdfSha256 }
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Ruoli aziendali che hanno timbratura (esclude crew = subappaltatori).
-const TIMESHEET_ROLES = new Set(["warehouse", "seller", "office"]);
+const TIMESHEET_ROLES = new Set(["warehouse", "office"]);
 
 function userIsEmployee(user) {
   return Boolean(user && TIMESHEET_ROLES.has(String(user.role || "")));
@@ -13046,7 +13046,7 @@ async function handleApi(req, res, url) {
 
   // ─────────────────────────────────────────────────────────────────────────
   // Sistema Presenze (timesheet) — endpoint REST
-  // Ruoli: warehouse, seller, office (dipendenti). Crew esclusi.
+  // Ruoli: warehouse, office (dipendenti). Crew esclusi.
   // ─────────────────────────────────────────────────────────────────────────
 
   // POST /api/timesheet/clock-in
@@ -14491,11 +14491,10 @@ async function handleApi(req, res, url) {
   // GET /api/communications/order-lookup?q=... → ricerca leggera ordini per il
   // chip "collega ordine" in chat. Visibilità per ruolo identica a quella già
   // usata in /api/session (crew solo i propri, warehouse solo instradati,
-  // office/seller tutti) — evita di esporre in chat ordini/clienti di altre
-  // squadre.
+  // office tutti) — evita di esporre in chat ordini/clienti di altre squadre.
   if (url.pathname === "/api/communications/order-lookup" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
-    if (!["office", "warehouse", "crew", "seller"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    if (!["office", "warehouse", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
     const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
     const qDigits = q.replace(/\D+/g, "");
     let pool = store.orders || [];

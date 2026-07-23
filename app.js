@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260722-new-turf-models-rename";
+} from "./lib/order-money.js?v=20260723-dashboard-reseller-requests-upcoming";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260722-new-turf-models-rename";
+import { regionForCity } from "./lib/geo.js?v=20260723-dashboard-reseller-requests-upcoming";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260722-new-turf-models-rename";
+} from "./lib/profit-split.js?v=20260723-dashboard-reseller-requests-upcoming";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260722-new-turf-models-rename";
+} from "./lib/preventivo-pricing.js?v=20260723-dashboard-reseller-requests-upcoming";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260722-new-turf-models-rename";
+const APP_SHELL_VERSION = "20260723-dashboard-reseller-requests-upcoming";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -380,7 +380,6 @@ const roleViews = {
   office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "communications", "sales-requests", "sales-generator", "sales-content", "reseller-orders", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
   crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "communications", "garden-planner"],
-  seller: ["dashboard", "sales-requests", "sales-generator", "sales-content", "communications", "timesheet-me"],
   // sales-content, sales-requests e order-requests si aggiungono quando il
   // backend relativo è pronto a scoparli per rivenditore (vedi piano fasi
   // successive) — finché non lo è, tenerli fuori evita di esporre viste rotte.
@@ -415,7 +414,6 @@ const SALES_REQUEST_FIRST_CONTACT_START_HOUR = 8;
 const SALES_REQUEST_FIRST_CONTACT_END_HOUR = 20;
 const SALES_REQUEST_FIRST_CONTACT_SENT_STATUS = "1° contatto";
 const SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS = "da richiamare";
-const DASHBOARD_SNAPSHOT_COLUMNS = 6;
 
 const translations = {
   it: {
@@ -1505,12 +1503,9 @@ const ui = {
   dashboardActions: document.getElementById("dashboard-actions"),
   dashboardFollowup: document.getElementById("dashboard-followup"),
   dashboardFollowupBadge: document.getElementById("dashboard-followup-badge"),
-  dashboardAlerts: document.getElementById("dashboard-alerts"),
-  dashboardActivity: document.getElementById("dashboard-activity"),
   dashboardWeekSummary: document.getElementById("dashboard-week-summary"),
-  dashboardAccountingSnapshot: document.getElementById("dashboard-accounting-snapshot"),
-  dashboardInventorySnapshot: document.getElementById("dashboard-inventory-snapshot"),
   dashboardHeroKpis: document.getElementById("dashboard-hero-kpis"),
+  dashboardHeroKpisWarehouse: document.getElementById("dashboard-hero-kpis-warehouse"),
   dashboardMetricsStrip: document.getElementById("dashboard-metrics-strip"),
   dashboardNotifications: document.getElementById("dashboard-notifications"),
   dashboardNotifBadge: document.getElementById("dashboard-notif-badge"),
@@ -1796,7 +1791,6 @@ const ui = {
   cmdKEmpty: document.getElementById("cmd-k-empty"),
   topbarSearchInput: document.getElementById("topbar-search-input"),
   toastContainer: document.getElementById("toast-container"),
-  dashboardTrend: document.getElementById("dashboard-trend"),
   warehouseExportBtn: document.getElementById("warehouse-export-btn"),
   orderModal: document.getElementById("order-modal"),
   orderModalTitle: document.getElementById("order-modal-title"),
@@ -2532,12 +2526,11 @@ function getAllowedViewsForRole(role = state.currentUser?.role || "office") {
 }
 
 // La card ordine in chat (Aggancio operativo) deve aprire l'ordine nella vista
-// di dettaglio che il RUOLO dell'utente può DAVVERO vedere: office/seller →
+// di dettaglio che il RUOLO dell'utente può DAVVERO vedere: office →
 // Inbox Ordini, magazzino → Inventario, squadra → Pose. Senza questo, un
 // magazziniere che clicca il chip finiva rimbalzato in Dashboard (setView
 // ripiega su allowed[0]) perché "orders" non è tra le sue viste permesse.
-// Ritorna "" se il ruolo non ha alcuna vista ordine (es. seller) → chip non
-// navigabile.
+// Ritorna "" se il ruolo non ha alcuna vista ordine → chip non navigabile.
 function getOrderLinkTargetView() {
   const allowed = getAllowedViewsForRole();
   // Ordine di preferenza per VISIBILITÀ del dettaglio ordine: office → Inbox
@@ -10780,6 +10773,32 @@ function buildDashboardNotifications() {
     }
   } catch {}
 
+  // Spedizioni in attesa — stessa idoneità del badge sidebar "Spedizioni"
+  const pendingShipping = (state.orders || []).filter(orderNeedsShippingAction);
+  if (pendingShipping.length) {
+    notifs.push({
+      tone: "amber",
+      icon: "🚚",
+      title: state.lang === "it" ? `${pendingShipping.length} spedizioni in attesa` : `${pendingShipping.length} shipments pending`,
+      sub: state.lang === "it" ? "Da preparare o pronte per uscita" : "To prepare or ready to dispatch",
+      view: "shipping",
+      count: pendingShipping.length,
+    });
+  }
+
+  // DDT da emettere
+  const ddtMissing = getDdtEligibleOrders().filter((o) => !ddtOrderHasNumber(o));
+  if (ddtMissing.length) {
+    notifs.push({
+      tone: "amber",
+      icon: "📄",
+      title: state.lang === "it" ? `${ddtMissing.length} DDT da emettere` : `${ddtMissing.length} DDT to issue`,
+      sub: state.lang === "it" ? "Documenti di trasporto mancanti" : "Missing transport documents",
+      view: "ddt",
+      count: ddtMissing.length,
+    });
+  }
+
   // Ordini bloccati
   const blocked = (state.orders || []).filter((o) => o.operations?.warehouse?.status === "bloccato");
   if (blocked.length) {
@@ -10929,6 +10948,73 @@ function renderDashboardTeamPerformance() {
     : `<div class="dash-notif-empty">${state.lang === "it" ? "Assegna richieste alla squadra per vedere il carico." : "Assign requests to the team to see the load."}</div>`;
 }
 
+// Presenze oggi: carica una volta le timbrature del giorno e mostra chi è in
+// turno adesso, chi ha già terminato e chi non ha ancora timbrato. Copre solo
+// i ruoli dipendente (warehouse/office) — crew esclusi, sono subappaltatori.
+async function loadDashboardAttendanceOnce() {
+  if (state.dashboardAttendanceLoadedAt) return;
+  state.dashboardAttendanceLoadedAt = Date.now();
+  try {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const data = await apiFetch(`/api/timesheet?from=${todayStr}&to=${todayStr}`);
+    state.dashboardAttendanceShifts = Array.isArray(data?.shifts) ? data.shifts : [];
+  } catch (err) {
+    state.dashboardAttendanceShifts = [];
+    reportError("dashboard:attendance", err);
+  }
+  if (state.currentView === "dashboard") renderDashboardTeamAttendance();
+}
+
+function renderDashboardTeamAttendance() {
+  const el = document.getElementById("dashboard-attendance");
+  const metaEl = document.getElementById("dashboard-attendance-meta");
+  if (!el) return;
+  if (!state.dashboardAttendanceLoadedAt) {
+    el.innerHTML = `<div class="dash-action-empty">${state.lang === "it" ? "Caricamento..." : "Loading..."}</div>`;
+    loadDashboardAttendanceOnce();
+    return;
+  }
+  const employees = (state.users || []).filter((u) => TIMESHEET_EMPLOYEE_ROLES.has(u.role) && u.status !== "suspended");
+  const shiftByUser = new Map((state.dashboardAttendanceShifts || []).map((s) => [s.userId, s]));
+  const rows = employees.map((u) => {
+    const shift = shiftByUser.get(u.id);
+    const clockIn = shift?.clockInAt ? new Date(shift.clockInAt) : null;
+    let tone = "amber";
+    let statusLabel = state.lang === "it" ? "Non timbrato" : "Not clocked in";
+    let sub = state.lang === "it" ? "Nessuna timbratura oggi" : "No clock-in today";
+    if (shift?.clockInAt && !shift?.clockOutAt) {
+      tone = "green";
+      statusLabel = state.lang === "it" ? "In turno" : "On shift";
+      const timeStr = clockIn ? clockIn.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
+      sub = state.lang === "it" ? `Dalle ${timeStr}` : `Since ${timeStr}`;
+    } else if (shift?.clockOutAt) {
+      tone = "slate";
+      statusLabel = state.lang === "it" ? "Terminato" : "Done";
+      sub = state.lang === "it" ? `Turno concluso · ${formatMinutesToHM(shift.workedMinutes)}` : `Shift closed · ${formatMinutesToHM(shift.workedMinutes)}`;
+    }
+    return { name: u.name || u.email || "—", tone, statusLabel, sub, sortRank: tone === "green" ? 0 : tone === "amber" ? 1 : 2 };
+  }).sort((a, b) => a.sortRank - b.sortRank);
+
+  const inShift = rows.filter((r) => r.tone === "green").length;
+  if (metaEl) {
+    metaEl.textContent = employees.length
+      ? (state.lang === "it" ? `${inShift}/${employees.length} in turno` : `${inShift}/${employees.length} on shift`)
+      : "—";
+  }
+  el.innerHTML = rows.length
+    ? rows.map((r) => `
+        <article class="dash-action-row" data-action="open-dashboard-view" data-view="timesheet-office" role="button" tabindex="0">
+          <div class="dash-action-dot tone-${r.tone}"></div>
+          <div class="dash-action-content">
+            <div class="dash-action-title">${escapeHtml(r.name)}</div>
+            <div class="dash-action-sub">${escapeHtml(r.sub)}</div>
+          </div>
+          <span class="dash-action-tag tone-${r.tone}">${escapeHtml(r.statusLabel)}</span>
+        </article>
+      `).join("")
+    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun dipendente configurato." : "No employees configured."}</div>`;
+}
+
 function renderDashboardWeekSummary(target = ui.dashboardWeekSummary, ownerFilter = null) {
   if (!target) return;
   const installs = filterInstallations();
@@ -11018,6 +11104,57 @@ function renderDashboardFollowup() {
     : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun preventivo da seguire." : "No quotes to follow up."}</div>`;
 }
 
+function renderDashboardHeroKpisWarehouse(queueOrders, stockAlertsCount) {
+  if (!ui.dashboardHeroKpisWarehouse) return;
+  const totalQueueSqm = queueOrders.reduce((sum, o) => sum + toNumber(o.operations?.sqm || 0), 0);
+  const pendingShipping = (state.orders || []).filter(orderNeedsShippingAction).length;
+  const ddtMissing = getDdtEligibleOrders().filter((o) => !ddtOrderHasNumber(o)).length;
+  const kpis = [
+    {
+      label: state.lang === "it" ? "Ordini in coda" : "Orders in queue",
+      value: String(queueOrders.length),
+      sub: state.lang === "it" ? `${Math.round(totalQueueSqm)} mq da preparare` : `${Math.round(totalQueueSqm)} sqm to prepare`,
+      icon: "📦",
+      tone: "amber",
+      view: "warehouse",
+    },
+    {
+      label: state.lang === "it" ? "Spedizioni in attesa" : "Shipments pending",
+      value: String(pendingShipping),
+      sub: state.lang === "it" ? "Da preparare o pronte per uscita" : "To prepare or ready to dispatch",
+      icon: "🚚",
+      tone: "blue",
+      view: "shipping",
+    },
+    {
+      label: state.lang === "it" ? "DDT da emettere" : "DDT to issue",
+      value: String(ddtMissing),
+      sub: state.lang === "it" ? "Documenti di trasporto mancanti" : "Missing transport documents",
+      icon: "📄",
+      tone: ddtMissing > 0 ? "red" : "green",
+      view: "ddt",
+    },
+    {
+      label: state.lang === "it" ? "Prodotti sotto scorta" : "Products low on stock",
+      value: String(stockAlertsCount),
+      sub: state.lang === "it" ? "Disponibilità sotto 50 mq" : "Availability under 50 sqm",
+      icon: "⚠️",
+      tone: stockAlertsCount > 0 ? "red" : "green",
+      view: "warehouse",
+    },
+  ];
+  ui.dashboardHeroKpisWarehouse.innerHTML = kpis.map((kpi) => `
+    <article class="hero-kpi tone-${kpi.tone}" data-action="open-dashboard-view" data-view="${kpi.view}" role="button" tabindex="0">
+      <div class="hero-kpi-icon">${kpi.icon}</div>
+      <div class="hero-kpi-body">
+        <div class="hero-kpi-label">${escapeHtml(kpi.label)}</div>
+        <div class="hero-kpi-value">${escapeHtml(kpi.value)}</div>
+        <div class="hero-kpi-sub">${escapeHtml(kpi.sub)}</div>
+      </div>
+    </article>
+  `).join("");
+}
+
 function renderDashboardWarehouseView() {
   // Coda di lavoro: ordini in stage warehouse-work, ordinati per data installazione/priorità
   const queueOrders = (state.orders || [])
@@ -11031,6 +11168,14 @@ function renderDashboardWarehouseView() {
       return da - db;
     })
     .slice(0, 12);
+
+  let stockAlerts = [];
+  try {
+    const summary = getInventorySummary();
+    stockAlerts = summary.filter((g) => Number(g.availableSqm || 0) < 50).slice(0, 6);
+  } catch {}
+  renderDashboardHeroKpisWarehouse(queueOrders, stockAlerts.length);
+
   const queueEl = document.getElementById("dashboard-warehouse-queue");
   if (queueEl) {
     queueEl.innerHTML = queueOrders.length
@@ -11055,11 +11200,6 @@ function renderDashboardWarehouseView() {
   // Allarmi stock
   const stockEl = document.getElementById("dashboard-warehouse-stock");
   if (stockEl) {
-    let stockAlerts = [];
-    try {
-      const summary = getInventorySummary();
-      stockAlerts = summary.filter((g) => Number(g.availableSqm || 0) < 50).slice(0, 6);
-    } catch {}
     stockEl.innerHTML = stockAlerts.length
       ? stockAlerts.map((g) => {
           const avail = Math.round(Number(g.availableSqm || 0));
@@ -11079,80 +11219,160 @@ function renderDashboardWarehouseView() {
   }
 }
 
-function renderDashboardCrewView() {
-  // Le pose di oggi assegnate a questa squadra
-  const me = state.currentUser || {};
-  const crewName = String(me.crewName || me.name || "").trim().toLowerCase();
+// Renderizza l'elenco pose di oggi in un widget dashboard (crew/rivenditore
+// condividono forma e markup, cambia solo il filtro di ownership).
+function renderDashboardTodayInstalls(elementId, ownerFilter) {
+  const todayEl = document.getElementById(elementId);
+  if (!todayEl) return;
   const todayKey = new Date().toISOString().slice(0, 10);
   const todayInstalls = (state.orders || []).filter((o) => {
     if (o.operations?.installation?.installDate !== todayKey) return false;
-    if (!crewName) return true;
-    const assignedCrew = String(o.operations?.installation?.assignedCrew || "").trim().toLowerCase();
-    return !assignedCrew || assignedCrew === crewName;
+    return ownerFilter(o);
   });
-  const todayEl = document.getElementById("dashboard-crew-today");
-  if (todayEl) {
-    todayEl.innerHTML = todayInstalls.length
-      ? todayInstalls.map((o) => `
-          <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="installations">
-            <div class="dash-action-dot tone-green"></div>
+  todayEl.innerHTML = todayInstalls.length
+    ? todayInstalls.map((o) => `
+        <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="installations">
+          <div class="dash-action-dot tone-green"></div>
+          <div class="dash-action-content">
+            <div class="dash-action-title">${escapeHtml(composeClientName(o))}</div>
+            <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq · ${escapeHtml(o.operations?.product || "—")}</div>
+          </div>
+          <span class="dash-action-tag tone-green">${state.lang === "it" ? "Oggi" : "Today"}</span>
+        </article>
+      `).join("")
+    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna posa programmata per oggi." : "No installs scheduled for today."}</div>`;
+}
+
+// Prossimi appuntamenti (posa) nei prossimi 7 giorni, ESCLUSO oggi (che ha già
+// il suo widget dedicato). Stesso ownerFilter delle altre liste dashboard.
+function renderDashboardUpcomingInstalls(elementId, ownerFilter) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayKey = today.toISOString().slice(0, 10);
+  const horizon = new Date(today);
+  horizon.setDate(horizon.getDate() + 7);
+  const horizonKey = horizon.toISOString().slice(0, 10);
+  const upcoming = (state.orders || [])
+    .filter((o) => {
+      const d = o.operations?.installation?.installDate;
+      if (!d || d <= todayKey || d > horizonKey) return false;
+      return ownerFilter(o);
+    })
+    .sort((a, b) => new Date(a.operations.installation.installDate) - new Date(b.operations.installation.installDate))
+    .slice(0, 6);
+  el.innerHTML = upcoming.length
+    ? upcoming.map((o) => `
+        <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="installations">
+          <div class="dash-action-dot tone-blue"></div>
+          <div class="dash-action-content">
+            <div class="dash-action-title">${escapeHtml(composeClientName(o))}</div>
+            <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq</div>
+          </div>
+          <span class="dash-action-tag tone-blue">${escapeHtml(formatDate(o.operations.installation.installDate))}</span>
+        </article>
+      `).join("")
+    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna posa programmata nei prossimi 7 giorni." : "No installs scheduled in the next 7 days."}</div>`;
+}
+
+// Riepilogo richieste CRM assegnate al rivenditore — riusa la stessa cache
+// (state.resellerSalesRequests) della pagina "Richieste" (renderResellerSalesRequests),
+// caricata qui se non ancora richiesta in questa sessione.
+function renderDashboardResellerRequests() {
+  const el = document.getElementById("dashboard-reseller-requests");
+  const metaEl = document.getElementById("dashboard-reseller-requests-meta");
+  if (!el) return;
+  if (!state.resellerSalesRequestsLoadedAt) {
+    el.innerHTML = `<div class="dash-action-empty">${state.lang === "it" ? "Caricamento..." : "Loading..."}</div>`;
+    loadResellerSalesRequests().then(() => {
+      if (state.currentView === "dashboard") renderDashboardResellerRequests();
+    });
+    return;
+  }
+  const items = state.resellerSalesRequests || [];
+  const open = items.filter((r) => String(r.status || "new") !== "closed");
+  if (metaEl) {
+    metaEl.textContent = items.length
+      ? (state.lang === "it" ? `${open.length} aperte · ${items.length} totali` : `${open.length} open · ${items.length} total`)
+      : "—";
+  }
+  const rows = open
+    .slice()
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+    .slice(0, 6);
+  el.innerHTML = rows.length
+    ? rows.map((item) => {
+        const name = [item.name, item.surname].filter(Boolean).join(" ") || (state.lang === "it" ? "Cliente" : "Client");
+        const sub = [item.city, item.sqm ? `${item.sqm} mq` : ""].filter(Boolean).join(" · ");
+        return `
+          <article class="dash-action-row" data-action="open-dashboard-view" data-view="sales-requests" role="button" tabindex="0">
+            <div class="dash-action-dot tone-blue"></div>
             <div class="dash-action-content">
-              <div class="dash-action-title">${escapeHtml(composeClientName(o))}</div>
-              <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq · ${escapeHtml(o.operations?.product || "—")}</div>
+              <div class="dash-action-title">${escapeHtml(name)}</div>
+              <div class="dash-action-sub">${escapeHtml(sub || "—")}</div>
             </div>
-            <span class="dash-action-tag tone-green">${state.lang === "it" ? "Oggi" : "Today"}</span>
+            <span class="dash-action-tag tone-blue">${escapeHtml(getSalesRequestStatusLabel(item.status))}</span>
           </article>
-        `).join("")
-      : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna posa programmata per oggi." : "No installs scheduled for today."}</div>`;
-  }
+        `;
+      }).join("")
+    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna richiesta assegnata al momento." : "No requests assigned yet."}</div>`;
+}
 
-  // Settimana per la propria squadra
+// Widget comunicazioni condiviso da crew/rivenditore: mostra messaggi non
+// letti o una CTA per aprire la chat diretta con l'ufficio. `prefix` seleziona
+// gli id `dashboard-<prefix>-messages[-eyebrow|-title]` nel markup.
+function renderDashboardMessagesWidget(prefix) {
+  const messagesEl = document.getElementById(`dashboard-${prefix}-messages`);
+  const msgEyebrow = document.getElementById(`dashboard-${prefix}-messages-eyebrow`);
+  const msgTitle = document.getElementById(`dashboard-${prefix}-messages-title`);
+  if (!messagesEl) return;
+  const it = state.lang !== "en";
+  const unread = Number(state.communicationsUnreadCount || 0);
+  const threads = state.communicationThreads || [];
+  const firstThread = threads.find((t) => Number(t.unreadCount || 0) > 0) || threads[0];
+  const contactName = firstThread?.otherUser ? communicationUserLabel(firstThread.otherUser) : (it ? "Ufficio" : "Office");
+  if (unread > 0) {
+    if (msgEyebrow) msgEyebrow.textContent = it ? "Messaggi" : "Messages";
+    if (msgTitle) msgTitle.textContent = it ? `${unread} non lett${unread === 1 ? "o" : "i"}` : `${unread} unread`;
+    messagesEl.innerHTML = `
+      <button class="dash-action-row" type="button" data-action="go-communications" style="width:100%;cursor:pointer">
+        <div class="dash-action-dot tone-amber"></div>
+        <div class="dash-action-content">
+          <div class="dash-action-title">${escapeHtml(contactName)}</div>
+          <div class="dash-action-sub">${unread === 1 ? (it ? "1 messaggio non letto" : "1 unread message") : (it ? `${unread} messaggi non letti` : `${unread} unread messages`)}</div>
+        </div>
+        <span class="dash-action-tag tone-amber">${it ? "Apri →" : "Open →"}</span>
+      </button>`;
+  } else {
+    if (msgEyebrow) msgEyebrow.textContent = it ? "Comunicazioni" : "Chat";
+    if (msgTitle) msgTitle.textContent = it ? "Chat diretta" : "Direct chat";
+    messagesEl.innerHTML = `
+      <button class="dash-action-row" type="button" data-action="go-communications" style="width:100%;cursor:pointer">
+        <div class="dash-action-dot"></div>
+        <div class="dash-action-content">
+          <div class="dash-action-title">${it ? "Scrivi all'ufficio" : "Message the office"}</div>
+          <div class="dash-action-sub">${firstThread ? (it ? "Chat attiva — nessun nuovo messaggio" : "Active chat — no new messages") : (it ? "Apri la chat privata con l'ufficio" : "Open a private chat with the office")}</div>
+        </div>
+        <span class="dash-action-arrow" style="color:var(--brand);font-weight:700">→</span>
+      </button>`;
+  }
+}
+
+function renderDashboardCrewView() {
+  const me = state.currentUser || {};
+  const crewName = String(me.crewName || me.name || "").trim().toLowerCase();
+  const ownerFilter = (order) => {
+    if (!crewName) return true;
+    const assignedCrew = String(order.operations?.installation?.assignedCrew || "").trim().toLowerCase();
+    return !assignedCrew || assignedCrew === crewName;
+  };
+  renderDashboardTodayInstalls("dashboard-crew-today", ownerFilter);
+
   const weekEl = document.getElementById("dashboard-crew-week");
-  if (weekEl) {
-    const ownerFilter = (order) => {
-      if (!crewName) return true;
-      const assignedCrew = String(order.operations?.installation?.assignedCrew || "").trim().toLowerCase();
-      return !assignedCrew || assignedCrew === crewName;
-    };
-    renderDashboardWeekSummary(weekEl, ownerFilter);
-  }
+  if (weekEl) renderDashboardWeekSummary(weekEl, ownerFilter);
 
-  // Widget comunicazioni: mostra messaggi non letti o CTA per aprire la chat
-  const messagesEl = document.getElementById("dashboard-crew-messages");
-  const msgEyebrow = document.getElementById("dashboard-crew-messages-eyebrow");
-  const msgTitle = document.getElementById("dashboard-crew-messages-title");
-  if (messagesEl) {
-    const it = state.lang !== "en";
-    const unread = Number(state.communicationsUnreadCount || 0);
-    const threads = state.communicationThreads || [];
-    const firstThread = threads.find((t) => Number(t.unreadCount || 0) > 0) || threads[0];
-    const contactName = firstThread?.otherUser ? communicationUserLabel(firstThread.otherUser) : (it ? "Ufficio" : "Office");
-    if (unread > 0) {
-      if (msgEyebrow) msgEyebrow.textContent = it ? "Messaggi" : "Messages";
-      if (msgTitle) msgTitle.textContent = it ? `${unread} non lett${unread === 1 ? "o" : "i"}` : `${unread} unread`;
-      messagesEl.innerHTML = `
-        <button class="dash-action-row" type="button" data-action="go-communications" style="width:100%;cursor:pointer">
-          <div class="dash-action-dot tone-amber"></div>
-          <div class="dash-action-content">
-            <div class="dash-action-title">${escapeHtml(contactName)}</div>
-            <div class="dash-action-sub">${unread === 1 ? (it ? "1 messaggio non letto" : "1 unread message") : (it ? `${unread} messaggi non letti` : `${unread} unread messages`)}</div>
-          </div>
-          <span class="dash-action-tag tone-amber">${it ? "Apri →" : "Open →"}</span>
-        </button>`;
-    } else {
-      if (msgEyebrow) msgEyebrow.textContent = it ? "Comunicazioni" : "Chat";
-      if (msgTitle) msgTitle.textContent = it ? "Chat diretta" : "Direct chat";
-      messagesEl.innerHTML = `
-        <button class="dash-action-row" type="button" data-action="go-communications" style="width:100%;cursor:pointer">
-          <div class="dash-action-dot"></div>
-          <div class="dash-action-content">
-            <div class="dash-action-title">${it ? "Scrivi all'ufficio" : "Message the office"}</div>
-            <div class="dash-action-sub">${firstThread ? (it ? "Chat attiva — nessun nuovo messaggio" : "Active chat — no new messages") : (it ? "Apri la chat privata con l'ufficio" : "Open a private chat with the office")}</div>
-          </div>
-          <span class="dash-action-arrow" style="color:var(--brand);font-weight:700">→</span>
-        </button>`;
-    }
-  }
+  renderDashboardMessagesWidget("crew");
 }
 
 // Stessa forma di renderDashboardCrewView, ma filtra per operations.reseller.id
@@ -11162,69 +11382,15 @@ function renderDashboardCrewView() {
 function renderDashboardResellerView() {
   const me = state.currentUser || {};
   const resellerId = String(me.id || "");
-  const todayKey = new Date().toISOString().slice(0, 10);
-  const todayInstalls = (state.orders || []).filter((o) => {
-    if (o.operations?.installation?.installDate !== todayKey) return false;
-    return String(o.operations?.reseller?.id || "") === resellerId;
-  });
-  const todayEl = document.getElementById("dashboard-reseller-today");
-  if (todayEl) {
-    todayEl.innerHTML = todayInstalls.length
-      ? todayInstalls.map((o) => `
-          <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="installations">
-            <div class="dash-action-dot tone-green"></div>
-            <div class="dash-action-content">
-              <div class="dash-action-title">${escapeHtml(composeClientName(o))}</div>
-              <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq · ${escapeHtml(o.operations?.product || "—")}</div>
-            </div>
-            <span class="dash-action-tag tone-green">${state.lang === "it" ? "Oggi" : "Today"}</span>
-          </article>
-        `).join("")
-      : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna posa programmata per oggi." : "No installs scheduled for today."}</div>`;
-  }
+  const ownerFilter = (order) => String(order.operations?.reseller?.id || "") === resellerId;
+  renderDashboardTodayInstalls("dashboard-reseller-today", ownerFilter);
+  renderDashboardUpcomingInstalls("dashboard-reseller-upcoming", ownerFilter);
+  renderDashboardResellerRequests();
 
   const weekEl = document.getElementById("dashboard-reseller-week");
-  if (weekEl) {
-    const ownerFilter = (order) => String(order.operations?.reseller?.id || "") === resellerId;
-    renderDashboardWeekSummary(weekEl, ownerFilter);
-  }
+  if (weekEl) renderDashboardWeekSummary(weekEl, ownerFilter);
 
-  // Widget comunicazioni: stessa logica del ruolo crew (chat diretta con office).
-  const messagesEl = document.getElementById("dashboard-reseller-messages");
-  const msgEyebrow = document.getElementById("dashboard-reseller-messages-eyebrow");
-  const msgTitle = document.getElementById("dashboard-reseller-messages-title");
-  if (messagesEl) {
-    const it = state.lang !== "en";
-    const unread = Number(state.communicationsUnreadCount || 0);
-    const threads = state.communicationThreads || [];
-    const firstThread = threads.find((t) => Number(t.unreadCount || 0) > 0) || threads[0];
-    const contactName = firstThread?.otherUser ? communicationUserLabel(firstThread.otherUser) : (it ? "Ufficio" : "Office");
-    if (unread > 0) {
-      if (msgEyebrow) msgEyebrow.textContent = it ? "Messaggi" : "Messages";
-      if (msgTitle) msgTitle.textContent = it ? `${unread} non lett${unread === 1 ? "o" : "i"}` : `${unread} unread`;
-      messagesEl.innerHTML = `
-        <button class="dash-action-row" type="button" data-action="go-communications" style="width:100%;cursor:pointer">
-          <div class="dash-action-dot tone-amber"></div>
-          <div class="dash-action-content">
-            <div class="dash-action-title">${escapeHtml(contactName)}</div>
-            <div class="dash-action-sub">${unread === 1 ? (it ? "1 messaggio non letto" : "1 unread message") : (it ? `${unread} messaggi non letti` : `${unread} unread messages`)}</div>
-          </div>
-          <span class="dash-action-tag tone-amber">${it ? "Apri →" : "Open →"}</span>
-        </button>`;
-    } else {
-      if (msgEyebrow) msgEyebrow.textContent = it ? "Comunicazioni" : "Chat";
-      if (msgTitle) msgTitle.textContent = it ? "Chat diretta" : "Direct chat";
-      messagesEl.innerHTML = `
-        <button class="dash-action-row" type="button" data-action="go-communications" style="width:100%;cursor:pointer">
-          <div class="dash-action-dot"></div>
-          <div class="dash-action-content">
-            <div class="dash-action-title">${it ? "Scrivi all'ufficio" : "Message the office"}</div>
-            <div class="dash-action-sub">${firstThread ? (it ? "Chat attiva — nessun nuovo messaggio" : "Active chat — no new messages") : (it ? "Apri la chat privata con l'ufficio" : "Open a private chat with the office")}</div>
-          </div>
-          <span class="dash-action-arrow" style="color:var(--brand);font-weight:700">→</span>
-        </button>`;
-    }
-  }
+  renderDashboardMessagesWidget("reseller");
 
   // Contatore ordini materiale per stato — riusa gli stessi dati/etichette
   // della pagina "Ordina materiali" (renderResellerOrderRequests), caricati
@@ -12009,6 +12175,7 @@ function renderDashboard() {
     renderDashboardNotifications();
     renderDashboardTeamPerformance();
     renderDashboardWeekSummary();
+    renderDashboardTeamAttendance();
     renderDashboardActions();
     renderDashboardFollowup();
     return;
@@ -12025,332 +12192,6 @@ function renderDashboard() {
     renderDashboardResellerView();
     return;
   }
-}
-
-function renderDashboardLegacy() {
-  const actions = buildDashboardActions();
-  if (ui.dashboardSubtitle) ui.dashboardSubtitle.textContent = getDashboardSubtitle();
-
-  const actionsBadge = document.getElementById("dashboard-actions-badge");
-  if (actionsBadge) actionsBadge.textContent = `${actions.length} ${actions.length === 1 ? "azione" : "azioni"}`;
-
-  if (ui.dashboardActions) {
-    ui.dashboardActions.innerHTML = actions.length
-      ? actions.map(({ order, title, reason, kind, urgency }, idx) => {
-        const meta = getActionMeta(kind);
-        const badgeClass = urgency === "urgent"
-          ? "badge-urgent"
-          : urgency === "warning"
-            ? "badge-warning"
-            : urgency === "success"
-              ? "badge-success"
-              : "badge-info";
-        const dotColor = kind === "material" ? "material"
-          : kind === "address" ? "address"
-          : kind === "warehouse" ? "warehouse"
-          : kind === "installation" ? "installation"
-          : kind === "accounting" ? "accounting"
-          : kind === "completed" ? "completed"
-          : "generic";
-        return `
-          <article class="action-card" style="animation-delay:${idx * 0.05}s">
-            <div class="action-dot ${dotColor}"></div>
-            <div class="action-content">
-              <div class="action-title">${title}</div>
-              <div class="action-sub">${reason}</div>
-            </div>
-            <div class="action-tail">
-              <span class="action-badge ${badgeClass}">${meta.icon}</span>
-              <button class="btn primary" data-action="select-order" data-id="${order.id}" data-view="orders">${state.lang === "it" ? "Apri" : "Open"}</button>
-            </div>
-          </article>
-        `;
-      }).join("")
-      : `<div class="info-card">${state.lang === "it" ? "Nessuna priorità critica al momento." : "No critical priorities right now."}</div>`;
-  }
-
-  if (ui.dashboardFollowup) {
-    const reminders = buildFollowupReminders();
-    if (ui.dashboardFollowupBadge) {
-      ui.dashboardFollowupBadge.textContent = String(reminders.length);
-    }
-    ui.dashboardFollowup.innerHTML = reminders.length
-      ? reminders.map((item, idx) => {
-          const refDate = item.quotedAt || item.updatedAt || "";
-          const daysAgo = refDate
-            ? Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)
-            : 0;
-          const name = [item.name, item.surname].filter(Boolean).join(" ") || "—";
-          const city = item.city ? ` · ${item.city}` : "";
-          const sqm = item.sqm ? ` · ${item.sqm} mq` : "";
-          return `
-            <article class="action-card" style="animation-delay:${idx * 0.05}s">
-              <div class="action-dot address"></div>
-              <div class="action-content">
-                <div class="action-title">${name}${city}</div>
-                <div class="action-sub">Preventivo inviato ${daysAgo} giorni fa${sqm}</div>
-              </div>
-              <div class="action-tail">
-                <span class="action-badge badge-warning">${daysAgo}g</span>
-                <button class="btn primary" data-action="select-sales-request" data-id="${item.id}" data-view="sales-requests">Apri</button>
-              </div>
-            </article>
-          `;
-        }).join("")
-      : `<div class="info-card">Nessun preventivo in attesa di follow-up.</div>`;
-  }
-
-  if (ui.dashboardActivity) {
-    const activityItems = buildActivityFeed();
-    ui.dashboardActivity.innerHTML = activityItems.length
-      ? activityItems.map(item => `
-        <article class="feed-item">
-          <div class="feed-dot ${item.color}"></div>
-          <div class="feed-body">
-            <div class="feed-text"><strong>${item.actor}</strong> ${item.text}</div>
-            <div class="feed-time">${item.time}</div>
-          </div>
-        </article>
-      `).join("")
-      : `<div class="info-card">${state.lang === "it" ? "Nessuna attività recente." : "No recent activity."}</div>`;
-  }
-
-  if (ui.dashboardWeekSummary) {
-    const installs = filterInstallations();
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    ui.dashboardWeekSummary.innerHTML = Array.from({ length: 3 }).map((_, index) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + index);
-      const key = date.toISOString().slice(0, 10);
-      const items = installs.filter((order) => order.operations?.installation?.installDate === key);
-      const totalSqm = items.reduce((sum, order) => sum + toNumber(order.operations?.sqm || 0), 0);
-      const pct = Math.min(100, Math.round((totalSqm / 120) * 100));
-      const gaugeColor = pct >= 80 ? "gauge-high" : pct >= 50 ? "gauge-mid" : "gauge-low";
-      const isToday = index === 0;
-      return `
-        <article class="week-card ${isToday ? "week-card-today" : ""}">
-          <div class="week-card-head">
-            <strong>${isToday ? (state.lang === "it" ? "Oggi" : "Today") + " — " : ""}${formatDate(key)}</strong>
-            <span class="week-cap">${Math.round(totalSqm)}/120 mq</span>
-          </div>
-          <div class="cal-gauge"><div class="cal-gauge-fill ${gaugeColor}" style="width:${pct}%"></div></div>
-          ${items.length
-            ? items.slice(0, 2).map((order) => `<div class="week-item">${composeClientName(order)} · ${getOrderNumber(order)}<small>${order.operations?.product || "—"} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</small></div>`).join("")
-            : `<div class="week-empty">${state.lang === "it" ? "Nessuna posa" : "No installs"}</div>`}
-        </article>
-      `;
-    }).join("");
-  }
-
-  if (ui.dashboardAlerts) {
-    const warehouseAlerts = buildWarehouseAlerts();
-    const orderAlerts = state.orders
-      .filter((order) => order.operations?.warehouse?.status === "bloccato" || order.operations?.installation?.status === "problema")
-      .slice(0, 8);
-
-    let alertHTML = "";
-    if (warehouseAlerts.length) {
-      alertHTML += warehouseAlerts.map(alert => `
-        <article class="alert-compact alert-${alert.severity}">
-          <strong>${alert.title}</strong>
-          <p>${alert.detail}</p>
-        </article>
-      `).join("");
-    }
-    if (orderAlerts.length) {
-      alertHTML += orderAlerts.map(order => `
-        <article class="alert-compact alert-amber">
-          <strong>${composeClientName(order)} · ${getOrderNumber(order)}</strong>
-          <p>${order.operations?.warehouse?.warehouseNote || order.operations?.installation?.reportNote || (state.lang === "it" ? "Serve un intervento operativo." : "An operational action is needed.")}</p>
-        </article>
-      `).join("");
-    }
-    if (!alertHTML) {
-      alertHTML = `
-        <div class="info-card">
-          <strong>${state.lang === "it" ? "Nessun alert bloccante" : "No blocking alerts"}</strong>
-          <p>${state.lang === "it" ? "Oggi" : "Today"}: ${state.orders.filter((order) => order.operations?.installation?.status === "in-corso").length} ${state.lang === "it" ? "pose in corso" : "installs in progress"} · ${state.orders.filter((order) => ["da-preparare", "in-preparazione"].includes(order.operations?.warehouse?.status)).length} ${state.lang === "it" ? "ordini da preparare" : "orders to prepare"} · ${formatCurrency(state.orders.reduce((sum, order) => sum + getOpenBalance(order), 0))} ${state.lang === "it" ? "da incassare" : "to collect"}</p>
-        </div>
-      `;
-    }
-    ui.dashboardAlerts.innerHTML = alertHTML;
-  }
-
-  if (ui.dashboardAccountingSnapshot) {
-    const totalOpenBalance = state.orders.reduce((sum, order) => sum + getOpenBalance(order), 0);
-    const invoicePending = state.orders.filter((order) => order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued).length;
-    const paidOnShopify = state.orders.filter((order) => getShopifyPaidAmount(order) > 0).length;
-    const internalPending = state.orders.filter((order) => !isShopifyPaid(order) && getOpenBalance(order) > 0).length;
-    const items = [
-      {
-        label: state.lang === "it" ? "Residuo totale" : "Total open balance",
-        value: formatCurrency(totalOpenBalance),
-        meta: state.lang === "it" ? `${accountingOpenOrdersLabel()} da presidiare` : `${accountingOpenOrdersLabel()} to follow up`,
-        accent: true,
-        view: "accounting",
-        filterKey: "data-dashboard-accounting-filter",
-        filterValue: "open",
-      },
-      {
-        label: state.lang === "it" ? "Fatture da emettere" : "Invoices pending",
-        value: String(invoicePending),
-        meta: state.lang === "it" ? "Ordini con fattura da emettere." : "Orders still waiting for invoice issue.",
-        view: "accounting",
-        filterKey: "data-dashboard-accounting-filter",
-        filterValue: "invoice",
-      },
-      {
-        label: state.lang === "it" ? "Incassi Shopify" : "Shopify collections",
-        value: String(paidOnShopify),
-        meta: state.lang === "it" ? "Pagamenti online già acquisiti." : "Online payments already captured.",
-        view: "accounting",
-        filterKey: "data-dashboard-accounting-filter",
-        filterValue: "shopify",
-      },
-      {
-        label: state.lang === "it" ? "Da registrare internamente" : "Internal follow-up",
-        value: String(internalPending),
-        meta: state.lang === "it" ? "Saldo o registrazione ancora da chiudere." : "Balance or manual registration still to close.",
-        view: "accounting",
-        filterKey: "data-dashboard-accounting-filter",
-        filterValue: "internalPending",
-      },
-    ];
-    ui.dashboardAccountingSnapshot.innerHTML = renderDashboardSnapshotCards(items);
-  }
-
-  if (ui.dashboardInventorySnapshot) {
-    const snapshot = getDashboardInventorySnapshot();
-    const items = [
-      {
-        label: state.lang === "it" ? "Giacenza prato" : "Turf stock",
-        value: `${Math.round(snapshot.totalStockSqm)} mq`,
-        meta: state.lang === "it" ? `${Math.round(snapshot.totalAvailableSqm)} mq netti ancora disponibili` : `${Math.round(snapshot.totalAvailableSqm)} net sqm still available`,
-        accent: true,
-        view: "warehouse",
-        filterKey: "data-dashboard-warehouse-filter",
-        filterValue: "turf",
-      },
-      {
-        label: state.lang === "it" ? "Impegnato ordini" : "Committed",
-        value: `${Math.round(snapshot.totalCommittedSqm)} mq`,
-        meta: state.lang === "it" ? "Metri quadri già assorbiti dagli ordini aperti." : "Square meters already reserved by open orders.",
-        view: "warehouse",
-        filterKey: "data-dashboard-warehouse-filter",
-        filterValue: "committed",
-      },
-      {
-        label: state.lang === "it" ? "Valore immobilizzato" : "Immobilized value",
-        value: formatCurrency(snapshot.totalImmobilizedGrossValue),
-        meta: state.lang === "it"
-          ? `Listino ivato applicato su ${Math.round(snapshot.pricedAvailableSqm)} mq disponibili${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} mq senza prezzo` : ""}`
-          : `Gross price list applied to ${Math.round(snapshot.pricedAvailableSqm)} available sqm${snapshot.unpricedAvailableSqm > 0 ? ` · ${Math.round(snapshot.unpricedAvailableSqm)} sqm without price` : ""}`,
-        view: "warehouse",
-        filterKey: "data-dashboard-warehouse-filter",
-        filterValue: "valued",
-      },
-      {
-        label: state.lang === "it" ? "Materiali accessori" : "Accessory stock",
-        value: `${Math.round(snapshot.totalMaterialUnits)} u`,
-        meta: state.lang === "it" ? "Colla, banda, telo e accessori caricati." : "Glue, tape, membrane and accessories currently loaded.",
-        view: "warehouse",
-        filterKey: "data-dashboard-warehouse-filter",
-        filterValue: "materials",
-      },
-      {
-        label: state.lang === "it" ? "Prodotti scoperti" : "Uncovered products",
-        value: String(snapshot.uncovered),
-        meta: state.lang === "it" ? "Referenze dove il fabbisogno supera la disponibilità reale." : "References where demand exceeds current availability.",
-        view: "warehouse",
-        filterKey: "data-dashboard-warehouse-filter",
-        filterValue: "demand",
-      },
-    ];
-    ui.dashboardInventorySnapshot.innerHTML = renderDashboardSnapshotCards(items);
-  }
-  renderDashboardTrend();
-}
-
-function accountingOpenOrdersLabel() {
-  const count = state.orders.filter(orderNeedsAccountingAction).length;
-  return `${count} ${state.lang === "it" ? "ordini" : "orders"}`;
-}
-
-function renderDashboardKpiValue(value = "") {
-  return escapeHtml(String(value ?? "")).replace(/\s+/g, "&nbsp;");
-}
-
-function renderDashboardSnapshotCards(items = []) {
-  const cards = items.map((item) => `
-    <article
-      class="kpi-card dashboard-snapshot-card ${item.accent ? "kpi-card-soft dashboard-snapshot-card-accent" : ""}"
-      data-action="open-dashboard-view"
-      data-view="${item.view}"
-      ${item.filterKey ? `${item.filterKey}="${item.filterValue}"` : ""}
-      role="button"
-      tabindex="0"
-    >
-      <div class="kpi-label">${item.label}</div>
-      <div class="kpi-value">${renderDashboardKpiValue(item.value)}</div>
-      <div class="kpi-sub">${item.meta}</div>
-    </article>
-  `);
-  const placeholderCount = Math.max(0, DASHBOARD_SNAPSHOT_COLUMNS - items.length);
-  const placeholders = Array.from(
-    { length: placeholderCount },
-    () => `<div class="dashboard-snapshot-placeholder" aria-hidden="true"></div>`,
-  );
-  return [...cards, ...placeholders].join("");
-}
-
-// ── Monthly revenue trend (dashboard) ────────────────────────────────────────
-
-function buildMonthlyTrend(monthsBack = 6) {
-  const now = new Date();
-  const months = [];
-  for (let i = monthsBack - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = new Intl.DateTimeFormat(state.lang === "it" ? "it-IT" : "en-GB", { month: "short" }).format(d);
-    months.push({ key, label: label.charAt(0).toUpperCase() + label.slice(1), revenue: 0, collected: 0 });
-  }
-  for (const order of state.orders) {
-    const raw = order.createdAt || order.updatedAt || "";
-    const key = String(raw).slice(0, 7);
-    const slot = months.find((m) => m.key === key);
-    if (!slot) continue;
-    slot.revenue += toNumber(order.total || 0);
-    slot.collected += getCollectedAmount(order);
-  }
-  return months;
-}
-
-function renderDashboardTrend() {
-  if (!ui.dashboardTrend) return;
-  const months = buildMonthlyTrend();
-  const maxVal = Math.max(...months.map((m) => m.revenue), 1);
-  ui.dashboardTrend.innerHTML = `
-    <div class="trend-chart">
-      ${months.map((m) => {
-        const revPct = Math.round((m.revenue / maxVal) * 100);
-        const colPct = Math.round((m.collected / maxVal) * 100);
-        return `
-          <div class="trend-col">
-            <div class="trend-bars">
-              <div class="trend-bar trend-bar-revenue" style="height:${revPct}%" title="${formatCurrency(m.revenue)}"></div>
-              <div class="trend-bar trend-bar-collected" style="height:${colPct}%" title="${formatCurrency(m.collected)}"></div>
-            </div>
-            <div class="trend-label">${m.label}</div>
-          </div>
-        `;
-      }).join("")}
-    </div>
-    <div class="trend-legend">
-      <span class="trend-legend-item"><span class="trend-legend-dot trend-dot-revenue"></span>${state.lang === "it" ? "Ricavi" : "Revenue"}</span>
-      <span class="trend-legend-item"><span class="trend-legend-dot trend-dot-collected"></span>${state.lang === "it" ? "Incassato" : "Collected"}</span>
-    </div>
-  `;
 }
 
 // ── Inventory CSV export ──────────────────────────────────────────────────────
@@ -12379,82 +12220,6 @@ function exportInventoryCSV() {
   a.click();
   URL.revokeObjectURL(url);
   showToast(state.lang === "it" ? "CSV inventario scaricato" : "Inventory CSV downloaded", "success");
-}
-
-function buildActivityFeed() {
-  const items = [];
-  const sorted = [...state.orders].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).slice(0, 8);
-  for (const order of sorted) {
-    const ops = order.operations || {};
-    const name = composeClientName(order);
-    const num = getOrderNumber(order);
-    const time = formatDate(order.updatedAt || order.createdAt);
-    const type = getOrderType(order);
-    if (ops.installation?.status === "completata") {
-      items.push({ actor: state.lang === "it" ? "Posa" : "Installation", text: `ha completato la posa ${num} (${name}, ${Math.round(toNumber(ops.sqm || 0))} mq)`, time, color: "green" });
-    } else if (ops.warehouse?.status === "pronto") {
-      items.push({ actor: state.lang === "it" ? "Magazzino" : "Warehouse", text: `ha preparato l'ordine ${num} (${name}, ${ops.product || "—"})`, time, color: "blue" });
-    } else if (order.source === "shopify-live") {
-      items.push({ actor: "Shopify", text: `— ${state.lang === "it" ? "ordine" : "order"} ${num} ${state.lang === "it" ? "da" : "from"} ${name} (${ops.product || "—"}, ${Math.round(toNumber(ops.sqm || 0))} mq)`, time, color: "amber" });
-    } else {
-      items.push({ actor: name, text: `· ${num} · ${type.label}`, time, color: "slate" });
-    }
-  }
-  return items.slice(0, 6);
-}
-
-function buildWarehouseAlerts() {
-  return getInventorySummary()
-    .filter((group) => {
-      if (group.isModel) {
-        return Math.max(0, toNumber(group.demandSqm) - toNumber(group.committedSqm || 0)) > toNumber(group.availableSqm);
-      }
-      return Math.max(0, toNumber(group.demandUnits) - toNumber(group.committedUnits || 0)) > toNumber(group.availableUnits);
-    })
-    .map((group) => {
-      if (group.isModel) {
-        const totalSqm = Math.round(toNumber(group.totalSqm));
-        const demandSqm = Math.round(toNumber(group.demandSqm));
-        const deficitSqm = Math.round(Math.max(0, toNumber(group.demandSqm) - toNumber(group.committedSqm || 0) - toNumber(group.availableSqm)));
-        if (totalSqm <= 0) {
-          return {
-            title: `${group.product} — nessuna giacenza`,
-            detail: `Fabbisogno: ${demandSqm} mq · ${group.totalUnits} pezzi caricati`,
-            severity: "red",
-            sortValue: deficitSqm,
-          };
-        }
-        return {
-          title: `${group.product} sotto scorta`,
-          detail: `Disponibili: ${Math.round(toNumber(group.availableSqm))} mq · Fabbisogno: ${demandSqm} mq · Mancano ${deficitSqm} mq`,
-          severity: "amber",
-          sortValue: deficitSqm,
-        };
-      }
-
-      const totalUnits = Math.round(toNumber(group.totalUnits));
-      const demandUnits = Math.round(toNumber(group.demandUnits));
-      const deficitUnits = Math.round(Math.max(0, toNumber(group.demandUnits) - toNumber(group.committedUnits || 0) - toNumber(group.availableUnits)));
-      if (totalUnits <= 0) {
-        return {
-          title: `${group.product} — nessuna giacenza`,
-          detail: `Fabbisogno: ${demandUnits} unità · 0 pezzi caricati`,
-          severity: "red",
-          sortValue: deficitUnits,
-        };
-      }
-      return {
-        title: `${group.product} sotto scorta`,
-        detail: `Disponibili: ${Math.round(toNumber(group.availableUnits))} unità · Fabbisogno: ${demandUnits} unità · Mancano ${deficitUnits} unità`,
-        severity: "amber",
-        sortValue: deficitUnits,
-      };
-    })
-    .sort((a, b) => {
-      if (a.severity !== b.severity) return a.severity === "red" ? -1 : 1;
-      return (b.sortValue || 0) - (a.sortValue || 0);
-    })
-    .map(({ sortValue, ...alert }) => alert);
 }
 
 function renderOrderStepper(order) {
@@ -19103,7 +18868,6 @@ const MOBILE_BOTTOM_NAV_PRIMARY = {
   office: ["dashboard", "orders", "installations", "communications"],
   warehouse: ["dashboard", "warehouse", "shipping", "communications"],
   crew: ["dashboard", "installations", "sales-generator", "communications"],
-  seller: ["dashboard", "sales-requests", "sales-generator", "communications"],
 };
 
 const VIEW_ICONS = {
@@ -20343,7 +20107,7 @@ function escapeAttr(v) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const TIMESHEET_DEVICE_ID_KEY = "psi-timesheet-device-id";
-const TIMESHEET_EMPLOYEE_ROLES = new Set(["warehouse", "seller", "office"]);
+const TIMESHEET_EMPLOYEE_ROLES = new Set(["warehouse", "office"]);
 
 if (!state.timesheet) {
   state.timesheet = {
@@ -20706,7 +20470,7 @@ function initTimesheet() {
   });
 }
 
-// ── View "Le mie presenze" (warehouse/seller) ───────────────────────────────
+// ── View "Le mie presenze" (warehouse) ───────────────────────────────────────
 
 function formatMinutesToHM(minutes) {
   const m = Number(minutes) || 0;
@@ -20878,7 +20642,7 @@ async function renderTimesheetOffice() {
     // Riepilogo settimana
     const teamMinutes = shifts.reduce((a, s) => a + (s.workedMinutes || 0), 0);
     const anomalyCount = shifts.filter((s) => classifyTimesheetShift(s).offSite).length;
-    const totalUsers = (Array.isArray(state.users) ? state.users.filter((u) => u.role !== "office") : []).length || byUser.size;
+    const totalUsers = (Array.isArray(state.users) ? state.users.filter((u) => TIMESHEET_EMPLOYEE_ROLES.has(u.role)) : []).length || byUser.size;
     const presentTodayCount = isCurrentWeek
       ? new Set(shifts.filter((s) => s.shiftDate === todayStr && s.clockInAt).map((s) => s.userId)).size
       : 0;
@@ -22912,6 +22676,8 @@ function applySessionPayload(session = {}) {
     state.preventivoCatalog = {};
     state._portfolioCatalogLoading = false;
     state._portfolioCatalogLoaded = false;
+    state.dashboardAttendanceShifts = [];
+    state.dashboardAttendanceLoadedAt = 0;
     try { window.localStorage.removeItem("psi-marketing-items-v1"); } catch {}
     try { window.localStorage.removeItem("psi-reseller-cart"); } catch {}
     resetMarketingSyncFlagOnUserChange();
@@ -23387,7 +23153,7 @@ function showApp() {
     focusViewTarget(state.currentView);
   });
   // Sistema Presenze: inizializza banner + counter live per dipendenti
-  // (warehouse, seller, office). Crew esclusi (subappaltatori).
+  // (warehouse, office). Crew esclusi (subappaltatori).
   try { initTimesheet(); } catch (err) { console.warn("[timesheet] init failed:", err); }
   // Mostra onboarding PWA al primo login crew/warehouse
   try { maybeShowOnboardingAfterLogin(); } catch {}

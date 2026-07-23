@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260722-new-turf-models-rename" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260722-new-turf-models-rename" />
+    <link rel="preload" href="./styles.css?v=20260723-dashboard-reseller-requests-upcoming" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260723-dashboard-reseller-requests-upcoming" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -164,7 +164,7 @@
       </header>
 
       <!-- ──────────────────────────────────────────────────────────────────
-           Banner Presenze (timesheet) — visibile solo per warehouse/seller/office
+           Banner Presenze (timesheet) — visibile solo per warehouse/office
            Counter live "in turno da Xh Ymin" o "fuori turno". Tap → modal.
            Gestito da app.js: renderTimesheetBanner() + tick ogni secondo.
            ────────────────────────────────────────────────────────────────── -->
@@ -337,6 +337,17 @@
               <div class="dash-week-summary" id="dashboard-week-summary"></div>
             </section>
 
+            <section class="dash-card">
+              <header class="dash-card-head">
+                <div>
+                  <span class="dash-card-eyebrow">Team</span>
+                  <h2 class="dash-card-title">Presenze oggi</h2>
+                </div>
+                <span class="dash-card-meta" id="dashboard-attendance-meta">—</span>
+              </header>
+              <div id="dashboard-attendance" class="dash-action-list"></div>
+            </section>
+
             <div class="dash-grid-2col">
               <section class="dash-card">
                 <header class="dash-card-head">
@@ -429,6 +440,27 @@
               </header>
               <div id="dashboard-reseller-today" class="dash-action-list"></div>
             </section>
+            <div class="dash-grid-2col">
+              <section class="dash-card">
+                <header class="dash-card-head">
+                  <div>
+                    <span class="dash-card-eyebrow">Prossimi 7 giorni</span>
+                    <h2 class="dash-card-title">Prossimi appuntamenti</h2>
+                  </div>
+                </header>
+                <div id="dashboard-reseller-upcoming" class="dash-action-list"></div>
+              </section>
+              <section class="dash-card">
+                <header class="dash-card-head">
+                  <div>
+                    <span class="dash-card-eyebrow">CRM</span>
+                    <h2 class="dash-card-title">Richieste assegnate</h2>
+                  </div>
+                  <span class="dash-card-meta" id="dashboard-reseller-requests-meta">—</span>
+                </header>
+                <div id="dashboard-reseller-requests" class="dash-action-list"></div>
+              </section>
+            </div>
             <section class="dash-card">
               <header class="dash-card-head">
                 <div>
@@ -2418,7 +2450,7 @@
           ></iframe>
         </section>
 
-        <!-- Le mie presenze (warehouse/seller) -->
+        <!-- Le mie presenze (warehouse) -->
         <!-- Pose: Cantieri Live (timeline real-time eventi cantiere) -->
         <section class="view" id="installations-live">
           <div class="page-header">
@@ -2629,7 +2661,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260722-new-turf-models-rename" defer></script>
-    <script src="./app.js?v=20260722-new-turf-models-rename" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260723-dashboard-reseller-requests-upcoming" defer></script>
+    <script src="./app.js?v=20260723-dashboard-reseller-requests-upcoming" type="module"></script>
   </body>
 </html>
