@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260724-inventory-native-product-toggles";
+} from "./lib/order-money.js?v=20260724-inventory-hide-disabled-native-groups";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260724-inventory-native-product-toggles";
+import { regionForCity } from "./lib/geo.js?v=20260724-inventory-hide-disabled-native-groups";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260724-inventory-native-product-toggles";
+} from "./lib/profit-split.js?v=20260724-inventory-hide-disabled-native-groups";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260724-inventory-native-product-toggles";
+} from "./lib/preventivo-pricing.js?v=20260724-inventory-hide-disabled-native-groups";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260724-inventory-native-product-toggles";
+const APP_SHELL_VERSION = "20260724-inventory-hide-disabled-native-groups";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -8132,6 +8132,14 @@ function getDisabledNativeInventoryEntry(value) {
   return isNativeInventoryProductEnabled(entry.key) ? null : entry;
 }
 
+function shouldIgnoreDisabledNativeInventoryProduct(value) {
+  return Boolean(getDisabledNativeInventoryEntry(value));
+}
+
+function shouldHideDisabledNativeInventoryGroup(group = {}) {
+  return shouldIgnoreDisabledNativeInventoryProduct(group.product);
+}
+
 function inferCatalogEntry(value, { includeDisabledNatives = true } = {}) {
   const label = String(value || "").toLowerCase();
   const customMatch = findCustomCatalogEntry(value);
@@ -9666,6 +9674,7 @@ function buildWarehouseDemandMap() {
 
       preparedProducts.forEach((line) => {
         const label = getCatalogLabel(line.title);
+        if (shouldIgnoreDisabledNativeInventoryProduct(label)) return;
         const key = normalizeProductName(label);
         const current = demandMap.get(key) || {
           key,
@@ -9689,7 +9698,7 @@ function buildWarehouseDemandMap() {
       if (!hasMeasuredProducts) {
         const fallbackLabel = getPrimaryTurfLabel(order);
         const fallbackSqm = toNumber(order.operations?.sqm || 0);
-        if (fallbackLabel && fallbackSqm > 0) {
+        if (fallbackLabel && fallbackSqm > 0 && !shouldIgnoreDisabledNativeInventoryProduct(fallbackLabel)) {
           const key = normalizeProductName(fallbackLabel);
           const current = demandMap.get(key) || {
             key,
@@ -9712,6 +9721,7 @@ function buildWarehouseDemandMap() {
         .filter((line) => inferCatalogEntry(line.title)?.type === "material")
         .forEach((line) => {
           const label = getCatalogLabel(line.title);
+          if (shouldIgnoreDisabledNativeInventoryProduct(label)) return;
           const key = normalizeProductName(label);
           const current = demandMap.get(key) || {
             key,
@@ -9992,6 +10002,7 @@ function buildInventoryGroups() {
   });
 
   return [...groups.values()]
+    .filter((group) => !shouldHideDisabledNativeInventoryGroup(group))
     .map((group) => {
       const availableSqm = Number((group.availablePhysicalSqm || 0).toFixed(2));
       const availableUnits = group.availablePhysicalUnits || 0;
@@ -30391,6 +30402,9 @@ async function loadCustomProducts() {
   renderProductCatalogList();
   renderNativeProductCatalogList();
   try { populateInventoryOptions(); } catch {}
+  if (state.currentView === "warehouse") {
+    renderWarehouse();
+  }
 }
 
 function renderProductCatalogList() {
