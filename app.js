@@ -1428,6 +1428,17 @@ function scheduleRender(view = "") {
     }
   });
 }
+function scheduleInventoryAllocationRenders() {
+  scheduleRender("warehouse");
+  if (state.currentView === "shipping") scheduleRender("shipping");
+}
+function renderInventoryAllocationContextNow() {
+  if (state.currentView === "shipping") {
+    renderShipping();
+  } else {
+    renderWarehouse();
+  }
+}
 let communicationsPollTimer = 0;
 let communicationsPollInFlight = false;
 let communicationsThreadsRequestSeq = 0;
@@ -1735,6 +1746,7 @@ const ui = {
   shippingDetailTitle: document.getElementById("shipping-detail-title"),
   shippingDetailFields: document.getElementById("shipping-detail-fields"),
   shippingMaterialPreview: document.getElementById("shipping-material-preview"),
+  shippingInventoryAllocation: document.getElementById("shipping-inventory-allocation"),
   shippingEstimate: document.getElementById("shipping-estimate"),
   shippingForm: document.getElementById("shipping-form"),
   shippingStatus: document.getElementById("shipping-status"),
@@ -17038,6 +17050,22 @@ function renderShippingMaterialPreview(order) {
   `;
 }
 
+function renderShippingInventoryAllocation(order) {
+  if (!ui.shippingInventoryAllocation) return;
+  if (!order) {
+    ui.shippingInventoryAllocation.innerHTML = `<div class="info-card">${state.lang === "it" ? "Seleziona un ordine per scaricare i rotoli dall'inventario." : "Select an order to fulfill rolls from inventory."}</div>`;
+    return;
+  }
+  const hasPhysicalLines = getPhysicalOrderLines(order).length > 0
+    || getWarehousePreparedLines(order).some((item) => !isServiceLine(item.title));
+  const hasInventoryWork = hasPhysicalLines
+    || getOrderInventoryAllocations(order).length > 0
+    || Boolean(getInventorySuggestionForOrder(order.id));
+  ui.shippingInventoryAllocation.innerHTML = hasInventoryWork
+    ? renderOrderInventoryAllocationPanel(order)
+    : `<div class="info-card">${state.lang === "it" ? "Nessun rotolo o materiale fisico da scaricare per questo ordine." : "No physical stock to fulfill for this order."}</div>`;
+}
+
 function refreshShippingDraftPreview() {
   if (state.currentView !== "shipping") return;
   const order = getSelectedOrder();
@@ -21946,6 +21974,7 @@ function renderShipping() {
     if (ui.shippingDetailTitle) ui.shippingDetailTitle.textContent = t("noSelection");
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
     if (ui.shippingMaterialPreview) renderShippingMaterialPreview(null);
+    if (ui.shippingInventoryAllocation) renderShippingInventoryAllocation(null);
     if (ui.shippingEstimate) ui.shippingEstimate.innerHTML = "";
     if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato spedizione." : "No shipping attachments."}</div>`;
     clearStatus(ui.shippingStatus);
@@ -21962,6 +21991,7 @@ function renderShipping() {
     if (ui.shippingDetailTitle) ui.shippingDetailTitle.textContent = t("noSelection");
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
     if (ui.shippingMaterialPreview) renderShippingMaterialPreview(null);
+    if (ui.shippingInventoryAllocation) renderShippingInventoryAllocation(null);
     if (ui.shippingEstimate) ui.shippingEstimate.innerHTML = "";
     if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato spedizione." : "No shipping attachments."}</div>`;
     if (ui.ddtItemsPreview) renderDdtPreview(null);
@@ -22011,6 +22041,7 @@ function renderShipping() {
       essentials.map(renderDetailBox).join("");
   }
   renderShippingMaterialPreview(order);
+  renderShippingInventoryAllocation(order);
   if (ui.shippingForm) {
     const wh = order.operations?.warehouse || {};
     const whStatus = String(wh.status || "").trim();
@@ -26711,7 +26742,7 @@ async function suggestInventoryForOrder(orderId = "") {
   const normalizedId = String(orderId || "").trim();
   if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
   inventoryAllocationPendingOrderIds.add(normalizedId);
-  scheduleRender("warehouse");
+  scheduleInventoryAllocationRenders();
   try {
     const suggestion = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/suggest`, {
       method: "POST",
@@ -26719,8 +26750,8 @@ async function suggestInventoryForOrder(orderId = "") {
       body: JSON.stringify({}),
     });
     setInventorySuggestionForOrder(normalizedId, suggestion);
-    renderWarehouse();
-    if (state.currentView === "warehouse") {
+    renderInventoryAllocationContextNow();
+    if (state.currentView === "warehouse" || state.currentView === "shipping") {
       const missingCount = Array.isArray(suggestion.missing) ? suggestion.missing.length : 0;
       showToast(
         missingCount
@@ -26731,10 +26762,10 @@ async function suggestInventoryForOrder(orderId = "") {
     }
   } catch (error) {
     console.error("inventory_suggestion_failed", error);
-    if (state.currentView === "warehouse") showToast(state.lang === "it" ? "Impossibile calcolare i pezzi disponibili." : "Unable to suggest available pieces.", "warning");
+    if (state.currentView === "warehouse" || state.currentView === "shipping") showToast(state.lang === "it" ? "Impossibile calcolare i pezzi disponibili." : "Unable to suggest available pieces.", "warning");
   } finally {
     inventoryAllocationPendingOrderIds.delete(normalizedId);
-    scheduleRender("warehouse");
+    scheduleInventoryAllocationRenders();
   }
 }
 
@@ -26743,7 +26774,7 @@ async function commitInventoryForOrder(orderId = "") {
   if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
   const suggestion = getInventorySuggestionForOrder(normalizedId);
   inventoryAllocationPendingOrderIds.add(normalizedId);
-  scheduleRender("warehouse");
+  scheduleInventoryAllocationRenders();
   try {
     const result = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/commit`, {
       method: "POST",
@@ -26780,7 +26811,7 @@ async function commitInventoryForOrder(orderId = "") {
     }
   } finally {
     inventoryAllocationPendingOrderIds.delete(normalizedId);
-    scheduleRender("warehouse");
+    scheduleInventoryAllocationRenders();
   }
 }
 
@@ -26788,7 +26819,7 @@ async function releaseInventoryForOrder(orderId = "") {
   const normalizedId = String(orderId || "").trim();
   if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
   inventoryAllocationPendingOrderIds.add(normalizedId);
-  scheduleRender("warehouse");
+  scheduleInventoryAllocationRenders();
   try {
     const result = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/release`, {
       method: "POST",
@@ -26817,7 +26848,7 @@ async function releaseInventoryForOrder(orderId = "") {
     );
   } finally {
     inventoryAllocationPendingOrderIds.delete(normalizedId);
-    scheduleRender("warehouse");
+    scheduleInventoryAllocationRenders();
   }
 }
 
@@ -26825,7 +26856,7 @@ async function fulfillInventoryForOrder(orderId = "") {
   const normalizedId = String(orderId || "").trim();
   if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
   inventoryAllocationPendingOrderIds.add(normalizedId);
-  scheduleRender("warehouse");
+  scheduleInventoryAllocationRenders();
   try {
     const result = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/fulfill`, {
       method: "POST",
@@ -26845,7 +26876,7 @@ async function fulfillInventoryForOrder(orderId = "") {
     showToast(state.lang === "it" ? "Impossibile scaricare l'inventario." : "Unable to fulfill inventory.", "warning");
   } finally {
     inventoryAllocationPendingOrderIds.delete(normalizedId);
-    scheduleRender("warehouse");
+    scheduleInventoryAllocationRenders();
   }
 }
 
