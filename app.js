@@ -1400,6 +1400,7 @@ function filterRecentlyDeletedInventory(list) {
 const inventoryAllocationPendingOrderIds = new Set();
 const inventoryAutoSuggestedOrderIds = new Set();
 const salesContentAttachmentDeleteInFlight = new Set();
+const portfolioJobPhotosLoadingPromises = new Map();
 let reloadAllInFlight = false;
 let coverageSyncTimer = 0;
 let coverageSyncInFlight = false;
@@ -14224,7 +14225,43 @@ function portfolioCover(slug) {
 }
 
 function portfolioPhotoCount(slug) {
-  return portfolioManualImages(getPortfolioRecord(slug)).length + portfolioJobImages(slug).length;
+  return portfolioPhotoCountMeta(slug).total;
+}
+
+function portfolioPhotoCountMeta(slug) {
+  const s = String(slug || "").trim();
+  const manualCount = portfolioManualImages(getPortfolioRecord(s)).length;
+  const jobState = state.portfolioJobPhotos?.[s];
+  const jobCount = Array.isArray(jobState?.photos) ? jobState.photos.length : 0;
+  return {
+    manualCount,
+    jobCount,
+    total: manualCount + jobCount,
+    jobLoaded: Boolean(jobState),
+    jobLoading: portfolioJobPhotosLoadingPromises.has(s),
+  };
+}
+
+function portfolioPhotoCountLabel(slug) {
+  const it = state.lang === "it";
+  const meta = portfolioPhotoCountMeta(slug);
+  if (!meta.jobLoaded && (meta.jobLoading || !meta.total)) {
+    return meta.total > 0
+      ? `${meta.total}+ ${it ? "foto" : "photos"}`
+      : (it ? "Carico..." : "Loading...");
+  }
+  return `${meta.total} ${it ? "foto" : "photos"}`;
+}
+
+function preloadPortfolioGridJobPhotos(slugs = []) {
+  const missing = [...new Set(slugs.map((slug) => String(slug || "").trim()).filter(Boolean))]
+    .filter((slug) => !state.portfolioJobPhotos?.[slug] && !portfolioJobPhotosLoadingPromises.has(slug));
+  if (!missing.length) return;
+  Promise.allSettled(missing.map((slug) => loadPortfolioJobPhotos(slug, { render: false }))).finally(() => {
+    if (state.currentView === "sales-content" && state.salesContentTab === "portfolio" && !state.portfolioSelectedProduct) {
+      renderSalesContent();
+    }
+  });
 }
 
 function renderSalesContentPortfolio() {
@@ -14268,14 +14305,15 @@ function renderPortfolioGrid() {
   if (!entries.length) {
     return `<div class="info-card">${it ? "Nessun prodotto a catalogo. Aggiungili in Impostazioni." : "No catalog products yet."}</div>`;
   }
+  preloadPortfolioGridJobPhotos(entries.map((entry) => entry.slug));
   const cards = entries.map(({ slug, label }) => {
     const cover = portfolioCover(slug);
-    const count = portfolioPhotoCount(slug);
+    const countLabel = portfolioPhotoCountLabel(slug);
     return `
       <button type="button" class="portfolio-card" data-action="open-portfolio-product" data-product="${escapeAttr(slug)}">
         <div class="portfolio-card-cover">
           ${cover ? `<img src="${escapeHtml(cover)}" alt="${escapeHtml(label)}" loading="lazy" decoding="async" />` : `<span class="portfolio-card-empty">${escapeHtml(label.slice(0, 2).toUpperCase())}</span>`}
-          <span class="portfolio-card-count">${count} ${it ? "foto" : "photos"}</span>
+          <span class="portfolio-card-count">${escapeHtml(countLabel)}</span>
         </div>
         <div class="portfolio-card-label">${escapeHtml(label)}</div>
       </button>`;
@@ -14360,20 +14398,31 @@ async function togglePortfolioFeatured(slug, photoId) {
 
 // Carica le foto dai lavori completati con quel prodotto (endpoint server).
 // Cache per slug in state.portfolioJobPhotos. Tollera l'assenza dell'endpoint.
-async function loadPortfolioJobPhotos(slug) {
+async function loadPortfolioJobPhotos(slug, { render = true } = {}) {
   const s = String(slug || "").trim();
   if (!s) return;
-  try {
-    const label = state.preventivoCatalog?.[s]?.label || "";
-    const data = await apiFetch(`/api/portfolio/${encodeURIComponent(s)}/job-photos?label=${encodeURIComponent(label)}`);
-    const photos = (Array.isArray(data?.photos) ? data.photos : [])
-      .filter((p) => p && p.url)
-      .map((p) => ({ ...p, _jobLabel: p.cliente || p.orderNumber || "" }));
-    state.portfolioJobPhotos = { ...state.portfolioJobPhotos, [s]: { photos, loadedAt: Date.now() } };
-  } catch (_) {
-    state.portfolioJobPhotos = { ...state.portfolioJobPhotos, [s]: { photos: [], loadedAt: Date.now() } };
+  let pending = portfolioJobPhotosLoadingPromises.get(s);
+  if (!pending) {
+    pending = (async () => {
+      try {
+        const label = state.preventivoCatalog?.[s]?.label || "";
+        const data = await apiFetch(`/api/portfolio/${encodeURIComponent(s)}/job-photos?label=${encodeURIComponent(label)}`);
+        const photos = (Array.isArray(data?.photos) ? data.photos : [])
+          .filter((p) => p && p.url)
+          .map((p) => ({ ...p, _jobLabel: p.cliente || p.orderNumber || "" }));
+        state.portfolioJobPhotos = { ...state.portfolioJobPhotos, [s]: { photos, loadedAt: Date.now() } };
+      } catch (_) {
+        state.portfolioJobPhotos = { ...state.portfolioJobPhotos, [s]: { photos: [], loadedAt: Date.now() } };
+      }
+    })();
+    portfolioJobPhotosLoadingPromises.set(s, pending);
+    pending.finally(() => {
+      if (portfolioJobPhotosLoadingPromises.get(s) === pending) portfolioJobPhotosLoadingPromises.delete(s);
+    });
   }
-  if (state.currentView === "sales-content" && state.salesContentTab === "portfolio" && state.portfolioSelectedProduct === s) {
+  await pending;
+  if (render && state.currentView === "sales-content" && state.salesContentTab === "portfolio"
+    && (state.portfolioSelectedProduct === s || !state.portfolioSelectedProduct)) {
     renderSalesContent();
   }
 }
