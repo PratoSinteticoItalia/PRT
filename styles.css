@@ -6187,6 +6187,17 @@ body {
   min-width: 0;
 }
 
+@media (min-width: 981px) {
+  .settings-grid > .settings-col:nth-child(2) {
+    position: sticky;
+    top: 0;
+    max-height: calc(100dvh - 120px);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    padding-right: 2px;
+  }
+}
+
 /* Cap the accounts list so edit forms don't balloon the column */
 .settings-accounts-list {
   max-height: 420px;
