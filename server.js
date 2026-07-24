@@ -3503,7 +3503,7 @@ function getInventoryComparableKey(value = "", { preserveThickness = false } = {
     : normalizeInventoryFamilyKey(value);
 }
 
-function inventoryProductKeysCompatible(left = "", right = "") {
+function inventoryProductKeysCompatible(left = "", right = "", { allowGenericThicknessFallback = false } = {}) {
   const preserveThickness = hasInventoryThicknessToken(left) || hasInventoryThicknessToken(right);
   const leftKey = getInventoryComparableKey(left, { preserveThickness });
   const rightKey = getInventoryComparableKey(right, { preserveThickness });
@@ -3511,7 +3511,17 @@ function inventoryProductKeysCompatible(left = "", right = "") {
   if (preserveThickness) {
     const leftThickness = getInventoryThicknessToken(left);
     const rightThickness = getInventoryThicknessToken(right);
-    if (!leftThickness || !rightThickness || leftThickness !== rightThickness) return false;
+    const leftFamily = normalizeInventoryFamilyKey(left);
+    const rightFamily = normalizeInventoryFamilyKey(right);
+    if (leftThickness && rightThickness && leftThickness !== rightThickness) return false;
+    if (!leftThickness || !rightThickness) {
+      return Boolean(
+        allowGenericThicknessFallback
+        && leftFamily
+        && rightFamily
+        && (leftFamily === rightFamily || leftFamily.includes(rightFamily) || rightFamily.includes(leftFamily))
+      );
+    }
     return leftKey === rightKey || leftKey.includes(rightKey) || rightKey.includes(leftKey);
   }
   return leftKey === rightKey || leftKey.includes(rightKey) || rightKey.includes(leftKey);
@@ -5237,6 +5247,10 @@ function resolveInventoryProductForLine(line = {}, order = {}, inventory = []) {
     return aliases.some((alias) => inventoryProductKeysCompatible(product, alias));
   });
   if (matched) return matched;
+  const familyMatched = inventoryProducts.find((product) => {
+    return aliases.some((alias) => inventoryProductKeysCompatible(product, alias, { allowGenericThicknessFallback: true }));
+  });
+  if (familyMatched) return familyMatched;
   if (classifyOrderLine(title) === "product") {
     const explicit = String(order.operations?.product || "").trim();
     return explicit || title.replace(/\s*-\s*\d+(?:[.,]\d+)?\s*m\s*[/x]\s*\d+(?:[.,]\d+)?\s*m?\s*$/i, "").trim();
