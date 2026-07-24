@@ -3463,6 +3463,7 @@ function normalizeInventoryProductKey(value = "") {
     .replace(/\s+/g, " ")
     .replace(/\s*-\s*\d+(?:[.,]\d+)?\s*m\s*[/x]\s*\d+(?:[.,]\d+)?\s*m?\s*$/i, "")
     .replace(/\s*-\s*\d+\s*(?:m|mq|cm)?\s*$/i, "")
+    .replace(/\b(\d+(?:[.,]\d+)?)\s*mm\b/gi, "$1 mm")
     .trim()
     .toLowerCase();
 }
@@ -3474,6 +3475,26 @@ function normalizeInventoryFamilyKey(value = "") {
     .replace(/\b\d+(?:[.,]\d+)?\s*mm\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function hasInventoryThicknessToken(value = "") {
+  return /\b\d+(?:[.,]\d+)?\s*mm\b/i.test(String(value || ""));
+}
+
+function getInventoryComparableKey(value = "", { preserveThickness = false } = {}) {
+  const shouldPreserveThickness = preserveThickness || hasInventoryThicknessToken(value);
+  return shouldPreserveThickness
+    ? normalizeInventoryProductKey(value)
+    : normalizeInventoryFamilyKey(value);
+}
+
+function inventoryProductKeysCompatible(left = "", right = "") {
+  const preserveThickness = hasInventoryThicknessToken(left) || hasInventoryThicknessToken(right);
+  const leftKey = getInventoryComparableKey(left, { preserveThickness });
+  const rightKey = getInventoryComparableKey(right, { preserveThickness });
+  if (!leftKey || !rightKey) return false;
+  if (preserveThickness) return leftKey === rightKey;
+  return leftKey === rightKey || leftKey.includes(rightKey) || rightKey.includes(leftKey);
 }
 
 // Returns a material family key for fuzzy matching between inventory and order
@@ -5138,12 +5159,15 @@ function getOrderPhysicalLines(order = {}) {
 
 function getInventoryProductAliases(title = "") {
   const raw = String(title || "");
-  const aliases = [raw, normalizeInventoryProductKey(raw), normalizeInventoryFamilyKey(raw)].filter(Boolean);
+  const preserveThickness = hasInventoryThicknessToken(raw);
+  const aliases = preserveThickness
+    ? [raw, normalizeInventoryProductKey(raw)].filter(Boolean)
+    : [raw, normalizeInventoryProductKey(raw), normalizeInventoryFamilyKey(raw)].filter(Boolean);
   if (/telo|pacciamatura|isolante/i.test(raw)) aliases.push("telo");
   if (/banda|giunzione/i.test(raw)) aliases.push("banda");
   if (/colla/i.test(raw)) aliases.push("colla");
   if (/picchetti/i.test(raw)) aliases.push("picchetti");
-  return [...new Set(aliases.map((item) => normalizeInventoryFamilyKey(item)).filter(Boolean))];
+  return [...new Set(aliases.map((item) => getInventoryComparableKey(item, { preserveThickness })).filter(Boolean))];
 }
 
 function resolveInventoryProductForLine(line = {}, order = {}, inventory = []) {
@@ -5151,9 +5175,7 @@ function resolveInventoryProductForLine(line = {}, order = {}, inventory = []) {
   const aliases = getInventoryProductAliases(title);
   const inventoryProducts = [...new Set((inventory || []).map((item) => String(item.product || "").trim()).filter(Boolean))];
   const matched = inventoryProducts.find((product) => {
-    const productKey = normalizeInventoryFamilyKey(product);
-    if (!productKey) return false;
-    return aliases.some((alias) => alias === productKey || alias.includes(productKey) || productKey.includes(alias));
+    return aliases.some((alias) => inventoryProductKeysCompatible(product, alias));
   });
   if (matched) return matched;
   if (classifyOrderLine(title) === "product") {
@@ -5232,10 +5254,7 @@ function buildOrderInventoryRequirements(order = {}, inventory = []) {
 }
 
 function inventoryPiecesMatchRequirement(piece = {}, requirement = {}) {
-  const pieceKey = normalizeInventoryFamilyKey(piece.product || "");
-  const requirementKey = normalizeInventoryFamilyKey(requirement.product || "");
-  if (!pieceKey || !requirementKey) return false;
-  if (pieceKey === requirementKey || pieceKey.includes(requirementKey) || requirementKey.includes(pieceKey)) return true;
+  if (inventoryProductKeysCompatible(piece.product || "", requirement.product || "")) return true;
   // Fall back to coarse material-family matching so "CIOTTOLO BIANCO 2 KG"
   // matches "Ciottolo bianco 25/40 - 25 lt", etc.
   const pieceFamily = normalizeMaterialFamily(piece.product || "");
@@ -5271,7 +5290,7 @@ function buildMeasuredRequirementBundles(requirements = []) {
     if (!requirement.measured) return;
     const key = [
       requirement.lineIndex,
-      normalizeInventoryFamilyKey(requirement.product || ""),
+      getInventoryComparableKey(requirement.product || ""),
       toNumber(requirement.width || 0),
       toNumber(requirement.length || 0),
       String(requirement.title || "").trim(),
@@ -5308,13 +5327,12 @@ function findMeasuredFutureFitLength(plan = {}, piece = {}, sourceUsedLength = 0
   const currentLength = toNumber(plan.totalLength || plan.length || 0);
   const target = Number((sourceLength - sourceUsedLength - currentLength).toFixed(2));
   if (target <= 0.05) return { length: 0, count: 0 };
-  const productKey = normalizeInventoryFamilyKey(plan.product || "");
   const width = toNumber(plan.width || 0);
   const currentIndex = Number(plan.bundleIndex ?? plan.lineIndex ?? 0);
   const futurePlans = pendingPlans
     .filter((item) => (
       Number(item.bundleIndex ?? item.lineIndex ?? 0) > currentIndex
-      && normalizeInventoryFamilyKey(item.product || "") === productKey
+      && inventoryProductKeysCompatible(item.product || "", plan.product || "")
       && Math.abs(toNumber(item.width || 0) - width) <= 0.08
     ))
     .slice(0, 14);
@@ -16394,10 +16412,28 @@ async function handleApi(req, res, url) {
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
     const label = String(body?.label || "").trim();
-    if (!label) return sendJson(res, 400, { error: "label_required" });
     const slugify = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const key = slugify(body?.key) || slugify(label);
     if (!key) return sendJson(res, 400, { error: "invalid_label" });
+    if (body?.native === true || body?.custom === false) {
+      const product = {
+        key,
+        label: label || key,
+        type: String(body?.type || "turf").trim() || "turf",
+        custom: false,
+        native: true,
+        disabled: body?.disabled === true,
+        updatedAt: new Date().toISOString(),
+      };
+      const list = Array.isArray(store.customProducts) ? store.customProducts : [];
+      const idx = list.findIndex((p) => p.key === key);
+      if (idx >= 0) list[idx] = { ...list[idx], ...product };
+      else list.push(product);
+      store.customProducts = list;
+      await writeJson(STORE_PATH, store);
+      return sendJson(res, 200, { ok: true, product });
+    }
+    if (!label) return sendJson(res, 400, { error: "label_required" });
     const price = Number(String(body?.grossPricePerSqm ?? "").replace(",", "."));
     const product = { key, label, type: "turf", custom: true, updatedAt: new Date().toISOString() };
     if (Number.isFinite(price) && price > 0) product.grossPricePerSqm = price;

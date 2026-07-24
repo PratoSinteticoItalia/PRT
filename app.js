@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260724-inbox-material-breathing-clean";
+} from "./lib/order-money.js?v=20260724-inventory-native-product-toggles";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260724-inbox-material-breathing-clean";
+import { regionForCity } from "./lib/geo.js?v=20260724-inventory-native-product-toggles";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260724-inbox-material-breathing-clean";
+} from "./lib/profit-split.js?v=20260724-inventory-native-product-toggles";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260724-inbox-material-breathing-clean";
+} from "./lib/preventivo-pricing.js?v=20260724-inventory-native-product-toggles";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260724-inbox-material-breathing-clean";
+const APP_SHELL_VERSION = "20260724-inventory-native-product-toggles";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1192,7 +1192,7 @@ const state = {
   preventivoTexts: null, // popolato all'init da /api/catalog/preventivo_branding
   preventivoCatalog: {}, // slug -> { code, tech: {struttura, densita, dtex, drenaggio, peso, note}, label }
   preventivoForm: null, // stato della form nativa (creato al primo render da defaultPreventivoForm())
-  customProducts: [], // prodotti prato aggiunti dall'ufficio (GET /api/products), uniti a INVENTORY_CATALOG
+  customProducts: [], // prodotti ufficio + preferenze native (GET /api/products), uniti a INVENTORY_CATALOG
   selectedOrderId: null,
   selectedSalesRequestId: "",
   selectedSalesRequestBulkIds: new Set(),
@@ -1582,6 +1582,7 @@ const ui = {
   productCatalogForm: document.getElementById("product-catalog-form"),
   productCatalogList: document.getElementById("product-catalog-list"),
   productCatalogStatus: document.getElementById("product-catalog-status"),
+  nativeProductCatalogList: document.getElementById("native-product-catalog-list"),
   preventivoProductForm: document.getElementById("preventivo-product-form"),
   preventivoProductSelect: document.getElementById("preventivo-product-select"),
   preventivoProductSavedList: document.getElementById("preventivo-product-saved-list"),
@@ -8069,60 +8070,109 @@ function normalizeKey(value) {
     .trim();
 }
 
-function inferCatalogEntry(value) {
-  const label = String(value || "").toLowerCase();
-  if (label.includes("tasso")) return INVENTORY_CATALOG.find((item) => item.key === "tasso");
-  if (label.includes("bonsai")) return INVENTORY_CATALOG.find((item) => item.key === "bonsai");
-  if (label.includes("faggio")) return INVENTORY_CATALOG.find((item) => item.key === "faggio");
-  if (label.includes("betulla")) return INVENTORY_CATALOG.find((item) => item.key === "betulla");
-  if (label.includes("acero")) return INVENTORY_CATALOG.find((item) => item.key === "acero");
-  if (label.includes("cedro")) return INVENTORY_CATALOG.find((item) => item.key === "cedro");
-  if (label.includes("rovere")) return INVENTORY_CATALOG.find((item) => item.key === "rovere");
-  if (label.includes("palma")) return INVENTORY_CATALOG.find((item) => item.key === "palma");
-  if (label.includes("cipresso")) return INVENTORY_CATALOG.find((item) => item.key === "cipresso");
-  if (label.includes("abete")) return INVENTORY_CATALOG.find((item) => item.key === "abete");
-  if (label.includes("ginepro") && label.includes("45")) return INVENTORY_CATALOG.find((item) => item.key === "ginepro-45");
-  if (label.includes("ginepro") && label.includes("35")) return INVENTORY_CATALOG.find((item) => item.key === "ginepro-35");
-  if (label.includes("ginepro")) return INVENTORY_CATALOG.find((item) => item.key === "ginepro-35");
-  if (label.includes("mogano")) return INVENTORY_CATALOG.find((item) => item.key === "mogano");
-  if (label.includes("banda")) return INVENTORY_CATALOG.find((item) => item.key === "banda");
-  if (/monocomponente/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "monocomponente");
-  if (label.includes("colla")) return INVENTORY_CATALOG.find((item) => item.key === "colla");
-  if (label.includes("telo")) return INVENTORY_CATALOG.find((item) => item.key === "telo");
-  if (label.includes("picchetti")) return INVENTORY_CATALOG.find((item) => item.key === "picchetti");
-  if (/ciottol/.test(label) && /nero/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "ciottolo-nero");
-  if (/ciottol/.test(label) && /rosso/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "ciottolo-rosso");
-  if (/ciottol/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "ciottolo-bianco");
-  if (/lapillo/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "lapillo-rosso");
-  if (/bordura/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "bordura-pvc");
-  if (/detergente/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "detergente");
-  if (/spazzolatrice/.test(label)) return INVENTORY_CATALOG.find((item) => item.key === "spazzolatrice");
-  // Prodotti prato custom (aggiunti dall'ufficio in Impostazioni): match per label.
-  const customMatch = (state.customProducts || []).find((p) => {
-    const lbl = String(p.label || "").toLowerCase().trim();
-    return lbl && label.includes(lbl);
-  });
-  if (customMatch) {
-    return {
-      key: customMatch.key,
-      label: customMatch.label,
+function normalizeCatalogMatchValue(value) {
+  return normalizeKey(value)
+    .replace(/\b(\d+(?:[.,]\d+)?)\s*mm\b/gi, "$1 mm")
+    .replace(/[-_/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isNativeProductPreference(item = {}) {
+  return item?.native === true || item?.custom === false;
+}
+
+function getNativeInventoryProductPrefs() {
+  const prefs = new Map();
+  (state.customProducts || [])
+    .filter((item) => isNativeProductPreference(item))
+    .forEach((item) => {
+      const key = String(item.key || "").trim();
+      if (key) prefs.set(key, item);
+    });
+  return prefs;
+}
+
+function isNativeInventoryProductEnabled(key = "") {
+  const pref = getNativeInventoryProductPrefs().get(String(key || "").trim());
+  return pref?.disabled !== true;
+}
+
+function getCustomInventoryProducts() {
+  return (state.customProducts || [])
+    .filter((item) => !isNativeProductPreference(item))
+    .map((item) => ({
+      key: item.key,
+      label: item.label,
       type: "turf",
-      ...(customMatch.grossPricePerSqm != null ? { grossPricePerSqm: customMatch.grossPricePerSqm } : {}),
-    };
-  }
+      custom: true,
+      ...(item.grossPricePerSqm != null ? { grossPricePerSqm: item.grossPricePerSqm } : {}),
+    }))
+    .filter((item) => item.key && item.label);
+}
+
+function findCustomCatalogEntry(value) {
+  const label = normalizeCatalogMatchValue(value);
+  if (!label) return null;
+  return [...getCustomInventoryProducts()]
+    .sort((a, b) => String(b.label || "").length - String(a.label || "").length)
+    .find((item) => {
+      const customLabel = normalizeCatalogMatchValue(item.label);
+      return customLabel && (label === customLabel || label.includes(customLabel));
+    }) || null;
+}
+
+function getNativeInventoryCatalog({ includeDisabled = false } = {}) {
+  return INVENTORY_CATALOG.filter((item) => includeDisabled || isNativeInventoryProductEnabled(item.key));
+}
+
+function getDisabledNativeInventoryEntry(value) {
+  const entry = inferCatalogEntry(value, { includeDisabledNatives: true });
+  if (!entry || entry.custom || !entry.key) return null;
+  return isNativeInventoryProductEnabled(entry.key) ? null : entry;
+}
+
+function inferCatalogEntry(value, { includeDisabledNatives = true } = {}) {
+  const label = String(value || "").toLowerCase();
+  const customMatch = findCustomCatalogEntry(value);
+  if (customMatch) return customMatch;
+  const nativeCatalog = getNativeInventoryCatalog({ includeDisabled: includeDisabledNatives });
+  const nativeByKey = (key) => nativeCatalog.find((item) => item.key === key) || null;
+  if (label.includes("tasso")) return nativeByKey("tasso");
+  if (label.includes("bonsai")) return nativeByKey("bonsai");
+  if (label.includes("faggio")) return nativeByKey("faggio");
+  if (label.includes("betulla")) return nativeByKey("betulla");
+  if (label.includes("acero")) return nativeByKey("acero");
+  if (label.includes("cedro")) return nativeByKey("cedro");
+  if (label.includes("rovere")) return nativeByKey("rovere");
+  if (label.includes("palma")) return nativeByKey("palma");
+  if (label.includes("cipresso")) return nativeByKey("cipresso");
+  if (label.includes("abete")) return nativeByKey("abete");
+  if (label.includes("ginepro") && label.includes("45")) return nativeByKey("ginepro-45");
+  if (label.includes("ginepro") && label.includes("35")) return nativeByKey("ginepro-35");
+  if (label.includes("ginepro")) return nativeByKey("ginepro-35");
+  if (label.includes("mogano")) return nativeByKey("mogano");
+  if (label.includes("banda")) return nativeByKey("banda");
+  if (/monocomponente/.test(label)) return nativeByKey("monocomponente");
+  if (label.includes("colla")) return nativeByKey("colla");
+  if (label.includes("telo")) return nativeByKey("telo");
+  if (label.includes("picchetti")) return nativeByKey("picchetti");
+  if (/ciottol/.test(label) && /nero/.test(label)) return nativeByKey("ciottolo-nero");
+  if (/ciottol/.test(label) && /rosso/.test(label)) return nativeByKey("ciottolo-rosso");
+  if (/ciottol/.test(label)) return nativeByKey("ciottolo-bianco");
+  if (/lapillo/.test(label)) return nativeByKey("lapillo-rosso");
+  if (/bordura/.test(label)) return nativeByKey("bordura-pvc");
+  if (/detergente/.test(label)) return nativeByKey("detergente");
+  if (/spazzolatrice/.test(label)) return nativeByKey("spazzolatrice");
   return null;
 }
 
-// Catalogo inventario effettivo = catalogo fisso + prodotti prato custom.
-function getInventoryCatalog() {
-  const custom = (state.customProducts || []).map((p) => ({
-    key: p.key,
-    label: p.label,
-    type: "turf",
-    custom: true,
-    ...(p.grossPricePerSqm != null ? { grossPricePerSqm: p.grossPricePerSqm } : {}),
-  }));
-  return [...INVENTORY_CATALOG, ...custom];
+// Catalogo inventario effettivo = catalogo fisso attivo + prodotti prato custom.
+function getInventoryCatalog({ includeDisabledNatives = false } = {}) {
+  return [
+    ...getNativeInventoryCatalog({ includeDisabled: includeDisabledNatives }),
+    ...getCustomInventoryProducts(),
+  ];
 }
 
 function isTurfModel(value) {
@@ -8927,7 +8977,7 @@ function getShippingPricing() {
 }
 
 function getInventoryProductConfig(value) {
-  const entry = inferCatalogEntry(value);
+  const entry = inferCatalogEntry(value, { includeDisabledNatives: false });
   if (!entry) {
     return {
       entry: null,
@@ -9974,8 +10024,15 @@ function buildInventoryGroups() {
     })
     .sort((a, b) => {
       if (a.isModel !== b.isModel) return a.isModel ? -1 : 1;
-      const cat = getInventoryCatalog();
-      return cat.findIndex((item) => item.label === a.product) - cat.findIndex((item) => item.label === b.product);
+      const cat = getInventoryCatalog({ includeDisabledNatives: true });
+      const aIndex = cat.findIndex((item) => item.label === a.product);
+      const bIndex = cat.findIndex((item) => item.label === b.product);
+      if (aIndex !== bIndex) {
+        if (aIndex < 0) return 1;
+        if (bIndex < 0) return -1;
+        return aIndex - bIndex;
+      }
+      return String(a.product || "").localeCompare(String(b.product || ""), "it");
     });
 }
 
@@ -22235,6 +22292,8 @@ function renderSettings() {
   renderAccountsManager();
   renderCrewExpenseMonthlyReport();
   renderSyncControlPanel();
+  renderProductCatalogList();
+  renderNativeProductCatalogList();
   if (state.currentUser?.role === "office") {
     loadCatalogItems("crew");
     loadCatalogItems("sales_assignment");
@@ -26490,6 +26549,17 @@ async function saveInventory(event) {
     ui.inventoryForm.product?.focus();
     return;
   }
+  const disabledNative = getDisabledNativeInventoryEntry(product);
+  if (disabledNative) {
+    showToast(
+      state.lang === "it"
+        ? `${disabledNative.label} è disattivato in Impostazioni. Riattivalo o scegli un prodotto specifico.`
+        : `${disabledNative.label} is disabled in Settings. Enable it or choose a specific product.`,
+      "warning",
+    );
+    ui.inventoryForm.product?.focus();
+    return;
+  }
   const config = getInventoryProductConfig(product);
   const variantOptions = config.variantOptions || [];
   const variantValue = String(form.get("variant") || config.defaultVariant || "").trim();
@@ -28879,6 +28949,10 @@ function handleGlobalClick(event) {
     deleteProduct(String(button.dataset.key || "").trim());
     return;
   }
+  if (action === "toggle-native-product") {
+    toggleNativeProduct(String(button.dataset.key || "").trim(), button.dataset.enabled !== "0");
+    return;
+  }
   if (action === "clear-inventory-product") {
     const product = String(button.dataset.product || "").trim();
     if (!product) return;
@@ -30315,15 +30389,16 @@ async function loadCustomProducts() {
     state.customProducts = [];
   }
   renderProductCatalogList();
+  renderNativeProductCatalogList();
   try { populateInventoryOptions(); } catch {}
 }
 
 function renderProductCatalogList() {
   const el = ui.productCatalogList;
   if (!el) return;
-  const list = state.customProducts || [];
+  const list = getCustomInventoryProducts();
   if (!list.length) {
-    el.innerHTML = `<div class="info-card">Nessun prodotto aggiunto. I 15 modelli predefiniti restano sempre disponibili.</div>`;
+    el.innerHTML = `<div class="info-card">Nessun prodotto ufficio aggiunto. I prodotti nativi si gestiscono qui sotto.</div>`;
     return;
   }
   el.innerHTML = list.map((p) => {
@@ -30334,6 +30409,25 @@ function renderProductCatalogList() {
         <span class="product-catalog-price">${escapeHtml(price)}</span>
       </div>
       <button type="button" class="ghost-button small-button" data-action="delete-product" data-key="${escapeAttr(p.key)}">Elimina</button>
+    </div>`;
+  }).join("");
+}
+
+function renderNativeProductCatalogList() {
+  const el = ui.nativeProductCatalogList;
+  if (!el) return;
+  el.innerHTML = INVENTORY_CATALOG.map((item) => {
+    const enabled = isNativeInventoryProductEnabled(item.key);
+    const kind = item.type === "turf" ? "Prato nativo" : "Materiale nativo";
+    const price = item.grossPricePerSqm != null ? ` · ${formatEuroSimple(item.grossPricePerSqm)}/mq` : "";
+    return `<div class="native-product-row ${enabled ? "" : "is-disabled"}">
+      <div>
+        <strong>${escapeHtml(item.label)}</strong>
+        <span>${escapeHtml(`${kind}${price}`)}</span>
+      </div>
+      <button type="button" class="native-product-toggle ${enabled ? "is-on" : "is-off"}" data-action="toggle-native-product" data-key="${escapeAttr(item.key)}" data-enabled="${enabled ? "1" : "0"}" aria-pressed="${enabled ? "true" : "false"}">
+        ${enabled ? "Attivo" : "Disattivato"}
+      </button>
     </div>`;
   }).join("");
 }
@@ -30368,7 +30462,7 @@ async function saveProduct(event) {
 
 async function deleteProduct(key) {
   if (!key) return;
-  const prod = (state.customProducts || []).find((p) => p.key === key);
+  const prod = getCustomInventoryProducts().find((p) => p.key === key);
   if (!confirm(`Eliminare "${prod?.label || key}" dal catalogo? Le giacenze già caricate non vengono toccate.`)) return;
   try {
     await apiFetch(`/api/products/${encodeURIComponent(key)}`, { method: "DELETE" });
@@ -30376,6 +30470,36 @@ async function deleteProduct(key) {
     showToast("Prodotto rimosso", "success");
   } catch (err) {
     showToast("Rimozione non riuscita", "error");
+  }
+}
+
+async function toggleNativeProduct(key, currentlyEnabled = true) {
+  const product = INVENTORY_CATALOG.find((item) => item.key === key);
+  if (!product) return;
+  const nextDisabled = Boolean(currentlyEnabled);
+  try {
+    await apiFetch("/api/products", {
+      method: "POST",
+      body: JSON.stringify({
+        key: product.key,
+        label: product.label,
+        type: product.type,
+        native: true,
+        custom: false,
+        disabled: nextDisabled,
+      }),
+    });
+    await loadCustomProducts();
+    if (state.currentView === "warehouse") renderWarehouse();
+    showToast(
+      nextDisabled
+        ? `${product.label} nascosto dalle scelte inventario`
+        : `${product.label} riattivato nelle scelte inventario`,
+      "success",
+    );
+  } catch (err) {
+    const msg = err?.status === 403 ? "Solo l'ufficio può gestire il catalogo." : "Aggiornamento non riuscito.";
+    showToast(msg, "error");
   }
 }
 

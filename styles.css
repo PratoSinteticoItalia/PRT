@@ -23744,6 +23744,85 @@ body {
 }
 .product-catalog-row strong { font-weight: 600; }
 .product-catalog-price { margin-left: 10px; font-size: 12px; color: var(--muted, #6b6b66); }
+.native-product-settings {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(26, 46, 35, 0.10);
+}
+.native-product-settings-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.native-product-settings-head strong {
+  display: block;
+  color: var(--ink, #17221b);
+  font-size: 14px;
+  font-weight: 750;
+}
+.native-product-settings-head span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted, #6b6b66);
+  font-size: 12px;
+}
+.native-product-catalog-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+.native-product-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid rgba(26, 46, 35, 0.10);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+}
+.native-product-row strong {
+  display: block;
+  color: var(--ink, #17221b);
+  font-size: 13px;
+  font-weight: 750;
+}
+.native-product-row span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted, #6b6b66);
+  font-size: 11px;
+}
+.native-product-row.is-disabled {
+  background: rgba(246, 244, 238, 0.76);
+  opacity: 0.72;
+}
+.native-product-toggle {
+  flex: 0 0 auto;
+  min-width: 92px;
+  border: 1px solid rgba(26, 46, 35, 0.14);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: #fff;
+  color: var(--muted, #6b6b66);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.native-product-toggle.is-on {
+  border-color: rgba(35, 151, 98, 0.24);
+  background: rgba(219, 252, 233, 0.92);
+  color: #1f8c57;
+}
+.native-product-toggle.is-off {
+  border-color: rgba(142, 134, 118, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  color: #8e8676;
+}
 
 /* ───────────────────────────────────────────────────────────────────────────
    Fix mobile: i drawer dettaglio Logistica/Campioni (figli di <body>) sono
