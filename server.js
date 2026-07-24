@@ -1895,7 +1895,7 @@ async function upsertOrderToDb(order, userId = null) {
   if (!USE_POSTGRES || !order?.id) return;
   invalidateOrdersDbCache();
   // Assicura che operations_json abbia sqm/product derivati: se mancano, li calcola da lineItems
-  const orderWithOps = (order.operations?.sqm == null || order.operations?.sqm === 0)
+  const orderWithOps = (order.operations?.sqm == null || order.operations?.sqm === 0 || shouldRejectOrderSqm(order.operations?.sqm, order))
     ? normalizeOperations(order)
     : order;
   const ops = orderWithOps.operations || order.operations || {};
@@ -3458,8 +3458,18 @@ function normalizeSessionEntry(entry = null) {
   };
 }
 
-function normalizeInventoryProductKey(value = "") {
+const INVENTORY_ALIAS_DESCRIPTOR_PATTERN = /\b(?:multi\s*direzionale|mono\s*direzionale|multidirezionale|monodirezionale|multidirectional|monodirectional)\b/gi;
+const MAX_REASONABLE_ORDER_SQM = 10000;
+
+function stripInventoryAliasDescriptors(value = "") {
   return String(value || "")
+    .replace(INVENTORY_ALIAS_DESCRIPTOR_PATTERN, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeInventoryProductKey(value = "") {
+  return stripInventoryAliasDescriptors(value)
     .replace(/\s+/g, " ")
     .replace(/\s*-\s*\d+(?:[.,]\d+)?\s*m\s*[/x]\s*\d+(?:[.,]\d+)?\s*m?\s*$/i, "")
     .replace(/\s*-\s*\d+\s*(?:m|mq|cm)?\s*$/i, "")
@@ -3481,6 +3491,11 @@ function hasInventoryThicknessToken(value = "") {
   return /\b\d+(?:[.,]\d+)?\s*mm\b/i.test(String(value || ""));
 }
 
+function getInventoryThicknessToken(value = "") {
+  const match = String(value || "").match(/\b(\d+(?:[.,]\d+)?)\s*mm\b/i);
+  return match ? String(match[1]).replace(",", ".") : "";
+}
+
 function getInventoryComparableKey(value = "", { preserveThickness = false } = {}) {
   const shouldPreserveThickness = preserveThickness || hasInventoryThicknessToken(value);
   return shouldPreserveThickness
@@ -3493,7 +3508,12 @@ function inventoryProductKeysCompatible(left = "", right = "") {
   const leftKey = getInventoryComparableKey(left, { preserveThickness });
   const rightKey = getInventoryComparableKey(right, { preserveThickness });
   if (!leftKey || !rightKey) return false;
-  if (preserveThickness) return leftKey === rightKey;
+  if (preserveThickness) {
+    const leftThickness = getInventoryThicknessToken(left);
+    const rightThickness = getInventoryThicknessToken(right);
+    if (!leftThickness || !rightThickness || leftThickness !== rightThickness) return false;
+    return leftKey === rightKey || leftKey.includes(rightKey) || rightKey.includes(leftKey);
+  }
   return leftKey === rightKey || leftKey.includes(rightKey) || rightKey.includes(leftKey);
 }
 
@@ -5110,12 +5130,12 @@ function buildUniqueDdtNumber(store = {}) {
 }
 
 function parseSquareMeters(title, quantity = 1) {
-  const normalized = String(title || "").replace(",", ".");
-  const slashMatch = normalized.match(/(\d+(?:\.\d+)?)\s*m\s*\/\s*(\d+(?:\.\d+)?)\s*m/i);
+  const normalized = String(title || "").replace(/,/g, ".");
+  const slashMatch = normalized.match(/(\d+(?:\.\d+)?)\s*m\b\s*\/\s*(\d+(?:\.\d+)?)\s*m\b/i);
   if (slashMatch) return toNumber(slashMatch[1]) * toNumber(slashMatch[2]) * quantity;
 
-  const xMatch = normalized.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*m/i);
-  if (xMatch) return toNumber(xMatch[1]) * toNumber(xMatch[2]) * quantity;
+  const xMatch = normalized.match(/(\d+(?:\.\d+)?)\s*m\b\s*x\s*(\d+(?:\.\d+)?)\s*m\b|(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*m\b/i);
+  if (xMatch) return toNumber(xMatch[1] || xMatch[3]) * toNumber(xMatch[2] || xMatch[4]) * quantity;
 
   const mqMatch = normalized.match(/(\d+(?:\.\d+)?)\s*mq/i);
   if (mqMatch) return toNumber(mqMatch[1]) * quantity;
@@ -5123,12 +5143,22 @@ function parseSquareMeters(title, quantity = 1) {
   return 0;
 }
 
+function hasExplicitMeterDimension(value = "") {
+  const normalized = String(value || "").replace(/,/g, ".");
+  return /(\d+(?:\.\d+)?)\s*m\b\s*[x/]\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*[x/]\s*(\d+(?:\.\d+)?)\s*m\b/i.test(normalized);
+}
+
+function hasProductMillimeterSpecs(value = "") {
+  const normalized = String(value || "").replace(/,/g, ".");
+  return /\b\d+(?:\.\d+)?\s*x\s*\d+(?:\.\d+)?(?:\s*x\s*\d+(?:\.\d+)?)?\s*mm\b/i.test(normalized);
+}
+
 function extractInventoryDimensions(label = "") {
   const normalized = String(label || "").replace(/,/g, ".");
-  if (/mm/i.test(normalized) && !/\b2\s*m\s*[/x]\s*\d+/i.test(normalized)) return null;
+  if (/mm/i.test(normalized) && !hasExplicitMeterDimension(normalized)) return null;
   // Require an explicit "m" unit on at least one side so "25/40" (granulometry)
   // or other bare ratios are not mistaken for dimensions.
-  const match = normalized.match(/(\d+(?:\.\d+)?)\s*m\s*[x/]\s*(\d+(?:\.\d+)?)\s*m?|(\d+(?:\.\d+)?)\s*[x/]\s*(\d+(?:\.\d+)?)\s*m\b/i);
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*m\b\s*[x/]\s*(\d+(?:\.\d+)?)\s*m\b|(\d+(?:\.\d+)?)\s*[x/]\s*(\d+(?:\.\d+)?)\s*m\b/i);
   if (!match) return null;
   const width = toNumber(match[1] || match[3]);
   const length = toNumber(match[2] || match[4]);
@@ -5155,6 +5185,35 @@ function getOrderPhysicalLines(order = {}) {
         note: String(item.note || "").trim(),
       }));
   return source.filter((item) => item.title);
+}
+
+function getOrderSqmGuardText(order = {}) {
+  const details = Array.isArray(order.lineDetails) ? order.lineDetails : [];
+  const prepItems = Array.isArray(order.operations?.warehouse?.prepItems) ? order.operations.warehouse.prepItems : [];
+  return [
+    order.operations?.product,
+    ...details.map((line) => `${line?.title || ""} ${line?.variant || ""}`),
+    ...prepItems.map((line) => line?.title || ""),
+    ...(Array.isArray(order.lineItems) ? order.lineItems : []),
+  ].filter(Boolean).join(" ");
+}
+
+function getInferredOrderSqm(order = {}) {
+  return getOrderPhysicalLines(order)
+    .reduce((sum, item) => sum + parseSquareMeters(item.title, item.quantity), 0);
+}
+
+function shouldRejectOrderSqm(value = 0, order = {}) {
+  return toNumber(value) > MAX_REASONABLE_ORDER_SQM && hasProductMillimeterSpecs(getOrderSqmGuardText(order));
+}
+
+function getSafeOrderSqm(order = {}) {
+  const explicit = toNumber(order.operations?.sqm || 0);
+  if (explicit > 0 && explicit <= MAX_REASONABLE_ORDER_SQM) return explicit;
+  const inferred = getInferredOrderSqm(order);
+  const safeInferred = inferred > 0 && inferred <= MAX_REASONABLE_ORDER_SQM ? inferred : 0;
+  if (shouldRejectOrderSqm(explicit, order)) return safeInferred;
+  return safeInferred || explicit || 0;
 }
 
 function getInventoryProductAliases(title = "") {
@@ -5199,7 +5258,7 @@ function isMeasuredInventoryRequirement(line = {}, product = "") {
 function buildOrderInventoryRequirements(order = {}, inventory = []) {
   const lines = getOrderPhysicalLines(order);
   const requirements = [];
-  const fallbackSqm = toNumber(order.operations?.sqm || 0);
+  const fallbackSqm = getSafeOrderSqm(order);
   lines.forEach((line, lineIndex) => {
     const product = resolveInventoryProductForLine(line, order, inventory);
     const quantity = Math.max(1, Number(line.quantity || 1));
@@ -6341,9 +6400,10 @@ function deriveOrderData(order) {
   const mainProduct = [...products].sort((a, b) => b.sqm - a.sqm)[0]?.title || products[0]?.title || "Da definire";
   const inferredSurface = materials.some((item) => /(pietrisco|picchetti|telo)/i.test(item)) ? "terra" : "pavimentazione";
 
+  const roundedSqm = Math.round(sqm || 0);
   return {
     mainProduct: mainProduct.trim(),
-    sqm: Math.round(sqm || 0),
+    sqm: shouldRejectOrderSqm(roundedSqm, order) ? 0 : roundedSqm,
     materials,
     services,
     jobType: services.length ? "fornitura-posa" : "fornitura",
@@ -9513,10 +9573,15 @@ function normalizeOperations(order, linkedJob = null) {
   const current = order.operations || {};
   const currentProduct = String(current.product || "").trim();
   const shouldUseDefaultProduct = !currentProduct || /^da definire$/i.test(currentProduct);
+  const currentSqm = Number(current.sqm || 0);
+  const defaultSqm = Number(defaults.sqm || 0);
+  const normalizedSqm = shouldRejectOrderSqm(currentSqm, order)
+    ? (shouldRejectOrderSqm(defaultSqm, order) ? 0 : defaultSqm)
+    : Number(currentSqm || defaultSqm || 0);
   return reconcileOperationsConsistency({
     officeStatus: current.officeStatus || defaults.officeStatus,
     product: shouldUseDefaultProduct ? defaults.product : currentProduct,
-    sqm: Number(current.sqm || defaults.sqm || 0),
+    sqm: normalizedSqm,
     surface: current.surface || defaults.surface,
     officeNote: current.officeNote || defaults.officeNote || "",
     materials: Array.isArray(current.materials) && current.materials.length ? current.materials : defaults.materials,

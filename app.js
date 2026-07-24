@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260724-inventory-hide-disabled-native-groups";
+} from "./lib/order-money.js?v=20260724-inbox-routing-inventory-aliases";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260724-inventory-hide-disabled-native-groups";
+import { regionForCity } from "./lib/geo.js?v=20260724-inbox-routing-inventory-aliases";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260724-inventory-hide-disabled-native-groups";
+} from "./lib/profit-split.js?v=20260724-inbox-routing-inventory-aliases";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260724-inventory-hide-disabled-native-groups";
+} from "./lib/preventivo-pricing.js?v=20260724-inbox-routing-inventory-aliases";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260724-inventory-hide-disabled-native-groups";
+const APP_SHELL_VERSION = "20260724-inbox-routing-inventory-aliases";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7512,7 +7512,7 @@ function renderInstallationsCoverage() {
             <div class="coverage-job-meta">${escapeHtml(composeAddress(order) || order.city || addressIncompleteText())}</div>
             <div class="coverage-meta">
               <span class="coverage-tag">${escapeHtml(getOrderNumber(order))}</span>
-              <span class="coverage-tag">${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
+              <span class="coverage-tag">${Math.round(getSafeOrderSqm(order))} mq</span>
               <span class="coverage-tag">${escapeHtml(order.operations?.product || t("undefined"))}</span>
             </div>
           </button>
@@ -8070,8 +8070,18 @@ function normalizeKey(value) {
     .trim();
 }
 
+const INVENTORY_ALIAS_DESCRIPTOR_PATTERN = /\b(?:multi\s*direzionale|mono\s*direzionale|multidirezionale|monodirezionale|multidirectional|monodirectional)\b/gi;
+const MAX_REASONABLE_ORDER_SQM = 10000;
+
+function stripInventoryAliasDescriptors(value = "") {
+  return String(value || "")
+    .replace(INVENTORY_ALIAS_DESCRIPTOR_PATTERN, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeCatalogMatchValue(value) {
-  return normalizeKey(value)
+  return normalizeKey(stripInventoryAliasDescriptors(value))
     .replace(/\b(\d+(?:[.,]\d+)?)\s*mm\b/gi, "$1 mm")
     .replace(/[-_/]+/g, " ")
     .replace(/\s+/g, " ")
@@ -8323,7 +8333,7 @@ function getDisplayPieceCount(order, item) {
     return Boolean(lineDims && isTurfModel(line?.title));
   });
   if (turfLines.length !== 1) return rawQty;
-  const totalSqm = toNumber(order?.operations?.sqm || 0);
+  const totalSqm = getSafeOrderSqm(order);
   if (totalSqm <= dims.sqm) return rawQty;
   const derivedQty = totalSqm / dims.sqm;
   const roundedQty = Math.round(derivedQty);
@@ -8711,12 +8721,22 @@ function buildDashboardActions() {
   return raw;
 }
 
+function hasExplicitMeterDimension(value = "") {
+  const normalized = String(value || "").replace(/,/g, ".");
+  return /(\d+(?:\.\d+)?)\s*m\b\s*[x/]\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*[x/]\s*(\d+(?:\.\d+)?)\s*m\b/i.test(normalized);
+}
+
+function hasProductMillimeterSpecs(value = "") {
+  const normalized = String(value || "").replace(/,/g, ".");
+  return /\b\d+(?:\.\d+)?\s*x\s*\d+(?:\.\d+)?(?:\s*x\s*\d+(?:\.\d+)?)?\s*mm\b/i.test(normalized);
+}
+
 function extractDimensions(label) {
   const normalized = String(label || "").replace(/,/g, ".");
-  if (/mm/i.test(normalized) && !/\b2\s*m\s*[/x]\s*\d+/i.test(normalized)) return null;
+  if (/mm/i.test(normalized) && !hasExplicitMeterDimension(normalized)) return null;
   // Require an explicit "m" unit on at least one side so "25/40" (granulometry)
   // or other bare ratios are not mistaken for dimensions.
-  const match = normalized.match(/(\d+(?:\.\d+)?)\s*m\s*[x/]\s*(\d+(?:\.\d+)?)\s*m?|(\d+(?:\.\d+)?)\s*[x/]\s*(\d+(?:\.\d+)?)\s*m\b/i);
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*m\b\s*[x/]\s*(\d+(?:\.\d+)?)\s*m\b|(\d+(?:\.\d+)?)\s*[x/]\s*(\d+(?:\.\d+)?)\s*m\b/i);
   if (!match) return null;
   const width = toNumber(match[1] || match[3]);
   const length = toNumber(match[2] || match[4]);
@@ -8726,13 +8746,52 @@ function extractDimensions(label) {
 
 function parseSquareMetersFromTitle(label, quantity = 1) {
   const normalized = String(label || "").replace(/,/g, ".");
-  const slashMatch = normalized.match(/(\d+(?:\.\d+)?)\s*m\s*\/\s*(\d+(?:\.\d+)?)\s*m/i);
+  const slashMatch = normalized.match(/(\d+(?:\.\d+)?)\s*m\b\s*\/\s*(\d+(?:\.\d+)?)\s*m\b/i);
   if (slashMatch) return toNumber(slashMatch[1]) * toNumber(slashMatch[2]) * quantity;
-  const xMatch = normalized.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*m/i);
-  if (xMatch) return toNumber(xMatch[1]) * toNumber(xMatch[2]) * quantity;
+  const xMatch = normalized.match(/(\d+(?:\.\d+)?)\s*m\b\s*x\s*(\d+(?:\.\d+)?)\s*m\b|(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*m\b/i);
+  if (xMatch) return toNumber(xMatch[1] || xMatch[3]) * toNumber(xMatch[2] || xMatch[4]) * quantity;
   const mqMatch = normalized.match(/(\d+(?:\.\d+)?)\s*mq/i);
   if (mqMatch) return toNumber(mqMatch[1]) * quantity;
   return 0;
+}
+
+function getOrderSqmGuardText(order = {}) {
+  const details = Array.isArray(order.lineDetails) ? order.lineDetails : [];
+  const prepItems = Array.isArray(order.operations?.warehouse?.prepItems) ? order.operations.warehouse.prepItems : [];
+  return [
+    order.operations?.product,
+    ...details.map((line) => `${line?.title || ""} ${line?.variant || ""}`),
+    ...prepItems.map((line) => line?.title || ""),
+    ...(Array.isArray(order.lineItems) ? order.lineItems : []),
+  ].filter(Boolean).join(" ");
+}
+
+function getOrderRawPhysicalLines(order = {}) {
+  const prepItems = Array.isArray(order.operations?.warehouse?.prepItems) && order.operations.warehouse.prepItems.length
+    ? order.operations.warehouse.prepItems.filter((item) => item?.included !== false)
+    : (Array.isArray(order.lineDetails) ? order.lineDetails : []);
+  return prepItems
+    .filter((item) => item?.title && !isServiceLine(item.title))
+    .map((item) => ({
+      title: String(item.title || "").trim(),
+      quantity: Math.max(1, Number(item.quantity || 1)),
+    }));
+}
+
+function getInferredOrderSqm(order = {}) {
+  return getOrderRawPhysicalLines(order)
+    .reduce((sum, item) => sum + parseSquareMetersFromTitle(item.title, item.quantity), 0);
+}
+
+function getSafeOrderSqm(order = {}) {
+  const explicit = toNumber(order?.operations?.sqm || 0);
+  if (explicit > 0 && explicit <= MAX_REASONABLE_ORDER_SQM) return explicit;
+  const inferred = getInferredOrderSqm(order);
+  const safeInferred = inferred > 0 && inferred <= MAX_REASONABLE_ORDER_SQM ? inferred : 0;
+  if (explicit > MAX_REASONABLE_ORDER_SQM && hasProductMillimeterSpecs(getOrderSqmGuardText(order))) {
+    return safeInferred;
+  }
+  return safeInferred || explicit || 0;
 }
 
 function inferInventoryPieceDimensions(item = {}) {
@@ -8771,8 +8830,9 @@ function inferInventoryPieceDimensions(item = {}) {
 }
 
 function normalizeProductName(value) {
-  return String(value || "")
+  return stripInventoryAliasDescriptors(value)
     .replace(/\s+/g, " ")
+    .replace(/\b(\d+(?:[.,]\d+)?)\s*mm\b/gi, "$1 mm")
     .replace(/\s*-\s*\d+\s*(?:m|mq|cm)?\s*$/i, "")
     .trim()
     .toLowerCase();
@@ -9308,7 +9368,7 @@ function getShippingMaterialCardSummary(order) {
   const shownDetails = uniqueDetails.slice(0, 2).join(" + ");
   const hiddenDetails = Math.max(0, uniqueDetails.length - 2);
   const inferredSqm = physicalLines.reduce((sum, item) => sum + parseSquareMetersFromTitle(item.title, item.quantity), 0);
-  const sqm = toNumber(order.operations?.sqm || 0) || inferredSqm;
+  const sqm = getSafeOrderSqm(order) || inferredSqm;
   const lineCount = physicalLines.length;
   return {
     name: firstSplit.name || fallbackSplit.name || getCatalogLabel(order.operations?.product || "") || t("product"),
@@ -9433,7 +9493,7 @@ function orderNeedsWarehouseWork(order) {
   const hasPhysical = Boolean(
     isRoutedToWarehouse(order)
     || getPhysicalOrderLines(order).length
-    || toNumber(order.operations?.sqm || 0) > 0
+    || getSafeOrderSqm(order) > 0
   );
   if (isLogisticsOrderCompleted(order)) {
     const allocations = getOrderInventoryAllocations(order);
@@ -9697,7 +9757,7 @@ function buildWarehouseDemandMap() {
 
       if (!hasMeasuredProducts) {
         const fallbackLabel = getPrimaryTurfLabel(order);
-        const fallbackSqm = toNumber(order.operations?.sqm || 0);
+        const fallbackSqm = getSafeOrderSqm(order);
         if (fallbackLabel && fallbackSqm > 0 && !shouldIgnoreDisabledNativeInventoryProduct(fallbackLabel)) {
           const key = normalizeProductName(fallbackLabel);
           const current = demandMap.get(key) || {
@@ -10182,28 +10242,11 @@ function renderInboxFlowControls(order) {
   const shopifyFulfilled = isShopifyFulfillmentComplete(order);
   const warehouseSelected = shopifyFulfilled || isRoutedToWarehouse(order) || installSelected;
   const warehouseStatus = shopifyFulfilled ? "ritirato" : (order.operations?.warehouse?.status || "da-preparare");
+  const warehouseStatusLabel = getShipmentStateLabel(order);
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
-  const allocations = getOrderInventoryAllocations(order);
-  const hasPendingAllocations = allocations.some((a) => getInventoryPieceState({ pieceState: a.status }) === "impegnato");
-  const needsInventoryWork = orderNeedsWarehouseWork(order) && (allocations.length === 0 || hasPendingAllocations);
-  const inventoryCta = needsInventoryWork
-    ? `<button class="primary-button small-button" type="button" data-action="open-inventory-for-order" data-id="${escapeHtml(order.id)}">
-        ${allocations.length === 0
-          ? (state.lang === "it" ? "→ Seleziona rotoli da scaricare" : "→ Select rolls to dispatch")
-          : (state.lang === "it" ? "→ Completa scarico inventario" : "→ Complete inventory discharge")}
-      </button>`
-    : "";
   const preparationDate = getShippingTargetDate(order);
   const stage = getUnifiedOrderStage(order);
   const nextAction = getNextOrderAction(order);
-  const statusOptions = [
-    ["da-preparare", state.lang === "it" ? "Da preparare" : "To prepare"],
-    ["in-preparazione", state.lang === "it" ? "In preparazione" : "Preparing"],
-    ["pronto", state.lang === "it" ? "Pronto" : "Ready"],
-    ["in-attesa-di-ritiro", state.lang === "it" ? "In attesa di ritiro" : "Waiting for pickup"],
-    ["da-ritirare", state.lang === "it" ? "Da ritirare" : "Ready for pickup"],
-    ["ritirato", state.lang === "it" ? "Ritirato" : "Collected"],
-  ];
   const modeOptions = [
     ["da-definire", state.lang === "it" ? "Da definire" : "To define"],
     ["corriere", state.lang === "it" ? "Corriere" : "Courier"],
@@ -10240,9 +10283,12 @@ function renderInboxFlowControls(order) {
         </button>
       </div>
       <div class="order-flow-controls">
-        <div class="field">
-          <span>${state.lang === "it" ? "Stato preparazione" : "Preparation status"}</span>
-          ${chipGroup("data-order-flow-status", warehouseStatus, statusOptions)}
+        <div class="field flow-readonly-field">
+          <span>${state.lang === "it" ? "Stato magazzino" : "Warehouse status"}</span>
+          <div class="flow-readonly-status" data-warehouse-status="${escapeHtml(warehouseStatus)}">
+            <strong>${escapeHtml(warehouseStatusLabel)}</strong>
+            <small>${state.lang === "it" ? "Si aggiorna da Spedizioni / Magazzino" : "Updated from Logistics / Warehouse"}</small>
+          </div>
         </div>
         <div class="field">
           <span>${state.lang === "it" ? "Uscita merce" : "Goods exit mode"}</span>
@@ -10253,9 +10299,8 @@ function renderInboxFlowControls(order) {
           <input class="text-input" type="date" data-order-flow-date="${order.id}" value="${preparationDate || ""}" />
         </div>
       </div>
-      ${inventoryCta ? `<div class="order-flow-inventory-cta">${inventoryCta}</div>` : ""}
       <div class="flow-helper-note flow-autosave-note">
-        ${state.lang === "it" ? "Tutto si salva da solo — nessun bottone Salva." : "Everything saves automatically — no Save button."}
+        ${state.lang === "it" ? "Inbox salva instradamento, uscita merce e data. Lo stato operativo lo aggiorna il magazzino." : "Inbox saves routing, goods exit mode and date. Warehouse updates the operational status."}
       </div>
     </article>
   `;
@@ -10506,7 +10551,7 @@ function getSoldSqmEstimate() {
       return lineSum + parseSquareMetersFromTitle(line.title, getDisplayPieceCount(order, line));
     }, 0);
     const fallbackSqm = turfLines.reduce((lineSum, line) => lineSum + parseSquareMetersFromTitle(line.title, Number(line.quantity || 1)), 0);
-    const operationsSqm = toNumber(order.operations?.sqm || 0);
+    const operationsSqm = getSafeOrderSqm(order);
     const sqm = measuredSqm > 0 ? measuredSqm : (operationsSqm > 0 ? operationsSqm : fallbackSqm);
     if (sqm <= 0) return sum;
     return sum + sqm;
@@ -10774,8 +10819,8 @@ function renderDashboardHeroKpis() {
       label: state.lang === "it" ? `Pose prossimi ${rangeDays} g` : `Installs next ${rangeDays} d`,
       value: String(upcomingInstalls.length),
       sub: state.lang === "it"
-        ? `${upcomingInstalls.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0).toFixed(0)} mq totali`
-        : `${upcomingInstalls.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0).toFixed(0)} sqm total`,
+        ? `${upcomingInstalls.reduce((s, o) => s + getSafeOrderSqm(o), 0).toFixed(0)} mq totali`
+        : `${upcomingInstalls.reduce((s, o) => s + getSafeOrderSqm(o), 0).toFixed(0)} sqm total`,
       icon: "🔧",
       tone: "green",
       view: "installations",
@@ -10822,7 +10867,7 @@ function renderDashboardMetricsStrip() {
 
   const newOrdersCount = ordersInRange.length;
   const shopifyRevenue = ordersInRange.reduce((s, o) => s + getShopifyPaidAmount(o), 0);
-  const soldSqm = ordersInRange.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0);
+  const soldSqm = ordersInRange.reduce((s, o) => s + getSafeOrderSqm(o), 0);
   const completedInstalls = ordersInRange.filter((o) => String(o.operations?.installation?.status || "").trim() === "completata").length;
   const closedRequests = requestsInRange.filter((r) => getSalesRequestStatusCode(r.status || "") === "closed").length;
   const convertedRequests = requestsInRange.filter((r) => {
@@ -11164,7 +11209,7 @@ function renderDashboardWeekSummary(target = ui.dashboardWeekSummary, ownerFilte
     const key = date.toISOString().slice(0, 10);
     let items = installs.filter((order) => order.operations?.installation?.installDate === key);
     if (ownerFilter) items = items.filter(ownerFilter);
-    const totalSqm = items.reduce((s, o) => s + toNumber(o.operations?.sqm || 0), 0);
+    const totalSqm = items.reduce((s, o) => s + getSafeOrderSqm(o), 0);
     const cap = 120;
     const pct = Math.min(100, Math.round((totalSqm / cap) * 100));
     const gaugeClass = pct >= 80 ? "high" : pct >= 50 ? "mid" : "low";
@@ -11237,7 +11282,7 @@ function renderDashboardFollowup() {
 
 function renderDashboardHeroKpisWarehouse(queueOrders, stockAlertsCount) {
   if (!ui.dashboardHeroKpisWarehouse) return;
-  const totalQueueSqm = queueOrders.reduce((sum, o) => sum + toNumber(o.operations?.sqm || 0), 0);
+  const totalQueueSqm = queueOrders.reduce((sum, o) => sum + getSafeOrderSqm(o), 0);
   const pendingShipping = (state.orders || []).filter(orderNeedsShippingAction).length;
   const ddtMissing = getDdtEligibleOrders().filter((o) => !ddtOrderHasNumber(o)).length;
   const kpis = [
@@ -11319,7 +11364,7 @@ function renderDashboardWarehouseView() {
               <div class="dash-action-dot tone-${tone}"></div>
               <div class="dash-action-content">
                 <div class="dash-action-title">${escapeHtml(composeClientName(o))} · ${escapeHtml(getOrderNumber(o))}</div>
-                <div class="dash-action-sub">${escapeHtml(o.operations?.product || "—")} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq${installDate ? " · " + formatDate(installDate) : ""}</div>
+                <div class="dash-action-sub">${escapeHtml(o.operations?.product || "—")} · ${Math.round(getSafeOrderSqm(o))} mq${installDate ? " · " + formatDate(installDate) : ""}</div>
               </div>
               <span class="dash-action-tag tone-${tone}">${escapeHtml(stage.label)}</span>
             </article>
@@ -11366,7 +11411,7 @@ function renderDashboardTodayInstalls(elementId, ownerFilter) {
           <div class="dash-action-dot tone-green"></div>
           <div class="dash-action-content">
             <div class="dash-action-title">${escapeHtml(composeClientName(o))}</div>
-            <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq · ${escapeHtml(o.operations?.product || "—")}</div>
+            <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(getSafeOrderSqm(o))} mq · ${escapeHtml(o.operations?.product || "—")}</div>
           </div>
           <span class="dash-action-tag tone-green">${state.lang === "it" ? "Oggi" : "Today"}</span>
         </article>
@@ -11399,7 +11444,7 @@ function renderDashboardUpcomingInstalls(elementId, ownerFilter) {
           <div class="dash-action-dot tone-blue"></div>
           <div class="dash-action-content">
             <div class="dash-action-title">${escapeHtml(composeClientName(o))}</div>
-            <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(toNumber(o.operations?.sqm || 0))} mq</div>
+            <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(getSafeOrderSqm(o))} mq</div>
           </div>
           <span class="dash-action-tag tone-blue">${escapeHtml(formatDate(o.operations.installation.installDate))}</span>
         </article>
@@ -12378,7 +12423,7 @@ function getOrderMaterialAvailability(order) {
   // simple availability indicator for the inbox row chip.
   const productLabel = getCatalogLabel(order.operations?.product || "");
   if (!productLabel) return null;
-  const requestedSqm = toNumber(order.operations?.sqm || 0);
+  const requestedSqm = getSafeOrderSqm(order);
   if (requestedSqm <= 0) return null;
   const summary = getInventorySummary();
   const target = normalizeProductName(productLabel);
@@ -12618,7 +12663,7 @@ function renderOrderCard(order) {
       <div class="order-card-head">
         <div>
           <strong>${composeClientName(order)} · ${getOrderNumber(order)}</strong>
-          <div class="order-card-meta">${composeAddress(order) || addressIncompleteText()} · ${order.operations?.sqm || 0} mq · ${order.operations?.product || undefinedText()}</div>
+          <div class="order-card-meta">${composeAddress(order) || addressIncompleteText()} · ${formatInventoryNumber(getSafeOrderSqm(order))} mq · ${order.operations?.product || undefinedText()}</div>
         </div>
         ${statusChip(label, tone)}
       </div>
@@ -12899,7 +12944,8 @@ function renderOrders() {
       });
     });
   });
-  // Chip Stato preparazione / Uscita merce: selezione singola → salvataggio immediato.
+  // Chip Uscita merce: selezione singola → salvataggio immediato.
+  // Il selettore stato resta nel listener solo per retrocompat con DOM gia aperti.
   ui.orderDetailSummary.querySelectorAll(
     "[data-order-flow-status], [data-order-flow-mode]"
   ).forEach((group) => {
@@ -16677,7 +16723,7 @@ function renderWarehouse() {
           <article class="action-card warehouse-action-card ${selected}" style="border-left:3px solid ${borderTone}" data-action="select-order" data-id="${order.id}" data-view="warehouse">
             <div class="action-content">
               <div class="action-title">${composeClientName(order)} ${getOrderNumber(order)}</div>
-              <div class="action-sub">${order.operations?.product || undefinedText()} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
+              <div class="action-sub">${order.operations?.product || undefinedText()} · ${Math.round(getSafeOrderSqm(order))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
               <div class="action-sub">${prepSummary || (state.lang === "it" ? "Nessuna riga selezionata" : "No prepared lines")} · ${preparedLines.length} ${state.lang === "it" ? "righe da preparare" : "lines to prepare"}</div>
               <div class="action-sub">${getShippingTargetLabel(order)} · ${order.operations?.warehouse?.fulfillmentMode === "furgone" ? (state.lang === "it" ? "Caricare su furgone" : "Load on van") : getShippingModeLabel(order)}</div>
             </div>
@@ -16713,7 +16759,7 @@ function renderWarehouse() {
   ui.warehouseDetailFields.innerHTML = order
     ? `${[
         { label: t("selectedOrder"), value: `${composeClientName(order)} · ${getOrderNumber(order)}`, meta: composeAddress(order) || addressIncompleteText() },
-        { label: t("primaryProduct"), value: order.operations?.product || undefinedText(), meta: `${order.operations?.sqm || 0} mq · ${order.phone || (state.lang === "it" ? "Telefono non disponibile" : "Phone unavailable")}` },
+        { label: t("primaryProduct"), value: order.operations?.product || undefinedText(), meta: `${formatInventoryNumber(getSafeOrderSqm(order))} mq · ${order.phone || (state.lang === "it" ? "Telefono non disponibile" : "Phone unavailable")}` },
         {
           label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation",
           value: `${getWarehousePreparedLines(order).length} ${state.lang === "it" ? "righe da preparare" : "lines to prepare"}`,
@@ -17432,7 +17478,7 @@ function buildInstallationCalendar(orders, crewName = "") {
     date.setDate(start.getDate() + index);
     const key = date.toISOString().slice(0, 10);
     const items = orders.filter((order) => String(order.operations?.installation?.installDate || "") === key);
-    const totalSqm = items.reduce((sum, order) => sum + toNumber(order.operations?.sqm || 0), 0);
+    const totalSqm = items.reduce((sum, order) => sum + getSafeOrderSqm(order), 0);
     const fillRatio = dailyCapacity > 0 ? totalSqm / dailyCapacity : 0;
     const fillPct = Math.min(100, Math.round(fillRatio * 100));
     const gaugeTone = getInstallationSaturationTone(fillRatio);
@@ -17459,7 +17505,7 @@ function buildInstallationCalendar(orders, crewName = "") {
         ${items.map((order) => `
           <button class="cal-item" data-action="select-order" data-id="${order.id}" data-view="installations" style="border-left:3px solid ${getCrewColor(order.operations?.installation?.crew)}">
             <strong>${composeClientName(order)} · ${getOrderNumber(order)}</strong>
-            <span>${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
+            <span>${order.operations?.product || t("undefined")} · ${Math.round(getSafeOrderSqm(order))} mq</span>
           </button>
         `).join("")}
       </article>
@@ -17520,7 +17566,7 @@ function renderInstallationKanbanCard(order) {
           <span class="shp-num">${escapeHtml(getOrderNumber(order))}</span>
         </div>
         <div class="shp-meta">
-          <span>${escapeHtml(order.operations?.product || t("undefined"))} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
+          <span>${escapeHtml(order.operations?.product || t("undefined"))} · ${Math.round(getSafeOrderSqm(order))} mq</span>
           <span class="shp-sep">·</span>
           <span>${escapeHtml(destination)}</span>
           <span class="shp-mode-tag shp-crew-tag"><span class="crew-dot" style="background:${crewColor}"></span>${escapeHtml(crewLabel)}</span>
@@ -17717,7 +17763,7 @@ function renderInstallations() {
           <article class="order-row installation-row ${selected} ${!isCrewView ? "is-draggable" : ""}" data-action="select-order" data-id="${order.id}" data-view="installations" ${!isCrewView ? `draggable="true" data-installation-drag-id="${order.id}"` : ""}>
             <div>
               <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-              <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
+              <div class="order-meta">${order.operations?.product || t("undefined")} · ${Math.round(getSafeOrderSqm(order))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
             </div>
             <div class="order-type-badge type-posa"><span class="crew-dot" style="background:${getCrewColor(install.crew)}"></span>${escapeHtml(crewBadge)}</div>
             <div class="order-amount">${detailLabel}</div>
@@ -17785,7 +17831,7 @@ function renderInstallations() {
     };
     const summaryCards = isCrewView
       ? [
-          { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || undefinedText(), meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || (state.lang === "it" ? "terra" : "ground")}` },
+          { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || undefinedText(), meta: `${formatInventoryNumber(getSafeOrderSqm(order))} mq · ${order.operations?.surface || (state.lang === "it" ? "terra" : "ground")}` },
           { label: state.lang === "it" ? "Cantiere" : "Site", value: composeAddress(order) || addressIncompleteText(), meta: composeClientName(order) },
           phoneCard,
           { label: state.lang === "it" ? "Programmazione" : "Schedule", value: order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : t("installationDatePending"), meta: order.operations?.installation?.installTime || t("timePending") },
@@ -17793,7 +17839,7 @@ function renderInstallations() {
           { label: state.lang === "it" ? "Materiale in uscita" : "Outbound goods", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
         ]
       : [
-          { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || undefinedText(), meta: `${order.operations?.sqm || 0} mq · ${order.operations?.surface || (state.lang === "it" ? "terra" : "ground")}` },
+          { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || undefinedText(), meta: `${formatInventoryNumber(getSafeOrderSqm(order))} mq · ${order.operations?.surface || (state.lang === "it" ? "terra" : "ground")}` },
           { label: state.lang === "it" ? "Cliente" : "Customer", value: composeClientName(order), meta: composeAddress(order) || addressIncompleteText() },
           phoneCard,
           { label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
@@ -17884,7 +17930,7 @@ function renderInstallationOrderRow(order) {
   const crew = order?.operations?.installation?.crew || "Da assegnare";
   const customer = composeClientName(order) || "—";
   const address = composeAddress(order) || "Indirizzo da completare";
-  const sqm = order?.operations?.sqm || 0;
+  const sqm = getSafeOrderSqm(order);
   const product = order?.operations?.product || "—";
   const orderNum = getOrderNumber(order);
   const stageBadge = isInstallationCompleted(order) ? "COMPLETATA" : (installDate ? "PROGRAMMATA" : "DA PIANIFICARE");
@@ -19688,7 +19734,7 @@ function readSignatureDataUrl(pad) {
 function buildEmptyDraft(order) {
   const installDate = order?.operations?.installation?.installDate || "";
   const productLabel = order?.operations?.product || "";
-  const sqm = order?.operations?.sqm != null ? Number(order.operations.sqm) : null;
+  const sqm = order?.operations?.sqm != null ? getSafeOrderSqm(order) : null;
   return {
     orderId: order?.id || "",
     installationId: order?.operations?.installation?.id || "",
@@ -22076,7 +22122,7 @@ function renderDdtListCard(order) {
       <span class="shp-dot ${num ? "ready" : "prep"}"></span>
       <div class="shp-main">
         <div class="shp-name-line"><span class="shp-name">${escapeHtml(composeClientName(order))}</span><span class="shp-num">${escapeHtml(getOrderNumber(order))}</span></div>
-        <div class="shp-meta"><span>${escapeHtml(order.operations?.product || t("undefined"))} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span></div>
+        <div class="shp-meta"><span>${escapeHtml(order.operations?.product || t("undefined"))} · ${Math.round(getSafeOrderSqm(order))} mq</span></div>
       </div>
       <div class="shp-aside">${badge}</div>
     </article>`;
@@ -26949,11 +26995,13 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
   const warehouseToggle = document.querySelector(`[data-order-flow-warehouse="${orderId}"]`);
   const installToggle = document.querySelector(`[data-order-flow-installation="${orderId}"]`);
   if (!statusInput && !modeInput && !dateInput && !warehouseToggle && !installToggle) return null;
+  const currentWarehouse = order?.operations?.warehouse || {};
   // Interruttori = <button data-on="0|1"> (fallback a checkbox.checked per retrocompat).
   const readToggle = (el) => el ? (el.dataset?.on !== undefined ? el.dataset.on === "1" : Boolean(el.checked)) : false;
   // Chip group = <div data-value="..."> (fallback a select.value per retrocompat).
   const readGroup = (el, fb) => el ? (el.dataset?.value || el.value || fb) : fb;
-  const nextStatus = readGroup(statusInput, "da-preparare");
+  const hasStatusControl = Boolean(statusInput);
+  const nextStatus = hasStatusControl ? readGroup(statusInput, currentWarehouse.status || "da-preparare") : "";
   const installSelected = readToggle(installToggle);
   const warehouseSelected = readToggle(warehouseToggle) || installSelected;
   const nextModeRaw = readGroup(modeInput, "da-definire");
@@ -26962,16 +27010,17 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
   const shouldRouteWarehouse = Boolean(
     warehouseSelected
     || nextMode !== "da-definire"
-    || nextStatus !== "da-preparare"
+    || (hasStatusControl && nextStatus !== "da-preparare")
     || nextDate
   );
+  const warehousePatch = {
+    selected: shouldRouteWarehouse,
+    fulfillmentMode: nextMode,
+    preparationDate: nextDate,
+  };
+  if (hasStatusControl) warehousePatch.status = nextStatus;
   return {
-    warehouse: {
-      selected: shouldRouteWarehouse,
-      status: nextStatus,
-      fulfillmentMode: nextMode,
-      preparationDate: nextDate,
-    },
+    warehouse: warehousePatch,
     installation: {
       // Il checkbox "Visibile in posa" è AUTORITATIVO: l'utente deve poter togliere
       // la spunta. Prima required = installSelected || prevRequired bloccava la
@@ -27002,7 +27051,7 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   // allocazioni evase, resetta shipped:false quando si cambia stato verso un non-terminale
   if (payload.warehouse && previousOrder) {
     const prevShipped = Boolean(previousOrder.operations?.warehouse?.shipped);
-    const newStatus = String(payload.warehouse.status || "").trim();
+    const newStatus = String(payload.warehouse.status ?? previousOrder.operations?.warehouse?.status ?? "").trim();
     const hasEvaso = getOrderInventoryAllocations(previousOrder)
       .some((a) => getInventoryPieceState({ pieceState: a.status }) === "evaso");
     if (prevShipped && !hasEvaso && newStatus !== "ritirato") {
@@ -27213,7 +27262,7 @@ async function saveShipping(event) {
   let inventoryNote = "";
   if (nextShipped) {
     const savedAllocations = getOrderInventoryAllocations(saved);
-    const hasPhysicalLines = getPhysicalOrderLines(saved).length > 0 || toNumber(saved.operations?.sqm || 0) > 0;
+    const hasPhysicalLines = getPhysicalOrderLines(saved).length > 0 || getSafeOrderSqm(saved) > 0;
     if (savedAllocations.length === 0 && hasPhysicalLines) {
       inventoryNote = state.lang === "it"
         ? " Nota: nessun rotolo allocato, l'inventario non è stato scaricato — fallo da Inventario se necessario."
