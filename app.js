@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260724-shipping-material-ticket-final";
+} from "./lib/order-money.js?v=20260724-inbox-material-breathing-clean";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260724-shipping-material-ticket-final";
+import { regionForCity } from "./lib/geo.js?v=20260724-inbox-material-breathing-clean";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260724-shipping-material-ticket-final";
+} from "./lib/profit-split.js?v=20260724-inbox-material-breathing-clean";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260724-shipping-material-ticket-final";
+} from "./lib/preventivo-pricing.js?v=20260724-inbox-material-breathing-clean";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260724-shipping-material-ticket-final";
+const APP_SHELL_VERSION = "20260724-inbox-material-breathing-clean";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12365,7 +12365,11 @@ function buildOrderInboxStatusTrack(order) {
   if (openBalance <= 0) {
     chips.push({ label: state.lang === "it" ? "Saldato" : "Paid", tone: "is-ok", icon: "€" });
   } else {
-    chips.push({ label: formatCurrency(openBalance), tone: "is-warn", icon: "€" });
+    chips.push({
+      label: state.lang === "it" ? `Residuo ${formatCurrency(openBalance)}` : `Open ${formatCurrency(openBalance)}`,
+      tone: "is-warn",
+      icon: "€",
+    });
   }
 
   if (chips.length === 0) return "";
@@ -12492,20 +12496,47 @@ function renderOrderRow(order, view = "orders") {
   const urgencyHtml = urgencyBadges.length
     ? `<div class="order-urgency-badges">${urgencyBadges.map((b) => `<span class="order-urgency-badge ${b.tone}" title="${escapeHtml(b.title)}">${escapeHtml(b.label)}</span>`).join("")}</div>`
     : "";
+  const material = getShippingMaterialCardSummary(order);
+  const typeClass = view === "orders"
+    ? orderType.className
+    : (orderType.tone === "status-amber" ? "type-posa" : orderType.tone === "status-blue" ? "type-spedizione" : "type-ritiro");
+  const orderId = escapeHtml(order.id);
+  const orderNumber = escapeHtml(getOrderNumber(order));
+  const clientName = escapeHtml(composeClientName(order));
+  const relativeDateHtml = relativeDate.label
+    ? `<span class="order-row-date ${relativeDate.tone}" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(relativeDate.label)}</span>`
+    : "";
+  const address = composeAddress(order) || addressIncompleteText();
   return `
-    <article class="order-row inbox-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="${view}">
-      <div class="inbox-row-main">
-        <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small>${relativeDate.label ? `<span class="order-row-date ${relativeDate.tone}" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(relativeDate.label)}</span>` : ""}</div>
-        <div class="order-meta">${order.operations?.product || undefinedText()} &middot; ${Math.round(toNumber(order.operations?.sqm || 0))} mq &middot; ${composeAddress(order) || addressIncompleteText()}</div>
+    <article class="order-row inbox-row inbox-ticket tone-${stage.tone} ${selected}" data-action="select-order" data-id="${orderId}" data-view="${escapeHtml(view)}">
+      <span class="inbox-ticket-rail tone-${stage.tone}" aria-hidden="true"></span>
+      <div class="inbox-row-main inbox-ticket-main">
+        <div class="inbox-ticket-head">
+          <div class="inbox-ticket-client">
+            <div class="order-name">${clientName} <small>${orderNumber}</small>${relativeDateHtml}</div>
+            <div class="inbox-ticket-address">${escapeHtml(address)}</div>
+          </div>
+          <div class="inbox-ticket-status">
+            <div class="order-type-badge ${typeClass}">${escapeHtml(orderType.label)}</div>
+            <div class="action-badge ${stageChipTone} badge-key-${stage.key}">${escapeHtml(stage.label)}</div>
+          </div>
+        </div>
+        <div class="inbox-material-focus">
+          <div>
+            <span class="inbox-material-name">${escapeHtml(material.name || order.operations?.product || undefinedText())}</span>
+            <span class="inbox-material-detail">${escapeHtml(material.detail || noPhysicalGoodsText())}</span>
+          </div>
+          <strong class="inbox-material-metric">${escapeHtml(material.metric)}</strong>
+        </div>
         ${statusTrack}
         ${urgencyHtml}
-        <div class="inbox-row-next-step">
-          <strong>${nextAction}</strong>
+        <div class="inbox-ticket-bottom">
+          <div class="inbox-row-next-step">
+            <span>${state.lang === "it" ? "Prossimo passo" : "Next step"}</span>
+            <strong>${escapeHtml(nextAction)}</strong>
+          </div>
         </div>
       </div>
-      <div class="order-type-badge ${view === "orders" ? orderType.className : (orderType.tone === "status-amber" ? "type-posa" : orderType.tone === "status-blue" ? "type-spedizione" : "type-ritiro")}">${orderType.label}</div>
-      <div class="order-amount">${formatCurrency(order.total)}</div>
-      <div class="action-badge ${stageChipTone} badge-key-${stage.key}">${stage.label}</div>
     </article>
   `;
 }
@@ -12832,6 +12863,8 @@ function renderOrders() {
   if (ui.orderPrepList) {
     const formatMeasure = (value) => String(value ?? "").replace(".", ",");
     const prepItems = getWarehousePrepItems(order);
+    const includedPrepItems = prepItems.filter((item) => item.included !== false);
+    const prepMaterialSummary = getShippingMaterialCardSummary(order);
     // Righe servizio / non fisiche (es. "Posa in opera"): NON sono materiali da
     // preparare, ma le mostriamo come riferimento read-only così l'operatore vede
     // il quadro completo dell'ordine senza una sezione "Articoli" separata.
@@ -12839,31 +12872,55 @@ function renderOrders() {
       const lineType = inferCatalogEntry(line.title)?.type || (isServiceLine(line.title) ? "service" : "other");
       return lineType === "service";
     });
+    const prepSummaryHtml = prepItems.length
+      ? `<section class="prep-command-summary">
+          <div>
+            <span class="panel-eyebrow">${state.lang === "it" ? "Materiale da comunicare" : "Material to prepare"}</span>
+            <strong>${escapeHtml(prepMaterialSummary.name || t("product"))}</strong>
+            <p>${escapeHtml(prepMaterialSummary.detail || getShippingTargetLabel(order))}</p>
+          </div>
+          <div class="prep-command-stats">
+            <span><strong>${includedPrepItems.length}</strong>${state.lang === "it" ? "spuntati" : "selected"}</span>
+            <span><strong>${prepItems.length}</strong>${state.lang === "it" ? "righe" : "lines"}</span>
+          </div>
+        </section>`
+      : "";
     const prepHtml = prepItems.length
       ? prepItems.map((item, index) => {
+        const split = splitShippingMaterialTitle(item.title);
         const dims = extractDimensions(item.title);
-        const dimsLabel = dims ? `${formatMeasure(dims.width)} × ${formatMeasure(dims.length)} m` : "";
+        const dimsLabel = split.detail || (dims ? `${formatMeasure(dims.width)} × ${formatMeasure(dims.length)} m` : "");
         const metaParts = [
           dimsLabel,
           `${t("prepQty")}: ${item.quantity}`,
         ].filter(Boolean).join(" · ");
+        const noteToggleLabel = item.note
+          ? (state.lang === "it" ? "Nota inserita" : "Note added")
+          : (state.lang === "it" ? "Aggiungi nota magazzino" : "Add warehouse note");
         return `
-        <article class="prep-item ${item.included === false ? "is-excluded" : ""}">
-          <label class="prep-item-toggle">
+        <article class="prep-item prep-ticket ${item.included === false ? "is-excluded" : ""}">
+          <label class="prep-item-toggle prep-ticket-toggle">
             <input type="checkbox" data-prep-field="included" data-index="${index}" ${item.included === false ? "" : "checked"} />
+            <span aria-hidden="true"></span>
           </label>
-          <div class="prep-item-body">
-            <div class="prep-item-head">
+          <div class="prep-item-body prep-ticket-body">
+            <div class="prep-item-head prep-ticket-head">
               <div>
-                <strong>${item.title}</strong>
-                <div class="prep-item-meta">${metaParts}</div>
+                <strong>${escapeHtml(split.name || item.title)}</strong>
+                <div class="prep-item-meta">${escapeHtml(metaParts)}</div>
               </div>
-              ${statusChip(item.included === false ? t("excluded") : t("included"), item.included === false ? "slate" : "green")}
+              <div class="prep-ticket-status">
+                <span class="prep-ticket-qty">x${escapeHtml(item.quantity)}</span>
+                ${statusChip(item.included === false ? t("excluded") : t("included"), item.included === false ? "slate" : "green")}
+              </div>
             </div>
-            <label class="field field-full">
-              <span>${t("warehouseNoteLabel")}</span>
-              <textarea class="text-input prep-item-note" data-prep-field="note" data-index="${index}" rows="2" placeholder="${state.lang === "it" ? "Taglio, priorità, esclusioni, note bancale..." : "Cutting, priority, exclusions, pallet notes..."}">${item.note || ""}</textarea>
-            </label>
+            <details class="prep-ticket-note ${item.note ? "has-note" : ""}">
+              <summary>${noteToggleLabel}</summary>
+              <label class="field field-full prep-ticket-note-field">
+                <span>${t("warehouseNoteLabel")}</span>
+                <textarea class="text-input prep-item-note" data-prep-field="note" data-index="${index}" rows="2" placeholder="${state.lang === "it" ? "Taglio, priorità, esclusioni, note bancale..." : "Cutting, priority, exclusions, pallet notes..."}">${escapeHtml(item.note || "")}</textarea>
+              </label>
+            </details>
           </div>
         </article>
       `;
@@ -12879,7 +12936,7 @@ function renderOrders() {
           }).join("")}
         </div>`
       : "";
-    ui.orderPrepList.innerHTML = prepHtml + serviceHtml;
+    ui.orderPrepList.innerHTML = prepSummaryHtml + prepHtml + serviceHtml;
     // Auto-save della checklist (niente più bottone "Salva preparazione"):
     // spunta → salva subito; nota → salva al blur (change) per non perdere il
     // focus mentre si scrive.
