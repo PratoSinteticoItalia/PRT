@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260724-inventory-release-native-names";
+} from "./lib/order-money.js?v=20260724-shipping-order-attachments";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260724-inventory-release-native-names";
+import { regionForCity } from "./lib/geo.js?v=20260724-shipping-order-attachments";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260724-inventory-release-native-names";
+} from "./lib/profit-split.js?v=20260724-shipping-order-attachments";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260724-inventory-release-native-names";
+} from "./lib/preventivo-pricing.js?v=20260724-shipping-order-attachments";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260724-inventory-release-native-names";
+const APP_SHELL_VERSION = "20260724-shipping-order-attachments";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -8061,6 +8061,25 @@ function mapAttachmentsForContext(order, context = "") {
       const itemContext = String(item.context || "").trim();
       return !itemContext || itemContext === context;
     });
+}
+
+function mapAttachmentsForContexts(order, contexts = []) {
+  const rawContexts = Array.isArray(contexts) ? contexts : [contexts];
+  const allowedContexts = new Set(
+    rawContexts.map((item) => String(item || "").trim().toLowerCase()),
+  );
+  const attachments = Array.isArray(order?.attachments) ? order.attachments : [];
+  return attachments
+    .map((item, index) => ({ ...item, _attachmentIndex: index }))
+    .filter((item) => {
+      if (!allowedContexts.size) return true;
+      const itemContext = String(item.context || "").trim().toLowerCase();
+      return allowedContexts.has(itemContext);
+    });
+}
+
+function mapAttachmentsForShippingDetail(order) {
+  return mapAttachmentsForContexts(order, ["", "order", "orders", "shipping"]);
 }
 
 function normalizeKey(value) {
@@ -22028,7 +22047,7 @@ function renderShipping() {
     }
   }
   if (ui.shippingAttachments) {
-    ui.shippingAttachments.innerHTML = renderAttachmentGrid(mapAttachmentsForContext(order, "shipping"), order.id);
+    ui.shippingAttachments.innerHTML = renderAttachmentGrid(mapAttachmentsForShippingDetail(order), order.id);
   }
   if (ui.shippingEstimate) {
     ui.shippingEstimate.innerHTML = buildShippingEstimate(order);
