@@ -10947,6 +10947,29 @@ async function syncShopifyTrackingForOrder(store, order, { trackingNumber = "", 
   };
 }
 
+function getOrderAttachmentIdentity(item = {}) {
+  return String(
+    item.id
+    || item.url
+    || item.objectKey
+    || item.localPath
+    || `${item.name || ""}|${item.createdAt || ""}|${item.size || ""}`,
+  ).trim();
+}
+
+function mergeOrderAttachments(existingItems = [], incomingItems = []) {
+  const merged = [];
+  const seen = new Set();
+  [...(Array.isArray(existingItems) ? existingItems : []), ...(Array.isArray(incomingItems) ? incomingItems : [])]
+    .forEach((item) => {
+      const key = getOrderAttachmentIdentity(item);
+      if (key && seen.has(key)) return;
+      if (key) seen.add(key);
+      merged.push(item);
+    });
+  return merged;
+}
+
 function upsertOrderRecord(store, order) {
   const existingOrderIndex = store.orders.findIndex((item) => item.id === order.id || areSameShopifyOrder(item, order));
   const existingOrder = existingOrderIndex >= 0 ? store.orders[existingOrderIndex] : null;
@@ -10961,6 +10984,7 @@ function upsertOrderRecord(store, order) {
       ...existingOrder,
       ...order,
       id: nextOrderId,
+      attachments: mergeOrderAttachments(existingOrder.attachments, order.attachments),
       convertedJobId: existingOrder.convertedJobId || order.convertedJobId || null,
     };
     merged.operations = normalizeOperations(merged, linkedJob);
