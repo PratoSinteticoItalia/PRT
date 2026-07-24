@@ -2315,10 +2315,6 @@ const MOBILE_FILTER_CONFIGS = {
     toolbarSelector: "#sales-requests .sales-request-toolbar",
     title: "Filtri richieste",
   },
-  "orders": {
-    toolbarSelector: "#orders .view-toolbar",
-    title: "Filtri ordini",
-  },
   "warehouse": {
     toolbarSelector: "#warehouse .view-toolbar",
     title: "Filtri magazzino",
