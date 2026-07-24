@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260723-dashboard-reseller-requests-upcoming";
+} from "./lib/order-money.js?v=20260724-shipping-material-ticket-final";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260723-dashboard-reseller-requests-upcoming";
+import { regionForCity } from "./lib/geo.js?v=20260724-shipping-material-ticket-final";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260723-dashboard-reseller-requests-upcoming";
+} from "./lib/profit-split.js?v=20260724-shipping-material-ticket-final";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260723-dashboard-reseller-requests-upcoming";
+} from "./lib/preventivo-pricing.js?v=20260724-shipping-material-ticket-final";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260723-dashboard-reseller-requests-upcoming";
+const APP_SHELL_VERSION = "20260724-shipping-material-ticket-final";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9216,6 +9216,57 @@ function getShippingSummary(order) {
     .join(" · ");
 }
 
+function splitShippingMaterialTitle(title = "") {
+  const raw = String(title || "").trim();
+  if (!raw) return { name: "", detail: "" };
+  const separator = raw.indexOf(" - ");
+  if (separator > 0) {
+    return {
+      name: raw.slice(0, separator).trim(),
+      detail: raw.slice(separator + 3).trim(),
+    };
+  }
+  return { name: raw, detail: "" };
+}
+
+function formatShippingMaterialDimension(line = {}) {
+  const split = splitShippingMaterialTitle(line.title);
+  if (split.detail) return split.detail;
+  const dimensions = line.dimensions || extractDimensions(line.title);
+  if (dimensions?.width && dimensions?.length) {
+    return `${formatInventoryNumber(dimensions.width)} m / ${formatInventoryNumber(dimensions.length)} m`;
+  }
+  return "";
+}
+
+function getShippingMaterialCardSummary(order) {
+  const physicalLines = getWarehousePreparedLines(order).filter((item) => !isServiceLine(item.title));
+  const fallbackSplit = splitShippingMaterialTitle(getCatalogLabel(order.operations?.product || ""));
+  const firstSplit = splitShippingMaterialTitle(physicalLines[0]?.title || "");
+  const detailCandidates = physicalLines
+    .map(formatShippingMaterialDimension)
+    .filter(Boolean);
+  const uniqueDetails = [...new Set(detailCandidates)];
+  const shownDetails = uniqueDetails.slice(0, 2).join(" + ");
+  const hiddenDetails = Math.max(0, uniqueDetails.length - 2);
+  const inferredSqm = physicalLines.reduce((sum, item) => sum + parseSquareMetersFromTitle(item.title, item.quantity), 0);
+  const sqm = toNumber(order.operations?.sqm || 0) || inferredSqm;
+  const lineCount = physicalLines.length;
+  return {
+    name: firstSplit.name || fallbackSplit.name || getCatalogLabel(order.operations?.product || "") || t("product"),
+    detail: shownDetails
+      ? `${shownDetails}${hiddenDetails ? ` +${hiddenDetails}` : ""}`
+      : (fallbackSplit.detail || (lineCount ? getShippingSummary(order) : noPhysicalGoodsText())),
+    metric: sqm > 0
+      ? `${formatInventoryNumber(sqm)} mq`
+      : `${lineCount} ${state.lang === "it" ? "righe" : "lines"}`,
+    lineCount,
+    lineLabel: lineCount === 1
+      ? (state.lang === "it" ? "1 riga materiale" : "1 material line")
+      : `${lineCount} ${state.lang === "it" ? "righe materiali" : "material lines"}`,
+  };
+}
+
 function getShippingBuckets(orders) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -16744,27 +16795,40 @@ function renderShippingMaterialPreview(order) {
   const physicalLines = preparedLines.filter((item) => !isServiceLine(item.title));
   const routeLabel = getShippingTargetLabel(order);
   const urgencyTone = order.operations?.warehouse?.readyToShip ? "is-ready" : "is-pending";
+  const material = getShippingMaterialCardSummary(order);
   const materialSummary = physicalLines.length
-    ? physicalLines.map((item) => `
+    ? physicalLines.map((item) => {
+      const split = splitShippingMaterialTitle(item.title);
+      const dimension = formatShippingMaterialDimension(item);
+      const sqm = parseSquareMetersFromTitle(item.title, item.quantity);
+      const meta = [
+        dimension,
+        sqm ? `${formatInventoryNumber(sqm)} mq` : "",
+        item.note ? `${state.lang === "it" ? "Nota" : "Note"}: ${item.note}` : "",
+      ].filter(Boolean).join(" · ");
+      return `
       <li class="shipping-material-line">
+        <span class="shipping-material-check" aria-hidden="true">✓</span>
         <div>
-          <span>${escapeHtml(item.title)}</span>
+          <span>${escapeHtml(split.name || item.title)}</span>
+          <small>${escapeHtml(meta || (state.lang === "it" ? "Riga da preparare" : "Line to prepare"))}</small>
         </div>
-        <strong>x${escapeHtml(item.quantity)}</strong>
+        <strong>x${escapeHtml(formatInventoryNumber(item.quantity))}</strong>
       </li>
-    `).join("")
-    : `<li class="shipping-material-line is-empty"><div><span>${state.lang === "it" ? "Nessuna riga materiale pronta" : "No prepared material lines"}</span><small>${state.lang === "it" ? "Compila la preparazione ufficio prima di creare il bancale." : "Complete office prep before building the pallet."}</small></div><strong>—</strong></li>`;
+    `;
+    }).join("")
+    : `<li class="shipping-material-line is-empty"><span class="shipping-material-check" aria-hidden="true">!</span><div><span>${state.lang === "it" ? "Nessuna riga materiale pronta" : "No prepared material lines"}</span><small>${state.lang === "it" ? "Compila la preparazione ufficio prima di creare il bancale." : "Complete office prep before building the pallet."}</small></div><strong>—</strong></li>`;
 
   ui.shippingMaterialPreview.innerHTML = `
-    <div class="shipping-material-hero ${urgencyTone}">
+    <div class="shipping-material-hero shipping-material-command ${urgencyTone}">
       <div>
-        <span class="panel-eyebrow">${state.lang === "it" ? "Merce da preparare" : "Goods to prepare"}</span>
-        <strong>${physicalLines.length} ${state.lang === "it" ? "righe materiali" : "material lines"}</strong>
-        <p>${routeLabel}</p>
+        <span class="panel-eyebrow">${state.lang === "it" ? "Materiale ordine" : "Order material"}</span>
+        <strong>${escapeHtml(material.metric)}</strong>
+        <p>${escapeHtml(material.lineLabel)} · ${escapeHtml(routeLabel)}</p>
       </div>
       <div class="shipping-material-badges">
-        <span class="search-pill compact-pill">${order.operations?.product || undefinedText()}</span>
-        <span class="search-pill compact-pill">${order.operations?.sqm || 0} mq</span>
+        <span class="search-pill compact-pill">${escapeHtml(material.name)}</span>
+        ${material.detail ? `<span class="search-pill compact-pill">${escapeHtml(material.detail)}</span>` : ""}
       </div>
     </div>
     <ul class="material-list compact-list shipping-material-list">
@@ -21306,12 +21370,13 @@ function renderShippingQueueCard(order) {
   const targetLabel = getShippingTargetLabel(order);
   const destination = composeAddress(order) || addressIncompleteText();
   const ddtNumber = order.operations?.warehouse?.ddt?.number || "";
+  const material = getShippingMaterialCardSummary(order);
   const ddtBadge = sampleOrder
     ? (hasSampleLdvAttachment(order)
       ? `<span class="shp-badge ok">${state.lang === "it" ? "LDV ok" : "Waybill ok"}</span>`
       : `<span class="shp-badge">${state.lang === "it" ? "LDV da caricare" : "Upload waybill"}</span>`)
     : (ddtNumber
-      ? `<span class="shp-badge ok">${escapeHtml(ddtNumber)}</span>`
+      ? `<span class="shp-badge ok">DDT ${escapeHtml(ddtNumber)}</span>`
       : `<span class="shp-badge">${state.lang === "it" ? "DDT da creare" : "DDT to create"}</span>`);
   const dotClass = getShippingDotClass(stage);
   const chipClass = stage.tone === "green" ? "ready" : stage.tone === "blue" ? "work" : stage.tone === "red" ? "block" : "prep";
@@ -21320,19 +21385,27 @@ function renderShippingQueueCard(order) {
   const modeIcon = getShippingQueueGroupMeta(["corriere", "ritiro", "furgone"].includes(mode) ? mode : "altro").icon || "";
   const action = getShippingRowAction(order);
   return `
-    <article class="shp-row ${selected ? "selected" : ""} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping" draggable="true" data-shipping-drag-id="${escapeAttr(order.id)}">
-      <span class="shp-dot ${dotClass}"></span>
+    <article class="shp-row shp-ticket tone-${chipClass} ${selected ? "selected" : ""} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping" draggable="true" data-shipping-drag-id="${escapeAttr(order.id)}">
+      <span class="shp-status-rail ${dotClass}" aria-hidden="true"></span>
       <div class="shp-main">
         <div class="shp-name-line">
           <span class="shp-name">${escapeHtml(composeClientName(order))}</span>
           <span class="shp-num">${escapeHtml(getOrderNumber(order))}</span>
         </div>
-        <div class="shp-meta">
-          <span>${escapeHtml(order.operations?.product || t("undefined"))} · ${Math.round(toNumber(order.operations?.sqm || 0))} mq</span>
-          <span class="shp-sep">·</span>
+        <div class="shp-material-focus">
+          <div>
+            <span class="shp-material-name">${escapeHtml(material.name)}</span>
+            <span class="shp-material-detail">${escapeHtml(material.detail)}</span>
+          </div>
+          <strong class="shp-material-metric">${escapeHtml(material.metric)}</strong>
+        </div>
+        <div class="shp-meta shp-ticket-address">
           <span>${escapeHtml(destination)}</span>
+        </div>
+        <div class="shp-meta shp-ticket-chips">
           <span class="shp-mode-tag ${modeTagClass}">${modeIcon} ${escapeHtml(routeLabel)}</span>
           ${ddtBadge}
+          <span class="shp-badge">${escapeHtml(material.lineLabel)}</span>
         </div>
       </div>
       <div class="shp-aside">

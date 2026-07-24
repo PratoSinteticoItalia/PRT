@@ -22952,6 +22952,109 @@ body {
 /* Ordini già usciti/ritirati: etichetta di stato neutra, non un'azione */
 .shp-action.done { background: #eef1ee; color: #5a665d; font-weight: 600; }
 
+/* Card Spedizioni: lettura istantanea di cliente, materiale, stato e prossima azione. */
+#shipping .shp-row.shp-ticket {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0;
+  align-items: stretch;
+  overflow: hidden;
+  padding: 0 0 0 5px;
+  border-radius: 13px;
+}
+#shipping .shp-row.shp-ticket.selected {
+  border-left: 1px solid #1f4d3d;
+  padding-left: 5px;
+}
+#shipping .shp-status-rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: #9ca3af;
+}
+#shipping .shp-status-rail.prep { background: #f59e0b; }
+#shipping .shp-status-rail.work { background: #3b82f6; }
+#shipping .shp-status-rail.ready { background: #10b981; }
+#shipping .shp-status-rail.block { background: #ef4444; }
+#shipping .shp-row.shp-ticket .shp-main {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+#shipping .shp-row.shp-ticket .shp-name-line { margin-bottom: 0; }
+#shipping .shp-material-focus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid #d8e4dc;
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(224, 237, 255, .68), rgba(255, 255, 255, .82));
+}
+#shipping .shp-material-name {
+  display: block;
+  color: #1a2e26;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+#shipping .shp-material-detail {
+  display: block;
+  margin-top: 2px;
+  color: #6a7872;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+#shipping .shp-material-metric {
+  justify-self: end;
+  min-width: 58px;
+  padding: 7px 9px;
+  border-radius: 999px;
+  background: #d1fae5;
+  color: #065f46;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+#shipping .shp-ticket-address {
+  color: #6a7872;
+  font-size: 12px;
+  line-height: 1.35;
+}
+#shipping .shp-ticket-chips { gap: 5px; }
+#shipping .shp-row.shp-ticket .shp-aside {
+  padding: 12px 12px 12px 0;
+  justify-content: flex-start;
+}
+#shipping .shp-row.shp-ticket .shp-action {
+  align-self: center;
+  margin: 12px 12px 12px 0;
+  opacity: 1;
+}
+#shipping .shp-groups .shp-row.shp-ticket {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  padding: 0 0 0 5px;
+}
+#shipping .shp-groups .shp-row.shp-ticket.selected { padding-left: 5px; }
+#shipping .shp-groups .shp-row.shp-ticket .shp-main { padding: 11px 12px 8px; }
+#shipping .shp-groups .shp-row.shp-ticket .shp-aside {
+  padding: 0 12px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+}
+#shipping .shp-groups .shp-row.shp-ticket .shp-action {
+  width: calc(100% - 24px);
+  margin: 0 12px 12px;
+}
+
 /* Pillole filtro Logistica (riusa .filter-bar ma allineato a v2) */
 #shipping .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; }
 #shipping .filter-bar .filter-btn { padding: 8px 14px; background: #fff; border: 1px solid #e5e1d6; border-radius: 999px; font-size: 13px; font-weight: 500; color: #5a6e63; cursor: pointer; }
@@ -23099,8 +23202,84 @@ body {
 }
 #shipping-standard-detail-panel .shp-next-action.shp-tone-green .panel-eyebrow,
 #shipping-standard-detail-panel .shp-next-action.is-done .panel-eyebrow { color: #1f4d3d; }
+
+/* Materiale ordine: distinta operativa compatta, pensata per lettura da magazzino. */
+#shipping-standard-detail-panel .shipping-material-command {
+  align-items: center;
+  border-radius: 13px;
+  padding: 14px;
+  background: linear-gradient(135deg, #edf8f1, #fffdf8 68%);
+}
+#shipping-standard-detail-panel .shipping-material-command strong {
+  font-size: 25px;
+  line-height: 1;
+}
+#shipping-standard-detail-panel .shipping-material-command p {
+  margin-top: 6px;
+  font-size: 12px;
+}
+#shipping-standard-detail-panel .shipping-material-command .search-pill {
+  border-radius: 10px;
+  border-style: dashed;
+  background: rgba(255, 255, 255, .72);
+  font-weight: 600;
+}
+#shipping-standard-detail-panel .shipping-material-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+#shipping-standard-detail-panel .shipping-material-line {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #e5e1d6;
+  border-radius: 11px;
+  background: #fff;
+}
+#shipping-standard-detail-panel .shipping-material-line > div {
+  padding-right: 0;
+}
+#shipping-standard-detail-panel .shipping-material-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: #1f4d3d;
+  color: #fff;
+  font-weight: 800;
+}
+#shipping-standard-detail-panel .shipping-material-line.is-empty .shipping-material-check {
+  background: #fef3c7;
+  color: #92400e;
+}
+#shipping-standard-detail-panel .shipping-material-line span:not(.shipping-material-check) {
+  font-size: 13.5px;
+  line-height: 1.25;
+}
+#shipping-standard-detail-panel .shipping-material-line small {
+  margin-top: 3px;
+  font-size: 11.5px;
+}
+#shipping-standard-detail-panel .shipping-material-line strong {
+  min-width: 44px;
+  padding: 7px 9px;
+  border-radius: 999px;
+  font-size: 13px;
+}
 @media (max-width: 560px) {
   #shipping-standard-detail-panel #shipping-detail-fields { grid-template-columns: 1fr; }
+  #shipping-standard-detail-panel .shipping-material-line {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  #shipping-standard-detail-panel .shipping-material-line strong {
+    grid-column: 2;
+    justify-self: start;
+  }
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
