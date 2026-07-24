@@ -3660,6 +3660,7 @@ function normalizeInventoryAllocationRecord(item = {}) {
     requiredPieceSqm: Number(toNumber(item.requiredPieceSqm || (width * requiredPieceLength)).toFixed(2)),
     requestLabel: String(item.requestLabel || ""),
     sourcePieceLabel: String(item.sourcePieceLabel || item.pieceLabel || ""),
+    sourcePieceType: item.sourcePieceType ? normalizeInventoryPieceType(item.sourcePieceType) : "",
     pieceType: normalizeInventoryPieceType(item.pieceType || item.status),
     action: ["use", "cut", "partial-units"].includes(String(item.action || "")) ? String(item.action) : "use",
     status: normalizeInventoryPieceState(item.status || item.pieceState, "impegnato"),
@@ -5755,6 +5756,7 @@ function applyInventoryCommitment(store = {}, order = {}, rawSuggestions = []) {
           requiredPieceSqm: suggestion.requiredPieceSqm,
           requestLabel: suggestion.requestLabel,
           sourcePieceLabel: suggestion.sourcePieceLabel || suggestion.pieceLabel || buildInventoryPieceLabel(sourceSnapshot),
+          sourcePieceType: sourceSnapshot.pieceType || sourceSnapshot.status,
           pieceType: sourceSnapshot.pieceType || sourceSnapshot.status,
           action: "partial-units",
           status: "impegnato",
@@ -5854,6 +5856,7 @@ function applyInventoryCommitment(store = {}, order = {}, rawSuggestions = []) {
         requiredPieceSqm: suggestion.requiredPieceSqm,
         requestLabel: suggestion.requestLabel,
         sourcePieceLabel: suggestion.sourcePieceLabel || suggestion.pieceLabel || buildInventoryPieceLabel(sourceSnapshot),
+        sourcePieceType: sourceSnapshot.pieceType || sourceSnapshot.status,
         pieceType: allocationAction === "cut" ? "taglio" : sourceSnapshot.pieceType || sourceSnapshot.status,
         action: allocationAction,
         status: "impegnato",
@@ -5890,23 +5893,106 @@ function applyInventoryCommitment(store = {}, order = {}, rawSuggestions = []) {
   return { ok: true, order: nextOrder, inventory, allocations };
 }
 
+function clearInventoryPieceCommitment(piece) {
+  if (!piece) return;
+  piece.pieceState = "disponibile";
+  piece.committedOrderId = "";
+  piece.committedOrderNumber = "";
+  piece.allocationId = "";
+  piece.committedAt = "";
+  piece.fulfilledAt = "";
+}
+
+function inferRestoredInventoryPieceType(piece = {}) {
+  return piece.parentPieceId || piece.residueFromPieceId ? "residuo" : "intero";
+}
+
 function releaseInventoryCommitmentsForOrder(store = {}, order = {}) {
   const now = new Date().toISOString();
   const allocations = Array.isArray(order.operations?.warehouse?.inventoryAllocations)
     ? order.operations.warehouse.inventoryAllocations.map((item) => normalizeInventoryAllocationRecord(item))
     : [];
-  if (!allocations.some((item) => item.status === "impegnato")) return { order, inventory: store.inventory || [] };
+  const activeAllocations = allocations.filter((item) => item.status === "impegnato");
+  if (!activeAllocations.length) return { ok: true, order, inventory: store.inventory || [], changedPieceIds: [], removedPieceIds: [] };
   const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
+  const changedPieceIds = new Set();
+  const removedPieceIds = new Set();
+  const processedAllocationIds = new Set();
+  const cutGroups = new Map();
+
+  activeAllocations
+    .filter((allocation) => allocation.action === "cut")
+    .forEach((allocation) => {
+      const sourceId = String(allocation.sourcePieceId || allocation.pieceId || "");
+      if (!sourceId) return;
+      if (!cutGroups.has(sourceId)) cutGroups.set(sourceId, []);
+      cutGroups.get(sourceId).push(allocation);
+    });
+
+  for (const [sourceId, groupAllocations] of cutGroups.entries()) {
+    const sourcePiece = inventory.find((item) => item.id === sourceId);
+    const residueIds = new Set(groupAllocations.map((allocation) => allocation.residuePieceId).filter(Boolean));
+    const residuePieces = inventory.filter((item) => residueIds.has(item.id));
+    const blockedResidues = residuePieces.filter((piece) => normalizeInventoryPieceState(piece.pieceState) !== "disponibile");
+    if (blockedResidues.length) {
+      return {
+        ok: false,
+        error: "inventory_release_residue_in_use",
+        blocked: blockedResidues.map((piece) => ({ id: piece.id, label: buildInventoryPieceLabel(piece) })),
+        order,
+        inventory,
+      };
+    }
+
+    if (sourcePiece) {
+      const releasedLength = groupAllocations.reduce((sum, allocation) => sum + toNumber(allocation.length || 0), 0);
+      const residueLength = residuePieces.reduce((sum, piece) => sum + toNumber(piece.length || 0), 0);
+      const restoredLength = Number((releasedLength + residueLength).toFixed(2));
+      const restoredWidth = toNumber(sourcePiece.width || groupAllocations[0]?.width || 0);
+      const allocationSourceType = groupAllocations
+        .map((allocation) => allocation.sourcePieceType)
+        .find((type) => type === "intero" || type === "residuo");
+      const restoredType = allocationSourceType || inferRestoredInventoryPieceType(sourcePiece);
+      if (restoredLength > 0) {
+        sourcePiece.length = restoredLength;
+        sourcePiece.sqm = restoredWidth ? Number((restoredWidth * restoredLength).toFixed(2)) : 0;
+      }
+      sourcePiece.units = 1;
+      sourcePiece.status = restoredType;
+      sourcePiece.pieceType = restoredType;
+      clearInventoryPieceCommitment(sourcePiece);
+      changedPieceIds.add(sourcePiece.id);
+    }
+
+    for (const allocation of groupAllocations) {
+      processedAllocationIds.add(allocation.id);
+      if (allocation.pieceId && allocation.pieceId !== sourceId) removedPieceIds.add(allocation.pieceId);
+    }
+    residueIds.forEach((id) => removedPieceIds.add(id));
+  }
+
+  activeAllocations.forEach((allocation) => {
+    if (processedAllocationIds.has(allocation.id)) return;
+    const piece = inventory.find((item) => item.id === allocation.pieceId);
+    const sourcePiece = inventory.find((item) => item.id === allocation.sourcePieceId);
+    if (allocation.action === "partial-units" && sourcePiece && allocation.pieceId !== allocation.sourcePieceId) {
+      sourcePiece.units = Math.max(1, Math.round(toNumber(sourcePiece.units || 0) + toNumber(allocation.units || 1)));
+      clearInventoryPieceCommitment(sourcePiece);
+      changedPieceIds.add(sourcePiece.id);
+      if (piece) removedPieceIds.add(piece.id);
+      return;
+    }
+    if (piece && piece.committedOrderId === order.id) {
+      clearInventoryPieceCommitment(piece);
+      changedPieceIds.add(piece.id);
+    }
+  });
+
+  const nextInventory = removedPieceIds.size
+    ? inventory.filter((piece) => !removedPieceIds.has(piece.id))
+    : inventory;
   const releasedAllocations = allocations.map((allocation) => {
     if (allocation.status !== "impegnato") return allocation;
-    const piece = inventory.find((item) => item.id === allocation.pieceId);
-    if (piece && piece.committedOrderId === order.id) {
-      piece.pieceState = "disponibile";
-      piece.committedOrderId = "";
-      piece.committedOrderNumber = "";
-      piece.allocationId = "";
-      piece.committedAt = "";
-    }
     return {
       ...allocation,
       status: "disponibile",
@@ -5929,10 +6015,16 @@ function releaseInventoryCommitmentsForOrder(store = {}, order = {}) {
       },
     }),
   };
-  store.inventory = inventory;
+  store.inventory = nextInventory;
   const orderIndex = store.orders.findIndex((item) => item.id === order.id);
   if (orderIndex >= 0) store.orders[orderIndex] = nextOrder;
-  return { order: nextOrder, inventory };
+  return {
+    ok: true,
+    order: nextOrder,
+    inventory: nextInventory,
+    changedPieceIds: Array.from(changedPieceIds),
+    removedPieceIds: Array.from(removedPieceIds),
+  };
 }
 
 function shouldFulfillInventoryForOrder(order = {}) {
@@ -15527,19 +15619,21 @@ async function handleApi(req, res, url) {
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
     try {
       const result = releaseInventoryCommitmentsForOrder(store, order);
+      if (result?.ok === false) return sendJson(res, 409, result);
       writeJson(STORE_PATH, store).catch((writeErr) => {
         console.error("[inventory/release] persist failed:", writeErr?.message || writeErr);
       });
       const releasedOrder = store.orders.find((o) => o.id === orderId);
       if (releasedOrder) upsertOrderToDb(releasedOrder, currentUser?.email || null).catch(() => {}); // dual-write SQL
-      // Dual-write delle inventory piece rilasciate (ora disponibili)
-      const releasePieceIds = new Set(
-        (order.operations?.warehouse?.inventoryAllocations || []).map((a) => a.pieceId).filter(Boolean),
-      );
+      // Dual-write delle inventory piece rilasciate e dei pezzi tecnici rimossi
+      // (tagli/residui generati dall'impegno).
+      const releasePieceIds = new Set(result.changedPieceIds || []);
       store.inventory.filter((p) => releasePieceIds.has(p.id)).forEach((p) => upsertInventoryItemToDb(p).catch(() => {}));
+      (result.removedPieceIds || []).forEach((id) => deleteInventoryItemFromDb(id).catch(() => {}));
       return sendJson(res, 200, {
         order: result.order,
         inventory: store.inventory,
+        removedPieceIds: result.removedPieceIds || [],
       });
     } catch (err) {
       console.error("[inventory/release] unexpected error:", err);

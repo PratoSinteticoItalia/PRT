@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260724-inbox-unroute-shipping-reset";
+} from "./lib/order-money.js?v=20260724-inventory-release-native-names";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260724-inbox-unroute-shipping-reset";
+import { regionForCity } from "./lib/geo.js?v=20260724-inventory-release-native-names";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260724-inbox-unroute-shipping-reset";
+} from "./lib/profit-split.js?v=20260724-inventory-release-native-names";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260724-inbox-unroute-shipping-reset";
+} from "./lib/preventivo-pricing.js?v=20260724-inventory-release-native-names";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260724-inbox-unroute-shipping-reset";
+const APP_SHELL_VERSION = "20260724-inventory-release-native-names";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -8108,6 +8108,19 @@ function isNativeInventoryProductEnabled(key = "") {
   return pref?.disabled !== true;
 }
 
+function withNativeInventoryPreference(item = {}) {
+  const pref = getNativeInventoryProductPrefs().get(String(item.key || "").trim());
+  const label = String(pref?.label || "").trim() || item.label;
+  return {
+    ...item,
+    label,
+    nativeLabel: item.label,
+    native: true,
+    custom: false,
+    disabled: pref?.disabled === true,
+  };
+}
+
 function getCustomInventoryProducts() {
   return (state.customProducts || [])
     .filter((item) => !isNativeProductPreference(item))
@@ -8133,7 +8146,9 @@ function findCustomCatalogEntry(value) {
 }
 
 function getNativeInventoryCatalog({ includeDisabled = false } = {}) {
-  return INVENTORY_CATALOG.filter((item) => includeDisabled || isNativeInventoryProductEnabled(item.key));
+  return INVENTORY_CATALOG
+    .map((item) => withNativeInventoryPreference(item))
+    .filter((item) => includeDisabled || item.disabled !== true);
 }
 
 function getDisabledNativeInventoryEntry(value) {
@@ -26776,7 +26791,15 @@ async function releaseInventoryForOrder(orderId = "") {
     showToast(state.lang === "it" ? "Impegni liberati." : "Commitments released.", "success");
   } catch (error) {
     console.error("inventory_release_failed", error);
-    showToast(state.lang === "it" ? "Impossibile liberare gli impegni." : "Unable to release commitments.", "warning");
+    const residueInUse = error?.payload?.error === "inventory_release_residue_in_use";
+    showToast(
+      residueInUse
+        ? (state.lang === "it"
+          ? "Residuo gia usato: non posso ricomporre automaticamente il rotolo."
+          : "Residue already used: the roll cannot be restored automatically.")
+        : (state.lang === "it" ? "Impossibile liberare gli impegni." : "Unable to release commitments."),
+      "warning",
+    );
   } finally {
     inventoryAllocationPendingOrderIds.delete(normalizedId);
     scheduleRender("warehouse");
@@ -29029,6 +29052,10 @@ function handleGlobalClick(event) {
     toggleNativeProduct(String(button.dataset.key || "").trim(), button.dataset.enabled !== "0");
     return;
   }
+  if (action === "save-native-product-label") {
+    saveNativeProductLabel(String(button.dataset.key || "").trim());
+    return;
+  }
   if (action === "clear-inventory-product") {
     const product = String(button.dataset.product || "").trim();
     if (!product) return;
@@ -30495,18 +30522,26 @@ function renderProductCatalogList() {
 function renderNativeProductCatalogList() {
   const el = ui.nativeProductCatalogList;
   if (!el) return;
-  el.innerHTML = INVENTORY_CATALOG.map((item) => {
-    const enabled = isNativeInventoryProductEnabled(item.key);
+  el.innerHTML = getNativeInventoryCatalog({ includeDisabled: true }).map((item) => {
+    const enabled = item.disabled !== true;
     const kind = item.type === "turf" ? "Prato nativo" : "Materiale nativo";
     const price = item.grossPricePerSqm != null ? ` · ${formatEuroSimple(item.grossPricePerSqm)}/mq` : "";
+    const hasCustomName = String(item.label || "").trim() !== String(item.nativeLabel || "").trim();
     return `<div class="native-product-row ${enabled ? "" : "is-disabled"}">
-      <div>
+      <div class="native-product-main">
         <strong>${escapeHtml(item.label)}</strong>
-        <span>${escapeHtml(`${kind}${price}`)}</span>
+        <span>${escapeHtml(`${kind}${price}${hasCustomName ? ` · originale: ${item.nativeLabel}` : ""}`)}</span>
+        <label class="native-product-name-field">
+          <span>Nome mostrato</span>
+          <input class="text-input native-product-name-input" type="text" value="${escapeAttr(item.label)}" placeholder="${escapeAttr(item.nativeLabel || item.label)}" data-native-product-label="${escapeAttr(item.key)}" />
+        </label>
       </div>
-      <button type="button" class="native-product-toggle ${enabled ? "is-on" : "is-off"}" data-action="toggle-native-product" data-key="${escapeAttr(item.key)}" data-enabled="${enabled ? "1" : "0"}" aria-pressed="${enabled ? "true" : "false"}">
-        ${enabled ? "Attivo" : "Disattivato"}
-      </button>
+      <div class="native-product-actions">
+        <button type="button" class="ghost-button small-button" data-action="save-native-product-label" data-key="${escapeAttr(item.key)}">Salva nome</button>
+        <button type="button" class="native-product-toggle ${enabled ? "is-on" : "is-off"}" data-action="toggle-native-product" data-key="${escapeAttr(item.key)}" data-enabled="${enabled ? "1" : "0"}" aria-pressed="${enabled ? "true" : "false"}">
+          ${enabled ? "Attivo" : "Disattivato"}
+        </button>
+      </div>
     </div>`;
   }).join("");
 }
@@ -30553,7 +30588,7 @@ async function deleteProduct(key) {
 }
 
 async function toggleNativeProduct(key, currentlyEnabled = true) {
-  const product = INVENTORY_CATALOG.find((item) => item.key === key);
+  const product = getNativeInventoryCatalog({ includeDisabled: true }).find((item) => item.key === key);
   if (!product) return;
   const nextDisabled = Boolean(currentlyEnabled);
   try {
@@ -30576,6 +30611,35 @@ async function toggleNativeProduct(key, currentlyEnabled = true) {
         : `${product.label} riattivato nelle scelte inventario`,
       "success",
     );
+  } catch (err) {
+    const msg = err?.status === 403 ? "Solo l'ufficio può gestire il catalogo." : "Aggiornamento non riuscito.";
+    showToast(msg, "error");
+  }
+}
+
+async function saveNativeProductLabel(key) {
+  const product = getNativeInventoryCatalog({ includeDisabled: true }).find((item) => item.key === key);
+  const input = Array.from(ui.nativeProductCatalogList?.querySelectorAll("[data-native-product-label]") || [])
+    .find((node) => node.dataset.nativeProductLabel === key);
+  const nextLabel = String(input?.value || "").trim();
+  if (!product || !nextLabel) {
+    showToast("Inserisci un nome valido.", "error");
+    return;
+  }
+  try {
+    await apiFetch("/api/products", {
+      method: "POST",
+      body: JSON.stringify({
+        key: product.key,
+        label: nextLabel,
+        type: product.type,
+        native: true,
+        custom: false,
+        disabled: product.disabled === true,
+      }),
+    });
+    await loadCustomProducts();
+    showToast("Nome prodotto aggiornato", "success");
   } catch (err) {
     const msg = err?.status === 403 ? "Solo l'ufficio può gestire il catalogo." : "Aggiornamento non riuscito.";
     showToast(msg, "error");
