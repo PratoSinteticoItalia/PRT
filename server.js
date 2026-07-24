@@ -4590,6 +4590,34 @@ function filterOrdersForReseller(orders, resellerId) {
   if (!resellerId) return [];
   return orders.filter((o) => String(o.operations?.reseller?.id || "") === resellerId);
 }
+// Scoping magazzino condiviso tra sessione, login e lookup comunicazioni.
+// Il magazziniere deve vedere gli ordini non in bozza e anche quelli ancora in
+// bozza che l'ufficio ha gia instradato in logistica/posa.
+function orderIsVisibleToWarehouse(order = {}) {
+  const wh = order.operations?.warehouse || {};
+  const inst = order.operations?.installation || {};
+  const notDraft = (order.operations?.officeStatus || "bozza") !== "bozza";
+  const routedToLogistics = Boolean(
+    wh.selected
+    || (wh.fulfillmentMode && wh.fulfillmentMode !== "da-definire")
+    || (wh.preparationDate && String(wh.preparationDate).trim())
+    || (wh.status && wh.status !== "da-preparare")
+    || wh.readyToShip || wh.carrierPassed || wh.shipped
+    || (wh.trackingNumber && String(wh.trackingNumber).trim())
+    || inst.required || inst.selected
+    || (inst.installDate && String(inst.installDate).trim())
+    || (inst.installTime && String(inst.installTime).trim())
+    || (inst.crew && String(inst.crew).trim())
+    || inst.clientConfirmed
+    || (inst.reportNote && String(inst.reportNote).trim())
+    || (inst.status && !["", "da-pianificare"].includes(String(inst.status).trim())),
+  );
+  return Boolean(notDraft || routedToLogistics);
+}
+
+function filterOrdersForWarehouse(orders = []) {
+  return (Array.isArray(orders) ? orders : []).filter(orderIsVisibleToWarehouse);
+}
 // I job (tabella legacy separata dagli ordini) non hanno una colonna
 // reseller propria — niente ALTER TABLE: si derivano dall'ordine di origine
 // (sourceOrderId), riusando gli ordini già filtrati per rivenditore.
@@ -11488,27 +11516,7 @@ async function handleApi(req, res, url) {
         return filterOrdersForReseller(sessionOrders, String(currentUser.id || ""));
       }
       if (sessionRole === "warehouse") {
-        // Il magazziniere vede gli ordini NON in bozza OPPURE quelli già
-        // instradati in logistica/posa (anche se l'ufficio non li ha confermati
-        // oltre la bozza) — altrimenti la sua Logistica resta vuota. Predicato
-        // allineato a isRoutedToWarehouse / isRoutedToInstallation lato client.
-        const routedToLogistics = (o) => {
-          const wh = o.operations?.warehouse || {};
-          const inst = o.operations?.installation || {};
-          return Boolean(
-            wh.selected
-            || (wh.fulfillmentMode && wh.fulfillmentMode !== "da-definire")
-            || (wh.preparationDate && String(wh.preparationDate).trim())
-            || (wh.status && wh.status !== "da-preparare")
-            || wh.readyToShip || wh.carrierPassed || wh.shipped
-            || (wh.trackingNumber && String(wh.trackingNumber).trim())
-            || inst.required || inst.selected
-            || (inst.installDate && String(inst.installDate).trim())
-            || (inst.crew && String(inst.crew).trim())
-            || (inst.status && !["", "da-pianificare"].includes(String(inst.status).trim())),
-          );
-        };
-        return sessionOrders.filter((o) => (o.operations?.officeStatus || "bozza") !== "bozza" || routedToLogistics(o));
+        return filterOrdersForWarehouse(sessionOrders);
       }
       return sessionOrders;
     })();
@@ -11626,7 +11634,7 @@ async function handleApi(req, res, url) {
         return filterOrdersForReseller(store.orders, String(user.id || ""));
       }
       if (loginRole === "warehouse") {
-        return store.orders.filter((o) => (o.operations?.officeStatus || "bozza") !== "bozza");
+        return filterOrdersForWarehouse(store.orders);
       }
       return store.orders;
     })();
@@ -14740,23 +14748,7 @@ async function handleApi(req, res, url) {
       const crewNorm = normalizeCrewName(currentUser.crewName || "");
       pool = crewNorm ? pool.filter((o) => normalizeCrewName(o.operations?.installation?.crew || "") === crewNorm) : [];
     } else if (currentUser.role === "warehouse") {
-      pool = pool.filter((o) => {
-        const wh = o.operations?.warehouse || {};
-        const inst = o.operations?.installation || {};
-        const notDraft = (o.operations?.officeStatus || "bozza") !== "bozza";
-        const routed = Boolean(
-          wh.selected || (wh.fulfillmentMode && wh.fulfillmentMode !== "da-definire")
-          || (wh.preparationDate && String(wh.preparationDate).trim())
-          || (wh.status && wh.status !== "da-preparare")
-          || wh.readyToShip || wh.carrierPassed || wh.shipped
-          || (wh.trackingNumber && String(wh.trackingNumber).trim())
-          || inst.required || inst.selected
-          || (inst.installDate && String(inst.installDate).trim())
-          || (inst.crew && String(inst.crew).trim())
-          || (inst.status && !["", "da-pianificare"].includes(String(inst.status).trim())),
-        );
-        return notDraft || routed;
-      });
+      pool = filterOrdersForWarehouse(pool);
     }
     if (q) {
       pool = pool.filter((o) => {
