@@ -4329,6 +4329,7 @@ function buildDefaultStore() {
     salesRequests: [],
     salesContents: [],
     resellerOrderRequests: [],
+    supplierProfiles: [],
     supplierPriceEntries: [],
     marketingPublicAssets: [],
     marketingScheduled: [],
@@ -9117,6 +9118,51 @@ function normalizeSupplierPriceEntry(item = {}) {
   };
 }
 
+function normalizeSupplierProfile(item = {}) {
+  const now = new Date().toISOString();
+  return {
+    id: String(item.id || randomUUID()),
+    name: String(item.name || item.supplierName || "").trim(),
+    contactName: String(item.contactName || "").trim(),
+    email: String(item.email || "").trim(),
+    phone: String(item.phone || "").trim(),
+    alternateContactName: String(item.alternateContactName || "").trim(),
+    alternateEmail: String(item.alternateEmail || "").trim(),
+    alternatePhone: String(item.alternatePhone || "").trim(),
+    website: String(item.website || "").trim(),
+    address: String(item.address || "").trim(),
+    vatNumber: String(item.vatNumber || "").trim(),
+    notes: String(item.notes || "").trim(),
+    createdAt: String(item.createdAt || now),
+    updatedAt: String(item.updatedAt || now),
+  };
+}
+
+function supplierProfileKey(value) {
+  return String(value || "").trim().toLocaleLowerCase("it");
+}
+
+function buildSupplierDirectory(storeData) {
+  const byName = new Map();
+  (storeData.supplierProfiles || []).forEach((item) => {
+    const profile = normalizeSupplierProfile(item);
+    const key = supplierProfileKey(profile.name);
+    if (key) byName.set(key, { ...profile, derived: false });
+  });
+  (storeData.supplierPriceEntries || []).forEach((entry) => {
+    const name = String(entry.supplierName || "").trim();
+    const key = supplierProfileKey(name);
+    if (key && !byName.has(key)) {
+      byName.set(key, {
+        ...normalizeSupplierProfile({ id: "", name }),
+        id: "",
+        derived: true,
+      });
+    }
+  });
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, "it"));
+}
+
 const RESELLER_ORDER_REQUEST_STATUSES = new Set(["pending", "in-lavorazione", "evasa", "rifiutata"]);
 
 // Sanifica una riga carrello già presente su un record (creazione avvenuta,
@@ -9873,6 +9919,10 @@ function reconcileStoreData(store) {
 
   store.supplierPriceEntries = Array.isArray(store.supplierPriceEntries)
     ? store.supplierPriceEntries.map((item) => normalizeSupplierPriceEntry(item))
+    : [];
+
+  store.supplierProfiles = Array.isArray(store.supplierProfiles)
+    ? store.supplierProfiles.map((item) => normalizeSupplierProfile(item)).filter((item) => item.name)
     : [];
 
   store.resellerOrderRequests = Array.isArray(store.resellerOrderRequests)
@@ -13418,7 +13468,11 @@ async function handleApi(req, res, url) {
       const to = url.searchParams.get("to") || null;
       const userId = url.searchParams.get("userId") || null;
       const shifts = await listShiftsAll({ from, to, userId });
-      return sendJson(res, 200, { shifts });
+      return sendJson(res, 200, {
+        shifts,
+        geofenceConfigured: COMPANY_OFFICE_LAT != null && COMPANY_OFFICE_LNG != null,
+        geofenceRadiusM: COMPANY_OFFICE_RADIUS_M,
+      });
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "list_failed") });
     }
@@ -14768,13 +14822,76 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { results });
   }
 
-  // ─── Fornitori: prezzi da fatture (elenco + confronto per materiale) ──────
-  // Office-only. Inserimento manuale (nessun parsing AI dell'allegato).
+  // ─── Fornitori: rubrica + prezzi da fatture ───────────────────────────────
+  // Office-only. La rubrica è separata dalle fatture, ma include anche i nomi
+  // storici presenti nelle voci prezzo per non perdere fornitori già usati.
+  if (url.pathname === "/api/suppliers" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const name = String(body.name || "").trim();
+    if (!name) return sendJson(res, 400, { error: "missing_name" });
+    const duplicate = (store.supplierProfiles || []).some((item) => supplierProfileKey(item.name) === supplierProfileKey(name));
+    if (duplicate) return sendJson(res, 409, { error: "supplier_exists" });
+    const now = new Date().toISOString();
+    const profile = normalizeSupplierProfile({
+      ...body,
+      id: randomUUID(),
+      name,
+      createdAt: now,
+      updatedAt: now,
+    });
+    store.supplierProfiles = [...(store.supplierProfiles || []), profile];
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ...profile, derived: false });
+  }
+
+  if (url.pathname.match(/^\/api\/suppliers\/[^/]+$/) && req.method === "PATCH") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.split("/")[3]);
+    const index = (store.supplierProfiles || []).findIndex((item) => item.id === id);
+    if (index < 0) return sendJson(res, 404, { error: "not_found" });
+    const body = await readBody(req);
+    const current = store.supplierProfiles[index];
+    const name = String(body.name || current.name || "").trim();
+    if (!name) return sendJson(res, 400, { error: "missing_name" });
+    const duplicate = (store.supplierProfiles || []).some((item, itemIndex) => (
+      itemIndex !== index && supplierProfileKey(item.name) === supplierProfileKey(name)
+    ));
+    if (duplicate) return sendJson(res, 409, { error: "supplier_exists" });
+    const updated = normalizeSupplierProfile({
+      ...current,
+      ...body,
+      id,
+      name,
+      createdAt: current.createdAt,
+      updatedAt: new Date().toISOString(),
+    });
+    const oldKey = supplierProfileKey(current.name);
+    if (oldKey !== supplierProfileKey(name)) {
+      store.supplierPriceEntries = (store.supplierPriceEntries || []).map((entry) => (
+        supplierProfileKey(entry.supplierName) === oldKey
+          ? normalizeSupplierPriceEntry({ ...entry, supplierName: name, updatedAt: updated.updatedAt })
+          : entry
+      ));
+    }
+    store.supplierProfiles[index] = updated;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ...updated, derived: false });
+  }
+
+  // Inserimento manuale prezzi (nessun parsing AI dell'allegato).
   if (url.pathname === "/api/supplier-prices" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
-    const entries = (store.supplierPriceEntries || []).map(serializeSupplierPriceEntryForClient);
-    return sendJson(res, 200, { entries });
+    try {
+      const entries = (store.supplierPriceEntries || []).map(serializeSupplierPriceEntryForClient);
+      return sendJson(res, 200, { entries, suppliers: buildSupplierDirectory(store) });
+    } catch (err) {
+      console.error("supplier_directory_load_failed", err);
+      return sendJson(res, 500, { error: "supplier_directory_load_failed" });
+    }
   }
 
   if (url.pathname === "/api/supplier-prices" && req.method === "POST") {

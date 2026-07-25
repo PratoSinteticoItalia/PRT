@@ -27,6 +27,16 @@ Il servizio usa:
 
 Le credenziali Shopify non vanno salvate nel frontend. Restano nel backend e, una volta dentro l'app, puoi continuare a gestirle dalla schermata `Impostazioni`.
 
+Per verificare automaticamente che le timbrature siano effettuate in sede:
+
+- `COMPANY_OFFICE_LAT` = latitudine del capannone in formato decimale
+- `COMPANY_OFFICE_LNG` = longitudine del capannone in formato decimale
+- `COMPANY_OFFICE_RADIUS_M=200` = raggio consentito in metri
+
+Le due coordinate sono dichiarate in `render.yaml` come valori protetti (`sync: false`):
+vanno inserite una volta nella sezione Environment del servizio Render. Dopo il
+riavvio, la pagina Presenze mostra `in sede (GPS)` oppure `fuori sede`.
+
 Per automazione primo contatto richieste:
 
 - `SALES_REQUEST_AUTOMATION_MODE=none|email|whatsapp`

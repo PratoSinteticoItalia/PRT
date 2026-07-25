@@ -377,16 +377,15 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "communications", "sales-requests", "sales-generator", "sales-content", "reseller-orders", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
   crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "communications", "garden-planner"],
-  // sales-content, sales-requests e order-requests si aggiungono quando il
-  // backend relativo è pronto a scoparli per rivenditore (vedi piano fasi
-  // successive) — finché non lo è, tenerli fuori evita di esporre viste rotte.
+  // Il modulo ordini materiale rivenditore resta implementato ma in standby:
+  // order-requests e reseller-orders non sono esposti nei rispettivi account.
   // "installations-live" (Cantieri Live) resta fuori: è il work-report con
   // spese/rimborsi squadra, un flusso di compenso interno che non c'entra
   // con un account rivenditore esterno, a differenza dello stato posa base.
-  rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "order-requests", "garden-planner", "communications", "reseller-profile"],
+  rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "garden-planner", "communications", "reseller-profile"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders", "reseller-profile"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
@@ -1259,11 +1258,15 @@ const state = {
   salesContentTab: "documenti",
   portfolioSelectedProduct: "",
   portfolioJobPhotos: {},
-  // Sezione Fornitori: voci prezzo da fatture (elenco + confronto per materiale).
+  // Sezione Fornitori: rubrica anagrafica + voci prezzo da fatture.
+  supplierProfiles: [],
+  supplierSelectedKey: "",
+  supplierDirectorySearch: "",
+  supplierProfileFormOpen: false,
   supplierPriceEntries: [],
   supplierPricesLoaded: false,
   supplierPricesLoading: false,
-  supplierPricesView: "list",
+  supplierPricesView: "directory",
   supplierPricesFilter: { supplier: "", material: "", from: "", to: "" },
   supplierPriceFormOpen: false,
   supplierPriceEditingId: "",
@@ -11610,33 +11613,6 @@ function renderDashboardResellerView() {
   if (weekEl) renderDashboardWeekSummary(weekEl, ownerFilter);
 
   renderDashboardMessagesWidget("reseller");
-
-  // Contatore ordini materiale per stato — riusa gli stessi dati/etichette
-  // della pagina "Ordina materiali" (renderResellerOrderRequests), caricati
-  // qui se non ancora richiesti (l'utente potrebbe non aver mai aperto
-  // quella pagina in questa sessione).
-  const ordersEl = document.getElementById("dashboard-reseller-orders");
-  if (ordersEl) {
-    if (!state.resellerOrderRequestsLoadedAt) {
-      ordersEl.innerHTML = `<div class="dash-action-empty">${state.lang === "it" ? "Caricamento..." : "Loading..."}</div>`;
-      loadResellerOrderRequests();
-    } else {
-      const orders = state.resellerOrderRequests || [];
-      const statuses = ["pending", "in-lavorazione", "evasa", "rifiutata"];
-      const counts = Object.fromEntries(statuses.map((s) => [s, 0]));
-      orders.forEach((o) => { if (counts[o.status] != null) counts[o.status] += 1; });
-      ordersEl.innerHTML = orders.length
-        ? statuses.map((status) => `
-            <button class="dash-action-row" type="button" data-action="go-order-requests" style="width:100%;cursor:pointer">
-              <div class="dash-action-dot ${resellerOrderRequestStatusBadgeClass(status) === "badge-success" ? "tone-green" : resellerOrderRequestStatusBadgeClass(status) === "badge-urgent" ? "tone-red" : "tone-amber"}"></div>
-              <div class="dash-action-content">
-                <div class="dash-action-title">${escapeHtml(resellerOrderRequestStatusLabel(status))}</div>
-              </div>
-              <span class="dash-action-tag">${counts[status]}</span>
-            </button>`).join("")
-        : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun ordine inviato finora." : "No orders sent yet."}</div>`;
-    }
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -14463,6 +14439,236 @@ function getSupplierPriceSuggestions(field) {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
+function getSupplierProfiles() {
+  const byName = new Map();
+  (Array.isArray(state.supplierProfiles) ? state.supplierProfiles : []).forEach((profile) => {
+    const key = normalizeSupplierPriceKey(profile.name);
+    if (key) byName.set(key, { ...profile, name: String(profile.name || "").trim() });
+  });
+  getSupplierPriceEntries().forEach((entry) => {
+    const name = String(entry.supplierName || "").trim();
+    const key = normalizeSupplierPriceKey(name);
+    if (key && !byName.has(key)) {
+      byName.set(key, { id: "", name, derived: true });
+    }
+  });
+  return [...byName.values()].sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "it"));
+}
+
+function getSupplierProfileByKey(key) {
+  const normalized = normalizeSupplierPriceKey(key);
+  return getSupplierProfiles().find((profile) => normalizeSupplierPriceKey(profile.name) === normalized) || null;
+}
+
+function getSupplierProfileStats(profile) {
+  const key = normalizeSupplierPriceKey(profile?.name);
+  const entries = getSupplierPriceEntries()
+    .filter((entry) => normalizeSupplierPriceKey(entry.supplierName) === key)
+    .sort((a, b) => String(b.invoiceDate || "").localeCompare(String(a.invoiceDate || "")));
+  return {
+    invoices: new Set(entries.map((entry) => entry.invoiceId || entry.invoiceNumber || entry.id)).size,
+    materials: new Set(entries.map((entry) => normalizeSupplierPriceKey(entry.material)).filter(Boolean)).size,
+    lastDate: entries[0]?.invoiceDate || "",
+  };
+}
+
+function supplierWebsiteHref(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `https://${raw}`;
+}
+
+function supplierInitials(name) {
+  return String(name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase() || "F";
+}
+
+function renderSupplierDirectoryListHtml() {
+  const query = normalizeSupplierPriceKey(state.supplierDirectorySearch);
+  const profiles = getSupplierProfiles().filter((profile) => (
+    !query || [
+      profile.name,
+      profile.contactName,
+      profile.email,
+      profile.phone,
+      profile.alternateContactName,
+    ].some((value) => normalizeSupplierPriceKey(value).includes(query))
+  ));
+  const selectedKey = normalizeSupplierPriceKey(state.supplierSelectedKey);
+  const rows = profiles.length
+    ? profiles.map((profile) => {
+        const key = normalizeSupplierPriceKey(profile.name);
+        const stats = getSupplierProfileStats(profile);
+        const contact = profile.contactName || profile.email || profile.phone || (state.lang === "it" ? "Contatti da completare" : "Contacts to complete");
+        return `
+          <button type="button" class="sp-supplier-card ${key === selectedKey ? "is-active" : ""}" data-action="sp-select-supplier" data-supplier-key="${escapeAttr(key)}">
+            <span class="sp-supplier-avatar">${escapeHtml(supplierInitials(profile.name))}</span>
+            <span class="sp-supplier-card-copy">
+              <strong>${escapeHtml(profile.name)}</strong>
+              <small>${escapeHtml(contact)}</small>
+            </span>
+            <span class="sp-supplier-card-meta">${stats.invoices} ${state.lang === "it" ? (stats.invoices === 1 ? "fattura" : "fatture") : (stats.invoices === 1 ? "invoice" : "invoices")}</span>
+            <span class="sp-supplier-chevron" aria-hidden="true">›</span>
+          </button>`;
+      }).join("")
+    : `<div class="sp-directory-empty">${state.lang === "it" ? "Nessun fornitore trovato." : "No suppliers found."}</div>`;
+  return `<div id="sp-directory-list" class="sp-supplier-list">${rows}</div>`;
+}
+
+function renderSupplierProfileFormHtml(profile = null) {
+  const item = profile || {};
+  return `
+    <form id="sp-profile-form" class="sp-profile-form" data-profile-id="${escapeAttr(item.id || "")}">
+      <div class="sp-profile-form-head">
+        <div>
+          <span class="sp-detail-eyebrow">${item.id ? (state.lang === "it" ? "Modifica anagrafica" : "Edit profile") : (state.lang === "it" ? "Nuovo fornitore" : "New supplier")}</span>
+          <h2>${escapeHtml(item.name || (state.lang === "it" ? "Dati fornitore" : "Supplier details"))}</h2>
+        </div>
+      </div>
+      <div class="sp-profile-fields">
+        <label class="field field-full">
+          <span>${state.lang === "it" ? "Ragione sociale" : "Company name"}</span>
+          <input type="text" name="name" required value="${escapeAttr(item.name || "")}" />
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Referente principale" : "Primary contact"}</span>
+          <input type="text" name="contactName" value="${escapeAttr(item.contactName || "")}" />
+        </label>
+        <label class="field">
+          <span>Email</span>
+          <input type="email" name="email" value="${escapeAttr(item.email || "")}" />
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Telefono" : "Phone"}</span>
+          <input type="tel" name="phone" value="${escapeAttr(item.phone || "")}" />
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Secondo referente" : "Secondary contact"}</span>
+          <input type="text" name="alternateContactName" value="${escapeAttr(item.alternateContactName || "")}" />
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Email secondaria" : "Secondary email"}</span>
+          <input type="email" name="alternateEmail" value="${escapeAttr(item.alternateEmail || "")}" />
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Telefono secondario" : "Secondary phone"}</span>
+          <input type="tel" name="alternatePhone" value="${escapeAttr(item.alternatePhone || "")}" />
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Partita IVA" : "VAT number"}</span>
+          <input type="text" name="vatNumber" value="${escapeAttr(item.vatNumber || "")}" />
+        </label>
+        <label class="field">
+          <span>${state.lang === "it" ? "Sito web" : "Website"}</span>
+          <input type="text" name="website" value="${escapeAttr(item.website || "")}" />
+        </label>
+        <label class="field field-full">
+          <span>${state.lang === "it" ? "Indirizzo" : "Address"}</span>
+          <input type="text" name="address" value="${escapeAttr(item.address || "")}" />
+        </label>
+        <label class="field field-full">
+          <span>${state.lang === "it" ? "Note" : "Notes"}</span>
+          <textarea name="notes">${escapeHtml(item.notes || "")}</textarea>
+        </label>
+      </div>
+      <div class="sp-profile-actions">
+        <button type="button" class="ghost-button" data-action="sp-cancel-profile">${state.lang === "it" ? "Annulla" : "Cancel"}</button>
+        <button type="submit" class="primary-button">${state.lang === "it" ? "Salva fornitore" : "Save supplier"}</button>
+      </div>
+    </form>`;
+}
+
+function renderSupplierContactValue(label, value, href = "") {
+  const shown = String(value || "").trim();
+  return `
+    <div class="sp-contact-item">
+      <span>${escapeHtml(label)}</span>
+      ${shown
+        ? (href ? `<a href="${escapeAttr(href)}" target="${href.startsWith("http") ? "_blank" : "_self"}" rel="noreferrer">${escapeHtml(shown)}</a>` : `<strong>${escapeHtml(shown)}</strong>`)
+        : `<em>${state.lang === "it" ? "Da inserire" : "Not set"}</em>`}
+    </div>`;
+}
+
+function renderSupplierProfileDetailHtml(profile) {
+  if (state.supplierProfileFormOpen) return renderSupplierProfileFormHtml(profile);
+  if (!profile) {
+    return `
+      <div class="sp-profile-placeholder">
+        <span class="sp-supplier-avatar is-large">+</span>
+        <h2>${state.lang === "it" ? "Seleziona un fornitore" : "Select a supplier"}</h2>
+        <p>${state.lang === "it" ? "Apri una scheda per vedere email, referenti, telefoni e storico acquisti." : "Open a profile to view contacts and purchase history."}</p>
+      </div>`;
+  }
+  const stats = getSupplierProfileStats(profile);
+  const websiteHref = supplierWebsiteHref(profile.website);
+  const phoneHref = profile.phone ? `tel:${String(profile.phone).replace(/[^+\d]/g, "")}` : "";
+  const alternatePhoneHref = profile.alternatePhone ? `tel:${String(profile.alternatePhone).replace(/[^+\d]/g, "")}` : "";
+  return `
+    <div class="sp-profile-detail">
+      <div class="sp-profile-detail-head">
+        <div class="sp-profile-identity">
+          <span class="sp-supplier-avatar is-large">${escapeHtml(supplierInitials(profile.name))}</span>
+          <div>
+            <span class="sp-detail-eyebrow">${state.lang === "it" ? "Scheda fornitore" : "Supplier profile"}</span>
+            <h2>${escapeHtml(profile.name)}</h2>
+          </div>
+        </div>
+        <button type="button" class="ghost-button" data-action="sp-edit-profile">${state.lang === "it" ? "Modifica" : "Edit"}</button>
+      </div>
+      <div class="sp-profile-kpis">
+        <div><strong>${stats.invoices}</strong><span>${state.lang === "it" ? "Fatture" : "Invoices"}</span></div>
+        <div><strong>${stats.materials}</strong><span>${state.lang === "it" ? "Materiali" : "Materials"}</span></div>
+        <div><strong>${stats.lastDate ? escapeHtml(formatDate(stats.lastDate)) : "—"}</strong><span>${state.lang === "it" ? "Ultimo acquisto" : "Last purchase"}</span></div>
+      </div>
+      <section class="sp-detail-section">
+        <h3>${state.lang === "it" ? "Contatti principali" : "Primary contacts"}</h3>
+        <div class="sp-contact-grid">
+          ${renderSupplierContactValue(state.lang === "it" ? "Referente" : "Contact", profile.contactName)}
+          ${renderSupplierContactValue("Email", profile.email, profile.email ? `mailto:${profile.email}` : "")}
+          ${renderSupplierContactValue(state.lang === "it" ? "Telefono" : "Phone", profile.phone, phoneHref)}
+        </div>
+      </section>
+      <section class="sp-detail-section">
+        <h3>${state.lang === "it" ? "Secondo contatto" : "Secondary contact"}</h3>
+        <div class="sp-contact-grid">
+          ${renderSupplierContactValue(state.lang === "it" ? "Referente" : "Contact", profile.alternateContactName)}
+          ${renderSupplierContactValue("Email", profile.alternateEmail, profile.alternateEmail ? `mailto:${profile.alternateEmail}` : "")}
+          ${renderSupplierContactValue(state.lang === "it" ? "Telefono" : "Phone", profile.alternatePhone, alternatePhoneHref)}
+        </div>
+      </section>
+      <section class="sp-detail-section">
+        <h3>${state.lang === "it" ? "Dati aziendali" : "Company details"}</h3>
+        <div class="sp-contact-grid">
+          ${renderSupplierContactValue(state.lang === "it" ? "Partita IVA" : "VAT number", profile.vatNumber)}
+          ${renderSupplierContactValue(state.lang === "it" ? "Sito web" : "Website", profile.website, websiteHref)}
+          ${renderSupplierContactValue(state.lang === "it" ? "Indirizzo" : "Address", profile.address)}
+        </div>
+      </section>
+      ${profile.notes ? `<section class="sp-detail-section"><h3>${state.lang === "it" ? "Note" : "Notes"}</h3><p class="sp-profile-notes">${escapeHtml(profile.notes)}</p></section>` : ""}
+    </div>`;
+}
+
+function renderSupplierDirectoryHtml() {
+  const selected = getSupplierProfileByKey(state.supplierSelectedKey);
+  return `
+    <div class="sp-directory">
+      <aside class="sp-directory-rail">
+        <label class="sp-directory-search">
+          <span class="sr-only">${state.lang === "it" ? "Cerca fornitore" : "Search supplier"}</span>
+          <input type="search" placeholder="${state.lang === "it" ? "Cerca azienda, referente, email..." : "Search company, contact, email..."}" value="${escapeAttr(state.supplierDirectorySearch || "")}" />
+        </label>
+        ${renderSupplierDirectoryListHtml()}
+      </aside>
+      <div class="sp-directory-detail">${renderSupplierProfileDetailHtml(selected)}</div>
+    </div>`;
+}
+
 // Raggruppa per materiale → per fornitore: prezzo più recente + media
 // complessiva + media per anno (così si vede il trend, non solo lo storico).
 function computeSupplierPriceComparison() {
@@ -14512,9 +14718,11 @@ async function loadSupplierPriceEntries() {
   try {
     const data = await apiFetch("/api/supplier-prices");
     state.supplierPriceEntries = Array.isArray(data?.entries) ? data.entries : [];
+    state.supplierProfiles = Array.isArray(data?.suppliers) ? data.suppliers : [];
     state.supplierPricesLoaded = true;
   } catch (err) {
     console.error("supplier_prices_load_failed", err);
+    state.supplierPricesLoaded = true;
     showToast(state.lang === "it" ? "Caricamento prezzi fornitori non riuscito." : "Failed to load supplier prices.", "warning");
   } finally {
     state.supplierPricesLoading = false;
@@ -14789,6 +14997,7 @@ function renderSupplierPriceFormHtml() {
 }
 
 function renderSupplierPriceResultsHtml() {
+  if (state.supplierPricesView === "directory") return renderSupplierDirectoryHtml();
   return state.supplierPricesView === "compare" ? renderSupplierPriceCompareHtml() : renderSupplierPriceListHtml();
 }
 
@@ -14802,23 +15011,85 @@ function updateSupplierPricesResultsDom() {
 }
 
 function renderSupplierPricesHtml() {
-  const view = state.supplierPricesView === "compare" ? "compare" : "list";
+  const view = ["directory", "list", "compare"].includes(state.supplierPricesView) ? state.supplierPricesView : "directory";
+  const directoryView = view === "directory";
   return `
     <div class="page-header">
       <div>
         <h1>${state.lang === "it" ? "Fornitori" : "Suppliers"}</h1>
-        <div class="page-header-sub">${state.lang === "it" ? "Prezzi e fatture fornitori: storico, confronto e prezzo medio nel tempo" : "Supplier prices and invoices: history, comparison and average price over time"}</div>
+        <div class="page-header-sub">${state.lang === "it" ? "Anagrafica, contatti, fatture e confronto prezzi" : "Profiles, contacts, invoices and price comparison"}</div>
       </div>
-      <button type="button" class="primary-button" data-action="sp-toggle-form">${state.supplierPriceFormOpen ? (state.lang === "it" ? "Chiudi" : "Close") : (state.lang === "it" ? "+ Nuova voce" : "+ New entry")}</button>
+      ${directoryView
+        ? `<button type="button" class="primary-button" data-action="sp-new-supplier">+ ${state.lang === "it" ? "Nuovo fornitore" : "New supplier"}</button>`
+        : `<button type="button" class="primary-button" data-action="sp-toggle-form">${state.supplierPriceFormOpen ? (state.lang === "it" ? "Chiudi" : "Close") : (state.lang === "it" ? "+ Nuova fattura" : "+ New invoice")}</button>`}
     </div>
-    ${renderSupplierPriceFormHtml()}
+    ${directoryView ? "" : renderSupplierPriceFormHtml()}
     <div class="sp-tabs">
-      <button type="button" class="sp-tab ${view === "list" ? "is-active" : ""}" data-action="sp-set-view" data-view="list">${state.lang === "it" ? "Elenco" : "List"}</button>
+      <button type="button" class="sp-tab ${view === "directory" ? "is-active" : ""}" data-action="sp-set-view" data-view="directory">${state.lang === "it" ? "Rubrica fornitori" : "Supplier directory"}</button>
+      <button type="button" class="sp-tab ${view === "list" ? "is-active" : ""}" data-action="sp-set-view" data-view="list">${state.lang === "it" ? "Storico fatture" : "Invoice history"}</button>
       <button type="button" class="sp-tab ${view === "compare" ? "is-active" : ""}" data-action="sp-set-view" data-view="compare">${state.lang === "it" ? "Confronto per materiale" : "Compare by material"}</button>
     </div>
-    ${renderSupplierPriceFiltersHtml()}
+    ${directoryView ? "" : renderSupplierPriceFiltersHtml()}
     <div id="sp-results">${renderSupplierPriceResultsHtml()}</div>
   `;
+}
+
+async function submitSupplierProfileForm(form) {
+  const fd = new FormData(form);
+  const profileId = String(form.dataset.profileId || "");
+  const payload = {
+    name: String(fd.get("name") || "").trim(),
+    contactName: String(fd.get("contactName") || "").trim(),
+    email: String(fd.get("email") || "").trim(),
+    phone: String(fd.get("phone") || "").trim(),
+    alternateContactName: String(fd.get("alternateContactName") || "").trim(),
+    alternateEmail: String(fd.get("alternateEmail") || "").trim(),
+    alternatePhone: String(fd.get("alternatePhone") || "").trim(),
+    vatNumber: String(fd.get("vatNumber") || "").trim(),
+    website: String(fd.get("website") || "").trim(),
+    address: String(fd.get("address") || "").trim(),
+    notes: String(fd.get("notes") || "").trim(),
+  };
+  if (!payload.name) {
+    showToast(state.lang === "it" ? "Inserisci la ragione sociale." : "Enter the company name.", "warning");
+    return;
+  }
+  const submit = form.querySelector("button[type='submit']");
+  if (submit) submit.disabled = true;
+  try {
+    const previousProfile = profileId
+      ? (Array.isArray(state.supplierProfiles) ? state.supplierProfiles : []).find((profile) => profile.id === profileId)
+      : null;
+    const saved = await apiFetch(profileId ? `/api/suppliers/${encodeURIComponent(profileId)}` : "/api/suppliers", {
+      method: profileId ? "PATCH" : "POST",
+      body: JSON.stringify(payload),
+    });
+    const profiles = (Array.isArray(state.supplierProfiles) ? state.supplierProfiles : [])
+      .filter((profile) => profile.id !== saved.id && normalizeSupplierPriceKey(profile.name) !== normalizeSupplierPriceKey(saved.name));
+    state.supplierProfiles = [...profiles, saved];
+    if (previousProfile) {
+      const oldKey = normalizeSupplierPriceKey(previousProfile.name);
+      if (oldKey && oldKey !== normalizeSupplierPriceKey(saved.name)) {
+        state.supplierPriceEntries = getSupplierPriceEntries().map((entry) => (
+          normalizeSupplierPriceKey(entry.supplierName) === oldKey ? { ...entry, supplierName: saved.name } : entry
+        ));
+      }
+    }
+    state.supplierSelectedKey = normalizeSupplierPriceKey(saved.name);
+    state.supplierProfileFormOpen = false;
+    showToast(state.lang === "it" ? "Fornitore salvato." : "Supplier saved.", "success");
+    renderSupplierPrices();
+  } catch (err) {
+    const exists = String(err?.message || "").includes("supplier_exists");
+    showToast(
+      exists
+        ? (state.lang === "it" ? "Esiste già un fornitore con questo nome." : "A supplier with this name already exists.")
+        : (state.lang === "it" ? "Salvataggio fornitore non riuscito." : "Supplier save failed."),
+      "warning",
+    );
+  } finally {
+    if (submit) submit.disabled = false;
+  }
 }
 
 async function stageSupplierPriceAttachment(file) {
@@ -14935,6 +15206,39 @@ function bindSupplierPricesEvents() {
   if (!host || host.dataset.spBound === "true") return;
   host.dataset.spBound = "true";
   host.addEventListener("click", (ev) => {
+    const newSupplier = ev.target.closest?.("[data-action='sp-new-supplier']");
+    if (newSupplier) {
+      ev.preventDefault();
+      state.supplierSelectedKey = "";
+      state.supplierProfileFormOpen = true;
+      renderSupplierPrices();
+      return;
+    }
+    const selectSupplier = ev.target.closest?.("[data-action='sp-select-supplier']");
+    if (selectSupplier) {
+      ev.preventDefault();
+      state.supplierSelectedKey = selectSupplier.dataset.supplierKey || "";
+      state.supplierProfileFormOpen = false;
+      renderSupplierPrices();
+      return;
+    }
+    const editSupplier = ev.target.closest?.("[data-action='sp-edit-profile']");
+    if (editSupplier) {
+      ev.preventDefault();
+      state.supplierProfileFormOpen = true;
+      renderSupplierPrices();
+      return;
+    }
+    const cancelSupplier = ev.target.closest?.("[data-action='sp-cancel-profile']");
+    if (cancelSupplier) {
+      ev.preventDefault();
+      state.supplierProfileFormOpen = false;
+      if (!state.supplierSelectedKey) {
+        state.supplierSelectedKey = normalizeSupplierPriceKey(getSupplierProfiles()[0]?.name);
+      }
+      renderSupplierPrices();
+      return;
+    }
     const toggleForm = ev.target.closest?.("[data-action='sp-toggle-form']");
     if (toggleForm) {
       ev.preventDefault();
@@ -14990,9 +15294,15 @@ function bindSupplierPricesEvents() {
     const setView = ev.target.closest?.("[data-action='sp-set-view']");
     if (setView) {
       ev.preventDefault();
-      state.supplierPricesView = setView.dataset.view === "compare" ? "compare" : "list";
+      const nextView = setView.dataset.view;
+      state.supplierPricesView = ["directory", "compare", "list"].includes(nextView) ? nextView : "directory";
+      state.supplierPriceFormOpen = false;
+      state.supplierProfileFormOpen = false;
+      if (state.supplierPricesView === "directory" && !state.supplierSelectedKey) {
+        state.supplierSelectedKey = normalizeSupplierPriceKey(getSupplierProfiles()[0]?.name);
+      }
       host.querySelectorAll(".sp-tab").forEach((tab) => tab.classList.toggle("is-active", tab.dataset.view === state.supplierPricesView));
-      updateSupplierPricesResultsDom();
+      renderSupplierPrices();
       return;
     }
     const attachClick = ev.target.closest?.("[data-action='sp-attach-click']");
@@ -15035,6 +15345,13 @@ function bindSupplierPricesEvents() {
   // "input" (non "change"): filtro live mentre si digita, aggiornando SOLO
   // #sp-results così il campo di ricerca non perde mai il focus.
   host.addEventListener("input", (ev) => {
+    const directorySearch = ev.target.closest?.(".sp-directory-search input");
+    if (directorySearch) {
+      state.supplierDirectorySearch = directorySearch.value;
+      const list = host.querySelector("#sp-directory-list");
+      if (list) list.outerHTML = renderSupplierDirectoryListHtml();
+      return;
+    }
     const filterInput = ev.target.closest?.(".sp-filter-input");
     if (!filterInput) return;
     const field = filterInput.dataset.field;
@@ -15043,6 +15360,12 @@ function bindSupplierPricesEvents() {
     updateSupplierPricesResultsDom();
   });
   host.addEventListener("submit", (ev) => {
+    const profileForm = ev.target.closest?.("#sp-profile-form");
+    if (profileForm) {
+      ev.preventDefault();
+      void submitSupplierProfileForm(profileForm);
+      return;
+    }
     const form = ev.target.closest?.("#sp-entry-form");
     if (!form) return;
     ev.preventDefault();
@@ -15055,6 +15378,9 @@ function renderSupplierPrices() {
   if (!root) return;
   if (!state.supplierPricesLoaded && !state.supplierPricesLoading) {
     void loadSupplierPriceEntries();
+  }
+  if (state.supplierPricesView === "directory" && !state.supplierProfileFormOpen && !getSupplierProfileByKey(state.supplierSelectedKey)) {
+    state.supplierSelectedKey = normalizeSupplierPriceKey(getSupplierProfiles()[0]?.name);
   }
   root.innerHTML = renderSupplierPricesHtml();
   bindSupplierPricesEvents();
@@ -20985,13 +21311,16 @@ async function renderTimesheetOffice() {
         </div>
       </div>`;
 
-    // Geofence attivo? (almeno uno shift con tag geo/network)
-    const geofenceActive = shifts.some((s) => {
+    // Il server comunica la configurazione reale; il fallback sui tag mantiene
+    // compatibilità con una versione backend precedente.
+    const hasGeofenceTags = shifts.some((s) => {
       const f = s.anomalyFlags || [];
       return f.includes("geo_verified_in") || f.includes("geo_off_site_in")
         || f.includes("geo_verified_out") || f.includes("geo_off_site_out")
         || f.includes("in_office_in") || f.includes("off_network_in");
     });
+    const geofenceActive = data?.geofenceConfigured === true
+      || (data?.geofenceConfigured == null && hasGeofenceTags);
 
     // Riepilogo settimana
     const teamMinutes = shifts.reduce((a, s) => a + (s.workedMinutes || 0), 0);
