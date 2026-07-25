@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260724-shipping-order-attachments";
+} from "./lib/order-money.js?v=20260725-supplier-ledger";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260724-shipping-order-attachments";
+import { regionForCity } from "./lib/geo.js?v=20260725-supplier-ledger";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260724-shipping-order-attachments";
+} from "./lib/profit-split.js?v=20260725-supplier-ledger";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260724-shipping-order-attachments";
+} from "./lib/preventivo-pricing.js?v=20260725-supplier-ledger";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260724-shipping-order-attachments";
+const APP_SHELL_VERSION = "20260725-supplier-ledger";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14461,15 +14461,156 @@ function getSupplierProfileByKey(key) {
 }
 
 function getSupplierProfileStats(profile) {
-  const key = normalizeSupplierPriceKey(profile?.name);
-  const entries = getSupplierPriceEntries()
-    .filter((entry) => normalizeSupplierPriceKey(entry.supplierName) === key)
-    .sort((a, b) => String(b.invoiceDate || "").localeCompare(String(a.invoiceDate || "")));
+  const entries = getSupplierPriceEntriesForProfile(profile);
   return {
-    invoices: new Set(entries.map((entry) => entry.invoiceId || entry.invoiceNumber || entry.id)).size,
+    invoices: getSupplierInvoiceGroups(profile).length,
     materials: new Set(entries.map((entry) => normalizeSupplierPriceKey(entry.material)).filter(Boolean)).size,
     lastDate: entries[0]?.invoiceDate || "",
   };
+}
+
+function getSupplierPriceEntriesForProfile(profile) {
+  const key = normalizeSupplierPriceKey(profile?.name);
+  return getSupplierPriceEntries()
+    .filter((entry) => normalizeSupplierPriceKey(entry.supplierName) === key)
+    .sort((a, b) => String(b.invoiceDate || "").localeCompare(String(a.invoiceDate || "")));
+}
+
+function getSupplierMaterialSummary(profile) {
+  const groups = new Map();
+  getSupplierPriceEntriesForProfile(profile).forEach((entry) => {
+    const unit = String(entry.unit || "").trim();
+    const key = `${normalizeSupplierPriceKey(entry.material)}|${unit}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        material: entry.material || "—",
+        unit,
+        entries: [],
+      });
+    }
+    groups.get(key).entries.push(entry);
+  });
+  return [...groups.values()]
+    .map((group) => {
+      const prices = group.entries.map((entry) => Number(entry.unitPrice) || 0).filter((price) => price > 0);
+      return {
+        material: group.material,
+        unit: group.unit,
+        purchases: group.entries.length,
+        lastPrice: Number(group.entries[0]?.unitPrice) || 0,
+        lastDate: group.entries[0]?.invoiceDate || "",
+        averagePrice: prices.length ? prices.reduce((sum, price) => sum + price, 0) / prices.length : 0,
+      };
+    })
+    .sort((a, b) => a.material.localeCompare(b.material, "it"));
+}
+
+function getSupplierInvoiceGroups(profile) {
+  const groups = new Map();
+  getSupplierPriceEntriesForProfile(profile).forEach((entry) => {
+    const invoiceKey = entry.invoiceId
+      || (entry.invoiceNumber ? `${entry.invoiceDate || ""}|${entry.invoiceNumber}` : entry.id);
+    if (!groups.has(invoiceKey)) {
+      groups.set(invoiceKey, {
+        key: invoiceKey,
+        date: entry.invoiceDate || "",
+        number: entry.invoiceNumber || "",
+        note: entry.note || "",
+        attachmentEntry: entry.attachment ? entry : null,
+        entries: [],
+      });
+    }
+    const group = groups.get(invoiceKey);
+    group.entries.push(entry);
+    if (!group.attachmentEntry && entry.attachment) group.attachmentEntry = entry;
+    if (!group.note && entry.note) group.note = entry.note;
+  });
+  return [...groups.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
+function renderSupplierMaterialSummaryHtml(profile) {
+  const materials = getSupplierMaterialSummary(profile);
+  if (!materials.length) {
+    return `
+      <div class="sp-purchase-empty">
+        <strong>${state.lang === "it" ? "Nessun acquisto registrato" : "No purchases recorded"}</strong>
+        <span>${state.lang === "it" ? "Aggiungi la prima fattura per vedere materiali e andamento prezzi." : "Add the first invoice to see materials and price trends."}</span>
+      </div>`;
+  }
+  return `
+    <div class="sp-material-summary">
+      <div class="sp-material-summary-row is-head" aria-hidden="true">
+        <span>${state.lang === "it" ? "Materiale" : "Material"}</span>
+        <span>${state.lang === "it" ? "Ultimo prezzo" : "Last price"}</span>
+        <span>${state.lang === "it" ? "Prezzo medio" : "Average price"}</span>
+        <span>${state.lang === "it" ? "Acquisti" : "Purchases"}</span>
+      </div>
+      ${materials.map((item) => `
+        <div class="sp-material-summary-row">
+          <span class="sp-material-name">
+            <strong>${escapeHtml(item.material)}</strong>
+            <small>${state.lang === "it" ? "Ultimo acquisto" : "Last purchase"} ${escapeHtml(formatDate(item.lastDate))}</small>
+          </span>
+          <span class="sp-material-price">
+            <small class="sp-material-mobile-label">${state.lang === "it" ? "Ultimo prezzo" : "Last price"}</small>
+            <strong>${escapeHtml(formatCurrency(item.lastPrice))}</strong>
+            <small>/${escapeHtml(supplierPriceUnitLabel(item.unit))}</small>
+          </span>
+          <span class="sp-material-price">
+            <small class="sp-material-mobile-label">${state.lang === "it" ? "Prezzo medio" : "Average price"}</small>
+            <strong>${escapeHtml(formatCurrency(item.averagePrice))}</strong>
+            <small>/${escapeHtml(supplierPriceUnitLabel(item.unit))}</small>
+          </span>
+          <span class="sp-material-count">${item.purchases}</span>
+        </div>
+      `).join("")}
+    </div>`;
+}
+
+function renderSupplierInvoicesHtml(profile) {
+  const invoices = getSupplierInvoiceGroups(profile);
+  if (!invoices.length) {
+    return `
+      <div class="sp-purchase-empty">
+        <strong>${state.lang === "it" ? "Nessuna fattura collegata" : "No linked invoices"}</strong>
+        <span>${state.lang === "it" ? "Le fatture aggiunte qui resteranno raccolte nella scheda del fornitore." : "Invoices added here will remain grouped in the supplier profile."}</span>
+      </div>`;
+  }
+  return `
+    <div class="sp-invoice-list">
+      ${invoices.map((invoice) => {
+        const attachment = invoice.attachmentEntry;
+        return `
+          <article class="sp-invoice-card">
+            <header class="sp-invoice-head">
+              <div>
+                <span class="sp-detail-eyebrow">${state.lang === "it" ? "Fattura" : "Invoice"}</span>
+                <strong>${escapeHtml(invoice.number || (state.lang === "it" ? "Numero non indicato" : "Number not provided"))}</strong>
+                <small>${escapeHtml(formatDate(invoice.date))} · ${invoice.entries.length} ${state.lang === "it" ? (invoice.entries.length === 1 ? "materiale" : "materiali") : (invoice.entries.length === 1 ? "material" : "materials")}</small>
+              </div>
+              ${attachment
+                ? `<a class="ghost-button small-button sp-invoice-open" href="/api/supplier-prices/${escapeAttr(attachment.id)}/attachment/file" target="_blank" rel="noreferrer">${state.lang === "it" ? "Apri fattura" : "Open invoice"}</a>`
+                : `<span class="sp-invoice-no-file">${state.lang === "it" ? "Nessun allegato" : "No attachment"}</span>`}
+            </header>
+            <div class="sp-invoice-lines">
+              ${invoice.entries.map((entry) => `
+                <div class="sp-invoice-line">
+                  <span class="sp-invoice-line-name">
+                    <strong>${escapeHtml(entry.material || "—")}</strong>
+                    <small>${entry.quantity != null ? `${escapeHtml(String(entry.quantity))} ${escapeHtml(supplierPriceUnitLabel(entry.unit))}` : (state.lang === "it" ? "Quantità non indicata" : "Quantity not provided")}</small>
+                  </span>
+                  <span class="sp-invoice-line-price">${escapeHtml(formatCurrency(entry.unitPrice))}<small>/${escapeHtml(supplierPriceUnitLabel(entry.unit))}</small></span>
+                  <span class="sp-invoice-line-actions">
+                    <button type="button" class="ghost-button small-button" data-action="sp-edit" data-id="${escapeAttr(entry.id)}">${state.lang === "it" ? "Modifica" : "Edit"}</button>
+                    <button type="button" class="ghost-button small-button sp-delete-btn" data-action="sp-delete" data-id="${escapeAttr(entry.id)}">${state.lang === "it" ? "Elimina" : "Delete"}</button>
+                  </span>
+                </div>
+              `).join("")}
+            </div>
+            ${invoice.note ? `<p class="sp-invoice-note">${escapeHtml(invoice.note)}</p>` : ""}
+          </article>`;
+      }).join("")}
+    </div>`;
 }
 
 function supplierWebsiteHref(value) {
@@ -14605,6 +14746,9 @@ function renderSupplierProfileDetailHtml(profile) {
         <p>${state.lang === "it" ? "Apri una scheda per vedere email, referenti, telefoni e storico acquisti." : "Open a profile to view contacts and purchase history."}</p>
       </div>`;
   }
+  if (state.supplierPriceFormOpen) {
+    return renderSupplierPriceFormHtml({ supplierName: profile.name, lockSupplier: true });
+  }
   const stats = getSupplierProfileStats(profile);
   const websiteHref = supplierWebsiteHref(profile.website);
   const phoneHref = profile.phone ? `tel:${String(profile.phone).replace(/[^+\d]/g, "")}` : "";
@@ -14619,13 +14763,35 @@ function renderSupplierProfileDetailHtml(profile) {
             <h2>${escapeHtml(profile.name)}</h2>
           </div>
         </div>
-        <button type="button" class="ghost-button" data-action="sp-edit-profile">${state.lang === "it" ? "Modifica" : "Edit"}</button>
+        <div class="sp-profile-head-actions">
+          <button type="button" class="primary-button" data-action="sp-new-supplier-invoice">+ ${state.lang === "it" ? "Fattura" : "Invoice"}</button>
+          <button type="button" class="ghost-button" data-action="sp-edit-profile">${state.lang === "it" ? "Modifica" : "Edit"}</button>
+        </div>
       </div>
       <div class="sp-profile-kpis">
         <div><strong>${stats.invoices}</strong><span>${state.lang === "it" ? "Fatture" : "Invoices"}</span></div>
         <div><strong>${stats.materials}</strong><span>${state.lang === "it" ? "Materiali" : "Materials"}</span></div>
         <div><strong>${stats.lastDate ? escapeHtml(formatDate(stats.lastDate)) : "—"}</strong><span>${state.lang === "it" ? "Ultimo acquisto" : "Last purchase"}</span></div>
       </div>
+      <section class="sp-detail-section sp-purchase-section">
+        <div class="sp-detail-section-head">
+          <div>
+            <h3>${state.lang === "it" ? "Cosa acquistiamo" : "What we buy"}</h3>
+            <p>${state.lang === "it" ? "Ultimo prezzo e media storica per ogni materiale." : "Last price and historical average for each material."}</p>
+          </div>
+        </div>
+        ${renderSupplierMaterialSummaryHtml(profile)}
+      </section>
+      <section class="sp-detail-section sp-purchase-section">
+        <div class="sp-detail-section-head">
+          <div>
+            <h3>${state.lang === "it" ? "Fatture" : "Invoices"}</h3>
+            <p>${state.lang === "it" ? "Materiali, quantità, prezzi e documenti raccolti per acquisto." : "Materials, quantities, prices and documents grouped by purchase."}</p>
+          </div>
+          <button type="button" class="ghost-button small-button" data-action="sp-new-supplier-invoice">+ ${state.lang === "it" ? "Aggiungi" : "Add"}</button>
+        </div>
+        ${renderSupplierInvoicesHtml(profile)}
+      </section>
       <section class="sp-detail-section">
         <h3>${state.lang === "it" ? "Contatti principali" : "Primary contacts"}</h3>
         <div class="sp-contact-grid">
@@ -14887,13 +15053,13 @@ function syncSupplierPriceLinesFromDom() {
   }));
 }
 
-function renderSupplierPriceEditFormHtml(editing) {
+function renderSupplierPriceEditFormHtml(editing, lockSupplier = false) {
   const d = editing || {};
   return `
     <form id="sp-entry-form" class="inline-form-grid" data-editing-id="${escapeAttr(state.supplierPriceEditingId || "")}">
       <div class="field">
         <label>${state.lang === "it" ? "Fornitore" : "Supplier"}</label>
-        <input type="text" name="supplierName" list="sp-suppliers-list" required value="${escapeAttr(d.supplierName || "")}" />
+        <input type="text" name="supplierName" list="sp-suppliers-list" required value="${escapeAttr(d.supplierName || "")}" ${lockSupplier ? "readonly" : ""} />
       </div>
       <div class="field">
         <label>${state.lang === "it" ? "Materiale" : "Material"}</label>
@@ -14935,13 +15101,13 @@ function renderSupplierPriceEditFormHtml(editing) {
     </form>`;
 }
 
-function renderSupplierPriceNewFormHtml() {
+function renderSupplierPriceNewFormHtml(defaultSupplierName = "", lockSupplier = false) {
   return `
     <form id="sp-entry-form" data-editing-id="">
       <div class="inline-form-grid sp-header-grid">
         <div class="field">
           <label>${state.lang === "it" ? "Fornitore" : "Supplier"}</label>
-          <input type="text" name="supplierName" list="sp-suppliers-list" required placeholder="${state.lang === "it" ? "Es. WMG Grass" : "e.g. WMG Grass"}" />
+          <input type="text" name="supplierName" list="sp-suppliers-list" required placeholder="${state.lang === "it" ? "Es. WMG Grass" : "e.g. WMG Grass"}" value="${escapeAttr(defaultSupplierName)}" ${lockSupplier ? "readonly" : ""} />
         </div>
         <div class="field">
           <label>${state.lang === "it" ? "Data fattura" : "Invoice date"}</label>
@@ -14980,7 +15146,7 @@ function renderSupplierPriceNewFormHtml() {
     </form>`;
 }
 
-function renderSupplierPriceFormHtml() {
+function renderSupplierPriceFormHtml({ supplierName = "", lockSupplier = false } = {}) {
   if (!state.supplierPriceFormOpen) return "";
   const editing = state.supplierPriceEditingId
     ? getSupplierPriceEntries().find((e) => e.id === state.supplierPriceEditingId)
@@ -14990,15 +15156,14 @@ function renderSupplierPriceFormHtml() {
   return `
     <div class="sp-form-panel">
       <h3>${editing ? (state.lang === "it" ? "Modifica voce" : "Edit entry") : (state.lang === "it" ? "Nuova fattura fornitore" : "New supplier invoice")}</h3>
-      ${editing ? renderSupplierPriceEditFormHtml(editing) : renderSupplierPriceNewFormHtml()}
+      ${editing ? renderSupplierPriceEditFormHtml(editing, lockSupplier) : renderSupplierPriceNewFormHtml(supplierName, lockSupplier)}
       <datalist id="sp-suppliers-list">${suppliers.map((s) => `<option value="${escapeAttr(s)}"></option>`).join("")}</datalist>
       <datalist id="sp-materials-list">${materials.map((m) => `<option value="${escapeAttr(m)}"></option>`).join("")}</datalist>
     </div>`;
 }
 
 function renderSupplierPriceResultsHtml() {
-  if (state.supplierPricesView === "directory") return renderSupplierDirectoryHtml();
-  return state.supplierPricesView === "compare" ? renderSupplierPriceCompareHtml() : renderSupplierPriceListHtml();
+  return state.supplierPricesView === "compare" ? renderSupplierPriceCompareHtml() : renderSupplierDirectoryHtml();
 }
 
 // Aggiorna SOLO i risultati (tabella/confronto), non i campi filtro: se si
@@ -15011,7 +15176,8 @@ function updateSupplierPricesResultsDom() {
 }
 
 function renderSupplierPricesHtml() {
-  const view = ["directory", "list", "compare"].includes(state.supplierPricesView) ? state.supplierPricesView : "directory";
+  const view = ["directory", "compare"].includes(state.supplierPricesView) ? state.supplierPricesView : "directory";
+  state.supplierPricesView = view;
   const directoryView = view === "directory";
   return `
     <div class="page-header">
@@ -15021,12 +15187,10 @@ function renderSupplierPricesHtml() {
       </div>
       ${directoryView
         ? `<button type="button" class="primary-button" data-action="sp-new-supplier">+ ${state.lang === "it" ? "Nuovo fornitore" : "New supplier"}</button>`
-        : `<button type="button" class="primary-button" data-action="sp-toggle-form">${state.supplierPriceFormOpen ? (state.lang === "it" ? "Chiudi" : "Close") : (state.lang === "it" ? "+ Nuova fattura" : "+ New invoice")}</button>`}
+        : ""}
     </div>
-    ${directoryView ? "" : renderSupplierPriceFormHtml()}
     <div class="sp-tabs">
       <button type="button" class="sp-tab ${view === "directory" ? "is-active" : ""}" data-action="sp-set-view" data-view="directory">${state.lang === "it" ? "Rubrica fornitori" : "Supplier directory"}</button>
-      <button type="button" class="sp-tab ${view === "list" ? "is-active" : ""}" data-action="sp-set-view" data-view="list">${state.lang === "it" ? "Storico fatture" : "Invoice history"}</button>
       <button type="button" class="sp-tab ${view === "compare" ? "is-active" : ""}" data-action="sp-set-view" data-view="compare">${state.lang === "it" ? "Confronto per materiale" : "Compare by material"}</button>
     </div>
     ${directoryView ? "" : renderSupplierPriceFiltersHtml()}
@@ -15211,6 +15375,7 @@ function bindSupplierPricesEvents() {
       ev.preventDefault();
       state.supplierSelectedKey = "";
       state.supplierProfileFormOpen = true;
+      state.supplierPriceFormOpen = false;
       renderSupplierPrices();
       return;
     }
@@ -15219,6 +15384,9 @@ function bindSupplierPricesEvents() {
       ev.preventDefault();
       state.supplierSelectedKey = selectSupplier.dataset.supplierKey || "";
       state.supplierProfileFormOpen = false;
+      state.supplierPriceFormOpen = false;
+      state.supplierPriceEditingId = "";
+      state.supplierPricePendingAttachment = null;
       renderSupplierPrices();
       return;
     }
@@ -15226,7 +15394,20 @@ function bindSupplierPricesEvents() {
     if (editSupplier) {
       ev.preventDefault();
       state.supplierProfileFormOpen = true;
+      state.supplierPriceFormOpen = false;
       renderSupplierPrices();
+      return;
+    }
+    const newSupplierInvoice = ev.target.closest?.("[data-action='sp-new-supplier-invoice']");
+    if (newSupplierInvoice) {
+      ev.preventDefault();
+      state.supplierProfileFormOpen = false;
+      state.supplierPriceFormOpen = true;
+      state.supplierPriceEditingId = "";
+      state.supplierPricePendingAttachment = null;
+      state.supplierPriceFormLines = [{ material: "", unitPrice: "", unit: "kg", quantity: "" }];
+      renderSupplierPrices();
+      host.querySelector(".sp-form-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
     const cancelSupplier = ev.target.closest?.("[data-action='sp-cancel-profile']");
@@ -15295,7 +15476,7 @@ function bindSupplierPricesEvents() {
     if (setView) {
       ev.preventDefault();
       const nextView = setView.dataset.view;
-      state.supplierPricesView = ["directory", "compare", "list"].includes(nextView) ? nextView : "directory";
+      state.supplierPricesView = ["directory", "compare"].includes(nextView) ? nextView : "directory";
       state.supplierPriceFormOpen = false;
       state.supplierProfileFormOpen = false;
       if (state.supplierPricesView === "directory" && !state.supplierSelectedKey) {
