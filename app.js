@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260726-marketing-stories";
+} from "./lib/order-money.js?v=20260726-absence-request-queue";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260726-marketing-stories";
+import { regionForCity } from "./lib/geo.js?v=20260726-absence-request-queue";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260726-marketing-stories";
+} from "./lib/profit-split.js?v=20260726-absence-request-queue";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260726-marketing-stories";
+} from "./lib/preventivo-pricing.js?v=20260726-absence-request-queue";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260726-marketing-stories";
+const APP_SHELL_VERSION = "20260726-absence-request-queue";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21745,6 +21745,50 @@ function timesheetHourIntensity(minutes = 0) {
   return 0;
 }
 
+function renderTimesheetOfficeRequestQueue(requests = [], userMap = new Map()) {
+  const pending = (Array.isArray(requests) ? requests : [])
+    .filter((request) => request?.status === "pending")
+    .sort((a, b) => (
+      String(a.date || "").localeCompare(String(b.date || ""))
+      || String(a.requestedAt || "").localeCompare(String(b.requestedAt || ""))
+    ));
+  return `
+    <section class="ts-office-request-queue panel${pending.length ? "" : " is-empty"}" data-ts-request-queue>
+      <div class="ts-office-request-queue-head">
+        <div>
+          <span class="ts-detail-kicker">Da gestire</span>
+          <h2>Richieste assenza</h2>
+          <p>Ferie, permessi e malattie inviati dai dipendenti.</p>
+        </div>
+        <span class="ts-office-request-count" data-ts-request-count>${pending.length}</span>
+      </div>
+      <div class="ts-office-request-queue-list" data-ts-request-queue-list>
+        ${pending.length ? pending.map((request) => {
+          const user = userMap.get(request.userId) || {};
+          const employeeName = user.name || user.crewName || user.email || request.userId;
+          return `
+            <article class="ts-office-request-row" data-ts-request-item="${escapeAttr(request.id)}">
+              <div class="ts-office-request-type ${escapeAttr(request.type)}">
+                <span>${escapeHtml(TIMESHEET_ABSENCE_LABELS[request.type] || "Assenza")}</span>
+                <strong>${escapeHtml(employeeName)}</strong>
+              </div>
+              <div class="ts-office-request-date">
+                <span>Giorno richiesto</span>
+                <strong>${escapeHtml(formatTimesheetDate(request.date))}</strong>
+              </div>
+              <p class="ts-office-request-note">${request.note ? escapeHtml(request.note) : "Nessuna nota inserita."}</p>
+              <div class="ts-office-request-actions">
+                <button type="button" class="btn primary" data-ts-request-review="${escapeAttr(request.id)}" data-review-action="approve">Approva</button>
+                <button type="button" class="btn subtle" data-ts-request-review="${escapeAttr(request.id)}" data-review-action="reject">Rifiuta</button>
+              </div>
+            </article>
+          `;
+        }).join("") : '<p class="ts-office-request-empty">Nessuna richiesta in attesa.</p>'}
+      </div>
+    </section>
+  `;
+}
+
 function renderTimesheetOfficeDetailMarkup({
   user,
   date,
@@ -21850,6 +21894,9 @@ async function renderTimesheetOffice() {
     const shifts = data?.shifts || [];
     const absences = Array.isArray(data?.absences) ? data.absences : [];
     const absenceRequests = Array.isArray(data?.absenceRequests) ? data.absenceRequests : [];
+    const pendingAbsenceRequests = Array.isArray(data?.pendingAbsenceRequests)
+      ? data.pendingAbsenceRequests
+      : absenceRequests.filter((request) => request.status === "pending");
 
     // Raggruppa per userId
     const byUser = new Map();
@@ -21861,6 +21908,7 @@ async function renderTimesheetOffice() {
       byUser.get(s.userId).push(s);
     }
     const userMap = new Map(users.map((u) => [u.id, u]));
+    const pendingRequestById = new Map(pendingAbsenceRequests.map((request) => [request.id, request]));
     const absenceByUserDate = new Map(absences.map((record) => [`${record.userId}:${record.date}`, record]));
     const requestByUserDate = new Map();
     absenceRequests
@@ -21887,6 +21935,7 @@ async function renderTimesheetOffice() {
           ${!isCurrentWeek ? `<button type="button" class="ts-week-today" data-action="ts-week-today">Oggi</button>` : ""}
         </div>
       </div>`;
+    const requestQueue = renderTimesheetOfficeRequestQueue(pendingAbsenceRequests, userMap);
 
     // Il server comunica la configurazione reale; il fallback sui tag mantiene
     // compatibilità con una versione backend precedente.
@@ -21932,11 +21981,18 @@ async function renderTimesheetOffice() {
       </div>`;
 
     if (byUser.size === 0) {
-      root.innerHTML = toolbar + summary + `<div class="ts-empty-state">
+      root.innerHTML = toolbar + summary + requestQueue + `<div class="ts-empty-state">
         <h2>Nessuna timbratura ${isCurrentWeek ? "questa settimana" : "in questa settimana"}</h2>
         <p>Le presenze appariranno qui appena i dipendenti iniziano a timbrare${!isCurrentWeek ? ", oppure torna alla settimana corrente." : "."}</p>
       </div>`;
       bindTimesheetOfficeNav(root, weekOffset);
+      bindTimesheetOfficeEditors(root, {
+        shifts,
+        userMap,
+        absenceByUserDate,
+        requestByUserDate,
+        pendingRequestById,
+      });
       return;
     }
 
@@ -21945,7 +22001,7 @@ async function renderTimesheetOffice() {
 
     const dayTotals = weekDays.map((d) => shifts.filter((s) => s.shiftDate === d.date).reduce((a, s) => a + (s.workedMinutes || 0), 0));
 
-    let html = toolbar + summary + (geofenceActive ? "" : warnBanner) + `
+    let html = toolbar + summary + requestQueue + (geofenceActive ? "" : warnBanner) + `
       <div class="ts-office-table-wrap">
         <table class="ts-office-table ts-office-table-v2">
           <thead>
@@ -21991,9 +22047,11 @@ async function renderTimesheetOffice() {
         const badge = offSite ? warnBadge : (verified && s.clockInAt ? okBadge : "");
         const title = offSite ? "Timbratura fuori sede" : (verified ? "Timbratura in sede (GPS verificato)" : "");
         html += `<td class="ts-hcell ${isToday ? "is-today" : ""}">
-          <button type="button" class="ts-hcell-button${isSelected ? " is-selected" : ""}${request?.status === "pending" ? " has-request" : ""}" data-ts-office-user="${escapeAttr(userId)}" data-ts-office-date="${escapeAttr(d.date)}" ${title ? `title="${escapeAttr(title)}"` : ""}>
+          <button type="button" class="ts-hcell-button${isSelected ? " is-selected" : ""}${absence ? ` has-absence absence-${absence.type}` : ""}${!absence && request?.status === "pending" ? " has-request" : ""}" data-ts-office-user="${escapeAttr(userId)}" data-ts-office-date="${escapeAttr(d.date)}" ${title ? `title="${escapeAttr(title)}"` : ""}>
             <span class="ts-hchip ${chipClass}">${escapeHtml(displayValue)}${badge}</span>
-            ${request?.status === "pending" ? `<span class="ts-hrequest-label">Richiesta</span>` : ""}
+            ${absence
+              ? `<span class="ts-habsence-label">${escapeHtml(TIMESHEET_ABSENCE_LABELS[absence.type] || "Assenza")}</span>`
+              : (request?.status === "pending" ? `<span class="ts-hrequest-label">Richiesta</span>` : "")}
           </button>
         </td>`;
       }
@@ -22034,6 +22092,7 @@ async function renderTimesheetOffice() {
       userMap,
       absenceByUserDate,
       requestByUserDate,
+      pendingRequestById,
     });
   } catch (err) {
     root.innerHTML = `<div class="ts-empty-state error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
@@ -22085,8 +22144,17 @@ function getTimesheetOfficeSelectionData(context = {}) {
   };
 }
 
-function updateTimesheetOfficeSelectedCell(root, context = {}) {
-  const selected = getTimesheetOfficeSelectionData(context);
+function updateTimesheetOfficeCell(root, context = {}, target = state.timesheetOfficeSelection) {
+  if (!target?.userId || !target?.date) return;
+  const key = `${target.userId}:${target.date}`;
+  const selected = {
+    selection: target,
+    shift: context.shifts?.find((entry) => (
+      entry.userId === target.userId && entry.shiftDate === target.date
+    )) || null,
+    absence: context.absenceByUserDate?.get(key) || null,
+    request: context.requestByUserDate?.get(key) || null,
+  };
   if (!selected) return;
   const { selection, shift, absence, request } = selected;
   const button = [...root.querySelectorAll("[data-ts-office-user][data-ts-office-date]")].find((item) => (
@@ -22110,7 +22178,10 @@ function updateTimesheetOfficeSelectedCell(root, context = {}) {
     return;
   }
   button.querySelector(".ts-hrequest-label")?.remove();
-  if (request?.status === "pending") {
+  button.querySelector(".ts-habsence-label")?.remove();
+  if (absence) {
+    button.insertAdjacentHTML("beforeend", `<span class="ts-habsence-label">${escapeHtml(TIMESHEET_ABSENCE_LABELS[absence.type] || "Assenza")}</span>`);
+  } else if (request?.status === "pending") {
     button.insertAdjacentHTML("beforeend", '<span class="ts-hrequest-label">Richiesta</span>');
   }
 }
@@ -22125,7 +22196,7 @@ function refreshTimesheetOfficeDetail(root, context = {}, { reveal = false } = {
   const markup = renderTimesheetOfficeDetailMarkup(selected);
   if (currentDetail) currentDetail.outerHTML = markup;
   else root.insertAdjacentHTML("beforeend", markup);
-  updateTimesheetOfficeSelectedCell(root, context);
+  updateTimesheetOfficeCell(root, context);
   bindTimesheetOfficeEditors(root, context);
   if (reveal) {
     requestAnimationFrame(() => {
@@ -22209,23 +22280,46 @@ function bindTimesheetOfficeEditors(root, context = {}) {
   });
 
   root.querySelectorAll("[data-ts-request-review]").forEach((button) => {
+    if (button.dataset.tsRequestReviewBound === "1") return;
+    button.dataset.tsRequestReviewBound = "1";
     button.addEventListener("click", async () => {
-      const selected = getTimesheetOfficeSelectionData(context);
-      if (!selected?.selection) return;
-      root.querySelectorAll("[data-ts-request-review]").forEach((item) => { item.disabled = true; });
+      const requestId = String(button.dataset.tsRequestReview || "");
+      const request = context.pendingRequestById?.get(requestId)
+        || [...(context.requestByUserDate?.values() || [])].find((item) => item.id === requestId);
+      if (!request) return;
+      root.querySelectorAll(`[data-ts-request-review="${CSS.escape(requestId)}"]`).forEach((item) => { item.disabled = true; });
       try {
-        const result = await apiFetch(`/api/timesheet/absence-requests/${encodeURIComponent(button.dataset.tsRequestReview || "")}/review`, {
+        const result = await apiFetch(`/api/timesheet/absence-requests/${encodeURIComponent(requestId)}/review`, {
           method: "POST",
           body: JSON.stringify({ action: button.dataset.reviewAction }),
         });
-        const key = `${selected.selection.userId}:${selected.selection.date}`;
+        const key = `${request.userId}:${request.date}`;
         if (result?.request) context.requestByUserDate?.set(key, result.request);
         if (result?.absence) context.absenceByUserDate?.set(key, result.absence);
+        context.pendingRequestById?.delete(requestId);
+        root.querySelector(`[data-ts-request-item="${CSS.escape(requestId)}"]`)?.remove();
+        const pendingCount = context.pendingRequestById?.size || 0;
+        const count = root.querySelector("[data-ts-request-count]");
+        if (count) count.textContent = String(pendingCount);
+        root.querySelector("[data-ts-request-queue]")?.classList.toggle("is-empty", pendingCount === 0);
+        const queueList = root.querySelector("[data-ts-request-queue-list]");
+        if (queueList && pendingCount === 0) {
+          queueList.innerHTML = '<p class="ts-office-request-empty">Nessuna richiesta in attesa.</p>';
+        }
+        updateTimesheetOfficeCell(root, context, {
+          userId: request.userId,
+          date: request.date,
+        });
+        if (
+          state.timesheetOfficeSelection?.userId === request.userId
+          && state.timesheetOfficeSelection?.date === request.date
+        ) {
+          refreshTimesheetOfficeDetail(root, context);
+        }
         showToast(button.dataset.reviewAction === "approve" ? "Richiesta approvata." : "Richiesta rifiutata.", "success");
-        refreshTimesheetOfficeDetail(root, context);
       } catch (error) {
         showToast(`Impossibile aggiornare la richiesta: ${error?.message || error}`, "error");
-        root.querySelectorAll("[data-ts-request-review]").forEach((item) => { item.disabled = false; });
+        root.querySelectorAll(`[data-ts-request-review="${CSS.escape(requestId)}"]`).forEach((item) => { item.disabled = false; });
       }
     });
   });

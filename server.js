@@ -27,6 +27,10 @@ import {
   isMarketingStoryFormat,
   validateMarketingStoryPublish,
 } from "./lib/marketing-publish.js";
+import {
+  listPendingAbsenceRequests,
+  reviewAbsenceRequest,
+} from "./lib/timesheet-absence.js";
 import webPush from "web-push";
 
 const PORT = Number(process.env.PORT || 4178);
@@ -13708,33 +13712,25 @@ async function handleApi(req, res, url) {
       return sendJson(res, 409, { error: "absence_request_not_pending" });
     }
     const nowIso = new Date().toISOString();
-    const reviewedRequest = normalizeTimesheetAbsenceRequest({
-      ...currentRequest,
-      status: action === "approve" ? "approved" : "rejected",
-      updatedAt: nowIso,
+    const absenceList = Array.isArray(store.timesheetAbsences) ? store.timesheetAbsences : [];
+    const absenceIndex = absenceList.findIndex((record) => (
+      String(record.userId) === currentRequest.userId
+      && String(record.date) === currentRequest.date
+    ));
+    const transition = reviewAbsenceRequest({
+      request: currentRequest,
+      action,
+      reviewerId: currentUser.id,
       reviewedAt: nowIso,
-      reviewedBy: currentUser.id,
+      existingAbsence: absenceIndex >= 0 ? absenceList[absenceIndex] : null,
     });
+    const reviewedRequest = normalizeTimesheetAbsenceRequest(transition.request);
     requestList[requestIndex] = reviewedRequest;
     store.timesheetAbsenceRequests = requestList;
 
     let absence = null;
-    if (action === "approve") {
-      const absenceList = Array.isArray(store.timesheetAbsences) ? store.timesheetAbsences : [];
-      const absenceIndex = absenceList.findIndex((record) => (
-        String(record.userId) === currentRequest.userId
-        && String(record.date) === currentRequest.date
-      ));
-      absence = normalizeTimesheetAbsence({
-        ...(absenceIndex >= 0 ? absenceList[absenceIndex] : {}),
-        userId: currentRequest.userId,
-        date: currentRequest.date,
-        type: currentRequest.type,
-        note: currentRequest.note,
-        createdAt: absenceIndex >= 0 ? absenceList[absenceIndex].createdAt : nowIso,
-        updatedAt: nowIso,
-        updatedBy: currentUser.id,
-      });
+    if (transition.absence) {
+      absence = normalizeTimesheetAbsence(transition.absence);
       if (absenceIndex >= 0) absenceList[absenceIndex] = absence;
       else absenceList.push(absence);
       store.timesheetAbsences = absenceList;
@@ -13872,6 +13868,9 @@ async function handleApi(req, res, url) {
         shifts,
         absences: listTimesheetAbsences(store, { userId, from, to }),
         absenceRequests: listTimesheetAbsenceRequests(store, { userId, from, to }),
+        pendingAbsenceRequests: listPendingAbsenceRequests(
+          listTimesheetAbsenceRequests(store, { userId }),
+        ),
         geofenceConfigured: COMPANY_OFFICE_LAT != null && COMPANY_OFFICE_LNG != null,
         geofenceRadiusM: COMPANY_OFFICE_RADIUS_M,
       });
