@@ -21,6 +21,7 @@ import {
 import { createWriteGuard } from "./lib/safe-write.js";
 import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
 import { buildSnapshot, snapshotFileName } from "./lib/backup.js";
+import { resolveMarketingAssetInputs } from "./lib/marketing-assets.js";
 import webPush from "web-push";
 
 const PORT = Number(process.env.PORT || 4178);
@@ -421,6 +422,20 @@ function sanitizePasswordUser(user = {}) {
   nextUser.dailyCapacity = Number.isFinite(parsedCapacity)
     ? Math.max(0, parsedCapacity)
     : (nextUser.role === "crew" ? DEFAULT_CREW_DAILY_CAPACITY : 0);
+  const isTimesheetEmployeeRole = nextUser.role === "office" || nextUser.role === "warehouse";
+  const salaryFallback = /\bbilal\b/i.test(String(nextUser.name || "")) ? 1000 : 0;
+  const parsedMonthlySalary = Number(String(nextUser.monthlySalary ?? salaryFallback).replace(",", ".").replace(/[^\d.-]/g, ""));
+  const parsedMonthlyPaidDays = Number(String(nextUser.monthlyPaidDays ?? 26).replace(",", ".").replace(/[^\d.-]/g, ""));
+  const parsedAnnualLeaveDays = Number(String(nextUser.annualLeaveDays ?? 26).replace(",", ".").replace(/[^\d.-]/g, ""));
+  nextUser.monthlySalary = isTimesheetEmployeeRole && Number.isFinite(parsedMonthlySalary)
+    ? Math.max(0, parsedMonthlySalary)
+    : 0;
+  nextUser.monthlyPaidDays = isTimesheetEmployeeRole && Number.isFinite(parsedMonthlyPaidDays)
+    ? Math.min(31, Math.max(1, Math.round(parsedMonthlyPaidDays)))
+    : 26;
+  nextUser.annualLeaveDays = isTimesheetEmployeeRole && Number.isFinite(parsedAnnualLeaveDays)
+    ? Math.max(0, parsedAnnualLeaveDays)
+    : 0;
   nextUser.crewLogoDataUrl = nextUser.role === "crew"
     ? sanitizeCrewLogoDataUrl(nextUser.crewLogoDataUrl || "")
     : "";
@@ -2526,6 +2541,36 @@ function userIsEmployee(user) {
   return Boolean(user && TIMESHEET_ROLES.has(String(user.role || "")));
 }
 
+const TIMESHEET_ABSENCE_TYPES = new Set(["vacation", "permit", "sick"]);
+
+function normalizeTimesheetAbsence(record = {}) {
+  const type = TIMESHEET_ABSENCE_TYPES.has(String(record.type || "").trim())
+    ? String(record.type || "").trim()
+    : "";
+  return {
+    id: String(record.id || randomUUID()),
+    userId: String(record.userId || "").trim(),
+    date: String(record.date || "").trim(),
+    type,
+    note: String(record.note || "").trim().slice(0, 500),
+    createdAt: String(record.createdAt || new Date().toISOString()),
+    updatedAt: String(record.updatedAt || new Date().toISOString()),
+    updatedBy: String(record.updatedBy || "").trim(),
+  };
+}
+
+function listTimesheetAbsences(store = {}, { userId = "", from = "", to = "" } = {}) {
+  return (Array.isArray(store.timesheetAbsences) ? store.timesheetAbsences : [])
+    .map(normalizeTimesheetAbsence)
+    .filter((record) => (
+      record.type
+      && (!userId || record.userId === String(userId))
+      && (!from || record.date >= String(from))
+      && (!to || record.date <= String(to))
+    ))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 /**
  * Determina se un IP appartiene alla rete aziendale.
  * Configurabile via env COMPANY_NETWORK_CIDR (lista di CIDR separati da virgola).
@@ -2871,7 +2916,7 @@ async function getMonthlyStatsForUser(userId, year, month) {
   const pool = await getPgPool();
   const monthStr = String(month).padStart(2, "0");
   const fromDate = `${year}-${monthStr}-01`;
-  const toDate = new Date(year, month, 0).toISOString().slice(0, 10); // ultimo del mese
+  const toDate = `${year}-${monthStr}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, "0")}`;
   const { rows } = await pool.query(
     `SELECT shift_date, worked_minutes, clock_in_at, clock_out_at, anomaly_flags
        FROM time_shifts
@@ -4331,6 +4376,7 @@ function buildDefaultStore() {
     resellerOrderRequests: [],
     supplierProfiles: [],
     supplierPriceEntries: [],
+    timesheetAbsences: [],
     marketingPublicAssets: [],
     marketingScheduled: [],
     marketingItems: [],
@@ -4442,6 +4488,9 @@ function sanitizeUser(user) {
     crewName: String(user.crewName || ""),
     dailyCapacity: Math.max(0, Number(user.dailyCapacity || 0)),
     crewLogoDataUrl: normalizedRole === "crew" ? sanitizeCrewLogoDataUrl(user.crewLogoDataUrl || "") : "",
+    monthlySalary: TIMESHEET_ROLES.has(normalizedRole) ? Math.max(0, Number(user.monthlySalary || 0)) : 0,
+    monthlyPaidDays: TIMESHEET_ROLES.has(normalizedRole) ? Math.min(31, Math.max(1, Number(user.monthlyPaidDays || 26))) : 26,
+    annualLeaveDays: TIMESHEET_ROLES.has(normalizedRole) ? Math.max(0, Number(user.annualLeaveDays || 0)) : 0,
     resellerCompanyName: normalizedRole === "rivenditore" ? String(user.resellerCompanyName || "") : "",
     resellerContact: normalizedRole === "rivenditore" ? String(user.resellerContact || "") : "",
     resellerVatNumber: normalizedRole === "rivenditore" ? String(user.resellerVatNumber || "") : "",
@@ -9864,6 +9913,9 @@ function reconcileStoreData(store) {
           role: String(user.role || defaults.users[index]?.role || "office").trim(),
           crewName: String(user.crewName || defaults.users[index]?.crewName || ""),
           dailyCapacity: user.dailyCapacity ?? defaults.users[index]?.dailyCapacity ?? 0,
+          monthlySalary: user.monthlySalary ?? (/\bbilal\b/i.test(String(user.name || "")) ? 1000 : 0),
+          monthlyPaidDays: user.monthlyPaidDays ?? 26,
+          annualLeaveDays: user.annualLeaveDays ?? 26,
           crewLogoDataUrl: String(user.crewLogoDataUrl || defaults.users[index]?.crewLogoDataUrl || ""),
           resellerCompanyName: String(user.resellerCompanyName || defaults.users[index]?.resellerCompanyName || ""),
           resellerContact: String(user.resellerContact || defaults.users[index]?.resellerContact || ""),
@@ -9883,6 +9935,9 @@ function reconcileStoreData(store) {
           || normalized.mustChangePassword !== Boolean(user.mustChangePassword)
           || normalized.sessionVersion !== Math.max(1, Number(user.sessionVersion || 1))
           || normalized.lastPasswordChangeAt !== String(user.lastPasswordChangeAt || "")
+          || normalized.monthlySalary !== Number(user.monthlySalary || 0)
+          || normalized.monthlyPaidDays !== Number(user.monthlyPaidDays || 26)
+          || normalized.annualLeaveDays !== Number(user.annualLeaveDays || 0)
           || "password" in user
         ) {
           changed = true;
@@ -9893,6 +9948,11 @@ function reconcileStoreData(store) {
         changed = true;
         return sanitizePasswordUser({ ...user });
       });
+
+  if (!Array.isArray(store.timesheetAbsences)) changed = true;
+  store.timesheetAbsences = (Array.isArray(store.timesheetAbsences) ? store.timesheetAbsences : [])
+    .map(normalizeTimesheetAbsence)
+    .filter((record) => record.userId && /^\d{4}-\d{2}-\d{2}$/.test(record.date) && record.type);
 
   store.inventory = Array.isArray(store.inventory)
     ? store.inventory.map((item) => {
@@ -12013,9 +12073,9 @@ async function handleApi(req, res, url) {
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
     const item = body?.item || body || {};
-    const incoming = (Array.isArray(item.assetDataUrls) && item.assetDataUrls.length
-      ? item.assetDataUrls
-      : (String(item.assetDataUrl || "").trim() ? [item.assetDataUrl] : []))
+    const list = Array.isArray(store.marketingItems) ? store.marketingItems : [];
+    const existing = list.find((record) => String(record.id || "") === String(item.id || "")) || null;
+    const incoming = resolveMarketingAssetInputs(item, existing)
       .filter((u) => String(u || "").trim());
     const assetUrls = [];
     const baseName = String(item.assetName || item.title || "marketing-image").trim() || "marketing-image";
@@ -12036,10 +12096,10 @@ async function handleApi(req, res, url) {
     delete clean.assetDataUrl;
     clean.id = String(item.id || randomUUID());
     clean.assetUrls = assetUrls;
-    clean.assetUrl = assetUrls[0] || (String(item.assetUrl || "").startsWith("data:") ? "" : String(item.assetUrl || ""));
+    const fallbackAssetUrl = String(item.assetUrl || existing?.assetUrl || "").trim();
+    clean.assetUrl = assetUrls[0] || (fallbackAssetUrl.startsWith("data:") ? "" : fallbackAssetUrl);
     clean.assetName = String(item.assetName || "");
     clean.updatedAt = new Date().toISOString();
-    const list = Array.isArray(store.marketingItems) ? store.marketingItems : [];
     const idx = list.findIndex((r) => r.id === clean.id);
     if (idx >= 0) list[idx] = clean; else list.unshift(clean);
     store.marketingItems = list.slice(0, 1000);
@@ -13426,7 +13486,8 @@ async function handleApi(req, res, url) {
       const from = url.searchParams.get("from") || null;
       const to = url.searchParams.get("to") || null;
       const shifts = await listShiftsForUser(currentUser.id, { from, to });
-      return sendJson(res, 200, { shifts });
+      const absences = listTimesheetAbsences(store, { userId: currentUser.id, from, to });
+      return sendJson(res, 200, { shifts, absences });
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "me_failed") });
     }
@@ -13448,15 +13509,104 @@ async function handleApi(req, res, url) {
       let prevMonth = month - 1, prevYear = year;
       if (prevMonth < 1) { prevMonth = 12; prevYear--; }
       const prevStats = await getMonthlyStatsForUser(currentUser.id, prevYear, prevMonth);
+      const monthStr = String(month).padStart(2, "0");
+      const from = `${year}-${monthStr}-01`;
+      const to = `${year}-${monthStr}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, "0")}`;
+      const yearAbsences = listTimesheetAbsences(store, {
+        userId: currentUser.id,
+        from: `${year}-01-01`,
+        to: `${year}-12-31`,
+      });
       return sendJson(res, 200, {
         current: stats,
         previous: prevStats,
         streak,
         deltaMinutes: stats && prevStats ? (stats.totalMinutes - prevStats.totalMinutes) : null,
+        profile: sanitizeUser(currentUser),
+        absences: listTimesheetAbsences(store, { userId: currentUser.id, from, to }),
+        absenceSummary: {
+          vacationTaken: yearAbsences.filter((record) => record.type === "vacation").length,
+          permitsTaken: yearAbsences.filter((record) => record.type === "permit").length,
+          sickDays: yearAbsences.filter((record) => record.type === "sick").length,
+        },
       });
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "stats_failed") });
     }
+  }
+
+  // POST /api/timesheet/profile/:userId → configurazione economica e ferie.
+  if (url.pathname.match(/^\/api\/timesheet\/profile\/[^/]+$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const userId = decodeURIComponent(url.pathname.split("/")[4] || "");
+    const userIndex = (store.users || []).findIndex((user) => String(user.id) === userId);
+    if (userIndex < 0 || !userIsEmployee(store.users[userIndex])) {
+      return sendJson(res, 404, { error: "employee_not_found" });
+    }
+    const body = await readBody(req);
+    const monthlySalary = Math.max(0, toNumber(body.monthlySalary));
+    const monthlyPaidDays = Math.min(31, Math.max(1, Math.round(toNumber(body.monthlyPaidDays) || 26)));
+    const annualLeaveDays = Math.max(0, toNumber(body.annualLeaveDays));
+    store.users[userIndex] = sanitizePasswordUser({
+      ...store.users[userIndex],
+      monthlySalary,
+      monthlyPaidDays,
+      annualLeaveDays,
+    });
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("timesheet_profile", userId, "update", {
+      monthlySalary,
+      monthlyPaidDays,
+      annualLeaveDays,
+    }, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, { user: sanitizeUser(store.users[userIndex]) });
+  }
+
+  // POST /api/timesheet/absences → registra o rimuove ferie/permesso/malattia.
+  if (url.pathname === "/api/timesheet/absences" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const userId = String(body.userId || "").trim();
+    const date = String(body.date || "").trim();
+    const type = String(body.type || "").trim();
+    const targetUser = (store.users || []).find((user) => String(user.id) === userId);
+    if (!targetUser || !userIsEmployee(targetUser)) {
+      return sendJson(res, 404, { error: "employee_not_found" });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return sendJson(res, 400, { error: "invalid_absence_date" });
+    }
+    const list = Array.isArray(store.timesheetAbsences) ? store.timesheetAbsences : [];
+    const existingIndex = list.findIndex((record) => record.userId === userId && record.date === date);
+    if (!type || type === "none") {
+      if (existingIndex >= 0) list.splice(existingIndex, 1);
+      store.timesheetAbsences = list;
+      await writeJson(STORE_PATH, store);
+      writeAuditLog("timesheet_absence", `${userId}:${date}`, "remove", {}, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, { ok: true, absence: null });
+    }
+    if (!TIMESHEET_ABSENCE_TYPES.has(type)) {
+      return sendJson(res, 400, { error: "invalid_absence_type" });
+    }
+    const nowIso = new Date().toISOString();
+    const absence = normalizeTimesheetAbsence({
+      ...(existingIndex >= 0 ? list[existingIndex] : {}),
+      userId,
+      date,
+      type,
+      note: body.note,
+      createdAt: existingIndex >= 0 ? list[existingIndex].createdAt : nowIso,
+      updatedAt: nowIso,
+      updatedBy: currentUser.id,
+    });
+    if (existingIndex >= 0) list[existingIndex] = absence;
+    else list.push(absence);
+    store.timesheetAbsences = list;
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("timesheet_absence", absence.id, "upsert", { userId, date, type }, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, { ok: true, absence });
   }
 
   // GET /api/timesheet?from=X&to=Y&userId=Z → office, lista turni di tutti
@@ -13470,6 +13620,7 @@ async function handleApi(req, res, url) {
       const shifts = await listShiftsAll({ from, to, userId });
       return sendJson(res, 200, {
         shifts,
+        absences: listTimesheetAbsences(store, { userId, from, to }),
         geofenceConfigured: COMPANY_OFFICE_LAT != null && COMPANY_OFFICE_LNG != null,
         geofenceRadiusM: COMPANY_OFFICE_RADIUS_M,
       });
@@ -15420,6 +15571,9 @@ async function handleApi(req, res, url) {
       crewName,
       dailyCapacity,
       crewLogoDataUrl,
+      monthlySalary: 0,
+      monthlyPaidDays: 26,
+      annualLeaveDays: TIMESHEET_ROLES.has(role) ? 26 : 0,
       resellerCompanyName,
       resellerContact,
       resellerVatNumber,
@@ -15513,6 +15667,9 @@ async function handleApi(req, res, url) {
       crewName: nextCrewName,
       dailyCapacity: nextDailyCapacity,
       crewLogoDataUrl: nextCrewLogoDataUrl,
+      monthlySalary: TIMESHEET_ROLES.has(nextRole) ? Math.max(0, Number(current.monthlySalary || 0)) : 0,
+      monthlyPaidDays: TIMESHEET_ROLES.has(nextRole) ? Math.min(31, Math.max(1, Number(current.monthlyPaidDays || 26))) : 26,
+      annualLeaveDays: TIMESHEET_ROLES.has(nextRole) ? Math.max(0, Number(current.annualLeaveDays ?? 26)) : 0,
       resellerCompanyName: nextResellerCompanyName,
       resellerContact: nextResellerContact,
       resellerVatNumber: nextResellerVatNumber,

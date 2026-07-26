@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260725-supplier-ledger";
+} from "./lib/order-money.js?v=20260726-attendance-payroll";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260725-supplier-ledger";
+import { regionForCity } from "./lib/geo.js?v=20260726-attendance-payroll";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260725-supplier-ledger";
+} from "./lib/profit-split.js?v=20260726-attendance-payroll";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260725-supplier-ledger";
+} from "./lib/preventivo-pricing.js?v=20260726-attendance-payroll";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260725-supplier-ledger";
+const APP_SHELL_VERSION = "20260726-attendance-payroll";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4262,6 +4262,7 @@ function normalizeSalesContentRecord(item = {}) {
     featured: Array.isArray(item.featured) ? item.featured.map((v) => String(v)).filter(Boolean) : [],
     description: String(item.description || "").trim(),
     link: String(item.link || "").trim(),
+    visibleToResellers: Boolean(item.visibleToResellers),
     attachments: Array.isArray(item.attachments) ? item.attachments : [],
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
@@ -16731,6 +16732,43 @@ async function saveSalesContent(event) {
   }
 }
 
+async function saveSalesContentResellerVisibility(event) {
+  const control = event?.target;
+  if (!control || control.name !== "visibleToResellers") return;
+  const selected = getSelectedSalesContent();
+  if (!selected?.id) return;
+  const previousValue = Boolean(selected.visibleToResellers);
+  const nextValue = Boolean(control.checked);
+  selected.visibleToResellers = nextValue;
+  control.disabled = true;
+  clearStatus(ui.salesContentStatus);
+  try {
+    const saved = await apiFetch("/api/sales/content-items", {
+      method: "POST",
+      body: JSON.stringify({
+        id: selected.id,
+        title: selected.title,
+        category: selected.category,
+        link: selected.link,
+        description: selected.description,
+        visibleToResellers: nextValue,
+      }),
+    });
+    upsertSalesContent(saved, { skipOpsRender: true });
+    setStatus(
+      ui.salesContentStatus,
+      "success",
+      nextValue ? "Contenuto visibile ai rivenditori." : "Contenuto nascosto ai rivenditori.",
+    );
+  } catch (error) {
+    selected.visibleToResellers = previousValue;
+    control.checked = previousValue;
+    setStatus(ui.salesContentStatus, "error", "Impossibile aggiornare la visibilità.");
+  } finally {
+    control.disabled = false;
+  }
+}
+
 async function ensureSelectedSalesContentForAttachment({ preparingUpload = false } = {}) {
   const selected = getSelectedSalesContent();
   if (selected?.id) return selected;
@@ -21340,6 +21378,70 @@ function formatMinutesToHM(minutes) {
   return `${sign}${Math.floor(abs / 60)}h ${String(abs % 60).padStart(2, "0")}min`;
 }
 
+const TIMESHEET_ABSENCE_LABELS = {
+  vacation: "Ferie",
+  permit: "Permesso",
+  sick: "Malattia",
+};
+
+function formatTimesheetClock(value) {
+  if (!value) return "Non registrata";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Non registrata";
+  return date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatTimesheetDate(value) {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return String(value || "");
+  return new Intl.DateTimeFormat("it-IT", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatTimesheetLocalDate(date) {
+  const value = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(value.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
+}
+
+function renderTimesheetDayDetail({ date, shift = null, absence = null, employeeName = "" } = {}) {
+  const anomaly = classifyTimesheetShift({
+    clockInAt: shift?.clockInAt || shift?.clockIn,
+    clockOutAt: shift?.clockOutAt || shift?.clockOut,
+    anomalyFlags: shift?.anomalyFlags || shift?.anomalies || [],
+  });
+  const title = employeeName
+    ? `${employeeName} · ${formatTimesheetDate(date)}`
+    : formatTimesheetDate(date);
+  const absenceLabel = TIMESHEET_ABSENCE_LABELS[absence?.type] || "";
+  return `
+    <div class="ts-detail-head">
+      <div>
+        <span class="ts-detail-kicker">Dettaglio giornata</span>
+        <h3>${escapeHtml(title)}</h3>
+      </div>
+      ${absenceLabel ? `<span class="ts-absence-chip ${escapeAttr(absence.type)}">${escapeHtml(absenceLabel)}</span>` : ""}
+    </div>
+    <div class="ts-detail-metrics">
+      <div><span>Ingresso</span><strong>${escapeHtml(formatTimesheetClock(shift?.clockInAt || shift?.clockIn))}</strong></div>
+      <div><span>Uscita</span><strong>${escapeHtml(formatTimesheetClock(shift?.clockOutAt || shift?.clockOut))}</strong></div>
+      <div><span>Ore lavorate</span><strong>${shift?.workedMinutes ? escapeHtml(formatMinutesToHM(shift.workedMinutes)) : "0h 00min"}</strong></div>
+      <div><span>Verifica sede</span><strong>${anomaly.offSite ? "Fuori sede" : anomaly.verified ? "GPS verificato" : "Non disponibile"}</strong></div>
+    </div>
+    ${absence?.note ? `<p class="ts-detail-note"><strong>Nota:</strong> ${escapeHtml(absence.note)}</p>` : ""}
+    ${!shift && !absence ? `<p class="ts-detail-empty">Nessuna timbratura o assenza registrata per questa giornata.</p>` : ""}
+  `;
+}
+
 async function renderTimesheetMe() {
   const root = document.getElementById("timesheet-me-content");
   if (!root) return;
@@ -21349,17 +21451,28 @@ async function renderTimesheetMe() {
   const month = now.getMonth() + 1;
   try {
     const data = await apiFetch(`/api/timesheet/me/stats?year=${year}&month=${month}`);
-    const cur = data?.current;
+    const cur = data?.current || {
+      year,
+      month,
+      totalMinutes: 0,
+      daysWorked: 0,
+      averageMinutesPerDay: 0,
+      days: [],
+    };
     const prev = data?.previous;
     const delta = Number.isFinite(data?.deltaMinutes) ? data.deltaMinutes : null;
     const streak = data?.streak || 0;
-    if (!cur || (!cur.days?.length && (!prev || !prev.days?.length))) {
-      root.innerHTML = `<div class="ts-empty-state">
-        <h2>Nessuna timbratura registrata</h2>
-        <p>Quando inizi un turno comparirà qui lo storico delle tue ore lavorate.</p>
-      </div>`;
-      return;
-    }
+    const profile = data?.profile || state.currentUser || {};
+    const absences = Array.isArray(data?.absences) ? data.absences : [];
+    const absenceSummary = data?.absenceSummary || {};
+    const monthlySalary = Math.max(0, Number(profile.monthlySalary || 0));
+    const monthlyPaidDays = Math.max(1, Number(profile.monthlyPaidDays || 26));
+    const annualLeaveDays = Math.max(0, Number(profile.annualLeaveDays || 0));
+    const paidAbsenceDays = absences.filter((record) => TIMESHEET_ABSENCE_LABELS[record.type]).length;
+    const accruedDays = Math.min(monthlyPaidDays, Number(cur.daysWorked || 0) + paidAbsenceDays);
+    const accruedSalary = monthlySalary ? (monthlySalary / monthlyPaidDays) * accruedDays : 0;
+    const vacationTaken = Math.max(0, Number(absenceSummary.vacationTaken || 0));
+    const vacationRemaining = Math.max(0, annualLeaveDays - vacationTaken);
     const monthName = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" }).format(now);
 
     // Heat-map calendario
@@ -21367,19 +21480,30 @@ async function renderTimesheetMe() {
     const firstDow = (new Date(year, month - 1, 1).getDay() + 6) % 7; // L=0..D=6
     const byDate = new Map();
     (cur.days || []).forEach((d) => byDate.set(d.date, d));
+    const absenceByDate = new Map(absences.map((record) => [record.date, record]));
+    const todayDate = `${year}-${String(month).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const latestRecordedDate = [...new Set([
+      ...(cur.days || []).map((day) => day.date),
+      ...absences.map((record) => record.date),
+    ])].sort().at(-1);
+    const selectedDate = state.timesheetMeSelectedDate?.startsWith(`${year}-${String(month).padStart(2, "0")}`)
+      ? state.timesheetMeSelectedDate
+      : (latestRecordedDate || todayDate);
+    state.timesheetMeSelectedDate = selectedDate;
     const cells = [];
     // Padding inizio settimana
     for (let i = 0; i < firstDow; i++) cells.push({ pad: true });
     for (let d = 1; d <= monthDays; d++) {
       const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
       const day = byDate.get(dateStr);
+      const absence = absenceByDate.get(dateStr);
       const minutes = day?.workedMinutes || 0;
       let intensity = 0;
       if (minutes > 0) intensity = 1;
       if (minutes >= 240) intensity = 2;  // 4h
       if (minutes >= 360) intensity = 3;  // 6h
       if (minutes >= 480) intensity = 4;  // 8h
-      cells.push({ d, dateStr, minutes, intensity });
+      cells.push({ d, dateStr, minutes, intensity, absence });
     }
 
     root.innerHTML = `
@@ -21390,14 +21514,19 @@ async function renderTimesheetMe() {
           ${delta != null ? `<span class="ts-stat-delta ${delta >= 0 ? "is-up" : "is-down"}">${delta >= 0 ? "▲" : "▼"} ${formatMinutesToHM(Math.abs(delta))} vs ${prev ? new Intl.DateTimeFormat("it-IT",{month:"long"}).format(new Date(prev.year, prev.month-1, 1)) : "mese scorso"}</span>` : ""}
         </div>
         <div class="ts-stat-card">
-          <span class="ts-stat-label">Media giornaliera</span>
-          <strong class="ts-stat-value">${formatMinutesToHM(cur.averageMinutesPerDay)}</strong>
-          <span class="ts-stat-sub">${cur.daysWorked} giorni lavorati</span>
+          <span class="ts-stat-label">Stima maturata</span>
+          <strong class="ts-stat-value">${monthlySalary ? escapeHtml(formatCurrency(accruedSalary)) : "Da configurare"}</strong>
+          <span class="ts-stat-sub">${monthlySalary ? `${accruedDays} di ${monthlyPaidDays} giorni retribuiti · stima indicativa` : "Lo stipendio mensile viene impostato dall’ufficio"}</span>
         </div>
         <div class="ts-stat-card">
-          <span class="ts-stat-label">Streak</span>
-          <strong class="ts-stat-value">${streak} ${streak === 1 ? "giorno" : "giorni"} 🔥</strong>
-          <span class="ts-stat-sub">consecutivi</span>
+          <span class="ts-stat-label">Giornate</span>
+          <strong class="ts-stat-value">${cur.daysWorked} lavorate</strong>
+          <span class="ts-stat-sub">${paidAbsenceDays} assenze registrate · ${streak} giorni consecutivi</span>
+        </div>
+        <div class="ts-stat-card">
+          <span class="ts-stat-label">Ferie</span>
+          <strong class="ts-stat-value">${vacationRemaining} disponibili</strong>
+          <span class="ts-stat-sub">${vacationTaken} prese su ${annualLeaveDays} annuali</span>
         </div>
       </div>
 
@@ -21418,13 +21547,38 @@ async function renderTimesheetMe() {
         <div class="ts-calendar-grid">
           ${cells.map((c) => {
             if (c.pad) return '<div class="ts-day pad"></div>';
-            const cls = `ts-day intensity-${c.intensity}${c.minutes > 0 ? " has-work" : ""}`;
-            const tooltip = c.minutes > 0 ? `${c.d}: ${formatMinutesToHM(c.minutes)}` : `${c.d}: nessun turno`;
-            return `<div class="${cls}" title="${escapeAttr(tooltip)}"><span class="ts-day-num">${c.d}</span>${c.minutes > 0 ? `<span class="ts-day-hours">${Math.round(c.minutes/60*10)/10}h</span>` : ""}</div>`;
+            const cls = `ts-day intensity-${c.intensity}${c.minutes > 0 ? " has-work" : ""}${c.absence ? ` has-absence absence-${c.absence.type}` : ""}${c.dateStr === selectedDate ? " is-selected" : ""}`;
+            const tooltip = c.absence
+              ? `${c.d}: ${TIMESHEET_ABSENCE_LABELS[c.absence.type]}`
+              : (c.minutes > 0 ? `${c.d}: ${formatMinutesToHM(c.minutes)}` : `${c.d}: nessun turno`);
+            return `<button type="button" class="${cls}" data-ts-me-date="${escapeAttr(c.dateStr)}" title="${escapeAttr(tooltip)}"><span class="ts-day-num">${c.d}</span>${c.absence ? `<span class="ts-day-absence">${escapeHtml(TIMESHEET_ABSENCE_LABELS[c.absence.type])}</span>` : (c.minutes > 0 ? `<span class="ts-day-hours">${Math.round(c.minutes/60*10)/10}h</span>` : "")}</button>`;
           }).join("")}
         </div>
       </div>
+      <section class="ts-day-detail panel" id="timesheet-me-day-detail">
+        ${renderTimesheetDayDetail({
+          date: selectedDate,
+          shift: byDate.get(selectedDate) || null,
+          absence: absenceByDate.get(selectedDate) || null,
+        })}
+      </section>
     `;
+    root.querySelectorAll("[data-ts-me-date]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const date = String(button.dataset.tsMeDate || "");
+        state.timesheetMeSelectedDate = date;
+        root.querySelectorAll("[data-ts-me-date]").forEach((cell) => cell.classList.toggle("is-selected", cell === button));
+        const detail = root.querySelector("#timesheet-me-day-detail");
+        if (detail) {
+          detail.innerHTML = renderTimesheetDayDetail({
+            date,
+            shift: byDate.get(date) || null,
+            absence: absenceByDate.get(date) || null,
+          });
+          detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      });
+    });
   } catch (err) {
     root.innerHTML = `<div class="ts-empty-state error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
   }
@@ -21442,6 +21596,67 @@ function timesheetHourIntensity(minutes = 0) {
   return 0;
 }
 
+function renderTimesheetOfficeDetailMarkup({ user, date, shift = null, absence = null } = {}) {
+  if (!user || !date) return "";
+  const monthlySalary = Math.max(0, Number(user.monthlySalary || 0));
+  const monthlyPaidDays = Math.max(1, Number(user.monthlyPaidDays || 26));
+  const dailyRate = monthlySalary / monthlyPaidDays;
+  return `
+    <section class="ts-office-detail panel" id="timesheet-office-detail">
+      <div class="ts-office-detail-main">
+        ${renderTimesheetDayDetail({
+          date,
+          shift,
+          absence,
+          employeeName: user.name || user.crewName || user.email || "",
+        })}
+        <div class="ts-absence-editor">
+          <span class="ts-detail-kicker">Assenza giornata</span>
+          <div class="ts-segmented-actions" role="group" aria-label="Tipo di assenza">
+            ${[
+              ["none", "Nessuna"],
+              ["vacation", "Ferie"],
+              ["permit", "Permesso"],
+              ["sick", "Malattia"],
+            ].map(([type, label]) => `
+              <button type="button" class="${(absence?.type || "none") === type ? "is-active" : ""}" data-ts-absence-type="${type}">${label}</button>
+            `).join("")}
+          </div>
+          <label class="ts-detail-field">
+            <span>Nota</span>
+            <input type="text" data-ts-absence-note maxlength="500" value="${escapeAttr(absence?.note || "")}" placeholder="Motivo o riferimento interno">
+          </label>
+        </div>
+      </div>
+      <form class="ts-payroll-form" data-ts-profile-form data-user-id="${escapeAttr(user.id || "")}">
+        <div class="ts-detail-head">
+          <div>
+            <span class="ts-detail-kicker">Profilo retributivo</span>
+            <h3>Stima presenze</h3>
+          </div>
+          <strong class="ts-daily-rate">${monthlySalary ? `${escapeHtml(formatCurrency(dailyRate))} / giorno` : "Da configurare"}</strong>
+        </div>
+        <div class="ts-payroll-fields">
+          <label class="ts-detail-field">
+            <span>Stipendio mensile</span>
+            <input type="number" name="monthlySalary" min="0" step="0.01" value="${escapeAttr(monthlySalary)}">
+          </label>
+          <label class="ts-detail-field">
+            <span>Giorni retribuiti</span>
+            <input type="number" name="monthlyPaidDays" min="1" max="31" step="1" value="${escapeAttr(monthlyPaidDays)}">
+          </label>
+          <label class="ts-detail-field">
+            <span>Ferie annuali</span>
+            <input type="number" name="annualLeaveDays" min="0" step="0.5" value="${escapeAttr(user.annualLeaveDays || 0)}">
+          </label>
+        </div>
+        <button type="submit" class="btn primary">Salva profilo</button>
+        <p class="ts-payroll-disclaimer">Valore indicativo basato sui giorni retribuiti, non sostituisce il cedolino.</p>
+      </form>
+    </section>
+  `;
+}
+
 async function renderTimesheetOffice() {
   const root = document.getElementById("timesheet-office-content");
   if (!root) return;
@@ -21455,21 +21670,25 @@ async function renderTimesheetOffice() {
     monday.setDate(now.getDate() - dow + weekOffset * 7);
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
-    const fmt = (d) => d.toISOString().slice(0, 10);
+    const fmt = (d) => formatTimesheetLocalDate(d);
     const fromStr = fmt(monday);
     const toStr = fmt(sunday);
 
     const data = await apiFetch(`/api/timesheet?from=${fromStr}&to=${toStr}`);
     const shifts = data?.shifts || [];
+    const absences = Array.isArray(data?.absences) ? data.absences : [];
 
     // Raggruppa per userId
     const byUser = new Map();
+    const users = Array.isArray(state.users) ? state.users : [];
+    const employeeUsers = users.filter((user) => TIMESHEET_EMPLOYEE_ROLES.has(normalizeUserRole(user.role)));
+    employeeUsers.forEach((user) => byUser.set(user.id, []));
     for (const s of shifts) {
       if (!byUser.has(s.userId)) byUser.set(s.userId, []);
       byUser.get(s.userId).push(s);
     }
-    const users = Array.isArray(state.users) ? state.users : [];
     const userMap = new Map(users.map((u) => [u.id, u]));
+    const absenceByUserDate = new Map(absences.map((record) => [`${record.userId}:${record.date}`, record]));
 
     // Header giorni
     const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -21573,14 +21792,29 @@ async function renderTimesheetOffice() {
       for (const d of weekDays) {
         const isToday = d.date === todayStr;
         const s = byDate.get(d.date);
-        if (!s) { html += `<td class="ts-hcell ${isToday ? "is-today" : ""}"><span class="ts-hcell-empty">—</span></td>`; continue; }
+        const absence = absenceByUserDate.get(`${userId}:${d.date}`);
+        const isSelected = state.timesheetOfficeSelection?.userId === userId
+          && state.timesheetOfficeSelection?.date === d.date;
+        if (!s) {
+          const emptyLabel = absence ? TIMESHEET_ABSENCE_LABELS[absence.type] : "—";
+          html += `<td class="ts-hcell ${isToday ? "is-today" : ""}">
+            <button type="button" class="ts-hcell-button${isSelected ? " is-selected" : ""}${absence ? ` has-absence absence-${absence.type}` : ""}" data-ts-office-user="${escapeAttr(userId)}" data-ts-office-date="${escapeAttr(d.date)}">
+              <span class="${absence ? "ts-hchip is-absence" : "ts-hcell-empty"}">${escapeHtml(emptyLabel)}</span>
+            </button>
+          </td>`;
+          continue;
+        }
         const { offSite, verified, open } = classifyTimesheetShift(s);
         const intensity = timesheetHourIntensity(s.workedMinutes || 0);
         const displayValue = s.workedMinutes ? formatMinutesToHM(s.workedMinutes) : (open ? "in turno" : "—");
         const chipClass = open ? "is-open" : offSite ? "is-anomaly" : `i${intensity}`;
         const badge = offSite ? warnBadge : (verified && s.clockInAt ? okBadge : "");
         const title = offSite ? "Timbratura fuori sede" : (verified ? "Timbratura in sede (GPS verificato)" : "");
-        html += `<td class="ts-hcell ${isToday ? "is-today" : ""}"><span class="ts-hchip ${chipClass}" ${title ? `title="${escapeAttr(title)}"` : ""}>${escapeHtml(displayValue)}${badge}</span></td>`;
+        html += `<td class="ts-hcell ${isToday ? "is-today" : ""}">
+          <button type="button" class="ts-hcell-button${isSelected ? " is-selected" : ""}" data-ts-office-user="${escapeAttr(userId)}" data-ts-office-date="${escapeAttr(d.date)}" ${title ? `title="${escapeAttr(title)}"` : ""}>
+            <span class="ts-hchip ${chipClass}">${escapeHtml(displayValue)}${badge}</span>
+          </button>
+        </td>`;
       }
       html += `<td class="ts-hcell ts-hcell-total"><strong>${escapeHtml(formatMinutesToHM(totalMinutes))}</strong></td>`;
       html += `</tr>`;
@@ -21602,9 +21836,18 @@ async function renderTimesheetOffice() {
         <span>${warnBadge} fuori sede</span>
         <span>${okBadge} in sede (GPS)</span>
       </div>
+      ${(() => {
+        const selection = state.timesheetOfficeSelection;
+        if (!selection || !weekDays.some((day) => day.date === selection.date)) return "";
+        const user = userMap.get(selection.userId);
+        const shift = shifts.find((entry) => entry.userId === selection.userId && entry.shiftDate === selection.date) || null;
+        const absence = absenceByUserDate.get(`${selection.userId}:${selection.date}`) || null;
+        return renderTimesheetOfficeDetailMarkup({ user, date: selection.date, shift, absence });
+      })()}
     `;
     root.innerHTML = html;
     bindTimesheetOfficeNav(root, weekOffset);
+    bindTimesheetOfficeDetail(root);
   } catch (err) {
     root.innerHTML = `<div class="ts-empty-state error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
   }
@@ -21639,6 +21882,76 @@ function bindTimesheetOfficeNav(root, weekOffset) {
   });
 }
 
+function bindTimesheetOfficeDetail(root) {
+  root.querySelectorAll("[data-ts-office-user][data-ts-office-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.timesheetOfficeSelection = {
+        userId: String(button.dataset.tsOfficeUser || ""),
+        date: String(button.dataset.tsOfficeDate || ""),
+      };
+      state.timesheetOfficeRevealDetail = true;
+      renderTimesheetOffice();
+    });
+  });
+
+  const detail = root.querySelector("#timesheet-office-detail");
+  if (detail && state.timesheetOfficeRevealDetail) {
+    state.timesheetOfficeRevealDetail = false;
+    requestAnimationFrame(() => detail.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+  }
+
+  const profileForm = root.querySelector("[data-ts-profile-form]");
+  profileForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submitButton = profileForm.querySelector('[type="submit"]');
+    const form = new FormData(profileForm);
+    if (submitButton) submitButton.disabled = true;
+    try {
+      const result = await apiFetch(`/api/timesheet/profile/${encodeURIComponent(profileForm.dataset.userId || "")}`, {
+        method: "POST",
+        body: JSON.stringify({
+          monthlySalary: form.get("monthlySalary"),
+          monthlyPaidDays: form.get("monthlyPaidDays"),
+          annualLeaveDays: form.get("annualLeaveDays"),
+        }),
+      });
+      if (result?.user) {
+        const index = (state.users || []).findIndex((user) => user.id === result.user.id);
+        if (index >= 0) state.users[index] = normalizeUserRecord(result.user);
+      }
+      showToast("Profilo presenze aggiornato.", "success");
+      await renderTimesheetOffice();
+    } catch (error) {
+      showToast(`Impossibile salvare il profilo: ${error?.message || error}`, "error");
+      if (submitButton) submitButton.disabled = false;
+    }
+  });
+
+  root.querySelectorAll("[data-ts-absence-type]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const selection = state.timesheetOfficeSelection;
+      if (!selection?.userId || !selection?.date) return;
+      root.querySelectorAll("[data-ts-absence-type]").forEach((item) => { item.disabled = true; });
+      try {
+        await apiFetch("/api/timesheet/absences", {
+          method: "POST",
+          body: JSON.stringify({
+            userId: selection.userId,
+            date: selection.date,
+            type: button.dataset.tsAbsenceType || "none",
+            note: root.querySelector("[data-ts-absence-note]")?.value || "",
+          }),
+        });
+        showToast(button.dataset.tsAbsenceType === "none" ? "Assenza rimossa." : "Assenza registrata.", "success");
+        await renderTimesheetOffice();
+      } catch (error) {
+        showToast(`Impossibile aggiornare l’assenza: ${error?.message || error}`, "error");
+        root.querySelectorAll("[data-ts-absence-type]").forEach((item) => { item.disabled = false; });
+      }
+    });
+  });
+}
+
 // Handler export CSV
 async function exportTimesheetCsv({ scope = "all" } = {}) {
   try {
@@ -21647,7 +21960,7 @@ async function exportTimesheetCsv({ scope = "all" } = {}) {
     const month = now.getMonth() + 1;
     const monthStr = String(month).padStart(2, "0");
     const from = `${year}-${monthStr}-01`;
-    const to = new Date(year, month, 0).toISOString().slice(0, 10);
+    const to = formatTimesheetLocalDate(new Date(year, month, 0));
     const qs = scope === "mine" ? `?from=${from}&to=${to}&userId=${encodeURIComponent(state.currentUser?.id || "")}` : `?from=${from}&to=${to}`;
     window.open(`/api/timesheet/export${qs}`, "_blank");
   } catch (err) {
@@ -32365,6 +32678,7 @@ bindEvent(ui.salesContentSearchClear, "click", () => {
   ui.salesContentSearch.focus();
 });
 bindEvent(ui.salesContentForm, "submit", saveSalesContent);
+bindEvent(ui.salesContentForm?.visibleToResellers, "change", saveSalesContentResellerVisibility);
 bindEvent(ui.salesContentNewButton, "click", createNewSalesContent);
 bindEvent(ui.salesContentDeleteButton, "click", deleteSalesContent);
 bindEvent(ui.salesContentAttachmentButton, "click", () => openAttachmentPicker("sales-content"));
