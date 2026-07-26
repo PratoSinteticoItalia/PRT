@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260726-absence-requests";
+} from "./lib/order-money.js?v=20260726-marketing-stories";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260726-absence-requests";
+import { regionForCity } from "./lib/geo.js?v=20260726-marketing-stories";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260726-absence-requests";
+} from "./lib/profit-split.js?v=20260726-marketing-stories";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260726-absence-requests";
+} from "./lib/preventivo-pricing.js?v=20260726-marketing-stories";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260726-absence-requests";
+const APP_SHELL_VERSION = "20260726-marketing-stories";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -26265,29 +26265,47 @@ function openMarketingExternalTool(item, tool = "channel") {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-function getMarketingPreviewClass(channel = "") {
+function isMarketingStoryItem(item = {}) {
+  return String(item?.format || "").trim().toLowerCase() === "story";
+}
+
+function getMarketingItemAssetCount(item = {}) {
+  if (Array.isArray(item.assetUrls) && item.assetUrls.length) return item.assetUrls.length;
+  if (Array.isArray(item.assetDataUrls) && item.assetDataUrls.length) return item.assetDataUrls.length;
+  return (item.assetDataUrl || item.assetUrl || item.publicAssetUrl) ? 1 : 0;
+}
+
+function getMarketingPreviewClass(channel = "", item = {}) {
   const key = String(channel || "").toLowerCase().replace(/\s+/g, "-");
-  return `marketing-platform-preview is-${key || "generic"}`;
+  return `marketing-platform-preview is-${key || "generic"}${isMarketingStoryItem(item) ? " is-story" : ""}`;
 }
 
 function renderMarketingPlatformPreview(item = {}) {
   const channel = item.channel || "Piattaforma";
+  const isStory = isMarketingStoryItem(item);
   const caption = item.caption || item.notes || "Scrivi una caption per vedere l'anteprima del contenuto.";
   const asset = item.assetDataUrl || item.assetUrl || "";
   const meta = [item.format, item.date, item.time].filter(Boolean).join(" · ");
   const hashtags = item.hashtags || "";
   return `
-    <div class="${getMarketingPreviewClass(channel)}">
+    <div class="${getMarketingPreviewClass(channel, item)}">
       <div class="marketing-preview-top">
         <strong>${escapeHtml(channel)}</strong>
-        <span>${escapeHtml(meta || "Preview contenuto")}</span>
+        <span>${escapeHtml(meta || (isStory ? "Story 9:16" : "Preview contenuto"))}</span>
       </div>
-      ${asset ? `<img class="marketing-preview-media" src="${escapeHtml(asset)}" alt="">` : `<div class="marketing-preview-media is-empty">Anteprima foto / asset</div>`}
-      <div class="marketing-preview-body">
-        <p>${escapeHtml(caption)}</p>
-        ${hashtags ? `<small>${escapeHtml(hashtags)}</small>` : ""}
-        ${item.cta ? `<button type="button">${escapeHtml(item.cta)}</button>` : ""}
-      </div>
+      ${asset ? `<img class="marketing-preview-media" src="${escapeHtml(asset)}" alt="">` : `<div class="marketing-preview-media is-empty">${isStory ? "Carica l'immagine della Story" : "Anteprima foto / asset"}</div>`}
+      ${isStory ? `
+        <div class="marketing-preview-story-note">
+          <strong>Pubblicazione visuale</strong>
+          <span>Nessuna caption viene inviata a Instagram.</span>
+        </div>
+      ` : `
+        <div class="marketing-preview-body">
+          <p>${escapeHtml(caption)}</p>
+          ${hashtags ? `<small>${escapeHtml(hashtags)}</small>` : ""}
+          ${item.cta ? `<button type="button">${escapeHtml(item.cta)}</button>` : ""}
+        </div>
+      `}
     </div>
   `;
 }
@@ -26302,17 +26320,24 @@ function renderMarketingFormAssets() {
   const preview = document.getElementById("marketing-asset-preview");
   if (!preview) return;
   if (!_marketingFormAssets.length) { preview.innerHTML = ""; return; }
+  const form = document.getElementById("marketing-item-form");
+  const isStory = isMarketingStoryItem({ format: form?.elements?.format?.value || "" });
+  const assetHint = isStory
+    ? (_marketingFormAssets.length === 1
+      ? "1 immagine Story · formato verticale 9:16 consigliato."
+      : `${_marketingFormAssets.length} immagini selezionate · per pubblicare una Story lasciane una sola.`)
+    : `${_marketingFormAssets.length} foto · la prima è la copertina. Rimuovi e ricarica per riordinare.`;
   preview.innerHTML = `
-    <div class="marketing-assets-grid">
+    <div class="marketing-assets-grid${isStory ? " is-story" : ""}">
       ${_marketingFormAssets.map((a, i) => `
         <div class="marketing-asset-thumb">
           <img src="${escapeHtml(a.dataUrl)}" alt="">
           <button type="button" class="marketing-asset-remove" data-marketing-asset-remove="${i}" title="Rimuovi foto" aria-label="Rimuovi foto">×</button>
-          ${i === 0 ? `<span class="marketing-asset-cover">Copertina</span>` : ""}
+          ${i === 0 ? `<span class="marketing-asset-cover">${isStory ? "Story" : "Copertina"}</span>` : ""}
         </div>
       `).join("")}
     </div>
-    <small class="marketing-field-hint">${_marketingFormAssets.length} foto · la prima è la copertina. Trascina non disponibile: rimuovi e ricarica per riordinare.</small>
+    <small class="marketing-field-hint${isStory && _marketingFormAssets.length !== 1 ? " is-warning" : ""}">${escapeHtml(assetHint)}</small>
   `;
 }
 
@@ -26464,15 +26489,16 @@ function renderMarketing() {
                     <strong>${escapeHtml(item.title || "Senza titolo")}</strong>
                     <span class="action-badge ${statusClass}">${escapeHtml(statusText)}</span>
                     ${item.channel ? `<span class="action-badge badge-slate">${escapeHtml(item.channel)}</span>` : ""}
+                    ${item.format ? `<span class="action-badge badge-slate">${escapeHtml(item.format === "story" ? "Story" : item.format)}</span>` : ""}
                     ${item.objective && marketingObjectiveLabel(item.objective)
                       ? `<span class="action-badge badge-slate">${escapeHtml(marketingObjectiveLabel(item.objective))}</span>`
                       : ""}
                   </div>
-                  ${item.caption ? `<p class="marketing-list-notes">${escapeHtml(item.caption)}</p>` : item.notes ? `<p class="marketing-list-notes">${escapeHtml(item.notes)}</p>` : ""}
+                  ${!isMarketingStoryItem(item) && item.caption ? `<p class="marketing-list-notes">${escapeHtml(item.caption)}</p>` : item.notes ? `<p class="marketing-list-notes">${escapeHtml(item.notes)}</p>` : ""}
                   <div class="marketing-list-meta">
                     ${item.assetName || item.assetUrl || item.assetDataUrl ? `<span>Asset: ${escapeHtml(item.assetName || item.assetUrl || "file caricato")}</span>` : ""}
-                    ${item.cta ? `<span>CTA: ${escapeHtml(item.cta)}</span>` : ""}
-                    ${item.hashtags ? `<span>${escapeHtml(item.hashtags)}</span>` : ""}
+                    ${!isMarketingStoryItem(item) && item.cta ? `<span>CTA: ${escapeHtml(item.cta)}</span>` : ""}
+                    ${!isMarketingStoryItem(item) && item.hashtags ? `<span>${escapeHtml(item.hashtags)}</span>` : ""}
                     ${item.apiProviderUrl ? `<span><a href="${escapeHtml(item.apiProviderUrl)}" target="_blank" rel="noreferrer" data-action="marketing-provider-link">Apri post pubblicato</a></span>` : ""}
                   </div>
                   ${item.apiLastError ? `
@@ -26689,26 +26715,30 @@ function renderMarketing() {
             <span>Nome file asset</span>
             <input class="text-input" name="assetName" placeholder="Es. prato-sintetico-promo.jpg" />
           </label>
-          <label class="field field-full">
-            <span>Carica foto dal PC (puoi sceglierne più di una)</span>
+          <label class="field field-full" data-marketing-asset-field>
+            <span data-marketing-asset-label>Carica foto dal PC (puoi sceglierne più di una)</span>
             <input class="text-input" name="assetFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple />
             <input type="hidden" name="assetDataUrl" />
-            <small class="marketing-field-hint">Puoi aggiungere più foto (max 4 MB ciascuna). Clicca di nuovo per aggiungerne altre. Per file definitivi usa un link Drive/Canva.</small>
+            <small class="marketing-field-hint" data-marketing-asset-hint>Puoi aggiungere più foto (max 4 MB ciascuna). Clicca di nuovo per aggiungerne altre. Per file definitivi usa un link Drive/Canva.</small>
           </label>
           <div class="marketing-asset-preview field-full" id="marketing-asset-preview"></div>
-          <label class="field field-full">
+          <div class="marketing-story-helper field-full hidden" data-marketing-story-helper>
+            <strong>Story Instagram</strong>
+            <span>Usa una sola immagine, preferibilmente verticale 9:16. Caption, CTA, hashtag e audio non vengono aggiunti dall'API: testo e grafica devono essere già presenti nell'immagine. L'account Instagram collegato deve essere Business.</span>
+          </div>
+          <label class="field field-full" data-marketing-feed-copy>
             <span>Caption pronta</span>
             <textarea class="text-input" name="caption" rows="4" placeholder="Testo finale da copiare nel canale scelto..."></textarea>
           </label>
-          <label class="field">
+          <label class="field" data-marketing-feed-copy>
             <span>CTA</span>
             <input class="text-input" name="cta" placeholder="Es. Richiedi preventivo gratuito" />
           </label>
-          <label class="field">
+          <label class="field" data-marketing-feed-copy>
             <span>🎵 Canzone / audio</span>
             <input class="text-input" name="song" placeholder="Es. Artista - Titolo (audio reel)" />
           </label>
-          <label class="field">
+          <label class="field" data-marketing-feed-copy>
             <span>Hashtag / keyword</span>
             <input class="text-input" name="hashtags" placeholder="#pratosintetico #giardino" />
           </label>
@@ -26724,7 +26754,7 @@ function renderMarketing() {
             <strong>Programmazione:</strong> salva il contenuto e usa le azioni rapide sulla scheda. Se carichi una foto dal PC, il server prepara automaticamente un link pubblico per Meta al momento della pubblicazione API.
           </div>
           <div class="marketing-api-note field-full">
-            <strong>API-ready:</strong> Meta, TikTok ed email non permettono una programmazione sicura solo da browser senza credenziali server. Questa scheda raccoglie già copy, asset, data, ora e canale per una futura integrazione backend.
+            <strong>Pubblicazione API:</strong> i Post usano immagine e copy; le Stories Instagram usano esclusivamente l'immagine. La programmazione viene gestita dal portale all'ora indicata.
           </div>
           <div class="field field-full">
             <span>Preview piattaforma</span>
@@ -26863,10 +26893,17 @@ function renderMarketing() {
       fileInput.addEventListener("change", async () => {
         const files = Array.from(fileInput.files || []);
         if (!files.length) return;
+        const isStory = isMarketingStoryItem({ format: form.elements.format?.value || "" });
+        const maxAssets = isStory ? 1 : MARKETING_ASSETS_MAX;
         let added = 0;
         for (const file of files) {
-          if (_marketingFormAssets.length >= MARKETING_ASSETS_MAX) {
-            showToast(`Massimo ${MARKETING_ASSETS_MAX} foto per post.`, "warning");
+          if (_marketingFormAssets.length >= maxAssets) {
+            showToast(
+              isStory
+                ? "Una Story usa una sola immagine. Rimuovi quella presente per sostituirla."
+                : `Massimo ${MARKETING_ASSETS_MAX} foto per post.`,
+              "warning",
+            );
             break;
           }
           try {
@@ -27032,9 +27069,42 @@ function getMarketingFormDraft(form) {
   };
 }
 
+function syncMarketingFormMode(form) {
+  if (!form) return;
+  const isStory = isMarketingStoryItem({ format: form.elements.format?.value || "" });
+  if (isStory && form.elements.channel && !form.elements.channel.value) {
+    form.elements.channel.value = "Instagram";
+  }
+  form.classList.toggle("is-story-mode", isStory);
+  form.querySelectorAll("[data-marketing-feed-copy]").forEach((field) => {
+    field.classList.toggle("hidden", isStory);
+  });
+  const storyHelper = form.querySelector("[data-marketing-story-helper]");
+  if (storyHelper) storyHelper.classList.toggle("hidden", !isStory);
+  const assetLabel = form.querySelector("[data-marketing-asset-label]");
+  if (assetLabel) {
+    assetLabel.textContent = isStory
+      ? "Immagine Story"
+      : "Carica foto dal PC (puoi sceglierne più di una)";
+  }
+  const assetHint = form.querySelector("[data-marketing-asset-hint]");
+  if (assetHint) {
+    assetHint.textContent = isStory
+      ? "Una sola immagine, massimo 4 MB. Consigliato formato verticale 9:16 (1080 × 1920 px)."
+      : "Puoi aggiungere più foto (max 4 MB ciascuna). Clicca di nuovo per aggiungerne altre. Per file definitivi usa un link Drive/Canva.";
+  }
+  const fileInput = form.elements.assetFile;
+  if (fileInput) {
+    if (isStory) fileInput.removeAttribute("multiple");
+    else fileInput.setAttribute("multiple", "");
+  }
+}
+
 function updateMarketingLivePreview(form) {
   const preview = document.getElementById("marketing-platform-preview");
   if (!preview) return;
+  syncMarketingFormMode(form);
+  renderMarketingFormAssets();
   preview.innerHTML = renderMarketingPlatformPreview(getMarketingFormDraft(form));
 }
 
@@ -27055,6 +27125,8 @@ function marketingApiErrorMessage(reason = "") {
     missing_whatsapp_config: "Mancano token WhatsApp o Phone Number ID nelle variabili ambiente.",
     missing_phone: "Inserisci il numero WhatsApp destinatario.",
     missing_message: "Inserisci una caption o un testo da inviare.",
+    story_channel_not_supported: "Le Stories via API sono disponibili solo per Instagram.",
+    story_single_asset_required: "Per pubblicare una Story lascia una sola immagine.",
     missing_schedule_datetime: "Inserisci data e ora per programmare via API.",
     missing_public_asset_url: "Serve un'immagine pubblica HTTPS oppure una foto caricata dal PC da convertire in link pubblico.",
     invalid_marketing_asset_type: "Formato immagine non supportato per la pubblicazione API. Usa PNG, JPG, WebP o GIF.",
@@ -27078,6 +27150,23 @@ function marketingApiErrorMessage(reason = "") {
 }
 
 async function publishMarketingItemViaApi(item, button = null, mode = "publish") {
+  if (isMarketingStoryItem(item)) {
+    if (String(item.channel || "").trim() !== "Instagram") {
+      showToast(marketingApiErrorMessage("story_channel_not_supported"), "warning");
+      return;
+    }
+    if (getMarketingItemAssetCount(item) !== 1) {
+      showToast(
+        marketingApiErrorMessage(
+          getMarketingItemAssetCount(item) > 1
+            ? "story_single_asset_required"
+            : "missing_public_asset_url",
+        ),
+        "warning",
+      );
+      return;
+    }
+  }
   const originalLabel = button?.textContent || "";
   if (button) {
     button.disabled = true;

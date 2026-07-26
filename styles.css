@@ -17005,6 +17005,10 @@ textarea.text-input {
   font-size: 12px;
   line-height: 1.45;
 }
+.marketing-field-hint.is-warning {
+  color: #9a4c0f;
+  font-weight: 700;
+}
 .marketing-asset-preview {
   min-height: 0;
 }
@@ -17089,6 +17093,21 @@ textarea.text-input {
   line-height: 1.45;
   padding: 10px 12px;
 }
+.marketing-story-helper {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 14px;
+  align-items: start;
+  padding: 14px 16px;
+  border-left: 4px solid #c13584;
+  background: #fff5fa;
+  color: #54233f;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.marketing-story-helper strong {
+  white-space: nowrap;
+}
 .marketing-platform-preview {
   max-width: 440px;
   border: 1px solid rgba(32, 49, 36, 0.1);
@@ -17099,6 +17118,10 @@ textarea.text-input {
 }
 .marketing-platform-preview.is-instagram {
   border-color: rgba(193, 53, 132, 0.22);
+}
+.marketing-platform-preview.is-story {
+  width: min(100%, 300px);
+  border-radius: 18px;
 }
 .marketing-platform-preview.is-facebook {
   border-color: rgba(24, 119, 242, 0.22);
@@ -17909,6 +17932,22 @@ textarea.text-input {
   color: var(--muted, #6f7c8e);
   font-size: 13px;
   font-weight: 700;
+}
+.marketing-platform-preview.is-story .marketing-preview-media {
+  aspect-ratio: 9 / 16;
+  max-height: 520px;
+}
+.marketing-preview-story-note {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(193, 53, 132, 0.14);
+  background: #fff8fc;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.marketing-preview-story-note span {
+  color: var(--muted, #6f7c8e);
 }
 .marketing-preview-body {
   padding: 14px;
@@ -23250,6 +23289,8 @@ body {
 
 /* ── Marketing: griglia anteprime multi-foto ── */
 .marketing-assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.marketing-assets-grid.is-story { grid-template-columns: repeat(auto-fill, minmax(108px, 148px)); }
+.marketing-assets-grid.is-story .marketing-asset-thumb { aspect-ratio: 9 / 16; }
 .marketing-asset-thumb { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid #e5e1d6; background: #f7f6f2; }
 .marketing-asset-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .marketing-asset-remove {

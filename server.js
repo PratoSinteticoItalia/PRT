@@ -22,6 +22,11 @@ import { createWriteGuard } from "./lib/safe-write.js";
 import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
 import { buildSnapshot, snapshotFileName } from "./lib/backup.js";
 import { resolveMarketingAssetInputs } from "./lib/marketing-assets.js";
+import {
+  buildInstagramSingleImageParams,
+  isMarketingStoryFormat,
+  validateMarketingStoryPublish,
+} from "./lib/marketing-publish.js";
 import webPush from "web-push";
 
 const PORT = Number(process.env.PORT || 4178);
@@ -7312,6 +7317,22 @@ function getMarketingPublishAssetUrl(item = {}) {
   return normalizePublicMarketingAssetUrl(item.publicAssetUrl || item.assetUrl || "");
 }
 
+function getMarketingSourceAssets(item = {}) {
+  if (Array.isArray(item.publicAssetUrls) && item.publicAssetUrls.length) {
+    return item.publicAssetUrls.filter((value) => String(value || "").trim());
+  }
+  if (Array.isArray(item.assetDataUrls) && item.assetDataUrls.length) {
+    return item.assetDataUrls.filter((value) => String(value || "").trim());
+  }
+  if (Array.isArray(item.assetUrls) && item.assetUrls.length) {
+    return item.assetUrls.filter((value) => String(value || "").trim());
+  }
+  const single = String(
+    item.publicAssetUrl || item.assetDataUrl || item.assetUrl || "",
+  ).trim();
+  return single ? [single] : [];
+}
+
 function buildMarketingPublicAssetUrl(req, assetId = "") {
   const normalizedAssetId = String(assetId || "").trim();
   if (!normalizedAssetId) return "";
@@ -7362,13 +7383,7 @@ async function prepareMarketingItemForPublish(store, item = {}, req) {
 
   // Raccogli le foto: data URL (base64 da uploadare) e/o URL pubblici già pronti
   // (post persistiti sul server hanno assetUrls = URL R2, niente più base64).
-  const dataUrls = (Array.isArray(item.assetDataUrls) && item.assetDataUrls.length
-    ? item.assetDataUrls
-    : (Array.isArray(item.assetUrls) && item.assetUrls.length
-      ? item.assetUrls
-      : (String(item.assetDataUrl || "").trim() ? [item.assetDataUrl]
-        : (String(item.assetUrl || "").trim() ? [item.assetUrl] : []))))
-    .filter((u) => String(u || "").trim());
+  const dataUrls = getMarketingSourceAssets(item);
 
   // Nessuna foto: usa eventuale URL pubblico/asset già pronto.
   if (!dataUrls.length) {
@@ -7628,6 +7643,9 @@ async function sendMarketingWhatsAppMessage(item = {}) {
 }
 
 async function publishFacebookMarketingItem(item = {}, mode = "publish") {
+  if (isMarketingStoryFormat(item)) {
+    return { ok: false, reason: "story_channel_not_supported" };
+  }
   if (!META_MARKETING_ACCESS_TOKEN || !META_PAGE_ID) {
     return { ok: false, reason: "missing_meta_page_config" };
   }
@@ -7709,22 +7727,28 @@ async function publishInstagramMarketingItem(item = {}, mode = "publish") {
   const assetUrls = (Array.isArray(item.publicAssetUrls) && item.publicAssetUrls.length
     ? item.publicAssetUrls
     : (getMarketingPublishAssetUrl(item) ? [getMarketingPublishAssetUrl(item)] : [])).slice(0, 10);
+  const storyValidation = validateMarketingStoryPublish(item, assetUrls.length);
+  if (!storyValidation.ok) return storyValidation;
+  const isStory = isMarketingStoryFormat(item);
   if (!assetUrls.length) return { ok: false, reason: "missing_public_asset_url" };
-  const caption = buildMarketingPublishText(item);
-  if (!caption) return { ok: false, reason: "missing_message" };
+  const caption = isStory ? "" : buildMarketingPublishText(item);
+  if (!isStory && !caption) return { ok: false, reason: "missing_message" };
   const scheduledAt = mode === "schedule" ? getMarketingScheduleIso(item) : "";
   const scheduledUnix = mode === "schedule" ? getMarketingScheduleUnix(item) : 0;
   if (mode === "schedule" && !scheduledUnix) return { ok: false, reason: "missing_schedule_datetime" };
 
   let creationId = "";
   if (assetUrls.length === 1) {
-    // Singola foto (flusso originale)
-    const createResult = await callMetaGraphApi(`${META_INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`, {
-      image_url: assetUrls[0],
-      caption,
-      published: mode === "schedule" ? "false" : undefined,
-      scheduled_publish_time: scheduledUnix || undefined,
-    });
+    const createResult = await callMetaGraphApi(
+      `${META_INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`,
+      buildInstagramSingleImageParams({
+        item,
+        imageUrl: assetUrls[0],
+        caption,
+        mode,
+        scheduledUnix,
+      }),
+    );
     if (!createResult.ok) return createResult;
     creationId = String(createResult.payload?.id || "").trim();
   } else {
@@ -7780,12 +7804,15 @@ async function publishInstagramMarketingItem(item = {}, mode = "publish") {
     provider: "instagram",
     messageId: mediaId,
     providerUrl,
-    verified: Boolean(verification.ok && providerUrl),
+    verified: isStory ? Boolean(verification.ok) : Boolean(verification.ok && providerUrl),
   };
 }
 
 async function publishMarketingItem(item = {}, mode = "publish") {
   const channel = String(item.channel || "").trim();
+  if (isMarketingStoryFormat(item) && channel !== "Instagram") {
+    return { ok: false, reason: "story_channel_not_supported" };
+  }
   const publishMode = mode === "schedule" ? "schedule" : "publish";
   if (publishMode === "schedule") {
     const scheduledAt = getMarketingScheduleIso(item);
@@ -12034,6 +12061,17 @@ async function handleApi(req, res, url) {
     const item = body?.item || body || {};
     const mode = body?.mode === "schedule" ? "schedule" : "publish";
     const channel = String(item.channel || "").trim();
+    const storyValidation = validateMarketingStoryPublish(
+      item,
+      getMarketingSourceAssets(item).length,
+    );
+    if (!storyValidation.ok) {
+      return sendJson(res, 400, {
+        ...storyValidation,
+        mode,
+        channel,
+      });
+    }
 
     // ── MODALITÀ SCHEDULE → programmazione LATO SERVER ──────────────────────
     // Instagram NON supporta scheduled_publish_time (è solo per Facebook), quindi
