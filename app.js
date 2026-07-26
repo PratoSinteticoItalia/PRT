@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260726-attendance-payroll";
+} from "./lib/order-money.js?v=20260726-absence-requests";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260726-attendance-payroll";
+import { regionForCity } from "./lib/geo.js?v=20260726-absence-requests";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260726-attendance-payroll";
+} from "./lib/profit-split.js?v=20260726-absence-requests";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260726-attendance-payroll";
+} from "./lib/preventivo-pricing.js?v=20260726-absence-requests";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260726-attendance-payroll";
+const APP_SHELL_VERSION = "20260726-absence-requests";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21384,6 +21384,13 @@ const TIMESHEET_ABSENCE_LABELS = {
   sick: "Malattia",
 };
 
+const TIMESHEET_REQUEST_STATUS_LABELS = {
+  pending: "In attesa",
+  approved: "Approvata",
+  rejected: "Rifiutata",
+  cancelled: "Annullata",
+};
+
 function formatTimesheetClock(value) {
   if (!value) return "Non registrata";
   const date = new Date(value);
@@ -21413,7 +21420,13 @@ function formatTimesheetLocalDate(date) {
   }).format(value);
 }
 
-function renderTimesheetDayDetail({ date, shift = null, absence = null, employeeName = "" } = {}) {
+function renderTimesheetDayDetail({
+  date,
+  shift = null,
+  absence = null,
+  request = null,
+  employeeName = "",
+} = {}) {
   const anomaly = classifyTimesheetShift({
     clockInAt: shift?.clockInAt || shift?.clockIn,
     clockOutAt: shift?.clockOutAt || shift?.clockOut,
@@ -21423,13 +21436,18 @@ function renderTimesheetDayDetail({ date, shift = null, absence = null, employee
     ? `${employeeName} · ${formatTimesheetDate(date)}`
     : formatTimesheetDate(date);
   const absenceLabel = TIMESHEET_ABSENCE_LABELS[absence?.type] || "";
+  const requestStatusLabel = TIMESHEET_REQUEST_STATUS_LABELS[request?.status] || "";
   return `
     <div class="ts-detail-head">
       <div>
         <span class="ts-detail-kicker">Dettaglio giornata</span>
         <h3>${escapeHtml(title)}</h3>
       </div>
-      ${absenceLabel ? `<span class="ts-absence-chip ${escapeAttr(absence.type)}">${escapeHtml(absenceLabel)}</span>` : ""}
+      ${absenceLabel
+        ? `<span class="ts-absence-chip ${escapeAttr(absence.type)}">${escapeHtml(absenceLabel)}</span>`
+        : (requestStatusLabel
+          ? `<span class="ts-request-status ${escapeAttr(request.status)}">${escapeHtml(requestStatusLabel)}</span>`
+          : "")}
     </div>
     <div class="ts-detail-metrics">
       <div><span>Ingresso</span><strong>${escapeHtml(formatTimesheetClock(shift?.clockInAt || shift?.clockIn))}</strong></div>
@@ -21438,14 +21456,18 @@ function renderTimesheetDayDetail({ date, shift = null, absence = null, employee
       <div><span>Verifica sede</span><strong>${anomaly.offSite ? "Fuori sede" : anomaly.verified ? "GPS verificato" : "Non disponibile"}</strong></div>
     </div>
     ${absence?.note ? `<p class="ts-detail-note"><strong>Nota:</strong> ${escapeHtml(absence.note)}</p>` : ""}
-    ${!shift && !absence ? `<p class="ts-detail-empty">Nessuna timbratura o assenza registrata per questa giornata.</p>` : ""}
+    ${!absence && request ? `<p class="ts-detail-note"><strong>Richiesta ${escapeHtml((TIMESHEET_ABSENCE_LABELS[request.type] || "").toLowerCase())}:</strong> ${request.note ? escapeHtml(request.note) : "nessuna nota"}</p>` : ""}
+    ${!shift && !absence && !request ? `<p class="ts-detail-empty">Nessuna timbratura o assenza registrata per questa giornata.</p>` : ""}
   `;
 }
 
-async function renderTimesheetMe() {
+async function renderTimesheetMe({ preserveScroll = false } = {}) {
   const root = document.getElementById("timesheet-me-content");
   if (!root) return;
-  root.innerHTML = '<div class="ts-loading">Caricamento…</div>';
+  const previousScrollY = window.scrollY;
+  if (!preserveScroll || !root.childElementCount) {
+    root.innerHTML = '<div class="ts-loading">Caricamento…</div>';
+  }
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
@@ -21464,6 +21486,7 @@ async function renderTimesheetMe() {
     const streak = data?.streak || 0;
     const profile = data?.profile || state.currentUser || {};
     const absences = Array.isArray(data?.absences) ? data.absences : [];
+    const absenceRequests = Array.isArray(data?.absenceRequests) ? data.absenceRequests : [];
     const absenceSummary = data?.absenceSummary || {};
     const monthlySalary = Math.max(0, Number(profile.monthlySalary || 0));
     const monthlyPaidDays = Math.max(1, Number(profile.monthlyPaidDays || 26));
@@ -21481,10 +21504,15 @@ async function renderTimesheetMe() {
     const byDate = new Map();
     (cur.days || []).forEach((d) => byDate.set(d.date, d));
     const absenceByDate = new Map(absences.map((record) => [record.date, record]));
+    const requestByDate = new Map();
+    absenceRequests
+      .filter((record) => record.status !== "cancelled")
+      .forEach((record) => requestByDate.set(record.date, record));
     const todayDate = `${year}-${String(month).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const latestRecordedDate = [...new Set([
       ...(cur.days || []).map((day) => day.date),
       ...absences.map((record) => record.date),
+      ...absenceRequests.filter((record) => record.status === "pending").map((record) => record.date),
     ])].sort().at(-1);
     const selectedDate = state.timesheetMeSelectedDate?.startsWith(`${year}-${String(month).padStart(2, "0")}`)
       ? state.timesheetMeSelectedDate
@@ -21497,14 +21525,22 @@ async function renderTimesheetMe() {
       const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
       const day = byDate.get(dateStr);
       const absence = absenceByDate.get(dateStr);
+      const request = requestByDate.get(dateStr);
       const minutes = day?.workedMinutes || 0;
       let intensity = 0;
       if (minutes > 0) intensity = 1;
       if (minutes >= 240) intensity = 2;  // 4h
       if (minutes >= 360) intensity = 3;  // 6h
       if (minutes >= 480) intensity = 4;  // 8h
-      cells.push({ d, dateStr, minutes, intensity, absence });
+      cells.push({ d, dateStr, minutes, intensity, absence, request });
     }
+
+    const visibleRequests = absenceRequests
+      .filter((record) => record.status !== "cancelled")
+      .sort((a, b) => (
+        String(b.date || "").localeCompare(String(a.date || ""))
+        || String(b.requestedAt || "").localeCompare(String(a.requestedAt || ""))
+      ));
 
     root.innerHTML = `
       <div class="ts-stats-grid">
@@ -21547,11 +21583,18 @@ async function renderTimesheetMe() {
         <div class="ts-calendar-grid">
           ${cells.map((c) => {
             if (c.pad) return '<div class="ts-day pad"></div>';
-            const cls = `ts-day intensity-${c.intensity}${c.minutes > 0 ? " has-work" : ""}${c.absence ? ` has-absence absence-${c.absence.type}` : ""}${c.dateStr === selectedDate ? " is-selected" : ""}`;
+            const cls = `ts-day intensity-${c.intensity}${c.minutes > 0 ? " has-work" : ""}${c.absence ? ` has-absence absence-${c.absence.type}` : ""}${!c.absence && c.request ? ` has-request request-${c.request.status}` : ""}${c.dateStr === selectedDate ? " is-selected" : ""}`;
             const tooltip = c.absence
               ? `${c.d}: ${TIMESHEET_ABSENCE_LABELS[c.absence.type]}`
-              : (c.minutes > 0 ? `${c.d}: ${formatMinutesToHM(c.minutes)}` : `${c.d}: nessun turno`);
-            return `<button type="button" class="${cls}" data-ts-me-date="${escapeAttr(c.dateStr)}" title="${escapeAttr(tooltip)}"><span class="ts-day-num">${c.d}</span>${c.absence ? `<span class="ts-day-absence">${escapeHtml(TIMESHEET_ABSENCE_LABELS[c.absence.type])}</span>` : (c.minutes > 0 ? `<span class="ts-day-hours">${Math.round(c.minutes/60*10)/10}h</span>` : "")}</button>`;
+              : (c.request
+                ? `${c.d}: richiesta ${TIMESHEET_REQUEST_STATUS_LABELS[c.request.status] || ""}`
+                : (c.minutes > 0 ? `${c.d}: ${formatMinutesToHM(c.minutes)}` : `${c.d}: nessun turno`));
+            const dayMeta = c.absence
+              ? `<span class="ts-day-absence">${escapeHtml(TIMESHEET_ABSENCE_LABELS[c.absence.type])}</span>`
+              : (c.request
+                ? `<span class="ts-day-request">${escapeHtml(TIMESHEET_REQUEST_STATUS_LABELS[c.request.status] || "Richiesta")}</span>`
+                : (c.minutes > 0 ? `<span class="ts-day-hours">${Math.round(c.minutes/60*10)/10}h</span>` : ""));
+            return `<button type="button" class="${cls}" data-ts-me-date="${escapeAttr(c.dateStr)}" title="${escapeAttr(tooltip)}"><span class="ts-day-num">${c.d}</span>${dayMeta}</button>`;
           }).join("")}
         </div>
       </div>
@@ -21560,7 +21603,52 @@ async function renderTimesheetMe() {
           date: selectedDate,
           shift: byDate.get(selectedDate) || null,
           absence: absenceByDate.get(selectedDate) || null,
+          request: requestByDate.get(selectedDate) || null,
         })}
+      </section>
+      <section class="ts-request-panel panel">
+        <div class="ts-request-panel-head">
+          <div>
+            <span class="ts-detail-kicker">Assenze</span>
+            <h3>Richiedi ferie, permesso o malattia</h3>
+            <p>La richiesta viene inviata all’ufficio e resta in attesa fino alla conferma.</p>
+          </div>
+        </div>
+        <form class="ts-request-form" data-ts-request-form>
+          <input type="hidden" name="type" value="vacation">
+          <div class="ts-segmented-actions" role="group" aria-label="Tipo di richiesta">
+            <button type="button" class="is-active" data-ts-request-type="vacation">Ferie</button>
+            <button type="button" data-ts-request-type="permit">Permesso</button>
+            <button type="button" data-ts-request-type="sick">Malattia</button>
+          </div>
+          <div class="ts-request-fields">
+            <label class="ts-detail-field">
+              <span>Giorno richiesto</span>
+              <input type="date" name="date" required value="${escapeAttr(selectedDate)}">
+            </label>
+            <label class="ts-detail-field ts-request-note">
+              <span>Nota per l’ufficio</span>
+              <input type="text" name="note" maxlength="500" placeholder="Facoltativa">
+            </label>
+            <button type="submit" class="btn primary">Invia richiesta</button>
+          </div>
+        </form>
+        <div class="ts-request-list" data-ts-request-list>
+          <div class="ts-request-list-head">
+            <strong>Le tue richieste</strong>
+            <span>${visibleRequests.length}</span>
+          </div>
+          ${visibleRequests.length ? visibleRequests.map((request) => `
+            <div class="ts-request-row">
+              <div class="ts-request-row-date">
+                <strong>${escapeHtml(formatTimesheetDate(request.date))}</strong>
+                <span>${escapeHtml(TIMESHEET_ABSENCE_LABELS[request.type] || "")}${request.note ? ` · ${escapeHtml(request.note)}` : ""}</span>
+              </div>
+              <span class="ts-request-status ${escapeAttr(request.status)}">${escapeHtml(TIMESHEET_REQUEST_STATUS_LABELS[request.status] || request.status)}</span>
+              ${request.status === "pending" ? `<button type="button" class="btn subtle" data-ts-request-cancel="${escapeAttr(request.id)}">Annulla</button>` : ""}
+            </div>
+          `).join("") : `<p class="ts-detail-empty">Non hai ancora inviato richieste.</p>`}
+        </div>
       </section>
     `;
     root.querySelectorAll("[data-ts-me-date]").forEach((button) => {
@@ -21574,14 +21662,75 @@ async function renderTimesheetMe() {
             date,
             shift: byDate.get(date) || null,
             absence: absenceByDate.get(date) || null,
+            request: requestByDate.get(date) || null,
           });
           detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
+        const requestDate = root.querySelector('[data-ts-request-form] input[name="date"]');
+        if (requestDate) requestDate.value = date;
       });
     });
+    bindTimesheetMeRequests(root);
+    if (preserveScroll) {
+      requestAnimationFrame(() => window.scrollTo({ top: previousScrollY, behavior: "auto" }));
+    }
   } catch (err) {
     root.innerHTML = `<div class="ts-empty-state error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
   }
+}
+
+function bindTimesheetMeRequests(root) {
+  const form = root.querySelector("[data-ts-request-form]");
+  if (!form) return;
+  const typeInput = form.querySelector('input[name="type"]');
+  form.querySelectorAll("[data-ts-request-type]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const type = String(button.dataset.tsRequestType || "");
+      if (typeInput) typeInput.value = type;
+      form.querySelectorAll("[data-ts-request-type]").forEach((item) => {
+        item.classList.toggle("is-active", item === button);
+      });
+    });
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submitButton = form.querySelector('[type="submit"]');
+    const values = new FormData(form);
+    if (submitButton) submitButton.disabled = true;
+    try {
+      await apiFetch("/api/timesheet/absence-requests", {
+        method: "POST",
+        body: JSON.stringify({
+          date: values.get("date"),
+          type: values.get("type"),
+          note: values.get("note"),
+        }),
+      });
+      showToast("Richiesta inviata all’ufficio.", "success");
+      await renderTimesheetMe({ preserveScroll: true });
+    } catch (error) {
+      showToast(`Impossibile inviare la richiesta: ${error?.message || error}`, "error");
+      if (submitButton) submitButton.disabled = false;
+    }
+  });
+
+  root.querySelectorAll("[data-ts-request-cancel]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        await apiFetch(`/api/timesheet/absence-requests/${encodeURIComponent(button.dataset.tsRequestCancel || "")}/cancel`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        showToast("Richiesta annullata.", "success");
+        await renderTimesheetMe({ preserveScroll: true });
+      } catch (error) {
+        showToast(`Impossibile annullare la richiesta: ${error?.message || error}`, "error");
+        button.disabled = false;
+      }
+    });
+  });
 }
 
 // ── View office "Presenze" ──────────────────────────────────────────────────
@@ -21596,7 +21745,13 @@ function timesheetHourIntensity(minutes = 0) {
   return 0;
 }
 
-function renderTimesheetOfficeDetailMarkup({ user, date, shift = null, absence = null } = {}) {
+function renderTimesheetOfficeDetailMarkup({
+  user,
+  date,
+  shift = null,
+  absence = null,
+  request = null,
+} = {}) {
   if (!user || !date) return "";
   const monthlySalary = Math.max(0, Number(user.monthlySalary || 0));
   const monthlyPaidDays = Math.max(1, Number(user.monthlyPaidDays || 26));
@@ -21608,8 +21763,25 @@ function renderTimesheetOfficeDetailMarkup({ user, date, shift = null, absence =
           date,
           shift,
           absence,
+          request,
           employeeName: user.name || user.crewName || user.email || "",
         })}
+        ${request ? `
+          <div class="ts-office-request ${escapeAttr(request.status)}">
+            <div>
+              <span class="ts-detail-kicker">Richiesta del dipendente</span>
+              <strong>${escapeHtml(TIMESHEET_ABSENCE_LABELS[request.type] || "")}</strong>
+              <p>${request.note ? escapeHtml(request.note) : "Nessuna nota inserita."}</p>
+            </div>
+            <div class="ts-office-request-actions">
+              <span class="ts-request-status ${escapeAttr(request.status)}">${escapeHtml(TIMESHEET_REQUEST_STATUS_LABELS[request.status] || request.status)}</span>
+              ${request.status === "pending" ? `
+                <button type="button" class="btn primary" data-ts-request-review="${escapeAttr(request.id)}" data-review-action="approve">Approva</button>
+                <button type="button" class="btn subtle" data-ts-request-review="${escapeAttr(request.id)}" data-review-action="reject">Rifiuta</button>
+              ` : ""}
+            </div>
+          </div>
+        ` : ""}
         <div class="ts-absence-editor">
           <span class="ts-detail-kicker">Assenza giornata</span>
           <div class="ts-segmented-actions" role="group" aria-label="Tipo di assenza">
@@ -21677,6 +21849,7 @@ async function renderTimesheetOffice() {
     const data = await apiFetch(`/api/timesheet?from=${fromStr}&to=${toStr}`);
     const shifts = data?.shifts || [];
     const absences = Array.isArray(data?.absences) ? data.absences : [];
+    const absenceRequests = Array.isArray(data?.absenceRequests) ? data.absenceRequests : [];
 
     // Raggruppa per userId
     const byUser = new Map();
@@ -21689,6 +21862,10 @@ async function renderTimesheetOffice() {
     }
     const userMap = new Map(users.map((u) => [u.id, u]));
     const absenceByUserDate = new Map(absences.map((record) => [`${record.userId}:${record.date}`, record]));
+    const requestByUserDate = new Map();
+    absenceRequests
+      .filter((record) => record.status !== "cancelled")
+      .forEach((record) => requestByUserDate.set(`${record.userId}:${record.date}`, record));
 
     // Header giorni
     const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -21793,13 +21970,16 @@ async function renderTimesheetOffice() {
         const isToday = d.date === todayStr;
         const s = byDate.get(d.date);
         const absence = absenceByUserDate.get(`${userId}:${d.date}`);
+        const request = requestByUserDate.get(`${userId}:${d.date}`);
         const isSelected = state.timesheetOfficeSelection?.userId === userId
           && state.timesheetOfficeSelection?.date === d.date;
         if (!s) {
-          const emptyLabel = absence ? TIMESHEET_ABSENCE_LABELS[absence.type] : "—";
+          const emptyLabel = absence
+            ? TIMESHEET_ABSENCE_LABELS[absence.type]
+            : (request?.status === "pending" ? "Richiesta" : "—");
           html += `<td class="ts-hcell ${isToday ? "is-today" : ""}">
-            <button type="button" class="ts-hcell-button${isSelected ? " is-selected" : ""}${absence ? ` has-absence absence-${absence.type}` : ""}" data-ts-office-user="${escapeAttr(userId)}" data-ts-office-date="${escapeAttr(d.date)}">
-              <span class="${absence ? "ts-hchip is-absence" : "ts-hcell-empty"}">${escapeHtml(emptyLabel)}</span>
+            <button type="button" class="ts-hcell-button${isSelected ? " is-selected" : ""}${absence ? ` has-absence absence-${absence.type}` : ""}${!absence && request?.status === "pending" ? " has-request" : ""}" data-ts-office-user="${escapeAttr(userId)}" data-ts-office-date="${escapeAttr(d.date)}">
+              <span class="${absence ? "ts-hchip is-absence" : (request?.status === "pending" ? "ts-hchip is-request" : "ts-hcell-empty")}">${escapeHtml(emptyLabel)}</span>
             </button>
           </td>`;
           continue;
@@ -21811,8 +21991,9 @@ async function renderTimesheetOffice() {
         const badge = offSite ? warnBadge : (verified && s.clockInAt ? okBadge : "");
         const title = offSite ? "Timbratura fuori sede" : (verified ? "Timbratura in sede (GPS verificato)" : "");
         html += `<td class="ts-hcell ${isToday ? "is-today" : ""}">
-          <button type="button" class="ts-hcell-button${isSelected ? " is-selected" : ""}" data-ts-office-user="${escapeAttr(userId)}" data-ts-office-date="${escapeAttr(d.date)}" ${title ? `title="${escapeAttr(title)}"` : ""}>
+          <button type="button" class="ts-hcell-button${isSelected ? " is-selected" : ""}${request?.status === "pending" ? " has-request" : ""}" data-ts-office-user="${escapeAttr(userId)}" data-ts-office-date="${escapeAttr(d.date)}" ${title ? `title="${escapeAttr(title)}"` : ""}>
             <span class="ts-hchip ${chipClass}">${escapeHtml(displayValue)}${badge}</span>
+            ${request?.status === "pending" ? `<span class="ts-hrequest-label">Richiesta</span>` : ""}
           </button>
         </td>`;
       }
@@ -21842,12 +22023,18 @@ async function renderTimesheetOffice() {
         const user = userMap.get(selection.userId);
         const shift = shifts.find((entry) => entry.userId === selection.userId && entry.shiftDate === selection.date) || null;
         const absence = absenceByUserDate.get(`${selection.userId}:${selection.date}`) || null;
-        return renderTimesheetOfficeDetailMarkup({ user, date: selection.date, shift, absence });
+        const request = requestByUserDate.get(`${selection.userId}:${selection.date}`) || null;
+        return renderTimesheetOfficeDetailMarkup({ user, date: selection.date, shift, absence, request });
       })()}
     `;
     root.innerHTML = html;
     bindTimesheetOfficeNav(root, weekOffset);
-    bindTimesheetOfficeDetail(root);
+    bindTimesheetOfficeDetail(root, {
+      shifts,
+      userMap,
+      absenceByUserDate,
+      requestByUserDate,
+    });
   } catch (err) {
     root.innerHTML = `<div class="ts-empty-state error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
   }
@@ -21882,24 +22069,89 @@ function bindTimesheetOfficeNav(root, weekOffset) {
   });
 }
 
-function bindTimesheetOfficeDetail(root) {
+function getTimesheetOfficeSelectionData(context = {}) {
+  const selection = state.timesheetOfficeSelection;
+  if (!selection?.userId || !selection?.date) return null;
+  const key = `${selection.userId}:${selection.date}`;
+  return {
+    selection,
+    date: selection.date,
+    user: context.userMap?.get(selection.userId) || null,
+    shift: context.shifts?.find((entry) => (
+      entry.userId === selection.userId && entry.shiftDate === selection.date
+    )) || null,
+    absence: context.absenceByUserDate?.get(key) || null,
+    request: context.requestByUserDate?.get(key) || null,
+  };
+}
+
+function updateTimesheetOfficeSelectedCell(root, context = {}) {
+  const selected = getTimesheetOfficeSelectionData(context);
+  if (!selected) return;
+  const { selection, shift, absence, request } = selected;
+  const button = [...root.querySelectorAll("[data-ts-office-user][data-ts-office-date]")].find((item) => (
+    item.dataset.tsOfficeUser === selection.userId
+    && item.dataset.tsOfficeDate === selection.date
+  ));
+  if (!button) return;
+  button.classList.toggle("has-absence", Boolean(absence));
+  button.classList.toggle("absence-vacation", absence?.type === "vacation");
+  button.classList.toggle("absence-permit", absence?.type === "permit");
+  button.classList.toggle("absence-sick", absence?.type === "sick");
+  button.classList.toggle("has-request", !absence && request?.status === "pending");
+  if (!shift) {
+    const label = absence
+      ? TIMESHEET_ABSENCE_LABELS[absence.type]
+      : (request?.status === "pending" ? "Richiesta" : "—");
+    const className = absence
+      ? "ts-hchip is-absence"
+      : (request?.status === "pending" ? "ts-hchip is-request" : "ts-hcell-empty");
+    button.innerHTML = `<span class="${className}">${escapeHtml(label)}</span>`;
+    return;
+  }
+  button.querySelector(".ts-hrequest-label")?.remove();
+  if (request?.status === "pending") {
+    button.insertAdjacentHTML("beforeend", '<span class="ts-hrequest-label">Richiesta</span>');
+  }
+}
+
+function refreshTimesheetOfficeDetail(root, context = {}, { reveal = false } = {}) {
+  const selected = getTimesheetOfficeSelectionData(context);
+  const currentDetail = root.querySelector("#timesheet-office-detail");
+  if (!selected?.user) {
+    currentDetail?.remove();
+    return;
+  }
+  const markup = renderTimesheetOfficeDetailMarkup(selected);
+  if (currentDetail) currentDetail.outerHTML = markup;
+  else root.insertAdjacentHTML("beforeend", markup);
+  updateTimesheetOfficeSelectedCell(root, context);
+  bindTimesheetOfficeEditors(root, context);
+  if (reveal) {
+    requestAnimationFrame(() => {
+      root.querySelector("#timesheet-office-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+}
+
+function bindTimesheetOfficeDetail(root, context = {}) {
   root.querySelectorAll("[data-ts-office-user][data-ts-office-date]").forEach((button) => {
     button.addEventListener("click", () => {
       state.timesheetOfficeSelection = {
         userId: String(button.dataset.tsOfficeUser || ""),
         date: String(button.dataset.tsOfficeDate || ""),
       };
-      state.timesheetOfficeRevealDetail = true;
-      renderTimesheetOffice();
+      root.querySelectorAll("[data-ts-office-user][data-ts-office-date]").forEach((item) => {
+        item.classList.toggle("is-selected", item === button);
+      });
+      refreshTimesheetOfficeDetail(root, context, { reveal: true });
     });
   });
 
-  const detail = root.querySelector("#timesheet-office-detail");
-  if (detail && state.timesheetOfficeRevealDetail) {
-    state.timesheetOfficeRevealDetail = false;
-    requestAnimationFrame(() => detail.scrollIntoView({ behavior: "smooth", block: "nearest" }));
-  }
+  bindTimesheetOfficeEditors(root, context);
+}
 
+function bindTimesheetOfficeEditors(root, context = {}) {
   const profileForm = root.querySelector("[data-ts-profile-form]");
   profileForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -21918,9 +22170,10 @@ function bindTimesheetOfficeDetail(root) {
       if (result?.user) {
         const index = (state.users || []).findIndex((user) => user.id === result.user.id);
         if (index >= 0) state.users[index] = normalizeUserRecord(result.user);
+        context.userMap?.set(result.user.id, normalizeUserRecord(result.user));
       }
       showToast("Profilo presenze aggiornato.", "success");
-      await renderTimesheetOffice();
+      refreshTimesheetOfficeDetail(root, context);
     } catch (error) {
       showToast(`Impossibile salvare il profilo: ${error?.message || error}`, "error");
       if (submitButton) submitButton.disabled = false;
@@ -21933,7 +22186,7 @@ function bindTimesheetOfficeDetail(root) {
       if (!selection?.userId || !selection?.date) return;
       root.querySelectorAll("[data-ts-absence-type]").forEach((item) => { item.disabled = true; });
       try {
-        await apiFetch("/api/timesheet/absences", {
+        const result = await apiFetch("/api/timesheet/absences", {
           method: "POST",
           body: JSON.stringify({
             userId: selection.userId,
@@ -21942,11 +22195,37 @@ function bindTimesheetOfficeDetail(root) {
             note: root.querySelector("[data-ts-absence-note]")?.value || "",
           }),
         });
+        const key = `${selection.userId}:${selection.date}`;
+        if (result?.absence) context.absenceByUserDate?.set(key, result.absence);
+        else context.absenceByUserDate?.delete(key);
+        if (result?.request) context.requestByUserDate?.set(key, result.request);
         showToast(button.dataset.tsAbsenceType === "none" ? "Assenza rimossa." : "Assenza registrata.", "success");
-        await renderTimesheetOffice();
+        refreshTimesheetOfficeDetail(root, context);
       } catch (error) {
         showToast(`Impossibile aggiornare l’assenza: ${error?.message || error}`, "error");
         root.querySelectorAll("[data-ts-absence-type]").forEach((item) => { item.disabled = false; });
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-ts-request-review]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const selected = getTimesheetOfficeSelectionData(context);
+      if (!selected?.selection) return;
+      root.querySelectorAll("[data-ts-request-review]").forEach((item) => { item.disabled = true; });
+      try {
+        const result = await apiFetch(`/api/timesheet/absence-requests/${encodeURIComponent(button.dataset.tsRequestReview || "")}/review`, {
+          method: "POST",
+          body: JSON.stringify({ action: button.dataset.reviewAction }),
+        });
+        const key = `${selected.selection.userId}:${selected.selection.date}`;
+        if (result?.request) context.requestByUserDate?.set(key, result.request);
+        if (result?.absence) context.absenceByUserDate?.set(key, result.absence);
+        showToast(button.dataset.reviewAction === "approve" ? "Richiesta approvata." : "Richiesta rifiutata.", "success");
+        refreshTimesheetOfficeDetail(root, context);
+      } catch (error) {
+        showToast(`Impossibile aggiornare la richiesta: ${error?.message || error}`, "error");
+        root.querySelectorAll("[data-ts-request-review]").forEach((item) => { item.disabled = false; });
       }
     });
   });

@@ -20060,14 +20060,14 @@ body {
 .ts-stat-label {
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: var(--muted);
 }
 .ts-stat-value {
   font-size: 28px;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
 .ts-stat-sub, .ts-stat-delta {
@@ -20154,6 +20154,26 @@ body {
 .ts-day.has-absence .ts-day-num { color: inherit; }
 .ts-day.has-absence.absence-vacation { background: #e8f4eb; color: #25613d; }
 .ts-day.has-absence.absence-sick { background: #fff0ec; color: #9b432f; }
+.ts-day.has-request {
+  background: #fff7e8;
+  color: #8a5a08;
+  border-color: #f0d7a8;
+}
+.ts-day.has-request.request-rejected {
+  background: #f4f4f2;
+  color: #75756d;
+  border-color: #deded8;
+}
+.ts-day-request {
+  align-self: flex-end;
+  max-width: 100%;
+  overflow: hidden;
+  color: inherit;
+  font-size: 9px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .ts-day-detail {
   margin-top: var(--space-4);
@@ -20174,7 +20194,7 @@ body {
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 .ts-detail-metrics {
@@ -20205,6 +20225,81 @@ body {
 }
 .ts-absence-chip.vacation { background: #e8f4eb; color: #25613d; }
 .ts-absence-chip.sick { background: #fff0ec; color: #9b432f; }
+.ts-request-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #fff1d8;
+  color: #8a5a08;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.ts-request-status.approved { background: #e8f4eb; color: #25613d; }
+.ts-request-status.rejected { background: #fbe9e5; color: #9b432f; }
+.ts-request-status.cancelled { background: #efefec; color: #696960; }
+
+.ts-request-panel {
+  margin-top: var(--space-4);
+  padding: var(--space-5);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.ts-request-panel-head h3 { margin: 4px 0 3px; font-size: 18px; }
+.ts-request-panel-head p { margin: 0; color: var(--muted); font-size: 13px; }
+.ts-request-form {
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+.ts-request-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.6fr) minmax(240px, 1.4fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+}
+.ts-request-fields .btn { min-height: 42px; white-space: nowrap; }
+.ts-request-list { padding-top: var(--space-4); }
+.ts-request-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.ts-request-list-head span {
+  min-width: 26px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--brand-soft, #eef7ef);
+  color: var(--brand, #2d6a4f);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+.ts-request-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+.ts-request-row:first-of-type { border-top: 0; }
+.ts-request-row-date { min-width: 0; }
+.ts-request-row-date strong,
+.ts-request-row-date span { display: block; }
+.ts-request-row-date strong { font-size: 13px; text-transform: capitalize; }
+.ts-request-row-date span {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Office: tabella settimanale */
 .ts-office-toolbar { margin-bottom: var(--space-4); font-size: 14px; }
@@ -20264,7 +20359,7 @@ body {
   border-color: #f5d8a0;
 }
 .ts-summary-label { display: block; font-size: 13px; color: var(--muted); }
-.ts-summary-value { display: block; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.ts-summary-value { display: block; font-size: 24px; font-weight: 800; letter-spacing: 0; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .ts-summary-card.is-warn .ts-summary-value { color: #b06f00; }
 .ts-summary-sub { font-size: 14px; font-weight: 600; color: var(--muted); }
 
@@ -20294,6 +20389,7 @@ body {
 .ts-hchip.is-anomaly { background: #fbe6c2; color: #8a5300; }
 .ts-hchip.is-open { background: #E6F1FB; color: #185FA5; }
 .ts-hchip.is-absence { background: #eef3fb; color: #295d8f; }
+.ts-hchip.is-request { background: #fff1d8; color: #8a5a08; }
 .ts-hcell-empty { color: var(--muted); }
 .ts-hcell-button {
   width: 100%;
@@ -20310,6 +20406,13 @@ body {
 }
 .ts-hcell-button.has-absence.absence-vacation .ts-hchip { background: #e8f4eb; color: #25613d; }
 .ts-hcell-button.has-absence.absence-sick .ts-hchip { background: #fff0ec; color: #9b432f; }
+.ts-hrequest-label {
+  display: block;
+  margin-top: 2px;
+  color: #8a5a08;
+  font-size: 9px;
+  font-weight: 800;
+}
 .ts-hcell-total strong { font-weight: 800; font-variant-numeric: tabular-nums; }
 .ts-hbadge.ok { color: #2f8f5b; }
 .ts-hbadge.off { color: #c07d10; }
@@ -20340,7 +20443,7 @@ body {
   background: rgba(0,0,0,0.02);
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   color: var(--muted);
   font-weight: 700;
 }
@@ -20378,6 +20481,28 @@ body {
   margin-top: var(--space-5);
   padding-top: var(--space-4);
   border-top: 1px solid var(--line);
+}
+.ts-office-request {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid #f0d7a8;
+  border-radius: 10px;
+  background: #fffaf0;
+}
+.ts-office-request.approved { border-color: #cfe3d4; background: #f4faf5; }
+.ts-office-request.rejected { border-color: #ecd5cf; background: #fff7f5; }
+.ts-office-request strong { display: block; margin-top: 3px; font-size: 15px; }
+.ts-office-request p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+.ts-office-request-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
 }
 .ts-segmented-actions {
   display: flex;
@@ -20428,12 +20553,18 @@ body {
 @media (max-width: 900px) {
   .ts-office-detail { grid-template-columns: 1fr; }
   .ts-payroll-form { padding: var(--space-4) 0 0; border-left: 0; border-top: 1px solid var(--line); }
+  .ts-request-fields { grid-template-columns: 1fr 1fr; }
+  .ts-request-fields .btn { grid-column: 1 / -1; }
 }
 @media (max-width: 620px) {
-  .ts-calendar-card, .ts-day-detail, .ts-office-detail { padding: var(--space-3); }
+  .ts-calendar-card, .ts-day-detail, .ts-office-detail, .ts-request-panel { padding: var(--space-3); }
   .ts-detail-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ts-day { aspect-ratio: 1 / 1; padding: 4px; }
   .ts-day-absence { font-size: 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .ts-request-fields, .ts-request-row { grid-template-columns: 1fr; }
+  .ts-request-row .btn { justify-self: start; }
+  .ts-office-request { align-items: flex-start; flex-direction: column; }
+  .ts-office-request-actions { justify-content: flex-start; }
 }
 
 /* Badge network sulle celle tabella office Presenze */

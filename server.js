@@ -2542,6 +2542,7 @@ function userIsEmployee(user) {
 }
 
 const TIMESHEET_ABSENCE_TYPES = new Set(["vacation", "permit", "sick"]);
+const TIMESHEET_ABSENCE_REQUEST_STATUSES = new Set(["pending", "approved", "rejected", "cancelled"]);
 
 function normalizeTimesheetAbsence(record = {}) {
   const type = TIMESHEET_ABSENCE_TYPES.has(String(record.type || "").trim())
@@ -2569,6 +2570,42 @@ function listTimesheetAbsences(store = {}, { userId = "", from = "", to = "" } =
       && (!to || record.date <= String(to))
     ))
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function normalizeTimesheetAbsenceRequest(record = {}) {
+  const type = TIMESHEET_ABSENCE_TYPES.has(String(record.type || "").trim())
+    ? String(record.type || "").trim()
+    : "";
+  const status = TIMESHEET_ABSENCE_REQUEST_STATUSES.has(String(record.status || "").trim())
+    ? String(record.status || "").trim()
+    : "pending";
+  return {
+    id: String(record.id || randomUUID()),
+    userId: String(record.userId || "").trim(),
+    date: String(record.date || "").trim(),
+    type,
+    note: String(record.note || "").trim().slice(0, 500),
+    status,
+    requestedAt: String(record.requestedAt || record.createdAt || new Date().toISOString()),
+    updatedAt: String(record.updatedAt || new Date().toISOString()),
+    reviewedAt: String(record.reviewedAt || ""),
+    reviewedBy: String(record.reviewedBy || "").trim(),
+  };
+}
+
+function listTimesheetAbsenceRequests(store = {}, { userId = "", from = "", to = "" } = {}) {
+  return (Array.isArray(store.timesheetAbsenceRequests) ? store.timesheetAbsenceRequests : [])
+    .map(normalizeTimesheetAbsenceRequest)
+    .filter((record) => (
+      record.type
+      && (!userId || record.userId === String(userId))
+      && (!from || record.date >= String(from))
+      && (!to || record.date <= String(to))
+    ))
+    .sort((a, b) => (
+      a.date.localeCompare(b.date)
+      || a.requestedAt.localeCompare(b.requestedAt)
+    ));
 }
 
 /**
@@ -4377,6 +4414,7 @@ function buildDefaultStore() {
     supplierProfiles: [],
     supplierPriceEntries: [],
     timesheetAbsences: [],
+    timesheetAbsenceRequests: [],
     marketingPublicAssets: [],
     marketingScheduled: [],
     marketingItems: [],
@@ -9954,6 +9992,11 @@ function reconcileStoreData(store) {
     .map(normalizeTimesheetAbsence)
     .filter((record) => record.userId && /^\d{4}-\d{2}-\d{2}$/.test(record.date) && record.type);
 
+  if (!Array.isArray(store.timesheetAbsenceRequests)) changed = true;
+  store.timesheetAbsenceRequests = (Array.isArray(store.timesheetAbsenceRequests) ? store.timesheetAbsenceRequests : [])
+    .map(normalizeTimesheetAbsenceRequest)
+    .filter((record) => record.userId && /^\d{4}-\d{2}-\d{2}$/.test(record.date) && record.type);
+
   store.inventory = Array.isArray(store.inventory)
     ? store.inventory.map((item) => {
         if (!item || !item.id) changed = true;
@@ -13524,6 +13567,7 @@ async function handleApi(req, res, url) {
         deltaMinutes: stats && prevStats ? (stats.totalMinutes - prevStats.totalMinutes) : null,
         profile: sanitizeUser(currentUser),
         absences: listTimesheetAbsences(store, { userId: currentUser.id, from, to }),
+        absenceRequests: listTimesheetAbsenceRequests(store, { userId: currentUser.id }),
         absenceSummary: {
           vacationTaken: yearAbsences.filter((record) => record.type === "vacation").length,
           permitsTaken: yearAbsences.filter((record) => record.type === "permit").length,
@@ -13533,6 +13577,138 @@ async function handleApi(req, res, url) {
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "stats_failed") });
     }
+  }
+
+  // POST /api/timesheet/absence-requests → il dipendente richiede un'assenza.
+  if (url.pathname === "/api/timesheet/absence-requests" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
+    const body = await readBody(req);
+    const date = String(body.date || "").trim();
+    const type = String(body.type || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return sendJson(res, 400, { error: "invalid_absence_date" });
+    }
+    if (!TIMESHEET_ABSENCE_TYPES.has(type)) {
+      return sendJson(res, 400, { error: "invalid_absence_type" });
+    }
+    if (listTimesheetAbsences(store, { userId: currentUser.id, from: date, to: date }).length) {
+      return sendJson(res, 409, { error: "absence_already_registered" });
+    }
+    const list = Array.isArray(store.timesheetAbsenceRequests) ? store.timesheetAbsenceRequests : [];
+    const existingIndex = list.findIndex((record) => (
+      String(record.userId) === String(currentUser.id)
+      && String(record.date) === date
+      && String(record.status || "pending") !== "approved"
+    ));
+    const nowIso = new Date().toISOString();
+    const request = normalizeTimesheetAbsenceRequest({
+      ...(existingIndex >= 0 ? list[existingIndex] : {}),
+      id: existingIndex >= 0 ? list[existingIndex].id : randomUUID(),
+      userId: currentUser.id,
+      date,
+      type,
+      note: body.note,
+      status: "pending",
+      requestedAt: existingIndex >= 0 ? list[existingIndex].requestedAt : nowIso,
+      updatedAt: nowIso,
+      reviewedAt: "",
+      reviewedBy: "",
+    });
+    if (existingIndex >= 0) list[existingIndex] = request;
+    else list.push(request);
+    store.timesheetAbsenceRequests = list;
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("timesheet_absence_request", request.id, "request", {
+      userId: currentUser.id,
+      date,
+      type,
+    }, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, { ok: true, request });
+  }
+
+  // POST /api/timesheet/absence-requests/:id/cancel → annulla una richiesta in attesa.
+  if (url.pathname.match(/^\/api\/timesheet\/absence-requests\/[^/]+\/cancel$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
+    const requestId = decodeURIComponent(url.pathname.split("/")[4] || "");
+    const list = Array.isArray(store.timesheetAbsenceRequests) ? store.timesheetAbsenceRequests : [];
+    const requestIndex = list.findIndex((record) => String(record.id) === requestId);
+    if (requestIndex < 0 || String(list[requestIndex].userId) !== String(currentUser.id)) {
+      return sendJson(res, 404, { error: "absence_request_not_found" });
+    }
+    if (String(list[requestIndex].status || "pending") !== "pending") {
+      return sendJson(res, 409, { error: "absence_request_not_pending" });
+    }
+    const request = normalizeTimesheetAbsenceRequest({
+      ...list[requestIndex],
+      status: "cancelled",
+      updatedAt: new Date().toISOString(),
+    });
+    list[requestIndex] = request;
+    store.timesheetAbsenceRequests = list;
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("timesheet_absence_request", request.id, "cancel", {}, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, { ok: true, request });
+  }
+
+  // POST /api/timesheet/absence-requests/:id/review → approvazione o rifiuto ufficio.
+  if (url.pathname.match(/^\/api\/timesheet\/absence-requests\/[^/]+\/review$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const requestId = decodeURIComponent(url.pathname.split("/")[4] || "");
+    const body = await readBody(req);
+    const action = String(body.action || "").trim();
+    if (!["approve", "reject"].includes(action)) {
+      return sendJson(res, 400, { error: "invalid_review_action" });
+    }
+    const requestList = Array.isArray(store.timesheetAbsenceRequests) ? store.timesheetAbsenceRequests : [];
+    const requestIndex = requestList.findIndex((record) => String(record.id) === requestId);
+    if (requestIndex < 0) return sendJson(res, 404, { error: "absence_request_not_found" });
+    const currentRequest = normalizeTimesheetAbsenceRequest(requestList[requestIndex]);
+    if (currentRequest.status !== "pending") {
+      return sendJson(res, 409, { error: "absence_request_not_pending" });
+    }
+    const nowIso = new Date().toISOString();
+    const reviewedRequest = normalizeTimesheetAbsenceRequest({
+      ...currentRequest,
+      status: action === "approve" ? "approved" : "rejected",
+      updatedAt: nowIso,
+      reviewedAt: nowIso,
+      reviewedBy: currentUser.id,
+    });
+    requestList[requestIndex] = reviewedRequest;
+    store.timesheetAbsenceRequests = requestList;
+
+    let absence = null;
+    if (action === "approve") {
+      const absenceList = Array.isArray(store.timesheetAbsences) ? store.timesheetAbsences : [];
+      const absenceIndex = absenceList.findIndex((record) => (
+        String(record.userId) === currentRequest.userId
+        && String(record.date) === currentRequest.date
+      ));
+      absence = normalizeTimesheetAbsence({
+        ...(absenceIndex >= 0 ? absenceList[absenceIndex] : {}),
+        userId: currentRequest.userId,
+        date: currentRequest.date,
+        type: currentRequest.type,
+        note: currentRequest.note,
+        createdAt: absenceIndex >= 0 ? absenceList[absenceIndex].createdAt : nowIso,
+        updatedAt: nowIso,
+        updatedBy: currentUser.id,
+      });
+      if (absenceIndex >= 0) absenceList[absenceIndex] = absence;
+      else absenceList.push(absence);
+      store.timesheetAbsences = absenceList;
+    }
+
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("timesheet_absence_request", reviewedRequest.id, action, {
+      userId: reviewedRequest.userId,
+      date: reviewedRequest.date,
+      type: reviewedRequest.type,
+    }, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, { ok: true, request: reviewedRequest, absence });
   }
 
   // POST /api/timesheet/profile/:userId → configurazione economica e ferie.
@@ -13580,12 +13756,32 @@ async function handleApi(req, res, url) {
     }
     const list = Array.isArray(store.timesheetAbsences) ? store.timesheetAbsences : [];
     const existingIndex = list.findIndex((record) => record.userId === userId && record.date === date);
+    const requestList = Array.isArray(store.timesheetAbsenceRequests) ? store.timesheetAbsenceRequests : [];
+    const matchingRequestIndex = requestList.findIndex((record) => (
+      String(record.userId) === userId
+      && String(record.date) === date
+      && ["pending", "approved"].includes(String(record.status || "pending"))
+    ));
     if (!type || type === "none") {
       if (existingIndex >= 0) list.splice(existingIndex, 1);
+      if (matchingRequestIndex >= 0) {
+        requestList[matchingRequestIndex] = normalizeTimesheetAbsenceRequest({
+          ...requestList[matchingRequestIndex],
+          status: "cancelled",
+          updatedAt: new Date().toISOString(),
+          reviewedAt: new Date().toISOString(),
+          reviewedBy: currentUser.id,
+        });
+      }
       store.timesheetAbsences = list;
+      store.timesheetAbsenceRequests = requestList;
       await writeJson(STORE_PATH, store);
       writeAuditLog("timesheet_absence", `${userId}:${date}`, "remove", {}, currentUser.email || null).catch(() => {});
-      return sendJson(res, 200, { ok: true, absence: null });
+      return sendJson(res, 200, {
+        ok: true,
+        absence: null,
+        request: matchingRequestIndex >= 0 ? requestList[matchingRequestIndex] : null,
+      });
     }
     if (!TIMESHEET_ABSENCE_TYPES.has(type)) {
       return sendJson(res, 400, { error: "invalid_absence_type" });
@@ -13603,10 +13799,26 @@ async function handleApi(req, res, url) {
     });
     if (existingIndex >= 0) list[existingIndex] = absence;
     else list.push(absence);
+    if (matchingRequestIndex >= 0) {
+      requestList[matchingRequestIndex] = normalizeTimesheetAbsenceRequest({
+        ...requestList[matchingRequestIndex],
+        type,
+        note: body.note,
+        status: "approved",
+        updatedAt: nowIso,
+        reviewedAt: nowIso,
+        reviewedBy: currentUser.id,
+      });
+    }
     store.timesheetAbsences = list;
+    store.timesheetAbsenceRequests = requestList;
     await writeJson(STORE_PATH, store);
     writeAuditLog("timesheet_absence", absence.id, "upsert", { userId, date, type }, currentUser.email || null).catch(() => {});
-    return sendJson(res, 200, { ok: true, absence });
+    return sendJson(res, 200, {
+      ok: true,
+      absence,
+      request: matchingRequestIndex >= 0 ? requestList[matchingRequestIndex] : null,
+    });
   }
 
   // GET /api/timesheet?from=X&to=Y&userId=Z → office, lista turni di tutti
@@ -13621,6 +13833,7 @@ async function handleApi(req, res, url) {
       return sendJson(res, 200, {
         shifts,
         absences: listTimesheetAbsences(store, { userId, from, to }),
+        absenceRequests: listTimesheetAbsenceRequests(store, { userId, from, to }),
         geofenceConfigured: COMPANY_OFFICE_LAT != null && COMPANY_OFFICE_LNG != null,
         geofenceRadiusM: COMPANY_OFFICE_RADIUS_M,
       });
