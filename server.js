@@ -4829,6 +4829,21 @@ function formatCurrencyForNotification(value) {
   return `${amount.toFixed(2).replace(".", ",")} €`;
 }
 
+// Etichetta leggibile di un ordine per il testo di una notifica.
+// Prima si usava `order.name || order.id`: ma `name` NON esiste su questi
+// record (né sugli ordini Shopify importati né su quelli manuali), quindi
+// finiva sempre l'id grezzo — un UUID o un "gid://shopify/Order/7511474733395"
+// dentro una notifica di sistema. I campi buoni ci sono sempre: nome cliente
+// e orderNumber ("#2767", "TEST-TASSO-25").
+function describeOrderForNotification(order = {}) {
+  const client = [order.firstName, order.lastName].filter(Boolean).join(" ").trim();
+  const numberRaw = String(order.orderNumber || order.name || "").trim();
+  const parts = [client, numberRaw].filter(Boolean);
+  if (parts.length) return parts.join(" · ");
+  // Ultima spiaggia: almeno il numero d'ordine Shopify invece del gid intero.
+  return String(order.id || "").replace(/^gid:\/\/shopify\/Order\//, "#");
+}
+
 function getUserNotificationPrefs(store, userId) {
   const all = store?.notificationPrefs && typeof store.notificationPrefs === "object"
     ? store.notificationPrefs
@@ -16862,16 +16877,25 @@ async function handleApi(req, res, url) {
       notify(store, { crewName: newCrew, exceptUserId: currentUser?.id }, {
         type: "crew_assigned",
         title: "Nuovo lavoro assegnato",
-        body: `${updatedOrder.name || updatedOrder.id} — ${updatedOrder.operations?.installation?.installDate || "data da definire"}`,
+        body: `${describeOrderForNotification(updatedOrder)} — ${updatedOrder.operations?.installation?.installDate || "data da definire"}`,
         data: { orderId: updatedOrder.id, view: "installations" },
       }).catch((err) => logError("notify:crew_assigned", err, { orderId: updatedOrder.id }));
     }
     if (prevWHStatus !== newWHStatus && newWHStatus === "pronto") {
-      notify(store, { role: "warehouse", exceptUserId: currentUser?.id }, {
+      // Bidirezionale: questo endpoint lo chiamano sia ufficio che magazzino
+      // (nessun controllo di ruolo qui sopra). Notificare sempre "il
+      // magazzino" era sbagliato quando è il magazzino stesso a marcare
+      // l'ordine pronto (auto-notifica esclusa da exceptUserId, quindi la
+      // notifica finiva nel vuoto) — e nessuno all'ufficio veniva avvisato
+      // che l'ordine era pronto. La direzione giusta è "l'altra parte
+      // rispetto a chi ha fatto l'azione": ufficio prepara → avvisa
+      // magazzino; magazzino segna pronto → avvisa ufficio.
+      const targetRole = currentUser?.role === "warehouse" ? "office" : "warehouse";
+      notify(store, { role: targetRole, exceptUserId: currentUser?.id }, {
         type: "warehouse_ready",
         title: "Ordine pronto per spedizione",
-        body: updatedOrder.name || updatedOrder.id,
-        data: { orderId: updatedOrder.id, view: "warehouse" },
+        body: describeOrderForNotification(updatedOrder),
+        data: { orderId: updatedOrder.id, view: targetRole === "office" ? "shipping" : "warehouse" },
       }).catch((err) => logError("notify:warehouse_ready", err, { orderId: updatedOrder.id }));
     }
     return sendJson(res, 200, updatedOrder);
