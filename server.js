@@ -31,6 +31,17 @@ import {
   listPendingAbsenceRequests,
   reviewAbsenceRequest,
 } from "./lib/timesheet-absence.js";
+import {
+  buildNotification,
+  countUnread,
+  listNotificationsForUser,
+  markNotificationsRead,
+  normalizeNotificationPrefs,
+  NOTIFICATION_TYPES,
+  pruneNotifications,
+  resolveChannels,
+  upsertNotification,
+} from "./lib/notifications.js";
 import webPush from "web-push";
 
 const PORT = Number(process.env.PORT || 4178);
@@ -342,6 +353,33 @@ function broadcastSalesRequestUpdated(id = "", patch = {}, fullRecord = null) {
 function broadcastSalesRequestDeleted(id = "") {
   if (!id) return;
   broadcastSalesRequestEvent("salesrequest:deleted", { id: String(id) });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SSE mirato per utente — usato dal centro notifiche.
+// A differenza dei broadcast qui sopra (che vanno a tutti i client),
+// questo consegna SOLO alle schede aperte dal destinatario: una
+// notifica è per definizione personale, e non deve trapelare ad altri
+// account collegati nello stesso momento.
+// ═══════════════════════════════════════════════════════════════════
+
+function broadcastToUser(userId = "", eventName = "", payload = {}) {
+  const uid = String(userId || "").trim();
+  const event = String(eventName || "").trim();
+  if (!uid || !event) return;
+  const evtPayload = { ...payload, timestamp: new Date().toISOString() };
+  for (const [clientId, client] of storeEventsClients.entries()) {
+    if (!client || !client.res) {
+      unregisterStoreEventsClient(clientId);
+      continue;
+    }
+    if (String(client.userId || "") !== uid) continue;
+    try {
+      writeStoreEvent(client.res, event, evtPayload);
+    } catch {
+      unregisterStoreEventsClient(clientId);
+    }
+  }
 }
 
 function buildStoreRevisionToken() {
@@ -2552,6 +2590,8 @@ function userIsEmployee(user) {
 
 const TIMESHEET_ABSENCE_TYPES = new Set(["vacation", "permit", "sick"]);
 const TIMESHEET_ABSENCE_REQUEST_STATUSES = new Set(["pending", "approved", "rejected", "cancelled"]);
+// Etichette in chiaro per il testo delle notifiche (la UI ha le sue).
+const TIMESHEET_ABSENCE_LABELS = { vacation: "Ferie", permit: "Permesso", sick: "Malattia" };
 
 function normalizeTimesheetAbsence(record = {}) {
   const type = TIMESHEET_ABSENCE_TYPES.has(String(record.type || "").trim())
@@ -4428,6 +4468,10 @@ function buildDefaultStore() {
     marketingScheduled: [],
     marketingItems: [],
     usageEvents: [],
+    // Centro notifiche: una riga per DESTINATARIO (vedi lib/notifications.js).
+    notifications: [],
+    // Preferenze push per tipo, per utente: { [userId]: { [type]: { push } } }.
+    notificationPrefs: {},
     salesRequestSource: {
       spreadsheetInput: DEFAULT_SALES_REQUEST_SPREADSHEET,
       sheetName: "",
@@ -4747,16 +4791,140 @@ async function sendPushToUser(store, userId, payload) {
   return { total: subscriptions.length, delivered, pruned: dead.length };
 }
 
-async function sendPushToRole(store, role, payload, exceptUserId = null) {
-  const users = store.users.filter((u) => u.role === role && u.id !== exceptUserId && u.status === "active");
-  await Promise.allSettled(users.map((u) => sendPushToUser(store, u.id, payload)));
+// NB: le vecchie sendPushToRole/sendPushToCrewName sono state rimosse — la
+// selezione dei destinatari per ruolo/squadra vive ora in un solo posto
+// (resolveNotificationRecipients, qui sotto). Tenerne due copie è
+// esattamente il pattern che in passato ha fatto divergere badge e vista.
+// ═══════════════════════════════════════════════════════════════════
+// notify() — punto d'ingresso UNICO per tutte le notifiche.
+//
+// Prima esistevano solo 4 chiamate push sparse, fire-and-forget: se il
+// dispositivo era spento o il permesso non era stato dato, l'evento
+// spariva senza lasciare traccia. Adesso ogni notifica passa da qui e
+// viene consegnata su tre canali complementari:
+//   1. record persistente in store.notifications → il centro notifiche,
+//      consultabile in qualunque momento da PC e da telefono;
+//   2. SSE mirato → badge e riga che compaiono live nelle schede già
+//      aperte, senza aspettare un refresh;
+//   3. push web di sistema → arriva anche ad app chiusa (su iOS solo
+//      se la PWA è installata su schermata Home: limite di Apple).
+//
+// Il canale 1 c'è sempre; il 3 è disattivabile per tipo dall'utente.
+// ═══════════════════════════════════════════════════════════════════
+
+const NOTIFICATIONS_MAX_PER_USER = 200;
+const NOTIFICATIONS_MAX_AGE_DAYS = 60;
+
+// "2026-07-30" → "30/07/2026" per il corpo delle notifiche (le date ISO
+// grezze in una notifica di sistema si leggono male).
+function formatDateForNotification(value = "") {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : raw;
 }
 
-async function sendPushToCrewName(store, crewName, payload) {
-  const norm = normalizeCrewName(crewName);
-  if (!norm) return;
-  const users = store.users.filter((u) => u.role === "crew" && u.status === "active" && normalizeCrewName(u.crewName || u.name) === norm);
-  await Promise.allSettled(users.map((u) => sendPushToUser(store, u.id, payload)));
+function formatCurrencyForNotification(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "";
+  return `${amount.toFixed(2).replace(".", ",")} €`;
+}
+
+function getUserNotificationPrefs(store, userId) {
+  const all = store?.notificationPrefs && typeof store.notificationPrefs === "object"
+    ? store.notificationPrefs
+    : {};
+  return normalizeNotificationPrefs(all[String(userId || "")] || {});
+}
+
+// Risolve i destinatari da una descrizione di alto livello. Gli account
+// sospesi non ricevono nulla, e l'autore di un'azione non viene mai
+// notificato della propria azione (exceptUserId).
+function resolveNotificationRecipients(store, { userIds = [], role = "", crewName = "", exceptUserId = "" } = {}) {
+  const users = Array.isArray(store?.users) ? store.users : [];
+  const except = String(exceptUserId || "");
+  const wanted = new Set((Array.isArray(userIds) ? userIds : [userIds]).map((id) => String(id || "")).filter(Boolean));
+
+  if (role) {
+    users.filter((u) => u.role === role).forEach((u) => wanted.add(String(u.id)));
+  }
+  if (crewName) {
+    const norm = normalizeCrewName(crewName);
+    if (norm) {
+      users
+        .filter((u) => u.role === "crew" && normalizeCrewName(u.crewName || u.name) === norm)
+        .forEach((u) => wanted.add(String(u.id)));
+    }
+  }
+
+  return users.filter((u) => (
+    wanted.has(String(u.id))
+    && String(u.id) !== except
+    && u.status === "active"
+  ));
+}
+
+// `skipPush`: crea il record e l'evento live ma non manda la push. Serve al
+// solo endpoint di prova, che la manda per conto suo per poterne riportare
+// l'esito di consegna all'utente.
+async function notify(store, target = {}, payload = {}, { skipPush = false } = {}) {
+  const type = String(payload?.type || "").trim();
+  if (!type) return [];
+  const recipients = resolveNotificationRecipients(store, target);
+  if (!recipients.length) return [];
+
+  store.notifications = Array.isArray(store.notifications) ? store.notifications : [];
+  const created = [];
+
+  for (const user of recipients) {
+    const record = buildNotification({
+      id: randomUUID(),
+      userId: String(user.id),
+      type,
+      title: payload.title,
+      body: payload.body,
+      data: payload.data || {},
+      // Consente al chiamante di collassare eventi ripetuti in una sola
+      // riga (es. più messaggi nello stesso thread di chat).
+      dedupeKey: payload.dedupeKey || "",
+      createdAt: new Date().toISOString(),
+    });
+    if (!record) continue;
+
+    const result = upsertNotification(store.notifications, record);
+    store.notifications = result.list;
+    if (!result.notification) continue;
+    created.push(result.notification);
+
+    // Canale 2: la scheda già aperta si aggiorna subito, senza full render.
+    broadcastToUser(user.id, "notification:new", {
+      notification: result.notification,
+      unreadCount: countUnread(store.notifications, user.id),
+    });
+
+    // Canale 3: push di sistema, se l'utente non l'ha spenta per questo tipo.
+    const channels = resolveChannels(type, getUserNotificationPrefs(store, user.id));
+    if (channels.push && !skipPush) {
+      sendPushToUser(store, user.id, {
+        type,
+        title: result.notification.title,
+        body: result.notification.body,
+        data: { ...result.notification.data, notificationId: result.notification.id },
+      }).catch((err) => logError("notify:push", err, { userId: user.id, type }));
+    }
+  }
+
+  if (!created.length) return [];
+
+  store.notifications = pruneNotifications(store.notifications, {
+    maxPerUser: NOTIFICATIONS_MAX_PER_USER,
+    maxAgeDays: NOTIFICATIONS_MAX_AGE_DAYS,
+  });
+
+  // Persistenza best-effort ma VISIBILE (Fase 1 hardening): se fallisce
+  // finisce nei contatori di /api/healthz invece di sparire in silenzio.
+  writeGuard.safeWrite("storeNotifications", () => writeJson(STORE_PATH, store));
+
+  return created;
 }
 
 function pushSecurityEvent(store, type, actor, message, meta = {}) {
@@ -10069,6 +10237,18 @@ function reconcileStoreData(store) {
     ? store.usageEvents.map(normalizeUsageEventRecord).filter(Boolean).slice(0, 5000)
     : [];
 
+  // Centro notifiche: la potatura gira anche al caricamento, così uno store
+  // rimasto fermo a lungo non riparte con mesi di arretrato in memoria.
+  store.notifications = Array.isArray(store.notifications)
+    ? pruneNotifications(store.notifications, {
+        maxPerUser: NOTIFICATIONS_MAX_PER_USER,
+        maxAgeDays: NOTIFICATIONS_MAX_AGE_DAYS,
+      })
+    : [];
+  store.notificationPrefs = store.notificationPrefs && typeof store.notificationPrefs === "object" && !Array.isArray(store.notificationPrefs)
+    ? store.notificationPrefs
+    : {};
+
   const normalizedCommunications = normalizeCommunicationsStore(store.communications || {});
   if (!store.communications || typeof store.communications !== "object") changed = true;
   if (
@@ -12364,6 +12544,22 @@ async function handleApi(req, res, url) {
       ? { ...item, updatedAt: nowIso, lastMessagePreview: preview }
       : item);
     await writeJson(STORE_PATH, store);
+
+    // Notifica agli altri partecipanti del thread. Era il buco più grosso del
+    // sistema: una chat interna in cui una squadra in cantiere si accorgeva di
+    // un messaggio solo se teneva l'app aperta (poll ogni 15s).
+    // La dedupeKey per thread fa sì che dieci messaggi di fila restino una
+    // sola riga nel centro notifiche invece di dieci.
+    const authorLabel = String(currentUser.name || currentUser.email || "Messaggio").trim();
+    const recipientIds = (thread.participantIds || []).filter((id) => String(id) !== String(currentUser.id || ""));
+    notify(store, { userIds: recipientIds, exceptUserId: currentUser.id }, {
+      type: "chat_message",
+      title: authorLabel,
+      body: preview || "Nuovo messaggio",
+      data: { view: "communications", threadId: thread.id },
+      dedupeKey: `chat:${thread.id}`,
+    }).catch((err) => logError("notify:chat_message", err, { threadId: thread.id }));
+
     return sendJson(res, 200, message);
   }
 
@@ -12598,6 +12794,21 @@ async function handleApi(req, res, url) {
           // così i client connessi vedono il banner "N nuovi lead" istantaneamente
           for (const rec of importedRecords) {
             broadcastSalesRequestCreated(rec);
+          }
+          // Notifica all'ufficio: i lead arrivano da soli via IMAP, quindi senza
+          // una notifica ci si accorge di una richiesta solo aprendo la vista.
+          // Una riga sola per infornata (dedupeKey fissa), non N righe.
+          if (importedRecords.length) {
+            const leadLabel = importedRecords.length === 1
+              ? [importedRecords[0].firstName, importedRecords[0].lastName].filter(Boolean).join(" ").trim() || "Nuovo contatto"
+              : `${importedRecords.length} nuove richieste`;
+            await notify(store, { role: "office" }, {
+              type: "sales_request_new",
+              title: "Nuova richiesta di preventivo",
+              body: leadLabel,
+              data: { view: "sales-requests" },
+              dedupeKey: "sales-request-new",
+            });
           }
         } catch (mirrorErr) {
           console.warn("[reconcile] mirror Sheets fallito:", mirrorErr?.message);
@@ -13666,6 +13877,18 @@ async function handleApi(req, res, url) {
       date,
       type,
     }, currentUser.email || null).catch(() => {});
+
+    // L'ufficio deve accorgersi della richiesta senza dover passare a mano
+    // dalla vista Presenze: la coda di approvazione era del tutto silenziosa.
+    notify(store, { role: "office", exceptUserId: currentUser.id }, {
+      type: "absence_requested",
+      title: "Richiesta di assenza da approvare",
+      body: `${currentUser.name || currentUser.email}: ${TIMESHEET_ABSENCE_LABELS[type] || type} il ${formatDateForNotification(date)}`,
+      data: { view: "timesheet-office", absenceRequestId: request.id },
+      // Più richieste dello stesso dipendente non ancora viste restano una riga.
+      dedupeKey: `absence-req:${currentUser.id}`,
+    }).catch((err) => logError("notify:absence_requested", err, { requestId: request.id }));
+
     return sendJson(res, 200, { ok: true, request });
   }
 
@@ -13742,6 +13965,17 @@ async function handleApi(req, res, url) {
       date: reviewedRequest.date,
       type: reviewedRequest.type,
     }, currentUser.email || null).catch(() => {});
+
+    // L'esito torna al dipendente: senza questa notifica doveva ricontrollare
+    // la propria vista Presenze a intervalli, sperando in un aggiornamento.
+    const approved = reviewedRequest.status === "approved";
+    notify(store, { userIds: [reviewedRequest.userId], exceptUserId: currentUser.id }, {
+      type: "absence_decided",
+      title: approved ? "Richiesta di assenza approvata" : "Richiesta di assenza rifiutata",
+      body: `${TIMESHEET_ABSENCE_LABELS[reviewedRequest.type] || reviewedRequest.type} del ${formatDateForNotification(reviewedRequest.date)}`,
+      data: { view: "timesheet-me", absenceRequestId: reviewedRequest.id },
+    }).catch((err) => logError("notify:absence_decided", err, { requestId: reviewedRequest.id }));
+
     return sendJson(res, 200, { ok: true, request: reviewedRequest, absence });
   }
 
@@ -15070,7 +15304,16 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const now = new Date().toISOString();
     const existingContent = store.salesContents.find((item) => item.id === String(body.id || "")) || null;
+    // AGGIORNAMENTO PARZIALE: si parte dal record esistente e si sovrascrive
+    // solo ciò che il client manda davvero. Prima si normalizzava il body
+    // grezzo, quindi ogni campo non incluso veniva AZZERATO in silenzio: sia
+    // il salvataggio dal form sia il toggle "visibile ai rivenditori" mandano
+    // solo title/category/link/description/visibleToResellers, per cui su una
+    // scheda Portfolio sparivano `product` e `featured` → la scheda si
+    // scollegava dal prodotto, usciva dall'elenco filtrato e il pannello si
+    // resettava (l'utente lo vedeva come "la spunta torna indietro").
     const contentRecord = normalizeSalesContentRecord({
+      ...(existingContent || {}),
       ...body,
       attachments: existingContent?.attachments || body.attachments || [],
       createdAt: existingContent?.createdAt || body.createdAt || now,
@@ -15381,6 +15624,14 @@ async function handleApi(req, res, url) {
       shippingMethod: entry.shippingMethod,
       totalAmount: entry.totalAmount,
     }, currentUser.email || null).catch(() => {});
+
+    notify(store, { role: "office" }, {
+      type: "reseller_order_new",
+      title: "Nuovo ordine da rivenditore",
+      body: `${entry.resellerName || "Rivenditore"} — ${formatCurrencyForNotification(entry.totalAmount)}`,
+      data: { view: "reseller-orders", resellerOrderId: entry.id },
+    }).catch((err) => logError("notify:reseller_order_new", err, { requestId: entry.id }));
+
     return sendJson(res, 200, entry);
   }
 
@@ -16601,27 +16852,27 @@ async function handleApi(req, res, url) {
           console.error("[operations] persist failed:", writeErr?.message || writeErr);
         });
       });
-    // Push notifications: crew assegnata o ordine pronto per spedizione
+    // Notifiche: crew assegnata o ordine pronto per spedizione.
     const updatedOrder = store.orders[orderIndex];
     const newCrew = updatedOrder.operations?.installation?.crew || "";
     const prevCrew = current.operations?.installation?.crew || "";
     const newWHStatus = updatedOrder.operations?.warehouse?.status || "";
     const prevWHStatus = current.operations?.warehouse?.status || "";
     if (normalizeCrewName(prevCrew) !== normalizeCrewName(newCrew) && newCrew) {
-      sendPushToCrewName(store, newCrew, {
+      notify(store, { crewName: newCrew, exceptUserId: currentUser?.id }, {
         type: "crew_assigned",
         title: "Nuovo lavoro assegnato",
         body: `${updatedOrder.name || updatedOrder.id} — ${updatedOrder.operations?.installation?.installDate || "data da definire"}`,
         data: { orderId: updatedOrder.id, view: "installations" },
-      }).catch(() => {});
+      }).catch((err) => logError("notify:crew_assigned", err, { orderId: updatedOrder.id }));
     }
     if (prevWHStatus !== newWHStatus && newWHStatus === "pronto") {
-      sendPushToRole(store, "warehouse", {
+      notify(store, { role: "warehouse", exceptUserId: currentUser?.id }, {
         type: "warehouse_ready",
         title: "Ordine pronto per spedizione",
         body: updatedOrder.name || updatedOrder.id,
         data: { orderId: updatedOrder.id, view: "warehouse" },
-      }).catch(() => {});
+      }).catch((err) => logError("notify:warehouse_ready", err, { orderId: updatedOrder.id }));
     }
     return sendJson(res, 200, updatedOrder);
   }
@@ -17043,6 +17294,62 @@ async function handleApi(req, res, url) {
 
   // ─── Push subscriptions ──────────────────────────────────────────────────────
 
+  // ─── Centro notifiche ────────────────────────────────────────────────────
+  // La lista è sempre e solo quella dell'utente della sessione: non esiste
+  // parametro per leggere la casella di un altro account, nemmeno per l'ufficio.
+  if (url.pathname === "/api/notifications" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+    const all = Array.isArray(store.notifications) ? store.notifications : [];
+    return sendJson(res, 200, {
+      notifications: listNotificationsForUser(all, currentUser.id, { limit }),
+      unreadCount: countUnread(all, currentUser.id),
+    });
+  }
+
+  // Segna come lette: `ids` omesso o null → tutte. Scrive su disco solo se
+  // qualcosa è cambiato davvero (evita una riscrittura dello store ad ogni
+  // apertura del pannello).
+  if (url.pathname === "/api/notifications/read" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const body = await readBody(req);
+    const ids = Array.isArray(body?.ids) && body.ids.length ? body.ids : null;
+    const all = Array.isArray(store.notifications) ? store.notifications : [];
+    const result = markNotificationsRead(all, currentUser.id, ids);
+    store.notifications = result.list;
+    if (result.changed) await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, {
+      ok: true,
+      unreadCount: countUnread(store.notifications, currentUser.id),
+    });
+  }
+
+  // Preferenze push per tipo. Il catalogo dei tipi viaggia insieme ai valori
+  // così la UI non deve tenere una copia duplicata delle etichette.
+  if (url.pathname === "/api/notifications/preferences" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    return sendJson(res, 200, {
+      types: Object.entries(NOTIFICATION_TYPES).map(([id, meta]) => ({
+        id,
+        label: meta.label,
+        pushByDefault: meta.defaultChannels.includes("push"),
+      })),
+      preferences: getUserNotificationPrefs(store, currentUser.id),
+    });
+  }
+
+  if (url.pathname === "/api/notifications/preferences" && req.method === "PUT") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    const body = await readBody(req);
+    const prefs = normalizeNotificationPrefs(body?.preferences || {});
+    store.notificationPrefs = store.notificationPrefs && typeof store.notificationPrefs === "object"
+      ? store.notificationPrefs
+      : {};
+    store.notificationPrefs[String(currentUser.id)] = prefs;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true, preferences: prefs });
+  }
+
   if (url.pathname === "/api/push/vapid-public-key" && req.method === "GET") {
     return sendJson(res, 200, { publicKey: VAPID_PUBLIC_KEY || null });
   }
@@ -17095,6 +17402,15 @@ async function handleApi(req, res, url) {
     if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return sendJson(res, 503, { error: "push_not_configured" });
     const subs = (store.pushSubscriptions || []).filter((s) => s.userId === String(currentUser.id));
     if (!subs.length) return sendJson(res, 409, { error: "no_subscription" });
+    // Passa da notify() così la prova finisce anche nel centro notifiche:
+    // se la push non arriva ma la riga c'è, il problema è il permesso del
+    // dispositivo e non il server — diagnosi immediata per l'utente.
+    await notify(store, { userIds: [currentUser.id] }, {
+      type: "test",
+      title: "Notifiche attive ✓",
+      body: "Questa è una notifica di prova da PSI Ops.",
+      data: { view: "settings" },
+    }, { skipPush: true });
     const result = await sendPushToUser(store, currentUser.id, {
       type: "test",
       title: "Notifiche attive ✓",
@@ -17210,12 +17526,12 @@ async function handleApi(req, res, url) {
     writeAuditLog("job", jobId, "crew_update", update, currentUser.id).catch(() => {});
     if (update.installStatus && update.installStatus !== prev.installStatus) {
       const jobLabel = `${prev.firstName || ""} ${prev.lastName || ""}`.trim() || jobId;
-      sendPushToRole(store, "office", {
+      notify(store, { role: "office", exceptUserId: currentUser.id }, {
         type: "job_status_updated",
         title: "Stato lavoro aggiornato",
         body: `${currentUser.name || "Crew"}: ${jobLabel} → ${update.installStatus}`,
         data: { jobId, view: "installations" },
-      }).catch(() => {});
+      }).catch((err) => logError("notify:job_status_updated", err, { jobId }));
     }
     await writeJson(STORE_PATH, store);
     upsertJobToDb(store.jobs[jobIndex]).catch(() => {});

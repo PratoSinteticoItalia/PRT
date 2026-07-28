@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260728-orders-mobile-detail-stack" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260728-orders-mobile-detail-stack" />
+    <link rel="preload" href="./styles.css?v=20260728-content-partial-update" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260728-content-partial-update" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -152,6 +152,20 @@
             <button class="lang-btn is-active" data-lang="it">IT</button>
             <button class="lang-btn" data-lang="en">EN</button>
           </div>
+          <!-- Centro notifiche: la campanella sta in topbar, che è visibile sia
+               su desktop sia su mobile (sticky) → un solo punto d'accesso per
+               entrambi, senza duplicare il controllo nella bottom-nav. -->
+          <div class="notif-wrap">
+            <button id="notifications-button" class="topbar-btn notif-btn" type="button" aria-label="Notifiche" aria-expanded="false" aria-haspopup="dialog">
+              <span class="notif-bell" aria-hidden="true">🔔</span>
+              <span id="notifications-badge" class="notif-badge hidden" aria-hidden="true">0</span>
+            </button>
+          </div>
+          <!-- Il PANNELLO vive fuori dalla topbar (in fondo al body): la
+               topbar ha `transform: translateZ(0)` (fix anti-ghosting iOS) e
+               `contain: layout paint`, e un antenato con transform diventa il
+               blocco contenitore di un `position:fixed` — il pannello a tutto
+               schermo restava incastrato nei 129px della topbar. -->
           <div class="topbar-user">
             <div class="topbar-avatar">PT</div>
             <div class="topbar-user-copy">
@@ -2079,6 +2093,12 @@
                   <button type="button" class="ghost-button small-button" data-action="settings-reset-push">Disattiva su tutti i dispositivi</button>
                 </div>
                 <div id="push-status" class="panel-note hidden"></div>
+                <p class="panel-note notif-ios-hint">Su iPhone le notifiche push arrivano <strong>solo se l'app è installata</strong> sulla schermata Home (limite di Apple, non del portale). Il centro notifiche con la campanella funziona comunque su qualsiasi dispositivo.</p>
+                <div class="notif-prefs-block">
+                  <p class="panel-eyebrow" style="margin-bottom:6px;">Cosa notificare</p>
+                  <p class="panel-note" style="margin:0 0 10px;">Disattivando una voce non ricevi più la push di sistema; la notifica resta comunque nella campanella.</p>
+                  <div id="notification-prefs" class="notif-prefs"></div>
+                </div>
               </section>
               <section class="panel">
                 <div class="panel-head">
@@ -2618,6 +2638,19 @@
     </div>
 
     <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="false"></div>
+    <!-- Centro notifiche — vedi la nota accanto alla campanella in topbar per
+         il motivo per cui il pannello sta qui e non lì dentro. -->
+    <div id="notifications-panel" class="notif-panel hidden" role="dialog" aria-modal="false" aria-label="Notifiche">
+      <div class="notif-panel-head">
+        <strong>Notifiche</strong>
+        <div class="notif-panel-actions">
+          <button id="notifications-read-all" class="ghost-button small-button" type="button">Segna tutte lette</button>
+          <button id="notifications-close" class="notif-close-btn" type="button" aria-label="Chiudi">✕</button>
+        </div>
+      </div>
+      <div id="notifications-list" class="notif-list"></div>
+    </div>
+
     <div id="cmd-k-overlay" class="cmd-k-overlay hidden" role="dialog" aria-modal="true" aria-label="Ricerca rapida">
       <div class="cmd-k-backdrop"></div>
       <div class="cmd-k-box">
@@ -2668,7 +2701,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260728-orders-mobile-detail-stack" defer></script>
-    <script src="./app.js?v=20260728-orders-mobile-detail-stack" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260728-content-partial-update" defer></script>
+    <script src="./app.js?v=20260728-content-partial-update" type="module"></script>
   </body>
 </html>

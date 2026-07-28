@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260728-orders-mobile-detail-stack";
+} from "./lib/order-money.js?v=20260728-content-partial-update";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260728-orders-mobile-detail-stack";
+import { regionForCity } from "./lib/geo.js?v=20260728-content-partial-update";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260728-orders-mobile-detail-stack";
+} from "./lib/profit-split.js?v=20260728-content-partial-update";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260728-orders-mobile-detail-stack";
+} from "./lib/preventivo-pricing.js?v=20260728-content-partial-update";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260728-orders-mobile-detail-stack";
+const APP_SHELL_VERSION = "20260728-content-partial-update";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1173,6 +1173,14 @@ const state = {
   communicationsUnreadCount: 0,
   communicationsLoading: false,
   communicationsInitialized: false,
+  // ── Centro notifiche ──────────────────────────────────────────────────
+  // Lista personale dell'utente della sessione: va SEMPRE azzerata al cambio
+  // account (vedi applySessionPayload), il logout è SPA e non ricarica.
+  notifications: [],
+  notificationsUnread: 0,
+  notificationsLoadedAt: 0,
+  notificationsOpen: false,
+  notificationsLoading: false,
   // Chip "collega ordine" (solo lettura, vedi Aggancio operativo): ricerca +
   // ordine in sospeso da agganciare al prossimo messaggio.
   communicationsOrderPickerOpen: false,
@@ -1806,6 +1814,13 @@ const ui = {
   cmdKInput: document.getElementById("cmd-k-input"),
   cmdKResults: document.getElementById("cmd-k-results"),
   cmdKEmpty: document.getElementById("cmd-k-empty"),
+  notificationsButton: document.getElementById("notifications-button"),
+  notificationsBadge: document.getElementById("notifications-badge"),
+  notificationsPanel: document.getElementById("notifications-panel"),
+  notificationsList: document.getElementById("notifications-list"),
+  notificationsReadAll: document.getElementById("notifications-read-all"),
+  notificationsClose: document.getElementById("notifications-close"),
+  notificationPrefs: document.getElementById("notification-prefs"),
   topbarSearchInput: document.getElementById("topbar-search-input"),
   toastContainer: document.getElementById("toast-container"),
   warehouseExportBtn: document.getElementById("warehouse-export-btn"),
@@ -24254,6 +24269,13 @@ function applySessionPayload(session = {}) {
     state._portfolioCatalogLoaded = false;
     state.dashboardAttendanceShifts = [];
     state.dashboardAttendanceLoadedAt = 0;
+    // Le notifiche sono personali: senza questo azzeramento il nuovo utente
+    // vedrebbe (e potrebbe aprire) quelle di chi era collegato prima.
+    state.notifications = [];
+    state.notificationsUnread = 0;
+    state.notificationsLoadedAt = 0;
+    state.notificationsOpen = false;
+    closeNotificationsPanel();
     try { window.localStorage.removeItem("psi-marketing-items-v1"); } catch {}
     try { window.localStorage.removeItem("psi-reseller-cart"); } catch {}
     resetMarketingSyncFlagOnUserChange();
@@ -24413,6 +24435,17 @@ function startSessionEvents() {
       handleCrmV2RecordDeleted(payload);
     } catch (err) {
       console.warn("[sse] salesrequest:deleted handler error:", err?.message);
+    }
+  });
+
+  // Centro notifiche: evento MIRATO al destinatario (il server filtra per
+  // userId, non è un broadcast). Aggiorna badge e lista senza toccare render().
+  source.addEventListener("notification:new", (event) => {
+    if (sessionEventsSource !== source) return;
+    try {
+      handleIncomingNotification(parseSessionEventPayload(event));
+    } catch (err) {
+      console.warn("[sse] notification:new handler error:", err?.message);
     }
   });
 
@@ -24697,6 +24730,8 @@ function showApp() {
   }
   // Prodotti custom: servono anche al magazzino (autocomplete inventario).
   void loadCustomProducts();
+  void loadNotifications();
+  void loadNotificationPrefs();
   void registerPushSubscription();
   initQuoteGenerator();
   clearPendingCurrentViewRefresh();
@@ -31037,6 +31072,285 @@ function handleGlobalClick(event) {
     return;
   }
 }
+
+// ── Centro notifiche ───────────────────────────────────────────────────────
+// Il pannello si aggiorna in modo MIRATO (solo badge + lista), mai passando da
+// render(): quello ridisegna tutte le viste e farebbe ripartire le transizioni
+// aperte — è la causa nota dei bug di pannelli che si "congelano".
+
+const NOTIFICATION_ICONS = {
+  chat_message: "💬",
+  crew_assigned: "🧰",
+  warehouse_ready: "📦",
+  job_status_updated: "🔧",
+  absence_requested: "🗓️",
+  absence_decided: "✅",
+  sales_request_new: "📥",
+  reseller_order_new: "🛒",
+  test: "🔔",
+};
+
+function formatNotificationTime(value = "") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "adesso";
+  if (min < 60) return `${min} min fa`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `${hours} h fa`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "ieri";
+  if (days < 7) return `${days} giorni fa`;
+  return new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit" }).format(date);
+}
+
+async function loadNotifications({ silent = true } = {}) {
+  if (!state.currentUser || state.notificationsLoading) return;
+  state.notificationsLoading = true;
+  try {
+    const data = await apiFetch("/api/notifications?limit=50");
+    state.notifications = Array.isArray(data?.notifications) ? data.notifications : [];
+    state.notificationsUnread = Number(data?.unreadCount) || 0;
+    state.notificationsLoadedAt = Date.now();
+    renderNotificationsBadge();
+    if (state.notificationsOpen) renderNotificationsPanel();
+  } catch (err) {
+    if (!silent) showToast("Notifiche non caricate", "error");
+    console.warn("notifications_load_failed", err?.message || err);
+  } finally {
+    state.notificationsLoading = false;
+  }
+}
+
+function renderNotificationsBadge() {
+  if (!ui.notificationsBadge || !ui.notificationsButton) return;
+  const count = Math.max(0, Number(state.notificationsUnread) || 0);
+  ui.notificationsButton.classList.toggle("has-unread", count > 0);
+  if (!count) {
+    ui.notificationsBadge.classList.add("hidden");
+    ui.notificationsBadge.textContent = "0";
+    ui.notificationsButton.setAttribute("aria-label", "Notifiche");
+    return;
+  }
+  ui.notificationsBadge.classList.remove("hidden");
+  ui.notificationsBadge.textContent = count > 99 ? "99+" : String(count);
+  ui.notificationsButton.setAttribute("aria-label", `Notifiche, ${count} non lette`);
+}
+
+function renderNotificationsPanel() {
+  if (!ui.notificationsList) return;
+  const items = Array.isArray(state.notifications) ? state.notifications : [];
+  if (!items.length) {
+    ui.notificationsList.innerHTML = `<p class="notif-empty">Nessuna notifica.</p>`;
+    return;
+  }
+  ui.notificationsList.innerHTML = items.map((item) => {
+    const unread = !item.readAt;
+    const icon = NOTIFICATION_ICONS[item.type] || "🔔";
+    // `count` > 1 = più eventi collassati nella stessa riga (es. messaggi di
+    // seguito nello stesso thread): lo si dice, invece di mostrarne uno solo.
+    const badge = Number(item.count) > 1
+      ? `<span class="notif-count">${Number(item.count)}</span>`
+      : "";
+    return `<button type="button" class="notif-item${unread ? " is-unread" : ""}" data-notification-id="${escapeHtml(item.id)}">
+      <span class="notif-item-icon" aria-hidden="true">${icon}</span>
+      <span class="notif-item-body">
+        <span class="notif-item-title">${escapeHtml(item.title || "Notifica")}${badge}</span>
+        <span class="notif-item-text">${escapeHtml(item.body || "")}</span>
+        <span class="notif-item-time">${escapeHtml(formatNotificationTime(item.createdAt))}</span>
+      </span>
+    </button>`;
+  }).join("");
+}
+
+// Su desktop il pannello è un popover ancorato alla campanella, ma vive in
+// fondo al body (la topbar ha transform+contain e gli farebbe da blocco
+// contenitore), quindi le coordinate vanno calcolate qui. Sotto i 980px il
+// CSS lo porta a tutto schermo e questi inline non contano.
+const NOTIF_PANEL_MOBILE_MAX = 980;
+function positionNotificationsPanel() {
+  const panel = ui.notificationsPanel;
+  if (!panel || !ui.notificationsButton) return;
+  if (window.innerWidth <= NOTIF_PANEL_MOBILE_MAX) {
+    panel.style.top = "";
+    panel.style.right = "";
+    return;
+  }
+  const rect = ui.notificationsButton.getBoundingClientRect();
+  panel.style.top = `${Math.round(rect.bottom + 10)}px`;
+  panel.style.right = `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`;
+}
+
+function openNotificationsPanel() {
+  if (!ui.notificationsPanel) return;
+  state.notificationsOpen = true;
+  ui.notificationsPanel.classList.remove("hidden");
+  ui.notificationsButton?.setAttribute("aria-expanded", "true");
+  document.body.classList.add("notif-panel-open");
+  positionNotificationsPanel();
+  renderNotificationsPanel();
+  void loadNotifications();
+}
+
+function closeNotificationsPanel() {
+  if (!ui.notificationsPanel) return;
+  state.notificationsOpen = false;
+  ui.notificationsPanel.classList.add("hidden");
+  ui.notificationsButton?.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("notif-panel-open");
+}
+
+function toggleNotificationsPanel() {
+  if (state.notificationsOpen) closeNotificationsPanel();
+  else openNotificationsPanel();
+}
+
+async function markNotificationsRead(ids = null) {
+  const payload = ids ? { ids: Array.isArray(ids) ? ids : [ids] } : {};
+  // Ottimistico: la spunta si vede subito, il server conferma il conteggio.
+  const wanted = ids ? new Set((Array.isArray(ids) ? ids : [ids]).map(String)) : null;
+  const nowIso = new Date().toISOString();
+  state.notifications = state.notifications.map((item) => (
+    !item.readAt && (!wanted || wanted.has(String(item.id))) ? { ...item, readAt: nowIso } : item
+  ));
+  state.notificationsUnread = state.notifications.filter((item) => !item.readAt).length;
+  renderNotificationsBadge();
+  renderNotificationsPanel();
+  try {
+    const data = await apiFetch("/api/notifications/read", { method: "POST", body: JSON.stringify(payload) });
+    if (typeof data?.unreadCount === "number") {
+      state.notificationsUnread = data.unreadCount;
+      renderNotificationsBadge();
+    }
+  } catch (err) {
+    console.warn("notifications_read_failed", err?.message || err);
+    void loadNotifications();
+  }
+}
+
+// Click su una notifica: la segna letta e porta l'utente al punto giusto.
+// La navigazione riusa `setView` e, per la chat, il dispatcher già esistente
+// dell'elenco thread — nessuna logica di apertura duplicata qui.
+function activateNotification(id = "") {
+  const item = (state.notifications || []).find((n) => String(n.id) === String(id));
+  if (!item) return;
+  if (!item.readAt) void markNotificationsRead([item.id]);
+  closeNotificationsPanel();
+
+  const data = item.data || {};
+  const view = String(data.view || "");
+  if (!view) return;
+  if (!getAllowedViewsForRole().includes(view)) return;
+  setView(view);
+
+  if (data.threadId) {
+    // Il thread esiste solo dopo che la vista si è ridisegnata.
+    window.setTimeout(() => {
+      document
+        .querySelector(`[data-action="communications-select-thread"][data-id="${CSS.escape(String(data.threadId))}"]`)
+        ?.click();
+    }, 120);
+  }
+}
+
+// Evento SSE mirato: il server lo manda SOLO alle schede del destinatario.
+function handleIncomingNotification(payload = {}) {
+  const notification = payload?.notification;
+  if (!notification?.id) return;
+  const existingIndex = state.notifications.findIndex((n) => String(n.id) === String(notification.id));
+  if (existingIndex >= 0) {
+    // Riga collassata lato server (stesso thread): si aggiorna in place.
+    state.notifications[existingIndex] = notification;
+  } else {
+    state.notifications = [notification, ...state.notifications].slice(0, 50);
+  }
+  state.notificationsUnread = typeof payload.unreadCount === "number"
+    ? payload.unreadCount
+    : state.notifications.filter((n) => !n.readAt).length;
+  renderNotificationsBadge();
+  if (state.notificationsOpen) renderNotificationsPanel();
+}
+
+// ── Preferenze per tipo (Impostazioni) ─────────────────────────────────────
+// Il catalogo dei tipi arriva dal server insieme ai valori, così le etichette
+// non esistono in due copie che possono divergere.
+
+let notificationPrefsCache = null;
+
+async function loadNotificationPrefs() {
+  if (!ui.notificationPrefs || !state.currentUser) return;
+  try {
+    notificationPrefsCache = await apiFetch("/api/notifications/preferences");
+    renderNotificationPrefs();
+  } catch (err) {
+    console.warn("notification_prefs_load_failed", err?.message || err);
+  }
+}
+
+function renderNotificationPrefs() {
+  if (!ui.notificationPrefs || !notificationPrefsCache) return;
+  const { types = [], preferences = {} } = notificationPrefsCache;
+  ui.notificationPrefs.innerHTML = types.map((type) => {
+    const pref = preferences[type.id];
+    const on = pref && typeof pref.push === "boolean" ? pref.push : type.pushByDefault;
+    return `<label class="notif-pref-row">
+      <input type="checkbox" data-notif-pref="${escapeHtml(type.id)}"${on ? " checked" : ""} />
+      <span>${escapeHtml(type.label)}</span>
+    </label>`;
+  }).join("");
+}
+
+async function saveNotificationPrefs() {
+  if (!ui.notificationPrefs) return;
+  const preferences = {};
+  ui.notificationPrefs.querySelectorAll("[data-notif-pref]").forEach((input) => {
+    preferences[input.dataset.notifPref] = { push: input.checked };
+  });
+  try {
+    const data = await apiFetch("/api/notifications/preferences", {
+      method: "PUT",
+      body: JSON.stringify({ preferences }),
+    });
+    if (notificationPrefsCache) notificationPrefsCache.preferences = data?.preferences || preferences;
+    showToast("Preferenze notifiche salvate", "success");
+  } catch (err) {
+    showToast("Preferenze non salvate", "error");
+    console.warn("notification_prefs_save_failed", err?.message || err);
+    void loadNotificationPrefs();
+  }
+}
+
+ui.notificationPrefs?.addEventListener("change", (event) => {
+  if (event.target.matches("[data-notif-pref]")) void saveNotificationPrefs();
+});
+
+if (ui.notificationsButton) {
+  ui.notificationsButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleNotificationsPanel();
+  });
+}
+ui.notificationsClose?.addEventListener("click", () => closeNotificationsPanel());
+ui.notificationsReadAll?.addEventListener("click", () => { void markNotificationsRead(null); });
+ui.notificationsList?.addEventListener("click", (event) => {
+  const btn = event.target.closest?.("[data-notification-id]");
+  if (btn) activateNotification(btn.dataset.notificationId);
+});
+// Chiusura su click fuori ed Esc, come per la palette cmd-K. Il pannello NON
+// è più dentro .notif-wrap (sta in fondo al body), quindi va escluso a parte:
+// senza questo, un click su una riga chiuderebbe il pannello prima di aprirla.
+document.addEventListener("click", (event) => {
+  if (!state.notificationsOpen) return;
+  if (event.target.closest?.(".notif-wrap, .notif-panel")) return;
+  closeNotificationsPanel();
+});
+window.addEventListener("resize", () => {
+  if (state.notificationsOpen) positionNotificationsPanel();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.notificationsOpen) closeNotificationsPanel();
+});
 
 // ── Cmd+K global search ────────────────────────────────────────────────────
 
