@@ -12330,6 +12330,27 @@ body.mobile-filter-sheet-open {
     top: 0 !important;
   }
 
+  /* Il pannello è `display:grid` e qui sopra gli diamo un'altezza DEFINITA
+     (100dvh meno la back bar). Combinazione velenosa: `#orders
+     .panel-subsection` ha `overflow:hidden`, che per spec azzera la
+     dimensione minima automatica di un grid item — le tracce delle righe
+     collassavano a ~54px mentre il contenuto ne chiedeva 200-1200, e le
+     sezioni finivano schiacciate a sola intestazione (36px) e sovrapposte
+     tra loro. Risultato sul telefono: Commessa unificata, Preparazione,
+     Allegati e Storia visibili come titoli ma vuoti e non toccabili.
+     Nel drawer il pannello è solo una pila verticale che scorre: flex
+     column con figli non comprimibili elimina del tutto la questione
+     delle tracce. Il `gap: 14px` della griglia vale anche in flex.
+     Segnalato dall'utente il 28 lug 2026, riprodotto e misurato a 375px. */
+  body[data-drill-module="orders"] #orders .order-detail-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  body[data-drill-module="orders"] #orders .order-detail-panel > * {
+    flex: 0 0 auto;
+  }
+
   /* WAREHOUSE — nascondi page-header + lista panel, mostra solo detail-panel */
   /* Stesso problema di contain documentato sopra per #orders: .detail-panel
      qui sotto è position:fixed, senza neutralizzare il contain di #warehouse
