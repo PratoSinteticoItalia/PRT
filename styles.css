@@ -2946,6 +2946,22 @@ body.mobile-safe-mode .sidebar-section-head .sidebar-section-label {
   background: #f3f6f1;
 }
 
+/* Il nome file perde contro `.detail-box strong` (stessa specificità
+   0,1,1 di `.attachment-item strong`, ma dichiarata più avanti nel foglio →
+   vince lei): quando un allegato sta dentro una `.detail-box` (vista
+   Contenuti rivenditore), un nome lungo ("Cipresso 40mm
+   multidirezionale.pdf"...) restava su una riga sola e, con `overflow:
+   visible` di default, dipingeva fuori dalla card fino a sovrapporsi
+   all'etichetta della card accanto nella griglia. Specificità alzata con
+   il genitore reale (.attachment-grid, sempre presente) invece di
+   !important. Vale sia per l'ufficio che per il rivenditore, stessa card. */
+.attachment-grid .attachment-item strong {
+  display: block;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 .attachment-actions {
   display: flex;
   gap: 6px;
