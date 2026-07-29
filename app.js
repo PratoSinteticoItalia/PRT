@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260729-notif-order-label";
+} from "./lib/order-money.js?v=20260729-reseller-content-attachments";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260729-notif-order-label";
+import { regionForCity } from "./lib/geo.js?v=20260729-reseller-content-attachments";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260729-notif-order-label";
+} from "./lib/profit-split.js?v=20260729-reseller-content-attachments";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260729-notif-order-label";
+} from "./lib/preventivo-pricing.js?v=20260729-reseller-content-attachments";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260729-notif-order-label";
+const APP_SHELL_VERSION = "20260729-reseller-content-attachments";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12364,13 +12364,31 @@ function renderResellerSalesContent() {
       ${items.length ? items.map((item) => `
         <article class="detail-box">
           <strong>${escapeHtml(item.title || "")}</strong>
-          <span class="action-badge badge-info">${escapeHtml(item.category || "")}</span>
+          <span class="action-badge badge-info">${escapeHtml(getSalesContentCategoryLabel(item.category || ""))}</span>
           ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}
           ${item.link ? `<p><a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.link)}</a></p>` : ""}
+          ${renderResellerSalesContentAttachments(item.attachments)}
         </article>
       `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessun contenuto condiviso al momento." : "No content shared yet."}</div>`}
     </div>
   `;
+}
+
+// Il rivenditore aveva SOLO il link esterno (`item.link`): un contenuto
+// caricato come file (PDF, foto scheda tecnica...) invece che come link non
+// mostrava nulla — l'unico modo per "vederlo" restava chiedere all'ufficio.
+// Sola lettura, niente rimuovi/allega (quelli sono azioni dell'ufficio).
+function renderResellerSalesContentAttachments(attachments = []) {
+  const items = Array.isArray(attachments) ? attachments : [];
+  if (!items.length) return "";
+  return `<div class="attachment-grid">${items.map((item) => `
+    <a class="attachment-item reseller-attachment-item" href="${escapeHtml(item.url || "")}" target="_blank" rel="noreferrer">
+      ${isImageAttachment(item) && item.url
+        ? `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.name || "Allegato")}" loading="lazy" decoding="async" />`
+        : `<div class="attachment-file-badge">${escapeHtml(String(item.type || "file").split("/").pop()?.toUpperCase() || "FILE")}</div>`}
+      <strong>${escapeHtml(item.name || "Allegato")}</strong>
+    </a>
+  `).join("")}</div>`;
 }
 
 function renderDashboard() {

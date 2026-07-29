@@ -15414,12 +15414,21 @@ async function handleApi(req, res, url) {
 
   if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+\/attachments\/[^/]+\/file$/) && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
-    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const parts = url.pathname.split("/");
     const contentId = decodeURIComponent(parts[4]);
     const attachmentId = decodeURIComponent(parts[6]);
     const contentItem = store.salesContents.find((item) => item.id === contentId);
     if (!contentItem) return sendJson(res, 404, { error: "content_not_found" });
+    // Il rivenditore può scaricare l'allegato SOLO se la scheda è stata
+    // marcata visibile per lui — altrimenti finirebbe accessibile via URL
+    // anche quando l'ufficio l'ha nascosta. Prima l'endpoint era chiuso
+    // all'ufficio e basta: un contenuto caricato come FILE (non link
+    // esterno) restava invisibile al rivenditore anche quando la scheda
+    // era marcata "visibile ai rivenditori", perché il client per quel
+    // ruolo non ne mostrava nemmeno il link di download.
+    const allowed = currentUser.role === "office"
+      || (currentUser.role === "rivenditore" && Boolean(contentItem.visibleToResellers));
+    if (!allowed) return sendJson(res, 403, { error: "forbidden" });
     const attachment = (contentItem.attachments || []).find((item) => String(item.id || "") === attachmentId);
     if (!attachment) return sendJson(res, 404, { error: "attachment_not_found" });
     return streamAttachmentAsset(res, attachment);
