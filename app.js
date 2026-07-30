@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260730-shopify-order-dates-fulfilled-at";
+} from "./lib/order-money.js?v=20260730-ddt-issued-day-groups";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260730-shopify-order-dates-fulfilled-at";
+import { regionForCity } from "./lib/geo.js?v=20260730-ddt-issued-day-groups";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260730-shopify-order-dates-fulfilled-at";
+} from "./lib/profit-split.js?v=20260730-ddt-issued-day-groups";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260730-shopify-order-dates-fulfilled-at";
+} from "./lib/preventivo-pricing.js?v=20260730-ddt-issued-day-groups";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260730-shopify-order-dates-fulfilled-at";
+const APP_SHELL_VERSION = "20260730-ddt-issued-day-groups";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -23661,9 +23661,51 @@ function getDdtFilteredOrders() {
 function renderDdtListView() {
   if (!ui.ddtList) return;
   const orders = getDdtFilteredOrders();
-  ui.ddtList.innerHTML = orders.length
-    ? orders.map(renderDdtListCard).join("")
-    : `<div class="info-card">${state.lang === "it" ? "Nessun ordine con merce da trasportare per questo filtro." : "No orders with goods to transport for this filter."}</div>`;
+  if (!orders.length) {
+    ui.ddtList.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun ordine con merce da trasportare per questo filtro." : "No orders with goods to transport for this filter."}</div>`;
+    return;
+  }
+  // "Emessi" raggruppato per giorno di emissione — stesso pattern e stesso
+  // bisogno di "Evasi/chiusi" in Spedizioni: sapere quali DDT sono usciti
+  // ieri senza scorrere tutto l'archivio a occhio. Gli altri due filtri
+  // ("Tutti"/"Da emettere") non hanno una data di riferimento sensata
+  // (i "da emettere" non hanno ancora un DDT), restano lista piatta.
+  ui.ddtList.innerHTML = state.filters.ddt === "issued"
+    ? renderDdtIssuedArchive(orders)
+    : orders.map(renderDdtListCard).join("");
+}
+
+// Data di riferimento = ddt.createdAt, la stessa "Data" mostrata/editabile
+// nel form DDT: si aggiorna a ogni salvataggio (create-ddt in server.js),
+// quindi riflette sempre l'ultima emissione salvata per quell'ordine.
+function renderDdtIssuedArchive(orders = []) {
+  const groups = new Map();
+  orders.forEach((order) => {
+    const refValue = order.operations?.warehouse?.ddt?.createdAt || "";
+    const refDate = refValue ? new Date(refValue) : null;
+    const validDate = refDate && !Number.isNaN(refDate.getTime());
+    const key = validDate
+      ? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-${String(refDate.getDate()).padStart(2, "0")}`
+      : "unknown";
+    if (!groups.has(key)) groups.set(key, { dateValue: validDate ? refValue : "", orders: [] });
+    groups.get(key).orders.push(order);
+  });
+  const sortedKeys = [...groups.keys()].sort((a, b) => (a === "unknown" ? 1 : b === "unknown" ? -1 : b.localeCompare(a)));
+  return `<div class="shp-archive-groups">${sortedKeys.map((key) => {
+    const group = groups.get(key);
+    const label = key === "unknown"
+      ? (state.lang === "it" ? "Data non disponibile" : "Date unavailable")
+      : communicationDaySeparatorLabel(group.dateValue);
+    return `
+      <section class="shp-archive-day">
+        <div class="shp-group-label">
+          <h3>${escapeHtml(label)}</h3>
+          <span class="shp-gc">${formatCountLabel(group.orders.length, state.lang === "it" ? "DDT" : "DDT", state.lang === "it" ? "DDT" : "DDT")}</span>
+        </div>
+        <div class="shp-archive">${group.orders.map(renderDdtListCard).join("")}</div>
+      </section>
+    `;
+  }).join("")}</div>`;
 }
 
 function renderDdt() {
