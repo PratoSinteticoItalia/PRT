@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260730-shipping-lane-color-swap";
+} from "./lib/order-money.js?v=20260730-shipping-done-lane-drawer-fix";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260730-shipping-lane-color-swap";
+import { regionForCity } from "./lib/geo.js?v=20260730-shipping-done-lane-drawer-fix";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260730-shipping-lane-color-swap";
+} from "./lib/profit-split.js?v=20260730-shipping-done-lane-drawer-fix";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260730-shipping-lane-color-swap";
+} from "./lib/preventivo-pricing.js?v=20260730-shipping-done-lane-drawer-fix";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260730-shipping-lane-color-swap";
+const APP_SHELL_VERSION = "20260730-shipping-done-lane-drawer-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -23303,6 +23303,12 @@ function renderShipping() {
   const isCompletedFilter = state.filters.shipping === "completed";
   const shippingGrid = ui.shippingList?.closest(".order-grid");
   if (shippingGrid) shippingGrid.classList.toggle("is-empty", orders.length === 0);
+  // Corsia "Usciti/Ritirati" del kanban: pesca da un set più ampio di `orders`
+  // (vedi sotto, filterOverride "completed"). Serve fuori dal ramo kanban
+  // altrimenti cliccare una di quelle card fa fallire il lookup sotto e il
+  // pannello dettaglio ripiega sul primo ordine di `orders` invece di aprire
+  // quello cliccato davvero.
+  let doneLaneOrdersForLookup = [];
   if (ui.shippingList) {
     if (isSampleFilter) {
       ui.shippingList.innerHTML = orders.length
@@ -23336,6 +23342,7 @@ function renderShipping() {
       const doneOrdersWide = filterOrdersForView("shipping", { filterOverride: "completed" })
         .filter((order) => getShippingStageLane(order) === "done")
         .sort(compareByOrderNumberDesc);
+      doneLaneOrdersForLookup = doneOrdersWide;
       const doneOrdersShown = doneOrdersWide.slice(0, SHIPPING_DONE_LANE_LIMIT);
       const doneHiddenCount = Math.max(0, doneOrdersWide.length - doneOrdersShown.length);
       const groupedOrders = ["prepare", "ready", "done"]
@@ -23399,7 +23406,10 @@ function renderShipping() {
     }
   }
 
-  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
+  const order = orders.find((item) => item.id === state.selectedOrderId)
+    || doneLaneOrdersForLookup.find((item) => item.id === state.selectedOrderId)
+    || orders[0]
+    || null;
   if (state.currentView === "shipping" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   const samplePanelActive = toggleShippingDetailPanel(order);
   if (!order) {
