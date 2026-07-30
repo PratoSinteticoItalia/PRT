@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260730-ddt-issued-day-groups";
+} from "./lib/order-money.js?v=20260730-shipping-done-lane-decoupled";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260730-ddt-issued-day-groups";
+import { regionForCity } from "./lib/geo.js?v=20260730-shipping-done-lane-decoupled";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260730-ddt-issued-day-groups";
+} from "./lib/profit-split.js?v=20260730-shipping-done-lane-decoupled";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260730-ddt-issued-day-groups";
+} from "./lib/preventivo-pricing.js?v=20260730-shipping-done-lane-decoupled";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260730-ddt-issued-day-groups";
+const APP_SHELL_VERSION = "20260730-shipping-done-lane-decoupled";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -10205,10 +10205,14 @@ function getInventorySummary() {
   return buildInventoryGroups();
 }
 
-function filterOrdersForView(kind) {
+// `filterOverride`: ignora il filtro attivo in state e usa questo al suo posto.
+// Serve a renderShipping per pescare, SOLO per la corsia "Usciti/Ritirati" del
+// kanban "Tutti", lo stesso insieme ampio (svincolato dalla chiusura contabile)
+// che il filtro "completed" già usa — senza mutare state.filters.shipping.
+function filterOrdersForView(kind, { filterOverride } = {}) {
   const searchKey = kind === "order" ? "orders" : kind;
   const search = state.search[searchKey] || "";
-  const filter = state.filters[kind === "order" ? "order" : kind];
+  const filter = filterOverride !== undefined ? filterOverride : state.filters[kind === "order" ? "order" : kind];
   return state.orders.filter((order) => {
     if (kind === "warehouse" && !orderNeedsWarehouseWork(order)) return false;
     if (kind === "shipping" && !(isRoutedToWarehouse(order) || isRoutedToInstallation(order))) return false;
@@ -22866,6 +22870,12 @@ function getShippingStageLane(order) {
   return "prepare";
 }
 
+// Quante card mostrare nella corsia "Usciti/Ritirati" del kanban "Tutti".
+// Da quando quella corsia non dipende più dalla chiusura contabile (vedi
+// renderShipping), crescerebbe senza limite nel tempo — qui si vede solo il
+// più recente, il resto è a un click in "Evasi/chiusi" (raggruppato per giorno).
+const SHIPPING_DONE_LANE_LIMIT = 20;
+
 function getShippingLaneMeta(lane) {
   if (lane === "ready") {
     return {
@@ -23261,16 +23271,38 @@ function renderShipping() {
       // Raggruppamento per FASE (pipeline), non per modalità: la modalità è
       // read-only (impostata dall'ufficio) e resta come chip sulla card.
       // Tutte e 3 le corsie sempre presenti (anche vuote): sono drop-target del kanban.
+      //
+      // La corsia "Usciti/Ritirati" NON usa `orders` (che qui esclude gli
+      // ordini chiusi anche contabilmente — filtro attivo "all"): su richiesta
+      // esplicita dell'utente, Spedizioni deve restare svincolata dalla
+      // contabilità ("qui gestiamo il flusso fisico della merce"). Si pesca
+      // quindi lo stesso insieme ampio del filtro "completed" (via
+      // filterOverride, senza mutare state.filters.shipping) e si mostrano
+      // solo i più recenti: altrimenti la corsia crescerebbe per sempre,
+      // accumulando anni di ordini mai chiusi in contabilità. Il totale vero
+      // resta comunque in "Evasi/chiusi" (raggruppato per giorno).
+      const doneOrdersWide = filterOrdersForView("shipping", { filterOverride: "completed" })
+        .filter((order) => getShippingStageLane(order) === "done")
+        .sort((a, b) => new Date(getOrderFulfillmentReferenceDate(b) || 0) - new Date(getOrderFulfillmentReferenceDate(a) || 0));
+      const doneOrdersShown = doneOrdersWide.slice(0, SHIPPING_DONE_LANE_LIMIT);
+      const doneHiddenCount = Math.max(0, doneOrdersWide.length - doneOrdersShown.length);
       const groupedOrders = ["prepare", "ready", "done"]
-        .map((lane) => ({
-          ...getShippingLaneMeta(lane),
-          orders: orders.filter((order) => getShippingStageLane(order) === lane),
-        }));
+        .map((lane) => {
+          const laneOrders = lane === "done" ? doneOrdersShown : orders.filter((order) => getShippingStageLane(order) === lane);
+          return {
+            ...getShippingLaneMeta(lane),
+            orders: laneOrders,
+            // Per "done" il conteggio vero è quello ampio (doneOrdersWide),
+            // non la sola slice mostrata — altrimenti il badge "20" contro un
+            // KPI in alto che dice "134" sembrerebbe un altro bug di conteggio.
+            count: lane === "done" ? doneOrdersWide.length : laneOrders.length,
+          };
+        });
       const totalPreparedLines = orders.reduce((sum, order) => sum + getWarehousePreparedLines(order).length, 0);
       // KPI logistica allineati alle 3 fasi della pipeline
       const kpiPrepare = orders.filter((o) => getShippingStageLane(o) === "prepare").length;
       const kpiReady = orders.filter((o) => getShippingStageLane(o) === "ready").length;
-      const kpiDone = orders.filter((o) => getShippingStageLane(o) === "done").length;
+      const kpiDone = doneOrdersWide.length;
       // Corsia visibile su mobile (pattern a tab): default "Da preparare".
       const shippingMobileLane = state.shippingMobileLane || "prepare";
       ui.shippingList.innerHTML = orders.length
@@ -23289,7 +23321,7 @@ function renderShipping() {
                 ready: state.lang === "it" ? "Pronti" : "Ready",
                 done: state.lang === "it" ? "Usciti" : "Out",
               }[group.key] || group.title;
-              return `<button type="button" class="shp-lane-tab ${group.key === shippingMobileLane ? "is-active" : ""}" data-action="shp-set-lane" data-lane="${escapeAttr(group.key)}">${escapeHtml(shortLabel)} <span class="shp-lane-tab-c">${group.orders.length}</span></button>`;
+              return `<button type="button" class="shp-lane-tab ${group.key === shippingMobileLane ? "is-active" : ""}" data-action="shp-set-lane" data-lane="${escapeAttr(group.key)}">${escapeHtml(shortLabel)} <span class="shp-lane-tab-c">${group.count}</span></button>`;
             }).join("")}
           </div>
           <div class="shp-groups" data-mobile-lane="${escapeAttr(shippingMobileLane)}">
@@ -23297,11 +23329,16 @@ function renderShipping() {
               <section class="shp-group shp-lane-${group.key}" data-shp-lane-drop="${group.key}">
                 <div class="shp-group-label">
                   <h3>${escapeHtml(group.icon || "")} ${escapeHtml(group.title)}</h3>
-                  <span class="shp-gc">${group.orders.length}</span>
+                  <span class="shp-gc">${group.count}</span>
                 </div>
                 <div class="shp-group-list">
                   ${group.orders.map(renderShippingQueueCard).join("")}
                 </div>
+                ${group.key === "done" && doneHiddenCount > 0 ? `
+                  <button type="button" class="shp-show-all-done ghost-button small-button" data-action="shp-open-archive">
+                    ${state.lang === "it" ? `Vedi tutti (${doneOrdersWide.length}) in Evasi/chiusi →` : `See all (${doneOrdersWide.length}) in Fulfilled/closed →`}
+                  </button>
+                ` : ""}
               </section>
             `).join("")}
           </div>
@@ -31038,6 +31075,15 @@ function handleGlobalClick(event) {
   if (action === "close-shipping-drawer") {
     state.shippingDrawerOpen = false;
     applyShippingDrawerState();
+    return;
+  }
+  if (action === "shp-open-archive") {
+    // "Vedi tutti in Evasi/chiusi" dalla corsia Usciti/Ritirati: stessa
+    // transizione del tab filtro, per restare coerenti (tag attivo aggiornato).
+    state.filters.shipping = "completed";
+    state.shippingDrawerOpen = false;
+    ui.shippingFilterTags?.forEach((item) => item.classList.toggle("is-active", item.dataset.shippingFilter === "completed"));
+    renderShipping();
     return;
   }
   if (action === "shp-set-lane") {
