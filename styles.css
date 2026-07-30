@@ -23802,8 +23802,8 @@ body {
 .shp-group { background: transparent; border: none; border-radius: 0; padding: 0; }
 .shp-group-label { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding-bottom: 8px; border-bottom: 2px solid #e5e1d6; }
 .shp-lane-prepare .shp-group-label { border-bottom-color: #f59e0b; }
-.shp-lane-ready .shp-group-label { border-bottom-color: #22c55e; }
-.shp-lane-done .shp-group-label { border-bottom-color: #9ca3af; }
+.shp-lane-ready .shp-group-label { border-bottom-color: #3b82f6; }
+.shp-lane-done .shp-group-label { border-bottom-color: #22c55e; }
 .shp-group-label h3 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #8a9690; }
 .shp-gc { font-size: 11px; font-weight: 800; background: #ece8de; color: #5a6e63; padding: 1px 9px; border-radius: 999px; }
 .shp-group-list { display: flex; flex-direction: column; gap: 9px; min-height: 40px; }
@@ -23812,10 +23812,10 @@ body {
 /* Toni-fase coerenti con la palette crm-kanban */
 .shp-lane-prepare .shp-group-label h3 { color: #b45309; }
 .shp-lane-prepare .shp-gc { background: #fef3c7; color: #92400e; }
-.shp-lane-ready .shp-group-label h3 { color: #15803d; }
-.shp-lane-ready .shp-gc { background: #dcfce7; color: #166534; }
-.shp-lane-done .shp-group-label h3 { color: #6b7280; }
-.shp-lane-done .shp-gc { background: #eef0f2; color: #4b5563; }
+.shp-lane-ready .shp-group-label h3 { color: #1d4ed8; }
+.shp-lane-ready .shp-gc { background: #dbeafe; color: #1e40af; }
+.shp-lane-done .shp-group-label h3 { color: #15803d; }
+.shp-lane-done .shp-gc { background: #dcfce7; color: #166534; }
 .shp-lane-done .shp-group-list { opacity: .88; }
 
 /* Le righe diventano card VERTICALI dentro le colonne kanban */
@@ -24158,13 +24158,13 @@ body {
 .shp-date { font-size: 11.5px; color: #8a9690; font-variant-numeric: tabular-nums; }
 .shp-chip { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 5px; letter-spacing: .03em; }
 .shp-chip.prep { background: #fef3c7; color: #92400e; }
-.shp-chip.ready { background: #d1fae5; color: #065f46; }
+.shp-chip.ready { background: #dbeafe; color: #1e40af; }
 .shp-chip.work { background: #e0edff; color: #1e40af; }
 .shp-chip.block { background: #fee2e2; color: #991b1b; }
-/* Corsia "Usciti/Ritirati": tono grigio dedicato (non verde) per non
-   confondersi con "Pronti per uscita/ritiro", che ha lo stesso stage.tone
-   "green" ma è una fase diversa. Stessa palette del resto della corsia. */
-.shp-chip.done { background: #eef0f2; color: #4b5563; }
+/* Corsia "Usciti/Ritirati" (fase davvero conclusa): verde. "Pronti per
+   uscita/ritiro" usa il blu sopra così le due fasi restano distinguibili
+   anche se condividono lo stesso stage.tone "green" a monte. */
+.shp-chip.done { background: #d1fae5; color: #065f46; }
 .shp-action { padding: 8px 13px; background: #1a2e26; color: #fff; border: none; border-radius: 7px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; opacity: 0; transition: opacity .15s; }
 .shp-row:hover .shp-action, .shp-row.selected .shp-action { opacity: 1; }
 .shp-action.green { background: #10b981; }
@@ -24193,11 +24193,9 @@ body {
 }
 #shipping .shp-status-rail.prep { background: #f59e0b; }
 #shipping .shp-status-rail.work { background: #3b82f6; }
-#shipping .shp-status-rail.ready { background: #10b981; }
+#shipping .shp-status-rail.ready { background: #3b82f6; }
 #shipping .shp-status-rail.block { background: #ef4444; }
-/* "done" non ha bisogno di una regola: ricade sul grigio di base di
-   .shp-status-rail sopra, che è esattamente il colore voluto (coerente con
-   l'intestazione già grigia della corsia Usciti/Ritirati). */
+#shipping .shp-status-rail.done { background: #10b981; }
 #shipping .shp-row.shp-ticket .shp-main {
   display: grid;
   gap: 10px;
