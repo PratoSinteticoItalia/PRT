@@ -41,11 +41,35 @@ test("timesheet requests: approvare crea l'assenza sul giorno richiesto", () => 
     userId: "u2",
     date: "2026-07-30",
     type: "vacation",
+    startTime: "",
+    endTime: "",
     note: "Viaggio",
     createdAt: reviewedAt,
     updatedAt: reviewedAt,
     updatedBy: "u1",
   });
+});
+
+test("timesheet requests: approvare un permesso porta con sé l'orario", () => {
+  const reviewedAt = "2026-07-26T13:00:00.000Z";
+  const result = reviewAbsenceRequest({
+    request: {
+      id: "request-3",
+      userId: "u2",
+      date: "2026-07-30",
+      type: "permit",
+      startTime: "14:00",
+      endTime: "16:00",
+      note: "Visita medica",
+      status: "pending",
+    },
+    action: "approve",
+    reviewerId: "u1",
+    reviewedAt,
+  });
+
+  assert.equal(result.absence.startTime, "14:00");
+  assert.equal(result.absence.endTime, "16:00");
 });
 
 test("timesheet requests: rifiutare non crea alcuna assenza", () => {

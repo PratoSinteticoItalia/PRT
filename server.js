@@ -2593,15 +2593,29 @@ const TIMESHEET_ABSENCE_REQUEST_STATUSES = new Set(["pending", "approved", "reje
 // Etichette in chiaro per il testo delle notifiche (la UI ha le sue).
 const TIMESHEET_ABSENCE_LABELS = { vacation: "Ferie", permit: "Permesso", sick: "Malattia" };
 
+// "14:00" → "14:00"; qualunque altra cosa (vuoto, formato libero, orario
+// invalido) → "". Solo il Permesso ha senso con un orario (poche ore), Ferie
+// e Malattia restano giornate intere — ma il campo si accetta e ignora
+// silenziosamente per gli altri tipi piuttosto che rifiutare la richiesta.
+function normalizeTimesheetAbsenceTime(value = "") {
+  const raw = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(raw) ? raw : "";
+}
+
 function normalizeTimesheetAbsence(record = {}) {
   const type = TIMESHEET_ABSENCE_TYPES.has(String(record.type || "").trim())
     ? String(record.type || "").trim()
     : "";
+  const isPermit = type === "permit";
   return {
     id: String(record.id || randomUUID()),
     userId: String(record.userId || "").trim(),
     date: String(record.date || "").trim(),
     type,
+    // Orario del permesso: solo per type "permit", altrimenti sempre vuoto
+    // (una giornata di ferie/malattia non ha un "dalle-alle" da mostrare).
+    startTime: isPermit ? normalizeTimesheetAbsenceTime(record.startTime) : "",
+    endTime: isPermit ? normalizeTimesheetAbsenceTime(record.endTime) : "",
     note: String(record.note || "").trim().slice(0, 500),
     createdAt: String(record.createdAt || new Date().toISOString()),
     updatedAt: String(record.updatedAt || new Date().toISOString()),
@@ -2628,11 +2642,14 @@ function normalizeTimesheetAbsenceRequest(record = {}) {
   const status = TIMESHEET_ABSENCE_REQUEST_STATUSES.has(String(record.status || "").trim())
     ? String(record.status || "").trim()
     : "pending";
+  const isPermit = type === "permit";
   return {
     id: String(record.id || randomUUID()),
     userId: String(record.userId || "").trim(),
     date: String(record.date || "").trim(),
     type,
+    startTime: isPermit ? normalizeTimesheetAbsenceTime(record.startTime) : "",
+    endTime: isPermit ? normalizeTimesheetAbsenceTime(record.endTime) : "",
     note: String(record.note || "").trim().slice(0, 500),
     status,
     requestedAt: String(record.requestedAt || record.createdAt || new Date().toISOString()),
@@ -13915,6 +13932,8 @@ async function handleApi(req, res, url) {
       userId: currentUser.id,
       date,
       type,
+      startTime: body.startTime,
+      endTime: body.endTime,
       note: body.note,
       status: "pending",
       requestedAt: existingIndex >= 0 ? list[existingIndex].requestedAt : nowIso,
@@ -13937,7 +13956,7 @@ async function handleApi(req, res, url) {
     notify(store, { role: "office", exceptUserId: currentUser.id }, {
       type: "absence_requested",
       title: "Richiesta di assenza da approvare",
-      body: `${currentUser.name || currentUser.email}: ${TIMESHEET_ABSENCE_LABELS[type] || type} il ${formatDateForNotification(date)}`,
+      body: `${currentUser.name || currentUser.email}: ${TIMESHEET_ABSENCE_LABELS[type] || type} il ${formatDateForNotification(date)}${request.startTime && request.endTime ? ` (${request.startTime}-${request.endTime})` : ""}`,
       data: { view: "timesheet-office", absenceRequestId: request.id },
       // Più richieste dello stesso dipendente non ancora viste restano una riga.
       dedupeKey: `absence-req:${currentUser.id}`,
@@ -14114,6 +14133,8 @@ async function handleApi(req, res, url) {
       userId,
       date,
       type,
+      startTime: body.startTime,
+      endTime: body.endTime,
       note: body.note,
       createdAt: existingIndex >= 0 ? list[existingIndex].createdAt : nowIso,
       updatedAt: nowIso,
@@ -14125,6 +14146,8 @@ async function handleApi(req, res, url) {
       requestList[matchingRequestIndex] = normalizeTimesheetAbsenceRequest({
         ...requestList[matchingRequestIndex],
         type,
+        startTime: body.startTime,
+        endTime: body.endTime,
         note: body.note,
         status: "approved",
         updatedAt: nowIso,

@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260730-shipping-done-lane-order-number-sort";
+} from "./lib/order-money.js?v=20260730-shipping-done-tone-and-permit-hours";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260730-shipping-done-lane-order-number-sort";
+import { regionForCity } from "./lib/geo.js?v=20260730-shipping-done-tone-and-permit-hours";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260730-shipping-done-lane-order-number-sort";
+} from "./lib/profit-split.js?v=20260730-shipping-done-tone-and-permit-hours";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260730-shipping-done-lane-order-number-sort";
+} from "./lib/preventivo-pricing.js?v=20260730-shipping-done-tone-and-permit-hours";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260730-shipping-done-lane-order-number-sort";
+const APP_SHELL_VERSION = "20260730-shipping-done-tone-and-permit-hours";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21508,7 +21508,7 @@ function renderTimesheetDayDetail({
         <h3>${escapeHtml(title)}</h3>
       </div>
       ${absenceLabel
-        ? `<span class="ts-absence-chip ${escapeAttr(absence.type)}">${escapeHtml(absenceLabel)}</span>`
+        ? `<span class="ts-absence-chip ${escapeAttr(absence.type)}">${escapeHtml(absenceLabel)}${absence.startTime && absence.endTime ? ` ${escapeHtml(absence.startTime)}–${escapeHtml(absence.endTime)}` : ""}</span>`
         : (requestStatusLabel
           ? `<span class="ts-request-status ${escapeAttr(request.status)}">${escapeHtml(requestStatusLabel)}</span>`
           : "")}
@@ -21520,7 +21520,7 @@ function renderTimesheetDayDetail({
       <div><span>Verifica sede</span><strong>${anomaly.offSite ? "Fuori sede" : anomaly.verified ? "GPS verificato" : "Non disponibile"}</strong></div>
     </div>
     ${absence?.note ? `<p class="ts-detail-note"><strong>Nota:</strong> ${escapeHtml(absence.note)}</p>` : ""}
-    ${!absence && request ? `<p class="ts-detail-note"><strong>Richiesta ${escapeHtml((TIMESHEET_ABSENCE_LABELS[request.type] || "").toLowerCase())}:</strong> ${request.note ? escapeHtml(request.note) : "nessuna nota"}</p>` : ""}
+    ${!absence && request ? `<p class="ts-detail-note"><strong>Richiesta ${escapeHtml((TIMESHEET_ABSENCE_LABELS[request.type] || "").toLowerCase())}${request.startTime && request.endTime ? ` (${escapeHtml(request.startTime)}–${escapeHtml(request.endTime)})` : ""}:</strong> ${request.note ? escapeHtml(request.note) : "nessuna nota"}</p>` : ""}
     ${!shift && !absence && !request ? `<p class="ts-detail-empty">Nessuna timbratura o assenza registrata per questa giornata.</p>` : ""}
   `;
 }
@@ -21690,6 +21690,14 @@ async function renderTimesheetMe({ preserveScroll = false } = {}) {
               <span>Giorno richiesto</span>
               <input type="date" name="date" required value="${escapeAttr(selectedDate)}">
             </label>
+            <label class="ts-detail-field ts-request-time hidden" data-ts-request-time-field>
+              <span>Dalle</span>
+              <input type="time" name="startTime">
+            </label>
+            <label class="ts-detail-field ts-request-time hidden" data-ts-request-time-field>
+              <span>Alle</span>
+              <input type="time" name="endTime">
+            </label>
             <label class="ts-detail-field ts-request-note">
               <span>Nota per l’ufficio</span>
               <input type="text" name="note" maxlength="500" placeholder="Facoltativa">
@@ -21706,7 +21714,7 @@ async function renderTimesheetMe({ preserveScroll = false } = {}) {
             <div class="ts-request-row">
               <div class="ts-request-row-date">
                 <strong>${escapeHtml(formatTimesheetDate(request.date))}</strong>
-                <span>${escapeHtml(TIMESHEET_ABSENCE_LABELS[request.type] || "")}${request.note ? ` · ${escapeHtml(request.note)}` : ""}</span>
+                <span>${escapeHtml(TIMESHEET_ABSENCE_LABELS[request.type] || "")}${request.startTime && request.endTime ? ` ${escapeHtml(request.startTime)}–${escapeHtml(request.endTime)}` : ""}${request.note ? ` · ${escapeHtml(request.note)}` : ""}</span>
               </div>
               <span class="ts-request-status ${escapeAttr(request.status)}">${escapeHtml(TIMESHEET_REQUEST_STATUS_LABELS[request.status] || request.status)}</span>
               ${request.status === "pending" ? `<button type="button" class="btn subtle" data-ts-request-cancel="${escapeAttr(request.id)}">Annulla</button>` : ""}
@@ -21747,6 +21755,7 @@ function bindTimesheetMeRequests(root) {
   const form = root.querySelector("[data-ts-request-form]");
   if (!form) return;
   const typeInput = form.querySelector('input[name="type"]');
+  const timeFields = form.querySelectorAll("[data-ts-request-time-field]");
   form.querySelectorAll("[data-ts-request-type]").forEach((button) => {
     button.addEventListener("click", () => {
       const type = String(button.dataset.tsRequestType || "");
@@ -21754,6 +21763,9 @@ function bindTimesheetMeRequests(root) {
       form.querySelectorAll("[data-ts-request-type]").forEach((item) => {
         item.classList.toggle("is-active", item === button);
       });
+      // L'orario ha senso solo per il Permesso (poche ore) — Ferie e
+      // Malattia restano giornate intere.
+      timeFields.forEach((field) => field.classList.toggle("hidden", type !== "permit"));
     });
   });
 
@@ -21768,6 +21780,8 @@ function bindTimesheetMeRequests(root) {
         body: JSON.stringify({
           date: values.get("date"),
           type: values.get("type"),
+          startTime: values.get("startTime"),
+          endTime: values.get("endTime"),
           note: values.get("note"),
         }),
       });
@@ -21901,6 +21915,24 @@ function renderTimesheetOfficeDetailMarkup({
             ].map(([type, label]) => `
               <button type="button" class="${(absence?.type || "none") === type ? "is-active" : ""}" data-ts-absence-type="${type}">${label}</button>
             `).join("")}
+          </div>
+          <!-- Sempre visibili (non solo quando il tipo attivo è già "Permesso"):
+               altrimenti selezionare Permesso per la prima volta da un altro
+               stato non lascerebbe mai il tempo di compilarle PRIMA del click
+               che salva — stesso problema che avrebbe una visibilità condizionale
+               qui, dato che ogni bottone tipo salva immediatamente al click
+               (stesso pattern già usato per il campo Nota qui sotto). Rilevanti
+               solo per il Permesso, ma innocue per Ferie/Malattia (il server le
+               ignora silenziosamente per quei tipi). -->
+          <div class="ts-absence-time-fields">
+            <label class="ts-detail-field">
+              <span>Dalle</span>
+              <input type="time" data-ts-absence-start value="${escapeAttr(absence?.startTime || "")}">
+            </label>
+            <label class="ts-detail-field">
+              <span>Alle</span>
+              <input type="time" data-ts-absence-end value="${escapeAttr(absence?.endTime || "")}">
+            </label>
           </div>
           <label class="ts-detail-field">
             <span>Nota</span>
@@ -22327,6 +22359,8 @@ function bindTimesheetOfficeEditors(root, context = {}) {
             userId: selection.userId,
             date: selection.date,
             type: button.dataset.tsAbsenceType || "none",
+            startTime: root.querySelector("[data-ts-absence-start]")?.value || "",
+            endTime: root.querySelector("[data-ts-absence-end]")?.value || "",
             note: root.querySelector("[data-ts-absence-note]")?.value || "",
           }),
         });
@@ -22922,8 +22956,15 @@ function renderShippingQueueCard(order) {
     : (ddtNumber
       ? `<span class="shp-badge ok">DDT ${escapeHtml(ddtNumber)}</span>`
       : `<span class="shp-badge">${state.lang === "it" ? "DDT da creare" : "DDT to create"}</span>`);
-  const dotClass = getShippingDotClass(stage);
-  const chipClass = stage.tone === "green" ? "ready" : stage.tone === "blue" ? "work" : stage.tone === "red" ? "block" : "prep";
+  // Un ordine "done" (Usciti/Ritirati) ha quasi sempre stage.tone "green",
+  // esattamente come un ordine "ready" (Pronti per uscita/ritiro) — le due
+  // corsie finivano con la stessa barra/chip verde, indistinguibili a colpo
+  // d'occhio. Qui si forza un tono grigio dedicato, coerente con l'intestazione
+  // già grigia di quella corsia (vedi getShippingLaneMeta), quando la card è
+  // effettivamente nella corsia "done" — a prescindere dal tono dello stage.
+  const lane = getShippingStageLane(order);
+  const dotClass = lane === "done" ? "done" : getShippingDotClass(stage);
+  const chipClass = lane === "done" ? "done" : (stage.tone === "green" ? "ready" : stage.tone === "blue" ? "work" : stage.tone === "red" ? "block" : "prep");
   const modeTagClass = mode === "corriere" ? "courier" : mode === "ritiro" ? "pickup" : "van";
   // Icona modalità (read-only): la modalità la imposta l'ufficio, qui è solo informativa.
   const modeIcon = getShippingQueueGroupMeta(["corriere", "ritiro", "furgone"].includes(mode) ? mode : "altro").icon || "";
