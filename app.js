@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260730-shipping-done-lane-decoupled";
+} from "./lib/order-money.js?v=20260730-shipping-done-lane-order-number-sort";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260730-shipping-done-lane-decoupled";
+import { regionForCity } from "./lib/geo.js?v=20260730-shipping-done-lane-order-number-sort";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260730-shipping-done-lane-decoupled";
+} from "./lib/profit-split.js?v=20260730-shipping-done-lane-order-number-sort";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260730-shipping-done-lane-decoupled";
+} from "./lib/preventivo-pricing.js?v=20260730-shipping-done-lane-order-number-sort";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260730-shipping-done-lane-decoupled";
+const APP_SHELL_VERSION = "20260730-shipping-done-lane-order-number-sort";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -12895,18 +12895,25 @@ function openDashboardViewTarget(target) {
   setView(nextView);
 }
 
+// Cronologia numero ordine (decrescente: il più recente in cima), stessa
+// convenzione usata in tutta l'app per gli elenchi ordini. Estratta qui
+// perché usata anche dalla corsia "Usciti/Ritirati" di Spedizioni — l'utente
+// l'ha esplicitamente chiesta lì per non "vedere le card in ordine confuso"
+// (prima la corsia ordinava per data di evasione, che salta avanti e indietro
+// rispetto alla numerazione ordine invece di seguirla in modo prevedibile).
+function compareByOrderNumberDesc(a, b) {
+  const parseNum = (o) => parseInt(String(o.orderNumber || "0").replace(/\D/g, ""), 10) || 0;
+  const aNum = parseNum(a);
+  const bNum = parseNum(b);
+  if (aNum && bNum && aNum !== bNum) return bNum - aNum;
+  // Fallback: most recently updated/created
+  const aTime = new Date(a.updatedAt || a.createdAt || a.processedAt || 0).getTime();
+  const bTime = new Date(b.updatedAt || b.createdAt || b.processedAt || 0).getTime();
+  return bTime - aTime;
+}
+
 function renderOrders() {
-  const orders = filterOrdersForView("order").sort((a, b) => {
-    // Primary: Shopify order number descending (higher = newer)
-    const parseNum = (o) => parseInt(String(o.orderNumber || "0").replace(/\D/g, ""), 10) || 0;
-    const aNum = parseNum(a);
-    const bNum = parseNum(b);
-    if (aNum && bNum && aNum !== bNum) return bNum - aNum;
-    // Fallback: most recently updated/created
-    const aTime = new Date(a.updatedAt || a.createdAt || a.processedAt || 0).getTime();
-    const bTime = new Date(b.updatedAt || b.createdAt || b.processedAt || 0).getTime();
-    return bTime - aTime;
-  });
+  const orders = filterOrdersForView("order").sort(compareByOrderNumberDesc);
   const { pageItems, totalPages, totalItems } = paginateOrders(orders);
   const ordersGrid = ui.ordersList?.closest(".order-grid");
   if (ordersGrid) ordersGrid.classList.toggle("is-empty", orders.length === 0);
@@ -23281,9 +23288,13 @@ function renderShipping() {
       // solo i più recenti: altrimenti la corsia crescerebbe per sempre,
       // accumulando anni di ordini mai chiusi in contabilità. Il totale vero
       // resta comunque in "Evasi/chiusi" (raggruppato per giorno).
+      // Ordinata per numero ordine (non per data di evasione): la data
+      // salta avanti e indietro rispetto alla numerazione — un ordine vecchio
+      // evaso oggi finiva in cima sopra ordini più recenti, "confuso" da
+      // scorrere. Stessa cronologia usata in Inbox Ordini.
       const doneOrdersWide = filterOrdersForView("shipping", { filterOverride: "completed" })
         .filter((order) => getShippingStageLane(order) === "done")
-        .sort((a, b) => new Date(getOrderFulfillmentReferenceDate(b) || 0) - new Date(getOrderFulfillmentReferenceDate(a) || 0));
+        .sort(compareByOrderNumberDesc);
       const doneOrdersShown = doneOrdersWide.slice(0, SHIPPING_DONE_LANE_LIMIT);
       const doneHiddenCount = Math.max(0, doneOrdersWide.length - doneOrdersShown.length);
       const groupedOrders = ["prepare", "ready", "done"]
