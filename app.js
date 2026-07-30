@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260729-attachment-name-wrap-fix2";
+} from "./lib/order-money.js?v=20260730-shopify-order-dates-fulfilled-at";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260729-attachment-name-wrap-fix2";
+import { regionForCity } from "./lib/geo.js?v=20260730-shopify-order-dates-fulfilled-at";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260729-attachment-name-wrap-fix2";
+} from "./lib/profit-split.js?v=20260730-shopify-order-dates-fulfilled-at";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260729-attachment-name-wrap-fix2";
+} from "./lib/preventivo-pricing.js?v=20260730-shopify-order-dates-fulfilled-at";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260729-attachment-name-wrap-fix2";
+const APP_SHELL_VERSION = "20260730-shopify-order-dates-fulfilled-at";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -8942,6 +8942,15 @@ function formatInventoryNumber(value = 0) {
   return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(2))).replace(".", ",");
 }
 
+// Conteggio con singolare/plurale corretto ("1 riga" vs "3 righe"). Introdotta
+// dopo aver trovato lo stesso conteggio reso in 3-4 punti diversi, alcuni con
+// il singolare gestito e altri no (stesso identico numero, template diversi
+// mai armonizzati) — un solo posto da qui in avanti evita che diverga ancora.
+function formatCountLabel(count, singularSuffix, pluralSuffix) {
+  const n = Number(count) || 0;
+  return n === 1 ? `1 ${singularSuffix}` : `${n} ${pluralSuffix}`;
+}
+
 function formatInventoryPieceTypeLabel(pieceType = "") {
   const normalized = getInventoryPieceType({ pieceType });
   if (normalized === "residuo") return state.lang === "it" ? "Residuo" : "Offcut";
@@ -9439,11 +9448,9 @@ function getShippingMaterialCardSummary(order) {
       : (fallbackSplit.detail || (lineCount ? getShippingSummary(order) : noPhysicalGoodsText())),
     metric: sqm > 0
       ? `${formatInventoryNumber(sqm)} mq`
-      : `${lineCount} ${state.lang === "it" ? "righe" : "lines"}`,
+      : formatCountLabel(lineCount, state.lang === "it" ? "riga" : "line", state.lang === "it" ? "righe" : "lines"),
     lineCount,
-    lineLabel: lineCount === 1
-      ? (state.lang === "it" ? "1 riga materiale" : "1 material line")
-      : `${lineCount} ${state.lang === "it" ? "righe materiali" : "material lines"}`,
+    lineLabel: formatCountLabel(lineCount, state.lang === "it" ? "riga materiale" : "material line", state.lang === "it" ? "righe materiali" : "material lines"),
   };
 }
 
@@ -12542,10 +12549,12 @@ function buildOrderInboxStatusTrack(order) {
   if (openBalance <= 0) {
     chips.push({ label: state.lang === "it" ? "Saldato" : "Paid", tone: "is-ok", icon: "€" });
   } else {
+    // Niente icona "€" qui: formatCurrency() include già il simbolo nel
+    // numero ("1.322,85 €") — con l'icona si leggeva "€ Residuo 1.322,85 €",
+    // il simbolo ripetuto due volte sullo stesso chip.
     chips.push({
       label: state.lang === "it" ? `Residuo ${formatCurrency(openBalance)}` : `Open ${formatCurrency(openBalance)}`,
       tone: "is-warn",
-      icon: "€",
     });
   }
 
@@ -17404,7 +17413,7 @@ function renderWarehouse() {
             <div class="action-content">
               <div class="action-title">${composeClientName(order)} ${getOrderNumber(order)}</div>
               <div class="action-sub">${order.operations?.product || undefinedText()} · ${Math.round(getSafeOrderSqm(order))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
-              <div class="action-sub">${prepSummary || (state.lang === "it" ? "Nessuna riga selezionata" : "No prepared lines")} · ${preparedLines.length} ${state.lang === "it" ? "righe da preparare" : "lines to prepare"}</div>
+              <div class="action-sub">${prepSummary || (state.lang === "it" ? "Nessuna riga selezionata" : "No prepared lines")} · ${formatCountLabel(preparedLines.length, state.lang === "it" ? "riga da preparare" : "line to prepare", state.lang === "it" ? "righe da preparare" : "lines to prepare")}</div>
               <div class="action-sub">${getShippingTargetLabel(order)} · ${order.operations?.warehouse?.fulfillmentMode === "furgone" ? (state.lang === "it" ? "Caricare su furgone" : "Load on van") : getShippingModeLabel(order)}</div>
             </div>
             <div class="action-tail">
@@ -17442,7 +17451,7 @@ function renderWarehouse() {
         { label: t("primaryProduct"), value: order.operations?.product || undefinedText(), meta: `${formatInventoryNumber(getSafeOrderSqm(order))} mq · ${order.phone || (state.lang === "it" ? "Telefono non disponibile" : "Phone unavailable")}` },
         {
           label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation",
-          value: `${getWarehousePreparedLines(order).length} ${state.lang === "it" ? "righe da preparare" : "lines to prepare"}`,
+          value: formatCountLabel(getWarehousePreparedLines(order).length, state.lang === "it" ? "riga da preparare" : "line to prepare", state.lang === "it" ? "righe da preparare" : "lines to prepare"),
           meta: getWarehousePreparedLines(order).map((item) => `${item.title} x${item.quantity}`).join(" · ") || (state.lang === "it" ? "Nessuna riga inclusa" : "No included lines"),
         },
         {
@@ -23187,6 +23196,49 @@ function applyAccountingDrawerState() {
   if (scrim) scrim.classList.toggle("is-open", open);
 }
 
+// Riferimento temporale per "quando è stato evaso" un ordine, usato per
+// raggruppare l'archivio Evasi/chiusi per giorno. fulfilledAt è il campo
+// dedicato (stampato server-side una sola volta, qualunque sia la modalità
+// corriere/ritiro/furgone — vedi server.js); shippedAt è il suo predecessore
+// storico solo-corriere, tenuto come fallback per gli ordini gestiti prima
+// che fulfilledAt esistesse. updatedAt/createdAt sono l'ultima spiaggia per
+// ordini chiusi per altre vie (es. posa) che non hanno mai toccato la
+// logistica: la data è approssimata, meglio che sparire dal raggruppamento.
+function getOrderFulfillmentReferenceDate(order = {}) {
+  const wh = order.operations?.warehouse || {};
+  return wh.fulfilledAt || wh.shippedAt || order.updatedAt || order.createdAt || "";
+}
+
+function renderShippingCompletedArchive(orders = []) {
+  const groups = new Map(); // chiave "YYYY-MM-DD" locale -> { dateValue, orders[] }
+  orders.forEach((order) => {
+    const refValue = getOrderFulfillmentReferenceDate(order);
+    const refDate = refValue ? new Date(refValue) : null;
+    const validDate = refDate && !Number.isNaN(refDate.getTime());
+    const key = validDate
+      ? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-${String(refDate.getDate()).padStart(2, "0")}`
+      : "unknown";
+    if (!groups.has(key)) groups.set(key, { dateValue: validDate ? refValue : "", orders: [] });
+    groups.get(key).orders.push(order);
+  });
+  const sortedKeys = [...groups.keys()].sort((a, b) => (a === "unknown" ? 1 : b === "unknown" ? -1 : b.localeCompare(a)));
+  return `<div class="shp-archive-groups">${sortedKeys.map((key) => {
+    const group = groups.get(key);
+    const label = key === "unknown"
+      ? (state.lang === "it" ? "Data non disponibile" : "Date unavailable")
+      : communicationDaySeparatorLabel(group.dateValue);
+    return `
+      <section class="shp-archive-day">
+        <div class="shp-group-label">
+          <h3>${escapeHtml(label)}</h3>
+          <span class="shp-gc">${formatCountLabel(group.orders.length, state.lang === "it" ? "ordine" : "order", state.lang === "it" ? "ordini" : "orders")}</span>
+        </div>
+        <div class="shp-archive">${group.orders.map(renderShippingQueueCard).join("")}</div>
+      </section>
+    `;
+  }).join("")}</div>`;
+}
+
 function renderShipping() {
   const orders = filterOrdersForView("shipping");
   const isSampleFilter = state.filters.shipping === "sample";
@@ -23199,9 +23251,11 @@ function renderShipping() {
         ? `<div class="sample-list">${orders.map(renderSampleShippingRow).join("")}</div>`
         : `<div class="info-card">${state.lang === "it" ? "Nessun ordine Box campioni con questo filtro." : "No sample-box orders for this filter."}</div>`;
     } else if (isCompletedFilter) {
-      // Archivio Evasi/chiusi: lista piatta (il kanban a 3 fasi non si applica).
+      // Archivio Evasi/chiusi, raggruppato per giorno di evasione (Oggi/Ieri/
+      // data) invece di lista piatta: prima non c'era modo di rispondere a
+      // "cosa ho evaso ieri" senza scorrere/cercare a occhio tutto l'archivio.
       ui.shippingList.innerHTML = orders.length
-        ? `<div class="shp-archive">${orders.map(renderShippingQueueCard).join("")}</div>`
+        ? renderShippingCompletedArchive(orders)
         : `<div class="info-card">${state.lang === "it" ? "Nessun ordine evaso o chiuso." : "No fulfilled or closed orders."}</div>`;
     } else {
       // Raggruppamento per FASE (pipeline), non per modalità: la modalità è

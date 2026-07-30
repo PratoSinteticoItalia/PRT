@@ -6507,6 +6507,13 @@ body {
 #orders .order-job-hub-grid .detail-box strong {
   font-size: 18px;
   line-height: 1.2;
+  /* La regola generica .detail-box strong (altrove in questo foglio) forza
+     white-space:nowrap, pensata per numeri KPI corti. Qui dentro il valore
+     è spesso un indirizzo o un nome cliente: su mobile veniva tagliato a
+     metà parola invece di andare a capo. Specificità (id+2 classi) più alta
+     della regola generica, la vince a prescindere dall'ordine nel foglio. */
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 #orders .order-summary-grid .detail-box p,
@@ -11996,6 +12003,14 @@ body.mobile-safe-mode .nav-link.is-active {
 @media (max-width: 768px) {
   .mobile-filter-fab {
     display: inline-flex;
+    /* Il valore base (16px) non teneva conto della bottom-nav (fixed, ~64px
+       + safe-area — stesso riferimento già usato da .timesheet-banner poco
+       sotto in questo foglio): il FAB si sovrapponeva esattamente alla scheda
+       "Altro", coprendola in parte. Segnalato dall'utente su Inventario,
+       30 lug 2026 — stesso bug per cui era già stato disattivato su Ordini
+       (commit eb60214) senza mai correggerne la causa, quindi resta ancora
+       vivo qui e su qualunque altra vista che lo usi (Richieste, Contabilità). */
+    bottom: calc(64px + 16px + env(safe-area-inset-bottom, 0px));
   }
   /* Se in drill-down nascondiamo il FAB (la lista non e' visibile) */
   body[data-drill-module] .mobile-filter-fab {
@@ -12378,9 +12393,17 @@ body.mobile-filter-sheet-open {
   body[data-drill-module="warehouse"] #warehouse > *:not(:has(.detail-panel)) {
     display: none !important;
   }
-  /* Dentro la grid del modulo c'e' sia la lista (con #warehouse-list) sia il detail-panel.
-     La grid ha 2 children: section.list + section.detail-panel. Nascondi il primo. */
-  body[data-drill-module="warehouse"] #warehouse section:has(#warehouse-list) {
+  /* Dentro la grid del modulo ci sono 2 section: quella col catalogo giacenze
+     (#inventory-summary) e quella col dettaglio (.detail-panel). Nascondi la prima.
+     BUG STORICO (trovato 30 lug 2026): il marcatore usato qui era #warehouse-list,
+     ma quell'id è una sotto-lista ("Ordini da preparare") annidata DENTRO lo stesso
+     .detail-panel — quindi :has(#warehouse-list) matchava l'unica section che lo
+     contiene davvero, cioè il .detail-panel stesso, e lo nascondeva per intero.
+     Risultato: su mobile, aprire un ordine da Inventario mostrava solo lo scrim
+     scuro e la barra "Indietro" — l'intero flusso Impegna/Scarica merce/Libera
+     impegni spariva. #inventory-summary esiste SOLO nella section del catalogo,
+     mai in quella di dettaglio: marcatore corretto e univoco. */
+  body[data-drill-module="warehouse"] #warehouse section:has(#inventory-summary) {
     display: none !important;
   }
   body[data-drill-module="warehouse"] #warehouse::before {
@@ -12400,9 +12423,20 @@ body.mobile-filter-sheet-open {
     left: auto !important;
     width: 94vw !important;
     max-width: 460px !important;
-    height: auto !important;
+    /* BUG (30 lug 2026): con height:auto insieme a top+bottom, per spec CSS
+       height vince e bottom viene ignorato — il box cresce quanto il
+       contenuto (qui facilmente >2000px: lista "Ordini da preparare" +
+       dettaglio + pulsanti Impegna/Scarica merce) invece di fermarsi al
+       bordo inferiore dello schermo. Risultato: overflow-y:auto qui sotto
+       non aveva nulla da far scorrere (nessun overflow reale) e tutto ciò
+       che superava il primo schermo — inclusi i pulsanti dell'azione di
+       scarico — restava irraggiungibile, non essendo un elemento fixed
+       influenzato dallo scroll della pagina. Altezza esplicita come in
+       #orders: ora il box è alto quanto il viewport meno la back-bar e
+       overflow-y:auto scrolla davvero il contenuto in eccesso. */
+    height: calc(100dvh - var(--mobile-back-bar-h)) !important;
     min-height: 0 !important;
-    max-height: none !important;
+    max-height: calc(100dvh - var(--mobile-back-bar-h)) !important;
     margin: 0 !important;
     z-index: 1086;
     overflow-y: auto !important;
@@ -23779,6 +23813,8 @@ body {
 
 /* Vista archivio (Evasi/chiusi) e campioni: lista piatta a colonna singola */
 .shp-archive { display: flex; flex-direction: column; gap: 9px; max-width: 760px; }
+.shp-archive-groups { display: flex; flex-direction: column; gap: 24px; max-width: 760px; }
+.shp-archive-day .shp-archive { max-width: none; }
 
 /* === Drawer dettaglio Logistica === */
 #shipping .order-grid { grid-template-columns: 1fr; }

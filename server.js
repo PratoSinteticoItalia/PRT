@@ -6335,6 +6335,18 @@ function releaseInventoryCommitmentsForOrder(store = {}, order = {}) {
   };
 }
 
+// Stessa condizione di "gestito operativamente" usata lato client per la
+// corsia Spedizioni "Usciti/Ritirati" e per il filtro "Evasi/chiusi" — vedi
+// getShippingStageLane in app.js. Serve qui per stampare fulfilledAt nel
+// momento giusto, qualunque sia la modalità (corriere/ritiro/furgone).
+function isWarehouseLogisticsHandled(warehouse = {}) {
+  return Boolean(
+    warehouse.shipped
+    || String(warehouse.status || "").trim() === "ritirato"
+    || (String(warehouse.fulfillmentMode || "").trim() === "corriere" && warehouse.carrierPassed),
+  );
+}
+
 function shouldFulfillInventoryForOrder(order = {}) {
   const warehouse = order.operations?.warehouse || {};
   const installation = order.operations?.installation || {};
@@ -6380,6 +6392,7 @@ function fulfillInventoryCommitmentsForOrder(store = {}, order = {}) {
           inventoryAllocations: fulfilledAllocations,
           shipped: true,
           shippedAt: order.operations?.warehouse?.shippedAt || now,
+          fulfilledAt: order.operations?.warehouse?.fulfilledAt || now,
         },
       },
     }),
@@ -9965,6 +9978,12 @@ function buildDefaultOperations(order, linkedJob = null) {
       readyToShip: false,
       shipped: false,
       shippedAt: "",
+      // Timestamp neutro rispetto alla modalità (spedito/ritirato/caricato),
+      // stampato lato server la prima volta che l'ordine risulta "gestito
+      // operativamente" (vedi logisticsHandled). shippedAt esiste già ma è
+      // semanticamente legato al corriere; qui serve un riferimento valido
+      // per QUALSIASI modalità, usato per raggruppare Evasi/chiusi per giorno.
+      fulfilledAt: "",
       shopifyFulfilled: false,
       pickupLabel: "",
       vanLoadLabel: "",
@@ -10077,6 +10096,7 @@ function normalizeOperations(order, linkedJob = null) {
       readyToShip: Boolean(current.warehouse?.readyToShip ?? defaults.warehouse.readyToShip),
       shipped: Boolean(current.warehouse?.shipped ?? defaults.warehouse.shipped),
       shippedAt: current.warehouse?.shippedAt || defaults.warehouse.shippedAt,
+      fulfilledAt: current.warehouse?.fulfilledAt || defaults.warehouse.fulfilledAt,
       shopifyFulfilled: Boolean(current.warehouse?.shopifyFulfilled ?? defaults.warehouse.shopifyFulfilled),
       pickupLabel: current.warehouse?.pickupLabel || defaults.warehouse.pickupLabel,
       vanLoadLabel: current.warehouse?.vanLoadLabel || defaults.warehouse.vanLoadLabel,
@@ -10509,6 +10529,16 @@ function normalizeOrderPayload(order, index) {
     billing,
     financialStatus: String(order.financial_status || order.financialStatus || "pending"),
     fulfillmentStatus: String(order.fulfillment_status || order.fulfillmentStatus || "unfulfilled"),
+    // Shopify li manda (richiesti esplicitamente in fetchRecentRestOrders),
+    // ma finora restavano scartati: createdAt/updatedAt non finivano MAI
+    // sull'ordine locale. Oltre a servire come riferimento data-evasione di
+    // fallback per gli ordini evasi da Shopify (mai toccati manualmente,
+    // quindi senza operations.warehouse.fulfilledAt), questo è lo stesso
+    // campo che filterOrdersForView già usa per ordinare "più recente prima"
+    // — che quindi per gli ordini Shopify non ha mai davvero funzionato.
+    createdAt: order.created_at || order.createdAt || "",
+    updatedAt: order.updated_at || order.updatedAt || "",
+    processedAt: order.processed_at || order.processedAt || "",
     paymentMethod: Array.isArray(order.payment_gateway_names) ? order.payment_gateway_names.join(", ") : String(order.paymentMethod || ""),
     source: "shopify-json",
     note: order.note || "",
@@ -10600,6 +10630,12 @@ function normalizeGraphqlOrder(node, index) {
     billing,
     financialStatus: String(node.displayFinancialStatus || "pending"),
     fulfillmentStatus: String(node.displayFulfillmentStatus || "unfulfilled"),
+    // Vedi la nota gemella in normalizeOrderPayload (sync REST): stesso
+    // campo mai passato finora, qui aggiunto anche alla query GraphQL
+    // (getShopifyOrderFields) perché prima non veniva nemmeno richiesto.
+    createdAt: node.createdAt || "",
+    updatedAt: node.updatedAt || "",
+    processedAt: node.processedAt || "",
     paymentMethod: Array.isArray(node.paymentGatewayNames) ? node.paymentGatewayNames.join(", ") : "",
     source: "shopify-live",
     note: node.note || "",
@@ -10991,6 +11027,9 @@ function getShopifyOrderFields(lineLimit = 20) {
     name
     email
     note
+    createdAt
+    updatedAt
+    processedAt
     customAttributes {
       key
       value
@@ -16849,6 +16888,17 @@ async function handleApi(req, res, url) {
         store.jobs.find((job) => job.sourceOrderId === current.id) || null,
       ),
     };
+    // Riferimento data-evasione (per il raggruppamento per giorno in Evasi/
+    // chiusi): stampato una sola volta, la prima volta che l'ordine risulta
+    // gestito operativamente — qualunque sia la modalità. Non lo si tocca più
+    // dopo, altrimenti un salvataggio successivo (es. nota magazzino) sposta
+    // silenziosamente l'ordine su un altro giorno nell'archivio.
+    if (
+      isWarehouseLogisticsHandled(store.orders[orderIndex].operations?.warehouse)
+      && !store.orders[orderIndex].operations?.warehouse?.fulfilledAt
+    ) {
+      store.orders[orderIndex].operations.warehouse.fulfilledAt = new Date().toISOString();
+    }
     if (shouldFulfillInventoryForOrder(store.orders[orderIndex])) {
       const fulfillmentResult = fulfillInventoryCommitmentsForOrder(store, store.orders[orderIndex]);
       store.orders[orderIndex] = fulfillmentResult.order;
