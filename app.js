@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260730-shipping-done-lane-drawer-fix";
+} from "./lib/order-money.js?v=20260731-inventory-copy-and-polish";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260730-shipping-done-lane-drawer-fix";
+import { regionForCity } from "./lib/geo.js?v=20260731-inventory-copy-and-polish";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260730-shipping-done-lane-drawer-fix";
+} from "./lib/profit-split.js?v=20260731-inventory-copy-and-polish";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260730-shipping-done-lane-drawer-fix";
+} from "./lib/preventivo-pricing.js?v=20260731-inventory-copy-and-polish";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260730-shipping-done-lane-drawer-fix";
+const APP_SHELL_VERSION = "20260731-inventory-copy-and-polish";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2507,6 +2507,14 @@ function openMobileDrillDetail(module, itemId) {
   _acknowledgeIntentionalScroll(0);
   if (ui.mainContent) ui.mainContent.scrollTop = 0;
   try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
+  // I drawer di dettaglio (warehouse/orders/installations/accounting) hanno il
+  // proprio overflow-y:auto interno, indipendente dallo scroll della pagina
+  // resettato sopra: se un ordine precedente era stato scrollato in fondo, il
+  // drawer riapriva un ordine DIVERSO già scrollato a metà, con l'header
+  // sticky che finiva a sovrapporsi al contenuto invece di stare in cima.
+  document.querySelectorAll(
+    ".detail-panel, .order-detail-panel, .install-detail-panel, .accounting-detail-panel, .sales-request-detail-panel",
+  ).forEach((panel) => { panel.scrollTop = 0; });
   updateMobileDrillBackBar();
   try { updateMobileFilterFabVisibility(); } catch {}
   // History API: pushState così il back fisico del browser / swipe iOS chiude il drill-down
@@ -12371,13 +12379,15 @@ function renderResellerSalesContent() {
         <p>${state.lang === "it" ? "Materiali condivisi dall'ufficio per la tua attività." : "Materials shared by the office for your business."}</p>
       </div>
     </div>
-    <div class="detail-stack">
+    <div class="reseller-content-grid">
       ${items.length ? items.map((item) => `
-        <article class="detail-box">
-          <strong>${escapeHtml(item.title || "")}</strong>
-          <span class="action-badge badge-info">${escapeHtml(getSalesContentCategoryLabel(item.category || ""))}</span>
-          ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}
-          ${item.link ? `<p><a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.link)}</a></p>` : ""}
+        <article class="reseller-content-card">
+          <div class="reseller-content-card-head">
+            <strong>${escapeHtml(item.title || "")}</strong>
+            <span class="sales-category-pill">${escapeHtml(getSalesContentCategoryLabel(item.category || ""))}</span>
+          </div>
+          ${item.description ? `<p class="reseller-content-desc">${escapeHtml(item.description)}</p>` : ""}
+          ${item.link ? `<a class="reseller-content-link" href="${escapeHtml(item.link)}" target="_blank" rel="noopener"><span>${state.lang === "it" ? "Apri link" : "Open link"}</span><span class="icon-arrow">↗</span></a>` : ""}
           ${renderResellerSalesContentAttachments(item.attachments)}
         </article>
       `).join("") : `<div class="info-card">${state.lang === "it" ? "Nessun contenuto condiviso al momento." : "No content shared yet."}</div>`}
@@ -17177,7 +17187,7 @@ function renderInventoryCard(group) {
     ? `${totalPieces} ${state.lang === "it" ? "pezzi" : "pieces"}`
     : `${group.totalUnits} ${unitDetailLabel}`;
   const demandOrdersLabel = group.demandOrders.length
-    ? ` · ${group.demandOrders.length} ${state.lang === "it" ? "ordini in attesa" : "orders waiting"}`
+    ? ` · ${state.lang === "it" ? formatCountLabel(group.demandOrders.length, "ordine in attesa", "ordini in attesa") : formatCountLabel(group.demandOrders.length, "order waiting", "orders waiting")}`
     : "";
 
   return `
@@ -17458,8 +17468,8 @@ function renderWarehouse() {
   ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Inventario operativo" : "Inventory operations";
   ui.warehouseDetailFields.innerHTML = order
     ? `${[
-        { label: t("selectedOrder"), value: `${composeClientName(order)} · ${getOrderNumber(order)}`, meta: composeAddress(order) || addressIncompleteText() },
-        { label: t("primaryProduct"), value: order.operations?.product || undefinedText(), meta: `${formatInventoryNumber(getSafeOrderSqm(order))} mq · ${order.phone || (state.lang === "it" ? "Telefono non disponibile" : "Phone unavailable")}` },
+        { label: t("selectedOrder"), value: `${composeClientName(order)} · ${getOrderNumber(order)}`, meta: `${composeAddress(order) || addressIncompleteText()} · ${order.phone || (state.lang === "it" ? "Telefono non disponibile" : "Phone unavailable")}` },
+        { label: t("primaryProduct"), value: order.operations?.product || undefinedText(), meta: `${formatInventoryNumber(getSafeOrderSqm(order))} mq` },
         {
           label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation",
           value: formatCountLabel(getWarehousePreparedLines(order).length, state.lang === "it" ? "riga da preparare" : "line to prepare", state.lang === "it" ? "righe da preparare" : "lines to prepare"),
@@ -24475,6 +24485,15 @@ function applySessionPayload(session = {}) {
     // Riportare sempre a "dashboard" evita che una view rimasta aperta (con
     // dati di un altro account) si ridisegni prima del suo refresh naturale.
     state.currentView = "dashboard";
+    // Il drill-down mobile è guidato da un attributo su <body>
+    // (data-drill-module), non da state.currentView: se l'account cambia
+    // mentre è aperto (es. dettaglio ordine a schermo intero), l'attributo
+    // sopravvive al reset sopra e la vecchia schermata resta "incollata"
+    // sopra la Dashboard del nuovo utente finché non si tocca qualcosa.
+    // Stesso discorso per eventuali sheet/drawer mobile rimasti aperti.
+    try { closeMobileDrillDetail({ skipHistory: true }); } catch {}
+    try { closeMobileFilterSheet(); } catch {}
+    try { closeCrmDrawer(); } catch {}
     state.officeResellerOrders = [];
     state.officeResellerOrdersLoadedAt = 0;
     state.officeResellerOrdersFilter = "all";
@@ -24493,6 +24512,14 @@ function applySessionPayload(session = {}) {
     state._portfolioCatalogLoaded = false;
     state.dashboardAttendanceShifts = [];
     state.dashboardAttendanceLoadedAt = 0;
+    // Prezzi fornitori: dato finanziario sensibile, solo ufficio. Senza
+    // azzerare anche il flag "Loaded" un secondo utente ufficio che apre
+    // Fornitori si ritroverebbe i prezzi già in state (mai ri-richiesti,
+    // perché loadSupplierPriceEntries() salta se già "loaded").
+    state.supplierPriceEntries = [];
+    state.supplierProfiles = [];
+    state.supplierPricesLoaded = false;
+    state.supplierPricesLoading = false;
     // Le notifiche sono personali: senza questo azzeramento il nuovo utente
     // vedrebbe (e potrebbe aprire) quelle di chi era collegato prima.
     state.notifications = [];
@@ -31274,7 +31301,16 @@ function handleGlobalClick(event) {
         const warehouseDetail = document.getElementById("warehouse-detail-fields");
         const panel = warehouseDetail?.closest(".detail-panel");
         if (!warehouseDetail || !panel) return;
-        const delta = warehouseDetail.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+        // L'header (.detail-header) e' sticky DENTRO questo stesso pannello:
+        // allineare "Ordine selezionato" al top del pannello lo infila SOTTO
+        // l'header sticky invece che sotto di esso, sovrapponendo le prime
+        // righe (visto con "Ordine selezionato"/nome cliente tagliati a
+        // metà). Il bordo inferiore dell'header (sticky, quindi stabile a
+        // qualunque scrollTop) e' il vero riferimento — non serve dedurlo da
+        // panel.top + altezza header, che lascia un residuo di qualche px per
+        // padding/bordi non conteggiati.
+        const headerBottom = panel.querySelector(".detail-header")?.getBoundingClientRect().bottom ?? panel.getBoundingClientRect().top;
+        const delta = warehouseDetail.getBoundingClientRect().top - headerBottom;
         // behavior:"smooth" qui non anima in modo affidabile — istantaneo
         // come il resto dei ripristini scroll di questa vista (vedi sopra).
         panel.scrollTop += delta;

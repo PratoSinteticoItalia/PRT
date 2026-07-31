@@ -2961,6 +2961,17 @@ body.mobile-safe-mode .sidebar-section-head .sidebar-section-label {
   overflow-wrap: break-word;
   word-break: break-word;
 }
+/* Il nome file, quando è anche link (apre l'allegato in una nuova scheda),
+   ereditava il blu/sottolineato di default del browser — stona con il resto
+   della card, sempre in toni neutri. Sottolineatura solo on-hover, come
+   segnale di interattività senza il "link grezzo". */
+.attachment-grid .attachment-item strong a {
+  color: inherit;
+  text-decoration: none;
+}
+.attachment-grid .attachment-item strong a:hover {
+  text-decoration: underline;
+}
 
 .attachment-actions {
   display: flex;
@@ -25597,3 +25608,65 @@ select.sp-line-field { cursor: pointer; }
   .reseller-cart-line { grid-template-columns: 1fr; row-gap: 6px; }
   .reseller-cart-line-remove { justify-self: flex-end; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Contenuti (vista rivenditore) — sola lettura, stesso linguaggio
+   visivo delle card di renderSalesContent() invece del generico
+   .detail-box (pensato per KPI compatti, non per card editoriali).
+   ═══════════════════════════════════════════════════════════════════ */
+.reseller-content-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.reseller-content-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  border-radius: 22px;
+  border: 1px solid rgba(16, 24, 39, 0.08);
+  background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(247,249,251,0.86));
+  box-shadow: 0 12px 28px rgba(15, 23, 32, 0.06);
+}
+.reseller-content-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.reseller-content-card-head strong {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f1724;
+}
+.reseller-content-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted, #667688);
+}
+/* Il link non è più testo blu sottolineato "grezzo" (default <a>): un
+   chip cliccabile in linea con category-pill/bottoni resta leggibile
+   anche quando il link è un URL lungo, invece di sbordare la card. */
+.reseller-content-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(31, 70, 55, 0.16);
+  background: rgba(31, 70, 55, 0.06);
+  color: #1f4637;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.reseller-content-link:hover {
+  background: rgba(31, 70, 55, 0.12);
+  border-color: rgba(31, 70, 55, 0.24);
+}
+.reseller-content-link .icon-arrow { font-size: 11px; }
+.reseller-content-card .attachment-grid { margin-top: 2px; }
