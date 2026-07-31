@@ -24166,7 +24166,14 @@ body {
 .shp-badge { padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; background: #f0f0ef; color: #6b7280; }
 .shp-badge.ok { background: #d1fae5; color: #065f46; }
 .shp-aside { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; min-width: 100px; }
+/* Prima aveva sempre lo stesso grigio piatto di "nessuna data impostata":
+   a colpo d'occhio non si distingueva "va preparato OGGI" da "manca ancora
+   la data". Peso visivo proporzionale all'urgenza (vedi
+   getShippingTargetUrgency): "unset" resta il grigio discreto originale. */
 .shp-date { font-size: 11.5px; color: #8a9690; font-variant-numeric: tabular-nums; }
+.shp-date.urgency-scheduled { color: #3a4b40; font-weight: 700; }
+.shp-date.urgency-today { color: #b45309; font-weight: 800; }
+.shp-date.urgency-overdue { color: #b91c1c; font-weight: 800; }
 .shp-chip { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 5px; letter-spacing: .03em; }
 .shp-chip.prep { background: #fef3c7; color: #92400e; }
 .shp-chip.ready { background: #dbeafe; color: #1e40af; }
@@ -24239,6 +24246,29 @@ body {
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
+/* Il dump di TUTTE le righe fisiche (quando non si estraggono dimensioni
+   pulite) poteva occupare metà card da solo. Clampato a una riga con
+   ellissi finché non si preme "Mostra tutto" (vedi handleGlobalClick,
+   azione shp-toggle-material-detail — toggle CSS puro, niente re-render). */
+#shipping .shp-material-detail.is-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+#shipping .shp-material-more {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #1f6d4c;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+#shipping .shp-material-more:hover { color: #14472f; }
 #shipping .shp-material-metric {
   justify-self: end;
   min-width: 58px;

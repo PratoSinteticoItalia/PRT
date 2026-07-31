@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260731-inventory-copy-and-polish";
+} from "./lib/order-money.js?v=20260731-shipping-card-ux-polish";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260731-inventory-copy-and-polish";
+import { regionForCity } from "./lib/geo.js?v=20260731-shipping-card-ux-polish";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260731-inventory-copy-and-polish";
+} from "./lib/profit-split.js?v=20260731-shipping-card-ux-polish";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260731-inventory-copy-and-polish";
+} from "./lib/preventivo-pricing.js?v=20260731-shipping-card-ux-polish";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260731-inventory-copy-and-polish";
+const APP_SHELL_VERSION = "20260731-shipping-card-ux-polish";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -9403,6 +9403,19 @@ function getShippingTargetLabel(order) {
   const todayKey = new Date().toISOString().slice(0, 10);
   if (target === todayKey) return state.lang === "it" ? "Preparare oggi" : "Prepare today";
   return `${t("prepareBy")} ${formatDate(target)}`;
+}
+
+// La scadenza di preparazione era testo grigio piatto, stesso peso di
+// qualunque altro metadato della card — a colpo d'occhio non si distingueva
+// "nessuna data impostata" da "va preparato OGGI". Questa classifica
+// l'urgenza così il render può dare alla data il risalto che merita.
+function getShippingTargetUrgency(order) {
+  const target = getShippingTargetDate(order);
+  if (!target) return "unset";
+  const todayKey = new Date().toISOString().slice(0, 10);
+  if (target < todayKey) return "overdue";
+  if (target === todayKey) return "today";
+  return "scheduled";
 }
 
 function getShippingSummary(order) {
@@ -22979,6 +22992,12 @@ function renderShippingQueueCard(order) {
   // Icona modalità (read-only): la modalità la imposta l'ufficio, qui è solo informativa.
   const modeIcon = getShippingQueueGroupMeta(["corriere", "ritiro", "furgone"].includes(mode) ? mode : "altro").icon || "";
   const action = getShippingRowAction(order);
+  const targetUrgency = getShippingTargetUrgency(order);
+  // Sopra una manciata di caratteri il dettaglio materiale è quasi sempre il
+  // dump di TUTTE le righe fisiche (fallback in getShippingMaterialCardSummary
+  // quando non si estraggono dimensioni pulite) — a colpo d'occhio occupa metà
+  // card. Clampato a una riga con "Mostra tutto" per chi vuole lo spacchettato.
+  const materialDetailIsLong = material.detail.length > 42;
   return `
     <article class="shp-row shp-ticket tone-${chipClass} ${selected ? "selected" : ""} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping" draggable="true" data-shipping-drag-id="${escapeAttr(order.id)}">
       <span class="shp-status-rail ${dotClass}" aria-hidden="true"></span>
@@ -22990,7 +23009,8 @@ function renderShippingQueueCard(order) {
         <div class="shp-material-focus">
           <div>
             <span class="shp-material-name">${escapeHtml(material.name)}</span>
-            <span class="shp-material-detail">${escapeHtml(material.detail)}</span>
+            <span class="shp-material-detail${materialDetailIsLong ? " is-clamped" : ""}">${escapeHtml(material.detail)}</span>
+            ${materialDetailIsLong ? `<button type="button" class="shp-material-more" data-action="shp-toggle-material-detail">${state.lang === "it" ? "Mostra tutto" : "Show all"}</button>` : ""}
           </div>
           <strong class="shp-material-metric">${escapeHtml(material.metric)}</strong>
         </div>
@@ -23004,7 +23024,7 @@ function renderShippingQueueCard(order) {
         </div>
       </div>
       <div class="shp-aside">
-        <span class="shp-date">${escapeHtml(targetLabel)}</span>
+        <span class="shp-date urgency-${targetUrgency}">${escapeHtml(targetLabel)}</span>
         <span class="shp-chip ${chipClass}">${escapeHtml(stage.label)}</span>
       </div>
       <button class="shp-action ${action.tone}" type="button" data-action="select-order" data-id="${order.id}" data-view="shipping">${escapeHtml(action.label)}</button>
@@ -30477,6 +30497,21 @@ function handleGlobalClick(event) {
   if (!button) return;
   const action = button.dataset.action;
   const id = button.dataset.id;
+  if (action === "shp-toggle-material-detail") {
+    // Solo un toggle visivo (clamp CSS su una riga -> testo intero), niente
+    // stato/re-render: eviterebbe di riapparire clampato al primo giro di
+    // sync Shopify. Ferma la bubble altrimenti l'articolo genitore
+    // (data-action="select-order") aprirebbe comunque il drawer dell'ordine.
+    event.stopPropagation();
+    const detail = button.previousElementSibling;
+    if (detail?.classList.contains("shp-material-detail")) {
+      const collapsed = detail.classList.toggle("is-clamped");
+      button.textContent = collapsed
+        ? (state.lang === "it" ? "Mostra tutto" : "Show all")
+        : (state.lang === "it" ? "Mostra meno" : "Show less");
+    }
+    return;
+  }
   if (action === "orders-prev-page") {
     state.orderPage = Math.max(1, (state.orderPage || 1) - 1);
     state.selectedOrderId = null;
