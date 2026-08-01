@@ -17137,6 +17137,21 @@ async function handleApi(req, res, url) {
         data: { orderId: updatedOrder.id, view: "installations" },
       }).catch((err) => logError("notify:crew_assigned", err, { orderId: updatedOrder.id }));
     }
+    // Ordine appena instradato in logistica (toggle "In spedizione" in Inbox
+    // Ordini, selected false→true): al magazzino non arrivava MAI nessuna
+    // notifica in questo momento — solo quando l'ordine passa a "pronto" (la
+    // direzione opposta). Un ordine può restare per giorni nella coda "da
+    // preparare" senza che il magazzino sappia che è arrivato.
+    const prevWHSelected = Boolean(current.operations?.warehouse?.selected);
+    const newWHSelected = Boolean(updatedOrder.operations?.warehouse?.selected);
+    if (!prevWHSelected && newWHSelected) {
+      notify(store, { role: "warehouse", exceptUserId: currentUser?.id }, {
+        type: "warehouse_prep_needed",
+        title: "Nuovo ordine da preparare",
+        body: describeOrderForNotification(updatedOrder),
+        data: { orderId: updatedOrder.id, view: "warehouse" },
+      }).catch((err) => logError("notify:warehouse_prep_needed", err, { orderId: updatedOrder.id }));
+    }
     if (prevWHStatus !== newWHStatus && newWHStatus === "pronto") {
       // Bidirezionale: questo endpoint lo chiamano sia ufficio che magazzino
       // (nessun controllo di ruolo qui sopra). Notificare sempre "il
