@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260731-ddt-daily-email-automation";
+} from "./lib/order-money.js?v=20260801-marketing-schedule-race-fix";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260731-ddt-daily-email-automation";
+import { regionForCity } from "./lib/geo.js?v=20260801-marketing-schedule-race-fix";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260731-ddt-daily-email-automation";
+} from "./lib/profit-split.js?v=20260801-marketing-schedule-race-fix";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260731-ddt-daily-email-automation";
+} from "./lib/preventivo-pricing.js?v=20260801-marketing-schedule-race-fix";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260731-ddt-daily-email-automation";
+const APP_SHELL_VERSION = "20260801-marketing-schedule-race-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -27625,10 +27625,19 @@ async function publishMarketingItemViaApi(item, button = null, mode = "publish")
       : entry);
     state.marketingItems = nextItems;
     saveMarketingItems();
-    // Persisti sul server il nuovo stato (pubblicato/programmato), altrimenti al
-    // prossimo sync il server lo sovrascriverebbe con lo stato precedente.
-    const _publishedEntry = nextItems.find((e) => e.id === item.id);
-    if (_publishedEntry) { try { await pushMarketingItemToServer(_publishedEntry); } catch {} }
+    // Per "schedule" lo stato "programmato" lo scrive già il server nella
+    // stessa richiesta di sopra (POST /api/marketing/publish) — NON ripeterlo
+    // qui con una seconda POST: quella seconda scrittura correva contro il
+    // cron (che pubblica in background) e, se arrivava dopo che il cron
+    // aveva già risolto il post, sovrascriveva silenziosamente l'esito
+    // corretto riportandolo indietro a "programmato" per sempre. Per
+    // "publish" immediato invece non c'è nessun cron con cui competere: il
+    // risultato è già definitivo in questa stessa risposta, quindi persistere
+    // resta sicuro.
+    if (mode !== "schedule") {
+      const _publishedEntry = nextItems.find((e) => e.id === item.id);
+      if (_publishedEntry) { try { await pushMarketingItemToServer(_publishedEntry); } catch {} }
+    }
     if (mode === "schedule") {
       const when = result.scheduledAt ? new Date(result.scheduledAt).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "";
       showToast(`✓ Programmato${when ? ` per il ${when}` : ""} — il portale lo pubblicherà automaticamente.`, "success", 5000);

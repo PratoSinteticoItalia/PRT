@@ -4126,6 +4126,52 @@ async function processMarketingScheduledOnce() {
   }
 }
 
+/**
+ * Riconciliazione una-tantum all'avvio: per ogni record in
+ * store.marketingScheduled già risolto (published/failed) il cui esito non
+ * combacia con lo stato dell'item corrispondente in store.marketingItems,
+ * riallinea l'item. Ripara i post rimasti bloccati su "programmato" per la
+ * race fissata sopra (POST separata del client che sovrascriveva l'esito
+ * corretto del cron arrivando in ritardo) — senza questo, i post già colpiti
+ * PRIMA del fix resterebbero bloccati per sempre anche dopo il deploy.
+ */
+async function reconcileMarketingScheduledItems() {
+  let store;
+  try {
+    store = await readJson(STORE_PATH, {});
+  } catch (e) {
+    console.warn("[marketing-schedule] reconcile: readJson failed:", e?.message || e);
+    return;
+  }
+  const scheduled = Array.isArray(store.marketingScheduled) ? store.marketingScheduled : [];
+  const items = Array.isArray(store.marketingItems) ? store.marketingItems : [];
+  if (!scheduled.length || !items.length) return;
+  const expectedStatus = { published: "pubblicato", failed: "fallito" };
+  let fixed = 0;
+  for (const rec of scheduled) {
+    const want = expectedStatus[rec?.status];
+    if (!want) continue; // ancora pending, o stato ignoto: non tocco
+    const idx = items.findIndex((it) => it.id === rec.id);
+    if (idx < 0) continue;
+    if (items[idx].status === want) continue; // già allineato
+    console.log(`[marketing-schedule] reconcile: id=${rec.id} status="${items[idx].status}" → "${want}" (era rimasto disallineato)`);
+    items[idx] = {
+      ...items[idx],
+      status: want,
+      apiPublishedAt: rec.publishedAt || items[idx].apiPublishedAt || "",
+      apiProviderUrl: rec.providerUrl || items[idx].apiProviderUrl || "",
+      apiLastError: rec.lastError || "",
+      apiAttempts: rec.attempts || 0,
+    };
+    fixed += 1;
+  }
+  if (fixed > 0) {
+    store.marketingItems = items;
+    try { await writeJson(STORE_PATH, store); } catch (e) { console.error("[marketing-schedule] reconcile: persist failed:", e?.message || e); }
+    console.log(`[marketing-schedule] reconcile: ${fixed} item riallineati.`);
+  }
+}
+
 function startMarketingScheduleProcessor(intervalMs = 60_000) {
   if (_marketingScheduleTimer) return;
   // Primo tick dopo 15s (lascia respirare lo startup).
@@ -12472,6 +12518,24 @@ async function handleApi(req, res, url) {
         ...(Array.isArray(store.marketingScheduled) ? store.marketingScheduled : [])
           .filter((r) => r.id !== scheduledRecord.id), // sostituisci se ri-programmi lo stesso post
       ].slice(0, 500);
+      // Stato "programmato" scritto QUI, non dal client con una POST separata
+      // dopo questa risposta: quella seconda scrittura era racy col cron — se
+      // il cron pubblicava il post prima che la POST del client arrivasse, la
+      // POST (ancora con "programmato" in mano) sovrascriveva silenziosamente
+      // l'esito corretto appena scritto, lasciando la card bloccata per
+      // sempre su "Programmato" senza nessun errore registrato da nessuna
+      // parte. Un'unica scrittura qui elimina la corsa alla radice.
+      const itemsList = Array.isArray(store.marketingItems) ? store.marketingItems : [];
+      const itemIdx = itemsList.findIndex((it) => it.id === scheduledRecord.id);
+      if (itemIdx >= 0) {
+        itemsList[itemIdx] = {
+          ...itemsList[itemIdx],
+          status: "programmato",
+          apiScheduledAt: scheduledAt,
+          apiProviderId: scheduledRecord.id,
+          apiLastError: "",
+        };
+      }
       await writeJson(STORE_PATH, store);
       return sendJson(res, 200, {
         ok: true,
@@ -18031,4 +18095,6 @@ server.listen(PORT, HOST, () => {
   // Indipendente da Postgres — funziona anche in modalità blob.
   try { startMarketingScheduleProcessor(60_000); }
   catch (err) { console.warn("[marketing-schedule] start failed:", err?.message || err); }
+  reconcileMarketingScheduledItems()
+    .catch((err) => console.warn("[marketing-schedule] reconcile startup run failed:", err?.message || err));
 });
