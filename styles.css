@@ -57,23 +57,11 @@ body {
   margin: 0;
   font-family: "DM Sans", sans-serif;
   color: var(--text);
-  /* Grid texture — grigio tortora sabbia */
-  background-color: #e2e2de;
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 31px,
-      rgba(65, 68, 72, 0.18) 31px,
-      rgba(65, 68, 72, 0.18) 32px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 31px,
-      rgba(65, 68, 72, 0.18) 31px,
-      rgba(65, 68, 72, 0.18) 32px
-    );
+  /* Sfondo piatto (era una texture a griglia grigio tortora): dopo mesi di
+     uso quotidiano la griglia su ogni schermata toglieva contrasto ai
+     contenuti reali. --bg è già il token "canvas" definito in :root, solo
+     mai usato qui prima. */
+  background-color: var(--bg);
   font-size: 14px;
   line-height: 1.5;
   overflow: hidden;
@@ -118,22 +106,7 @@ body.shell-loading::after {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.22s ease;
-  background-color: #e2e2de;
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 31px,
-      rgba(65, 68, 72, 0.18) 31px,
-      rgba(65, 68, 72, 0.18) 32px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 31px,
-      rgba(65, 68, 72, 0.18) 31px,
-      rgba(65, 68, 72, 0.18) 32px
-    );
+  background-color: var(--bg);
 }
 
 body.shell-loading .shell-launch {
@@ -330,22 +303,7 @@ body.shell-loading .shell-launch {
   place-items: start center;
   padding: 32px;
   align-content: center;
-  background-color: #e2e2de;
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 31px,
-      rgba(65, 68, 72, 0.18) 31px,
-      rgba(65, 68, 72, 0.18) 32px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 31px,
-      rgba(65, 68, 72, 0.18) 31px,
-      rgba(65, 68, 72, 0.18) 32px
-    );
+  background-color: var(--bg);
 }
 
 .auth-card,
@@ -3288,30 +3246,11 @@ body.mobile-safe-mode .sidebar-section-head .sidebar-section-label {
   box-shadow: none;
 }
 
-/* La griglia del body non traspare dietro la bacheca Pose (diversamente dalla
-   Logistica, per un'interazione di rendering con `contain: paint` + le colonne
-   a scroll interno). La ridipingiamo qui, identica al body, così le righe
-   quadrettate compaiono dietro la board come nel kanban Logistica. */
-/* Specificità (0,3,0): DEVE vincere su `.section.section-flat { background:
-   transparent }` (0,2,0), la cui scorciatoia `background` azzererebbe la
-   background-image. Senza questa specificità la griglia veniva cancellata. */
+/* Il body non ha più una griglia da far trasparire dietro la bacheca Pose:
+   niente più repaint speciale qui, transparent basta (era necessario solo
+   per far ricomparire il pattern dietro `contain: paint`). */
 .section.section-flat.installation-kanban-section {
   background-color: transparent;
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 31px,
-      rgba(65, 68, 72, 0.18) 31px,
-      rgba(65, 68, 72, 0.18) 32px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 31px,
-      rgba(65, 68, 72, 0.18) 31px,
-      rgba(65, 68, 72, 0.18) 32px
-    );
 }
 
 .section-header {
@@ -6919,22 +6858,7 @@ body {
 }
 
 .main-content {
-  background-color: #e2e2de;
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 31px,
-      rgba(65, 68, 72, 0.18) 31px,
-      rgba(65, 68, 72, 0.18) 32px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 31px,
-      rgba(65, 68, 72, 0.18) 31px,
-      rgba(65, 68, 72, 0.18) 32px
-    );
+  background-color: var(--bg);
 }
 
 .page-header {
@@ -16819,7 +16743,7 @@ textarea.text-input {
   display: block;
   width: 100%;
   border: none;
-  background: #e2e2de;
+  background: var(--bg);
 }
 
 /* ── Badge / action-badge colour tokens ──────────────────────────────────────
