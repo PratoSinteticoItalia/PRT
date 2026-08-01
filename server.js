@@ -4061,16 +4061,30 @@ async function processMarketingScheduledOnce() {
   let store;
   try {
     store = await readJson(STORE_PATH, {});
-  } catch { return; }
+  } catch (e) {
+    console.error("[marketing-schedule] readJson STORE_PATH failed:", e?.message || e);
+    return;
+  }
   const list = Array.isArray(store.marketingScheduled) ? store.marketingScheduled : [];
-  if (!list.length) return;
+  if (!list.length) {
+    console.log("[marketing-schedule] tick: store.marketingScheduled è vuoto/assente (0 record totali).");
+    return;
+  }
   const now = Date.now();
-  const due = list.filter((r) => r && r.status === "pending"
-    && r.scheduledAt && new Date(r.scheduledAt).getTime() <= now);
+  const pending = list.filter((r) => r && r.status === "pending");
+  const due = pending.filter((r) => r.scheduledAt && new Date(r.scheduledAt).getTime() <= now);
+  // Log diagnostico temporaneo (2026-08-01): due post schedulati via API sono
+  // rimasti su "programmato" senza mai un tentativo/errore registrato — serve
+  // capire se il cron li vede affatto come "pending"/"due" o se il record non
+  // esiste/ha uno stato diverso da quello atteso.
+  console.log(`[marketing-schedule] tick: ${list.length} record totali, ${pending.length} pending, ${due.length} due.`, pending.length
+    ? pending.map((r) => `id=${r.id} status=${r.status} scheduledAt=${r.scheduledAt} attempts=${r.attempts || 0} channel=${r.channel}`).join(" | ")
+    : "");
   if (!due.length) return;
   let changed = false;
   for (const rec of due) {
     rec.attempts = (rec.attempts || 0) + 1;
+    console.log(`[marketing-schedule] processing id=${rec.id} channel=${rec.channel} scheduledAt=${rec.scheduledAt} attempt=${rec.attempts}`);
     try {
       // Ricostruisci un req sintetico dal baseUrl salvato (per gli URL pubblici).
       const bu = String(rec.baseUrl || process.env.PUBLIC_BASE_URL || "https://portale.pratosinteticoitalia.it");
@@ -4082,6 +4096,7 @@ async function processMarketingScheduledOnce() {
         rec.lastError = String(prepared.error);
         changed = true;
         applyMarketingScheduleResultToItem(store, rec);
+        console.log(`[marketing-schedule] id=${rec.id} FAILED (prepare): ${rec.lastError}`);
         continue;
       }
       const result = await publishMarketingItem(prepared.item, "publish");
@@ -4097,11 +4112,13 @@ async function processMarketingScheduledOnce() {
       }
       changed = true;
       applyMarketingScheduleResultToItem(store, rec);
+      console.log(`[marketing-schedule] id=${rec.id} result: ${result.ok ? "PUBLISHED" : `retry/failed (${rec.status}) — ${rec.lastError}`}`);
     } catch (err) {
       rec.lastError = String(err?.message || err);
       rec.status = rec.attempts >= 3 ? "failed" : "pending";
       changed = true;
       applyMarketingScheduleResultToItem(store, rec);
+      console.log(`[marketing-schedule] id=${rec.id} EXCEPTION: ${rec.lastError}`);
     }
   }
   if (changed) {
