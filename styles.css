@@ -24165,15 +24165,18 @@ body {
 .shp-mode-tag.shp-crew-tag { background: #eef1ee; color: #3a4b40; text-transform: none; letter-spacing: 0; display: inline-flex; align-items: center; }
 .shp-badge { padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; background: #f0f0ef; color: #6b7280; }
 .shp-badge.ok { background: #d1fae5; color: #065f46; }
+/* Segnala a colpo d'occhio un ordine con foto allegata (es. difetto
+   materiale, prova di consegna) senza dover aprire la card. */
+.shp-badge.shp-photo-badge { padding: 1px 6px; font-size: 12px; line-height: 1; }
 .shp-aside { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; min-width: 100px; }
 /* Prima aveva sempre lo stesso grigio piatto di "nessuna data impostata":
    a colpo d'occhio non si distingueva "va preparato OGGI" da "manca ancora
-   la data". Peso visivo proporzionale all'urgenza (vedi
-   getShippingTargetUrgency): "unset" resta il grigio discreto originale. */
+   la data". "unset" resta il grigio discreto originale; per le altre
+   urgenze (vedi getShippingTargetUrgency) si riusa .shipping-urgency-badge
+   (stessa pillola colorata già usata per i Box campioni) invece di un
+   semplice grassetto: la differenza va notata a colpo d'occhio, non letta. */
 .shp-date { font-size: 11.5px; color: #8a9690; font-variant-numeric: tabular-nums; }
-.shp-date.urgency-scheduled { color: #3a4b40; font-weight: 700; }
-.shp-date.urgency-today { color: #b45309; font-weight: 800; }
-.shp-date.urgency-overdue { color: #b91c1c; font-weight: 800; }
+.shp-date.shipping-urgency-badge { font-size: 11px; }
 .shp-chip { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 5px; letter-spacing: .03em; }
 .shp-chip.prep { background: #fef3c7; color: #92400e; }
 .shp-chip.ready { background: #dbeafe; color: #1e40af; }

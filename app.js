@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260731-shipping-card-ux-polish";
+} from "./lib/order-money.js?v=20260731-shipping-urgency-badge-photo-icon";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260731-shipping-card-ux-polish";
+import { regionForCity } from "./lib/geo.js?v=20260731-shipping-urgency-badge-photo-icon";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260731-shipping-card-ux-polish";
+} from "./lib/profit-split.js?v=20260731-shipping-urgency-badge-photo-icon";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260731-shipping-card-ux-polish";
+} from "./lib/preventivo-pricing.js?v=20260731-shipping-urgency-badge-photo-icon";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260731-shipping-card-ux-polish";
+const APP_SHELL_VERSION = "20260731-shipping-urgency-badge-photo-icon";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -22993,11 +22993,18 @@ function renderShippingQueueCard(order) {
   const modeIcon = getShippingQueueGroupMeta(["corriere", "ritiro", "furgone"].includes(mode) ? mode : "altro").icon || "";
   const action = getShippingRowAction(order);
   const targetUrgency = getShippingTargetUrgency(order);
+  // Stessa pillola/palette di .shipping-urgency-badge già usata per i Box
+  // campioni (getSampleUrgencyMeta): "oggi"/"scaduto" ora sono badge colorati
+  // riconoscibili invece di solo testo grigio più scuro — la differenza
+  // precedente era troppo sottile per essere notata a colpo d'occhio.
+  const targetBadgeClass = targetUrgency === "overdue" ? "overdue" : targetUrgency === "today" ? "imminent" : targetUrgency === "scheduled" ? "scheduled" : "";
+  const targetIcon = targetUrgency === "overdue" ? "⚠ " : targetUrgency === "today" ? "⏰ " : "";
   // Sopra una manciata di caratteri il dettaglio materiale è quasi sempre il
   // dump di TUTTE le righe fisiche (fallback in getShippingMaterialCardSummary
   // quando non si estraggono dimensioni pulite) — a colpo d'occhio occupa metà
   // card. Clampato a una riga con "Mostra tutto" per chi vuole lo spacchettato.
   const materialDetailIsLong = material.detail.length > 42;
+  const hasPhotoAttachment = Array.isArray(order.attachments) && order.attachments.some(isImageAttachment);
   return `
     <article class="shp-row shp-ticket tone-${chipClass} ${selected ? "selected" : ""} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping" draggable="true" data-shipping-drag-id="${escapeAttr(order.id)}">
       <span class="shp-status-rail ${dotClass}" aria-hidden="true"></span>
@@ -23021,10 +23028,11 @@ function renderShippingQueueCard(order) {
           <span class="shp-mode-tag ${modeTagClass}">${modeIcon} ${escapeHtml(routeLabel)}</span>
           ${ddtBadge}
           <span class="shp-badge">${escapeHtml(material.lineLabel)}</span>
+          ${hasPhotoAttachment ? `<span class="shp-badge shp-photo-badge" title="${state.lang === "it" ? "Ha una foto allegata" : "Has a photo attached"}">📎</span>` : ""}
         </div>
       </div>
       <div class="shp-aside">
-        <span class="shp-date urgency-${targetUrgency}">${escapeHtml(targetLabel)}</span>
+        <span class="shp-date${targetBadgeClass ? ` shipping-urgency-badge urgency-${targetBadgeClass}` : ""}">${targetIcon}${escapeHtml(targetLabel)}</span>
         <span class="shp-chip ${chipClass}">${escapeHtml(stage.label)}</span>
       </div>
       <button class="shp-action ${action.tone}" type="button" data-action="select-order" data-id="${order.id}" data-view="shipping">${escapeHtml(action.label)}</button>
