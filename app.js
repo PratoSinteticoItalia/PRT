@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260731-shipping-urgency-badge-photo-icon";
+} from "./lib/order-money.js?v=20260731-ddt-daily-email-automation";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260731-shipping-urgency-badge-photo-icon";
+import { regionForCity } from "./lib/geo.js?v=20260731-ddt-daily-email-automation";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260731-shipping-urgency-badge-photo-icon";
+} from "./lib/profit-split.js?v=20260731-ddt-daily-email-automation";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260731-shipping-urgency-badge-photo-icon";
+} from "./lib/preventivo-pricing.js?v=20260731-ddt-daily-email-automation";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260731-shipping-urgency-badge-photo-icon";
+const APP_SHELL_VERSION = "20260731-ddt-daily-email-automation";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1754,6 +1754,7 @@ const ui = {
   ddtEditorBody: document.getElementById("ddt-editor-body"),
   ddtSearch: document.getElementById("ddt-search"),
   ddtFilterTags: Array.from(document.querySelectorAll(".ddt-filter-tag")),
+  ddtSendDailyButton: document.getElementById("ddt-send-daily-button"),
   shippingStandardDetailPanel: document.getElementById("shipping-standard-detail-panel"),
   shippingDetailTitle: document.getElementById("shipping-detail-title"),
   shippingDetailFields: document.getElementById("shipping-detail-fields"),
@@ -33867,6 +33868,46 @@ if (ui.ddtSearch) {
     renderDdtListView();
   });
 }
+bindEvent(ui.ddtSendDailyButton, "click", async () => {
+  // Stesso criterio usato server-side (getTodayDdtOrders): DDT creati oggi,
+  // non ordini spediti oggi. Conteggio lato client solo per il conferma —
+  // il conteggio vero (e l'invio) lo fa il server sullo stesso store.
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayCount = (state.orders || []).filter((order) => {
+    const createdAt = order.operations?.warehouse?.ddt?.createdAt || "";
+    return String(createdAt).slice(0, 10) === todayKey;
+  }).length;
+  if (!todayCount) {
+    showToast(state.lang === "it" ? "Nessun DDT emesso oggi." : "No DDT issued today.", "warning");
+    return;
+  }
+  const confirmed = window.confirm(
+    state.lang === "it"
+      ? `Inviare ${todayCount} DDT di oggi via email? Verrà inviata un'unica email ai destinatari configurati.`
+      : `Send today's ${todayCount} DDT via email? A single email will be sent to the configured recipients.`,
+  );
+  if (!confirmed) return;
+  ui.ddtSendDailyButton.disabled = true;
+  try {
+    const result = await apiFetch("/api/ddt/send-daily-email", { method: "POST" });
+    showToast(
+      state.lang === "it" ? `Email inviata con ${result.count} DDT allegati.` : `Email sent with ${result.count} DDT attached.`,
+      "success",
+    );
+  } catch (err) {
+    const reason = err?.payload?.reason;
+    const reasonLabel = {
+      missing_recipients: state.lang === "it" ? "destinatari non configurati" : "recipients not configured",
+      missing_email_config: state.lang === "it" ? "invio email non configurato" : "email sending not configured",
+      no_ddt_today: state.lang === "it" ? "nessun DDT emesso oggi" : "no DDT issued today",
+      pdf_generation_failed: state.lang === "it" ? "generazione PDF fallita" : "PDF generation failed",
+      provider_error: state.lang === "it" ? "errore del servizio email" : "email provider error",
+    }[reason] || err?.message || String(err);
+    showToast(state.lang === "it" ? `Invio non riuscito: ${reasonLabel}` : `Send failed: ${reasonLabel}`, "error");
+  } finally {
+    ui.ddtSendDailyButton.disabled = false;
+  }
+});
 bindEvent(ui.orderAttachmentButton, "click", () => openAttachmentPicker("order"));
 bindEvent(ui.shippingAttachmentButton, "click", () => openAttachmentPicker("shipping"));
 bindEvent(ui.sampleUploadLdvButton, "click", () => openAttachmentPicker("sample-ldv"));

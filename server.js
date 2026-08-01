@@ -8,6 +8,7 @@ import { gzipSync } from "node:zlib";
 import { startImapWorker, getImapWorkerStatus, isImapWorkerEnabled, hasImapWorkerConfig, getImapWorkerConfig } from "./imap-worker.js";
 import { reconcileShadowLeads, buildLeadFingerprint, fingerprintIsComplete, findMatchingSalesRequest } from "./lead-fingerprint.mjs";
 import { generateWorkReportPdf } from "./lib/work-report-pdf.js";
+import { generateDdtPdf } from "./lib/ddt-pdf.js";
 import { generateProfitSplitContoPdf, generateProfitSplitStatementPdf } from "./lib/profit-split-pdf.js";
 import { computeProfitSplitScenario } from "./lib/profit-split.js";
 import {
@@ -119,6 +120,12 @@ const SALES_REQUEST_EMAIL_REPLY_TO = cleanEmail(process.env.SALES_REQUEST_EMAIL_
 const SALES_REQUEST_EMAIL_SUBJECT_PREFIX = String(process.env.SALES_REQUEST_EMAIL_SUBJECT_PREFIX || "Prato Sintetico Italia").trim();
 const SALES_REQUEST_EMAIL_TIMEOUT_MS = Math.max(5_000, Number(process.env.SALES_REQUEST_EMAIL_TIMEOUT_MS || 10_000));
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
+// Invio manuale "DDT di oggi" (bottone in DDT): destinatari configurabili via
+// env invece che hardcoded, così cambiano senza toccare il codice.
+const DDT_DAILY_EMAIL_RECIPIENTS = String(process.env.DDT_DAILY_EMAIL_RECIPIENTS || "")
+  .split(",")
+  .map((addr) => cleanEmail(addr))
+  .filter((addr) => isValidEmailAddress(addr));
 const META_MARKETING_ACCESS_TOKEN = String(process.env.META_MARKETING_ACCESS_TOKEN || WHATSAPP_DEFAULT_ACCESS_TOKEN).trim();
 const META_PAGE_ID = String(process.env.META_PAGE_ID || "").trim();
 const META_INSTAGRAM_BUSINESS_ACCOUNT_ID = String(process.env.META_INSTAGRAM_BUSINESS_ACCOUNT_ID || "").trim();
@@ -4248,6 +4255,92 @@ async function sendWorkReportEmailToCustomer({ report, pdfBuffer }) {
     return { ok: true };
   } catch (err) {
     console.warn(`[work-reports] email exception ${report.id}:`, err?.message || err);
+    return { ok: false, reason: "exception", error: String(err?.message || err) };
+  }
+}
+
+// Ordini con un DDT emesso OGGI (stesso criterio del raggruppamento "Emessi"
+// in DDT lato client: data di creazione del DDT, non data di spedizione).
+function getTodayDdtOrders(ordersList) {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  return (Array.isArray(ordersList) ? ordersList : []).filter((order) => {
+    const createdAt = order?.operations?.warehouse?.ddt?.createdAt || "";
+    return String(createdAt).slice(0, 10) === todayKey;
+  });
+}
+
+/**
+ * Invio manuale "DDT di oggi": un'unica email con un PDF per ogni ordine
+ * che ha un DDT emesso oggi, ai destinatari configurati (DDT_DAILY_EMAIL_RECIPIENTS).
+ * Trigger via bottone in UI (non un cron) — vedi POST /api/ddt/send-daily-email.
+ */
+async function sendDailyDdtEmail(ordersList) {
+  if (!DDT_DAILY_EMAIL_RECIPIENTS.length) {
+    return { ok: false, reason: "missing_recipients" };
+  }
+  if (!RESEND_API_KEY || !isValidEmailAddress(SALES_REQUEST_EMAIL_FROM)) {
+    return { ok: false, reason: "missing_email_config" };
+  }
+  const todayOrders = getTodayDdtOrders(ordersList);
+  if (!todayOrders.length) {
+    return { ok: false, reason: "no_ddt_today" };
+  }
+  const logoBuffer = await getCachedLogoBuffer();
+  const attachments = [];
+  for (const order of todayOrders) {
+    try {
+      const pdfBuffer = await generateDdtPdf(order, { logoBuffer });
+      const ddtNumber = order?.operations?.warehouse?.ddt?.number || order?.orderNumber || order?.id;
+      attachments.push({
+        filename: `DDT-${String(ddtNumber).replace(/[^a-z0-9-]+/gi, "_")}.pdf`,
+        content: Buffer.from(pdfBuffer).toString("base64"),
+      });
+    } catch (err) {
+      console.warn(`[ddt-daily-email] PDF generation failed for order ${order?.id}:`, err?.message || err);
+    }
+  }
+  if (!attachments.length) {
+    return { ok: false, reason: "pdf_generation_failed" };
+  }
+  const todayLabel = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date());
+  const subject = `DDT del ${todayLabel} — Prato Sintetico Italia (${attachments.length})`;
+  const text =
+    `Buongiorno,\n\n` +
+    `in allegato i documenti di trasporto emessi in data odierna (${todayLabel}), per un totale di ${attachments.length} DDT.\n\n` +
+    `Prato Sintetico Italia\n`;
+  const html =
+    `<p>Buongiorno,</p>` +
+    `<p>in allegato i <strong>documenti di trasporto</strong> emessi in data odierna (${todayLabel}), ` +
+    `per un totale di <strong>${attachments.length} DDT</strong>.</p>` +
+    `<p><em>Prato Sintetico Italia</em></p>`;
+  const payload = {
+    from: SALES_REQUEST_EMAIL_FROM,
+    to: DDT_DAILY_EMAIL_RECIPIENTS,
+    subject,
+    text,
+    html,
+    attachments,
+  };
+  if (isValidEmailAddress(SALES_REQUEST_EMAIL_REPLY_TO)) payload.reply_to = SALES_REQUEST_EMAIL_REPLY_TO;
+  try {
+    const response = await fetchWithTimeout(
+      "https://api.resend.com/emails",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      SALES_REQUEST_EMAIL_TIMEOUT_MS,
+    );
+    const raw = await response.text().catch(() => "");
+    if (!response.ok) {
+      console.warn(`[ddt-daily-email] FAIL: HTTP ${response.status} ${raw.slice(0, 200)}`);
+      return { ok: false, reason: "provider_error", statusCode: response.status };
+    }
+    console.log(`[ddt-daily-email] sent ${attachments.length} DDT → ${DDT_DAILY_EMAIL_RECIPIENTS.join(", ")}`);
+    return { ok: true, count: attachments.length };
+  } catch (err) {
+    console.warn("[ddt-daily-email] exception:", err?.message || err);
     return { ok: false, reason: "exception", error: String(err?.message || err) };
   }
 }
@@ -17028,6 +17121,16 @@ async function handleApi(req, res, url) {
     await writeJson(STORE_PATH, store);
     upsertOrderToDb(store.orders[orderIndex], currentUser?.email || null).catch(() => {}); // dual-write SQL
     return sendJson(res, 200, store.orders[orderIndex]);
+  }
+
+  // Invio manuale "DDT di oggi": bottone in UI, non un cron — l'ufficio
+  // resta in controllo di cosa e quando parte verso i destinatari esterni.
+  if (url.pathname === "/api/ddt/send-daily-email" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const result = await sendDailyDdtEmail(store.orders);
+    if (!result.ok) return sendJson(res, 422, result);
+    return sendJson(res, 200, result);
   }
 
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/accounting$/) && req.method === "POST") {
