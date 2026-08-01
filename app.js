@@ -4209,6 +4209,9 @@ function normalizeSalesRequestRecord(item = {}) {
     firstContactBy: normalizeSalesRequestAssignment(item.firstContactBy || item.firstContact?.by || ""),
     quotedAt: normalizeIsoDateTime(item.quotedAt || ""),
     resellerId: String(item.resellerId || "").trim(),
+    linkedOrderId: String(item.linkedOrderId || "").trim(),
+    convertedAt: normalizeIsoDateTime(item.convertedAt || ""),
+    staleRemindedAt: normalizeIsoDateTime(item.staleRemindedAt || ""),
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
   };
@@ -10965,10 +10968,7 @@ function renderDashboardMetricsStrip() {
   const soldSqm = ordersInRange.reduce((s, o) => s + getSafeOrderSqm(o), 0);
   const completedInstalls = ordersInRange.filter((o) => String(o.operations?.installation?.status || "").trim() === "completata").length;
   const closedRequests = requestsInRange.filter((r) => getSalesRequestStatusCode(r.status || "") === "closed").length;
-  const convertedRequests = requestsInRange.filter((r) => {
-    const code = getSalesRequestStatusCode(r.status || "");
-    return code === "quoted" && /ordine/i.test(String(r.status || ""));
-  }).length;
+  const convertedRequests = requestsInRange.filter((r) => Boolean(r.linkedOrderId)).length;
   const conversionRate = requestsInRange.length > 0
     ? Math.round(((convertedRequests + closedRequests) / requestsInRange.length) * 100)
     : 0;

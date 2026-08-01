@@ -1072,6 +1072,18 @@ async function ensureRelationalSchema() {
       CREATE UNIQUE INDEX IF NOT EXISTS orders_tracking_token_idx ON orders (tracking_token) WHERE tracking_token IS NOT NULL;
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS requested_height TEXT DEFAULT '';
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS quoted_at TIMESTAMPTZ;
+      -- Collegamento richiesta→ordine (mai esistito): "Conversione richieste"
+      -- in Dashboard era rotto, contava come convertita solo una richiesta il
+      -- cui status contenesse letteralmente la parola "ordine" — cosa che non
+      -- succede mai con gli stati reali. reconcileSalesRequestOrderLinks()
+      -- popola linked_order_id per telefono, cercando un ordine arrivato dopo
+      -- la richiesta con lo stesso numero.
+      ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS linked_order_id TEXT DEFAULT '';
+      ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ;
+      -- Ultimo promemoria automatico "richiesta fredda" (checkStaleSalesRequests):
+      -- evita di rinotificare l'ufficio ad ogni tick per la stessa richiesta.
+      ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS stale_reminded_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS sales_requests_linked_order_idx ON sales_requests (linked_order_id) WHERE linked_order_id != '';
       -- inventory_items era rimasta allo schema minimo iniziale: mancavano tutti i
       -- campi aggiunti dopo (residuo generato da un taglio, nota pezzo, numero
       -- ordine impegnato, timestamp): upsertInventoryItemToDb non li scriveva mai,
@@ -1498,6 +1510,9 @@ function dbRowToSalesRequest(row) {
     whatsappThreadId: row.whatsapp_thread_id || null,
     requestedHeight: row.requested_height || "",
     resellerId: row.reseller_id || "",
+    linkedOrderId: row.linked_order_id || "",
+    convertedAt: row.converted_at || null,
+    staleRemindedAt: row.stale_reminded_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -2204,8 +2219,8 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
         company, job_type, surface, sqm, note,
         status, assignment, first_contact_by, first_contact_at, quoted_at,
         source, source_row_number, attachments, whatsapp_thread_id,
-        requested_height, reseller_id, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,COALESCE($28::timestamptz,NOW()),NOW())
+        requested_height, reseller_id, linked_order_id, converted_at, stale_reminded_at, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,COALESCE($31::timestamptz,NOW()),NOW())
       ON CONFLICT (id) DO UPDATE SET
         first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name,
         email=EXCLUDED.email, phone=EXCLUDED.phone,
@@ -2224,6 +2239,12 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
         -- (es. l'ufficio che aggiorna status/note non deve poter "smarrire"
         -- l'origine rivenditore per errore, dato che non passa mai per quel campo).
         reseller_id=CASE WHEN EXCLUDED.reseller_id != '' THEN EXCLUDED.reseller_id ELSE sales_requests.reseller_id END,
+        -- linked_order_id/converted_at/stale_reminded_at li scrive solo il
+        -- reconciler/promemoria server-side, mai il client: un salvataggio
+        -- manuale (status/note/assegnazione) non deve poterli azzerare.
+        linked_order_id=CASE WHEN EXCLUDED.linked_order_id != '' THEN EXCLUDED.linked_order_id ELSE sales_requests.linked_order_id END,
+        converted_at=COALESCE(EXCLUDED.converted_at, sales_requests.converted_at),
+        stale_reminded_at=COALESCE(EXCLUDED.stale_reminded_at, sales_requests.stale_reminded_at),
         -- Correggi created_at se in PG è più recente dell'originale (fix import bulk)
         created_at=LEAST(sales_requests.created_at, EXCLUDED.created_at),
         updated_at=NOW()
@@ -2250,6 +2271,9 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
       request.whatsappThreadId ? String(request.whatsappThreadId) : null,
       String(request.requestedHeight || ""),
       String(request.resellerId || ""),
+      String(request.linkedOrderId || ""),
+      request.convertedAt ? new Date(String(request.convertedAt)).toISOString() : null,
+      request.staleRemindedAt ? new Date(String(request.staleRemindedAt)).toISOString() : null,
       request.createdAt ? new Date(String(request.createdAt)).toISOString() : null,
     ]);
     // Scrivi audit_log se ci sono cambiamenti nei campi chiave
@@ -2272,6 +2296,108 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
     // distinguere "salvato" da "fallito" invece di silent fail.
     if (opts && opts.rethrow) throw err;
   }
+}
+
+/**
+ * Collega ogni richiesta ancora "aperta" (linked_order_id vuoto) al primo
+ * ordine con lo stesso telefono arrivato DOPO la richiesta — così
+ * "Conversione richieste" in Dashboard può contare le conversioni vere
+ * invece del controllo rotto su stato che conteneva la parola "ordine"
+ * (che non succede mai). Gira periodicamente: sistema anche il backlog di
+ * richieste già convertite prima che questo collegamento esistesse.
+ */
+async function reconcileSalesRequestOrderLinks() {
+  if (!USE_POSTGRES) return;
+  try {
+    const pool = await getPgPool();
+    const { rows: openRequests } = await pool.query(
+      "SELECT id, phone, created_at FROM sales_requests WHERE (linked_order_id IS NULL OR linked_order_id = '') AND phone IS NOT NULL AND phone != ''",
+    );
+    if (!openRequests.length) return;
+    const { rows: orders } = await pool.query(
+      "SELECT id, phone, created_at FROM orders WHERE phone IS NOT NULL AND phone != '' ORDER BY created_at ASC",
+    );
+    if (!orders.length) return;
+    const ordersByPhone = new Map();
+    for (const o of orders) {
+      const key = normalizePhoneForWhatsApp(o.phone);
+      if (!key) continue;
+      if (!ordersByPhone.has(key)) ordersByPhone.set(key, []);
+      ordersByPhone.get(key).push(o);
+    }
+    let linked = 0;
+    for (const req of openRequests) {
+      const key = normalizePhoneForWhatsApp(req.phone);
+      if (!key) continue;
+      const candidates = ordersByPhone.get(key) || [];
+      const match = candidates.find((o) => new Date(o.created_at).getTime() >= new Date(req.created_at).getTime());
+      if (!match) continue;
+      await pool.query(
+        "UPDATE sales_requests SET linked_order_id=$1, converted_at=NOW() WHERE id=$2",
+        [String(match.id), req.id],
+      );
+      linked += 1;
+    }
+    if (linked > 0) {
+      invalidateSalesRequestsDbCache();
+      console.log(`[sales-requests] reconcile: collegate ${linked} richieste al relativo ordine.`);
+    }
+  } catch (err) {
+    console.warn("[sales-requests] reconcile order links failed:", err?.message || err);
+  }
+}
+
+function startSalesRequestOrderLinkReconciler(intervalMs = 10 * 60_000) {
+  setTimeout(() => { reconcileSalesRequestOrderLinks().catch(() => {}); }, 25_000);
+  setInterval(() => { reconcileSalesRequestOrderLinks().catch(() => {}); }, intervalMs);
+}
+
+/**
+ * Promemoria automatico "richiesta fredda": avvisa l'ufficio quando una
+ * richiesta resta "nuova" (mai contattata) da 3+ giorni senza essere stata
+ * ricordata negli ultimi 3 giorni — evita sia il silenzio totale sia lo
+ * spam ad ogni tick per la stessa richiesta.
+ */
+async function checkStaleSalesRequests({ staleDays = 3 } = {}) {
+  if (!USE_POSTGRES) return;
+  try {
+    const pool = await getPgPool();
+    const { rows } = await pool.query(`
+      SELECT id, first_name, last_name, city, assignment, created_at
+      FROM sales_requests
+      WHERE (status = '' OR status = 'new')
+        AND (linked_order_id IS NULL OR linked_order_id = '')
+        AND created_at <= NOW() - ($1 || ' days')::interval
+        AND (stale_reminded_at IS NULL OR stale_reminded_at <= NOW() - ($1 || ' days')::interval)
+      ORDER BY created_at ASC
+      LIMIT 50
+    `, [String(staleDays)]);
+    if (!rows.length) return;
+    const store = await readJson(STORE_PATH, {});
+    for (const r of rows) {
+      const name = `${r.first_name || ""} ${r.last_name || ""}`.trim() || "Richiesta senza nome";
+      const days = Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86_400_000);
+      const assignee = String(r.assignment || "").trim();
+      const label = `${name}${r.city ? ` · ${r.city}` : ""} — ${days} giorni senza contatto${assignee ? ` (${assignee})` : " (non assegnata)"}`;
+      await notify(store, { role: "office" }, {
+        type: "sales_request_stale",
+        title: "Richiesta fredda da ricontattare",
+        body: label,
+        data: { requestId: r.id, view: "sales-requests" },
+        dedupeKey: `sales-request-stale:${r.id}`,
+      }).catch((err) => console.warn("[sales-requests] stale notify failed:", err?.message || err));
+      const pool2 = await getPgPool();
+      await pool2.query("UPDATE sales_requests SET stale_reminded_at=NOW() WHERE id=$1", [r.id]).catch(() => {});
+    }
+    invalidateSalesRequestsDbCache();
+  } catch (err) {
+    console.warn("[sales-requests] check stale failed:", err?.message || err);
+  }
+}
+
+function startStaleSalesRequestChecker(intervalMs = 60 * 60_000) {
+  setTimeout(() => { checkStaleSalesRequests().catch(() => {}); }, 30_000);
+  setInterval(() => { checkStaleSalesRequests().catch(() => {}); }, intervalMs);
 }
 
 async function updateSalesRequestMicroFieldsInDb(request, patch = {}, existingRequest = null, userId = null) {
@@ -18102,6 +18228,12 @@ server.listen(PORT, HOST, () => {
         // quindi rimaste bloccate su "Programmato".
         reconcileInstallationStatusesFromField()
           .catch((err) => console.warn("[reconcile-install] startup run failed:", err?.message || err));
+        // Automazioni richieste: collega richieste↔ordini via telefono e
+        // avvisa l'ufficio delle richieste rimaste fredde da 3+ giorni.
+        try { startSalesRequestOrderLinkReconciler(10 * 60_000); }
+        catch (err) { console.warn("[sales-requests] link reconciler start failed:", err?.message || err); }
+        try { startStaleSalesRequestChecker(60 * 60_000); }
+        catch (err) { console.warn("[sales-requests] stale checker start failed:", err?.message || err); }
       })
       .catch((err) => console.error("[db] relational schema init failed", err));
     readJson(STORE_PATH, {}).catch((err) => console.error("[store-cache] warm-up failed", err));
