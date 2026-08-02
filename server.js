@@ -1080,8 +1080,9 @@ async function ensureRelationalSchema() {
       -- la richiesta con lo stesso numero.
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS linked_order_id TEXT DEFAULT '';
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ;
-      -- Ultimo promemoria automatico "richiesta fredda" (checkStaleSalesRequests):
-      -- evita di rinotificare l'ufficio ad ogni tick per la stessa richiesta.
+      -- stale_reminded_at: colonna rimasta da un promemoria automatico per
+      -- richiesta rimosso (intasava il centro notifiche sul backlog storico).
+      -- Non più scritta né letta, lasciata per non fare una ALTER distruttiva.
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS stale_reminded_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS sales_requests_linked_order_idx ON sales_requests (linked_order_id) WHERE linked_order_id != '';
       -- inventory_items era rimasta allo schema minimo iniziale: mancavano tutti i
@@ -2383,51 +2384,29 @@ function startSalesRequestOrderLinkReconciler(intervalMs = 10 * 60_000) {
 }
 
 /**
- * Promemoria automatico "richiesta fredda": avvisa l'ufficio quando una
- * richiesta resta "nuova" (mai contattata) da 3+ giorni senza essere stata
- * ricordata negli ultimi 3 giorni — evita sia il silenzio totale sia lo
- * spam ad ogni tick per la stessa richiesta.
+ * Rimossa: il promemoria "richiesta fredda" per singola richiesta intasava
+ * il centro notifiche — il primo giro contro il backlog storico (centinaia
+ * di richieste mai contattate da giorni/mesi) ha generato una notifica
+ * separata a testa invece di un segnale aggregato utile. Il segnale resta
+ * comunque visibile direttamente in Richieste (banner urgenza + badge per
+ * riga in lista), senza affollare le notifiche generali.
+ *
+ * Pulizia una tantum: rimuove dal centro notifiche quelle già generate.
  */
-async function checkStaleSalesRequests({ staleDays = 3 } = {}) {
-  if (!USE_POSTGRES) return;
+async function purgeSalesRequestStaleNotifications() {
   try {
-    const pool = await getPgPool();
-    const { rows } = await pool.query(`
-      SELECT id, first_name, last_name, city, assignment, created_at
-      FROM sales_requests
-      WHERE (status = '' OR status = 'new')
-        AND (linked_order_id IS NULL OR linked_order_id = '')
-        AND created_at <= NOW() - ($1 || ' days')::interval
-        AND (stale_reminded_at IS NULL OR stale_reminded_at <= NOW() - ($1 || ' days')::interval)
-      ORDER BY created_at ASC
-      LIMIT 50
-    `, [String(staleDays)]);
-    if (!rows.length) return;
     const store = await readJson(STORE_PATH, {});
-    for (const r of rows) {
-      const name = `${r.first_name || ""} ${r.last_name || ""}`.trim() || "Richiesta senza nome";
-      const days = Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86_400_000);
-      const assignee = String(r.assignment || "").trim();
-      const label = `${name}${r.city ? ` · ${r.city}` : ""} — ${days} giorni senza contatto${assignee ? ` (${assignee})` : " (non assegnata)"}`;
-      await notify(store, { role: "office" }, {
-        type: "sales_request_stale",
-        title: "Richiesta fredda da ricontattare",
-        body: label,
-        data: { requestId: r.id, view: "sales-requests" },
-        dedupeKey: `sales-request-stale:${r.id}`,
-      }).catch((err) => console.warn("[sales-requests] stale notify failed:", err?.message || err));
-      const pool2 = await getPgPool();
-      await pool2.query("UPDATE sales_requests SET stale_reminded_at=NOW() WHERE id=$1", [r.id]).catch(() => {});
+    const before = Array.isArray(store.notifications) ? store.notifications.length : 0;
+    if (!before) return;
+    store.notifications = store.notifications.filter((n) => n?.type !== "sales_request_stale");
+    const removed = before - store.notifications.length;
+    if (removed > 0) {
+      await writeJson(STORE_PATH, store);
+      console.log(`[sales-requests] rimosse ${removed} notifiche "richiesta fredda" (funzione rimossa).`);
     }
-    invalidateSalesRequestsDbCache();
   } catch (err) {
-    console.warn("[sales-requests] check stale failed:", err?.message || err);
+    console.warn("[sales-requests] purge stale notifications failed:", err?.message || err);
   }
-}
-
-function startStaleSalesRequestChecker(intervalMs = 60 * 60_000) {
-  setTimeout(() => { checkStaleSalesRequests().catch(() => {}); }, 30_000);
-  setInterval(() => { checkStaleSalesRequests().catch(() => {}); }, intervalMs);
 }
 
 async function updateSalesRequestMicroFieldsInDb(request, patch = {}, existingRequest = null, userId = null) {
@@ -18338,12 +18317,14 @@ server.listen(PORT, HOST, () => {
         // quindi rimaste bloccate su "Programmato".
         reconcileInstallationStatusesFromField()
           .catch((err) => console.warn("[reconcile-install] startup run failed:", err?.message || err));
-        // Automazioni richieste: collega richieste↔ordini via telefono e
-        // avvisa l'ufficio delle richieste rimaste fredde da 3+ giorni.
+        // Automazioni richieste: collega richieste↔ordini via telefono.
         try { startSalesRequestOrderLinkReconciler(10 * 60_000); }
         catch (err) { console.warn("[sales-requests] link reconciler start failed:", err?.message || err); }
-        try { startStaleSalesRequestChecker(60 * 60_000); }
-        catch (err) { console.warn("[sales-requests] stale checker start failed:", err?.message || err); }
+        // Pulizia una-tantum: rimuove le notifiche "richiesta fredda" già
+        // generate dal checker rimosso (aveva intasato il centro notifiche
+        // contro il backlog storico).
+        purgeSalesRequestStaleNotifications()
+          .catch((err) => console.warn("[sales-requests] purge stale notifications startup run failed:", err?.message || err));
       })
       .catch((err) => console.error("[db] relational schema init failed", err));
     readJson(STORE_PATH, {}).catch((err) => console.error("[store-cache] warm-up failed", err));
