@@ -23009,6 +23009,25 @@ body {
   letter-spacing: 0.04em;
 }
 
+/* Badge "Xgg senza contatto": stessa soglia del banner urgenza sopra la lista
+   e del promemoria automatico — rosso da 5gg, ambra da 3gg. */
+.crm-row-stale-badge {
+  background: #fbeaea;
+  color: #a83c3c;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-weight: 700;
+  font-size: 10.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.crm-row-stale-badge.is-warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 /* Avatar tondino più piccolo per non gridare */
 .crm-row-avatar {
   width: 16px;
