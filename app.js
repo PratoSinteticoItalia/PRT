@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260802-flat-background-no-grid";
+} from "./lib/order-money.js?v=20260802-richieste-redesign";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260802-flat-background-no-grid";
+import { regionForCity } from "./lib/geo.js?v=20260802-richieste-redesign";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260802-flat-background-no-grid";
+} from "./lib/profit-split.js?v=20260802-richieste-redesign";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260802-flat-background-no-grid";
+} from "./lib/preventivo-pricing.js?v=20260802-richieste-redesign";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260802-flat-background-no-grid";
+const APP_SHELL_VERSION = "20260802-richieste-redesign";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1554,6 +1554,8 @@ const ui = {
   salesRequestStatusFilter: document.getElementById("sales-request-status-filter"),
   salesRequestQuickFilters: document.getElementById("sales-request-quick-filters"),
   salesRequestInsights: document.getElementById("sales-request-insights"),
+  salesRequestStaleBanner: document.getElementById("sales-request-stale-banner"),
+  salesRequestSortRow: document.getElementById("sales-request-sort-row"),
   salesRequestCompactToggle: document.getElementById("sales-request-compact-toggle"),
   salesRequestDedupButton: document.getElementById("sales-request-dedup-button"),
   salesRequestRestoreDatesButton: document.getElementById("sales-request-restore-dates-button"),
@@ -4686,6 +4688,13 @@ function matchesSalesRequestQuickFilter(item = {}, filter = String(state.filters
   if (quickFilter === "posa") return String(item.service || "").trim().toLowerCase() === "posa";
   if (quickFilter === "resellers") return Boolean(item.resellerId);
   if (quickFilter === "new") return statusCode === "new";
+  if (quickFilter === "quoted") return statusCode === "quoted";
+  if (quickFilter === "stale") {
+    if (statusCode !== "new" || item.linkedOrderId) return false;
+    const created = item.createdAt ? new Date(item.createdAt).getTime() : NaN;
+    if (!Number.isFinite(created)) return false;
+    return (Date.now() - created) >= 5 * 24 * 60 * 60 * 1000;
+  }
   if (quickFilter === "this-week") {
     const d = item.createdAt ? new Date(item.createdAt) : null;
     if (!d || Number.isNaN(d.getTime())) return false;
@@ -4698,12 +4707,11 @@ function matchesSalesRequestQuickFilter(item = {}, filter = String(state.filters
 function getSalesRequestQuickFilterOptions(items = state.salesRequests) {
   const currentOperator = getSalesRequestOperatorFromCurrentUser();
   const stats = state.salesRequestsStats || {};
-  // Ordine mockup: Tutti / Miei / Da assegnare (urgente) / Nuovi / Questa settimana / Solo fornitura / Fornitura + posa
+  // "Tutti" / "Da assegnare" / "Nuovi" ora vivono nella riga KPI sopra (cliccabile,
+  // stesso data-action) — qui restano solo i filtri SECONDARI che il KPI non copre,
+  // altrimenti KPI e pillole direbbero la stessa cosa senza parlarsi tra loro.
   const options = [
-    { value: "all",         label: state.lang === "it" ? "Tutti" : "All",                 count: stats.total ?? items.length },
     { value: "mine",        label: state.lang === "it" ? "Miei" : "Mine" },
-    { value: "unassigned",  label: state.lang === "it" ? "Da assegnare" : "Unassigned",   count: stats.unassigned, urgent: true },
-    { value: "new",         label: state.lang === "it" ? "Nuovi" : "New",                 count: stats.new },
     { value: "this-week",   label: state.lang === "it" ? "Questa settimana" : "This week", count: stats.thisWeek },
     { value: "fornitura",   label: state.lang === "it" ? "Solo fornitura" : "Supply only" },
     { value: "posa",        label: state.lang === "it" ? "Fornitura + posa" : "Supply + install" },
@@ -4715,7 +4723,7 @@ function getSalesRequestQuickFilterOptions(items = state.salesRequests) {
       ...option,
       count: option.count != null ? option.count : items.filter((item) => matchesSalesRequestQuickFilter(item, option.value)).length,
     }))
-    .filter((option) => option.value === "all" || (option.count > 0 || option.value === "mine"));
+    .filter((option) => option.count > 0 || option.value === "mine");
 }
 
 function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
@@ -4735,52 +4743,56 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
     `).join("");
   }
   if (ui.salesRequestInsights) {
-    // CRM v2 — KPI strip mockup-style (5 metriche + trend)
+    // CRM v2 — KPI riga cliccabile: ogni riquadro È il filtro (data-action
+    // condiviso con le pillole sotto), non più 5 numeri scollegati dai chip.
     const stats = state.salesRequestsStats;
+    const currentQuick = String(state.filters.salesRequestQuick || "all");
     if (stats) {
       ui.salesRequestInsights.className = "sales-request-insights crm-kpi-strip";
       const today = Number(stats.today || 0);
-      const thisWeek = Number(stats.thisWeek || 0);
-      const prevWeek = Number(stats.prevWeek || 0);
-      let weekTrend = "";
-      if (prevWeek > 0) {
-        const delta = Math.round(((thisWeek - prevWeek) / prevWeek) * 100);
-        const arrow = delta >= 0 ? "↑" : "↓";
-        const cls = delta >= 0 ? "" : "is-warn";
-        weekTrend = `<span class="crm-kpi-trend ${cls}">${arrow} ${Math.abs(delta)}% vs scorsa</span>`;
-      } else if (thisWeek > 0) {
-        weekTrend = `<span class="crm-kpi-trend">↑ ${thisWeek} nuovi</span>`;
-      }
       const todayTrend = today > 0
         ? `<span class="crm-kpi-trend is-warn">↑ ${today} ogg${today === 1 ? "i" : "i"}</span>`
         : "";
-      ui.salesRequestInsights.innerHTML = `
-        <div class="crm-kpi">
-          <span class="crm-kpi-value">${(stats.total ?? 0).toLocaleString("it-IT")}</span>
-          <span class="crm-kpi-label">${state.lang === "it" ? "Totale" : "Total"}</span>
-        </div>
-        <div class="crm-kpi">
-          <span class="crm-kpi-value">${stats.new ?? 0}</span>
-          <span class="crm-kpi-label">${state.lang === "it" ? "Da contattare" : "To contact"}</span>
-          ${todayTrend}
-        </div>
-        <div class="crm-kpi">
-          <span class="crm-kpi-value">${stats.unassigned ?? 0}</span>
-          <span class="crm-kpi-label">${state.lang === "it" ? "Da assegnare" : "Unassigned"}</span>
-        </div>
-        <div class="crm-kpi">
-          <span class="crm-kpi-value">${stats.thisWeek ?? 0}</span>
-          <span class="crm-kpi-label">${state.lang === "it" ? "Questa settimana" : "This week"}</span>
-          ${weekTrend}
-        </div>
-        <div class="crm-kpi">
-          <span class="crm-kpi-value">${stats.quoted ?? 0}</span>
-          <span class="crm-kpi-label">${state.lang === "it" ? "Preventivi inviati" : "Quotes sent"}</span>
-        </div>
-      `;
+      const kpis = [
+        { key: "all", value: stats.total ?? 0, label: state.lang === "it" ? "Totale" : "Total", trend: "" },
+        { key: "new", value: stats.new ?? 0, label: state.lang === "it" ? "Da contattare" : "To contact", trend: todayTrend },
+        { key: "unassigned", value: stats.unassigned ?? 0, label: state.lang === "it" ? "Da assegnare" : "Unassigned", trend: "" },
+        { key: "quoted", value: stats.quoted ?? 0, label: state.lang === "it" ? "Preventivi inviati" : "Quotes sent", trend: "" },
+      ];
+      ui.salesRequestInsights.innerHTML = kpis.map((k) => `
+        <button
+          type="button"
+          class="crm-kpi ${k.key === currentQuick ? "is-active" : ""}"
+          data-action="set-sales-request-quick-filter"
+          data-value="${escapeHtml(k.key)}"
+          aria-pressed="${k.key === currentQuick ? "true" : "false"}"
+        >
+          <span class="crm-kpi-value">${Number(k.value).toLocaleString("it-IT")}</span>
+          <span class="crm-kpi-label">${escapeHtml(k.label)}</span>
+          ${k.trend}
+        </button>
+      `).join("");
     } else {
       ui.salesRequestInsights.innerHTML = "";
     }
+  }
+  if (ui.salesRequestStaleBanner) {
+    const staleCount = Number(state.salesRequestsStats?.stale || 0);
+    const currentQuick = String(state.filters.salesRequestQuick || "all");
+    const show = staleCount > 0 && currentQuick !== "stale";
+    ui.salesRequestStaleBanner.classList.toggle("hidden", !show);
+    ui.salesRequestStaleBanner.innerHTML = show ? `
+      <span class="sales-request-stale-banner-text">⚠️ <strong>${staleCount}</strong> ${state.lang === "it"
+        ? `richiest${staleCount === 1 ? "a" : "e"} ferm${staleCount === 1 ? "a" : "e"} da 5+ giorni senza contatto, su tutto il totale`
+        : `request${staleCount === 1 ? "" : "s"} stuck 5+ days without contact, across the whole dataset`}</span>
+      <button type="button" data-action="show-stale-sales-requests">${state.lang === "it" ? "Mostra e ordina per urgenza" : "Show, sorted by urgency"}</button>
+    ` : "";
+  }
+  if (ui.salesRequestSortRow) {
+    const currentSort = String(state.salesRequestSort || "recent");
+    ui.salesRequestSortRow.querySelectorAll(".sales-request-sort-btn").forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.value === currentSort);
+    });
   }
 }
 
@@ -13284,8 +13296,9 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
     : _quick === "unassigned" ? "unassigned" : "";
   const _quickService      = _quick === "fornitura" ? "fornitura" : _quick === "posa" ? "posa" : "";
   const _quickContactState = _quick === "to-contact" ? "to-contact" : _quick === "contacted" ? "contacted" : "";
-  const _quickStatus       = _quick === "new" ? "new" : "";
+  const _quickStatus       = _quick === "new" ? "new" : _quick === "quoted" ? "quoted" : "";
   const _quickResellerOnly = _quick === "resellers";
+  const _quickStale = _quick === "stale";
   // "this-week": calcola dateFrom = oggi - 7gg (lato client → server)
   let _quickDateFrom = "";
   if (_quick === "this-week") {
@@ -13295,7 +13308,8 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
   // Merge: quick filter > dropdown
   const _finalAssignment = _quickAssignment || assignment;
   const _finalStatus     = _quickStatus || status;
-  const queryKey   = `${page}|${q}|${_finalStatus}|${_finalAssignment}|${source}|${_quick}|${_quickResellerOnly}`;
+  const sort = String(state.salesRequestSort || "recent");
+  const queryKey   = `${page}|${q}|${_finalStatus}|${_finalAssignment}|${source}|${_quick}|${_quickResellerOnly}|${sort}`;
   // Notifica subito renderSalesRequests: se ci sono dati cached mostra quelli,
   // altrimenti (loadedAt === 0) mostra lo spinner e ritorna in attesa del fetch.
   renderSalesRequests();
@@ -13309,6 +13323,8 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
     if (_quickContactState) params.set("contactState", _quickContactState);
     if (_quickDateFrom)     params.set("dateFrom", _quickDateFrom);
     if (_quickResellerOnly) params.set("resellerAssigned", "1");
+    if (_quickStale)        params.set("stale", "1");
+    if (sort === "urgent")  params.set("sort", "urgent");
     const data = await apiFetch(`/api/sales/requests?${params}`);
     // Protezione ottimistica: se un PATCH è in-volo (o nel grace period da 1.5s),
     // mantieni la versione locale per quell'item — la risposta del server potrebbe
@@ -13344,6 +13360,9 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
         new: data.stats.new ?? 0,
         unassigned: data.stats.unassigned ?? 0,
         thisWeek: data.stats.thisWeek ?? 0,
+        today: data.stats.today ?? 0,
+        quoted: data.stats.quoted ?? 0,
+        prevWeek: data.stats.prevWeek ?? 0,
       };
     }
     // Aggiorna anche state.salesRequests per compatibilità con detail panel etc.
@@ -13915,6 +13934,17 @@ function renderSalesRequestsDetailPanel(selected = null) {
     if (_prevId !== _newId) {
       _panel.dataset.panelItemId = _newId;
       _panel.scrollTop = 0;
+      // Nuova selezione: riparti sempre dalla tab Panoramica, non restare
+      // bloccati su "Storia" della richiesta precedente.
+      state.salesRequestDetailTab = "overview";
+      _panel.querySelectorAll("#sales-request-detail-tabs .crm-detail-tab").forEach((btn) => {
+        const isActive = btn.dataset.tab === "overview";
+        btn.classList.toggle("is-active", isActive);
+        btn.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
+      _panel.querySelectorAll(".crm-tab-panel").forEach((panel) => {
+        panel.classList.toggle("is-active", panel.dataset.tabPanel === "overview");
+      });
     }
   }
   ensureSalesRequestWhatsAppActionUi();
@@ -32205,13 +32235,31 @@ bindEvent(ui.salesRequestStatusFilter, "change", (event) => {
   clearSalesRequestBulkSelection({ render: false });
   loadCrmPage({ page: 1, forceReload: true });
 });
-bindEvent(ui.salesRequestQuickFilters, "click", (event) => {
+function setSalesRequestQuickFilterFromClick(event) {
   const button = event.target.closest("[data-action='set-sales-request-quick-filter']");
   if (!button) return;
   state.filters.salesRequestQuick = button.dataset.value || "all";
   state.salesRequestPage = 1;
   clearSalesRequestBulkSelection({ render: false });
   // Ricarica dal server con il nuovo filtro: copre tutti i record, non solo i 50 in pagina
+  loadCrmPage({ page: 1, forceReload: true });
+}
+bindEvent(ui.salesRequestQuickFilters, "click", setSalesRequestQuickFilterFromClick);
+bindEvent(ui.salesRequestInsights, "click", setSalesRequestQuickFilterFromClick);
+bindEvent(ui.salesRequestSortRow, "click", (event) => {
+  const button = event.target.closest("[data-action='set-sales-request-sort']");
+  if (!button) return;
+  state.salesRequestSort = button.dataset.value === "urgent" ? "urgent" : "recent";
+  state.salesRequestPage = 1;
+  loadCrmPage({ page: 1, forceReload: true });
+});
+bindEvent(ui.salesRequestStaleBanner, "click", (event) => {
+  const button = event.target.closest("[data-action='show-stale-sales-requests']");
+  if (!button) return;
+  state.filters.salesRequestQuick = "stale";
+  state.salesRequestSort = "urgent";
+  state.salesRequestPage = 1;
+  clearSalesRequestBulkSelection({ render: false });
   loadCrmPage({ page: 1, forceReload: true });
 });
 bindEvent(ui.salesRequestsPagination, "change", (event) => {
@@ -32280,19 +32328,24 @@ bindEvent(ui.salesRequestNewButton, "click", createNewSalesRequest);
 bindEvent(ui.salesRequestDeleteButton, "click", deleteSalesRequest);
 bindEvent(ui.salesRequestUseGeneratorButton, "click", useSelectedSalesRequestInGenerator);
 bindEvent(ui.salesRequestVcardButton, "click", saveSalesRequestVCard);
-bindEvent(document.getElementById("sales-request-storia-tab-btn"), "click", () => {
-  const requestId = state.selectedSalesRequestId;
-  if (requestId) void loadAuditTrail("sales_request", requestId, "sales-request-audit-trail");
-  const storiaPanel = document.getElementById("sales-request-storia-panel");
-  if (storiaPanel) {
-    const detailPanel = storiaPanel.closest(".sales-request-detail-panel");
-    if (detailPanel && window.innerWidth >= 981) {
-      // Desktop: scorre nel container sticky del pannello (non l'intera pagina)
-      const top = storiaPanel.getBoundingClientRect().top - detailPanel.getBoundingClientRect().top + detailPanel.scrollTop - 8;
-      detailPanel.scrollTo({ top, behavior: "smooth" });
-    } else {
-      storiaPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+bindEvent(document.getElementById("sales-request-detail-tabs"), "click", (event) => {
+  const button = event.target.closest("[data-action='set-sales-request-detail-tab']");
+  if (!button) return;
+  const tab = button.dataset.tab || "overview";
+  state.salesRequestDetailTab = tab;
+  const detailPanel = document.querySelector(".sales-request-detail-panel");
+  if (!detailPanel) return;
+  detailPanel.querySelectorAll("#sales-request-detail-tabs .crm-detail-tab").forEach((btn) => {
+    const isActive = btn.dataset.tab === tab;
+    btn.classList.toggle("is-active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  detailPanel.querySelectorAll(".crm-tab-panel").forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.tabPanel === tab);
+  });
+  if (tab === "history") {
+    const requestId = state.selectedSalesRequestId;
+    if (requestId) void loadAuditTrail("sales_request", requestId, "sales-request-audit-trail");
   }
 });
 bindEvent(ui.salesRequestServiceAccountButton, "click", () => ui.salesRequestServiceAccountInput?.click());

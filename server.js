@@ -1629,7 +1629,7 @@ function sqlPhoneCanon(col) {
  * CRM server-side search con FTS, filtri e paginazione.
  * Usato da GET /api/sales/requests.
  */
-async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", resellerId = "", resellerAssigned = false, page = 1, limit = 50 } = {}) {
+async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", resellerId = "", resellerAssigned = false, stale = false, sort = "recent", page = 1, limit = 50 } = {}) {
   if (!USE_POSTGRES) return { total: 0, page, limit, items: [] };
   await ensureRelationalSchema();
   const pool = await getPgPool();
@@ -1658,7 +1658,14 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
                    OR LOWER(coalesce(status,'')) LIKE '%attesa%' OR LOWER(coalesce(status,'')) LIKE '%ricontatt%'
                    OR LOWER(coalesce(status,'')) LIKE '%nessuna risposta%')`);
     } else if (_statusLc === "quoted") {
-      where.push(`(LOWER(coalesce(status,'')) LIKE '%preventivo inviato%' OR LOWER(coalesce(status,'')) LIKE '%preventivo da inviare%' OR LOWER(coalesce(status,'')) LIKE '%offerta inviata%')`);
+      // Allineato al bucket "quoted" di normalizeSalesRequestStatus() in app.js e
+      // al conteggio quoted_count qui sopra: altrimenti il KPI "Preventivi inviati"
+      // e la lista che appare cliccandolo mostrerebbero numeri diversi.
+      where.push(`LOWER(TRIM(coalesce(status,''))) IN (
+        'quoted', 'quote', 'preventivo', 'in preventivo', 'preventivo inviato',
+        'preventivo da inviare', 'preventivo confermato', 'offerta',
+        'offerta inviata', 'quotato', 'campione acquistato'
+      )`);
     } else if (_statusLc === "won") {
       where.push(`(LOWER(coalesce(status,'')) LIKE '%preventivo confermato%' OR LOWER(coalesce(status,'')) LIKE '%ordine confermato%' OR LOWER(coalesce(status,'')) LIKE '%ordine eseguito%' OR LOWER(coalesce(status,'')) LIKE '%campione acquistato%')`);
     } else if (_statusLc === "lost") {
@@ -1711,6 +1718,15 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
     // Filtro "Rivenditori" del CRM ufficio: qualunque richiesta assegnata a
     // un rivenditore, non a uno specifico — nessun parametro, solo IS NOT NULL.
     where.push(`(reseller_id IS NOT NULL AND reseller_id != '')`);
+  }
+  // Banner urgenza: richieste ancora "nuove", non collegate a un ordine, ferme
+  // da 5+ giorni — stessa definizione del conteggio stale_count più sotto.
+  if (stale) {
+    where.push(`(
+      (status IS NULL OR status = '' OR status = 'new')
+      AND (linked_order_id IS NULL OR linked_order_id = '')
+      AND COALESCE(sd.received_at, created_at) <= NOW() - INTERVAL '5 days'
+    )`);
   }
 
   // CRM v2: il where va ribattezzato con prefisso "sr." per il join con shadow
@@ -1773,11 +1789,12 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
          FROM sales_requests sr
          LEFT JOIN shadow_dates sd ON sd.sr_id = sr.id
          ${whereWithSd}
-         ORDER BY
+         ORDER BY${sort === "urgent" ? `
+           COALESCE(sd.received_at, sr.created_at) ASC NULLS LAST` : `
            sd.received_at DESC NULLS LAST,        -- 1) primi i record con shadow (data IMAP reale)
            sr.source_row_number DESC NULLS LAST,  -- 2) poi gli altri per riga Sheets (più recente = riga più alta)
            sr.updated_at DESC NULLS LAST,         -- 3) infine per ultimo aggiornamento
-           sr.created_at DESC NULLS LAST
+           sr.created_at DESC NULLS LAST`}
          LIMIT ${limitN} OFFSET ${offset}`,
         params,
       ),
@@ -1788,8 +1805,20 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
           COUNT(*) FILTER (WHERE sr.assignment IS NULL OR sr.assignment = '')::int AS unassigned_count,
           COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '7 days')::int AS this_week_count,
           COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= CURRENT_DATE)::int AS today_count,
-          COUNT(*) FILTER (WHERE LOWER(coalesce(sr.status,'')) LIKE '%preventivo%inviato%' OR LOWER(coalesce(sr.status,'')) LIKE '%offerta%inviata%')::int AS quoted_count,
-          COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '14 days' AND COALESCE(sd.received_at, sr.created_at) < NOW() - INTERVAL '7 days')::int AS prev_week_count
+          -- Rispecchia i bucket "quoted" di normalizeSalesRequestStatus() in app.js:
+          -- il campo status mescola l'enum pulito del form nativo (quoted) con
+          -- decine di stati testuali legacy importati dai fogli Google.
+          COUNT(*) FILTER (WHERE LOWER(TRIM(coalesce(sr.status,''))) IN (
+            'quoted', 'quote', 'preventivo', 'in preventivo', 'preventivo inviato',
+            'preventivo da inviare', 'preventivo confermato', 'offerta',
+            'offerta inviata', 'quotato', 'campione acquistato'
+          ))::int AS quoted_count,
+          COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '14 days' AND COALESCE(sd.received_at, sr.created_at) < NOW() - INTERVAL '7 days')::int AS prev_week_count,
+          COUNT(*) FILTER (
+            WHERE (sr.status IS NULL OR sr.status = '' OR sr.status = 'new')
+              AND (sr.linked_order_id IS NULL OR sr.linked_order_id = '')
+              AND COALESCE(sd.received_at, sr.created_at) <= NOW() - INTERVAL '5 days'
+          )::int AS stale_count
         FROM sales_requests sr
         LEFT JOIN shadow_dates sd ON sd.sr_id = sr.id`),
     ]);
@@ -1807,6 +1836,7 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
         today: sr.today_count ?? 0,
         quoted: sr.quoted_count ?? 0,
         prevWeek: sr.prev_week_count ?? 0,
+        stale: sr.stale_count ?? 0,
       },
     };
   } catch (err) {
@@ -15358,6 +15388,8 @@ async function handleApi(req, res, url) {
     const contactState = String(url.searchParams.get("contactState") || "").trim();
     const dateFrom     = String(url.searchParams.get("dateFrom") || "").trim();
     const dateTo       = String(url.searchParams.get("dateTo") || "").trim();
+    const stale        = url.searchParams.get("stale") === "1";
+    const sort         = url.searchParams.get("sort") === "urgent" ? "urgent" : "recent";
     const page         = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
     const limit        = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10) || 50));
     // Un rivenditore vede SOLO le proprie richieste: resellerId è sempre
@@ -15367,7 +15399,7 @@ async function handleApi(req, res, url) {
     // se resellerId è già impostato (rivenditore che guarda solo le proprie).
     const resellerAssigned = currentUser.role === "office" && url.searchParams.get("resellerAssigned") === "1";
     try {
-      const result = await searchSalesRequestsFromDb({ q, status, assignment, source, service, contactState, dateFrom, dateTo, resellerId, resellerAssigned, page, limit });
+      const result = await searchSalesRequestsFromDb({ q, status, assignment, source, service, contactState, dateFrom, dateTo, resellerId, resellerAssigned, stale, sort, page, limit });
       return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "search_failed") });

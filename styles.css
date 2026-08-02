@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  --bg: #fafaf8;
+  --bg: #ffffff;
   --panel: rgba(255, 255, 255, 0.96);
   --line: rgba(0, 0, 0, 0.08);
   --text: #1a1a18;
@@ -6709,7 +6709,7 @@ body {
 
 /* Final visual system refresh */
 :root {
-  --bg: #f3f0e8;
+  --bg: #ffffff;
   --panel: rgba(255, 251, 245, 0.92);
   --card: rgba(255, 252, 248, 0.94);
   --line: rgba(35, 49, 33, 0.1);
@@ -11509,7 +11509,7 @@ button:active,
 
 /* Apple-enterprise polish */
 :root {
-  --bg: #edf1f5;
+  --bg: #ffffff;
   --panel: rgba(255, 255, 255, 0.84);
   --card: rgba(255, 255, 255, 0.9);
   --line: rgba(15, 23, 32, 0.08);
@@ -14656,7 +14656,7 @@ body.mobile-safe-mode .main-content {
 
 /* iPhone-familiar refinement */
 :root {
-  --bg: #f4f5f8;
+  --bg: #ffffff;
   --panel: rgba(255, 255, 255, 0.8);
   --card: rgba(255, 255, 255, 0.9);
   --line: rgba(15, 23, 42, 0.08);
@@ -22851,6 +22851,46 @@ body {
   resize: vertical;
 }
 
+/* Pannello dettaglio a tab (Panoramica/Cliente/Storia): sostituisce l'unica
+   colonna sempre aperta con scroll infinito + link "Storia" che scrollava. */
+.crm-detail-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 18px 0;
+  border-bottom: 1px solid #ece8de;
+}
+.crm-detail-tab {
+  border: none;
+  background: none;
+  padding: 8px 4px;
+  margin-right: 18px;
+  margin-bottom: -1px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #8a9690;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.crm-detail-tab:hover { color: #1a2e26; }
+.crm-detail-tab.is-active {
+  color: #1a2e26;
+  border-bottom-color: #1f4d3d;
+}
+.crm-tab-panel {
+  display: none;
+  flex-direction: column;
+  gap: 18px;
+}
+.crm-tab-panel.is-active {
+  display: flex;
+}
+#sales-request-storia-panel.crm-tab-panel {
+  padding: 16px 18px 20px;
+}
+#sales-request-storia-panel.crm-tab-panel.is-active {
+  display: block;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    CRM v2 — KPI strip compatta (sostituisce i box giganti)
    ═══════════════════════════════════════════════════════════════════ */
@@ -23003,8 +23043,42 @@ body {
 #sales-requests .crm-kpi {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 2px;
   min-width: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px 8px 4px 10px;
+  margin: -4px -8px -4px -10px;
+  border-radius: 10px;
+  position: relative;
+  transition: background-color .12s ease, transform .12s ease;
+}
+#sales-requests .crm-kpi::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 3px;
+  background: transparent;
+}
+#sales-requests .crm-kpi:hover {
+  background-color: #f4f5f0;
+}
+#sales-requests .crm-kpi.is-active {
+  background-color: #eaf3ee;
+}
+#sales-requests .crm-kpi.is-active::before {
+  background: #1f4d3d;
+}
+#sales-requests .crm-kpi:focus-visible {
+  outline: 2px solid #3e63d8;
+  outline-offset: 2px;
 }
 #sales-requests .crm-kpi-value {
   font-size: 24px;
@@ -23084,6 +23158,77 @@ body {
   background: #f59e0b;
   color: white;
   border-color: #f59e0b;
+}
+
+/* Banner urgenza: richieste ferme 5+ giorni su tutto il totale, non solo la pagina */
+#sales-request-stale-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: #fbeaea;
+  color: #a83c3c;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+#sales-request-stale-banner.hidden { display: none; }
+.sales-request-stale-banner-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#sales-request-stale-banner button {
+  border: 1px solid currentColor;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#sales-request-stale-banner button:hover {
+  background: rgba(168, 60, 60, .08);
+}
+
+/* Ordinamento esplicito: Più urgenti prima / Più recenti prima */
+.sales-request-sort-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 10px;
+  font-size: 12px;
+  color: #8a9690;
+}
+.sales-request-sort-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-size: 10.5px;
+}
+.sales-request-sort-btn {
+  border: 1px solid #e5e1d6;
+  background: #ffffff;
+  color: #5a6e63;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .12s;
+}
+.sales-request-sort-btn:hover {
+  border-color: #d4cebd;
+  color: #1a2e26;
+}
+.sales-request-sort-btn.is-active {
+  background: #1f4d3d;
+  color: #ffffff;
+  border-color: #1f4d3d;
 }
 
 /* Search field full-width pulita */

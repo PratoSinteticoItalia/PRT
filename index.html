@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260802-flat-background-no-grid" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260802-flat-background-no-grid" />
+    <link rel="preload" href="./styles.css?v=20260802-richieste-redesign" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260802-richieste-redesign" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -639,6 +639,7 @@
               </div>
               <!-- CRM v2: ordine layout = KPI → pillole → search → bulk bar → lista -->
               <div id="sales-request-insights" class="sales-request-insights"></div>
+              <div id="sales-request-stale-banner" class="sales-request-stale-banner hidden"></div>
               <div class="sales-request-toolbar">
                 <div id="sales-request-quick-filters" class="sales-request-quick-filters"></div>
                 <div class="sales-request-toolbar-right">
@@ -666,6 +667,11 @@
                 </div>
               </div>
               <div id="sales-request-bulk-bar" class="sales-request-bulk-bar"></div>
+              <div id="sales-request-sort-row" class="sales-request-sort-row">
+                <span class="sales-request-sort-label">Ordina</span>
+                <button type="button" class="sales-request-sort-btn" data-action="set-sales-request-sort" data-value="recent">Più recenti prima</button>
+                <button type="button" class="sales-request-sort-btn" data-action="set-sales-request-sort" data-value="urgent">Più urgenti prima</button>
+              </div>
               <div id="sales-requests-list" class="detail-stack sales-request-list"></div>
               <div id="sales-requests-pagination" class="list-pagination hidden"></div>
               <div id="sales-requests-status" class="panel-note hidden" style="margin-top:8px;"></div>
@@ -679,121 +685,130 @@
                   <div id="sales-request-detail-meta" class="sales-request-detail-meta"></div>
                 </div>
                 <div class="inline-actions">
-                  <button id="sales-request-storia-tab-btn" class="ghost-button small-button" type="button">Storia</button>
                   <button id="sales-request-vcard-button" class="ghost-button small-button" type="button">📇 Salva in rubrica</button>
                   <button id="sales-request-delete-button" class="ghost-button small-button" type="button">Elimina</button>
                   <button id="sales-request-use-generator-button" class="primary-button small-button" type="button">Usa nel generatore</button>
                   <button class="crm-drawer-close" type="button" data-action="close-crm-detail" aria-label="Chiudi pannello" title="Chiudi">✕</button>
                 </div>
               </div>
+              <div class="crm-detail-tabs" id="sales-request-detail-tabs" role="tablist">
+                <button type="button" class="crm-detail-tab is-active" role="tab" aria-selected="true" data-action="set-sales-request-detail-tab" data-tab="overview">Panoramica</button>
+                <button type="button" class="crm-detail-tab" role="tab" aria-selected="false" data-action="set-sales-request-detail-tab" data-tab="client">Cliente</button>
+                <button type="button" class="crm-detail-tab" role="tab" aria-selected="false" data-action="set-sales-request-detail-tab" data-tab="history" id="sales-request-storia-tab-btn">Storia</button>
+              </div>
               <form id="sales-request-form" class="inline-form-grid crm-detail-form">
                 <input type="hidden" name="id" />
 
-                <!-- ── Sezione: Stato commerciale ─────────────────── -->
-                <div class="crm-detail-section field-full">
-                  <p class="crm-detail-section-label">Stato commerciale</p>
-                  <div class="crm-detail-section-grid">
-                    <label class="field sales-request-routing-field crm-top-field">
-                      <span>Assegnazione</span>
-                      <select class="text-input" name="assignment">
-                        <option value="">non assegnato</option>
-                      </select>
-                    </label>
-                    <label class="field sales-request-routing-field crm-top-field">
-                      <span>Rivenditore</span>
-                      <select class="text-input" name="resellerId">
-                        <option value="">Nessuno</option>
-                      </select>
-                    </label>
-                    <label class="field sales-request-routing-field crm-top-field">
-                      <span>Stato</span>
-                      <select class="text-input" name="status">
-                        <option value="new">Nuova</option>
-                        <option value="quoted">In preventivo</option>
-                        <option value="followup">Follow-up</option>
-                        <option value="closed">Chiusa</option>
-                      </select>
-                    </label>
+                <div class="crm-tab-panel is-active" data-tab-panel="overview">
+                  <!-- ── Sezione: Stato commerciale ─────────────────── -->
+                  <div class="crm-detail-section field-full">
+                    <p class="crm-detail-section-label">Stato commerciale</p>
+                    <div class="crm-detail-section-grid">
+                      <label class="field sales-request-routing-field crm-top-field">
+                        <span>Assegnazione</span>
+                        <select class="text-input" name="assignment">
+                          <option value="">non assegnato</option>
+                        </select>
+                      </label>
+                      <label class="field sales-request-routing-field crm-top-field">
+                        <span>Rivenditore</span>
+                        <select class="text-input" name="resellerId">
+                          <option value="">Nessuno</option>
+                        </select>
+                      </label>
+                      <label class="field sales-request-routing-field crm-top-field">
+                        <span>Stato</span>
+                        <select class="text-input" name="status">
+                          <option value="new">Nuova</option>
+                          <option value="quoted">In preventivo</option>
+                          <option value="followup">Follow-up</option>
+                          <option value="closed">Chiusa</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+
+                  <!-- ── Sezione: Dettaglio richiesta ───────────────── -->
+                  <div class="crm-detail-section field-full">
+                    <p class="crm-detail-section-label">Dettaglio richiesta</p>
+                    <div class="crm-detail-section-grid">
+                      <label class="field sales-request-sqm-field">
+                        <span>MQ richiesti</span>
+                        <input class="text-input" name="sqm" placeholder="—" />
+                      </label>
+                      <label class="field">
+                        <span>Altezza da preventivare</span>
+                        <input class="text-input" name="requestedHeight" placeholder="35 mm" />
+                      </label>
+                      <label class="field">
+                        <span>Servizio</span>
+                        <select class="text-input" name="service">
+                          <option value="">Da definire</option>
+                          <option value="fornitura">Solo fornitura</option>
+                          <option value="posa">Fornitura + posa</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Fondo</span>
+                        <select class="text-input" name="surface">
+                          <option value="">Da definire</option>
+                          <option value="terra">Terra</option>
+                          <option value="pavimentazione">Pavimentazione</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="field field-full">
+                    <span>Primo contatto WhatsApp</span>
+                    <div class="inline-actions">
+                      <a id="sales-request-whatsapp-button" class="primary-button small-button hidden" target="psi_sales_request_whatsapp" href="#">Apri messaggio WhatsApp</a>
+                    <a id="sales-request-followup-button" class="ghost-button small-button hidden" target="psi_sales_request_whatsapp" href="#">Follow-up WhatsApp</a>
+                    </div>
+                    <small id="sales-request-whatsapp-hint" class="field-hint">Usa lo stesso link rapido del foglio Google quando disponibile, altrimenti viene creato dal numero cliente.</small>
+                    <input type="hidden" name="whatsappTemplate" />
+                    <input type="hidden" name="whatsappUrl" />
                   </div>
                 </div>
 
-                <!-- ── Sezione: Anagrafica cliente ────────────────── -->
-                <div class="crm-detail-section field-full">
-                  <p class="crm-detail-section-label">Anagrafica cliente</p>
-                  <div class="crm-detail-section-grid">
-                    <label class="field">
-                      <span>Nome</span>
-                      <input class="text-input" name="name" placeholder="—" />
-                    </label>
-                    <label class="field">
-                      <span>Cognome <small style="opacity:.5;font-weight:400">(opzionale)</small></span>
-                      <input class="text-input" name="surname" placeholder="—" />
-                    </label>
-                    <label class="field">
-                      <span>Città</span>
-                      <input class="text-input" name="city" placeholder="—" />
-                    </label>
-                    <label class="field">
-                      <span>Telefono</span>
-                      <input class="text-input" name="phone" placeholder="+39 ..." />
-                    </label>
-                    <label class="field field-full">
-                      <span>Email</span>
-                      <input class="text-input" name="email" type="email" placeholder="cliente@email.it" />
-                    </label>
+                <div class="crm-tab-panel" data-tab-panel="client">
+                  <!-- ── Sezione: Anagrafica cliente ────────────────── -->
+                  <div class="crm-detail-section field-full">
+                    <p class="crm-detail-section-label">Anagrafica cliente</p>
+                    <div class="crm-detail-section-grid">
+                      <label class="field">
+                        <span>Nome</span>
+                        <input class="text-input" name="name" placeholder="—" />
+                      </label>
+                      <label class="field">
+                        <span>Cognome <small style="opacity:.5;font-weight:400">(opzionale)</small></span>
+                        <input class="text-input" name="surname" placeholder="—" />
+                      </label>
+                      <label class="field">
+                        <span>Città</span>
+                        <input class="text-input" name="city" placeholder="—" />
+                      </label>
+                      <label class="field">
+                        <span>Telefono</span>
+                        <input class="text-input" name="phone" placeholder="+39 ..." />
+                      </label>
+                      <label class="field field-full">
+                        <span>Email</span>
+                        <input class="text-input" name="email" type="email" placeholder="cliente@email.it" />
+                      </label>
+                    </div>
                   </div>
-                </div>
 
-                <!-- ── Sezione: Dettaglio richiesta ───────────────── -->
-                <div class="crm-detail-section field-full">
-                  <p class="crm-detail-section-label">Dettaglio richiesta</p>
-                  <div class="crm-detail-section-grid">
-                    <label class="field sales-request-sqm-field">
-                      <span>MQ richiesti</span>
-                      <input class="text-input" name="sqm" placeholder="—" />
-                    </label>
-                    <label class="field">
-                      <span>Altezza da preventivare</span>
-                      <input class="text-input" name="requestedHeight" placeholder="35 mm" />
-                    </label>
-                    <label class="field">
-                      <span>Servizio</span>
-                      <select class="text-input" name="service">
-                        <option value="">Da definire</option>
-                        <option value="fornitura">Solo fornitura</option>
-                        <option value="posa">Fornitura + posa</option>
-                      </select>
-                    </label>
-                    <label class="field">
-                      <span>Fondo</span>
-                      <select class="text-input" name="surface">
-                        <option value="">Da definire</option>
-                        <option value="terra">Terra</option>
-                        <option value="pavimentazione">Pavimentazione</option>
-                      </select>
+                  <!-- ── Sezione: Note commerciali ──────────────────── -->
+                  <div class="crm-detail-section field-full">
+                    <p class="crm-detail-section-label">Note commerciali</p>
+                    <label class="field field-full sales-request-note-field">
+                      <textarea class="text-input" name="note" rows="3" placeholder="Esigenze cliente, riferimenti utili, contesto commerciale..."></textarea>
                     </label>
                   </div>
-                </div>
-
-                <!-- ── Sezione: Note commerciali ──────────────────── -->
-                <div class="crm-detail-section field-full">
-                  <p class="crm-detail-section-label">Note commerciali</p>
-                  <label class="field field-full sales-request-note-field">
-                    <textarea class="text-input" name="note" rows="3" placeholder="Esigenze cliente, riferimenti utili, contesto commerciale..."></textarea>
-                  </label>
-                </div>
-                <div class="field field-full">
-                  <span>Primo contatto WhatsApp</span>
-                  <div class="inline-actions">
-                    <a id="sales-request-whatsapp-button" class="primary-button small-button hidden" target="psi_sales_request_whatsapp" href="#">Apri messaggio WhatsApp</a>
-                  <a id="sales-request-followup-button" class="ghost-button small-button hidden" target="psi_sales_request_whatsapp" href="#">Follow-up WhatsApp</a>
-                  </div>
-                  <small id="sales-request-whatsapp-hint" class="field-hint">Usa lo stesso link rapido del foglio Google quando disponibile, altrimenti viene creato dal numero cliente.</small>
-                  <input type="hidden" name="whatsappTemplate" />
-                  <input type="hidden" name="whatsappUrl" />
                 </div>
               </form>
-              <div class="panel-section" id="sales-request-storia-panel">
+              <div class="panel-section crm-tab-panel" data-tab-panel="history" id="sales-request-storia-panel">
                 <div class="subsection-head">
                   <h4>Storia modifiche</h4>
                 </div>
@@ -2704,7 +2719,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260802-flat-background-no-grid" defer></script>
-    <script src="./app.js?v=20260802-flat-background-no-grid" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260802-richieste-redesign" defer></script>
+    <script src="./app.js?v=20260802-richieste-redesign" type="module"></script>
   </body>
 </html>
