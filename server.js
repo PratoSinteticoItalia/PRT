@@ -2403,9 +2403,14 @@ const ATTENDANCE_ALERT_CUTOFF_HOUR = 10;
  */
 async function processAttendanceMonitorOnce() {
   if (!USE_POSTGRES) return;
+  const now = new Date();
+  // Nessun avviso nel weekend: nessuno timbra sabato/domenica, l'avviso sarebbe
+  // solo rumore. "short" in Europe/Rome per non dipendere dal fuso del server.
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Rome", weekday: "short" }).format(now);
+  if (weekday === "Sat" || weekday === "Sun") return;
   const nowHour = Number(new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Rome", hour: "2-digit", hour12: false,
-  }).format(new Date()));
+  }).format(now));
   if (nowHour < ATTENDANCE_ALERT_CUTOFF_HOUR) return;
   let store;
   try {
