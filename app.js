@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260802-fix-servizio-fondo";
+} from "./lib/order-money.js?v=20260802-fix-3-bug-richieste";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260802-fix-servizio-fondo";
+import { regionForCity } from "./lib/geo.js?v=20260802-fix-3-bug-richieste";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260802-fix-servizio-fondo";
+} from "./lib/profit-split.js?v=20260802-fix-3-bug-richieste";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260802-fix-servizio-fondo";
+} from "./lib/preventivo-pricing.js?v=20260802-fix-3-bug-richieste";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260802-fix-servizio-fondo";
+const APP_SHELL_VERSION = "20260802-fix-3-bug-richieste";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4438,8 +4438,15 @@ function isSalesRequestBulkAssignable(item = {}) {
   return !normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
 }
 
+// Con la migrazione a CRM v2 la pagina "vera" arriva dal server
+// (state.crmServerPage.items), paginata e filtrata lì; getFilteredSalesRequests()
+// + paginateSalesRequests() sono il fallback blob-mode legacy. "Seleziona
+// visibili" leggeva SOLO dal fallback legacy — su Postgres selezionava un
+// set diverso da quello mostrato in lista (spesso vuoto), sembrando rotto.
 function getSalesRequestCurrentPageItems() {
-  return paginateSalesRequests(getFilteredSalesRequests()).pageItems;
+  return state.crmServerPage?.items?.length > 0 || state.crmServerPage?.loadedAt > 0
+    ? state.crmServerPage.items
+    : paginateSalesRequests(getFilteredSalesRequests()).pageItems;
 }
 
 function selectVisibleAssignableSalesRequests() {

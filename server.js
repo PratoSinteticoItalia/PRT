@@ -15076,22 +15076,26 @@ async function handleApi(req, res, url) {
     const dryRun = body?.dryRun === true;
     try {
       const pool = await getPgPool();
+      // Confronto CASE-SENSITIVE: il <select> del dettaglio richiede match
+      // esatto (value="terra"), quindi "Terra" (maiuscola) va corretto anche
+      // se lower(trim(...)) combacerebbe già — è proprio quello il bug che
+      // il confronto case-insensitive lasciava passare inosservato.
       const candRes = await pool.query(`
         SELECT id, job_type, surface
         FROM sales_requests
-        WHERE (job_type IS NOT NULL AND trim(job_type) != '' AND lower(trim(job_type)) NOT IN ('posa','fornitura'))
-           OR (surface IS NOT NULL AND trim(surface) != '' AND lower(trim(surface)) NOT IN ('terra','pavimentazione'))
+        WHERE (job_type IS NOT NULL AND trim(job_type) != '' AND trim(job_type) NOT IN ('posa','fornitura'))
+           OR (surface IS NOT NULL AND trim(surface) != '' AND trim(surface) NOT IN ('terra','pavimentazione'))
         LIMIT 10000
       `);
       const updates = [];
       for (const r of candRes.rows) {
         const patch = {};
         const jobTypeRaw = String(r.job_type || "").trim();
-        if (jobTypeRaw && !["posa", "fornitura"].includes(jobTypeRaw.toLowerCase())) {
+        if (jobTypeRaw && !["posa", "fornitura"].includes(jobTypeRaw)) {
           patch.job_type = normalizeSalesRequestService(jobTypeRaw);
         }
         const surfaceRaw = String(r.surface || "").trim();
-        if (surfaceRaw && !["terra", "pavimentazione"].includes(surfaceRaw.toLowerCase())) {
+        if (surfaceRaw && !["terra", "pavimentazione"].includes(surfaceRaw)) {
           patch.surface = normalizeSalesRequestSurface(surfaceRaw);
         }
         if (Object.keys(patch).length > 0) {
