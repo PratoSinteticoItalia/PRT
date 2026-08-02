@@ -15062,6 +15062,80 @@ async function handleApi(req, res, url) {
     }
   }
 
+  // POST /api/sales/requests/normalize-service-surface — corregge job_type/surface
+  // salvati come testo libero ("Fornitura e Posa", "Terra") invece dell'enum pulito
+  // (posa/fornitura, terra/pavimentazione). Bug storico dell'auto-promote IMAP
+  // (reconcileShadowLeads in lead-fingerprint.mjs, corretto per i nuovi arrivi):
+  // il <select> del dettaglio richiesta richiede un match esatto e appariva
+  // vuoto anche se il dato era presente ma non normalizzato.
+  if (url.pathname === "/api/sales/requests/normalize-service-surface" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 400, { error: "postgres_only" });
+    const body = await readBody(req);
+    const dryRun = body?.dryRun === true;
+    try {
+      const pool = await getPgPool();
+      const candRes = await pool.query(`
+        SELECT id, job_type, surface
+        FROM sales_requests
+        WHERE (job_type IS NOT NULL AND trim(job_type) != '' AND lower(trim(job_type)) NOT IN ('posa','fornitura'))
+           OR (surface IS NOT NULL AND trim(surface) != '' AND lower(trim(surface)) NOT IN ('terra','pavimentazione'))
+        LIMIT 10000
+      `);
+      const updates = [];
+      for (const r of candRes.rows) {
+        const patch = {};
+        const jobTypeRaw = String(r.job_type || "").trim();
+        if (jobTypeRaw && !["posa", "fornitura"].includes(jobTypeRaw.toLowerCase())) {
+          patch.job_type = normalizeSalesRequestService(jobTypeRaw);
+        }
+        const surfaceRaw = String(r.surface || "").trim();
+        if (surfaceRaw && !["terra", "pavimentazione"].includes(surfaceRaw.toLowerCase())) {
+          patch.surface = normalizeSalesRequestSurface(surfaceRaw);
+        }
+        if (Object.keys(patch).length > 0) {
+          updates.push({ id: r.id, patch, from: { job_type: r.job_type, surface: r.surface } });
+        }
+      }
+      if (dryRun) {
+        return sendJson(res, 200, {
+          dryRun: true,
+          count: updates.length,
+          samples: updates.slice(0, 10).map((u) => ({
+            id: u.id,
+            from: u.from,
+            to: u.patch,
+          })),
+        });
+      }
+      if (updates.length === 0) return sendJson(res, 200, { dryRun: false, count: 0 });
+      let updated = 0;
+      for (const u of updates) {
+        const cols = Object.keys(u.patch);
+        const vals = Object.values(u.patch);
+        const setStr = cols.map((c, i) => `${c} = $${i + 2}`).join(", ");
+        try {
+          await pool.query(
+            `UPDATE sales_requests SET ${setStr}, updated_at = NOW() WHERE id = $1`,
+            [u.id, ...vals],
+          );
+          updated++;
+          writeAuditLog("sales_request", u.id, "normalize_service_surface", u.patch, currentUser?.email || null).catch(() => {});
+        } catch (uErr) {
+          console.warn("[normalize-service-surface] update failed for", u.id, uErr?.message);
+        }
+      }
+      invalidateSalesRequestsDbCache();
+      rotateStoreRevision(store);
+      broadcastStoreRevision(getStoreRevision(store));
+      return sendJson(res, 200, { dryRun: false, count: updated });
+    } catch (err) {
+      console.error("[normalize-service-surface] error:", err?.message);
+      return sendJson(res, 500, { error: String(err?.message || "normalize_service_surface_failed") });
+    }
+  }
+
   // POST /api/sales/requests/restore-real-dates — ripristina created_at dalle
   // date reali nella shadow IMAP. Risolve il problema "tutte le richieste
   // mostrano '08 giu 2026'" causato dai re-backfill di store.json.

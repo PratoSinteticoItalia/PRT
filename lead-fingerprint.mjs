@@ -31,6 +31,23 @@ export function normalizeLeadNumber(value) {
 export function normalizeLeadHeight(value) {
   return String(value || "").replace(/[^\dA-Za-z]/g, "").toUpperCase();
 }
+// Stessa semantica di normalizeSalesRequestService/Surface in server.js: il
+// form "landing" scrive testo libero ("Fornitura e Posa", "Terra") che va
+// ricondotto agli enum puliti (posa/fornitura, terra/pavimentazione) prima di
+// salvarlo — altrimenti il <select> del dettaglio richiesta non trova
+// l'option corrispondente e appare vuoto anche se il dato è presente.
+export function normalizeLeadJobType(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("posa")) return "posa";
+  if (normalized.includes("fornitura")) return "fornitura";
+  return "";
+}
+export function normalizeLeadSurface(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("terra")) return "terra";
+  if (normalized.includes("paviment")) return "pavimentazione";
+  return "";
+}
 
 export function buildLeadFingerprint(rec = {}) {
   const fullName = [
@@ -142,7 +159,7 @@ export async function backfillSalesRequestFromShadow(pool, srId, payload = {}) {
        WHERE id = $1`,
       [
         srId, lastName, payload.citta || "", payload.email || "",
-        sqm, payload.fondo || null, payload.posa_in_opera || null, payload.altezza || "",
+        sqm, normalizeLeadSurface(payload.fondo || "") || null, normalizeLeadJobType(payload.posa_in_opera || "") || null, payload.altezza || "",
       ],
     );
   } catch (err) {
@@ -284,8 +301,8 @@ export async function reconcileShadowLeads(pool, options = {}) {
           const firstName = parts.slice(0, 1).join(" ");
           const lastName = parts.slice(1).join(" ");
           const sqm = payload.metri_quadri ?? null;
-          const surface = payload.fondo || null;
-          const jobType = payload.posa_in_opera || null;
+          const surface = normalizeLeadSurface(payload.fondo || "") || null;
+          const jobType = normalizeLeadJobType(payload.posa_in_opera || "") || null;
           const note = [payload.note_aggiuntive, payload.note_posa, payload.descrizione_area]
             .filter(Boolean).join(" | ").slice(0, 2000);
           const createdIso = row.received_at instanceof Date

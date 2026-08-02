@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260802-stale-badge-riga";
+} from "./lib/order-money.js?v=20260802-fix-servizio-fondo";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260802-stale-badge-riga";
+import { regionForCity } from "./lib/geo.js?v=20260802-fix-servizio-fondo";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +24,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260802-stale-badge-riga";
+} from "./lib/profit-split.js?v=20260802-fix-servizio-fondo";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +39,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260802-stale-badge-riga";
+} from "./lib/preventivo-pricing.js?v=20260802-fix-servizio-fondo";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +53,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260802-stale-badge-riga";
+const APP_SHELL_VERSION = "20260802-fix-servizio-fondo";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1561,6 +1561,7 @@ const ui = {
   salesRequestRestoreDatesButton: document.getElementById("sales-request-restore-dates-button"),
   salesRequestRestoreNamesButton: document.getElementById("sales-request-restore-names-button"),
   salesRequestFixDupNamesButton: document.getElementById("sales-request-fix-dup-names-button"),
+  salesRequestNormalizeServiceButton: document.getElementById("sales-request-normalize-service-button"),
   salesRequestImportButton: document.getElementById("sales-request-import-button"),
   salesRequestImportWrap: document.getElementById("sales-request-import-wrap"),
   salesRequestImportText: document.getElementById("sales-request-import-text"),
@@ -16688,6 +16689,69 @@ async function restoreSalesRequestNames() {
     if (ui.salesRequestRestoreNamesButton) {
       ui.salesRequestRestoreNamesButton.disabled = false;
       ui.salesRequestRestoreNamesButton.textContent = "Ripristina nomi";
+    }
+  }
+}
+
+// CRM v2 — Sistema Servizio/Fondo salvati come testo libero (bug storico
+// dell'auto-promote IMAP, corretto per i nuovi arrivi in lead-fingerprint.mjs)
+// invece del valore riconosciuto dal <select> del dettaglio richiesta.
+async function normalizeSalesRequestServiceSurface() {
+  if (ui.salesRequestNormalizeServiceButton) {
+    ui.salesRequestNormalizeServiceButton.disabled = true;
+    ui.salesRequestNormalizeServiceButton.textContent = "Analisi…";
+  }
+  clearStatus(ui.salesRequestsStatus);
+  try {
+    const preview = await apiFetch("/api/sales/requests/normalize-service-surface", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: true }),
+    });
+    if (preview.count === 0) {
+      showToast(
+        state.lang === "it"
+          ? "Servizio e Fondo sono già tutti nel formato corretto."
+          : "Service and Surface are already all in the correct format.",
+        "success",
+      );
+      return;
+    }
+    const examples = (preview.samples || []).slice(0, 5).map((s) => {
+      const fromParts = [s.from.job_type ? `servizio "${s.from.job_type}"` : "", s.from.surface ? `fondo "${s.from.surface}"` : ""].filter(Boolean).join(", ");
+      const toParts = [s.to.job_type != null ? `servizio "${s.to.job_type || "(vuoto)"}"` : "", s.to.surface != null ? `fondo "${s.to.surface || "(vuoto)"}"` : ""].filter(Boolean).join(", ");
+      return `${fromParts} → ${toParts}`;
+    }).join("\n");
+    const more = preview.count > 5 ? `\n…e altri ${preview.count - 5} record` : "";
+    const ok = window.confirm(
+      `${preview.count} record hanno Servizio/Fondo salvati come testo libero.\n\nEsempi:\n${examples}${more}\n\nProcedo?`,
+    );
+    if (!ok) {
+      showToast(state.lang === "it" ? "Operazione annullata." : "Cancelled.", "info");
+      return;
+    }
+    if (ui.salesRequestNormalizeServiceButton) ui.salesRequestNormalizeServiceButton.textContent = "Sistemo…";
+    const result = await apiFetch("/api/sales/requests/normalize-service-surface", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: false }),
+    });
+    await loadCrmPage({ page: 1, forceReload: true });
+    showToast(
+      state.lang === "it"
+        ? `✓ Sistemati ${result.count} record.`
+        : `✓ Fixed ${result.count} records.`,
+      "success",
+      5000,
+    );
+  } catch (err) {
+    setStatus(
+      ui.salesRequestsStatus,
+      "error",
+      state.lang === "it" ? "Errore nel sistemare Servizio/Fondo. Riprova." : "Fixing Service/Surface failed.",
+    );
+  } finally {
+    if (ui.salesRequestNormalizeServiceButton) {
+      ui.salesRequestNormalizeServiceButton.disabled = false;
+      ui.salesRequestNormalizeServiceButton.textContent = "Sistema Servizio/Fondo";
     }
   }
 }
@@ -32326,6 +32390,7 @@ bindEvent(ui.salesRequestDedupButton, "click", dedupSalesRequests);
 bindEvent(ui.salesRequestRestoreDatesButton, "click", restoreSalesRequestDates);
 bindEvent(ui.salesRequestRestoreNamesButton, "click", restoreSalesRequestNames);
 bindEvent(ui.salesRequestFixDupNamesButton, "click", fixDuplicateSalesRequestNames);
+bindEvent(ui.salesRequestNormalizeServiceButton, "click", normalizeSalesRequestServiceSurface);
 bindEvent(ui.salesRequestImportButton, "click", () => {
   state.showSalesRequestImport = !state.showSalesRequestImport;
   updateSalesRequestImportPanel();
