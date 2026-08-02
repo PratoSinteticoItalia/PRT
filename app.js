@@ -12,9 +12,28 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260802-fix-bulk-select-notif";
+} from "./lib/order-money.js?v=20260802-fix-crm-empty-state-v2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260802-fix-bulk-select-notif";
+import { regionForCity } from "./lib/geo.js?v=20260802-fix-crm-empty-state-v2";
+// "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
+// lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
+// Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
+// nel file sull'incidente del 9 lug 2026).
+import {
+  isShopifyBackedOrder,
+  isShopifyFulfillmentComplete,
+  isShopifyFullyDone,
+  isLogisticsOrderCompleted,
+  isInstallationOrderCompleted,
+  isOrderFulfilledOrClosed,
+  isOrderClosed,
+  isRoutedToWarehouse,
+  isRoutedToInstallation,
+  getUnifiedOrderStageKey,
+  getShippingStageLane,
+  orderNeedsShippingAction,
+  ddtOrderHasNumber,
+} from "./lib/shipping-eligibility.js?v=20260802-fix-crm-empty-state-v2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -24,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260802-fix-bulk-select-notif";
+} from "./lib/profit-split.js?v=20260802-fix-crm-empty-state-v2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -39,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260802-fix-bulk-select-notif";
+} from "./lib/preventivo-pricing.js?v=20260802-fix-crm-empty-state-v2";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -53,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260802-fix-bulk-select-notif";
+const APP_SHELL_VERSION = "20260802-fix-crm-empty-state-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -7973,14 +7992,7 @@ function getOrderNetDisplay(order) {
     : (state.lang === "it" ? "Da verificare" : "To verify");
 }
 
-function isShopifyBackedOrder(order) {
-  return Boolean(
-    String(order?.source || "").toLowerCase().startsWith("shopify")
-    || String(order?.shopifyNumericId || "").trim()
-    || String(order?.shopifyGraphqlId || "").trim()
-  );
-}
-
+// isShopifyBackedOrder: vedi lib/shipping-eligibility.js (importata in cima al file).
 function needsShopifyFinancialRefresh(order) {
   return isShopifyBackedOrder(order) && (hasDerivedShopifyFinancials(order) || !hasReliableTaxData(order) || !hasReliableNetData(order));
 }
@@ -9634,56 +9646,8 @@ function orderNeedsWarehouseWork(order) {
   return hasPhysical;
 }
 
-function isLogisticsOrderCompleted(order) {
-  const warehouse = order.operations?.warehouse || {};
-  const status = String(warehouse.status || "").trim();
-  const mode = String(warehouse.fulfillmentMode || "").trim();
-  return Boolean(
-    warehouse.shipped
-    || status === "ritirato"
-    || (mode === "corriere" && warehouse.carrierPassed)
-    || isShopifyFulfillmentComplete(order),
-  );
-}
-
-function isInstallationOrderCompleted(order) {
-  return String(order.operations?.installation?.status || "").trim() === "completata";
-}
-
-function isShopifyFulfillmentComplete(order) {
-  if (!isShopifyBackedOrder(order)) return false;
-  return String(order?.fulfillmentStatus || "").toLowerCase().trim() === "fulfilled";
-}
-
-function isShopifyFullyDone(order) {
-  // Trust Shopify as ground truth that the order is closed for inbox/shipping.
-  // (Pose page keeps its own isOrderClosed for installation tracking.)
-  // Shopify GraphQL returns UPPERCASE enums (FULFILLED, PAID, REFUNDED...),
-  // REST returns lowercase — normalize both.
-  const financial = String(order.financialStatus || "").toLowerCase().trim();
-  // Refunded/voided: nothing more to do.
-  if (financial === "refunded" || financial === "voided") return true;
-  // Fulfilled + (paid OR partially_refunded — partial refunds still settle).
-  const paidLike = financial === "paid" || financial === "partially_refunded";
-  return isShopifyFulfillmentComplete(order) && paidLike;
-}
-
-function isOrderFulfilledOrClosed(order) {
-  if (isShopifyFullyDone(order)) return true;
-  const installRequired = Boolean(order.operations?.installation?.required);
-  if (installRequired) return isInstallationOrderCompleted(order) || isOrderClosed(order);
-  return isLogisticsOrderCompleted(order) || isOrderClosed(order);
-}
-
-function isOrderClosed(order) {
-  const installRequired = Boolean(order.operations?.installation?.required);
-  const installCompleted = isInstallationOrderCompleted(order);
-  const logisticsCompleted = isLogisticsOrderCompleted(order);
-  const financiallyClosed = getOpenBalance(order) <= 0 && (!order.accounting?.invoiceRequired || order.accounting?.invoiceIssued);
-  const operationallyClosed = installRequired ? installCompleted : logisticsCompleted;
-  return Boolean(operationallyClosed && financiallyClosed);
-}
-
+// isLogisticsOrderCompleted / isInstallationOrderCompleted / isShopifyFulfillmentComplete /
+// isShopifyFullyDone / isOrderFulfilledOrClosed / isOrderClosed: vedi lib/shipping-eligibility.js.
 function orderNeedsInboxAttention(order) {
   if (!order || isOrderFulfilledOrClosed(order)) return false;
   const ops = order.operations || {};
@@ -9712,22 +9676,9 @@ function orderNeedsAccountingAction(order) {
   return getOpenBalance(order) > 0 || Boolean(order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
 }
 
-// Stessa idoneità ed esclusioni della vista Spedizioni (filterOrdersForView("shipping")
-// con filtro "Tutti") + stessa pipeline a 3 fasi (getShippingStageLane), così il badge
-// combacia sempre con "Da preparare" + "Pronti per uscita/ritiro" mostrati nella vista.
-// In precedenza questa funzione reimplementava la logica per conto suo (branch dedicato
-// per i box campione, mode ristretto a corriere/ritiro/furgone, stato finale limitato a
-// "ritirato") ed era finita fuori sincrono col resto, contando ordini diversi da quelli
-// visibili nella bacheca.
-function orderNeedsShippingAction(order) {
-  if (!order || isOrderClosed(order)) return false;
-  const warehouse = order.operations?.warehouse || {};
-  const explicit = warehouse.selected === true;
-  if (!explicit && isOrderFulfilledOrClosed(order)) return false;
-  if (!isRoutedToWarehouse(order) && !isRoutedToInstallation(order)) return false;
-  return getShippingStageLane(order) !== "done";
-}
-
+// orderNeedsShippingAction: vedi lib/shipping-eligibility.js — stessa idoneità
+// ed esclusioni della vista Spedizioni, così il badge combacia sempre con
+// "Da preparare" + "Pronti per uscita/ritiro" mostrati nella bacheca.
 function isSalesRequestNewContactUnassigned(item = {}) {
   if (!item || isSalesRequestClosedStatus(item.status)) return false;
   if (normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "")) return false;
@@ -9754,90 +9705,35 @@ function salesContentNeedsAction(item = {}) {
   return !hasTitle || (!hasLink && !hasAttachments);
 }
 
-function getUnifiedOrderStage(order) {
-  const ops = order.operations || {};
-  const officeStatus = String(ops.officeStatus || "").trim();
-  const warehouse = ops.warehouse || {};
-  const install = ops.installation || {};
-  const warehouseStatus = String(warehouse.status || "").trim();
-  const fulfillmentMode = String(warehouse.fulfillmentMode || "").trim();
-  const installStatus = String(install.status || "").trim();
-  const installRequired = Boolean(install.required);
-  const logisticsCompleted = isLogisticsOrderCompleted(order);
-
-  if (isOrderClosed(order)) {
-    return {
-      key: "closed",
-      label: state.lang === "it" ? "Chiuso" : "Closed",
-      tone: "green",
-    };
-  }
-  if (installStatus === "completata") {
-    return {
-      key: "install-completed",
-      label: state.lang === "it" ? "Posa completata" : "Install completed",
-      tone: "green",
-    };
-  }
-  if (installStatus === "in-corso") {
-    return {
-      key: "install-progress",
-      label: state.lang === "it" ? "Posa in corso" : "Install in progress",
-      tone: "blue",
-    };
-  }
-  if (installRequired && install.installDate) {
-    return {
-      key: "install-planned",
-      label: state.lang === "it" ? "Posa pianificata" : "Install planned",
-      tone: "amber",
-    };
-  }
-  if (fulfillmentMode === "furgone" && logisticsCompleted) {
-    return {
-      key: "van-loaded",
-      label: state.lang === "it" ? "Caricato su furgone" : "Loaded on van",
-      tone: "green",
-    };
-  }
-  if (logisticsCompleted) {
-    return {
-      key: "goods-collected",
-      label: state.lang === "it" ? "Ritirato / evaso" : "Collected / shipped",
-      tone: "green",
-    };
-  }
-  if (warehouse.readyToShip || ["pronto", "da-ritirare", "in-attesa-di-ritiro"].includes(warehouseStatus)) {
-    return {
-      key: "warehouse-ready",
-      label: state.lang === "it" ? "Pronto per uscita" : "Ready to dispatch",
-      tone: "green",
-    };
-  }
-  if (["in-preparazione", "da-preparare", "bloccato"].includes(warehouseStatus) || isRoutedToWarehouse(order)) {
+// Label testuali (dipendono da state.lang) per ogni stage — la logica che
+// decide QUALE stage/tone spetta all'ordine vive in
+// getUnifiedOrderStageKey (lib/shipping-eligibility.js), pura e testata.
+function getUnifiedOrderStageLabel(key, warehouseStatus) {
+  const labels = {
+    closed: state.lang === "it" ? "Chiuso" : "Closed",
+    "install-completed": state.lang === "it" ? "Posa completata" : "Install completed",
+    "install-progress": state.lang === "it" ? "Posa in corso" : "Install in progress",
+    "install-planned": state.lang === "it" ? "Posa pianificata" : "Install planned",
+    "van-loaded": state.lang === "it" ? "Caricato su furgone" : "Loaded on van",
+    "goods-collected": state.lang === "it" ? "Ritirato / evaso" : "Collected / shipped",
+    "warehouse-ready": state.lang === "it" ? "Pronto per uscita" : "Ready to dispatch",
+    "office-review": state.lang === "it" ? "Da verificare" : "To review",
+    operational: state.lang === "it" ? "Operativo" : "Operational",
+  };
+  if (key === "warehouse-work") {
     const workStageLabels = {
       "in-preparazione": state.lang === "it" ? "In preparazione" : "Preparing",
       "da-preparare": state.lang === "it" ? "Da preparare" : "To prepare",
       bloccato: state.lang === "it" ? "Blocco" : "Blocked",
     };
-    return {
-      key: "warehouse-work",
-      label: workStageLabels[warehouseStatus] || (state.lang === "it" ? "Da preparare" : "To prepare"),
-      tone: warehouseStatus === "bloccato" ? "red" : warehouseStatus === "in-preparazione" ? "blue" : "amber",
-    };
+    return workStageLabels[warehouseStatus] || (state.lang === "it" ? "Da preparare" : "To prepare");
   }
-  if (officeStatus === "bozza" || !isRoutedToWarehouse(order)) {
-    return {
-      key: "office-review",
-      label: state.lang === "it" ? "Da verificare" : "To review",
-      tone: "blue",
-    };
-  }
-  return {
-    key: "operational",
-    label: state.lang === "it" ? "Operativo" : "Operational",
-    tone: "amber",
-  };
+  return labels[key] || labels.operational;
+}
+
+function getUnifiedOrderStage(order) {
+  const { key, tone, warehouseStatus } = getUnifiedOrderStageKey(order);
+  return { key, tone, label: getUnifiedOrderStageLabel(key, warehouseStatus) };
 }
 
 function getPreparedProductLines(order) {
@@ -10040,34 +9936,7 @@ function buildRouteColumns() {
   ];
 }
 
-function isRoutedToWarehouse(order) {
-  const warehouse = order.operations?.warehouse || {};
-  return Boolean(
-    warehouse.selected
-    || (warehouse.fulfillmentMode && warehouse.fulfillmentMode !== "da-definire")
-    || (warehouse.preparationDate && String(warehouse.preparationDate).trim())
-    || (warehouse.status && warehouse.status !== "da-preparare")
-    || warehouse.readyToShip
-    || warehouse.carrierPassed
-    || warehouse.shipped
-    || (warehouse.trackingNumber && String(warehouse.trackingNumber).trim()),
-  );
-}
-
-function isRoutedToInstallation(order) {
-  const installation = order.operations?.installation || {};
-  return Boolean(
-    installation.required
-    || installation.selected
-    || (installation.installDate && String(installation.installDate).trim())
-    || (installation.installTime && String(installation.installTime).trim())
-    || (installation.crew && String(installation.crew).trim())
-    || installation.clientConfirmed
-    || (installation.reportNote && String(installation.reportNote).trim())
-    || (installation.status && !["", "da-pianificare"].includes(String(installation.status).trim())),
-  );
-}
-
+// isRoutedToWarehouse / isRoutedToInstallation: vedi lib/shipping-eligibility.js.
 function getCrewForCurrentUser() {
   if (state.currentUser?.role !== "crew") return "";
   if (state.currentUser?.crewName) return String(state.currentUser.crewName).trim();
@@ -13370,6 +13239,7 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
       loadError: false,
       loadedAt: Date.now(),
       _queryKey: queryKey,
+      dbUnavailable: Boolean(data.dbUnavailable),
     };
     // CRM v2: rimuovi dal banner i nuovi lead che ora sono visibili in pagina
     if (_crmNewLeadIds.size > 0) {
@@ -13926,9 +13796,19 @@ function renderSalesRequests() {
   if (ui.salesRequestsList) {
     ui.salesRequestsList.classList.toggle("is-compact", Boolean(state.salesRequestCompactMode));
     withScrollPreservation(ui.salesRequestsList, () => {
+    console.warn("[DEBUG-dbUnavailable]", JSON.stringify({dbUnavailable: state.crmServerPage?.dbUnavailable, loadedAt: state.crmServerPage?.loadedAt, total: state.crmServerPage?.total, pageItemsLen: pageItems.length}));
+    const emptyStateText = state.crmServerPage?.dbUnavailable
+      // Ricerca CRM è Postgres-only (searchSalesRequestsFromDb): senza DATABASE_URL
+      // (tipico di un preview locale) torna sempre vuota anche se i contatori in
+      // alto — basati sul payload di sessione — mostrano richieste esistenti.
+      // Messaggio dedicato per non farlo sembrare "zero risultati".
+      ? (state.lang === "it"
+        ? "CRM non disponibile in anteprima locale: serve un database Postgres collegato (DATABASE_URL). I contatori qui sopra restano corretti perché arrivano da un'altra fonte."
+        : "CRM unavailable in local preview: needs a connected Postgres database (DATABASE_URL). The counters above stay correct since they come from a different source.")
+      : (state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters.");
     ui.salesRequestsList.innerHTML = pageItems.length
       ? renderCrmV2Banner() + pageItems.map((item) => renderCrmV2Row(item, selected, bulkSelectedIds)).join("")
-      : renderCrmV2Banner() + `<div class="info-card">${state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters."}</div>`;
+      : renderCrmV2Banner() + `<div class="info-card">${emptyStateText}</div>`;
     });
   }
   if (ui.salesRequestsPagination) {
@@ -23036,29 +22916,7 @@ function getShippingRowAction(order) {
   return { label: state.lang === "it" ? "Prepara" : "Prepare", tone: "" };
 }
 
-// Corsia della pipeline Logistica (FASE, non modalità). Mappa lo stage unificato
-// in 3 fasi: da preparare → pronti per uscita/ritiro → usciti/ritirati.
-// La modalità (corriere/ritiro/furgone) la imposta l'ufficio ed è read-only qui.
-function getShippingStageLane(order) {
-  // Una spedizione GESTITA (spedita / ritirata / caricata su furgone / corriere
-  // passato) va in "Usciti / Ritirati" ANCHE se l'ordine è instradato in posa
-  // (stage "install-planned"): senza questo, spuntare "spedito/evaso" non spostava
-  // l'ordine perché getUnifiedOrderStage dà priorità alla posa pianificata.
-  const wh = order.operations?.warehouse || {};
-  const logisticsHandled = Boolean(
-    wh.shipped
-    || String(wh.status || "").trim() === "ritirato"
-    || (String(wh.fulfillmentMode || "").trim() === "corriere" && wh.carrierPassed),
-  );
-  if (logisticsHandled) return "done";
-  const status = String(wh.status || "").trim();
-  if (status === "in-preparazione") return "ready";
-  const stage = getUnifiedOrderStage(order);
-  const doneKeys = ["goods-collected", "van-loaded", "install-progress", "install-completed", "closed"];
-  if (doneKeys.includes(stage.key)) return "done";
-  if (stage.key === "warehouse-ready") return "ready";
-  return "prepare";
-}
+// getShippingStageLane: vedi lib/shipping-eligibility.js.
 
 // Quante card mostrare nella corsia "Usciti/Ritirati" del kanban "Tutti".
 // Da quando quella corsia non dipende più dalla chiusura contabile (vedi
@@ -23708,10 +23566,7 @@ function getDdtEligibleOrders() {
     && !isSampleOrder(o));
 }
 
-function ddtOrderHasNumber(order) {
-  return Boolean(String(order?.operations?.warehouse?.ddt?.number || "").trim());
-}
-
+// ddtOrderHasNumber: vedi lib/shipping-eligibility.js.
 function deriveDdtRecipient(order) {
   const dest = getShippingDestination(order) || {};
   return {
@@ -31545,6 +31400,7 @@ const NOTIFICATION_ICONS = {
   absence_decided: "✅",
   sales_request_new: "📥",
   reseller_order_new: "🛒",
+  attendance_missing: "🕘",
   test: "🔔",
 };
 

@@ -11472,6 +11472,27 @@ button:active,
     width: auto;
     max-width: 100%;
   }
+
+  /* Striscia dei 7 giorni scrollabile in orizzontale invece di 7 card impilate
+     a piena larghezza: sennò la bacheca kanban sotto richiede ~1300px di scroll
+     per essere raggiunta. #installation-calendar è l'unico uso di .cal-grid
+     nell'app (index.html), quindi l'override è isolato. !important necessario
+     per battere ".cal-grid{grid-template-columns:1fr!important}" a ≤760px. */
+  body.mobile-safe-mode #installation-calendar {
+    grid-template-columns: none !important;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(108px, 1fr);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    padding-bottom: 4px;
+  }
+
+  body.mobile-safe-mode #installation-calendar .cal-day {
+    scroll-snap-align: start;
+    min-width: 108px;
+  }
 }
 
 @media (max-width: 980px) {

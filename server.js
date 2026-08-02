@@ -1631,7 +1631,11 @@ function sqlPhoneCanon(col) {
  * Usato da GET /api/sales/requests.
  */
 async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", resellerId = "", resellerAssigned = false, stale = false, sort = "recent", page = 1, limit = 50 } = {}) {
-  if (!USE_POSTGRES) return { total: 0, page, limit, items: [] };
+  // Nessun Postgres collegato (es. preview locale senza DATABASE_URL): la ricerca CRM
+  // è Postgres-only, non c'è fallback sul blob JSON. `dbUnavailable` permette al client
+  // di distinguere "davvero zero risultati" da "qui il CRM proprio non è consultabile",
+  // invece di mostrare un fuorviante "nessuna richiesta corrisponde ai filtri".
+  if (!USE_POSTGRES) return { total: 0, page, limit, items: [], dbUnavailable: true };
   await ensureRelationalSchema();
   const pool = await getPgPool();
   const where = [];
@@ -2381,6 +2385,93 @@ async function reconcileSalesRequestOrderLinks() {
 function startSalesRequestOrderLinkReconciler(intervalMs = 10 * 60_000) {
   setTimeout(() => { reconcileSalesRequestOrderLinks().catch(() => {}); }, 25_000);
   setInterval(() => { reconcileSalesRequestOrderLinks().catch(() => {}); }, intervalMs);
+}
+
+// Stessi ruoli di TIMESHEET_EMPLOYEE_ROLES in app.js (chi timbra). Duplicato
+// qui perché app.js non è importabile lato server (script browser, non modulo).
+const ATTENDANCE_EMPLOYEE_ROLES = new Set(["office", "warehouse"]);
+// Non avvisare prima di quest'ora (Europe/Rome): un turno che inizia alle 8:30
+// non deve generare un falso allarme mentre la persona è già in viaggio.
+const ATTENDANCE_ALERT_CUTOFF_HOUR = 10;
+
+/**
+ * Avviso "mancata timbratura": se dopo il cutoff un dipendente office/warehouse
+ * attivo non ha timbrato l'ingresso oggi e non è in ferie/permesso/malattia
+ * approvati, l'ufficio riceve una notifica — una sola volta al giorno a
+ * persona (traccia in store.attendanceAlertsSent[data] = [userId, ...]).
+ * Solo Postgres (come tutto il modulo timesheet): in blob-mode è un no-op.
+ */
+async function processAttendanceMonitorOnce() {
+  if (!USE_POSTGRES) return;
+  const nowHour = Number(new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Rome", hour: "2-digit", hour12: false,
+  }).format(new Date()));
+  if (nowHour < ATTENDANCE_ALERT_CUTOFF_HOUR) return;
+  let store;
+  try {
+    store = await readJson(STORE_PATH, {});
+  } catch (e) {
+    console.error("[attendance-monitor] readJson STORE_PATH failed:", e?.message || e);
+    return;
+  }
+  const today = shiftDateForTimestamp(new Date());
+  const employees = (Array.isArray(store.users) ? store.users : [])
+    .filter((u) => ATTENDANCE_EMPLOYEE_ROLES.has(u.role) && u.status === "active");
+  if (!employees.length) return;
+
+  let shiftsToday = [];
+  try {
+    shiftsToday = await listShiftsAll({ from: today, to: today });
+  } catch (e) {
+    console.error("[attendance-monitor] listShiftsAll failed:", e?.message || e);
+    return;
+  }
+  const clockedInIds = new Set(shiftsToday.filter((s) => s.clockInAt).map((s) => String(s.userId)));
+  const absentIds = new Set(
+    listTimesheetAbsences(store, { from: today, to: today }).map((a) => String(a.userId)),
+  );
+  const alertsSent = store.attendanceAlertsSent && typeof store.attendanceAlertsSent === "object"
+    ? store.attendanceAlertsSent : {};
+  const alreadyAlertedToday = new Set(Array.isArray(alertsSent[today]) ? alertsSent[today] : []);
+
+  const missing = employees.filter((u) => (
+    !clockedInIds.has(String(u.id))
+    && !absentIds.has(String(u.id))
+    && !alreadyAlertedToday.has(String(u.id))
+  ));
+  if (!missing.length) return;
+
+  for (const user of missing) {
+    try {
+      await notify(store, { role: "office" }, {
+        type: "attendance_missing",
+        title: "Mancata timbratura",
+        body: `${user.name || user.email} non ha ancora timbrato l'ingresso oggi.`,
+        data: { view: "timesheet-office", userId: user.id },
+        dedupeKey: `attendance-missing:${user.id}:${today}`,
+      });
+    } catch (err) {
+      console.warn("[attendance-monitor] notify failed:", err?.message || err, "userId=", user.id);
+    }
+    alreadyAlertedToday.add(String(user.id));
+  }
+  // Tiene solo il giorno corrente: gli altri sono storia, non serve accumulare.
+  store.attendanceAlertsSent = { [today]: [...alreadyAlertedToday] };
+  try {
+    await writeJson(STORE_PATH, store);
+  } catch (e) {
+    console.error("[attendance-monitor] writeJson STORE_PATH failed:", e?.message || e);
+  }
+}
+
+function startAttendanceMonitor(intervalMs = 60 * 60_000) {
+  setTimeout(() => {
+    processAttendanceMonitorOnce().catch((err) => console.error("[attendance-monitor] tick failed:", err?.message || err));
+  }, 90_000);
+  setInterval(() => {
+    processAttendanceMonitorOnce().catch((err) => console.error("[attendance-monitor] tick failed:", err?.message || err));
+  }, intervalMs);
+  console.log(`[attendance-monitor] avviato (tick=${intervalMs}ms, cutoff=${ATTENDANCE_ALERT_CUTOFF_HOUR}:00 Europe/Rome)`);
 }
 
 /**
@@ -18312,6 +18403,9 @@ server.listen(PORT, HOST, () => {
         // ogni 30s. Handler registrati in Step 2 vicino agli use case.
         try { startOutboxProcessor(30_000); }
         catch (err) { console.warn("[outbox] start failed:", err?.message || err); }
+        // Avviso "mancata timbratura": solo Postgres (come tutto il modulo timesheet).
+        try { startAttendanceMonitor(60 * 60_000); }
+        catch (err) { console.warn("[attendance-monitor] start failed:", err?.message || err); }
         // Backfill una-tantum: allinea le pose i cui segnali di campo (eventi
         // cantiere / verbali) sono anteriori all'avanzamento automatico e sono
         // quindi rimaste bloccate su "Programmato".
