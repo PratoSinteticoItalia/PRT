@@ -18387,6 +18387,10 @@ const server = createServer(async (req, res) => {
           maxBytes: status === 413 ? MAX_JSON_BODY_BYTES : undefined,
         });
       }
+      // Prima questo ramo (status non classificato → 500 generico) non
+      // loggava nulla: un'eccezione qui era invisibile nei log Render,
+      // impossibile da diagnosticare da un report utente ("errore generico").
+      console.error(`[api] unhandled error on ${req.method} ${url.pathname}:`, error?.message || error, error?.stack || "");
       return sendJson(res, 500, { error: "server_error", message: error.message });
     }
 
