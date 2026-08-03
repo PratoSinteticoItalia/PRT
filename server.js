@@ -18381,16 +18381,17 @@ const server = createServer(async (req, res) => {
   } catch (error) {
     if (url.pathname.startsWith("/api/")) {
       const status = Number(error?.status || 0);
+      // Logga SEMPRE, prima di decidere lo status di risposta: un errore con
+      // .status già impostato (es. lanciato da codice a valle con status:500
+      // esplicito) saltava il ramo "non classificato" sotto e non veniva mai
+      // stampato — invisibile nei log Render anche dopo il primo fix.
+      console.error(`[api] error on ${req.method} ${url.pathname} (status ${status || "n/a"}):`, error?.message || error, error?.stack || "");
       if (status >= 400 && status < 600) {
         return sendJson(res, status, {
           error: String(error?.message || "request_failed"),
           maxBytes: status === 413 ? MAX_JSON_BODY_BYTES : undefined,
         });
       }
-      // Prima questo ramo (status non classificato → 500 generico) non
-      // loggava nulla: un'eccezione qui era invisibile nei log Render,
-      // impossibile da diagnosticare da un report utente ("errore generico").
-      console.error(`[api] unhandled error on ${req.method} ${url.pathname}:`, error?.message || error, error?.stack || "");
       return sendJson(res, 500, { error: "server_error", message: error.message });
     }
 
