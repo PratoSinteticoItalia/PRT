@@ -963,21 +963,38 @@ async function backfillSalesRequestCreatedAtToDb() {
 // sempre visti vuoti anche per pezzi il cui blob JSON li aveva correttamente.
 // Backfill una tantum: ririscrive ogni pezzo del blob (fonte primaria, mai
 // stata lossy) nella tabella relazionale ora che le colonne esistono.
+// Il flag "una tantum" era solo in memoria: si azzerava ad ogni riavvio del
+// processo (cioè ad ogni deploy), e la funzione veniva richiamata da OGNI
+// GET /api/session — quindi ogni utente che ricaricava la pagina dopo un
+// deploy faceva ripartire da capo 258 UPDATE sequenziali su inventory_items,
+// una per istanza attiva, ognuna con una NOTIFY che tutte le istanze
+// ricevevano e rilogavano ("[pg-listen] entity cache invalidated: inventory"
+// a raffica) — saturando per qualche secondo il pool di connessioni e
+// facendo fallire richieste concorrenti (es. bulk-assignment CRM) con un
+// generico errore di salvataggio, subito dopo ogni deploy. Il marcatore ora
+// è persistito su Postgres: la migrazione gira davvero una sola volta nella
+// vita del database, non una volta per riavvio. Spostata anche fuori dal
+// percorso di /api/session, va lanciata solo all'avvio del server.
+const INVENTORY_RELATIONAL_BACKFILL_DOC_KEY = "inventory_relational_backfill_v1_done";
 let _inventoryRelationalBackfillDone = false;
 async function backfillInventoryRelationalFields() {
   if (_inventoryRelationalBackfillDone || !USE_POSTGRES) return;
-  _inventoryRelationalBackfillDone = true;
   try {
+    const alreadyDone = await readDatabaseDocument(INVENTORY_RELATIONAL_BACKFILL_DOC_KEY, false);
+    if (alreadyDone) {
+      _inventoryRelationalBackfillDone = true;
+      return;
+    }
     await ensureRelationalSchema();
     const rawStore = await readJson(STORE_PATH, {});
     const pieces = Array.isArray(rawStore.inventory) ? rawStore.inventory : [];
-    if (!pieces.length) return;
     for (const piece of pieces) {
       await upsertInventoryItemToDb(normalizeInventoryPieceRecord(piece));
     }
+    await writeDatabaseDocument(INVENTORY_RELATIONAL_BACKFILL_DOC_KEY, true);
+    _inventoryRelationalBackfillDone = true;
     console.log(`[db] backfill inventory relational fields: ${pieces.length} pezzi risincronizzati`);
   } catch (err) {
-    _inventoryRelationalBackfillDone = false; // consenti retry al prossimo avvio
     console.warn("[db] backfillInventoryRelationalFields:", err?.message);
   }
 }
@@ -12300,8 +12317,10 @@ async function handleApi(req, res, url) {
     backfillSalesRequestHeightToDb().catch(() => {});
     // Backfill created_at: corregge date di import errate (eseguito una sola volta)
     backfillSalesRequestCreatedAtToDb().catch(() => {});
-    // Backfill campi inventario mancanti in SQL (sqm, note, residuo da taglio...)
-    backfillInventoryRelationalFields().catch(() => {});
+    // backfillInventoryRelationalFields() NON va più chiamata qui: girava ad
+    // ogni GET /api/session finché il marcatore era solo in memoria (vedi
+    // commento sulla funzione). Ora è lanciata una volta sola all'avvio del
+    // server, più giù nel blocco USE_POSTGRES.
     // Per gli ordini: usa la stessa logica merge di GET /api/orders
     // (blob è fonte primaria per Shopify data; SQL override solo per operations significativi)
     const sessionOrders = (() => {
@@ -18490,6 +18509,12 @@ server.listen(PORT, HOST, () => {
         // prima scrittura sul catalogo.
         refreshSalesAssignmentCatalogCache()
           .catch((err) => console.warn("[sales-assignment-catalog] warm-up failed:", err?.message || err));
+        // Backfill campi inventario mancanti in SQL (sqm, note, residuo da
+        // taglio...): una sola volta nella vita del database (marcatore
+        // persistito, vedi commento sulla funzione), lanciata all'avvio
+        // invece che dentro /api/session.
+        backfillInventoryRelationalFields()
+          .catch((err) => console.warn("[db] backfillInventoryRelationalFields startup run failed:", err?.message || err));
         // Backfill una-tantum: allinea le pose i cui segnali di campo (eventi
         // cantiere / verbali) sono anteriori all'avanzamento automatico e sono
         // quindi rimaste bloccate su "Programmato".
