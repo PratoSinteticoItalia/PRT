@@ -7488,6 +7488,26 @@ function getSalesRequestSqm(item = {}) {
   return toSalesRequestSqmNumber(getSalesRequestRawSqmValue(item));
 }
 
+// Commerciali assegnabili aggiunti dall'ufficio in Impostazioni → Assegnazioni
+// CRM (catalog_items, categoria "sales_assignment") oltre ai due di default.
+// Cache in memoria (normalizeSalesRequestAssignment è sincrona ed è chiamata
+// in decine di punti, anche dentro loop di import CSV/Sheets — niente query
+// DB lì dentro): rinfrescata all'avvio e ad ogni scrittura sul catalogo.
+let _salesAssignmentCatalogCache = []; // [{ value, label }]
+async function refreshSalesAssignmentCatalogCache() {
+  if (!USE_POSTGRES) return;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query(
+      "SELECT value, label FROM catalog_items WHERE category='sales_assignment' AND active=TRUE ORDER BY position, created_at",
+    );
+    _salesAssignmentCatalogCache = rows;
+  } catch (err) {
+    console.warn("[sales-assignment-catalog] refresh failed:", err?.message || err);
+  }
+}
+
 function normalizeSalesRequestAssignment(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -7495,7 +7515,11 @@ function normalizeSalesRequestAssignment(value = "") {
   if (!normalized || ["non assegnato", "non assegnata", "unassigned", "none", "na"].includes(normalized)) return "";
   if (normalized.includes("ivan")) return "Ivan";
   if (normalized.includes("gabriele")) return "Gabriele";
-  return "";
+  const catalogMatch = _salesAssignmentCatalogCache.find((item) => {
+    const label = normalizeSalesRequestImportHeader(item.label || item.value || "");
+    return label && normalized.includes(label);
+  });
+  return catalogMatch ? String(catalogMatch.label || catalogMatch.value).trim() : "";
 }
 
 function normalizeIsoDateTime(value = "") {
@@ -17901,6 +17925,7 @@ async function handleApi(req, res, url) {
        RETURNING *`,
       [category, value, label || value, position || 0, JSON.stringify(metadata || {})]
     );
+    if (category === "sales_assignment") refreshSalesAssignmentCatalogCache().catch(() => {});
     return sendJson(res, 200, result.rows[0]);
   }
 
@@ -17942,6 +17967,7 @@ async function handleApi(req, res, url) {
       "UPDATE catalog_items SET active=false WHERE category=$1 AND value=$2",
       [category, value]
     );
+    if (category === "sales_assignment") refreshSalesAssignmentCatalogCache().catch(() => {});
     return sendJson(res, 200, { ok: true });
   }
 
@@ -18448,6 +18474,12 @@ server.listen(PORT, HOST, () => {
         // Avviso "mancata timbratura": solo Postgres (come tutto il modulo timesheet).
         try { startAttendanceMonitor(60 * 60_000); }
         catch (err) { console.warn("[attendance-monitor] start failed:", err?.message || err); }
+        // Scalda la cache dei commerciali assegnabili (catalogo "sales_assignment"):
+        // senza questo, all'avvio l'assegnazione CRM a un commerciale aggiunto
+        // dall'ufficio (oltre a Ivan/Gabriele) fallirebbe finché non arriva la
+        // prima scrittura sul catalogo.
+        refreshSalesAssignmentCatalogCache()
+          .catch((err) => console.warn("[sales-assignment-catalog] warm-up failed:", err?.message || err));
         // Backfill una-tantum: allinea le pose i cui segnali di campo (eventi
         // cantiere / verbali) sono anteriori all'avanzamento automatico e sono
         // quindi rimaste bloccate su "Programmato".

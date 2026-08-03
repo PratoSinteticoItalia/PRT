@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260803-fix-bulk-assign-crm-timesheet-exclude";
+} from "./lib/order-money.js?v=20260803-fix-sales-assignment-catalog";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260803-fix-bulk-assign-crm-timesheet-exclude";
+import { regionForCity } from "./lib/geo.js?v=20260803-fix-sales-assignment-catalog";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260803-fix-bulk-assign-crm-timesheet-exclude";
+} from "./lib/shipping-eligibility.js?v=20260803-fix-sales-assignment-catalog";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260803-fix-bulk-assign-crm-timesheet-exclude";
+} from "./lib/profit-split.js?v=20260803-fix-sales-assignment-catalog";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260803-fix-bulk-assign-crm-timesheet-exclude";
+} from "./lib/preventivo-pricing.js?v=20260803-fix-sales-assignment-catalog";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260803-fix-bulk-assign-crm-timesheet-exclude";
+const APP_SHELL_VERSION = "20260803-fix-sales-assignment-catalog";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4007,7 +4007,13 @@ function normalizeSalesRequestAssignment(value = "") {
   if (!normalized || ["non assegnato", "non assegnata", "unassigned", "none", "na"].includes(normalized)) return "";
   if (normalized.includes("ivan")) return "Ivan";
   if (normalized.includes("gabriele")) return "Gabriele";
-  return "";
+  // Commerciali aggiunti dall'ufficio in Impostazioni → Assegnazioni CRM
+  // (catalogo dinamico, non solo i due default hardcoded sopra).
+  const catalogMatch = (state.catalogSalesAssignments || []).find((item) => {
+    const label = normalizeLooseString(item.label || item.value || "");
+    return label && normalized.includes(label);
+  });
+  return catalogMatch ? String(catalogMatch.label || catalogMatch.value).trim() : "";
 }
 
 function normalizeIsoDateTime(value = "") {
@@ -13728,6 +13734,15 @@ function renderSalesRequests() {
   if (state.currentUser?.role === "rivenditore") {
     renderResellerSalesRequests();
     return;
+  }
+  // Il catalogo "Assegnazioni CRM" (commerciali oltre a Ivan/Gabriele, vedi
+  // Impostazioni) prima veniva caricato solo visitando Impostazioni: se
+  // l'ufficio andava dritto su Richieste senza mai passarci, i bottoni di
+  // assegnazione e la validazione non vedevano i commerciali aggiunti.
+  // Caricato una sola volta per sessione, qui dove serve davvero.
+  if (state.currentUser?.role === "office" && !state.salesAssignmentCatalogLoadedAt) {
+    state.salesAssignmentCatalogLoadedAt = Date.now();
+    loadCatalogItems("sales_assignment").catch(() => { state.salesAssignmentCatalogLoadedAt = 0; });
   }
   syncSalesRequestFilters();
   // Vista kanban: delega a renderSalesRequestsKanban()
