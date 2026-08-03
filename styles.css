@@ -16731,6 +16731,26 @@ textarea.text-input {
   white-space: nowrap;
 }
 
+/* Azione rapida secondaria dentro un risultato (es. "Apri in Spedizioni") —
+   stesso family look dei badge ma cliccabile, con bordo per distinguerla
+   da un'etichetta puramente informativa. */
+.cmd-k-result-action {
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(96,181,112,0.12);
+  border: 1px solid rgba(96,181,112,0.35);
+  border-radius: 6px;
+  padding: 4px 9px;
+  color: #7cd68c;
+  flex-shrink: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.cmd-k-result-action:hover {
+  background: rgba(96,181,112,0.22);
+}
+
 .cmd-k-empty {
   padding: 28px 16px;
   text-align: center;

@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260802-fix-crm-empty-state-v2";
+} from "./lib/order-money.js?v=20260803-site-sheet-cmdk-quick-action";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260802-fix-crm-empty-state-v2";
+import { regionForCity } from "./lib/geo.js?v=20260803-site-sheet-cmdk-quick-action";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260802-fix-crm-empty-state-v2";
+} from "./lib/shipping-eligibility.js?v=20260803-site-sheet-cmdk-quick-action";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260802-fix-crm-empty-state-v2";
+} from "./lib/profit-split.js?v=20260803-site-sheet-cmdk-quick-action";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260802-fix-crm-empty-state-v2";
+} from "./lib/preventivo-pricing.js?v=20260803-site-sheet-cmdk-quick-action";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260802-fix-crm-empty-state-v2";
+const APP_SHELL_VERSION = "20260803-site-sheet-cmdk-quick-action";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1748,6 +1748,7 @@ const ui = {
   installationCallButton: document.getElementById("installation-call-button"),
   installationEmailButton: document.getElementById("installation-email-button"),
   installationAttachmentButton: document.getElementById("installation-attachment-button"),
+  installationExportButton: document.getElementById("installation-export-button"),
   installationAttachments: document.getElementById("installation-attachments"),
   installationProfitSplitShell: document.getElementById("installation-profit-split-shell"),
   installationProfitSplitSummary: document.getElementById("installation-profit-split-summary"),
@@ -3680,6 +3681,27 @@ async function downloadProfitSplitPdf(endpoint, payload, filename) {
   } catch (err) {
     console.error("[profit-split] download PDF fallito:", err);
     window.alert(state.lang === "it" ? "Generazione PDF non riuscita." : "PDF generation failed.");
+  }
+}
+
+async function downloadSiteSheetPdf(orderId) {
+  const order = state.orders.find((item) => item.id === orderId);
+  if (!order) return;
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/site-sheet-pdf`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `scheda-cantiere-${String(order.orderNumber || orderId).replace(/[^\w#-]+/g, "-")}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (err) {
+    console.error("[installations] download scheda cantiere fallito:", err);
+    window.alert(state.lang === "it" ? "Generazione scheda cantiere non riuscita." : "Site sheet generation failed.");
   }
 }
 
@@ -31709,6 +31731,9 @@ function searchGlobalData(query) {
         title: composeClientName(order),
         meta: [getOrderNumber(order), order.city].filter(Boolean).join(" · "),
         badge: getOrderNumber(order),
+        // Azione rapida "Apri in Spedizioni" ha senso solo se l'ordine è
+        // davvero instradato lì (o in posa, stessa idoneità della bacheca).
+        showShippingAction: isRoutedToWarehouse(order) || isRoutedToInstallation(order),
       });
     }
   }
@@ -31775,6 +31800,9 @@ function renderCmdKResults(query) {
 function buildCmdKResultItemHtml(item) {
   const icon = item.type === "order" ? "📦" : "💬";
   const iconClass = item.type === "order" ? "is-order" : "is-request";
+  const shippingAction = item.type === "order" && item.showShippingAction
+    ? `<button type="button" class="cmd-k-result-action" data-cmdk-quick-action data-action="select-order" data-view="shipping" data-id="${escapeHtml(item.id)}">${state.lang === "it" ? "Apri in Spedizioni" : "Open in Shipping"}</button>`
+    : "";
   return `<div class="cmd-k-result-item" data-cmdk-type="${escapeHtml(item.type)}" data-cmdk-id="${escapeHtml(item.id)}" role="option">
     <div class="cmd-k-result-icon ${iconClass}">${icon}</div>
     <div class="cmd-k-result-body">
@@ -31782,6 +31810,7 @@ function buildCmdKResultItemHtml(item) {
       <div class="cmd-k-result-meta">${escapeHtml(item.meta)}</div>
     </div>
     <div class="cmd-k-result-badge">${escapeHtml(item.badge)}</div>
+    ${shippingAction}
   </div>`;
 }
 
@@ -31830,6 +31859,12 @@ if (ui.cmdKInput) {
 if (ui.cmdKOverlay) {
   ui.cmdKOverlay.querySelector(".cmd-k-backdrop")?.addEventListener("click", closeGlobalSearch);
   ui.cmdKResults?.addEventListener("click", (e) => {
+    // Azione rapida (es. "Apri in Spedizioni"): ha già data-action="select-order"
+    // + data-view, gestiti dal dispatcher globale handleGlobalClick su
+    // document — qui chiudiamo solo l'overlay e lasciamo salire il click
+    // (closeGlobalSearch nasconde via classe CSS, non stacca il nodo dal DOM).
+    const quick = e.target.closest("[data-cmdk-quick-action]");
+    if (quick) { closeGlobalSearch(); return; }
     const item = e.target.closest(".cmd-k-result-item");
     if (item) activateCmdKResult(item);
   });
@@ -34029,6 +34064,10 @@ bindEvent(ui.installationEmailButton, "click", () => {
   if (order) sendOrderEmail(order);
 });
 bindEvent(ui.installationAttachmentButton, "click", () => openAttachmentPicker("installation"));
+bindEvent(ui.installationExportButton, "click", () => {
+  const order = getSelectedOrder();
+  if (order) downloadSiteSheetPdf(order.id);
+});
 bindEvent(ui.accountingForm, "submit", saveAccounting);
 bindEvent(ui.settingsForm, "submit", saveSettings);
 bindEvent(ui.profitSplitUseSelectedOrderButton, "click", () => {

@@ -10,6 +10,7 @@ import { reconcileShadowLeads, buildLeadFingerprint, fingerprintIsComplete, find
 import { generateWorkReportPdf } from "./lib/work-report-pdf.js";
 import { generateDdtPdf } from "./lib/ddt-pdf.js";
 import { generateProfitSplitContoPdf, generateProfitSplitStatementPdf } from "./lib/profit-split-pdf.js";
+import { generateSiteSheetPdf } from "./lib/site-sheet-pdf.js";
 import { computeProfitSplitScenario } from "./lib/profit-split.js";
 import {
   PRODUCTS as RESELLER_ORDER_PRODUCTS,
@@ -14077,6 +14078,38 @@ async function handleApi(req, res, url) {
       console.error("[work-reports] pdf download failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "download_failed") });
     }
+  }
+
+  // GET /api/orders/:id/site-sheet-pdf → scheda cantiere (riepilogo posa),
+  // generata al volo dai dati correnti dell'ordine — nessuna persistenza.
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/site-sheet-pdf$/) && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const order = store.orders.find((item) => item.id === orderId);
+    if (!order) return sendJson(res, 404, { error: "order_not_found" });
+    if (currentUser.role === "crew") {
+      const crewName = normalizeCrewName(currentUser.crewName || currentUser.name || "");
+      const orderCrew = normalizeCrewName(order.operations?.installation?.crew || "");
+      if (!crewName || orderCrew !== crewName) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+    }
+    try {
+      const logoBuffer = await getCachedLogoBuffer();
+      const pdf = await generateSiteSheetPdf(order, { logoBuffer, sqm: getSafeOrderSqm(order) });
+      const safe = String(order.orderNumber || orderId).replace(/[^\w#-]+/g, "-");
+      res.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Length": String(pdf.length),
+        "Content-Disposition": `attachment; filename="scheda-cantiere-${safe}.pdf"`,
+      });
+      res.end(pdf);
+    } catch (err) {
+      console.error("[orders] site-sheet pdf failed:", err?.message || err);
+      return sendJson(res, 500, { error: "pdf_failed" });
+    }
+    return;
   }
 
   // POST /api/work-reports/:id/sign → firma cliente + posatore, chiude bozza
