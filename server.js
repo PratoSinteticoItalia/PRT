@@ -15885,6 +15885,11 @@ async function handleApi(req, res, url) {
         const dbUpdated = await updateSalesRequestMicroFieldsInDb(rec, { assignment }, null, currentUser?.email || null);
         if (!dbUpdated) await upsertSalesRequestToDb(rec, currentUser?.email || null);
       }));
+      // Mancava qui (presente in ogni altro endpoint che scrive su sales_requests):
+      // senza invalidare, GET /api/session serviva fino a 15s la cache in-memory
+      // con l'assegnazione vecchia — un refresh di sessione nel frattempo faceva
+      // tornare l'assegnazione a "non assegnato" davanti all'utente.
+      invalidateSalesRequestsDbCache();
       rotateStoreRevision(store);
       if (storeMemCache?.__memReconciled) store.__memReconciled = true;
       storeMemCache = store;
