@@ -2391,6 +2391,9 @@ function startSalesRequestOrderLinkReconciler(intervalMs = 10 * 60_000) {
 // Stessi ruoli di TIMESHEET_EMPLOYEE_ROLES in app.js (chi timbra). Duplicato
 // qui perché app.js non è importabile lato server (script browser, non modulo).
 const ATTENDANCE_EMPLOYEE_ROLES = new Set(["office", "warehouse"]);
+// Stesso account escluso di TIMESHEET_TRACKING_EXCLUDED_EMAILS in app.js
+// (titolare, non timbra fisicamente sul campo) — richiesta esplicita 3 ago 2026.
+const ATTENDANCE_TRACKING_EXCLUDED_EMAILS = new Set(["office@vertex.local"]);
 // Non avvisare prima di quest'ora (Europe/Rome): un turno che inizia alle 8:30
 // non deve generare un falso allarme mentre la persona è già in viaggio.
 const ATTENDANCE_ALERT_CUTOFF_HOUR = 10;
@@ -2422,7 +2425,8 @@ async function processAttendanceMonitorOnce() {
   }
   const today = shiftDateForTimestamp(new Date());
   const employees = (Array.isArray(store.users) ? store.users : [])
-    .filter((u) => ATTENDANCE_EMPLOYEE_ROLES.has(u.role) && u.status === "active");
+    .filter((u) => ATTENDANCE_EMPLOYEE_ROLES.has(u.role) && u.status === "active"
+      && !ATTENDANCE_TRACKING_EXCLUDED_EMAILS.has(String(u.email || "").trim().toLowerCase()));
   if (!employees.length) return;
 
   let shiftsToday = [];

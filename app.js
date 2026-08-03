@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260803-site-sheet-cmdk-quick-action";
+} from "./lib/order-money.js?v=20260803-fix-bulk-assign-crm-timesheet-exclude";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260803-site-sheet-cmdk-quick-action";
+import { regionForCity } from "./lib/geo.js?v=20260803-fix-bulk-assign-crm-timesheet-exclude";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260803-site-sheet-cmdk-quick-action";
+} from "./lib/shipping-eligibility.js?v=20260803-fix-bulk-assign-crm-timesheet-exclude";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260803-site-sheet-cmdk-quick-action";
+} from "./lib/profit-split.js?v=20260803-fix-bulk-assign-crm-timesheet-exclude";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260803-site-sheet-cmdk-quick-action";
+} from "./lib/preventivo-pricing.js?v=20260803-fix-bulk-assign-crm-timesheet-exclude";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260803-site-sheet-cmdk-quick-action";
+const APP_SHELL_VERSION = "20260803-fix-bulk-assign-crm-timesheet-exclude";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11173,7 +11173,7 @@ function renderDashboardTeamAttendance() {
     loadDashboardAttendanceOnce();
     return;
   }
-  const employees = (state.users || []).filter((u) => TIMESHEET_EMPLOYEE_ROLES.has(u.role) && u.status !== "suspended");
+  const employees = (state.users || []).filter((u) => TIMESHEET_EMPLOYEE_ROLES.has(u.role) && u.status !== "suspended" && !isTimesheetTrackingExcluded(u));
   const shiftByUser = new Map((state.dashboardAttendanceShifts || []).map((s) => [s.userId, s]));
   const rows = employees.map((u) => {
     const shift = shiftByUser.get(u.id);
@@ -15990,6 +15990,16 @@ function mergeSalesRequestRecords(records = []) {
       existingIds.add(item.id);
     }
   });
+  // Aggiorna anche crmServerPage.items: renderSalesRequests() legge da lì per le
+  // card della lista (CRM v2/Postgres). Senza questo, un bulk-assign va a buon
+  // fine sul server ma la lista visibile torna a mostrare l'assegnazione vecchia
+  // (sembra che l'azione "sia tornata indietro").
+  if (state.crmServerPage?.items?.length) {
+    state.crmServerPage = {
+      ...state.crmServerPage,
+      items: state.crmServerPage.items.map((item) => byId.get(item.id) || item),
+    };
+  }
   invalidateSalesRequestsFilterCache();
   restoreSalesRequestPageAnchor(pageAnchorId);
 }
@@ -21122,6 +21132,13 @@ function escapeAttr(v) {
 
 const TIMESHEET_DEVICE_ID_KEY = "psi-timesheet-device-id";
 const TIMESHEET_EMPLOYEE_ROLES = new Set(["warehouse", "office"]);
+// L'account office@vertex.local (titolare) non timbra fisicamente sul campo:
+// va escluso dalle liste presenze e dall'avviso mancata timbratura, altrimenti
+// è solo rumore. Su richiesta esplicita, 3 ago 2026.
+const TIMESHEET_TRACKING_EXCLUDED_EMAILS = new Set(["office@vertex.local"]);
+function isTimesheetTrackingExcluded(user = {}) {
+  return TIMESHEET_TRACKING_EXCLUDED_EMAILS.has(String(user?.email || "").trim().toLowerCase());
+}
 
 if (!state.timesheet) {
   state.timesheet = {
@@ -22048,7 +22065,7 @@ async function renderTimesheetOffice() {
     // Raggruppa per userId
     const byUser = new Map();
     const users = Array.isArray(state.users) ? state.users : [];
-    const employeeUsers = users.filter((user) => TIMESHEET_EMPLOYEE_ROLES.has(normalizeUserRole(user.role)));
+    const employeeUsers = users.filter((user) => TIMESHEET_EMPLOYEE_ROLES.has(normalizeUserRole(user.role)) && !isTimesheetTrackingExcluded(user));
     employeeUsers.forEach((user) => byUser.set(user.id, []));
     for (const s of shifts) {
       if (!byUser.has(s.userId)) byUser.set(s.userId, []);
@@ -22098,7 +22115,7 @@ async function renderTimesheetOffice() {
     // Riepilogo settimana
     const teamMinutes = shifts.reduce((a, s) => a + (s.workedMinutes || 0), 0);
     const anomalyCount = shifts.filter((s) => classifyTimesheetShift(s).offSite).length;
-    const totalUsers = (Array.isArray(state.users) ? state.users.filter((u) => TIMESHEET_EMPLOYEE_ROLES.has(u.role)) : []).length || byUser.size;
+    const totalUsers = (Array.isArray(state.users) ? state.users.filter((u) => TIMESHEET_EMPLOYEE_ROLES.has(u.role) && !isTimesheetTrackingExcluded(u)) : []).length || byUser.size;
     const presentTodayCount = isCurrentWeek
       ? new Set(shifts.filter((s) => s.shiftDate === todayStr && s.clockInAt).map((s) => s.userId)).size
       : 0;
