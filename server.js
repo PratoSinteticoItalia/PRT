@@ -919,11 +919,22 @@ async function backfillSalesRequestHeightToDb() {
 
 // Backfill one-shot: corregge created_at di tutti i record che hanno la data
 // di import bulk (≥ 2026-06-02) usando i valori originali dal blob store.
+// Stesso bug della migrazione inventario (vedi backfillInventoryRelationalFields
+// più sopra): il flag era solo in memoria, quindi si azzerava ad ogni deploy e
+// la finestra "oggi - 3 giorni" — pensata per il bulk-import di giugno 2026 —
+// ormai è scivolata su record recenti del tutto normali, che venivano
+// ri-scansionati e ri-aggiornati ad ogni riavvio (lettura dell'intero blob +
+// una query per candidato) senza motivo. Marcatore ora persistito su Postgres.
+const SALES_REQUEST_CREATED_AT_BACKFILL_DOC_KEY = "sales_request_created_at_backfill_v1_done";
 let _createdAtBackfillDone = false;
 async function backfillSalesRequestCreatedAtToDb() {
   if (_createdAtBackfillDone || !USE_POSTGRES) return;
-  _createdAtBackfillDone = true;
   try {
+    const alreadyDone = await readDatabaseDocument(SALES_REQUEST_CREATED_AT_BACKFILL_DOC_KEY, false);
+    if (alreadyDone) {
+      _createdAtBackfillDone = true;
+      return;
+    }
     await ensureRelationalSchema();
     const pool = await getPgPool();
     // Trova tutti i record con created_at nella finestra di import (oggi - 3 gg)
@@ -931,28 +942,30 @@ async function backfillSalesRequestCreatedAtToDb() {
     const { rows } = await pool.query(
       "SELECT id FROM sales_requests WHERE created_at >= $1", [cutoff]
     );
-    if (!rows.length) return;
-    const rawStore = await readJson(STORE_PATH, {});
-    const blobById = new Map((rawStore.salesRequests || []).map((r) => [String(r.id), r]));
-    let count = 0;
-    for (const { id } of rows) {
-      const blob = blobById.get(id);
-      if (!blob?.createdAt) continue;
-      let blobTs;
-      try { blobTs = new Date(blob.createdAt).toISOString(); } catch { continue; }
-      // Aggiorna solo se il blob ha una data precedente (quella corretta)
-      const result = await pool.query(
-        "UPDATE sales_requests SET created_at=$1 WHERE id=$2 AND created_at > $1",
-        [blobTs, id]
-      );
-      if (result.rowCount > 0) count++;
+    if (rows.length) {
+      const rawStore = await readJson(STORE_PATH, {});
+      const blobById = new Map((rawStore.salesRequests || []).map((r) => [String(r.id), r]));
+      let count = 0;
+      for (const { id } of rows) {
+        const blob = blobById.get(id);
+        if (!blob?.createdAt) continue;
+        let blobTs;
+        try { blobTs = new Date(blob.createdAt).toISOString(); } catch { continue; }
+        // Aggiorna solo se il blob ha una data precedente (quella corretta)
+        const result = await pool.query(
+          "UPDATE sales_requests SET created_at=$1 WHERE id=$2 AND created_at > $1",
+          [blobTs, id]
+        );
+        if (result.rowCount > 0) count++;
+      }
+      if (count) {
+        invalidateSalesRequestsDbCache();
+        console.log(`[db] backfill created_at: ${count} record corretti`);
+      }
     }
-    if (count) {
-      invalidateSalesRequestsDbCache();
-      console.log(`[db] backfill created_at: ${count} record corretti`);
-    }
+    await writeDatabaseDocument(SALES_REQUEST_CREATED_AT_BACKFILL_DOC_KEY, true);
+    _createdAtBackfillDone = true;
   } catch (err) {
-    _createdAtBackfillDone = false; // consenti retry al prossimo avvio
     console.warn("[db] backfillSalesRequestCreatedAtToDb:", err?.message);
   }
 }
@@ -17715,9 +17728,14 @@ async function handleApi(req, res, url) {
     const upsertedOrders = normalized.map((order) => upsertOrderRecord(store, order).order);
     store.orders = sortOrdersByRecency(store.orders);
     await writeJson(STORE_PATH, store);
-    // Dual-write SQL per ogni ordine importato
+    // Dual-write SQL per ogni ordine importato. Sequenziale (await), non
+    // fire-and-forget: lanciare N scritture insieme (ognuna con la sua SELECT +
+    // INSERT + notify cross-istanza) satura per un istante il pool di
+    // connessioni Postgres e fa fallire richieste concorrenti di altri utenti
+    // (es. salvataggio CRM) — bug osservato in produzione durante un
+    // "Ricarica dati" con molti ordini sincronizzati insieme.
     for (const order of upsertedOrders) {
-      upsertOrderToDb(order, currentUser?.email || null).catch(() => {});
+      await upsertOrderToDb(order, currentUser?.email || null).catch(() => {});
     }
     return sendJson(res, 200, store.orders);
   }
@@ -17728,9 +17746,10 @@ async function handleApi(req, res, url) {
       const upsertedOrders = orders.map((order) => upsertOrderRecord(store, order).order);
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
-      // Dual-write SQL per ogni ordine sincronizzato da Shopify
+      // Dual-write SQL per ogni ordine sincronizzato da Shopify. Sequenziale
+      // (await), stesso motivo del commento in /api/orders/import sopra.
       for (const order of upsertedOrders) {
-        upsertOrderToDb(order, "shopify-sync").catch(() => {});
+        await upsertOrderToDb(order, "shopify-sync").catch(() => {});
       }
       return sendJson(res, 200, store.orders);
     } catch (error) {
