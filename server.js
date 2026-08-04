@@ -15660,7 +15660,24 @@ async function handleApi(req, res, url) {
       return sendJson(res, 400, { error: "invalid_sales_request_payload" });
     }
     const now = new Date().toISOString();
-    const existingRequest = store.salesRequests.find((item) => item.id === String(body.id || "")) || null;
+    const requestedId = String(body.id || "");
+    let existingRequest = requestedId ? store.salesRequests.find((item) => item.id === requestedId) || null : null;
+    // Fallback PostgreSQL: stesso gap del PATCH/bulk-assignment qui sotto —
+    // un record importato via IMAP/shadow (o comunque non presente nel blob
+    // store, la maggioranza in produzione) non veniva trovato qui, quindi il
+    // salvataggio di un record ESISTENTE veniva trattato come una nuova
+    // creazione: automazione di primo contatto ri-innescata ad ogni modifica,
+    // avviso "possibile duplicato" spurio, e stato precedente perso.
+    if (!existingRequest && requestedId && USE_POSTGRES) {
+      try {
+        const pool = await getPgPool();
+        const pgRes = await pool.query("SELECT * FROM sales_requests WHERE id = $1", [requestedId]);
+        if (pgRes.rows.length) {
+          existingRequest = dbRowToSalesRequest(pgRes.rows[0]);
+          store.salesRequests.unshift(existingRequest);
+        }
+      } catch {}
+    }
     // Un rivenditore può solo creare proprie richieste o aggiornare richieste
     // già proprie — mai leggere/scrivere quelle di un altro rivenditore o
     // orfane. resellerId è sempre forzato dalla sessione, mai dal body.
@@ -15884,6 +15901,26 @@ async function handleApi(req, res, url) {
     const requestIds = Array.from(new Set(rawIds.map((item) => String(item || "").trim()).filter(Boolean))).slice(0, 200);
     if (!requestIds.length) return sendJson(res, 400, { error: "missing_request_ids" });
     const idSet = new Set(requestIds);
+    // Fallback PostgreSQL: record importati via IMAP/shadow (o comunque non
+    // presenti nel blob store, la vera maggioranza dei record in produzione)
+    // non sono in store.salesRequests — stesso identico problema già risolto
+    // per il PATCH singolo qui sopra, mai applicato al bulk-assignment. Senza
+    // questo, il ciclo sotto trovava zero corrispondenze per quasi ogni
+    // selezione reale e rispondeva 404 "requests_not_found" — l'assegnazione
+    // sembrava fallire/tornare indietro, senza alcuna eccezione né log.
+    if (USE_POSTGRES) {
+      const blobIds = new Set(store.salesRequests.map((r) => r.id));
+      const missingIds = requestIds.filter((id) => !blobIds.has(id));
+      if (missingIds.length) {
+        try {
+          const pool = await getPgPool();
+          const pgRes = await pool.query("SELECT * FROM sales_requests WHERE id = ANY($1)", [missingIds]);
+          for (const row of pgRes.rows) {
+            store.salesRequests.unshift(dbRowToSalesRequest(row));
+          }
+        } catch {}
+      }
+    }
     const now = new Date().toISOString();
     const updatedRequests = [];
     for (let index = 0; index < store.salesRequests.length; index += 1) {
