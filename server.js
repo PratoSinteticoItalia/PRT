@@ -450,13 +450,11 @@ function hashPassword(password, salt = randomBytes(16).toString("hex")) {
 
 function verifyPasswordRecord(user, password) {
   const candidate = String(password || "");
-  if (user?.passwordHash && user?.passwordSalt) {
-    const derived = scryptSync(candidate, user.passwordSalt, 64).toString("hex");
-    const left = Buffer.from(derived, "utf8");
-    const right = Buffer.from(String(user.passwordHash), "utf8");
-    return left.length === right.length && timingSafeEqual(left, right);
-  }
-  return String(user?.password || "") === candidate;
+  if (!user?.passwordHash || !user?.passwordSalt) return false;
+  const derived = scryptSync(candidate, user.passwordSalt, 64).toString("hex");
+  const left = Buffer.from(derived, "utf8");
+  const right = Buffer.from(String(user.passwordHash), "utf8");
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 function sanitizePasswordUser(user = {}) {
