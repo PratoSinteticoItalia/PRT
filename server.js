@@ -15981,7 +15981,20 @@ async function handleApi(req, res, url) {
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const requestId = decodeURIComponent(url.pathname.split("/")[4]);
     const nextRequests = store.salesRequests.filter((item) => item.id !== requestId);
-    if (nextRequests.length === store.salesRequests.length) return sendJson(res, 404, { error: "request_not_found" });
+    const foundInBlob = nextRequests.length !== store.salesRequests.length;
+    // Fallback PostgreSQL: stesso gap di PATCH/bulk-assignment/POST qui sopra —
+    // un record importato via IMAP/shadow (la maggioranza in produzione) non è
+    // nel blob store, quindi "Elimina" rispondeva 404 anche su record reali
+    // mai presenti nel blob, non solo su id davvero inesistenti.
+    let foundInDb = false;
+    if (!foundInBlob && USE_POSTGRES) {
+      try {
+        const pool = await getPgPool();
+        const pgRes = await pool.query("SELECT id FROM sales_requests WHERE id = $1", [requestId]);
+        foundInDb = pgRes.rows.length > 0;
+      } catch {}
+    }
+    if (!foundInBlob && !foundInDb) return sendJson(res, 404, { error: "request_not_found" });
     store.salesRequests = nextRequests;
     await writeJson(STORE_PATH, store);
     // Outbox-backed: se la delete immediata fallisce, ritentata in background.

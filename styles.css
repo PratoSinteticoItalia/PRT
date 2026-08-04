@@ -23575,15 +23575,13 @@ body {
     width: 100% !important;
   }
 
-  /* Action list header: scroll orizzontale per i bottoni admin */
+  /* Action list header: prima andava a scroll orizzontale nascosto, con
+     "Nuova richiesta" (l'azione primaria, .action-primary) completamente
+     fuori schermo e nessun indicatore che si potesse scorrere — trovato nel
+     giro UX del 4 ago 2026. Ora va a capo come su tutte le altre pagine
+     (Inventario, Spedizioni), niente più bottoni nascosti. */
   #sales-requests .page-header .action-list {
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    padding-bottom: 4px !important;
-  }
-  #sales-requests .page-header .action-list button {
-    flex-shrink: 0 !important;
+    flex-wrap: wrap !important;
   }
 
   /* Pannello dettaglio aperto: form a 1 colonna */
