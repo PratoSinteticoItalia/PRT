@@ -15282,9 +15282,14 @@ body.mobile-safe-mode .topbar-user:hover {
 }
 
 /* Operational polish: restore dark brand green and compact generator workspace */
+/* Sfondo TOTALMENTE opaco: con alpha <1 (anche solo 96-98%) il contenuto
+   scrollato sotto l'header sticky resta leggermente visibile in trasparenza
+   dietro al gradiente — impercettibile su schermo desktop ma ben visibile
+   su mobile reale (testo di card precedenti "sanguina" dietro la topbar,
+   segnalato dall'utente il 5 ago 2026). */
 .topbar,
 body.mobile-safe-mode .topbar {
-  background: linear-gradient(180deg, rgba(19, 40, 30, 0.98), rgba(14, 30, 23, 0.96));
+  background: linear-gradient(180deg, rgb(19, 40, 30), rgb(14, 30, 23));
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 18px 40px rgba(8, 20, 15, 0.34);
 }
