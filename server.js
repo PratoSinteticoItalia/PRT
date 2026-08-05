@@ -6074,6 +6074,17 @@ function buildOrderInventoryRequirements(order = {}, inventory = []) {
 
 function inventoryPiecesMatchRequirement(piece = {}, requirement = {}) {
   if (inventoryProductKeysCompatible(piece.product || "", requirement.product || "")) return true;
+  // Fallback: stesso "family" (es. "Cipresso") anche quando uno dei due nomi
+  // non ha lo spessore imbevuto nel nome (es. un pezzo di magazzino salvato
+  // solo come "Cipresso", senza "40 mm", perché inserito senza scegliere lo
+  // spessore) — senza questo, quel pezzo diventa invisibile al calcolo
+  // proposta ("Mancante" nonostante scorte realmente disponibili, segnalato
+  // dall'utente il 5 ago 2026 sul Cipresso 40mm multidirezionale). Stessa
+  // leniency già usata in resolveInventoryProductForLine, mai propagata qui
+  // — dove avviene la selezione VERA del pezzo da proporre. Se ENTRAMBI i
+  // lati hanno uno spessore esplicito e sono diversi, resta un rifiuto netto
+  // (nessuna leniency tra spessori realmente diversi).
+  if (inventoryProductKeysCompatible(piece.product || "", requirement.product || "", { allowGenericThicknessFallback: true })) return true;
   // Fall back to coarse material-family matching so "CIOTTOLO BIANCO 2 KG"
   // matches "Ciottolo bianco 25/40 - 25 lt", etc.
   const pieceFamily = normalizeMaterialFamily(piece.product || "");
