@@ -12124,7 +12124,8 @@ async function getSessionContextFromUsers(req, users = []) {
 
 function buildInventoryItemsFromBody(body = {}) {
   // Conteggio: accetta sia "quantity" sia "units" (alias) per coerenza UI↔API.
-  const count = Math.max(1, Math.round(toNumber(body.quantity ?? body.units ?? 1)));
+  const quantityProvided = body.quantity ?? body.units;
+  const count = Math.max(1, Math.round(toNumber(quantityProvided ?? 1)));
   const product = String(body.product || "").trim();
   const width = toNumber(body.width || 0);
   const length = toNumber(body.length || 0);
@@ -12134,6 +12135,12 @@ function buildInventoryItemsFromBody(body = {}) {
   const measured = body.measured !== false && body.measured !== "false";
   if (!product) {
     return { error: "invalid_inventory_payload", created: [] };
+  }
+  // Una quantità 0 o negativa esplicita non deve creare comunque 1 pezzo
+  // "in silenzio" (il Math.max(1,...) sopra serviva solo a difendersi da
+  // input mancante/malformato, non a inventare giacenza non richiesta).
+  if (quantityProvided !== undefined && quantityProvided !== null && toNumber(quantityProvided) <= 0) {
+    return { error: "invalid_inventory_quantity", created: [] };
   }
   // Larghezza/lunghezza <= 0 non sono un rotolo/residuo reale: producono mq
   // negativi che si sottraggono silenziosamente dal totale disponibile
