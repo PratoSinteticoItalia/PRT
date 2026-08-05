@@ -17064,10 +17064,40 @@ async function handleApi(req, res, url) {
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/inventory\/commit$/) && req.method === "POST") {
     const orderId = decodeURIComponent(url.pathname.split("/")[3]);
     const body = await readBody(req);
-    const order = store.orders.find((item) => item.id === orderId);
+    let order = store.orders.find((item) => item.id === orderId);
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
     const buildTag = "inv-commit-2026-05-14-g";
     try {
+      // "Calcola proposta" ricalcola sempre da zero dalle righe ordine, senza
+      // sapere quanto è già impegnato — impegnare un ordine già impegnato
+      // sommava il materiale invece di sostituirlo, per sempre (bug
+      // segnalato dall'utente il 5 ago 2026, ordine #2921, materiali
+      // triplicati "Evaso"). Fix vero (non solo un avviso): se l'ordine ha
+      // già pezzi attivi, li rilasciamo prima — releaseInventoryCommitmentsForOrder
+      // riunisce correttamente ogni residuo al pezzo originale — poi
+      // impegniamo da capo. Così "Impegna" diventa idempotente: rieseguirlo
+      // dieci volte produce sempre lo stesso risultato finale, mai duplicati.
+      const existingOrderAllocations = Array.isArray(order.operations?.warehouse?.inventoryAllocations)
+        ? order.operations.warehouse.inventoryAllocations
+        : [];
+      const hasActiveAllocations = existingOrderAllocations.some((item) => item.status === "impegnato");
+      if (hasActiveAllocations) {
+        const releaseResult = releaseInventoryCommitmentsForOrder(store, order);
+        if (!releaseResult.ok) {
+          // Un residuo generato dal precedente impegno è già stato usato per
+          // UN ALTRO ordine nel frattempo: non possiamo disfare l'impegno
+          // senza rubare materiale già assegnato altrove. Blocco esplicito
+          // invece di un errore generico o (peggio) un duplicato silenzioso.
+          return sendJson(res, 409, {
+            error: releaseResult.error || "inventory_release_failed",
+            blocked: releaseResult.blocked || [],
+          });
+        }
+        // releaseInventoryCommitmentsForOrder aggiorna già store.inventory e
+        // store.orders internamente (stesso pattern di applyInventoryCommitment
+        // più sotto) — qui serve solo aggiornare il riferimento locale.
+        order = releaseResult.order;
+      }
       if (backfillInventoryIds(store)) {
         writeJson(STORE_PATH, store).catch((e) => console.error("[inventory/commit] backfill persist failed:", e?.message || e));
       }

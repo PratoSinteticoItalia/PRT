@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260805-fix-inventory-double-commit-guard";
+} from "./lib/order-money.js?v=20260805-fix-inventory-commit-idempotent";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260805-fix-inventory-double-commit-guard";
+import { regionForCity } from "./lib/geo.js?v=20260805-fix-inventory-commit-idempotent";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260805-fix-inventory-double-commit-guard";
+} from "./lib/shipping-eligibility.js?v=20260805-fix-inventory-commit-idempotent";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260805-fix-inventory-double-commit-guard";
+} from "./lib/profit-split.js?v=20260805-fix-inventory-commit-idempotent";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260805-fix-inventory-double-commit-guard";
+} from "./lib/preventivo-pricing.js?v=20260805-fix-inventory-commit-idempotent";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260805-fix-inventory-double-commit-guard";
+const APP_SHELL_VERSION = "20260805-fix-inventory-commit-idempotent";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -28506,25 +28506,13 @@ async function suggestInventoryForOrder(orderId = "") {
 async function commitInventoryForOrder(orderId = "") {
   const normalizedId = String(orderId || "").trim();
   if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
-  // "Calcola proposta" ricalcola SEMPRE da zero dalle righe ordine, senza
-  // sapere quanto è già stato impegnato: se questo ordine ha già pezzi
-  // attivi (non "disponibile"), impegnare di nuovo li somma a quelli
-  // esistenti invece di sostituirli — il materiale duplica per sempre,
-  // senza limite. Bug segnalato dall'utente il 5 ago 2026 (ordine #2921,
-  // materiali triplicati). Fix strutturale (sottrarre dai requisiti quanto
-  // già allocato) rimandato: rischioso da fare senza rompere l'impegno
-  // parziale legittimo in più volte. Per ora: avviso esplicito che blocca
-  // solo il doppio impegno accidentale.
-  const existingOrder = state.orders.find((item) => item.id === normalizedId);
-  const alreadyAllocated = existingOrder
-    ? getOrderInventoryAllocations(existingOrder).some((item) => getInventoryPieceState({ pieceState: item.status }) !== "disponibile")
-    : false;
-  if (alreadyAllocated) {
-    const confirmMessage = state.lang === "it"
-      ? "Questo ordine ha già del materiale impegnato. Impegnare di nuovo AGGIUNGE altro materiale invece di sostituirlo — se non è intenzionale, rilascia prima l'impegno esistente. Confermi comunque?"
-      : "This order already has committed material. Committing again ADDS more material instead of replacing it — if that's not intended, release the existing commitment first. Confirm anyway?";
-    if (!window.confirm(confirmMessage)) return;
-  }
+  // Se l'ordine ha già pezzi impegnati, il server li rilascia prima di
+  // impegnare da capo (riunendo correttamente ogni residuo al pezzo
+  // originale) — "Impegna" è idempotente: rieseguirlo non duplica mai il
+  // materiale. Vedi commento su /api/orders/:id/inventory/commit in
+  // server.js. Bug dei materiali duplicati segnalato dall'utente il 5 ago
+  // 2026 (ordine #2921) — prima corretto solo con un avviso, ora risolto
+  // alla radice.
   const suggestion = getInventorySuggestionForOrder(normalizedId);
   inventoryAllocationPendingOrderIds.add(normalizedId);
   scheduleInventoryAllocationRenders();
