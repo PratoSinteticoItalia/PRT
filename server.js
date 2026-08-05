@@ -11917,6 +11917,17 @@ function upsertOrderRecord(store, order) {
   const existingOrder = existingOrderIndex >= 0 ? store.orders[existingOrderIndex] : null;
 
   if (existingOrder) {
+    // Confronto grezzo (stringa prima/dopo) per sapere se l'ordine è
+    // DAVVERO cambiato — senza questo, il sync automatico Shopify (ogni 5
+    // minuti, da OGNI scheda del browser aperta) riscriveva su Postgres
+    // fino a 100-400 ordini ad ogni giro anche a dati identici: ognuno con
+    // la sua SELECT + INSERT + notify cross-istanza, in produzione ogni
+    // giorno tutto il giorno. Causa della raffica di
+    // "[pg-listen] entity cache invalidated: orders" osservata più volte
+    // dall'utente il 5 ago 2026, indipendente dal problema di concorrenza
+    // già risolto sopra. Confronto largo (l'intero record) apposta: meglio
+    // una scrittura in più su un cambiamento minore che perderne una vera.
+    const beforeSnapshot = JSON.stringify(existingOrder);
     const nextOrderId = getNormalizedShopifyNumericId(order) || existingOrder.id || order.id;
     const linkedJob = store.jobs.find((job) => [existingOrder.id, order.id, nextOrderId].includes(job.sourceOrderId)) || null;
     if (linkedJob && linkedJob.sourceOrderId !== nextOrderId) {
@@ -11931,13 +11942,14 @@ function upsertOrderRecord(store, order) {
     };
     merged.operations = normalizeOperations(merged, linkedJob);
     store.orders[existingOrderIndex] = merged;
-    return { order: merged, job: merged.convertedJobId ? store.jobs.find((job) => job.id === merged.convertedJobId) || null : null };
+    const changed = beforeSnapshot !== JSON.stringify(merged);
+    return { order: merged, job: merged.convertedJobId ? store.jobs.find((job) => job.id === merged.convertedJobId) || null : null, changed };
   }
 
   const created = { ...order, convertedJobId: null };
   created.operations = normalizeOperations(created, null);
   store.orders.unshift(created);
-  return { order: created, job: null };
+  return { order: created, job: null, changed: true };
 }
 
 // Avanzamento automatico dello stato posa in base ai segnali di campo (eventi
@@ -17808,17 +17820,19 @@ async function handleApi(req, res, url) {
     if (!orders.length) return sendJson(res, 400, { error: "invalid_payload" });
 
     const normalized = orders.map(normalizeOrderPayload);
-    const upsertedOrders = normalized.map((order) => upsertOrderRecord(store, order).order);
+    const upsertResults = normalized.map((order) => upsertOrderRecord(store, order));
     store.orders = sortOrdersByRecency(store.orders);
     await writeJson(STORE_PATH, store);
-    // Dual-write SQL per ogni ordine importato. Sequenziale (await), non
-    // fire-and-forget: lanciare N scritture insieme (ognuna con la sua SELECT +
-    // INSERT + notify cross-istanza) satura per un istante il pool di
-    // connessioni Postgres e fa fallire richieste concorrenti di altri utenti
-    // (es. salvataggio CRM) — bug osservato in produzione durante un
+    // Dual-write SQL solo per gli ordini DAVVERO cambiati (vedi commento su
+    // upsertOrderRecord) — non per l'intero lotto ad ogni giro. Sequenziale
+    // (await), non fire-and-forget: lanciare N scritture insieme (ognuna con
+    // la sua SELECT + INSERT + notify cross-istanza) satura per un istante il
+    // pool di connessioni Postgres e fa fallire richieste concorrenti di altri
+    // utenti (es. salvataggio CRM) — bug osservato in produzione durante un
     // "Ricarica dati" con molti ordini sincronizzati insieme.
-    for (const order of upsertedOrders) {
-      await upsertOrderToDb(order, currentUser?.email || null).catch(() => {});
+    for (const result of upsertResults) {
+      if (!result.changed) continue;
+      await upsertOrderToDb(result.order, currentUser?.email || null).catch(() => {});
     }
     return sendJson(res, 200, store.orders);
   }
@@ -17826,13 +17840,17 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/orders/sync-shopify" && req.method === "POST") {
     try {
       const orders = await syncOrdersFromShopify(store);
-      const upsertedOrders = orders.map((order) => upsertOrderRecord(store, order).order);
+      const upsertResults = orders.map((order) => upsertOrderRecord(store, order));
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
-      // Dual-write SQL per ogni ordine sincronizzato da Shopify. Sequenziale
-      // (await), stesso motivo del commento in /api/orders/import sopra.
-      for (const order of upsertedOrders) {
-        await upsertOrderToDb(order, "shopify-sync").catch(() => {});
+      // Dual-write SQL solo per gli ordini DAVVERO cambiati — stesso motivo
+      // del commento in /api/orders/import sopra. Questo è il percorso che
+      // gira ogni 5 minuti da OGNI scheda del browser aperta: senza il
+      // controllo "changed", riscriveva su Postgres fino a 100-400 ordini
+      // per ciclo anche a dati identici, tutto il giorno.
+      for (const result of upsertResults) {
+        if (!result.changed) continue;
+        await upsertOrderToDb(result.order, "shopify-sync").catch(() => {});
       }
       return sendJson(res, 200, store.orders);
     } catch (error) {
