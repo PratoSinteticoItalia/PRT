@@ -6357,7 +6357,14 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
               length: piece.length,
               usedLength: toNumber(measuredSourceUsage.get(piece.id) || 0),
             }));
-          console.warn(`[inventory/suggest] missing: order=${order.id} requirement=${JSON.stringify({ id: requirement.id, product: requirement.product, width: requiredWidth, length: Number(remainingLength.toFixed(2)) })} familyCandidates=${JSON.stringify(familyCandidates)}`);
+          // Se familyCandidates è vuoto, il problema è nel confronto dei NOMI
+          // prodotto, non nella disponibilità — serve vedere le stringhe
+          // grezze salvate sui pezzi (potrebbero essere slug tipo
+          // "cipresso-40mm" invece del nome leggibile "Cipresso 40 mm").
+          const distinctInventoryProducts = familyCandidates.length
+            ? []
+            : [...new Set(inventory.map((p) => p.product).filter(Boolean))].slice(0, 40);
+          console.warn(`[inventory/suggest] missing: order=${order.id} requirement=${JSON.stringify({ id: requirement.id, product: requirement.product, width: requiredWidth, length: Number(remainingLength.toFixed(2)) })} familyCandidates=${JSON.stringify(familyCandidates)} distinctInventoryProducts=${JSON.stringify(distinctInventoryProducts)}`);
           missing.push({
             requirementId: requirement.id,
             product: requirement.product,
