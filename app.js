@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260805-fix-cal-day-capacity-wrap";
+} from "./lib/order-money.js?v=20260805-fix-shipping-inventory-source-select";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260805-fix-cal-day-capacity-wrap";
+import { regionForCity } from "./lib/geo.js?v=20260805-fix-shipping-inventory-source-select";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260805-fix-cal-day-capacity-wrap";
+} from "./lib/shipping-eligibility.js?v=20260805-fix-shipping-inventory-source-select";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260805-fix-cal-day-capacity-wrap";
+} from "./lib/profit-split.js?v=20260805-fix-shipping-inventory-source-select";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260805-fix-cal-day-capacity-wrap";
+} from "./lib/preventivo-pricing.js?v=20260805-fix-shipping-inventory-source-select";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260805-fix-cal-day-capacity-wrap";
+const APP_SHELL_VERSION = "20260805-fix-shipping-inventory-source-select";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -28381,6 +28381,23 @@ async function saveInventory(event) {
     return;
   }
   const config = getInventoryProductConfig(product);
+  // I rotoli interi arrivano dal fornitore quasi sempre in 2×25m (rare
+  // eccezioni storiche: 20 e 40) — mai in lunghezze "da residuo" come 11 o
+  // 14,4. Il form non validava affatto la coerenza tra tipo e lunghezza,
+  // quindi un refuso finiva silenziosamente tra i "Rotoli interi" in
+  // Inventario. Bug segnalato dall'utente il 5 ago 2026.
+  if (config.isMeasured && String(form.get("status") || "intero") === "intero") {
+    const lengthValue = toNumber(form.get("length"));
+    if (lengthValue > 0 && ![20, 25, 40].includes(lengthValue)) {
+      const confirmMessage = state.lang === "it"
+        ? `I rotoli interi sono di solito 2×25m (raramente 20 o 40). Confermi che ${lengthValue}m è davvero un rotolo intero e non un residuo?`
+        : `Whole rolls are usually 2×25m (rarely 20 or 40). Confirm that ${lengthValue}m is really a whole roll, not a residual?`;
+      if (!window.confirm(confirmMessage)) {
+        ui.inventoryForm.length?.focus();
+        return;
+      }
+    }
+  }
   const variantOptions = config.variantOptions || [];
   const variantValue = String(form.get("variant") || config.defaultVariant || "").trim();
   const variantLabel = variantOptions.find((option) => option.value === variantValue)?.label
@@ -33867,11 +33884,19 @@ bindEvent(ui.warehouseSearch, "input", (event) => {
   state.search.warehouse = event.target.value;
   scheduleSearchRender("warehouse", renderWarehouse);
 });
-bindEvent(ui.warehouseDetailFields, "change", (event) => {
+function handleInventorySuggestionSourceChange(event) {
   const control = event.target.closest("[data-action='change-inventory-suggestion-source']");
   if (!control) return;
   changeInventorySuggestionSource(control.dataset.id || "", control.dataset.suggestionId || "", control.value || "");
-});
+}
+bindEvent(ui.warehouseDetailFields, "change", handleInventorySuggestionSourceChange);
+// Stesso pannello (renderOrderInventoryAllocationPanel) viene iniettato anche
+// da Spedizioni (renderShippingInventoryAllocation), in un contenitore DOM
+// diverso — senza questo listener gemello, cambiare la proposta di pezzo da
+// Spedizioni aggiornava solo la <select> a video: lo stato restava quello
+// originale e "Impegna" scaricava comunque il pezzo suggerito dal sistema,
+// non quello scelto a mano. Bug segnalato dall'utente il 5 ago 2026.
+bindEvent(ui.shippingInventoryAllocation, "change", handleInventorySuggestionSourceChange);
 bindEvent(ui.warehouseExportBtn, "click", () => exportInventoryCSV());
 bindEvent(ui.accountingSearch, "input", (event) => {
   state.search.accounting = event.target.value;
