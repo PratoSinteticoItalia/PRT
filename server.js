@@ -6341,6 +6341,23 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
         };
         const options = getMeasuredCandidateOptions(inventory, plan, usedPieceIds, measuredSourceUsage, measuredBundles);
         if (!options.length) {
+          // Diagnostica per il caso "Mancante" nonostante scorte apparentemente
+          // sufficienti (es. Cipresso 40mm multidirezionale, segnalato
+          // dall'utente il 5 ago 2026): logga il requirement richiesto e ogni
+          // pezzo con lo stesso family match, con il motivo esatto di scarto
+          // (stato/larghezza/lunghezza residua), invece di continuare a
+          // ipotizzare senza vedere i dati reali dell'ordine in produzione.
+          const familyCandidates = inventory
+            .filter((piece) => inventoryPiecesMatchRequirement(piece, plan))
+            .map((piece) => ({
+              id: (piece.id || "").slice(0, 8),
+              product: piece.product,
+              state: piece.pieceState,
+              width: piece.width,
+              length: piece.length,
+              usedLength: toNumber(measuredSourceUsage.get(piece.id) || 0),
+            }));
+          console.warn(`[inventory/suggest] missing: order=${order.id} requirement=${JSON.stringify({ id: requirement.id, product: requirement.product, width: requiredWidth, length: Number(remainingLength.toFixed(2)) })} familyCandidates=${JSON.stringify(familyCandidates)}`);
           missing.push({
             requirementId: requirement.id,
             product: requirement.product,
