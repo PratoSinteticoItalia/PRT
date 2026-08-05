@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260805-fix-shipping-inventory-source-select";
+} from "./lib/order-money.js?v=20260805-fix-residue-origin-link";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260805-fix-shipping-inventory-source-select";
+import { regionForCity } from "./lib/geo.js?v=20260805-fix-residue-origin-link";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260805-fix-shipping-inventory-source-select";
+} from "./lib/shipping-eligibility.js?v=20260805-fix-residue-origin-link";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260805-fix-shipping-inventory-source-select";
+} from "./lib/profit-split.js?v=20260805-fix-residue-origin-link";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260805-fix-shipping-inventory-source-select";
+} from "./lib/preventivo-pricing.js?v=20260805-fix-residue-origin-link";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260805-fix-shipping-inventory-source-select";
+const APP_SHELL_VERSION = "20260805-fix-residue-origin-link";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -17222,11 +17222,26 @@ function renderInventoryCard(group) {
               : ps === "impegnato"
                 ? `<span class="inv-single-state impegnato">${state.lang === "it" ? "Impegnato" : "Committed"}</span>`
                 : `<span class="inv-single-state disponibile">${state.lang === "it" ? "Disp." : "Avail."}</span>`;
+            // Un residuo con le stesse dimensioni del taglio che l'ha generato
+            // (es. un rotolo 2×25 tagliato a metà lascia un residuo identico
+            // al pezzo impegnato) è indistinguibile a colpo d'occhio da un
+            // pezzo indipendente — confusione segnalata dall'utente il 5 ago
+            // 2026. Aggiunge il collegamento esplicito al taglio/ordine di
+            // origine, riusando lo stesso residueFromPieceId già presente
+            // nei dati (finora usato solo nella vista raggruppata).
+            const sourceCutPiece = pt === "residuo" && item.residueFromPieceId
+              ? group.pieces.find((p) => p.id === item.residueFromPieceId)
+              : null;
+            const sourceOrder = sourceCutPiece ? getPieceCommittedOrder(sourceCutPiece) : null;
+            const originLine = sourceCutPiece
+              ? `<div class="inv-single-origin">↳ ${state.lang === "it" ? "residuo del taglio" : "offcut from the cut"} ${formatPieceLabel(sourceCutPiece)}${sourceOrder ? ` · ${sourceOrder.num ? `#${escapeHtml(sourceOrder.num)}` : ""}${sourceOrder.name ? ` ${escapeHtml(sourceOrder.name)}` : ""}` : ""}</div>`
+              : "";
             return `<div class="inv-single ${pt === "residuo" ? "res" : "roll"}">
               <span class="inv-ptype ${pt === "residuo" ? "res" : "roll"}">${pt === "residuo" ? (state.lang === "it" ? "Residuo" : "Offcut") : (state.lang === "it" ? "Rotolo" : "Roll")}</span>
               <span class="inv-single-dim">${formatPieceLabel(item)} · ${formatInventoryNumber(item.sqm)} mq</span>
               ${stateCell}
               ${canDel ? `<button class="inv-single-del" type="button" data-action="delete-inventory-piece" data-id="${item.id}" title="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}" aria-label="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}">×</button>` : ""}
+              ${originLine}
             </div>`;
           }).join("")}
         </div>

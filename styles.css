@@ -23857,8 +23857,13 @@ body {
 .inv-singles summary::before { content: "⌄ "; }
 .inv-singles[open] summary::before { content: "⌃ "; }
 .inv-singles-list { margin-top: 8px; display: grid; gap: 5px; }
-.inv-single { display: flex; align-items: center; gap: 10px; padding: 6px 11px; background: #fdfcfa; border: 1px solid #ece8de; border-radius: 8px; font-size: 12.5px; }
+.inv-single { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 11px; background: #fdfcfa; border: 1px solid #ece8de; border-radius: 8px; font-size: 12.5px; }
 .inv-single-dim { flex: 1; color: #5a6e63; }
+/* Collega un residuo al taglio/ordine che l'ha generato — senza, un residuo
+   con le stesse dimensioni del pezzo impegnato sembra un pezzo indipendente
+   scollegato (confusione segnalata dall'utente il 5 ago 2026). flex-basis:100%
+   lo forza su una riga propria sotto la riga principale, nello stesso box. */
+.inv-single-origin { flex-basis: 100%; padding-left: 26px; font-size: 11px; color: #8a9691; }
 .inv-single-state { font-size: 10.5px; font-weight: 700; }
 .inv-single-state.disponibile { color: #10b981; }
 .inv-single-state.impegnato { color: #f59e0b; }
