@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260805-fix-supplier-price-negative";
+} from "./lib/order-money.js?v=20260805-fix-sales-content-drill-spacing";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260805-fix-supplier-price-negative";
+import { regionForCity } from "./lib/geo.js?v=20260805-fix-sales-content-drill-spacing";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260805-fix-supplier-price-negative";
+} from "./lib/shipping-eligibility.js?v=20260805-fix-sales-content-drill-spacing";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260805-fix-supplier-price-negative";
+} from "./lib/profit-split.js?v=20260805-fix-sales-content-drill-spacing";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260805-fix-supplier-price-negative";
+} from "./lib/preventivo-pricing.js?v=20260805-fix-sales-content-drill-spacing";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260805-fix-supplier-price-negative";
+const APP_SHELL_VERSION = "20260805-fix-sales-content-drill-spacing";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2452,6 +2452,21 @@ function updateMobileFilterFabVisibility() {
 // Per ogni modulo "drill-down-compatible" definiamo come trovare il titolo
 // e il sottotitolo da mostrare nella back bar quando si entra in dettaglio.
 function computeMobileDrillHeader(module, itemId) {
+  if (module === "sales-content") {
+    const item = (state.salesContents || []).find((c) => c.id === itemId);
+    if (!item) {
+      return { title: state.lang === "it" ? "Nuovo contenuto" : "New content", subtitle: "" };
+    }
+    const attachCount = Array.isArray(item.attachments) ? item.attachments.length : 0;
+    const meta = [
+      getSalesContentCategoryLabel(item.category),
+      attachCount ? `${attachCount} ${state.lang === "it" ? "allegati" : "attachments"}` : "",
+    ].filter(Boolean).join(" · ");
+    return {
+      title: item.title || (state.lang === "it" ? "Contenuto senza titolo" : "Untitled content"),
+      subtitle: meta,
+    };
+  }
   if (module === "sales-requests") {
     const req = (state.salesRequests || []).find((r) => r.id === itemId);
     if (!req) {
@@ -2537,7 +2552,7 @@ function openMobileDrillDetail(module, itemId) {
   // drawer riapriva un ordine DIVERSO già scrollato a metà, con l'header
   // sticky che finiva a sovrapporsi al contenuto invece di stare in cima.
   document.querySelectorAll(
-    ".detail-panel, .order-detail-panel, .install-detail-panel, .accounting-detail-panel, .sales-request-detail-panel",
+    ".detail-panel, .order-detail-panel, .install-detail-panel, .accounting-detail-panel, .sales-request-detail-panel, .sales-content-detail-panel",
   ).forEach((panel) => { panel.scrollTop = 0; });
   updateMobileDrillBackBar();
   try { updateMobileFilterFabVisibility(); } catch {}
@@ -16844,6 +16859,11 @@ function createNewSalesContent() {
   state.salesContentPage = 1;
   renderSalesContent();
   clearStatus(ui.salesContentStatus);
+  if (window.innerWidth <= MOBILE_DRILL_BREAKPOINT) {
+    openMobileDrillDetail("sales-content", "");
+    requestAnimationFrame(() => ui.salesContentForm?.title?.focus());
+    return;
+  }
   requestAnimationFrame(() => {
     ui.salesContentDetailTitle?.scrollIntoView({ behavior: window.innerWidth <= 980 ? "smooth" : "auto", block: "start" });
     ui.salesContentForm?.title?.focus();
@@ -31284,7 +31304,14 @@ function handleGlobalClick(event) {
     state.creatingSalesContent = false;
     state.selectedSalesContentId = id || "";
     renderSalesContent();
-    if (window.innerWidth <= 980) {
+    // Su mobile stretto (<=768px) la scheda dettaglio restava impilata sotto
+    // la lista (solo scrollIntoView): niente drill-down fullscreen come già
+    // fatto per ordini/magazzino/pose/contabilità, quindi lista e dettaglio
+    // finivano visibili insieme, con testo delle due card sovrapposto durante
+    // lo scroll — segnalato dall'utente con screenshot il 5 ago 2026.
+    if (window.innerWidth <= MOBILE_DRILL_BREAKPOINT) {
+      openMobileDrillDetail("sales-content", id || "");
+    } else if (window.innerWidth <= 980) {
       requestAnimationFrame(() => ui.salesContentDetailTitle?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
     return;

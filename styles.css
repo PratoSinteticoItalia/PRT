@@ -12517,6 +12517,57 @@ body.mobile-filter-sheet-open {
     top: 0 !important;
   }
 
+  /* SALES-CONTENT (Contenuti e Documentazione) — stesso pattern di #accounting:
+     drawer dettaglio a tutta pagina da destra. Prima restava impilato sotto la
+     lista (solo scrollIntoView, niente drill-down), con lista e scheda
+     visibili insieme e testo sovrapposto durante lo scroll su mobile reale
+     (segnalato dall'utente il 5 ago 2026). */
+  body[data-drill-module="sales-content"] #sales-content {
+    contain: none;
+  }
+  body[data-drill-module="sales-content"] #sales-content > *:not(:has(.sales-content-detail-panel)) {
+    display: none !important;
+  }
+  body[data-drill-module="sales-content"] #sales-content .sales-dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+  body[data-drill-module="sales-content"] #sales-content .sales-content-list-panel {
+    display: none !important;
+  }
+  body[data-drill-module="sales-content"] #sales-content::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 26, 20, 0.44);
+    z-index: 1082;
+    animation: drillScrimIn 0.2s ease;
+  }
+  body[data-drill-module="sales-content"] #sales-content .sales-content-detail-panel {
+    position: fixed !important;
+    top: var(--mobile-back-bar-h) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: 94vw !important;
+    max-width: 460px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    z-index: 1086;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    background: #fdfcfa !important;
+    border: none !important;
+    border-radius: 16px 0 0 16px;
+    box-shadow: -14px 0 36px rgba(0, 0, 0, 0.28);
+    padding: 16px !important;
+    transform: none !important;
+    visibility: visible !important;
+    transition: none !important;
+    animation: drillDrawerIn 0.26s ease;
+  }
+
   /* ────────────────────────────────────────────────────────────────────────
      STICKY ACTIONS — intervento 2.2
      ────────────────────────────────────────────────────────────────────────
@@ -12530,6 +12581,11 @@ body.mobile-filter-sheet-open {
      - .order-detail-panel .detail-header (Ordini)
      - #warehouse .detail-panel .detail-header (Magazzino)
      - .install-detail-panel .detail-header (Pose)
+
+     NOTA: .sales-content-detail-panel .panel-head volutamente ESCLUSO — la
+     spaziatura interna del pannello Contenuti è diversa dagli altri moduli:
+     renderlo sticky con lo stesso top-offset lo fa scattare oltre la sua
+     posizione naturale, sovrapponendosi al campo "Titolo" sottostante.
      ──────────────────────────────────────────────────────────────────────── */
   body[data-drill-module] .sales-request-detail-panel .panel-head,
   body[data-drill-module] .order-detail-panel .detail-header,
