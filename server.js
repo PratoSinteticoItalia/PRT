@@ -12135,6 +12135,13 @@ function buildInventoryItemsFromBody(body = {}) {
   if (!product) {
     return { error: "invalid_inventory_payload", created: [] };
   }
+  // Larghezza/lunghezza <= 0 non sono un rotolo/residuo reale: producono mq
+  // negativi che si sottraggono silenziosamente dal totale disponibile
+  // invece di sommarsi. Bug riscontrato in test il 5 ago 2026 (form non
+  // validava affatto questi campi, né client né server).
+  if (measured && (width <= 0 || length <= 0)) {
+    return { error: "invalid_inventory_dimensions", created: [] };
+  }
   // UN SOLO stampo: tutti i pezzi passano da normalizeInventoryPieceRecord
   // (single source of truth per la forma del pezzo: pieceType + pieceState +
   // status derivato + dimensioni). Niente più oggetti costruiti a mano.

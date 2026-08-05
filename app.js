@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260805-fix-inventory-commit-idempotent";
+} from "./lib/order-money.js?v=20260805-fix-inventory-negative-dims";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260805-fix-inventory-commit-idempotent";
+import { regionForCity } from "./lib/geo.js?v=20260805-fix-inventory-negative-dims";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260805-fix-inventory-commit-idempotent";
+} from "./lib/shipping-eligibility.js?v=20260805-fix-inventory-negative-dims";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260805-fix-inventory-commit-idempotent";
+} from "./lib/profit-split.js?v=20260805-fix-inventory-negative-dims";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260805-fix-inventory-commit-idempotent";
+} from "./lib/preventivo-pricing.js?v=20260805-fix-inventory-negative-dims";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260805-fix-inventory-commit-idempotent";
+const APP_SHELL_VERSION = "20260805-fix-inventory-negative-dims";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -17530,9 +17530,17 @@ function renderWarehouse() {
   });
 
   if (ui.inventorySummary) {
+    // Stesso messaggio generico ("nessuna giacenza") comparisse sia a
+    // magazzino davvero vuoto sia a una ricerca/filtro senza risultati —
+    // fuorviante: sembra che tutto l'inventario sia sparito invece che
+    // "prova a cercare qualcos'altro". Trovato nel giro bug del 5 ago 2026.
+    const searchOrFilterActive = Boolean((state.search.warehouse || "").trim()) || (state.filters.warehouse && state.filters.warehouse !== "all");
+    const emptyMessage = searchOrFilterActive
+      ? (state.lang === "it" ? "Nessun risultato per questa ricerca o filtro." : "No results for this search or filter.")
+      : (state.lang === "it" ? "Nessuna giacenza caricata. Inserisci i primi rotoli o residui dal pannello a destra." : "No stock loaded yet. Add the first rolls or offcuts from the right panel.");
     ui.inventorySummary.innerHTML = groups.length
       ? groups.map(renderInventoryCard).join("")
-      : `<div class="info-card">${state.lang === "it" ? "Nessuna giacenza caricata. Inserisci i primi rotoli o residui dal pannello a destra." : "No stock loaded yet. Add the first rolls or offcuts from the right panel."}</div>`;
+      : `<div class="info-card">${emptyMessage}</div>`;
   }
 
   // Fallback all'elenco COMPLETO (state.orders) quando l'ordine selezionato non
@@ -28396,6 +28404,20 @@ async function saveInventory(event) {
     return;
   }
   const config = getInventoryProductConfig(product);
+  if (config.isMeasured) {
+    const widthValue = toNumber(form.get("width"));
+    const lengthValue = toNumber(form.get("length"));
+    if (!(widthValue > 0) || !(lengthValue > 0)) {
+      showToast(
+        state.lang === "it"
+          ? "Larghezza e lunghezza devono essere maggiori di zero."
+          : "Width and length must be greater than zero.",
+        "warning",
+      );
+      (widthValue > 0 ? ui.inventoryForm.length : ui.inventoryForm.width)?.focus();
+      return;
+    }
+  }
   // I rotoli interi arrivano dal fornitore quasi sempre in 2×25m (rare
   // eccezioni storiche: 20 e 40) — mai in lunghezze "da residuo" come 11 o
   // 14,4. Il form non validava affatto la coerenza tra tipo e lunghezza,
