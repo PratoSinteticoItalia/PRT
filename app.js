@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260805-fix-sotto-scorta-filter";
+} from "./lib/order-money.js?v=20260805-fix-shipping-in-coda-count";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260805-fix-sotto-scorta-filter";
+import { regionForCity } from "./lib/geo.js?v=20260805-fix-shipping-in-coda-count";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260805-fix-sotto-scorta-filter";
+} from "./lib/shipping-eligibility.js?v=20260805-fix-shipping-in-coda-count";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260805-fix-sotto-scorta-filter";
+} from "./lib/profit-split.js?v=20260805-fix-shipping-in-coda-count";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260805-fix-sotto-scorta-filter";
+} from "./lib/preventivo-pricing.js?v=20260805-fix-shipping-in-coda-count";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260805-fix-sotto-scorta-filter";
+const APP_SHELL_VERSION = "20260805-fix-shipping-in-coda-count";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -23468,6 +23468,13 @@ function renderShipping() {
       const totalPreparedLines = orders.reduce((sum, order) => sum + getWarehousePreparedLines(order).length, 0);
       // KPI logistica allineati alle 3 fasi della pipeline
       const kpiPrepare = orders.filter((o) => getShippingStageLane(o) === "prepare").length;
+      // "In coda" NON è orders.length: quell'insieme include anche ordini già
+      // "ritirato"/spediti (lane "done") che restano in `orders` solo perché la
+      // posa non è ancora pianificata (isOrderFulfilledOrClosed guarda l'esito
+      // dell'installazione quando richiesta, non la logistica). Sommavano al
+      // conteggio "In coda" (15) pur essendo già mostrati in "Usciti/Ritirati" —
+      // stesso doppio conteggio già visto tra badge sidebar e bacheca (9 lug 2026).
+      // "In coda" deve restare = lavoro di spedizione ancora da fare, come il badge sidebar.
       const kpiReady = orders.filter((o) => getShippingStageLane(o) === "ready").length;
       const kpiDone = doneOrdersWide.length;
       // Corsia visibile su mobile (pattern a tab): default "Da preparare".
@@ -23475,7 +23482,7 @@ function renderShipping() {
       ui.shippingList.innerHTML = orders.length
         ? `
           <div class="shp-kpi-strip">
-            <div class="shp-kpi"><span class="shp-kpi-value">${orders.length}</span><span class="shp-kpi-label">${state.lang === "it" ? "In coda" : "Queued"}</span></div>
+            <div class="shp-kpi"><span class="shp-kpi-value">${kpiPrepare + kpiReady}</span><span class="shp-kpi-label">${state.lang === "it" ? "In coda" : "Queued"}</span></div>
             <div class="shp-kpi ${kpiPrepare > 0 ? "warn" : ""}"><span class="shp-kpi-value">${kpiPrepare}</span><span class="shp-kpi-label">${state.lang === "it" ? "Da preparare" : "To prepare"}</span></div>
             <div class="shp-kpi"><span class="shp-kpi-value">${kpiReady}</span><span class="shp-kpi-label">${state.lang === "it" ? "Pronti uscita" : "Ready"}</span></div>
             <div class="shp-kpi"><span class="shp-kpi-value">${kpiDone}</span><span class="shp-kpi-label">${state.lang === "it" ? "Usciti / Ritirati" : "Dispatched"}</span></div>
