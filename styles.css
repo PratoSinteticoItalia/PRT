@@ -10655,6 +10655,13 @@ button:active,
 .profit-split-history-pdf {
   flex-shrink: 0;
   margin-right: 12px;
+  /* Stesso bug di .sp-invoice-open: la regola mobile generica
+     ".ghost-button { width:100% }" (<=720px) fa espandere questo bottone
+     inline a tutta la riga flex, schiacciando a larghezza 0 il fratello
+     con gli importi (.profit-split-history-open) — che finisce visivamente
+     sotto al bottone "PDF". Segnalato dall'utente con screenshot da
+     telefono il 5 ago 2026 (importi "Storico conti" illeggibili). */
+  width: auto;
 }
 
 .profit-split-partner-pdf {
@@ -25349,6 +25356,12 @@ body {
 .sp-invoice-open {
   flex: 0 0 auto;
   text-decoration: none;
+  /* La regola mobile generica ".ghost-button { width:100% }" (<=720px, pensata
+     per bottoni standalone impilati) altrimenti vince anche qui: il bottone
+     inline occupa tutta la riga flex e schiaccia a larghezza 0 il fratello
+     con numero/data fattura, che finisce visivamente sotto al bottone —
+     segnalato dall'utente con screenshot da telefono il 5 ago 2026. */
+  width: auto;
 }
 .sp-invoice-lines {
   display: grid;
