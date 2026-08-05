@@ -16320,8 +16320,11 @@ async function handleApi(req, res, url) {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     const body = await readBody(req);
+    // "!Number(x)" respinge solo 0/NaN: un prezzo negativo (es. "-5,50" per un
+    // refuso) è truthy e passava indisturbato, falsando poi media/confronto
+    // prezzi fornitori. L'endpoint batch usava già ">0" correttamente — qui no.
     if (!String(body.supplierName || "").trim() || !String(body.material || "").trim()
-      || !Number(body.unitPrice) || !String(body.invoiceDate || "").trim()) {
+      || !(Number(body.unitPrice) > 0) || !String(body.invoiceDate || "").trim()) {
       return sendJson(res, 400, { error: "missing_fields" });
     }
     const now = new Date().toISOString();
@@ -16498,6 +16501,9 @@ async function handleApi(req, res, url) {
     const index = (store.supplierPriceEntries || []).findIndex((e) => e.id === id);
     if (index < 0) return sendJson(res, 404, { error: "not_found" });
     const body = await readBody(req);
+    if (body.unitPrice !== undefined && !(Number(body.unitPrice) > 0)) {
+      return sendJson(res, 400, { error: "invalid_unit_price" });
+    }
     const current = store.supplierPriceEntries[index];
     let attachment = current.attachment || null;
     if (body.attachment?.dataUrl) {
