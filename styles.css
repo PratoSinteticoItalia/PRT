@@ -11518,6 +11518,19 @@ button:active,
     word-break: normal;
     overflow-wrap: anywhere;
   }
+
+  /* La pillola di saturazione (VERDE/GIALLO/ROSSO) e il contatore mq
+     ("0/360 mq") sono stringhe corte in formato fisso: altre due regole più
+     su (qui e in "body.mobile-safe-mode #installations") le fanno andare a
+     capo goffamente (perfino a metà numero, "3"+"60") sulle card strette del
+     calendario mobile — trovato nel giro UX del 5 ago 2026. !important perché
+     una delle due regole concorrenti ha specificità più alta (classe body). */
+  #installations .cal-capacity-pill,
+  #installations .cal-day-capacity,
+  body.mobile-safe-mode #installations .cal-capacity-pill,
+  body.mobile-safe-mode #installations .cal-day-capacity {
+    white-space: nowrap !important;
+  }
 }
 
 @media (max-width: 760px) {
