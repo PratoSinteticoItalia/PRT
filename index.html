@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260805-fix-ghost-button-inline-width" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260805-fix-ghost-button-inline-width" />
+    <link rel="preload" href="./styles.css?v=20260806-spedizioni-scarico-parziale" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260806-spedizioni-scarico-parziale" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1238,6 +1238,14 @@
                 <h3 id="shipping-detail-title" class="section-inline-title">Seleziona un ordine</h3>
                 <div id="shipping-detail-fields" class="detail-grid"></div>
                 <div id="shipping-material-preview" class="detail-stack"></div>
+              </div>
+
+              <div class="panel-subsection shipping-prep-link">
+                <div class="subsection-head">
+                  <h4>Cosa evadere</h4>
+                </div>
+                <p class="ddt-hint">Togli la spunta a un materiale non disponibile per escluderlo da questa spedizione: non conterà più nel calcolo dell'inventario e potrai evadere il resto.</p>
+                <div id="shipping-prep-list" class="prep-list"></div>
               </div>
 
               <div class="panel-subsection shipping-inventory-link">
@@ -2721,7 +2729,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260805-fix-ghost-button-inline-width" defer></script>
-    <script src="./app.js?v=20260805-fix-ghost-button-inline-width" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260806-spedizioni-scarico-parziale" defer></script>
+    <script src="./app.js?v=20260806-spedizioni-scarico-parziale" type="module"></script>
   </body>
 </html>

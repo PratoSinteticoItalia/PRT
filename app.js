@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260805-fix-ghost-button-inline-width";
+} from "./lib/order-money.js?v=20260806-spedizioni-scarico-parziale";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260805-fix-ghost-button-inline-width";
+import { regionForCity } from "./lib/geo.js?v=20260806-spedizioni-scarico-parziale";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260805-fix-ghost-button-inline-width";
+} from "./lib/shipping-eligibility.js?v=20260806-spedizioni-scarico-parziale";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260805-fix-ghost-button-inline-width";
+} from "./lib/profit-split.js?v=20260806-spedizioni-scarico-parziale";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260805-fix-ghost-button-inline-width";
+} from "./lib/preventivo-pricing.js?v=20260806-spedizioni-scarico-parziale";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260805-fix-ghost-button-inline-width";
+const APP_SHELL_VERSION = "20260806-spedizioni-scarico-parziale";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1782,6 +1782,7 @@ const ui = {
   shippingDetailTitle: document.getElementById("shipping-detail-title"),
   shippingDetailFields: document.getElementById("shipping-detail-fields"),
   shippingMaterialPreview: document.getElementById("shipping-material-preview"),
+  shippingPrepList: document.getElementById("shipping-prep-list"),
   shippingInventoryAllocation: document.getElementById("shipping-inventory-allocation"),
   shippingEstimate: document.getElementById("shipping-estimate"),
   shippingForm: document.getElementById("shipping-form"),
@@ -17841,6 +17842,73 @@ function renderShippingMaterialPreview(order) {
   `;
 }
 
+// Checklist "cosa evadere" sulla pagina Spedizioni: stessa spunta included su
+// order.operations.warehouse.prepItems già usata in Ordini (ui.orderPrepList),
+// esposta anche qui perché il magazziniere scopre un materiale mancante solo
+// al momento di evadere, non prima. Togliendo la spunta la riga esce subito
+// da getOrderPhysicalLines (server) → niente più requirement per quel
+// materiale → "Calcola proposta" non lo segna più "Mancante" e il resto
+// dell'ordine si può impegnare/scaricare/evadere normalmente.
+function renderShippingPrepList(order) {
+  if (!ui.shippingPrepList) return;
+  if (!order || isSampleOrder(order)) {
+    ui.shippingPrepList.innerHTML = "";
+    return;
+  }
+  const prepItems = getWarehousePrepItems(order);
+  if (!prepItems.length) {
+    ui.shippingPrepList.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun materiale fisico da evadere per questo ordine." : "No physical material to fulfill for this order."}</div>`;
+    return;
+  }
+  ui.shippingPrepList.innerHTML = prepItems.map((item, index) => {
+    const dims = extractDimensions(item.title);
+    const split = splitShippingMaterialTitle(item.title);
+    const dimsLabel = split.detail || (dims ? `${String(dims.width).replace(".", ",")} × ${String(dims.length).replace(".", ",")} m` : "");
+    const metaParts = [dimsLabel, `${t("prepQty")}: ${item.quantity}`].filter(Boolean).join(" · ");
+    return `
+      <article class="prep-item${item.included === false ? " is-excluded" : ""}">
+        <label class="prep-item-toggle">
+          <input type="checkbox" data-ship-prep-field="included" data-index="${index}" ${item.included === false ? "" : "checked"} />
+        </label>
+        <div class="prep-item-body">
+          <div class="prep-item-head">
+            <div>
+              <strong>${escapeHtml(split.name || item.title)}</strong>
+              <div class="prep-item-meta">${escapeHtml(metaParts)}</div>
+            </div>
+            ${statusChip(item.included === false ? t("excluded") : t("included"), item.included === false ? "slate" : "green")}
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("");
+  ui.shippingPrepList.querySelectorAll('[data-ship-prep-field="included"]').forEach((cb) => {
+    cb.addEventListener("change", () => { saveShippingPrepList().catch((e) => reportError("shipping:savePrepList", e, { notify: true })); });
+  });
+}
+
+async function saveShippingPrepList() {
+  const order = getSelectedOrder();
+  if (!order || !ui.shippingPrepList) return;
+  const baseItems = getWarehousePrepItems(order);
+  const nextItems = baseItems.map((item, index) => {
+    const includedInput = ui.shippingPrepList.querySelector(`[data-ship-prep-field="included"][data-index="${index}"]`);
+    return {
+      title: item.title,
+      quantity: Number(item.quantity || 1),
+      included: Boolean(includedInput?.checked),
+      note: String(item.note || ""),
+    };
+  });
+  const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
+    method: "POST",
+    body: JSON.stringify({ warehouse: { prepItems: nextItems } }),
+  });
+  setInventorySuggestionForOrder(order.id, null);
+  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  renderCurrentViewOnly(state.currentView);
+}
+
 function renderShippingInventoryAllocation(order) {
   if (!ui.shippingInventoryAllocation) return;
   if (!order) {
@@ -23556,6 +23624,7 @@ function renderShipping() {
     if (ui.shippingDetailTitle) ui.shippingDetailTitle.textContent = t("noSelection");
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
     if (ui.shippingMaterialPreview) renderShippingMaterialPreview(null);
+    if (ui.shippingPrepList) renderShippingPrepList(null);
     if (ui.shippingInventoryAllocation) renderShippingInventoryAllocation(null);
     if (ui.shippingEstimate) ui.shippingEstimate.innerHTML = "";
     if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato spedizione." : "No shipping attachments."}</div>`;
@@ -23573,6 +23642,7 @@ function renderShipping() {
     if (ui.shippingDetailTitle) ui.shippingDetailTitle.textContent = t("noSelection");
     if (ui.shippingDetailFields) ui.shippingDetailFields.innerHTML = "";
     if (ui.shippingMaterialPreview) renderShippingMaterialPreview(null);
+    if (ui.shippingPrepList) renderShippingPrepList(null);
     if (ui.shippingInventoryAllocation) renderShippingInventoryAllocation(null);
     if (ui.shippingEstimate) ui.shippingEstimate.innerHTML = "";
     if (ui.shippingAttachments) ui.shippingAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato spedizione." : "No shipping attachments."}</div>`;
@@ -23623,6 +23693,7 @@ function renderShipping() {
       essentials.map(renderDetailBox).join("");
   }
   renderShippingMaterialPreview(order);
+  renderShippingPrepList(order);
   renderShippingInventoryAllocation(order);
   if (ui.shippingForm) {
     const wh = order.operations?.warehouse || {};
@@ -29048,7 +29119,11 @@ async function saveShipping(event) {
   let nextReadyToShip = form.get("readyToShip") === "on";
   let nextCarrierPassed = form.get("carrierPassed") === "on";
   let nextShipped = form.get("shipped") === "on";
-  const statusImpliesCompleted = currentStatus === "ritirato" && !shopifyOnlyCompleted;
+  // L'utente ha tolto la spunta "Spedito/Evaso" da un ordine che lo era: è una
+  // correzione esplicita (es. spedizione segnata per errore) e va rispettata,
+  // altrimenti sotto la riforziamo a true solo perché lo status è "ritirato".
+  const userUnshipped = Boolean(currentWarehouse.shipped) && !nextShipped;
+  const statusImpliesCompleted = currentStatus === "ritirato" && !shopifyOnlyCompleted && !userUnshipped;
   if (statusImpliesCompleted) {
     nextReadyToShip = true;
     nextShipped = true;
@@ -29063,7 +29138,29 @@ async function saveShipping(event) {
     if (!currentWarehouse.carrierPassed) nextCarrierPassed = false;
   }
   const shippingProofAttachments = mapAttachmentsForContext(order, "shipping");
-  if (!isSampleOrder(order) && fulfillmentMode === "corriere" && nextShipped && !shippingProofAttachments.length) {
+  const missingProof = !isSampleOrder(order) && nextShipped && !shippingProofAttachments.length;
+  const missingInventory = nextShipped
+    && (getPhysicalOrderLines(order).length > 0 || getSafeOrderSqm(order) > 0)
+    && getOrderInventoryAllocations(order).length === 0;
+  // L'account magazziniere non può segnare un ordine spedito/evaso senza foto
+  // di riscontro e senza aver scaricato la merce dal magazzino: sono le due
+  // controprove che l'uscita è avvenuta davvero. L'ufficio può ancora forzare
+  // per i casi eccezionali (es. sistema l'inventario dopo), ma vede l'avviso.
+  const isWarehouseAccount = normalizeUserRole(state.currentUser?.role || "") === "warehouse";
+  if (isWarehouseAccount && (missingProof || missingInventory)) {
+    const reasons = [];
+    if (missingProof) reasons.push(state.lang === "it" ? "manca la foto di partenza/consegna" : "the departure/delivery photo is missing");
+    if (missingInventory) reasons.push(state.lang === "it" ? "la merce non è stata scaricata dal magazzino" : "goods haven't been deducted from inventory");
+    setStatus(
+      ui.shippingStatus,
+      "error",
+      state.lang === "it"
+        ? `Non puoi segnare l'ordine come spedito/evaso: ${reasons.join(" e ")}. Carica la foto e scarica la merce da Inventario, poi salva di nuovo.`
+        : `You can't mark the order as shipped: ${reasons.join(" and ")}. Upload the photo and deduct the goods from Inventory, then save again.`,
+    );
+    return;
+  }
+  if (missingProof) {
     setStatus(
       ui.shippingStatus,
       "warning",
@@ -29089,6 +29186,11 @@ async function saveShipping(event) {
       warehouseNote: form.get("warehouseNote"),
     },
   };
+  if (userUnshipped && currentStatus === "ritirato") {
+    // Riporta lo status fuori da "ritirato": altrimenti al prossimo salvataggio
+    // (o al prossimo render della checkbox) l'ordine verrebbe rimarcato spedito.
+    payload.warehouse.status = "pronto";
+  }
   if (order.id) orderPendingPatchIds.add(order.id);
   let saved;
   try {
