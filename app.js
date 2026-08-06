@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260806-spedito-cascade-carrier-passed";
+} from "./lib/order-money.js?v=20260806-ricarica-dati-sync-shopify";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260806-spedito-cascade-carrier-passed";
+import { regionForCity } from "./lib/geo.js?v=20260806-ricarica-dati-sync-shopify";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260806-spedito-cascade-carrier-passed";
+} from "./lib/shipping-eligibility.js?v=20260806-ricarica-dati-sync-shopify";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260806-spedito-cascade-carrier-passed";
+} from "./lib/profit-split.js?v=20260806-ricarica-dati-sync-shopify";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260806-spedito-cascade-carrier-passed";
+} from "./lib/preventivo-pricing.js?v=20260806-ricarica-dati-sync-shopify";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260806-spedito-cascade-carrier-passed";
+const APP_SHELL_VERSION = "20260806-ricarica-dati-sync-shopify";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -30707,34 +30707,45 @@ function readFileAsDataUrl(file) {
 async function reloadAll() {
   if (reloadAllInFlight || state.syncInProgress) return false;
   reloadAllInFlight = true;
-  state.syncInProgress = true;
-  updateShell();
-  const safetyTimer = window.setTimeout(() => {
-    if (reloadAllInFlight) {
-      reloadAllInFlight = false;
+  try {
+    // "Ricarica dati" deve controllare anche Shopify, non solo rileggere il
+    // nostro archivio: altrimenti un cambiamento avvenuto solo lì (es.
+    // un'evasione annullata) restava invisibile finché non girava il sync
+    // automatico dei 5 minuti, e il bottone sembrava "non fare niente"
+    // (segnalato dall'utente il 6 ago 2026 sull'ordine di Ciro Viscardi).
+    // Solo per l'ufficio, che è l'unico ruolo con accesso Shopify — stesso
+    // gate di canAutoSyncShopify(). runShopifySync gestisce da sé stato,
+    // timeout ed errori: se fallisce non deve bloccare il resto del reload.
+    if (state.currentUser?.role === "office" && state.settings?.storeDomain && state.settings?.hasAdminAccessToken) {
+      await runShopifySync({ silent: true });
+    }
+    state.syncInProgress = true;
+    updateShell();
+    const safetyTimer = window.setTimeout(() => {
+      state.syncInProgress = false;
+      updateShell();
+    }, 30_000);
+    try {
+      const session = await apiFetch("/api/session", { timeoutMs: 20_000 });
+      const applied = await applyFetchedSessionSnapshot(session, {
+        renderMode: "current",
+        enforcePasswordResetView: false,
+      });
+      const salesRequestSourceConfig = normalizeSalesRequestSourceConfig(state.salesRequestSourceConfig || {});
+      const hasGoogleSalesRequests = state.salesRequests.some((item) => String(item.source || "") === "google-sheets");
+      if (state.currentUser?.role === "office" && (salesRequestSourceConfig.spreadsheetInput || hasGoogleSalesRequests)) {
+        await syncSalesRequestSource({ auto: true, silent: true }).catch((error) => {
+          console.warn("sales_request_reload_sync_failed", error);
+        });
+      }
+      return applied;
+    } finally {
+      window.clearTimeout(safetyTimer);
       state.syncInProgress = false;
       updateShell();
     }
-  }, 30_000);
-  try {
-    const session = await apiFetch("/api/session", { timeoutMs: 20_000 });
-    const applied = await applyFetchedSessionSnapshot(session, {
-      renderMode: "current",
-      enforcePasswordResetView: false,
-    });
-    const salesRequestSourceConfig = normalizeSalesRequestSourceConfig(state.salesRequestSourceConfig || {});
-    const hasGoogleSalesRequests = state.salesRequests.some((item) => String(item.source || "") === "google-sheets");
-    if (state.currentUser?.role === "office" && (salesRequestSourceConfig.spreadsheetInput || hasGoogleSalesRequests)) {
-      await syncSalesRequestSource({ auto: true, silent: true }).catch((error) => {
-        console.warn("sales_request_reload_sync_failed", error);
-      });
-    }
-    return applied;
   } finally {
-    window.clearTimeout(safetyTimer);
     reloadAllInFlight = false;
-    state.syncInProgress = false;
-    updateShell();
   }
 }
 
