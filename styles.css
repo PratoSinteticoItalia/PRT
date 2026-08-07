@@ -23607,74 +23607,85 @@ body {
     font-size: 13px !important;
   }
 
-  /* Righe: layout più stretto, azione visibile.
-     L'aside (data/assegnatario/rivenditore) NON condivide più la riga col
-     nome: prima l'auto-track dell'aside si dimensionava sul suo contenuto
-     (es. "🏬 Rivenditore Napoli Sud") e rubava spazio a .crm-row-main,
-     facendo scattare l'ellissi anche su nomi corti ("Bartolome…") e
-     mandando a capo ogni singolo separatore "·" della riga meta (trovato
-     verificando la card con dati reali durante l'allineamento mobile). Ora
-     status+nome stanno sulla riga 1, aside va a riga piena sotto come
-     striscia orizzontale (stesso pattern già usato per badge/data in
-     Ordini e Pose), azione in fondo. */
+  /* RIGA PIATTA (v3, sostituisce il tentativo precedente che aveva solo
+     spostato l'aside a riga piena sotto il nome — ancora una card, non
+     una riga in stile mockup). Stessa tecnica di Ordini/Spedizioni/Pose:
+     dot di stato + nome + una riga meta + avatar assegnatario + freccina.
+     Data/rivenditore/azione/checkbox multiselezione: solo nel dettaglio
+     (drawer esistente, aperto dal tap sulla riga). */
+  #sales-requests .sales-request-list { background: #fff; border: 1px solid #e5e1d6; border-radius: 14px; overflow: hidden; }
   #sales-requests .sales-request-card.crm-row {
-    grid-template-columns: 24px 1fr !important;
-    grid-template-rows: auto auto auto !important;
-    gap: 8px 10px !important;
-    padding: 12px 14px 12px 38px !important;
+    display: grid !important;
+    grid-template-columns: 9px minmax(0, 1fr) auto 14px !important;
+    grid-template-areas: "dot name avatar chev" "dot meta avatar chev" !important;
+    align-items: center !important;
+    column-gap: 10px !important;
+    row-gap: 1px !important;
+    padding: 12px 14px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    border-bottom: 1px solid #ece8de !important;
+    box-shadow: none !important;
   }
-  #sales-requests .sales-request-card.crm-row .crm-row-status {
-    width: 12px !important;
-    height: 12px !important;
-  }
-  #sales-requests .sales-request-card.crm-row .sales-request-select-toggle {
-    left: 10px !important;
-    /* Su desktop è centrato verticalmente sull'intera card (1 sola riga);
-       ora che la card mobile è alta 3 righe (nome, aside, azione) il
-       centro verticale cade a metà invece che accanto al pallino di
-       stato — top fisso lo tiene allineato alla riga 1 a prescindere
-       dall'altezza totale della card. */
-    top: 16px !important;
+  #sales-requests .sales-request-list .sales-request-card.crm-row:last-child { border-bottom: none !important; }
+  #sales-requests .sales-request-card.crm-row.is-active {
+    border-color: transparent !important;
+    background: #f7f6f2 !important;
+    box-shadow: none !important;
     transform: none !important;
-    width: 18px !important;
-    height: 18px !important;
   }
+  /* Barretta verde d'accento (.is-active::before, condivisa con le card
+     Contenuti): pensata per la card col bordo, non per la riga piatta —
+     lasciata attiva restava una barretta scura fluttuante scollegata da
+     tutto (trovato verificando la riga selezionata). */
+  #sales-requests .sales-request-card.crm-row.is-active::before { content: none !important; }
+  #sales-requests .sales-request-card.crm-row .crm-row-status {
+    grid-area: dot !important;
+    width: 9px !important;
+    height: 9px !important;
+    position: static !important;
+  }
+  #sales-requests .sales-request-card.crm-row .sales-request-select-toggle,
+  #sales-requests .sales-request-card.crm-row .crm-row-date,
+  #sales-requests .sales-request-card.crm-row .crm-row-reseller,
+  #sales-requests .sales-request-card.crm-row .crm-row-action,
+  #sales-requests .crm-row-service-tag,
+  #sales-requests .crm-row-stale-badge {
+    display: none !important;
+  }
+  #sales-requests .crm-row-main { display: contents !important; }
   #sales-requests .crm-row-name {
+    grid-area: name !important;
     font-size: 13.5px !important;
-    text-transform: none !important; /* leggibilità migliore su mobile */
+    text-transform: none !important;
+    margin-bottom: 0 !important;
   }
   #sales-requests .crm-row-meta {
-    font-size: 11.5px !important;
-    gap: 4px !important;
+    grid-area: meta !important;
+    display: block !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-size: 11px !important;
   }
-  #sales-requests .crm-row-service-tag {
-    font-size: 9.5px !important;
-    padding: 1px 6px !important;
+  #sales-requests .crm-row-meta > * { display: inline !important; }
+  #sales-requests .crm-row-aside { display: contents !important; }
+  /* Assegnatario: solo l'avatar (bollino con iniziali) come "badge" della
+     riga — il nome per esteso resta nel dettaglio. Trucco font-size:0 per
+     nascondere il nodo di testo senza toccare il markup. */
+  #sales-requests .sales-request-card.crm-row .crm-row-assignee {
+    grid-area: avatar !important;
+    font-size: 0 !important;
+    display: flex !important;
   }
-  /* Aside: riga piena orizzontale, allineata a sinistra come le altre
-     righe badge mobile (non più colonna verticale allineata a destra). */
-  #sales-requests .sales-request-card.crm-row .crm-row-aside {
-    grid-column: 1 / -1 !important;
-    flex-direction: row !important;
-    flex-wrap: wrap !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    text-align: left !important;
-    min-width: 0 !important;
-    gap: 8px !important;
-    font-size: 10.5px !important;
-  }
-  #sales-requests .crm-row-date,
-  #sales-requests .crm-row-assignee {
-    font-size: 10.5px !important;
-  }
-  /* Bottone azione: passa sotto a tutta larghezza */
-  #sales-requests .sales-request-card.crm-row .crm-row-action {
-    grid-column: 1 / -1 !important;
-    width: 100% !important;
-    padding: 10px !important;
-    font-size: 13px !important;
-    margin-top: 4px !important;
+  #sales-requests .crm-row-avatar { font-size: 9px !important; }
+  #sales-requests .sales-request-card.crm-row::after {
+    grid-area: chev !important;
+    content: "\203A" !important;
+    color: #c8c8c2 !important;
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    text-align: center !important;
   }
 
   /* Banner nuovi lead: più stretto */
@@ -23731,12 +23742,9 @@ body {
 @media (max-width: 560px) {
   #sales-requests .page-header h1 { font-size: 18px !important; }
   #sales-requests .page-header p  { font-size: 12px !important; }
-  #sales-requests .sales-request-card.crm-row {
-    padding: 10px 12px 10px 32px !important;
-  }
-  /* .crm-row-assignee non tronca più il nome: da quando l'aside è una
-     riga piena orizzontale (vedi @media 980px sopra) c'è spazio a
-     sufficienza anche sugli schermi più stretti. */
+  /* Il padding della riga piatta (.crm-row, vedi @media 980px sopra)
+     resta 12px 14px anche qui: non c'è più un checkbox assoluto da
+     compensare con padding-left extra. */
 }
 
 /* ── Inbox Ordini: righe servizio read-only sotto i materiali da preparare ── */
