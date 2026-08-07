@@ -26061,3 +26061,61 @@ select.sp-line-field { cursor: pointer; }
     color: #fff;
   }
 }
+
+/* ======================================================================
+   Mobile-native — Dashboard: densità in stile mockup (tile 2 colonne,
+   righe più compatte). Nessun cambiamento di markup/JS: solo padding,
+   font-size e colonne sotto body.mobile-safe-mode. Il sistema di colori
+   (tone-*) esiste già in .hero-kpi/.dash-notif/.dash-action-dot: qui non
+   lo tocco, riduco solo gli ingombri.
+   ====================================================================== */
+@media (max-width: 980px) {
+  /* KPI in alto: 2 per riga come le tile del mockup, non più impilate */
+  body.mobile-safe-mode .dash-hero-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px; }
+  body.mobile-safe-mode .hero-kpi { flex-direction: column; align-items: stretch; padding: 12px; border-radius: 14px; gap: 8px; min-width: 0; }
+  body.mobile-safe-mode .hero-kpi-icon { width: 34px; height: 34px; border-radius: 10px; font-size: 17px; }
+  body.mobile-safe-mode .hero-kpi-body { min-width: 0; width: 100%; }
+  body.mobile-safe-mode .hero-kpi-value { font-size: 22px; }
+  body.mobile-safe-mode .hero-kpi-label { font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.mobile-safe-mode .hero-kpi-sub { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+  body.mobile-safe-mode .hero-kpi-trend { display: none; }
+
+  /* Striscia metriche: più compatta */
+  body.mobile-safe-mode .dash-metric { padding: 9px 10px; }
+  body.mobile-safe-mode .dash-metric-value { font-size: 16px; }
+  body.mobile-safe-mode .dash-metric-label { font-size: 9.5px; }
+  body.mobile-safe-mode .dash-metric-sub { font-size: 10px; }
+
+  /* Card generiche: meno padding, titolo più piccolo */
+  body.mobile-safe-mode .dash-card { padding: 14px 14px 12px; border-radius: 14px; gap: 10px; }
+  body.mobile-safe-mode .dash-card-title { font-size: 15px; }
+
+  /* Notifiche */
+  body.mobile-safe-mode .dash-notif { padding: 10px 11px; gap: 10px; border-radius: 11px; }
+  body.mobile-safe-mode .dash-notif-icon { width: 28px; height: 28px; font-size: 13px; border-radius: 8px; }
+  body.mobile-safe-mode .dash-notif-title { font-size: 12.5px; }
+  body.mobile-safe-mode .dash-notif-sub { font-size: 11px; }
+
+  /* Performance squadra */
+  body.mobile-safe-mode .dash-team-row { padding: 8px 10px; gap: 10px; }
+  body.mobile-safe-mode .dash-team-avatar { width: 28px; height: 28px; font-size: 11px; }
+
+  /* Priorità ordini / follow-up */
+  body.mobile-safe-mode .dash-action-row { padding: 9px 11px; gap: 10px; }
+  body.mobile-safe-mode .dash-action-title { font-size: 12.5px; }
+  body.mobile-safe-mode .dash-action-sub { font-size: 10.5px; }
+  body.mobile-safe-mode .dash-action-tag { font-size: 9.5px; padding: 3px 8px; }
+
+  /* Pose questa settimana: striscia orizzontale invece di griglia impilata
+     (stesso trucco già usato per #installation-calendar in Pose, 02 ago 2026:
+     grid-auto-flow:column, coerenza con un pattern già collaudato). */
+  body.mobile-safe-mode .dash-week-summary {
+    grid-template-columns: none !important;
+    grid-auto-flow: column;
+    grid-auto-columns: 104px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+  body.mobile-safe-mode .dash-week-day { min-height: 96px; padding: 10px 10px 8px; }
+}
