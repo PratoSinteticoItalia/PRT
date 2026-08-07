@@ -26138,21 +26138,63 @@ select.sp-line-field { cursor: pointer; }
   body.mobile-safe-mode .dash-card { padding: 14px 14px 12px; border-radius: 14px; gap: 10px; }
   body.mobile-safe-mode .dash-card-title { font-size: 15px; }
 
-  /* Notifiche */
-  body.mobile-safe-mode .dash-notif { padding: 10px 11px; gap: 10px; border-radius: 11px; }
+  /* Notifiche: lista piatta con hairline invece di card separate. Il
+     tono colorato (rosso/ambra/blu/verde, via --notif-bg) resta — è
+     segnale reale di urgenza, non solo decorazione, non ha senso
+     appiattirlo a bianco come le altre liste. */
+  body.mobile-safe-mode .dash-notification-list { gap: 0; background: #fff; border: 1px solid #e5e1d6; border-radius: 14px; overflow: hidden auto; }
+  body.mobile-safe-mode .dash-notif {
+    padding: 11px 34px 11px 12px;
+    gap: 10px;
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid rgba(0,0,0,.06);
+    box-shadow: none;
+    position: relative;
+  }
+  body.mobile-safe-mode .dash-notification-list .dash-notif:last-child { border-bottom: none; }
+  body.mobile-safe-mode .dash-notif:hover { transform: none; box-shadow: none; }
   body.mobile-safe-mode .dash-notif-icon { width: 28px; height: 28px; font-size: 13px; border-radius: 8px; }
   body.mobile-safe-mode .dash-notif-title { font-size: 12.5px; }
   body.mobile-safe-mode .dash-notif-sub { font-size: 11px; }
+  body.mobile-safe-mode .dash-notif::after {
+    content: "\203A"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    color: #c8c8c2; font-size: 18px; font-weight: 700;
+  }
 
-  /* Performance squadra */
-  body.mobile-safe-mode .dash-team-row { padding: 8px 10px; gap: 10px; }
+  /* Performance squadra: non sempre cliccabile (niente freccina qui). */
+  body.mobile-safe-mode .dash-team-list { gap: 0; background: #fff; border: 1px solid #e5e1d6; border-radius: 14px; overflow: hidden; }
+  body.mobile-safe-mode .dash-team-row {
+    padding: 9px 10px;
+    gap: 10px;
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid #ece8de;
+  }
+  body.mobile-safe-mode .dash-team-list .dash-team-row:last-child { border-bottom: none; }
   body.mobile-safe-mode .dash-team-avatar { width: 28px; height: 28px; font-size: 11px; }
 
-  /* Priorità ordini / follow-up */
-  body.mobile-safe-mode .dash-action-row { padding: 9px 11px; gap: 10px; }
+  /* Priorità ordini / follow-up / coda magazzino / ecc — stesso
+     contenitore .dash-action-list riusato in molte sezioni dashboard. */
+  body.mobile-safe-mode .dash-action-list { gap: 0; background: #fff; border: 1px solid #e5e1d6; border-radius: 14px; overflow: hidden auto; }
+  body.mobile-safe-mode .dash-action-row {
+    padding: 11px 34px 11px 11px;
+    gap: 10px;
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid #ece8de;
+    background: #fff;
+    position: relative;
+  }
+  body.mobile-safe-mode .dash-action-list .dash-action-row:last-child { border-bottom: none; }
+  body.mobile-safe-mode .dash-action-row:hover { transform: none; box-shadow: none; }
   body.mobile-safe-mode .dash-action-title { font-size: 12.5px; }
   body.mobile-safe-mode .dash-action-sub { font-size: 10.5px; }
   body.mobile-safe-mode .dash-action-tag { font-size: 9.5px; padding: 3px 8px; }
+  body.mobile-safe-mode .dash-action-row::after {
+    content: "\203A"; position: absolute; right: 11px; top: 50%; transform: translateY(-50%);
+    color: #c8c8c2; font-size: 18px; font-weight: 700;
+  }
 
   /* Pose questa settimana: striscia orizzontale invece di griglia impilata
      (stesso trucco già usato per #installation-calendar in Pose, 02 ago 2026:
