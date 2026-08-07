@@ -26751,3 +26751,84 @@ select.sp-line-field { cursor: pointer; }
     text-align: center;
   }
 }
+
+/* ======================================================================
+   Mobile-native — Presenze: la tabella settimanale (.ts-office-table-v2,
+   9 colonne: dipendente + 7 giorni + totale) richiede scroll orizzontale
+   su mobile — inutilizzabile col pollice. Diventa una riga per persona
+   con 7 pallini colorati (stesso codice colore delle chip già esistenti:
+   intensità ore, GPS fuori sede, in turno, assenza, richiesta in attesa),
+   in stile mockup. Tecnica standard "responsive table": display:block su
+   table/tr/td, NON display:contents (poco affidabile sulle tabelle).
+   I bottoni (.ts-hcell-button) restano gli stessi elementi cliccabili
+   con gli stessi data-ts-office-user/date — il tap apre lo stesso
+   pannello di dettaglio di sempre, nessuna funzione persa. Etichette
+   testuali dentro il pallino (ore, "Richiesta", ecc.) nascoste: in un
+   cerchio da 20px non c'è spazio, il dettaglio resta a un tap. */
+@media (max-width: 980px) {
+  body.mobile-safe-mode .ts-office-table-wrap { overflow-x: visible; }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 { display: block; width: 100%; font-size: 12px; }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 thead,
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 tfoot { display: none; }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 tbody { display: block; }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 tbody tr {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #ece8de;
+  }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 tbody tr:last-child { border-bottom: none; }
+  body.mobile-safe-mode .ts-user-cell {
+    display: block;
+    flex: 0 0 auto;
+    width: 70px;
+    padding: 0;
+    border: none;
+    overflow: hidden;
+  }
+  body.mobile-safe-mode .ts-user-cell strong { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.mobile-safe-mode .ts-user-cell small { display: none; }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 .ts-hcell {
+    display: block;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: none !important;
+    text-align: center;
+  }
+  body.mobile-safe-mode .ts-hcell-button {
+    width: 20px;
+    height: 20px;
+    min-height: 0;
+    padding: 0;
+    margin: 0 auto;
+    border-radius: 50%;
+    border: 1px solid transparent;
+  }
+  body.mobile-safe-mode .ts-hcell-button.is-selected { border-color: var(--brand); }
+  body.mobile-safe-mode .ts-hchip,
+  body.mobile-safe-mode .ts-hcell-empty {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 0;
+  }
+  body.mobile-safe-mode .ts-hcell-empty { background: #e5e1d6; }
+  body.mobile-safe-mode .ts-habsence-label,
+  body.mobile-safe-mode .ts-hrequest-label,
+  body.mobile-safe-mode .ts-hbadge { display: none; }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 .ts-hcell-total {
+    flex: 0 0 auto;
+    width: 38px;
+    padding: 0;
+    border: none;
+    background: none !important;
+    text-align: right;
+  }
+  body.mobile-safe-mode .ts-hcell-total strong { font-size: 10.5px; }
+}
