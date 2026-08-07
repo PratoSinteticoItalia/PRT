@@ -23607,11 +23607,20 @@ body {
     font-size: 13px !important;
   }
 
-  /* Righe: layout più stretto, azione visibile */
+  /* Righe: layout più stretto, azione visibile.
+     L'aside (data/assegnatario/rivenditore) NON condivide più la riga col
+     nome: prima l'auto-track dell'aside si dimensionava sul suo contenuto
+     (es. "🏬 Rivenditore Napoli Sud") e rubava spazio a .crm-row-main,
+     facendo scattare l'ellissi anche su nomi corti ("Bartolome…") e
+     mandando a capo ogni singolo separatore "·" della riga meta (trovato
+     verificando la card con dati reali durante l'allineamento mobile). Ora
+     status+nome stanno sulla riga 1, aside va a riga piena sotto come
+     striscia orizzontale (stesso pattern già usato per badge/data in
+     Ordini e Pose), azione in fondo. */
   #sales-requests .sales-request-card.crm-row {
-    grid-template-columns: 24px 1fr auto !important;  /* drop il bottone azione dalla griglia */
-    grid-template-rows: auto auto !important;
-    gap: 10px !important;
+    grid-template-columns: 24px 1fr !important;
+    grid-template-rows: auto auto auto !important;
+    gap: 8px 10px !important;
     padding: 12px 14px 12px 38px !important;
   }
   #sales-requests .sales-request-card.crm-row .crm-row-status {
@@ -23620,6 +23629,13 @@ body {
   }
   #sales-requests .sales-request-card.crm-row .sales-request-select-toggle {
     left: 10px !important;
+    /* Su desktop è centrato verticalmente sull'intera card (1 sola riga);
+       ora che la card mobile è alta 3 righe (nome, aside, azione) il
+       centro verticale cade a metà invece che accanto al pallino di
+       stato — top fisso lo tiene allineato alla riga 1 a prescindere
+       dall'altezza totale della card. */
+    top: 16px !important;
+    transform: none !important;
     width: 18px !important;
     height: 18px !important;
   }
@@ -23635,9 +23651,17 @@ body {
     font-size: 9.5px !important;
     padding: 1px 6px !important;
   }
-  /* Aside (data + assegnatario): più stretto */
-  #sales-requests .crm-row-aside {
-    min-width: 70px !important;
+  /* Aside: riga piena orizzontale, allineata a sinistra come le altre
+     righe badge mobile (non più colonna verticale allineata a destra). */
+  #sales-requests .sales-request-card.crm-row .crm-row-aside {
+    grid-column: 1 / -1 !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    min-width: 0 !important;
+    gap: 8px !important;
     font-size: 10.5px !important;
   }
   #sales-requests .crm-row-date,
@@ -23710,14 +23734,9 @@ body {
   #sales-requests .sales-request-card.crm-row {
     padding: 10px 12px 10px 32px !important;
   }
-  #sales-requests .crm-row-aside { min-width: 0 !important; }
-  #sales-requests .crm-row-assignee {
-    /* Su schermo stretto mostra solo l'avatar, non il nome */
-    overflow: hidden;
-    white-space: nowrap;
-    max-width: 60px;
-    text-overflow: ellipsis;
-  }
+  /* .crm-row-assignee non tronca più il nome: da quando l'aside è una
+     riga piena orizzontale (vedi @media 980px sopra) c'è spazio a
+     sufficienza anche sugli schermi più stretti. */
 }
 
 /* ── Inbox Ordini: righe servizio read-only sotto i materiali da preparare ── */
