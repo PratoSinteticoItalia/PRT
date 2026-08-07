@@ -26914,3 +26914,26 @@ select.sp-line-field { cursor: pointer; }
   }
   body.mobile-safe-mode .ts-hcell-total strong { font-size: 10.5px; }
 }
+
+/* ======================================================================
+   Fix: pannello dettaglio visibile "in anteprima" sotto la lista prima
+   ancora di aprire il drill-down (segnalato dall'utente: "in inbox ordini
+   il dettaglio è presente sia in basso sotto la lista che quando clicco
+   si apre lateralmente"). Causa: questi 4 moduli pre-selezionano sempre
+   un ordine (il primo della lista) anche a pagina appena aperta; il loro
+   .detail-panel non ha un display:none di base su mobile stretto, resta
+   visibile impilato sotto la lista finché non scatta
+   data-drill-module=<modulo> (impostato solo al tap, da
+   openMobileDrillDetail). Nascosto finché il drill-down non è attivo per
+   QUEL modulo specifico — impostato SOLO su schermi ≤768px, la stessa
+   soglia usata da MOBILE_DRILL_BREAKPOINT in app.js: sopra quella soglia
+   resta il pattern master-detail affiancato, invariato.
+   ====================================================================== */
+@media (max-width: 768px) {
+  body:not([data-drill-module="orders"]) #orders .order-detail-panel,
+  body:not([data-drill-module="warehouse"]) #warehouse .detail-panel,
+  body:not([data-drill-module="installations"]) #installations .install-detail-panel,
+  body:not([data-drill-module="accounting"]) #accounting .accounting-detail-panel {
+    display: none !important;
+  }
+}
