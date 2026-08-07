@@ -25934,3 +25934,130 @@ select.sp-line-field { cursor: pointer; }
 }
 .reseller-content-link .icon-arrow { font-size: 11px; }
 .reseller-content-card .attachment-grid { margin-top: 2px; }
+
+/* ======================================================================
+   Mobile-native — fondamenta condivise (direzione approvata dall'utente
+   il 07 ago 2026, mockup psi-ops-mobile-native.html). Tutto scoperto sotto
+   body.mobile-safe-mode: nessun effetto su desktop. Nomi di classe verificati
+   contro collisioni prima dell'aggiunta (nessuna regola preesistente li usa).
+   ====================================================================== */
+@media (max-width: 980px) {
+  /* Accordion apribile/chiudibile (sezioni di un form lungo) */
+  body.mobile-safe-mode .acc { border-bottom: 1px solid var(--line); }
+  body.mobile-safe-mode .acc:last-of-type { border-bottom: none; }
+  body.mobile-safe-mode .acc-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 14px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  body.mobile-safe-mode .acc-head-txt { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  body.mobile-safe-mode .acc-head-txt strong { font-size: 12.5px; font-weight: 800; color: var(--text); white-space: nowrap; }
+  body.mobile-safe-mode .acc-head-txt span { font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.mobile-safe-mode .acc-head-right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  body.mobile-safe-mode .acc-total { font-size: 12px; font-weight: 800; color: var(--brand-strong); font-variant-numeric: tabular-nums; }
+  body.mobile-safe-mode .acc-chev { transition: transform 0.22s ease; opacity: 0.4; display: inline-flex; }
+  body.mobile-safe-mode .acc.is-open .acc-chev { transform: rotate(90deg); }
+  body.mobile-safe-mode .acc-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease; }
+  body.mobile-safe-mode .acc.is-open .acc-body { grid-template-rows: 1fr; }
+  body.mobile-safe-mode .acc-body-inner { overflow: hidden; }
+  body.mobile-safe-mode .acc-body-pad { padding: 0 14px 16px; }
+
+  /* Filtri a pillola */
+  body.mobile-safe-mode .chip-row { display: flex; gap: 6px; padding: 10px 14px 4px; overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none; }
+  body.mobile-safe-mode .chip-row::-webkit-scrollbar { display: none; }
+  body.mobile-safe-mode .chip {
+    flex: 0 0 auto; border: 1px solid var(--line); background: #fff; color: var(--muted);
+    font-size: 11px; font-weight: 700; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  }
+  body.mobile-safe-mode .chip.is-active { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+  /* Riga con spunta/importo/rimozione + riga "aggiungi al volo" */
+  body.mobile-safe-mode .mat-row { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 12px; }
+  body.mobile-safe-mode .mat-row:last-child { border-bottom: none; }
+  body.mobile-safe-mode .mat-row input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--brand); flex: 0 0 auto; }
+  body.mobile-safe-mode .mat-row .mat-name { flex: 1; }
+  body.mobile-safe-mode .mat-row.is-off .mat-name { color: var(--muted); text-decoration: line-through; }
+  body.mobile-safe-mode .mat-row .mat-price { font-weight: 700; font-variant-numeric: tabular-nums; }
+  body.mobile-safe-mode .item-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 12px; }
+  body.mobile-safe-mode .item-row .item-name { flex: 1; }
+  body.mobile-safe-mode .item-row .item-price { font-weight: 700; font-variant-numeric: tabular-nums; }
+  body.mobile-safe-mode .item-row .item-rm { border: none; background: none; color: var(--red); font-weight: 800; font-size: 15px; cursor: pointer; padding: 2px 4px; }
+  body.mobile-safe-mode .add-inline { display: flex; gap: 6px; margin-top: 10px; }
+  body.mobile-safe-mode .add-inline input { flex: 1; min-width: 0; padding: 9px; border-radius: 9px; border: 1px solid var(--line); font-size: 12px; background: #fbfbf9; }
+  body.mobile-safe-mode .add-inline input.add-price { flex: 0 0 64px; }
+  body.mobile-safe-mode .add-inline button { flex: 0 0 auto; background: var(--brand-strong); color: #fff; border: none; border-radius: 9px; padding: 0 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+  /* Pallini di stato compatti (es. settimana presenze) */
+  body.mobile-safe-mode .week-dots { display: flex; gap: 5px; flex: 1; justify-content: space-between; }
+  body.mobile-safe-mode .week-dot {
+    width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 800; cursor: pointer; background: #f2f2ee; color: var(--muted); border: 1px solid var(--line);
+  }
+  body.mobile-safe-mode .week-dot.is-work { background: var(--brand-soft); color: var(--brand-strong); border-color: transparent; }
+  body.mobile-safe-mode .week-dot.is-off { background: #f7f7f4; color: var(--line); border-style: dashed; }
+  body.mobile-safe-mode .week-dot.is-leave { background: var(--blue-soft); color: var(--blue); border-color: transparent; }
+  body.mobile-safe-mode .week-dot.is-sick { background: var(--red-soft); color: var(--red); border-color: transparent; }
+  body.mobile-safe-mode .week-dot.is-pending { background: var(--amber-soft); color: var(--amber); border-color: transparent; }
+
+  /* Bottoni piccoli (Approva/Rifiuta) */
+  body.mobile-safe-mode .pill-btn { border: none; border-radius: 8px; padding: 7px 11px; font-size: 10.5px; font-weight: 800; cursor: pointer; }
+  body.mobile-safe-mode .pill-btn.ok { background: var(--brand-strong); color: #fff; }
+  body.mobile-safe-mode .pill-btn.no { background: #efefec; color: var(--muted); }
+}
+
+/* ======================================================================
+   Mobile-native — Fase 1: topbar ridistribuita (direzione approvata
+   07 ago 2026). La ricerca (#topbar-search-input, apre openGlobalSearch()
+   in app.js — nessun cambiamento JS, stesso input/listener di sempre)
+   passa da barra a piena larghezza a icona inline accanto al logo,
+   liberando l'intera seconda riga della topbar su mobile. IT/EN e
+   campanella restano dove sono: misurati dal vivo, sono già compatti
+   (già nascosti su mobile: reload/nuovo-ordine/account/logout, appurato
+   il 07 ago 2026 — nessuna regressione da correggere lì).
+   Verificato dal vivo a 375px su Dashboard/Inbox Ordini + desktop 1440px
+   invariato prima di trascrivere qui. `!important` necessario: >15 regole
+   preesistenti su .topbar-search in questo file, alcune già !important
+   (righe 9876, 10943, 14272) — senza, questa verrebbe silenziosamente
+   sovrascritta in alcune viste.
+   ====================================================================== */
+@media (max-width: 980px) {
+  body.mobile-safe-mode .topbar-left {
+    grid-template-columns: auto auto !important;
+    grid-template-rows: auto !important;
+    align-items: center !important;
+    justify-self: start !important;
+    width: fit-content !important;
+    gap: 10px !important;
+  }
+  body.mobile-safe-mode .topbar-logo { grid-row: 1 !important; grid-column: 1 !important; }
+  body.mobile-safe-mode .topbar-search {
+    grid-row: 1 !important;
+    grid-column: 2 !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-radius: 10px !important;
+    background: rgba(255, 255, 255, 0.08);
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  body.mobile-safe-mode .topbar-search input {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+  body.mobile-safe-mode .topbar-search .search-icon {
+    position: static !important;
+    font-size: 18px;
+    color: #fff;
+  }
+}
