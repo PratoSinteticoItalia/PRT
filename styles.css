@@ -26949,3 +26949,53 @@ select.sp-line-field { cursor: pointer; }
     display: none !important;
   }
 }
+
+/* ============================================================
+   Contenuti: allineamento al mockup mobile-native (8 ago 2026)
+   L'elenco era già a righe piatte, ma la cornice della pagina era
+   rimasta desktop: 3 riquadri statistica vuoti ("0 risultati filtro" /
+   "0 allegati visibili" / "0 aggiornati 7 giorni"), il pannello
+   "ARCHIVIO VENDITE" con la sua intestazione a doppio livello, i chip
+   categoria in griglia che vanno a capo invece che scorrere in
+   orizzontale come nelle altre viste, e "Nuovo contenuto" isolato come
+   pillola invece che bottone a piena larghezza coerente con Ordini.
+   Segnalato dall'utente: "non è come da reference del mockup". */
+body.mobile-safe-mode #sales-content .sales-content-insights {
+  display: none !important;
+}
+body.mobile-safe-mode #sales-content .page-header .action-list {
+  flex-wrap: wrap !important;
+  width: 100%;
+}
+body.mobile-safe-mode #sales-content .page-header .action-list #sales-content-new-button {
+  width: 100%;
+}
+body.mobile-safe-mode #sales-content .sales-content-list-panel {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+body.mobile-safe-mode #sales-content .sales-content-list-panel::before {
+  display: none;
+}
+body.mobile-safe-mode #sales-content .sales-content-list-panel .panel-head {
+  margin-bottom: 10px;
+}
+body.mobile-safe-mode #sales-content #sales-content-list-eyebrow {
+  display: none;
+}
+body.mobile-safe-mode #sales-content .sales-content-category-filters {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+body.mobile-safe-mode #sales-content .sales-content-category-filters::-webkit-scrollbar {
+  display: none;
+}
+body.mobile-safe-mode #sales-content .sales-content-chip {
+  flex: 0 0 auto;
+}
