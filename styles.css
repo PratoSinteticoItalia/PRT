@@ -26933,7 +26933,14 @@ select.sp-line-field { cursor: pointer; }
   body:not([data-drill-module="orders"]) #orders .order-detail-panel,
   body:not([data-drill-module="warehouse"]) #warehouse .detail-panel,
   body:not([data-drill-module="installations"]) #installations .install-detail-panel,
-  body:not([data-drill-module="accounting"]) #accounting .accounting-detail-panel {
+  body:not([data-drill-module="accounting"]) #accounting .accounting-detail-panel,
+  /* Stesso identico bug anche su Contenuti e Richieste (stesso meccanismo
+     openMobileDrillDetail, stessa mancanza di display:none di base):
+     scheda "Nuovo contenuto"/richiesta visibile in trasparenza sopra la
+     lista, impossibile scorrere oltre le prime righe (segnalato
+     dall'utente l'8 ago 2026: "dopo due elementi sale il dettaglio"). */
+  body:not([data-drill-module="sales-content"]) #sales-content .sales-content-detail-panel,
+  body:not([data-drill-module="sales-requests"]) #sales-requests .sales-request-detail-panel {
     display: none !important;
   }
 }
