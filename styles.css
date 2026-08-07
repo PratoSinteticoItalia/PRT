@@ -21789,8 +21789,13 @@ body {
    padding-bottom doppio per non finire sotto banner timesheet + bottom nav */
 @media (max-width: 980px) {
   body { padding-bottom: calc(64px + env(safe-area-inset-bottom)) !important; }
-  /* Quando in turno: banner sopra bottom nav → padding ulteriore */
-  body:has(.timesheet-banner:not(.hidden)) { padding-bottom: calc(120px + env(safe-area-inset-bottom)) !important; }
+  /* Il banner timesheet è quasi sempre un pallino compatto 48px (vedi
+     .timesheet-banner:not(.is-expanded) sopra): il padding esteso serve
+     solo quando è aperto in forma estesa (pill con storico/CTA), non per
+     il pallino di riposo — altrimenti ogni pagina mobile porta 56px di
+     margine vuoto in fondo per un badge che occupa solo un angolo
+     (segnalato dall'utente l'8 ago 2026 come "esagerato margine"). */
+  body:has(.timesheet-banner.is-expanded:not(.hidden)) { padding-bottom: calc(120px + env(safe-area-inset-bottom)) !important; }
 }
 
 /* Bottom nav: rendering ancora più nitido + tap target */
