@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260807-mobile-native-flat-rows-contenuti" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260807-mobile-native-flat-rows-contenuti" />
+    <link rel="preload" href="./styles.css?v=20260807-mobile-native-conti-posa-accordion" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260807-mobile-native-conti-posa-accordion" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1813,14 +1813,14 @@
               </nav>
 
               <form id="profit-split-form">
-                <section id="profit-split-step-1" class="profit-split-step">
-                  <header class="profit-split-step-head">
+                <details id="profit-split-step-1" class="profit-split-step" open>
+                  <summary class="profit-split-step-head">
                     <span class="profit-split-step-num">1</span>
                     <div>
                       <h4>Ricavo & collaboratore</h4>
                       <p>Il valore della posa venduta e i parametri base del collaboratore.</p>
                     </div>
-                  </header>
+                  </summary>
                   <div class="inline-form-grid">
                     <label class="field field-full">
                       <span>Commessa / nota</span>
@@ -1849,16 +1849,16 @@
                       <small class="field-hint">La tua quota è il complemento a 100.</small>
                     </label>
                   </div>
-                </section>
+                </details>
 
-                <section id="profit-split-step-2" class="profit-split-step">
-                  <header class="profit-split-step-head">
+                <details id="profit-split-step-2" class="profit-split-step" open>
+                  <summary class="profit-split-step-head">
                     <span class="profit-split-step-num">2</span>
                     <div>
                       <h4>Spese & costi</h4>
                       <p>Una riga per voce. Indica chi ha pagato (te, il collaboratore o costo condiviso).</p>
                     </div>
-                  </header>
+                  </summary>
                   <div class="profit-split-expense-editor">
                     <div class="profit-split-expense-editor-head">
                       <div>
@@ -1889,16 +1889,16 @@
                       <option value="Nolo attrezzatura"></option>
                     </datalist>
                   </div>
-                </section>
+                </details>
 
-                <section id="profit-split-step-3" class="profit-split-step">
-                  <header class="profit-split-step-head">
+                <details id="profit-split-step-3" class="profit-split-step" open>
+                  <summary class="profit-split-step-head">
                     <span class="profit-split-step-num">3</span>
                     <div>
                       <h4>Recuperi & note</h4>
                       <p>Anticipi o budget da rimborsare prima del riparto utili e appunti di chiusura.</p>
                     </div>
-                  </header>
+                  </summary>
                   <div class="inline-form-grid">
                     <label class="field">
                       <span>Recuperi tuoi</span>
@@ -1918,7 +1918,7 @@
                       <button type="button" id="profit-split-reset-button" class="ghost-button small-button">Azzera calcolo</button>
                     </div>
                   </div>
-                </section>
+                </details>
               </form>
             </section>
 
@@ -2729,7 +2729,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260807-mobile-native-flat-rows-contenuti" defer></script>
-    <script src="./app.js?v=20260807-mobile-native-flat-rows-contenuti" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260807-mobile-native-conti-posa-accordion" defer></script>
+    <script src="./app.js?v=20260807-mobile-native-conti-posa-accordion" type="module"></script>
   </body>
 </html>
