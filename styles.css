@@ -19617,6 +19617,31 @@ body.quote-v2-active .sales-generator-frame-panel { background: transparent; }
   background: linear-gradient(90deg, rgba(45,106,79,0.16), rgba(45,106,79,0.05));
   border-bottom: 1px solid rgba(45,106,79,0.22);
   border-left: 3px solid var(--brand, #2d6a4f);
+  /* Le 7 sezioni ora sono <details>/<summary> (accordion in stile mockup,
+     tutte aperte di default via attributo open — nessun cambiamento
+     visivo al primo caricamento). Via il triangolo nativo, chevron
+     nostro, stesso trattamento già dato a Conti posa. */
+  cursor: pointer;
+  list-style: none;
+}
+.native-form .nf-section-head::-webkit-details-marker { display: none; }
+.native-form .nf-section-head::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  border-right: 2px solid #6e8378;
+  border-bottom: 2px solid #6e8378;
+  transform: rotate(45deg);
+  transition: transform 0.18s ease;
+}
+details.nf-section:not([open]) > .nf-section-head {
+  margin-bottom: 0;
+  border-radius: 0 0 12px 12px;
+}
+details.nf-section:not([open]) > .nf-section-head::after {
+  transform: rotate(-45deg);
 }
 .native-form .nf-section-head::before {
   counter-increment: nfsec; content: counter(nfsec);
