@@ -11523,6 +11523,15 @@ details.profit-split-step:not([open]) > .profit-split-step-head::after {
     scroll-snap-align: start;
     min-width: 108px;
   }
+  /* "0/360 mq" + pillola VERDE/GIALLO/ROSSO fianco a fianco (.cal-day-meta,
+     display:flex senza wrap) hanno bisogno di più spazio di quanto ne
+     resti nella card stretta (108px) del calendario mobile: la pillola
+     sforava fuori dal box (segnalato dall'utente). A capo invece di
+     sforare quando non entrano sulla stessa riga. */
+  body.mobile-safe-mode #installations .cal-day-meta {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
 }
 
 @media (max-width: 980px) {
@@ -26155,6 +26164,14 @@ select.sp-line-field { cursor: pointer; }
     position: static !important;
     font-size: 18px;
     color: #fff;
+    /* La regola desktop centra l'icona (position:absolute) con
+       top:50%+translateY(-50%). Qui è statica dentro un .topbar-search
+       flex centrato: il transform ereditato la spostava comunque in alto
+       di metà della sua stessa line-height, sganciata dal centro reale
+       del box (segnalato dall'utente: icona "sminchiata"). */
+    top: auto !important;
+    transform: none !important;
+    line-height: 1 !important;
   }
 }
 
@@ -26793,7 +26810,47 @@ select.sp-line-field { cursor: pointer; }
 @media (max-width: 980px) {
   body.mobile-safe-mode .ts-office-table-wrap { overflow-x: visible; }
   body.mobile-safe-mode .ts-office-table.ts-office-table-v2 { display: block; width: 100%; font-size: 12px; }
-  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 thead,
+  /* Intestazione giorni: senza non si capisce quale pallino sia quale
+     giorno (segnalato dall'utente) — resta, riallineata alle stesse
+     colonne dei pallini sotto invece delle celle della tabella larga. */
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 thead { display: block; }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 thead tr {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px 8px;
+    border-bottom: 1px solid #ece8de;
+  }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 thead th {
+    display: block;
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 9px;
+    font-weight: 700;
+    color: #8a9690;
+    text-align: center;
+    text-transform: capitalize;
+    white-space: nowrap;
+  }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 thead th:first-child {
+    flex: 0 0 auto;
+    width: 70px;
+    text-align: left;
+  }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 thead th:not(:first-child):not(:last-child) {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 thead th:last-child {
+    flex: 0 0 auto;
+    width: 38px;
+    text-align: right;
+  }
+  body.mobile-safe-mode .ts-office-table.ts-office-table-v2 thead th.is-today {
+    color: var(--brand);
+    font-weight: 800;
+  }
   body.mobile-safe-mode .ts-office-table.ts-office-table-v2 tfoot { display: none; }
   body.mobile-safe-mode .ts-office-table.ts-office-table-v2 tbody { display: block; }
   body.mobile-safe-mode .ts-office-table.ts-office-table-v2 tbody tr {
