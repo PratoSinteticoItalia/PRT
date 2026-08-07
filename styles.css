@@ -18247,6 +18247,14 @@ textarea.text-input {
     font-size: 11px !important;
     margin-top: 1px !important;
   }
+  /* Il bottone "Aggiorna" si allargava fino a ~225px (invece dei ~85px del
+     contenuto) schiacciando il titolo a "Comunica…" — width:auto esplicito
+     lo riporta alla sua dimensione naturale così il titolo ha lo spazio che
+     gli serve. */
+  #communications-content .page-header button {
+    width: auto;
+    flex: 0 0 auto;
+  }
   /* Form nuova chat: più compatto su mobile quando ci sono già thread */
   .communications-shell[data-has-threads] .communications-new {
     background: rgba(255,255,255,0.56);
