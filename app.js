@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260808-mobile-native-unify-drawer-fix-double-x";
+} from "./lib/order-money.js?v=20260808-inventory-lock-button-after-evaso";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260808-mobile-native-unify-drawer-fix-double-x";
+import { regionForCity } from "./lib/geo.js?v=20260808-inventory-lock-button-after-evaso";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260808-mobile-native-unify-drawer-fix-double-x";
+} from "./lib/shipping-eligibility.js?v=20260808-inventory-lock-button-after-evaso";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260808-mobile-native-unify-drawer-fix-double-x";
+} from "./lib/profit-split.js?v=20260808-inventory-lock-button-after-evaso";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260808-mobile-native-unify-drawer-fix-double-x";
+} from "./lib/preventivo-pricing.js?v=20260808-inventory-lock-button-after-evaso";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260808-mobile-native-unify-drawer-fix-double-x";
+const APP_SHELL_VERSION = "20260808-inventory-lock-button-after-evaso";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -17452,11 +17452,23 @@ function renderOrderInventoryAllocationPanel(order) {
   // 1) niente proposta → "Calcola proposta"
   // 2) proposta pronta, non impegnata → "Impegna" (verde)
   // 3) impegnata → "Scarica merce" (verde)
+  // 4) merce già evasa (nessun impegno attivo residuo) → bloccato, sola lettura
   const isCommitted = committedAllocations.length > 0;
+  // Una volta scaricata la merce dal magazzino, le allocazioni passano a
+  // "evaso" e isCommitted torna false: senza questo controllo il pannello
+  // ricadeva nello stato 1 ("Calcola proposta" di nuovo cliccabile),
+  // rischiando di ricalcolare/impegnare materiale già fisicamente spedito.
+  // Non esiste un percorso di "annulla evasione" (releaseInventoryCommitmentsForOrder
+  // gestisce solo gli impegni attivi), quindi una volta evaso resta bloccato.
+  // Richiesto dall'utente l'8 ago 2026.
+  const hasEvasoAllocations = allocations.some((item) => getInventoryPieceState({ pieceState: item.status }) === "evaso");
   let banner, primaryBtn;
   if (isCommitted) {
     banner = `<div class="inv-alloc-banner imp"><span>🟡</span> ${activeAllocations.length} ${state.lang === "it" ? "pezzi impegnati" : "pieces committed"} · ${Math.round(allocationSummary)} mq</div>`;
     primaryBtn = `<button class="inv-alloc-primary green${pending ? " is-busy" : ""}" type="button" data-action="fulfill-inventory-order" data-id="${escapeHtml(order.id)}" ${!pending ? "" : "disabled"}>${state.lang === "it" ? "✓ Scarica merce dal magazzino" : "✓ Fulfill from warehouse"}</button>`;
+  } else if (hasEvasoAllocations) {
+    banner = `<div class="inv-alloc-banner imp"><span>✓</span> ${state.lang === "it" ? "Merce già evasa dal magazzino per questo ordine." : "Goods already fulfilled from warehouse for this order."}</div>`;
+    primaryBtn = `<button class="inv-alloc-primary" type="button" disabled>${state.lang === "it" ? "✓ Merce evasa" : "✓ Fulfilled"}</button>`;
   } else if (canCommit) {
     banner = `<div class="inv-alloc-banner ready"><span>✓</span> ${state.lang === "it" ? "Proposta pronta — conferma per impegnare i pezzi" : "Suggestion ready — confirm to commit"}</div>`;
     primaryBtn = `<button class="inv-alloc-primary${pending ? " is-busy" : ""}" type="button" data-action="commit-inventory-order" data-id="${escapeHtml(order.id)}">${state.lang === "it" ? "Impegna i pezzi proposti" : "Commit suggested pieces"}</button>`;
@@ -17472,7 +17484,7 @@ function renderOrderInventoryAllocationPanel(order) {
   if (isCommitted) {
     secondaryBtns.push(`<button class="ghost-button small-button" type="button" data-action="release-inventory-order" data-id="${escapeHtml(order.id)}" ${!pending ? "" : "disabled"}>${state.lang === "it" ? "↩ Libera impegni" : "↩ Release"}</button>`);
   }
-  if (hasSuggestions && !isCommitted) {
+  if (hasSuggestions && !isCommitted && !hasEvasoAllocations) {
     secondaryBtns.push(`<button class="ghost-button small-button" type="button" data-action="suggest-inventory-order" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>${state.lang === "it" ? "↻ Ricalcola" : "↻ Recalculate"}</button>`);
   }
 
