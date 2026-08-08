@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260808-inventory-lock-button-after-evaso";
+} from "./lib/order-money.js?v=20260808-inventory-rename-product";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260808-inventory-lock-button-after-evaso";
+import { regionForCity } from "./lib/geo.js?v=20260808-inventory-rename-product";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260808-inventory-lock-button-after-evaso";
+} from "./lib/shipping-eligibility.js?v=20260808-inventory-rename-product";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260808-inventory-lock-button-after-evaso";
+} from "./lib/profit-split.js?v=20260808-inventory-rename-product";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260808-inventory-lock-button-after-evaso";
+} from "./lib/preventivo-pricing.js?v=20260808-inventory-rename-product";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260808-inventory-lock-button-after-evaso";
+const APP_SHELL_VERSION = "20260808-inventory-rename-product";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -17315,6 +17315,7 @@ function renderInventoryCard(group) {
       ${isMeasured ? `<div class="inv-pieces">${rollsHtml}${residuesHtml}${singlesHtml || `<div class="inv-empty">${state.lang === "it" ? "Nessun pezzo caricato." : "No pieces loaded."}</div>`}</div>` : `<div class="inv-pieces">${materialHtml}</div>`}
       <div class="inv-tools">
         <button class="ghost-button small-button" type="button" data-action="prefill-inventory" data-product="${escapeHtml(group.product)}">${state.lang === "it" ? "+ Carica giacenza" : "+ Load stock"}</button>
+        <button class="ghost-button small-button" type="button" data-action="rename-inventory-product" data-product="${escapeHtml(group.product)}">${state.lang === "it" ? "Rinomina" : "Rename"}</button>
         <button class="ghost-button small-button inv-clear" type="button" data-action="clear-inventory-product" data-product="${escapeHtml(group.product)}" ${group.pieces.some((item) => getInventoryPieceState(item) === "disponibile") ? "" : "disabled"}>${state.lang === "it" ? "Azzera" : "Clear"}</button>
       </div>
     </article>
@@ -28866,6 +28867,53 @@ async function removeLatestInventoryPieceByProduct(product = "") {
   return removeInventoryPieceById(target.id);
 }
 
+// Corregge nomi prodotto incoerenti (es. "Mogano" generico da distinguere in
+// "Mogano 40 mm" / "Mogano 50 mm", o "Tasso" da uniformare in "Tasso 12 mm")
+// SENZA cancellare e ri-creare i pezzi — a differenza di "Azzera", rinomina
+// tocca ANCHE i pezzi impegnati/evasi (la cronologia resta, cambia solo
+// l'etichetta), perché un nome sbagliato è sbagliato indipendentemente dallo
+// stato del pezzo. Richiesto dall'utente l'8 ago 2026 dopo aver trovato
+// "Tasso"/"Tasso 12 mm" e "Mogano"/"Mogano 40 mm"/"mogano 50 mm" come nomi
+// duplicati per la stessa famiglia, che rendono ambiguo l'abbinamento
+// automatico delle proposte di taglio.
+async function renameInventoryProduct(product = "") {
+  const productLabel = String(product || "").trim();
+  const candidates = getInventoryItemsByProductName(productLabel);
+  if (!candidates.length) return false;
+  const nextLabelRaw = window.prompt(
+    state.lang === "it"
+      ? `Nuovo nome per "${productLabel}" (${candidates.length} pezzi):`
+      : `New name for "${productLabel}" (${candidates.length} pieces):`,
+    productLabel,
+  );
+  const nextLabel = String(nextLabelRaw || "").trim();
+  if (!nextLabel || nextLabel === productLabel) return false;
+  const previousInventory = [...state.inventory];
+  state.inventory = state.inventory.map((item) => (
+    item.product === productLabel ? { ...item, product: nextLabel } : item
+  ));
+  scheduleRender("warehouse");
+  const _invOpKey = `rename-${normalizeProductName(productLabel)}`;
+  inventoryPendingOps.add(_invOpKey);
+  try {
+    const nextInventory = await apiFetch(`/api/inventory/items/by-product/${encodeURIComponent(productLabel)}/rename`, {
+      method: "POST",
+      body: JSON.stringify({ product: nextLabel }),
+    });
+    state.inventory = nextInventory;
+    state.inventorySuggestions = {};
+    scheduleRender("warehouse");
+    showToast(state.lang === "it" ? "Prodotto rinominato." : "Product renamed.", "success");
+  } catch (error) {
+    state.inventory = previousInventory;
+    scheduleRender("warehouse");
+    throw error;
+  } finally {
+    inventoryPendingOps.delete(_invOpKey);
+  }
+  return true;
+}
+
 async function clearInventoryProductStock(product = "") {
   const productLabel = String(product || "").trim();
   const candidates = getInventoryItemsByProductName(productLabel);
@@ -31076,6 +31124,18 @@ function handleGlobalClick(event) {
   }
   if (action === "save-native-product-label") {
     saveNativeProductLabel(String(button.dataset.key || "").trim());
+    return;
+  }
+  if (action === "rename-inventory-product") {
+    const product = String(button.dataset.product || "").trim();
+    if (!product) return;
+    renameInventoryProduct(product).catch(() => {
+      setStatus(
+        ui.ordersStatus,
+        "error",
+        state.lang === "it" ? "Impossibile rinominare il prodotto." : "Unable to rename product.",
+      );
+    });
     return;
   }
   if (action === "clear-inventory-product") {

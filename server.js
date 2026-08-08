@@ -17113,6 +17113,37 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, store.inventory);
   }
 
+  // Corregge un nome prodotto incoerente (es. "Mogano" generico da
+  // distinguere in "Mogano 40 mm"/"Mogano 50 mm") su TUTTI i pezzi che lo
+  // usano, a prescindere dallo stato (a differenza della DELETE by-product
+  // sopra, che tocca solo "disponibile" — un nome sbagliato resta sbagliato
+  // anche sui pezzi già impegnati o evasi). Non elimina né ricrea nulla:
+  // aggiorna solo il campo product, preservando id/date/note/stato.
+  if (url.pathname.match(/^\/api\/inventory\/items\/by-product\/[^/]+\/rename$/) && req.method === "POST") {
+    const productLabel = decodeURIComponent(url.pathname.split("/")[5] || "");
+    const productKey = normalizeInventoryProductKey(productLabel);
+    if (!productKey) {
+      return sendJson(res, 400, { error: "invalid_inventory_product" });
+    }
+    const body = await readBody(req);
+    const nextProduct = String(body.product || "").trim();
+    if (!nextProduct) {
+      return sendJson(res, 400, { error: "missing_new_product_name" });
+    }
+    const toUpdateIds = [];
+    store.inventory = (store.inventory || []).map((item) => {
+      if (normalizeInventoryProductKey(item.product || "") !== productKey) return item;
+      toUpdateIds.push(item.id);
+      return { ...item, product: nextProduct };
+    });
+    await writeJson(STORE_PATH, store);
+    for (const id of toUpdateIds) {
+      const piece = store.inventory.find((item) => item.id === id);
+      if (piece) upsertInventoryItemToDb(piece).catch(() => {}); // dual-write SQL
+    }
+    return sendJson(res, 200, store.inventory);
+  }
+
   if (url.pathname.match(/^\/api\/inventory\/items\/[^/]+$/) && req.method === "DELETE") {
     const itemId = decodeURIComponent(url.pathname.split("/")[4]);
     const targetItem = store.inventory.find((item) => item.id === itemId);
