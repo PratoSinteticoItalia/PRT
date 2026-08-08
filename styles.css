@@ -26999,3 +26999,19 @@ body.mobile-safe-mode #sales-content .sales-content-category-filters::-webkit-sc
 body.mobile-safe-mode #sales-content .sales-content-chip {
   flex: 0 0 auto;
 }
+
+/* ============================================================
+   Margine eccessivo in fondo alle pagine — causa reale (8 ago 2026)
+   Il fix precedente (stesso giorno) ha tolto la riserva extra di 56px
+   che "body" aggiungeva per il banner timesheet espanso, ma il margine
+   restava visibile: .main-content ha una SUA riserva separata di
+   76-88px (calc(76px + safe-area), riga ~21593) pensata per un modello
+   in cui lo scroll avviene dentro .main-content stesso (overflow-y:auto).
+   Quel modello non esiste più: .main-content ha overflow-y:visible,
+   niente scroll interno, e lo scroll reale avviene su html/body (che ha
+   già la propria riserva per la bottom nav). Le due riserve si sommano,
+   raddoppiando lo spazio vuoto in fondo a OGNI pagina. Azzerata qui la
+   riserva ormai duplicata di .main-content. */
+body.mobile-safe-mode .main-content {
+  padding-bottom: 0 !important;
+}
