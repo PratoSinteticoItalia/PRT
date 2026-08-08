@@ -17156,6 +17156,26 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, store.inventory);
   }
 
+  // Sola lettura: cosa serve coprire per questo ordine, SENZA scegliere quali
+  // pezzi usare. L'algoritmo automatico (buildInventorySuggestionsForOrder,
+  // sotto) sceglieva da solo la fonte per ogni taglio — l'utente ha chiesto
+  // l'8 ago 2026 di eliminare questa scelta automatica: l'ufficio conosce il
+  // magazzino meglio dell'euristica e vuole poter comporre un taglio da più
+  // pezzi residui a piacere (es. 2x6,5m + 2x1,5m per coprire un 2x8m), anche
+  // quando la somma non è quella "ottimale". Qui restituiamo solo il
+  // fabbisogno; la scelta dei pezzi sorgente è tutta lato client
+  // (renderManualInventoryAllocationPanel in app.js), e arriva già pronta a
+  // /inventory/commit sotto, che è già abbastanza generico da accettarla
+  // senza bisogno di modifiche.
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/inventory\/requirements$/) && req.method === "GET") {
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const order = store.orders.find((item) => item.id === orderId);
+    if (!order) return sendJson(res, 404, { error: "order_not_found" });
+    const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
+    const requirements = buildOrderInventoryRequirements(order, inventory);
+    return sendJson(res, 200, { orderId: order.id, requirements });
+  }
+
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/inventory\/suggest$/) && req.method === "POST") {
     const orderId = decodeURIComponent(url.pathname.split("/")[3]);
     const order = store.orders.find((item) => item.id === orderId);

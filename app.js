@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260808-inventory-rename-product";
+} from "./lib/order-money.js?v=20260808-inventory-manual-allocation-fixed";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260808-inventory-rename-product";
+import { regionForCity } from "./lib/geo.js?v=20260808-inventory-manual-allocation-fixed";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260808-inventory-rename-product";
+} from "./lib/shipping-eligibility.js?v=20260808-inventory-manual-allocation-fixed";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260808-inventory-rename-product";
+} from "./lib/profit-split.js?v=20260808-inventory-manual-allocation-fixed";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260808-inventory-rename-product";
+} from "./lib/preventivo-pricing.js?v=20260808-inventory-manual-allocation-fixed";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260808-inventory-rename-product";
+const APP_SHELL_VERSION = "20260808-inventory-manual-allocation-fixed";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1428,7 +1428,6 @@ function filterRecentlyDeletedInventory(list) {
   return list.filter((it) => !recentlyDeletedInventoryIds.has(String(it?.id || "")));
 }
 const inventoryAllocationPendingOrderIds = new Set();
-const inventoryAutoSuggestedOrderIds = new Set();
 const salesContentAttachmentDeleteInFlight = new Set();
 const portfolioJobPhotosLoadingPromises = new Map();
 let reloadAllInFlight = false;
@@ -9097,22 +9096,6 @@ function formatInventoryAllocationMeasure(item = {}) {
   return `${units} ${state.lang === "it" ? "u" : "u"}`;
 }
 
-function formatInventorySuggestionMeasure(item = {}) {
-  const width = toNumber(item.width || 0);
-  const requiredPieceLength = toNumber(item.requiredPieceLength || 0);
-  const requiredPieceCount = Math.max(1, Number(item.requiredPieceCount || 1));
-  if (width && requiredPieceLength && requiredPieceCount > 1) {
-    return `${requiredPieceCount} pezzi da ${formatInventoryNumber(width)} x ${formatInventoryNumber(requiredPieceLength)} m · taglio ${formatInventoryNumber(item.length || 0)} m`;
-  }
-  return item.requestLabel || formatInventoryAllocationMeasure(item);
-}
-
-function formatInventorySuggestionSourceLabel(item = {}) {
-  const sourceLabel = item.sourcePieceLabel || item.pieceLabel || "";
-  const sourceSqm = toNumber(item.sourceSqm || 0);
-  return `${sourceLabel || formatInventoryAllocationMeasure(item)}${sourceSqm ? ` · ${formatInventoryNumber(sourceSqm)} mq` : ""}`;
-}
-
 function getInventorySuggestionForOrder(orderId = "") {
   return state.inventorySuggestions?.[orderId] || null;
 }
@@ -9122,68 +9105,6 @@ function setInventorySuggestionForOrder(orderId = "", suggestion = null) {
   state.inventorySuggestions = { ...(state.inventorySuggestions || {}) };
   if (suggestion) state.inventorySuggestions[orderId] = suggestion;
   else delete state.inventorySuggestions[orderId];
-}
-
-function changeInventorySuggestionSource(orderId = "", suggestionId = "", sourcePieceId = "") {
-  const suggestion = getInventorySuggestionForOrder(orderId);
-  if (!suggestion || !Array.isArray(suggestion.suggestions)) return;
-  // Check whether the requested source piece exists in the target row's candidates.
-  // If it doesn't (e.g. it was freed by another row change after the last suggest call),
-  // refresh the whole suggestion set so the user gets up-to-date candidates.
-  const targetRow = suggestion.suggestions.find((row) => String(row.id || "") === String(suggestionId || ""));
-  if (targetRow) {
-    const candidateFound = (targetRow.candidates || []).some(
-      (item) => String(item.sourcePieceId || item.pieceId || "") === String(sourcePieceId || "")
-    );
-    if (!candidateFound) return;
-  }
-  const nextRows = suggestion.suggestions.map((row) => {
-    if (String(row.id || "") !== String(suggestionId || "")) return row;
-    const candidate = (row.candidates || []).find((item) => String(item.sourcePieceId || item.pieceId || "") === String(sourcePieceId || ""));
-    if (!candidate) return row;
-    return {
-      ...row,
-      ...candidate,
-      id: row.id,
-      requirementId: row.requirementId,
-      requirementIds: row.requirementIds,
-      title: row.title,
-      requestLabel: row.requestLabel,
-      requiredPieceCount: row.requiredPieceCount,
-      requiredPieceLength: row.requiredPieceLength,
-      requiredPieceSqm: row.requiredPieceSqm,
-      candidates: row.candidates,
-    };
-  });
-  setInventorySuggestionForOrder(orderId, { ...suggestion, suggestions: nextRows });
-  renderWarehouse();
-}
-
-function getInventorySuggestionSourceUsage(rows = []) {
-  const usage = new Map();
-  rows.forEach((row, rowIndex) => {
-    const sourceId = String(row.sourcePieceId || row.pieceId || "");
-    if (!sourceId) return;
-    const length = toNumber(row.length || 0);
-    const sourceLength = toNumber(row.sourceLength || 0);
-    const width = toNumber(row.width || 0);
-    const current = usage.get(sourceId) || {
-      sourceId,
-      totalLength: 0,
-      sourceLength,
-      width,
-      firstIndex: rowIndex,
-      lastIndex: rowIndex,
-      count: 0,
-    };
-    current.totalLength = Number((current.totalLength + length).toFixed(2));
-    current.sourceLength = current.sourceLength || sourceLength;
-    current.width = current.width || width;
-    current.lastIndex = rowIndex;
-    current.count += 1;
-    usage.set(sourceId, current);
-  });
-  return usage;
 }
 
 function formatPalletDimensions(ddt = {}) {
@@ -17344,31 +17265,88 @@ function matchesWarehouseInventoryFilter(group, filter = state.filters.warehouse
   return true;
 }
 
+// Riga di una singola richiesta (es. "Cipresso 40mm, 1 pezzo da 2x8m") nel
+// pannello di allocazione manuale: mostra quanto è stato assegnato finora e
+// permette di aggiungere/togliere pezzi sorgente a piacere. Nessuna
+// convalida blocca l'aggiunta: l'ufficio può assegnare meno (o più) del
+// necessario, il sistema si limita a mostrare il totale e a calcolare i
+// residui quando si impegna — richiesto dall'utente l'8 ago 2026.
+function renderManualRequirementRow(orderId, requirement, entries) {
+  const isMeasured = Boolean(requirement.measured);
+  const requiredAmount = isMeasured ? toNumber(requirement.length || 0) : Math.max(1, Number(requirement.units || 1));
+  const assignedAmount = entries.reduce((sum, entry) => sum + toNumber(entry.amount || 0), 0);
+  const requiredLabel = isMeasured
+    ? `${formatInventoryNumber(requirement.width || 0)} x ${formatInventoryNumber(requirement.length || 0)} m`
+    : `${requiredAmount} ${state.lang === "it" ? "u" : "u"}`;
+  const assignedLabel = isMeasured ? `${formatInventoryNumber(assignedAmount)} m` : `${assignedAmount} ${state.lang === "it" ? "u" : "u"}`;
+  const covered = assignedAmount + 0.01 >= requiredAmount && assignedAmount > 0;
+
+  const entryRows = entries.map((entry) => {
+    const piece = state.inventory.find((item) => item.id === entry.sourcePieceId);
+    const pieceLabel = piece ? formatInventoryAllocationMeasure(piece) : "?";
+    return `
+      <div class="inv-manual-entry">
+        <span class="inv-manual-entry-label">${escapeHtml(pieceLabel)}</span>
+        <input
+          type="number"
+          class="text-input inv-manual-amount"
+          min="0"
+          step="0.01"
+          data-action="update-manual-allocation-amount"
+          data-id="${escapeHtml(orderId)}"
+          data-requirement-id="${escapeHtml(requirement.id)}"
+          data-entry-id="${escapeHtml(entry.id)}"
+          value="${escapeHtml(String(entry.amount))}"
+        />
+        <span class="inv-manual-unit">${isMeasured ? "m" : (state.lang === "it" ? "u" : "u")}</span>
+        <button class="ghost-button small-button" type="button" data-action="remove-manual-allocation-entry" data-id="${escapeHtml(orderId)}" data-requirement-id="${escapeHtml(requirement.id)}" data-entry-id="${escapeHtml(entry.id)}">×</button>
+      </div>
+    `;
+  }).join("");
+
+  const availablePieces = getManualAllocationCandidates(orderId, requirement);
+  const addRow = availablePieces.length
+    ? `<div class="inv-manual-add">
+        <select class="text-input inv-manual-picker" data-requirement-id="${escapeHtml(requirement.id)}">
+          ${availablePieces.map((piece) => {
+            const typeLabel = getInventoryPieceType(piece) === "residuo" ? (state.lang === "it" ? "residuo" : "leftover") : (state.lang === "it" ? "intero" : "whole");
+            return `<option value="${escapeHtml(piece.id)}">${escapeHtml(formatInventoryAllocationMeasure(piece))} · ${escapeHtml(typeLabel)}</option>`;
+          }).join("")}
+        </select>
+        <button class="ghost-button small-button" type="button" data-action="add-manual-allocation-entry" data-id="${escapeHtml(orderId)}" data-requirement-id="${escapeHtml(requirement.id)}">${state.lang === "it" ? "+ Aggiungi pezzo" : "+ Add piece"}</button>
+      </div>`
+    : `<p class="inv-alloc-warning">${state.lang === "it" ? "Nessun pezzo disponibile per questo prodotto." : "No available piece for this product."}</p>`;
+
+  return `
+    <div class="inv-manual-row">
+      <div class="inv-manual-row-head">
+        <strong>${escapeHtml(requirement.product || t("product"))}</strong>
+        <span>${escapeHtml(requirement.title && requirement.title !== requirement.product ? requirement.title : requiredLabel)}</span>
+        <em class="${covered ? "is-covered" : ""}">${escapeHtml(assignedLabel)} / ${escapeHtml(requiredLabel)}</em>
+      </div>
+      ${entryRows ? `<div class="inv-manual-entries">${entryRows}</div>` : ""}
+      ${addRow}
+    </div>
+  `;
+}
+
 function renderOrderInventoryAllocationPanel(order) {
   if (!order) return "";
   const allocations = getOrderInventoryAllocations(order);
   const activeAllocations = allocations.filter((item) => getInventoryPieceState({ pieceState: item.status }) !== "disponibile");
   const committedAllocations = allocations.filter((item) => getInventoryPieceState({ pieceState: item.status }) === "impegnato");
-  const suggestion = getInventorySuggestionForOrder(order.id);
+  const draft = getInventorySuggestionForOrder(order.id);
   const pending = inventoryAllocationPendingOrderIds.has(order.id);
-  const suggestionRows = Array.isArray(suggestion?.suggestions) ? suggestion.suggestions : [];
-  const missingRows = Array.isArray(suggestion?.missing) ? suggestion.missing : [];
-  const selectedSuggestionSourceUsage = getInventorySuggestionSourceUsage(suggestionRows);
-  const canCommit = suggestionRows.length > 0 && missingRows.length === 0 && !pending;
-  const logisticsCompleted = isLogisticsOrderCompleted(order);
   const allocationSummary = activeAllocations.length
     ? activeAllocations.reduce((sum, item) => sum + toNumber(item.sqm || 0), 0)
     : 0;
-  const allocationSummaryLabel = activeAllocations.length
-    ? `${activeAllocations.length} ${state.lang === "it" ? "pezzi fisici" : "physical pieces"} · ${Math.round(allocationSummary)} mq`
-    : (state.lang === "it" ? "Da calcolare e confermare" : "To calculate and confirm");
 
   const allocationList = activeAllocations.length
     ? `<div class="inventory-suggestion-list">${activeAllocations.map((item) => `
       <div class="inventory-allocation-row">
         <div>
           <strong>${escapeHtml(item.product || t("product"))}</strong>
-          <span>${escapeHtml(formatInventorySuggestionMeasure(item))}</span>
+          <span>${escapeHtml(formatInventoryAllocationMeasure(item))}</span>
           ${item.sourcePieceLabel ? `<em>${escapeHtml(item.sourcePieceLabel)}</em>` : ""}
         </div>
         <small>${escapeHtml(getInventoryAllocationStatusLabel(item.status))}</small>
@@ -17376,92 +17354,25 @@ function renderOrderInventoryAllocationPanel(order) {
     `).join("")}</div>`
     : `<div class="inventory-allocation-empty">${state.lang === "it" ? "Nessun pezzo fisico ancora assegnato a questo ordine." : "No physical pieces assigned to this order yet."}</div>`;
 
-  const suggestionList = suggestionRows.length || missingRows.length
-    ? `<div class="inventory-suggestion-list">
-        ${suggestionRows.map((item, rowIndex) => {
-          const candidates = Array.isArray(item.candidates) ? item.candidates : [];
-          const selectedSourceId = String(item.sourcePieceId || item.pieceId || "");
-          const currentUsage = selectedSuggestionSourceUsage.get(selectedSourceId);
-          const finalResidueLength = currentUsage && currentUsage.lastIndex === rowIndex
-            ? Number(Math.max(0, toNumber(currentUsage.sourceLength || item.sourceLength || 0) - toNumber(currentUsage.totalLength || 0)).toFixed(2))
-            : 0;
-          const finalResidue = finalResidueLength > 0.05
-            ? {
-                width: toNumber(item.width || currentUsage?.width || 0),
-                length: finalResidueLength,
-                sqm: Number((toNumber(item.width || currentUsage?.width || 0) * finalResidueLength).toFixed(2)),
-              }
-            : null;
-          const sourcePicker = candidates.length >= 1
-            ? `<label class="inventory-source-picker">
-                <span>${state.lang === "it" ? "Preleva da" : "Take from"}</span>
-                <select
-                  class="text-input"
-                  data-action="change-inventory-suggestion-source"
-                  data-id="${escapeHtml(order.id)}"
-                  data-suggestion-id="${escapeHtml(item.id || "")}"
-                >
-                  ${candidates.map((candidate) => {
-                    const candidateId = String(candidate.sourcePieceId || candidate.pieceId || "");
-                    const usage = selectedSuggestionSourceUsage.get(candidateId);
-                    const currentRowLength = candidateId === selectedSourceId ? toNumber(item.length || 0) : 0;
-                    const otherLength = Math.max(0, toNumber(usage?.totalLength || 0) - currentRowLength);
-                    const candidateLength = toNumber(candidate.length || item.length || 0);
-                    const candidateSourceLength = toNumber(candidate.sourceLength || usage?.sourceLength || 0);
-                    const wouldExceed = candidateSourceLength && otherLength + candidateLength > candidateSourceLength + 0.01;
-                    const optionLabel = [
-                      formatInventorySuggestionSourceLabel(candidate),
-                      otherLength > 0.01 ? `${state.lang === "it" ? "altre righe" : "other rows"}: ${formatInventoryNumber(otherLength)} m` : "",
-                      wouldExceed ? (state.lang === "it" ? "non ci sta" : "does not fit") : "",
-                    ].filter(Boolean).join(" · ");
-                    return `<option value="${escapeHtml(candidateId)}" ${candidateId === selectedSourceId ? "selected" : ""} ${wouldExceed ? "disabled" : ""}>${escapeHtml(optionLabel)}</option>`;
-                  }).join("")}
-                </select>
-              </label>`
-            : "";
-          return `
-          <div class="inventory-suggestion-row">
-            <div>
-              <strong>${escapeHtml(item.product || t("product"))}</strong>
-              <span>${escapeHtml(formatInventorySuggestionMeasure(item))}</span>
-              <em>${escapeHtml(formatInventorySuggestionSourceLabel(item))}</em>
-              ${finalResidue ? `<em>${state.lang === "it" ? "Residuo finale" : "Final residual"}: ${escapeHtml(formatInventoryAllocationMeasure(finalResidue))}</em>` : ""}
-              ${sourcePicker}
-            </div>
-          </div>
-        `; }).join("")}
-        ${missingRows.map((item) => `
-          <div class="inventory-suggestion-row is-missing">
-            <div>
-              <strong>${escapeHtml(item.product || t("product"))}</strong>
-              <span>${item.sqm ? `${escapeHtml(formatInventoryAllocationMeasure(item))}` : `${Number(item.units || 0)} u`}</span>
-            </div>
-            <small>${state.lang === "it" ? "Mancante" : "Missing"}</small>
-          </div>
-        `).join("")}
-      </div>`
+  const requirements = Array.isArray(draft?.requirements) ? draft.requirements : [];
+  const entriesByRequirement = draft?.entries || {};
+  const hasDraftEntries = Object.values(entriesByRequirement).some((list) => Array.isArray(list) && list.length > 0);
+  const manualList = requirements.length
+    ? `<div class="inv-manual-list">${requirements.map((requirement) => renderManualRequirementRow(order.id, requirement, entriesByRequirement[requirement.id] || [])).join("")}</div>`
     : "";
 
-  const hasSuggestions = suggestionRows.length > 0 || missingRows.length > 0;
-  const suggestLabel = pending
-    ? (state.lang === "it" ? "Caricamento..." : "Loading...")
-    : hasSuggestions
-      ? (state.lang === "it" ? "Ricalcola" : "Recalculate")
-      : (state.lang === "it" ? "Calcola proposta" : "Suggest pieces");
-
   // ── Stato del flusso → banner + bottone primario contestuale ──────────────
-  // 1) niente proposta → "Calcola proposta"
-  // 2) proposta pronta, non impegnata → "Impegna" (verde)
+  // 1) nessuna riga caricata → "Assegna pezzi" (carica il fabbisogno)
+  // 2) righe caricate, scelta manuale in corso → "Registra impegno"
   // 3) impegnata → "Scarica merce" (verde)
   // 4) merce già evasa (nessun impegno attivo residuo) → bloccato, sola lettura
   const isCommitted = committedAllocations.length > 0;
   // Una volta scaricata la merce dal magazzino, le allocazioni passano a
   // "evaso" e isCommitted torna false: senza questo controllo il pannello
-  // ricadeva nello stato 1 ("Calcola proposta" di nuovo cliccabile),
-  // rischiando di ricalcolare/impegnare materiale già fisicamente spedito.
-  // Non esiste un percorso di "annulla evasione" (releaseInventoryCommitmentsForOrder
-  // gestisce solo gli impegni attivi), quindi una volta evaso resta bloccato.
-  // Richiesto dall'utente l'8 ago 2026.
+  // ricadeva nello stato 1, rischiando di ri-registrare materiale già
+  // fisicamente spedito. Non esiste un percorso di "annulla evasione"
+  // (releaseInventoryCommitmentsForOrder gestisce solo gli impegni attivi),
+  // quindi una volta evaso resta bloccato. Richiesto dall'utente l'8 ago 2026.
   const hasEvasoAllocations = allocations.some((item) => getInventoryPieceState({ pieceState: item.status }) === "evaso");
   let banner, primaryBtn;
   if (isCommitted) {
@@ -17470,14 +17381,14 @@ function renderOrderInventoryAllocationPanel(order) {
   } else if (hasEvasoAllocations) {
     banner = `<div class="inv-alloc-banner imp"><span>✓</span> ${state.lang === "it" ? "Merce già evasa dal magazzino per questo ordine." : "Goods already fulfilled from warehouse for this order."}</div>`;
     primaryBtn = `<button class="inv-alloc-primary" type="button" disabled>${state.lang === "it" ? "✓ Merce evasa" : "✓ Fulfilled"}</button>`;
-  } else if (canCommit) {
-    banner = `<div class="inv-alloc-banner ready"><span>✓</span> ${state.lang === "it" ? "Proposta pronta — conferma per impegnare i pezzi" : "Suggestion ready — confirm to commit"}</div>`;
-    primaryBtn = `<button class="inv-alloc-primary${pending ? " is-busy" : ""}" type="button" data-action="commit-inventory-order" data-id="${escapeHtml(order.id)}">${state.lang === "it" ? "Impegna i pezzi proposti" : "Commit suggested pieces"}</button>`;
+  } else if (draft) {
+    banner = hasDraftEntries
+      ? `<div class="inv-alloc-banner ready"><span>✓</span> ${state.lang === "it" ? "Conferma per impegnare i pezzi scelti" : "Confirm to commit the chosen pieces"}</div>`
+      : `<div class="inv-alloc-banner pending"><span>⏳</span> ${state.lang === "it" ? "Scegli i pezzi da usare per ogni riga" : "Choose which pieces to use for each row"}</div>`;
+    primaryBtn = `<button class="inv-alloc-primary${pending ? " is-busy" : ""}" type="button" data-action="commit-manual-allocation" data-id="${escapeHtml(order.id)}" ${hasDraftEntries && !pending ? "" : "disabled"}>${state.lang === "it" ? "Registra impegno" : "Commit"}</button>`;
   } else {
-    banner = missingRows.length
-      ? `<div class="inv-alloc-banner def"><span>⚠</span> ${state.lang === "it" ? "Mancano pezzi a magazzino per coprire l'ordine" : "Missing stock to cover the order"}</div>`
-      : `<div class="inv-alloc-banner pending"><span>⏳</span> ${state.lang === "it" ? "Nessun pezzo assegnato — calcola la proposta" : "No pieces assigned — calculate suggestion"}</div>`;
-    primaryBtn = `<button class="inv-alloc-primary${pending ? " is-busy" : ""}" type="button" data-action="suggest-inventory-order" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>${suggestLabel}</button>`;
+    banner = `<div class="inv-alloc-banner pending"><span>⏳</span> ${state.lang === "it" ? "Nessun pezzo assegnato" : "No pieces assigned"}</div>`;
+    primaryBtn = `<button class="inv-alloc-primary${pending ? " is-busy" : ""}" type="button" data-action="load-inventory-requirements" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>${pending ? (state.lang === "it" ? "Caricamento..." : "Loading...") : (state.lang === "it" ? "Assegna pezzi" : "Assign pieces")}</button>`;
   }
 
   // Azioni secondarie contestuali
@@ -17485,19 +17396,18 @@ function renderOrderInventoryAllocationPanel(order) {
   if (isCommitted) {
     secondaryBtns.push(`<button class="ghost-button small-button" type="button" data-action="release-inventory-order" data-id="${escapeHtml(order.id)}" ${!pending ? "" : "disabled"}>${state.lang === "it" ? "↩ Libera impegni" : "↩ Release"}</button>`);
   }
-  if (hasSuggestions && !isCommitted && !hasEvasoAllocations) {
-    secondaryBtns.push(`<button class="ghost-button small-button" type="button" data-action="suggest-inventory-order" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>${state.lang === "it" ? "↻ Ricalcola" : "↻ Recalculate"}</button>`);
+  if (draft && !isCommitted && !hasEvasoAllocations) {
+    secondaryBtns.push(`<button class="ghost-button small-button" type="button" data-action="load-inventory-requirements" data-id="${escapeHtml(order.id)}" ${pending ? "disabled" : ""}>${state.lang === "it" ? "↻ Ricarica righe" : "↻ Reload rows"}</button>`);
   }
 
   return `
     <div class="inv-alloc">
       <div class="inv-alloc-eyebrow">${state.lang === "it" ? "Allocazione materiale" : "Material allocation"}</div>
       ${banner}
-      ${suggestionRows.length || missingRows.length ? `
+      ${requirements.length ? `
         <div class="inv-section">
-          <p class="inv-section-label">${state.lang === "it" ? "Proposta di taglio" : "Cut suggestion"}</p>
-          ${suggestionList}
-          ${missingRows.length ? `<p class="inv-alloc-warning">${state.lang === "it" ? "Non si può impegnare finché ci sono pezzi mancanti." : "Cannot commit while pieces are missing."}</p>` : ""}
+          <p class="inv-section-label">${state.lang === "it" ? "Assegnazione pezzi" : "Piece assignment"}</p>
+          ${manualList}
         </div>
       ` : ""}
       ${activeAllocations.length ? `
@@ -28630,57 +28540,183 @@ async function saveInventory(event) {
   }
 }
 
-async function suggestInventoryForOrder(orderId = "") {
+// Sola lettura: quali righe l'ordine richiede, SENZA scegliere alcun pezzo
+// sorgente — quella scelta è manuale (v. addManualAllocationEntry sotto).
+// Rimpiazza il vecchio calcolo automatico ("Calcola proposta") richiesto
+// dall'utente l'8 ago 2026: l'ufficio conosce il magazzino meglio di
+// un'euristica e vuole poter comporre un taglio da più pezzi residui a
+// piacere (es. 2x6,5m + 2x1,5m per un 2x8m), anche quando la somma non è
+// quella "ottimale".
+async function loadInventoryRequirementsForOrder(orderId = "") {
   const normalizedId = String(orderId || "").trim();
   if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
   inventoryAllocationPendingOrderIds.add(normalizedId);
   scheduleInventoryAllocationRenders();
   try {
-    const suggestion = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/suggest`, {
-      method: "POST",
+    const result = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/requirements`, {
       timeoutMs: 15_000,
-      body: JSON.stringify({}),
     });
-    setInventorySuggestionForOrder(normalizedId, suggestion);
+    setInventorySuggestionForOrder(normalizedId, {
+      requirements: Array.isArray(result.requirements) ? result.requirements : [],
+      entries: {},
+    });
     renderInventoryAllocationContextNow();
-    if (state.currentView === "warehouse" || state.currentView === "shipping") {
-      const missingCount = Array.isArray(suggestion.missing) ? suggestion.missing.length : 0;
-      showToast(
-        missingCount
-          ? (state.lang === "it" ? `Proposta calcolata, ma mancano ${missingCount} pezzi.` : `Suggestion calculated, but ${missingCount} pieces are missing.`)
-          : (state.lang === "it" ? "Proposta pezzi pronta da confermare." : "Piece suggestion ready to confirm."),
-        missingCount ? "warning" : "success",
-      );
-    }
   } catch (error) {
-    console.error("inventory_suggestion_failed", error);
-    if (state.currentView === "warehouse" || state.currentView === "shipping") showToast(state.lang === "it" ? "Impossibile calcolare i pezzi disponibili." : "Unable to suggest available pieces.", "warning");
+    console.error("inventory_requirements_failed", error);
+    if (state.currentView === "warehouse" || state.currentView === "shipping") showToast(state.lang === "it" ? "Impossibile caricare il fabbisogno dell'ordine." : "Unable to load the order's requirements.", "warning");
   } finally {
     inventoryAllocationPendingOrderIds.delete(normalizedId);
     scheduleInventoryAllocationRenders();
   }
 }
 
-async function commitInventoryForOrder(orderId = "") {
+// Restituisce, per ogni pezzo di magazzino già scelto nella bozza manuale
+// corrente (su qualunque riga di fabbisogno), quanta lunghezza/unità ne è
+// già stata assegnata — serve sia per calcolare quanto ne resta disponibile
+// quando si aggiunge un nuovo pezzo, sia per il picker (nasconde pezzi già
+// esauriti dalla bozza).
+function getManualAllocationUsageMap(draft) {
+  const usage = new Map();
+  if (!draft?.entries) return usage;
+  Object.values(draft.entries).forEach((entries) => {
+    (entries || []).forEach((entry) => {
+      const id = String(entry.sourcePieceId || "");
+      if (!id) return;
+      usage.set(id, toNumber(usage.get(id) || 0) + toNumber(entry.amount || 0));
+    });
+  });
+  return usage;
+}
+
+function getManualAllocationCandidates(orderId, requirement) {
+  const draft = getInventorySuggestionForOrder(orderId);
+  const usage = getManualAllocationUsageMap(draft);
+  // NON riusa getInventoryItemsByProductName: quella raggruppa per "modello
+  // di catalogo" (es. qualunque spessore di Cipresso finisce sotto l'unica
+  // etichetta "Cipresso"), perdendo la distinzione di spessore — qui invece
+  // serve il confronto sul nome ESATTO risolto dal server per il requisito,
+  // altrimenti si rischia di proporre uno spessore diverso come fosse
+  // intercambiabile. Confronto testuale semplice: se il magazzino ha nomi
+  // coerenti (vedi bottone "Rinomina") questo basta; per prodotti scritti
+  // in modo diverso resta comunque visibile chi ha lo stesso nome esatto.
+  const requirementKey = normalizeProductName(requirement.product || "");
+  const candidates = state.inventory.filter((piece) => (
+    normalizeProductName(piece.product || "") === requirementKey
+    && getInventoryPieceState(piece) === "disponibile"
+  ));
+  return candidates.filter((piece) => {
+    const isMeasuredPiece = toNumber(piece.length || 0) > 0;
+    const capacity = isMeasuredPiece ? toNumber(piece.length || 0) : Math.max(1, Number(piece.units || 1));
+    return capacity - toNumber(usage.get(piece.id) || 0) > 0.01;
+  });
+}
+
+function randomClientEntryId() {
+  return `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function addManualAllocationEntry(orderId = "", requirementId = "", sourcePieceId = "") {
+  const draft = getInventorySuggestionForOrder(orderId);
+  const requirement = draft?.requirements?.find((item) => item.id === requirementId);
+  const piece = state.inventory.find((item) => item.id === sourcePieceId);
+  if (!draft || !requirement || !piece) return;
+  const isMeasured = Boolean(requirement.measured);
+  const usage = getManualAllocationUsageMap(draft);
+  const pieceCapacity = isMeasured ? toNumber(piece.length || 0) : Math.max(1, Number(piece.units || 1));
+  const remainingCapacity = Math.max(0, Number((pieceCapacity - toNumber(usage.get(sourcePieceId) || 0)).toFixed(2)));
+  if (remainingCapacity <= 0) return;
+  const existingEntries = draft.entries[requirementId] || [];
+  const assignedSoFar = existingEntries.reduce((sum, entry) => sum + toNumber(entry.amount || 0), 0);
+  const requiredAmount = isMeasured ? toNumber(requirement.length || 0) : Math.max(1, Number(requirement.units || 1));
+  const remainingNeeded = Math.max(0, Number((requiredAmount - assignedSoFar).toFixed(2)));
+  const defaultAmount = remainingNeeded > 0 ? Math.min(remainingCapacity, remainingNeeded) : remainingCapacity;
+  const nextEntries = {
+    ...draft.entries,
+    [requirementId]: [...existingEntries, { id: randomClientEntryId(), sourcePieceId, amount: Number(defaultAmount.toFixed(2)) }],
+  };
+  setInventorySuggestionForOrder(orderId, { ...draft, entries: nextEntries });
+  renderInventoryAllocationContextNow();
+}
+
+function removeManualAllocationEntry(orderId = "", requirementId = "", entryId = "") {
+  const draft = getInventorySuggestionForOrder(orderId);
+  if (!draft) return;
+  const nextEntries = {
+    ...draft.entries,
+    [requirementId]: (draft.entries[requirementId] || []).filter((entry) => entry.id !== entryId),
+  };
+  setInventorySuggestionForOrder(orderId, { ...draft, entries: nextEntries });
+  renderInventoryAllocationContextNow();
+}
+
+function updateManualAllocationAmount(orderId = "", requirementId = "", entryId = "", rawValue = "") {
+  const draft = getInventorySuggestionForOrder(orderId);
+  if (!draft) return;
+  const amount = Math.max(0, toNumber(rawValue));
+  const nextEntries = {
+    ...draft.entries,
+    [requirementId]: (draft.entries[requirementId] || []).map((entry) => (entry.id === entryId ? { ...entry, amount } : entry)),
+  };
+  setInventorySuggestionForOrder(orderId, { ...draft, entries: nextEntries });
+  renderInventoryAllocationContextNow();
+}
+
+async function commitManualAllocation(orderId = "") {
   const normalizedId = String(orderId || "").trim();
   if (!normalizedId || inventoryAllocationPendingOrderIds.has(normalizedId)) return;
-  // Se l'ordine ha già pezzi impegnati, il server li rilascia prima di
-  // impegnare da capo (riunendo correttamente ogni residuo al pezzo
-  // originale) — "Impegna" è idempotente: rieseguirlo non duplica mai il
-  // materiale. Vedi commento su /api/orders/:id/inventory/commit in
-  // server.js. Bug dei materiali duplicati segnalato dall'utente il 5 ago
-  // 2026 (ordine #2921) — prima corretto solo con un avviso, ora risolto
-  // alla radice.
-  const suggestion = getInventorySuggestionForOrder(normalizedId);
+  const draft = getInventorySuggestionForOrder(normalizedId);
+  if (!draft) return;
+  // Nessun algoritmo qui: la bozza è tutta scelta a mano dall'ufficio
+  // (data-action="add-manual-allocation-entry"/"update-manual-allocation-amount").
+  // Trasformiamo semplicemente le righe scelte nello stesso formato che
+  // /inventory/commit già accetta da tempo per le proposte automatiche —
+  // il server non sceglie né convalida la "bontà" della combinazione,
+  // calcola solo i residui risultanti. Richiesto dall'utente l'8 ago 2026:
+  // "non deve suggerire ma solo riportare e generare le reste".
+  const suggestions = [];
+  Object.entries(draft.entries || {}).forEach(([requirementId, entries]) => {
+    const requirement = draft.requirements.find((item) => item.id === requirementId);
+    if (!requirement) return;
+    const isMeasured = Boolean(requirement.measured);
+    (entries || []).forEach((entry) => {
+      const amount = toNumber(entry.amount || 0);
+      if (amount <= 0) return;
+      const piece = state.inventory.find((item) => item.id === entry.sourcePieceId);
+      if (!piece) return;
+      const pieceUnits = Math.max(1, Number(piece.units || 1));
+      suggestions.push({
+        id: randomClientEntryId(),
+        requirementId,
+        requirementIds: [requirementId],
+        product: piece.product || requirement.product,
+        pieceId: entry.sourcePieceId,
+        sourcePieceId: entry.sourcePieceId,
+        pieceLabel: formatInventoryAllocationMeasure(piece),
+        sourcePieceLabel: formatInventoryAllocationMeasure(piece),
+        width: isMeasured ? toNumber(requirement.width || piece.width || 0) : 0,
+        length: isMeasured ? amount : 0,
+        sqm: isMeasured ? Number((toNumber(requirement.width || piece.width || 0) * amount).toFixed(2)) : 0,
+        units: isMeasured ? 1 : amount,
+        action: isMeasured ? "use" : (amount < pieceUnits ? "partial-units" : "use"),
+        requiredPieceCount: 1,
+        requiredPieceLength: isMeasured ? toNumber(requirement.length || 0) : 0,
+        requiredPieceSqm: isMeasured ? toNumber(requirement.sqm || 0) : 0,
+        requestLabel: requirement.title || requirement.product,
+        note: "",
+      });
+    });
+  });
+  if (!suggestions.length) {
+    showToast(state.lang === "it" ? "Scegli almeno un pezzo prima di impegnare." : "Choose at least one piece before committing.", "warning");
+    return;
+  }
   inventoryAllocationPendingOrderIds.add(normalizedId);
   scheduleInventoryAllocationRenders();
   try {
     const result = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/commit`, {
       method: "POST",
       timeoutMs: 50_000,
-      body: JSON.stringify({
-        suggestions: Array.isArray(suggestion?.suggestions) ? suggestion.suggestions : undefined,
-      }),
+      body: JSON.stringify({ suggestions }),
     });
     if (Array.isArray(result.inventory)) state.inventory = filterRecentlyDeletedInventory(result.inventory);
     state.inventorySuggestions = {};
@@ -31154,13 +31190,24 @@ function handleGlobalClick(event) {
     prefillInventoryForm(button.dataset.product || "");
     return;
   }
-  if (action === "suggest-inventory-order") {
-    inventoryAutoSuggestedOrderIds.delete(id);
-    suggestInventoryForOrder(id);
+  if (action === "load-inventory-requirements") {
+    loadInventoryRequirementsForOrder(id);
     return;
   }
-  if (action === "commit-inventory-order") {
-    commitInventoryForOrder(id);
+  if (action === "add-manual-allocation-entry") {
+    const requirementId = String(button.dataset.requirementId || "");
+    const row = button.closest(".inv-manual-row");
+    const picker = row?.querySelector(".inv-manual-picker");
+    const sourcePieceId = picker?.value || "";
+    if (requirementId && sourcePieceId) addManualAllocationEntry(id, requirementId, sourcePieceId);
+    return;
+  }
+  if (action === "remove-manual-allocation-entry") {
+    removeManualAllocationEntry(id, String(button.dataset.requirementId || ""), String(button.dataset.entryId || ""));
+    return;
+  }
+  if (action === "commit-manual-allocation") {
+    commitManualAllocation(id);
     return;
   }
   if (action === "release-inventory-order") {
@@ -34198,17 +34245,16 @@ bindEvent(ui.warehouseSearch, "input", (event) => {
   scheduleSearchRender("warehouse", renderWarehouse);
 });
 function handleInventorySuggestionSourceChange(event) {
-  const control = event.target.closest("[data-action='change-inventory-suggestion-source']");
+  const control = event.target.closest("[data-action='update-manual-allocation-amount']");
   if (!control) return;
-  changeInventorySuggestionSource(control.dataset.id || "", control.dataset.suggestionId || "", control.value || "");
+  updateManualAllocationAmount(control.dataset.id || "", control.dataset.requirementId || "", control.dataset.entryId || "", control.value || "0");
 }
 bindEvent(ui.warehouseDetailFields, "change", handleInventorySuggestionSourceChange);
 // Stesso pannello (renderOrderInventoryAllocationPanel) viene iniettato anche
 // da Spedizioni (renderShippingInventoryAllocation), in un contenitore DOM
-// diverso — senza questo listener gemello, cambiare la proposta di pezzo da
-// Spedizioni aggiornava solo la <select> a video: lo stato restava quello
-// originale e "Impegna" scaricava comunque il pezzo suggerito dal sistema,
-// non quello scelto a mano. Bug segnalato dall'utente il 5 ago 2026.
+// diverso — senza questo listener gemello, modificare la quantità di un
+// pezzo scelto a mano da Spedizioni aggiornerebbe solo il campo a video,
+// non lo stato reale usato da "Registra impegno".
 bindEvent(ui.shippingInventoryAllocation, "change", handleInventorySuggestionSourceChange);
 bindEvent(ui.warehouseExportBtn, "click", () => exportInventoryCSV());
 bindEvent(ui.accountingSearch, "input", (event) => {

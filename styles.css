@@ -24087,6 +24087,24 @@ body {
 
 .inv-alloc-warning { margin: 8px 0 0; font-size: 12px; color: #991b1b; font-weight: 600; }
 
+/* Assegnazione manuale pezzi (sostituisce il vecchio calcolo automatico
+   dell'8 ago 2026): una riga per requisito, ciascuna con i pezzi scelti
+   a mano e un selettore per aggiungerne altri. */
+.inv-manual-list { display: grid; gap: 10px; }
+.inv-manual-row { background: #fff; border: 1px solid #e5e1d6; border-radius: 9px; padding: 10px 12px; }
+.inv-manual-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.inv-manual-row-head strong { font-size: 13.5px; font-weight: 600; color: #1a2e26; }
+.inv-manual-row-head span { font-size: 12.5px; color: #5a6e63; }
+.inv-manual-row-head em { font-size: 11.5px; color: #8a9690; font-style: normal; font-weight: 600; }
+.inv-manual-row-head em.is-covered { color: #065f46; }
+.inv-manual-entries { display: grid; gap: 6px; margin-top: 8px; }
+.inv-manual-entry { display: flex; align-items: center; gap: 8px; }
+.inv-manual-entry-label { flex: 1; min-width: 0; font-size: 12.5px; color: #1a2e26; overflow-wrap: anywhere; }
+.inv-manual-amount { width: 72px; flex: 0 0 auto; padding: 6px 8px; font-size: 12.5px; border: 1px solid #e5e1d6; border-radius: 6px; }
+.inv-manual-unit { font-size: 11.5px; color: #8a9690; flex: 0 0 auto; }
+.inv-manual-add { display: flex; gap: 8px; margin-top: 8px; }
+.inv-manual-picker { flex: 1; min-width: 0; padding: 7px 9px; font-size: 12.5px; border: 1px solid #e5e1d6; border-radius: 7px; background: #fff; }
+
 .inv-alloc-actions { margin-top: 4px; }
 .inv-alloc-primary { width: 100%; padding: 13px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; background: #1f4d3d; color: #fff; }
 .inv-alloc-primary.green { background: #10b981; }
