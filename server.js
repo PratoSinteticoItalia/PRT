@@ -6299,6 +6299,51 @@ function createMeasuredSuggestionFromCandidate(plan = {}, candidate = {}) {
   };
 }
 
+// Un bundle raggruppa più pezzi identici della stessa riga (es. 2 pezzi da
+// 2x7 m) in un'unica ricerca di UN pezzo continuo lungo quanto la somma
+// (14 m). Questo fa sì che residui più corti della somma ma abbastanza
+// lunghi per ciascun pezzo preso singolarmente (es. due residui da 11 m)
+// vengano ignorati a favore di un rotolo intero nuovo — anche quando i
+// residui basterebbero da soli, senza toccare scorte nuove (segnalato
+// dall'utente l'8 ago 2026: Betulla 30mm, 2 pezzi da 2x7m disponibili come
+// residui da 2x11m, ma la proposta offriva solo rotoli interi da 2x25m).
+// Qui simuliamo l'allocazione pezzo-per-pezzo usando SOLO residui: se basta,
+// il bundle viene saltato e il percorso individuale (che preferisce già i
+// residui via scoreMeasuredCandidate) li userà uno per uno.
+function bundleCanBeCoveredByResiduesAlone(inventory = [], bundle = {}, usedPieceIds = new Set(), sourceUsage = new Map()) {
+  const perPieceLength = toNumber(bundle.pieceLength || 0);
+  const pieceCount = Math.max(1, Number(bundle.pieceCount || 1));
+  if (!perPieceLength || pieceCount <= 1) return false;
+  const requiredWidth = toNumber(bundle.width || 0);
+  const residuePieces = inventory.filter((piece) => (
+    !usedPieceIds.has(piece.id)
+    && normalizeInventoryPieceState(piece.pieceState) === "disponibile"
+    && normalizeInventoryPieceType(piece.pieceType || piece.status) === "residuo"
+    && inventoryPiecesMatchRequirement(piece, bundle)
+    && (!requiredWidth || Math.abs(toNumber(piece.width || requiredWidth) - requiredWidth) <= 0.08)
+  ));
+  if (!residuePieces.length) return false;
+  const remainingBySourceId = new Map(residuePieces.map((piece) => [
+    piece.id,
+    Math.max(0, toNumber(piece.length || 0) - toNumber(sourceUsage.get(piece.id) || 0)),
+  ]));
+  for (let i = 0; i < pieceCount; i += 1) {
+    let bestId = null;
+    let bestWaste = Infinity;
+    for (const [id, remaining] of remainingBySourceId) {
+      if (remaining + 0.01 < perPieceLength) continue;
+      const waste = remaining - perPieceLength;
+      if (waste < bestWaste) {
+        bestWaste = waste;
+        bestId = id;
+      }
+    }
+    if (bestId === null) return false;
+    remainingBySourceId.set(bestId, remainingBySourceId.get(bestId) - perPieceLength);
+  }
+  return true;
+}
+
 function buildInventorySuggestionsForOrder(store = {}, order = {}) {
   const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
   const requirements = buildOrderInventoryRequirements(order, inventory);
@@ -6313,6 +6358,11 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
   }));
 
   measuredBundles.forEach((bundle) => {
+    // Se i residui esistenti bastano a coprire ogni pezzo del bundle preso
+    // singolarmente, salta il bundle: lascia che il percorso individuale
+    // qui sotto li usi, invece di aprire un rotolo intero nuovo per coprire
+    // la somma dei pezzi in un solo taglio.
+    if (bundleCanBeCoveredByResiduesAlone(inventory, bundle, usedPieceIds, measuredSourceUsage)) return;
     const plan = {
       ...bundle,
       length: bundle.totalLength,
@@ -6650,8 +6700,15 @@ function applyInventoryCommitment(store = {}, order = {}, rawSuggestions = []) {
   if (unavailable.length) {
     return { ok: false, error: "inventory_piece_unavailable", unavailable };
   }
+  // Le allocazioni "disponibile" sono impegni liberati (da un release+re-impegna
+  // precedente, vedi /inventory/commit in server.js): non rappresentano più
+  // nulla di attivo né di storicamente evaso, tenerle qui le fa solo
+  // accumulare per sempre ad ogni ricalcolo, senza che nessuna vista le usi.
+  // "evaso" resta invece lo storico reale di ciò che è stato davvero spedito.
   const existingAllocations = Array.isArray(order.operations?.warehouse?.inventoryAllocations)
-    ? order.operations.warehouse.inventoryAllocations.map((item) => normalizeInventoryAllocationRecord(item))
+    ? order.operations.warehouse.inventoryAllocations
+        .map((item) => normalizeInventoryAllocationRecord(item))
+        .filter((item) => item.status !== "disponibile")
     : [];
   const nextOrder = {
     ...order,
