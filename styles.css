@@ -27183,3 +27183,77 @@ body.mobile-safe-mode .main-content {
     animation: drillScrimIn 0.2s ease;
   }
 }
+
+/* Final mobile fixes (8 Aug 2026): keep drawer headers opaque while
+   scrolling, and stop inventory allocation controls from crushing labels. */
+@media (max-width: 768px) {
+  body[data-drill-module="orders"] #orders .order-detail-panel {
+    padding-top: 0 !important;
+  }
+
+  body[data-drill-module="orders"] #orders .order-detail-panel .detail-header {
+    top: 0 !important;
+    z-index: 80;
+    margin: 0 -16px 14px !important;
+    padding: 16px 56px 12px 16px !important;
+    background: #fdfcfa !important;
+    border-radius: 16px 0 0 0;
+    box-shadow: 0 4px 12px rgba(28, 66, 41, 0.08);
+  }
+}
+
+.inv-manual-entry {
+  display: grid;
+  grid-template-columns: minmax(108px, 1fr) 72px auto 36px;
+  align-items: center;
+}
+
+.inv-manual-entry-label {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.inv-manual-entry .ghost-button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  flex: 0 0 36px;
+}
+
+.inv-manual-add .ghost-button {
+  width: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .inv-section {
+    padding: 12px;
+  }
+
+  .inv-manual-row {
+    padding: 10px;
+  }
+
+  .inv-manual-entry {
+    grid-template-columns: minmax(0, 1fr) auto 36px;
+  }
+
+  .inv-manual-entry-label {
+    grid-column: 1 / -1;
+  }
+
+  .inv-manual-amount {
+    width: 100%;
+  }
+
+  .inv-manual-add {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .inv-manual-add .ghost-button {
+    width: 100%;
+  }
+}
