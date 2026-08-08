@@ -27187,11 +27187,15 @@ body.mobile-safe-mode .main-content {
 /* Final mobile fixes (8 Aug 2026): keep drawer headers opaque while
    scrolling, and stop inventory allocation controls from crushing labels. */
 @media (max-width: 768px) {
-  body[data-drill-module="orders"] #orders .order-detail-panel {
+  body[data-drill-module="orders"] #orders .order-detail-panel,
+  body[data-drill-module="installations"] #installations .install-detail-panel,
+  body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel {
     padding-top: 0 !important;
   }
 
-  body[data-drill-module="orders"] #orders .order-detail-panel .detail-header {
+  body[data-drill-module="orders"] #orders .order-detail-panel .detail-header,
+  body[data-drill-module="installations"] #installations .install-detail-panel .detail-header,
+  body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel .panel-head {
     top: 0 !important;
     z-index: 80;
     margin: 0 -16px 14px !important;
