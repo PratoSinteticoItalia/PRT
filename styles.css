@@ -27015,3 +27015,153 @@ body.mobile-safe-mode #sales-content .sales-content-chip {
 body.mobile-safe-mode .main-content {
   padding-bottom: 0 !important;
 }
+
+/* ============================================================
+   Ordini/Pose/Richieste: stesso drawer "a la Spedizioni" (8 ago 2026)
+   Spedizioni apre il dettaglio come pannello 94vw ancorato a destra, con
+   solo un piccolo bottone ✕ in alto e la lista visibile-ma-scurita dietro
+   (nessuna barra "← Indietro" a piena larghezza). Ordini/Contabilità/
+   Contenuti usano già la stessa meccanica di drawer (94vw, angolo
+   arrotondato, scrim) ma sopra ci mettono anche la back-bar verde a piena
+   larghezza — è quella barra, non il drawer, a far sembrare l'esperienza
+   diversa da Spedizioni. Qui la sostituiamo con lo stesso bottone ✕
+   riducendo --mobile-back-bar-h a 0 (tutte le misure del drawer che
+   dipendono da quella variabile si adattano da sole).
+   Segnalato dall'utente l'8 ago 2026: "vorrei che quando si apre lo
+   slider fosse uguale a come si apre in spedizioni", richiesto anche per
+   Pose e Richieste. */
+@media (max-width: 768px) {
+  body[data-drill-module="orders"],
+  body[data-drill-module="installations"],
+  body[data-drill-module="sales-requests"] {
+    --mobile-back-bar-h: 0px;
+  }
+  body[data-drill-module="orders"] .mobile-drill-back-bar,
+  body[data-drill-module="installations"] .mobile-drill-back-bar,
+  body[data-drill-module="sales-requests"] .mobile-drill-back-bar {
+    position: fixed !important;
+    top: 14px !important;
+    right: 16px !important;
+    left: auto !important;
+    bottom: auto !important;
+    width: 32px;
+    height: 32px;
+    min-height: 0;
+    padding: 0 !important;
+    background: #f1efe7 !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+    z-index: 1090;
+  }
+  body[data-drill-module="orders"] .mobile-drill-back-bar .mobile-drill-title-wrap,
+  body[data-drill-module="installations"] .mobile-drill-back-bar .mobile-drill-title-wrap,
+  body[data-drill-module="sales-requests"] .mobile-drill-back-bar .mobile-drill-title-wrap,
+  body[data-drill-module="orders"] .mobile-drill-back-bar .mobile-drill-back-label,
+  body[data-drill-module="installations"] .mobile-drill-back-bar .mobile-drill-back-label,
+  body[data-drill-module="sales-requests"] .mobile-drill-back-bar .mobile-drill-back-label {
+    display: none;
+  }
+  body[data-drill-module="orders"] .mobile-drill-back-bar .mobile-drill-back-btn,
+  body[data-drill-module="installations"] .mobile-drill-back-bar .mobile-drill-back-btn,
+  body[data-drill-module="sales-requests"] .mobile-drill-back-bar .mobile-drill-back-btn {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    justify-content: center;
+  }
+  body[data-drill-module="orders"] .mobile-drill-back-bar .mobile-drill-back-icon,
+  body[data-drill-module="installations"] .mobile-drill-back-bar .mobile-drill-back-icon,
+  body[data-drill-module="sales-requests"] .mobile-drill-back-bar .mobile-drill-back-icon {
+    font-size: 0;
+    color: #5a6e63;
+  }
+  body[data-drill-module="orders"] .mobile-drill-back-bar .mobile-drill-back-icon::before,
+  body[data-drill-module="installations"] .mobile-drill-back-bar .mobile-drill-back-icon::before,
+  body[data-drill-module="sales-requests"] .mobile-drill-back-bar .mobile-drill-back-icon::before {
+    content: "\2715";
+    font-size: 16px;
+  }
+
+  /* Pose: il dettaglio era a tutta pagina (position:relative) invece che
+     drawer laterale — stesso trattamento 94vw/angolo arrotondato/scrim
+     già usato da Ordini/Contabilità. Il .view attivo ha `contain: layout
+     paint` (vedi nota Ordini sopra): senza neutralizzarlo qui, il nuovo
+     drawer fixed resta ancorato al riquadro di #installations invece che
+     al viewport, con posizione/larghezza sbagliate. */
+  body[data-drill-module="installations"] #installations {
+    contain: none;
+  }
+  body[data-drill-module="installations"] #installations .install-detail-panel {
+    position: fixed !important;
+    top: var(--mobile-back-bar-h) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: 94vw !important;
+    max-width: 460px !important;
+    height: calc(100dvh - var(--mobile-back-bar-h)) !important;
+    max-height: calc(100dvh - var(--mobile-back-bar-h)) !important;
+    z-index: 1086;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    background: #fdfcfa !important;
+    border-radius: 16px 0 0 16px !important;
+    box-shadow: -14px 0 36px rgba(0, 0, 0, 0.28) !important;
+    padding: 16px 16px calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  body[data-drill-module="installations"] #installations::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 26, 20, 0.44);
+    z-index: 1082;
+    animation: drillScrimIn 0.2s ease;
+  }
+
+  /* Richieste: stesso trattamento 94vw/angolo arrotondato/scrim; era a
+     tutta larghezza (position:relative). Il bottone ✕ interno esistente
+     (.crm-drawer-close, già collegato a closeMobileDrillDetail) resta
+     l'unico modo di chiudere insieme al nuovo ✕ in alto — nessuna nuova
+     azione da collegare. Il neutralizzare-contain esistente (riga ~15731)
+     è gated su .crm-detail-open, non su [data-drill-module]: qui in drill
+     mode quella classe non c'è, quindi va neutralizzato di nuovo. */
+  body[data-drill-module="sales-requests"] #sales-requests {
+    contain: none;
+  }
+  body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel {
+    position: fixed !important;
+    top: var(--mobile-back-bar-h) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: 94vw !important;
+    max-width: 460px !important;
+    height: calc(100dvh - var(--mobile-back-bar-h)) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - var(--mobile-back-bar-h)) !important;
+    border-radius: 16px 0 0 16px !important;
+    box-shadow: -14px 0 36px rgba(0, 0, 0, 0.28) !important;
+    z-index: 1086 !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Evita il doppio ✕: quello nuovo in alto (stesso stile Ordini/Pose)
+     basta da solo, quello storico dentro il pannello resterebbe visibile
+     e sovrapposto perché nascosto solo su desktop ≥860px. */
+  body[data-drill-module="sales-requests"] #sales-requests .crm-drawer-close {
+    display: none !important;
+  }
+  body[data-drill-module="sales-requests"] #sales-requests::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 26, 20, 0.44);
+    z-index: 1082;
+    animation: drillScrimIn 0.2s ease;
+  }
+}
