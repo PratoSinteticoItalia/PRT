@@ -6344,28 +6344,6 @@ function bundleCanBeCoveredByResiduesAlone(inventory = [], bundle = {}, usedPiec
   return true;
 }
 
-// Diagnostica temporanea (8 ago 2026): il fix di bundleCanBeCoveredByResiduesAlone
-// non ha risolto il caso reale segnalato dall'utente (Betulla 30mm, residui da
-// 2x11m visibili in Inventario ma ignorati dalla proposta). Invece di indovinare
-// alla cieca, logghiamo ESATTAMENTE ogni pezzo "residuo" in giacenza e perché
-// viene escluso dal bundle — stesso pattern già usato per il caso "missing" poco
-// sotto. Va rimossa una volta trovata la causa reale.
-function debugBundleResidueMismatch(inventory = [], bundle = {}) {
-  const requiredWidth = toNumber(bundle.width || 0);
-  const allResidues = inventory.filter((piece) => normalizeInventoryPieceType(piece.pieceType || piece.status) === "residuo");
-  return allResidues.map((piece) => ({
-    id: (piece.id || "").slice(0, 8),
-    product: piece.product,
-    width: piece.width,
-    length: piece.length,
-    pieceState: piece.pieceState,
-    matchesProduct: inventoryPiecesMatchRequirement(piece, bundle),
-    matchesWidth: !requiredWidth || Math.abs(toNumber(piece.width || requiredWidth) - requiredWidth) <= 0.08,
-    isDisponibile: normalizeInventoryPieceState(piece.pieceState) === "disponibile",
-    longEnough: toNumber(piece.length || 0) + 0.01 >= toNumber(bundle.pieceLength || 0),
-  }));
-}
-
 function buildInventorySuggestionsForOrder(store = {}, order = {}) {
   const inventory = Array.isArray(store.inventory) ? store.inventory.map((item) => normalizeInventoryPieceRecord(item)) : [];
   const requirements = buildOrderInventoryRequirements(order, inventory);
@@ -6374,7 +6352,6 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
   const suggestions = [];
   const missing = [];
   const bundledRequirementIds = new Set();
-  const debugBundles = [];
   const measuredBundles = buildMeasuredRequirementBundles(requirements).map((bundle, bundleIndex) => ({
     ...bundle,
     bundleIndex,
@@ -6386,11 +6363,6 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
     // qui sotto li usi, invece di aprire un rotolo intero nuovo per coprire
     // la somma dei pezzi in un solo taglio.
     if (bundleCanBeCoveredByResiduesAlone(inventory, bundle, usedPieceIds, measuredSourceUsage)) return;
-    if (bundle.pieceCount > 1) {
-      const residueDiagnostic = debugBundleResidueMismatch(inventory, bundle);
-      debugBundles.push({ product: bundle.product, width: bundle.width, pieceLength: bundle.pieceLength, pieceCount: bundle.pieceCount, residues: residueDiagnostic });
-      console.warn(`[inventory/suggest] bundle=${JSON.stringify({ product: bundle.product, width: bundle.width, pieceLength: bundle.pieceLength, pieceCount: bundle.pieceCount })} residues=${JSON.stringify(residueDiagnostic)}`);
-    }
     const plan = {
       ...bundle,
       length: bundle.totalLength,
@@ -6517,7 +6489,7 @@ function buildInventorySuggestionsForOrder(store = {}, order = {}) {
     }
   });
 
-  return { orderId: order.id, requirements, suggestions, missing, debugBundles };
+  return { orderId: order.id, requirements, suggestions, missing };
 }
 
 function orderNumberForInventory(order = {}) {
