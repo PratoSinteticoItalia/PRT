@@ -27733,6 +27733,22 @@ body.mobile-safe-mode .main-content {
   color: var(--cmd-muted);
 }
 
+#dashboard .dashboard-command-empty-rich {
+  display: grid;
+  gap: 10px;
+}
+
+#dashboard .dashboard-command-empty-rich strong {
+  color: var(--cmd-ink);
+  font-size: 1rem;
+}
+
+#dashboard .dashboard-command-empty-rich p {
+  max-width: 58ch;
+  margin: 0;
+  line-height: 1.45;
+}
+
 #dashboard .dashboard-command-badge.tone-red,
 #dashboard .dashboard-command-task .tone-red {
   background: #fff1ee;

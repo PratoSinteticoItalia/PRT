@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260809-dashboard-command-center";
+} from "./lib/order-money.js?v=20260809-dashboard-sales-empty-state";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260809-dashboard-command-center";
+import { regionForCity } from "./lib/geo.js?v=20260809-dashboard-sales-empty-state";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260809-dashboard-command-center";
+} from "./lib/shipping-eligibility.js?v=20260809-dashboard-sales-empty-state";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260809-dashboard-command-center";
+} from "./lib/profit-split.js?v=20260809-dashboard-sales-empty-state";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260809-dashboard-command-center";
+} from "./lib/preventivo-pricing.js?v=20260809-dashboard-sales-empty-state";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260809-dashboard-command-center";
+const APP_SHELL_VERSION = "20260809-dashboard-sales-empty-state";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -10656,10 +10656,10 @@ function renderOps() {
   setText("ops-closed-label", state.lang === "it" ? "Chiusi" : "Closed");
 }
 
-function buildFollowupReminders() {
+function buildFollowupReminders(items = state.salesRequests || []) {
   const THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
   const now = Date.now();
-  return (state.salesRequests || [])
+  return (items || [])
     .filter(item => {
       if (getSalesRequestStatusCode(item.status || "") !== "quoted") return false;
       const ref = item.quotedAt || item.updatedAt || "";
@@ -11329,9 +11329,37 @@ function getSalesRequestDashboardMeta(item = {}) {
   return [item.city, item.sqm ? `${item.sqm} mq` : "", item.service || ""].filter(Boolean).join(" · ");
 }
 
+function getDashboardCommandSalesItems() {
+  const page = state.crmServerPage || {};
+  if ((Array.isArray(page.items) && page.items.length > 0) || Number(page.loadedAt || 0) > 0) {
+    return Array.isArray(page.items) ? page.items : [];
+  }
+  return Array.isArray(state.salesRequests) ? state.salesRequests : [];
+}
+
+function getDashboardCommandSalesStats(items = getDashboardCommandSalesItems()) {
+  const stats = state.salesRequestsStats && typeof state.salesRequestsStats === "object" ? state.salesRequestsStats : {};
+  const statNumber = (key) => {
+    const value = Number(stats[key]);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  };
+  const totalFromStats = statNumber("total");
+  const openFromItems = items.filter((item) => !isSalesRequestClosedStatus(item.status)).length;
+  const toContactFromItems = items.filter(isSalesRequestNewContactUnassigned).length;
+  const followupsFromItems = buildFollowupReminders(items).length;
+  return {
+    total: totalFromStats ?? items.length,
+    open: items.length ? openFromItems : (totalFromStats ?? 0),
+    toContact: statNumber("new") ?? toContactFromItems,
+    followups: statNumber("quoted") ?? followupsFromItems,
+    loaded: items.length > 0 || Number(state.crmServerPage?.loadedAt || 0) > 0 || totalFromStats !== null,
+  };
+}
+
 function buildDashboardCommandSalesTasks() {
   const now = Date.now();
-  const toContact = (state.salesRequests || [])
+  const salesItems = getDashboardCommandSalesItems();
+  const toContact = salesItems
     .filter(isSalesRequestNewContactUnassigned)
     .sort((a, b) => new Date(a.createdAt || a.updatedAt || 0) - new Date(b.createdAt || b.updatedAt || 0))
     .slice(0, 6)
@@ -11372,7 +11400,7 @@ function buildDashboardCommandSalesTasks() {
       });
     });
 
-  const followups = buildFollowupReminders()
+  const followups = buildFollowupReminders(salesItems)
     .slice(0, 6)
     .map((item) => {
       const name = getSalesRequestDashboardName(item);
@@ -11672,6 +11700,8 @@ function buildDashboardCommandModel() {
   const upcomingWeek = buildDashboardCommandInstallationTasks().filter((task) => task.timeframe === "week" || task.timeframe === "today");
   const openBalanceTotal = (state.orders || []).reduce((sum, order) => sum + getOpenBalance(order), 0);
   const ddtMissingCount = getDdtEligibleOrders().filter((order) => !ddtOrderHasNumber(order)).length;
+  const salesItems = getDashboardCommandSalesItems();
+  const salesStats = getDashboardCommandSalesStats(salesItems);
 
   return {
     dashboard: {
@@ -11698,11 +11728,21 @@ function buildDashboardCommandModel() {
       queueTitle: state.lang === "it" ? "Prima le azioni con scadenza" : "Deadline first",
       tasks: salesTasks,
       metrics: [
-        { label: state.lang === "it" ? "Da chiamare" : "To call", value: String(salesTasks.filter((task) => task.status === "Da chiamare").length), note: state.lang === "it" ? "Nuovi contatti" : "New contacts", tone: "sales" },
-        { label: state.lang === "it" ? "Follow-up" : "Follow-ups", value: String(buildFollowupReminders().length), note: state.lang === "it" ? "Preventivi in attesa" : "Quotes waiting", tone: "sales" },
-        { label: state.lang === "it" ? "Richieste aperte" : "Open requests", value: String((state.salesRequests || []).filter((item) => !isSalesRequestClosedStatus(item.status)).length), note: state.lang === "it" ? "Non vinte/perse" : "Not won/lost", tone: "sales" },
+        { label: state.lang === "it" ? "Da chiamare" : "To call", value: String(salesStats.toContact), note: state.lang === "it" ? "Nuovi contatti" : "New contacts", tone: "sales" },
+        { label: state.lang === "it" ? "Follow-up" : "Follow-ups", value: String(salesStats.followups), note: state.lang === "it" ? "Preventivi in attesa" : "Quotes waiting", tone: "sales" },
+        { label: state.lang === "it" ? "Richieste aperte" : "Open requests", value: String(salesStats.open), note: state.lang === "it" ? "Non vinte/perse" : "Not won/lost", tone: "sales" },
         { label: state.lang === "it" ? "Bloccate" : "Blocked", value: String(salesTasks.filter((task) => task.severity === "high").length), note: state.lang === "it" ? "Senza esito" : "No outcome", tone: "sales" },
       ],
+      emptyTitle: salesStats.loaded && salesStats.total === 0
+        ? (state.lang === "it" ? "Nessuna richiesta vendita presente" : "No sales requests yet")
+        : (state.lang === "it" ? "Vendite senza dati caricati" : "Sales data not loaded"),
+      emptyText: salesStats.loaded && salesStats.total === 0
+        ? (state.lang === "it" ? "Il CRM non contiene richieste aperte. Da qui puoi andare alla sorgente e importare o creare il primo contatto." : "The CRM has no open requests. From here you can open the source and import or create the first contact.")
+        : (state.lang === "it" ? "La dashboard non ha ancora una pagina CRM caricata in memoria. Apri Richieste per sincronizzare e vedere i follow-up reali." : "The dashboard does not have a CRM page in memory yet. Open Requests to sync and see real follow-ups."),
+      emptyPrimary: state.lang === "it" ? "Apri Richieste" : "Open Requests",
+      emptyPrimaryView: "sales-requests",
+      emptySecondary: state.lang === "it" ? "Nuovo preventivo" : "New quote",
+      emptySecondaryView: "sales-generator",
     },
     materials: {
       nav: "Materiali",
@@ -11786,11 +11826,30 @@ function renderDashboardCommandMetrics(metrics = []) {
   `).join("");
 }
 
-function renderDashboardCommandQueue(tasks = []) {
+function renderDashboardCommandEmpty(view = {}) {
+  const title = view.emptyTitle || (state.lang === "it" ? "Nessuna urgenza in questa vista." : "No urgency in this view.");
+  const text = view.emptyText || (state.lang === "it" ? "Quando arriveranno azioni reali, compariranno qui in ordine di priorita." : "When real actions arrive, they will appear here by priority.");
+  const primaryView = view.emptyPrimaryView || "";
+  const secondaryView = view.emptySecondaryView || "";
+  return `
+    <div class="dashboard-command-empty dashboard-command-empty-rich">
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(text)}</p>
+      ${(primaryView || secondaryView) ? `
+        <div class="dashboard-command-actions">
+          ${primaryView ? `<button class="btn primary" type="button" data-action="open-dashboard-view" data-view="${escapeAttr(primaryView)}">${escapeHtml(view.emptyPrimary || (state.lang === "it" ? "Apri sezione" : "Open section"))}</button>` : ""}
+          ${secondaryView ? `<button class="btn" type="button" data-action="open-dashboard-view" data-view="${escapeAttr(secondaryView)}">${escapeHtml(view.emptySecondary || (state.lang === "it" ? "Azione secondaria" : "Secondary action"))}</button>` : ""}
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function renderDashboardCommandQueue(tasks = [], view = {}) {
   if (!ui.dashboardCommandQueue) return;
   ui.dashboardCommandQueueCount.textContent = String(tasks.length);
   if (!tasks.length) {
-    ui.dashboardCommandQueue.innerHTML = `<div class="dashboard-command-empty">${state.lang === "it" ? "Nessuna urgenza in questa vista." : "No urgency in this view."}</div>`;
+    ui.dashboardCommandQueue.innerHTML = renderDashboardCommandEmpty(view);
     return;
   }
   if (!tasks.some((task) => task.id === state.dashboardCommandSelectedTaskId)) {
@@ -11816,12 +11875,12 @@ function renderDashboardCommandQueue(tasks = []) {
   }).join("");
 }
 
-function renderDashboardCommandDetail(task = null) {
+function renderDashboardCommandDetail(task = null, view = {}) {
   if (!ui.dashboardCommandDetail) return;
   if (!task) {
     ui.dashboardCommandDetailSeverity.textContent = "—";
     ui.dashboardCommandDetailSeverity.className = "dashboard-command-badge";
-    ui.dashboardCommandDetail.innerHTML = `<div class="dashboard-command-empty">${state.lang === "it" ? "Seleziona una riga dalla coda." : "Select a row from the queue."}</div>`;
+    ui.dashboardCommandDetail.innerHTML = renderDashboardCommandEmpty(view);
     return;
   }
   const tone = getDashboardCommandTone(task.severity);
@@ -11894,8 +11953,8 @@ function renderDashboardCommandModules(model) {
       summary: state.lang === "it" ? "Richieste e preventivi che possono diventare fatturato." : "Requests and quotes that can become revenue.",
       items: [
         `${model.sales.tasks.length} ${state.lang === "it" ? "azioni commerciali" : "sales actions"}`,
-        `${buildFollowupReminders().length} follow-up`,
-        `${(state.salesRequests || []).filter(isSalesRequestNewContactUnassigned).length} ${state.lang === "it" ? "nuovi contatti" : "new contacts"}`,
+        `${salesStats.followups} follow-up`,
+        `${salesStats.toContact} ${state.lang === "it" ? "nuovi contatti" : "new contacts"}`,
       ],
     },
     {
@@ -11975,8 +12034,8 @@ function renderDashboardCommandCenter() {
   });
   renderDashboardCommandNav(model);
   renderDashboardCommandMetrics(view.metrics);
-  renderDashboardCommandQueue(visibleTasks);
-  renderDashboardCommandDetail(selectedTask);
+  renderDashboardCommandQueue(visibleTasks, view);
+  renderDashboardCommandDetail(selectedTask, view);
   renderDashboardCommandModules(model);
 }
 
