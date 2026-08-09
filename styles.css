@@ -27306,3 +27306,495 @@ body.mobile-safe-mode .main-content {
     opacity: 0.88;
   }
 }
+
+/* Dashboard office command center (9 Aug 2026): cabina di regia read-only
+   ispirata al mockup approvato, isolata dalla dashboard warehouse/crew. */
+#dashboard .dashboard-command {
+  --cmd-surface: #ffffff;
+  --cmd-soft: #f0f4ef;
+  --cmd-ink: #142019;
+  --cmd-muted: #6a756d;
+  --cmd-line: #dce4dc;
+  --cmd-brand: #13281e;
+  --cmd-green: #23704d;
+  --cmd-blue: #285f99;
+  --cmd-amber: #9a6a15;
+  --cmd-red: #9d3d36;
+  --cmd-violet: #63539f;
+  --cmd-shadow: 0 14px 34px rgba(20, 32, 25, 0.08);
+  display: grid;
+  gap: 16px;
+  color: var(--cmd-ink);
+}
+
+#dashboard .dashboard-command-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+#dashboard .dashboard-command-head h2 {
+  margin: 3px 0 4px;
+  font-size: 30px;
+  line-height: 1.08;
+  font-weight: 760;
+  letter-spacing: 0;
+  color: var(--cmd-ink);
+}
+
+#dashboard .dashboard-command-head p {
+  margin: 0;
+  color: var(--cmd-muted);
+}
+
+#dashboard .dashboard-command-tools,
+#dashboard .dashboard-command-nav,
+#dashboard .dashboard-command-badge-line,
+#dashboard .dashboard-command-task-top,
+#dashboard .dashboard-command-task-bottom,
+#dashboard .dashboard-command-detail-kicker,
+#dashboard .dashboard-command-actions,
+#dashboard .dashboard-command-module-head,
+#dashboard .dashboard-command-timeline-item {
+  display: flex;
+  align-items: center;
+}
+
+#dashboard .dashboard-command-tools,
+#dashboard .dashboard-command-actions,
+#dashboard .dashboard-command-nav {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#dashboard .dashboard-command-filter {
+  min-height: 40px;
+  border-radius: 8px;
+}
+
+#dashboard .dashboard-command-filter.is-active {
+  background: var(--cmd-surface);
+  border-color: var(--cmd-line);
+  color: var(--cmd-ink);
+}
+
+#dashboard .dashboard-command-nav-button {
+  min-height: 42px;
+  min-width: 132px;
+  border: 1px solid var(--cmd-line);
+  border-radius: 8px;
+  background: var(--cmd-surface);
+  color: var(--cmd-ink);
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  box-shadow: 0 6px 16px rgba(20, 32, 25, 0.04);
+}
+
+#dashboard .dashboard-command-nav-button:hover,
+#dashboard .dashboard-command-nav-button.is-active {
+  background: var(--cmd-soft);
+  border-color: rgba(31, 84, 56, 0.18);
+}
+
+#dashboard .dashboard-command-nav-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--cmd-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+#dashboard .dashboard-command-nav-count,
+#dashboard .dashboard-command-badge {
+  min-height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 9px;
+  background: var(--cmd-soft);
+  color: var(--cmd-ink);
+  border: 1px solid var(--cmd-line);
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+#dashboard .dashboard-command-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+#dashboard .dashboard-command-metric,
+#dashboard .dashboard-command-panel,
+#dashboard .dashboard-command-module {
+  background: var(--cmd-surface);
+  border: 1px solid var(--cmd-line);
+  border-radius: 8px;
+  box-shadow: var(--cmd-shadow);
+}
+
+#dashboard .dashboard-command-metric {
+  min-height: 104px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  border-left: 4px solid var(--cmd-blue);
+}
+
+#dashboard .dashboard-command-metric.tone-sales,
+#dashboard .dashboard-command-module.tone-sales {
+  border-left-color: var(--cmd-blue);
+}
+
+#dashboard .dashboard-command-metric.tone-materials,
+#dashboard .dashboard-command-module.tone-materials {
+  border-left-color: var(--cmd-amber);
+}
+
+#dashboard .dashboard-command-metric.tone-installations,
+#dashboard .dashboard-command-module.tone-installations {
+  border-left-color: var(--cmd-green);
+}
+
+#dashboard .dashboard-command-metric.tone-money,
+#dashboard .dashboard-command-module.tone-money {
+  border-left-color: var(--cmd-violet);
+}
+
+#dashboard .dashboard-command-metric-value {
+  font-size: 26px;
+  line-height: 1.1;
+  font-weight: 760;
+  color: var(--cmd-ink);
+}
+
+#dashboard .dashboard-command-muted,
+#dashboard .dashboard-command-task-meta,
+#dashboard .dashboard-command-field-label,
+#dashboard .dashboard-command-module-item,
+#dashboard .dashboard-command-eyebrow {
+  color: var(--cmd-muted);
+}
+
+#dashboard .dashboard-command-eyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+#dashboard .dashboard-command-workspace {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(360px, 1.1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+#dashboard .dashboard-command-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+#dashboard .dashboard-command-panel-head {
+  min-height: 60px;
+  padding: 14px;
+  border-bottom: 1px solid var(--cmd-line);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#dashboard .dashboard-command-panel-head h3 {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 760;
+  letter-spacing: 0;
+  color: var(--cmd-ink);
+}
+
+#dashboard .dashboard-command-queue {
+  display: grid;
+}
+
+#dashboard .dashboard-command-task {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--cmd-line);
+  background: transparent;
+  color: inherit;
+  padding: 13px 14px;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+}
+
+#dashboard .dashboard-command-task:last-child {
+  border-bottom: 0;
+}
+
+#dashboard .dashboard-command-task:hover,
+#dashboard .dashboard-command-task.is-selected {
+  background: var(--cmd-soft);
+}
+
+#dashboard .dashboard-command-task-top,
+#dashboard .dashboard-command-task-bottom,
+#dashboard .dashboard-command-module-head {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#dashboard .dashboard-command-task-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+#dashboard .dashboard-command-task-title,
+#dashboard .dashboard-command-detail-title {
+  font-weight: 760;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#dashboard .dashboard-command-task-meta,
+#dashboard .dashboard-command-badge-line {
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+#dashboard .dashboard-command-detail {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+#dashboard .dashboard-command-detail-hero {
+  display: grid;
+  gap: 12px;
+}
+
+#dashboard .dashboard-command-detail-kicker {
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+#dashboard .dashboard-command-detail-title {
+  font-size: 23px;
+  line-height: 1.12;
+  color: var(--cmd-ink);
+}
+
+#dashboard .dashboard-command-next {
+  border-radius: 8px;
+  background: #e8f2ec;
+  border: 1px solid #c9e0d1;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+#dashboard .dashboard-command-next strong {
+  display: block;
+  margin-top: 4px;
+}
+
+#dashboard .dashboard-command-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+#dashboard .dashboard-command-field {
+  border-top: 1px solid var(--cmd-line);
+  padding-top: 10px;
+  min-width: 0;
+}
+
+#dashboard .dashboard-command-field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+#dashboard .dashboard-command-field-value {
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+#dashboard .dashboard-command-detail-grid,
+#dashboard .dashboard-command-modules {
+  display: grid;
+  gap: 12px;
+}
+
+#dashboard .dashboard-command-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#dashboard .dashboard-command-mini {
+  border: 1px solid var(--cmd-line);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+#dashboard .dashboard-command-mini-title,
+#dashboard .dashboard-command-module-title {
+  font-weight: 760;
+}
+
+#dashboard .dashboard-command-timeline {
+  display: grid;
+  gap: 10px;
+}
+
+#dashboard .dashboard-command-timeline-item {
+  gap: 9px;
+  align-items: flex-start;
+}
+
+#dashboard .dashboard-command-dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--cmd-green);
+  flex: 0 0 auto;
+}
+
+#dashboard .dashboard-command-modules {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+#dashboard .dashboard-command-module {
+  min-height: 160px;
+  padding: 14px;
+  border-left: 0;
+  border-top: 4px solid var(--cmd-blue);
+  display: grid;
+  gap: 12px;
+}
+
+#dashboard .dashboard-command-module.tone-materials {
+  border-top-color: var(--cmd-amber);
+}
+
+#dashboard .dashboard-command-module.tone-installations {
+  border-top-color: var(--cmd-green);
+}
+
+#dashboard .dashboard-command-module.tone-money {
+  border-top-color: var(--cmd-violet);
+}
+
+#dashboard .dashboard-command-module-list {
+  display: grid;
+  gap: 8px;
+}
+
+#dashboard .dashboard-command-module-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+#dashboard .dashboard-command-module-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-top: 6px;
+  background: currentColor;
+}
+
+#dashboard .dashboard-command-empty {
+  padding: 18px 14px;
+  color: var(--cmd-muted);
+}
+
+#dashboard .dashboard-command-badge.tone-red,
+#dashboard .dashboard-command-task .tone-red {
+  background: #fff1ee;
+  border-color: #f0c8c2;
+  color: var(--cmd-red);
+}
+
+#dashboard .dashboard-command-badge.tone-amber,
+#dashboard .dashboard-command-task .tone-amber {
+  background: #fff8e6;
+  border-color: #ecd49c;
+  color: var(--cmd-amber);
+}
+
+#dashboard .dashboard-command-badge.tone-green,
+#dashboard .dashboard-command-task .tone-green {
+  background: #edf8f0;
+  border-color: #c7e5d0;
+  color: var(--cmd-green);
+}
+
+#dashboard .dashboard-command-badge.tone-blue,
+#dashboard .dashboard-command-task .tone-blue {
+  background: #eef5ff;
+  border-color: #c9dcf5;
+  color: var(--cmd-blue);
+}
+
+@media (max-width: 1180px) {
+  #dashboard .dashboard-command-metrics,
+  #dashboard .dashboard-command-modules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #dashboard .dashboard-command-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  #dashboard .dashboard-command-workspace,
+  #dashboard .dashboard-command-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  #dashboard .dashboard-command-metrics,
+  #dashboard .dashboard-command-modules,
+  #dashboard .dashboard-command-fields {
+    grid-template-columns: 1fr;
+  }
+
+  #dashboard .dashboard-command-head h2 {
+    font-size: 24px;
+  }
+
+  #dashboard .dashboard-command-next {
+    grid-template-columns: 1fr;
+  }
+
+  #dashboard .dashboard-command-nav-button {
+    flex: 1 1 140px;
+  }
+}

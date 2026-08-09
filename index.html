@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260808-mobile-topbar-hierarchy" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260808-mobile-topbar-hierarchy" />
+    <link rel="preload" href="./styles.css?v=20260809-dashboard-command-center" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260809-dashboard-command-center" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -303,7 +303,7 @@
               <h1 id="dashboard-title">Dashboard</h1>
               <p class="dash-subtitle" id="dashboard-subtitle">Tutto quello che ti serve per gestire la giornata.</p>
             </div>
-            <div class="dash-date-filter" role="tablist" aria-label="Intervallo date" data-dashboard-role="office warehouse">
+            <div class="dash-date-filter" role="tablist" aria-label="Intervallo date" data-dashboard-role="warehouse">
               <button class="dash-date-chip" type="button" data-dashboard-range="today" role="tab">Oggi</button>
               <button class="dash-date-chip is-active" type="button" data-dashboard-range="7d" role="tab">7g</button>
               <button class="dash-date-chip" type="button" data-dashboard-range="30d" role="tab">30g</button>
@@ -314,76 +314,48 @@
 
           <!-- OFFICE VIEW -->
           <div class="dash-role-view" data-dashboard-role="office">
-            <div class="dash-hero-kpis" id="dashboard-hero-kpis"></div>
-            <div class="dash-metrics-strip" id="dashboard-metrics-strip"></div>
-
-            <div class="dash-grid-2col">
-              <section class="dash-card dash-card-notifications">
-                <header class="dash-card-head">
-                  <div>
-                    <span class="dash-card-eyebrow">Centro notifiche</span>
-                    <h2 class="dash-card-title">Da gestire</h2>
-                  </div>
-                  <span class="dash-card-badge" id="dashboard-notif-badge">0</span>
-                </header>
-                <div class="dash-notification-list" id="dashboard-notifications"></div>
-              </section>
-
-              <section class="dash-card dash-card-team">
-                <header class="dash-card-head">
-                  <div>
-                    <span class="dash-card-eyebrow">Performance</span>
-                    <h2 class="dash-card-title">Carico squadra</h2>
-                  </div>
-                  <span class="dash-card-meta" id="dashboard-team-meta">—</span>
-                </header>
-                <div class="dash-team-list" id="dashboard-team-performance"></div>
-              </section>
-            </div>
-
-            <section class="dash-card dash-card-week">
-              <header class="dash-card-head">
+            <div class="dashboard-command" id="dashboard-command-center">
+              <div class="dashboard-command-head">
                 <div>
-                  <span class="dash-card-eyebrow">Calendario</span>
-                  <h2 class="dash-card-title">Pose questa settimana</h2>
+                  <span class="dashboard-command-eyebrow">Cabina di regia</span>
+                  <h2 id="dashboard-command-title">Oggi</h2>
+                  <p id="dashboard-command-subtitle">Priorità operative, blocchi e prossime azioni della giornata.</p>
                 </div>
-              </header>
-              <div class="dash-week-summary" id="dashboard-week-summary"></div>
-            </section>
-
-            <section class="dash-card">
-              <header class="dash-card-head">
-                <div>
-                  <span class="dash-card-eyebrow">Team</span>
-                  <h2 class="dash-card-title">Presenze oggi</h2>
+                <div class="dashboard-command-tools" role="group" aria-label="Filtri dashboard">
+                  <button class="btn ghost dashboard-command-filter is-active" type="button" data-action="dashboard-command-filter" data-filter="today">Oggi</button>
+                  <button class="btn ghost dashboard-command-filter" type="button" data-action="dashboard-command-filter" data-filter="week">7 giorni</button>
+                  <button class="btn primary dashboard-command-filter" type="button" data-action="dashboard-command-filter" data-filter="risk">Solo rischi</button>
                 </div>
-                <span class="dash-card-meta" id="dashboard-attendance-meta">—</span>
-              </header>
-              <div id="dashboard-attendance" class="dash-action-list"></div>
-            </section>
+              </div>
 
-            <div class="dash-grid-2col">
-              <section class="dash-card">
-                <header class="dash-card-head">
-                  <div>
-                    <span class="dash-card-eyebrow">Operativo</span>
-                    <h2 class="dash-card-title">Priorità ordini</h2>
-                  </div>
-                  <span class="dash-card-badge" id="dashboard-actions-badge">0</span>
-                </header>
-                <div id="dashboard-actions" class="dash-action-list"></div>
-              </section>
+              <nav class="dashboard-command-nav" id="dashboard-command-nav" aria-label="Aree dashboard"></nav>
+              <div class="dashboard-command-metrics" id="dashboard-command-metrics" aria-label="Indicatori dashboard"></div>
 
-              <section class="dash-card">
-                <header class="dash-card-head">
-                  <div>
-                    <span class="dash-card-eyebrow">Vendite</span>
-                    <h2 class="dash-card-title">Follow-up preventivi</h2>
-                  </div>
-                  <span class="dash-card-badge" id="dashboard-followup-badge">0</span>
-                </header>
-                <div id="dashboard-followup" class="dash-action-list"></div>
-              </section>
+              <div class="dashboard-command-workspace">
+                <section class="dashboard-command-panel" aria-label="Coda operativa">
+                  <header class="dashboard-command-panel-head">
+                    <div>
+                      <span class="dashboard-command-eyebrow" id="dashboard-command-queue-kicker">Coda operativa</span>
+                      <h3 id="dashboard-command-queue-title">Da fare adesso</h3>
+                    </div>
+                    <span class="dashboard-command-badge" id="dashboard-command-queue-count">0</span>
+                  </header>
+                  <div class="dashboard-command-queue" id="dashboard-command-queue"></div>
+                </section>
+
+                <section class="dashboard-command-panel" aria-label="Dettaglio azione selezionata">
+                  <header class="dashboard-command-panel-head">
+                    <div>
+                      <span class="dashboard-command-eyebrow">Dettaglio operativo</span>
+                      <h3>Una decisione, un prossimo passo</h3>
+                    </div>
+                    <span class="dashboard-command-badge tone-red" id="dashboard-command-detail-severity">Alta</span>
+                  </header>
+                  <div class="dashboard-command-detail" id="dashboard-command-detail"></div>
+                </section>
+              </div>
+
+              <div class="dashboard-command-modules" id="dashboard-command-modules" aria-label="Sintesi aree operative"></div>
             </div>
           </div>
 
@@ -2729,7 +2701,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260808-mobile-topbar-hierarchy" defer></script>
-    <script src="./app.js?v=20260808-mobile-topbar-hierarchy" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260809-dashboard-command-center" defer></script>
+    <script src="./app.js?v=20260809-dashboard-command-center" type="module"></script>
   </body>
 </html>

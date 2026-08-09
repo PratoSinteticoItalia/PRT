@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260808-mobile-topbar-hierarchy";
+} from "./lib/order-money.js?v=20260809-dashboard-command-center";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260808-mobile-topbar-hierarchy";
+import { regionForCity } from "./lib/geo.js?v=20260809-dashboard-command-center";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260808-mobile-topbar-hierarchy";
+} from "./lib/shipping-eligibility.js?v=20260809-dashboard-command-center";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260808-mobile-topbar-hierarchy";
+} from "./lib/profit-split.js?v=20260809-dashboard-command-center";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260808-mobile-topbar-hierarchy";
+} from "./lib/preventivo-pricing.js?v=20260809-dashboard-command-center";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260808-mobile-topbar-hierarchy";
+const APP_SHELL_VERSION = "20260809-dashboard-command-center";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1215,6 +1215,9 @@ const state = {
   settings: {},
   currentView: "dashboard",
   dashboardDateRange: "7d",
+  dashboardCommandView: "dashboard",
+  dashboardCommandFilter: "risk",
+  dashboardCommandSelectedTaskId: "",
   preventivoTexts: null, // popolato all'init da /api/catalog/preventivo_branding
   preventivoCatalog: {}, // slug -> { code, tech: {struttura, densita, dtex, drenaggio, peso, note}, label }
   preventivoForm: null, // stato della form nativa (creato al primo render da defaultPreventivoForm())
@@ -1552,6 +1555,18 @@ const ui = {
   dashboardNotifBadge: document.getElementById("dashboard-notif-badge"),
   dashboardTeamPerformance: document.getElementById("dashboard-team-performance"),
   dashboardTeamMeta: document.getElementById("dashboard-team-meta"),
+  dashboardCommandTitle: document.getElementById("dashboard-command-title"),
+  dashboardCommandSubtitle: document.getElementById("dashboard-command-subtitle"),
+  dashboardCommandNav: document.getElementById("dashboard-command-nav"),
+  dashboardCommandMetrics: document.getElementById("dashboard-command-metrics"),
+  dashboardCommandQueueKicker: document.getElementById("dashboard-command-queue-kicker"),
+  dashboardCommandQueueTitle: document.getElementById("dashboard-command-queue-title"),
+  dashboardCommandQueueCount: document.getElementById("dashboard-command-queue-count"),
+  dashboardCommandQueue: document.getElementById("dashboard-command-queue"),
+  dashboardCommandDetail: document.getElementById("dashboard-command-detail"),
+  dashboardCommandDetailSeverity: document.getElementById("dashboard-command-detail-severity"),
+  dashboardCommandModules: document.getElementById("dashboard-command-modules"),
+  dashboardCommandFilters: Array.from(document.querySelectorAll(".dashboard-command-filter")),
   dashboardRoleViews: Array.from(document.querySelectorAll("[data-dashboard-role]")),
   dashboardDateChips: Array.from(document.querySelectorAll(".dash-date-chip")),
   quickViewButtons: Array.from(document.querySelectorAll("[data-quick-view]")),
@@ -11251,6 +11266,720 @@ function renderDashboardFollowup() {
     : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun preventivo da seguire." : "No quotes to follow up."}</div>`;
 }
 
+function getDashboardCommandSeverityLabel(severity = "low") {
+  if (severity === "high") return state.lang === "it" ? "Alta" : "High";
+  if (severity === "medium") return state.lang === "it" ? "Media" : "Medium";
+  return state.lang === "it" ? "Bassa" : "Low";
+}
+
+function getDashboardCommandTone(severity = "low") {
+  if (severity === "high") return "red";
+  if (severity === "medium") return "amber";
+  return "green";
+}
+
+function getDashboardCommandSortScore(task = {}) {
+  const severityScore = task.severity === "high" ? 300 : task.severity === "medium" ? 200 : 100;
+  const dueScore = task.timeframe === "today" ? 40 : task.timeframe === "week" ? 20 : 0;
+  return severityScore + dueScore + toNumber(task.weight || 0);
+}
+
+function makeDashboardCommandTask(config = {}) {
+  return {
+    id: config.id || `task-${Math.random().toString(36).slice(2)}`,
+    area: config.area || "Operativo",
+    title: config.title || "Azione operativa",
+    subtitle: config.subtitle || "",
+    due: config.due || "—",
+    value: config.value || "—",
+    severity: config.severity || "low",
+    status: config.status || "Da verificare",
+    next: config.next || "Apri la sezione collegata e verifica i dati.",
+    primary: config.primary || "Apri",
+    secondary: config.secondary || "",
+    action: config.action || "open-dashboard-view",
+    view: config.view || "dashboard",
+    targetId: config.targetId || "",
+    fields: Array.isArray(config.fields) ? config.fields : [],
+    notes: config.notes || "",
+    timeline: Array.isArray(config.timeline) ? config.timeline : [],
+    timeframe: config.timeframe || "week",
+    weight: config.weight || 0,
+  };
+}
+
+function getDashboardCommandActionAttrs(task = {}) {
+  const action = task.action || "open-dashboard-view";
+  const attrs = [`data-action="${escapeAttr(action)}"`];
+  if (task.targetId) attrs.push(`data-id="${escapeAttr(task.targetId)}"`);
+  if (task.view) attrs.push(`data-view="${escapeAttr(task.view)}"`);
+  return attrs.join(" ");
+}
+
+function getSalesRequestDashboardName(item = {}) {
+  if (typeof getSalesRequestDisplayName === "function") {
+    const name = getSalesRequestDisplayName(item);
+    if (name) return name;
+  }
+  return [item.name, item.surname].filter(Boolean).join(" ").trim()
+    || (state.lang === "it" ? "Richiesta senza nome" : "Unnamed request");
+}
+
+function getSalesRequestDashboardMeta(item = {}) {
+  return [item.city, item.sqm ? `${item.sqm} mq` : "", item.service || ""].filter(Boolean).join(" · ");
+}
+
+function buildDashboardCommandSalesTasks() {
+  const now = Date.now();
+  const toContact = (state.salesRequests || [])
+    .filter(isSalesRequestNewContactUnassigned)
+    .sort((a, b) => new Date(a.createdAt || a.updatedAt || 0) - new Date(b.createdAt || b.updatedAt || 0))
+    .slice(0, 6)
+    .map((item) => {
+      const created = new Date(item.createdAt || item.updatedAt || 0).getTime();
+      const ageDays = Number.isFinite(created) ? Math.max(0, Math.floor((now - created) / 86400000)) : 0;
+      const name = getSalesRequestDashboardName(item);
+      return makeDashboardCommandTask({
+        id: `sales-contact-${item.id}`,
+        area: "Vendite",
+        title: `${state.lang === "it" ? "Chiama" : "Call"} ${name}`,
+        subtitle: getSalesRequestDashboardMeta(item) || (state.lang === "it" ? "Nuova richiesta" : "New request"),
+        due: ageDays > 0 ? `${ageDays}g` : (state.lang === "it" ? "Oggi" : "Today"),
+        value: item.sqm ? `${item.sqm} mq` : "Lead",
+        severity: ageDays >= 3 ? "high" : "medium",
+        status: state.lang === "it" ? "Da chiamare" : "To call",
+        next: state.lang === "it" ? "Qualifica richiesta, misure, fondo e prossima azione." : "Qualify request, dimensions, surface and next action.",
+        primary: state.lang === "it" ? "Apri richiesta" : "Open request",
+        secondary: state.lang === "it" ? "Segna contatto" : "Log contact",
+        action: "select-sales-request",
+        view: "sales-requests",
+        targetId: item.id,
+        fields: [
+          [state.lang === "it" ? "Cliente" : "Client", name],
+          [state.lang === "it" ? "Fase" : "Stage", state.lang === "it" ? "Nuova" : "New"],
+          ["Mq", item.sqm ? `${item.sqm} mq` : "—"],
+          [state.lang === "it" ? "Blocco" : "Blocker", state.lang === "it" ? "Primo contatto" : "First contact"],
+        ],
+        notes: state.lang === "it"
+          ? "Lead ancora da qualificare: va trasformato in preventivo, sopralluogo o scarto consapevole."
+          : "Lead still to qualify: convert it into a quote, survey or conscious discard.",
+        timeline: [
+          state.lang === "it" ? "Richiesta ricevuta" : "Request received",
+          ageDays > 0 ? `${ageDays} ${state.lang === "it" ? "giorni senza primo contatto" : "days without first contact"}` : (state.lang === "it" ? "Da gestire oggi" : "To handle today"),
+        ],
+        timeframe: ageDays <= 1 ? "today" : "week",
+        weight: item.sqm ? toNumber(item.sqm) / 10 : 0,
+      });
+    });
+
+  const followups = buildFollowupReminders()
+    .slice(0, 6)
+    .map((item) => {
+      const name = getSalesRequestDashboardName(item);
+      const ref = item.quotedAt || item.updatedAt || "";
+      const daysAgo = ref ? Math.max(0, Math.floor((Date.now() - new Date(ref).getTime()) / 86400000)) : 0;
+      return makeDashboardCommandTask({
+        id: `sales-followup-${item.id}`,
+        area: "Vendite",
+        title: `${state.lang === "it" ? "Follow-up" : "Follow up"} ${name}`,
+        subtitle: getSalesRequestDashboardMeta(item) || (state.lang === "it" ? "Preventivo inviato" : "Quote sent"),
+        due: `${daysAgo}g`,
+        value: item.sqm ? `${item.sqm} mq` : "Quote",
+        severity: daysAgo >= 14 ? "high" : "medium",
+        status: state.lang === "it" ? "In attesa" : "Waiting",
+        next: state.lang === "it" ? "Richiamare il cliente e registrare l'esito del preventivo." : "Follow up with the client and record quote outcome.",
+        primary: state.lang === "it" ? "Apri richiesta" : "Open request",
+        secondary: state.lang === "it" ? "Segna follow-up" : "Log follow-up",
+        action: "select-sales-request",
+        view: "sales-requests",
+        targetId: item.id,
+        fields: [
+          [state.lang === "it" ? "Cliente" : "Client", name],
+          [state.lang === "it" ? "Fase" : "Stage", state.lang === "it" ? "Follow-up" : "Follow-up"],
+          [state.lang === "it" ? "Preventivo" : "Quote", daysAgo ? `${daysAgo}g` : "—"],
+          [state.lang === "it" ? "Blocco" : "Blocker", state.lang === "it" ? "Risposta cliente" : "Client answer"],
+        ],
+        notes: state.lang === "it"
+          ? "Preventivo fermo: se non rientra nella coda, tende a sparire dentro lo storico."
+          : "Stalled quote: if it is not surfaced, it tends to disappear in history.",
+        timeline: [
+          state.lang === "it" ? "Preventivo inviato" : "Quote sent",
+          `${daysAgo} ${state.lang === "it" ? "giorni senza esito" : "days without outcome"}`,
+        ],
+        timeframe: daysAgo >= 7 ? "today" : "week",
+        weight: daysAgo,
+      });
+    });
+
+  return [...toContact, ...followups].sort((a, b) => getDashboardCommandSortScore(b) - getDashboardCommandSortScore(a));
+}
+
+function buildDashboardCommandMaterialTasks() {
+  const orderTasks = (state.orders || [])
+    .filter(orderNeedsWarehouseWork)
+    .map((order) => {
+      const allocations = getOrderInventoryAllocations(order);
+      const stage = getUnifiedOrderStage(order);
+      const blocked = String(order.operations?.warehouse?.status || "").trim() === "bloccato";
+      const noAllocation = allocations.length === 0 && getSafeOrderSqm(order) > 0;
+      if (!blocked && !noAllocation) return null;
+      const title = blocked
+        ? (state.lang === "it" ? "Materiale bloccato" : "Blocked material")
+        : (state.lang === "it" ? "Impegna materiale" : "Commit material");
+      return makeDashboardCommandTask({
+        id: `materials-order-${order.id}`,
+        area: "Materiali",
+        title: `${title} ${getOrderNumber(order)}`,
+        subtitle: `${composeClientName(order)} · ${getPrimaryTurfLabel(order) || order.operations?.product || "—"}`,
+        due: order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : (state.lang === "it" ? "Prima preparazione" : "Before prep"),
+        value: `${Math.round(getSafeOrderSqm(order)) || "—"} mq`,
+        severity: blocked ? "high" : "medium",
+        status: blocked ? (state.lang === "it" ? "Bloccato" : "Blocked") : stage.label,
+        next: state.lang === "it"
+          ? "Apri Inventario e assegna rotolo o residuo compatibile all'ordine."
+          : "Open Inventory and assign a compatible roll or offcut to the order.",
+        primary: state.lang === "it" ? "Impegna materiale" : "Commit material",
+        secondary: state.lang === "it" ? "Apri ordine" : "Open order",
+        action: "select-order",
+        view: "warehouse",
+        targetId: order.id,
+        fields: [
+          [state.lang === "it" ? "Ordine" : "Order", getOrderNumber(order)],
+          [state.lang === "it" ? "Prodotto" : "Product", getPrimaryTurfLabel(order) || "—"],
+          [state.lang === "it" ? "Previsto" : "Expected", `${Math.round(getSafeOrderSqm(order)) || "—"} mq`],
+          [state.lang === "it" ? "Impegni" : "Allocations", String(allocations.length)],
+        ],
+        notes: state.lang === "it"
+          ? "La dashboard segnala gli ordini che rischiano di arrivare alla preparazione senza materiale assegnato."
+          : "The dashboard surfaces orders that may reach preparation without committed material.",
+        timeline: [
+          state.lang === "it" ? "Ordine in coda magazzino" : "Order in warehouse queue",
+          allocations.length ? `${allocations.length} ${state.lang === "it" ? "impegni presenti" : "allocations present"}` : (state.lang === "it" ? "Nessun rotolo impegnato" : "No roll committed"),
+        ],
+        timeframe: order.operations?.installation?.installDate ? "week" : "today",
+        weight: getSafeOrderSqm(order) / 10,
+      });
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+
+  let stockTasks = [];
+  try {
+    stockTasks = getInventorySummary()
+      .filter((group) => {
+        const isMeasured = Boolean(group.isMeasured || group.isModel);
+        const available = isMeasured ? toNumber(group.availableSqm) : toNumber(group.availableUnits);
+        const committed = isMeasured ? toNumber(group.committedSqm || 0) : toNumber(group.committedUnits || 0);
+        const demand = isMeasured ? toNumber(group.demandSqm || 0) : toNumber(group.demandUnits || 0);
+        return Math.max(0, demand - committed) > available || available <= (isMeasured ? 50 : 5);
+      })
+      .slice(0, 5)
+      .map((group, index) => {
+        const isMeasured = Boolean(group.isMeasured || group.isModel);
+        const available = isMeasured ? toNumber(group.availableSqm) : toNumber(group.availableUnits);
+        const unit = isMeasured ? "mq" : "u";
+        return makeDashboardCommandTask({
+          id: `materials-stock-${index}-${normalizeProductName(group.product || "")}`,
+          area: "Materiali",
+          title: `${state.lang === "it" ? "Verifica scorta" : "Check stock"} ${group.product || "—"}`,
+          subtitle: state.lang === "it" ? "Disponibilita sotto soglia o domanda scoperta" : "Low availability or uncovered demand",
+          due: state.lang === "it" ? "Questa settimana" : "This week",
+          value: `${Math.round(available)} ${unit}`,
+          severity: available <= 0 ? "high" : "medium",
+          status: state.lang === "it" ? "Scorta" : "Stock",
+          next: state.lang === "it" ? "Apri Inventario e valuta riordino o sostituzione materiale." : "Open Inventory and evaluate reorder or substitution.",
+          primary: state.lang === "it" ? "Apri inventario" : "Open inventory",
+          secondary: state.lang === "it" ? "Verifica richieste" : "Check requests",
+          action: "open-dashboard-view",
+          view: "warehouse",
+          fields: [
+            [state.lang === "it" ? "Articolo" : "Item", group.product || "—"],
+            [state.lang === "it" ? "Disponibile" : "Available", `${Math.round(available)} ${unit}`],
+            [state.lang === "it" ? "Impegnato" : "Committed", `${Math.round(isMeasured ? toNumber(group.committedSqm || 0) : toNumber(group.committedUnits || 0))} ${unit}`],
+            [state.lang === "it" ? "Domanda" : "Demand", `${Math.round(isMeasured ? toNumber(group.demandSqm || 0) : toNumber(group.demandUnits || 0))} ${unit}`],
+          ],
+          notes: state.lang === "it"
+            ? "Allarme di stock letto dalla disponibilita reale e dagli impegni aperti."
+            : "Stock alert derived from real availability and open commitments.",
+          timeline: [
+            state.lang === "it" ? "Giacenza letta" : "Stock read",
+            state.lang === "it" ? "Domanda confrontata con impegni" : "Demand compared with commitments",
+          ],
+          timeframe: "week",
+          weight: Math.max(0, 80 - available),
+        });
+      });
+  } catch {}
+
+  return [...orderTasks, ...stockTasks].sort((a, b) => getDashboardCommandSortScore(b) - getDashboardCommandSortScore(a));
+}
+
+function buildDashboardCommandInstallationTasks() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayKey = today.toISOString().slice(0, 10);
+  const horizon = new Date(today);
+  horizon.setDate(horizon.getDate() + 7);
+  const horizonKey = horizon.toISOString().slice(0, 10);
+
+  return (state.orders || [])
+    .filter((order) => {
+      const install = order.operations?.installation || {};
+      return orderNeedsInstallationAction(order) || (install.installDate && install.installDate >= todayKey && install.installDate <= horizonKey);
+    })
+    .sort((a, b) => String(a.operations?.installation?.installDate || "9999-12-31").localeCompare(String(b.operations?.installation?.installDate || "9999-12-31")))
+    .slice(0, 8)
+    .map((order) => {
+      const install = order.operations?.installation || {};
+      const missingMaterials = orderNeedsWarehouseWork(order) && getOrderInventoryAllocations(order).length === 0;
+      const missingConfirm = !install.clientConfirmed;
+      const missingDate = !install.installDate;
+      const severity = missingMaterials || missingDate ? "high" : missingConfirm ? "medium" : "low";
+      return makeDashboardCommandTask({
+        id: `install-${order.id}`,
+        area: "Pose",
+        title: missingMaterials
+          ? `${state.lang === "it" ? "Cantiere senza materiali" : "Job without materials"} ${getOrderNumber(order)}`
+          : `${state.lang === "it" ? "Verifica posa" : "Check install"} ${composeClientName(order)}`,
+        subtitle: `${composeAddress(order) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending")} · ${Math.round(getSafeOrderSqm(order)) || "—"} mq`,
+        due: install.installDate ? formatDate(install.installDate) : (state.lang === "it" ? "Data da fissare" : "Date pending"),
+        value: install.crew || (state.lang === "it" ? "Squadra" : "Crew"),
+        severity,
+        status: getInstallationStatusLabel(install.status, Boolean(install.installDate)),
+        next: missingMaterials
+          ? (state.lang === "it" ? "Completa impegno materiali prima di confermare il cantiere." : "Complete material commitment before confirming the job.")
+          : missingDate
+            ? (state.lang === "it" ? "Fissa data e squadra per trasformare la posa in operativa." : "Set date and crew to make the job operational.")
+            : (state.lang === "it" ? "Conferma cliente, squadra e criticita prima dell'uscita." : "Confirm client, crew and critical points before dispatch."),
+        primary: state.lang === "it" ? "Apri posa" : "Open install",
+        secondary: state.lang === "it" ? "Apri ordine" : "Open order",
+        action: "select-order",
+        view: "installations",
+        targetId: order.id,
+        fields: [
+          [state.lang === "it" ? "Cliente" : "Client", composeClientName(order)],
+          [state.lang === "it" ? "Squadra" : "Crew", install.crew || "—"],
+          [state.lang === "it" ? "Data" : "Date", install.installDate ? formatDate(install.installDate) : "—"],
+          [state.lang === "it" ? "Blocco" : "Blocker", missingMaterials ? (state.lang === "it" ? "Materiali" : "Materials") : missingConfirm ? (state.lang === "it" ? "Conferma" : "Confirmation") : "—"],
+        ],
+        notes: state.lang === "it"
+          ? "La dashboard mette in alto i cantieri che rischiano di arrivare in calendario senza preparazione completa."
+          : "The dashboard elevates jobs that may reach the calendar without full preparation.",
+        timeline: [
+          state.lang === "it" ? "Posa presente in calendario/coda" : "Install present in calendar/queue",
+          missingMaterials ? (state.lang === "it" ? "Materiali da completare" : "Materials to complete") : (state.lang === "it" ? "Preparazione da verificare" : "Preparation to check"),
+        ],
+        timeframe: install.installDate === todayKey || missingDate ? "today" : "week",
+        weight: getSafeOrderSqm(order) / 10,
+      });
+    })
+    .sort((a, b) => getDashboardCommandSortScore(b) - getDashboardCommandSortScore(a));
+}
+
+function buildDashboardCommandMoneyTasks() {
+  const accountingTasks = (state.orders || [])
+    .filter(orderNeedsAccountingAction)
+    .sort((a, b) => getOpenBalance(b) - getOpenBalance(a))
+    .slice(0, 8)
+    .map((order) => {
+      const balance = getOpenBalance(order);
+      const invoiceMissing = Boolean(order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
+      return makeDashboardCommandTask({
+        id: `money-order-${order.id}`,
+        area: "Soldi",
+        title: balance > 0
+          ? `${state.lang === "it" ? "Controlla saldo" : "Check balance"} ${getOrderNumber(order)}`
+          : `${state.lang === "it" ? "Fattura da emettere" : "Invoice to issue"} ${getOrderNumber(order)}`,
+        subtitle: composeClientName(order),
+        due: state.lang === "it" ? "Oggi" : "Today",
+        value: balance > 0 ? formatCurrency(balance) : (state.lang === "it" ? "Fattura" : "Invoice"),
+        severity: balance > 500 ? "high" : invoiceMissing ? "medium" : "low",
+        status: balance > 0 ? (state.lang === "it" ? "Saldo aperto" : "Open balance") : (state.lang === "it" ? "Documento" : "Document"),
+        next: balance > 0
+          ? (state.lang === "it" ? "Verifica incasso, Shopify e registrazioni interne." : "Check payment, Shopify and internal records.")
+          : (state.lang === "it" ? "Completa documento contabile richiesto." : "Complete required accounting document."),
+        primary: state.lang === "it" ? "Apri contabilita" : "Open accounting",
+        secondary: state.lang === "it" ? "Apri ordine" : "Open order",
+        action: "select-order",
+        view: "accounting",
+        targetId: order.id,
+        fields: [
+          [state.lang === "it" ? "Ordine" : "Order", getOrderNumber(order)],
+          [state.lang === "it" ? "Cliente" : "Client", composeClientName(order)],
+          [state.lang === "it" ? "Saldo" : "Balance", formatCurrency(balance)],
+          [state.lang === "it" ? "Fattura" : "Invoice", invoiceMissing ? (state.lang === "it" ? "Da emettere" : "To issue") : "—"],
+        ],
+        notes: state.lang === "it"
+          ? "La dashboard intercetta ordini operativi che rischiano di restare aperti economicamente."
+          : "The dashboard catches operational orders that may remain financially open.",
+        timeline: [
+          state.lang === "it" ? "Ordine letto da contabilita" : "Order read from accounting",
+          balance > 0 ? (state.lang === "it" ? "Saldo ancora aperto" : "Balance still open") : (state.lang === "it" ? "Documento richiesto" : "Document required"),
+        ],
+        timeframe: balance > 0 ? "today" : "week",
+        weight: balance / 100,
+      });
+    });
+
+  const ddtTasks = getDdtEligibleOrders()
+    .filter((order) => !ddtOrderHasNumber(order))
+    .slice(0, 4)
+    .map((order) => makeDashboardCommandTask({
+      id: `money-ddt-${order.id}`,
+      area: "Soldi",
+      title: `${state.lang === "it" ? "DDT mancante" : "Missing DDT"} ${getOrderNumber(order)}`,
+      subtitle: composeClientName(order),
+      due: state.lang === "it" ? "Prima uscita merce" : "Before dispatch",
+      value: "DDT",
+      severity: "medium",
+      status: state.lang === "it" ? "Documento" : "Document",
+      next: state.lang === "it" ? "Apri DDT e genera il documento prima dell'uscita merce." : "Open DDT and generate the document before dispatch.",
+      primary: state.lang === "it" ? "Apri DDT" : "Open DDT",
+      secondary: state.lang === "it" ? "Apri spedizione" : "Open shipping",
+      action: "open-dashboard-view",
+      view: "ddt",
+      fields: [
+        [state.lang === "it" ? "Ordine" : "Order", getOrderNumber(order)],
+        [state.lang === "it" ? "Cliente" : "Client", composeClientName(order)],
+        [state.lang === "it" ? "Area" : "Area", state.lang === "it" ? "Logistica" : "Logistics"],
+        [state.lang === "it" ? "Blocco" : "Blocker", "DDT"],
+      ],
+      notes: state.lang === "it"
+        ? "Documento mancante prima della consegna o spedizione."
+        : "Document missing before delivery or shipment.",
+      timeline: [
+        state.lang === "it" ? "Ordine idoneo a DDT" : "Order eligible for DDT",
+        state.lang === "it" ? "Numero non ancora presente" : "Number still missing",
+      ],
+      timeframe: "week",
+      weight: 20,
+    }));
+
+  return [...accountingTasks, ...ddtTasks].sort((a, b) => getDashboardCommandSortScore(b) - getDashboardCommandSortScore(a));
+}
+
+function buildDashboardCommandModel() {
+  const salesTasks = buildDashboardCommandSalesTasks();
+  const materialTasks = buildDashboardCommandMaterialTasks();
+  const installationTasks = buildDashboardCommandInstallationTasks();
+  const moneyTasks = buildDashboardCommandMoneyTasks();
+  const allTasks = [...salesTasks.slice(0, 4), ...materialTasks.slice(0, 4), ...installationTasks.slice(0, 3), ...moneyTasks.slice(0, 3)]
+    .sort((a, b) => getDashboardCommandSortScore(b) - getDashboardCommandSortScore(a));
+
+  const stockSnapshot = (() => {
+    try { return getDashboardInventorySnapshot(); } catch { return { uncovered: 0, totalAvailableSqm: 0 }; }
+  })();
+  const upcomingWeek = buildDashboardCommandInstallationTasks().filter((task) => task.timeframe === "week" || task.timeframe === "today");
+  const openBalanceTotal = (state.orders || []).reduce((sum, order) => sum + getOpenBalance(order), 0);
+  const ddtMissingCount = getDdtEligibleOrders().filter((order) => !ddtOrderHasNumber(order)).length;
+
+  return {
+    dashboard: {
+      nav: "Oggi",
+      icon: "OG",
+      title: state.lang === "it" ? "Cabina di regia" : "Command center",
+      subtitle: state.lang === "it" ? "Priorita operative, blocchi e prossime azioni della giornata." : "Operational priorities, blockers and next actions.",
+      queueKicker: state.lang === "it" ? "Coda operativa" : "Operational queue",
+      queueTitle: state.lang === "it" ? "Da fare adesso" : "Do now",
+      tasks: allTasks,
+      metrics: [
+        { label: state.lang === "it" ? "Azioni oggi" : "Actions today", value: String(allTasks.filter((task) => task.timeframe === "today" || task.severity === "high").length), note: state.lang === "it" ? "Vendite, materiali, pose e soldi" : "Sales, materials, installs and money", tone: "sales" },
+        { label: state.lang === "it" ? "Materiali a rischio" : "Material risks", value: String(materialTasks.filter((task) => task.severity !== "low").length), note: state.lang === "it" ? "Ordini o scorte da controllare" : "Orders or stock to check", tone: "materials" },
+        { label: state.lang === "it" ? "Pose prossime" : "Upcoming installs", value: String(upcomingWeek.length), note: state.lang === "it" ? "Entro i prossimi 7 giorni" : "Within the next 7 days", tone: "installations" },
+        { label: state.lang === "it" ? "Soldi da chiudere" : "Money to close", value: String(moneyTasks.length), note: formatCurrency(openBalanceTotal), tone: "money" },
+      ],
+    },
+    sales: {
+      nav: "Vendite",
+      icon: "VE",
+      title: state.lang === "it" ? "Vendite da seguire" : "Sales to follow",
+      subtitle: state.lang === "it" ? "Richieste ferme, preventivi da inviare e follow-up che portano fatturato." : "Stalled requests, quotes to send and revenue follow-ups.",
+      queueKicker: state.lang === "it" ? "Coda commerciale" : "Sales queue",
+      queueTitle: state.lang === "it" ? "Prima le azioni con scadenza" : "Deadline first",
+      tasks: salesTasks,
+      metrics: [
+        { label: state.lang === "it" ? "Da chiamare" : "To call", value: String(salesTasks.filter((task) => task.status === "Da chiamare").length), note: state.lang === "it" ? "Nuovi contatti" : "New contacts", tone: "sales" },
+        { label: state.lang === "it" ? "Follow-up" : "Follow-ups", value: String(buildFollowupReminders().length), note: state.lang === "it" ? "Preventivi in attesa" : "Quotes waiting", tone: "sales" },
+        { label: state.lang === "it" ? "Richieste aperte" : "Open requests", value: String((state.salesRequests || []).filter((item) => !isSalesRequestClosedStatus(item.status)).length), note: state.lang === "it" ? "Non vinte/perse" : "Not won/lost", tone: "sales" },
+        { label: state.lang === "it" ? "Bloccate" : "Blocked", value: String(salesTasks.filter((task) => task.severity === "high").length), note: state.lang === "it" ? "Senza esito" : "No outcome", tone: "sales" },
+      ],
+    },
+    materials: {
+      nav: "Materiali",
+      icon: "MA",
+      title: state.lang === "it" ? "Materiali a rischio" : "Material risks",
+      subtitle: state.lang === "it" ? "Ordini e pose dove il previsto non e' ancora coperto da impegni di magazzino." : "Orders and jobs whose expected materials are not fully committed.",
+      queueKicker: state.lang === "it" ? "Da impegnare" : "To commit",
+      queueTitle: state.lang === "it" ? "Prima scadenze e prodotti critici" : "Deadlines and critical products first",
+      tasks: materialTasks,
+      metrics: [
+        { label: state.lang === "it" ? "Ordini/scorte" : "Orders/stock", value: String(materialTasks.length), note: state.lang === "it" ? "Da controllare" : "To check", tone: "materials" },
+        { label: state.lang === "it" ? "Scoperti" : "Uncovered", value: String(stockSnapshot.uncovered || 0), note: state.lang === "it" ? "Fabbisogno > disponibilita" : "Demand > availability", tone: "materials" },
+        { label: state.lang === "it" ? "Disponibile prato" : "Turf available", value: `${Math.round(stockSnapshot.totalAvailableSqm || 0)} mq`, note: state.lang === "it" ? "Giacenza netta" : "Net stock", tone: "materials" },
+        { label: state.lang === "it" ? "Alta priorita" : "High priority", value: String(materialTasks.filter((task) => task.severity === "high").length), note: state.lang === "it" ? "Da fare subito" : "Do now", tone: "materials" },
+      ],
+    },
+    installations: {
+      nav: "Pose",
+      icon: "PO",
+      title: state.lang === "it" ? "Pose prossime" : "Upcoming installs",
+      subtitle: state.lang === "it" ? "Cantieri in arrivo con materiali, squadra, foto e criticita operative." : "Upcoming jobs with materials, crews, photos and critical points.",
+      queueKicker: state.lang === "it" ? "Cantieri da blindare" : "Jobs to lock",
+      queueTitle: state.lang === "it" ? "Prima quelli vicini e con blocchi" : "Closest and blocked first",
+      tasks: installationTasks,
+      metrics: [
+        { label: state.lang === "it" ? "In coda" : "Queued", value: String(installationTasks.length), note: state.lang === "it" ? "Da verificare" : "To check", tone: "installations" },
+        { label: state.lang === "it" ? "Critiche" : "Critical", value: String(installationTasks.filter((task) => task.severity === "high").length), note: state.lang === "it" ? "Materiali o data" : "Materials or date", tone: "installations" },
+        { label: state.lang === "it" ? "Settimana" : "Week", value: String(installationTasks.filter((task) => task.timeframe === "week").length), note: state.lang === "it" ? "Prossimi 7 giorni" : "Next 7 days", tone: "installations" },
+        { label: state.lang === "it" ? "Mq" : "Sqm", value: `${Math.round((state.orders || []).filter(orderNeedsInstallationAction).reduce((sum, order) => sum + getSafeOrderSqm(order), 0))} mq`, note: state.lang === "it" ? "Da gestire" : "To handle", tone: "installations" },
+      ],
+    },
+    money: {
+      nav: "Soldi",
+      icon: "SO",
+      title: state.lang === "it" ? "Soldi da chiudere" : "Money to close",
+      subtitle: state.lang === "it" ? "Saldi, Shopify, fatture e DDT che bloccano la chiusura economica." : "Balances, Shopify, invoices and DDT blocking financial closure.",
+      queueKicker: state.lang === "it" ? "Coda contabilita" : "Accounting queue",
+      queueTitle: state.lang === "it" ? "Prima saldi e documenti" : "Balances and documents first",
+      tasks: moneyTasks,
+      metrics: [
+        { label: state.lang === "it" ? "Saldo aperto" : "Open balance", value: String((state.orders || []).filter((order) => getOpenBalance(order) > 0).length), note: formatCurrency(openBalanceTotal), tone: "money" },
+        { label: state.lang === "it" ? "Fatture" : "Invoices", value: String((state.orders || []).filter((order) => order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued).length), note: state.lang === "it" ? "Da emettere" : "To issue", tone: "money" },
+        { label: state.lang === "it" ? "DDT" : "DDT", value: String(ddtMissingCount), note: state.lang === "it" ? "Mancanti" : "Missing", tone: "money" },
+        { label: state.lang === "it" ? "Alta priorita" : "High priority", value: String(moneyTasks.filter((task) => task.severity === "high").length), note: state.lang === "it" ? "Da chiudere oggi" : "Close today", tone: "money" },
+      ],
+    },
+  };
+}
+
+function filterDashboardCommandTasks(tasks = []) {
+  const filter = state.dashboardCommandFilter || "risk";
+  if (filter === "today") return tasks.filter((task) => task.timeframe === "today" || task.severity === "high");
+  if (filter === "risk") return tasks.filter((task) => task.severity !== "low");
+  return tasks;
+}
+
+function renderDashboardCommandNav(model) {
+  if (!ui.dashboardCommandNav) return;
+  const keys = ["dashboard", "sales", "materials", "installations", "money"];
+  ui.dashboardCommandNav.innerHTML = keys.map((key) => {
+    const view = model[key];
+    const active = key === state.dashboardCommandView;
+    return `
+      <button type="button" class="dashboard-command-nav-button ${active ? "is-active" : ""}" data-action="set-dashboard-command-view" data-command-view="${escapeAttr(key)}">
+        <span class="dashboard-command-nav-icon" aria-hidden="true">${escapeHtml(view.icon)}</span>
+        <span>${escapeHtml(view.nav)}</span>
+        <span class="dashboard-command-nav-count">${view.tasks.length}</span>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderDashboardCommandMetrics(metrics = []) {
+  if (!ui.dashboardCommandMetrics) return;
+  ui.dashboardCommandMetrics.innerHTML = metrics.map((metric) => `
+    <article class="dashboard-command-metric tone-${escapeAttr(metric.tone || "sales")}">
+      <span class="dashboard-command-muted">${escapeHtml(metric.label)}</span>
+      <span class="dashboard-command-metric-value">${escapeHtml(metric.value)}</span>
+      <span>${escapeHtml(metric.note || "")}</span>
+    </article>
+  `).join("");
+}
+
+function renderDashboardCommandQueue(tasks = []) {
+  if (!ui.dashboardCommandQueue) return;
+  ui.dashboardCommandQueueCount.textContent = String(tasks.length);
+  if (!tasks.length) {
+    ui.dashboardCommandQueue.innerHTML = `<div class="dashboard-command-empty">${state.lang === "it" ? "Nessuna urgenza in questa vista." : "No urgency in this view."}</div>`;
+    return;
+  }
+  if (!tasks.some((task) => task.id === state.dashboardCommandSelectedTaskId)) {
+    state.dashboardCommandSelectedTaskId = tasks[0].id;
+  }
+  ui.dashboardCommandQueue.innerHTML = tasks.map((task) => {
+    const tone = getDashboardCommandTone(task.severity);
+    return `
+      <button type="button" class="dashboard-command-task ${task.id === state.dashboardCommandSelectedTaskId ? "is-selected" : ""}" data-action="select-dashboard-command-task" data-task-id="${escapeAttr(task.id)}">
+        <div class="dashboard-command-task-top">
+          <div class="dashboard-command-task-copy">
+            <span class="dashboard-command-task-title">${escapeHtml(task.title)}</span>
+            <span class="dashboard-command-task-meta">${escapeHtml(task.subtitle || "—")}</span>
+          </div>
+          <span class="dashboard-command-badge tone-${tone}">${escapeHtml(getDashboardCommandSeverityLabel(task.severity))}</span>
+        </div>
+        <div class="dashboard-command-task-bottom">
+          <span class="dashboard-command-task-meta">${escapeHtml(task.area)} · ${escapeHtml(task.due)}</span>
+          <span class="dashboard-command-badge">${escapeHtml(task.value)}</span>
+        </div>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderDashboardCommandDetail(task = null) {
+  if (!ui.dashboardCommandDetail) return;
+  if (!task) {
+    ui.dashboardCommandDetailSeverity.textContent = "—";
+    ui.dashboardCommandDetailSeverity.className = "dashboard-command-badge";
+    ui.dashboardCommandDetail.innerHTML = `<div class="dashboard-command-empty">${state.lang === "it" ? "Seleziona una riga dalla coda." : "Select a row from the queue."}</div>`;
+    return;
+  }
+  const tone = getDashboardCommandTone(task.severity);
+  ui.dashboardCommandDetailSeverity.className = `dashboard-command-badge tone-${tone}`;
+  ui.dashboardCommandDetailSeverity.textContent = getDashboardCommandSeverityLabel(task.severity);
+  const actionAttrs = getDashboardCommandActionAttrs(task);
+  ui.dashboardCommandDetail.innerHTML = `
+    <div class="dashboard-command-detail-hero">
+      <div class="dashboard-command-detail-kicker">
+        <div class="dashboard-command-badge-line">
+          <span class="dashboard-command-badge">${escapeHtml(task.area)}</span>
+          <span class="dashboard-command-badge">${escapeHtml(task.status)}</span>
+        </div>
+        <span class="dashboard-command-muted">${escapeHtml(task.due)}</span>
+      </div>
+      <div>
+        <div class="dashboard-command-detail-title">${escapeHtml(task.title)}</div>
+        <div class="dashboard-command-muted">${escapeHtml(task.subtitle || "")}</div>
+      </div>
+    </div>
+
+    <div class="dashboard-command-next">
+      <div>
+        <span class="dashboard-command-muted">${state.lang === "it" ? "Prossima azione" : "Next action"}</span>
+        <strong>${escapeHtml(task.next)}</strong>
+      </div>
+      <button class="btn primary" type="button" ${actionAttrs}>${escapeHtml(task.primary)}</button>
+    </div>
+
+    <div class="dashboard-command-fields">
+      ${task.fields.map(([label, value]) => `
+        <div class="dashboard-command-field">
+          <span class="dashboard-command-field-label">${escapeHtml(label)}</span>
+          <span class="dashboard-command-field-value">${escapeHtml(value)}</span>
+        </div>
+      `).join("")}
+    </div>
+
+    <div class="dashboard-command-detail-grid">
+      <div class="dashboard-command-mini">
+        <div class="dashboard-command-mini-title">${state.lang === "it" ? "Nota operativa" : "Operational note"}</div>
+        <div>${escapeHtml(task.notes || "—")}</div>
+        <div class="dashboard-command-actions">
+          <button class="btn primary" type="button" ${actionAttrs}>${escapeHtml(task.primary)}</button>
+          ${task.secondary ? `<button class="btn" type="button" ${actionAttrs}>${escapeHtml(task.secondary)}</button>` : ""}
+        </div>
+      </div>
+      <div class="dashboard-command-mini">
+        <div class="dashboard-command-mini-title">${state.lang === "it" ? "Storico essenziale" : "Essential history"}</div>
+        <div class="dashboard-command-timeline">
+          ${(task.timeline.length ? task.timeline : [state.lang === "it" ? "Dato letto dalla sezione collegata" : "Data read from linked section"]).map((line) => `
+            <div class="dashboard-command-timeline-item">
+              <span class="dashboard-command-dot"></span>
+              <span>${escapeHtml(line)}</span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderDashboardCommandModules(model) {
+  if (!ui.dashboardCommandModules) return;
+  const moduleDefs = [
+    {
+      key: "sales",
+      tone: "sales",
+      title: "Vendite",
+      summary: state.lang === "it" ? "Richieste e preventivi che possono diventare fatturato." : "Requests and quotes that can become revenue.",
+      items: [
+        `${model.sales.tasks.length} ${state.lang === "it" ? "azioni commerciali" : "sales actions"}`,
+        `${buildFollowupReminders().length} follow-up`,
+        `${(state.salesRequests || []).filter(isSalesRequestNewContactUnassigned).length} ${state.lang === "it" ? "nuovi contatti" : "new contacts"}`,
+      ],
+    },
+    {
+      key: "materials",
+      tone: "materials",
+      title: "Materiali",
+      summary: state.lang === "it" ? "Ordini e pose senza copertura completa di magazzino." : "Orders and jobs without full warehouse coverage.",
+      items: [
+        `${model.materials.tasks.length} ${state.lang === "it" ? "segnali" : "signals"}`,
+        `${model.materials.tasks.filter((task) => task.severity === "high").length} ${state.lang === "it" ? "critici" : "critical"}`,
+        state.lang === "it" ? "Impegni e scorte" : "Commitments and stock",
+      ],
+    },
+    {
+      key: "installations",
+      tone: "installations",
+      title: "Pose",
+      summary: state.lang === "it" ? "Cantieri prossimi con squadre, criticita e preparazione." : "Upcoming jobs with crews, critical points and preparation.",
+      items: [
+        `${model.installations.tasks.length} ${state.lang === "it" ? "cantieri" : "jobs"}`,
+        `${model.installations.tasks.filter((task) => task.severity === "high").length} ${state.lang === "it" ? "con blocchi" : "blocked"}`,
+        state.lang === "it" ? "Calendario + preparazione" : "Calendar + preparation",
+      ],
+    },
+    {
+      key: "money",
+      tone: "money",
+      title: "Soldi",
+      summary: state.lang === "it" ? "Saldi, DDT e pagamenti da allineare." : "Balances, DDT and payments to align.",
+      items: [
+        `${model.money.tasks.length} ${state.lang === "it" ? "azioni" : "actions"}`,
+        `${(state.orders || []).filter((order) => getOpenBalance(order) > 0).length} ${state.lang === "it" ? "saldi aperti" : "open balances"}`,
+        `${getDdtEligibleOrders().filter((order) => !ddtOrderHasNumber(order)).length} DDT`,
+      ],
+    },
+  ];
+  ui.dashboardCommandModules.innerHTML = moduleDefs.map((module) => `
+    <article class="dashboard-command-module tone-${escapeAttr(module.tone)}">
+      <div class="dashboard-command-module-head">
+        <div>
+          <div class="dashboard-command-module-title">${escapeHtml(module.title)}</div>
+          <div class="dashboard-command-muted">${escapeHtml(module.summary)}</div>
+        </div>
+        <span class="dashboard-command-badge">${model[module.key].tasks.length}</span>
+      </div>
+      <div class="dashboard-command-module-list">
+        ${module.items.map((item) => `
+          <div class="dashboard-command-module-item">
+            <span class="dashboard-command-module-dot"></span>
+            <span>${escapeHtml(item)}</span>
+          </div>
+        `).join("")}
+      </div>
+      <button class="btn" type="button" data-action="set-dashboard-command-view" data-command-view="${escapeAttr(module.key)}">${state.lang === "it" ? "Apri" : "Open"} ${escapeHtml(module.title)}</button>
+    </article>
+  `).join("");
+}
+
+function renderDashboardCommandCenter() {
+  if (!ui.dashboardCommandNav || !ui.dashboardCommandQueue || !ui.dashboardCommandDetail) return;
+  const model = buildDashboardCommandModel();
+  if (!model[state.dashboardCommandView]) state.dashboardCommandView = "dashboard";
+  const view = model[state.dashboardCommandView];
+  const filteredTasks = filterDashboardCommandTasks(view.tasks);
+  const visibleTasks = filteredTasks.length ? filteredTasks : view.tasks;
+  if (!visibleTasks.some((task) => task.id === state.dashboardCommandSelectedTaskId)) {
+    state.dashboardCommandSelectedTaskId = visibleTasks[0]?.id || "";
+  }
+  const selectedTask = visibleTasks.find((task) => task.id === state.dashboardCommandSelectedTaskId) || visibleTasks[0] || null;
+
+  if (ui.dashboardCommandTitle) ui.dashboardCommandTitle.textContent = view.title;
+  if (ui.dashboardCommandSubtitle) ui.dashboardCommandSubtitle.textContent = view.subtitle;
+  if (ui.dashboardCommandQueueKicker) ui.dashboardCommandQueueKicker.textContent = view.queueKicker;
+  if (ui.dashboardCommandQueueTitle) ui.dashboardCommandQueueTitle.textContent = view.queueTitle;
+  (ui.dashboardCommandFilters || []).forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.filter === state.dashboardCommandFilter);
+  });
+  renderDashboardCommandNav(model);
+  renderDashboardCommandMetrics(view.metrics);
+  renderDashboardCommandQueue(visibleTasks);
+  renderDashboardCommandDetail(selectedTask);
+  renderDashboardCommandModules(model);
+}
+
 function renderDashboardHeroKpisWarehouse(queueOrders, stockAlertsCount) {
   if (!ui.dashboardHeroKpisWarehouse) return;
   const totalQueueSqm = queueOrders.reduce((sum, o) => sum + getSafeOrderSqm(o), 0);
@@ -12320,15 +13049,7 @@ function renderDashboard() {
   if (ui.dashboardSubtitle) ui.dashboardSubtitle.textContent = getDashboardSubtitle();
 
   if (role === "office") {
-    loadMarketingTokenHealthOnce().catch((e) => reportError("marketing:token-health", e));
-    renderDashboardHeroKpis();
-    renderDashboardMetricsStrip();
-    renderDashboardNotifications();
-    renderDashboardTeamPerformance();
-    renderDashboardWeekSummary();
-    renderDashboardTeamAttendance();
-    renderDashboardActions();
-    renderDashboardFollowup();
+    renderDashboardCommandCenter();
     return;
   }
   if (role === "warehouse") {
@@ -30892,6 +31613,25 @@ function handleGlobalClick(event) {
   if (!button) return;
   const action = button.dataset.action;
   const id = button.dataset.id;
+  if (action === "set-dashboard-command-view") {
+    const next = button.dataset.commandView || "dashboard";
+    state.dashboardCommandView = ["dashboard", "sales", "materials", "installations", "money"].includes(next) ? next : "dashboard";
+    state.dashboardCommandSelectedTaskId = "";
+    renderDashboardCommandCenter();
+    return;
+  }
+  if (action === "select-dashboard-command-task") {
+    state.dashboardCommandSelectedTaskId = button.dataset.taskId || "";
+    renderDashboardCommandCenter();
+    return;
+  }
+  if (action === "dashboard-command-filter") {
+    const next = button.dataset.filter || "risk";
+    state.dashboardCommandFilter = ["today", "week", "risk"].includes(next) ? next : "risk";
+    state.dashboardCommandSelectedTaskId = "";
+    renderDashboardCommandCenter();
+    return;
+  }
   if (action === "shp-toggle-material-detail") {
     // Solo un toggle visivo (clamp CSS su una riga -> testo intero), niente
     // stato/re-render: eviterebbe di riapparire clampato al primo giro di
