@@ -27497,7 +27497,7 @@ body.mobile-safe-mode .main-content {
 
 #dashboard .dashboard-command-workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 0.9fr) minmax(360px, 1.1fr);
+  grid-template-columns: minmax(340px, 0.92fr) minmax(420px, 1.08fr);
   gap: 14px;
   align-items: start;
 }
@@ -27505,6 +27505,24 @@ body.mobile-safe-mode .main-content {
 #dashboard .dashboard-command-panel {
   min-width: 0;
   overflow: hidden;
+}
+
+#dashboard .dashboard-command-queue-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(760px, calc(100vh - 230px));
+}
+
+#dashboard .dashboard-command-queue-panel .dashboard-command-queue {
+  min-height: 0;
+  overflow: auto;
+}
+
+#dashboard .dashboard-command-detail-panel {
+  position: sticky;
+  top: 92px;
+  max-height: calc(100vh - 110px);
+  overflow: auto;
 }
 
 #dashboard .dashboard-command-panel-head {
@@ -27720,6 +27738,18 @@ body.mobile-safe-mode .main-content {
   align-items: start;
 }
 
+#dashboard .dashboard-command-module-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-self: end;
+}
+
+#dashboard .dashboard-command-module-actions .btn {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
 #dashboard .dashboard-command-module-dot {
   width: 8px;
   height: 8px;
@@ -27792,6 +27822,16 @@ body.mobile-safe-mode .main-content {
   #dashboard .dashboard-command-workspace,
   #dashboard .dashboard-command-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  #dashboard .dashboard-command-queue-panel,
+  #dashboard .dashboard-command-detail-panel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  #dashboard .dashboard-command-detail-panel {
+    position: static;
   }
 }
 

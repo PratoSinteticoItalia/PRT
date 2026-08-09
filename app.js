@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260809-dashboard-sales-stats-scope-fix";
+} from "./lib/order-money.js?v=20260809-dashboard-command-priority-links";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260809-dashboard-sales-stats-scope-fix";
+import { regionForCity } from "./lib/geo.js?v=20260809-dashboard-command-priority-links";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260809-dashboard-sales-stats-scope-fix";
+} from "./lib/shipping-eligibility.js?v=20260809-dashboard-command-priority-links";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260809-dashboard-sales-stats-scope-fix";
+} from "./lib/profit-split.js?v=20260809-dashboard-command-priority-links";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260809-dashboard-sales-stats-scope-fix";
+} from "./lib/preventivo-pricing.js?v=20260809-dashboard-command-priority-links";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260809-dashboard-sales-stats-scope-fix";
+const APP_SHELL_VERSION = "20260809-dashboard-command-priority-links";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11306,6 +11306,7 @@ function makeDashboardCommandTask(config = {}) {
     fields: Array.isArray(config.fields) ? config.fields : [],
     notes: config.notes || "",
     timeline: Array.isArray(config.timeline) ? config.timeline : [],
+    actions: Array.isArray(config.actions) ? config.actions : [],
     timeframe: config.timeframe || "week",
     weight: config.weight || 0,
   };
@@ -11319,6 +11320,14 @@ function getDashboardCommandActionAttrs(task = {}) {
   return attrs.join(" ");
 }
 
+function getDashboardCommandSupplierAction() {
+  return {
+    label: state.lang === "it" ? "Apri fornitori" : "Open suppliers",
+    action: "open-dashboard-view",
+    view: "supplier-prices",
+  };
+}
+
 function getSalesRequestDashboardName(item = {}) {
   if (typeof getSalesRequestDisplayName === "function") {
     const name = getSalesRequestDisplayName(item);
@@ -11330,6 +11339,38 @@ function getSalesRequestDashboardName(item = {}) {
 
 function getSalesRequestDashboardMeta(item = {}) {
   return [item.city, item.sqm ? `${item.sqm} mq` : "", item.service || ""].filter(Boolean).join(" · ");
+}
+
+const DASHBOARD_SALES_NEW_CONTACT_MAX_DAYS = 30;
+const DASHBOARD_SALES_FOLLOWUP_MIN_DAYS = 7;
+const DASHBOARD_SALES_FOLLOWUP_MAX_DAYS = 45;
+
+function getDashboardCommandAgeDays(value = "") {
+  const time = new Date(value || 0).getTime();
+  if (!Number.isFinite(time) || time <= 0) return 0;
+  return Math.max(0, Math.floor((Date.now() - time) / 86400000));
+}
+
+function isDashboardCommandFreshSalesContact(item = {}) {
+  if (!isSalesRequestNewContactUnassigned(item)) return false;
+  return getDashboardCommandAgeDays(item.createdAt || item.updatedAt || "") <= DASHBOARD_SALES_NEW_CONTACT_MAX_DAYS;
+}
+
+function isDashboardCommandActionableFollowup(item = {}) {
+  if (getSalesRequestStatusCode(item.status || "") !== "quoted") return false;
+  const ageDays = getDashboardCommandAgeDays(item.quotedAt || item.updatedAt || "");
+  return ageDays >= DASHBOARD_SALES_FOLLOWUP_MIN_DAYS && ageDays <= DASHBOARD_SALES_FOLLOWUP_MAX_DAYS;
+}
+
+function isDashboardCommandStaleSalesRequest(item = {}) {
+  if (!item || isSalesRequestClosedStatus(item.status)) return false;
+  if (isSalesRequestNewContactUnassigned(item)) {
+    return getDashboardCommandAgeDays(item.createdAt || item.updatedAt || "") > DASHBOARD_SALES_NEW_CONTACT_MAX_DAYS;
+  }
+  if (getSalesRequestStatusCode(item.status || "") === "quoted") {
+    return getDashboardCommandAgeDays(item.quotedAt || item.updatedAt || "") > DASHBOARD_SALES_FOLLOWUP_MAX_DAYS;
+  }
+  return false;
 }
 
 function getDashboardCommandSalesItems() {
@@ -11413,13 +11454,15 @@ function getDashboardCommandSalesStats(items = getDashboardCommandSalesItems()) 
   };
   const totalFromStats = statNumber("total");
   const openFromItems = items.filter((item) => !isSalesRequestClosedStatus(item.status)).length;
-  const toContactFromItems = items.filter(isSalesRequestNewContactUnassigned).length;
-  const followupsFromItems = buildFollowupReminders(items).length;
+  const toContactFromItems = items.filter(isDashboardCommandFreshSalesContact).length;
+  const followupsFromItems = items.filter(isDashboardCommandActionableFollowup).length;
+  const staleFromItems = items.filter(isDashboardCommandStaleSalesRequest).length;
   return {
     total: totalFromStats ?? items.length,
     open: items.length ? openFromItems : (totalFromStats ?? 0),
-    toContact: statNumber("new") ?? toContactFromItems,
-    followups: statNumber("quoted") ?? followupsFromItems,
+    toContact: toContactFromItems,
+    followups: followupsFromItems,
+    stale: staleFromItems,
     loaded: items.length > 0 || Number(state.crmServerPage?.loadedAt || 0) > 0 || totalFromStats !== null,
     loading: Boolean(state.dashboardCommandSalesLoading),
     error: Boolean(state.dashboardCommandSalesError),
@@ -11427,15 +11470,13 @@ function getDashboardCommandSalesStats(items = getDashboardCommandSalesItems()) 
 }
 
 function buildDashboardCommandSalesTasks() {
-  const now = Date.now();
   const salesItems = getDashboardCommandSalesItems();
   const toContact = salesItems
-    .filter(isSalesRequestNewContactUnassigned)
+    .filter(isDashboardCommandFreshSalesContact)
     .sort((a, b) => new Date(a.createdAt || a.updatedAt || 0) - new Date(b.createdAt || b.updatedAt || 0))
     .slice(0, 6)
     .map((item) => {
-      const created = new Date(item.createdAt || item.updatedAt || 0).getTime();
-      const ageDays = Number.isFinite(created) ? Math.max(0, Math.floor((now - created) / 86400000)) : 0;
+      const ageDays = getDashboardCommandAgeDays(item.createdAt || item.updatedAt || "");
       const name = getSalesRequestDashboardName(item);
       return makeDashboardCommandTask({
         id: `sales-contact-${item.id}`,
@@ -11470,12 +11511,14 @@ function buildDashboardCommandSalesTasks() {
       });
     });
 
-  const followups = buildFollowupReminders(salesItems)
+  const followups = salesItems
+    .filter(isDashboardCommandActionableFollowup)
+    .sort((a, b) => getDashboardCommandAgeDays(b.quotedAt || b.updatedAt || "") - getDashboardCommandAgeDays(a.quotedAt || a.updatedAt || ""))
     .slice(0, 6)
     .map((item) => {
       const name = getSalesRequestDashboardName(item);
       const ref = item.quotedAt || item.updatedAt || "";
-      const daysAgo = ref ? Math.max(0, Math.floor((Date.now() - new Date(ref).getTime()) / 86400000)) : 0;
+      const daysAgo = getDashboardCommandAgeDays(ref);
       return makeDashboardCommandTask({
         id: `sales-followup-${item.id}`,
         area: "Vendite",
@@ -11541,6 +11584,7 @@ function buildDashboardCommandMaterialTasks() {
         action: "select-order",
         view: "warehouse",
         targetId: order.id,
+        actions: [getDashboardCommandSupplierAction()],
         fields: [
           [state.lang === "it" ? "Ordine" : "Order", getOrderNumber(order)],
           [state.lang === "it" ? "Prodotto" : "Product", getPrimaryTurfLabel(order) || "—"],
@@ -11590,6 +11634,7 @@ function buildDashboardCommandMaterialTasks() {
           secondary: state.lang === "it" ? "Verifica richieste" : "Check requests",
           action: "open-dashboard-view",
           view: "warehouse",
+          actions: [getDashboardCommandSupplierAction()],
           fields: [
             [state.lang === "it" ? "Articolo" : "Item", group.product || "—"],
             [state.lang === "it" ? "Disponibile" : "Available", `${Math.round(available)} ${unit}`],
@@ -11793,15 +11838,15 @@ function buildDashboardCommandModel() {
       nav: "Vendite",
       icon: "VE",
       title: state.lang === "it" ? "Vendite da seguire" : "Sales to follow",
-      subtitle: state.lang === "it" ? "Richieste ferme, preventivi da inviare e follow-up che portano fatturato." : "Stalled requests, quotes to send and revenue follow-ups.",
+      subtitle: state.lang === "it" ? "Nuovi contatti entro 30 giorni e follow-up tra 7 e 45 giorni; lo storico resta in Richieste." : "New contacts within 30 days and follow-ups between 7 and 45 days; history stays in Requests.",
       queueKicker: state.lang === "it" ? "Coda commerciale" : "Sales queue",
-      queueTitle: state.lang === "it" ? "Prima le azioni con scadenza" : "Deadline first",
+      queueTitle: state.lang === "it" ? "Azioni commerciali vive" : "Live sales actions",
       tasks: salesTasks,
       metrics: [
         { label: state.lang === "it" ? "Da chiamare" : "To call", value: String(salesStats.toContact), note: state.lang === "it" ? "Nuovi contatti" : "New contacts", tone: "sales" },
         { label: state.lang === "it" ? "Follow-up" : "Follow-ups", value: String(salesStats.followups), note: state.lang === "it" ? "Preventivi in attesa" : "Quotes waiting", tone: "sales" },
         { label: state.lang === "it" ? "Richieste aperte" : "Open requests", value: String(salesStats.open), note: state.lang === "it" ? "Non vinte/perse" : "Not won/lost", tone: "sales" },
-        { label: state.lang === "it" ? "Bloccate" : "Blocked", value: String(salesTasks.filter((task) => task.severity === "high").length), note: state.lang === "it" ? "Senza esito" : "No outcome", tone: "sales" },
+        { label: state.lang === "it" ? "Storiche" : "Stale", value: String(salesStats.stale), note: state.lang === "it" ? "Fuori coda" : "Out of queue", tone: "sales" },
       ],
       emptyTitle: salesStats.loading
         ? (state.lang === "it" ? "Caricamento vendite" : "Loading sales")
@@ -11968,6 +12013,11 @@ function renderDashboardCommandDetail(task = null, view = {}) {
   ui.dashboardCommandDetailSeverity.className = `dashboard-command-badge tone-${tone}`;
   ui.dashboardCommandDetailSeverity.textContent = getDashboardCommandSeverityLabel(task.severity);
   const actionAttrs = getDashboardCommandActionAttrs(task);
+  const extraActions = task.actions.map((action) => {
+    const attrs = getDashboardCommandActionAttrs(action);
+    const className = action.primary ? "btn primary" : "btn";
+    return `<button class="${className}" type="button" ${attrs}>${escapeHtml(action.label || (state.lang === "it" ? "Apri" : "Open"))}</button>`;
+  }).join("");
   ui.dashboardCommandDetail.innerHTML = `
     <div class="dashboard-command-detail-hero">
       <div class="dashboard-command-detail-kicker">
@@ -12007,6 +12057,7 @@ function renderDashboardCommandDetail(task = null, view = {}) {
         <div class="dashboard-command-actions">
           <button class="btn primary" type="button" ${actionAttrs}>${escapeHtml(task.primary)}</button>
           ${task.secondary ? `<button class="btn" type="button" ${actionAttrs}>${escapeHtml(task.secondary)}</button>` : ""}
+          ${extraActions}
         </div>
       </div>
       <div class="dashboard-command-mini">
@@ -12037,6 +12088,7 @@ function renderDashboardCommandModules(model) {
         `${model.sales.tasks.length} ${state.lang === "it" ? "azioni commerciali" : "sales actions"}`,
         `${salesStats.followups} follow-up`,
         `${salesStats.toContact} ${state.lang === "it" ? "nuovi contatti" : "new contacts"}`,
+        `${salesStats.stale} ${state.lang === "it" ? "storiche fuori coda" : "stale out of queue"}`,
       ],
     },
     {
@@ -12047,7 +12099,14 @@ function renderDashboardCommandModules(model) {
       items: [
         `${model.materials.tasks.length} ${state.lang === "it" ? "segnali" : "signals"}`,
         `${model.materials.tasks.filter((task) => task.severity === "high").length} ${state.lang === "it" ? "critici" : "critical"}`,
-        state.lang === "it" ? "Impegni e scorte" : "Commitments and stock",
+        state.lang === "it" ? "Impegni, scorte e fornitori" : "Commitments, stock and suppliers",
+      ],
+      actions: [
+        {
+          label: state.lang === "it" ? "Fornitori" : "Suppliers",
+          action: "open-dashboard-view",
+          view: "supplier-prices",
+        },
       ],
     },
     {
@@ -12090,7 +12149,12 @@ function renderDashboardCommandModules(model) {
           </div>
         `).join("")}
       </div>
-      <button class="btn" type="button" data-action="set-dashboard-command-view" data-command-view="${escapeAttr(module.key)}">${state.lang === "it" ? "Apri" : "Open"} ${escapeHtml(module.title)}</button>
+      <div class="dashboard-command-module-actions">
+        <button class="btn" type="button" data-action="set-dashboard-command-view" data-command-view="${escapeAttr(module.key)}">${state.lang === "it" ? "Apri" : "Open"} ${escapeHtml(module.title)}</button>
+        ${(module.actions || []).map((action) => `
+          <button class="btn" type="button" ${getDashboardCommandActionAttrs(action)}>${escapeHtml(action.label)}</button>
+        `).join("")}
+      </div>
     </article>
   `).join("");
 }
