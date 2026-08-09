@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260809-dashboard-sales-empty-state";
+} from "./lib/order-money.js?v=20260809-dashboard-sales-crm-snapshot";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260809-dashboard-sales-empty-state";
+import { regionForCity } from "./lib/geo.js?v=20260809-dashboard-sales-crm-snapshot";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260809-dashboard-sales-empty-state";
+} from "./lib/shipping-eligibility.js?v=20260809-dashboard-sales-crm-snapshot";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260809-dashboard-sales-empty-state";
+} from "./lib/profit-split.js?v=20260809-dashboard-sales-crm-snapshot";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260809-dashboard-sales-empty-state";
+} from "./lib/preventivo-pricing.js?v=20260809-dashboard-sales-crm-snapshot";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260809-dashboard-sales-empty-state";
+const APP_SHELL_VERSION = "20260809-dashboard-sales-crm-snapshot";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1218,6 +1218,9 @@ const state = {
   dashboardCommandView: "dashboard",
   dashboardCommandFilter: "risk",
   dashboardCommandSelectedTaskId: "",
+  dashboardCommandSalesLoading: false,
+  dashboardCommandSalesError: false,
+  dashboardCommandSalesLoadedAt: 0,
   preventivoTexts: null, // popolato all'init da /api/catalog/preventivo_branding
   preventivoCatalog: {}, // slug -> { code, tech: {struttura, densita, dtex, drenaggio, peso, note}, label }
   preventivoForm: null, // stato della form nativa (creato al primo render da defaultPreventivoForm())
@@ -11337,6 +11340,71 @@ function getDashboardCommandSalesItems() {
   return Array.isArray(state.salesRequests) ? state.salesRequests : [];
 }
 
+function dashboardCommandHasSalesSnapshot() {
+  return Boolean(
+    (Array.isArray(state.crmServerPage?.items) && state.crmServerPage.items.length > 0)
+    || Number(state.crmServerPage?.loadedAt || 0) > 0
+    || (Array.isArray(state.salesRequests) && state.salesRequests.length > 0)
+    || (state.salesRequestsStats && typeof state.salesRequestsStats === "object" && Number.isFinite(Number(state.salesRequestsStats.total)))
+  );
+}
+
+function ensureDashboardCommandSalesSnapshot() {
+  if (normalizeUserRole(state.currentUser?.role || "") !== "office") return;
+  if (state.dashboardCommandSalesLoading) return;
+  if (dashboardCommandHasSalesSnapshot() && !state.dashboardCommandSalesError) return;
+  void loadDashboardCommandSalesSnapshot();
+}
+
+async function loadDashboardCommandSalesSnapshot({ force = false } = {}) {
+  if (normalizeUserRole(state.currentUser?.role || "") !== "office") return false;
+  if (state.dashboardCommandSalesLoading) return false;
+  if (!force && dashboardCommandHasSalesSnapshot() && !state.dashboardCommandSalesError) return true;
+  state.dashboardCommandSalesLoading = true;
+  state.dashboardCommandSalesError = false;
+  if (state.currentView === "dashboard") renderDashboardCommandCenter();
+  try {
+    const data = await apiFetch("/api/sales/requests?limit=50&sort=urgent");
+    const items = Array.isArray(data.items) ? data.items.map(normalizeSalesRequestRecord) : [];
+    state.crmServerPage = {
+      total: Number(data.total || 0),
+      page: Number(data.page || 1),
+      limit: Number(data.limit || 50),
+      items,
+      loading: false,
+      loadError: false,
+      loadedAt: Date.now(),
+      dbUnavailable: Boolean(data.dbUnavailable),
+    };
+    state.salesRequests = items;
+    if (data.stats && typeof data.stats === "object") {
+      state.salesRequestsStats = {
+        total: data.stats.total ?? data.total ?? items.length,
+        new: data.stats.new ?? 0,
+        unassigned: data.stats.unassigned ?? 0,
+        thisWeek: data.stats.thisWeek ?? 0,
+        today: data.stats.today ?? 0,
+        quoted: data.stats.quoted ?? 0,
+        prevWeek: data.stats.prevWeek ?? 0,
+      };
+    } else {
+      state.salesRequestsStats = {
+        ...(state.salesRequestsStats || {}),
+        total: data.total ?? items.length,
+      };
+    }
+    state.dashboardCommandSalesLoadedAt = Date.now();
+    return true;
+  } catch (error) {
+    state.dashboardCommandSalesError = true;
+    console.warn("[dashboard] sales snapshot failed:", error?.message || error);
+    return false;
+  } finally {
+    state.dashboardCommandSalesLoading = false;
+    if (state.currentView === "dashboard") renderDashboardCommandCenter();
+  }
+}
+
 function getDashboardCommandSalesStats(items = getDashboardCommandSalesItems()) {
   const stats = state.salesRequestsStats && typeof state.salesRequestsStats === "object" ? state.salesRequestsStats : {};
   const statNumber = (key) => {
@@ -11353,6 +11421,8 @@ function getDashboardCommandSalesStats(items = getDashboardCommandSalesItems()) 
     toContact: statNumber("new") ?? toContactFromItems,
     followups: statNumber("quoted") ?? followupsFromItems,
     loaded: items.length > 0 || Number(state.crmServerPage?.loadedAt || 0) > 0 || totalFromStats !== null,
+    loading: Boolean(state.dashboardCommandSalesLoading),
+    error: Boolean(state.dashboardCommandSalesError),
   };
 }
 
@@ -11733,16 +11803,25 @@ function buildDashboardCommandModel() {
         { label: state.lang === "it" ? "Richieste aperte" : "Open requests", value: String(salesStats.open), note: state.lang === "it" ? "Non vinte/perse" : "Not won/lost", tone: "sales" },
         { label: state.lang === "it" ? "Bloccate" : "Blocked", value: String(salesTasks.filter((task) => task.severity === "high").length), note: state.lang === "it" ? "Senza esito" : "No outcome", tone: "sales" },
       ],
-      emptyTitle: salesStats.loaded && salesStats.total === 0
+      emptyTitle: salesStats.loading
+        ? (state.lang === "it" ? "Caricamento vendite" : "Loading sales")
+        : salesStats.error
+          ? (state.lang === "it" ? "Vendite non disponibili" : "Sales unavailable")
+          : salesStats.loaded && salesStats.total === 0
         ? (state.lang === "it" ? "Nessuna richiesta vendita presente" : "No sales requests yet")
         : (state.lang === "it" ? "Vendite senza dati caricati" : "Sales data not loaded"),
-      emptyText: salesStats.loaded && salesStats.total === 0
+      emptyText: salesStats.loading
+        ? (state.lang === "it" ? "Sto leggendo le richieste dal CRM per costruire la coda commerciale." : "Reading CRM requests to build the sales queue.")
+        : salesStats.error
+          ? (state.lang === "it" ? "Non sono riuscito a leggere il CRM. Puoi riprovare o aprire Richieste per vedere il dettaglio." : "Unable to read the CRM. Retry or open Requests for details.")
+          : salesStats.loaded && salesStats.total === 0
         ? (state.lang === "it" ? "Il CRM non contiene richieste aperte. Da qui puoi andare alla sorgente e importare o creare il primo contatto." : "The CRM has no open requests. From here you can open the source and import or create the first contact.")
         : (state.lang === "it" ? "La dashboard non ha ancora una pagina CRM caricata in memoria. Apri Richieste per sincronizzare e vedere i follow-up reali." : "The dashboard does not have a CRM page in memory yet. Open Requests to sync and see real follow-ups."),
-      emptyPrimary: state.lang === "it" ? "Apri Richieste" : "Open Requests",
-      emptyPrimaryView: "sales-requests",
-      emptySecondary: state.lang === "it" ? "Nuovo preventivo" : "New quote",
-      emptySecondaryView: "sales-generator",
+      emptyPrimary: salesStats.error ? (state.lang === "it" ? "Riprova" : "Retry") : (state.lang === "it" ? "Apri Richieste" : "Open Requests"),
+      emptyPrimaryAction: salesStats.error ? "reload-dashboard-sales" : "open-dashboard-view",
+      emptyPrimaryView: salesStats.error ? "" : "sales-requests",
+      emptySecondary: salesStats.loading ? "" : (state.lang === "it" ? "Nuovo preventivo" : "New quote"),
+      emptySecondaryView: salesStats.loading ? "" : "sales-generator",
     },
     materials: {
       nav: "Materiali",
@@ -11829,16 +11908,18 @@ function renderDashboardCommandMetrics(metrics = []) {
 function renderDashboardCommandEmpty(view = {}) {
   const title = view.emptyTitle || (state.lang === "it" ? "Nessuna urgenza in questa vista." : "No urgency in this view.");
   const text = view.emptyText || (state.lang === "it" ? "Quando arriveranno azioni reali, compariranno qui in ordine di priorita." : "When real actions arrive, they will appear here by priority.");
+  const primaryAction = view.emptyPrimaryAction || "open-dashboard-view";
+  const secondaryAction = view.emptySecondaryAction || "open-dashboard-view";
   const primaryView = view.emptyPrimaryView || "";
   const secondaryView = view.emptySecondaryView || "";
   return `
     <div class="dashboard-command-empty dashboard-command-empty-rich">
       <strong>${escapeHtml(title)}</strong>
       <p>${escapeHtml(text)}</p>
-      ${(primaryView || secondaryView) ? `
+      ${(view.emptyPrimary || view.emptySecondary) ? `
         <div class="dashboard-command-actions">
-          ${primaryView ? `<button class="btn primary" type="button" data-action="open-dashboard-view" data-view="${escapeAttr(primaryView)}">${escapeHtml(view.emptyPrimary || (state.lang === "it" ? "Apri sezione" : "Open section"))}</button>` : ""}
-          ${secondaryView ? `<button class="btn" type="button" data-action="open-dashboard-view" data-view="${escapeAttr(secondaryView)}">${escapeHtml(view.emptySecondary || (state.lang === "it" ? "Azione secondaria" : "Secondary action"))}</button>` : ""}
+          ${view.emptyPrimary ? `<button class="btn primary" type="button" data-action="${escapeAttr(primaryAction)}"${primaryView ? ` data-view="${escapeAttr(primaryView)}"` : ""}>${escapeHtml(view.emptyPrimary)}</button>` : ""}
+          ${view.emptySecondary ? `<button class="btn" type="button" data-action="${escapeAttr(secondaryAction)}"${secondaryView ? ` data-view="${escapeAttr(secondaryView)}"` : ""}>${escapeHtml(view.emptySecondary)}</button>` : ""}
         </div>
       ` : ""}
     </div>
@@ -13108,6 +13189,7 @@ function renderDashboard() {
   if (ui.dashboardSubtitle) ui.dashboardSubtitle.textContent = getDashboardSubtitle();
 
   if (role === "office") {
+    ensureDashboardCommandSalesSnapshot();
     renderDashboardCommandCenter();
     return;
   }
@@ -31672,6 +31754,10 @@ function handleGlobalClick(event) {
   if (!button) return;
   const action = button.dataset.action;
   const id = button.dataset.id;
+  if (action === "reload-dashboard-sales") {
+    void loadDashboardCommandSalesSnapshot({ force: true });
+    return;
+  }
   if (action === "set-dashboard-command-view") {
     const next = button.dataset.commandView || "dashboard";
     state.dashboardCommandView = ["dashboard", "sales", "materials", "installations", "money"].includes(next) ? next : "dashboard";
