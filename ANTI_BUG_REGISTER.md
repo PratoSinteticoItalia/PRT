@@ -18,8 +18,8 @@ Registro operativo per tracciare bug tecnici, problemi visuali, sovrapposizioni,
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | AB-001 | P2 | Dashboard | Layout | In alcune viste larghe resta molto spazio vuoto tra coda/dettaglio e moduli. | Dashboard, cambiare tab Vendite/Materiali/Soldi e scorrere la pagina. | Verificato desktop/mobile | Il dettaglio operativo e sticky nel codice attuale e resta visibile durante lo scroll. Sweep mobile finale senza overflow globale o elementi fuori viewport non scrollabili. |
 | AB-002 | P2 | Richieste | Logica dati | La priorita puo sembrare casuale quando compaiono richieste molto vecchie, es. 62g o 217g. | Dashboard > Vendite/Richieste, ordinamento "urgenza". | Fixato, da verificare con DB reale | `sort=urgent` lato server ora ordina per azioni commerciali utili: follow-up 7-45g, nuove ferme, non assegnate, poi resto. |
-| AB-003 | P1 | Richieste | Filtro | Filtro assegnazione Ivan/Gabriele non deve svuotare richieste assegnate. | Richieste > filtro assegnazione > Ivan/Gabriele. | Fixato, da verificare con DB reale | In preview locale senza DATABASE_URL la lista CRM non mostra righe reali. |
-| AB-004 | P1 | Richieste/Generatore | Collegamento | Aprire una richiesta nel generatore non deve perdere il contesto richiesta. | Richieste > apri richiesta > apri generatore. | Fixato, da verificare con DB reale | Verifica locale limitata da assenza DATABASE_URL. |
+| AB-003 | P1 | Richieste | Filtro | Filtro assegnazione Ivan/Gabriele non deve svuotare richieste assegnate. | Richieste > filtro assegnazione > Ivan/Gabriele. | Fixato e verificato in locale, da confermare con DB reale | 2026-08-11: normalizzazione condivisa client/server, filtro server tollerante su varianti tipo "Gabriele Todaro"; test unitari + browser select Ivan/Gabriele ok. In preview locale senza DATABASE_URL la lista CRM non mostra righe reali. |
+| AB-004 | P1 | Richieste/Generatore | Collegamento | Aprire una richiesta nel generatore non deve perdere il contesto richiesta. | Richieste > apri richiesta > apri generatore. | Fixato e verificato a codice, da confermare con DB reale | 2026-08-11: richiesta collegata persistita per il generatore e ritorno diretto via `/api/sales/requests?id=...`; verifica browser completa limitata per assenza `localStorage` nel wrapper QA e assenza DATABASE_URL. |
 | AB-005 | P2 | Global | Errori | Toast "Si e verificato un problema imprevisto" non deve ripetersi all'infinito per lo stesso errore. | Generare errore runtime ripetuto o navigare in vista che lancia stesso errore. | Fixato | Commit 5737737. |
 | AB-006 | P2 | Materiali | Navigazione | La vista materiali deve collegarsi chiaramente alla pagina fornitori quando serve rifornimento/prezzo. | Dashboard > Materiali oppure Inventario > materiali a rischio. | Fixato e verificato | In Dashboard > Materiali ora appare il CTA Fornitori nella toolbar alta e apre `#supplier-prices` senza toast/errori. |
 | AB-007 | P1 | Global | Reload/cache | Primo avvio dopo bump shell poteva restare nello splash con auth/app nascosti se l'URL aveva gia la shell nuova ma `localStorage` quella vecchia. | Aprire una nuova versione con query `?shell=...` gia aggiornata e storage shell precedente. | Fixato e verificato | `ensureFreshShellVersion()` ora forza `location.reload()` quando il target e identico all'URL corrente. |
@@ -68,3 +68,11 @@ Risultati sweep mobile finale AB-010:
 - Nessuna copertura reale di controlli visibili da bottom-nav o pallino Presenze.
 - Bottom-nav flush al fondo viewport, `mobile-pill-shell` non visibile, `main-content` scrollabile.
 - Nessun toast/alert imprevisto e nessun overflow orizzontale globale.
+
+Sprint efficienza CRM/generatore 2026-08-11:
+- Shell aggiornata a `20260811-crm-flow-hardening`.
+- Filtro assegnazione Richieste verificato in browser su Ivan/Gabriele: il select mantiene il valore scelto e non torna a "Tutte".
+- Preview locale senza `DATABASE_URL`: messaggio CRM dedicato confermato, nessun toast imprevisto.
+- Nuova utility `lib/sales-assignment.js` coperta da test unitari: varianti, alias, filtri e dedup opzioni.
+- `npm run check`: 107 test passati.
+- `npm run build`: completata senza errori.

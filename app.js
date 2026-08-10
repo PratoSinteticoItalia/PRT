@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260810-mobile-scroll-polish";
+} from "./lib/order-money.js?v=20260811-crm-flow-hardening";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260810-mobile-scroll-polish";
+import { regionForCity } from "./lib/geo.js?v=20260811-crm-flow-hardening";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260810-mobile-scroll-polish";
+} from "./lib/shipping-eligibility.js?v=20260811-crm-flow-hardening";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260810-mobile-scroll-polish";
+} from "./lib/profit-split.js?v=20260811-crm-flow-hardening";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,15 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260810-mobile-scroll-polish";
+} from "./lib/preventivo-pricing.js?v=20260811-crm-flow-hardening";
+import {
+  DEFAULT_SALES_ASSIGNMENTS,
+  getSalesAssignmentOptionLabels,
+  matchesSalesAssignmentFilter,
+  normalizeSalesAssignmentFilterValue,
+  normalizeSalesAssignmentKey,
+  normalizeSalesAssignmentValue,
+} from "./lib/sales-assignment.js?v=20260811-crm-flow-hardening";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260810-mobile-scroll-polish";
+const APP_SHELL_VERSION = "20260811-crm-flow-hardening";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -122,6 +130,7 @@ const SALES_REQUEST_FAST_PATCH_FIELDS = new Set([
 ]);
 const COVERAGE_SYNC_DEBOUNCE_MS = 350;
 const SALES_PREFILL_STORAGE_KEY = "quote-generator-prefill";
+const SALES_GENERATOR_LINKED_REQUEST_STORAGE_KEY = "quote-generator-linked-request-v1";
 const SALES_BRANDING_STORAGE_KEY = "quote-generator-branding";
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
@@ -427,7 +436,7 @@ const SALES_REQUEST_STATUS_REFERENCE = [
   "Email",
   "email inviata",
 ];
-const SALES_REQUEST_ASSIGNMENT_REFERENCE = ["Ivan", "Gabriele"];
+const SALES_REQUEST_ASSIGNMENT_REFERENCE = DEFAULT_SALES_ASSIGNMENTS;
 const SALES_REQUEST_FIRST_CONTACT_START_HOUR = 8;
 const SALES_REQUEST_FIRST_CONTACT_END_HOUR = 20;
 const SALES_REQUEST_FIRST_CONTACT_SENT_STATUS = "1° contatto";
@@ -1347,6 +1356,7 @@ const state = {
   inventorySuggestions: {},
   // CRM server-side state (paginazione + FTS via GET /api/sales/requests)
   crmServerPage: { total: 0, page: 1, limit: 50, items: [], loading: false, loadedAt: 0, loadError: false },
+  crmFocusedRequestId: "",
   // CRM pipeline kanban (GET /api/sales/requests/pipeline)
   crmPipeline: { columns: [], loading: false, loadedAt: 0 },
   // "list" | "kanban" — toggle nella toolbar del CRM
@@ -4060,19 +4070,11 @@ function getSalesRequestSqm(item = {}) {
 }
 
 function normalizeSalesRequestAssignment(value = "") {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const normalized = normalizeLooseString(raw);
-  if (!normalized || ["non assegnato", "non assegnata", "unassigned", "none", "na"].includes(normalized)) return "";
-  if (normalized.includes("ivan")) return "Ivan";
-  if (normalized.includes("gabriele")) return "Gabriele";
-  // Commerciali aggiunti dall'ufficio in Impostazioni → Assegnazioni CRM
-  // (catalogo dinamico, non solo i due default hardcoded sopra).
-  const catalogMatch = (state.catalogSalesAssignments || []).find((item) => {
-    const label = normalizeLooseString(item.label || item.value || "");
-    return label && normalized.includes(label);
-  });
-  return catalogMatch ? String(catalogMatch.label || catalogMatch.value).trim() : "";
+  return normalizeSalesAssignmentValue(value, state.catalogSalesAssignments || []);
+}
+
+function normalizeSalesRequestAssignmentFilter(value = "") {
+  return normalizeSalesAssignmentFilterValue(value, state.catalogSalesAssignments || []);
 }
 
 function normalizeIsoDateTime(value = "") {
@@ -4724,8 +4726,7 @@ function getSalesRequestStatusOptions() {
 }
 
 function getSalesRequestAssignmentOptions() {
-  const catalogAssignments = (state.catalogSalesAssignments || []).map((item) => item.label || item.value).filter(Boolean);
-  return catalogAssignments.length ? catalogAssignments : [...SALES_REQUEST_ASSIGNMENT_REFERENCE];
+  return getSalesAssignmentOptionLabels(state.catalogSalesAssignments || [], SALES_REQUEST_ASSIGNMENT_REFERENCE);
 }
 
 function getSalesRequestAssignmentFilterOptions(items = state.salesRequests) {
@@ -4735,9 +4736,10 @@ function getSalesRequestAssignmentFilterOptions(items = state.salesRequests) {
   ];
   const seen = new Set(["all", "unassigned"]);
   const append = (label = "") => {
-    const assignment = normalizeSalesRequestAssignment(label);
-    const key = normalizeLooseString(assignment);
-    if (!key || seen.has(key)) return;
+    const raw = String(label || "").trim();
+    const assignment = normalizeSalesRequestAssignment(raw) || raw;
+    const key = normalizeSalesRequestAssignmentFilter(assignment);
+    if (!key || key === "all" || key === "unassigned" || seen.has(key)) return;
     seen.add(key);
     options.push({ value: key, label: assignment });
   };
@@ -4746,10 +4748,11 @@ function getSalesRequestAssignmentFilterOptions(items = state.salesRequests) {
   return options.map((option) => ({
     ...option,
     count: items.filter((item) => {
-      const assignment = normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
+      const rawAssignment = item.assignment || item.assegnazione || item.firstContactBy || "";
+      const assignment = normalizeSalesRequestAssignment(rawAssignment) || rawAssignment;
       if (option.value === "all") return true;
-      if (option.value === "unassigned") return !assignment;
-      return normalizeLooseString(assignment) === option.value;
+      if (option.value === "unassigned") return matchesSalesAssignmentFilter(rawAssignment, "unassigned", state.catalogSalesAssignments || []);
+      return matchesSalesAssignmentFilter(assignment, option.value, state.catalogSalesAssignments || []);
     }).length,
   }));
 }
@@ -4776,7 +4779,7 @@ function syncSalesRequestFilters() {
     ? state.crmServerPage.items
     : state.salesRequests;
   if (ui.salesRequestAssignmentFilter) {
-    const current = String(state.filters.salesRequestAssignment || "all");
+    const current = normalizeSalesRequestAssignmentFilter(state.filters.salesRequestAssignment || "all");
     ui.salesRequestAssignmentFilter.replaceChildren(...getSalesRequestAssignmentFilterOptions(filterItems).map((item) => {
       const option = document.createElement("option");
       option.value = item.value;
@@ -4980,6 +4983,47 @@ function rememberSelectedSalesRequest(item = {}) {
   if (!id) return null;
   state.selectedSalesRequestSnapshot = { ...item, id };
   return state.selectedSalesRequestSnapshot;
+}
+
+function persistSalesGeneratorLinkedRequest(item = {}) {
+  const snapshot = rememberSelectedSalesRequest(item);
+  if (!snapshot?.id) return null;
+  state.selectedSalesRequestId = snapshot.id;
+  try {
+    window.localStorage.setItem(SALES_GENERATOR_LINKED_REQUEST_STORAGE_KEY, JSON.stringify({
+      requestId: snapshot.id,
+      snapshot,
+      savedAt: Date.now(),
+    }));
+  } catch {}
+  return snapshot;
+}
+
+function loadSalesGeneratorLinkedRequest() {
+  try {
+    const raw = window.localStorage.getItem(SALES_GENERATOR_LINKED_REQUEST_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const requestId = String(parsed?.requestId || parsed?.snapshot?.id || "").trim();
+    if (!requestId) return null;
+    return {
+      requestId,
+      snapshot: parsed?.snapshot && typeof parsed.snapshot === "object"
+        ? { ...parsed.snapshot, id: requestId }
+        : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function restoreSalesGeneratorLinkedRequest() {
+  const current = getSelectedSalesRequest();
+  if (current) return current;
+  const stored = loadSalesGeneratorLinkedRequest();
+  if (!stored?.requestId) return null;
+  state.selectedSalesRequestId = stored.requestId;
+  return stored.snapshot ? rememberSelectedSalesRequest(stored.snapshot) : null;
 }
 
 function findSalesRequestById(id = "") {
@@ -5971,6 +6015,7 @@ function pushSalesRequestToGenerator(force = false) {
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;
   state.lastSalesGeneratorSignature = signature;
+  persistSalesGeneratorLinkedRequest(request);
   try {
     window.localStorage.setItem(SALES_PREFILL_STORAGE_KEY, JSON.stringify({
       runId: Date.now(),
@@ -13858,7 +13903,7 @@ function openDashboardViewTarget(target) {
   if (nextView === "sales-requests") {
     state.filters.salesRequestQuick = dataset.salesRequestQuick || "all";
     state.filters.salesRequestStatus = dataset.salesRequestStatus || "all";
-    state.filters.salesRequestAssignment = dataset.salesRequestAssignment || "all";
+    state.filters.salesRequestAssignment = normalizeSalesRequestAssignmentFilter(dataset.salesRequestAssignment || "all");
     state.salesRequestSort = dataset.salesRequestSort || state.salesRequestSort || "urgent";
     state.search.salesRequests = "";
     state.salesRequestPage = 1;
@@ -14148,7 +14193,7 @@ function matchesSalesRequestStatusCategory(rawStatus, category) {
 
 function getFilteredSalesRequests({ ignoreQuickFilter = false } = {}) {
   const query = String(state.search.salesRequests || "").trim().toLowerCase();
-  const assignmentFilter = String(state.filters.salesRequestAssignment || "all");
+  const assignmentFilter = normalizeSalesRequestAssignmentFilter(state.filters.salesRequestAssignment || "all");
   const statusFilter = String(state.filters.salesRequestStatus || "all");
   const quickFilter = String(state.filters.salesRequestQuick || "all");
 
@@ -14164,9 +14209,8 @@ function getFilteredSalesRequests({ ignoreQuickFilter = false } = {}) {
 
   const applyFilter = (items, skipQuick) =>
     items.filter((item) => {
-      const assignment = normalizeSalesRequestAssignment(item.assignment || item.assegnazione || item.firstContactBy || "");
-      if (assignmentFilter === "unassigned" && assignment) return false;
-      if (!["all", "unassigned"].includes(assignmentFilter) && normalizeLooseString(assignment) !== assignmentFilter) return false;
+      const rawAssignment = item.assignment || item.assegnazione || item.firstContactBy || "";
+      if (assignmentFilter !== "all" && !matchesSalesAssignmentFilter(rawAssignment, assignmentFilter, state.catalogSalesAssignments || [])) return false;
       if (statusFilter !== "all" && !matchesSalesRequestStatusCategory(item.status || "", statusFilter)) return false;
       if (!skipQuick && !matchesSalesRequestQuickFilter(item, quickFilter)) return false;
       if (!query) return true;
@@ -14222,15 +14266,16 @@ function getFilteredSalesContents({ ignoreCategory = false } = {}) {
  * Carica una pagina del CRM dal server con filtri correnti.
  * Aggiorna state.crmServerPage e re-renderizza.
  */
-async function loadCrmPage({ page = 1, forceReload = false } = {}) {
+async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {}) {
   if (!forceReload && state.crmServerPage.loading) return;
   state.crmServerPage.loading = true;
   state.crmServerPage.loadError = false;
   state.crmServerPage.page = page;
+  const focusedRequestId = String(requestId || state.crmFocusedRequestId || "").trim();
   // Calcola i parametri subito per confrontarli col cache precedente
   const q          = String(state.search?.salesRequests || "").trim();
   const status     = String(state.filters?.salesRequestStatus || "").trim();
-  const assignment = String(state.filters?.salesRequestAssignment || "").trim();
+  const assignment = normalizeSalesRequestAssignmentFilter(state.filters?.salesRequestAssignment || "all");
   const source     = String(state.filters?.salesRequestSource || "").trim();
   const limit      = 50;
   // Quick filter → parametri server
@@ -14250,16 +14295,17 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
     _quickDateFrom = d.toISOString().slice(0, 10);
   }
   // Merge: quick filter > dropdown
-  const _finalAssignment = _quickAssignment || assignment;
+  const _finalAssignment = _quickAssignment || (assignment === "all" ? "" : assignment);
   const _finalStatus     = _quickStatus || status;
   const sort = String(state.salesRequestSort || "recent");
-  const queryKey   = `${page}|${q}|${_finalStatus}|${_finalAssignment}|${source}|${_quick}|${_quickResellerOnly}|${sort}`;
+  const queryKey   = `${page}|${focusedRequestId}|${q}|${_finalStatus}|${_finalAssignment}|${source}|${_quick}|${_quickResellerOnly}|${sort}`;
   // Notifica subito renderSalesRequests: se ci sono dati cached mostra quelli,
   // altrimenti (loadedAt === 0) mostra lo spinner e ritorna in attesa del fetch.
-  renderSalesRequests();
-  try {
-    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (q)          params.set("q", q);
+	  renderSalesRequests();
+	  try {
+	    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+	    if (focusedRequestId) params.set("id", focusedRequestId);
+	    if (q)          params.set("q", q);
     if (_finalStatus && _finalStatus !== "all") params.set("status", _finalStatus);
     if (_finalAssignment) params.set("assignment", _finalAssignment);
     if (source && source !== "all")  params.set("source", source);
@@ -14287,10 +14333,14 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
       items: mergedItems,
       loading: false,
       loadError: false,
-      loadedAt: Date.now(),
-      _queryKey: queryKey,
-      dbUnavailable: Boolean(data.dbUnavailable),
-    };
+	      loadedAt: Date.now(),
+	      _queryKey: queryKey,
+	      focusedRequestId,
+	      dbUnavailable: Boolean(data.dbUnavailable),
+	    };
+	    if (focusedRequestId && state.crmFocusedRequestId === focusedRequestId) {
+	      state.crmFocusedRequestId = "";
+	    }
     // CRM v2: rimuovi dal banner i nuovi lead che ora sono visibili in pagina
     if (_crmNewLeadIds.size > 0) {
       const visibleIds = new Set(mergedItems.map((r) => r.id));
@@ -14315,10 +14365,13 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
     // Aggiorna anche state.salesRequests per compatibilità con detail panel etc.
     state.salesRequests = state.crmServerPage.items;
     renderSalesRequests();
-  } catch (err) {
-    state.crmServerPage.loading = false;
-    state.crmServerPage.loadError = true;
-    console.warn("[crm] loadCrmPage error:", err?.message);
+	  } catch (err) {
+	    state.crmServerPage.loading = false;
+	    state.crmServerPage.loadError = true;
+	    if (focusedRequestId && state.crmFocusedRequestId === focusedRequestId) {
+	      state.crmFocusedRequestId = "";
+	    }
+	    console.warn("[crm] loadCrmPage error:", err?.message);
     // Usa renderSalesRequests per mostrare l'errore: in questo modo qualsiasi
     // re-render SSE successivo mostrerà comunque l'errore, non "Nessuna richiesta".
     renderSalesRequests();
@@ -14856,16 +14909,21 @@ function renderSalesRequests() {
   renderSalesRequestBulkBar(pageItems);
   if (ui.salesRequestsList) {
     ui.salesRequestsList.classList.toggle("is-compact", Boolean(state.salesRequestCompactMode));
-    withScrollPreservation(ui.salesRequestsList, () => {
-      const emptyStateText = state.crmServerPage?.dbUnavailable
-        // Ricerca CRM è Postgres-only (searchSalesRequestsFromDb): senza DATABASE_URL
-        // (tipico di un preview locale) torna sempre vuota anche se i contatori in
-        // alto — basati sul payload di sessione — mostrano richieste esistenti.
-        // Messaggio dedicato per non farlo sembrare "zero risultati".
-        ? (state.lang === "it"
-          ? "CRM non disponibile in anteprima locale: serve un database Postgres collegato (DATABASE_URL). I contatori qui sopra restano corretti perché arrivano da un'altra fonte."
-          : "CRM unavailable in local preview: needs a connected Postgres database (DATABASE_URL). The counters above stay correct since they come from a different source.")
-        : (state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters.");
+	    withScrollPreservation(ui.salesRequestsList, () => {
+	      const focusedRequestMissing = Boolean(state.crmServerPage?.focusedRequestId && !pageItems.length);
+	      const emptyStateText = state.crmServerPage?.dbUnavailable
+	        // Ricerca CRM è Postgres-only (searchSalesRequestsFromDb): senza DATABASE_URL
+	        // (tipico di un preview locale) torna sempre vuota anche se i contatori in
+	        // alto — basati sul payload di sessione — mostrano richieste esistenti.
+	        // Messaggio dedicato per non farlo sembrare "zero risultati".
+	        ? (state.lang === "it"
+	          ? "CRM non disponibile in anteprima locale: serve un database Postgres collegato (DATABASE_URL). I contatori qui sopra restano corretti perché arrivano da un'altra fonte."
+	          : "CRM unavailable in local preview: needs a connected Postgres database (DATABASE_URL). The counters above stay correct since they come from a different source.")
+	        : focusedRequestMissing
+	          ? (state.lang === "it"
+	            ? "La richiesta collegata non è stata trovata con i dati attuali. Potrebbe essere stata eliminata, convertita o non essere accessibile con questo account."
+	            : "The linked request was not found in the current data. It may have been deleted, converted, or unavailable for this account.")
+	        : (state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters.");
       ui.salesRequestsList.innerHTML = pageItems.length
         ? renderCrmV2Banner() + pageItems.map((item) => renderCrmV2Row(item, selected, bulkSelectedIds)).join("")
         : renderCrmV2Banner() + `<div class="info-card">${emptyStateText}</div>`;
@@ -15042,7 +15100,7 @@ function renderSalesGenerator() {
     if (!ui.nativeForm.contains(document.activeElement)) renderNativePreventivoForm();
   }
   const generatorOnlyMode = state.currentUser?.role === "crew";
-  const selected = ensureSelectedSalesRequest({ keepMissingSelection: true });
+  const selected = restoreSalesGeneratorLinkedRequest() || ensureSelectedSalesRequest({ keepMissingSelection: true });
   const plannerBridge = !generatorOnlyMode ? getGardenPlannerQuoteBridge() : null;
   const plannerMode = !generatorOnlyMode && state.salesGeneratorPlannerMode && Boolean(plannerBridge?.payload);
   const freeMode = !generatorOnlyMode && state.salesGeneratorFreeMode && !plannerMode;
@@ -17819,7 +17877,7 @@ async function importSalesRequests() {
 function useSelectedSalesRequestInGenerator() {
   const selected = getSelectedSalesRequest();
   if (!selected) return;
-  rememberSelectedSalesRequest(selected);
+  persistSalesGeneratorLinkedRequest(selected);
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;
   state.lastSalesGeneratorSignature = "";
@@ -17831,6 +17889,27 @@ function useSelectedSalesRequestInGenerator() {
     renderSalesGenerator();
   } else {
     setView("sales-generator");
+	  }
+}
+
+function openLinkedSalesRequestFromGenerator() {
+  const selected = restoreSalesGeneratorLinkedRequest() || getSelectedSalesRequest();
+  if (!selected?.id) {
+    setView("sales-requests");
+    return;
+  }
+  persistSalesGeneratorLinkedRequest(selected);
+  state.filters.salesRequestQuick = "all";
+  state.filters.salesRequestStatus = "all";
+  state.filters.salesRequestAssignment = "all";
+  state.search.salesRequests = "";
+  state.salesRequestPage = 1;
+  state.crmViewMode = "list";
+  state.crmFocusedRequestId = selected.id;
+  if (state.currentView === "sales-requests") {
+    loadCrmPage({ page: 1, forceReload: true, requestId: selected.id });
+  } else {
+    setView("sales-requests");
   }
 }
 
@@ -32571,7 +32650,7 @@ function handleGlobalClick(event) {
   }
   if (action === "filter-sales-requests-by-assignment") {
     const assignment = String(button.dataset.assignment || "").trim();
-    if (assignment) state.filters.salesRequestAssignment = assignment;
+    if (assignment) state.filters.salesRequestAssignment = normalizeSalesRequestAssignmentFilter(assignment);
     setView("sales-requests");
     return;
   }
@@ -33859,7 +33938,7 @@ bindEvent(ui.salesRequestsSearch, "input", (event) => {
   scheduleSearchRender("sales-requests", () => loadCrmPage({ page: 1, forceReload: true }));
 });
 bindEvent(ui.salesRequestAssignmentFilter, "change", (event) => {
-  state.filters.salesRequestAssignment = event.target.value || "all";
+  state.filters.salesRequestAssignment = normalizeSalesRequestAssignmentFilter(event.target.value || "all");
   state.salesRequestPage = 1;
   clearSalesRequestBulkSelection({ render: false });
   loadCrmPage({ page: 1, forceReload: true });
@@ -35452,7 +35531,7 @@ document.addEventListener("change", (e) => {
 });
 
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
-bindEvent(ui.salesGeneratorOpenRequestButton, "click", () => setView("sales-requests"));
+bindEvent(ui.salesGeneratorOpenRequestButton, "click", openLinkedSalesRequestFromGenerator);
 bindEvent(ui.salesGeneratorPrefillButton, "click", () => {
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;

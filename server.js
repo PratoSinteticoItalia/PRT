@@ -22,6 +22,11 @@ import {
 } from "./lib/preventivo-pricing.js";
 import { createWriteGuard } from "./lib/safe-write.js";
 import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
+import {
+  normalizeSalesAssignmentFilterValue,
+  normalizeSalesAssignmentKey,
+  normalizeSalesAssignmentValue,
+} from "./lib/sales-assignment.js";
 import { buildSnapshot, snapshotFileName } from "./lib/backup.js";
 import { resolveMarketingAssetInputs } from "./lib/marketing-assets.js";
 import {
@@ -1659,7 +1664,7 @@ function sqlPhoneCanon(col) {
  * CRM server-side search con FTS, filtri e paginazione.
  * Usato da GET /api/sales/requests.
  */
-async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", resellerId = "", resellerAssigned = false, stale = false, sort = "recent", page = 1, limit = 50 } = {}) {
+async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", resellerId = "", resellerAssigned = false, stale = false, sort = "recent", page = 1, limit = 50 } = {}) {
   // Nessun Postgres collegato (es. preview locale senza DATABASE_URL): la ricerca CRM
   // è Postgres-only, non c'è fallback sul blob JSON. `dbUnavailable` permette al client
   // di distinguere "davvero zero risultati" da "qui il CRM proprio non è consultabile",
@@ -1670,7 +1675,11 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   const where = [];
   const params = [];
 
-  if (q && q.trim()) {
+  const requestedId = String(id || "").trim();
+  if (requestedId) {
+    params.push(requestedId);
+    where.push(`id = $${params.length}`);
+  } else if (q && q.trim()) {
     params.push(q.trim());
     where.push(`to_tsvector('italian',
       coalesce(first_name,'') || ' ' || coalesce(last_name,'') || ' ' ||
@@ -1679,7 +1688,7 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
       coalesce(company,'')
     ) @@ plainto_tsquery('italian', $${params.length})`);
   }
-  if (status && status !== "all") {
+  if (!requestedId && status && status !== "all") {
     // Filtro per CATEGORIA (allineato al popover tone): new | contacted | quoted | won | lost
     const _statusLc = String(status).toLowerCase();
     if (_statusLc === "new") {
@@ -1710,37 +1719,38 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
       where.push(`status = $${params.length}`);
     }
   }
-  const assignmentFilter = normalizeSalesRequestAssignmentFilter(assignment);
+  const assignmentFilter = requestedId ? "" : normalizeSalesRequestAssignmentFilter(assignment);
   if (assignmentFilter === "unassigned") {
     where.push(`(assignment IS NULL OR assignment = '')`);
   } else if (assignmentFilter) {
-    params.push(String(assignmentFilter));
-    where.push(`LOWER(TRIM(assignment)) = LOWER($${params.length})`);
+    const assignmentKey = normalizeSalesAssignmentKey(assignmentFilter);
+    params.push(`%${assignmentKey}%`);
+    where.push(`trim(regexp_replace(lower(translate(coalesce(assignment,''), 'àèéìíòóùúÀÈÉÌÍÒÓÙÚ', 'aaeiioouuAAEIIOOUU')), '[^a-z0-9]+', ' ', 'g')) LIKE $${params.length}`);
   }
-  if (source && source !== "all") {
+  if (!requestedId && source && source !== "all") {
     params.push(String(source));
     where.push(`source = $${params.length}`);
   }
   // Filtro servizio (fornitura / posa): mappa il valore del quick-filter al campo job_type
-  if (service === "fornitura") {
+  if (!requestedId && service === "fornitura") {
     // Solo fornitura: job_type non contiene "posa"
     where.push(`(lower(coalesce(job_type,'')) LIKE '%fornitura%' AND lower(coalesce(job_type,'')) NOT LIKE '%posa%')`);
-  } else if (service === "posa") {
+  } else if (!requestedId && service === "posa") {
     // Fornitura + posa
     where.push(`lower(coalesce(job_type,'')) LIKE '%posa%'`);
   }
   // Filtro stato contatto (to-contact = non ancora contattati; contacted = già contattati)
-  if (contactState === "to-contact") {
+  if (!requestedId && contactState === "to-contact") {
     // Escludi record con first_contact_state = queued/sent e stati chiusi
     where.push(`(first_contact_at IS NULL AND coalesce(status,'') NOT IN ('ordine confermato','ordine eseguito','campione acquistato','preventivo confermato'))`);
-  } else if (contactState === "contacted") {
+  } else if (!requestedId && contactState === "contacted") {
     where.push(`first_contact_at IS NOT NULL`);
   }
-  if (dateFrom) {
+  if (!requestedId && dateFrom) {
     params.push(String(dateFrom));
     where.push(`created_at >= $${params.length}::date`);
   }
-  if (dateTo) {
+  if (!requestedId && dateTo) {
     params.push(String(dateTo));
     where.push(`created_at < ($${params.length}::date + interval '1 day')`);
   }
@@ -1749,14 +1759,14 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   if (resellerId) {
     params.push(String(resellerId));
     where.push(`reseller_id = $${params.length}`);
-  } else if (resellerAssigned) {
+  } else if (!requestedId && resellerAssigned) {
     // Filtro "Rivenditori" del CRM ufficio: qualunque richiesta assegnata a
     // un rivenditore, non a uno specifico — nessun parametro, solo IS NOT NULL.
     where.push(`(reseller_id IS NOT NULL AND reseller_id != '')`);
   }
   // Banner urgenza: richieste ancora "nuove", non collegate a un ordine, ferme
   // da 5+ giorni — stessa definizione del conteggio stale_count più sotto.
-  if (stale) {
+  if (!requestedId && stale) {
     where.push(`(
       (status IS NULL OR status = '' OR status = 'new')
       AND (linked_order_id IS NULL OR linked_order_id = '')
@@ -1767,7 +1777,7 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   // CRM v2: il where va ribattezzato con prefisso "sr." per il join con shadow
   const whereSrPrefixed = where.length
     ? ` WHERE ${where.join(" AND ")
-        .replace(/\b(first_name|last_name|email|phone|status|assignment|source|note|company|city|created_at|reseller_id)\b/g, "sr.$1")}`
+        .replace(/\b(id|first_name|last_name|email|phone|status|assignment|source|note|company|city|created_at|reseller_id)\b/g, "sr.$1")}`
     : "";
   const offset = (Math.max(1, Number(page) || 1) - 1) * (Number(limit) || 50);
   const limitN = Math.min(200, Math.max(1, Number(limit) || 50));
@@ -7673,26 +7683,12 @@ async function refreshSalesAssignmentCatalogCache() {
 }
 
 function normalizeSalesRequestAssignment(value = "") {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const normalized = normalizeSalesRequestImportHeader(raw);
-  if (!normalized || ["non assegnato", "non assegnata", "unassigned", "none", "na"].includes(normalized)) return "";
-  if (normalized.includes("ivan")) return "Ivan";
-  if (normalized.includes("gabriele")) return "Gabriele";
-  const catalogMatch = _salesAssignmentCatalogCache.find((item) => {
-    const label = normalizeSalesRequestImportHeader(item.label || item.value || "");
-    return label && normalized.includes(label);
-  });
-  return catalogMatch ? String(catalogMatch.label || catalogMatch.value).trim() : "";
+  return normalizeSalesAssignmentValue(value, _salesAssignmentCatalogCache);
 }
 
 function normalizeSalesRequestAssignmentFilter(value = "") {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  const normalized = normalizeSalesRequestImportHeader(raw);
-  if (!normalized || normalized === "all" || normalized === "tutte") return "";
-  if (["unassigned", "da assegnare", "non assegnato", "non assegnata"].includes(normalized)) return "unassigned";
-  return normalizeSalesRequestAssignment(raw) || raw;
+  const normalized = normalizeSalesAssignmentFilterValue(value, _salesAssignmentCatalogCache);
+  return normalized === "all" ? "" : normalized;
 }
 
 function normalizeIsoDateTime(value = "") {
@@ -15792,10 +15788,11 @@ async function handleApi(req, res, url) {
   }
 
   // GET /api/sales/requests — ricerca CRM server-side con FTS + filtri + paginazione
-  if (url.pathname === "/api/sales/requests" && req.method === "GET") {
-    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
-    if (!["office", "rivenditore"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
-    const q            = String(url.searchParams.get("q") || "").trim();
+	  if (url.pathname === "/api/sales/requests" && req.method === "GET") {
+	    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+	    if (!["office", "rivenditore"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+	    const id           = String(url.searchParams.get("id") || "").trim();
+	    const q            = String(url.searchParams.get("q") || "").trim();
     const status       = String(url.searchParams.get("status") || "").trim();
     const assignment   = String(url.searchParams.get("assignment") || "").trim();
     const source       = String(url.searchParams.get("source") || "").trim();
@@ -15812,10 +15809,10 @@ async function handleApi(req, res, url) {
     const resellerId = currentUser.role === "rivenditore" ? String(currentUser.id) : "";
     // Filtro "Rivenditori" del CRM ufficio (qualunque rivenditore) — ignorato
     // se resellerId è già impostato (rivenditore che guarda solo le proprie).
-    const resellerAssigned = currentUser.role === "office" && url.searchParams.get("resellerAssigned") === "1";
-    try {
-      const result = await searchSalesRequestsFromDb({ q, status, assignment, source, service, contactState, dateFrom, dateTo, resellerId, resellerAssigned, stale, sort, page, limit });
-      return sendJson(res, 200, result);
+	  const resellerAssigned = currentUser.role === "office" && url.searchParams.get("resellerAssigned") === "1";
+	  try {
+	    const result = await searchSalesRequestsFromDb({ id, q, status, assignment, source, service, contactState, dateFrom, dateTo, resellerId, resellerAssigned, stale, sort, page, limit });
+	    return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "search_failed") });
     }
