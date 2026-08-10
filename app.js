@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260809-dashboard-command-priority-links";
+} from "./lib/order-money.js?v=20260810-dashboard-command-link-targets";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260809-dashboard-command-priority-links";
+import { regionForCity } from "./lib/geo.js?v=20260810-dashboard-command-link-targets";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260809-dashboard-command-priority-links";
+} from "./lib/shipping-eligibility.js?v=20260810-dashboard-command-link-targets";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260809-dashboard-command-priority-links";
+} from "./lib/profit-split.js?v=20260810-dashboard-command-link-targets";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260809-dashboard-command-priority-links";
+} from "./lib/preventivo-pricing.js?v=20260810-dashboard-command-link-targets";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260809-dashboard-command-priority-links";
+const APP_SHELL_VERSION = "20260810-dashboard-command-link-targets";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11300,6 +11300,7 @@ function makeDashboardCommandTask(config = {}) {
     next: config.next || "Apri la sezione collegata e verifica i dati.",
     primary: config.primary || "Apri",
     secondary: config.secondary || "",
+    secondaryAction: config.secondaryAction || null,
     action: config.action || "open-dashboard-view",
     view: config.view || "dashboard",
     targetId: config.targetId || "",
@@ -11317,15 +11318,41 @@ function getDashboardCommandActionAttrs(task = {}) {
   const attrs = [`data-action="${escapeAttr(action)}"`];
   if (task.targetId) attrs.push(`data-id="${escapeAttr(task.targetId)}"`);
   if (task.view) attrs.push(`data-view="${escapeAttr(task.view)}"`);
+  if (task.commandView) attrs.push(`data-command-view="${escapeAttr(task.commandView)}"`);
+  [
+    ["orderFilter", "data-order-filter"],
+    ["warehouseFilter", "data-warehouse-filter"],
+    ["installationFilter", "data-installation-filter"],
+    ["accountingFilter", "data-accounting-filter"],
+    ["shippingFilter", "data-shipping-filter"],
+    ["ddtFilter", "data-ddt-filter"],
+  ].forEach(([key, attr]) => {
+    if (task[key]) attrs.push(`${attr}="${escapeAttr(task[key])}"`);
+  });
   return attrs.join(" ");
 }
 
-function getDashboardCommandSupplierAction() {
+function makeDashboardCommandOpenViewAction(labelIt, labelEn, view, config = {}) {
   return {
-    label: state.lang === "it" ? "Apri fornitori" : "Open suppliers",
+    label: state.lang === "it" ? labelIt : labelEn,
     action: "open-dashboard-view",
-    view: "supplier-prices",
+    view,
+    ...config,
   };
+}
+
+function makeDashboardCommandSelectOrderAction(labelIt, labelEn, view, orderId, config = {}) {
+  return {
+    label: state.lang === "it" ? labelIt : labelEn,
+    action: "select-order",
+    view,
+    targetId: orderId,
+    ...config,
+  };
+}
+
+function getDashboardCommandSupplierAction() {
+  return makeDashboardCommandOpenViewAction("Apri fornitori", "Open suppliers", "supplier-prices");
 }
 
 function getSalesRequestDashboardName(item = {}) {
@@ -11581,6 +11608,7 @@ function buildDashboardCommandMaterialTasks() {
           : "Open Inventory and assign a compatible roll or offcut to the order.",
         primary: state.lang === "it" ? "Impegna materiale" : "Commit material",
         secondary: state.lang === "it" ? "Apri ordine" : "Open order",
+        secondaryAction: makeDashboardCommandSelectOrderAction("Apri ordine", "Open order", "orders", order.id),
         action: "select-order",
         view: "warehouse",
         targetId: order.id,
@@ -11678,6 +11706,12 @@ function buildDashboardCommandInstallationTasks() {
       const missingConfirm = !install.clientConfirmed;
       const missingDate = !install.installDate;
       const severity = missingMaterials || missingDate ? "high" : missingConfirm ? "medium" : "low";
+      const actions = [
+        makeDashboardCommandOpenViewAction("Calendario", "Schedule", "installations-scheduled"),
+      ];
+      if (missingMaterials) {
+        actions.unshift(makeDashboardCommandSelectOrderAction("Materiali", "Materials", "warehouse", order.id));
+      }
       return makeDashboardCommandTask({
         id: `install-${order.id}`,
         area: "Pose",
@@ -11696,9 +11730,11 @@ function buildDashboardCommandInstallationTasks() {
             : (state.lang === "it" ? "Conferma cliente, squadra e criticita prima dell'uscita." : "Confirm client, crew and critical points before dispatch."),
         primary: state.lang === "it" ? "Apri posa" : "Open install",
         secondary: state.lang === "it" ? "Apri ordine" : "Open order",
+        secondaryAction: makeDashboardCommandSelectOrderAction("Apri ordine", "Open order", "orders", order.id),
         action: "select-order",
         view: "installations",
         targetId: order.id,
+        actions,
         fields: [
           [state.lang === "it" ? "Cliente" : "Client", composeClientName(order)],
           [state.lang === "it" ? "Squadra" : "Crew", install.crew || "—"],
@@ -11727,6 +11763,14 @@ function buildDashboardCommandMoneyTasks() {
     .map((order) => {
       const balance = getOpenBalance(order);
       const invoiceMissing = Boolean(order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
+      const actions = [];
+      if (getDdtEligibleOrders().some((item) => item.id === order.id)) {
+        actions.push(makeDashboardCommandOpenViewAction("DDT", "DDT", "ddt", { targetId: order.id, ddtFilter: ddtOrderHasNumber(order) ? "all" : "todo" }));
+      }
+      actions.push(makeDashboardCommandSelectOrderAction("Spedizione", "Shipping", "shipping", order.id));
+      if (orderNeedsInstallationAction(order)) {
+        actions.push(makeDashboardCommandSelectOrderAction("Conto posa", "Install split", "profit-split", order.id, { action: "open-profit-split-order" }));
+      }
       return makeDashboardCommandTask({
         id: `money-order-${order.id}`,
         area: "Soldi",
@@ -11743,9 +11787,11 @@ function buildDashboardCommandMoneyTasks() {
           : (state.lang === "it" ? "Completa documento contabile richiesto." : "Complete required accounting document."),
         primary: state.lang === "it" ? "Apri contabilita" : "Open accounting",
         secondary: state.lang === "it" ? "Apri ordine" : "Open order",
+        secondaryAction: makeDashboardCommandSelectOrderAction("Apri ordine", "Open order", "orders", order.id),
         action: "select-order",
         view: "accounting",
         targetId: order.id,
+        actions,
         fields: [
           [state.lang === "it" ? "Ordine" : "Order", getOrderNumber(order)],
           [state.lang === "it" ? "Cliente" : "Client", composeClientName(order)],
@@ -11778,9 +11824,14 @@ function buildDashboardCommandMoneyTasks() {
       status: state.lang === "it" ? "Documento" : "Document",
       next: state.lang === "it" ? "Apri DDT e genera il documento prima dell'uscita merce." : "Open DDT and generate the document before dispatch.",
       primary: state.lang === "it" ? "Apri DDT" : "Open DDT",
-      secondary: state.lang === "it" ? "Apri spedizione" : "Open shipping",
+      secondary: "",
       action: "open-dashboard-view",
       view: "ddt",
+      targetId: order.id,
+      ddtFilter: "todo",
+      actions: [
+        makeDashboardCommandSelectOrderAction("Apri spedizione", "Open shipping", "shipping", order.id),
+      ],
       fields: [
         [state.lang === "it" ? "Ordine" : "Order", getOrderNumber(order)],
         [state.lang === "it" ? "Cliente" : "Client", composeClientName(order)],
@@ -12013,6 +12064,7 @@ function renderDashboardCommandDetail(task = null, view = {}) {
   ui.dashboardCommandDetailSeverity.className = `dashboard-command-badge tone-${tone}`;
   ui.dashboardCommandDetailSeverity.textContent = getDashboardCommandSeverityLabel(task.severity);
   const actionAttrs = getDashboardCommandActionAttrs(task);
+  const secondaryActionAttrs = task.secondaryAction ? getDashboardCommandActionAttrs(task.secondaryAction) : actionAttrs;
   const extraActions = task.actions.map((action) => {
     const attrs = getDashboardCommandActionAttrs(action);
     const className = action.primary ? "btn primary" : "btn";
@@ -12056,7 +12108,7 @@ function renderDashboardCommandDetail(task = null, view = {}) {
         <div>${escapeHtml(task.notes || "—")}</div>
         <div class="dashboard-command-actions">
           <button class="btn primary" type="button" ${actionAttrs}>${escapeHtml(task.primary)}</button>
-          ${task.secondary ? `<button class="btn" type="button" ${actionAttrs}>${escapeHtml(task.secondary)}</button>` : ""}
+          ${task.secondary ? `<button class="btn" type="button" ${secondaryActionAttrs}>${escapeHtml(task.secondary)}</button>` : ""}
           ${extraActions}
         </div>
       </div>
@@ -12090,6 +12142,10 @@ function renderDashboardCommandModules(model) {
         `${salesStats.toContact} ${state.lang === "it" ? "nuovi contatti" : "new contacts"}`,
         `${salesStats.stale} ${state.lang === "it" ? "storiche fuori coda" : "stale out of queue"}`,
       ],
+      actions: [
+        makeDashboardCommandOpenViewAction("Richieste", "Requests", "sales-requests"),
+        makeDashboardCommandOpenViewAction("Generatore", "Generator", "sales-generator"),
+      ],
     },
     {
       key: "materials",
@@ -12102,11 +12158,8 @@ function renderDashboardCommandModules(model) {
         state.lang === "it" ? "Impegni, scorte e fornitori" : "Commitments, stock and suppliers",
       ],
       actions: [
-        {
-          label: state.lang === "it" ? "Fornitori" : "Suppliers",
-          action: "open-dashboard-view",
-          view: "supplier-prices",
-        },
+        makeDashboardCommandOpenViewAction("Inventario", "Inventory", "warehouse"),
+        makeDashboardCommandOpenViewAction("Fornitori", "Suppliers", "supplier-prices"),
       ],
     },
     {
@@ -12119,6 +12172,11 @@ function renderDashboardCommandModules(model) {
         `${model.installations.tasks.filter((task) => task.severity === "high").length} ${state.lang === "it" ? "con blocchi" : "blocked"}`,
         state.lang === "it" ? "Calendario + preparazione" : "Calendar + preparation",
       ],
+      actions: [
+        makeDashboardCommandOpenViewAction("Pose", "Installs", "installations"),
+        makeDashboardCommandOpenViewAction("Programmate", "Scheduled", "installations-scheduled"),
+        makeDashboardCommandOpenViewAction("Live", "Live", "installations-live"),
+      ],
     },
     {
       key: "money",
@@ -12129,6 +12187,11 @@ function renderDashboardCommandModules(model) {
         `${model.money.tasks.length} ${state.lang === "it" ? "azioni" : "actions"}`,
         `${(state.orders || []).filter((order) => getOpenBalance(order) > 0).length} ${state.lang === "it" ? "saldi aperti" : "open balances"}`,
         `${getDdtEligibleOrders().filter((order) => !ddtOrderHasNumber(order)).length} DDT`,
+      ],
+      actions: [
+        makeDashboardCommandOpenViewAction("Contabilita", "Accounting", "accounting"),
+        makeDashboardCommandOpenViewAction("DDT", "DDT", "ddt", { ddtFilter: "todo" }),
+        makeDashboardCommandOpenViewAction("Spedizioni", "Shipping", "shipping"),
       ],
     },
   ];
@@ -13692,19 +13755,22 @@ function renderOrderJobHub(order) {
 function openDashboardViewTarget(target) {
   const dataset = target?.dataset || {};
   const nextView = dataset.view || "orders";
+  const targetId = dataset.id || dataset.orderId || "";
   if (nextView === "orders") {
     state.filters.order = dataset.dashboardOrderFilter || dataset.orderFilter || "all";
     state.search.orders = "";
     state.orderPage = 1;
-    state.selectedOrderId = "";
+    state.selectedOrderId = targetId;
   }
   if (nextView === "warehouse") {
     state.filters.warehouse = dataset.dashboardWarehouseFilter || dataset.warehouseFilter || "all";
     state.search.warehouse = "";
-    state.selectedOrderId = "";
+    state.selectedOrderId = targetId;
   }
   if (nextView === "installations") {
     state.filters.installation = dataset.dashboardInstallationFilter || dataset.installationFilter || "all";
+    state.selectedOrderId = targetId;
+    if (targetId && window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.installDrawerOpen = true;
     if (state.filters.installation === "all") {
       state.selectedInstallationCrew = "";
     }
@@ -13712,12 +13778,22 @@ function openDashboardViewTarget(target) {
   if (nextView === "accounting") {
     state.filters.accounting = dataset.dashboardAccountingFilter || dataset.accountingFilter || "all";
     state.search.accounting = "";
-    state.selectedOrderId = "";
+    state.selectedOrderId = targetId;
+    if (targetId && window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.accountingDrawerOpen = true;
   }
   if (nextView === "shipping") {
     state.filters.shipping = dataset.dashboardShippingFilter || dataset.shippingFilter || "all";
     state.search.shipping = "";
-    state.selectedOrderId = "";
+    state.selectedOrderId = targetId;
+    if (targetId) state.shippingDrawerOpen = true;
+  }
+  if (nextView === "ddt") {
+    state.filters.ddt = dataset.dashboardDdtFilter || dataset.ddtFilter || "all";
+    state.search.ddt = "";
+    if (targetId) {
+      state.selectedDdtOrderId = targetId;
+      state.ddtDraft = null;
+    }
   }
   setView(nextView);
 }
