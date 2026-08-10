@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260810-sales-request-filter-generator-link";
+} from "./lib/order-money.js?v=20260810-error-toast-crm-cleanup";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260810-sales-request-filter-generator-link";
+import { regionForCity } from "./lib/geo.js?v=20260810-error-toast-crm-cleanup";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260810-sales-request-filter-generator-link";
+} from "./lib/shipping-eligibility.js?v=20260810-error-toast-crm-cleanup";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260810-sales-request-filter-generator-link";
+} from "./lib/profit-split.js?v=20260810-error-toast-crm-cleanup";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260810-sales-request-filter-generator-link";
+} from "./lib/preventivo-pricing.js?v=20260810-error-toast-crm-cleanup";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260810-sales-request-filter-generator-link";
+const APP_SHELL_VERSION = "20260810-error-toast-crm-cleanup";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14845,19 +14845,18 @@ function renderSalesRequests() {
   if (ui.salesRequestsList) {
     ui.salesRequestsList.classList.toggle("is-compact", Boolean(state.salesRequestCompactMode));
     withScrollPreservation(ui.salesRequestsList, () => {
-    console.warn("[DEBUG-dbUnavailable]", JSON.stringify({dbUnavailable: state.crmServerPage?.dbUnavailable, loadedAt: state.crmServerPage?.loadedAt, total: state.crmServerPage?.total, pageItemsLen: pageItems.length}));
-    const emptyStateText = state.crmServerPage?.dbUnavailable
-      // Ricerca CRM è Postgres-only (searchSalesRequestsFromDb): senza DATABASE_URL
-      // (tipico di un preview locale) torna sempre vuota anche se i contatori in
-      // alto — basati sul payload di sessione — mostrano richieste esistenti.
-      // Messaggio dedicato per non farlo sembrare "zero risultati".
-      ? (state.lang === "it"
-        ? "CRM non disponibile in anteprima locale: serve un database Postgres collegato (DATABASE_URL). I contatori qui sopra restano corretti perché arrivano da un'altra fonte."
-        : "CRM unavailable in local preview: needs a connected Postgres database (DATABASE_URL). The counters above stay correct since they come from a different source.")
-      : (state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters.");
-    ui.salesRequestsList.innerHTML = pageItems.length
-      ? renderCrmV2Banner() + pageItems.map((item) => renderCrmV2Row(item, selected, bulkSelectedIds)).join("")
-      : renderCrmV2Banner() + `<div class="info-card">${emptyStateText}</div>`;
+      const emptyStateText = state.crmServerPage?.dbUnavailable
+        // Ricerca CRM è Postgres-only (searchSalesRequestsFromDb): senza DATABASE_URL
+        // (tipico di un preview locale) torna sempre vuota anche se i contatori in
+        // alto — basati sul payload di sessione — mostrano richieste esistenti.
+        // Messaggio dedicato per non farlo sembrare "zero risultati".
+        ? (state.lang === "it"
+          ? "CRM non disponibile in anteprima locale: serve un database Postgres collegato (DATABASE_URL). I contatori qui sopra restano corretti perché arrivano da un'altra fonte."
+          : "CRM unavailable in local preview: needs a connected Postgres database (DATABASE_URL). The counters above stay correct since they come from a different source.")
+        : (state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters.");
+      ui.salesRequestsList.innerHTML = pageItems.length
+        ? renderCrmV2Banner() + pageItems.map((item) => renderCrmV2Row(item, selected, bulkSelectedIds)).join("")
+        : renderCrmV2Banner() + `<div class="info-card">${emptyStateText}</div>`;
     });
   }
   if (ui.salesRequestsPagination) {
@@ -29172,9 +29171,34 @@ function reportError(context, error, { notify = false } = {}) {
 // finivano nel nulla (schermo rotto senza segnale). Ora li logghiamo e — con un
 // throttle per non spammare — avvisiamo l'utente che qualcosa è andato storto.
 let _lastErrorToastAt = 0;
+const _uncaughtErrorToastSignatures = new Map();
+
+function getUncaughtErrorSignature(label, payload) {
+  const message = String(
+    payload?.message
+    || payload?.reason?.message
+    || payload?.error?.message
+    || payload
+    || "",
+  ).trim();
+  return `${label}:${message || "unknown"}`.slice(0, 260);
+}
+
+function shouldSuppressUncaughtToast(signature, now = Date.now()) {
+  const repeatWindowMs = 60_000;
+  const previousAt = Number(_uncaughtErrorToastSignatures.get(signature) || 0);
+  _uncaughtErrorToastSignatures.set(signature, now);
+  _uncaughtErrorToastSignatures.forEach((seenAt, key) => {
+    if (now - Number(seenAt || 0) > repeatWindowMs) _uncaughtErrorToastSignatures.delete(key);
+  });
+  return Boolean(previousAt && now - previousAt < repeatWindowMs);
+}
+
 function notifyUncaught(label, payload) {
   reportError(label, payload);
   const now = Date.now();
+  const signature = getUncaughtErrorSignature(label, payload);
+  if (shouldSuppressUncaughtToast(signature, now)) return;
   if (now - _lastErrorToastAt < 8000) return; // max 1 toast ogni 8s
   _lastErrorToastAt = now;
   const msg = state.lang === "it"
