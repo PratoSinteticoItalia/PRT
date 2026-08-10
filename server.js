@@ -1806,6 +1806,50 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
   )`;
   // I riferimenti a ils.received_at nelle WHERE vanno tradotti a sd.received_at
   const whereWithSd = whereSrPrefixed.replace(/ils\.received_at/g, "sd.received_at");
+  const requestDateSql = "COALESCE(sd.received_at, sr.created_at)";
+  const statusSql = "LOWER(TRIM(coalesce(sr.status,'')))";
+  const quotedRefSql = `COALESCE(sr.quoted_at, sr.updated_at, ${requestDateSql})`;
+  const newStatusSql = `(${statusSql} IN ('', 'new', 'nuovo contatto'))`;
+  const linkedOrderEmptySql = "(sr.linked_order_id IS NULL OR sr.linked_order_id = '')";
+  const quotedStatusSql = `${statusSql} IN (
+    'quoted', 'quote', 'preventivo', 'in preventivo', 'preventivo inviato',
+    'preventivo da inviare', 'preventivo confermato', 'offerta',
+    'offerta inviata', 'quotato', 'campione acquistato'
+  )`;
+  const followupStatusSql = `(
+    ${statusSql} IN (
+      'followup', 'follow up', 'da richiamare', 'richiamare', 'richiamata',
+      'attesa', 'in attesa di risposta', 'nessuna risposta', 'ricontattato',
+      'fare follow up'
+    )
+    OR ${statusSql} LIKE '%follow%'
+    OR ${statusSql} LIKE '%richiam%'
+    OR ${statusSql} LIKE '%attesa%'
+    OR ${statusSql} LIKE '%ricontatt%'
+    OR ${statusSql} LIKE '%nessuna risposta%'
+  )`;
+  const urgentOrderBy = `
+           CASE
+             WHEN ${quotedStatusSql}
+              AND ${quotedRefSql} <= NOW() - INTERVAL '7 days'
+              AND ${quotedRefSql} >= NOW() - INTERVAL '45 days'
+             THEN 0
+             WHEN ${newStatusSql}
+              AND ${linkedOrderEmptySql}
+              AND ${requestDateSql} <= NOW() - INTERVAL '5 days'
+             THEN 1
+             WHEN coalesce(trim(sr.assignment),'') = ''
+             THEN 2
+             WHEN ${followupStatusSql}
+             THEN 3
+             ELSE 4
+           END ASC,
+           CASE
+             WHEN ${quotedStatusSql} THEN ${quotedRefSql}
+             ELSE ${requestDateSql}
+           END ASC NULLS LAST,
+           sr.updated_at DESC NULLS LAST,
+           sr.source_row_number DESC NULLS LAST`;
 
   try {
     const [countRes, dataRes, statsRes] = await Promise.all([
@@ -1824,8 +1868,7 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
          FROM sales_requests sr
          LEFT JOIN shadow_dates sd ON sd.sr_id = sr.id
          ${whereWithSd}
-         ORDER BY${sort === "urgent" ? `
-           COALESCE(sd.received_at, sr.created_at) ASC NULLS LAST` : `
+         ORDER BY${sort === "urgent" ? urgentOrderBy : `
            sd.received_at DESC NULLS LAST,        -- 1) primi i record con shadow (data IMAP reale)
            sr.source_row_number DESC NULLS LAST,  -- 2) poi gli altri per riga Sheets (più recente = riga più alta)
            sr.updated_at DESC NULLS LAST,         -- 3) infine per ultimo aggiornamento
