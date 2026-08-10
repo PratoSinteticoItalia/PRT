@@ -1710,11 +1710,12 @@ async function searchSalesRequestsFromDb({ q = "", status = "", assignment = "",
       where.push(`status = $${params.length}`);
     }
   }
-  if (assignment === "unassigned") {
+  const assignmentFilter = normalizeSalesRequestAssignmentFilter(assignment);
+  if (assignmentFilter === "unassigned") {
     where.push(`(assignment IS NULL OR assignment = '')`);
-  } else if (assignment && assignment !== "all") {
-    params.push(String(assignment));
-    where.push(`assignment = $${params.length}`);
+  } else if (assignmentFilter) {
+    params.push(String(assignmentFilter));
+    where.push(`LOWER(TRIM(assignment)) = LOWER($${params.length})`);
   }
   if (source && source !== "all") {
     params.push(String(source));
@@ -7640,6 +7641,15 @@ function normalizeSalesRequestAssignment(value = "") {
     return label && normalized.includes(label);
   });
   return catalogMatch ? String(catalogMatch.label || catalogMatch.value).trim() : "";
+}
+
+function normalizeSalesRequestAssignmentFilter(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const normalized = normalizeSalesRequestImportHeader(raw);
+  if (!normalized || normalized === "all" || normalized === "tutte") return "";
+  if (["unassigned", "da assegnare", "non assegnato", "non assegnata"].includes(normalized)) return "unassigned";
+  return normalizeSalesRequestAssignment(raw) || raw;
 }
 
 function normalizeIsoDateTime(value = "") {

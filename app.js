@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260810-qa-priority-fixes-links-final";
+} from "./lib/order-money.js?v=20260810-sales-request-filter-generator-link";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260810-qa-priority-fixes-links-final";
+import { regionForCity } from "./lib/geo.js?v=20260810-sales-request-filter-generator-link";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260810-qa-priority-fixes-links-final";
+} from "./lib/shipping-eligibility.js?v=20260810-sales-request-filter-generator-link";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260810-qa-priority-fixes-links-final";
+} from "./lib/profit-split.js?v=20260810-sales-request-filter-generator-link";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260810-qa-priority-fixes-links-final";
+} from "./lib/preventivo-pricing.js?v=20260810-sales-request-filter-generator-link";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260810-qa-priority-fixes-links-final";
+const APP_SHELL_VERSION = "20260810-sales-request-filter-generator-link";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1236,6 +1236,7 @@ const state = {
   customProducts: [], // prodotti ufficio + preferenze native (GET /api/products), uniti a INVENTORY_CATALOG
   selectedOrderId: null,
   selectedSalesRequestId: "",
+  selectedSalesRequestSnapshot: null,
   selectedSalesRequestBulkIds: new Set(),
   salesRequestBulkSaving: false,
   salesRequestSaveInFlight: false,
@@ -4963,15 +4964,38 @@ function getSalesContentCategoryOptions(items = []) {
   return base;
 }
 
+function rememberSelectedSalesRequest(item = {}) {
+  const id = String(item?.id || "").trim();
+  if (!id) return null;
+  state.selectedSalesRequestSnapshot = { ...item, id };
+  return state.selectedSalesRequestSnapshot;
+}
+
+function findSalesRequestById(id = "") {
+  const safeId = String(id || "").trim();
+  if (!safeId) return null;
+  return state.salesRequests.find((item) => item.id === safeId)
+    || (state.crmServerPage?.items || []).find((item) => item.id === safeId)
+    || (state.selectedSalesRequestSnapshot?.id === safeId ? state.selectedSalesRequestSnapshot : null)
+    || null;
+}
+
+function getSalesRequestSelectionItems() {
+  return state.crmServerPage?.items?.length > 0 || state.crmServerPage?.loadedAt > 0
+    ? (state.crmServerPage.items || [])
+    : (state.salesRequests || []);
+}
+
 function getSelectedSalesRequest() {
   const id = state.selectedSalesRequestId;
   if (!id) return null;
-  // Cerca prima in salesRequests (blob/server), poi in crmServerPage.items (pagina PG corrente).
+  // Cerca prima in salesRequests (blob/server), poi in crmServerPage.items (pagina PG corrente),
+  // infine nello snapshot selezionato: il Generatore deve restare agganciato alla
+  // richiesta anche quando il CRM ricarica con filtri/pagine che non la includono.
   // È necessario perché applySessionPayload può sostituire state.salesRequests con dati blob
   // mentre la pagina PG caricata in precedenza aveva l'item selezionato.
-  return state.salesRequests.find((item) => item.id === id)
-    || (state.crmServerPage?.items || []).find((item) => item.id === id)
-    || null;
+  const selected = findSalesRequestById(id);
+  return selected ? rememberSelectedSalesRequest(selected) : null;
 }
 
 function getSelectedSalesContent() {
@@ -5028,17 +5052,24 @@ function saveSalesRequestVCard() {
   showToast(state.lang === "it" ? "Contatto pronto: apri il file per aggiungerlo alla rubrica" : "Contact ready", "success");
 }
 
-function ensureSelectedSalesRequest() {
+function ensureSelectedSalesRequest({ keepMissingSelection = false } = {}) {
   if (state.creatingSalesRequest) {
     state.selectedSalesRequestId = "";
+    state.selectedSalesRequestSnapshot = null;
     return null;
   }
-  if (!state.salesRequests.length) {
+  const selected = getSelectedSalesRequest();
+  if (selected) return selected;
+  const sourceItems = getSalesRequestSelectionItems();
+  if (!sourceItems.length) {
+    if (keepMissingSelection && state.selectedSalesRequestId) return null;
     state.selectedSalesRequestId = "";
+    state.selectedSalesRequestSnapshot = null;
     return null;
   }
-  if (!state.selectedSalesRequestId || !state.salesRequests.some((item) => item.id === state.selectedSalesRequestId)) {
-    state.selectedSalesRequestId = state.salesRequests[0].id;
+  if (keepMissingSelection && state.selectedSalesRequestId) return null;
+  if (!state.selectedSalesRequestId || !sourceItems.some((item) => item.id === state.selectedSalesRequestId)) {
+    state.selectedSalesRequestId = sourceItems[0].id;
   }
   return getSelectedSalesRequest();
 }
@@ -5202,6 +5233,8 @@ function ensureSelectedSalesContent() {
 function buildSalesRequestPrefill(item = {}) {
   const requestSqm = getSalesRequestSqm(item);
   return {
+    id: item.id || "",
+    requestId: item.id || "",
     nome: item.name || "",
     cognome: item.surname || "",
     citta: item.city || "",
@@ -5676,7 +5709,7 @@ function openSalesRequestWhatsAppTab(url = "") {
 function markSelectedSalesRequestQuoteSent(requestIdOverride = "") {
   const explicitRequestId = String(requestIdOverride || "").trim();
   const request = explicitRequestId
-    ? (state.salesRequests.find((item) => item.id === explicitRequestId) || getSelectedSalesRequest())
+    ? (findSalesRequestById(explicitRequestId) || getSelectedSalesRequest())
     : getSelectedSalesRequest();
   const requestId = String(request?.id || "").trim();
   if (!request || !requestId || salesGeneratorQuoteStatusInFlight.has(requestId)) return;
@@ -14265,6 +14298,8 @@ async function loadCrmPage({ page = 1, forceReload = false } = {}) {
         prevWeek: data.stats.prevWeek ?? 0,
       };
     }
+    const selectedInPage = mergedItems.find((item) => item.id === state.selectedSalesRequestId);
+    if (selectedInPage) rememberSelectedSalesRequest(selectedInPage);
     // Aggiorna anche state.salesRequests per compatibilità con detail panel etc.
     state.salesRequests = state.crmServerPage.items;
     renderSalesRequests();
@@ -14996,7 +15031,7 @@ function renderSalesGenerator() {
     if (!ui.nativeForm.contains(document.activeElement)) renderNativePreventivoForm();
   }
   const generatorOnlyMode = state.currentUser?.role === "crew";
-  const selected = ensureSelectedSalesRequest();
+  const selected = ensureSelectedSalesRequest({ keepMissingSelection: true });
   const plannerBridge = !generatorOnlyMode ? getGardenPlannerQuoteBridge() : null;
   const plannerMode = !generatorOnlyMode && state.salesGeneratorPlannerMode && Boolean(plannerBridge?.payload);
   const freeMode = !generatorOnlyMode && state.salesGeneratorFreeMode && !plannerMode;
@@ -16830,6 +16865,7 @@ function upsertSalesRequest(saved, { skipOpsRender = false, preserveSelection = 
     state.selectedSalesRequestId = normalized.id;
     state.creatingSalesRequest = false;
   }
+  if (state.selectedSalesRequestId === normalized.id) rememberSelectedSalesRequest(normalized);
   if (!skipOpsRender) renderOps();
 }
 
@@ -17429,6 +17465,7 @@ async function deleteSalesRequest() {
     }
     invalidateSalesRequestsFilterCache();
     state.selectedSalesRequestId = "";
+    state.selectedSalesRequestSnapshot = null;
     restoreSalesRequestPageAnchor(pageAnchorId);
     state.creatingSalesRequest = false;
     state.lastSalesGeneratorSignature = "";
@@ -17771,6 +17808,7 @@ async function importSalesRequests() {
 function useSelectedSalesRequestInGenerator() {
   const selected = getSelectedSalesRequest();
   if (!selected) return;
+  rememberSelectedSalesRequest(selected);
   state.salesGeneratorFreeMode = false;
   state.salesGeneratorPlannerMode = false;
   state.lastSalesGeneratorSignature = "";
@@ -25628,6 +25666,7 @@ function applySessionPayload(session = {}) {
   if (userChanged) {
     state.lastSalesGeneratorSignature = "";
     state.lastSalesGeneratorBrandingSignature = "";
+    state.selectedSalesRequestSnapshot = null;
     state.salesGeneratorFreeMode = false;
     state.usageReport = null;
     state.usageEventSessionKeys = new Set();
@@ -32078,6 +32117,8 @@ function handleGlobalClick(event) {
     const rowId = String(button?.dataset?.id || "");
     if (!rowId) return;
     state.selectedSalesRequestId = rowId;
+    const rowRecord = findSalesRequestById(rowId);
+    if (rowRecord) rememberSelectedSalesRequest(rowRecord);
     document.getElementById("sales-requests")?.classList.add("crm-detail-open");
     renderSalesRequests();
     // Su mobile apri il dettaglio a TUTTA PAGINA (drill), come la selezione card:
@@ -32538,6 +32579,8 @@ function handleGlobalClick(event) {
   if (action === "select-sales-request") {
     state.creatingSalesRequest = false;
     state.selectedSalesRequestId = id || "";
+    const selectedRecord = findSalesRequestById(id || "");
+    if (selectedRecord) rememberSelectedSalesRequest(selectedRecord);
     state.salesRequestFormDirty = false;
     clearPendingCurrentViewRefresh();
     if (button.dataset.view && button.dataset.view !== state.currentView) {
@@ -33327,6 +33370,8 @@ function activateCmdKResult(item) {
     setView("orders");
   } else if (type === "request") {
     state.selectedSalesRequestId = id;
+    const requestRecord = findSalesRequestById(id || "");
+    if (requestRecord) rememberSelectedSalesRequest(requestRecord);
     setView("sales-requests");
   }
 }
