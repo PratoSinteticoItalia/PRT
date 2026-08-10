@@ -27452,6 +27452,26 @@ body.mobile-safe-mode .main-content {
   border-left: 4px solid var(--cmd-blue);
 }
 
+#dashboard .dashboard-command-metric-button {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+
+#dashboard .dashboard-command-metric-button:hover,
+#dashboard .dashboard-command-metric-button:focus-visible {
+  background: var(--cmd-soft);
+  transform: translateY(-1px);
+}
+
+#dashboard .dashboard-command-metric-button:focus-visible {
+  outline: 2px solid rgba(31, 84, 56, 0.32);
+  outline-offset: 2px;
+}
+
 #dashboard .dashboard-command-metric.tone-sales,
 #dashboard .dashboard-command-module.tone-sales {
   border-left-color: var(--cmd-blue);
