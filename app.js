@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260810-dashboard-clickable-metrics";
+} from "./lib/order-money.js?v=20260810-qa-priority-fixes-links-final";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260810-dashboard-clickable-metrics";
+import { regionForCity } from "./lib/geo.js?v=20260810-qa-priority-fixes-links-final";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260810-dashboard-clickable-metrics";
+} from "./lib/shipping-eligibility.js?v=20260810-qa-priority-fixes-links-final";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260810-dashboard-clickable-metrics";
+} from "./lib/profit-split.js?v=20260810-qa-priority-fixes-links-final";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260810-dashboard-clickable-metrics";
+} from "./lib/preventivo-pricing.js?v=20260810-qa-priority-fixes-links-final";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260810-dashboard-clickable-metrics";
+const APP_SHELL_VERSION = "20260810-qa-priority-fixes-links-final";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1150,12 +1150,21 @@ function buildSalesGeneratorPlannerReport(bridge = getGardenPlannerQuoteBridge()
 
 function readLaunchParams() {
   const params = new URLSearchParams(window.location.search);
-  const requestedView = String(params.get("view") || "").trim();
+  const hashView = normalizeLaunchView(window.location.hash);
+  const requestedView = normalizeLaunchView(params.get("view") || hashView);
   const plannerFlag = String(params.get("planner") || params.get("prefill") || "").trim().toLowerCase();
   return {
     requestedView,
     usePlannerPrefill: plannerFlag === "1" || plannerFlag === "true" || plannerFlag === "garden-planner",
   };
+}
+
+function normalizeLaunchView(value = "") {
+  try {
+    return decodeURIComponent(String(value || "").replace(/^#/, "")).trim();
+  } catch {
+    return String(value || "").replace(/^#/, "").trim();
+  }
 }
 
 const launchParams = readLaunchParams();
@@ -2616,6 +2625,11 @@ function closeMobileDrillDetail({ skipHistory = false } = {}) {
 
 function getAllowedViewsForRole(role = state.currentUser?.role || "office") {
   return roleViews[normalizeUserRole(role)] || roleViews.office;
+}
+
+function getHashViewForCurrentRole(allowedViews = getAllowedViewsForRole()) {
+  const hashView = normalizeLaunchView(window.location.hash);
+  return hashView && allowedViews.includes(hashView) ? hashView : "";
 }
 
 // La card ordine in chat (Aggancio operativo) deve aprire l'ordine nella vista
@@ -26133,8 +26147,11 @@ function showApp() {
   updateMobileMenu();
   if (!launchParamsApplied) {
     const allowed = getAllowedViewsForRole();
-    if (launchParams.requestedView && allowed.includes(launchParams.requestedView)) {
-      state.currentView = launchParams.requestedView;
+    const requestedView = allowed.includes(launchParams.requestedView)
+      ? launchParams.requestedView
+      : getHashViewForCurrentRole(allowed);
+    if (requestedView) {
+      state.currentView = requestedView;
     }
     if (launchParams.usePlannerPrefill && allowed.includes("sales-generator") && getGardenPlannerQuoteBridge()) {
       state.currentView = "sales-generator";
@@ -29017,6 +29034,9 @@ function setView(view, { pushHistory = true } = {}) {
   }
   if (nextView === "accounting") state.accountingMobilePane = "summary";
   if (nextView === "installations") state.installationMobilePane = "summary";
+  if (nextView === "communications" && nextView !== previousView && window.innerWidth <= 900) {
+    state.selectedCommunicationThreadId = "";
+  }
   if (nextView === "shipping" && nextView !== previousView) {
     state.filters.shipping = "all";
     ui.shippingFilterTags?.forEach((btn) => btn.classList.toggle("is-active", btn.dataset.shippingFilter === "all"));
@@ -29191,10 +29211,24 @@ window.addEventListener("popstate", (event) => {
   // può non avere {view} salvato — es. dopo un deep-link ?view=X, la cui entry
   // viene ripulita con replaceState({}, ...) — e in quel caso è più corretto
   // restare dove si è piuttosto che saltare altrove a sorpresa.
-  const view = event.state?.view || state.currentView;
+  const view = event.state?.view || getHashViewForCurrentRole() || state.currentView;
   // No-op se la view di destinazione è già quella corrente: evita un re-render
   // inutile che resetterebbe lo scroll (es. dopo history.back() del bottone Indietro).
   if (view === state.currentView) return;
+  setView(view, { pushHistory: false });
+});
+
+window.addEventListener("hashchange", () => {
+  if (!state.currentUser) return;
+  if (normalizeLaunchView(window.location.hash) === "global-search") {
+    showGlobalSearchDialog();
+    try {
+      window.history.replaceState({ view: state.currentView }, "", `#${state.currentView || "dashboard"}`);
+    } catch {}
+    return;
+  }
+  const view = getHashViewForCurrentRole();
+  if (!view || view === state.currentView) return;
   setView(view, { pushHistory: false });
 });
 
@@ -31913,6 +31947,11 @@ function handleGlobalClick(event) {
   if (!button) return;
   const action = button.dataset.action;
   const id = button.dataset.id;
+  if (action === "open-global-search") {
+    event.preventDefault();
+    showGlobalSearchDialog();
+    return;
+  }
   if (action === "reload-dashboard-sales") {
     void loadDashboardCommandSalesSnapshot({ force: true });
     return;
@@ -33148,15 +33187,23 @@ document.addEventListener("keydown", (event) => {
 
 let cmdKActiveIndex = -1;
 
-function openGlobalSearch() {
-  if (!ui.cmdKOverlay) return;
-  ui.cmdKOverlay.classList.remove("hidden");
-  if (ui.cmdKInput) {
-    ui.cmdKInput.value = "";
-    ui.cmdKInput.focus();
+function showGlobalSearchDialog() {
+  const overlay = ui.cmdKOverlay || document.getElementById("cmd-k-overlay");
+  const input = ui.cmdKInput || document.getElementById("cmd-k-input");
+  if (!overlay) return;
+  overlay.classList.remove("hidden");
+  if (input) {
+    input.value = "";
+    input.focus();
   }
   cmdKActiveIndex = -1;
   renderCmdKResults("");
+}
+
+window.__psiOpenGlobalSearch = showGlobalSearchDialog;
+
+function openGlobalSearch() {
+  showGlobalSearchDialog();
 }
 
 function closeGlobalSearch() {
@@ -33326,17 +33373,12 @@ if (ui.cmdKOverlay) {
   });
 }
 
-if (ui.topbarSearchInput) {
-  ui.topbarSearchInput.addEventListener("focus", openGlobalSearch);
-  ui.topbarSearchInput.addEventListener("click", openGlobalSearch);
-}
-
 // ── /Cmd+K global search ───────────────────────────────────────────────────
 
 function handleGlobalActionKeydown(event) {
   if ((event.metaKey || event.ctrlKey) && event.key === "k") {
     event.preventDefault();
-    openGlobalSearch();
+    showGlobalSearchDialog();
     return;
   }
   if (event.key === "Escape" && !ui.cmdKOverlay?.classList.contains("hidden")) {

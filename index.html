@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20260810-dashboard-clickable-metrics" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20260810-dashboard-clickable-metrics" />
+    <link rel="preload" href="./styles.css?v=20260810-qa-priority-fixes-links-final" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20260810-qa-priority-fixes-links-final" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -139,10 +139,10 @@
               <small>Portale operativo</small>
             </div>
           </div>
-          <label class="topbar-search">
+          <a id="topbar-search-input" class="topbar-search" href="#global-search" data-action="open-global-search" aria-label="Cerca ordini, clienti e prodotti">
             <span class="search-icon" aria-hidden="true">⌕</span>
-            <input id="topbar-search-input" type="text" placeholder="Cerca ordini, clienti... ⌘K" readonly />
-          </label>
+            <span class="topbar-search-placeholder">Cerca ordini, clienti... ⌘K</span>
+          </a>
         </div>
 
         <div class="topbar-right">
@@ -1072,6 +1072,7 @@
               <div class="page-header-sub">Inventario fisico · Giacenze, residui e fabbisogni</div>
             </div>
             <div class="inline-actions">
+              <a class="btn" id="warehouse-suppliers-button" href="#supplier-prices" data-action="open-dashboard-view" data-view="supplier-prices">Fornitori</a>
               <button class="btn" id="warehouse-export-btn" type="button" title="Esporta CSV inventario">↓ CSV</button>
               <button class="btn primary" id="inventory-jump-button" type="button">+ Carica giacenza</button>
             </div>
@@ -2701,7 +2702,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20260810-dashboard-clickable-metrics" defer></script>
-    <script src="./app.js?v=20260810-dashboard-clickable-metrics" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20260810-qa-priority-fixes-links-final" defer></script>
+    <script src="./app.js?v=20260810-qa-priority-fixes-links-final" type="module"></script>
   </body>
 </html>

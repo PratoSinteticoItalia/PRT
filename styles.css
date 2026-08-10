@@ -8819,6 +8819,10 @@ body {
   z-index: 4;
 }
 
+body:not([data-user-role="office"]) #warehouse-suppliers-button {
+  display: none;
+}
+
 #warehouse .two-col {
   grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
   gap: 18px;
@@ -11923,6 +11927,34 @@ body.mobile-safe-mode .nav-link.is-active {
 .sales-request-source-panel {
   display: grid;
   gap: 18px;
+}
+
+#settings .sales-request-source-panel .panel-head {
+  gap: 14px;
+}
+
+#settings .sales-request-source-panel .panel-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: min(100%, 420px);
+}
+
+#settings .sales-request-source-panel .panel-head-actions .small-button {
+  white-space: normal;
+}
+
+@media (max-width: 1180px) {
+  #settings .sales-request-source-panel .panel-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #settings .sales-request-source-panel .panel-head-actions {
+    justify-content: flex-start;
+    max-width: 100%;
+  }
 }
 
 .sales-request-source-grid {
@@ -16892,6 +16924,61 @@ textarea.text-input {
 
 .topbar-search input { cursor: pointer; }
 .topbar-search input:focus { cursor: text; }
+
+button.topbar-search,
+a.topbar-search {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  width: min(360px, 42vw);
+  height: 42px;
+  min-width: min(360px, 42vw);
+  padding: 0 18px 0 42px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  text-decoration: none;
+}
+
+button.topbar-search:hover,
+button.topbar-search:focus-visible,
+a.topbar-search:hover,
+a.topbar-search:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(126, 182, 156, 0.32);
+  outline: none;
+}
+
+button.topbar-search .topbar-search-placeholder,
+a.topbar-search .topbar-search-placeholder {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.mobile-safe-mode button.topbar-search,
+body.mobile-safe-mode a.topbar-search {
+  background: rgba(120, 120, 128, 0.12);
+  border-color: rgba(15, 23, 42, 0.06);
+  color: #8b95a6;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.72);
+}
+
+body.mobile-safe-mode button.topbar-search:hover,
+body.mobile-safe-mode button.topbar-search:focus-visible,
+body.mobile-safe-mode a.topbar-search:hover,
+body.mobile-safe-mode a.topbar-search:focus-visible {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(10, 132, 255, 0.22);
+  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
 
 /* ── Garden Planner embedded view ─────────────────────────────────────────── */
 
