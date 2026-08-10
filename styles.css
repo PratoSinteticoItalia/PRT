@@ -104,13 +104,16 @@ body.shell-loading::after {
   place-items: center;
   padding: 24px;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.22s ease;
+  transition: opacity 0.22s ease, visibility 0s linear 0.22s;
   background-color: var(--bg);
 }
 
 body.shell-loading .shell-launch {
   opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
 }
 
 .shell-launch-card {
@@ -16999,6 +17002,13 @@ body.mobile-safe-mode a.topbar-search:focus-visible {
   background: var(--bg);
 }
 
+@media (max-width: 980px) {
+  body.mobile-safe-mode #garden-planner.view.is-active {
+    margin: -14px -12px 0;
+    height: calc(100dvh - 128px);
+  }
+}
+
 /* ── Badge / action-badge colour tokens ──────────────────────────────────────
    Global semantic colours for badge-* modifiers. These apply everywhere the
    action-badge class is used (orders, installations, accounting, sales, etc.)
@@ -19789,8 +19799,8 @@ details.nf-section:not([open]) > .nf-section-head::after {
 .nf-mini-label { font-size: 11.5px; font-weight: 500; color: #6e7d72; margin: 2px 0 0; }
 
 /* Numero preventivo + pulsante "Nuovo" */
-.nf-inline-input { display: flex; gap: 6px; align-items: stretch; }
-.nf-inline-input .text-input { flex: 1; }
+.nf-inline-input { display: flex; gap: 6px; align-items: stretch; min-width: 0; }
+.nf-inline-input .text-input { flex: 1 1 0; min-width: 0; width: auto; }
 .nf-mini-btn {
   border: 1px solid rgba(45,106,79,0.3); background: rgba(45,106,79,0.08);
   color: #1f4637; font-size: 11px; font-weight: 700; border-radius: 8px;
@@ -19846,6 +19856,7 @@ details.nf-section:not([open]) > .nf-section-head::after {
      tutta la riga e i due bottoni si dividono equamente lo spazio: altrimenti
      a 375px un seg accanto al campo "Metri quadri" stretto sforava il viewport
      (es. "Solo Fornitura | Fornitura + Posa" arrivava a ~412px). */
+  .native-form .field.nf-quote { flex: 1 0 100%; min-width: 0; }
   .native-form .field:has(.nf-seg) { flex: 1 0 100%; min-width: 0; }
   .native-form .nf-seg { display: flex; width: 100%; }
   .native-form .nf-seg button { flex: 1 1 0; min-width: 0; text-align: center; }
@@ -24424,7 +24435,8 @@ body {
   position: fixed; top: 0; right: 0; height: 100vh; width: 440px; max-width: 94vw;
   max-height: 100vh; margin: 0; border-radius: 0; border-left: 1px solid #e5e1d6;
   background: #fff; box-shadow: -18px 0 46px rgba(20,40,30,.16);
-  transform: translateX(100%); transition: transform .22s cubic-bezier(.4,0,.2,1);
+  transform: translateX(100%); visibility: hidden; pointer-events: none;
+  transition: transform .22s cubic-bezier(.4,0,.2,1), visibility 0s linear .22s;
   z-index: 110; overflow-y: auto; padding: 16px 16px 28px;
 }
 /* Drawer: spaziatura interna compatta, niente margine sprecato */
@@ -24432,7 +24444,12 @@ body {
 .shipping-standard-detail-panel .panel-subsection:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
 .shipping-standard-detail-panel .section-inline-title { margin: 2px 0 10px; }
 .shipping-standard-detail-panel.is-open,
-.sample-detail-panel.is-open { transform: translateX(0); }
+.sample-detail-panel.is-open {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
 .shipping-drawer-scrim { position: fixed; inset: 0; background: rgba(20,30,25,.28); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 105; }
 .shipping-drawer-scrim.is-open { opacity: 1; pointer-events: auto; }
 .shipping-drawer-close { position: absolute; top: 14px; right: 16px; z-index: 2; width: 32px; height: 32px; border: none; border-radius: 8px; background: #f1efe7; color: #5a6e63; font-size: 16px; cursor: pointer; }
