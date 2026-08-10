@@ -25,7 +25,7 @@ Registro operativo per tracciare bug tecnici, problemi visuali, sovrapposizioni,
 | AB-007 | P1 | Global | Reload/cache | Primo avvio dopo bump shell poteva restare nello splash con auth/app nascosti se l'URL aveva gia la shell nuova ma `localStorage` quella vecchia. | Aprire una nuova versione con query `?shell=...` gia aggiornata e storage shell precedente. | Fixato e verificato | `ensureFreshShellVersion()` ora forza `location.reload()` quando il target e identico all'URL corrente. |
 | AB-008 | P2 | Mobile/Global | Layout invisibile | Splash iniziale e drawer Spedizioni chiuso erano invisibili a occhio ma ancora misurabili dal DOM/hit-test. | Sweep mobile su viste multiple dopo apertura Spedizioni. | Fixato e verificato | `.shell-launch` e drawer Spedizioni/Campioni usano `visibility:hidden` quando inattivi; spariti dallo sweep finale. |
 | AB-009 | P2 | Navigazione | Hash ambiguo | Un hash non permesso dal ruolo poteva lasciare URL e vista non allineati. | Office: da `#garden-planner` navigare a `#timesheet-me`. | Fixato e verificato | L'hash non permesso viene sostituito con la vista corrente/permessa. |
-| AB-010 | P3 | Mobile | Bottom nav | La bottom-nav fissa puo coprire il centro di controlli che cadono esattamente sul bordo basso del primo viewport. | Mobile 390/430: Richieste, Generatore, Conti posa, Impostazioni; controlli comunque raggiungibili con scroll. | Aperto | Da trattare con redesign controllato del modello di scroll mobile, evitando di reintrodurre lo spazio vuoto in fondo gia corretto. |
+| AB-010 | P3 | Mobile | Bottom nav | La bottom-nav fissa poteva coprire il centro di controlli che cadevano esattamente sul bordo basso del primo viewport. | Mobile 390/430: Richieste, Generatore, Conti posa, Impostazioni; controlli comunque raggiungibili con scroll. | Fixato e verificato | Bottom-nav trasformata in riga reale del layout mobile (`topbar / main scrollabile / bottom-nav`), vecchio pill-shell disattivato anche dagli inline style, Presenze spostato a sinistra su mobile. |
 | AB-011 | P2 | Garden Planner | Layout mobile | Iframe Garden Planner usciva di 12px a sinistra su mobile. | Aprire `#garden-planner` a 390/430px. | Fixato e verificato | Margine mobile dedicato: rect finale sinistra 0, destra pari al viewport, overflow 0. |
 | AB-012 | P2 | Generatore | Layout mobile | Campo "Nr. Preventivo" troppo stretto con bottone "Nuovo", placeholder/contenuto tagliabile. | Aprire `#sales-generator` a 390/430px. | Fixato e verificato | Su <=640px il campo numero preventivo prende riga piena; sweep finale senza clipped text. |
 
@@ -62,4 +62,9 @@ Risultati sweep mobile completo:
 - Nessun elemento visibile fuori viewport non scrollabile dopo i fix AB-008 e AB-011.
 - Nessun testo tagliato negli elementi interattivi dopo il fix AB-012.
 - Nessun mismatch di rotta valido; `#timesheet-me` su utente office e negato dal ruolo e ora riallinea l'hash alla vista corrente.
-- Residuo registrato in AB-010: bottom-nav fissa intercetta alcuni controlli nel bordo basso del primo viewport, ma restano raggiungibili con scroll.
+
+Risultati sweep mobile finale AB-010:
+- 24 combinazioni vista/viewport verificate: 12 viste su 390x844 e 430x932.
+- Nessuna copertura reale di controlli visibili da bottom-nav o pallino Presenze.
+- Bottom-nav flush al fondo viewport, `mobile-pill-shell` non visibile, `main-content` scrollabile.
+- Nessun toast/alert imprevisto e nessun overflow orizzontale globale.

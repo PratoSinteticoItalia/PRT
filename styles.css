@@ -12053,7 +12053,7 @@ body.mobile-safe-mode .nav-link.is-active {
        30 lug 2026 — stesso bug per cui era già stato disattivato su Ordini
        (commit eb60214) senza mai correggerne la causa, quindi resta ancora
        vivo qui e su qualunque altra vista che lo usi (Richieste, Contabilità). */
-    bottom: calc(64px + 16px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--mobile-bottom-nav-h, calc(64px + env(safe-area-inset-bottom, 0px))) + 16px);
   }
   /* Se in drill-down nascondiamo il FAB (la lista non e' visibile) */
   body[data-drill-module] .mobile-filter-fab {
@@ -17007,6 +17007,10 @@ body.mobile-safe-mode a.topbar-search:focus-visible {
     margin: -14px -12px 0;
     height: calc(100dvh - 128px);
   }
+
+  body.mobile-safe-mode.mobile-bottom-nav-visible #garden-planner.view.is-active {
+    height: calc(100dvh - var(--mobile-topbar-h, 128px) - var(--mobile-bottom-nav-h, 64px));
+  }
 }
 
 /* ── Badge / action-badge colour tokens ──────────────────────────────────────
@@ -20487,7 +20491,8 @@ body {
 @media (max-width: 980px) {
   .timesheet-banner:not(.is-expanded) {
     bottom: calc(74px + env(safe-area-inset-bottom));
-    right: 12px;
+    right: auto;
+    left: 12px;
   }
   .timesheet-banner.is-expanded {
     bottom: calc(74px + env(safe-area-inset-bottom));
@@ -21684,15 +21689,20 @@ body {
 
 @media (max-width: 980px) {
   .mobile-bottom-nav:not(.hidden) { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
-  /* Lo scroll su mobile avviene DENTRO .main-content (overflow-y:auto), non sul
-     body. Il padding-bottom va quindi sul contenitore che scrolla, altrimenti la
-     bottom-nav (fixed) copre le ultime voci e non sono raggiungibili. Mettere il
-     padding sul body invece creava un secondo scroll con spazio morto in fondo. */
+  /* Compat legacy: la riserva fissa viene neutralizzata piu' avanti quando la
+     bottom-nav diventa una riga reale del layout mobile. */
   .main-content { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
   /* Nascondi il vecchio pill-shell quando bottom nav attiva (anti-doppia-nav) */
   .mobile-pill-shell { display: none !important; }
   /* Banner timesheet sale sopra bottom nav */
-  .timesheet-banner { bottom: calc(64px + env(safe-area-inset-bottom)) !important; }
+  .timesheet-banner { bottom: var(--mobile-bottom-nav-clearance, calc(64px + env(safe-area-inset-bottom, 0px))) !important; }
+  body.mobile-safe-mode.mobile-bottom-nav-visible {
+    scroll-padding-bottom: var(--mobile-bottom-nav-clearance, calc(76px + env(safe-area-inset-bottom, 0px)));
+  }
+  body.mobile-safe-mode.mobile-bottom-nav-visible .main-content,
+  body.mobile-safe-mode.mobile-bottom-nav-visible .view.is-active {
+    scroll-padding-bottom: var(--mobile-bottom-nav-clearance, calc(76px + env(safe-area-inset-bottom, 0px)));
+  }
 }
 @media (max-width: 980px) and (max-width: 460px) {
   .mobile-bottom-nav:not(.hidden) { grid-template-columns: repeat(5, 1fr); }
@@ -21883,17 +21893,25 @@ body {
   .install-empty-cta .install-coming-list { font-size: 13px; line-height: 1.5; }
 }
 
-/* Migliora la spaziatura mobile generale: contenuto principale ha
-   padding-bottom doppio per non finire sotto banner timesheet + bottom nav */
+/* Spaziatura mobile generale: il body riceve una riserva dinamica solo quando
+   la bottom-nav e' davvero visibile, evitando il vecchio doppio spazio finale. */
 @media (max-width: 980px) {
-  body { padding-bottom: calc(64px + env(safe-area-inset-bottom)) !important; }
+  body { padding-bottom: env(safe-area-inset-bottom, 0px) !important; }
+  body.mobile-bottom-nav-visible {
+    padding-bottom: var(--mobile-bottom-nav-clearance, calc(76px + env(safe-area-inset-bottom, 0px))) !important;
+  }
   /* Il banner timesheet è quasi sempre un pallino compatto 48px (vedi
      .timesheet-banner:not(.is-expanded) sopra): il padding esteso serve
      solo quando è aperto in forma estesa (pill con storico/CTA), non per
      il pallino di riposo — altrimenti ogni pagina mobile porta 56px di
      margine vuoto in fondo per un badge che occupa solo un angolo
      (segnalato dall'utente l'8 ago 2026 come "esagerato margine"). */
-  body:has(.timesheet-banner.is-expanded:not(.hidden)) { padding-bottom: calc(120px + env(safe-area-inset-bottom)) !important; }
+  body:has(.timesheet-banner.is-expanded:not(.hidden)) {
+    padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  body.mobile-bottom-nav-visible:has(.timesheet-banner.is-expanded:not(.hidden)) {
+    padding-bottom: calc(var(--mobile-bottom-nav-clearance, 76px) + 56px) !important;
+  }
 }
 
 /* Bottom nav: rendering ancora più nitido + tap target */
@@ -27129,13 +27147,52 @@ body.mobile-safe-mode #sales-content .sales-content-chip {
    restava visibile: .main-content ha una SUA riserva separata di
    76-88px (calc(76px + safe-area), riga ~21593) pensata per un modello
    in cui lo scroll avviene dentro .main-content stesso (overflow-y:auto).
-   Quel modello non esiste più: .main-content ha overflow-y:visible,
-   niente scroll interno, e lo scroll reale avviene su html/body (che ha
-   già la propria riserva per la bottom nav). Le due riserve si sommano,
-   raddoppiando lo spazio vuoto in fondo a OGNI pagina. Azzerata qui la
-   riserva ormai duplicata di .main-content. */
+   Nel modello body-scroll questa riserva duplica il padding del body e crea
+   spazio vuoto. La azzeriamo come base; quando la bottom-nav e' visibile, il
+   blocco successivo riattiva uno scrollport controllato su .main-content. */
 body.mobile-safe-mode .main-content {
   padding-bottom: 0 !important;
+}
+
+@media (max-width: 980px) {
+  body.mobile-safe-mode.mobile-bottom-nav-visible {
+    height: 100dvh;
+    overflow: hidden !important;
+    padding-bottom: 0 !important;
+  }
+
+  body.mobile-safe-mode.mobile-bottom-nav-visible:has(.timesheet-banner.is-expanded:not(.hidden)) {
+    padding-bottom: 0 !important;
+  }
+
+  body.mobile-safe-mode.mobile-bottom-nav-visible .app-shell {
+    grid-template-rows: auto minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "topbar"
+      "main"
+      "bottom-nav" !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  body.mobile-safe-mode.mobile-bottom-nav-visible .mobile-bottom-nav {
+    grid-area: bottom-nav;
+    position: relative;
+    inset: auto;
+    width: 100%;
+  }
+
+  body.mobile-safe-mode.mobile-bottom-nav-visible .main-content {
+    grid-row: 2 !important;
+    grid-area: main !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 12px !important;
+  }
 }
 
 /* ============================================================

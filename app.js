@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260810-mobile-quote-layout-fix";
+} from "./lib/order-money.js?v=20260810-mobile-scroll-polish";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260810-mobile-quote-layout-fix";
+import { regionForCity } from "./lib/geo.js?v=20260810-mobile-scroll-polish";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260810-mobile-quote-layout-fix";
+} from "./lib/shipping-eligibility.js?v=20260810-mobile-scroll-polish";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260810-mobile-quote-layout-fix";
+} from "./lib/profit-split.js?v=20260810-mobile-scroll-polish";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260810-mobile-quote-layout-fix";
+} from "./lib/preventivo-pricing.js?v=20260810-mobile-scroll-polish";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -72,7 +72,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260810-mobile-quote-layout-fix";
+const APP_SHELL_VERSION = "20260810-mobile-scroll-polish";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2557,9 +2557,9 @@ function openMobileDrillDetail(module, itemId) {
   if (!module) return false;
   // Solo su mobile stretto: su tablet/desktop il pattern master-detail va bene
   if (window.innerWidth > MOBILE_DRILL_BREAKPOINT) return false;
-  // Su mobile il vero scroll e' del window (perche' .app-shell ha min-height
-  // invece di height fissa). Salviamo il massimo tra i due per coprire entrambi
-  // i casi (mobile/desktop ristretto).
+  // Su mobile lo scroll puo' stare su .main-content (quando la bottom-nav e'
+  // una riga reale del layout) oppure sul window nelle viste senza bottom-nav.
+  // Salviamo il massimo tra i due per coprire entrambi i modelli.
   const listScrollY = Math.max(
     (ui.mainContent && ui.mainContent.scrollTop) || 0,
     window.scrollY || document.documentElement.scrollTop || 0,
@@ -2576,8 +2576,8 @@ function openMobileDrillDetail(module, itemId) {
   if (_mobileFilterSheetState) closeMobileFilterSheet();
   document.body.setAttribute("data-drill-module", module);
   document.body.classList.add("mobile-drill-detail");
-  // Reset scroll: container (desktop) E window (mobile, dove e' il vero scroll
-  // perche' .app-shell su mobile-safe-mode ha min-height invece di height fissa).
+  // Reset scroll: container E window, per coprire sia il layout mobile con
+  // bottom-nav reale sia le viste/desktop dove scorre la pagina.
   _acknowledgeIntentionalScroll(0);
   if (ui.mainContent) ui.mainContent.scrollTop = 0;
   try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
@@ -2898,47 +2898,38 @@ function getMobilePillButton(view = "") {
 function syncMobilePillNav() {
   ensureMobilePillNav();
   const mobileSafe = window.innerWidth <= 980;
+  const bottomNavVisible = mobileSafe && document.body.classList.contains("mobile-bottom-nav-visible");
   if (ui.mobilePillShell) {
-    ui.mobilePillShell.hidden = !mobileSafe;
-    ui.mobilePillShell.classList.toggle("hidden", !mobileSafe);
-    ui.mobilePillShell.setAttribute("aria-hidden", mobileSafe ? "false" : "true");
-    ui.mobilePillShell.style.setProperty("display", mobileSafe ? "grid" : "none", "important");
-    if (mobileSafe) {
-      ui.mobilePillShell.style.setProperty("gap", "6px");
-      ui.mobilePillShell.style.setProperty("padding", "0 12px 8px");
-      ui.mobilePillShell.style.setProperty("grid-column", "1 / -1", "important");
-      ui.mobilePillShell.style.setProperty("grid-row", "2", "important");
-      ui.mobilePillShell.style.setProperty("grid-area", "mobile-nav", "important");
-      ui.mobilePillShell.style.setProperty("position", "relative");
-      ui.mobilePillShell.style.setProperty("z-index", "2");
-    } else {
-      ui.mobilePillShell.style.removeProperty("gap");
-      ui.mobilePillShell.style.removeProperty("padding");
-      ui.mobilePillShell.style.removeProperty("grid-column");
-      ui.mobilePillShell.style.removeProperty("grid-row");
-      ui.mobilePillShell.style.removeProperty("grid-area");
-      ui.mobilePillShell.style.removeProperty("position");
-      ui.mobilePillShell.style.removeProperty("z-index");
-    }
+    ui.mobilePillShell.hidden = true;
+    ui.mobilePillShell.classList.add("hidden");
+    ui.mobilePillShell.setAttribute("aria-hidden", "true");
+    ui.mobilePillShell.style.setProperty("display", "none", "important");
+    ui.mobilePillShell.style.removeProperty("gap");
+    ui.mobilePillShell.style.removeProperty("padding");
+    ui.mobilePillShell.style.removeProperty("grid-column");
+    ui.mobilePillShell.style.removeProperty("grid-row");
+    ui.mobilePillShell.style.removeProperty("grid-area");
+    ui.mobilePillShell.style.removeProperty("position");
+    ui.mobilePillShell.style.removeProperty("z-index");
   }
   if (ui.mobilePillNav) {
-    ui.mobilePillNav.style.setProperty("display", mobileSafe ? "flex" : "none", "important");
+    ui.mobilePillNav.style.setProperty("display", "none", "important");
     ui.mobilePillNav.style.setProperty("align-items", "center");
     ui.mobilePillNav.style.setProperty("gap", "8px");
     ui.mobilePillNav.style.setProperty("overflow-x", "auto");
-    ui.mobilePillNav.style.setProperty("padding-bottom", mobileSafe ? "2px" : "0");
+    ui.mobilePillNav.style.setProperty("padding-bottom", "0");
     if (!mobileSafe) ui.mobilePillNav.scrollLeft = 0;
   }
   if (ui.mobilePillTools) {
-    ui.mobilePillTools.style.setProperty("display", mobileSafe ? "grid" : "none", "important");
-    ui.mobilePillTools.style.setProperty("gap", mobileSafe ? "6px" : "0");
-    ui.mobilePillTools.style.setProperty("padding-top", mobileSafe ? "4px" : "0");
+    ui.mobilePillTools.style.setProperty("display", "none", "important");
+    ui.mobilePillTools.style.setProperty("gap", "0");
+    ui.mobilePillTools.style.setProperty("padding-top", "0");
   }
   if (ui.mobilePillActions) {
-    ui.mobilePillActions.style.setProperty("display", mobileSafe ? "flex" : "none", "important");
+    ui.mobilePillActions.style.setProperty("display", "none", "important");
     ui.mobilePillActions.style.setProperty("align-items", "center");
-    ui.mobilePillActions.style.setProperty("gap", mobileSafe ? "6px" : "8px");
-    ui.mobilePillActions.style.setProperty("flex-wrap", mobileSafe ? "wrap" : "nowrap");
+    ui.mobilePillActions.style.setProperty("gap", "0");
+    ui.mobilePillActions.style.setProperty("flex-wrap", "nowrap");
   }
   if (ui.mobilePillMeta) {
     ui.mobilePillMeta.style.setProperty("display", "none", "important");
@@ -2961,8 +2952,8 @@ function syncMobilePillNav() {
     button.setAttribute("aria-hidden", visible ? "false" : "true");
     button.toggleAttribute("aria-current", state.currentView === view);
     button.setAttribute("data-count", count);
-    button.tabIndex = visible ? 0 : -1;
-    button.style.setProperty("display", mobileSafe && visible ? "inline-flex" : "none", "important");
+    button.tabIndex = -1;
+    button.style.setProperty("display", "none", "important");
     button.style.setProperty("align-items", "center");
     const badge = ensureCountBadge(button, "mobile-pill-count-badge");
     if (badge) {
@@ -2978,8 +2969,7 @@ function syncMobilePillNav() {
     ui.mobilePillLogoutButton,
   ].forEach((node) => {
     if (!node) return;
-    const visible = mobileSafe && !node.hidden && !node.classList.contains("hidden");
-    node.style.setProperty("display", visible ? "inline-flex" : "none", "important");
+    node.style.setProperty("display", "none", "important");
     node.style.setProperty("align-items", "center");
     node.style.setProperty("justify-content", "center");
   });
@@ -2994,7 +2984,7 @@ function syncMobilePillNav() {
   if (ui.mainContent) {
     if (mobileSafe) {
       ui.mainContent.style.setProperty("grid-column", "1 / -1", "important");
-      ui.mainContent.style.setProperty("grid-row", "3", "important");
+      ui.mainContent.style.setProperty("grid-row", bottomNavVisible ? "2" : "3", "important");
       ui.mainContent.style.setProperty("grid-area", "main", "important");
     } else {
       ui.mainContent.style.removeProperty("grid-column");
@@ -3002,7 +2992,7 @@ function syncMobilePillNav() {
       ui.mainContent.style.removeProperty("grid-area");
     }
   }
-  if (mobileSafe) {
+  if (mobileSafe && !bottomNavVisible) {
     const activeButton = getMobilePillButton(state.currentView);
     if (activeButton instanceof HTMLElement) {
       activeButton.scrollIntoView({ block: "nearest", inline: "center", behavior: "auto" });
@@ -21213,6 +21203,8 @@ function renderMobileBottomNav() {
   const inCommunicationsChat = state.currentView === "communications" && window.innerWidth <= 900 && Boolean(state.selectedCommunicationThreadId);
   if (!state.currentUser || !isMobile || inCommunicationsChat) {
     nav.classList.add("hidden");
+    updateMobileBottomNavMetrics(false);
+    try { syncMobilePillNav(); } catch {}
     return;
   }
   nav.classList.remove("hidden");
@@ -21240,6 +21232,61 @@ function renderMobileBottomNav() {
     </button>`;
   }
   nav.innerHTML = html;
+  updateMobileBottomNavMetrics(true);
+  try { syncMobilePillNav(); } catch {}
+}
+
+function updateMobileBottomNavMetrics(forceVisible = null) {
+  const nav = document.getElementById("mobile-bottom-nav");
+  const isMobile = window.innerWidth <= 980;
+  const visible = forceVisible ?? Boolean(nav && isMobile && !nav.classList.contains("hidden"));
+  document.body.classList.toggle("mobile-bottom-nav-visible", Boolean(visible));
+  if (!visible || !nav) {
+    document.documentElement.style.removeProperty("--mobile-bottom-nav-h");
+    document.documentElement.style.removeProperty("--mobile-bottom-nav-clearance");
+    document.documentElement.style.removeProperty("--mobile-topbar-h");
+    return;
+  }
+
+  const navHeight = Math.max(56, Math.ceil(nav.getBoundingClientRect().height || 0));
+  const topbar = document.querySelector(".topbar");
+  const topbarRect = topbar?.getBoundingClientRect?.();
+  const topbarHeight = Math.ceil(topbarRect?.height || 0);
+  document.documentElement.style.setProperty("--mobile-bottom-nav-h", `${navHeight}px`);
+  document.documentElement.style.setProperty("--mobile-bottom-nav-clearance", `${navHeight + 12}px`);
+  if (topbarHeight > 0) {
+    document.documentElement.style.setProperty("--mobile-topbar-h", `${topbarHeight}px`);
+  }
+}
+
+function getMobileBottomNavScrollParent(element) {
+  let node = element?.parentElement || null;
+  while (node && node !== document.body && node !== document.documentElement) {
+    const style = window.getComputedStyle(node);
+    if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return window;
+}
+
+function keepElementAboveMobileBottomNav(element) {
+  if (!(element instanceof Element)) return;
+  if (!document.body.classList.contains("mobile-bottom-nav-visible")) return;
+  if (element.closest("#mobile-bottom-nav, #mobile-more-sheet")) return;
+  const nav = document.getElementById("mobile-bottom-nav");
+  if (!nav || nav.classList.contains("hidden")) return;
+  const navRect = nav.getBoundingClientRect();
+  const rect = element.getBoundingClientRect();
+  const overlap = Math.ceil(rect.bottom - (navRect.top - 12));
+  if (overlap <= 0 || rect.top >= navRect.top) return;
+  const scrollParent = getMobileBottomNavScrollParent(element);
+  if (scrollParent === window) {
+    window.scrollBy({ top: overlap, left: 0, behavior: "auto" });
+  } else {
+    scrollParent.scrollBy({ top: overlap, left: 0, behavior: "auto" });
+  }
 }
 
 // Macroaree per la sheet "Altro" mobile — DERIVATE dal registro unico NAV_SECTIONS,
@@ -21310,6 +21357,14 @@ document.addEventListener("click", (ev) => {
 window.addEventListener("resize", () => {
   try { renderMobileBottomNav(); } catch {}
 });
+document.addEventListener("focusin", (ev) => {
+  keepElementAboveMobileBottomNav(ev.target);
+});
+document.addEventListener("pointerdown", (ev) => {
+  const target = ev.target.closest?.("button, a[href], input, select, textarea, [role='button'], [data-action]");
+  if (!target) return;
+  requestAnimationFrame(() => keepElementAboveMobileBottomNav(target));
+}, { passive: true });
 const _origInitTs = typeof initTimesheet === "function" ? initTimesheet : null;
 // Hook al login: chiamato dopo che lo state è settato
 function initMobileBottomNav() {
