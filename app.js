@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260811-crm-flow-hardening";
+} from "./lib/order-money.js?v=20260811-dashboard-pose-deep-links";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260811-crm-flow-hardening";
+import { regionForCity } from "./lib/geo.js?v=20260811-dashboard-pose-deep-links";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260811-crm-flow-hardening";
+} from "./lib/shipping-eligibility.js?v=20260811-dashboard-pose-deep-links";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260811-crm-flow-hardening";
+} from "./lib/profit-split.js?v=20260811-dashboard-pose-deep-links";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260811-crm-flow-hardening";
+} from "./lib/preventivo-pricing.js?v=20260811-dashboard-pose-deep-links";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260811-crm-flow-hardening";
+} from "./lib/sales-assignment.js?v=20260811-dashboard-pose-deep-links";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260811-crm-flow-hardening";
+const APP_SHELL_VERSION = "20260811-dashboard-pose-deep-links";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11463,6 +11463,17 @@ function getDashboardCommandSupplierAction() {
   return makeDashboardCommandOpenViewAction("Apri fornitori", "Open suppliers", "supplier-prices");
 }
 
+function isInstallationViewId(view = "") {
+  return [
+    "installations",
+    "installations-todo",
+    "installations-scheduled",
+    "installations-repairs",
+    "installations-completed",
+    "installations-live",
+  ].includes(String(view || ""));
+}
+
 function getSalesRequestDashboardName(item = {}) {
   if (typeof getSalesRequestDisplayName === "function") {
     const name = getSalesRequestDisplayName(item);
@@ -11815,7 +11826,12 @@ function buildDashboardCommandInstallationTasks() {
       const missingDate = !install.installDate;
       const severity = missingMaterials || missingDate ? "high" : missingConfirm ? "medium" : "low";
       const actions = [
-        makeDashboardCommandOpenViewAction("Calendario", "Schedule", "installations-scheduled"),
+        makeDashboardCommandOpenViewAction(
+          "Calendario",
+          "Schedule",
+          install.installDate ? "installations-scheduled" : "installations",
+          { targetId: order.id },
+        ),
       ];
       if (missingMaterials) {
         actions.unshift(makeDashboardCommandSelectOrderAction("Materiali", "Materials", "warehouse", order.id));
@@ -13880,11 +13896,14 @@ function openDashboardViewTarget(target) {
     state.search.warehouse = "";
     state.selectedOrderId = targetId;
   }
-  if (nextView === "installations") {
-    state.filters.installation = dataset.dashboardInstallationFilter || dataset.installationFilter || "all";
+  if (isInstallationViewId(nextView)) {
+    const installationFilter = dataset.dashboardInstallationFilter || dataset.installationFilter || "all";
+    state.filters.installation = installationFilter;
     state.selectedOrderId = targetId;
-    if (targetId && window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.installDrawerOpen = true;
-    if (state.filters.installation === "all") {
+    if (nextView === "installations" && targetId && window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.installDrawerOpen = true;
+    if (installationFilter && installationFilter !== "all") {
+      state.selectedInstallationCrew = installationFilter;
+    } else {
       state.selectedInstallationCrew = "";
     }
   }
@@ -19938,8 +19957,9 @@ function renderInstallationOrderRow(order) {
   const orderNum = getOrderNumber(order);
   const stageBadge = isInstallationCompleted(order) ? "COMPLETATA" : (installDate ? "PROGRAMMATA" : "DA PIANIFICARE");
   const stageClass = isInstallationCompleted(order) ? "is-done" : (installDate ? "is-scheduled" : "is-todo");
+  const selectedClass = order?.id && order.id === state.selectedOrderId ? "is-selected" : "";
   return `
-    <article class="install-row ${stageClass}" data-action="select-order-install" data-order-id="${escapeAttr(order.id)}">
+    <article class="install-row ${stageClass} ${selectedClass}" data-action="select-order-install" data-order-id="${escapeAttr(order.id)}">
       <header class="install-row-head">
         <strong>${escapeHtml(customer)}</strong>
         <span class="install-row-num">${escapeHtml(orderNum)}</span>
@@ -19955,6 +19975,17 @@ function renderInstallationOrderRow(order) {
       </div>
     </article>
   `;
+}
+
+function scrollSelectedInstallationSubViewRow(root) {
+  if (!root || !state.selectedOrderId) return;
+  window.requestAnimationFrame(() => {
+    const row = root.querySelector(".install-row.is-selected");
+    if (!row || typeof row.scrollIntoView !== "function") return;
+    try {
+      row.scrollIntoView({ block: "center", behavior: "auto" });
+    } catch {}
+  });
 }
 
 function renderInstallationsTodo() {
@@ -19976,6 +20007,7 @@ function renderInstallationsTodo() {
     </div>
     <div class="install-list">${list.map(renderInstallationOrderRow).join("")}</div>
   `;
+  scrollSelectedInstallationSubViewRow(root);
 }
 
 function renderInstallationsScheduled() {
@@ -20011,6 +20043,7 @@ function renderInstallationsScheduled() {
     html += `<div class="install-list">${items.map(renderInstallationOrderRow).join("")}</div>`;
   }
   root.innerHTML = html;
+  scrollSelectedInstallationSubViewRow(root);
 }
 
 // COMPLETATI — lavori con posa completata, SOLO quelli spuntati per posa
@@ -20035,6 +20068,7 @@ function renderInstallationsCompleted() {
   let html = `<div class="install-stats"><span class="install-stat"><strong>${list.length}</strong> ${state.lang === "it" ? "completate" : "completed"}</span></div>`;
   html += `<div class="install-list">${list.map(renderInstallationOrderRow).join("")}</div>`;
   root.innerHTML = html;
+  scrollSelectedInstallationSubViewRow(root);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -21479,13 +21513,12 @@ function setNavGroupState(state) {
 function applyNavGroupState() {
   const groups = document.querySelectorAll(".nav-group[data-nav-group]");
   const stateMap = getNavGroupState();
-  const installViews = new Set(["installations", "installations-todo", "installations-scheduled", "installations-repairs", "installations-completed", "installations-live"]);
   const currentView = window?.state?.currentView || "";
   groups.forEach((g) => {
     const key = g.dataset.navGroup;
     let expanded = stateMap[key];
     // Auto-expand se la view corrente è figlia del gruppo
-    if (key === "installations" && installViews.has(currentView)) expanded = true;
+    if (key === "installations" && isInstallationViewId(currentView)) expanded = true;
     if (expanded === undefined) expanded = true; // default expanded
     g.classList.toggle("is-collapsed", !expanded);
     const toggle = g.querySelector(".nav-group-toggle");
@@ -21501,6 +21534,8 @@ document.addEventListener("click", (ev) => {
     const orderId = row.dataset.orderId;
     if (!orderId) return;
     state.selectedOrderId = orderId;
+    state.filters.installation = "all";
+    state.selectedInstallationCrew = "";
     if (typeof setView === "function") setView("installations");
   }
 });
@@ -29221,7 +29256,7 @@ function setView(view, { pushHistory = true } = {}) {
   // Prima Spedizioni usava `nextView !== previousView` (incoerente con gli
   // altri due) → il drawer si riapriva e richiudeva nello stesso giro.
   if (nextView !== "shipping") state.shippingDrawerOpen = false;
-  if (nextView !== "installations") state.installDrawerOpen = false;
+  if (!isInstallationViewId(nextView)) state.installDrawerOpen = false;
   if (nextView !== "accounting") state.accountingDrawerOpen = false;
   if (currentViewRenderFrame) {
     window.cancelAnimationFrame(currentViewRenderFrame);

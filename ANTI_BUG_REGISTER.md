@@ -28,6 +28,7 @@ Registro operativo per tracciare bug tecnici, problemi visuali, sovrapposizioni,
 | AB-010 | P3 | Mobile | Bottom nav | La bottom-nav fissa poteva coprire il centro di controlli che cadevano esattamente sul bordo basso del primo viewport. | Mobile 390/430: Richieste, Generatore, Conti posa, Impostazioni; controlli comunque raggiungibili con scroll. | Fixato e verificato | Bottom-nav trasformata in riga reale del layout mobile (`topbar / main scrollabile / bottom-nav`), vecchio pill-shell disattivato anche dagli inline style, Presenze spostato a sinistra su mobile. |
 | AB-011 | P2 | Garden Planner | Layout mobile | Iframe Garden Planner usciva di 12px a sinistra su mobile. | Aprire `#garden-planner` a 390/430px. | Fixato e verificato | Margine mobile dedicato: rect finale sinistra 0, destra pari al viewport, overflow 0. |
 | AB-012 | P2 | Generatore | Layout mobile | Campo "Nr. Preventivo" troppo stretto con bottone "Nuovo", placeholder/contenuto tagliabile. | Aprire `#sales-generator` a 390/430px. | Fixato e verificato | Su <=640px il campo numero preventivo prende riga piena; sweep finale senza clipped text. |
+| AB-013 | P2 | Dashboard/Pose | Navigazione | I collegamenti dashboard verso sottoviste Pose potevano aprire una pagina corretta ma senza contesto ordine o con filtri squadra vecchi. | Dashboard > Pose/Programmate, aprire "Calendario" o una riga Programmate. | Fixato e verificato | Shell `20260811-dashboard-pose-deep-links`: famiglia Pose unica, targetId portato nelle azioni Calendario, riga selezionata nelle sottoviste e reset filtro squadra quando si rientra alla board Pose. |
 
 ## Sweep Corrente
 
@@ -74,5 +75,14 @@ Sprint efficienza CRM/generatore 2026-08-11:
 - Filtro assegnazione Richieste verificato in browser su Ivan/Gabriele: il select mantiene il valore scelto e non torna a "Tutte".
 - Preview locale senza `DATABASE_URL`: messaggio CRM dedicato confermato, nessun toast imprevisto.
 - Nuova utility `lib/sales-assignment.js` coperta da test unitari: varianti, alias, filtri e dedup opzioni.
+- `npm run check`: 107 test passati.
+- `npm run build`: completata senza errori.
+
+Sprint dashboard deep-link Pose 2026-08-11:
+- Shell aggiornata a `20260811-dashboard-pose-deep-links`.
+- Dashboard > Materiali > Fornitori: click reale verificato, apre `#supplier-prices` senza toast/errori console.
+- Dashboard > metrica Pose prossime: click reale verificato, apre `#installations-scheduled` con lista renderizzata.
+- Programmate > riga ordine: click reale verificato, torna a `#installations` con dettaglio ordine corretto.
+- Dashboard > dettaglio operativo > Calendario: click reale verificato, porta il `targetId` alla vista Pose corretta.
 - `npm run check`: 107 test passati.
 - `npm run build`: completata senza errori.
