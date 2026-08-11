@@ -14055,8 +14055,35 @@ body.mobile-filter-sheet-open {
 
 @media (max-width: 720px) {
   .sales-request-bulk-bar {
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 8px;
+    overflow-x: visible;
+    padding: 8px;
+  }
+
+  .sales-request-bulk-bar .srbb-label {
+    grid-column: 1 / -1;
+    margin: 0;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .sales-request-bulk-actions {
+    display: contents;
+  }
+
+  .sales-request-bulk-actions .primary-button,
+  .sales-request-bulk-actions .ghost-button,
+  .sales-request-bulk-bar > .ghost-button {
+    width: 100%;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 34px !important;
+    justify-content: center;
+    padding: 7px 8px !important;
+    white-space: normal;
   }
 
   .sales-request-card,
@@ -14109,6 +14136,12 @@ body.mobile-filter-sheet-open {
     min-height: 640px;
     height: 740px;
     border-radius: 20px;
+  }
+}
+
+@media (max-width: 360px) {
+  .sales-request-bulk-bar {
+    grid-template-columns: 1fr;
   }
 }
 

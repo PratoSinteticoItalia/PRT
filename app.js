@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260811-bulk-vcard-contacts";
+} from "./lib/order-money.js?v=20260811-ddt-mobile-scroll";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260811-bulk-vcard-contacts";
+import { regionForCity } from "./lib/geo.js?v=20260811-ddt-mobile-scroll";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260811-bulk-vcard-contacts";
+} from "./lib/shipping-eligibility.js?v=20260811-ddt-mobile-scroll";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260811-bulk-vcard-contacts";
+} from "./lib/profit-split.js?v=20260811-ddt-mobile-scroll";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260811-bulk-vcard-contacts";
+} from "./lib/preventivo-pricing.js?v=20260811-ddt-mobile-scroll";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260811-bulk-vcard-contacts";
+} from "./lib/sales-assignment.js?v=20260811-ddt-mobile-scroll";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260811-bulk-vcard-contacts";
+const APP_SHELL_VERSION = "20260811-ddt-mobile-scroll";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -25127,7 +25127,7 @@ function freeDdtDraftToOrder(draft = {}) {
     email: rec.email || "",
     createdAt: d.date || new Date().toISOString(),
     updatedAt: d.date || new Date().toISOString(),
-    lineDetails: d.lines.map((line) => ({ title: line.title, quantity: line.quantity || 1, note: line.note || "" })),
+    lineDetails: d.lines.map((line) => ({ title: line.title, quantity: line.quantity || 1, um: line.um || "", note: line.note || "" })),
     operations: {
       product: d.title || "DDT libero",
       warehouse: {
@@ -25297,6 +25297,29 @@ function renderDdtEditor(order) {
       });
     });
   }
+}
+
+function revealDdtEditorOnMobile() {
+  if (window.innerWidth > 980) return;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const target = document.getElementById("ddt-editor") || ui.ddtEditorBody;
+      if (!target) return;
+      const scroller = ui.mainContent || document.scrollingElement || document.documentElement;
+      const isDocumentScroller = scroller === document.scrollingElement || scroller === document.documentElement;
+      const scrollerTop = isDocumentScroller ? 0 : scroller.getBoundingClientRect().top;
+      const currentTop = isDocumentScroller
+        ? (window.scrollY || document.documentElement.scrollTop || 0)
+        : scroller.scrollTop;
+      const targetTop = Math.max(0, currentTop + target.getBoundingClientRect().top - scrollerTop - 10);
+      _acknowledgeIntentionalScroll(targetTop);
+      if (typeof scroller.scrollTo === "function") {
+        scroller.scrollTo({ top: targetTop, left: 0, behavior: "smooth" });
+      } else {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  });
 }
 
 // Box stima spedizione One Express per l'editor DDT, calcolata dal draft.
@@ -31422,13 +31445,14 @@ async function downloadDdtPdf(order) {
   pushText(404, 568, 11, estimate.configured && estimate.billableWeight > 0 ? formatCurrency(estimate.estimatedCost) : "—");
   pushRect(40, 156, 515, 392);
   pushText(52, 530, 9, state.lang === "it" ? "ARTICOLI TRASPORTATI" : "TRANSPORTED ITEMS");
-  pushText(454, 530, 9, state.lang === "it" ? "QTA" : "QTY");
-  pushText(500, 530, 9, state.lang === "it" ? "NOTE" : "NOTES");
+  pushText(424, 530, 9, state.lang === "it" ? "QTA" : "QTY");
+  pushText(468, 530, 9, "UM");
+  pushText(506, 530, 9, state.lang === "it" ? "NOTE" : "NOTES");
   pushRule(48, 518, 545, 518);
   let rowY = 496;
   let ddtRowsTruncated = false;
   for (const item of physicalLines) {
-    const lineTitleRows = splitPdfTextLines(item.title || t("product"), 58);
+    const lineTitleRows = splitPdfTextLines(item.title || t("product"), 52);
     const noteRaw = String(item.note || "").trim();
     const noteLabel = state.lang === "it" ? "Tagli" : "Cuts";
     const noteText = noteRaw
@@ -31447,8 +31471,11 @@ async function downloadDdtPdf(order) {
       const titleChunk = lineTitleRows[index] || "";
       const noteChunk = lineNoteRows[index] || "";
       if (titleChunk) pushText(52, lineY, 9.5, titleChunk);
-      if (index === 0) pushText(458, lineY, 10, String(item.quantity || 1));
-      if (noteChunk) pushText(500, lineY, 8.5, noteChunk);
+      if (index === 0) {
+        pushText(428, lineY, 10, String(item.quantity || 1));
+        if (item.um) pushText(468, lineY, 9.5, String(item.um));
+      }
+      if (noteChunk) pushText(506, lineY, 8.5, noteChunk);
     }
     rowY -= (visualRows * 11) + 7;
   }
@@ -33359,6 +33386,7 @@ function handleGlobalClick(event) {
     state.ddtDraft = initFreeDdtDraft();
     renderDdtListView();
     renderDdtEditor(freeDdtDraftToOrder(state.ddtDraft));
+    revealDdtEditorOnMobile();
     return;
   }
   if (action === "select-ddt-free") {
@@ -33366,6 +33394,7 @@ function handleGlobalClick(event) {
     state.selectedDdtOrderId = id;
     state.ddtDraft = null; // forza re-init dal DDT libero salvato
     renderDdt();
+    revealDdtEditorOnMobile();
     return;
   }
   if (action === "select-ddt-order") {
@@ -33373,6 +33402,7 @@ function handleGlobalClick(event) {
     state.selectedDdtOrderId = id;
     state.ddtDraft = null; // forza re-init dal nuovo ordine
     renderDdt();
+    revealDdtEditorOnMobile();
     return;
   }
   if (action === "ddt-add-line") {
