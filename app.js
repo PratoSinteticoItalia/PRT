@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260811-ddt-mobile-scroll";
+} from "./lib/order-money.js?v=20260811-install-subview-drill";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260811-ddt-mobile-scroll";
+import { regionForCity } from "./lib/geo.js?v=20260811-install-subview-drill";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260811-ddt-mobile-scroll";
+} from "./lib/shipping-eligibility.js?v=20260811-install-subview-drill";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260811-ddt-mobile-scroll";
+} from "./lib/profit-split.js?v=20260811-install-subview-drill";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260811-ddt-mobile-scroll";
+} from "./lib/preventivo-pricing.js?v=20260811-install-subview-drill";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260811-ddt-mobile-scroll";
+} from "./lib/sales-assignment.js?v=20260811-install-subview-drill";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260811-ddt-mobile-scroll";
+const APP_SHELL_VERSION = "20260811-install-subview-drill";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21593,18 +21593,32 @@ function applyNavGroupState() {
     if (toggle) toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
   });
 }
+function openInstallationOrderFromSubView(orderId = "") {
+  if (!orderId) return;
+  const order = state.orders.find((item) => item.id === orderId);
+  if (!order) return;
+  state.selectedOrderId = orderId;
+  state.filters.installation = "all";
+  state.selectedInstallationCrew = "";
+  state.installMobileLane = getInstallationLane(order);
+  state.installationMobilePane = "summary";
+  if (window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.installDrawerOpen = true;
+  if (typeof setView === "function") setView("installations");
+  if (window.innerWidth <= MOBILE_DRILL_BREAKPOINT) {
+    requestAnimationFrame(() => openMobileDrillDetail("installations", orderId));
+  } else {
+    requestAnimationFrame(() => revealMobileDetailTarget("installations"));
+  }
+}
+
 // Click su una riga ordine nelle sotto-view "Da programmare" / "Programmate":
-// seleziona l'ordine + naviga al Calendario Pose dove mostra il dettaglio.
+// seleziona l'ordine + naviga alla bacheca Pose aprendo il dettaglio.
 document.addEventListener("click", (ev) => {
   const row = ev.target.closest?.('[data-action="select-order-install"]');
   if (row) {
     ev.preventDefault();
     const orderId = row.dataset.orderId;
-    if (!orderId) return;
-    state.selectedOrderId = orderId;
-    state.filters.installation = "all";
-    state.selectedInstallationCrew = "";
-    if (typeof setView === "function") setView("installations");
+    openInstallationOrderFromSubView(orderId);
   }
 });
 
