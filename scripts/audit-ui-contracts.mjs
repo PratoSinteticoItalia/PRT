@@ -56,6 +56,59 @@ function extractStaticDataActions(...sources) {
   return actions;
 }
 
+function extractHtmlTags(source, tagRegex) {
+  const tags = [];
+  let match;
+  while ((match = tagRegex.exec(source))) tags.push(match[0]);
+  return tags;
+}
+
+function extractAttr(tag = "", name = "") {
+  const pattern = new RegExp(`\\b${escapeRegExp(name)}=(["'])(.*?)\\1`);
+  return tag.match(pattern)?.[2] || "";
+}
+
+function extractHtmlIds(indexHtml) {
+  const ids = new Set();
+  addLiteralMatches(indexHtml, /\bid="([^"]+)"/g, ids);
+  addLiteralMatches(indexHtml, /\bid='([^']+)'/g, ids);
+  return ids;
+}
+
+function extractViewSectionIds(indexHtml) {
+  const ids = new Set();
+  extractHtmlTags(indexHtml, /<section\b[^>]*>/g).forEach((tag) => {
+    const className = extractAttr(tag, "class");
+    const id = extractAttr(tag, "id");
+    if (/\bview\b/.test(className) && /^[a-z][a-z0-9-]*$/i.test(id)) ids.add(id);
+  });
+  return ids;
+}
+
+function extractBalancedBlock(source, marker = "", openChar = "{", closeChar = "}") {
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex < 0) return "";
+  const blockStart = source.indexOf(openChar, markerIndex);
+  if (blockStart < 0) return "";
+  let depth = 0;
+  for (let index = blockStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === openChar) depth += 1;
+    else if (char === closeChar) {
+      depth -= 1;
+      if (depth === 0) return source.slice(blockStart, index + 1);
+    }
+  }
+  return "";
+}
+
+function extractStringLiterals(source = "") {
+  const values = new Set();
+  addLiteralMatches(source, /"([^"]+)"/g, values);
+  addLiteralMatches(source, /'([^']+)'/g, values);
+  return values;
+}
+
 function isActionExplicitlyHandled(appJs, action) {
   const escaped = escapeRegExp(action);
   const patterns = [
@@ -94,6 +147,86 @@ function auditDataActionCoverage(appJs, indexHtml, failures) {
   }
 }
 
+function assertViewTargets(label, targets, viewSectionIds, failures) {
+  const missing = [...targets].sort().filter((view) => !viewSectionIds.has(view));
+  if (missing.length) failures.push(`${label} target missing matching .view section: ${missing.join(", ")}`);
+}
+
+function extractRoutedDataViewTargets(...sources) {
+  const routedActions = new Set(["open-dashboard-view", "select-order", "select-sales-request"]);
+  const targets = new Set();
+  sources.forEach((source) => {
+    extractHtmlTags(source, /<[^>]+\bdata-action=(?:"[^"]+"|'[^']+')[^>]*>/g).forEach((tag) => {
+      const action = extractAttr(tag, "data-action");
+      const view = extractAttr(tag, "data-view");
+      if (routedActions.has(action) && /^[a-z][a-z0-9-]*$/i.test(view)) targets.add(view);
+    });
+  });
+  return targets;
+}
+
+function extractDashboardFactoryViewTargets(appJs) {
+  const targets = new Set();
+  addLiteralMatches(
+    appJs,
+    /makeDashboardCommandOpenViewAction\(\s*["'][^"']*["']\s*,\s*["'][^"']*["']\s*,\s*["']([^"']+)["']/g,
+    targets,
+  );
+  addLiteralMatches(
+    appJs,
+    /makeDashboardCommandSelectOrderAction\(\s*["'][^"']*["']\s*,\s*["'][^"']*["']\s*,\s*["']([^"']+)["']/g,
+    targets,
+  );
+  addLiteralMatches(
+    appJs,
+    /action:\s*["']open-dashboard-view["'][^\n]*?\bview:\s*["']([^"']+)["']/g,
+    targets,
+  );
+  return targets;
+}
+
+function extractNavRegistryViewTargets(appJs) {
+  const targets = new Set();
+  const navSections = extractBalancedBlock(appJs, "const NAV_SECTIONS =", "[", "]");
+  addLiteralMatches(navSections, /\bview:\s*["']([^"']+)["']/g, targets);
+  let groupMatch;
+  const groupRegex = /\bgroup:\s*\[([^\]]+)\]/g;
+  while ((groupMatch = groupRegex.exec(navSections))) {
+    extractStringLiterals(groupMatch[1]).forEach((value) => targets.add(value));
+  }
+  ["const NAV_TOP =", "const NAV_PINNED ="].forEach((marker) => {
+    extractStringLiterals(extractBalancedBlock(appJs, marker, "[", "]")).forEach((value) => targets.add(value));
+  });
+  return targets;
+}
+
+function extractRoleViewTargets(appJs) {
+  return extractStringLiterals(extractBalancedBlock(appJs, "const roleViews =", "{", "}"));
+}
+
+function auditNavigationTargets(appJs, indexHtml, failures) {
+  const viewSectionIds = extractViewSectionIds(indexHtml);
+  const htmlIds = extractHtmlIds(indexHtml);
+  const handledHashTargets = new Set(["global-search"]);
+
+  const hashTargets = new Set();
+  addLiteralMatches(indexHtml, /href="#([^"]+)"/g, hashTargets);
+  addLiteralMatches(indexHtml, /href='#([^']+)'/g, hashTargets);
+  const brokenHashes = [...hashTargets]
+    .sort()
+    .filter((target) => target !== "#" && !htmlIds.has(target) && !handledHashTargets.has(target));
+  if (brokenHashes.length) failures.push(`Hash links missing matching DOM id: ${brokenHashes.join(", ")}`);
+
+  const setViewTargets = new Set();
+  addLiteralMatches(appJs, /setView\(["']([^"']+)["']/g, setViewTargets);
+  assertViewTargets("setView()", setViewTargets, viewSectionIds, failures);
+
+  assertViewTargets("routed data-view", extractRoutedDataViewTargets(appJs, indexHtml), viewSectionIds, failures);
+  assertViewTargets("dashboard action factory", extractDashboardFactoryViewTargets(appJs), viewSectionIds, failures);
+  assertViewTargets("NAV registry", extractNavRegistryViewTargets(appJs), viewSectionIds, failures);
+  assertViewTargets("roleViews", extractRoleViewTargets(appJs), viewSectionIds, failures);
+}
+
 async function main() {
   const [appJs, indexHtml, stylesCss] = await Promise.all([
     readText("app.js"),
@@ -105,6 +238,7 @@ async function main() {
   // Generic click coverage: every static data-action rendered by the app must
   // be referenced by a handler or an explicit delegated selector.
   auditDataActionCoverage(appJs, indexHtml, failures);
+  auditNavigationTargets(appJs, indexHtml, failures);
 
   // Topbar search: the visible anchor must be wired to the Cmd+K overlay.
   assertMatches(

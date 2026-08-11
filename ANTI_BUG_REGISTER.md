@@ -29,6 +29,7 @@ Registro operativo per tracciare bug tecnici, problemi visuali, sovrapposizioni,
 | AB-011 | P2 | Garden Planner | Layout mobile | Iframe Garden Planner usciva di 12px a sinistra su mobile. | Aprire `#garden-planner` a 390/430px. | Fixato e verificato | Margine mobile dedicato: rect finale sinistra 0, destra pari al viewport, overflow 0. |
 | AB-012 | P2 | Generatore | Layout mobile | Campo "Nr. Preventivo" troppo stretto con bottone "Nuovo", placeholder/contenuto tagliabile. | Aprire `#sales-generator` a 390/430px. | Fixato e verificato | Su <=640px il campo numero preventivo prende riga piena; sweep finale senza clipped text. |
 | AB-013 | P2 | Dashboard/Pose | Navigazione | I collegamenti dashboard verso sottoviste Pose potevano aprire una pagina corretta ma senza contesto ordine o con filtri squadra vecchi. | Dashboard > Pose/Programmate, aprire "Calendario" o una riga Programmate. | Fixato e verificato | Shell `20260811-dashboard-pose-deep-links`: famiglia Pose unica, targetId portato nelle azioni Calendario, riga selezionata nelle sottoviste e reset filtro squadra quando si rientra alla board Pose. |
+| AB-014 | P1 | Global | Navigazione | Link, azioni dashboard o `setView()` non devono puntare a viste/hash inesistenti. | Audit statico su `href="#..."`, `data-action` navigabili, factory dashboard, registro navigazione e ruoli. | Coperto da audit | `scripts/audit-ui-contracts.mjs` ora fallisce se un target navigabile non ha una `.view`/id DOM corrispondente. |
 
 ## Sweep Corrente
 
@@ -86,3 +87,8 @@ Sprint dashboard deep-link Pose 2026-08-11:
 - Dashboard > dettaglio operativo > Calendario: click reale verificato, porta il `targetId` alla vista Pose corretta.
 - `npm run check`: 107 test passati.
 - `npm run build`: completata senza errori.
+
+Sprint contratti UI 2026-08-12:
+- Esteso `scripts/audit-ui-contracts.mjs` per bloccare azioni `data-action` non gestite.
+- Esteso `scripts/audit-ui-contracts.mjs` per bloccare target navigabili inesistenti: hash DOM, `setView()`, `open-dashboard-view`, `select-order`, registro sidebar/mobile e viste per ruolo.
+- `npm run check:ui-contracts`: completato senza errori.
