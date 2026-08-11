@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260811-ddt-free-documents";
+} from "./lib/order-money.js?v=20260811-bulk-vcard-contacts";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260811-ddt-free-documents";
+import { regionForCity } from "./lib/geo.js?v=20260811-bulk-vcard-contacts";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260811-ddt-free-documents";
+} from "./lib/shipping-eligibility.js?v=20260811-bulk-vcard-contacts";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260811-ddt-free-documents";
+} from "./lib/profit-split.js?v=20260811-bulk-vcard-contacts";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260811-ddt-free-documents";
+} from "./lib/preventivo-pricing.js?v=20260811-bulk-vcard-contacts";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260811-ddt-free-documents";
+} from "./lib/sales-assignment.js?v=20260811-bulk-vcard-contacts";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260811-ddt-free-documents";
+const APP_SHELL_VERSION = "20260811-bulk-vcard-contacts";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4574,6 +4574,18 @@ function selectVisibleAssignableSalesRequests() {
   renderSalesRequests();
 }
 
+function hasSalesRequestContactInfo(item = {}) {
+  return Boolean(String(item.phone || "").trim() || String(item.email || "").trim());
+}
+
+function selectVisibleSalesRequestContacts() {
+  const selection = getSalesRequestBulkSelectionSet();
+  getSalesRequestCurrentPageItems()
+    .filter(hasSalesRequestContactInfo)
+    .forEach((item) => selection.add(item.id));
+  renderSalesRequests();
+}
+
 function toggleSalesRequestBulkSelection(id = "") {
   const safeId = String(id || "").trim();
   if (!safeId) return;
@@ -4586,12 +4598,15 @@ function toggleSalesRequestBulkSelection(id = "") {
   renderSalesRequests();
 }
 
+function getSalesRequestBulkSelectedItems() {
+  return getSalesRequestBulkSelectedIds()
+    .map((id) => findSalesRequestById(id))
+    .filter(Boolean);
+}
+
 function getSalesRequestBulkFollowUpCandidates() {
-  const ids = new Set(getSalesRequestBulkSelectedIds());
-  if (!ids.size) return [];
-  return state.salesRequests.filter((item) => (
-    ids.has(item.id)
-    && getSalesRequestStatusCode(item.status || "") === "quoted"
+  return getSalesRequestBulkSelectedItems().filter((item) => (
+    getSalesRequestStatusCode(item.status || "") === "quoted"
     && Boolean(buildSalesRequestFollowUpWhatsAppUrl(item))
   ));
 }
@@ -4601,23 +4616,27 @@ function renderSalesRequestBulkBar(pageItems = []) {
   const selectedIds = getSalesRequestBulkSelectedIds();
   const selectedCount = selectedIds.length;
   const visibleAssignableCount = pageItems.filter(isSalesRequestBulkAssignable).length;
+  const visibleContactCount = pageItems.filter(hasSalesRequestContactInfo).length;
   const hasSelection = selectedCount > 0;
   const isSaving = Boolean(state.salesRequestBulkSaving);
   const followUpCandidates = getSalesRequestBulkFollowUpCandidates();
   const followUpCount = followUpCandidates.length;
-  // Stato idle: solo il bottone "Seleziona" + conteggio; stato attivo: tutti i comandi
+  const vCardCount = getSalesRequestBulkSelectedItems().filter(hasSalesRequestContactInfo).length;
+  // Stato idle: selezioni rapide; stato attivo: azioni disponibili sui contatti selezionati.
   ui.salesRequestBulkBar.innerHTML = hasSelection ? `
     <span class="srbb-label">${isSaving
       ? (state.lang === "it" ? "Assegnazione…" : "Assigning…")
       : `${selectedCount} ${state.lang === "it" ? "selezionati" : "selected"}`}</span>
     <div class="inline-actions sales-request-bulk-actions">
       ${getSalesRequestAssignmentOptions().map((assignee) => `<button class="primary-button small-button" type="button" data-action="bulk-assign-sales-requests" data-assignment="${escapeHtml(assignee)}" ${!isSaving ? "" : "disabled"}>${state.lang === "it" ? `→ ${escapeHtml(assignee)}` : `→ ${escapeHtml(assignee)}`}</button>`).join("")}
+      <button class="ghost-button small-button" type="button" data-action="bulk-save-sales-request-vcards" ${vCardCount && !isSaving ? "" : "disabled"}>${state.lang === "it" ? `Rubrica (${vCardCount})` : `Contacts (${vCardCount})`}</button>
       <button class="ghost-button small-button" type="button" data-action="bulk-followup-sales-requests" ${followUpCount && !isSaving ? "" : "disabled"}>Follow-up WA (${followUpCount})</button>
       <button class="ghost-button small-button" type="button" data-action="clear-sales-request-bulk">${state.lang === "it" ? "Annulla" : "Clear"}</button>
     </div>
   ` : `
-    <span class="srbb-label muted">${state.lang === "it" ? `${visibleAssignableCount} da assegnare` : `${visibleAssignableCount} unassigned`}</span>
-    <button class="ghost-button small-button" type="button" data-action="select-visible-sales-requests" ${visibleAssignableCount ? "" : "disabled"}>${state.lang === "it" ? "Seleziona visibili" : "Select visible"}</button>
+    <span class="srbb-label muted">${state.lang === "it" ? `${visibleAssignableCount} da assegnare · ${visibleContactCount} con contatto` : `${visibleAssignableCount} unassigned · ${visibleContactCount} with contact`}</span>
+    <button class="ghost-button small-button" type="button" data-action="select-visible-sales-requests" ${visibleAssignableCount ? "" : "disabled"}>${state.lang === "it" ? "Seleziona assegnabili" : "Select unassigned"}</button>
+    <button class="ghost-button small-button" type="button" data-action="select-visible-sales-request-contacts" ${visibleContactCount ? "" : "disabled"}>${state.lang === "it" ? "Seleziona contatti" : "Select contacts"}</button>
   `;
 }
 
@@ -5065,14 +5084,19 @@ function vcardEscape(value) {
     .replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 }
 
-// "Salva in rubrica": genera un file .vcf dal contatto della richiesta selezionata.
-// Su iPhone/Android, aprendo il file il telefono propone "Aggiungi contatto".
-function saveSalesRequestVCard() {
-  const req = getSelectedSalesRequest();
-  if (!req) {
-    showToast(state.lang === "it" ? "Nessuna richiesta selezionata" : "No request selected", "error");
-    return;
-  }
+function getSafeVCardFilename(value = "", fallback = "contatto") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase() || fallback;
+}
+
+function buildSalesRequestVCard(req = {}) {
   const name = String(req.name || "").trim();
   const surname = String(req.surname || "").trim();
   const full = [name, surname].filter(Boolean).join(" ").trim() || (state.lang === "it" ? "Contatto" : "Contact");
@@ -5080,8 +5104,7 @@ function saveSalesRequestVCard() {
   const email = String(req.email || "").trim();
   const city = String(req.city || "").trim();
   if (!phone && !email) {
-    showToast(state.lang === "it" ? "Manca telefono ed email su questa richiesta" : "No phone or email on this request", "error");
-    return;
+    return null;
   }
   const sqm = req.sqm ? `${req.sqm} mq` : "";
   const noteParts = [city, sqm, String(req.service || "").trim()].filter(Boolean);
@@ -5096,17 +5119,59 @@ function saveSalesRequestVCard() {
   if (email) lines.push(`EMAIL;TYPE=INTERNET:${vcardEscape(email)}`);
   if (city) lines.push(`ADR;TYPE=HOME:;;;${vcardEscape(city)};;;`);
   lines.push(`NOTE:${vcardEscape(note)}`, "END:VCARD");
-  const vcard = lines.join("\r\n");
-  const blob = new Blob([vcard], { type: "text/vcard;charset=utf-8" });
+  return { full, vcard: lines.join("\r\n") };
+}
+
+function downloadSalesRequestVCards(cards = [], filename = "contatti-psi.vcf") {
+  const payload = cards.map((card) => card.vcard).filter(Boolean).join("\r\n") + "\r\n";
+  const blob = new Blob([payload], { type: "text/vcard;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${(full.replace(/[^\w\s-]/g, "").trim() || "contatto")}.vcf`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// "Salva in rubrica": genera un file .vcf dal contatto della richiesta selezionata.
+// Su iPhone/Android, aprendo il file il telefono propone "Aggiungi contatto".
+function saveSalesRequestVCard() {
+  const req = getSelectedSalesRequest();
+  if (!req) {
+    showToast(state.lang === "it" ? "Nessuna richiesta selezionata" : "No request selected", "error");
+    return;
+  }
+  const card = buildSalesRequestVCard(req);
+  if (!card) {
+    showToast(state.lang === "it" ? "Manca telefono ed email su questa richiesta" : "No phone or email on this request", "error");
+    return;
+  }
+  downloadSalesRequestVCards([card], `${getSafeVCardFilename(card.full)}.vcf`);
   showToast(state.lang === "it" ? "Contatto pronto: apri il file per aggiungerlo alla rubrica" : "Contact ready", "success");
+}
+
+function saveSalesRequestBulkVCards() {
+  const selectedItems = getSalesRequestBulkSelectedItems();
+  if (!selectedItems.length) {
+    showToast(state.lang === "it" ? "Nessun contatto selezionato" : "No selected contacts", "error");
+    return;
+  }
+  const cards = selectedItems.map(buildSalesRequestVCard).filter(Boolean);
+  if (!cards.length) {
+    showToast(state.lang === "it" ? "I contatti selezionati non hanno telefono o email" : "Selected contacts have no phone or email", "error");
+    return;
+  }
+  const skipped = selectedItems.length - cards.length;
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadSalesRequestVCards(cards, `rubrica-psi-${cards.length}-contatti-${stamp}.vcf`);
+  showToast(
+    state.lang === "it"
+      ? `${cards.length} contatti pronti per la rubrica${skipped ? ` (${skipped} saltati senza telefono/email)` : ""}.`
+      : `${cards.length} contacts ready${skipped ? ` (${skipped} skipped without phone/email)` : ""}.`,
+    skipped ? "warning" : "success",
+  );
 }
 
 function ensureSelectedSalesRequest({ keepMissingSelection = false } = {}) {
@@ -33088,6 +33153,10 @@ function handleGlobalClick(event) {
     selectVisibleAssignableSalesRequests();
     return;
   }
+  if (action === "select-visible-sales-request-contacts") {
+    selectVisibleSalesRequestContacts();
+    return;
+  }
   if (action === "clear-sales-request-bulk") {
     clearSalesRequestBulkSelection();
     return;
@@ -33100,6 +33169,10 @@ function handleGlobalClick(event) {
   }
   if (action === "bulk-followup-sales-requests") {
     bulkOpenSalesRequestFollowUpWhatsApp();
+    return;
+  }
+  if (action === "bulk-save-sales-request-vcards") {
+    saveSalesRequestBulkVCards();
     return;
   }
   if (action === "select-sales-request") {
