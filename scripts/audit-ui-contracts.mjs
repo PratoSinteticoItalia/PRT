@@ -33,6 +33,67 @@ function extractFunction(source, name) {
   return "";
 }
 
+function escapeRegExp(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function addLiteralMatches(source, regex, targetSet) {
+  let match;
+  while ((match = regex.exec(source))) {
+    const value = String(match[1] || match[2] || "").trim();
+    if (/^[a-z][a-z0-9-]*$/i.test(value)) targetSet.add(value);
+  }
+}
+
+function extractStaticDataActions(...sources) {
+  const actions = new Set();
+  sources.forEach((source) => {
+    addLiteralMatches(source, /data-action="([^"]+)"/g, actions);
+    addLiteralMatches(source, /data-action='([^']+)'/g, actions);
+    addLiteralMatches(source, /\.dataset\.action\s*=\s*"([^"]+)"/g, actions);
+    addLiteralMatches(source, /\.dataset\.action\s*=\s*'([^']+)'/g, actions);
+  });
+  return actions;
+}
+
+function isActionExplicitlyHandled(appJs, action) {
+  const escaped = escapeRegExp(action);
+  const patterns = [
+    new RegExp(`\\baction\\s*(?:={2,3}|!={1,2})\\s*["']${escaped}["']`),
+    new RegExp(`\\.dataset\\.action\\s*(?:={2,3}|!={1,2})\\s*["']${escaped}["']`),
+    new RegExp(`\\[data-action=["']${escaped}["']\\]`),
+    new RegExp(`case\\s+["']${escaped}["']\\s*:`),
+  ];
+  return patterns.some((pattern) => pattern.test(appJs));
+}
+
+const SUBMIT_ACTION_CONTRACTS = {
+  "communications-send-message": [
+    /id="communications-message-form"/,
+    /messageForm\.addEventListener\("submit"/,
+    /sendCommunicationMessage\(messageForm\)/,
+  ],
+};
+
+function auditDataActionCoverage(appJs, indexHtml, failures) {
+  const actions = [...extractStaticDataActions(appJs, indexHtml)].sort();
+  const unhandled = actions.filter((action) => {
+    if (isActionExplicitlyHandled(appJs, action)) return false;
+    const submitContract = SUBMIT_ACTION_CONTRACTS[action];
+    if (!submitContract) return true;
+    const contractSource = `${appJs}\n${indexHtml}`;
+    const missing = submitContract.filter((pattern) => !pattern.test(contractSource));
+    if (missing.length) {
+      failures.push(`Submit data-action ${action} is missing its form submit contract`);
+      return false;
+    }
+    return false;
+  });
+  if (unhandled.length) {
+    failures.push(`Unhandled data-action values: ${unhandled.join(", ")}`);
+  }
+}
+
 async function main() {
   const [appJs, indexHtml, stylesCss] = await Promise.all([
     readText("app.js"),
@@ -40,6 +101,10 @@ async function main() {
     readText("styles.css"),
   ]);
   const failures = [];
+
+  // Generic click coverage: every static data-action rendered by the app must
+  // be referenced by a handler or an explicit delegated selector.
+  auditDataActionCoverage(appJs, indexHtml, failures);
 
   // Topbar search: the visible anchor must be wired to the Cmd+K overlay.
   assertMatches(
