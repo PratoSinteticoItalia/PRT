@@ -8,8 +8,9 @@
     "build": "node scripts/build.mjs",
     "check:syntax": "node --check app.js && node --check server.js && node --check sw.js && node --check imap-worker.js && node --check lead-fingerprint.mjs && node --check lib/marketing-publish.js && node --check lib/timesheet-absence.js && node --check lib/work-report-pdf.js && node --check scripts/restore-snapshot.mjs",
     "check:shell-version": "node scripts/verify-shell-version.mjs",
+    "check:ui-contracts": "node scripts/audit-ui-contracts.mjs",
     "test": "node --test",
-    "check": "npm run check:syntax && npm run check:shell-version && npm test",
+    "check": "npm run check:syntax && npm run check:shell-version && npm run check:ui-contracts && npm test",
     "bump": "node scripts/bump-shell-version.mjs",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
