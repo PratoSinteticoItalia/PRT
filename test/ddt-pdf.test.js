@@ -69,6 +69,36 @@ test("generateDdtPdf: non esplode con un ordine senza righe né recipient overri
   assert.equal(buffer.subarray(0, 5).toString("latin1"), "%PDF-");
 });
 
+test("generateDdtPdf: gestisce un DDT libero con unità di misura sulle righe", async () => {
+  const order = {
+    id: "free-ddt-1",
+    __ddtFree: true,
+    orderNumber: "DDT-LIB-1",
+    operations: {
+      product: "Trasferimento magazzino",
+      warehouse: {
+        ddt: {
+          number: "DDT-LIB-1",
+          createdAt: "2026-08-11T10:00:00.000Z",
+          palletLength: "120",
+          palletWidth: "80",
+          palletHeight: "95",
+          palletWeight: "180 kg",
+          recipient: { name: "Deposito Roma", city: "Roma", province: "RM" },
+          lines: [
+            { title: "Prato Cipresso", quantity: 32, um: "mq", note: "rotolo unico" },
+            { title: "Colla", quantity: 4, um: "pz", note: "" },
+          ],
+        },
+      },
+    },
+  };
+  const buffer = await generateDdtPdf(order);
+  assert.ok(Buffer.isBuffer(buffer));
+  assert.ok(buffer.length > 100);
+  assert.equal(buffer.subarray(0, 5).toString("latin1"), "%PDF-");
+});
+
 test("generateDdtPdf: throws se manca l'ordine", async () => {
   await assert.rejects(() => generateDdtPdf(null), /missing order/);
 });
