@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260811-dashboard-pose-deep-links";
+} from "./lib/order-money.js?v=20260811-ddt-free-documents";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260811-dashboard-pose-deep-links";
+import { regionForCity } from "./lib/geo.js?v=20260811-ddt-free-documents";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260811-dashboard-pose-deep-links";
+} from "./lib/shipping-eligibility.js?v=20260811-ddt-free-documents";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260811-dashboard-pose-deep-links";
+} from "./lib/profit-split.js?v=20260811-ddt-free-documents";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260811-dashboard-pose-deep-links";
+} from "./lib/preventivo-pricing.js?v=20260811-ddt-free-documents";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260811-dashboard-pose-deep-links";
+} from "./lib/sales-assignment.js?v=20260811-ddt-free-documents";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260811-dashboard-pose-deep-links";
+const APP_SHELL_VERSION = "20260811-ddt-free-documents";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1288,6 +1288,8 @@ const state = {
     resellerDirectory: "",
   },
   selectedDdtOrderId: null,
+  selectedDdtKind: "order",
+  freeDdts: [],
   ddtDraft: null,
   pendingAttachmentTarget: null,
   showOrderImport: false,
@@ -13932,6 +13934,7 @@ function openDashboardViewTarget(target) {
     state.filters.ddt = dataset.dashboardDdtFilter || dataset.ddtFilter || "all";
     state.search.ddt = "";
     if (targetId) {
+      state.selectedDdtKind = "order";
       state.selectedDdtOrderId = targetId;
       state.ddtDraft = null;
     }
@@ -24932,6 +24935,8 @@ function renderShipping() {
 
 /* ===================== Pagina DDT dedicata (Fase 2) ===================== */
 
+const NEW_FREE_DDT_ID = "__new-free-ddt__";
+
 // Ordini che possono avere un DDT: instradati in logistica/posa con merce fisica.
 function getDdtEligibleOrders() {
   const all = Array.isArray(state.orders) ? state.orders : [];
@@ -24955,6 +24960,28 @@ function deriveDdtRecipient(order) {
   };
 }
 
+function normalizeDdtRecipientDraft(value = {}) {
+  const rec = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    name: String(rec.name || "").trim(),
+    address: String(rec.address || "").trim(),
+    postalCode: String(rec.postalCode || "").trim(),
+    city: String(rec.city || "").trim(),
+    province: String(rec.province || rec.provinceCode || "").trim().toUpperCase(),
+    phone: String(rec.phone || "").trim(),
+    email: String(rec.email || "").trim(),
+  };
+}
+
+function normalizeDdtLineDraft(line = {}) {
+  return {
+    title: String(line.title || "").trim(),
+    quantity: Number(line.quantity || 0) || 0,
+    um: String(line.um || "").trim(),
+    note: String(line.note || "").trim(),
+  };
+}
+
 function initDdtDraft(order) {
   const ddt = order.operations?.warehouse?.ddt || {};
   const lines = (Array.isArray(ddt.lines) && ddt.lines.length)
@@ -24964,7 +24991,10 @@ function initDdtDraft(order) {
     ? { ...deriveDdtRecipient(order), ...ddt.recipient }
     : deriveDdtRecipient(order);
   return {
+    source: "order",
     orderId: order.id,
+    freeDdtId: "",
+    title: "",
     number: String(ddt.number || "").trim(),
     date: ddt.createdAt ? String(new Date(ddt.createdAt).toISOString()).slice(0, 10) : new Date().toISOString().slice(0, 10),
     palletLength: ddt.palletLength || "",
@@ -24977,12 +25007,88 @@ function initDdtDraft(order) {
   };
 }
 
+function initFreeDdtDraft(record = {}) {
+  const recipient = normalizeDdtRecipientDraft(record.recipient || {});
+  const lines = Array.isArray(record.lines) && record.lines.length
+    ? record.lines.map(normalizeDdtLineDraft)
+    : [{ title: "", quantity: 1, um: "pz", note: "" }];
+  return {
+    source: "free",
+    orderId: "",
+    freeDdtId: String(record.id || NEW_FREE_DDT_ID),
+    title: String(record.title || recipient.name || "DDT libero").trim(),
+    number: String(record.number || "").trim(),
+    date: record.createdAt ? String(new Date(record.createdAt).toISOString()).slice(0, 10) : new Date().toISOString().slice(0, 10),
+    palletLength: record.palletLength || "",
+    palletWidth: record.palletWidth || "",
+    palletHeight: record.palletHeight || "",
+    palletWeight: record.palletWeight || "",
+    recipient,
+    lines,
+    note: record.note || "",
+  };
+}
+
+function freeDdtDraftToOrder(draft = {}) {
+  const d = {
+    ...initFreeDdtDraft({}),
+    ...(draft || {}),
+    recipient: normalizeDdtRecipientDraft(draft.recipient || {}),
+    lines: Array.isArray(draft.lines) ? draft.lines.map(normalizeDdtLineDraft).filter((line) => line.title || line.note) : [],
+  };
+  const rec = d.recipient || {};
+  const ddt = {
+    number: d.number,
+    palletLength: d.palletLength,
+    palletWidth: d.palletWidth,
+    palletHeight: d.palletHeight,
+    palletWeight: d.palletWeight,
+    createdAt: d.date || new Date().toISOString(),
+    recipient: rec,
+    lines: d.lines,
+    note: d.note,
+  };
+  return {
+    id: d.freeDdtId || NEW_FREE_DDT_ID,
+    __ddtFree: true,
+    orderNumber: d.number || d.title || "DDT libero",
+    firstName: rec.name || d.title || "DDT libero",
+    lastName: "",
+    address: rec.address || "",
+    city: rec.city || "",
+    provinceCode: rec.province || "",
+    postalCode: rec.postalCode || "",
+    phone: rec.phone || "",
+    email: rec.email || "",
+    createdAt: d.date || new Date().toISOString(),
+    updatedAt: d.date || new Date().toISOString(),
+    lineDetails: d.lines.map((line) => ({ title: line.title, quantity: line.quantity || 1, note: line.note || "" })),
+    operations: {
+      product: d.title || "DDT libero",
+      warehouse: {
+        ddt,
+        destination: {
+          provinceCode: rec.province || "",
+          province: rec.province || "",
+          postalCode: rec.postalCode || "",
+          countryCode: "IT",
+        },
+      },
+    },
+  };
+}
+
+function freeDdtRecordToOrder(record = {}) {
+  return freeDdtDraftToOrder(initFreeDdtDraft(record));
+}
+
 // Legge i valori correnti del form DDT nel draft (chiamato prima di re-render o salvataggio).
 function readDdtFormIntoDraft() {
   const root = ui.ddtEditorBody;
   if (!root || !state.ddtDraft) return state.ddtDraft;
   const val = (sel) => root.querySelector(sel)?.value ?? "";
   const d = state.ddtDraft;
+  d.title = val("[data-ddt='title']").trim() || d.title || "";
   d.number = val("[data-ddt='number']").trim();
   d.date = val("[data-ddt='date']");
   d.palletLength = val("[data-ddt='palletLength']").trim();
@@ -25004,13 +25110,13 @@ function readDdtFormIntoDraft() {
     quantity: Number(row.querySelector("[data-ddt-line-field='quantity']")?.value || 0) || 0,
     um: (row.querySelector("[data-ddt-line-field='um']")?.value || "").trim(),
     note: (row.querySelector("[data-ddt-line-field='note']")?.value || "").trim(),
-  })).filter((l) => l.title || l.quantity || l.note);
+  })).filter((l) => l.title || l.note);
   return d;
 }
 
 function renderDdtListCard(order) {
   const num = String(order.operations?.warehouse?.ddt?.number || "").trim();
-  const selected = order.id === state.selectedDdtOrderId ? "selected" : "";
+  const selected = state.selectedDdtKind !== "free" && order.id === state.selectedDdtOrderId ? "selected" : "";
   const badge = num
     ? `<span class="shp-badge ok">${escapeHtml(num)}</span>`
     : `<span class="shp-badge">${state.lang === "it" ? "Da emettere" : "To issue"}</span>`;
@@ -25025,10 +25131,42 @@ function renderDdtListCard(order) {
     </article>`;
 }
 
+function renderDdtFreeListCard(record) {
+  const num = String(record.number || "").trim();
+  const selected = state.selectedDdtKind === "free" && record.id === state.selectedDdtOrderId ? "selected" : "";
+  const rec = normalizeDdtRecipientDraft(record.recipient || {});
+  const name = rec.name || record.title || "DDT libero";
+  const dateLabel = record.createdAt ? formatDate(record.createdAt) : "—";
+  const lineCount = Array.isArray(record.lines) ? record.lines.length : 0;
+  const lineLabel = state.lang === "it"
+    ? formatCountLabel(lineCount, "riga", "righe")
+    : formatCountLabel(lineCount, "row", "rows");
+  return `
+    <article class="shp-row ddt-free-row ${selected}" data-action="select-ddt-free" data-id="${escapeAttr(record.id)}">
+      <span class="shp-dot ready"></span>
+      <div class="shp-main">
+        <div class="shp-name-line"><span class="shp-name">${escapeHtml(name)}</span><span class="shp-num">${escapeHtml(num || "Libero")}</span></div>
+        <div class="shp-meta"><span>${escapeHtml(dateLabel)} · ${lineLabel}</span></div>
+      </div>
+      <div class="shp-aside"><span class="shp-badge ok">${escapeHtml(num || (state.lang === "it" ? "Libero" : "Free"))}</span></div>
+    </article>`;
+}
+
+function renderDdtListEntry(entry) {
+  return entry?.kind === "free" ? renderDdtFreeListCard(entry.record) : renderDdtListCard(entry.order);
+}
+
 function renderDdtEditor(order) {
   const d = state.ddtDraft;
   if (!ui.ddtEditorBody || !d) return;
   const L = (it, en) => (state.lang === "it" ? it : en);
+  const isFreeDdt = d.source === "free" || order?.__ddtFree;
+  const editorTitle = isFreeDdt
+    ? `${L("DDT libero", "Free DDT")} · ${d.recipient?.name || d.title || d.number || L("Nuovo documento", "New document")}`
+    : `${composeClientName(order)} · ${getOrderNumber(order)}`;
+  const editorHint = isFreeDdt
+    ? `<p class="ddt-hint">${L("Documento non collegato a un ordine Shopify: compila destinatario, articoli e bancale manualmente.", "Document not linked to a Shopify order: fill recipient, items and pallet manually.")}</p>`
+    : "";
   const lineRows = d.lines.map((line, i) => `
     <div class="ddt-line" data-ddt-line data-idx="${i}">
       <input class="text-input" data-ddt-line-field="title" value="${escapeAttr(line.title || "")}" placeholder="${L("Descrizione articolo", "Item description")}" />
@@ -25040,8 +25178,10 @@ function renderDdtEditor(order) {
   ui.ddtEditorBody.innerHTML = `
     <div class="panel-subsection">
       <div class="subsection-head"><h4>${L("Documento di trasporto", "Delivery note")}</h4></div>
-      <h3 class="section-inline-title">${escapeHtml(composeClientName(order))} · ${escapeHtml(getOrderNumber(order))}</h3>
+      <h3 class="section-inline-title">${escapeHtml(editorTitle)}</h3>
+      ${editorHint}
       <div class="ddt-head-grid">
+        ${isFreeDdt ? `<label class="field field-full"><span>${L("Riferimento interno", "Internal reference")}</span><input class="text-input" data-ddt="title" value="${escapeAttr(d.title || "")}" placeholder="${L("Es. Reso fornitore, conto visione, trasferimento", "E.g. supplier return, sample, transfer")}" /></label>` : ""}
         <label class="field"><span>${L("N. DDT", "DDT no.")}</span><input class="text-input" data-ddt="number" value="${escapeAttr(d.number)}" placeholder="${L("Automatico se vuoto", "Auto if empty")}" /></label>
         <label class="field"><span>${L("Data", "Date")}</span><input class="text-input" type="date" data-ddt="date" value="${escapeAttr(d.date)}" /></label>
       </div>
@@ -25079,6 +25219,7 @@ function renderDdtEditor(order) {
     <div id="ddt-status" class="panel-note hidden"></div>
     <div class="inline-actions">
       <button type="button" class="ghost-button small-button" data-action="ddt-save">${L("Salva bozza", "Save draft")}</button>
+      ${isFreeDdt && d.freeDdtId && d.freeDdtId !== NEW_FREE_DDT_ID ? `<button type="button" class="ghost-button small-button danger-button" data-action="ddt-delete-free">${L("Elimina DDT libero", "Delete free DDT")}</button>` : ""}
       <button type="button" class="primary-button small-button" data-action="ddt-generate">${L("Genera PDF DDT", "Generate DDT PDF")}</button>
     </div>`;
   // Stima One Express aggiornata live al variare delle misure/peso bancale.
@@ -25125,37 +25266,113 @@ function renderDdtEstimateHtml(order) {
   return `<div class="ddt-estimate"><span class="panel-eyebrow">${L("Stima spedizione One Express", "One Express estimate")}</span><strong>${formatCurrency(est.estimatedCost)}</strong><span>${escapeHtml(meta)}</span></div>`;
 }
 
-function getDdtFilteredOrders() {
+function getDdtEntryId(entry) {
+  return String(entry?.id || entry?.order?.id || entry?.record?.id || "");
+}
+
+function getDdtEntryNumber(entry) {
+  if (entry?.kind === "free") return String(entry.record?.number || "").trim();
+  return String(entry?.order?.operations?.warehouse?.ddt?.number || "").trim();
+}
+
+function getDdtEntryCreatedAt(entry) {
+  if (entry?.kind === "free") return entry.record?.createdAt || entry.record?.updatedAt || "";
+  return entry?.order?.operations?.warehouse?.ddt?.createdAt || entry?.order?.updatedAt || entry?.order?.createdAt || "";
+}
+
+function getDdtEntrySearchText(entry) {
+  if (entry?.kind === "free") {
+    const record = entry.record || {};
+    const rec = normalizeDdtRecipientDraft(record.recipient || {});
+    return [
+      record.number,
+      record.title,
+      rec.name,
+      rec.address,
+      rec.city,
+      rec.province,
+      ...(Array.isArray(record.lines) ? record.lines.map((line) => line.title || "") : []),
+    ].join(" ");
+  }
+  const order = entry?.order || {};
+  return `${composeClientName(order)} ${getOrderNumber(order)} ${order.operations?.warehouse?.ddt?.number || ""} ${order.operations?.product || ""}`;
+}
+
+function getDdtEntryOrderTimestamp(entry) {
+  const ref = getDdtEntryCreatedAt(entry);
+  const t = new Date(ref || 0).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+function getDdtAllEntries() {
+  const orderEntries = getDdtEligibleOrders().map((order) => ({
+    kind: "order",
+    id: order.id,
+    order,
+  }));
+  const freeEntries = (Array.isArray(state.freeDdts) ? state.freeDdts : [])
+    .filter((record) => record && record.id)
+    .map((record) => ({
+      kind: "free",
+      id: record.id,
+      record,
+      order: freeDdtRecordToOrder(record),
+    }));
+  return [...orderEntries, ...freeEntries];
+}
+
+function compareDdtEntries(a, b) {
+  const d = getDdtEntryOrderTimestamp(b) - getDdtEntryOrderTimestamp(a);
+  if (d !== 0) return d;
+  const numberDiff = String(getDdtEntryNumber(b) || getDdtEntryId(b))
+    .localeCompare(String(getDdtEntryNumber(a) || getDdtEntryId(a)), undefined, { numeric: true });
+  if (numberDiff !== 0) return numberDiff;
+  return getDdtEntryId(b).localeCompare(getDdtEntryId(a), undefined, { numeric: true });
+}
+
+function getDdtFilteredEntries() {
   const filter = state.filters.ddt || "all";
   const search = String(state.search.ddt || "").trim().toLowerCase();
-  let orders = getDdtEligibleOrders();
-  if (filter === "todo") orders = orders.filter((o) => !ddtOrderHasNumber(o));
-  else if (filter === "issued") orders = orders.filter((o) => ddtOrderHasNumber(o));
+  let entries = getDdtAllEntries();
+  if (filter === "todo") entries = entries.filter((entry) => !getDdtEntryNumber(entry));
+  else if (filter === "issued") entries = entries.filter((entry) => Boolean(getDdtEntryNumber(entry)));
   if (search) {
-    orders = orders.filter((o) =>
-      `${composeClientName(o)} ${getOrderNumber(o)} ${o.operations?.warehouse?.ddt?.number || ""}`.toLowerCase().includes(search));
+    entries = entries.filter((entry) => getDdtEntrySearchText(entry).toLowerCase().includes(search));
   }
-  // Ordine cronologico come su Shopify: dal più recente al meno recente.
-  const orderTs = (o) => {
-    const t = new Date(o.createdAt || o.updatedAt || 0).getTime();
-    return Number.isFinite(t) ? t : 0;
-  };
-  orders.sort((a, b) => {
-    const d = orderTs(b) - orderTs(a);
-    if (d !== 0) return d;
-    // Tiebreak: numero ordine decrescente (i numeri Shopify sono progressivi)
-    return String(getOrderNumber(b)).localeCompare(String(getOrderNumber(a)), undefined, { numeric: true });
-  });
-  return orders;
+  entries.sort(compareDdtEntries);
+  return entries;
+}
+
+function getActiveDdtEditorOrder() {
+  if (!state.ddtDraft) return null;
+  if (state.ddtDraft.source === "free") return freeDdtDraftToOrder(state.ddtDraft);
+  return (state.orders || []).find((o) => o.id === state.selectedDdtOrderId) || null;
+}
+
+function getDdtSelectedEntry(entries = getDdtFilteredEntries()) {
+  if (state.selectedDdtKind === "free") {
+    const record = (state.freeDdts || []).find((item) => item.id === state.selectedDdtOrderId);
+    if (record) {
+      return { kind: "free", id: record.id, record, order: freeDdtRecordToOrder(record) };
+    }
+    if (state.selectedDdtOrderId === NEW_FREE_DDT_ID && state.ddtDraft?.source === "free") {
+      return { kind: "free", id: NEW_FREE_DDT_ID, record: null, order: freeDdtDraftToOrder(state.ddtDraft) };
+    }
+  }
+  if (state.selectedDdtOrderId) {
+    const order = (state.orders || []).find((o) => o.id === state.selectedDdtOrderId);
+    if (order) return { kind: "order", id: order.id, order };
+  }
+  return entries[0] || null;
 }
 
 // Solo la lista (per ricerca/filtro): NON tocca l'editor, così le modifiche
 // non salvate nel form DDT non vengono perse.
 function renderDdtListView() {
   if (!ui.ddtList) return;
-  const orders = getDdtFilteredOrders();
-  if (!orders.length) {
-    ui.ddtList.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun ordine con merce da trasportare per questo filtro." : "No orders with goods to transport for this filter."}</div>`;
+  const entries = getDdtFilteredEntries();
+  if (!entries.length) {
+    ui.ddtList.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun DDT o ordine con merce da trasportare per questo filtro." : "No DDTs or orders with goods to transport for this filter."}</div>`;
     return;
   }
   // "Emessi" raggruppato per giorno di emissione — stesso pattern e stesso
@@ -25164,24 +25381,24 @@ function renderDdtListView() {
   // ("Tutti"/"Da emettere") non hanno una data di riferimento sensata
   // (i "da emettere" non hanno ancora un DDT), restano lista piatta.
   ui.ddtList.innerHTML = state.filters.ddt === "issued"
-    ? renderDdtIssuedArchive(orders)
-    : orders.map(renderDdtListCard).join("");
+    ? renderDdtIssuedArchive(entries)
+    : entries.map(renderDdtListEntry).join("");
 }
 
 // Data di riferimento = ddt.createdAt, la stessa "Data" mostrata/editabile
 // nel form DDT: si aggiorna a ogni salvataggio (create-ddt in server.js),
 // quindi riflette sempre l'ultima emissione salvata per quell'ordine.
-function renderDdtIssuedArchive(orders = []) {
+function renderDdtIssuedArchive(entries = []) {
   const groups = new Map();
-  orders.forEach((order) => {
-    const refValue = order.operations?.warehouse?.ddt?.createdAt || "";
+  entries.forEach((entry) => {
+    const refValue = getDdtEntryCreatedAt(entry) || "";
     const refDate = refValue ? new Date(refValue) : null;
     const validDate = refDate && !Number.isNaN(refDate.getTime());
     const key = validDate
       ? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-${String(refDate.getDate()).padStart(2, "0")}`
       : "unknown";
-    if (!groups.has(key)) groups.set(key, { dateValue: validDate ? refValue : "", orders: [] });
-    groups.get(key).orders.push(order);
+    if (!groups.has(key)) groups.set(key, { dateValue: validDate ? refValue : "", entries: [] });
+    groups.get(key).entries.push(entry);
   });
   const sortedKeys = [...groups.keys()].sort((a, b) => (a === "unknown" ? 1 : b === "unknown" ? -1 : b.localeCompare(a)));
   return `<div class="shp-archive-groups">${sortedKeys.map((key) => {
@@ -25189,13 +25406,14 @@ function renderDdtIssuedArchive(orders = []) {
     const label = key === "unknown"
       ? (state.lang === "it" ? "Data non disponibile" : "Date unavailable")
       : communicationDaySeparatorLabel(group.dateValue);
+    const countLabel = formatCountLabel(group.entries.length, state.lang === "it" ? "DDT" : "DDT", state.lang === "it" ? "DDT" : "DDT");
     return `
       <section class="shp-archive-day">
         <div class="shp-group-label">
           <h3>${escapeHtml(label)}</h3>
-          <span class="shp-gc">${formatCountLabel(group.orders.length, state.lang === "it" ? "DDT" : "DDT", state.lang === "it" ? "DDT" : "DDT")}</span>
+          <span class="shp-gc">${countLabel}</span>
         </div>
-        <div class="shp-archive">${group.orders.map(renderDdtListCard).join("")}</div>
+        <div class="shp-archive">${group.entries.map(renderDdtListEntry).join("")}</div>
       </section>
     `;
   }).join("")}</div>`;
@@ -25203,27 +25421,73 @@ function renderDdtIssuedArchive(orders = []) {
 
 function renderDdt() {
   renderDdtListView();
-  const orders = getDdtFilteredOrders();
-  const order = orders.find((o) => o.id === state.selectedDdtOrderId)
-    || (state.orders || []).find((o) => o.id === state.selectedDdtOrderId)
-    || orders[0] || null;
-  if (order && order.id !== state.selectedDdtOrderId) state.selectedDdtOrderId = order.id;
-  if (!order) {
+  const entries = getDdtFilteredEntries();
+  const selectedEntry = getDdtSelectedEntry(entries);
+  if (!selectedEntry) {
     state.selectedDdtOrderId = null;
+    state.selectedDdtKind = "order";
     state.ddtDraft = null;
-    if (ui.ddtEditorBody) ui.ddtEditorBody.innerHTML = `<div class="info-card">${state.lang === "it" ? "Seleziona un ordine per preparare il DDT." : "Select an order to prepare the DDT."}</div>`;
+    if (ui.ddtEditorBody) ui.ddtEditorBody.innerHTML = `<div class="info-card">${state.lang === "it" ? "Seleziona un ordine o crea un DDT libero." : "Select an order or create a free DDT."}</div>`;
     return;
   }
-  if (!state.ddtDraft || state.ddtDraft.orderId !== order.id) state.ddtDraft = initDdtDraft(order);
+  if (selectedEntry.kind === "free") {
+    state.selectedDdtKind = "free";
+    state.selectedDdtOrderId = selectedEntry.id;
+    if (!state.ddtDraft || state.ddtDraft.source !== "free" || state.ddtDraft.freeDdtId !== selectedEntry.id) {
+      state.ddtDraft = selectedEntry.record ? initFreeDdtDraft(selectedEntry.record) : initFreeDdtDraft();
+    }
+    renderDdtEditor(freeDdtDraftToOrder(state.ddtDraft));
+    return;
+  }
+  const order = selectedEntry.order;
+  state.selectedDdtKind = "order";
+  if (order && order.id !== state.selectedDdtOrderId) state.selectedDdtOrderId = order.id;
+  if (!state.ddtDraft || state.ddtDraft.source !== "order" || state.ddtDraft.orderId !== order.id) state.ddtDraft = initDdtDraft(order);
   renderDdtEditor(order);
 }
 
 async function saveDdtDraft({ download = false } = {}) {
-  const order = (state.orders || []).find((o) => o.id === state.selectedDdtOrderId);
-  if (!order || !state.ddtDraft) return;
+  if (!state.ddtDraft) return;
   readDdtFormIntoDraft();
   const d = state.ddtDraft;
   try {
+    if (d.source === "free") {
+      const savedFreeDdt = await apiFetch("/api/ddt/free", {
+        method: "POST",
+        body: JSON.stringify({
+          id: d.freeDdtId && d.freeDdtId !== NEW_FREE_DDT_ID ? d.freeDdtId : "",
+          title: d.title,
+          number: d.number,
+          date: d.date,
+          palletLength: d.palletLength,
+          palletWidth: d.palletWidth,
+          palletHeight: d.palletHeight,
+          palletWeight: d.palletWeight,
+          lines: d.lines,
+          recipient: d.recipient,
+          note: d.note,
+        }),
+      });
+      state.freeDdts = [savedFreeDdt, ...(state.freeDdts || []).filter((item) => item.id !== savedFreeDdt.id)];
+      state.selectedDdtKind = "free";
+      state.selectedDdtOrderId = savedFreeDdt.id;
+      state.ddtDraft = null;
+      renderDdt();
+      if (download) {
+        trackUsageEvent("ddt_generated", { freeDdtId: savedFreeDdt.id, ddtNumber: savedFreeDdt.number || "", source: "free" });
+        await new Promise((resolve) => window.requestAnimationFrame(resolve));
+        await downloadDdtPdf(freeDdtRecordToOrder(savedFreeDdt));
+      }
+      showToast(
+        download
+          ? (state.lang === "it" ? "DDT libero generato e scaricato." : "Free DDT generated and downloaded.")
+          : (state.lang === "it" ? "DDT libero salvato." : "Free DDT saved."),
+        "success",
+      );
+      return;
+    }
+    const order = (state.orders || []).find((o) => o.id === state.selectedDdtOrderId);
+    if (!order) return;
     const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/create-ddt`, {
       method: "POST",
       body: JSON.stringify({
@@ -25239,6 +25503,7 @@ async function saveDdtDraft({ download = false } = {}) {
       }),
     });
     state.orders = state.orders.map((o) => (o.id === saved.id ? saved : o));
+    state.selectedDdtKind = "order";
     state.ddtDraft = null; // re-init dal salvato al prossimo render
     renderDdt();
     if (download) {
@@ -25255,6 +25520,32 @@ async function saveDdtDraft({ download = false } = {}) {
   } catch (error) {
     showToast(
       state.lang === "it" ? `Errore DDT: ${String(error?.message || "").trim()}` : `DDT error: ${String(error?.message || "").trim()}`,
+      "error",
+    );
+  }
+}
+
+async function deleteFreeDdt() {
+  if (state.selectedDdtKind !== "free" || !state.selectedDdtOrderId || state.selectedDdtOrderId === NEW_FREE_DDT_ID) return;
+  const current = (state.freeDdts || []).find((item) => item.id === state.selectedDdtOrderId);
+  const label = current?.number || current?.recipient?.name || current?.title || (state.lang === "it" ? "questo DDT libero" : "this free DDT");
+  const confirmed = window.confirm(
+    state.lang === "it"
+      ? `Eliminare ${label}? L'operazione rimuove solo il DDT libero, non tocca gli ordini.`
+      : `Delete ${label}? This removes only the free DDT and does not touch orders.`,
+  );
+  if (!confirmed) return;
+  try {
+    await apiFetch(`/api/ddt/free/${encodeURIComponent(state.selectedDdtOrderId)}`, { method: "DELETE" });
+    state.freeDdts = (state.freeDdts || []).filter((item) => item.id !== state.selectedDdtOrderId);
+    state.selectedDdtKind = "order";
+    state.selectedDdtOrderId = null;
+    state.ddtDraft = null;
+    renderDdt();
+    showToast(state.lang === "it" ? "DDT libero eliminato." : "Free DDT deleted.", "success");
+  } catch (error) {
+    showToast(
+      state.lang === "it" ? `Errore eliminazione DDT: ${String(error?.message || "").trim()}` : `DDT delete error: ${String(error?.message || "").trim()}`,
       "error",
     );
   }
@@ -25834,9 +26125,10 @@ function applySessionPayload(session = {}) {
     }
     state.selectedSalesRequestId = draft.id;
     state.creatingSalesRequest = false;
-  }
-  invalidateSalesRequestsFilterCache(); // nuovi dati dalla sessione → invalida sort+filter cache
-  state.salesContents = Array.isArray(session.salesContents) ? session.salesContents.map(normalizeSalesContentRecord) : [];
+	  }
+	  invalidateSalesRequestsFilterCache(); // nuovi dati dalla sessione → invalida sort+filter cache
+	  state.freeDdts = Array.isArray(session.freeDdts) ? session.freeDdts : [];
+	  state.salesContents = Array.isArray(session.salesContents) ? session.salesContents.map(normalizeSalesContentRecord) : [];
   state.salesRequestSourceConfig = normalizeSalesRequestSourceConfig(session.salesRequestSource || {});
   state.pendingSalesRequestServiceAccountJson = preserveEditingState ? state.pendingSalesRequestServiceAccountJson : "";
   state.pendingSalesRequestServiceAccountEmail = preserveEditingState ? state.pendingSalesRequestServiceAccountEmail : "";
@@ -25889,8 +26181,12 @@ function applySessionPayload(session = {}) {
     state.resellerSalesRequests = [];
     state.resellerSalesRequestsLoadedAt = 0;
     state.crmServerPage = { total: 0, page: 1, limit: 50, items: [], loading: false, loadedAt: 0, loadError: false };
-    state.marketingItems = [];
-    state.marketingTokenHealth = null;
+	    state.marketingItems = [];
+	    state.freeDdts = [];
+	    state.selectedDdtKind = "order";
+	    state.selectedDdtOrderId = null;
+	    state.ddtDraft = null;
+	    state.marketingTokenHealth = null;
     state.marketingTokenHealthLoadedAt = 0;
     state.preventivoCatalog = {};
     state._portfolioCatalogLoading = false;
@@ -30977,6 +31273,7 @@ async function loadLogoJpeg() {
 
 async function downloadDdtPdf(order) {
   const ddt = order.operations?.warehouse?.ddt || {};
+  const isFreeDdt = Boolean(order.__ddtFree);
   const logo = await loadLogoJpeg();
   // Fase 2: usa le righe DDT editate se presenti, altrimenti deriva dall'ordine.
   const physicalLines = (Array.isArray(ddt.lines) && ddt.lines.length)
@@ -31029,15 +31326,21 @@ async function downloadDdtPdf(order) {
   pushText(348, 766, 8.5, "www.pratosinteticoitalia.com");
   pushRect(40, 690, 515, 44);
   const printableDdtNumber = String(ddt.number || getOrderNumber(order)).replace(/^D\.?D\.?T\.?\s*[-:]?\s*/i, "");
-  const shopifyOrderDateLabel = `${state.lang === "it" ? "Ordine Shopify" : "Shopify order"} ${formatDate(order.createdAt || order.updatedAt || ddt.createdAt || new Date().toISOString())}`;
+  const sourceDate = formatDate(order.createdAt || order.updatedAt || ddt.createdAt || new Date().toISOString());
+  const sourceDateLabel = isFreeDdt
+    ? `${state.lang === "it" ? "DDT libero" : "Free DDT"} ${sourceDate}`
+    : `${state.lang === "it" ? "Ordine Shopify" : "Shopify order"} ${sourceDate}`;
+  const sourceSummary = isFreeDdt
+    ? `${state.lang === "it" ? "Documento libero" : "Free document"} · ${composeClientName(order)}`
+    : `${state.lang === "it" ? "Ordine" : "Order"} ${getOrderNumber(order)} · ${composeClientName(order)}`;
   pushText(52, 716, 19, `DDT ${printableDdtNumber}`);
   pushText(404, 716, 10, `${state.lang === "it" ? "Data" : "Date"} ${formatDate(ddt.createdAt || new Date().toISOString())}`);
-  pushText(404, 703, 8.5, shopifyOrderDateLabel);
+  pushText(404, 703, 8.5, sourceDateLabel);
   pushWrappedPdfText(pushText, {
     x: 52,
     startY: 698,
     size: 9,
-    value: `${state.lang === "it" ? "Ordine" : "Order"} ${getOrderNumber(order)} · ${composeClientName(order)}`,
+    value: sourceSummary,
     maxChars: 84,
     lineHeight: 10,
     maxLines: 1,
@@ -31102,7 +31405,10 @@ async function downloadDdtPdf(order) {
   pushRule(40, 86, 176, 86);
   pushRule(228, 86, 364, 86);
   pushRule(410, 86, 546, 86);
-  pushText(40, 52, 8, `Documento generato da Prato Sintetico Italia · Ordine ${getOrderNumber(order)} · ${composeClientName(order)} · Pagina 1/1`);
+  const footerRef = isFreeDdt
+    ? `${state.lang === "it" ? "DDT libero" : "Free DDT"} ${ddt.number || ""}`.trim()
+    : `${state.lang === "it" ? "Ordine" : "Order"} ${getOrderNumber(order)}`;
+  pushText(40, 52, 8, `Documento generato da Prato Sintetico Italia · ${footerRef} · ${composeClientName(order)} · Pagina 1/1`);
 
   const stream = lines.join("\n");
   const textStream = encodeLatin1(stream);
@@ -32972,6 +33278,48 @@ function handleGlobalClick(event) {
     applyAccountingDrawerState();
     return;
   }
+  if (action === "ddt-new-free") {
+    state.filters.ddt = "all";
+    ui.ddtFilterTags?.forEach((item) => item.classList.toggle("is-active", item.dataset.ddtFilter === "all"));
+    state.selectedDdtKind = "free";
+    state.selectedDdtOrderId = NEW_FREE_DDT_ID;
+    state.ddtDraft = initFreeDdtDraft();
+    renderDdtListView();
+    renderDdtEditor(freeDdtDraftToOrder(state.ddtDraft));
+    return;
+  }
+  if (action === "select-ddt-free") {
+    state.selectedDdtKind = "free";
+    state.selectedDdtOrderId = id;
+    state.ddtDraft = null; // forza re-init dal DDT libero salvato
+    renderDdt();
+    return;
+  }
+  if (action === "select-ddt-order") {
+    state.selectedDdtKind = "order";
+    state.selectedDdtOrderId = id;
+    state.ddtDraft = null; // forza re-init dal nuovo ordine
+    renderDdt();
+    return;
+  }
+  if (action === "ddt-add-line") {
+    readDdtFormIntoDraft();
+    if (state.ddtDraft) state.ddtDraft.lines.push({ title: "", quantity: 1, um: "pz", note: "" });
+    const ddtOrder = getActiveDdtEditorOrder();
+    if (ddtOrder) renderDdtEditor(ddtOrder);
+    return;
+  }
+  if (action === "ddt-remove-line") {
+    readDdtFormIntoDraft();
+    const idx = Number(button.dataset.idx);
+    if (state.ddtDraft && Number.isInteger(idx)) state.ddtDraft.lines.splice(idx, 1);
+    const ddtOrder = getActiveDdtEditorOrder();
+    if (ddtOrder) renderDdtEditor(ddtOrder);
+    return;
+  }
+  if (action === "ddt-save") { void saveDdtDraft({ download: false }); return; }
+  if (action === "ddt-generate") { void saveDdtDraft({ download: true }); return; }
+  if (action === "ddt-delete-free") { void deleteFreeDdt(); return; }
   const order = state.orders.find((item) => item.id === id) || getSelectedOrder();
   if (!order) return;
   if (action === "close-shipping-drawer") {
@@ -33007,31 +33355,9 @@ function handleGlobalClick(event) {
       t.classList.toggle("is-active", t.dataset.lane === state.installMobileLane));
     return;
   }
-  if (action === "select-ddt-order") {
-    state.selectedDdtOrderId = id;
-    state.ddtDraft = null; // forza re-init dal nuovo ordine
-    renderDdt();
-    return;
-  }
-  if (action === "ddt-add-line") {
-    readDdtFormIntoDraft();
-    if (state.ddtDraft) state.ddtDraft.lines.push({ title: "", quantity: 1, um: "pz", note: "" });
-    const ddtOrder = (state.orders || []).find((o) => o.id === state.selectedDdtOrderId);
-    if (ddtOrder) renderDdtEditor(ddtOrder);
-    return;
-  }
-  if (action === "ddt-remove-line") {
-    readDdtFormIntoDraft();
-    const idx = Number(button.dataset.idx);
-    if (state.ddtDraft && Number.isInteger(idx)) state.ddtDraft.lines.splice(idx, 1);
-    const ddtOrder = (state.orders || []).find((o) => o.id === state.selectedDdtOrderId);
-    if (ddtOrder) renderDdtEditor(ddtOrder);
-    return;
-  }
-  if (action === "ddt-save") { void saveDdtDraft({ download: false }); return; }
-  if (action === "ddt-generate") { void saveDdtDraft({ download: true }); return; }
   if (action === "open-ddt-for-order") {
     if (state.selectedOrderId) {
+      state.selectedDdtKind = "order";
       state.selectedDdtOrderId = state.selectedOrderId;
       state.ddtDraft = null;
     }
@@ -35690,13 +36016,16 @@ if (ui.ddtSearch) {
 }
 bindEvent(ui.ddtSendDailyButton, "click", async () => {
   // Stesso criterio usato server-side (getTodayDdtOrders): DDT creati oggi,
-  // non ordini spediti oggi. Conteggio lato client solo per il conferma —
+  // non ordini spediti oggi. Include anche i DDT liberi salvati. Conteggio lato client solo per il conferma —
   // il conteggio vero (e l'invio) lo fa il server sullo stesso store.
   const todayKey = new Date().toISOString().slice(0, 10);
-  const todayCount = (state.orders || []).filter((order) => {
+  const todayOrderCount = (state.orders || []).filter((order) => {
     const createdAt = order.operations?.warehouse?.ddt?.createdAt || "";
     return String(createdAt).slice(0, 10) === todayKey;
   }).length;
+  const todayFreeCount = (state.freeDdts || []).filter((record) =>
+    String(record?.createdAt || "").slice(0, 10) === todayKey && String(record?.number || "").trim()).length;
+  const todayCount = todayOrderCount + todayFreeCount;
   if (!todayCount) {
     showToast(state.lang === "it" ? "Nessun DDT emesso oggi." : "No DDT issued today.", "warning");
     return;

@@ -4655,14 +4655,17 @@ function getTodayDdtOrders(ordersList) {
  * che ha un DDT emesso oggi, ai destinatari configurati (DDT_DAILY_EMAIL_RECIPIENTS).
  * Trigger via bottone in UI (non un cron) — vedi POST /api/ddt/send-daily-email.
  */
-async function sendDailyDdtEmail(ordersList) {
+async function sendDailyDdtEmail(ordersList, freeDdtsList = []) {
   if (!DDT_DAILY_EMAIL_RECIPIENTS.length) {
     return { ok: false, reason: "missing_recipients" };
   }
   if (!RESEND_API_KEY || !isValidEmailAddress(SALES_REQUEST_EMAIL_FROM)) {
     return { ok: false, reason: "missing_email_config" };
   }
-  const todayOrders = getTodayDdtOrders(ordersList);
+  const todayOrders = getTodayDdtOrders([
+    ...(Array.isArray(ordersList) ? ordersList : []),
+    ...(Array.isArray(freeDdtsList) ? freeDdtsList : []).map(freeDdtToOrderRecord),
+  ]);
   if (!todayOrders.length) {
     return { ok: false, reason: "no_ddt_today" };
   }
@@ -4947,6 +4950,7 @@ function buildDefaultStore() {
     users: bootstrapUsers,
     jobs: [],
     orders: [],
+    freeDdts: [],
     inventory: [],
     salesRequests: [],
     salesContents: [],
@@ -5919,9 +5923,8 @@ function normalizeDdtLabel(value = "") {
 function buildUniqueDdtNumber(store = {}) {
   const used = new Set();
   let highestNumeric = 0;
-  const orders = Array.isArray(store.orders) ? store.orders : [];
-  orders.forEach((order) => {
-    const raw = String(order?.operations?.warehouse?.ddt?.number || "").trim();
+  const collectNumber = (rawValue) => {
+    const raw = String(rawValue || "").trim();
     if (!raw) return;
     used.add(raw.toUpperCase());
     const normalized = normalizeDdtLabel(raw);
@@ -5929,6 +5932,13 @@ function buildUniqueDdtNumber(store = {}) {
     if (!numericMatch) return;
     const numeric = Number(numericMatch[1]);
     if (Number.isFinite(numeric)) highestNumeric = Math.max(highestNumeric, numeric);
+  };
+  const orders = Array.isArray(store.orders) ? store.orders : [];
+  orders.forEach((order) => {
+    collectNumber(order?.operations?.warehouse?.ddt?.number);
+  });
+  (Array.isArray(store.freeDdts) ? store.freeDdts : []).forEach((record) => {
+    collectNumber(record?.number);
   });
   let nextNumeric = Math.max(1, highestNumeric + 1);
   let candidate = `DDT ${nextNumeric}`;
@@ -5937,6 +5947,104 @@ function buildUniqueDdtNumber(store = {}) {
     candidate = `DDT ${nextNumeric}`;
   }
   return candidate;
+}
+
+function normalizeDdtIsoDate(value, fallback = new Date().toISOString()) {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  const date = new Date(raw);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : fallback;
+}
+
+function normalizeDdtRecipient(value = {}) {
+  const rec = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    name: String(rec.name || "").trim(),
+    address: String(rec.address || "").trim(),
+    postalCode: String(rec.postalCode || "").trim(),
+    city: String(rec.city || "").trim(),
+    province: String(rec.province || rec.provinceCode || "").trim().toUpperCase(),
+    phone: String(rec.phone || "").trim(),
+    email: cleanEmail(rec.email || ""),
+  };
+}
+
+function normalizeDdtLines(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((line) => ({
+      title: String(line?.title || "").trim(),
+      quantity: Number(line?.quantity || 0) || 0,
+      um: String(line?.um || "").trim(),
+      note: String(line?.note || "").trim(),
+    }))
+    .filter((line) => line.title || line.note);
+}
+
+function normalizeFreeDdtRecord(value = {}, { existing = null, currentUser = null } = {}) {
+  const now = new Date().toISOString();
+  const previous = existing && typeof existing === "object" ? existing : {};
+  const recipient = normalizeDdtRecipient(value.recipient || previous.recipient || {});
+  const lines = normalizeDdtLines(Array.isArray(value.lines) ? value.lines : previous.lines || []);
+  return {
+    id: String(value.id || previous.id || `free-ddt-${randomUUID()}`).trim(),
+    kind: "free-ddt",
+    title: String(value.title || previous.title || recipient.name || "DDT libero").trim(),
+    number: String(value.number || previous.number || "").trim(),
+    createdAt: normalizeDdtIsoDate(value.date || value.createdAt || previous.createdAt, previous.createdAt || now),
+    updatedAt: now,
+    createdByUserId: String(previous.createdByUserId || currentUser?.id || "").trim(),
+    recipient,
+    lines,
+    palletLength: String(value.palletLength || previous.palletLength || "").trim(),
+    palletWidth: String(value.palletWidth || previous.palletWidth || "").trim(),
+    palletHeight: String(value.palletHeight || previous.palletHeight || "").trim(),
+    palletWeight: String(value.palletWeight || previous.palletWeight || "").trim(),
+    note: String(value.note || previous.note || "").trim(),
+  };
+}
+
+function freeDdtToOrderRecord(record = {}) {
+  const normalized = normalizeFreeDdtRecord(record);
+  const rec = normalized.recipient || {};
+  const ddt = {
+    number: normalized.number,
+    palletLength: normalized.palletLength,
+    palletWidth: normalized.palletWidth,
+    palletHeight: normalized.palletHeight,
+    palletWeight: normalized.palletWeight,
+    createdAt: normalized.createdAt,
+    lines: normalized.lines,
+    recipient: rec,
+    note: normalized.note,
+  };
+  return {
+    id: normalized.id,
+    __ddtFree: true,
+    orderNumber: normalized.number || normalized.title || "DDT libero",
+    firstName: rec.name || normalized.title || "DDT libero",
+    lastName: "",
+    address: rec.address || "",
+    city: rec.city || "",
+    provinceCode: rec.province || "",
+    postalCode: rec.postalCode || "",
+    phone: rec.phone || "",
+    email: rec.email || "",
+    createdAt: normalized.createdAt,
+    updatedAt: normalized.updatedAt,
+    lineDetails: normalized.lines.map((line) => ({ title: line.title, quantity: line.quantity || 1, note: line.note || "" })),
+    operations: {
+      product: normalized.title || "DDT libero",
+      warehouse: {
+        ddt,
+        destination: {
+          provinceCode: rec.province || "",
+          postalCode: rec.postalCode || "",
+          province: rec.province || "",
+          countryCode: "IT",
+        },
+      },
+    },
+  };
 }
 
 function parseSquareMeters(title, quantity = 1) {
@@ -10856,6 +10964,10 @@ function reconcileStoreData(store) {
     })
     : [];
 
+  store.freeDdts = Array.isArray(store.freeDdts)
+    ? store.freeDdts.map((item) => normalizeFreeDdtRecord(item)).filter((item) => item.id)
+    : [];
+
   store.supplierPriceEntries = Array.isArray(store.supplierPriceEntries)
     ? store.supplierPriceEntries.map((item) => normalizeSupplierPriceEntry(item))
     : [];
@@ -12586,6 +12698,7 @@ async function handleApi(req, res, url) {
       communicationsUnreadCount: sessionCommUnread,
       jobs: roleFilteredJobs,
       orders: roleFilteredOrders,
+      freeDdts: ["office", "warehouse"].includes(sessionRole) ? store.freeDdts : [],
       inventory: roleFilteredInventory,
       salesRequests: [], // deprecated: usa GET /api/sales/requests per dati CRM paginati
       salesRequestsStats: sessionRole === "office" ? (() => {
@@ -12700,6 +12813,7 @@ async function handleApi(req, res, url) {
         user: sanitizeUser(user),
         jobs: loginJobs,
         orders: loginOrders,
+        freeDdts: ["office", "warehouse"].includes(loginRole) ? store.freeDdts : [],
         inventory: loginInventory,
         salesRequests: [], // deprecated: usa GET /api/sales/requests per dati CRM paginati
         salesRequestsStats: loginRole === "office" ? (() => {
@@ -16875,6 +16989,7 @@ async function handleApi(req, res, url) {
       user: sanitizeUser(currentUser),
       jobs: store.jobs,
       orders: store.orders,
+      freeDdts: ["office", "warehouse"].includes(currentUser?.role || "") ? store.freeDdts : [],
       inventory: store.inventory,
       salesRequests: currentUser?.role === "office" ? store.salesRequests : [],
       salesContents: currentUser?.role === "office"
@@ -17931,12 +18046,44 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, store.orders[orderIndex]);
   }
 
+  if (url.pathname === "/api/ddt/free" && req.method === "POST") {
+    if (!["office", "warehouse"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    store.freeDdts = Array.isArray(store.freeDdts) ? store.freeDdts : [];
+    const incomingId = String(body.id || "").trim();
+    const existingIndex = incomingId
+      ? store.freeDdts.findIndex((item) => String(item.id || "") === incomingId)
+      : -1;
+    const existing = existingIndex >= 0 ? store.freeDdts[existingIndex] : null;
+    const requestedNumber = String(body.number || "").trim();
+    const number = requestedNumber || existing?.number || buildUniqueDdtNumber(store);
+    const record = normalizeFreeDdtRecord({ ...body, id: existing?.id || incomingId || undefined, number }, { existing, currentUser });
+    if (existingIndex >= 0) {
+      store.freeDdts[existingIndex] = record;
+    } else {
+      store.freeDdts.unshift(record);
+    }
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, record);
+  }
+
+  if (url.pathname.match(/^\/api\/ddt\/free\/[^/]+$/) && req.method === "DELETE") {
+    if (!["office", "warehouse"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const freeDdtId = decodeURIComponent(url.pathname.split("/")[4] || "");
+    store.freeDdts = Array.isArray(store.freeDdts) ? store.freeDdts : [];
+    const before = store.freeDdts.length;
+    store.freeDdts = store.freeDdts.filter((item) => String(item.id || "") !== freeDdtId);
+    if (store.freeDdts.length === before) return sendJson(res, 404, { error: "free_ddt_not_found" });
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true, id: freeDdtId });
+  }
+
   // Invio manuale "DDT di oggi": bottone in UI, non un cron — l'ufficio
   // resta in controllo di cosa e quando parte verso i destinatari esterni.
   if (url.pathname === "/api/ddt/send-daily-email" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
-    const result = await sendDailyDdtEmail(store.orders);
+    const result = await sendDailyDdtEmail(store.orders, store.freeDdts);
     if (!result.ok) return sendJson(res, 422, result);
     return sendJson(res, 200, result);
   }
