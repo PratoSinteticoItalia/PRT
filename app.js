@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260812-crm-request-layout-polish";
+} from "./lib/order-money.js?v=20260812-crm-request-db-guard-safe-controls";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260812-crm-request-layout-polish";
+import { regionForCity } from "./lib/geo.js?v=20260812-crm-request-db-guard-safe-controls";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260812-crm-request-layout-polish";
+} from "./lib/shipping-eligibility.js?v=20260812-crm-request-db-guard-safe-controls";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260812-crm-request-layout-polish";
+} from "./lib/profit-split.js?v=20260812-crm-request-db-guard-safe-controls";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260812-crm-request-layout-polish";
+} from "./lib/preventivo-pricing.js?v=20260812-crm-request-db-guard-safe-controls";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260812-crm-request-layout-polish";
+} from "./lib/sales-assignment.js?v=20260812-crm-request-db-guard-safe-controls";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260812-crm-request-layout-polish";
+const APP_SHELL_VERSION = "20260812-crm-request-db-guard-safe-controls";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4615,6 +4615,11 @@ function getSalesRequestBulkFollowUpCandidates() {
 
 function renderSalesRequestBulkBar(pageItems = []) {
   if (!ui.salesRequestBulkBar) return;
+  if (isSalesRequestsDbUnavailable()) {
+    getSalesRequestBulkSelectionSet().clear();
+    ui.salesRequestBulkBar.innerHTML = "";
+    return;
+  }
   const selectedIds = getSalesRequestBulkSelectedIds();
   const selectedCount = selectedIds.length;
   const visibleAssignableCount = pageItems.filter(isSalesRequestBulkAssignable).length;
@@ -4879,8 +4884,47 @@ function getSalesRequestQuickFilterOptions(items = state.salesRequests) {
     .filter((option) => option.count > 0 || option.value === "mine");
 }
 
+function isSalesRequestsDbUnavailable() {
+  return Boolean(state.crmServerPage?.dbUnavailable);
+}
+
+function getSalesRequestsDbUnavailableMessage() {
+  return state.lang === "it"
+    ? "CRM non collegato: questo server locale e partito senza DATABASE_URL, quindi non puo leggere le richieste reali."
+    : "CRM not connected: this local server started without DATABASE_URL, so it cannot read real requests.";
+}
+
+function syncSalesRequestWriteControls() {
+  const unavailable = isSalesRequestsDbUnavailable();
+  [
+    ui.salesRequestNewButton,
+    ui.salesRequestImportButton,
+    ui.salesRequestImportConfirmButton,
+    ui.salesRequestImportClearButton,
+    ui.salesRequestAssignmentFilter,
+    ui.salesRequestStatusFilter,
+    ui.salesRequestsSearch,
+  ].forEach((button) => {
+    if (!button) return;
+    button.disabled = unavailable;
+    button.title = unavailable ? getSalesRequestsDbUnavailableMessage() : "";
+  });
+}
+
 function renderSalesRequestWorkflow() {
   if (!ui.salesRequestWorkflow) return;
+  if (isSalesRequestsDbUnavailable()) {
+    ui.salesRequestWorkflow.innerHTML = `
+      <div class="crm-db-unavailable-card" role="status">
+        <strong>${state.lang === "it" ? "Richieste reali non disponibili in questa sessione locale" : "Real requests are unavailable in this local session"}</strong>
+        <span>${escapeHtml(getSalesRequestsDbUnavailableMessage())}</span>
+        <small>${state.lang === "it"
+          ? "I numeri non vengono azzerati: la pagina e in pausa finche il server non riparte con il database corretto."
+          : "Counters are not treated as zero: this page is paused until the server restarts with the correct database."}</small>
+      </div>
+    `;
+    return;
+  }
   const stats = state.salesRequestsStats && typeof state.salesRequestsStats === "object" ? state.salesRequestsStats : {};
   const pipeline = stats.pipeline && typeof stats.pipeline === "object" ? stats.pipeline : {};
   const quick = String(state.filters.salesRequestQuick || "all");
@@ -5012,9 +5056,14 @@ function renderSalesRequestWorkflow() {
 }
 
 function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
+  syncSalesRequestWriteControls();
   renderSalesRequestWorkflow();
   const isLoading = Boolean(state.crmServerPage?.loading);
+  const isUnavailable = isSalesRequestsDbUnavailable();
   if (ui.salesRequestQuickFilters) {
+    if (isUnavailable) {
+      ui.salesRequestQuickFilters.innerHTML = "";
+    } else {
     const current = String(state.filters.salesRequestQuick || "all");
     ui.salesRequestQuickFilters.innerHTML = getSalesRequestQuickFilterOptions(baseItems).map((option) => `
       <button
@@ -5029,8 +5078,18 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
         <strong>${option.count}</strong>
       </button>
     `).join("");
+    }
   }
   if (ui.salesRequestInsights) {
+    if (isUnavailable) {
+      ui.salesRequestInsights.className = "sales-request-insights crm-kpi-strip is-unavailable";
+      ui.salesRequestInsights.innerHTML = `
+        <div class="crm-kpi-unavailable">
+          <strong>${state.lang === "it" ? "Database CRM non collegato" : "CRM database not connected"}</strong>
+          <span>${state.lang === "it" ? "Riavvia il server con DATABASE_URL per rivedere le richieste reali." : "Restart the server with DATABASE_URL to see real requests again."}</span>
+        </div>
+      `;
+    } else {
     // CRM v2 — KPI riga cliccabile: ogni riquadro È il filtro (data-action
     // condiviso con le pillole sotto), non più 5 numeri scollegati dai chip.
     const stats = state.salesRequestsStats;
@@ -5065,8 +5124,13 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
     } else {
       ui.salesRequestInsights.innerHTML = "";
     }
+    }
   }
   if (ui.salesRequestStaleBanner) {
+    if (isUnavailable) {
+      ui.salesRequestStaleBanner.classList.add("hidden");
+      ui.salesRequestStaleBanner.innerHTML = "";
+    } else {
     const staleCount = Number(state.salesRequestsStats?.stale || 0);
     const currentQuick = String(state.filters.salesRequestQuick || "all");
     const show = staleCount > 0 && currentQuick !== "stale";
@@ -5077,12 +5141,13 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
         : `request${staleCount === 1 ? "" : "s"} stuck 5+ days without contact, across the whole dataset`}</span>
       <button type="button" data-action="show-stale-sales-requests" ${isLoading ? "disabled" : ""}>${state.lang === "it" ? "Mostra e ordina per urgenza" : "Show, sorted by urgency"}</button>
     ` : "";
+    }
   }
   if (ui.salesRequestSortRow) {
     const currentSort = String(state.salesRequestSort || "recent");
     ui.salesRequestSortRow.querySelectorAll(".sales-request-sort-btn").forEach((btn) => {
       btn.classList.toggle("is-active", btn.dataset.value === currentSort);
-      btn.disabled = isLoading;
+      btn.disabled = isLoading || isUnavailable;
     });
   }
 }
@@ -15186,13 +15251,9 @@ function renderSalesRequests() {
 	    withScrollPreservation(ui.salesRequestsList, () => {
 	      const focusedRequestMissing = Boolean(state.crmServerPage?.focusedRequestId && !pageItems.length);
 	      const emptyStateText = state.crmServerPage?.dbUnavailable
-	        // Ricerca CRM è Postgres-only (searchSalesRequestsFromDb): senza DATABASE_URL
-	        // (tipico di un preview locale) torna sempre vuota anche se i contatori in
-	        // alto — basati sul payload di sessione — mostrano richieste esistenti.
-	        // Messaggio dedicato per non farlo sembrare "zero risultati".
-	        ? (state.lang === "it"
-	          ? "CRM non disponibile in anteprima locale: serve un database Postgres collegato (DATABASE_URL). I contatori qui sopra restano corretti perché arrivano da un'altra fonte."
-	          : "CRM unavailable in local preview: needs a connected Postgres database (DATABASE_URL). The counters above stay correct since they come from a different source.")
+	        // Ricerca CRM e Postgres-only: senza DATABASE_URL non e un vero zero,
+	        // e non dobbiamo far credere che filtri o dati siano vuoti.
+	        ? getSalesRequestsDbUnavailableMessage()
 	        : focusedRequestMissing
 	          ? (state.lang === "it"
 	            ? "La richiesta collegata non è stata trovata con i dati attuali. Potrebbe essere stata eliminata, convertita o non essere accessibile con questo account."
@@ -15231,6 +15292,7 @@ function renderSalesRequests() {
 
 function renderSalesRequestsDetailPanel(selected = null) {
   if (!ui.salesRequestForm) return;
+  const dbUnavailable = isSalesRequestsDbUnavailable();
   // Reset scroll quando la selezione cambia (funziona sia su desktop — pannello
   // sempre visibile nel layout — che su mobile dopo openCrmDrawer).
   // Confronta l'ID precedente per NON resettare se è un re-render dello stesso item.
@@ -15255,6 +15317,36 @@ function renderSalesRequestsDetailPanel(selected = null) {
     }
   }
   ensureSalesRequestWhatsAppActionUi();
+  ui.salesRequestForm.querySelectorAll("input, select, textarea, button").forEach((field) => {
+    if (field.type === "hidden") return;
+    if (field.dataset.crmDbDisabled === "1") {
+      field.disabled = false;
+      delete field.dataset.crmDbDisabled;
+    }
+    if (dbUnavailable) {
+      field.disabled = true;
+      field.dataset.crmDbDisabled = "1";
+    }
+  });
+  if (dbUnavailable) {
+    ui.salesRequestForm.reset();
+    syncSalesRequestAssignmentField("");
+    syncSalesRequestResellerField("");
+    syncSalesRequestStatusField("");
+    if (ui.salesRequestDetailTitle) {
+      ui.salesRequestDetailTitle.textContent = state.lang === "it" ? "CRM non collegato" : "CRM not connected";
+    }
+    if (ui.salesRequestDetailMeta) {
+      ui.salesRequestDetailMeta.innerHTML = `<span class="sales-request-detail-chip is-closed"><small>${state.lang === "it" ? "Sessione locale" : "Local session"}</small><strong>${state.lang === "it" ? "Database assente" : "No database"}</strong></span>`;
+    }
+    if (ui.salesRequestDeleteButton) ui.salesRequestDeleteButton.disabled = true;
+    if (ui.salesRequestUseGeneratorButton) ui.salesRequestUseGeneratorButton.disabled = true;
+    if (ui.salesRequestVcardButton) ui.salesRequestVcardButton.disabled = true;
+    if (ui.salesRequestWhatsAppButton) ui.salesRequestWhatsAppButton.classList.add("hidden");
+    if (ui.salesRequestFollowUpButton) ui.salesRequestFollowUpButton.classList.add("hidden");
+    if (ui.salesRequestWhatsAppHint) ui.salesRequestWhatsAppHint.textContent = getSalesRequestsDbUnavailableMessage();
+    return;
+  }
   const preserveFormValues = shouldPreserveSalesRequestFormValues(selected);
   const effectiveSelected = getSalesRequestUiDraftOrSelected(selected);
   if (!preserveFormValues) {
@@ -15324,6 +15416,7 @@ function renderSalesRequestsDetailPanel(selected = null) {
   }
   if (ui.salesRequestDeleteButton) ui.salesRequestDeleteButton.disabled = !effectiveSelected;
   if (ui.salesRequestUseGeneratorButton) ui.salesRequestUseGeneratorButton.disabled = !effectiveSelected;
+  if (ui.salesRequestVcardButton) ui.salesRequestVcardButton.disabled = !effectiveSelected || !hasSalesRequestContactInfo(effectiveSelected);
   if (selected?.id) {
     void loadAuditTrail("sales_request", selected.id, "sales-request-audit-trail");
   }
@@ -17228,6 +17321,10 @@ function upsertSalesContent(saved, { skipOpsRender = false } = {}) {
 }
 
 function createNewSalesRequest() {
+  if (isSalesRequestsDbUnavailable()) {
+    setStatus(ui.salesRequestsStatus, "error", getSalesRequestsDbUnavailableMessage());
+    return;
+  }
   state.creatingSalesRequest = true;
   state.selectedSalesRequestId = "";
   state.salesRequestPage = 1;
@@ -18098,6 +18195,10 @@ async function fixDuplicateSalesRequestNames() {
 }
 
 async function importSalesRequests() {
+  if (isSalesRequestsDbUnavailable()) {
+    setStatus(ui.salesRequestsStatus, "error", getSalesRequestsDbUnavailableMessage());
+    return;
+  }
   clearStatus(ui.salesRequestsStatus);
   const raw = String(ui.salesRequestImportText?.value || "").trim();
   if (!raw) {

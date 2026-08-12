@@ -23483,6 +23483,26 @@ body {
   white-space: nowrap;
 }
 #sales-requests .crm-kpi-trend.is-warn { color: #d97706; }
+#sales-requests #sales-request-insights.crm-kpi-strip.is-unavailable {
+  display: block;
+  border-color: #efcaca;
+  background: #fff7f7;
+}
+.crm-kpi-unavailable {
+  display: grid;
+  gap: 4px;
+  color: #7f1d1d;
+}
+.crm-kpi-unavailable strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+.crm-kpi-unavailable span {
+  color: #9f5252;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+}
 
 /* Percorso operativo Richieste: orienta la lista senza cambiare il CRM sotto. */
 #sales-request-workflow {
@@ -23650,6 +23670,29 @@ body {
   color: #7a4a13;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.35;
+}
+.crm-db-unavailable-card {
+  display: grid;
+  gap: 7px;
+  padding: 14px 16px;
+  border: 1px solid #efcaca;
+  border-radius: 10px;
+  background: #fff7f7;
+  color: #7f1d1d;
+}
+.crm-db-unavailable-card strong {
+  font-size: 15px;
+  line-height: 1.2;
+}
+.crm-db-unavailable-card span {
+  color: #9f5252;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.crm-db-unavailable-card small {
+  color: #7b6f65;
+  font-size: 12px;
   line-height: 1.35;
 }
 
