@@ -23592,6 +23592,15 @@ body {
 .sales-request-workflow-step.tone-amber .sales-request-workflow-count { color: #a16207; }
 .sales-request-workflow-step.tone-violet .sales-request-workflow-count { color: #6d28d9; }
 .sales-request-workflow-step.tone-red .sales-request-workflow-count { color: #b42318; }
+.sales-request-workflow-step.tone-green .sales-request-workflow-count { color: #16784a; }
+.sales-request-workflow-step.tone-slate .sales-request-workflow-count { color: #475569; }
+.sales-request-workflow-foot {
+  margin: 10px 0 0;
+  color: #7a4a13;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
 
 /* Pillole filtri rapidi — look mockup pulito */
 #sales-requests #sales-request-quick-filters {

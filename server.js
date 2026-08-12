@@ -1660,6 +1660,51 @@ function sqlPhoneCanon(col) {
   return `CASE WHEN length(${digits})>10 AND left(${digits},2)='39' THEN substr(${digits},3) ELSE ${digits} END`;
 }
 
+function getSalesRequestStatusNormSql(alias = "sr") {
+  return `lower(regexp_replace(translate(coalesce(trim(${alias}.status),''), 'àèéìíòóùúÀÈÉÌÍÒÓÙÚ', 'aaeiioouuAAEIIOOUU'), '[^a-zA-Z0-9 ]', '', 'g'))`;
+}
+
+function getSalesRequestPipelineBucketSql(alias = "sr") {
+  const normExpr = getSalesRequestStatusNormSql(alias);
+  return `CASE
+    WHEN ${normExpr} IN ('closed','chiusa','chiuso','persa','perso',
+      'declinata','lead non qualificato','completata','completato','archiviata','archiviato')
+      OR ${normExpr} LIKE '%non qualific%'
+      OR ${normExpr} LIKE '%archivi%'
+    THEN 'lost'
+    WHEN coalesce(trim(${alias}.assignment),'') = ''
+    THEN 'unassigned'
+    WHEN ${normExpr} IN ('won','vinta','vinto','venduta','venduto','preventivo confermato',
+      'ordine confermato','ordine eseguito','campione acquistato')
+      OR (${normExpr} LIKE '%confermato%' AND ${normExpr} NOT LIKE '%non%')
+      OR ${normExpr} LIKE '%ordine%'
+    THEN 'won'
+    WHEN ${normExpr} IN ('preventivo inviato','offerta inviata')
+      OR (${normExpr} LIKE '%preventivo%' AND ${normExpr} LIKE '%inviato%')
+    THEN 'quoted'
+    WHEN ${normExpr} IN ('preventivo','in preventivo','preventivo da inviare','offerta','quotato')
+      OR (${normExpr} LIKE '%preventivo%'
+          AND ${normExpr} NOT LIKE '%inviato%'
+          AND ${normExpr} NOT LIKE '%confermato%')
+      OR (${normExpr} LIKE '%offerta%' AND ${normExpr} NOT LIKE '%inviata%')
+    THEN 'quoting'
+    WHEN ${normExpr} IN ('1 contatto','1 contatto whatsapp','primo contatto')
+      OR ${normExpr} LIKE '1 contatt%'
+      OR ${normExpr} LIKE '1o contatt%'
+    THEN 'contacted'
+    WHEN ${normExpr} IN ('followup','follow up','da richiamare','richiamare','richiamata','recall',
+      'attesa','in attesa di risposta','nessuna risposta','ricontattato','chiamare',
+      'email','email inviata','fare follow up','in lavorazione','da seguire')
+      OR ${normExpr} LIKE '%follow%'
+      OR ${normExpr} LIKE '%richiam%'
+      OR ${normExpr} LIKE '%attesa%'
+      OR ${normExpr} LIKE '%contatt%'
+      OR ${normExpr} LIKE '%lavoraz%'
+    THEN 'followup'
+    ELSE 'new'
+  END`;
+}
+
 /**
  * CRM server-side search con FTS, filtri e paginazione.
  * Usato da GET /api/sales/requests.
@@ -1700,15 +1745,27 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
       where.push(`(LOWER(coalesce(status,'')) LIKE '%follow%' OR LOWER(coalesce(status,'')) LIKE '%richiam%'
                    OR LOWER(coalesce(status,'')) LIKE '%attesa%' OR LOWER(coalesce(status,'')) LIKE '%ricontatt%'
                    OR LOWER(coalesce(status,'')) LIKE '%nessuna risposta%')`);
+    } else if (_statusLc === "quoting") {
+      where.push(`(LOWER(TRIM(coalesce(status,''))) IN (
+        'preventivo', 'in preventivo', 'preventivo da inviare', 'offerta', 'quotato'
+      )
+      OR (
+        LOWER(coalesce(status,'')) LIKE '%preventivo%'
+        AND LOWER(coalesce(status,'')) NOT LIKE '%inviato%'
+        AND LOWER(coalesce(status,'')) NOT LIKE '%confermato%'
+      )
+      OR (
+        LOWER(coalesce(status,'')) LIKE '%offerta%'
+        AND LOWER(coalesce(status,'')) NOT LIKE '%inviata%'
+      ))`);
     } else if (_statusLc === "quoted") {
-      // Allineato al bucket "quoted" di normalizeSalesRequestStatus() in app.js e
-      // al conteggio quoted_count qui sopra: altrimenti il KPI "Preventivi inviati"
-      // e la lista che appare cliccandolo mostrerebbero numeri diversi.
-      where.push(`LOWER(TRIM(coalesce(status,''))) IN (
-        'quoted', 'quote', 'preventivo', 'in preventivo', 'preventivo inviato',
-        'preventivo da inviare', 'preventivo confermato', 'offerta',
-        'offerta inviata', 'quotato', 'campione acquistato'
-      )`);
+      where.push(`(LOWER(TRIM(coalesce(status,''))) IN (
+        'quoted', 'quote', 'preventivo inviato', 'offerta inviata'
+      )
+      OR (
+        LOWER(coalesce(status,'')) LIKE '%preventivo%'
+        AND LOWER(coalesce(status,'')) LIKE '%inviato%'
+      ))`);
     } else if (_statusLc === "won") {
       where.push(`(LOWER(coalesce(status,'')) LIKE '%preventivo confermato%' OR LOWER(coalesce(status,'')) LIKE '%ordine confermato%' OR LOWER(coalesce(status,'')) LIKE '%ordine eseguito%' OR LOWER(coalesce(status,'')) LIKE '%campione acquistato%')`);
     } else if (_statusLc === "lost") {
@@ -1821,11 +1878,11 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
   const quotedRefSql = `COALESCE(sr.quoted_at, sr.updated_at, ${requestDateSql})`;
   const newStatusSql = `(${statusSql} IN ('', 'new', 'nuovo contatto'))`;
   const linkedOrderEmptySql = "(sr.linked_order_id IS NULL OR sr.linked_order_id = '')";
-  const quotedStatusSql = `${statusSql} IN (
-    'quoted', 'quote', 'preventivo', 'in preventivo', 'preventivo inviato',
-    'preventivo da inviare', 'preventivo confermato', 'offerta',
-    'offerta inviata', 'quotato', 'campione acquistato'
-  )`;
+  const quotedStatusSql = `(${statusSql} IN (
+    'quoted', 'quote', 'preventivo inviato', 'offerta inviata'
+  )
+  OR (${statusSql} LIKE '%preventivo%' AND ${statusSql} LIKE '%inviato%'))`;
+  const pipelineBucketSql = getSalesRequestPipelineBucketSql("sr");
   const followupStatusSql = `(
     ${statusSql} IN (
       'followup', 'follow up', 'da richiamare', 'richiamare', 'richiamata',
@@ -1893,14 +1950,21 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
           COUNT(*) FILTER (WHERE sr.assignment IS NULL OR sr.assignment = '')::int AS unassigned_count,
           COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '7 days')::int AS this_week_count,
           COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= CURRENT_DATE)::int AS today_count,
-          -- Rispecchia i bucket "quoted" di normalizeSalesRequestStatus() in app.js:
-          -- il campo status mescola l'enum pulito del form nativo (quoted) con
-          -- decine di stati testuali legacy importati dai fogli Google.
           COUNT(*) FILTER (WHERE LOWER(TRIM(coalesce(sr.status,''))) IN (
-            'quoted', 'quote', 'preventivo', 'in preventivo', 'preventivo inviato',
-            'preventivo da inviare', 'preventivo confermato', 'offerta',
-            'offerta inviata', 'quotato', 'campione acquistato'
+            'quoted', 'quote', 'preventivo inviato', 'offerta inviata'
+          )
+          OR (
+            LOWER(coalesce(sr.status,'')) LIKE '%preventivo%'
+            AND LOWER(coalesce(sr.status,'')) LIKE '%inviato%'
           ))::int AS quoted_count,
+          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'unassigned')::int AS pipeline_unassigned_count,
+          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'new')::int AS pipeline_new_count,
+          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'contacted')::int AS pipeline_contacted_count,
+          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'followup')::int AS pipeline_followup_count,
+          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'quoting')::int AS pipeline_quoting_count,
+          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'quoted')::int AS pipeline_quoted_count,
+          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'won')::int AS pipeline_won_count,
+          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'lost')::int AS pipeline_lost_count,
           COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '14 days' AND COALESCE(sd.received_at, sr.created_at) < NOW() - INTERVAL '7 days')::int AS prev_week_count,
           COUNT(*) FILTER (
             WHERE (sr.status IS NULL OR sr.status = '' OR sr.status = 'new')
@@ -1925,6 +1989,16 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
         quoted: sr.quoted_count ?? 0,
         prevWeek: sr.prev_week_count ?? 0,
         stale: sr.stale_count ?? 0,
+        pipeline: {
+          unassigned: sr.pipeline_unassigned_count ?? 0,
+          new: sr.pipeline_new_count ?? 0,
+          contacted: sr.pipeline_contacted_count ?? 0,
+          followup: sr.pipeline_followup_count ?? 0,
+          quoting: sr.pipeline_quoting_count ?? 0,
+          quoted: sr.pipeline_quoted_count ?? 0,
+          won: sr.pipeline_won_count ?? 0,
+          lost: sr.pipeline_lost_count ?? 0,
+        },
       },
     };
   } catch (err) {
@@ -1957,70 +2031,14 @@ async function getSalesRequestPipelineFromDb({ limit = 20 } = {}) {
     { key: "lost",       label: "Perso / Chiuso"       },
   ];
 
-  // Normalizza status esattamente come normalizeSalesRequestStatus() in JS:
-  // strip diacritici italiani → strip non-alfanumerici → lowercase
-  const normExpr = `lower(regexp_replace(translate(coalesce(trim(status),''), 'àèéìíòóùúÀÈÉÌÍÒÓÙÚ', 'aaeiioouuAAEIIOOUU'), '[^a-zA-Z0-9 ]', '', 'g'))`;
-
-  // Classifica ogni riga in uno degli 8 bucket (stati reali del processo commerciale)
-  const bucketExpr = `CASE
-    -- Perso / Chiuso: ha la massima priorità, evita che chiusi finiscano in altre colonne
-    WHEN ${normExpr} IN ('closed','chiusa','chiuso','vinta','vinto','persa','perso',
-      'declinata','lead non qualificato','completata','completato','archiviata','archiviato')
-      OR ${normExpr} LIKE '%non qualific%'
-      OR ${normExpr} LIKE '%archivi%'
-    THEN 'lost'
-
-    -- Da assegnare: non ancora assegnato e non chiuso/vinto/perso
-    WHEN coalesce(trim(assignment),'') = ''
-    THEN 'unassigned'
-
-    -- Confermato: preventivo/ordine confermato o eseguito
-    WHEN ${normExpr} IN ('preventivo confermato','ordine confermato','ordine eseguito',
-      'campione acquistato')
-      OR (${normExpr} LIKE '%confermato%' AND ${normExpr} NOT LIKE '%non%')
-      OR ${normExpr} LIKE '%ordine%'
-    THEN 'won'
-
-    -- Preventivo inviato
-    WHEN ${normExpr} IN ('preventivo inviato','offerta inviata')
-      OR (${normExpr} LIKE '%preventivo%' AND ${normExpr} LIKE '%inviato%')
-    THEN 'quoted'
-
-    -- In preventivo (da inviare o in lavorazione)
-    WHEN ${normExpr} IN ('preventivo','in preventivo','preventivo da inviare','offerta','quotato')
-      OR (${normExpr} LIKE '%preventivo%'
-          AND ${normExpr} NOT LIKE '%inviato%'
-          AND ${normExpr} NOT LIKE '%confermato%')
-      OR (${normExpr} LIKE '%offerta%' AND ${normExpr} NOT LIKE '%inviata%')
-    THEN 'quoting'
-
-    -- 1° Contatto
-    WHEN ${normExpr} IN ('1 contatto','1 contatto whatsapp','primo contatto')
-      OR ${normExpr} LIKE '1 contatt%'
-      OR ${normExpr} LIKE '1o contatt%'
-    THEN 'contacted'
-
-    -- Follow-up: da richiamare, in attesa, nessuna risposta, ecc.
-    WHEN ${normExpr} IN ('followup','follow up','da richiamare','richiamare','richiamata','recall',
-      'attesa','in attesa di risposta','nessuna risposta','ricontattato','chiamare',
-      'email','email inviata','fare follow up','in lavorazione','da seguire')
-      OR ${normExpr} LIKE '%follow%'
-      OR ${normExpr} LIKE '%richiam%'
-      OR ${normExpr} LIKE '%attesa%'
-      OR ${normExpr} LIKE '%contatt%'
-      OR ${normExpr} LIKE '%lavoraz%'
-    THEN 'followup'
-
-    -- Nuovo contatto: assegnato ma senza stato specifico
-    ELSE 'new'
-  END`;
+  const bucketExpr = getSalesRequestPipelineBucketSql("sr");
 
   try {
     // Unica query CTE: un solo table scan per bucket + stats + top-N per colonna
     const cteRes = await pool.query(`
       WITH bucketed AS (
-        SELECT *, (${bucketExpr}) AS _bucket
-        FROM sales_requests
+        SELECT sr.*, (${bucketExpr}) AS _bucket
+        FROM sales_requests sr
       ),
       counts AS (
         SELECT
@@ -9962,6 +9980,53 @@ function normalizeSalesRequestRecord(item = {}) {
   };
 }
 
+function getSalesRequestPipelineBucket(item = {}) {
+  const normalized = normalizeSalesRequestImportHeader(item.status || "");
+  if (
+    [
+      "closed", "chiusa", "chiuso", "persa", "perso",
+      "declinata", "lead non qualificato", "completata", "completato",
+      "archiviata", "archiviato",
+    ].includes(normalized)
+    || normalized.includes("non qualific")
+    || normalized.includes("archivi")
+  ) return "lost";
+  if (!normalizeSalesRequestAssignment(item.assignment || "")) return "unassigned";
+  if (
+    ["won", "vinta", "vinto", "venduta", "venduto", "preventivo confermato", "ordine confermato", "ordine eseguito", "campione acquistato"].includes(normalized)
+    || (normalized.includes("confermato") && !normalized.includes("non"))
+    || normalized.includes("ordine")
+  ) return "won";
+  if (
+    ["preventivo inviato", "offerta inviata", "quoted", "quote"].includes(normalized)
+    || (normalized.includes("preventivo") && normalized.includes("inviato"))
+  ) return "quoted";
+  if (
+    ["preventivo", "in preventivo", "preventivo da inviare", "offerta", "quotato"].includes(normalized)
+    || (normalized.includes("preventivo") && !normalized.includes("inviato") && !normalized.includes("confermato"))
+    || (normalized.includes("offerta") && !normalized.includes("inviata"))
+  ) return "quoting";
+  if (
+    ["1 contatto", "1 contatto whatsapp", "primo contatto"].includes(normalized)
+    || normalized.startsWith("1 contatt")
+    || normalized.startsWith("1o contatt")
+  ) return "contacted";
+  if (
+    [
+      "followup", "follow up", "da richiamare", "richiamare", "richiamata",
+      "recall", "attesa", "in attesa di risposta", "nessuna risposta",
+      "ricontattato", "chiamare", "email", "email inviata",
+      "fare follow up", "in lavorazione", "da seguire",
+    ].includes(normalized)
+    || normalized.includes("follow")
+    || normalized.includes("richiam")
+    || normalized.includes("attesa")
+    || normalized.includes("contatt")
+    || normalized.includes("lavoraz")
+  ) return "followup";
+  return "new";
+}
+
 function buildSessionSalesRequestsStats(items = []) {
   const reqs = (Array.isArray(items) ? items : []).map((item) => normalizeSalesRequestRecord(item));
   const now = Date.now();
@@ -9978,6 +10043,20 @@ function buildSessionSalesRequestsStats(items = []) {
     const status = normalizeSalesRequestStatus(item.status || "");
     return ["new", "quoted", "followup", "closed"].includes(status) ? status : (status ? "custom" : "new");
   };
+  const pipeline = {
+    unassigned: 0,
+    new: 0,
+    contacted: 0,
+    followup: 0,
+    quoting: 0,
+    quoted: 0,
+    won: 0,
+    lost: 0,
+  };
+  reqs.forEach((item) => {
+    const bucket = getSalesRequestPipelineBucket(item);
+    if (Object.prototype.hasOwnProperty.call(pipeline, bucket)) pipeline[bucket] += 1;
+  });
   return {
     total: reqs.length,
     new: reqs.filter((item) => getStatusCode(item) === "new").length,
@@ -10001,6 +10080,7 @@ function buildSessionSalesRequestsStats(items = []) {
       const created = getCreatedTime(item);
       return created && now - created >= 5 * 24 * 3600 * 1000;
     }).length,
+    pipeline,
   };
 }
 

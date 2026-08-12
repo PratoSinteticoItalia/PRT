@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260812-crm-request-workflow-layout";
+} from "./lib/order-money.js?v=20260812-crm-request-pipeline-breakdown";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260812-crm-request-workflow-layout";
+import { regionForCity } from "./lib/geo.js?v=20260812-crm-request-pipeline-breakdown";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260812-crm-request-workflow-layout";
+} from "./lib/shipping-eligibility.js?v=20260812-crm-request-pipeline-breakdown";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260812-crm-request-workflow-layout";
+} from "./lib/profit-split.js?v=20260812-crm-request-pipeline-breakdown";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260812-crm-request-workflow-layout";
+} from "./lib/preventivo-pricing.js?v=20260812-crm-request-pipeline-breakdown";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260812-crm-request-workflow-layout";
+} from "./lib/sales-assignment.js?v=20260812-crm-request-pipeline-breakdown";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260812-crm-request-workflow-layout";
+const APP_SHELL_VERSION = "20260812-crm-request-pipeline-breakdown";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4844,7 +4844,9 @@ function matchesSalesRequestQuickFilter(item = {}, filter = String(state.filters
   if (quickFilter === "posa") return String(item.service || "").trim().toLowerCase() === "posa";
   if (quickFilter === "resellers") return Boolean(item.resellerId);
   if (quickFilter === "new") return statusCode === "new";
-  if (quickFilter === "quoted") return statusCode === "quoted";
+  if (["contacted", "followup", "quoting", "quoted", "won", "lost"].includes(quickFilter)) {
+    return matchesSalesRequestStatusCategory(item.status || "", quickFilter);
+  }
   if (quickFilter === "stale") {
     if (statusCode !== "new" || item.linkedOrderId) return false;
     const created = item.createdAt ? new Date(item.createdAt).getTime() : NaN;
@@ -4885,9 +4887,10 @@ function getSalesRequestQuickFilterOptions(items = state.salesRequests) {
 function renderSalesRequestWorkflow() {
   if (!ui.salesRequestWorkflow) return;
   const stats = state.salesRequestsStats && typeof state.salesRequestsStats === "object" ? state.salesRequestsStats : {};
+  const pipeline = stats.pipeline && typeof stats.pipeline === "object" ? stats.pipeline : {};
   const quick = String(state.filters.salesRequestQuick || "all");
   const currentSort = String(state.salesRequestSort || "recent");
-  const count = (key) => Math.max(0, Number(stats[key] || 0));
+  const count = (key) => Math.max(0, Number(pipeline[key] ?? stats[key] ?? 0));
   const steps = [
     {
       index: "01",
@@ -4901,7 +4904,7 @@ function renderSalesRequestWorkflow() {
     {
       index: "02",
       key: "new",
-      title: state.lang === "it" ? "Primo contatto" : "First contact",
+      title: state.lang === "it" ? "Da contattare" : "To contact",
       count: count("new"),
       note: state.lang === "it" ? "nuovi da qualificare" : "new to qualify",
       next: state.lang === "it" ? "Chiama o WhatsApp" : "Call or WhatsApp",
@@ -4910,8 +4913,38 @@ function renderSalesRequestWorkflow() {
     },
     {
       index: "03",
+      key: "contacted",
+      title: state.lang === "it" ? "Primo contatto" : "First contact",
+      count: count("contacted"),
+      note: state.lang === "it" ? "contatto avviato" : "contact started",
+      next: state.lang === "it" ? "Qualifica esito" : "Qualify outcome",
+      tone: "blue",
+      sort: "urgent",
+    },
+    {
+      index: "04",
+      key: "followup",
+      title: "Follow-up",
+      count: count("followup"),
+      note: state.lang === "it" ? "richiami e attese" : "callbacks and waits",
+      next: state.lang === "it" ? "Sblocca risposta" : "Unlock answer",
+      tone: "red",
+      sort: "urgent",
+    },
+    {
+      index: "05",
+      key: "quoting",
+      title: state.lang === "it" ? "In preventivo" : "Quoting",
+      count: count("quoting"),
+      note: state.lang === "it" ? "da preparare/inviare" : "to prepare/send",
+      next: state.lang === "it" ? "Chiudi proposta" : "Finish quote",
+      tone: "violet",
+      sort: "urgent",
+    },
+    {
+      index: "06",
       key: "quoted",
-      title: state.lang === "it" ? "Preventivo" : "Quote",
+      title: state.lang === "it" ? "Preventivo inviato" : "Quote sent",
       count: count("quoted"),
       note: state.lang === "it" ? "offerte da seguire" : "quotes to follow",
       next: state.lang === "it" ? "Follow-up mirato" : "Focused follow-up",
@@ -4919,18 +4952,28 @@ function renderSalesRequestWorkflow() {
       sort: "urgent",
     },
     {
-      index: "04",
-      key: "stale",
-      title: state.lang === "it" ? "Fuori coda" : "Out of queue",
-      count: count("stale"),
-      note: state.lang === "it" ? "ferme da 5+ giorni" : "stuck 5+ days",
-      next: state.lang === "it" ? "Recupera o chiudi" : "Recover or close",
-      tone: "red",
-      sort: "urgent",
+      index: "07",
+      key: "won",
+      title: state.lang === "it" ? "Confermate" : "Won",
+      count: count("won"),
+      note: state.lang === "it" ? "vinte o ordini" : "won or ordered",
+      next: state.lang === "it" ? "Verifica ordine" : "Check order",
+      tone: "green",
+    },
+    {
+      index: "08",
+      key: "lost",
+      title: state.lang === "it" ? "Perse / chiuse" : "Lost / closed",
+      count: count("lost"),
+      note: state.lang === "it" ? "fuori lavorazione" : "out of workflow",
+      next: state.lang === "it" ? "Consulta storico" : "Review history",
+      tone: "slate",
     },
   ];
   const activeStep = steps.find((step) => step.key === quick) || null;
-  const total = count("total");
+  const total = Math.max(0, Number(stats.total || 0));
+  const pipelineTotal = steps.reduce((sum, step) => sum + Number(step.count || 0), 0);
+  const missing = Math.max(0, total - pipelineTotal);
   const currentLabel = activeStep?.title
     || (quick === "all"
       ? (state.lang === "it" ? "Tutte le richieste" : "All requests")
@@ -4942,8 +4985,8 @@ function renderSalesRequestWorkflow() {
         <strong>${escapeHtml(currentLabel)}</strong>
       </div>
       <span class="sales-request-workflow-meta">${state.lang === "it"
-        ? `${total.toLocaleString("it-IT")} totali · ${currentSort === "urgent" ? "urgenza" : "recenti"}`
-        : `${total.toLocaleString("it-IT")} total · ${currentSort === "urgent" ? "urgency" : "recent"}`}</span>
+        ? `${pipelineTotal.toLocaleString("it-IT")} / ${total.toLocaleString("it-IT")} classificat${pipelineTotal === 1 ? "a" : "e"} · ${currentSort === "urgent" ? "urgenza" : "recenti"}`
+        : `${pipelineTotal.toLocaleString("it-IT")} / ${total.toLocaleString("it-IT")} classified · ${currentSort === "urgent" ? "urgency" : "recent"}`}</span>
     </div>
     <div class="sales-request-workflow-steps">
       ${steps.map((step) => `
@@ -4965,6 +5008,9 @@ function renderSalesRequestWorkflow() {
         </button>
       `).join("")}
     </div>
+    ${missing > 0 ? `<p class="sales-request-workflow-foot">${state.lang === "it"
+      ? `${missing.toLocaleString("it-IT")} richieste hanno uno stato non riconosciuto: apri "Tutte" e normalizzale.`
+      : `${missing.toLocaleString("it-IT")} requests have an unknown status: open "All" and normalize them.`}</p>` : ""}
   `;
 }
 
@@ -4991,6 +5037,7 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
     const stats = state.salesRequestsStats;
     const currentQuick = String(state.filters.salesRequestQuick || "all");
     if (stats) {
+      const pipeline = stats.pipeline && typeof stats.pipeline === "object" ? stats.pipeline : {};
       ui.salesRequestInsights.className = "sales-request-insights crm-kpi-strip";
       const today = Number(stats.today || 0);
       const todayTrend = today > 0
@@ -4998,9 +5045,9 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
         : "";
       const kpis = [
         { key: "all", value: stats.total ?? 0, label: state.lang === "it" ? "Totale" : "Total", trend: "" },
-        { key: "new", value: stats.new ?? 0, label: state.lang === "it" ? "Da contattare" : "To contact", trend: todayTrend },
-        { key: "unassigned", value: stats.unassigned ?? 0, label: state.lang === "it" ? "Da assegnare" : "Unassigned", trend: "" },
-        { key: "quoted", value: stats.quoted ?? 0, label: state.lang === "it" ? "Preventivi inviati" : "Quotes sent", trend: "" },
+        { key: "new", value: pipeline.new ?? stats.new ?? 0, label: state.lang === "it" ? "Da contattare" : "To contact", trend: todayTrend },
+        { key: "unassigned", value: pipeline.unassigned ?? stats.unassigned ?? 0, label: state.lang === "it" ? "Da assegnare" : "Unassigned", trend: "" },
+        { key: "quoted", value: pipeline.quoted ?? stats.quoted ?? 0, label: state.lang === "it" ? "Preventivi inviati" : "Quotes sent", trend: "" },
       ];
       ui.salesRequestInsights.innerHTML = kpis.map((k) => `
         <button
@@ -14356,14 +14403,19 @@ function renderOrders() {
 // "followup" è separato da "contacted" (1° contatto) per poterli filtrare distinti.
 function matchesSalesRequestStatusCategory(rawStatus, category) {
   const s = String(rawStatus || "").toLowerCase();
+  const normalized = normalizeLooseString(rawStatus);
   switch (category) {
     case "new":       return !s || s === "new" || s.includes("nuovo contatto");
     case "contacted": return s.includes("1° contatto") || s.includes("1 contatto");
     case "followup":  return s.includes("follow") || s.includes("richiam") || s.includes("attesa") || s.includes("ricontatt") || s.includes("nessuna risposta");
-    case "quoted":    return s.includes("preventivo inviato") || s.includes("preventivo da inviare") || s.includes("offerta inviata");
-    case "won":       return s.includes("preventivo confermato") || s.includes("ordine confermato") || s.includes("ordine eseguito") || s.includes("campione acquistato");
+    case "quoting":   return ["preventivo", "in preventivo", "preventivo da inviare", "offerta", "quotato"].includes(normalized)
+      || (normalized.includes("preventivo") && !normalized.includes("inviato") && !normalized.includes("confermato"))
+      || (normalized.includes("offerta") && !normalized.includes("inviata"));
+    case "quoted":    return ["quoted", "quote", "preventivo inviato", "offerta inviata"].includes(normalized)
+      || (normalized.includes("preventivo") && normalized.includes("inviato"));
+    case "won":       return ["won", "vinta", "vinto", "venduta", "venduto"].includes(normalized) || s.includes("preventivo confermato") || s.includes("ordine confermato") || s.includes("ordine eseguito") || s.includes("campione acquistato");
     case "lost":      return s.includes("declinata") || s.includes("lead non qualificato") || s.includes("perso") || s === "chiuso";
-    default:          return normalizeLooseString(rawStatus) === category; // match esatto legacy
+    default:          return normalized === category; // match esatto legacy
   }
 }
 
@@ -14461,7 +14513,16 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
     : _quick === "unassigned" ? "unassigned" : "";
   const _quickService      = _quick === "fornitura" ? "fornitura" : _quick === "posa" ? "posa" : "";
   const _quickContactState = _quick === "to-contact" ? "to-contact" : _quick === "contacted" ? "contacted" : "";
-  const _quickStatus       = _quick === "new" ? "new" : _quick === "quoted" ? "quoted" : "";
+  const _quickStatusMap = {
+    new: "new",
+    contacted: "contacted",
+    followup: "followup",
+    quoting: "quoting",
+    quoted: "quoted",
+    won: "won",
+    lost: "lost",
+  };
+  const _quickStatus = _quickStatusMap[_quick] || "";
   const _quickResellerOnly = _quick === "resellers";
   const _quickStale = _quick === "stale";
   // "this-week": calcola dateFrom = oggi - 7gg (lato client → server)
@@ -14534,6 +14595,8 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
         today: data.stats.today ?? 0,
         quoted: data.stats.quoted ?? 0,
         prevWeek: data.stats.prevWeek ?? 0,
+        stale: data.stats.stale ?? 0,
+        pipeline: data.stats.pipeline && typeof data.stats.pipeline === "object" ? data.stats.pipeline : undefined,
       };
     }
     const selectedInPage = mergedItems.find((item) => item.id === state.selectedSalesRequestId);
