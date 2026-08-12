@@ -23484,6 +23484,115 @@ body {
 }
 #sales-requests .crm-kpi-trend.is-warn { color: #d97706; }
 
+/* Percorso operativo Richieste: orienta la lista senza cambiare il CRM sotto. */
+#sales-request-workflow {
+  background: #ffffff;
+  border: 1px solid #ece8de;
+  border-radius: 12px;
+  padding: 14px;
+  margin: 0 0 14px;
+}
+.sales-request-workflow-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.sales-request-workflow-head .panel-eyebrow {
+  margin: 0 0 3px;
+}
+.sales-request-workflow-head strong {
+  display: block;
+  color: #1a2e26;
+  font-size: 16px;
+  line-height: 1.15;
+}
+.sales-request-workflow-meta {
+  color: #7a867e;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.sales-request-workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+.sales-request-workflow-step {
+  min-width: 0;
+  min-height: 112px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  align-items: start;
+  gap: 8px 10px;
+  border: 1px solid #e5e1d6;
+  background: #fdfcf9;
+  color: #1a2e26;
+  border-radius: 10px;
+  padding: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .14s ease, background-color .14s ease, transform .14s ease;
+}
+.sales-request-workflow-step:hover {
+  border-color: #cfc7b5;
+  background: #f7f8f4;
+}
+.sales-request-workflow-step:focus-visible {
+  outline: 2px solid #3e63d8;
+  outline-offset: 2px;
+}
+.sales-request-workflow-step.is-active {
+  border-color: #1f4d3d;
+  background: #eaf3ee;
+  box-shadow: inset 3px 0 0 #1f4d3d;
+}
+.sales-request-workflow-index {
+  color: #87938c;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+.sales-request-workflow-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.sales-request-workflow-copy strong {
+  overflow-wrap: normal;
+  word-break: normal;
+  font-size: 13px;
+  line-height: 1.15;
+}
+.sales-request-workflow-copy small {
+  color: #718078;
+  font-size: 11px;
+  line-height: 1.2;
+}
+.sales-request-workflow-count {
+  justify-self: end;
+  color: #10251c;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.sales-request-workflow-next {
+  grid-column: 1 / -1;
+  align-self: end;
+  color: #3f5249;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.sales-request-workflow-step.tone-blue .sales-request-workflow-count { color: #1d4ed8; }
+.sales-request-workflow-step.tone-amber .sales-request-workflow-count { color: #a16207; }
+.sales-request-workflow-step.tone-violet .sales-request-workflow-count { color: #6d28d9; }
+.sales-request-workflow-step.tone-red .sales-request-workflow-count { color: #b42318; }
+
 /* Pillole filtri rapidi — look mockup pulito */
 #sales-requests #sales-request-quick-filters {
   display: flex;
@@ -23793,6 +23902,31 @@ body {
   #sales-requests .crm-kpi { min-width: 0; }
   #sales-requests .crm-kpi-value { font-size: 20px !important; }
   #sales-requests .crm-kpi-label { font-size: 9.5px !important; white-space: normal !important; }
+
+  #sales-request-workflow {
+    padding: 12px !important;
+  }
+  .sales-request-workflow-head {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+  .sales-request-workflow-meta {
+    white-space: normal !important;
+  }
+  .sales-request-workflow-steps {
+    display: flex !important;
+    gap: 8px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 2px !important;
+    scroll-snap-type: x proximity;
+  }
+  .sales-request-workflow-step {
+    min-width: min(240px, 78vw) !important;
+    min-height: 104px !important;
+    scroll-snap-align: start;
+  }
 
   /* Pillole filtro: scroll orizzontale */
   #sales-requests #sales-request-quick-filters {

@@ -9962,6 +9962,48 @@ function normalizeSalesRequestRecord(item = {}) {
   };
 }
 
+function buildSessionSalesRequestsStats(items = []) {
+  const reqs = (Array.isArray(items) ? items : []).map((item) => normalizeSalesRequestRecord(item));
+  const now = Date.now();
+  const weekMs = 7 * 24 * 3600 * 1000;
+  const twoWeeksMs = 14 * 24 * 3600 * 1000;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const todayTime = startOfToday.getTime();
+  const getCreatedTime = (item = {}) => {
+    const time = new Date(item.createdAt || item.updatedAt || 0).getTime();
+    return Number.isFinite(time) ? time : 0;
+  };
+  const getStatusCode = (item = {}) => {
+    const status = normalizeSalesRequestStatus(item.status || "");
+    return ["new", "quoted", "followup", "closed"].includes(status) ? status : (status ? "custom" : "new");
+  };
+  return {
+    total: reqs.length,
+    new: reqs.filter((item) => getStatusCode(item) === "new").length,
+    unassigned: reqs.filter((item) => !normalizeSalesRequestAssignment(item.assignment || "")).length,
+    thisWeek: reqs.filter((item) => {
+      const created = getCreatedTime(item);
+      return created && now - created < weekMs;
+    }).length,
+    today: reqs.filter((item) => {
+      const created = getCreatedTime(item);
+      return created && created >= todayTime;
+    }).length,
+    quoted: reqs.filter((item) => getStatusCode(item) === "quoted").length,
+    prevWeek: reqs.filter((item) => {
+      const created = getCreatedTime(item);
+      const age = created ? now - created : 0;
+      return age >= weekMs && age < twoWeeksMs;
+    }).length,
+    stale: reqs.filter((item) => {
+      if (getStatusCode(item) !== "new" || item.linkedOrderId) return false;
+      const created = getCreatedTime(item);
+      return created && now - created >= 5 * 24 * 3600 * 1000;
+    }).length,
+  };
+}
+
 function buildAttachmentProxyPath(ownerId, attachmentId, resource = "orders") {
   if (resource === "sales-content") {
     return `/api/sales/content-items/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
@@ -12701,17 +12743,7 @@ async function handleApi(req, res, url) {
       freeDdts: ["office", "warehouse"].includes(sessionRole) ? store.freeDdts : [],
       inventory: roleFilteredInventory,
       salesRequests: [], // deprecated: usa GET /api/sales/requests per dati CRM paginati
-      salesRequestsStats: sessionRole === "office" ? (() => {
-        const reqs = Array.isArray(store.salesRequests) ? store.salesRequests : [];
-        const now = Date.now();
-        const week = 7 * 24 * 3600 * 1000;
-        return {
-          total: reqs.length,
-          new: reqs.filter((r) => !r.status || r.status === "new" || r.status === "nuovo").length,
-          unassigned: reqs.filter((r) => !r.assignment).length,
-          thisWeek: reqs.filter((r) => r.createdAt && (now - new Date(r.createdAt).getTime()) < week).length,
-        };
-      })() : null,
+      salesRequestsStats: sessionRole === "office" ? buildSessionSalesRequestsStats(store.salesRequests) : null,
       salesContents: sessionRole === "office"
         ? serializeSalesContentsForClient(store.salesContents)
         : sessionRole === "rivenditore"
@@ -12816,17 +12848,7 @@ async function handleApi(req, res, url) {
         freeDdts: ["office", "warehouse"].includes(loginRole) ? store.freeDdts : [],
         inventory: loginInventory,
         salesRequests: [], // deprecated: usa GET /api/sales/requests per dati CRM paginati
-        salesRequestsStats: loginRole === "office" ? (() => {
-          const reqs = Array.isArray(store.salesRequests) ? store.salesRequests : [];
-          const now = Date.now();
-          const week = 7 * 24 * 3600 * 1000;
-          return {
-            total: reqs.length,
-            new: reqs.filter((r) => !r.status || r.status === "new" || r.status === "nuovo").length,
-            unassigned: reqs.filter((r) => !r.assignment).length,
-            thisWeek: reqs.filter((r) => r.createdAt && (now - new Date(r.createdAt).getTime()) < week).length,
-          };
-        })() : null,
+        salesRequestsStats: loginRole === "office" ? buildSessionSalesRequestsStats(store.salesRequests) : null,
         salesContents: loginRole === "office"
           ? serializeSalesContentsForClient(store.salesContents)
           : loginRole === "rivenditore"

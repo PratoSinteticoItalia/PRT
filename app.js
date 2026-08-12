@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260811-install-subview-drill";
+} from "./lib/order-money.js?v=20260812-crm-request-workflow-layout";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260811-install-subview-drill";
+import { regionForCity } from "./lib/geo.js?v=20260812-crm-request-workflow-layout";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260811-install-subview-drill";
+} from "./lib/shipping-eligibility.js?v=20260812-crm-request-workflow-layout";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260811-install-subview-drill";
+} from "./lib/profit-split.js?v=20260812-crm-request-workflow-layout";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260811-install-subview-drill";
+} from "./lib/preventivo-pricing.js?v=20260812-crm-request-workflow-layout";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260811-install-subview-drill";
+} from "./lib/sales-assignment.js?v=20260812-crm-request-workflow-layout";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260811-install-subview-drill";
+const APP_SHELL_VERSION = "20260812-crm-request-workflow-layout";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1613,6 +1613,7 @@ const ui = {
   salesRequestStatusFilter: document.getElementById("sales-request-status-filter"),
   salesRequestQuickFilters: document.getElementById("sales-request-quick-filters"),
   salesRequestInsights: document.getElementById("sales-request-insights"),
+  salesRequestWorkflow: document.getElementById("sales-request-workflow"),
   salesRequestStaleBanner: document.getElementById("sales-request-stale-banner"),
   salesRequestSortRow: document.getElementById("sales-request-sort-row"),
   salesRequestCompactToggle: document.getElementById("sales-request-compact-toggle"),
@@ -4881,7 +4882,94 @@ function getSalesRequestQuickFilterOptions(items = state.salesRequests) {
     .filter((option) => option.count > 0 || option.value === "mine");
 }
 
+function renderSalesRequestWorkflow() {
+  if (!ui.salesRequestWorkflow) return;
+  const stats = state.salesRequestsStats && typeof state.salesRequestsStats === "object" ? state.salesRequestsStats : {};
+  const quick = String(state.filters.salesRequestQuick || "all");
+  const currentSort = String(state.salesRequestSort || "recent");
+  const count = (key) => Math.max(0, Number(stats[key] || 0));
+  const steps = [
+    {
+      index: "01",
+      key: "unassigned",
+      title: state.lang === "it" ? "Assegnare" : "Assign",
+      count: count("unassigned"),
+      note: state.lang === "it" ? "lead senza referente" : "without owner",
+      next: state.lang === "it" ? "Decidi chi li lavora" : "Choose owner",
+      tone: "amber",
+    },
+    {
+      index: "02",
+      key: "new",
+      title: state.lang === "it" ? "Primo contatto" : "First contact",
+      count: count("new"),
+      note: state.lang === "it" ? "nuovi da qualificare" : "new to qualify",
+      next: state.lang === "it" ? "Chiama o WhatsApp" : "Call or WhatsApp",
+      tone: "blue",
+      sort: "urgent",
+    },
+    {
+      index: "03",
+      key: "quoted",
+      title: state.lang === "it" ? "Preventivo" : "Quote",
+      count: count("quoted"),
+      note: state.lang === "it" ? "offerte da seguire" : "quotes to follow",
+      next: state.lang === "it" ? "Follow-up mirato" : "Focused follow-up",
+      tone: "violet",
+      sort: "urgent",
+    },
+    {
+      index: "04",
+      key: "stale",
+      title: state.lang === "it" ? "Fuori coda" : "Out of queue",
+      count: count("stale"),
+      note: state.lang === "it" ? "ferme da 5+ giorni" : "stuck 5+ days",
+      next: state.lang === "it" ? "Recupera o chiudi" : "Recover or close",
+      tone: "red",
+      sort: "urgent",
+    },
+  ];
+  const activeStep = steps.find((step) => step.key === quick) || null;
+  const total = count("total");
+  const currentLabel = activeStep?.title
+    || (quick === "all"
+      ? (state.lang === "it" ? "Tutte le richieste" : "All requests")
+      : (state.lang === "it" ? "Filtro attivo" : "Active filter"));
+  ui.salesRequestWorkflow.innerHTML = `
+    <div class="sales-request-workflow-head">
+      <div>
+        <p class="panel-eyebrow">${state.lang === "it" ? "Percorso richieste" : "Request path"}</p>
+        <strong>${escapeHtml(currentLabel)}</strong>
+      </div>
+      <span class="sales-request-workflow-meta">${state.lang === "it"
+        ? `${total.toLocaleString("it-IT")} totali · ${currentSort === "urgent" ? "urgenza" : "recenti"}`
+        : `${total.toLocaleString("it-IT")} total · ${currentSort === "urgent" ? "urgency" : "recent"}`}</span>
+    </div>
+    <div class="sales-request-workflow-steps">
+      ${steps.map((step) => `
+        <button
+          type="button"
+          class="sales-request-workflow-step tone-${escapeAttr(step.tone)} ${quick === step.key ? "is-active" : ""}"
+          data-action="set-sales-request-quick-filter"
+          data-value="${escapeAttr(step.key)}"
+          ${step.sort ? `data-sort="${escapeAttr(step.sort)}"` : ""}
+          aria-pressed="${quick === step.key ? "true" : "false"}"
+        >
+          <span class="sales-request-workflow-index">${escapeHtml(step.index)}</span>
+          <span class="sales-request-workflow-copy">
+            <strong>${escapeHtml(step.title)}</strong>
+            <small>${escapeHtml(step.note)}</small>
+          </span>
+          <span class="sales-request-workflow-count">${step.count.toLocaleString("it-IT")}</span>
+          <span class="sales-request-workflow-next">${escapeHtml(step.next)}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
+  renderSalesRequestWorkflow();
   if (ui.salesRequestQuickFilters) {
     const current = String(state.filters.salesRequestQuick || "all");
     ui.salesRequestQuickFilters.innerHTML = getSalesRequestQuickFilterOptions(baseItems).map((option) => `
@@ -11640,6 +11728,7 @@ async function loadDashboardCommandSalesSnapshot({ force = false } = {}) {
         today: data.stats.today ?? 0,
         quoted: data.stats.quoted ?? 0,
         prevWeek: data.stats.prevWeek ?? 0,
+        stale: data.stats.stale ?? 0,
       };
     } else {
       state.salesRequestsStats = {
@@ -34431,6 +34520,9 @@ function setSalesRequestQuickFilterFromClick(event) {
   const button = event.target.closest("[data-action='set-sales-request-quick-filter']");
   if (!button) return;
   state.filters.salesRequestQuick = button.dataset.value || "all";
+  if (button.dataset.sort) {
+    state.salesRequestSort = button.dataset.sort === "urgent" ? "urgent" : "recent";
+  }
   state.salesRequestPage = 1;
   clearSalesRequestBulkSelection({ render: false });
   // Ricarica dal server con il nuovo filtro: copre tutti i record, non solo i 50 in pagina
@@ -34438,6 +34530,7 @@ function setSalesRequestQuickFilterFromClick(event) {
 }
 bindEvent(ui.salesRequestQuickFilters, "click", setSalesRequestQuickFilterFromClick);
 bindEvent(ui.salesRequestInsights, "click", setSalesRequestQuickFilterFromClick);
+bindEvent(ui.salesRequestWorkflow, "click", setSalesRequestQuickFilterFromClick);
 bindEvent(ui.salesRequestSortRow, "click", (event) => {
   const button = event.target.closest("[data-action='set-sales-request-sort']");
   if (!button) return;
