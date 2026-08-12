@@ -2516,40 +2516,24 @@ function buildSalesRequestShopifyPurchaseMatchesCte() {
   const orderCandidatePhoneSql = sqlPhoneCanon("phone_candidate");
   const requestPhoneSql = sqlPhoneCanon("sr.phone");
   const statusNormSql = getSalesRequestStatusNormSql("sr");
+  // Nota performance: il matching NON usa più phone_norms/email_norms come array
+  // confrontati con `= ANY(...)` nella condizione di JOIN. Quel pattern impedisce
+  // a Postgres l'hash/merge join (nessun operatore di uguaglianza tra colonne) e
+  // degrada a un nested loop O(sales_requests × orders): con lo storico Shopify
+  // completo (migliaia di ordini) bastava a saturare il pool e far scattare i
+  // timeout anche su query completamente estranee al CRM. Qui i candidati
+  // telefono/email di ogni ordine vengono "srotolati" in righe (una riga per
+  // candidato) cosi il join torna un'uguaglianza semplice, hashabile.
   return `WITH valid_orders AS (
     SELECT
       o.id,
       o.order_number,
       o.created_at AS order_created_at,
       o.financial_status,
-      ARRAY(
-        SELECT DISTINCT ${orderCandidatePhoneSql}
-        FROM unnest(
-          ARRAY_REMOVE(ARRAY[
-            o.phone,
-            o.billing->>'phone',
-            o.shopify_raw #>> '{billing,phone}',
-            o.shopify_raw #>> '{shipping,phone}',
-            o.shopify_raw #>> '{customer,phone}'
-          ], NULL)
-          || COALESCE(ARRAY(SELECT jsonb_array_elements_text(o.shopify_raw->'phones')), ARRAY[]::text[])
-        ) AS phone_values(phone_candidate)
-        WHERE length(${orderCandidatePhoneSql}) >= 8
-      ) AS phone_norms,
-      ARRAY(
-        SELECT DISTINCT lower(trim(email_candidate))
-        FROM unnest(
-          ARRAY_REMOVE(ARRAY[
-            o.email,
-            o.billing->>'email',
-            o.shopify_raw #>> '{billing,email}',
-            o.shopify_raw #>> '{shipping,email}',
-            o.shopify_raw #>> '{customer,email}'
-          ], NULL)
-          || COALESCE(ARRAY(SELECT jsonb_array_elements_text(o.shopify_raw->'emails')), ARRAY[]::text[])
-        ) AS email_values(email_candidate)
-        WHERE lower(trim(email_candidate)) <> ''
-      ) AS email_norms
+      o.phone,
+      o.email,
+      o.billing,
+      o.shopify_raw
     FROM orders o
     WHERE (
         lower(coalesce(o.source,'')) LIKE 'shopify%'
@@ -2558,6 +2542,36 @@ function buildSalesRequestShopifyPurchaseMatchesCte() {
       AND lower(trim(coalesce(o.financial_status,''))) NOT IN (
         'refunded', 'voided', 'cancelled', 'canceled'
       )
+  ),
+  order_phones AS (
+    SELECT DISTINCT o.id AS order_id, ${orderCandidatePhoneSql} AS phone_norm
+    FROM valid_orders o
+    CROSS JOIN LATERAL unnest(
+      ARRAY_REMOVE(ARRAY[
+        o.phone,
+        o.billing->>'phone',
+        o.shopify_raw #>> '{billing,phone}',
+        o.shopify_raw #>> '{shipping,phone}',
+        o.shopify_raw #>> '{customer,phone}'
+      ], NULL)
+      || COALESCE(ARRAY(SELECT jsonb_array_elements_text(o.shopify_raw->'phones')), ARRAY[]::text[])
+    ) AS phone_candidate
+    WHERE length(${orderCandidatePhoneSql}) >= 8
+  ),
+  order_emails AS (
+    SELECT DISTINCT o.id AS order_id, lower(trim(email_candidate)) AS email_norm
+    FROM valid_orders o
+    CROSS JOIN LATERAL unnest(
+      ARRAY_REMOVE(ARRAY[
+        o.email,
+        o.billing->>'email',
+        o.shopify_raw #>> '{billing,email}',
+        o.shopify_raw #>> '{shipping,email}',
+        o.shopify_raw #>> '{customer,email}'
+      ], NULL)
+      || COALESCE(ARRAY(SELECT jsonb_array_elements_text(o.shopify_raw->'emails')), ARRAY[]::text[])
+    ) AS email_candidate
+    WHERE lower(trim(email_candidate)) <> ''
   ),
   candidate_requests AS (
     SELECT
@@ -2586,34 +2600,46 @@ function buildSalesRequestShopifyPurchaseMatchesCte() {
       o.order_number,
       o.order_created_at,
       o.financial_status,
-      CASE
-        WHEN sr.linked_order_id_norm <> '' AND sr.linked_order_id_norm = o.id THEN 0
-        WHEN length(sr.phone_norm) >= 8
-          AND sr.phone_norm = ANY(o.phone_norms) AND o.order_created_at >= sr.created_at THEN 1
-        WHEN sr.email_norm <> '' AND sr.email_norm = ANY(o.email_norms) AND o.order_created_at >= sr.created_at THEN 2
-        WHEN sr.email_norm <> '' AND sr.email_norm = ANY(o.email_norms) THEN 3
-        ELSE 4
-      END AS match_rank,
-      CASE
-        WHEN sr.linked_order_id_norm <> '' AND sr.linked_order_id_norm = o.id THEN 'linked_order_id'
-        WHEN length(sr.phone_norm) >= 8
-          AND sr.phone_norm = ANY(o.phone_norms) AND o.order_created_at >= sr.created_at THEN 'phone_after_request'
-        WHEN sr.email_norm <> '' AND sr.email_norm = ANY(o.email_norms) AND o.order_created_at >= sr.created_at THEN 'email_after_request'
-        WHEN sr.email_norm <> '' AND sr.email_norm = ANY(o.email_norms) THEN 'email_contact_purchase'
-        ELSE 'phone_contact_purchase'
-      END AS match_mode
+      0 AS match_rank,
+      'linked_order_id' AS match_mode
     FROM candidate_requests sr
-    INNER JOIN valid_orders o ON (
-      (sr.linked_order_id_norm <> '' AND sr.linked_order_id_norm = o.id)
-      OR (
-        length(sr.phone_norm) >= 8
-        AND sr.phone_norm = ANY(o.phone_norms)
-      )
-      OR (
-        sr.email_norm <> ''
-        AND sr.email_norm = ANY(o.email_norms)
-      )
-    )
+    INNER JOIN valid_orders o ON sr.linked_order_id_norm <> '' AND sr.linked_order_id_norm = o.id
+
+    UNION ALL
+
+    SELECT
+      sr.id,
+      trim(coalesce(sr.first_name,'') || ' ' || coalesce(sr.last_name,'')) AS name,
+      sr.status AS previous_status,
+      sr.linked_order_id AS previous_linked_order_id,
+      sr.created_at AS request_created_at,
+      o.id AS order_id,
+      o.order_number,
+      o.order_created_at,
+      o.financial_status,
+      CASE WHEN o.order_created_at >= sr.created_at THEN 1 ELSE 4 END AS match_rank,
+      CASE WHEN o.order_created_at >= sr.created_at THEN 'phone_after_request' ELSE 'phone_contact_purchase' END AS match_mode
+    FROM candidate_requests sr
+    INNER JOIN order_phones op ON length(sr.phone_norm) >= 8 AND op.phone_norm = sr.phone_norm
+    INNER JOIN valid_orders o ON o.id = op.order_id
+
+    UNION ALL
+
+    SELECT
+      sr.id,
+      trim(coalesce(sr.first_name,'') || ' ' || coalesce(sr.last_name,'')) AS name,
+      sr.status AS previous_status,
+      sr.linked_order_id AS previous_linked_order_id,
+      sr.created_at AS request_created_at,
+      o.id AS order_id,
+      o.order_number,
+      o.order_created_at,
+      o.financial_status,
+      CASE WHEN o.order_created_at >= sr.created_at THEN 2 ELSE 3 END AS match_rank,
+      CASE WHEN o.order_created_at >= sr.created_at THEN 'email_after_request' ELSE 'email_contact_purchase' END AS match_mode
+    FROM candidate_requests sr
+    INNER JOIN order_emails oe ON sr.email_norm <> '' AND oe.email_norm = sr.email_norm
+    INNER JOIN valid_orders o ON o.id = oe.order_id
   ),
   matches AS (
     SELECT DISTINCT ON (id) *
