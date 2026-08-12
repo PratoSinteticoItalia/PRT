@@ -1554,6 +1554,12 @@ function dbRowToSalesRequest(row) {
   };
 }
 
+function toDbIsoOrNull(value) {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 async function getOrdersFromDb() {
   if (!USE_POSTGRES) return null;
   const now = Date.now();
@@ -2165,10 +2171,10 @@ async function upsertOrderToDb(order, userId = null) {
         financial_status, fulfillment_status, payment_method,
         source, note, total,
         totals, billing, warehouse, installation, accounting,
-        line_items, line_details, attachments, converted_job_id, operations_json, updated_at
+        line_items, line_details, attachments, converted_job_id, operations_json, created_at, updated_at
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,NOW()
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,COALESCE($31::timestamptz,NOW()),NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
         shopify_numeric_id=EXCLUDED.shopify_numeric_id,
@@ -2189,6 +2195,7 @@ async function upsertOrderToDb(order, userId = null) {
         line_items=EXCLUDED.line_items, line_details=EXCLUDED.line_details,
         attachments=EXCLUDED.attachments, converted_job_id=EXCLUDED.converted_job_id,
         operations_json=EXCLUDED.operations_json,
+        created_at=LEAST(orders.created_at, EXCLUDED.created_at),
         updated_at=NOW()
     `, [
       String(order.id),
@@ -2214,6 +2221,7 @@ async function upsertOrderToDb(order, userId = null) {
       JSON.stringify(Array.isArray(order.attachments) ? order.attachments : []),
       order.convertedJobId ? String(order.convertedJobId) : null,
       JSON.stringify(orderWithOps.operations || order.operations || {}),
+      toDbIsoOrNull(order.createdAt || order.processedAt),
     ]);
     // Audit log per cambiamenti di stato e operazioni
     const isNewOrder = !existingOrderRow;
@@ -2460,52 +2468,225 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
   }
 }
 
+const SALES_REQUEST_ORDER_EXECUTED_STATUS = "ordine eseguito";
+
+function buildSalesRequestShopifyPurchaseMatchesCte() {
+  const orderPhoneSql = sqlPhoneCanon("o.phone");
+  const requestPhoneSql = sqlPhoneCanon("sr.phone");
+  const statusNormSql = getSalesRequestStatusNormSql("sr");
+  return `WITH valid_orders AS (
+    SELECT
+      o.id,
+      o.order_number,
+      o.created_at AS order_created_at,
+      o.financial_status,
+      ${orderPhoneSql} AS phone_norm,
+      lower(trim(coalesce(o.email,''))) AS email_norm
+    FROM orders o
+    WHERE (
+        lower(coalesce(o.source,'')) LIKE 'shopify%'
+        OR coalesce(trim(o.shopify_numeric_id),'') <> ''
+      )
+      AND lower(trim(coalesce(o.financial_status,''))) NOT IN (
+        'refunded', 'voided', 'cancelled', 'canceled'
+      )
+  ),
+  candidate_requests AS (
+    SELECT
+      sr.id,
+      sr.first_name,
+      sr.last_name,
+      sr.email,
+      sr.phone,
+      sr.status,
+      sr.linked_order_id,
+      trim(coalesce(sr.linked_order_id,'')) AS linked_order_id_norm,
+      sr.created_at,
+      ${requestPhoneSql} AS phone_norm,
+      lower(trim(coalesce(sr.email,''))) AS email_norm
+    FROM sales_requests sr
+    WHERE ${statusNormSql} <> 'ordine eseguito'
+  ),
+  raw_matches AS (
+    SELECT
+      sr.id,
+      trim(coalesce(sr.first_name,'') || ' ' || coalesce(sr.last_name,'')) AS name,
+      sr.status AS previous_status,
+      sr.linked_order_id AS previous_linked_order_id,
+      sr.created_at AS request_created_at,
+      o.id AS order_id,
+      o.order_number,
+      o.order_created_at,
+      o.financial_status,
+      CASE
+        WHEN sr.linked_order_id_norm <> '' AND sr.linked_order_id_norm = o.id THEN 0
+        WHEN length(sr.phone_norm) >= 8 AND length(o.phone_norm) >= 8
+          AND sr.phone_norm = o.phone_norm AND o.order_created_at >= sr.created_at THEN 1
+        WHEN sr.email_norm <> '' AND sr.email_norm = o.email_norm AND o.order_created_at >= sr.created_at THEN 2
+        WHEN sr.email_norm <> '' AND sr.email_norm = o.email_norm THEN 3
+        ELSE 4
+      END AS match_rank,
+      CASE
+        WHEN sr.linked_order_id_norm <> '' AND sr.linked_order_id_norm = o.id THEN 'linked_order_id'
+        WHEN length(sr.phone_norm) >= 8 AND length(o.phone_norm) >= 8
+          AND sr.phone_norm = o.phone_norm AND o.order_created_at >= sr.created_at THEN 'phone_after_request'
+        WHEN sr.email_norm <> '' AND sr.email_norm = o.email_norm AND o.order_created_at >= sr.created_at THEN 'email_after_request'
+        WHEN sr.email_norm <> '' AND sr.email_norm = o.email_norm THEN 'email_contact_purchase'
+        ELSE 'phone_contact_purchase'
+      END AS match_mode
+    FROM candidate_requests sr
+    INNER JOIN valid_orders o ON (
+      (sr.linked_order_id_norm <> '' AND sr.linked_order_id_norm = o.id)
+      OR (
+        length(sr.phone_norm) >= 8
+        AND length(o.phone_norm) >= 8
+        AND sr.phone_norm = o.phone_norm
+      )
+      OR (
+        sr.email_norm <> ''
+        AND sr.email_norm = o.email_norm
+      )
+    )
+  ),
+  matches AS (
+    SELECT DISTINCT ON (id) *
+    FROM raw_matches
+    ORDER BY
+      id,
+      match_rank ASC,
+      CASE WHEN order_created_at >= request_created_at THEN order_created_at END ASC NULLS LAST,
+      order_created_at DESC NULLS LAST,
+      order_id
+  )`;
+}
+
+function summarizeSalesRequestPurchaseReconcileRows(rows = []) {
+  const byMode = {};
+  const byPreviousStatus = {};
+  for (const row of rows) {
+    const mode = String(row.match_mode || "unknown");
+    const previousStatus = String(row.previous_status || "(vuoto)");
+    byMode[mode] = (byMode[mode] || 0) + 1;
+    byPreviousStatus[previousStatus] = (byPreviousStatus[previousStatus] || 0) + 1;
+  }
+  return {
+    count: rows.length,
+    byMode,
+    byPreviousStatus,
+    samples: rows.slice(0, 25).map((row) => ({
+      id: row.id,
+      name: row.name || row.id,
+      previousStatus: row.previous_status || "",
+      orderId: row.order_id || "",
+      orderNumber: row.order_number || "",
+      orderCreatedAt: row.order_created_at || null,
+      financialStatus: row.financial_status || "",
+      matchMode: row.match_mode || "",
+    })),
+  };
+}
+
+async function reconcileSalesRequestShopifyPurchases({ dryRun = true, userId = "system:shopify-purchase-reconcile" } = {}) {
+  if (!USE_POSTGRES) return { dryRun: Boolean(dryRun), postgres: false, count: 0, byMode: {}, byPreviousStatus: {}, samples: [] };
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const cte = buildSalesRequestShopifyPurchaseMatchesCte();
+
+  if (dryRun) {
+    const { rows } = await pool.query(`${cte}
+      SELECT *
+      FROM matches
+      ORDER BY match_rank ASC, order_created_at DESC NULLS LAST, id`);
+    return {
+      dryRun: true,
+      postgres: true,
+      ...summarizeSalesRequestPurchaseReconcileRows(rows),
+    };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(`${cte},
+      updated AS (
+        UPDATE sales_requests sr
+        SET
+          status = $1,
+          linked_order_id = CASE
+            WHEN coalesce(trim(sr.linked_order_id),'') = '' THEN m.order_id
+            ELSE sr.linked_order_id
+          END,
+          converted_at = COALESCE(sr.converted_at, m.order_created_at, NOW()),
+          updated_at = NOW()
+        FROM matches m
+        WHERE sr.id = m.id
+        RETURNING
+          m.id,
+          m.name,
+          m.previous_status,
+          sr.status,
+          m.previous_linked_order_id,
+          sr.linked_order_id,
+          m.order_id,
+          m.order_number,
+          m.order_created_at,
+          m.financial_status,
+          m.match_mode
+      ),
+      audit_rows AS (
+        INSERT INTO audit_log (entity_type, entity_id, user_id, action, diff)
+        SELECT
+          'sales_request',
+          u.id,
+          $2,
+          'shopify_purchase_reconcile',
+          jsonb_build_object(
+            'status', jsonb_build_object('before', u.previous_status, 'after', u.status),
+            'linkedOrderId', jsonb_build_object('before', u.previous_linked_order_id, 'after', u.linked_order_id),
+            'orderId', u.order_id,
+            'orderNumber', u.order_number,
+            'matchMode', u.match_mode
+          )
+        FROM updated u
+        RETURNING 1
+      )
+      SELECT *
+      FROM updated
+      ORDER BY match_mode, order_created_at DESC NULLS LAST, id`, [
+      SALES_REQUEST_ORDER_EXECUTED_STATUS,
+      userId || "system:shopify-purchase-reconcile",
+    ]);
+    await client.query("SELECT pg_notify('psi_ops_cache_invalidate', 'sales_requests')");
+    await client.query("COMMIT");
+    if (rows.length > 0) {
+      invalidateSalesRequestsDbCache();
+      console.log(`[sales-requests] shopify purchase reconcile: ${rows.length} richieste segnate come ordine eseguito.`);
+    }
+    return {
+      dryRun: false,
+      postgres: true,
+      ...summarizeSalesRequestPurchaseReconcileRows(rows),
+    };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 /**
- * Collega ogni richiesta ancora "aperta" (linked_order_id vuoto) al primo
- * ordine con lo stesso telefono arrivato DOPO la richiesta — così
- * "Conversione richieste" in Dashboard può contare le conversioni vere
- * invece del controllo rotto su stato che conteneva la parola "ordine"
- * (che non succede mai). Gira periodicamente: sistema anche il backlog di
- * richieste già convertite prima che questo collegamento esistesse.
+ * Collega e chiude commercialmente le richieste che hanno un acquisto Shopify
+ * associabile per linked_order_id, telefono o email. Gira periodicamente:
+ * sistema anche il backlog di richieste già convertite prima che questo
+ * collegamento esistesse.
  */
 async function reconcileSalesRequestOrderLinks() {
   if (!USE_POSTGRES) return;
   try {
-    const pool = await getPgPool();
-    const { rows: openRequests } = await pool.query(
-      "SELECT id, phone, created_at FROM sales_requests WHERE (linked_order_id IS NULL OR linked_order_id = '') AND phone IS NOT NULL AND phone != ''",
-    );
-    if (!openRequests.length) return;
-    const { rows: orders } = await pool.query(
-      "SELECT id, phone, created_at FROM orders WHERE phone IS NOT NULL AND phone != '' ORDER BY created_at ASC",
-    );
-    if (!orders.length) return;
-    const ordersByPhone = new Map();
-    for (const o of orders) {
-      const key = normalizePhoneForWhatsApp(o.phone);
-      if (!key) continue;
-      if (!ordersByPhone.has(key)) ordersByPhone.set(key, []);
-      ordersByPhone.get(key).push(o);
-    }
-    let linked = 0;
-    for (const req of openRequests) {
-      const key = normalizePhoneForWhatsApp(req.phone);
-      if (!key) continue;
-      const candidates = ordersByPhone.get(key) || [];
-      const match = candidates.find((o) => new Date(o.created_at).getTime() >= new Date(req.created_at).getTime());
-      if (!match) continue;
-      await pool.query(
-        "UPDATE sales_requests SET linked_order_id=$1, converted_at=NOW() WHERE id=$2",
-        [String(match.id), req.id],
-      );
-      linked += 1;
-    }
-    if (linked > 0) {
-      invalidateSalesRequestsDbCache();
-      console.log(`[sales-requests] reconcile: collegate ${linked} richieste al relativo ordine.`);
-    }
+    await reconcileSalesRequestShopifyPurchases({ dryRun: false, userId: "system:shopify-purchase-reconcile" });
   } catch (err) {
-    console.warn("[sales-requests] reconcile order links failed:", err?.message || err);
+    console.warn("[sales-requests] reconcile shopify purchases failed:", err?.message || err);
   }
 }
 
@@ -15364,6 +15545,33 @@ async function handleApi(req, res, url) {
       });
     } catch (error) {
       return sendJson(res, 500, { error: String(error?.message || "sales_diagnostic_failed") });
+    }
+  }
+
+  // POST /api/sales/requests/reconcile-shopify-orders — trova richieste con
+  // acquisto Shopify collegabile (linked_order_id/telefono/email) e le porta a
+  // "ordine eseguito". Default dryRun=true: apply esplicito con { dryRun:false }.
+  if (url.pathname === "/api/sales/requests/reconcile-shopify-orders" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 400, { error: "postgres_only" });
+    const body = await readBody(req);
+    const dryRun = body?.dryRun !== false;
+    try {
+      const result = await reconcileSalesRequestShopifyPurchases({
+        dryRun,
+        userId: currentUser?.email || currentUser?.id || null,
+      });
+      if (!dryRun && result.count > 0) {
+        rotateStoreRevision(store);
+        if (storeMemCache?.__memReconciled) store.__memReconciled = true;
+        storeMemCache = store;
+        broadcastStoreRevision(getStoreRevision(store));
+      }
+      return sendJson(res, 200, result);
+    } catch (err) {
+      console.error("[sales-requests] reconcile-shopify-orders error:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "reconcile_shopify_orders_failed") });
     }
   }
 
