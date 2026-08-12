@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260812-crm-request-pipeline-breakdown";
+} from "./lib/order-money.js?v=20260812-crm-request-filter-stability";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260812-crm-request-pipeline-breakdown";
+import { regionForCity } from "./lib/geo.js?v=20260812-crm-request-filter-stability";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260812-crm-request-pipeline-breakdown";
+} from "./lib/shipping-eligibility.js?v=20260812-crm-request-filter-stability";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260812-crm-request-pipeline-breakdown";
+} from "./lib/profit-split.js?v=20260812-crm-request-filter-stability";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260812-crm-request-pipeline-breakdown";
+} from "./lib/preventivo-pricing.js?v=20260812-crm-request-filter-stability";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260812-crm-request-pipeline-breakdown";
+} from "./lib/sales-assignment.js?v=20260812-crm-request-filter-stability";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260812-crm-request-pipeline-breakdown";
+const APP_SHELL_VERSION = "20260812-crm-request-filter-stability";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1393,6 +1393,7 @@ const salesRequestPendingPatchGraceTimers = new Map();
 // la memorizziamo qui e la spediamo al termine del grace period (1.5s dopo il save).
 // Evita sia i drop silenti (retry singolo con __retried) sia le race condition.
 const salesRequestPatchQueue = new Map();
+let _crmPageRequestSeq = 0;
 
 // Memoization per getFilteredSalesRequests — evita sort O(N log N) + filter O(N)
 // su 8180 record ad ogni renderSalesRequests (che viene chiamata 2x per render)
@@ -4751,7 +4752,7 @@ function getSalesRequestAssignmentOptions() {
   return getSalesAssignmentOptionLabels(state.catalogSalesAssignments || [], SALES_REQUEST_ASSIGNMENT_REFERENCE);
 }
 
-function getSalesRequestAssignmentFilterOptions(items = state.salesRequests) {
+function getSalesRequestAssignmentFilterOptions(items = state.salesRequests, currentValue = "") {
   const options = [
     { value: "all", label: state.lang === "it" ? "Tutte" : "All" },
     { value: "unassigned", label: state.lang === "it" ? "Da assegnare" : "Unassigned" },
@@ -4767,16 +4768,8 @@ function getSalesRequestAssignmentFilterOptions(items = state.salesRequests) {
   };
   getSalesRequestAssignmentOptions().forEach(append);
   items.forEach((item) => append(item.assignment || item.assegnazione || item.firstContactBy || ""));
-  return options.map((option) => ({
-    ...option,
-    count: items.filter((item) => {
-      const rawAssignment = item.assignment || item.assegnazione || item.firstContactBy || "";
-      const assignment = normalizeSalesRequestAssignment(rawAssignment) || rawAssignment;
-      if (option.value === "all") return true;
-      if (option.value === "unassigned") return matchesSalesAssignmentFilter(rawAssignment, "unassigned", state.catalogSalesAssignments || []);
-      return matchesSalesAssignmentFilter(assignment, option.value, state.catalogSalesAssignments || []);
-    }).length,
-  }));
+  if (currentValue) append(currentValue);
+  return options;
 }
 
 function getSalesRequestStatusFilterOptions(items = state.salesRequests) {
@@ -4787,6 +4780,7 @@ function getSalesRequestStatusFilterOptions(items = state.salesRequests) {
     { value: "new",       label: state.lang === "it" ? "🔵 Nuovo contatto" : "🔵 New" },
     { value: "contacted", label: state.lang === "it" ? "🟡 1° contatto" : "🟡 1st contact" },
     { value: "followup",  label: state.lang === "it" ? "🟠 Follow-up / Richiamo" : "🟠 Follow-up" },
+    { value: "quoting",   label: state.lang === "it" ? "🟣 In preventivo" : "🟣 Quoting" },
     { value: "quoted",    label: state.lang === "it" ? "🟣 Preventivo inviato" : "🟣 Quote sent" },
     { value: "won",       label: state.lang === "it" ? "🟢 Confermato / Ordine" : "🟢 Confirmed / Won" },
     { value: "lost",      label: state.lang === "it" ? "🔴 Perso / Declinato" : "🔴 Lost" },
@@ -4802,16 +4796,16 @@ function syncSalesRequestFilters() {
     : state.salesRequests;
   if (ui.salesRequestAssignmentFilter) {
     const current = normalizeSalesRequestAssignmentFilter(state.filters.salesRequestAssignment || "all");
-    ui.salesRequestAssignmentFilter.replaceChildren(...getSalesRequestAssignmentFilterOptions(filterItems).map((item) => {
+    ui.salesRequestAssignmentFilter.replaceChildren(...getSalesRequestAssignmentFilterOptions(filterItems, current).map((item) => {
       const option = document.createElement("option");
       option.value = item.value;
       // Senza conteggio: il select ha max-width, i conteggi sono già nei chip sopra
       option.textContent = item.label;
       return option;
     }));
-    const hasCurrent = Array.from(ui.salesRequestAssignmentFilter.options).some((option) => option.value === current);
-    ui.salesRequestAssignmentFilter.value = hasCurrent ? current : "all";
+    ui.salesRequestAssignmentFilter.value = current || "all";
     state.filters.salesRequestAssignment = ui.salesRequestAssignmentFilter.value || "all";
+    ui.salesRequestAssignmentFilter.disabled = Boolean(state.crmServerPage?.loading);
   }
   if (ui.salesRequestStatusFilter) {
     const current = String(state.filters.salesRequestStatus || "all");
@@ -4824,6 +4818,7 @@ function syncSalesRequestFilters() {
     const hasCurrent = Array.from(ui.salesRequestStatusFilter.options).some((option) => option.value === current);
     ui.salesRequestStatusFilter.value = hasCurrent ? current : "all";
     state.filters.salesRequestStatus = ui.salesRequestStatusFilter.value || "all";
+    ui.salesRequestStatusFilter.disabled = Boolean(state.crmServerPage?.loading);
   }
 }
 
@@ -4890,6 +4885,7 @@ function renderSalesRequestWorkflow() {
   const pipeline = stats.pipeline && typeof stats.pipeline === "object" ? stats.pipeline : {};
   const quick = String(state.filters.salesRequestQuick || "all");
   const currentSort = String(state.salesRequestSort || "recent");
+  const isLoading = Boolean(state.crmServerPage?.loading);
   const count = (key) => Math.max(0, Number(pipeline[key] ?? stats[key] ?? 0));
   const steps = [
     {
@@ -4996,6 +4992,7 @@ function renderSalesRequestWorkflow() {
           data-action="set-sales-request-quick-filter"
           data-value="${escapeAttr(step.key)}"
           ${step.sort ? `data-sort="${escapeAttr(step.sort)}"` : ""}
+          ${isLoading ? "disabled" : ""}
           aria-pressed="${quick === step.key ? "true" : "false"}"
         >
           <span class="sales-request-workflow-index">${escapeHtml(step.index)}</span>
@@ -5016,6 +5013,7 @@ function renderSalesRequestWorkflow() {
 
 function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
   renderSalesRequestWorkflow();
+  const isLoading = Boolean(state.crmServerPage?.loading);
   if (ui.salesRequestQuickFilters) {
     const current = String(state.filters.salesRequestQuick || "all");
     ui.salesRequestQuickFilters.innerHTML = getSalesRequestQuickFilterOptions(baseItems).map((option) => `
@@ -5024,6 +5022,7 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
         class="sales-request-quick-chip ${option.value === current ? "is-active" : ""} ${(option.value === "unassigned" && option.count > 0) ? "is-urgent" : ""}"
         data-action="set-sales-request-quick-filter"
         data-value="${escapeHtml(option.value)}"
+        ${isLoading ? "disabled" : ""}
         aria-pressed="${option.value === current ? "true" : "false"}"
       >
         <span>${escapeHtml(option.label)}</span>
@@ -5055,6 +5054,7 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
           class="crm-kpi ${k.key === currentQuick ? "is-active" : ""}"
           data-action="set-sales-request-quick-filter"
           data-value="${escapeHtml(k.key)}"
+          ${isLoading ? "disabled" : ""}
           aria-pressed="${k.key === currentQuick ? "true" : "false"}"
         >
           <span class="crm-kpi-value">${Number(k.value).toLocaleString("it-IT")}</span>
@@ -5075,13 +5075,14 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
       <span class="sales-request-stale-banner-text">⚠️ <strong>${staleCount}</strong> ${state.lang === "it"
         ? `richiest${staleCount === 1 ? "a" : "e"} ferm${staleCount === 1 ? "a" : "e"} da 5+ giorni senza contatto, su tutto il totale`
         : `request${staleCount === 1 ? "" : "s"} stuck 5+ days without contact, across the whole dataset`}</span>
-      <button type="button" data-action="show-stale-sales-requests">${state.lang === "it" ? "Mostra e ordina per urgenza" : "Show, sorted by urgency"}</button>
+      <button type="button" data-action="show-stale-sales-requests" ${isLoading ? "disabled" : ""}>${state.lang === "it" ? "Mostra e ordina per urgenza" : "Show, sorted by urgency"}</button>
     ` : "";
   }
   if (ui.salesRequestSortRow) {
     const currentSort = String(state.salesRequestSort || "recent");
     ui.salesRequestSortRow.querySelectorAll(".sales-request-sort-btn").forEach((btn) => {
       btn.classList.toggle("is-active", btn.dataset.value === currentSort);
+      btn.disabled = isLoading;
     });
   }
 }
@@ -14496,9 +14497,6 @@ function getFilteredSalesContents({ ignoreCategory = false } = {}) {
  */
 async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {}) {
   if (!forceReload && state.crmServerPage.loading) return;
-  state.crmServerPage.loading = true;
-  state.crmServerPage.loadError = false;
-  state.crmServerPage.page = page;
   const focusedRequestId = String(requestId || state.crmFocusedRequestId || "").trim();
   // Calcola i parametri subito per confrontarli col cache precedente
   const q          = String(state.search?.salesRequests || "").trim();
@@ -14535,7 +14533,18 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
   const _finalAssignment = _quickAssignment || (assignment === "all" ? "" : assignment);
   const _finalStatus     = _quickStatus || status;
   const sort = String(state.salesRequestSort || "recent");
-  const queryKey   = `${page}|${focusedRequestId}|${q}|${_finalStatus}|${_finalAssignment}|${source}|${_quick}|${_quickResellerOnly}|${sort}`;
+  const queryKey   = `${page}|${focusedRequestId}|${q}|${_finalStatus}|${_finalAssignment}|${source}|${_quick}|${_quickService}|${_quickContactState}|${_quickDateFrom}|${_quickResellerOnly}|${_quickStale}|${sort}`;
+  if (!forceReload && state.crmServerPage?.loadedAt && state.crmServerPage?._queryKey === queryKey) {
+    renderSalesRequests();
+    return;
+  }
+  const requestSeq = ++_crmPageRequestSeq;
+  state.crmServerPage = {
+    ...state.crmServerPage,
+    loading: true,
+    loadError: false,
+    page,
+  };
   // Notifica subito renderSalesRequests: se ci sono dati cached mostra quelli,
   // altrimenti (loadedAt === 0) mostra lo spinner e ritorna in attesa del fetch.
 	  renderSalesRequests();
@@ -14553,6 +14562,7 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
     if (_quickStale)        params.set("stale", "1");
     if (sort === "urgent")  params.set("sort", "urgent");
     const data = await apiFetch(`/api/sales/requests?${params}`);
+    if (requestSeq !== _crmPageRequestSeq) return;
     // Protezione ottimistica: se un PATCH è in-volo (o nel grace period da 1.5s),
     // mantieni la versione locale per quell'item — la risposta del server potrebbe
     // essere "vecchia" (fetched prima che il PATCH arrivasse al DB).
@@ -14603,8 +14613,10 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
     if (selectedInPage) rememberSelectedSalesRequest(selectedInPage);
     // Aggiorna anche state.salesRequests per compatibilità con detail panel etc.
     state.salesRequests = state.crmServerPage.items;
+    invalidateSalesRequestsFilterCache();
     renderSalesRequests();
 	  } catch (err) {
+    if (requestSeq !== _crmPageRequestSeq) return;
 	    state.crmServerPage.loading = false;
 	    state.crmServerPage.loadError = true;
 	    if (focusedRequestId && state.crmFocusedRequestId === focusedRequestId) {
@@ -15060,6 +15072,8 @@ function renderSalesRequests() {
     state.salesAssignmentCatalogLoadedAt = Date.now();
     loadCatalogItems("sales_assignment").catch(() => { state.salesAssignmentCatalogLoadedAt = 0; });
   }
+  const isCrmLoading = Boolean(state.crmServerPage?.loading);
+  document.getElementById("sales-requests")?.classList.toggle("crm-is-loading", isCrmLoading);
   syncSalesRequestFilters();
   // Vista kanban: delega a renderSalesRequestsKanban()
   if (state.crmViewMode === "kanban") {
@@ -15148,6 +15162,8 @@ function renderSalesRequests() {
   renderSalesRequestBulkBar(pageItems);
   if (ui.salesRequestsList) {
     ui.salesRequestsList.classList.toggle("is-compact", Boolean(state.salesRequestCompactMode));
+    ui.salesRequestsList.classList.toggle("is-loading", isCrmLoading);
+    ui.salesRequestsList.setAttribute("aria-busy", isCrmLoading ? "true" : "false");
 	    withScrollPreservation(ui.salesRequestsList, () => {
 	      const focusedRequestMissing = Boolean(state.crmServerPage?.focusedRequestId && !pageItems.length);
 	      const emptyStateText = state.crmServerPage?.dbUnavailable
@@ -15163,9 +15179,12 @@ function renderSalesRequests() {
 	            ? "La richiesta collegata non è stata trovata con i dati attuali. Potrebbe essere stata eliminata, convertita o non essere accessibile con questo account."
 	            : "The linked request was not found in the current data. It may have been deleted, converted, or unavailable for this account.")
 	        : (state.lang === "it" ? "Nessuna richiesta corrisponde ai filtri." : "No requests match the current filters.");
+      const loadingStrip = isCrmLoading
+        ? `<div class="crm-inline-loading" role="status"><span class="crm-inline-spinner" aria-hidden="true"></span>${state.lang === "it" ? "Aggiornamento contatti assegnati..." : "Updating assigned contacts..."}</div>`
+        : "";
       ui.salesRequestsList.innerHTML = pageItems.length
-        ? renderCrmV2Banner() + pageItems.map((item) => renderCrmV2Row(item, selected, bulkSelectedIds)).join("")
-        : renderCrmV2Banner() + `<div class="info-card">${emptyStateText}</div>`;
+        ? renderCrmV2Banner() + loadingStrip + pageItems.map((item) => renderCrmV2Row(item, selected, bulkSelectedIds)).join("")
+        : renderCrmV2Banner() + loadingStrip + `<div class="info-card">${emptyStateText}</div>`;
     });
   }
   if (ui.salesRequestsPagination) {
@@ -34568,12 +34587,14 @@ bindEvent(ui.salesRequestsSearch, "input", (event) => {
   scheduleSearchRender("sales-requests", () => loadCrmPage({ page: 1, forceReload: true }));
 });
 bindEvent(ui.salesRequestAssignmentFilter, "change", (event) => {
+  if (state.crmServerPage?.loading) return;
   state.filters.salesRequestAssignment = normalizeSalesRequestAssignmentFilter(event.target.value || "all");
   state.salesRequestPage = 1;
   clearSalesRequestBulkSelection({ render: false });
   loadCrmPage({ page: 1, forceReload: true });
 });
 bindEvent(ui.salesRequestStatusFilter, "change", (event) => {
+  if (state.crmServerPage?.loading) return;
   state.filters.salesRequestStatus = event.target.value || "all";
   state.salesRequestPage = 1;
   clearSalesRequestBulkSelection({ render: false });
@@ -34582,6 +34603,7 @@ bindEvent(ui.salesRequestStatusFilter, "change", (event) => {
 function setSalesRequestQuickFilterFromClick(event) {
   const button = event.target.closest("[data-action='set-sales-request-quick-filter']");
   if (!button) return;
+  if (button.disabled || state.crmServerPage?.loading) return;
   state.filters.salesRequestQuick = button.dataset.value || "all";
   if (button.dataset.sort) {
     state.salesRequestSort = button.dataset.sort === "urgent" ? "urgent" : "recent";
@@ -34597,6 +34619,7 @@ bindEvent(ui.salesRequestWorkflow, "click", setSalesRequestQuickFilterFromClick)
 bindEvent(ui.salesRequestSortRow, "click", (event) => {
   const button = event.target.closest("[data-action='set-sales-request-sort']");
   if (!button) return;
+  if (button.disabled || state.crmServerPage?.loading) return;
   state.salesRequestSort = button.dataset.value === "urgent" ? "urgent" : "recent";
   state.salesRequestPage = 1;
   loadCrmPage({ page: 1, forceReload: true });
@@ -34604,6 +34627,7 @@ bindEvent(ui.salesRequestSortRow, "click", (event) => {
 bindEvent(ui.salesRequestStaleBanner, "click", (event) => {
   const button = event.target.closest("[data-action='show-stale-sales-requests']");
   if (!button) return;
+  if (button.disabled || state.crmServerPage?.loading) return;
   state.filters.salesRequestQuick = "stale";
   state.salesRequestSort = "urgent";
   state.salesRequestPage = 1;

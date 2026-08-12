@@ -1143,6 +1143,7 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS sales_requests_status_idx      ON sales_requests (status);
       CREATE INDEX IF NOT EXISTS sales_requests_phone_idx       ON sales_requests (phone);
       CREATE INDEX IF NOT EXISTS sales_requests_assignment_idx  ON sales_requests (assignment);
+      CREATE INDEX IF NOT EXISTS sales_requests_assignment_lower_idx ON sales_requests ((lower(trim(coalesce(assignment,'')))));
       CREATE INDEX IF NOT EXISTS sales_requests_source_idx      ON sales_requests (source);
       CREATE INDEX IF NOT EXISTS sales_requests_updated_at_idx  ON sales_requests (updated_at DESC);
       ALTER TABLE sales_requests ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
@@ -1622,11 +1623,15 @@ function invalidateJobsDbCache() { _jobsDbCache = null; _jobsDbCacheAt = 0; }
 
 let _salesRequestsDbCache = null;
 let _salesRequestsDbCacheAt = 0;
+let _salesRequestsStatsDbCache = null;
+let _salesRequestsStatsDbCacheAt = 0;
 const SALES_REQUESTS_DB_CACHE_TTL_MS = 15_000; // 15 secondi (eredita TTL legacy)
 
 function invalidateSalesRequestsDbCache() {
   _salesRequestsDbCache = null;
   _salesRequestsDbCacheAt = 0;
+  _salesRequestsStatsDbCache = null;
+  _salesRequestsStatsDbCacheAt = 0;
 }
 
 async function getSalesRequestsFromDb() {
@@ -1705,6 +1710,68 @@ function getSalesRequestPipelineBucketSql(alias = "sr") {
   END`;
 }
 
+async function getSalesRequestsStatsFromDb(pool, shadowCte) {
+  const now = Date.now();
+  if (_salesRequestsStatsDbCache && now - _salesRequestsStatsDbCacheAt < SALES_REQUESTS_DB_CACHE_TTL_MS) {
+    return _salesRequestsStatsDbCache;
+  }
+  const pipelineBucketSql = getSalesRequestPipelineBucketSql("sr");
+  const statsRes = await pool.query(`${shadowCte}
+    SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE sr.status IS NULL OR sr.status = '' OR sr.status = 'new')::int AS new_count,
+      COUNT(*) FILTER (WHERE sr.assignment IS NULL OR sr.assignment = '')::int AS unassigned_count,
+      COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '7 days')::int AS this_week_count,
+      COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= CURRENT_DATE)::int AS today_count,
+      COUNT(*) FILTER (WHERE LOWER(TRIM(coalesce(sr.status,''))) IN (
+        'quoted', 'quote', 'preventivo inviato', 'offerta inviata'
+      )
+      OR (
+        LOWER(coalesce(sr.status,'')) LIKE '%preventivo%'
+        AND LOWER(coalesce(sr.status,'')) LIKE '%inviato%'
+      ))::int AS quoted_count,
+      COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'unassigned')::int AS pipeline_unassigned_count,
+      COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'new')::int AS pipeline_new_count,
+      COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'contacted')::int AS pipeline_contacted_count,
+      COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'followup')::int AS pipeline_followup_count,
+      COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'quoting')::int AS pipeline_quoting_count,
+      COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'quoted')::int AS pipeline_quoted_count,
+      COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'won')::int AS pipeline_won_count,
+      COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'lost')::int AS pipeline_lost_count,
+      COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '14 days' AND COALESCE(sd.received_at, sr.created_at) < NOW() - INTERVAL '7 days')::int AS prev_week_count,
+      COUNT(*) FILTER (
+        WHERE (sr.status IS NULL OR sr.status = '' OR sr.status = 'new')
+          AND (sr.linked_order_id IS NULL OR sr.linked_order_id = '')
+          AND COALESCE(sd.received_at, sr.created_at) <= NOW() - INTERVAL '5 days'
+      )::int AS stale_count
+    FROM sales_requests sr
+    LEFT JOIN shadow_dates sd ON sd.sr_id = sr.id`);
+  const sr = statsRes.rows[0] || {};
+  const stats = {
+    total: sr.total ?? 0,
+    new: sr.new_count ?? 0,
+    unassigned: sr.unassigned_count ?? 0,
+    thisWeek: sr.this_week_count ?? 0,
+    today: sr.today_count ?? 0,
+    quoted: sr.quoted_count ?? 0,
+    prevWeek: sr.prev_week_count ?? 0,
+    stale: sr.stale_count ?? 0,
+    pipeline: {
+      unassigned: sr.pipeline_unassigned_count ?? 0,
+      new: sr.pipeline_new_count ?? 0,
+      contacted: sr.pipeline_contacted_count ?? 0,
+      followup: sr.pipeline_followup_count ?? 0,
+      quoting: sr.pipeline_quoting_count ?? 0,
+      quoted: sr.pipeline_quoted_count ?? 0,
+      won: sr.pipeline_won_count ?? 0,
+      lost: sr.pipeline_lost_count ?? 0,
+    },
+  };
+  _salesRequestsStatsDbCache = stats;
+  _salesRequestsStatsDbCacheAt = now;
+  return stats;
+}
+
 /**
  * CRM server-side search con FTS, filtri e paginazione.
  * Usato da GET /api/sales/requests.
@@ -1781,8 +1848,17 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
     where.push(`(assignment IS NULL OR assignment = '')`);
   } else if (assignmentFilter) {
     const assignmentKey = normalizeSalesAssignmentKey(assignmentFilter);
+    params.push(assignmentKey);
+    const exactAssignmentParam = `$${params.length}`;
+    params.push(`${assignmentKey} %`);
+    const prefixAssignmentParam = `$${params.length}`;
     params.push(`%${assignmentKey}%`);
-    where.push(`trim(regexp_replace(lower(translate(coalesce(assignment,''), 'àèéìíòóùúÀÈÉÌÍÒÓÙÚ', 'aaeiioouuAAEIIOOUU')), '[^a-z0-9]+', ' ', 'g')) LIKE $${params.length}`);
+    const looseAssignmentParam = `$${params.length}`;
+    where.push(`(
+      lower(trim(coalesce(assignment,''))) = ${exactAssignmentParam}
+      OR lower(trim(coalesce(assignment,''))) LIKE ${prefixAssignmentParam}
+      OR trim(regexp_replace(lower(translate(coalesce(assignment,''), 'àèéìíòóùúÀÈÉÌÍÒÓÙÚ', 'aaeiioouuAAEIIOOUU')), '[^a-z0-9]+', ' ', 'g')) LIKE ${looseAssignmentParam}
+    )`);
   }
   if (!requestedId && source && source !== "all") {
     params.push(String(source));
@@ -1882,7 +1958,6 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
     'quoted', 'quote', 'preventivo inviato', 'offerta inviata'
   )
   OR (${statusSql} LIKE '%preventivo%' AND ${statusSql} LIKE '%inviato%'))`;
-  const pipelineBucketSql = getSalesRequestPipelineBucketSql("sr");
   const followupStatusSql = `(
     ${statusSql} IN (
       'followup', 'follow up', 'da richiamare', 'richiamare', 'richiamata',
@@ -1919,7 +1994,7 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
            sr.source_row_number DESC NULLS LAST`;
 
   try {
-    const [countRes, dataRes, statsRes] = await Promise.all([
+    const [countRes, dataRes, stats] = await Promise.all([
       pool.query(
         `${SHADOW_CTE}
          SELECT COUNT(*) AS total
@@ -1943,63 +2018,14 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
          LIMIT ${limitN} OFFSET ${offset}`,
         params,
       ),
-      pool.query(`${SHADOW_CTE}
-        SELECT
-          COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE sr.status IS NULL OR sr.status = '' OR sr.status = 'new')::int AS new_count,
-          COUNT(*) FILTER (WHERE sr.assignment IS NULL OR sr.assignment = '')::int AS unassigned_count,
-          COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '7 days')::int AS this_week_count,
-          COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= CURRENT_DATE)::int AS today_count,
-          COUNT(*) FILTER (WHERE LOWER(TRIM(coalesce(sr.status,''))) IN (
-            'quoted', 'quote', 'preventivo inviato', 'offerta inviata'
-          )
-          OR (
-            LOWER(coalesce(sr.status,'')) LIKE '%preventivo%'
-            AND LOWER(coalesce(sr.status,'')) LIKE '%inviato%'
-          ))::int AS quoted_count,
-          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'unassigned')::int AS pipeline_unassigned_count,
-          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'new')::int AS pipeline_new_count,
-          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'contacted')::int AS pipeline_contacted_count,
-          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'followup')::int AS pipeline_followup_count,
-          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'quoting')::int AS pipeline_quoting_count,
-          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'quoted')::int AS pipeline_quoted_count,
-          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'won')::int AS pipeline_won_count,
-          COUNT(*) FILTER (WHERE (${pipelineBucketSql}) = 'lost')::int AS pipeline_lost_count,
-          COUNT(*) FILTER (WHERE COALESCE(sd.received_at, sr.created_at) >= NOW() - INTERVAL '14 days' AND COALESCE(sd.received_at, sr.created_at) < NOW() - INTERVAL '7 days')::int AS prev_week_count,
-          COUNT(*) FILTER (
-            WHERE (sr.status IS NULL OR sr.status = '' OR sr.status = 'new')
-              AND (sr.linked_order_id IS NULL OR sr.linked_order_id = '')
-              AND COALESCE(sd.received_at, sr.created_at) <= NOW() - INTERVAL '5 days'
-          )::int AS stale_count
-        FROM sales_requests sr
-        LEFT JOIN shadow_dates sd ON sd.sr_id = sr.id`),
+      getSalesRequestsStatsFromDb(pool, SHADOW_CTE),
     ]);
-    const sr = statsRes.rows[0] || {};
     return {
       total: parseInt(countRes.rows[0]?.total || "0", 10),
       page: Number(page) || 1,
       limit: limitN,
       items: dataRes.rows.map(dbRowToSalesRequest),
-      stats: {
-        total: sr.total ?? 0,
-        new: sr.new_count ?? 0,
-        unassigned: sr.unassigned_count ?? 0,
-        thisWeek: sr.this_week_count ?? 0,
-        today: sr.today_count ?? 0,
-        quoted: sr.quoted_count ?? 0,
-        prevWeek: sr.prev_week_count ?? 0,
-        stale: sr.stale_count ?? 0,
-        pipeline: {
-          unassigned: sr.pipeline_unassigned_count ?? 0,
-          new: sr.pipeline_new_count ?? 0,
-          contacted: sr.pipeline_contacted_count ?? 0,
-          followup: sr.pipeline_followup_count ?? 0,
-          quoting: sr.pipeline_quoting_count ?? 0,
-          quoted: sr.pipeline_quoted_count ?? 0,
-          won: sr.pipeline_won_count ?? 0,
-          lost: sr.pipeline_lost_count ?? 0,
-        },
-      },
+      stats,
     };
   } catch (err) {
     console.warn("[db] searchSalesRequestsFromDb:", err?.message);
