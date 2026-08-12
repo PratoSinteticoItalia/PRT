@@ -175,6 +175,7 @@ function readIntegerEnv(name, fallback) {
   const value = Number.parseInt(String(process.env[name] || ""), 10);
   return Number.isFinite(value) ? value : fallback;
 }
+const DB_OPERATION_TIMEOUT_MS = Math.max(3_000, readIntegerEnv("DB_OPERATION_TIMEOUT_MS", 15_000));
 const SHOPIFY_REST_RECENT_SYNC_MAX_PAGES = Math.max(1, readIntegerEnv("SHOPIFY_REST_RECENT_SYNC_MAX_PAGES", 4));
 const SHOPIFY_REST_FULL_SYNC_MAX_PAGES = Math.max(
   SHOPIFY_REST_RECENT_SYNC_MAX_PAGES,
@@ -734,7 +735,9 @@ async function getPgPool() {
     // emits an unhandled 'error' on the Client and crashes Node.  Keep the
     // idle timeout well below the host's kill window.
     idleTimeoutMillis: 8_000,
-    connectionTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 5_000,
+    statement_timeout: DB_OPERATION_TIMEOUT_MS,
+    query_timeout: DB_OPERATION_TIMEOUT_MS,
   });
   // Pool-level error handler: covers idle-client TCP resets so they don't
   // bubble up as unhandled process exceptions.
@@ -742,6 +745,37 @@ async function getPgPool() {
     console.error("[pg-pool] client error (handled):", err?.message || err);
   });
   return pgPool;
+}
+
+function withOperationTimeout(promise, timeoutMs = DB_OPERATION_TIMEOUT_MS, label = "operation") {
+  let timeoutId = null;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const err = new Error(`${label}_timeout`);
+      err.code = "OPERATION_TIMEOUT";
+      reject(err);
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
+function isDatabaseConnectivityError(err = null) {
+  const code = String(err?.code || "").toUpperCase();
+  const message = String(err?.message || err || "").toLowerCase();
+  return code === "OPERATION_TIMEOUT"
+    || code === "ENOTFOUND"
+    || code === "ETIMEDOUT"
+    || code === "ECONNREFUSED"
+    || code === "ECONNRESET"
+    || code === "EAI_AGAIN"
+    || message.includes("timeout")
+    || message.includes("getaddrinfo")
+    || message.includes("connect")
+    || message.includes("terminating connection")
+    || message.includes("connection terminated")
+    || message.includes("network");
 }
 
 /**
@@ -1799,7 +1833,12 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
   // di distinguere "davvero zero risultati" da "qui il CRM proprio non è consultabile",
   // invece di mostrare un fuorviante "nessuna richiesta corrisponde ai filtri".
   if (!USE_POSTGRES) return { total: 0, page, limit, items: [], dbUnavailable: true };
-  await ensureRelationalSchema();
+  try {
+    await withOperationTimeout(ensureRelationalSchema(), DB_OPERATION_TIMEOUT_MS, "crm_schema");
+  } catch (err) {
+    console.warn("[db] CRM schema/database unavailable:", err?.message);
+    return { total: 0, page: Number(page) || 1, limit, items: [], dbUnavailable: true, error: "database_unreachable" };
+  }
   const pool = await getPgPool();
   const where = [];
   const params = [];
@@ -1991,7 +2030,7 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
            sr.source_row_number DESC NULLS LAST`;
 
   try {
-    const [countRes, dataRes, stats] = await Promise.all([
+    const [countRes, dataRes, stats] = await withOperationTimeout(Promise.all([
       pool.query(
         `${SHADOW_CTE}
          SELECT COUNT(*) AS total
@@ -2016,7 +2055,7 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
         params,
       ),
       includeStats ? getSalesRequestsStatsFromDb(pool, SHADOW_CTE) : Promise.resolve(null),
-    ]);
+    ]), DB_OPERATION_TIMEOUT_MS, "crm_search");
     return {
       total: parseInt(countRes.rows[0]?.total || "0", 10),
       page: Number(page) || 1,
@@ -2026,7 +2065,16 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
     };
   } catch (err) {
     console.warn("[db] searchSalesRequestsFromDb:", err?.message);
-    return { total: 0, page: Number(page) || 1, limit: limitN, items: [] };
+    const dbUnavailable = isDatabaseConnectivityError(err);
+    return {
+      total: 0,
+      page: Number(page) || 1,
+      limit: limitN,
+      items: [],
+      dbUnavailable: true,
+      loadError: !dbUnavailable,
+      error: dbUnavailable ? "database_unreachable" : "crm_search_failed",
+    };
   }
 }
 

@@ -1394,6 +1394,7 @@ const salesRequestPendingPatchGraceTimers = new Map();
 // Evita sia i drop silenti (retry singolo con __retried) sia le race condition.
 const salesRequestPatchQueue = new Map();
 let _crmPageRequestSeq = 0;
+const CRM_REQUEST_TIMEOUT_MS = 20_000;
 
 // Memoization per getFilteredSalesRequests — evita sort O(N log N) + filter O(N)
 // su 8180 record ad ogni renderSalesRequests (che viene chiamata 2x per render)
@@ -4890,8 +4891,8 @@ function isSalesRequestsDbUnavailable() {
 
 function getSalesRequestsDbUnavailableMessage() {
   return state.lang === "it"
-    ? "CRM non collegato: questo server locale e partito senza DATABASE_URL, quindi non puo leggere le richieste reali."
-    : "CRM not connected: this local server started without DATABASE_URL, so it cannot read real requests.";
+    ? "CRM non collegato: questo server non riesce a raggiungere il database configurato, quindi non puo leggere le richieste reali."
+    : "CRM not connected: this server cannot reach the configured database, so it cannot read real requests.";
 }
 
 function syncSalesRequestWriteControls() {
@@ -5086,7 +5087,7 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
       ui.salesRequestInsights.innerHTML = `
         <div class="crm-kpi-unavailable">
           <strong>${state.lang === "it" ? "Database CRM non collegato" : "CRM database not connected"}</strong>
-          <span>${state.lang === "it" ? "Riavvia il server con DATABASE_URL per rivedere le richieste reali." : "Restart the server with DATABASE_URL to see real requests again."}</span>
+          <span>${state.lang === "it" ? "Riavvia il server con un DATABASE_URL raggiungibile per rivedere le richieste reali." : "Restart the server with a reachable DATABASE_URL to see real requests again."}</span>
         </div>
       `;
     } else {
@@ -11819,7 +11820,7 @@ async function loadDashboardCommandSalesSnapshot({ force = false } = {}) {
   state.dashboardCommandSalesError = false;
   if (state.currentView === "dashboard") renderDashboardCommandCenter();
   try {
-    const data = await apiFetch("/api/sales/requests?limit=50&sort=urgent");
+    const data = await apiFetch("/api/sales/requests?limit=50&sort=urgent", { timeoutMs: CRM_REQUEST_TIMEOUT_MS });
     const items = Array.isArray(data.items) ? data.items.map(normalizeSalesRequestRecord) : [];
     state.crmServerPage = {
       total: Number(data.total || 0),
@@ -14628,7 +14629,7 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
     if (sort === "urgent")  params.set("sort", "urgent");
     const shouldIncludeStats = !state.salesRequestsStats || !state.crmServerPage?.loadedAt;
     if (!shouldIncludeStats) params.set("includeStats", "0");
-    const data = await apiFetch(`/api/sales/requests?${params}`);
+    const data = await apiFetch(`/api/sales/requests?${params}`, { timeoutMs: CRM_REQUEST_TIMEOUT_MS });
     if (requestSeq !== _crmPageRequestSeq) return;
     if (data.dbUnavailable) {
       state.crmServerPage = {
@@ -14695,8 +14696,14 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
     renderSalesRequests();
 	  } catch (err) {
     if (requestSeq !== _crmPageRequestSeq) return;
-	    state.crmServerPage.loading = false;
-	    state.crmServerPage.loadError = true;
+    const isNetworkLikeError = Number(err?.status || 0) === 0;
+	    state.crmServerPage = {
+	      ...state.crmServerPage,
+	      loading: false,
+	      loadError: true,
+	      dbUnavailable: isNetworkLikeError ? true : Boolean(state.crmServerPage?.dbUnavailable),
+	      page,
+	    };
 	    if (focusedRequestId && state.crmFocusedRequestId === focusedRequestId) {
 	      state.crmFocusedRequestId = "";
 	    }
@@ -14718,7 +14725,7 @@ async function loadCrmPipeline({ forceReload = false } = {}) {
   // la lista e ri-clicca il bottone pensando che il primo click non abbia funzionato.
   renderSalesRequestsKanban();
   try {
-    const data = await apiFetch("/api/sales/requests/pipeline?limit=25");
+    const data = await apiFetch("/api/sales/requests/pipeline?limit=25", { timeoutMs: CRM_REQUEST_TIMEOUT_MS });
     state.crmPipeline = {
       columns: Array.isArray(data.columns) ? data.columns : [],
       loading: false,
@@ -15181,8 +15188,8 @@ function renderSalesRequests() {
     const isDbUnavailable = Boolean(state.crmServerPage?.dbUnavailable);
     const message = isDbUnavailable
       ? (state.lang === "it"
-        ? "CRM non collegato: questo server locale è partito senza DATABASE_URL, quindi non può leggere le richieste reali."
-        : "CRM not connected: this local server started without DATABASE_URL, so it cannot read real requests.")
+        ? "CRM non collegato: questo server non riesce a raggiungere il database configurato, quindi non può leggere le richieste reali."
+        : "CRM not connected: this server cannot reach the configured database, so it cannot read real requests.")
       : (state.lang === "it" ? "Errore nel caricamento." : "Load error.");
     if (ui.salesRequestsList) {
       ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:16px">
@@ -15251,7 +15258,7 @@ function renderSalesRequests() {
 	    withScrollPreservation(ui.salesRequestsList, () => {
 	      const focusedRequestMissing = Boolean(state.crmServerPage?.focusedRequestId && !pageItems.length);
 	      const emptyStateText = state.crmServerPage?.dbUnavailable
-	        // Ricerca CRM e Postgres-only: senza DATABASE_URL non e un vero zero,
+	        // Ricerca CRM e Postgres-only: senza database raggiungibile non e un vero zero,
 	        // e non dobbiamo far credere che filtri o dati siano vuoti.
 	        ? getSalesRequestsDbUnavailableMessage()
 	        : focusedRequestMissing
