@@ -2161,10 +2161,11 @@ async function upsertOrderToDb(order, userId = null) {
         financial_status, fulfillment_status, payment_method,
         source, note, total,
         totals, billing, warehouse, installation, accounting,
-        line_items, line_details, attachments, converted_job_id, operations_json, created_at, updated_at
+        line_items, line_details, attachments, converted_job_id, operations_json,
+        created_at, updated_at, shopify_raw
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,COALESCE($31::timestamptz,NOW()),NOW()
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,COALESCE($31::timestamptz,NOW()),NOW(),$32
       )
       ON CONFLICT (id) DO UPDATE SET
         shopify_numeric_id=EXCLUDED.shopify_numeric_id,
@@ -2185,6 +2186,7 @@ async function upsertOrderToDb(order, userId = null) {
         line_items=EXCLUDED.line_items, line_details=EXCLUDED.line_details,
         attachments=EXCLUDED.attachments, converted_job_id=EXCLUDED.converted_job_id,
         operations_json=EXCLUDED.operations_json,
+        shopify_raw=EXCLUDED.shopify_raw,
         created_at=LEAST(orders.created_at, EXCLUDED.created_at),
         updated_at=NOW()
     `, [
@@ -2212,6 +2214,7 @@ async function upsertOrderToDb(order, userId = null) {
       order.convertedJobId ? String(order.convertedJobId) : null,
       JSON.stringify(orderWithOps.operations || order.operations || {}),
       toDbIsoOrNull(order.createdAt || order.processedAt),
+      JSON.stringify(order.shopifyRaw || order.shopify_raw || {}),
     ]);
     // Audit log per cambiamenti di stato e operazioni
     const isNewOrder = !existingOrderRow;
@@ -2461,7 +2464,7 @@ async function upsertSalesRequestToDb(request, userId = null, opts = {}) {
 const SALES_REQUEST_ORDER_EXECUTED_STATUS = "ordine eseguito";
 
 function buildSalesRequestShopifyPurchaseMatchesCte() {
-  const orderPhoneSql = sqlPhoneCanon("o.phone");
+  const orderCandidatePhoneSql = sqlPhoneCanon("phone_candidate");
   const requestPhoneSql = sqlPhoneCanon("sr.phone");
   const statusNormSql = getSalesRequestStatusNormSql("sr");
   return `WITH valid_orders AS (
@@ -2470,8 +2473,34 @@ function buildSalesRequestShopifyPurchaseMatchesCte() {
       o.order_number,
       o.created_at AS order_created_at,
       o.financial_status,
-      ${orderPhoneSql} AS phone_norm,
-      lower(trim(coalesce(o.email,''))) AS email_norm
+      ARRAY(
+        SELECT DISTINCT ${orderCandidatePhoneSql}
+        FROM unnest(
+          ARRAY_REMOVE(ARRAY[
+            o.phone,
+            o.billing->>'phone',
+            o.shopify_raw #>> '{billing,phone}',
+            o.shopify_raw #>> '{shipping,phone}',
+            o.shopify_raw #>> '{customer,phone}'
+          ], NULL)
+          || COALESCE(ARRAY(SELECT jsonb_array_elements_text(o.shopify_raw->'phones')), ARRAY[]::text[])
+        ) AS phone_values(phone_candidate)
+        WHERE length(${orderCandidatePhoneSql}) >= 8
+      ) AS phone_norms,
+      ARRAY(
+        SELECT DISTINCT lower(trim(email_candidate))
+        FROM unnest(
+          ARRAY_REMOVE(ARRAY[
+            o.email,
+            o.billing->>'email',
+            o.shopify_raw #>> '{billing,email}',
+            o.shopify_raw #>> '{shipping,email}',
+            o.shopify_raw #>> '{customer,email}'
+          ], NULL)
+          || COALESCE(ARRAY(SELECT jsonb_array_elements_text(o.shopify_raw->'emails')), ARRAY[]::text[])
+        ) AS email_values(email_candidate)
+        WHERE lower(trim(email_candidate)) <> ''
+      ) AS email_norms
     FROM orders o
     WHERE (
         lower(coalesce(o.source,'')) LIKE 'shopify%'
@@ -2510,18 +2539,18 @@ function buildSalesRequestShopifyPurchaseMatchesCte() {
       o.financial_status,
       CASE
         WHEN sr.linked_order_id_norm <> '' AND sr.linked_order_id_norm = o.id THEN 0
-        WHEN length(sr.phone_norm) >= 8 AND length(o.phone_norm) >= 8
-          AND sr.phone_norm = o.phone_norm AND o.order_created_at >= sr.created_at THEN 1
-        WHEN sr.email_norm <> '' AND sr.email_norm = o.email_norm AND o.order_created_at >= sr.created_at THEN 2
-        WHEN sr.email_norm <> '' AND sr.email_norm = o.email_norm THEN 3
+        WHEN length(sr.phone_norm) >= 8
+          AND sr.phone_norm = ANY(o.phone_norms) AND o.order_created_at >= sr.created_at THEN 1
+        WHEN sr.email_norm <> '' AND sr.email_norm = ANY(o.email_norms) AND o.order_created_at >= sr.created_at THEN 2
+        WHEN sr.email_norm <> '' AND sr.email_norm = ANY(o.email_norms) THEN 3
         ELSE 4
       END AS match_rank,
       CASE
         WHEN sr.linked_order_id_norm <> '' AND sr.linked_order_id_norm = o.id THEN 'linked_order_id'
-        WHEN length(sr.phone_norm) >= 8 AND length(o.phone_norm) >= 8
-          AND sr.phone_norm = o.phone_norm AND o.order_created_at >= sr.created_at THEN 'phone_after_request'
-        WHEN sr.email_norm <> '' AND sr.email_norm = o.email_norm AND o.order_created_at >= sr.created_at THEN 'email_after_request'
-        WHEN sr.email_norm <> '' AND sr.email_norm = o.email_norm THEN 'email_contact_purchase'
+        WHEN length(sr.phone_norm) >= 8
+          AND sr.phone_norm = ANY(o.phone_norms) AND o.order_created_at >= sr.created_at THEN 'phone_after_request'
+        WHEN sr.email_norm <> '' AND sr.email_norm = ANY(o.email_norms) AND o.order_created_at >= sr.created_at THEN 'email_after_request'
+        WHEN sr.email_norm <> '' AND sr.email_norm = ANY(o.email_norms) THEN 'email_contact_purchase'
         ELSE 'phone_contact_purchase'
       END AS match_mode
     FROM candidate_requests sr
@@ -2529,12 +2558,11 @@ function buildSalesRequestShopifyPurchaseMatchesCte() {
       (sr.linked_order_id_norm <> '' AND sr.linked_order_id_norm = o.id)
       OR (
         length(sr.phone_norm) >= 8
-        AND length(o.phone_norm) >= 8
-        AND sr.phone_norm = o.phone_norm
+        AND sr.phone_norm = ANY(o.phone_norms)
       )
       OR (
         sr.email_norm <> ''
-        AND sr.email_norm = o.email_norm
+        AND sr.email_norm = ANY(o.email_norms)
       )
     )
   ),
@@ -7611,6 +7639,53 @@ function normalizeBillingAddress(source = {}, fallbackOrder = {}, metadata = {})
   };
 }
 
+function compactShopifyContactSnapshot({ order = {}, billing = {}, shipping = {}, customer = {} } = {}) {
+  const pick = (source = {}, keys = []) => {
+    for (const key of keys) {
+      const value = source?.[key];
+      if (value != null && String(value).trim()) return String(value).trim();
+    }
+    return "";
+  };
+  const unique = (values = []) => {
+    const seen = new Set();
+    const items = [];
+    values.forEach((value) => {
+      const next = String(value || "").trim();
+      if (!next) return;
+      const key = next.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push(next);
+    });
+    return items;
+  };
+  const billingEmail = pick(billing, ["email"]);
+  const shippingEmail = pick(shipping, ["email"]);
+  const customerEmail = pick(customer, ["email"]);
+  const orderEmail = pick(order, ["email"]);
+  const billingPhone = pick(billing, ["phone"]);
+  const shippingPhone = pick(shipping, ["phone"]);
+  const customerPhone = pick(customer, ["phone"]);
+  const orderPhone = pick(order, ["phone"]);
+  return {
+    emails: unique([orderEmail, customerEmail, billingEmail, shippingEmail]),
+    phones: unique([orderPhone, customerPhone, billingPhone, shippingPhone]),
+    billing: {
+      email: billingEmail,
+      phone: billingPhone,
+    },
+    shipping: {
+      email: shippingEmail,
+      phone: shippingPhone,
+    },
+    customer: {
+      email: customerEmail,
+      phone: customerPhone,
+    },
+  };
+}
+
 function normalizeOrderTotals(source = {}, fallbackGross = 0) {
   const lineDetails = Array.isArray(source.lineDetails) ? source.lineDetails.map((item) => normalizeLineDetailRecord(item)) : [];
   const lineNetSubtotal = Number(lineDetails.reduce((sum, item) => sum + toNumber(item.totalPrice || 0), 0).toFixed(2));
@@ -11543,6 +11618,15 @@ function normalizeOrderPayload(order, index) {
   const shopifyNumericId = String(order.id || order.order_id || "").trim();
   const shopifyGraphqlId = String(order.admin_graphql_api_id || order.shopifyGraphqlId || "").trim();
   const invoiceRequired = inferInvoiceRequired(order.accounting, billing);
+  const shopifyRaw = compactShopifyContactSnapshot({
+    order: {
+      email: order.email || "",
+      phone: order.phone || "",
+    },
+    billing: billingRaw,
+    shipping,
+    customer,
+  });
 
   return {
     id: shopifyNumericId || String(order.order_number || `import-${Date.now()}-${index}`),
@@ -11590,6 +11674,7 @@ function normalizeOrderPayload(order, index) {
     }, Array.isArray(order.payment_gateway_names) ? order.payment_gateway_names.join(", ") : String(order.paymentMethod || ""), billing),
     attachments: Array.isArray(order.attachments) ? order.attachments : [],
     convertedJobId: null,
+    shopifyRaw,
     createdAt: order.created_at || order.createdAt || order.processed_at || order.processedAt || new Date().toISOString(),
     updatedAt: order.updated_at || order.updatedAt || order.created_at || order.createdAt || order.processed_at || order.processedAt || new Date().toISOString(),
   };
@@ -11644,6 +11729,15 @@ function normalizeGraphqlOrder(node, index) {
   const shopifyNumericId = String(node.legacyResourceId || "").trim();
   const shopifyGraphqlId = String(node.id || "").trim();
   const invoiceRequired = inferInvoiceRequired(node.accounting, billing);
+  const shopifyRaw = compactShopifyContactSnapshot({
+    order: {
+      email: node.email || "",
+      phone: node.phone || "",
+    },
+    billing: billingAddr,
+    shipping,
+    customer,
+  });
 
   return {
     id: shopifyNumericId || String(node.id || `graphql-${Date.now()}-${index}`),
@@ -11687,6 +11781,7 @@ function normalizeGraphqlOrder(node, index) {
     }, Array.isArray(node.paymentGatewayNames) ? node.paymentGatewayNames.join(", ") : "", billing),
     attachments: Array.isArray(node.attachments) ? node.attachments : [],
     convertedJobId: null,
+    shopifyRaw,
     createdAt: node.createdAt || node.processedAt || new Date().toISOString(),
     updatedAt: node.updatedAt || node.processedAt || node.createdAt || new Date().toISOString(),
   };
