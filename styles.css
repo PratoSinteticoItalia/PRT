@@ -23516,14 +23516,14 @@ body {
 }
 .sales-request-workflow-steps {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 8px;
 }
 .sales-request-workflow-step {
   min-width: 0;
   min-height: 92px;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto 1fr auto;
   align-items: start;
   gap: 8px 10px;
@@ -23559,19 +23559,25 @@ body {
   transform: none !important;
 }
 .sales-request-workflow-index {
+  grid-column: 1;
+  grid-row: 1;
   color: #87938c;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .08em;
 }
 .sales-request-workflow-copy {
+  grid-column: 1;
+  grid-row: 1 / span 2;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
+  padding-left: 28px;
 }
 .sales-request-workflow-copy strong {
-  overflow-wrap: normal;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   word-break: normal;
   font-size: 13px;
   line-height: 1.15;
@@ -23582,9 +23588,13 @@ body {
   line-height: 1.2;
 }
 .sales-request-workflow-count {
+  grid-column: 2;
+  grid-row: 1;
   justify-self: end;
+  min-width: 3.8ch;
+  text-align: right;
   color: #10251c;
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 800;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -23623,7 +23633,7 @@ body {
   to { transform: rotate(360deg); }
 }
 #sales-requests .sales-request-list.is-loading .sales-request-card.crm-row {
-  opacity: .58;
+  opacity: .82;
   pointer-events: none;
 }
 .crm-is-loading .sales-filter-select {
