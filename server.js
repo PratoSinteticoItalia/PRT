@@ -1111,6 +1111,7 @@ async function ensureRelationalSchema() {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS operations_json JSONB DEFAULT '{}';
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS shopify_raw JSONB DEFAULT '{}';
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_token TEXT;
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_token_created_at TIMESTAMPTZ;
       CREATE UNIQUE INDEX IF NOT EXISTS orders_tracking_token_idx ON orders (tracking_token) WHERE tracking_token IS NOT NULL;

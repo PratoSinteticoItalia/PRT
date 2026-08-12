@@ -14565,6 +14565,17 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
     if (!shouldIncludeStats) params.set("includeStats", "0");
     const data = await apiFetch(`/api/sales/requests?${params}`);
     if (requestSeq !== _crmPageRequestSeq) return;
+    if (data.dbUnavailable) {
+      state.crmServerPage = {
+        ...state.crmServerPage,
+        loading: false,
+        loadError: true,
+        dbUnavailable: true,
+        page,
+      };
+      renderSalesRequests();
+      return;
+    }
     // Protezione ottimistica: se un PATCH è in-volo (o nel grace period da 1.5s),
     // mantieni la versione locale per quell'item — la risposta del server potrebbe
     // essere "vecchia" (fetched prima che il PATCH arrivasse al DB).
@@ -15102,9 +15113,15 @@ function renderSalesRequests() {
   }
   // Errore di caricamento: mostra messaggio con tasto Riprova, non "Nessuna richiesta".
   if (state.crmServerPage?.loadError && !state.crmServerPage?.loadedAt) {
+    const isDbUnavailable = Boolean(state.crmServerPage?.dbUnavailable);
+    const message = isDbUnavailable
+      ? (state.lang === "it"
+        ? "CRM non collegato: questo server locale è partito senza DATABASE_URL, quindi non può leggere le richieste reali."
+        : "CRM not connected: this local server started without DATABASE_URL, so it cannot read real requests.")
+      : (state.lang === "it" ? "Errore nel caricamento." : "Load error.");
     if (ui.salesRequestsList) {
       ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:16px">
-        <span style="display:block;margin-bottom:8px">${state.lang === "it" ? "Errore nel caricamento." : "Load error."}</span>
+        <span style="display:block;margin-bottom:8px">${escapeHtml(message)}</span>
         <button class="ghost-button small-button" type="button" data-action="reload-crm-page">${state.lang === "it" ? "Riprova" : "Retry"}</button>
       </div>`;
     }
