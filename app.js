@@ -14561,6 +14561,8 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
     if (_quickResellerOnly) params.set("resellerAssigned", "1");
     if (_quickStale)        params.set("stale", "1");
     if (sort === "urgent")  params.set("sort", "urgent");
+    const shouldIncludeStats = !state.salesRequestsStats || !state.crmServerPage?.loadedAt;
+    if (!shouldIncludeStats) params.set("includeStats", "0");
     const data = await apiFetch(`/api/sales/requests?${params}`);
     if (requestSeq !== _crmPageRequestSeq) return;
     // Protezione ottimistica: se un PATCH è in-volo (o nel grace period da 1.5s),
@@ -30090,22 +30092,27 @@ function formatShopifySyncError(rawMessage = "") {
     : `Shopify sync failed. ${message || "Check the Shopify connection."}`;
 }
 
-async function runShopifySync({ silent = false } = {}) {
+async function runShopifySync({ silent = false, fullHistory = false } = {}) {
   if (state.syncInProgress || shopifyAutoSyncInFlight) return false;
   shopifyAutoSyncInFlight = true;
   shopifyAutoSyncLastAttemptAt = Date.now();
+  const timeoutMs = fullHistory ? 180_000 : 75_000;
   const safetyTimer = window.setTimeout(() => {
     if (shopifyAutoSyncInFlight) {
       shopifyAutoSyncInFlight = false;
       state.syncInProgress = false;
       updateShell();
     }
-  }, 85_000);
+  }, timeoutMs + 10_000);
   try {
     state.syncInProgress = true;
     updateShell();
     if (!silent) clearStatus(ui.ordersStatus);
-    state.orders = await apiFetch("/api/orders/sync-shopify", { method: "POST", timeoutMs: 75_000 });
+    state.orders = await apiFetch("/api/orders/sync-shopify", {
+      method: "POST",
+      body: JSON.stringify({ fullHistory: Boolean(fullHistory) }),
+      timeoutMs,
+    });
     shopifyOrderRefreshAttempted.clear();
     shopifyOrderRefreshInFlight.clear();
     shopifyOrderRefreshErrors.clear();
@@ -30132,7 +30139,7 @@ async function runShopifySync({ silent = false } = {}) {
 }
 
 async function syncShopifyOrders() {
-  await runShopifySync({ silent: false });
+  await runShopifySync({ silent: false, fullHistory: true });
 }
 
 async function importOrdersJson() {

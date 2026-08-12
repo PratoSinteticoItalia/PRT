@@ -171,6 +171,16 @@ const SHOPIFY_AUTO_SYNC_INTERVAL_MS = 1000 * 60 * 30;
 const LOGIN_MAX_ATTEMPTS = 20;
 const SHOPIFY_FETCH_TIMEOUT_MS = 10_000;
 const SHOPIFY_MAX_RETRIES = 2;
+function readIntegerEnv(name, fallback) {
+  const value = Number.parseInt(String(process.env[name] || ""), 10);
+  return Number.isFinite(value) ? value : fallback;
+}
+const SHOPIFY_REST_RECENT_SYNC_MAX_PAGES = Math.max(1, readIntegerEnv("SHOPIFY_REST_RECENT_SYNC_MAX_PAGES", 4));
+const SHOPIFY_REST_FULL_SYNC_MAX_PAGES = Math.max(
+  SHOPIFY_REST_RECENT_SYNC_MAX_PAGES,
+  readIntegerEnv("SHOPIFY_REST_FULL_SYNC_MAX_PAGES", 40),
+);
+const SHOPIFY_FULL_SYNC_ORDER_COUNT_THRESHOLD = Math.max(0, readIntegerEnv("SHOPIFY_FULL_SYNC_ORDER_COUNT_THRESHOLD", 1500));
 // 50MB di default: post marketing con fino a 8 foto a 4MB l'una (limite lato
 // client in readMarketingAssetFile) arrivano a ~43MB una volta codificate in
 // base64 (+33% overhead) dentro il body JSON — 25MB non bastava più.
@@ -1782,7 +1792,7 @@ async function getSalesRequestsStatsFromDb(pool, shadowCte) {
  * CRM server-side search con FTS, filtri e paginazione.
  * Usato da GET /api/sales/requests.
  */
-async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", resellerId = "", resellerAssigned = false, stale = false, sort = "recent", page = 1, limit = 50 } = {}) {
+async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignment = "", source = "", service = "", contactState = "", dateFrom = "", dateTo = "", resellerId = "", resellerAssigned = false, stale = false, sort = "recent", page = 1, limit = 50, includeStats = true } = {}) {
   // Nessun Postgres collegato (es. preview locale senza DATABASE_URL): la ricerca CRM
   // è Postgres-only, non c'è fallback sul blob JSON. `dbUnavailable` permette al client
   // di distinguere "davvero zero risultati" da "qui il CRM proprio non è consultabile",
@@ -1921,37 +1931,17 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
   const offset = (Math.max(1, Number(page) || 1) - 1) * (Number(limit) || 50);
   const limitN = Math.min(200, Math.max(1, Number(limit) || 50));
 
-  // CTE shadow_dates: ricava la data IMAP reale per ogni sales_request, con DOPPIO fallback:
-  //   1) linkage diretto (promoted_to_sales_request_id) — caso normale post-reconcile
-  //   2) match per telefono normalizzato — caso sopravvissuto al dedup (il sales_request
-  //      è il record Sheets sopravvissuto, ma il telefono matcha una shadow IMAP esistente)
-  // Senza il fallback per telefono, i record sopravvissuti al dedup avrebbero sempre
-  // created_at = data di re-backfill ("08 giu" artificiale).
-  const normPhoneSql = sqlPhoneCanon;
-  const SHADOW_CTE = `WITH shadow_by_id AS (
+  // CTE shadow_dates leggera: usa solo il linkage diretto shadow -> richiesta.
+  // Il vecchio fallback per telefono normalizzato faceva un join globale
+  // sales_requests x incoming_leads_shadow ad ogni filtro, ed era la causa più
+  // visibile del caricamento lungo quando si selezionavano assegnazioni o stati.
+  const SHADOW_CTE = `WITH shadow_dates AS (
     SELECT promoted_to_sales_request_id AS sr_id,
            MIN(received_at) AS received_at
     FROM incoming_leads_shadow
     WHERE promoted_to_sales_request_id IS NOT NULL
       AND received_at IS NOT NULL
     GROUP BY promoted_to_sales_request_id
-  ),
-  shadow_by_phone AS (
-    SELECT sr.id AS sr_id,
-           MIN(ils.received_at) AS received_at
-    FROM sales_requests sr
-    INNER JOIN incoming_leads_shadow ils
-      ON ${normPhoneSql("sr.phone")} = ${normPhoneSql("ils.parsed_payload->>'telefono'")}
-      AND length(${normPhoneSql("sr.phone")}) >= 8
-      AND ils.received_at IS NOT NULL
-    WHERE NOT EXISTS (SELECT 1 FROM shadow_by_id sbi WHERE sbi.sr_id = sr.id)
-    GROUP BY sr.id
-  ),
-  shadow_dates AS (
-    SELECT COALESCE(sbi.sr_id, sbp.sr_id) AS sr_id,
-           COALESCE(sbi.received_at, sbp.received_at) AS received_at
-    FROM shadow_by_id sbi
-    FULL OUTER JOIN shadow_by_phone sbp ON sbp.sr_id = sbi.sr_id
   )`;
   // I riferimenti a ils.received_at nelle WHERE vanno tradotti a sd.received_at
   const whereWithSd = whereSrPrefixed.replace(/ils\.received_at/g, "sd.received_at");
@@ -2024,7 +2014,7 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
          LIMIT ${limitN} OFFSET ${offset}`,
         params,
       ),
-      getSalesRequestsStatsFromDb(pool, SHADOW_CTE),
+      includeStats ? getSalesRequestsStatsFromDb(pool, SHADOW_CTE) : Promise.resolve(null),
     ]);
     return {
       total: parseInt(countRes.rows[0]?.total || "0", 10),
@@ -5215,6 +5205,8 @@ function buildDefaultStore() {
       lastSyncAt: "",
       lastSyncStatus: "",
       lastSyncMessage: "",
+      lastFullSyncAt: "",
+      lastFullSyncOrderCount: 0,
       locationName: "",
       carrierName: "",
       shippingRateMode: "oneexpress-auto",
@@ -11755,12 +11747,23 @@ async function ensureStore() {
   }
 }
 
-async function syncOrdersFromShopify(store) {
+async function syncOrdersFromShopify(store, { fullHistory = false } = {}) {
   const { storeDomain } = store.shopifySettings || {};
   if (!storeDomain) {
     throw new Error("missing_shopify_credentials");
   }
   const accessToken = await getShopifyAccessToken(store);
+  const existingShopifyOrderCount = Array.isArray(store.orders)
+    ? store.orders.filter((order) => {
+        const source = String(order?.source || "").toLowerCase();
+        return source.includes("shopify") || Boolean(getNormalizedShopifyGraphqlId(order) || getNormalizedShopifyNumericId(order));
+      }).length
+    : 0;
+  const hasCompletedFullSync = Boolean(String(store.shopifySettings?.lastFullSyncAt || "").trim());
+  const effectiveFullHistory = Boolean(
+    fullHistory
+    || (!hasCompletedFullSync && existingShopifyOrderCount < SHOPIFY_FULL_SYNC_ORDER_COUNT_THRESHOLD)
+  );
 
   const endpoint = `https://${storeDomain}/admin/api/2026-01/graphql.json`;
   const orderFields = getShopifyOrderFields(20);
@@ -11812,8 +11815,9 @@ async function syncOrdersFromShopify(store) {
     throw lastError || new Error(`shopify_sync_failed: ${batchLabel}`);
   }
 
-  async function fetchRecentRestOrders() {
+  async function fetchRecentRestOrders({ fullHistory: restFullHistory = false } = {}) {
     let lastError = null;
+    const maxPages = restFullHistory ? SHOPIFY_REST_FULL_SYNC_MAX_PAGES : SHOPIFY_REST_RECENT_SYNC_MAX_PAGES;
     const fields = [
       "id",
       "admin_graphql_api_id",
@@ -11888,12 +11892,19 @@ async function syncOrdersFromShopify(store) {
 
     const orders = [];
     let nextPageUrl = firstPage.toString();
-    for (let page = 0; page < 4 && nextPageUrl; page += 1) {
-      const pageResult = await fetchRestPage(nextPageUrl, `rest_orders_page_${page + 1}`);
+    let pagesFetched = 0;
+    for (let page = 0; page < maxPages && nextPageUrl; page += 1) {
+      const pageResult = await fetchRestPage(nextPageUrl, `${restFullHistory ? "rest_orders_full_page" : "rest_orders_page"}_${page + 1}`);
       orders.push(...pageResult.orders);
       nextPageUrl = pageResult.nextPageUrl;
+      pagesFetched += 1;
     }
-    return orders.map((order, index) => normalizeOrderPayload(order, index));
+    return {
+      orders: orders.map((order, index) => normalizeOrderPayload(order, index)),
+      pagesFetched,
+      capped: Boolean(nextPageUrl),
+      fullHistory: Boolean(restFullHistory),
+    };
   }
 
   const recentQuery = `
@@ -11934,11 +11945,14 @@ async function syncOrdersFromShopify(store) {
   const [recentResult, openResult, restResult] = await Promise.allSettled([
     fetchOrderBatch(recentQuery, "recent_orders"),
     fetchOrderBatch(openOrdersQuery, "open_orders"),
-    fetchRecentRestOrders(),
+    fetchRecentRestOrders({ fullHistory: effectiveFullHistory }),
   ]);
   const recentEdges = recentResult.status === "fulfilled" ? recentResult.value : [];
   const openEdges = openResult.status === "fulfilled" ? openResult.value : [];
-  const recentRestOrders = restResult.status === "fulfilled" ? restResult.value : [];
+  const restMeta = restResult.status === "fulfilled"
+    ? restResult.value
+    : { orders: [], pagesFetched: 0, capped: false, fullHistory: effectiveFullHistory };
+  const recentRestOrders = Array.isArray(restMeta.orders) ? restMeta.orders : [];
   const syncErrors = [recentResult, openResult, restResult]
     .filter((result) => result.status === "rejected")
     .map((result) => result.reason);
@@ -11964,9 +11978,17 @@ async function syncOrdersFromShopify(store) {
   const normalized = [...normalizedByShopifyId.values()];
   store.shopifySettings.lastSyncAt = new Date().toISOString();
   store.shopifySettings.lastSyncStatus = "ok";
+  if (effectiveFullHistory) {
+    store.shopifySettings.lastFullSyncAt = store.shopifySettings.lastSyncAt;
+    store.shopifySettings.lastFullSyncOrderCount = normalized.length;
+  }
+  const scopeLabel = effectiveFullHistory ? "storico Shopify" : "Shopify";
+  const cappedNote = restMeta.capped
+    ? ` Limite REST raggiunto dopo ${restMeta.pagesFetched} pagine: aumenta SHOPIFY_REST_FULL_SYNC_MAX_PAGES se mancano ordini più vecchi.`
+    : "";
   store.shopifySettings.lastSyncMessage = syncErrors.length
-    ? `Sincronizzati ${normalized.length} ordini con fallback REST. ${syncErrors.length} chiamate Shopify non essenziali fallite.`
-    : `Sincronizzati ${normalized.length} ordini Shopify.`;
+    ? `Sincronizzati ${normalized.length} ordini da ${scopeLabel}. ${syncErrors.length} chiamate Shopify non essenziali fallite.${cappedNote}`
+    : `Sincronizzati ${normalized.length} ordini da ${scopeLabel}.${cappedNote}`;
   return normalized;
 }
 
@@ -16252,6 +16274,7 @@ async function handleApi(req, res, url) {
     const dateTo       = String(url.searchParams.get("dateTo") || "").trim();
     const stale        = url.searchParams.get("stale") === "1";
     const sort         = url.searchParams.get("sort") === "urgent" ? "urgent" : "recent";
+    const includeStats = url.searchParams.get("includeStats") !== "0";
     const page         = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
     const limit        = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10) || 50));
     // Un rivenditore vede SOLO le proprie richieste: resellerId è sempre
@@ -16261,7 +16284,7 @@ async function handleApi(req, res, url) {
     // se resellerId è già impostato (rivenditore che guarda solo le proprie).
 	  const resellerAssigned = currentUser.role === "office" && url.searchParams.get("resellerAssigned") === "1";
 	  try {
-	    const result = await searchSalesRequestsFromDb({ id, q, status, assignment, source, service, contactState, dateFrom, dateTo, resellerId, resellerAssigned, stale, sort, page, limit });
+	    const result = await searchSalesRequestsFromDb({ id, q, status, assignment, source, service, contactState, dateFrom, dateTo, resellerId, resellerAssigned, stale, sort, page, limit, includeStats });
 	    return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 500, { error: String(err?.message || "search_failed") });
@@ -18530,7 +18553,13 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/orders/sync-shopify" && req.method === "POST") {
     try {
-      const orders = await syncOrdersFromShopify(store);
+      const body = await readBody(req).catch(() => ({}));
+      const syncMode = String(body?.mode || url.searchParams.get("mode") || "").trim().toLowerCase();
+      const fullHistory = body?.fullHistory === true
+        || url.searchParams.get("fullHistory") === "1"
+        || syncMode === "full"
+        || syncMode === "history";
+      const orders = await syncOrdersFromShopify(store, { fullHistory });
       const upsertResults = orders.map((order) => upsertOrderRecord(store, order));
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
@@ -18543,6 +18572,12 @@ async function handleApi(req, res, url) {
         if (!result.changed) continue;
         await upsertOrderToDb(result.order, "shopify-sync").catch(() => {});
       }
+      await reconcileSalesRequestShopifyPurchases({
+        dryRun: false,
+        userId: fullHistory ? "shopify-full-sync" : "shopify-sync",
+      }).catch((err) => {
+        console.warn("[sales-requests] shopify sync reconcile failed:", err?.message || err);
+      });
       return sendJson(res, 200, store.orders);
     } catch (error) {
       store.shopifySettings.lastSyncAt = new Date().toISOString();
@@ -18679,6 +18714,8 @@ async function handleApi(req, res, url) {
       lastSyncAt: store.shopifySettings?.lastSyncAt || "",
       lastSyncStatus: store.shopifySettings?.lastSyncStatus || "",
       lastSyncMessage: store.shopifySettings?.lastSyncMessage || "",
+      lastFullSyncAt: store.shopifySettings?.lastFullSyncAt || "",
+      lastFullSyncOrderCount: store.shopifySettings?.lastFullSyncOrderCount || 0,
       locationName: body.locationName || "",
       carrierName: body.carrierName || "",
       shippingRateMode: body.shippingRateMode === "manual-weight" ? "manual-weight" : "oneexpress-auto",
@@ -19139,7 +19176,7 @@ const server = createServer(async (req, res) => {
           || url.pathname === "/api/orders/sync-shopify"
           || /^\/api\/orders\/[^/]+\/sync-shopify-fulfillment$/.test(url.pathname);
         return await withApiStateLock(() => handleApi(req, res, url), {
-          timeoutMs: isInventoryCreate ? 12_000 : isCommunicationsWrite ? 8_000 : isSlowExternalSync ? 30_000 : API_STATE_LOCK_TIMEOUT_MS,
+          timeoutMs: isInventoryCreate ? 12_000 : isCommunicationsWrite ? 8_000 : isSlowExternalSync ? 180_000 : API_STATE_LOCK_TIMEOUT_MS,
           queue: !isInventoryCreate && !isCommunicationsWrite && !isSlowExternalSync,
         });
       } catch (error) {
