@@ -30571,9 +30571,21 @@ async function loadInventoryRequirementsForOrder(orderId = "") {
     const result = await apiFetch(`/api/orders/${encodeURIComponent(normalizedId)}/inventory/requirements`, {
       timeoutMs: 15_000,
     });
+    const loadedRequirements = Array.isArray(result.requirements) ? result.requirements : [];
     setInventorySuggestionForOrder(normalizedId, {
-      requirements: Array.isArray(result.requirements) ? result.requirements : [],
+      requirements: loadedRequirements,
       entries: {},
+    });
+    // Pre-seleziona il primo pezzo disponibile per ogni riga (lo stesso già
+    // mostrato come default nel menu a tendina) così "Registra impegno" è
+    // subito cliccabile invece di restare bloccato senza un motivo visibile
+    // finché non si tocca ogni riga col picker — punto di attrito segnalato
+    // dall'utente il 13 ago 2026 per chi non conosce bene il flusso. Resta una
+    // bozza: ogni riga si può ancora cambiare o rimuovere prima di confermare,
+    // nulla viene impegnato finché non si preme "Registra impegno".
+    loadedRequirements.forEach((requirement) => {
+      const candidates = getManualAllocationCandidates(normalizedId, requirement);
+      if (candidates.length) addManualAllocationEntry(normalizedId, requirement.id, candidates[0].id);
     });
     renderInventoryAllocationContextNow();
   } catch (error) {

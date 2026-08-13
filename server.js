@@ -6483,6 +6483,18 @@ function resolveInventoryProductForLine(line = {}, order = {}, inventory = []) {
     const explicit = String(order.operations?.product || "").trim();
     return explicit || title.replace(/\s*-\s*\d+(?:[.,]\d+)?\s*m\s*[/x]\s*\d+(?:[.,]\d+)?\s*m?\s*$/i, "").trim();
   }
+  // Fallback per famiglia materiale (bordura, ciottolo, lapillo, pietrisco, ...):
+  // getInventoryProductAliases spinge solo telo/banda/colla/picchetti. Senza
+  // questo, un articolo di magazzino con un nome scritto diversamente da quello
+  // sull'ordine (es. "Bordura PVC 25mt" in ordine vs "Bordura giardino 25 mt" a
+  // magazzino) non veniva mai trovato: la riga restava con il testo grezzo
+  // dell'ordine come "prodotto" e il picker manuale (che confronta i nomi in
+  // modo esatto) mostrava "nessun pezzo disponibile" pur avendo scorte reali.
+  const lineFamily = normalizeMaterialFamily(title);
+  if (lineFamily) {
+    const familyProduct = inventoryProducts.find((product) => normalizeMaterialFamily(product) === lineFamily);
+    if (familyProduct) return familyProduct;
+  }
   if (/telo|pacciamatura|isolante/i.test(title)) return "Telo isolante";
   if (/banda|giunzione/i.test(title)) return "Banda di giunzione";
   if (/colla/i.test(title)) return "Colla";
@@ -6497,8 +6509,31 @@ function isMeasuredInventoryRequirement(line = {}, product = "") {
   return classifyOrderLine(title) === "product";
 }
 
+// Riga "prodotto" (fallback generico di classifyOrderLine) che però non è né
+// un taglio di prato riconoscibile (nessuna misura WxL nel titolo) né un
+// accessorio di famiglia nota (telo/banda/colla/bordura/ciottolo/...) né un
+// articolo che esiste davvero a magazzino: tipicamente materiale che il
+// cliente paga ma che arriva direttamente da una cava/fornitore esterno (es.
+// "risetta"), mai gestito dal nostro magazzino. Prima queste righe venivano
+// forzate nel fabbisogno come se fossero altro prato da tagliare (evasione
+// sbagliata, segnalato dall'utente il 13 ago 2026) — qui vengono riconosciute
+// ed escluse a monte, invece di richiedere un'esclusione manuale ogni volta.
+function isUnmanagedExternalOrderLine(line = {}, order = {}, inventory = []) {
+  const title = String(line.title || "").trim();
+  if (classifyOrderLine(title) !== "product") return false;
+  if (extractInventoryDimensions(title)) return false;
+  if (normalizeMaterialFamily(title)) return false;
+  const aliases = getInventoryProductAliases(title);
+  const inventoryProducts = [...new Set((inventory || []).map((item) => String(item.product || "").trim()).filter(Boolean))];
+  const hasRealMatch = inventoryProducts.some((product) => (
+    aliases.some((alias) => inventoryProductKeysCompatible(product, alias))
+    || aliases.some((alias) => inventoryProductKeysCompatible(product, alias, { allowGenericThicknessFallback: true }))
+  ));
+  return !hasRealMatch;
+}
+
 function buildOrderInventoryRequirements(order = {}, inventory = []) {
-  const lines = getOrderPhysicalLines(order);
+  const lines = getOrderPhysicalLines(order).filter((line) => !isUnmanagedExternalOrderLine(line, order, inventory));
   const requirements = [];
   const fallbackSqm = getSafeOrderSqm(order);
   lines.forEach((line, lineIndex) => {
