@@ -24494,6 +24494,7 @@ body {
 .inv-manual-entry-label { flex: 1; min-width: 0; font-size: 12.5px; color: #1a2e26; overflow-wrap: anywhere; }
 .inv-manual-amount { width: 72px; flex: 0 0 auto; padding: 6px 8px; font-size: 12.5px; border: 1px solid #e5e1d6; border-radius: 6px; }
 .inv-manual-unit { font-size: 11.5px; color: #8a9690; flex: 0 0 auto; }
+.inv-manual-entries-caption { font-size: 11px; color: #8a9690; margin: 8px 0 4px; }
 .inv-manual-add { display: flex; gap: 8px; margin-top: 8px; }
 .inv-manual-picker { flex: 1; min-width: 0; padding: 7px 9px; font-size: 12.5px; border: 1px solid #e5e1d6; border-radius: 7px; background: #fff; }
 

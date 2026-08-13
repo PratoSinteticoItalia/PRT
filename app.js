@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260812-crm-request-db-guard-safe-controls";
+} from "./lib/order-money.js?v=20260813-inv-manual-caption";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260812-crm-request-db-guard-safe-controls";
+import { regionForCity } from "./lib/geo.js?v=20260813-inv-manual-caption";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260812-crm-request-db-guard-safe-controls";
+} from "./lib/shipping-eligibility.js?v=20260813-inv-manual-caption";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260812-crm-request-db-guard-safe-controls";
+} from "./lib/profit-split.js?v=20260813-inv-manual-caption";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260812-crm-request-db-guard-safe-controls";
+} from "./lib/preventivo-pricing.js?v=20260813-inv-manual-caption";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260812-crm-request-db-guard-safe-controls";
+} from "./lib/sales-assignment.js?v=20260813-inv-manual-caption";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260812-crm-request-db-guard-safe-controls";
+const APP_SHELL_VERSION = "20260813-inv-manual-caption";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -18872,7 +18872,10 @@ function renderManualRequirementRow(orderId, requirement, entries) {
         <span>${escapeHtml(requirement.title && requirement.title !== requirement.product ? requirement.title : requiredLabel)}</span>
         <em class="${covered ? "is-covered" : ""}">${escapeHtml(assignedLabel)} / ${escapeHtml(requiredLabel)}</em>
       </div>
-      ${entryRows ? `<div class="inv-manual-entries">${entryRows}</div>` : ""}
+      ${entryRows ? `
+        <p class="inv-manual-entries-caption">${state.lang === "it" ? "Quantità impegnata da ciascun pezzo scelto (modificabile o rimovibile con la ×):" : "Quantity committed from each chosen piece (editable or removable with ×):"}</p>
+        <div class="inv-manual-entries">${entryRows}</div>
+      ` : ""}
       ${addRow}
     </div>
   `;
