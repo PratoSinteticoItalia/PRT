@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260813-inv-manual-caption";
+} from "./lib/order-money.js?v=20260814-crm-pipeline-error-state";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260813-inv-manual-caption";
+import { regionForCity } from "./lib/geo.js?v=20260814-crm-pipeline-error-state";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260813-inv-manual-caption";
+} from "./lib/shipping-eligibility.js?v=20260814-crm-pipeline-error-state";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260813-inv-manual-caption";
+} from "./lib/profit-split.js?v=20260814-crm-pipeline-error-state";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260813-inv-manual-caption";
+} from "./lib/preventivo-pricing.js?v=20260814-crm-pipeline-error-state";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260813-inv-manual-caption";
+} from "./lib/sales-assignment.js?v=20260814-crm-pipeline-error-state";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260813-inv-manual-caption";
+const APP_SHELL_VERSION = "20260814-crm-pipeline-error-state";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14730,6 +14730,11 @@ async function loadCrmPipeline({ forceReload = false } = {}) {
       columns: Array.isArray(data.columns) ? data.columns : [],
       loading: false,
       loadedAt: Date.now(),
+      // Il server risponde comunque 200 con colonne azzerate se la query va in
+      // timeout/errore (vedi getSalesRequestPipelineFromDb) — senza questo
+      // flag "0/0 classificate" sembrava un CRM davvero vuoto invece di un
+      // guasto del database (incidente del 12 ago 2026).
+      dbUnavailable: Boolean(data.dbUnavailable),
     };
     // Aggiorna stats con dati PG accurati (non dal blob store)
     if (data.stats && typeof data.stats === "object") {
@@ -14747,8 +14752,16 @@ async function loadCrmPipeline({ forceReload = false } = {}) {
     }
     renderSalesRequestsKanban();
   } catch (err) {
-    state.crmPipeline.loading = false;
+    state.crmPipeline = {
+      ...state.crmPipeline,
+      loading: false,
+      dbUnavailable: true,
+    };
     console.warn("[crm] loadCrmPipeline error:", err?.message);
+    // Senza questo render la vista restava bloccata sullo spinner "Caricamento
+    // pipeline…" a oltranza su un errore di rete/timeout, invece di mostrare
+    // l'errore.
+    renderSalesRequestsKanban();
   }
 }
 
@@ -14757,7 +14770,19 @@ async function loadCrmPipeline({ forceReload = false } = {}) {
  */
 function renderSalesRequestsKanban() {
   if (!ui.salesRequestsList) return;
-  const { columns = [], loading, loadedAt } = state.crmPipeline;
+  const { columns = [], loading, loadedAt, dbUnavailable } = state.crmPipeline;
+  // dbUnavailable con loadedAt=0 (fallito prima di un primo caricamento riuscito)
+  // andrebbe mostrato come errore, non come spinner infinito — controllalo prima
+  // del check "ancora in caricamento".
+  if (dbUnavailable && !loading) {
+    ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:16px">
+      <span style="display:block;margin-bottom:8px">${state.lang === "it"
+        ? "Impossibile caricare la pipeline: il database non ha risposto in tempo. I numeri sotto NON sono affidabili."
+        : "Unable to load the pipeline: the database did not respond in time. The numbers below are NOT reliable."}</span>
+      <button class="ghost-button small-button" type="button" data-action="reload-crm-pipeline">${state.lang === "it" ? "Riprova" : "Retry"}</button>
+    </div>`;
+    return;
+  }
   if (loading || !loadedAt) {
     ui.salesRequestsList.innerHTML = `<div class="info-card" style="text-align:center;padding:32px">
       <span style="display:inline-block;width:22px;height:22px;border:2px solid #ccc;border-top-color:#2d6a4f;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:10px"></span>
@@ -33012,6 +33037,10 @@ function handleGlobalClick(event) {
   }
   if (action === "reload-crm-page") {
     void loadCrmPage({ page: state.crmServerPage?.page || 1, forceReload: true });
+    return;
+  }
+  if (action === "reload-crm-pipeline") {
+    void loadCrmPipeline({ forceReload: true });
     return;
   }
   // CRM v2: toggle popover stato sulla riga — posizionato dinamicamente al body

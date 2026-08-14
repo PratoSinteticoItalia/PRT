@@ -2175,9 +2175,14 @@ async function getSalesRequestPipelineFromDb({ limit = 20 } = {}) {
     return { columns, stats };
   } catch (err) {
     console.warn("[db] getSalesRequestPipelineFromDb:", err?.message);
+    // dbUnavailable distingue "il database ha davvero zero richieste" da "la
+    // query è andata in timeout/errore" — senza questo flag il client non
+    // può distinguerli e mostra "0/0 classificate" come se il CRM fosse
+    // vuoto, invece di un errore (visto durante l'incidente del 12 ago 2026).
     return {
       columns: COLUMN_DEFS.map((c) => ({ key: c.key, label: c.label, count: 0, items: [] })),
       stats: null,
+      dbUnavailable: true,
     };
   }
 }
@@ -9153,7 +9158,16 @@ async function applySalesRequestAutomationOnSave({ existingRequest = null, reque
   const previousAssignment = normalizeSalesRequestAssignment(existingRequest?.assignment || "");
   const nextAssignment = normalizeSalesRequestAssignment(normalized.assignment || "");
   const assignmentChanged = Boolean(nextAssignment && nextAssignment !== previousAssignment);
-  const alreadySent = normalizeSalesRequestFirstContactState(existingRequest?.firstContactState || "") === "sent";
+  // firstContactState non ha una colonna propria in Postgres (solo
+  // first_contact_at/first_contact_by la hanno) e dbRowToSalesRequest non la
+  // valorizza mai in lettura — quindi su una richiesta caricata dal DB (la
+  // maggioranza in produzione) questo guard vedeva sempre "" invece di
+  // "sent", e una riassegnazione poteva reinviare il primo contatto a un
+  // cliente già contattato. first_contact_at è il segnale persistito e
+  // affidabile (già usato altrove, es. il filtro "da contattare"), quindi lo
+  // controlliamo insieme allo stato in-memory anziché fidarci solo di questo.
+  const alreadySent = normalizeSalesRequestFirstContactState(existingRequest?.firstContactState || "") === "sent"
+    || Boolean(String(existingRequest?.firstContactAt || existingRequest?.firstContactSentAt || "").trim());
   const mode = ["email", "whatsapp"].includes(SALES_REQUEST_AUTOMATION_MODE)
     ? SALES_REQUEST_AUTOMATION_MODE
     : "none";
