@@ -18771,38 +18771,65 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === "/api/orders/sync-shopify" && req.method === "POST") {
+    const body = await readBody(req).catch(() => ({}));
+    const syncMode = String(body?.mode || url.searchParams.get("mode") || "").trim().toLowerCase();
+    const fullHistory = body?.fullHistory === true
+      || url.searchParams.get("fullHistory") === "1"
+      || syncMode === "full"
+      || syncMode === "history";
+    let orders;
     try {
-      const body = await readBody(req).catch(() => ({}));
-      const syncMode = String(body?.mode || url.searchParams.get("mode") || "").trim().toLowerCase();
-      const fullHistory = body?.fullHistory === true
-        || url.searchParams.get("fullHistory") === "1"
-        || syncMode === "full"
-        || syncMode === "history";
-      const orders = await syncOrdersFromShopify(store, { fullHistory });
-      const upsertResults = orders.map((order) => upsertOrderRecord(store, order));
-      store.orders = sortOrdersByRecency(store.orders);
-      await writeJson(STORE_PATH, store);
-      // Dual-write SQL solo per gli ordini DAVVERO cambiati — stesso motivo
-      // del commento in /api/orders/import sopra. Questo è il percorso che
-      // gira ogni 5 minuti da OGNI scheda del browser aperta: senza il
-      // controllo "changed", riscriveva su Postgres fino a 100-400 ordini
-      // per ciclo anche a dati identici, tutto il giorno.
-      for (const result of upsertResults) {
-        if (!result.changed) continue;
-        await upsertOrderToDb(result.order, "shopify-sync").catch(() => {});
-      }
-      await reconcileSalesRequestShopifyPurchases({
-        dryRun: false,
-        userId: fullHistory ? "shopify-full-sync" : "shopify-sync",
-      }).catch((err) => {
-        console.warn("[sales-requests] shopify sync reconcile failed:", err?.message || err);
-      });
-      return sendJson(res, 200, store.orders);
+      // Chiamata di rete verso Shopify: FUORI dal lock applicativo perché non
+      // tocca lo store condiviso — può durare fino a 180s per uno storico
+      // completo, e tenerla sotto lock bloccherebbe ogni altra scrittura
+      // dell'app (assegnazioni CRM, ordini, magazzino...) per tutta la sua
+      // durata (vedi shouldLockState sopra, che esclude questa route dal
+      // wrapper generico proprio per questo).
+      orders = await syncOrdersFromShopify(store, { fullHistory });
     } catch (error) {
+      try {
+        await withApiStateLock(async () => {
+          store.shopifySettings.lastSyncAt = new Date().toISOString();
+          store.shopifySettings.lastSyncStatus = "error";
+          store.shopifySettings.lastSyncMessage = String(error.message || "shopify_sync_failed").slice(0, 500);
+          await writeJson(STORE_PATH, store);
+        }, { timeoutMs: 60_000, queue: true });
+      } catch { /* riportiamo comunque l'errore originale sotto */ }
+      return sendJson(res, 400, { error: error.message || "shopify_sync_failed" });
+    }
+    try {
+      // Solo qui si tocca davvero lo store/Postgres: pochi secondi anche per
+      // centinaia di ordini, quindi un lock "normale" (stessa coda di ogni
+      // altra scrittura) basta e avanza.
+      return await withApiStateLock(async () => {
+        const upsertResults = orders.map((order) => upsertOrderRecord(store, order));
+        store.orders = sortOrdersByRecency(store.orders);
+        await writeJson(STORE_PATH, store);
+        // Dual-write SQL solo per gli ordini DAVVERO cambiati — stesso motivo
+        // del commento in /api/orders/import sopra. Questo è il percorso che
+        // gira ogni 5 minuti da OGNI scheda del browser aperta: senza il
+        // controllo "changed", riscriveva su Postgres fino a 100-400 ordini
+        // per ciclo anche a dati identici, tutto il giorno.
+        for (const result of upsertResults) {
+          if (!result.changed) continue;
+          await upsertOrderToDb(result.order, "shopify-sync").catch(() => {});
+        }
+        await reconcileSalesRequestShopifyPurchases({
+          dryRun: false,
+          userId: fullHistory ? "shopify-full-sync" : "shopify-sync",
+        }).catch((err) => {
+          console.warn("[sales-requests] shopify sync reconcile failed:", err?.message || err);
+        });
+        return sendJson(res, 200, store.orders);
+      }, { timeoutMs: 60_000, queue: true });
+    } catch (error) {
+      if (error?.code === "state_lock_timeout") {
+        return sendJson(res, 503, { error: "busy", message: "Aggiornamento in corso, riprova tra qualche secondo." });
+      }
       store.shopifySettings.lastSyncAt = new Date().toISOString();
       store.shopifySettings.lastSyncStatus = "error";
       store.shopifySettings.lastSyncMessage = String(error.message || "shopify_sync_failed").slice(0, 500);
-      await writeJson(STORE_PATH, store);
+      await writeJson(STORE_PATH, store).catch(() => {});
       return sendJson(res, 400, { error: error.message || "shopify_sync_failed" });
     }
   }
@@ -19380,7 +19407,15 @@ const server = createServer(async (req, res) => {
       const shouldLockState = !["/api/healthz", "/api/events", "/api/session/revision"].includes(url.pathname)
         && method !== "GET"
         && method !== "HEAD"
-        && method !== "OPTIONS";
+        && method !== "OPTIONS"
+        // Il sync Shopify (sotto) gestisce da sé un lock più stretto attorno
+        // alla sola fase di scrittura finale, non a tutta la richiesta —
+        // tenerlo fuori da questo wrapper generico evita di tenere il lock
+        // globale per la durata delle chiamate di rete verso Shopify (fino a
+        // 180s per lo storico completo), che altrimenti fa fallire con
+        // "occupato" ogni altra scrittura dell'app nel frattempo (hardening
+        // 15 ago 2026).
+        && !(url.pathname === "/api/orders/sync-shopify" && method === "POST");
       if (!shouldLockState) {
         return await handleApi(req, res, url);
       }
