@@ -74,23 +74,43 @@ test("ordine non instradato né in magazzino né in posa non richiede azione log
   assert.equal(orderNeedsShippingAction(order), false);
 });
 
-test("invariante badge/bacheca: per qualunque ordine instradato e non chiuso, orderNeedsShippingAction concorda sempre con getShippingStageLane !== 'done'", () => {
+test("invariante badge/bacheca: per qualunque ordine instradato al magazzino e non chiuso, orderNeedsShippingAction concorda sempre con getShippingStageLane !== 'done'", () => {
+  // Nota: l'invariante è scoped a isRoutedToWarehouse, non più a
+  // "instradato al magazzino O in posa" — vedi il test dedicato sotto
+  // sull'incidente del 17 ago 2026 per il perché.
   const fixtures = [
     makeOrder({ operations: { warehouse: { selected: true, status: "da-preparare" }, installation: {} } }),
     makeOrder({ operations: { warehouse: { selected: true, status: "in-preparazione" }, installation: {} } }),
     makeOrder({ operations: { warehouse: { selected: true, readyToShip: true, status: "pronto" }, installation: {} } }),
     makeOrder({ operations: { warehouse: { selected: true, status: "ritirato" }, installation: {} } }),
     makeOrder({ operations: { warehouse: { selected: true, carrierPassed: true, fulfillmentMode: "corriere" }, installation: {} } }),
-    makeOrder({ operations: { warehouse: {}, installation: { required: true, installDate: "2026-08-10", crew: "Alpha", clientConfirmed: true } } }),
-    makeOrder({ operations: { warehouse: {}, installation: { required: true, status: "in-corso" } } }),
-    makeOrder({ operations: { warehouse: {}, installation: { required: true, status: "completata" } } }),
   ];
   for (const order of fixtures) {
-    const routed = isRoutedToWarehouse(order) || isRoutedToInstallation(order);
-    if (!routed || isOrderClosed(order)) continue;
+    if (!isRoutedToWarehouse(order) || isOrderClosed(order)) continue;
     const laneDone = getShippingStageLane(order) === "done";
     assert.equal(orderNeedsShippingAction(order), !laneDone, `disallineati per fixture: ${JSON.stringify(order.operations)}`);
   }
+});
+
+test("incidente 17 ago 2026 (Vito Attanasio): posa programmata ma magazzino MAI instradato → non deve comparire in Spedizioni", () => {
+  const order = makeOrder({
+    operations: { warehouse: {}, installation: { required: true, installDate: "2026-08-10", crew: "Alpha", clientConfirmed: true } },
+  });
+  assert.equal(isRoutedToWarehouse(order), false);
+  assert.equal(isRoutedToInstallation(order), true);
+  // Prima del fix: getShippingStageLane tornava "prepare" (via lo stage
+  // "install-planned", che ha priorità sul controllo isRoutedToWarehouse in
+  // getUnifiedOrderStageKey) e orderNeedsShippingAction usava un OR con
+  // isRoutedToInstallation — l'ordine finiva in "Da preparare" senza che
+  // nessuno l'avesse instradato al magazzino.
+  assert.equal(orderNeedsShippingAction(order), false, "la sola posa programmata non deve far comparire l'ordine in Spedizioni");
+
+  // Stati di posa più avanzati (in corso/completata) senza magazzino instradato:
+  // stessa cosa, non deve mai comparire.
+  const inProgress = makeOrder({ operations: { warehouse: {}, installation: { required: true, status: "in-corso" } } });
+  const completed = makeOrder({ operations: { warehouse: {}, installation: { required: true, status: "completata" } } });
+  assert.equal(orderNeedsShippingAction(inProgress), false);
+  assert.equal(orderNeedsShippingAction(completed), false);
 });
 
 test("getUnifiedOrderStageKey: la posa pianificata ha priorità sullo stato magazzino", () => {
