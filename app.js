@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260818-shipping-lane-warehouse-routing-fix";
+} from "./lib/order-money.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260818-shipping-lane-warehouse-routing-fix";
+import { regionForCity } from "./lib/geo.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260818-shipping-lane-warehouse-routing-fix";
+} from "./lib/shipping-eligibility.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260818-shipping-lane-warehouse-routing-fix";
+} from "./lib/profit-split.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260818-shipping-lane-warehouse-routing-fix";
+} from "./lib/preventivo-pricing.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260818-shipping-lane-warehouse-routing-fix";
+} from "./lib/sales-assignment.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260818-shipping-lane-warehouse-routing-fix";
+const APP_SHELL_VERSION = "20260818-crm-status-dot-nuovo-contatto-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14895,7 +14895,14 @@ function getCrmV2StatusTone(item = {}) {
   // Stati "preventivo inviato/da inviare" (viola)
   if (tone === "is-quoted") return "is-quoted";
   // Stati "in contatto" (giallo): 1° contatto, follow-up, richiamare, ecc.
-  if (tone === "is-followup" || norm.includes("contatt") || norm.includes("follow") || norm.includes("richiam")) {
+  // NON riaggiungere qui controlli tipo norm.includes("contatt"): "Nuovo
+  // contatto" contiene anch'esso la parola "contatto", quindi finiva
+  // classificato come "in contatto" (pallino identico a "1° contatto") e
+  // riportare uno stato da "1° contatto" a "Nuovo contatto" sembrava non
+  // fare nulla (segnalato dall'utente il 18 ago 2026). `tone` (sopra) usa
+  // già la stessa logica con l'esclusione corretta per "nuovo" — vedi
+  // getSalesRequestStatusTone.
+  if (tone === "is-followup") {
     return "is-contacted";
   }
   // Default: nuovo (blu)
