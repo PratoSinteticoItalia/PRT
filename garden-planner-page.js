@@ -193,7 +193,7 @@ function sanitizeQuoteBridgeReportHtml(value) {
 // `import` da lib/ (caricato via Babel Standalone, non un modulo ES), quindi
 // i prezzi restano duplicati in MATERIAL_COSTS: se cambiano lì, cambiarli
 // anche qui.
-function buildPlannerMaterialItems(installNeeds = {}, borderType = "nessuna", borderMeters = 0) {
+function buildPlannerMaterialItems(installNeeds = {}, borderType = "nessuna", borderMeters = 0, pavingNeedsByArea = []) {
   const geo = Number(installNeeds.geo) || 0;
   const tapeRolls = Number(installNeeds.tapeRolls) || 0;
   const glueBuckets = Number(installNeeds.glueBuckets) || 0;
@@ -210,6 +210,21 @@ function buildPlannerMaterialItems(installNeeds = {}, borderType = "nessuna", bo
     const unitPrice = Number(border?.price || 0);
     items.push({ key: "bordura", label: border?.name || "Bordura", qty: safeBorderMeters, unit: "m", unitPrice, total: safeBorderMeters * unitPrice });
   }
+  // Mattonelle WPC: una riga per zona pavimentata (formati diversi = righe
+  // distinte). Prezzo a 0 finché non è confermato — arriva comunque nel
+  // Generatore, editabile, invece di sparire dalla distinta.
+  (pavingNeedsByArea || []).forEach((p, i) => {
+    if (!p || !(p.tilesNeeded > 0)) return;
+    const sizeLabel = `${p.tileSizeCm?.w || 30}×${p.tileSizeCm?.h || 30} cm`;
+    items.push({
+      key: pavingNeedsByArea.length > 1 ? `pavimentazione_${i + 1}` : "pavimentazione",
+      label: pavingNeedsByArea.length > 1 ? `Mattonelle WPC zona ${i + 1} (${sizeLabel}, prezzo da definire)` : `Mattonelle WPC (${sizeLabel}, prezzo da definire)`,
+      qty: p.tilesNeeded,
+      unit: "pz",
+      unitPrice: 0,
+      total: 0,
+    });
+  });
   return items;
 }
 
@@ -224,6 +239,7 @@ function buildPlannerMaterialReferenceModel({
   regionalPricing,
   viewerRole = "crew",
   reportVariant = "technical",
+  pavingNeedsByArea = [],
 }) {
   const isClientVariant = reportVariant === "client";
   const canViewMaterialCosts = String(viewerRole || "").trim().toLowerCase() === "office" && !isClientVariant;
@@ -323,6 +339,23 @@ function buildPlannerMaterialReferenceModel({
     });
   }
 
+  if ((pavingNeedsByArea || []).some((p) => p?.tilesNeeded > 0)) {
+    sections.push({
+      key: "paving",
+      cat: "PAVIMENTAZIONE WPC",
+      meta: "Prezzo al pezzo da definire",
+      showCosts: false,
+      items: pavingNeedsByArea
+        .filter((p) => p?.tilesNeeded > 0)
+        .map((p, i) => ({
+          name: pavingNeedsByArea.length > 1 ? `Mattonelle zona ${i + 1} (${p.tileSizeCm?.w || 30}×${p.tileSizeCm?.h || 30} cm)` : `Mattonelle (${p.tileSizeCm?.w || 30}×${p.tileSizeCm?.h || 30} cm)`,
+          qty: `${p.tilesNeeded} pz · ${fmt(p.areaM2)} m² · +${Math.round(p.wasteFactor * 100)}% scarto`,
+          cost: 0,
+        })),
+      sub: 0,
+    });
+  }
+
   if (travelSummary.totalKm > 0 || travelSummary.tollCost > 0 || travel?.departureBase) {
     sections.push({
       key: "travel",
@@ -363,7 +396,7 @@ function buildPlannerMaterialReferenceModel({
   };
 }
 
-function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, installNeeds, borderType, borderMeters, decoItems, regionalPricing, viewerRole = "crew" }) {
+function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, installNeeds, borderType, borderMeters, decoItems, regionalPricing, viewerRole = "crew", pavingNeedsByArea = [] }) {
   const clientName = String(projectInfo.client || "").trim();
   const [firstName = "", ...restName] = clientName.split(/\s+/).filter(Boolean);
   const address = String(projectInfo.address || "").trim();
@@ -392,7 +425,9 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
     regionalPricing,
     viewerRole,
     reportVariant: "technical",
+    pavingNeedsByArea,
   });
+  const pavingTilesTotalForHighlight = (pavingNeedsByArea || []).reduce((sum, p) => sum + (Number(p?.tilesNeeded) || 0), 0);
   return {
     runId: Date.now(),
     createdAt: new Date().toISOString(),
@@ -414,6 +449,7 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
       installNeeds.tapeRolls > 0 ? `Banda ${fmt(installNeeds.jointMeters, 1)} m · ${installNeeds.tapeRolls} rot.` : "",
       installNeeds.glueBuckets > 0 ? `Colla ${installNeeds.glueBuckets} secchi` : "",
       borderLabel,
+      pavingTilesTotalForHighlight > 0 ? `Pavimentazione WPC ${pavingTilesTotalForHighlight} pz` : "",
       ...extraDecor.slice(0, 3),
     ].filter(Boolean),
     materialsReference: {
@@ -448,7 +484,7 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
       // buildPlannerMaterialItems. Machine-readable (non solo stringhe per
       // display come materialHighlights/materialsReference sopra): il
       // Generatore li userà al posto della formula piatta sui soli mq.
-      materialItems: buildPlannerMaterialItems(installNeeds, borderType, borderMeters),
+      materialItems: buildPlannerMaterialItems(installNeeds, borderType, borderMeters, pavingNeedsByArea),
     },
   };
 }
@@ -1129,6 +1165,27 @@ function estimateInstallationNeeds(area, perimeter, manualRolls = []) {
   };
 }
 
+// Percentuale di scarto per i tagli di bordo (la posa raramente combacia
+// esattamente col perimetro dell'area) — stima non ancora verificata sui
+// consumi reali di cantiere, confermata dall'utente come principio ("va
+// tenuto sempre un margine") ma senza una cifra precisa: da ricalibrare
+// se l'esperienza reale dice altro. Sfalsata più alta perché il taglio di
+// inizio/fine fila si ripete più spesso.
+const PAVING_WASTE_FACTOR = { straight: 0.08, offset: 0.12 };
+
+// Conteggio mattonelle WPC ad incastro per un'area di pavimentazione.
+// tileSizeCm: {w, h} in cm (formato reale più comune: 30×30, confermato
+// dall'utente). layout: "straight" | "offset".
+function estimatePavingNeeds(areaM2, tileSizeCm = { w: 30, h: 30 }, layout = "straight") {
+  const safeArea = Math.max(0, Number(areaM2) || 0);
+  const w = Math.max(1, Number(tileSizeCm?.w) || 30);
+  const h = Math.max(1, Number(tileSizeCm?.h) || 30);
+  const tileAreaM2 = (w / 100) * (h / 100);
+  const wasteFactor = PAVING_WASTE_FACTOR[layout] ?? PAVING_WASTE_FACTOR.straight;
+  const tilesNeeded = tileAreaM2 > 0 ? Math.ceil((safeArea / tileAreaM2) * (1 + wasteFactor)) : 0;
+  return { tileAreaM2, tileSizeCm: { w, h }, wasteFactor, tilesNeeded, layout: PAVING_WASTE_FACTOR[layout] ? layout : "straight" };
+}
+
 /* ═══════════════════════════════════════════
    CANVAS
    ═══════════════════════════════════════════ */
@@ -1136,12 +1193,18 @@ const GRID_STEPS = [0.10, 0.25, 0.50, 1.00];
 const DEFAULT_GRID_STEP = 0.25;
 const BASE_PX = 36;
 
-function createPlannerArea() {
+// kind: "turf" (default, prato — rotoli+bordura) | "paving" (mattonelle ad
+// incastro WPC — nessun rotolo, conta pezzi da tileSize). tileSize/layout
+// sono ignorati per le aree "turf", usati solo quando kind === "paving".
+function createPlannerArea(kind = "turf") {
   return {
     id: `area-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    kind: kind === "paving" ? "paving" : "turf",
     points: [],
     closed: false,
     rolls: [],
+    tileSize: { w: 30, h: 30 }, // cm — formato reale più usato, confermato dall'utente
+    tileLayout: "straight", // "straight" | "offset"
   };
 }
 
@@ -1216,6 +1279,7 @@ function FreeDrawCanvas({
   onSelectArea = () => {},
   onAddArea = () => {},
   onRemoveArea = () => {},
+  onUpdateActiveArea = () => {},
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -1245,6 +1309,10 @@ function FreeDrawCanvas({
   const activeAreaIndex = Math.max(0, areaEntries.findIndex((area) => area.id === activeAreaId));
   const canCreateSeparateArea = closed;
   const canRemoveCurrentArea = areaEntries.length > 1 || points.length > 0 || rolls.length > 0;
+  const activeAreaEntry = areaEntries[activeAreaIndex] || null;
+  const activeAreaKind = activeAreaEntry?.kind === "paving" ? "paving" : "turf";
+  const activeTileSize = activeAreaEntry?.tileSize || { w: 30, h: 30 };
+  const activeTileLayout = activeAreaEntry?.tileLayout === "offset" ? "offset" : "straight";
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1272,6 +1340,13 @@ function FreeDrawCanvas({
       setCanvasMessage("");
     }
   }, [closed, drawMode]);
+
+  useEffect(() => {
+    if (activeAreaKind === "paving" && drawMode === "roll") {
+      setDrawMode("shape");
+      setRollStart(null);
+    }
+  }, [activeAreaKind, drawMode]);
 
   const getPos = e => {
     const r = canvasRef.current.getBoundingClientRect();
@@ -1710,20 +1785,74 @@ function FreeDrawCanvas({
           <button
             type="button"
             onClick={() => {
-              if (!closed) return;
+              if (!closed || activeAreaKind === "paving") return;
               setDrawMode("roll");
               setRollStart(null);
             }}
-            disabled={!closed}
+            disabled={!closed || activeAreaKind === "paving"}
+            title={activeAreaKind === "paving" ? "Non si posano rotoli su un'area di pavimentazione" : ""}
             style={{
-              padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: closed ? "pointer" : "not-allowed",
+              padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: closed && activeAreaKind !== "paving" ? "pointer" : "not-allowed",
               border: drawMode === "roll" ? "1.5px solid #1565c0" : "1px solid " + B.border,
               background: drawMode === "roll" ? "#e8f1ff" : B.white, color: drawMode === "roll" ? "#1565c0" : B.textMuted, fontWeight: drawMode === "roll" ? 700 : 500,
-              opacity: closed ? 1 : 0.55,
+              opacity: closed && activeAreaKind !== "paving" ? 1 : 0.55,
             }}
           >
             Aggiungi rotolo
           </button>
+          <div style={{ display: "flex", gap: 0, borderRadius: 4, overflow: "hidden", border: "1px solid " + B.border }}>
+            <button
+              type="button"
+              onClick={() => onUpdateActiveArea({ kind: "turf" })}
+              title="Quest'area è prato: rotoli, telo, banda, colla, picchetti"
+              style={{
+                padding: "3px 8px", fontSize: 11, cursor: "pointer", border: "none",
+                background: activeAreaKind === "turf" ? B.primary : B.white, color: activeAreaKind === "turf" ? "#fff" : B.textMuted, fontWeight: activeAreaKind === "turf" ? 700 : 500,
+              }}
+            >
+              🌱 Prato
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdateActiveArea({ kind: "paving" })}
+              title="Quest'area è pavimentazione: mattonelle WPC ad incastro, niente rotoli"
+              style={{
+                padding: "3px 8px", fontSize: 11, cursor: "pointer", border: "none", borderLeft: "1px solid " + B.border,
+                background: activeAreaKind === "paving" ? "#8a6d3b" : B.white, color: activeAreaKind === "paving" ? "#fff" : B.textMuted, fontWeight: activeAreaKind === "paving" ? 700 : 500,
+              }}
+            >
+              ▦ Pavimentazione
+            </button>
+          </div>
+          {activeAreaKind === "paving" && (
+            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+              {[{ w: 30, h: 30 }, { w: 40, h: 40 }, { w: 50, h: 50 }].map((size) => {
+                const active = activeTileSize.w === size.w && activeTileSize.h === size.h;
+                return (
+                  <button
+                    key={`${size.w}x${size.h}`}
+                    type="button"
+                    onClick={() => onUpdateActiveArea({ tileSize: size })}
+                    style={{
+                      padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+                      border: active ? "1.5px solid #8a6d3b" : "1px solid " + B.border,
+                      background: active ? "#f5efe3" : B.white, color: active ? "#8a6d3b" : B.text, fontWeight: active ? 700 : 500,
+                    }}
+                  >
+                    {size.w}×{size.h}
+                  </button>
+                );
+              })}
+              <select
+                value={activeTileLayout}
+                onChange={(e) => onUpdateActiveArea({ tileLayout: e.target.value })}
+                style={{ padding: "3px 6px", borderRadius: 4, fontSize: 11, border: "1px solid " + B.border, background: B.white, color: B.text }}
+              >
+                <option value="straight">Posa diritta</option>
+                <option value="offset">Posa sfalsata</option>
+              </select>
+            </div>
+          )}
           <button
             type="button"
             onClick={undoLastPoint}
@@ -1870,7 +1999,7 @@ function FreeDrawCanvas({
                   cursor: "pointer",
                 }}
               >
-                {`Area ${index + 1}${areaClosed ? ` · ${fmt(areaSqm, 1)} m²` : " · aperta"}`}
+                {`${area.kind === "paving" ? "▦" : "🌱"} Area ${index + 1}${areaClosed ? ` · ${fmt(areaSqm, 1)} m²` : " · aperta"}`}
               </button>
             );
           })}
@@ -2132,6 +2261,7 @@ function ShapeInput({
   onSelectArea = () => {},
   onAddArea = () => {},
   onRemoveArea = () => {},
+  onUpdateActiveArea = () => {},
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -2151,6 +2281,7 @@ function ShapeInput({
         onSelectArea={onSelectArea}
         onAddArea={onAddArea}
         onRemoveArea={onRemoveArea}
+        onUpdateActiveArea={onUpdateActiveArea}
       />
     </div>
   );
@@ -2548,6 +2679,36 @@ function InstallationNeedsPanel({ area, perimeter, borderType, borderMeters, man
   );
 }
 
+// Conteggio mattonelle per le aree "paving" del progetto — una card per area
+// (utile con più zone pavimentate di formato diverso) + un totale pezzi.
+// Nessun prezzo: il costo €/pz WPC non è ancora noto (da confermare), il
+// pezzo arriva comunque nel Generatore con prezzo editabile — vedi
+// buildPlannerMaterialItems.
+function PavingNeedsPanel({ pavingNeedsByArea, pavingTilesTotal }) {
+  if (!pavingNeedsByArea.length) return null;
+  return (
+    <div style={{ display: "grid", gap: 10, marginTop: 14, paddingTop: 14, borderTop: "1px dashed " + B.borderLight }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: B.dark }}>Pavimentazione WPC</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+        {pavingNeedsByArea.map((p, i) => (
+          <MetricCard
+            key={p.areaId}
+            label={pavingNeedsByArea.length > 1 ? `Zona ${i + 1} · ${fmt(p.areaM2)} m²` : `Mattonelle · ${fmt(p.areaM2)} m²`}
+            value={`${p.tilesNeeded} pz`}
+            sub={`+${Math.round(p.wasteFactor * 100)}% scarto tagli`}
+          />
+        ))}
+        {pavingNeedsByArea.length > 1 ? (
+          <MetricCard label="Totale mattonelle" value={`${pavingTilesTotal} pz`} accent />
+        ) : null}
+      </div>
+      <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid " + B.borderLight, background: B.warnBg, fontSize: 12, color: "#8a5a00", lineHeight: 1.45 }}>
+        Prezzo al pezzo non impostato — la riga arriva nel Generatore con quantità corretta e prezzo a 0€, da compilare lì prima di inviare il preventivo.
+      </div>
+    </div>
+  );
+}
+
 function DecoSection({ decoItems, setDecoItems }) {
   const cats = [...new Set(DECO_CATALOG.map(d => d.cat))];
   const update = (id, qty) => setDecoItems(prev => ({ ...prev, [id]: Math.max(0, parseFloat(qty) || 0) }));
@@ -2595,10 +2756,12 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed, customAreas = [], borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, reportVariant = "technical" }) {
+function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [], reportVariant = "technical" }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
-  const installNeeds = estimateInstallationNeeds(area, perimeter, manualRolls);
+  // turfArea/turfPerimeter esclude le aree "paving" (pavimentazione WPC) —
+  // fallback su area/perimeter (totale) se non passati, per compatibilità.
+  const installNeeds = estimateInstallationNeeds(turfArea ?? area, turfPerimeter ?? perimeter, manualRolls);
   const isClientVariant = reportVariant === "client";
   const {
     canViewMaterialCosts,
@@ -2621,6 +2784,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
     regionalPricing,
     viewerRole,
     reportVariant,
+    pavingNeedsByArea,
   });
   const rollCount = Array.isArray(manualRolls) ? manualRolls.length : 0;
   const rollLinearMeters = Array.isArray(manualRolls)
@@ -2721,7 +2885,7 @@ function MaterialsReport({ area, perimeter, shape, dims, customPts, customClosed
   );
 }
 
-function ReportShell({ id, variant = "technical", area, perimeter, shape, dims, customPts, customClosed, customAreas = [], borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls }) {
+function ReportShell({ id, variant = "technical", area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [] }) {
   const isClientVariant = variant === "client";
   return (
     <div id={id}>
@@ -2741,6 +2905,8 @@ function ReportShell({ id, variant = "technical", area, perimeter, shape, dims, 
       <MaterialsReport
         area={area}
         perimeter={perimeter}
+        turfArea={turfArea}
+        turfPerimeter={turfPerimeter}
         shape={shape}
         dims={dims}
         customPts={customPts}
@@ -2755,6 +2921,7 @@ function ReportShell({ id, variant = "technical", area, perimeter, shape, dims, 
         viewerRole={viewerRole}
         regionalPricing={regionalPricing}
         manualRolls={manualRolls}
+        pavingNeedsByArea={pavingNeedsByArea}
         reportVariant={variant}
       />
     </div>
@@ -2802,10 +2969,26 @@ function GardenPlanner() {
     () => plannerAreas.filter((area) => area.closed && Array.isArray(area.points) && area.points.length >= 3),
     [plannerAreas],
   );
-  const allManualRolls = useMemo(
-    () => plannerAreas.flatMap((area) => (Array.isArray(area.rolls) ? area.rolls : [])),
-    [plannerAreas],
+  // Le aree "paving" (pavimentazione WPC) non sono prato: niente rotoli, niente
+  // telo/banda/colla/picchetti/intaso — vanno escluse dal fabbisogno prato,
+  // altrimenti quei mq verrebbero conteggiati due volte (come prato E come
+  // pavimentazione). Restano incluse nel totale area/perimeter "grezzo" più
+  // sotto: la preparazione del fondo (scavo/drenante/sabbia) serve sotto
+  // ENTRAMBE le coperture.
+  const completedTurfAreas = useMemo(
+    () => completedAreas.filter((areaItem) => areaItem.kind !== "paving"),
+    [completedAreas],
   );
+  const completedPavingAreas = useMemo(
+    () => completedAreas.filter((areaItem) => areaItem.kind === "paving"),
+    [completedAreas],
+  );
+  const allManualRolls = useMemo(
+    () => completedTurfAreas.flatMap((areaItem) => (Array.isArray(areaItem.rolls) ? areaItem.rolls : [])),
+    [completedTurfAreas],
+  );
+  // Totale grezzo (prato + pavimentazione insieme) — usato per la
+  // preparazione del fondo e per l'ingombro nel disegno tecnico.
   const area = useMemo(
     () => completedAreas.reduce((sum, areaItem) => sum + polyArea(areaItem.points), 0),
     [completedAreas],
@@ -2813,6 +2996,26 @@ function GardenPlanner() {
   const perimeter = useMemo(
     () => completedAreas.reduce((sum, areaItem) => sum + polyPerimeter(areaItem.points), 0),
     [completedAreas],
+  );
+  // Solo prato — usato per il fabbisogno posa (telo/banda/colla/picchetti).
+  const turfArea = useMemo(
+    () => completedTurfAreas.reduce((sum, areaItem) => sum + polyArea(areaItem.points), 0),
+    [completedTurfAreas],
+  );
+  const turfPerimeter = useMemo(
+    () => completedTurfAreas.reduce((sum, areaItem) => sum + polyPerimeter(areaItem.points), 0),
+    [completedTurfAreas],
+  );
+  const pavingNeedsByArea = useMemo(
+    () => completedPavingAreas.map((areaItem) => {
+      const areaM2 = polyArea(areaItem.points);
+      return { areaId: areaItem.id, areaM2, ...estimatePavingNeeds(areaM2, areaItem.tileSize, areaItem.tileLayout) };
+    }),
+    [completedPavingAreas],
+  );
+  const pavingTilesTotal = useMemo(
+    () => pavingNeedsByArea.reduce((sum, p) => sum + p.tilesNeeded, 0),
+    [pavingNeedsByArea],
   );
   const borderEdges = useMemo(() => getPlannerBorderEdges(completedAreas, shape, safeDims), [completedAreas, shape, safeDims]);
   const selectedBorderMeters = useMemo(() => (
@@ -3008,7 +3211,7 @@ function GardenPlanner() {
   const handleOpenQuoteGenerator = () => {
     const technicalNode = document.getElementById("garden-planner-print-content");
     const clientNode = document.getElementById("garden-planner-client-print-content");
-    const installNeeds = estimateInstallationNeeds(area, perimeter, allManualRolls);
+    const installNeeds = estimateInstallationNeeds(turfArea, turfPerimeter, allManualRolls);
     const plannerBridge = buildPlannerQuotePrefill({
       projectInfo,
       area,
@@ -3020,6 +3223,7 @@ function GardenPlanner() {
       decoItems,
       regionalPricing,
       viewerRole,
+      pavingNeedsByArea,
     });
     plannerBridge.reportHtml = {
       technical: sanitizeQuoteBridgeReportHtml(technicalNode ? technicalNode.innerHTML : ""),
@@ -3088,6 +3292,7 @@ function GardenPlanner() {
               onSelectArea={setActiveAreaId}
               onAddArea={addPlannerArea}
               onRemoveArea={removeActivePlannerArea}
+              onUpdateActiveArea={(patch) => updateActiveArea((areaItem) => ({ ...areaItem, ...patch }))}
             />
           {area > 0 && (
             <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
@@ -3190,7 +3395,10 @@ function GardenPlanner() {
               </div>
             </div>
           )}
-          <InstallationNeedsPanel area={area} perimeter={perimeter} borderType={borderType} borderMeters={selectedBorderMeters} manualRolls={allManualRolls} />
+          <InstallationNeedsPanel area={turfArea} perimeter={turfPerimeter} borderType={borderType} borderMeters={selectedBorderMeters} manualRolls={allManualRolls} />
+          {completedPavingAreas.length > 0 ? (
+            <PavingNeedsPanel pavingNeedsByArea={pavingNeedsByArea} pavingTilesTotal={pavingTilesTotal} />
+          ) : null}
         </div>
 
         {/* STEP 4: DECORATIVE */}
@@ -3214,6 +3422,8 @@ function GardenPlanner() {
             id="garden-planner-print-content"
             area={area}
             perimeter={perimeter}
+            turfArea={turfArea}
+            turfPerimeter={turfPerimeter}
             shape={shape}
             dims={safeDims}
             customPts={customPts}
@@ -3228,6 +3438,7 @@ function GardenPlanner() {
             viewerRole={viewerRole}
             regionalPricing={regionalPricing}
             manualRolls={allManualRolls}
+            pavingNeedsByArea={pavingNeedsByArea}
             variant="technical"
           />
           <div style={{ display: "none" }} aria-hidden="true">
@@ -3235,6 +3446,8 @@ function GardenPlanner() {
               id="garden-planner-client-print-content"
               area={area}
               perimeter={perimeter}
+              turfArea={turfArea}
+              turfPerimeter={turfPerimeter}
               shape={shape}
               dims={safeDims}
               customPts={customPts}
@@ -3249,6 +3462,7 @@ function GardenPlanner() {
               viewerRole={viewerRole}
               regionalPricing={regionalPricing}
               manualRolls={allManualRolls}
+              pavingNeedsByArea={pavingNeedsByArea}
               variant="client"
             />
           </div>
