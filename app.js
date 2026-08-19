@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
+} from "./lib/order-money.js?v=20260819-garden-planner-material-bridge";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
+import { regionForCity } from "./lib/geo.js?v=20260819-garden-planner-material-bridge";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
+} from "./lib/shipping-eligibility.js?v=20260819-garden-planner-material-bridge";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
+} from "./lib/profit-split.js?v=20260819-garden-planner-material-bridge";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
+} from "./lib/preventivo-pricing.js?v=20260819-garden-planner-material-bridge";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260818-crm-status-dot-nuovo-contatto-fix";
+} from "./lib/sales-assignment.js?v=20260819-garden-planner-material-bridge";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260818-crm-status-dot-nuovo-contatto-fix";
+const APP_SHELL_VERSION = "20260819-garden-planner-material-bridge";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1119,6 +1119,21 @@ function normalizeGardenPlannerQuoteBridge(input = {}) {
       servizio: normalizeString(payload.servizio),
       fondo: normalizeString(payload.fondo),
       whatsappTemplate: normalizeString(payload.whatsappTemplate),
+      // Quantitativi materiali dal disegno reale (vedi buildPlannerMaterialItems
+      // in garden-planner-page.js) — validati riga per riga: una riga senza
+      // key/label valide viene scartata invece di rompere l'intero elenco.
+      materialItems: Array.isArray(payload.materialItems)
+        ? payload.materialItems
+          .map((item) => ({
+            key: normalizeString(item?.key),
+            label: normalizeString(item?.label),
+            qty: Number(item?.qty) || 0,
+            unit: normalizeString(item?.unit),
+            unitPrice: Number(item?.unitPrice) || 0,
+            total: Number(item?.total) || 0,
+          }))
+          .filter((item) => item.key && item.label)
+        : [],
     },
   };
 }
@@ -35640,6 +35655,7 @@ function defaultPreventivoForm() {
     materialsDiscountPct: 0, materialsIva: true,
     excludedMaterials: [], // key materiali NON inclusi (il cliente li ha già)
     materialOverrides: {},  // key -> { qty?, unitPrice? } override manuale (es. pietrisco)
+    plannerMaterialItems: null, // item precalcolati da Garden Planner, se il preventivo viene da lì
     accessories: [],  // { name, price, discount, qty, applyIva }
     extraWorks: [],   // { description, cost, applyIva }
   };
@@ -35709,7 +35725,12 @@ function nfOptionName(o) {
 // total complessivo (voci incluse). I kg colla si riscalano con la quantità.
 function nfEffectiveMaterials() {
   const f = ensurePreventivoForm();
-  const breakdown = getMaterialBreakdownPure(f.surface, Number(f.sqm) || 0, f.quoteType);
+  // Se il preventivo viene da Garden Planner, usa i quantitativi calcolati lì
+  // dalla geometria reale del disegno (perimetro/giunzioni) invece della
+  // formula piatta sui soli mq — vedi buildPlannerMaterialItems in
+  // garden-planner-page.js. Le override/esclusioni manuali sotto continuano a
+  // funzionare comunque, sopra qualunque base.
+  const breakdown = getMaterialBreakdownPure(f.surface, Number(f.sqm) || 0, f.quoteType, [], f.plannerMaterialItems || null);
   const excluded = new Set(f.excludedMaterials || []);
   const overrides = f.materialOverrides || {};
   const items = breakdown.items.map((it) => {
@@ -35733,8 +35754,15 @@ function nfNumVal(n) { return String(Math.round(Number(n) * 100) / 100); }
 function renderNfMaterials() {
   const wrap = ui.nfMatList;
   if (!wrap) return;
+  const f = ensurePreventivoForm();
   const eff = nfEffectiveMaterials();
-  wrap.innerHTML = eff.items.map((it) => `
+  // Quantitativi dal disegno reale, non dalla formula piatta sui mq — l'ufficio
+  // deve capire perché i numeri sono diversi da un preventivo compilato a mano
+  // invece di pensare sia un errore (segnalato durante l'hardening 12-19 ago 2026).
+  const plannerNote = Array.isArray(f.plannerMaterialItems) && f.plannerMaterialItems.length
+    ? `<div class="nf-mat-planner-note">📐 Quantitativi dal disegno Garden Planner — non dalla formula standard sui mq.</div>`
+    : "";
+  wrap.innerHTML = plannerNote + eff.items.map((it) => `
     <div class="nf-mat-row ${it.excluded ? "is-off" : ""}" data-key="${it.key}">
       <label class="nf-mat-check"><input type="checkbox" data-material-key="${it.key}" ${it.excluded ? "" : "checked"} /><span>${escapeHtml(it.label)}</span></label>
       <span class="nf-mat-fields">
@@ -35799,6 +35827,14 @@ function applyPrefillToNativeForm(payload) {
   else if (svc === "fornitura") f.quoteType = "fornitura";
   const fondo = String(payload.fondo || payload.surface || "").trim().toLowerCase();
   if (fondo === "pavimentazione" || fondo === "terra") f.surface = fondo;
+  // Quantitativi materiali dal disegno reale di Garden Planner (se presenti).
+  // Sempre impostato esplicitamente (non solo quando presente): un prefill da
+  // Richieste dopo uno da Garden Planner deve azzerarlo, altrimenti i
+  // quantitativi di un progetto precedente resterebbero agganciati a un
+  // preventivo che non c'entra nulla.
+  f.plannerMaterialItems = Array.isArray(payload.materialItems) && payload.materialItems.length
+    ? payload.materialItems
+    : null;
   // Altezza richiesta → prova a preselezionare un prodotto con quell'altezza.
   const hMatch = String(payload.altezza || "").match(/(\d+)/);
   if (hMatch) {
@@ -35811,7 +35847,7 @@ function applyPrefillToNativeForm(payload) {
 // Reset "preventivo libero": svuota cliente + mq, mantiene i default tecnici.
 function clearNativeForm() {
   const f = ensurePreventivoForm();
-  Object.assign(f, { nome: "", cognome: "", citta: "", tel: "", email: "", ragione: "", sqm: 0, excludedMaterials: [], materialOverrides: {}, accessories: [], extraWorks: [], quoteNumber: "" });
+  Object.assign(f, { nome: "", cognome: "", citta: "", tel: "", email: "", ragione: "", sqm: 0, excludedMaterials: [], materialOverrides: {}, plannerMaterialItems: null, accessories: [], extraWorks: [], quoteNumber: "" });
   // quoteNumber vuoto → renderNativePreventivoForm ne assegna uno nuovo dal server.
   if (state.currentView === "sales-generator") renderNativePreventivoForm();
   else assignPreventivoNumber();

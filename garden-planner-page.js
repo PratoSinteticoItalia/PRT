@@ -180,6 +180,39 @@ function sanitizeQuoteBridgeReportHtml(value) {
   return shell.innerHTML.trim();
 }
 
+// Converte i quantitativi calcolati dalla geometria reale del disegno
+// (estimateInstallationNeeds) + la bordura selezionata nello stesso shape
+// {key,label,qty,unit,unitPrice,total} usato da getMaterialBreakdown in
+// lib/preventivo-pricing.js — permette al Generatore di ereditare QUESTI
+// quantitativi invece di ricalcolarli con la formula piatta sui soli mq
+// (che su forme non quadrate diverge molto: verificato, differenze 2-3x per
+// singola voce su un rettangolo stretto). Le key (telo/bande/colla/picchetti)
+// combaciano apposta con quelle del motore prezzi, così l'interfaccia
+// "Materiali automatici" del Generatore le mostra senza bisogno di sapere da
+// dove vengono. Gemella di getMaterialBreakdown — questo file non può fare
+// `import` da lib/ (caricato via Babel Standalone, non un modulo ES), quindi
+// i prezzi restano duplicati in MATERIAL_COSTS: se cambiano lì, cambiarli
+// anche qui.
+function buildPlannerMaterialItems(installNeeds = {}, borderType = "nessuna", borderMeters = 0) {
+  const geo = Number(installNeeds.geo) || 0;
+  const tapeRolls = Number(installNeeds.tapeRolls) || 0;
+  const glueBuckets = Number(installNeeds.glueBuckets) || 0;
+  const pins = Number(installNeeds.pins) || 0;
+  const items = [
+    { key: "telo", label: "Telo isolante", qty: geo, unit: "mq", unitPrice: MATERIAL_COSTS.geoPerSqm, total: geo * MATERIAL_COSTS.geoPerSqm },
+    { key: "bande", label: "Bande di giunzione", qty: tapeRolls, unit: "pz", unitPrice: MATERIAL_COSTS.tapeRoll, total: tapeRolls * MATERIAL_COSTS.tapeRoll },
+    { key: "colla", label: "Colla bicomponente", qty: glueBuckets, unit: "secchi", unitPrice: MATERIAL_COSTS.glueBucket, total: glueBuckets * MATERIAL_COSTS.glueBucket },
+    { key: "picchetti", label: "Picchetti a U", qty: pins, unit: "pz", unitPrice: MATERIAL_COSTS.pinPerUnit, total: pins * MATERIAL_COSTS.pinPerUnit },
+  ];
+  const safeBorderMeters = Number(borderMeters) || 0;
+  if (borderType && borderType !== "nessuna" && safeBorderMeters > 0) {
+    const border = BORDER_TYPES.find((entry) => entry.id === borderType);
+    const unitPrice = Number(border?.price || 0);
+    items.push({ key: "bordura", label: border?.name || "Bordura", qty: safeBorderMeters, unit: "m", unitPrice, total: safeBorderMeters * unitPrice });
+  }
+  return items;
+}
+
 function buildPlannerMaterialReferenceModel({
   area,
   substrate,
@@ -411,6 +444,11 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
       servizio: "Fornitura + posa",
       fondo: substrateSummary || "Fondo da definire",
       whatsappTemplate: "",
+      // Quantitativi materiali dalla geometria reale del disegno — vedi
+      // buildPlannerMaterialItems. Machine-readable (non solo stringhe per
+      // display come materialHighlights/materialsReference sopra): il
+      // Generatore li userà al posto della formula piatta sui soli mq.
+      materialItems: buildPlannerMaterialItems(installNeeds, borderType, borderMeters),
     },
   };
 }

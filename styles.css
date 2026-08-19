@@ -19858,6 +19858,11 @@ details.nf-section:not([open]) > .nf-section-head::after {
   display: flex; flex-direction: column; gap: 6px; margin-top: 12px;
   padding-top: 12px; border-top: 1px dashed rgba(31,70,55,0.14);
 }
+.nf-mat-planner-note {
+  font-size: 11.5px; font-weight: 600; color: #1f4637;
+  background: rgba(45,106,79,0.1); border: 1px solid rgba(45,106,79,0.22);
+  border-radius: 8px; padding: 6px 10px; margin-bottom: 8px;
+}
 .nf-mat-row {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 6px 8px; border-radius: 9px; background: rgba(248,250,247,0.7);

@@ -55,6 +55,47 @@ test("esclusione multipla: telo + picchetti (terra fornitura 60mq)", () => {
   assert.equal(round2(b.total), 150); // 270 - 60 (telo) - 60 (picchetti)
 });
 
+test("getMaterialBreakdown con overrideItems: usa gli item forniti, non ricalcola sui mq", () => {
+  const overrideItems = [
+    { key: "telo", label: "Telo isolante", qty: 49.9, unit: "mq", unitPrice: 1, total: 49.9 },
+    { key: "bande", label: "Bande di giunzione", qty: 2, unit: "pz", unitPrice: 30, total: 60 },
+  ];
+  // mq=47.5 darebbe normalmente telo=47.5/bande=1 (formula piatta) — con override
+  // deve ignorarla e restituire ESATTAMENTE gli item passati, solo con `excluded` aggiunto.
+  const b = getMaterialBreakdown("terra", 47.5, "fornitura", [], overrideItems);
+  assert.deepEqual(b.items, overrideItems.map((item) => ({ ...item, excluded: false })));
+  assert.equal(round2(b.total), 109.9);
+});
+
+test("getMaterialBreakdown con overrideItems: excludeKeys funziona comunque sugli item forniti", () => {
+  const overrideItems = [
+    { key: "telo", label: "Telo isolante", qty: 49.9, unit: "mq", unitPrice: 1, total: 49.9 },
+    { key: "bande", label: "Bande di giunzione", qty: 2, unit: "pz", unitPrice: 30, total: 60 },
+  ];
+  const b = getMaterialBreakdown("terra", 47.5, "fornitura", ["bande"], overrideItems);
+  assert.equal(b.items.find((i) => i.key === "bande").excluded, true);
+  assert.equal(round2(b.total), 49.9); // solo il telo, bande escluse
+});
+
+test("computeQuote con materials.items: la distinta mostrata è quella fornita, non quella ricalcolata sui mq", () => {
+  const overrideItems = [
+    { key: "picchetti", label: "Picchetti a U", qty: 64, unit: "pz", unitPrice: 0.3, total: 19.2 },
+  ];
+  const q = computeQuote({
+    mq: 47.5,
+    surface: "terra",
+    materials: { items: overrideItems },
+    options: [{ pricePerSqm: 20, discount: 0 }],
+  });
+  assert.deepEqual(q.materials.items, overrideItems.map((item) => ({ ...item, excluded: false })));
+  assert.equal(round2(q.materials.net), 19.2);
+});
+
+test("computeQuote senza materials.items: comportamento invariato (ricalcola sui mq come sempre)", () => {
+  const q = computeQuote({ mq: 60, surface: "terra", quoteType: "fornitura", options: [{ pricePerSqm: 20, discount: 0 }] });
+  assert.equal(round2(q.materials.net), 270); // stesso valore del test "materiali terra SOLO FORNITURA" sopra
+});
+
 test("computeQuote con esclusione materiale: il grandGross scende della voce esclusa", () => {
   const base = computeQuote({
     mq: 60, quoteType: "fornitura", surface: "terra",
