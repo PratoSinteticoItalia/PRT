@@ -1276,10 +1276,8 @@ function FreeDrawCanvas({
   setRolls,
   areas = [],
   activeAreaId = "",
-  onSelectArea = () => {},
-  onAddArea = () => {},
-  onRemoveArea = () => {},
-  onUpdateActiveArea = () => {},
+  drawMode = "shape",
+  setDrawMode = () => {},
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -1289,7 +1287,6 @@ function FreeDrawCanvas({
   const [selectedVertices, setSelectedVertices] = useState(new Set());
   const [canvasW, setCanvasW] = useState(760);
   const [zoom, setZoom] = useState(1);
-  const [drawMode, setDrawMode] = useState("shape");
   const [rollStart, setRollStart] = useState(null);
   const [canvasMessage, setCanvasMessage] = useState("");
   const [gridStep, setGridStep] = useState(DEFAULT_GRID_STEP);
@@ -1307,12 +1304,8 @@ function FreeDrawCanvas({
   const areaEntries = Array.isArray(areas) ? areas : [];
   const inactiveAreas = areaEntries.filter((area) => area.id !== activeAreaId && Array.isArray(area.points) && area.points.length);
   const activeAreaIndex = Math.max(0, areaEntries.findIndex((area) => area.id === activeAreaId));
-  const canCreateSeparateArea = closed;
-  const canRemoveCurrentArea = areaEntries.length > 1 || points.length > 0 || rolls.length > 0;
   const activeAreaEntry = areaEntries[activeAreaIndex] || null;
   const activeAreaKind = activeAreaEntry?.kind === "paving" ? "paving" : "turf";
-  const activeTileSize = activeAreaEntry?.tileSize || { w: 30, h: 30 };
-  const activeTileLayout = activeAreaEntry?.tileLayout === "offset" ? "offset" : "straight";
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1800,69 +1793,19 @@ function FreeDrawCanvas({
           >
             Aggiungi rotolo
           </button>
-          <div style={{ display: "flex", gap: 0, borderRadius: 4, overflow: "hidden", border: "1px solid " + B.border }}>
-            <button
-              type="button"
-              onClick={() => onUpdateActiveArea({ kind: "turf" })}
-              title="Quest'area è prato: rotoli, telo, banda, colla, picchetti"
-              style={{
-                padding: "3px 8px", fontSize: 11, cursor: "pointer", border: "none",
-                background: activeAreaKind === "turf" ? B.primary : B.white, color: activeAreaKind === "turf" ? "#fff" : B.textMuted, fontWeight: activeAreaKind === "turf" ? 700 : 500,
-              }}
-            >
-              🌱 Prato
-            </button>
-            <button
-              type="button"
-              onClick={() => onUpdateActiveArea({ kind: "paving" })}
-              title="Quest'area è pavimentazione: mattonelle WPC ad incastro, niente rotoli"
-              style={{
-                padding: "3px 8px", fontSize: 11, cursor: "pointer", border: "none", borderLeft: "1px solid " + B.border,
-                background: activeAreaKind === "paving" ? "#8a6d3b" : B.white, color: activeAreaKind === "paving" ? "#fff" : B.textMuted, fontWeight: activeAreaKind === "paving" ? 700 : 500,
-              }}
-            >
-              ▦ Pavimentazione
-            </button>
-          </div>
-          {activeAreaKind === "paving" && (
-            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-              {[{ w: 30, h: 30 }, { w: 40, h: 40 }, { w: 50, h: 50 }].map((size) => {
-                const active = activeTileSize.w === size.w && activeTileSize.h === size.h;
-                return (
-                  <button
-                    key={`${size.w}x${size.h}`}
-                    type="button"
-                    onClick={() => onUpdateActiveArea({ tileSize: size })}
-                    style={{
-                      padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer",
-                      border: active ? "1.5px solid #8a6d3b" : "1px solid " + B.border,
-                      background: active ? "#f5efe3" : B.white, color: active ? "#8a6d3b" : B.text, fontWeight: active ? 700 : 500,
-                    }}
-                  >
-                    {size.w}×{size.h}
-                  </button>
-                );
-              })}
-              <select
-                value={activeTileLayout}
-                onChange={(e) => onUpdateActiveArea({ tileLayout: e.target.value })}
-                style={{ padding: "3px 6px", borderRadius: 4, fontSize: 11, border: "1px solid " + B.border, background: B.white, color: B.text }}
-              >
-                <option value="straight">Posa diritta</option>
-                <option value="offset">Posa sfalsata</option>
-              </select>
-            </div>
-          )}
+          {/* Formato/tipo area (Prato/Pavimentazione) e picker mattonella si
+              scelgono ora dall'inspector (strumento "Pavimentazione" nel
+              rail) — qui restano solo le azioni sul disegno stesso. */}
           <button
             type="button"
-            onClick={undoLastPoint}
-            disabled={!points.length}
+            onClick={closed ? reopenShape : undoLastPoint}
+            disabled={closed ? false : !points.length}
             style={{
               padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
-              cursor: points.length ? "pointer" : "not-allowed", color: points.length ? B.text : B.textMuted, opacity: points.length ? 1 : 0.55,
+              cursor: closed || points.length ? "pointer" : "not-allowed", color: closed || points.length ? B.text : B.textMuted, opacity: closed || points.length ? 1 : 0.55,
             }}
           >
-            {closed ? "Riapri" : "Annulla punto"}
+            {closed ? "Modifica" : "Annulla punto"}
           </button>
           <button
             type="button"
@@ -1874,17 +1817,6 @@ function FreeDrawCanvas({
             }}
           >
             Chiudi perimetro
-          </button>
-          <button
-            type="button"
-            onClick={reopenShape}
-            disabled={!closed}
-            style={{
-              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
-              cursor: closed ? "pointer" : "not-allowed", color: closed ? B.text : B.textMuted, opacity: closed ? 1 : 0.55,
-            }}
-          >
-            Modifica profilo
           </button>
           <button
             type="button"
@@ -1952,59 +1884,10 @@ function FreeDrawCanvas({
             Azzera rotoli
           </button>
           <button onClick={reset} style={{ padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11, cursor: "pointer", color: B.text }}>Ricomincia</button>
-          <button
-            type="button"
-            onClick={onAddArea}
-            disabled={!canCreateSeparateArea}
-            style={{
-              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
-              cursor: canCreateSeparateArea ? "pointer" : "not-allowed", color: canCreateSeparateArea ? B.text : B.textMuted, opacity: canCreateSeparateArea ? 1 : 0.55,
-            }}
-          >
-            Nuova area separata
-          </button>
-          <button
-            type="button"
-            onClick={onRemoveArea}
-            disabled={!canRemoveCurrentArea}
-            style={{
-              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
-              cursor: canRemoveCurrentArea ? "pointer" : "not-allowed", color: canRemoveCurrentArea ? B.text : B.textMuted, opacity: canRemoveCurrentArea ? 1 : 0.55,
-            }}
-          >
-            Rimuovi area attiva
-          </button>
         </div>
       </div>
-      {areaEntries.length > 1 && (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          {areaEntries.map((area, index) => {
-            const areaPoints = Array.isArray(area.points) ? area.points : [];
-            const areaClosed = Boolean(area.closed);
-            const areaSqm = areaClosed && areaPoints.length >= 3 ? polyArea(areaPoints) : 0;
-            const active = area.id === activeAreaId;
-            return (
-              <button
-                key={area.id}
-                type="button"
-                onClick={() => onSelectArea(area.id)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 999,
-                  border: active ? "2px solid " + B.primary : "1px solid " + B.border,
-                  background: active ? B.light : B.white,
-                  color: active ? B.primary : B.text,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {`${area.kind === "paving" ? "▦" : "🌱"} Area ${index + 1}${areaClosed ? ` · ${fmt(areaSqm, 1)} m²` : " · aperta"}`}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* Aree multiple: gestite dalla striscia GpAreaStrip sopra il canvas
+          (stessi onSelectArea/onAddArea/onRemoveArea), non più duplicate qui. */}
       <canvas ref={canvasRef} width={canvasW} height={canvasH}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -2083,9 +1966,6 @@ function MetricCard({ label, value, sub, accent, warning }) {
       {sub && <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>{sub}</div>}
     </div>
   );
-}
-function StepBadge({ n }) {
-  return <div style={{ width: 28, height: 28, borderRadius: "50%", background: B.primary, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{n}</div>;
 }
 function DimInput({ label, value, onChange, unit }) {
   return (
@@ -2258,15 +2138,12 @@ function ShapeInput({
   setManualRolls,
   plannerAreas = [],
   activeAreaId = "",
-  onSelectArea = () => {},
-  onAddArea = () => {},
-  onRemoveArea = () => {},
-  onUpdateActiveArea = () => {},
+  drawMode = "shape",
+  setDrawMode = () => {},
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={secTitle}>Disegno libero tecnico</div>
-      <div style={{ marginTop: -4, fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
+      <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
         Definisci uno o più perimetri cliccando i vertici e chiudendo ogni area sul punto iniziale. Poi usa <strong style={{ color: B.dark }}>Aggiungi rotolo</strong> sull'area attiva per simulare la posa reale e gli scarti.
       </div>
       <FreeDrawCanvas
@@ -2278,10 +2155,8 @@ function ShapeInput({
         setRolls={setManualRolls}
         areas={plannerAreas}
         activeAreaId={activeAreaId}
-        onSelectArea={onSelectArea}
-        onAddArea={onAddArea}
-        onRemoveArea={onRemoveArea}
-        onUpdateActiveArea={onUpdateActiveArea}
+        drawMode={drawMode}
+        setDrawMode={setDrawMode}
       />
     </div>
   );
@@ -2931,11 +2806,312 @@ function ReportShell({ id, variant = "technical", area, perimeter, turfArea, tur
 /* ═══════════════════════════════════════════
    STYLES
    ═══════════════════════════════════════════ */
-const secTitle = { fontSize: 12, fontWeight: 700, color: B.dark, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.2px" };
 const btnPrim = { padding: "8px 16px", borderRadius: 8, border: "none", background: B.primary, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" };
-const cardStyle = { background: B.white, borderRadius: 12, padding: "20px 24px", border: "1px solid " + B.borderLight };
 const lbl = { display: "block", fontSize: 11, color: B.textMuted, marginBottom: 4, fontWeight: 500 };
 const fieldInp = { width: "100%", padding: "10px 14px", border: "1.5px solid " + B.border, borderRadius: 10, fontSize: 13, boxSizing: "border-box", outline: "none", color: B.dark };
+
+/* ═══════════════════════════════════════════
+   REDESIGN — struttura workspace (Fase C)
+   Un solo <style> con classi sotto prefisso gp- per non mischiare paradigmi
+   con lo stile inline usato ovunque nel resto del file (bottoni, campi,
+   canvas restano inline — qui solo l'ossatura: topbar/rail/area-strip/
+   inspector/dock). Stessi colori di B, solo portati in variabili CSS.
+   ═══════════════════════════════════════════ */
+function GpChromeStyles() {
+  return (
+    <style>{`
+      .gp-shell { display: flex; flex-direction: column; gap: 14px; }
+      .gp-topbar {
+        display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+        background: ${B.white}; border: 1px solid ${B.borderLight}; border-radius: 12px;
+        padding: 12px 18px;
+      }
+      .gp-topbar-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .gp-topbar-id strong { font-size: 14px; color: ${B.dark}; font-weight: 700; overflow-wrap: anywhere; }
+      .gp-topbar-id span { font-size: 11.5px; color: ${B.textMuted}; overflow-wrap: anywhere; }
+      .gp-topbar-metrics { display: flex; gap: 8px; flex-wrap: wrap; }
+      .gp-topbar-chip {
+        display: inline-flex; align-items: baseline; gap: 5px;
+        background: ${B.cream}; border: 1px solid ${B.borderLight}; border-radius: 999px;
+        padding: 5px 12px; font-size: 11.5px; color: ${B.textMuted};
+      }
+      .gp-topbar-chip b { font-size: 13px; color: ${B.dark}; font-weight: 800; }
+      .gp-topbar-spacer { flex: 1; }
+
+      .gp-workspace { display: flex; gap: 14px; align-items: flex-start; }
+      .gp-rail {
+        display: flex; flex-direction: column; gap: 6px;
+        background: ${B.white}; border: 1px solid ${B.borderLight}; border-radius: 12px;
+        padding: 10px; flex: 0 0 76px; position: sticky; top: 12px;
+      }
+      .gp-rail-btn {
+        display: flex; flex-direction: column; align-items: center; gap: 4px;
+        padding: 10px 4px; border-radius: 9px; border: 1px solid transparent;
+        background: transparent; color: ${B.textMuted}; font-size: 10px; font-weight: 700;
+        cursor: pointer; line-height: 1.15; text-align: center;
+      }
+      .gp-rail-btn .ico { font-size: 18px; line-height: 1; }
+      .gp-rail-btn.is-active { background: ${B.light}; border-color: ${B.primary}; color: ${B.primary}; }
+      .gp-rail-btn.tone-border.is-active { background: #fdf2e3; border-color: #b8860b; color: #8a6d3b; }
+      .gp-rail-btn.tone-paving.is-active { background: #f5efe3; border-color: #8a6d3b; color: #8a6d3b; }
+      .gp-rail-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .gp-rail-divider { height: 1px; background: ${B.borderLight}; margin: 4px 2px; }
+
+      .gp-canvas-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+      .gp-area-strip {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        background: ${B.white}; border: 1px solid ${B.borderLight}; border-radius: 12px; padding: 8px 12px;
+      }
+      .gp-area-strip-label { font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: ${B.textMuted}; }
+      .gp-area-chip {
+        display: inline-flex; align-items: center; gap: 6px;
+        border: 1.5px solid ${B.border}; background: ${B.white}; color: ${B.textMuted};
+        font-size: 11.5px; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+      }
+      .gp-area-chip.is-active { border-color: ${B.primary}; background: ${B.light}; color: ${B.primary}; }
+      .gp-area-chip.tone-paving.is-active { border-color: #8a6d3b; background: #f5efe3; color: #8a6d3b; }
+      .gp-area-chip .x { margin-left: 2px; opacity: 0.6; }
+      .gp-area-add { border: 1.5px dashed ${B.border}; background: transparent; color: ${B.textMuted}; font-size: 11.5px; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer; }
+      .gp-area-add:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      .gp-inspector {
+        flex: 0 0 320px; background: ${B.white}; border: 1px solid ${B.borderLight}; border-radius: 12px;
+        overflow: hidden; position: sticky; top: 12px;
+      }
+      .gp-inspector-tabs { display: flex; border-bottom: 1px solid ${B.borderLight}; }
+      .gp-inspector-tabs button {
+        flex: 1; padding: 11px 8px; font-size: 11.5px; font-weight: 700; color: ${B.textMuted};
+        background: ${B.white}; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+      }
+      .gp-inspector-tabs button.is-active { color: ${B.primary}; border-bottom-color: ${B.primary}; background: ${B.light}; }
+      .gp-inspector-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; max-height: 640px; overflow-y: auto; }
+
+      .gp-dock { background: ${B.white}; border: 1px solid ${B.borderLight}; border-radius: 12px; overflow: hidden; }
+      .gp-dock-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid ${B.borderLight}; }
+      .gp-dock-tabs button {
+        display: flex; align-items: center; gap: 6px;
+        padding: 10px 14px; font-size: 11.5px; font-weight: 700; color: ${B.textMuted};
+        background: ${B.white}; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+      }
+      .gp-dock-tabs button.is-active { color: ${B.primary}; border-bottom-color: ${B.primary}; background: ${B.light}; }
+      .gp-dock-panel { display: none; padding: 16px 18px; flex-wrap: wrap; gap: 14px; }
+      .gp-dock-panel.is-active { display: flex; }
+
+      .gp-preview-toggle {
+        display: flex; border: 1px solid ${B.border}; border-radius: 999px; overflow: hidden; flex: 0 0 auto;
+      }
+      .gp-preview-toggle button {
+        padding: 5px 12px; font-size: 11px; font-weight: 700; border: none; cursor: pointer;
+        background: ${B.white}; color: ${B.textMuted};
+      }
+      .gp-preview-toggle button.is-active { background: ${B.primary}; color: #fff; }
+
+      @media (max-width: 900px) {
+        .gp-workspace { flex-direction: column; }
+        .gp-rail { flex-direction: row; position: static; flex: 0 0 auto; overflow-x: auto; }
+        .gp-inspector { flex: 1 1 auto; position: static; width: 100%; }
+      }
+    `}</style>
+  );
+}
+
+// Barra in alto: identità progetto + superficie + toggle anteprima + CTA
+// principale (prima in fondo pagina, ora sempre visibile).
+function GpTopBar({ client, address, area, previewMode, onSetPreviewMode, onOpenGenerator, canOpenGenerator }) {
+  return (
+    <div className="gp-topbar">
+      <div className="gp-topbar-id">
+        <strong>{client || "Nuovo progetto"}</strong>
+        <span>{address || "Indirizzo da definire"}</span>
+      </div>
+      <div className="gp-topbar-metrics">
+        <div className="gp-topbar-chip">Superficie <b>{area > 0 ? fmt(area, 1) + " m²" : "—"}</b></div>
+      </div>
+      <div className="gp-topbar-spacer" />
+      <div className="gp-preview-toggle">
+        <button type="button" className={previewMode ? "" : "is-active"} onClick={() => onSetPreviewMode(false)}>✎ Schema</button>
+        <button type="button" className={previewMode ? "is-active" : ""} onClick={() => onSetPreviewMode(true)}>🌿 Anteprima</button>
+      </div>
+      <button
+        type="button"
+        onClick={onOpenGenerator}
+        disabled={!canOpenGenerator}
+        style={{ ...btnPrim, whiteSpace: "nowrap", background: "#244033", opacity: canOpenGenerator ? 1 : 0.55, cursor: canOpenGenerator ? "pointer" : "not-allowed" }}
+      >
+        Apri nel generatore
+      </button>
+    </div>
+  );
+}
+
+// Striscia aree: sostituisce le vecchie "area tabs" dentro FreeDrawCanvas —
+// stessi handler (onSelectArea/onAddArea/onRemoveArea), ora sempre visibile
+// (prima solo con più di un'area) e fuori dal canvas per restare a vista
+// mentre si cambia strumento.
+function GpAreaStrip({ areas = [], activeAreaId, onSelectArea, onAddArea, onRemoveArea, canAddArea }) {
+  return (
+    <div className="gp-area-strip">
+      <span className="gp-area-strip-label">Aree</span>
+      {areas.map((areaItem, index) => {
+        const active = areaItem.id === activeAreaId;
+        const closed = Boolean(areaItem.closed);
+        const sqm = closed && Array.isArray(areaItem.points) && areaItem.points.length >= 3 ? polyArea(areaItem.points) : 0;
+        const isPaving = areaItem.kind === "paving";
+        return (
+          <button
+            key={areaItem.id}
+            type="button"
+            className={`gp-area-chip ${isPaving ? "tone-paving" : ""} ${active ? "is-active" : ""}`}
+            onClick={() => onSelectArea(areaItem.id)}
+          >
+            {isPaving ? "▦" : "🌱"} Area {index + 1}{closed ? ` · ${fmt(sqm, 1)} m²` : " · aperta"}
+            {active && areas.length > 1 ? (
+              <span className="x" onClick={(e) => { e.stopPropagation(); onRemoveArea(); }} title="Rimuovi area">×</span>
+            ) : null}
+          </button>
+        );
+      })}
+      <button type="button" className="gp-area-add" onClick={onAddArea} disabled={!canAddArea} title={canAddArea ? "" : "Chiudi il perimetro attivo prima di aggiungerne un altro"}>
+        ＋ Nuova area
+      </button>
+    </div>
+  );
+}
+
+// Barra strumenti a icone: i 4 "modi" del planner. Disegna/Rotolo governano
+// drawMode (comportamento invariato, incluso il blocco rotolo su aree
+// pavimentazione); Bordura/Pavimentazione cambiano SOLO cosa mostra
+// l'inspector (inspectorFocus) — Pavimentazione in più marca l'area attiva
+// come "paving" (stesso onUpdateActiveArea della Fase B).
+function GpToolRail({ inspectorFocus, onSelectDraw, onSelectRoll, onSelectBorder, onSelectPaving, closed, activeAreaKind }) {
+  return (
+    <div className="gp-rail">
+      <button type="button" className={`gp-rail-btn ${inspectorFocus === "draw" ? "is-active" : ""}`} onClick={onSelectDraw} title="Disegna perimetro">
+        <span className="ico">✎</span>Disegna
+      </button>
+      <button
+        type="button"
+        className={`gp-rail-btn ${inspectorFocus === "roll" ? "is-active" : ""}`}
+        onClick={onSelectRoll}
+        disabled={!closed || activeAreaKind === "paving"}
+        title={activeAreaKind === "paving" ? "Non si posano rotoli su un'area di pavimentazione" : "Aggiungi rotolo"}
+      >
+        <span className="ico">▤</span>Rotolo
+      </button>
+      <div className="gp-rail-divider" />
+      <button type="button" className={`gp-rail-btn tone-border ${inspectorFocus === "border" ? "is-active" : ""}`} onClick={onSelectBorder} title="Bordura">
+        <span className="ico">⌢</span>Bordura
+      </button>
+      <button
+        type="button"
+        className={`gp-rail-btn tone-paving ${inspectorFocus === "paving" ? "is-active" : ""}`}
+        onClick={onSelectPaving}
+        title="Pavimentazione"
+      >
+        <span className="ico">▦</span>Pavim.
+      </button>
+    </div>
+  );
+}
+
+// Dock inferiore: 4 tab per i campi che prima erano sezioni impilate (Dati
+// progetto/Trasferta/Preparazione fondo/Materiali extra) — stessi componenti
+// esistenti dentro (ProjectHeader/TravelPlanner/campi sostrato/DecoSection),
+// solo in un contenitore a tab invece di card in sequenza.
+function GpBottomDock({ activeTab, onSelectTab, children }) {
+  const tabs = [
+    { key: "dati", label: "Dati progetto", icon: "i" },
+    { key: "trasferta", label: "Trasferta", icon: "€" },
+    { key: "fondo", label: "Preparazione fondo", icon: "▦" },
+    { key: "extra", label: "Materiali extra", icon: "＋" },
+  ];
+  return (
+    <div className="gp-dock">
+      <div className="gp-dock-tabs">
+        {tabs.map((t) => (
+          <button key={t.key} type="button" className={activeTab === t.key ? "is-active" : ""} onClick={() => onSelectTab(t.key)}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Selettore tipo area (prato/pavimentazione) + formato mattonella + posa —
+// stessa UI/logica della Fase B (era nel canvas-toolbar), ora nel tab
+// "Elemento" dell'inspector quando si seleziona lo strumento Pavimentazione.
+function GpPavingPicker({ activeAreaKind, activeTileSize, activeTileLayout, onUpdateActiveArea }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div>
+        <label style={lbl}>Tipo di area</label>
+        <div style={{ display: "flex", gap: 0, borderRadius: 4, overflow: "hidden", border: "1px solid " + B.border, width: "fit-content" }}>
+          <button
+            type="button"
+            onClick={() => onUpdateActiveArea({ kind: "turf" })}
+            title="Quest'area è prato: rotoli, telo, banda, colla, picchetti"
+            style={{
+              padding: "5px 12px", fontSize: 11.5, cursor: "pointer", border: "none",
+              background: activeAreaKind === "turf" ? B.primary : B.white, color: activeAreaKind === "turf" ? "#fff" : B.textMuted, fontWeight: activeAreaKind === "turf" ? 700 : 500,
+            }}
+          >
+            🌱 Prato
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdateActiveArea({ kind: "paving" })}
+            title="Quest'area è pavimentazione: mattonelle WPC ad incastro, niente rotoli"
+            style={{
+              padding: "5px 12px", fontSize: 11.5, cursor: "pointer", border: "none", borderLeft: "1px solid " + B.border,
+              background: activeAreaKind === "paving" ? "#8a6d3b" : B.white, color: activeAreaKind === "paving" ? "#fff" : B.textMuted, fontWeight: activeAreaKind === "paving" ? 700 : 500,
+            }}
+          >
+            ▦ Pavimentazione
+          </button>
+        </div>
+      </div>
+      {activeAreaKind === "paving" && (
+        <>
+          <div>
+            <label style={lbl}>Formato mattonella</label>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {[{ w: 30, h: 30 }, { w: 40, h: 40 }, { w: 50, h: 50 }].map((size) => {
+                const active = activeTileSize.w === size.w && activeTileSize.h === size.h;
+                return (
+                  <button
+                    key={`${size.w}x${size.h}`}
+                    type="button"
+                    onClick={() => onUpdateActiveArea({ tileSize: size })}
+                    style={{
+                      padding: "5px 10px", borderRadius: 4, fontSize: 11.5, cursor: "pointer",
+                      border: active ? "1.5px solid #8a6d3b" : "1px solid " + B.border,
+                      background: active ? "#f5efe3" : B.white, color: active ? "#8a6d3b" : B.text, fontWeight: active ? 700 : 500,
+                    }}
+                  >
+                    {size.w}×{size.h} cm
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>Tipo di posa</label>
+            <select
+              value={activeTileLayout}
+              onChange={(e) => onUpdateActiveArea({ tileLayout: e.target.value })}
+              style={{ padding: "6px 8px", borderRadius: 4, fontSize: 11.5, border: "1px solid " + B.border, background: B.white, color: B.text, width: "100%" }}
+            >
+              <option value="straight">Posa diritta (scarto 8%)</option>
+              <option value="offset">Posa sfalsata (scarto 12%)</option>
+            </select>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════════
    MAIN APP
@@ -2961,6 +3137,14 @@ function GardenPlanner() {
   const customPts = activeArea?.points || [];
   const customClosed = Boolean(activeArea?.closed);
   const manualRolls = activeArea?.rolls || [];
+  const activeAreaKind = activeArea?.kind === "paving" ? "paving" : "turf";
+  const activeTileSize = activeArea?.tileSize || { w: 30, h: 30 };
+  const activeTileLayout = activeArea?.tileLayout === "offset" ? "offset" : "straight";
+  const [drawMode, setDrawMode] = useState("shape");
+  const [inspectorFocus, setInspectorFocus] = useState("draw");
+  const [inspectorTab, setInspectorTab] = useState("element");
+  const [previewMode, setPreviewMode] = useState(false);
+  const [activeDockTab, setActiveDockTab] = useState("dati");
   const layoutKey = useMemo(
     () => JSON.stringify(plannerAreas.map((area) => ({ points: area.points, closed: area.closed }))),
     [plannerAreas],
@@ -3075,6 +3259,32 @@ function GardenPlanner() {
     setPlannerAreas(nextAreas);
     setActiveAreaId(nextAreas[Math.max(0, currentIndex - 1)]?.id || nextAreas[0]?.id || "");
   }, [plannerAreas, activeAreaId, updateActiveArea]);
+
+  // I 4 "strumenti" del rail: Disegna/Rotolo pilotano drawMode (comportamento
+  // invariato, incluso il blocco rotolo su aree pavimentazione), Bordura/
+  // Pavimentazione cambiano solo cosa mostra l'inspector (Pavimentazione in
+  // più marca l'area attiva come "paving", stesso onUpdateActiveArea già
+  // usato dalla Fase B).
+  const handleSelectDrawTool = useCallback(() => {
+    setDrawMode("shape");
+    setInspectorFocus("draw");
+    setInspectorTab("element");
+  }, []);
+  const handleSelectRollTool = useCallback(() => {
+    if (!customClosed || activeAreaKind === "paving") return;
+    setDrawMode("roll");
+    setInspectorFocus("roll");
+    setInspectorTab("element");
+  }, [customClosed, activeAreaKind]);
+  const handleSelectBorderTool = useCallback(() => {
+    setInspectorFocus("border");
+    setInspectorTab("element");
+  }, []);
+  const handleSelectPavingTool = useCallback(() => {
+    updateActiveArea((areaItem) => ({ ...areaItem, kind: "paving" }));
+    setInspectorFocus("paving");
+    setInspectorTab("element");
+  }, [updateActiveArea]);
 
   useEffect(() => {
     setSelectedBorderEdges(borderEdges.map(edge => edge.id));
@@ -3254,32 +3464,134 @@ function GardenPlanner() {
     window.open(targetUrl.toString(), "_blank", "noopener,noreferrer");
   };
 
+  const borderPanel = (
+    <div>
+      <label style={lbl}>Bordura perimetrale</label>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+        {BORDER_TYPES.map(bt => (
+          <button key={bt.id} onClick={() => setBorderType(bt.id)} style={{
+            padding: "6px 12px", borderRadius: 8,
+            border: borderType === bt.id ? "2px solid " + B.primary : "1px solid " + B.border,
+            background: borderType === bt.id ? B.light : B.white, fontSize: 11, fontWeight: borderType === bt.id ? 600 : 400,
+            color: borderType === bt.id ? B.primary : B.text, cursor: "pointer",
+          }}>{bt.name}</button>
+        ))}
+      </div>
+      {borderType === "pvc" && borderEdges.length > 0 && (
+        <div>
+          <label style={lbl}>Seleziona i lati dove posare la bordura</label>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => setSelectedBorderEdges(borderEdges.map(edge => edge.id))}
+              style={{ padding: "5px 10px", borderRadius: 999, border: "1px solid " + B.border, background: B.white, color: B.text, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+            >
+              Seleziona tutti i lati
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedBorderEdges([])}
+              style={{ padding: "5px 10px", borderRadius: 999, border: "1px solid " + B.border, background: B.white, color: B.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+            >
+              Deseleziona tutto
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {borderEdges.map(edge => {
+              const active = selectedBorderEdges.includes(edge.id);
+              return (
+                <button
+                  key={edge.id}
+                  type="button"
+                  onClick={() => setSelectedBorderEdges(prev => prev.includes(edge.id) ? prev.filter(id => id !== edge.id) : [...prev, edge.id])}
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: 999,
+                    border: active ? "2px solid " + B.primary : "1px solid " + B.border,
+                    background: active ? B.light : B.white,
+                    color: active ? B.primary : B.text,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {edge.label} · {fmt(edge.length)} m
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: B.textMuted }}>
+            Bordura selezionata: <strong style={{ color: B.dark }}>{fmt(selectedBorderMeters)} m</strong> · {selectedBorderEdges.length}/{borderEdges.length} lati
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const clientReportShell = (
+    <div style={{ display: "none" }} aria-hidden="true">
+      <ReportShell
+        id="garden-planner-client-print-content"
+        area={area}
+        perimeter={perimeter}
+        turfArea={turfArea}
+        turfPerimeter={turfPerimeter}
+        shape={shape}
+        dims={safeDims}
+        customPts={customPts}
+        customClosed={customClosed}
+        customAreas={completedAreas}
+        borderMeters={selectedBorderMeters}
+        borderType={borderType}
+        substrate={substrate}
+        decoItems={decoItems}
+        projectInfo={projectInfo}
+        travel={travel}
+        viewerRole={viewerRole}
+        regionalPricing={regionalPricing}
+        manualRolls={allManualRolls}
+        pavingNeedsByArea={pavingNeedsByArea}
+        variant="client"
+      />
+    </div>
+  );
+
   return (
     <div style={{ fontFamily: "'Manrope', 'Segoe UI', sans-serif", minHeight: "100vh", background: "transparent" }}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+      <GpChromeStyles />
       <Header />
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 16px", display: "flex", flexDirection: "column", gap: 22 }}>
+      <div className="gp-shell" style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 16px" }}>
+        <GpTopBar
+          client={projectInfo.client}
+          address={projectInfo.address}
+          area={area}
+          previewMode={previewMode}
+          onSetPreviewMode={setPreviewMode}
+          onOpenGenerator={handleOpenQuoteGenerator}
+          canOpenGenerator={area > 0}
+        />
 
-        {/* PROJECT INFO */}
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <StepBadge n={0} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Dati progetto</span>
-          </div>
-          <ProjectHeader info={projectInfo} setInfo={setProjectInfo} />
-        </div>
+        <div className="gp-workspace">
+          <GpToolRail
+            inspectorFocus={inspectorFocus}
+            onSelectDraw={handleSelectDrawTool}
+            onSelectRoll={handleSelectRollTool}
+            onSelectBorder={handleSelectBorderTool}
+            onSelectPaving={handleSelectPavingTool}
+            closed={customClosed}
+            activeAreaKind={activeAreaKind}
+          />
 
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <StepBadge n={"0B"} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Trasferta e costi viaggio</span>
-          </div>
-          <TravelPlanner travel={travel} setTravel={setTravel} />
-        </div>
-
-        {/* STEP 1: AREA */}
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <StepBadge n={1} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Definisci l'area</span>
-          </div>
+          <div className="gp-canvas-col">
+            <GpAreaStrip
+              areas={plannerAreas}
+              activeAreaId={activeAreaId}
+              onSelectArea={setActiveAreaId}
+              onAddArea={addPlannerArea}
+              onRemoveArea={removeActivePlannerArea}
+              canAddArea={Boolean(activeArea?.closed)}
+            />
             <ShapeInput
               customPts={customPts}
               setCustomPts={setCustomPts}
@@ -3289,184 +3601,113 @@ function GardenPlanner() {
               setManualRolls={setManualRolls}
               plannerAreas={plannerAreas}
               activeAreaId={activeAreaId}
-              onSelectArea={setActiveAreaId}
-              onAddArea={addPlannerArea}
-              onRemoveArea={removeActivePlannerArea}
-              onUpdateActiveArea={(patch) => updateActiveArea((areaItem) => ({ ...areaItem, ...patch }))}
+              drawMode={drawMode}
+              setDrawMode={setDrawMode}
             />
-          {area > 0 && (
-            <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
-              <MetricCard label="Superficie" value={fmt(area) + " m\u00B2"} accent />
-              <MetricCard label="Perimetro" value={fmt(perimeter) + " m"} />
-              {shape === "custom" && completedAreas.length
-                ? <MetricCard label="Aree separate" value={`${completedAreas.length}`} sub={`${completedAreas.reduce((sum, areaItem) => sum + areaItem.points.length, 0)} vertici complessivi`} />
-                : null}
-              <MetricCard label="Lati rilevati" value={`${borderEdges.length}`} sub="Perimetro disponibile" />
-            </div>
-          )}
-        </div>
-
-        {/* STEP 2: SUBSTRATE */}
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <StepBadge n={2} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Preparazione fondo</span>
-          </div>
-          <div style={secTitle}>Spessori lavorazione</div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <DimInput label="Scavo da effettuare" value={substrate.scavoCm} onChange={v => setSubstrate(p => ({ ...p, scavoCm: parseFloat(v) || 0 }))} unit="cm" />
-            <DimInput label="Fondo drenante" value={substrate.drenateCm} onChange={v => setSubstrate(p => ({ ...p, drenateCm: parseFloat(v) || 0 }))} unit="cm" />
-            <DimInput label="Sabbia livellamento" value={substrate.sabbiaCm} onChange={v => setSubstrate(p => ({ ...p, sabbiaCm: parseFloat(v) || 0 }))} unit="cm" />
-          </div>
-          {area > 0 && (
-            <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
-              {substrate.scavoCm > 0 && <MetricCard label="Terra da smaltire" value={fmt((area * substrate.scavoCm) / 100, 2) + " m\u00B3"} sub={Math.round(area * substrate.scavoCm / 100 * 1400) + " kg circa"} warning />}
-              {substrate.drenateCm > 0 && <MetricCard label="Pietrisco drenante" value={fmt((area * substrate.drenateCm) / 100, 2) + " m\u00B3"} sub={Math.round(area * substrate.drenateCm / 100 * 1600) + " kg circa"} />}
-              {substrate.sabbiaCm > 0 && <MetricCard label="Sabbia livellamento" value={Math.round(area * substrate.sabbiaCm / 100 * 1500) + " kg"} sub={fmt((area * substrate.sabbiaCm) / 100, 2) + " m\u00B3"} />}
-            </div>
-          )}
-          <div style={{ marginTop: 10, fontSize: 12, color: B.textMuted, padding: "8px 10px", background: B.cream, borderRadius: 8, border: "1px solid " + B.borderLight }}>
-            Listino regionale attivo: <strong style={{ color: B.dark }}>{regionalPricing.region}</strong> · Stabilizzato <strong style={{ color: B.dark }}>{fmt(regionalPricing.stabilizedPerTon, 1)} €/t</strong> · Sabbia 0/4 <strong style={{ color: B.dark }}>{fmt(regionalPricing.sandPerTon, 1)} €/t</strong>
-          </div>
-        </div>
-
-        {/* STEP 3: BORDER + INSTALLATION */}
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <StepBadge n={3} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Bordure e posa</span>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={lbl}>Bordura perimetrale</label>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {BORDER_TYPES.map(bt => (
-                <button key={bt.id} onClick={() => setBorderType(bt.id)} style={{
-                  padding: "6px 12px", borderRadius: 8,
-                  border: borderType === bt.id ? "2px solid " + B.primary : "1px solid " + B.border,
-                  background: borderType === bt.id ? B.light : B.white, fontSize: 11, fontWeight: borderType === bt.id ? 600 : 400,
-                  color: borderType === bt.id ? B.primary : B.text, cursor: "pointer",
-                }}>{bt.name}</button>
-              ))}
-            </div>
-          </div>
-          {borderType === "pvc" && borderEdges.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <label style={lbl}>Seleziona i lati dove posare la bordura</label>
-              <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedBorderEdges(borderEdges.map(edge => edge.id))}
-                  style={{ padding: "5px 10px", borderRadius: 999, border: "1px solid " + B.border, background: B.white, color: B.text, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                >
-                  Seleziona tutti i lati
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedBorderEdges([])}
-                  style={{ padding: "5px 10px", borderRadius: 999, border: "1px solid " + B.border, background: B.white, color: B.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                >
-                  Deseleziona tutto
-                </button>
+            {area > 0 && (
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <MetricCard label="Superficie" value={fmt(area) + " m\u00B2"} accent />
+                <MetricCard label="Perimetro" value={fmt(perimeter) + " m"} />
+                {shape === "custom" && completedAreas.length
+                  ? <MetricCard label="Aree separate" value={`${completedAreas.length}`} sub={`${completedAreas.reduce((sum, areaItem) => sum + areaItem.points.length, 0)} vertici complessivi`} />
+                  : null}
+                <MetricCard label="Lati rilevati" value={`${borderEdges.length}`} sub="Perimetro disponibile" />
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {borderEdges.map(edge => {
-                  const active = selectedBorderEdges.includes(edge.id);
-                  return (
-                    <button
-                      key={edge.id}
-                      type="button"
-                      onClick={() => setSelectedBorderEdges(prev => prev.includes(edge.id) ? prev.filter(id => id !== edge.id) : [...prev, edge.id])}
-                      style={{
-                        padding: "7px 12px",
-                        borderRadius: 999,
-                        border: active ? "2px solid " + B.primary : "1px solid " + B.border,
-                        background: active ? B.light : B.white,
-                        color: active ? B.primary : B.text,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {edge.label} · {fmt(edge.length)} m
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ marginTop: 8, fontSize: 12, color: B.textMuted }}>
-                Bordura selezionata: <strong style={{ color: B.dark }}>{fmt(selectedBorderMeters)} m</strong> · {selectedBorderEdges.length}/{borderEdges.length} lati
-              </div>
+            )}
+          </div>
+
+          <div className="gp-inspector">
+            <div className="gp-inspector-tabs">
+              <button type="button" className={inspectorTab === "element" ? "is-active" : ""} onClick={() => setInspectorTab("element")}>Elemento</button>
+              <button type="button" className={inspectorTab === "summary" ? "is-active" : ""} onClick={() => setInspectorTab("summary")}>Riepilogo</button>
             </div>
-          )}
-          <InstallationNeedsPanel area={turfArea} perimeter={turfPerimeter} borderType={borderType} borderMeters={selectedBorderMeters} manualRolls={allManualRolls} />
-          {completedPavingAreas.length > 0 ? (
-            <PavingNeedsPanel pavingNeedsByArea={pavingNeedsByArea} pavingTilesTotal={pavingTilesTotal} />
-          ) : null}
+            <div className="gp-inspector-body">
+              {inspectorTab === "element" ? (
+                <>
+                  {inspectorFocus === "border" ? borderPanel : null}
+                  {inspectorFocus === "paving" ? (
+                    <GpPavingPicker
+                      activeAreaKind={activeAreaKind}
+                      activeTileSize={activeTileSize}
+                      activeTileLayout={activeTileLayout}
+                      onUpdateActiveArea={(patch) => updateActiveArea((areaItem) => ({ ...areaItem, ...patch }))}
+                    />
+                  ) : null}
+                  {inspectorFocus === "draw" || inspectorFocus === "roll" ? (
+                    <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.5 }}>
+                      Area attiva: <strong style={{ color: B.dark }}>{customClosed ? `${fmt(polyArea(customPts))} m\u00B2` : "perimetro aperto"}</strong>{activeAreaKind === "paving" ? " · pavimentazione" : ""}
+                    </div>
+                  ) : null}
+                  <InstallationNeedsPanel area={turfArea} perimeter={turfPerimeter} borderType={borderType} borderMeters={selectedBorderMeters} manualRolls={allManualRolls} />
+                  {completedPavingAreas.length > 0 ? (
+                    <PavingNeedsPanel pavingNeedsByArea={pavingNeedsByArea} pavingTilesTotal={pavingTilesTotal} />
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => handlePrintReport("technical")} style={{ ...btnPrim, whiteSpace: "nowrap", fontSize: 11, padding: "7px 12px" }}>Stampa report tecnico</button>
+                    <button onClick={() => handlePrintReport("client")} style={{ ...btnPrim, whiteSpace: "nowrap", fontSize: 11, padding: "7px 12px", background: B.white, color: B.primary, border: "1px solid " + B.primary }}>Stampa versione cliente</button>
+                  </div>
+                  <ReportShell
+                    id="garden-planner-print-content"
+                    area={area}
+                    perimeter={perimeter}
+                    turfArea={turfArea}
+                    turfPerimeter={turfPerimeter}
+                    shape={shape}
+                    dims={safeDims}
+                    customPts={customPts}
+                    customClosed={customClosed}
+                    customAreas={completedAreas}
+                    borderMeters={selectedBorderMeters}
+                    borderType={borderType}
+                    substrate={substrate}
+                    decoItems={decoItems}
+                    projectInfo={projectInfo}
+                    travel={travel}
+                    viewerRole={viewerRole}
+                    regionalPricing={regionalPricing}
+                    manualRolls={allManualRolls}
+                    pavingNeedsByArea={pavingNeedsByArea}
+                    variant="technical"
+                  />
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* STEP 4: DECORATIVE */}
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <StepBadge n={4} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Materiali aggiuntivi</span>
+        <GpBottomDock activeTab={activeDockTab} onSelectTab={setActiveDockTab}>
+          <div className={`gp-dock-panel ${activeDockTab === "dati" ? "is-active" : ""}`}>
+            <ProjectHeader info={projectInfo} setInfo={setProjectInfo} />
           </div>
-          <DecoSection decoItems={decoItems} setDecoItems={setDecoItems} />
-        </div>
+          <div className={`gp-dock-panel ${activeDockTab === "trasferta" ? "is-active" : ""}`}>
+            <TravelPlanner travel={travel} setTravel={setTravel} />
+          </div>
+          <div className={`gp-dock-panel ${activeDockTab === "fondo" ? "is-active" : ""}`} style={{ flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <DimInput label="Scavo da effettuare" value={substrate.scavoCm} onChange={v => setSubstrate(p => ({ ...p, scavoCm: parseFloat(v) || 0 }))} unit="cm" />
+              <DimInput label="Fondo drenante" value={substrate.drenateCm} onChange={v => setSubstrate(p => ({ ...p, drenateCm: parseFloat(v) || 0 }))} unit="cm" />
+              <DimInput label="Sabbia livellamento" value={substrate.sabbiaCm} onChange={v => setSubstrate(p => ({ ...p, sabbiaCm: parseFloat(v) || 0 }))} unit="cm" />
+            </div>
+            {area > 0 && (
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {substrate.scavoCm > 0 && <MetricCard label="Terra da smaltire" value={fmt((area * substrate.scavoCm) / 100, 2) + " m\u00B3"} sub={Math.round(area * substrate.scavoCm / 100 * 1400) + " kg circa"} warning />}
+                {substrate.drenateCm > 0 && <MetricCard label="Pietrisco drenante" value={fmt((area * substrate.drenateCm) / 100, 2) + " m\u00B3"} sub={Math.round(area * substrate.drenateCm / 100 * 1600) + " kg circa"} />}
+                {substrate.sabbiaCm > 0 && <MetricCard label="Sabbia livellamento" value={Math.round(area * substrate.sabbiaCm / 100 * 1500) + " kg"} sub={fmt((area * substrate.sabbiaCm) / 100, 2) + " m\u00B3"} />}
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: B.textMuted, padding: "8px 10px", background: B.cream, borderRadius: 8, border: "1px solid " + B.borderLight }}>
+              Listino regionale attivo: <strong style={{ color: B.dark }}>{regionalPricing.region}</strong> · Stabilizzato <strong style={{ color: B.dark }}>{fmt(regionalPricing.stabilizedPerTon, 1)} €/t</strong> · Sabbia 0/4 <strong style={{ color: B.dark }}>{fmt(regionalPricing.sandPerTon, 1)} €/t</strong>
+            </div>
+          </div>
+          <div className={`gp-dock-panel ${activeDockTab === "extra" ? "is-active" : ""}`}>
+            <DecoSection decoItems={decoItems} setDecoItems={setDecoItems} />
+          </div>
+        </GpBottomDock>
 
-        {/* STEP 5: REPORT */}
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <StepBadge n={5} /><span style={{ fontSize: 16, fontWeight: 700, color: B.dark }}>Riepilogo materiali e trasferta</span>
-            <div style={{ flex: 1 }} />
-            <button disabled={area <= 0} onClick={handleOpenQuoteGenerator} style={{ ...btnPrim, whiteSpace: "nowrap", background: "#244033", opacity: area > 0 ? 1 : 0.55, cursor: area > 0 ? "pointer" : "not-allowed" }}>Apri nel generatore</button>
-            <button onClick={() => handlePrintReport("technical")} style={{ ...btnPrim, whiteSpace: "nowrap" }}>Stampa report tecnico</button>
-            <button onClick={() => handlePrintReport("client")} style={{ ...btnPrim, whiteSpace: "nowrap", background: B.white, color: B.primary, border: "1px solid " + B.primary }}>Stampa versione cliente</button>
-          </div>
-          <ReportShell
-            id="garden-planner-print-content"
-            area={area}
-            perimeter={perimeter}
-            turfArea={turfArea}
-            turfPerimeter={turfPerimeter}
-            shape={shape}
-            dims={safeDims}
-            customPts={customPts}
-            customClosed={customClosed}
-            customAreas={completedAreas}
-            borderMeters={selectedBorderMeters}
-            borderType={borderType}
-            substrate={substrate}
-            decoItems={decoItems}
-            projectInfo={projectInfo}
-            travel={travel}
-            viewerRole={viewerRole}
-            regionalPricing={regionalPricing}
-            manualRolls={allManualRolls}
-            pavingNeedsByArea={pavingNeedsByArea}
-            variant="technical"
-          />
-          <div style={{ display: "none" }} aria-hidden="true">
-            <ReportShell
-              id="garden-planner-client-print-content"
-              area={area}
-              perimeter={perimeter}
-              turfArea={turfArea}
-              turfPerimeter={turfPerimeter}
-              shape={shape}
-              dims={safeDims}
-              customPts={customPts}
-              customClosed={customClosed}
-              customAreas={completedAreas}
-              borderMeters={selectedBorderMeters}
-              borderType={borderType}
-              substrate={substrate}
-              decoItems={decoItems}
-              projectInfo={projectInfo}
-              travel={travel}
-              viewerRole={viewerRole}
-              regionalPricing={regionalPricing}
-              manualRolls={allManualRolls}
-              pavingNeedsByArea={pavingNeedsByArea}
-              variant="client"
-            />
-          </div>
-        </div>
+        {clientReportShell}
 
         <div style={{ textAlign: "center", padding: "8px 0 24px", fontSize: 11, color: B.textMuted }}>
           Garden Planner v3.5 - Prato Sintetico Italia / VERTEX SRLS - Strumento interno
