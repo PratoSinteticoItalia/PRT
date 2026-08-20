@@ -1968,7 +1968,7 @@ function FreeDrawCanvas({
    ═══════════════════════════════════════════ */
 function Header() {
   return (
-    <div style={{ background: "linear-gradient(135deg, #0f2a18 0%, #163a22 100%)", padding: "14px 24px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+    <div style={{ background: "linear-gradient(135deg, #0f2a18 0%, #163a22 100%)", padding: "10px 24px", display: "flex", alignItems: "center", gap: 14 }}>
       <button
         type="button"
         onClick={() => {
@@ -1979,7 +1979,7 @@ function Header() {
           display: "inline-flex",
           alignItems: "center",
           gap: 8,
-          padding: "9px 14px",
+          padding: "8px 14px",
           borderRadius: 999,
           border: "1px solid rgba(255,255,255,0.16)",
           background: "rgba(255,255,255,0.08)",
@@ -1993,13 +1993,8 @@ function Header() {
         <span aria-hidden="true">←</span>
         <span>Torna al portale</span>
       </button>
-      <div style={{ width: 40, height: 40, borderRadius: 10, background: B.primary, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: 18, border: "2px solid rgba(255,255,255,0.2)" }}>PS</div>
-      <div>
-        <div style={{ color: "#fff", fontWeight: 700, fontSize: 17, letterSpacing: "-0.3px" }}>Garden Planner</div>
-        <div style={{ color: B.accent, fontSize: 11, fontWeight: 500, letterSpacing: "0.5px", textTransform: "uppercase" }}>Prato Sintetico Italia - Vertex SRLS</div>
-      </div>
       <div style={{ flex: 1 }} />
-      <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>v3.4</div>
+      <div style={{ width: 30, height: 30, borderRadius: 8, background: B.primary, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: 13, border: "2px solid rgba(255,255,255,0.2)" }}>PS</div>
     </div>
   );
 }
@@ -3724,6 +3719,40 @@ function GardenPlanner() {
                 <MetricCard label="Lati rilevati" value={`${borderEdges.length}`} sub="Perimetro disponibile" />
               </div>
             )}
+
+            <GpBottomDock activeTab={activeDockTab} onSelectTab={setActiveDockTab}>
+              <div className={`gp-dock-panel ${activeDockTab === "dati" ? "is-active" : ""}`}>
+                <ProjectHeader info={projectInfo} setInfo={setProjectInfo} />
+              </div>
+              <div className={`gp-dock-panel ${activeDockTab === "trasferta" ? "is-active" : ""}`}>
+                <TravelPlanner
+                  travel={travel}
+                  setTravel={setTravel}
+                  cantiereAddress={projectInfo.address}
+                  onCantiereAddressChange={(value) => setProjectInfo((prev) => ({ ...prev, address: value }))}
+                />
+              </div>
+              <div className={`gp-dock-panel ${activeDockTab === "fondo" ? "is-active" : ""}`} style={{ flexDirection: "column", gap: 14 }}>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <DimInput label="Scavo da effettuare" value={substrate.scavoCm} onChange={v => setSubstrate(p => ({ ...p, scavoCm: parseFloat(v) || 0 }))} unit="cm" />
+                  <DimInput label="Fondo drenante" value={substrate.drenateCm} onChange={v => setSubstrate(p => ({ ...p, drenateCm: parseFloat(v) || 0 }))} unit="cm" />
+                  <DimInput label="Sabbia livellamento" value={substrate.sabbiaCm} onChange={v => setSubstrate(p => ({ ...p, sabbiaCm: parseFloat(v) || 0 }))} unit="cm" />
+                </div>
+                {area > 0 && (
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    {substrate.scavoCm > 0 && <MetricCard label="Terra da smaltire" value={fmt((area * substrate.scavoCm) / 100, 2) + " m³"} sub={Math.round(area * substrate.scavoCm / 100 * 1400) + " kg circa"} warning />}
+                    {substrate.drenateCm > 0 && <MetricCard label="Pietrisco drenante" value={fmt((area * substrate.drenateCm) / 100, 2) + " m³"} sub={Math.round(area * substrate.drenateCm / 100 * 1600) + " kg circa"} />}
+                    {substrate.sabbiaCm > 0 && <MetricCard label="Sabbia livellamento" value={Math.round(area * substrate.sabbiaCm / 100 * 1500) + " kg"} sub={fmt((area * substrate.sabbiaCm) / 100, 2) + " m³"} />}
+                  </div>
+                )}
+                <div style={{ fontSize: 12, color: B.textMuted, padding: "8px 10px", background: B.cream, borderRadius: 8, border: "1px solid " + B.borderLight }}>
+                  Listino regionale attivo: <strong style={{ color: B.dark }}>{regionalPricing.region}</strong> · Stabilizzato <strong style={{ color: B.dark }}>{fmt(regionalPricing.stabilizedPerTon, 1)} €/t</strong> · Sabbia 0/4 <strong style={{ color: B.dark }}>{fmt(regionalPricing.sandPerTon, 1)} €/t</strong>
+                </div>
+              </div>
+              <div className={`gp-dock-panel ${activeDockTab === "extra" ? "is-active" : ""}`}>
+                <DecoSection decoItems={decoItems} setDecoItems={setDecoItems} />
+              </div>
+            </GpBottomDock>
           </div>
 
           <div className="gp-inspector">
@@ -3795,40 +3824,6 @@ function GardenPlanner() {
             </div>
           </div>
         </div>
-
-        <GpBottomDock activeTab={activeDockTab} onSelectTab={setActiveDockTab}>
-          <div className={`gp-dock-panel ${activeDockTab === "dati" ? "is-active" : ""}`}>
-            <ProjectHeader info={projectInfo} setInfo={setProjectInfo} />
-          </div>
-          <div className={`gp-dock-panel ${activeDockTab === "trasferta" ? "is-active" : ""}`}>
-            <TravelPlanner
-              travel={travel}
-              setTravel={setTravel}
-              cantiereAddress={projectInfo.address}
-              onCantiereAddressChange={(value) => setProjectInfo((prev) => ({ ...prev, address: value }))}
-            />
-          </div>
-          <div className={`gp-dock-panel ${activeDockTab === "fondo" ? "is-active" : ""}`} style={{ flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <DimInput label="Scavo da effettuare" value={substrate.scavoCm} onChange={v => setSubstrate(p => ({ ...p, scavoCm: parseFloat(v) || 0 }))} unit="cm" />
-              <DimInput label="Fondo drenante" value={substrate.drenateCm} onChange={v => setSubstrate(p => ({ ...p, drenateCm: parseFloat(v) || 0 }))} unit="cm" />
-              <DimInput label="Sabbia livellamento" value={substrate.sabbiaCm} onChange={v => setSubstrate(p => ({ ...p, sabbiaCm: parseFloat(v) || 0 }))} unit="cm" />
-            </div>
-            {area > 0 && (
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                {substrate.scavoCm > 0 && <MetricCard label="Terra da smaltire" value={fmt((area * substrate.scavoCm) / 100, 2) + " m\u00B3"} sub={Math.round(area * substrate.scavoCm / 100 * 1400) + " kg circa"} warning />}
-                {substrate.drenateCm > 0 && <MetricCard label="Pietrisco drenante" value={fmt((area * substrate.drenateCm) / 100, 2) + " m\u00B3"} sub={Math.round(area * substrate.drenateCm / 100 * 1600) + " kg circa"} />}
-                {substrate.sabbiaCm > 0 && <MetricCard label="Sabbia livellamento" value={Math.round(area * substrate.sabbiaCm / 100 * 1500) + " kg"} sub={fmt((area * substrate.sabbiaCm) / 100, 2) + " m\u00B3"} />}
-              </div>
-            )}
-            <div style={{ fontSize: 12, color: B.textMuted, padding: "8px 10px", background: B.cream, borderRadius: 8, border: "1px solid " + B.borderLight }}>
-              Listino regionale attivo: <strong style={{ color: B.dark }}>{regionalPricing.region}</strong> · Stabilizzato <strong style={{ color: B.dark }}>{fmt(regionalPricing.stabilizedPerTon, 1)} €/t</strong> · Sabbia 0/4 <strong style={{ color: B.dark }}>{fmt(regionalPricing.sandPerTon, 1)} €/t</strong>
-            </div>
-          </div>
-          <div className={`gp-dock-panel ${activeDockTab === "extra" ? "is-active" : ""}`}>
-            <DecoSection decoItems={decoItems} setDecoItems={setDecoItems} />
-          </div>
-        </GpBottomDock>
 
         {clientReportShell}
 
