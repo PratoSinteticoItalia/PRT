@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260820-garden-planner-paving-tiles";
+} from "./lib/order-money.js?v=20260820-inventario-solo-giacenze";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260820-garden-planner-paving-tiles";
+import { regionForCity } from "./lib/geo.js?v=20260820-inventario-solo-giacenze";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260820-garden-planner-paving-tiles";
+} from "./lib/shipping-eligibility.js?v=20260820-inventario-solo-giacenze";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260820-garden-planner-paving-tiles";
+} from "./lib/profit-split.js?v=20260820-inventario-solo-giacenze";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260820-garden-planner-paving-tiles";
+} from "./lib/preventivo-pricing.js?v=20260820-inventario-solo-giacenze";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260820-garden-planner-paving-tiles";
+} from "./lib/sales-assignment.js?v=20260820-inventario-solo-giacenze";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260820-garden-planner-paving-tiles";
+const APP_SHELL_VERSION = "20260820-inventario-solo-giacenze";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -385,6 +385,33 @@ const INVENTORY_CATALOG = [
     stockMode: "piece",
     unitLabel: "pezzi",
     variantLabel: "Unità",
+  },
+  // Pareti verticali in verde artificiale (composizioni di fiori e foglie
+  // artificiali) — pannelli modulari 100x100cm, non prato: solo conteggio
+  // pezzi, nessun prezzo tracciato qui (il prezzo di vendita vive sul sito).
+  {
+    key: "parete-botanic",
+    label: "Parete verde Botanic",
+    type: "material",
+    stockMode: "piece",
+    unitLabel: "pannelli",
+    variantLabel: "Pannello 100x100 cm",
+  },
+  {
+    key: "parete-aranjuez",
+    label: "Parete verde Aranjuez",
+    type: "material",
+    stockMode: "piece",
+    unitLabel: "pannelli",
+    variantLabel: "Pannello 100x100 cm",
+  },
+  {
+    key: "parete-taranto",
+    label: "Parete verde Taranto",
+    type: "material",
+    stockMode: "piece",
+    unitLabel: "pannelli",
+    variantLabel: "Pannello 100x100 cm",
   },
 ];
 const ONE_EXPRESS_TARIFFS = window.ONE_EXPRESS_TARIFFS || {
@@ -8758,6 +8785,9 @@ function inferCatalogEntry(value, { includeDisabledNatives = true } = {}) {
   if (/bordura/.test(label)) return nativeByKey("bordura-pvc");
   if (/detergente/.test(label)) return nativeByKey("detergente");
   if (/spazzolatrice/.test(label)) return nativeByKey("spazzolatrice");
+  if (/parete/.test(label) && /botanic/.test(label)) return nativeByKey("parete-botanic");
+  if (/parete/.test(label) && /aranjuez/.test(label)) return nativeByKey("parete-aranjuez");
+  if (/parete/.test(label) && /taranto/.test(label)) return nativeByKey("parete-taranto");
   return null;
 }
 
@@ -11365,7 +11395,7 @@ function buildDashboardNotifications() {
       icon: "🚫",
       title: state.lang === "it" ? `${blocked.length} ordini bloccati` : `${blocked.length} blocked orders`,
       sub: blocked.slice(0, 2).map((o) => composeClientName(o)).join(" · "),
-      view: "warehouse",
+      view: "shipping",
       count: blocked.length,
     });
   }
@@ -12014,13 +12044,13 @@ function buildDashboardCommandMaterialTasks() {
         severity: blocked ? "high" : "medium",
         status: blocked ? (state.lang === "it" ? "Bloccato" : "Blocked") : stage.label,
         next: state.lang === "it"
-          ? "Apri Inventario e assegna rotolo o residuo compatibile all'ordine."
-          : "Open Inventory and assign a compatible roll or offcut to the order.",
+          ? "Apri Spedizioni e assegna rotolo o residuo compatibile all'ordine."
+          : "Open Shipping and assign a compatible roll or offcut to the order.",
         primary: state.lang === "it" ? "Impegna materiale" : "Commit material",
         secondary: state.lang === "it" ? "Apri ordine" : "Open order",
         secondaryAction: makeDashboardCommandSelectOrderAction("Apri ordine", "Open order", "orders", order.id),
         action: "select-order",
-        view: "warehouse",
+        view: "shipping",
         targetId: order.id,
         actions: [getDashboardCommandSupplierAction()],
         fields: [
@@ -12680,7 +12710,7 @@ function renderDashboardHeroKpisWarehouse(queueOrders, stockAlertsCount) {
       sub: state.lang === "it" ? `${Math.round(totalQueueSqm)} mq da preparare` : `${Math.round(totalQueueSqm)} sqm to prepare`,
       icon: "📦",
       tone: "amber",
-      view: "warehouse",
+      view: "shipping",
     },
     {
       label: state.lang === "it" ? "Spedizioni in attesa" : "Shipments pending",
@@ -12748,7 +12778,7 @@ function renderDashboardWarehouseView() {
           const tone = stage.key === "warehouse-ready" ? "green" : stage.tone === "red" ? "red" : "amber";
           const installDate = o.operations?.installation?.installDate;
           return `
-            <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="warehouse">
+            <article class="dash-action-row" data-action="select-order" data-id="${o.id}" data-view="shipping">
               <div class="dash-action-dot tone-${tone}"></div>
               <div class="dash-action-content">
                 <div class="dash-action-title">${escapeHtml(composeClientName(o))} · ${escapeHtml(getOrderNumber(o))}</div>
@@ -14132,12 +14162,6 @@ function renderOrderJobHub(order) {
   const profitSplitScenario = savedProfitSplit ? computeProfitSplitScenario(savedProfitSplit) : null;
   const quickLinks = [];
   const allowedViews = new Set(getAllowedViewsForRole());
-  if (allowedViews.has("warehouse")) {
-    quickLinks.push({
-      view: "warehouse",
-      label: state.lang === "it" ? "Apri Magazzino" : "Open Warehouse",
-    });
-  }
   if (allowedViews.has("shipping") && isRoutedToWarehouse(order)) {
     quickLinks.push({
       view: "shipping",
@@ -19044,7 +19068,6 @@ function renderWarehouse() {
       <div class="inv-kpi"><span class="inv-kpi-value">${turfCount}</span><span class="inv-kpi-label">${state.lang === "it" ? "Prodotti prato" : "Turf products"}</span></div>
     `;
   }
-  const orders = filterOrdersForView("warehouse");
   const groups = getInventorySummary().filter((group) => {
     const search = (state.search.warehouse || "").toLowerCase();
     const matchesSearch = !search || [
@@ -19053,42 +19076,6 @@ function renderWarehouse() {
     ].join(" ").toLowerCase().includes(search);
     if (!matchesSearch) return false;
     return matchesWarehouseInventoryFilter(group, state.filters.warehouse);
-  });
-
-  withScrollPreservation(ui.warehouseList, () => {
-  ui.warehouseList.innerHTML = orders.length
-    ? `<div class="action-list">${
-      orders.map((order) => {
-        const warehouseStatus = order.operations?.warehouse?.status || "da-preparare";
-        const selected = order.id === state.selectedOrderId ? "selected" : "";
-        const borderTone = warehouseStatus === "bloccato" ? "var(--red)" : warehouseStatus === "pronto" ? "var(--green)" : "var(--blue)";
-        const preparedLines = getWarehousePreparedLines(order);
-        const prepSummary = preparedLines
-          .map((item) => item.title)
-          .slice(0, 2)
-          .join(" · ");
-        const warehouseStatusLabel = warehouseStatus === "bloccato"
-          ? (state.lang === "it" ? "Bloccato" : "Blocked")
-          : warehouseStatus === "pronto"
-            ? (state.lang === "it" ? "Pronto" : "Ready")
-            : (state.lang === "it" ? "Da preparare" : "To prepare");
-        return `
-          <article class="action-card warehouse-action-card ${selected}" style="border-left:3px solid ${borderTone}" data-action="select-order" data-id="${order.id}" data-view="warehouse">
-            <div class="action-content">
-              <div class="action-title">${composeClientName(order)} ${getOrderNumber(order)}</div>
-              <div class="action-sub">${order.operations?.product || undefinedText()} · ${Math.round(getSafeOrderSqm(order))} mq · ${composeAddress(order) || addressIncompleteText()}</div>
-              <div class="action-sub">${prepSummary || (state.lang === "it" ? "Nessuna riga selezionata" : "No prepared lines")} · ${formatCountLabel(preparedLines.length, state.lang === "it" ? "riga da preparare" : "line to prepare", state.lang === "it" ? "righe da preparare" : "lines to prepare")}</div>
-              <div class="action-sub">${getShippingTargetLabel(order)} · ${order.operations?.warehouse?.fulfillmentMode === "furgone" ? (state.lang === "it" ? "Caricare su furgone" : "Load on van") : getShippingModeLabel(order)}</div>
-            </div>
-            <div class="action-tail">
-              <div class="action-badge ${warehouseStatus === "bloccato" ? "badge-urgent" : warehouseStatus === "pronto" ? "badge-success" : "badge-info"}">${warehouseStatusLabel}</div>
-              <button class="btn small-button" data-action="select-order" data-id="${order.id}" data-view="warehouse">${state.lang === "it" ? "Apri" : "Open"}</button>
-            </div>
-          </article>
-        `;
-      }).join("")
-    }</div>`
-    : `<div class="info-card">${state.lang === "it" ? "Nessun ordine per il magazzino con questo filtro." : "No warehouse orders for this filter."}</div>`;
   });
 
   if (ui.inventorySummary) {
@@ -19104,38 +19091,6 @@ function renderWarehouse() {
       ? groups.map(renderInventoryCard).join("")
       : `<div class="info-card">${emptyMessage}</div>`;
   }
-
-  // Fallback all'elenco COMPLETO (state.orders) quando l'ordine selezionato non
-  // è nel filtro magazzino: es. un ordine collegato via chip che non richiede
-  // lavoro di magazzino andrebbe altrimenti perso, mostrando un ordine diverso.
-  // Stesso pattern già usato in renderOrders/renderInstallations.
-  const order = orders.find((item) => item.id === state.selectedOrderId)
-    || (state.selectedOrderId ? state.orders.find((item) => item.id === state.selectedOrderId) : null)
-    || orders[0] || null;
-  if (state.currentView === "warehouse" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
-  // Nota: l'auto-suggest inventario è stato rimosso — era fastidioso perché mostrava
-  // l'avviso "mancano N pezzi" appena si apriva l'inventario. L'utente può richiedere
-  // la proposta esplicitamente con il pulsante dedicato.
-  ui.warehouseDetailTitle.textContent = state.lang === "it" ? "Inventario operativo" : "Inventory operations";
-  ui.warehouseDetailFields.innerHTML = order
-    ? `${[
-        { label: t("selectedOrder"), value: `${composeClientName(order)} · ${getOrderNumber(order)}`, meta: `${composeAddress(order) || addressIncompleteText()} · ${order.phone || (state.lang === "it" ? "Telefono non disponibile" : "Phone unavailable")}` },
-        { label: t("primaryProduct"), value: order.operations?.product || undefinedText(), meta: `${formatInventoryNumber(getSafeOrderSqm(order))} mq` },
-        {
-          label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation",
-          value: formatCountLabel(getWarehousePreparedLines(order).length, state.lang === "it" ? "riga da preparare" : "line to prepare", state.lang === "it" ? "righe da preparare" : "lines to prepare"),
-          meta: getWarehousePreparedLines(order).map((item) => `${item.title} x${item.quantity}`).join(" · ") || (state.lang === "it" ? "Nessuna riga inclusa" : "No included lines"),
-        },
-        {
-          label: state.lang === "it" ? "Residuo inventario" : "Inventory residual",
-          value: groups.find((group) => normalizeProductName(group.product) === normalizeProductName(getCatalogLabel(order.operations?.product)))?.isModel ? `${Math.round(groups.find((group) => normalizeProductName(group.product) === normalizeProductName(getCatalogLabel(order.operations?.product)))?.availableSqm || 0)} mq` : "—",
-          meta: state.lang === "it" ? "Calcolato sui pezzi caricati a magazzino" : "Calculated from loaded warehouse pieces",
-        },
-      ].map(renderDetailBox).join("")}${renderOrderInventoryAllocationPanel(order)}`
-    : [
-        { label: t("selectedOrder"), value: state.lang === "it" ? "Nessun ordine selezionato" : "No order selected", meta: state.lang === "it" ? "Scegli un ordine dalla lista di preparazione." : "Pick an order from the preparation list." },
-        { label: t("gettingStarted"), value: t("loadStartingStock"), meta: t("startingStockExample") },
-      ].map(renderDetailBox).join("");
 
   if (ui.inventoryForm && document.activeElement !== ui.inventoryForm.product) {
     ui.inventoryForm.quantity.value = ui.inventoryForm.quantity.value || "1";
@@ -36452,7 +36407,6 @@ function handleInventorySuggestionSourceChange(event) {
   if (!control) return;
   updateManualAllocationAmount(control.dataset.id || "", control.dataset.requirementId || "", control.dataset.entryId || "", control.value || "0");
 }
-bindEvent(ui.warehouseDetailFields, "change", handleInventorySuggestionSourceChange);
 // Stesso pannello (renderOrderInventoryAllocationPanel) viene iniettato anche
 // da Spedizioni (renderShippingInventoryAllocation), in un contenitore DOM
 // diverso — senza questo listener gemello, modificare la quantità di un
