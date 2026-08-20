@@ -1279,6 +1279,10 @@ function FreeDrawCanvas({
   activeAreaId = "",
   drawMode = "shape",
   setDrawMode = () => {},
+  previewMode = false,
+  borderEdges = [],
+  selectedBorderEdges = [],
+  showBorderOverlay = false,
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -1601,15 +1605,16 @@ function FreeDrawCanvas({
     inactiveAreas.forEach((area, areaIndex) => {
       const areaPoints = Array.isArray(area.points) ? area.points : [];
       if (!areaPoints.length) return;
+      const areaIsPaving = area.kind === "paving";
       ctx.beginPath();
       ctx.moveTo(toPx(areaPoints[0].x), toPx(areaPoints[0].y));
       for (let i = 1; i < areaPoints.length; i++) ctx.lineTo(toPx(areaPoints[i].x), toPx(areaPoints[i].y));
       if (area.closed) ctx.closePath();
       if (area.closed) {
-        ctx.fillStyle = "rgba(34,120,55,0.18)";
+        ctx.fillStyle = areaIsPaving ? "rgba(138,109,59,0.18)" : "rgba(34,120,55,0.18)";
         ctx.fill();
       }
-      ctx.strokeStyle = area.closed ? "#2d7040" : "rgba(61,90,63,0.5)";
+      ctx.strokeStyle = area.closed ? (areaIsPaving ? "#8a6d3b" : "#2d7040") : "rgba(61,90,63,0.5)";
       ctx.lineWidth = area.closed ? 2 : 1.5;
       ctx.setLineDash(area.closed ? [] : [6, 5]);
       ctx.stroke();
@@ -1618,7 +1623,7 @@ function FreeDrawCanvas({
         const areaBb = polyBBox(areaPoints);
         const labelX = toPx(areaBb.minX + (areaBb.w / 2));
         const labelY = toPx(areaBb.minY + (areaBb.h / 2));
-        drawLabelPill(`Area ${areaIndex + 1}`, labelX, labelY);
+        drawLabelPill(`${areaIsPaving ? "▦ " : "🌱 "}Area ${areaIndex + 1}`, labelX, labelY);
       }
     });
 
@@ -1627,8 +1632,32 @@ function FreeDrawCanvas({
       ctx.moveTo(toPx(points[0].x), toPx(points[0].y));
       for (let i = 1; i < points.length; i++) ctx.lineTo(toPx(points[i].x), toPx(points[i].y));
       if (!closed && hoverPt) ctx.lineTo(toPx(hoverPt.x), toPx(hoverPt.y));
-      if (closed) { ctx.closePath(); ctx.fillStyle = "rgba(34,120,55,0.26)"; ctx.fill(); }
-      ctx.strokeStyle = "#1a5e2f"; ctx.lineWidth = 2.5; ctx.stroke();
+      if (closed) { ctx.closePath(); ctx.fillStyle = activeAreaKind === "paving" ? "rgba(138,109,59,0.26)" : "rgba(34,120,55,0.26)"; ctx.fill(); }
+      ctx.strokeStyle = activeAreaKind === "paving" ? "#8a6d3b" : "#1a5e2f"; ctx.lineWidth = 2.5; ctx.stroke();
+
+      // Anteprima materiali: hatch leggero sul riempimento (verde=prato,
+      // legno=pavimentazione), stesso stile delle textures usate nel report.
+      if (closed && previewMode) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(toPx(points[0].x), toPx(points[0].y));
+        for (let i = 1; i < points.length; i++) ctx.lineTo(toPx(points[i].x), toPx(points[i].y));
+        ctx.closePath();
+        ctx.clip();
+        const bb = polyBBox(points);
+        const x0 = toPx(bb.minX), y0 = toPx(bb.minY), x1 = toPx(bb.minX + bb.w), y1 = toPx(bb.minY + bb.h);
+        if (activeAreaKind === "paving") {
+          ctx.strokeStyle = "rgba(166,138,84,0.4)"; ctx.lineWidth = 1.4;
+          for (let y = y0; y < y1; y += 8) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+        } else {
+          ctx.strokeStyle = "rgba(45,112,64,0.35)"; ctx.lineWidth = 1;
+          const step = 7;
+          for (let s = x0 - (y1 - y0); s < x1 + (y1 - y0); s += step) {
+            ctx.beginPath(); ctx.moveTo(s, y0); ctx.lineTo(s + (y1 - y0) * 0.35, y1); ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
 
       // Edge lengths
       const all = [...points]; if (closed) all.push(all[0]);
@@ -1638,6 +1667,36 @@ function FreeDrawCanvas({
         if (len < 0.3) continue;
         const mx2 = (ax + bx) / 2, my2 = (ay + by) / 2;
         drawLabelPill(fmt(len, 2) + "m", mx2, my2, { font: "bold 10px sans-serif", px: 5, py: 3 });
+      }
+
+      // Overlay bordura: quando lo strumento "Bordura" è attivo, mostra su
+      // ogni lato se è incluso nella selezione (evidenziato) o no (grigio
+      // tratteggiato) — collega i chip "Lato N" dell'inspector al disegno.
+      if (closed && showBorderOverlay) {
+        for (let i = 0; i < points.length; i++) {
+          const next = points[(i + 1) % points.length];
+          const edgeId = `${activeAreaId}-${i}`;
+          const borderEdge = borderEdges.find((edge) => edge.id === edgeId);
+          if (!borderEdge) continue;
+          const isSelected = selectedBorderEdges.includes(edgeId);
+          const ax = toPx(points[i].x), ay = toPx(points[i].y), bx = toPx(next.x), by = toPx(next.y);
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.strokeStyle = isSelected ? "#8a6d3b" : "rgba(120,120,120,0.55)";
+          ctx.lineWidth = isSelected ? 5 : 2;
+          ctx.setLineDash(isSelected ? [] : [4, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          const midX = (ax + bx) / 2, midY = (ay + by) / 2;
+          const dx = bx - ax, dy = by - ay;
+          const nlen = Math.hypot(dx, dy) || 1;
+          const offX = (-dy / nlen) * 16, offY = (dx / nlen) * 16;
+          drawLabelPill(borderEdge.label || `L${i + 1}`, midX + offX, midY + offY, {
+            textColor: isSelected ? "#5a4526" : "#666",
+            bg: isSelected ? "rgba(245,239,227,0.96)" : "rgba(255,255,255,0.9)",
+          });
+        }
       }
 
       const drawRoll = (roll, index, options = {}) => {
@@ -1745,7 +1804,7 @@ function FreeDrawCanvas({
       ctx.fillText(`Griglia = ${fmt(GRID, 2)} m  ·  Chiudi l'area sul punto 1`, cx, cy + 14);
       ctx.textAlign = "start";
     }
-  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices]);
+  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices, previewMode, activeAreaKind, inactiveAreas, borderEdges, selectedBorderEdges, showBorderOverlay, activeAreaId]);
 
   return (
     <div ref={containerRef}>
@@ -1762,41 +1821,11 @@ function FreeDrawCanvas({
                 : "Clicca per aggiungere vertici · Chiudi sul punto 1"}
         </div>
         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => {
-              setDrawMode("shape");
-              setRollStart(null);
-            }}
-            style={{
-              padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer",
-              border: drawMode === "shape" ? "1.5px solid " + B.primary : "1px solid " + B.border,
-              background: drawMode === "shape" ? B.light : B.white, color: drawMode === "shape" ? B.primary : B.text, fontWeight: drawMode === "shape" ? 700 : 500,
-            }}
-          >
-            Perimetro
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!closed || activeAreaKind === "paving") return;
-              setDrawMode("roll");
-              setRollStart(null);
-            }}
-            disabled={!closed || activeAreaKind === "paving"}
-            title={activeAreaKind === "paving" ? "Non si posano rotoli su un'area di pavimentazione" : ""}
-            style={{
-              padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: closed && activeAreaKind !== "paving" ? "pointer" : "not-allowed",
-              border: drawMode === "roll" ? "1.5px solid #1565c0" : "1px solid " + B.border,
-              background: drawMode === "roll" ? "#e8f1ff" : B.white, color: drawMode === "roll" ? "#1565c0" : B.textMuted, fontWeight: drawMode === "roll" ? 700 : 500,
-              opacity: closed && activeAreaKind !== "paving" ? 1 : 0.55,
-            }}
-          >
-            Aggiungi rotolo
-          </button>
-          {/* Formato/tipo area (Prato/Pavimentazione) e picker mattonella si
-              scelgono ora dall'inspector (strumento "Pavimentazione" nel
-              rail) — qui restano solo le azioni sul disegno stesso. */}
+          {/* Perimetro/Aggiungi rotolo si scelgono dal rail (Disegna/Rotolo)
+              — qui solo le azioni dirette sul disegno, per non duplicare
+              controlli e restare semplici per chi non è pratico dello
+              strumento. Formato/tipo area e picker mattonella sono
+              nell'inspector (strumento "Pavimentazione" nel rail). */}
           <button
             type="button"
             onClick={closed ? reopenShape : undoLastPoint}
@@ -1835,56 +1864,57 @@ function FreeDrawCanvas({
           >
             {selectedVertices.size > 0 ? `Smussa ${selectedVertices.size} punti` : "Smussa angoli"}
           </button>
-          <span style={{ fontSize: 11, color: B.textMuted }}>Zoom:</span>
-          {[0.6, 0.8, 1, 1.3, 1.6].map(z => (
-            <button key={z} onClick={() => setZoom(z)} style={{
-              padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer",
-              border: zoom === z ? "1.5px solid " + B.primary : "1px solid " + B.border,
-              background: zoom === z ? B.light : B.white, color: zoom === z ? B.primary : B.text, fontWeight: zoom === z ? 600 : 400,
-            }}>{Math.round(z * 100)}%</button>
-          ))}
-          <span style={{ fontSize: 11, color: B.textMuted, marginLeft: 4 }}>Griglia:</span>
-          {GRID_STEPS.map(s => (
-            <button key={s} onClick={() => setGridStep(s)} style={{
-              padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer",
-              border: gridStep === s ? "1.5px solid " + B.primary : "1px solid " + B.border,
-              background: gridStep === s ? B.light : B.white, color: gridStep === s ? B.primary : B.text, fontWeight: gridStep === s ? 600 : 400,
-            }}>{s.toFixed(2)}m</button>
-          ))}
-          <button
-            type="button"
-            onClick={removeLastRoll}
-            disabled={!rolls.length}
-            style={{
-              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
-              cursor: rolls.length ? "pointer" : "not-allowed", color: rolls.length ? B.text : B.textMuted, opacity: rolls.length ? 1 : 0.55,
-            }}
-          >
-            Rimuovi ultimo rotolo
-          </button>
-          <button
-            type="button"
-            onClick={duplicateLastRoll}
-            disabled={!closed || !rolls.length}
-            style={{
-              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
-              cursor: closed && rolls.length ? "pointer" : "not-allowed", color: closed && rolls.length ? B.text : B.textMuted, opacity: closed && rolls.length ? 1 : 0.55,
-            }}
-          >
-            Duplica in parallelo
-          </button>
-          <button
-            type="button"
-            onClick={clearRolls}
-            disabled={!rolls.length}
-            style={{
-              padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
-              cursor: rolls.length ? "pointer" : "not-allowed", color: rolls.length ? B.text : B.textMuted, opacity: rolls.length ? 1 : 0.55,
-            }}
-          >
-            Azzera rotoli
-          </button>
+          {(drawMode === "roll" || rolls.length > 0) && (
+            <>
+              <button
+                type="button"
+                onClick={removeLastRoll}
+                disabled={!rolls.length}
+                style={{
+                  padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+                  cursor: rolls.length ? "pointer" : "not-allowed", color: rolls.length ? B.text : B.textMuted, opacity: rolls.length ? 1 : 0.55,
+                }}
+              >
+                Rimuovi ultimo rotolo
+              </button>
+              <button
+                type="button"
+                onClick={duplicateLastRoll}
+                disabled={!closed || !rolls.length}
+                style={{
+                  padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+                  cursor: closed && rolls.length ? "pointer" : "not-allowed", color: closed && rolls.length ? B.text : B.textMuted, opacity: closed && rolls.length ? 1 : 0.55,
+                }}
+              >
+                Duplica in parallelo
+              </button>
+              <button
+                type="button"
+                onClick={clearRolls}
+                disabled={!rolls.length}
+                style={{
+                  padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11,
+                  cursor: rolls.length ? "pointer" : "not-allowed", color: rolls.length ? B.text : B.textMuted, opacity: rolls.length ? 1 : 0.55,
+                }}
+              >
+                Azzera rotoli
+              </button>
+            </>
+          )}
           <button onClick={reset} style={{ padding: "3px 10px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11, cursor: "pointer", color: B.text }}>Ricomincia</button>
+          <span style={{ width: 1, alignSelf: "stretch", background: B.borderLight, margin: "0 2px" }} />
+          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: B.textMuted }}>
+            Zoom
+            <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))} style={{ padding: "3px 4px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11, color: B.text }}>
+              {[0.6, 0.8, 1, 1.3, 1.6].map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
+            </select>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: B.textMuted }}>
+            Griglia
+            <select value={gridStep} onChange={(e) => setGridStep(Number(e.target.value))} style={{ padding: "3px 4px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11, color: B.text }}>
+              {GRID_STEPS.map((s) => <option key={s} value={s}>{s.toFixed(2)}m</option>)}
+            </select>
+          </label>
         </div>
       </div>
       {/* Aree multiple: gestite dalla striscia GpAreaStrip sopra il canvas
@@ -2141,6 +2171,10 @@ function ShapeInput({
   activeAreaId = "",
   drawMode = "shape",
   setDrawMode = () => {},
+  previewMode = false,
+  borderEdges = [],
+  selectedBorderEdges = [],
+  showBorderOverlay = false,
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -2158,6 +2192,10 @@ function ShapeInput({
         activeAreaId={activeAreaId}
         drawMode={drawMode}
         setDrawMode={setDrawMode}
+        previewMode={previewMode}
+        borderEdges={borderEdges}
+        selectedBorderEdges={selectedBorderEdges}
+        showBorderOverlay={showBorderOverlay}
       />
     </div>
   );
@@ -3639,6 +3677,10 @@ function GardenPlanner() {
               activeAreaId={activeAreaId}
               drawMode={drawMode}
               setDrawMode={setDrawMode}
+              previewMode={previewMode}
+              borderEdges={borderEdges}
+              selectedBorderEdges={selectedBorderEdges}
+              showBorderOverlay={inspectorFocus === "border"}
             />
             {area > 0 && (
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
