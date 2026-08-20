@@ -193,17 +193,31 @@ function sanitizeQuoteBridgeReportHtml(value) {
 // `import` da lib/ (caricato via Babel Standalone, non un modulo ES), quindi
 // i prezzi restano duplicati in MATERIAL_COSTS: se cambiano lì, cambiarli
 // anche qui.
-function buildPlannerMaterialItems(installNeeds = {}, borderType = "nessuna", borderMeters = 0, pavingNeedsByArea = []) {
+function buildPlannerMaterialItems(installNeeds = {}, borderType = "nessuna", borderMeters = 0, pavingNeedsByArea = [], substrate = null, area = 0, regionalPricing = null) {
   const geo = Number(installNeeds.geo) || 0;
   const tapeRolls = Number(installNeeds.tapeRolls) || 0;
   const glueBuckets = Number(installNeeds.glueBuckets) || 0;
   const pins = Number(installNeeds.pins) || 0;
-  const items = [
+  const items = [];
+  // Pietrisco (fondo drenante): nel Garden Planner è lo spessore "Fondo
+  // drenante" (substrate.drenateCm) impostato dall'utente, non il 3cm fisso
+  // che assume il Generatore in "Fornitura + posa" — quindi va SEMPRE incluso
+  // qui quando il progetto arriva dal planner, altrimenti l'override materiali
+  // (che sostituisce l'intera distinta, non solo aggiunge) lo fa sparire.
+  const drenateCm = Number(substrate?.drenateCm) || 0;
+  const safeArea = Number(area) || 0;
+  if (drenateCm > 0 && safeArea > 0) {
+    const drenateM3 = (safeArea * drenateCm) / 100;
+    const drenateTon = (drenateM3 * 1600) / 1000;
+    const stabilizedPerTon = Number(regionalPricing?.stabilizedPerTon) || Number(MATERIAL_COSTS.stabilizedPerTonFallback);
+    items.push({ key: "pietrisco", label: "Pietrisco (stabilizzato drenante)", qty: drenateTon, unit: "ton", unitPrice: stabilizedPerTon, total: drenateTon * stabilizedPerTon });
+  }
+  items.push(
     { key: "telo", label: "Telo isolante", qty: geo, unit: "mq", unitPrice: MATERIAL_COSTS.geoPerSqm, total: geo * MATERIAL_COSTS.geoPerSqm },
     { key: "bande", label: "Bande di giunzione", qty: tapeRolls, unit: "pz", unitPrice: MATERIAL_COSTS.tapeRoll, total: tapeRolls * MATERIAL_COSTS.tapeRoll },
     { key: "colla", label: "Colla bicomponente", qty: glueBuckets, unit: "secchi", unitPrice: MATERIAL_COSTS.glueBucket, total: glueBuckets * MATERIAL_COSTS.glueBucket },
     { key: "picchetti", label: "Picchetti a U", qty: pins, unit: "pz", unitPrice: MATERIAL_COSTS.pinPerUnit, total: pins * MATERIAL_COSTS.pinPerUnit },
-  ];
+  );
   const safeBorderMeters = Number(borderMeters) || 0;
   if (borderType && borderType !== "nessuna" && safeBorderMeters > 0) {
     const border = BORDER_TYPES.find((entry) => entry.id === borderType);
@@ -484,7 +498,7 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
       // buildPlannerMaterialItems. Machine-readable (non solo stringhe per
       // display come materialHighlights/materialsReference sopra): il
       // Generatore li userà al posto della formula piatta sui soli mq.
-      materialItems: buildPlannerMaterialItems(installNeeds, borderType, borderMeters, pavingNeedsByArea),
+      materialItems: buildPlannerMaterialItems(installNeeds, borderType, borderMeters, pavingNeedsByArea, substrate, area, regionalPricing),
     },
   };
 }
