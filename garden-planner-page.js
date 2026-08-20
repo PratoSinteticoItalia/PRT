@@ -72,7 +72,6 @@ const INSTALLATION_RULES = {
 const MANUAL_ROLL_WIDTH_M = 2;
 const MANUAL_ROLL_MAX_LENGTH_M = 25;
 const MANUAL_ROLL_MIN_LENGTH_M = 1;
-const PLANNER_GRID_STEP_M = 0.1;
 
 const DEFAULT_TRAVEL_SETTINGS = {
   departureBase: "Orta di Atella",
@@ -102,10 +101,6 @@ const DECO_CATALOG = [
   { id: "colla_extra", name: "Colla bi-componente (A+B) - 6 Kg", unit: "secchi", pricePerUnit: 72.0, defaultQty: 0, cat: "Accessori posa" },
   { id: "picchetti_extra", name: "Picchetti a U", unit: "pz", pricePerUnit: 0.45, defaultQty: 0, cat: "Accessori posa" },
   { id: "telo_extra", name: "Telo da pacciamatura", unit: "rotoli", pricePerUnit: 48.0, defaultQty: 0, cat: "Accessori posa" },
-];
-
-const SHAPES = [
-  { id: "custom", name: "Disegno libero", icon: "\u270E" },
 ];
 
 const fmt = (n, d = 1) => Number(n).toFixed(d);
@@ -625,20 +620,6 @@ function sanitizeDims(shape, dims) {
 /* ═══════════════════════════════════════════
    GEOMETRY
    ═══════════════════════════════════════════ */
-function calcShapeArea(shape, dims) {
-  const { a = 0, b = 0, c = 0, d = 0 } = sanitizeDims(shape, dims);
-  if (shape === "rect") return a * b;
-  if (shape === "lshape") return (a * b) - ((a - c) * (b - d));
-  if (shape === "ushape") return (a * b) - ((a - 2 * c) * d);
-  return 0;
-}
-function calcShapePerimeter(shape, dims) {
-  const { a = 0, b = 0, c = 0, d = 0 } = sanitizeDims(shape, dims);
-  if (shape === "rect") return 2 * (a + b);
-  if (shape === "lshape") return 2 * (a + b);
-  if (shape === "ushape") return 2 * (a + b + d);
-  return 0;
-}
 function polyArea(pts) {
   if (pts.length < 3) return 0;
   let a = 0;
@@ -1985,26 +1966,6 @@ function DimInput({ label, value, onChange, unit }) {
           onFocus={e => e.target.style.borderColor = B.primary} onBlur={e => e.target.style.borderColor = B.border} />
         {unit && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: B.textMuted }}>{unit}</span>}
       </div>
-    </div>
-  );
-}
-function ShapePreview({ shape, dims }) {
-  const W = 240, H = 150, pad = 25;
-  const { a = 0, b = 0, c = 0, d = 0 } = sanitizeDims(shape, dims);
-  if (a <= 0 || b <= 0) return null;
-  const scale = Math.min((W - pad * 2) / a, (H - pad * 2) / b);
-  const sw = a * scale, sh = b * scale, ox = (W - sw) / 2, oy = (H - sh) / 2;
-  let path = "";
-  if (shape === "rect") path = "M" + ox + "," + oy + " h" + sw + " v" + sh + " h" + (-sw) + " Z";
-  else if (shape === "lshape") { const cw = c * scale, cd = d * scale; path = "M" + ox + "," + oy + " h" + sw + " v" + cd + " h" + (-cw) + " v" + (sh - cd) + " h" + (-(sw - cw)) + " Z"; }
-  else if (shape === "ushape") { const cw = c * scale, cd = d * scale; path = "M" + ox + "," + oy + " h" + sw + " v" + sh + " h" + (-cw) + " v" + (-cd) + " h" + (-(sw - 2 * cw)) + " v" + cd + " h" + (-cw) + " Z"; }
-  return (
-    <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
-      <svg width={W} height={H} style={{ borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
-        <path d={path} fill={B.primary + "18"} stroke={B.primary} strokeWidth={2} />
-        <text x={ox + sw / 2} y={oy - 6} textAnchor="middle" fontSize={11} fill={B.primary} fontWeight={600}>{a}m</text>
-        <text x={ox + sw + 8} y={oy + sh / 2} textAnchor="start" fontSize={11} fill={B.primary} fontWeight={600} dominantBaseline="middle">{b}m</text>
-      </svg>
     </div>
   );
 }
