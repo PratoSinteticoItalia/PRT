@@ -2059,30 +2059,63 @@ function ProjectHeader({ info, setInfo }) {
   );
 }
 
-function TravelPlanner({ travel, setTravel }) {
+function TravelPlanner({ travel, setTravel, cantiereAddress = "", onCantiereAddressChange = () => {} }) {
   const upd = (key, value) => setTravel(prev => ({ ...prev, [key]: value }));
   const travelSummary = getTravelSummary(travel);
+  const sectionLabel = { fontSize: 11, fontWeight: 800, color: B.textMuted, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 8 };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-        <div style={{ minWidth: 0 }}>
-          <label style={lbl}>Sede di partenza</label>
-          <input
-            value={travel.departureBase}
-            onChange={e => upd("departureBase", e.target.value)}
-            placeholder="Es. Orta di Atella"
-            style={fieldInp}
-          />
+      <div>
+        <div style={sectionLabel}>Percorso — calcola km, tempo e caselli in automatico</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <label style={lbl}>Sede di partenza</label>
+            <input
+              value={travel.departureBase}
+              onChange={e => upd("departureBase", e.target.value)}
+              placeholder="Es. Orta di Atella"
+              style={fieldInp}
+            />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <label style={lbl}>Indirizzo cantiere</label>
+            <input
+              value={cantiereAddress}
+              onChange={e => onCantiereAddressChange(e.target.value)}
+              placeholder="Es. Via Roma 1, Milano"
+              style={fieldInp}
+            />
+          </div>
         </div>
-        <DimInput label="Km tratta" value={travel.kmTotal} onChange={v => upd("kmTotal", v)} unit="km" />
-        <DimInput label="Km extra" value={travel.extraKm} onChange={v => upd("extraKm", v)} unit="km" />
-        <DimInput label="Consumo medio" value={travel.fuelPer100Km} onChange={v => upd("fuelPer100Km", v)} unit="l/100" />
-        <DimInput label="Prezzo carburante" value={travel.fuelPrice} onChange={v => upd("fuelPrice", v)} unit="€/l" />
-        <DimInput label="Caselli tratta" value={travel.tollCost} onChange={v => upd("tollCost", v)} unit="€" />
       </div>
-      <div style={{ marginTop: -4, fontSize: 11, color: B.textMuted, lineHeight: 1.4 }}>
-        Usa <strong style={{ color: B.dark }}>Km extra</strong> per sommare viaggi locali, pietrisco, cantiere ↔ albergo o altri spostamenti extra già totali. I km extra incidono sul carburante ma non duplicano i caselli del navigatore.
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "10px 14px", borderRadius: 10, background: "#f7f7f2", border: "1px solid " + B.borderLight }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: B.dark }}>
+            {travel.routeLoading ? "Calcolo tragitto in corso..." : "Calcolo automatico stile navigatore"}
+          </div>
+          <div style={{ fontSize: 11, color: B.textMuted, marginTop: 3 }}>
+            {travel.routeStatus || "Compila entrambi gli indirizzi qui sopra: km, tempo, carburante e stima caselli si aggiornano da soli."}
+          </div>
+        </div>
+        {travelSummary.baseDriveMinutes > 0 ? (
+          <div style={{ padding: "8px 12px", borderRadius: 999, background: B.infoBg, border: "1px solid #bbdefb", color: B.info, fontSize: 12, fontWeight: 700 }}>
+            Tempo stimato: {Math.round(travelSummary.driveMinutes)} min {travelSummary.modeShortLabel}
+          </div>
+        ) : null}
+      </div>
+      <div>
+        <div style={sectionLabel}>Parametri viaggio — calcolati in automatico, modificabili se serve</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+          <DimInput label="Km tratta" value={travel.kmTotal} onChange={v => upd("kmTotal", v)} unit="km" />
+          <DimInput label="Km extra" value={travel.extraKm} onChange={v => upd("extraKm", v)} unit="km" />
+          <DimInput label="Consumo medio" value={travel.fuelPer100Km} onChange={v => upd("fuelPer100Km", v)} unit="l/100" />
+          <DimInput label="Prezzo carburante" value={travel.fuelPrice} onChange={v => upd("fuelPrice", v)} unit="€/l" />
+          <DimInput label="Caselli tratta" value={travel.tollCost} onChange={v => upd("tollCost", v)} unit="€" />
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: B.textMuted, lineHeight: 1.4 }}>
+          Usa <strong style={{ color: B.dark }}>Km extra</strong> per sommare viaggi locali, pietrisco, cantiere ↔ albergo o altri spostamenti extra già totali. I km extra incidono sul carburante ma non duplicano i caselli del navigatore.
+        </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: B.dark }}>Modalità viaggio</span>
@@ -2114,21 +2147,6 @@ function TravelPlanner({ travel, setTravel }) {
         <span style={{ fontSize: 11, color: B.textMuted }}>
           Il navigatore calcola la singola tratta e il planner applica il moltiplicatore scelto.
         </span>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "10px 14px", borderRadius: 10, background: "#f7f7f2", border: "1px solid " + B.borderLight }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: B.dark }}>
-            {travel.routeLoading ? "Calcolo tragitto in corso..." : "Calcolo automatico stile navigatore"}
-          </div>
-          <div style={{ fontSize: 11, color: B.textMuted, marginTop: 3 }}>
-            {travel.routeStatus || "Inserisci sede di partenza e indirizzo cantiere: km, tempo, carburante e stima caselli si aggiornano in automatico."}
-          </div>
-        </div>
-        {travelSummary.baseDriveMinutes > 0 ? (
-          <div style={{ padding: "8px 12px", borderRadius: 999, background: B.infoBg, border: "1px solid #bbdefb", color: B.info, fontSize: 12, fontWeight: 700 }}>
-            Tempo stimato: {Math.round(travelSummary.driveMinutes)} min {travelSummary.modeShortLabel}
-          </div>
-        ) : null}
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <MetricCard
@@ -3723,34 +3741,41 @@ function GardenPlanner() {
                 </>
               ) : (
                 <>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => handlePrintReport("technical")} style={{ ...btnPrim, whiteSpace: "nowrap", fontSize: 11, padding: "7px 12px" }}>Stampa report tecnico</button>
-                    <button onClick={() => handlePrintReport("client")} style={{ ...btnPrim, whiteSpace: "nowrap", fontSize: 11, padding: "7px 12px", background: B.white, color: B.primary, border: "1px solid " + B.primary }}>Stampa versione cliente</button>
+                  <div>
+                    <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.4, marginBottom: 10 }}>
+                      Questo è il report che finisce in stampa o allegato al preventivo — stessi dati, due versioni.
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button onClick={() => handlePrintReport("technical")} style={{ ...btnPrim, whiteSpace: "nowrap", fontSize: 11, padding: "7px 12px" }}>Stampa report tecnico</button>
+                      <button onClick={() => handlePrintReport("client")} style={{ ...btnPrim, whiteSpace: "nowrap", fontSize: 11, padding: "7px 12px", background: B.white, color: B.primary, border: "1px solid " + B.primary }}>Stampa versione cliente</button>
+                    </div>
                   </div>
-                  <ReportShell
-                    id="garden-planner-print-content"
-                    area={area}
-                    perimeter={perimeter}
-                    turfArea={turfArea}
-                    turfPerimeter={turfPerimeter}
-                    shape={shape}
-                    dims={safeDims}
-                    customPts={customPts}
-                    customClosed={customClosed}
-                    customAreas={completedAreas}
-                    borderMeters={selectedBorderMeters}
-                    borderType={borderType}
-                    substrate={substrate}
-                    decoItems={decoItems}
-                    projectInfo={projectInfo}
-                    travel={travel}
-                    viewerRole={viewerRole}
-                    regionalPricing={regionalPricing}
-                    manualRolls={allManualRolls}
-                    pavingNeedsByArea={pavingNeedsByArea}
-                    previewMode={previewMode}
-                    variant="technical"
-                  />
+                  <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: 14 }}>
+                    <ReportShell
+                      id="garden-planner-print-content"
+                      area={area}
+                      perimeter={perimeter}
+                      turfArea={turfArea}
+                      turfPerimeter={turfPerimeter}
+                      shape={shape}
+                      dims={safeDims}
+                      customPts={customPts}
+                      customClosed={customClosed}
+                      customAreas={completedAreas}
+                      borderMeters={selectedBorderMeters}
+                      borderType={borderType}
+                      substrate={substrate}
+                      decoItems={decoItems}
+                      projectInfo={projectInfo}
+                      travel={travel}
+                      viewerRole={viewerRole}
+                      regionalPricing={regionalPricing}
+                      manualRolls={allManualRolls}
+                      pavingNeedsByArea={pavingNeedsByArea}
+                      previewMode={previewMode}
+                      variant="technical"
+                    />
+                  </div>
                 </>
               )}
             </div>
@@ -3762,7 +3787,12 @@ function GardenPlanner() {
             <ProjectHeader info={projectInfo} setInfo={setProjectInfo} />
           </div>
           <div className={`gp-dock-panel ${activeDockTab === "trasferta" ? "is-active" : ""}`}>
-            <TravelPlanner travel={travel} setTravel={setTravel} />
+            <TravelPlanner
+              travel={travel}
+              setTravel={setTravel}
+              cantiereAddress={projectInfo.address}
+              onCantiereAddressChange={(value) => setProjectInfo((prev) => ({ ...prev, address: value }))}
+            />
           </div>
           <div className={`gp-dock-panel ${activeDockTab === "fondo" ? "is-active" : ""}`} style={{ flexDirection: "column", gap: 14 }}>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
