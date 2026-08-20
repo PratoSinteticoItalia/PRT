@@ -1966,38 +1966,6 @@ function FreeDrawCanvas({
 /* ═══════════════════════════════════════════
    UI ATOMS
    ═══════════════════════════════════════════ */
-function Header() {
-  return (
-    <div style={{ background: "linear-gradient(135deg, #0f2a18 0%, #163a22 100%)", padding: "10px 24px", display: "flex", alignItems: "center", gap: 14 }}>
-      <button
-        type="button"
-        onClick={() => {
-          if (window.history.length > 1) window.history.back();
-          else window.location.href = "./index.html";
-        }}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "8px 14px",
-          borderRadius: 999,
-          border: "1px solid rgba(255,255,255,0.16)",
-          background: "rgba(255,255,255,0.08)",
-          color: "#fff",
-          fontSize: 12,
-          fontWeight: 700,
-          cursor: "pointer",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1)",
-        }}
-      >
-        <span aria-hidden="true">←</span>
-        <span>Torna al portale</span>
-      </button>
-      <div style={{ flex: 1 }} />
-      <div style={{ width: 30, height: 30, borderRadius: 8, background: B.primary, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: 13, border: "2px solid rgba(255,255,255,0.2)" }}>PS</div>
-    </div>
-  );
-}
 function MetricCard({ label, value, sub, accent, warning }) {
   return (
     <div style={{ background: warning ? B.warnBg : accent ? B.infoBg : B.gray, borderRadius: 10, padding: "12px 16px", flex: 1, minWidth: 130, border: "1px solid " + (warning ? "#ffe0b2" : accent ? "#bbdefb" : B.borderLight) }}>
@@ -3661,7 +3629,6 @@ function GardenPlanner() {
     <div style={{ fontFamily: "'Manrope', 'Segoe UI', sans-serif", minHeight: "100vh", background: "transparent" }}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
       <GpChromeStyles />
-      <Header />
       <div className="gp-shell" style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 16px" }}>
         <GpTopBar
           client={projectInfo.client}
