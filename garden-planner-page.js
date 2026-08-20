@@ -1221,6 +1221,7 @@ function getPlannerPolygons(customAreas = [], customPts = [], customClosed = fal
         points: Array.isArray(area.points) ? area.points : [],
         closed: Boolean(area.closed),
         rolls: Array.isArray(area.rolls) ? area.rolls : [],
+        kind: area.kind === "paving" ? "paving" : "turf",
       }))
       .filter((area) => area.closed && area.points.length >= 3);
   }
@@ -2162,10 +2163,10 @@ function ShapeInput({
   );
 }
 
-function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [], manualRolls = [], isClientVariant = false }) {
+function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [], manualRolls = [], isClientVariant = false, previewMode = false }) {
   const polygons = shape === "custom"
     ? getPlannerPolygons(customAreas, customPts, customClosed)
-    : [{ id: "shape-default", index: 1, points: getShapePolygon(shape, dims), closed: true, rolls: [] }].filter((item) => item.points.length);
+    : [{ id: "shape-default", index: 1, points: getShapePolygon(shape, dims), closed: true, rolls: [], kind: "turf" }].filter((item) => item.points.length);
   if (!polygons.length) {
     return (
       <div style={{ padding: "18px 14px", borderRadius: 10, border: "1px dashed " + B.border, color: B.textMuted, fontSize: 12 }}>
@@ -2290,9 +2291,31 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
     };
   });
 
+  const textureNs = isClientVariant ? "client" : "technical";
+  const turfPatternId = `turfTexture-${textureNs}`;
+  const wpcPatternId = `wpcTexture-${textureNs}`;
+  // Ingombro reale in metri → base per la scala grafica (bbox già calcolata sopra).
+  const scaleBarTargetPx = 60;
+  const scaleBarMetersRaw = scaleBarTargetPx / scale;
+  const scaleBarNiceSteps = [0.5, 1, 2, 5, 10, 20, 50, 100];
+  const scaleBarMeters = scaleBarNiceSteps.reduce((best, step) => (
+    Math.abs(step - scaleBarMetersRaw) < Math.abs(best - scaleBarMetersRaw) ? step : best
+  ), scaleBarNiceSteps[0]);
+  const scaleBarPx = scaleBarMeters * scale;
+
   return (
     <div style={{ border: "1px solid " + (isClientVariant ? "#b8d4b4" : B.borderLight), borderRadius: 12, background: B.white, padding: 10 }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
+        <defs>
+          <pattern id={turfPatternId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
+            <rect width="6" height="6" fill={isClientVariant ? "#e4f0e2" : (B.primary + "14")} />
+            <path d="M1,6 L1.6,2 M3,6 L3.6,1.5 M5,6 L5.6,2.2" stroke={isClientVariant ? "#5a9463" : B.primary} strokeWidth="0.6" strokeLinecap="round" opacity="0.7" />
+          </pattern>
+          <pattern id={wpcPatternId} width="14" height="8" patternUnits="userSpaceOnUse">
+            <rect width="14" height="8" fill="#e8dfc9" />
+            <path d="M0,1.5 H14 M0,4 H14 M0,6.5 H14" stroke="#a68a54" strokeWidth="0.7" opacity="0.55" />
+          </pattern>
+        </defs>
 
         {/* Background */}
         <rect x="1" y="1" width={W - 2} height={H - 2} rx="10"
@@ -2302,7 +2325,10 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
         {/* Polygons */}
         {polygonSketches.map((polygon, pi) => {
           const fillOpacity = isClientVariant ? (pi % 2 === 0 ? 0.34 : 0.26) : 1;
-          const fillColor = isClientVariant ? `rgba(42,115,58,${fillOpacity})` : (B.primary + "1c");
+          const isPaving = polygon.kind === "paving";
+          const fillColor = previewMode
+            ? `url(#${isPaving ? wpcPatternId : turfPatternId})`
+            : (isClientVariant ? `rgba(42,115,58,${fillOpacity})` : (B.primary + "1c"));
           const labelText = `A${polygon.index}`;
           const lw = labelText.length * 6.2 + 14;
           const lx = clamp(polygon.center.x - lw / 2, 4, W - lw - 4);
@@ -2376,15 +2402,23 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
           <circle key={`vc-${polygon.id}-${vi}`} cx={pt.x} cy={pt.y} r="2.6" fill="#1a5e2f" stroke="rgba(255,255,255,0.85)" strokeWidth="1.2" />
         )))}
 
-        {/* North indicator — client only */}
-        {isClientVariant && (
-          <g transform={`translate(${W - 20}, 18)`}>
-            <circle cx="0" cy="0" r="8" fill="rgba(255,255,255,0.82)" stroke="rgba(26,94,47,0.3)" strokeWidth="0.8" />
-            <polygon points="0,-6 2.5,2 0,0 -2.5,2" fill="#1a5e2f" />
-            <polygon points="0,6 2.5,-2 0,0 -2.5,-2" fill="rgba(26,94,47,0.25)" />
-            <text x="0" y="-7.5" fontSize="5.5" textAnchor="middle" fill="#1a3d24" fontWeight="800" letterSpacing="0.5">N</text>
-          </g>
-        )}
+        {/* North indicator — sempre presente (tecnico e cliente), orientamento
+            convenzionale (non da bussola reale: nessun dato GPS disponibile). */}
+        <g transform={`translate(${W - 20}, 18)`}>
+          <circle cx="0" cy="0" r="8" fill="rgba(255,255,255,0.82)" stroke={isClientVariant ? "rgba(26,94,47,0.3)" : B.borderLight} strokeWidth="0.8" />
+          <polygon points="0,-6 2.5,2 0,0 -2.5,2" fill={isClientVariant ? "#1a5e2f" : B.primary} />
+          <polygon points="0,6 2.5,-2 0,0 -2.5,-2" fill={isClientVariant ? "rgba(26,94,47,0.25)" : (B.primary + "40")} />
+          <text x="0" y="-7.5" fontSize="5.5" textAnchor="middle" fill={isClientVariant ? "#1a3d24" : B.dark} fontWeight="800" letterSpacing="0.5">N</text>
+        </g>
+
+        {/* Scala grafica — passo "bello" (0.5/1/2/5/10/20/50/100 m) più
+            vicino a ~60px, ancorata in basso a sinistra del riquadro. */}
+        <g transform={`translate(8, ${H - 10})`}>
+          <line x1="0" y1="0" x2={scaleBarPx} y2="0" stroke={isClientVariant ? "#1a5e2f" : B.dark} strokeWidth="1.4" />
+          <line x1="0" y1="-3" x2="0" y2="3" stroke={isClientVariant ? "#1a5e2f" : B.dark} strokeWidth="1.4" />
+          <line x1={scaleBarPx} y1="-3" x2={scaleBarPx} y2="3" stroke={isClientVariant ? "#1a5e2f" : B.dark} strokeWidth="1.4" />
+          <text x={scaleBarPx / 2} y="-5.5" fontSize="7" textAnchor="middle" fill={isClientVariant ? "#1a3d24" : B.textMuted} fontWeight="700">{scaleBarMeters >= 1 ? `${scaleBarMeters} m` : `${scaleBarMeters * 100} cm`}</text>
+        </g>
       </svg>
       <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
         <div style={{ fontSize: 11, color: B.textMuted }}>
@@ -2631,7 +2665,7 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [], reportVariant = "technical" }) {
+function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [], reportVariant = "technical", previewMode = false }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
   // turfArea/turfPerimeter esclude le aree "paving" (pavimentazione WPC) —
@@ -2692,7 +2726,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
       )}
 
       <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10, marginBottom: 12 }}>
-        <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} customAreas={customAreas} manualRolls={manualRolls} isClientVariant={isClientVariant} />
+        <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} customAreas={customAreas} manualRolls={manualRolls} isClientVariant={isClientVariant} previewMode={previewMode} />
         <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: "10px 12px", display: "grid", gap: 7 }}>
           <div style={{ fontSize: 11, color: B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>{isClientVariant ? "Layout giardino" : "Tavola tecnica 2D"}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
@@ -2760,7 +2794,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
   );
 }
 
-function ReportShell({ id, variant = "technical", area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [] }) {
+function ReportShell({ id, variant = "technical", area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [], previewMode = false }) {
   const isClientVariant = variant === "client";
   return (
     <div id={id}>
@@ -2798,6 +2832,7 @@ function ReportShell({ id, variant = "technical", area, perimeter, turfArea, tur
         manualRolls={manualRolls}
         pavingNeedsByArea={pavingNeedsByArea}
         reportVariant={variant}
+        previewMode={previewMode}
       />
     </div>
   );
@@ -3551,6 +3586,7 @@ function GardenPlanner() {
         regionalPricing={regionalPricing}
         manualRolls={allManualRolls}
         pavingNeedsByArea={pavingNeedsByArea}
+        previewMode={previewMode}
         variant="client"
       />
     </div>
@@ -3670,6 +3706,7 @@ function GardenPlanner() {
                     regionalPricing={regionalPricing}
                     manualRolls={allManualRolls}
                     pavingNeedsByArea={pavingNeedsByArea}
+                    previewMode={previewMode}
                     variant="technical"
                   />
                 </>
