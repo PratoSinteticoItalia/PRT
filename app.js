@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260820-inventario-solo-giacenze";
+} from "./lib/order-money.js?v=20260820-pareti-verdi-catalogo";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260820-inventario-solo-giacenze";
+import { regionForCity } from "./lib/geo.js?v=20260820-pareti-verdi-catalogo";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260820-inventario-solo-giacenze";
+} from "./lib/shipping-eligibility.js?v=20260820-pareti-verdi-catalogo";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260820-inventario-solo-giacenze";
+} from "./lib/profit-split.js?v=20260820-pareti-verdi-catalogo";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260820-inventario-solo-giacenze";
+} from "./lib/preventivo-pricing.js?v=20260820-pareti-verdi-catalogo";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260820-inventario-solo-giacenze";
+} from "./lib/sales-assignment.js?v=20260820-pareti-verdi-catalogo";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260820-inventario-solo-giacenze";
+const APP_SHELL_VERSION = "20260820-pareti-verdi-catalogo";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -408,6 +408,30 @@ const INVENTORY_CATALOG = [
   {
     key: "parete-taranto",
     label: "Parete verde Taranto",
+    type: "material",
+    stockMode: "piece",
+    unitLabel: "pannelli",
+    variantLabel: "Pannello 100x100 cm",
+  },
+  {
+    key: "parete-retiro",
+    label: "Parete verde Retiro",
+    type: "material",
+    stockMode: "piece",
+    unitLabel: "pannelli",
+    variantLabel: "Pannello 100x100 cm",
+  },
+  {
+    key: "parete-medellin",
+    label: "Parete verde Medellin",
+    type: "material",
+    stockMode: "piece",
+    unitLabel: "pannelli",
+    variantLabel: "Pannello 100x100 cm",
+  },
+  {
+    key: "parete-pukekura",
+    label: "Parete verde Pukekura",
     type: "material",
     stockMode: "piece",
     unitLabel: "pannelli",
@@ -8788,6 +8812,9 @@ function inferCatalogEntry(value, { includeDisabledNatives = true } = {}) {
   if (/parete/.test(label) && /botanic/.test(label)) return nativeByKey("parete-botanic");
   if (/parete/.test(label) && /aranjuez/.test(label)) return nativeByKey("parete-aranjuez");
   if (/parete/.test(label) && /taranto/.test(label)) return nativeByKey("parete-taranto");
+  if (/parete/.test(label) && /retiro/.test(label)) return nativeByKey("parete-retiro");
+  if (/parete/.test(label) && /medellin/.test(label)) return nativeByKey("parete-medellin");
+  if (/parete/.test(label) && /pukekura/.test(label)) return nativeByKey("parete-pukekura");
   return null;
 }
 
