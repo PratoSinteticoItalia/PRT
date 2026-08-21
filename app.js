@@ -18914,6 +18914,122 @@ function matchesWarehouseInventoryFilter(group, filter = state.filters.warehouse
   return true;
 }
 
+function formatManualAllocationAmount(value = 0, isMeasured = true) {
+  return isMeasured
+    ? `${formatInventoryNumber(value)} m`
+    : `${formatInventoryNumber(value)} ${state.lang === "it" ? "u" : "u"}`;
+}
+
+function getManualAllocationPieceCapacity(piece = {}, isMeasured = true) {
+  if (!piece) return 0;
+  return isMeasured
+    ? toNumber(piece.length || inferInventoryPieceDimensions(piece).length || 0)
+    : Math.max(1, Number(piece.units || 1));
+}
+
+function getManualRequirementSourceLabel(requirement = {}) {
+  const lineNumber = Number(requirement.lineIndex || 0) + 1;
+  const pieceNumber = Number(requirement.pieceIndex || 0) + 1;
+  const lineQuantity = Math.max(1, Number(requirement.lineQuantity || 1));
+  if (lineQuantity > 1) {
+    return state.lang === "it"
+      ? `Riga ordine ${lineNumber} · pezzo ${pieceNumber}/${lineQuantity}`
+      : `Order row ${lineNumber} · piece ${pieceNumber}/${lineQuantity}`;
+  }
+  return state.lang === "it" ? `Riga ordine ${lineNumber}` : `Order row ${lineNumber}`;
+}
+
+function getManualCoverageState(requiredAmount = 0, assignedAmount = 0, isMeasured = true) {
+  const required = Math.max(0, toNumber(requiredAmount));
+  const assigned = Math.max(0, toNumber(assignedAmount));
+  const diff = Number((assigned - required).toFixed(2));
+  if (assigned <= 0) {
+    return {
+      tone: "empty",
+      label: state.lang === "it" ? "Da scegliere" : "To choose",
+      detail: state.lang === "it" ? "Nessun pezzo scelto" : "No piece selected",
+    };
+  }
+  if (diff >= -0.01 && diff <= 0.01) {
+    return {
+      tone: "covered",
+      label: state.lang === "it" ? "Coperto" : "Covered",
+      detail: state.lang === "it" ? "Misura esatta" : "Exact amount",
+    };
+  }
+  if (diff < -0.01) {
+    return {
+      tone: "short",
+      label: state.lang === "it" ? "Non coperto" : "Short",
+      detail: `${state.lang === "it" ? "Mancano" : "Missing"} ${formatManualAllocationAmount(Math.abs(diff), isMeasured)}`,
+    };
+  }
+  return {
+    tone: "extra",
+    label: state.lang === "it" ? "Extra" : "Extra",
+    detail: `${state.lang === "it" ? "Oltre richiesta" : "Over required"} ${formatManualAllocationAmount(diff, isMeasured)}`,
+  };
+}
+
+function getManualAllocationDraftSummary(orderId = "", requirements = [], entriesByRequirement = {}) {
+  const draft = getInventorySuggestionForOrder(orderId);
+  const usage = getManualAllocationUsageMap(draft);
+  const selectedPieceIds = new Set();
+  const summary = {
+    rows: requirements.length,
+    selectedPieces: 0,
+    requiredSqm: 0,
+    assignedSqm: 0,
+    residueSqm: 0,
+    requiredUnits: 0,
+    assignedUnits: 0,
+    residueUnits: 0,
+    coveredRows: 0,
+    incompleteRows: 0,
+  };
+
+  requirements.forEach((requirement) => {
+    const isMeasured = Boolean(requirement.measured);
+    const requiredAmount = isMeasured ? toNumber(requirement.length || 0) : Math.max(1, Number(requirement.units || 1));
+    const entries = entriesByRequirement[requirement.id] || [];
+    const assignedAmount = entries.reduce((sum, entry) => sum + toNumber(entry.amount || 0), 0);
+    if (assignedAmount + 0.01 >= requiredAmount && assignedAmount > 0) summary.coveredRows += 1;
+    else summary.incompleteRows += 1;
+    if (isMeasured) {
+      const width = toNumber(requirement.width || 0);
+      summary.requiredSqm += toNumber(requirement.sqm || (width * requiredAmount));
+      summary.assignedSqm += width * assignedAmount;
+    } else {
+      summary.requiredUnits += requiredAmount;
+      summary.assignedUnits += assignedAmount;
+    }
+    entries.forEach((entry) => {
+      if (entry.sourcePieceId) selectedPieceIds.add(String(entry.sourcePieceId));
+    });
+  });
+
+  selectedPieceIds.forEach((pieceId) => {
+    const piece = state.inventory.find((item) => String(item.id || "") === pieceId);
+    if (!piece) return;
+    summary.selectedPieces += 1;
+    const dimensions = inferInventoryPieceDimensions(piece);
+    const measuredPiece = dimensions.length > 0;
+    const capacity = getManualAllocationPieceCapacity(piece, measuredPiece);
+    const used = toNumber(usage.get(pieceId) || 0);
+    const residue = Math.max(0, Number((capacity - used).toFixed(2)));
+    if (measuredPiece) summary.residueSqm += residue * toNumber(dimensions.width || 0);
+    else summary.residueUnits += residue;
+  });
+
+  summary.requiredSqm = Number(summary.requiredSqm.toFixed(2));
+  summary.assignedSqm = Number(summary.assignedSqm.toFixed(2));
+  summary.residueSqm = Number(summary.residueSqm.toFixed(2));
+  summary.requiredUnits = Number(summary.requiredUnits.toFixed(2));
+  summary.assignedUnits = Number(summary.assignedUnits.toFixed(2));
+  summary.residueUnits = Number(summary.residueUnits.toFixed(2));
+  return summary;
+}
+
 // Riga di una singola richiesta (es. "Cipresso 40mm, 1 pezzo da 2x8m") nel
 // pannello di allocazione manuale: mostra quanto è stato assegnato finora e
 // permette di aggiungere/togliere pezzi sorgente a piacere. Nessuna
@@ -18924,57 +19040,96 @@ function renderManualRequirementRow(orderId, requirement, entries) {
   const isMeasured = Boolean(requirement.measured);
   const requiredAmount = isMeasured ? toNumber(requirement.length || 0) : Math.max(1, Number(requirement.units || 1));
   const assignedAmount = entries.reduce((sum, entry) => sum + toNumber(entry.amount || 0), 0);
+  const requiredSqm = isMeasured ? toNumber(requirement.sqm || (toNumber(requirement.width || 0) * requiredAmount)) : 0;
+  const assignedSqm = isMeasured ? Number((toNumber(requirement.width || 0) * assignedAmount).toFixed(2)) : 0;
   const requiredLabel = isMeasured
-    ? `${formatInventoryNumber(requirement.width || 0)} x ${formatInventoryNumber(requirement.length || 0)} m`
-    : `${requiredAmount} ${state.lang === "it" ? "u" : "u"}`;
-  const assignedLabel = isMeasured ? `${formatInventoryNumber(assignedAmount)} m` : `${assignedAmount} ${state.lang === "it" ? "u" : "u"}`;
-  const covered = assignedAmount + 0.01 >= requiredAmount && assignedAmount > 0;
+    ? `${formatInventoryNumber(requirement.width || 0)} x ${formatInventoryNumber(requirement.length || 0)} m · ${formatInventoryNumber(requiredSqm)} mq`
+    : `${formatInventoryNumber(requiredAmount)} ${state.lang === "it" ? "u" : "u"}`;
+  const assignedLabel = isMeasured
+    ? `${formatInventoryNumber(assignedAmount)} m · ${formatInventoryNumber(assignedSqm)} mq`
+    : `${formatInventoryNumber(assignedAmount)} ${state.lang === "it" ? "u" : "u"}`;
+  const coverage = getManualCoverageState(requiredAmount, assignedAmount, isMeasured);
+  const draft = getInventorySuggestionForOrder(orderId);
+  const usage = getManualAllocationUsageMap(draft);
+  const sourceLabel = getManualRequirementSourceLabel(requirement);
 
   const entryRows = entries.map((entry) => {
     const piece = state.inventory.find((item) => item.id === entry.sourcePieceId);
     const pieceLabel = piece ? formatInventoryAllocationMeasure(piece) : "?";
+    const pieceTypeLabel = piece ? formatInventoryPieceTypeLabel(getInventoryPieceType(piece)) : "";
+    const pieceCapacity = piece ? getManualAllocationPieceCapacity(piece, isMeasured) : 0;
+    const totalUsedFromPiece = toNumber(usage.get(String(entry.sourcePieceId || "")) || 0);
+    const residueAmount = Math.max(0, Number((pieceCapacity - totalUsedFromPiece).toFixed(2)));
+    const residueLabel = piece
+      ? `${state.lang === "it" ? "Residuo dopo bozza" : "Draft remainder"}: ${formatManualAllocationAmount(residueAmount, isMeasured)}`
+      : "";
     return `
-      <div class="inv-manual-entry">
-        <span class="inv-manual-entry-label">${escapeHtml(pieceLabel)}</span>
-        <input
-          type="number"
-          class="text-input inv-manual-amount"
-          min="0"
-          step="0.01"
-          data-action="update-manual-allocation-amount"
-          data-id="${escapeHtml(orderId)}"
-          data-requirement-id="${escapeHtml(requirement.id)}"
-          data-entry-id="${escapeHtml(entry.id)}"
-          value="${escapeHtml(String(entry.amount))}"
-        />
-        <span class="inv-manual-unit">${isMeasured ? "m" : (state.lang === "it" ? "u" : "u")}</span>
-        <button class="ghost-button small-button" type="button" data-action="remove-manual-allocation-entry" data-id="${escapeHtml(orderId)}" data-requirement-id="${escapeHtml(requirement.id)}" data-entry-id="${escapeHtml(entry.id)}">×</button>
+      <div class="inv-manual-entry-card">
+        <div class="inv-manual-entry-main">
+          <span class="inv-manual-entry-kicker">${state.lang === "it" ? "Pezzo magazzino scelto" : "Chosen stock piece"}</span>
+          <strong>${escapeHtml(pieceLabel)}</strong>
+          <small>${escapeHtml([pieceTypeLabel, residueLabel].filter(Boolean).join(" · "))}</small>
+        </div>
+        <label class="inv-manual-use-field">
+          <span>${state.lang === "it" ? "Da usare" : "Use"}</span>
+          <input
+            type="number"
+            class="text-input inv-manual-amount"
+            min="0"
+            step="0.01"
+            data-action="update-manual-allocation-amount"
+            data-id="${escapeHtml(orderId)}"
+            data-requirement-id="${escapeHtml(requirement.id)}"
+            data-entry-id="${escapeHtml(entry.id)}"
+            value="${escapeHtml(String(entry.amount))}"
+          />
+          <em>${isMeasured ? "m" : (state.lang === "it" ? "u" : "u")}</em>
+        </label>
+        <button class="inv-manual-remove" type="button" data-action="remove-manual-allocation-entry" data-id="${escapeHtml(orderId)}" data-requirement-id="${escapeHtml(requirement.id)}" data-entry-id="${escapeHtml(entry.id)}" title="${state.lang === "it" ? "Rimuovi questo pezzo dalla bozza" : "Remove this piece from draft"}">×</button>
       </div>
     `;
   }).join("");
 
   const availablePieces = getManualAllocationCandidates(orderId, requirement);
+  const pickerLabel = coverage.tone === "covered"
+    ? (state.lang === "it" ? "Opzionale: aggiungi altro pezzo" : "Optional: add another piece")
+    : entries.length
+      ? (state.lang === "it" ? "Aggiungi un altro pezzo" : "Add another piece")
+      : (state.lang === "it" ? "Scegli pezzo disponibile" : "Choose available piece");
   const addRow = availablePieces.length
     ? `<div class="inv-manual-add">
-        <select class="text-input inv-manual-picker" data-requirement-id="${escapeHtml(requirement.id)}">
+        <label class="inv-manual-picker-wrap">
+          <span>${escapeHtml(pickerLabel)}</span>
+          <select class="text-input inv-manual-picker" data-requirement-id="${escapeHtml(requirement.id)}">
           ${availablePieces.map((piece) => {
             const typeLabel = getInventoryPieceType(piece) === "residuo" ? (state.lang === "it" ? "residuo" : "leftover") : (state.lang === "it" ? "intero" : "whole");
-            return `<option value="${escapeHtml(piece.id)}">${escapeHtml(formatInventoryAllocationMeasure(piece))} · ${escapeHtml(typeLabel)}</option>`;
+            const availableAmount = Math.max(0, Number((getManualAllocationPieceCapacity(piece, isMeasured) - toNumber(usage.get(String(piece.id || "")) || 0)).toFixed(2)));
+            return `<option value="${escapeHtml(piece.id)}">${escapeHtml(formatInventoryAllocationMeasure(piece))} · ${escapeHtml(typeLabel)} · ${state.lang === "it" ? "disp." : "available"} ${escapeHtml(formatManualAllocationAmount(availableAmount, isMeasured))}</option>`;
           }).join("")}
-        </select>
-        <button class="ghost-button small-button" type="button" data-action="add-manual-allocation-entry" data-id="${escapeHtml(orderId)}" data-requirement-id="${escapeHtml(requirement.id)}">${state.lang === "it" ? "+ Aggiungi pezzo" : "+ Add piece"}</button>
+          </select>
+        </label>
+        <button class="ghost-button small-button" type="button" data-action="add-manual-allocation-entry" data-id="${escapeHtml(orderId)}" data-requirement-id="${escapeHtml(requirement.id)}">${state.lang === "it" ? "Usa pezzo" : "Use piece"}</button>
       </div>`
     : `<p class="inv-alloc-warning">${state.lang === "it" ? "Nessun pezzo disponibile per questo prodotto." : "No available piece for this product."}</p>`;
 
   return `
-    <div class="inv-manual-row">
+    <div class="inv-manual-row is-${coverage.tone}">
       <div class="inv-manual-row-head">
-        <strong>${escapeHtml(requirement.product || t("product"))}</strong>
-        <span>${escapeHtml(requirement.title && requirement.title !== requirement.product ? requirement.title : requiredLabel)}</span>
-        <em class="${covered ? "is-covered" : ""}">${escapeHtml(assignedLabel)} / ${escapeHtml(requiredLabel)}</em>
+        <div class="inv-manual-row-title">
+          <span class="inv-manual-source">${escapeHtml(sourceLabel)}</span>
+          <strong>${escapeHtml(requirement.product || t("product"))}</strong>
+          <small>${escapeHtml(requirement.title && requirement.title !== requirement.product ? requirement.title : requiredLabel)}</small>
+        </div>
+        <div class="inv-manual-row-status is-${coverage.tone}">
+          <strong>${escapeHtml(coverage.label)}</strong>
+          <span>${escapeHtml(coverage.detail)}</span>
+        </div>
+      </div>
+      <div class="inv-manual-metrics">
+        <span><small>${state.lang === "it" ? "Richiesto" : "Required"}</small><strong>${escapeHtml(requiredLabel)}</strong></span>
+        <span><small>${state.lang === "it" ? "Selezionato" : "Selected"}</small><strong>${escapeHtml(assignedLabel)}</strong></span>
       </div>
       ${entryRows ? `
-        <p class="inv-manual-entries-caption">${state.lang === "it" ? "Quantità impegnata da ciascun pezzo scelto (modificabile o rimovibile con la ×):" : "Quantity committed from each chosen piece (editable or removable with ×):"}</p>
         <div class="inv-manual-entries">${entryRows}</div>
       ` : ""}
       ${addRow}
@@ -19009,6 +19164,38 @@ function renderOrderInventoryAllocationPanel(order) {
   const requirements = Array.isArray(draft?.requirements) ? draft.requirements : [];
   const entriesByRequirement = draft?.entries || {};
   const hasDraftEntries = Object.values(entriesByRequirement).some((list) => Array.isArray(list) && list.length > 0);
+  const draftSummary = requirements.length ? getManualAllocationDraftSummary(order.id, requirements, entriesByRequirement) : null;
+  const formatSummaryMetric = (sqm = 0, units = 0) => {
+    const parts = [
+      toNumber(sqm) > 0 ? `${formatInventoryNumber(sqm)} mq` : "",
+      toNumber(units) > 0 ? `${formatInventoryNumber(units)} ${state.lang === "it" ? "u" : "u"}` : "",
+    ].filter(Boolean);
+    return parts.length ? parts.join(" + ") : "0";
+  };
+  const draftSummaryHtml = draftSummary ? `
+    <div class="inv-alloc-summary-grid">
+      <div class="inv-alloc-summary-card">
+        <span>${state.lang === "it" ? "Origine dati" : "Data source"}</span>
+        <strong>${state.lang === "it" ? "Righe ordine" : "Order rows"}</strong>
+        <small>${draftSummary.rows} ${state.lang === "it" ? "righe fisiche dalla preparazione" : "physical prep rows"}</small>
+      </div>
+      <div class="inv-alloc-summary-card">
+        <span>${state.lang === "it" ? "Da preparare" : "Required"}</span>
+        <strong>${escapeHtml(formatSummaryMetric(draftSummary.requiredSqm, draftSummary.requiredUnits))}</strong>
+        <small>${state.lang === "it" ? "Fabbisogno dell'ordine selezionato" : "Selected order requirement"}</small>
+      </div>
+      <div class="inv-alloc-summary-card ${draftSummary.incompleteRows ? "is-warning" : "is-ok"}">
+        <span>${state.lang === "it" ? "Bozza scelta" : "Draft selection"}</span>
+        <strong>${escapeHtml(formatSummaryMetric(draftSummary.assignedSqm, draftSummary.assignedUnits))}</strong>
+        <small>${draftSummary.selectedPieces} ${state.lang === "it" ? "pezzi scelti" : "selected pieces"} · ${draftSummary.coveredRows}/${draftSummary.rows} ${state.lang === "it" ? "righe coperte" : "covered rows"}</small>
+      </div>
+      <div class="inv-alloc-summary-card">
+        <span>${state.lang === "it" ? (draftSummary.residueSqm > 0 && draftSummary.residueUnits > 0 ? "Residuo / rimanenza" : draftSummary.residueUnits > 0 ? "Rimanenza stimata" : "Residuo stimato") : "Estimated remainder"}</span>
+        <strong>${escapeHtml(formatSummaryMetric(draftSummary.residueSqm, draftSummary.residueUnits))}</strong>
+        <small>${state.lang === "it" ? "Su rotoli diventa residuo; sui materiali resta giacenza." : "Rolls become offcuts; materials remain stock."}</small>
+      </div>
+    </div>
+  ` : "";
   const manualList = requirements.length
     ? `<div class="inv-manual-list">${requirements.map((requirement) => renderManualRequirementRow(order.id, requirement, entriesByRequirement[requirement.id] || [])).join("")}</div>`
     : "";
@@ -19034,9 +19221,13 @@ function renderOrderInventoryAllocationPanel(order) {
     banner = `<div class="inv-alloc-banner imp"><span>✓</span> ${state.lang === "it" ? "Merce già evasa dal magazzino per questo ordine." : "Goods already fulfilled from warehouse for this order."}</div>`;
     primaryBtn = `<button class="inv-alloc-primary" type="button" disabled>${state.lang === "it" ? "✓ Merce evasa" : "✓ Fulfilled"}</button>`;
   } else if (draft) {
-    banner = hasDraftEntries
-      ? `<div class="inv-alloc-banner ready"><span>✓</span> ${state.lang === "it" ? "Conferma per impegnare i pezzi scelti" : "Confirm to commit the chosen pieces"}</div>`
-      : `<div class="inv-alloc-banner pending"><span>⏳</span> ${state.lang === "it" ? "Scegli i pezzi da usare per ogni riga" : "Choose which pieces to use for each row"}</div>`;
+    if (hasDraftEntries && draftSummary?.incompleteRows > 0) {
+      banner = `<div class="inv-alloc-banner pending"><span>⏳</span> ${state.lang === "it" ? `Bozza parziale: ${draftSummary.coveredRows}/${draftSummary.rows} righe coperte, pezzi non ancora impegnati.` : `Partial draft: ${draftSummary.coveredRows}/${draftSummary.rows} rows covered, pieces not committed yet.`}</div>`;
+    } else {
+      banner = hasDraftEntries
+        ? `<div class="inv-alloc-banner ready"><span>✓</span> ${state.lang === "it" ? `Bozza pronta: tutte le righe coperte, ${draftSummary?.selectedPieces || 0} pezzi non ancora impegnati.` : `Draft ready: all rows covered, ${draftSummary?.selectedPieces || 0} pieces not committed yet.`}</div>`
+        : `<div class="inv-alloc-banner pending"><span>⏳</span> ${state.lang === "it" ? "Bozza caricata: scegli almeno un pezzo da usare." : "Draft loaded: choose at least one piece to use."}</div>`;
+    }
     primaryBtn = `<button class="inv-alloc-primary${pending ? " is-busy" : ""}" type="button" data-action="commit-manual-allocation" data-id="${escapeHtml(order.id)}" ${hasDraftEntries && !pending ? "" : "disabled"}>${state.lang === "it" ? "Registra impegno" : "Commit"}</button>`;
   } else {
     banner = `<div class="inv-alloc-banner pending"><span>⏳</span> ${state.lang === "it" ? "Nessun pezzo assegnato" : "No pieces assigned"}</div>`;
@@ -19056,6 +19247,7 @@ function renderOrderInventoryAllocationPanel(order) {
     <div class="inv-alloc">
       <div class="inv-alloc-eyebrow">${state.lang === "it" ? "Allocazione materiale" : "Material allocation"}</div>
       ${banner}
+      ${draftSummaryHtml}
       ${requirements.length ? `
         <div class="inv-section">
           <p class="inv-section-label">${state.lang === "it" ? "Assegnazione pezzi" : "Piece assignment"}</p>
