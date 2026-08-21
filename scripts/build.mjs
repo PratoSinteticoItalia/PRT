@@ -5,6 +5,8 @@
  *
  * Uso:
  *   node scripts/build.mjs
+ *   node scripts/build.mjs --check    # verifica che i minificati esistenti siano aggiornati, senza scrivere
+ *   node scripts/build.mjs --dry-run  # alias di --check
  *   npm run build
  *
  * Su Render: impostare il Build Command a "npm install && npm run build"
@@ -17,6 +19,14 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const allowedArgs = new Set(["--check", "--dry-run"]);
+const args = process.argv.slice(2);
+const unknownArgs = args.filter((arg) => !allowedArgs.has(arg));
+if (unknownArgs.length) {
+  console.error(`[build] argomenti non riconosciuti: ${unknownArgs.join(", ")}`);
+  process.exit(1);
+}
+const checkOnly = args.includes("--check") || args.includes("--dry-run");
 
 const targets = [
   { input: "app.js", output: "app.min.js", loader: "js" },
@@ -40,6 +50,25 @@ await Promise.allSettled(targets.map(async ({ input, output, loader }) => {
       sourcemap: false,
     });
     const sizeAfter = Buffer.byteLength(result.code);
+    if (checkOnly) {
+      const existing = await readFile(outputPath, "utf8").catch((err) => {
+        if (err?.code === "ENOENT") return null;
+        throw err;
+      });
+      if (existing == null) {
+        console.log(`[build:check] ${output} assente — ok, il server userà ${input}`);
+        ok++;
+        return;
+      }
+      if (existing !== result.code) {
+        console.error(`[build:check] ${output} non aggiornato rispetto a ${input}. Esegui npm run build.`);
+        failed++;
+        return;
+      }
+      console.log(`[build:check] ${output} aggiornato`);
+      ok++;
+      return;
+    }
     await writeFile(outputPath, result.code, "utf8");
     const pct = (((sizeBefore - sizeAfter) / sizeBefore) * 100).toFixed(1);
     console.log(`[build] ${input} → ${output}  ${(sizeBefore / 1024).toFixed(0)}KB → ${(sizeAfter / 1024).toFixed(0)}KB  (-${pct}%)`);

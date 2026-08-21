@@ -25,11 +25,15 @@ async function main() {
   const appJsPath = resolve(ROOT, "app.js");
   const indexPath = resolve(ROOT, "index.html");
   const swPath = resolve(ROOT, "sw.js");
+  const gardenPlannerPath = resolve(ROOT, "garden-planner.html");
+  const gardenPlannerPagePath = resolve(ROOT, "garden-planner-page.js");
 
-  const [appJs, indexHtml, swJs] = await Promise.all([
+  const [appJs, indexHtml, swJs, gardenPlannerHtml, gardenPlannerPageJs] = await Promise.all([
     readText(appJsPath),
     readText(indexPath),
     readText(swPath),
+    readText(gardenPlannerPath),
+    readText(gardenPlannerPagePath),
   ]);
 
   const shellVersion = extractShellVersion(appJs);
@@ -85,12 +89,50 @@ async function main() {
     "sw.js missing versioned vendor/signature_pad.umd.min.js entry",
     errors,
   );
+  assertMatches(
+    swJs,
+    new RegExp(`/garden-planner\\.html\\?v=${escapedVersion}&shell=${escapedVersion}`),
+    "sw.js missing versioned garden-planner.html entry",
+    errors,
+  );
+  assertMatches(
+    swJs,
+    new RegExp(`/garden-planner-page\\.js\\?v=${escapedVersion}`),
+    "sw.js missing versioned garden-planner-page.js entry",
+    errors,
+  );
 
   // --- index.html: vendor signature_pad ---
   assertMatches(
     indexHtml,
     new RegExp(`vendor/signature_pad\\.umd\\.min\\.js\\?v=${escapedVersion}`),
     "index.html missing signature_pad shell version",
+    errors,
+  );
+
+  // --- garden-planner.html / garden-planner-page.js ---
+  assertMatches(
+    gardenPlannerHtml,
+    new RegExp(`garden-planner-page\\.js\\?v=${escapedVersion}`),
+    "garden-planner.html missing garden-planner-page.js shell version",
+    errors,
+  );
+  assertMatches(
+    gardenPlannerHtml,
+    new RegExp(`sw\\.js\\?v=${escapedVersion}`),
+    "garden-planner.html missing sw.js shell version",
+    errors,
+  );
+  assertMatches(
+    gardenPlannerPageJs,
+    new RegExp(`const APP_SHELL_VERSION = "${escapedVersion}"`),
+    "garden-planner-page.js APP_SHELL_VERSION does not match app.js",
+    errors,
+  );
+  assertMatches(
+    appJs,
+    /garden-planner\.html\?v=\$\{APP_SHELL_VERSION\}&shell=\$\{APP_SHELL_VERSION\}/,
+    "app.js garden planner iframe URL is not shell-versioned",
     errors,
   );
 

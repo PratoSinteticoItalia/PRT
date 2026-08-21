@@ -90,14 +90,14 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260820-garden-planner-deadcode-cleanup"></script>
+    <script type="text/babel" data-presets="react" src="./garden-planner-page.js?v=20260820-deadcode-cleanup"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
           // Register without update logic — the main app SW handles version updates.
           // Avoid registration.waiting checks and controllerchange reloads here to
           // prevent the garden planner iframe from reloading every time it opens.
-          navigator.serviceWorker.register("./sw.js?v=20260513-pdf-polish-195").catch(() => {});
+          navigator.serviceWorker.register("./sw.js?v=20260820-deadcode-cleanup").catch(() => {});
         });
       }
     </script>

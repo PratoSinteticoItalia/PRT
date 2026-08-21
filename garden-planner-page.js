@@ -90,7 +90,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260513-pdf-polish-195";
+const APP_SHELL_VERSION = "20260820-deadcode-cleanup";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -239,6 +239,7 @@ function buildPlannerMaterialItems(installNeeds = {}, borderType = "nessuna", bo
 
 function buildPlannerMaterialReferenceModel({
   area,
+  turfArea = area,
   substrate,
   travel,
   installNeeds,
@@ -250,19 +251,21 @@ function buildPlannerMaterialReferenceModel({
   reportVariant = "technical",
   pavingNeedsByArea = [],
 }) {
+  const safeTotalArea = Math.max(0, Number(area) || 0);
+  const safeTurfArea = Math.max(0, Number(turfArea) || 0);
   const isClientVariant = reportVariant === "client";
   const canViewMaterialCosts = String(viewerRole || "").trim().toLowerCase() === "office" && !isClientVariant;
   const stabilizedPerTon = Number(regionalPricing?.stabilizedPerTon) || Number(MATERIAL_COSTS.stabilizedPerTonFallback);
   const sandPerTon = Number(regionalPricing?.sandPerTon) || Number(MATERIAL_COSTS.sandPerTonFallback);
   const pricingRegionLabel = regionalPricing?.region || "Lazio (fallback)";
-  const scavoM3 = (area * substrate.scavoCm) / 100;
-  const drenateM3 = (area * substrate.drenateCm) / 100;
+  const scavoM3 = (safeTotalArea * substrate.scavoCm) / 100;
+  const drenateM3 = (safeTotalArea * substrate.drenateCm) / 100;
   const drenateTon = (drenateM3 * 1600) / 1000;
-  const sabbiaM3 = (area * substrate.sabbiaCm) / 100;
+  const sabbiaM3 = (safeTotalArea * substrate.sabbiaCm) / 100;
   const sabbiaKg = sabbiaM3 * 1500;
   const sabbiaTon = sabbiaKg / 1000;
   const border = BORDER_TYPES.find((entry) => entry.id === borderType);
-  const infillKg = area * INFILL_FO30.kgPerSqm;
+  const infillKg = safeTurfArea * INFILL_FO30.kgPerSqm;
   const infillBags = Math.ceil(infillKg / INFILL_FO30.bagKg);
   const substrateCost = (scavoM3 * MATERIAL_COSTS.scavoPerM3)
     + (drenateTon * stabilizedPerTon)
@@ -405,7 +408,9 @@ function buildPlannerMaterialReferenceModel({
   };
 }
 
-function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, installNeeds, borderType, borderMeters, decoItems, regionalPricing, viewerRole = "crew", pavingNeedsByArea = [] }) {
+function buildPlannerQuotePrefill({ projectInfo, area, turfArea = area, substrate, travel, installNeeds, borderType, borderMeters, decoItems, regionalPricing, viewerRole = "crew", pavingNeedsByArea = [] }) {
+  const safeTotalArea = Math.max(0, Number(area) || 0);
+  const safeTurfArea = Math.max(0, Number(turfArea) || 0);
   const clientName = String(projectInfo.client || "").trim();
   const [firstName = "", ...restName] = clientName.split(/\s+/).filter(Boolean);
   const address = String(projectInfo.address || "").trim();
@@ -424,7 +429,8 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
     })
     .filter(Boolean);
   const materialReferenceModel = buildPlannerMaterialReferenceModel({
-    area,
+    area: safeTotalArea,
+    turfArea: safeTurfArea,
     substrate,
     travel,
     installNeeds,
@@ -443,7 +449,9 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
     client: clientName,
     address,
     city,
-    sqmLabel: `${fmt(area, 1)} m²`,
+    sqmLabel: safeTurfArea === safeTotalArea
+      ? `${fmt(safeTurfArea, 1)} m²`
+      : `Prato ${fmt(safeTurfArea, 1)} m² · Totale ${fmt(safeTotalArea, 1)} m²`,
     serviceLabel: "Fornitura + posa",
     surfaceLabel: substrateSummary || "Fondo da definire",
     note: [
@@ -453,7 +461,8 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
       String(projectInfo.notes || "").trim(),
     ].filter(Boolean).join(" · "),
     materialHighlights: [
-      `Prato ${fmt(area, 1)} m²`,
+      `Prato ${fmt(safeTurfArea, 1)} m²`,
+      safeTotalArea !== safeTurfArea ? `Totale progetto ${fmt(safeTotalArea, 1)} m²` : "",
       `TNT ${fmt(installNeeds.geo, 1)} m²`,
       installNeeds.tapeRolls > 0 ? `Banda ${fmt(installNeeds.jointMeters, 1)} m · ${installNeeds.tapeRolls} rot.` : "",
       installNeeds.glueBuckets > 0 ? `Colla ${installNeeds.glueBuckets} secchi` : "",
@@ -484,7 +493,7 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
       citta: city,
       telefono: "",
       email: "",
-      mq: Number(area).toFixed(1),
+      mq: Number(safeTurfArea).toFixed(1),
       altezza: "",
       servizio: "Fornitura + posa",
       fondo: substrateSummary || "Fondo da definire",
@@ -493,7 +502,7 @@ function buildPlannerQuotePrefill({ projectInfo, area, substrate, travel, instal
       // buildPlannerMaterialItems. Machine-readable (non solo stringhe per
       // display come materialHighlights/materialsReference sopra): il
       // Generatore li userà al posto della formula piatta sui soli mq.
-      materialItems: buildPlannerMaterialItems(installNeeds, borderType, borderMeters, pavingNeedsByArea, substrate, area, regionalPricing),
+      materialItems: buildPlannerMaterialItems(installNeeds, borderType, borderMeters, pavingNeedsByArea, substrate, safeTotalArea, regionalPricing),
     },
   };
 }
@@ -2678,6 +2687,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
     operationalCostTotal,
   } = buildPlannerMaterialReferenceModel({
     area,
+    turfArea: turfArea ?? area,
     substrate,
     travel,
     installNeeds,
@@ -2694,7 +2704,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
     ? manualRolls.reduce((sum, roll) => sum + (Number(roll.length) || 0), 0)
     : 0;
   const rollMaterialArea = installNeeds.rollMaterialArea || (rollLinearMeters * MANUAL_ROLL_WIDTH_M);
-  const rollWasteArea = installNeeds.rollWasteArea || Math.max(0, rollMaterialArea - area);
+  const rollWasteArea = installNeeds.rollWasteArea || Math.max(0, rollMaterialArea - (turfArea ?? area));
   const rollPolygons = shape === "custom"
     ? getPlannerPolygons(customAreas, customPts, customClosed)
     : [{ points: getShapePolygon(shape, dims) }].filter((item) => item.points.length >= 3);
@@ -3454,6 +3464,7 @@ function GardenPlanner() {
     const plannerBridge = buildPlannerQuotePrefill({
       projectInfo,
       area,
+      turfArea,
       substrate,
       travel,
       installNeeds,

@@ -29870,7 +29870,7 @@ function stopMarketingPolling() {
 function renderGardenPlannerView() {
   const iframe = document.getElementById("garden-planner-iframe");
   if (iframe && !iframe.src) {
-    iframe.src = "./garden-planner.html";
+    iframe.src = `./garden-planner.html?v=${APP_SHELL_VERSION}&shell=${APP_SHELL_VERSION}`;
   }
 }
 
