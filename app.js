@@ -19095,12 +19095,14 @@ function renderManualRequirementRow(orderId, requirement, entries) {
     ? (state.lang === "it" ? "Opzionale: aggiungi altro pezzo" : "Optional: add another piece")
     : entries.length
       ? (state.lang === "it" ? "Aggiungi un altro pezzo" : "Add another piece")
-      : (state.lang === "it" ? "Scegli pezzo disponibile" : "Choose available piece");
+      : (state.lang === "it" ? "Scegli tu un pezzo" : "Choose a piece yourself");
+  const pickerPlaceholder = state.lang === "it" ? "Nessun pezzo selezionato" : "No piece selected";
   const addRow = availablePieces.length
     ? `<div class="inv-manual-add">
         <label class="inv-manual-picker-wrap">
           <span>${escapeHtml(pickerLabel)}</span>
           <select class="text-input inv-manual-picker" data-requirement-id="${escapeHtml(requirement.id)}">
+          <option value="" selected disabled>${escapeHtml(pickerPlaceholder)}</option>
           ${availablePieces.map((piece) => {
             const typeLabel = getInventoryPieceType(piece) === "residuo" ? (state.lang === "it" ? "residuo" : "leftover") : (state.lang === "it" ? "intero" : "whole");
             const availableAmount = Math.max(0, Number((getManualAllocationPieceCapacity(piece, isMeasured) - toNumber(usage.get(String(piece.id || "")) || 0)).toFixed(2)));
@@ -19108,7 +19110,7 @@ function renderManualRequirementRow(orderId, requirement, entries) {
           }).join("")}
           </select>
         </label>
-        <button class="ghost-button small-button" type="button" data-action="add-manual-allocation-entry" data-id="${escapeHtml(orderId)}" data-requirement-id="${escapeHtml(requirement.id)}">${state.lang === "it" ? "Usa pezzo" : "Use piece"}</button>
+        <button class="ghost-button small-button" type="button" data-action="add-manual-allocation-entry" data-id="${escapeHtml(orderId)}" data-requirement-id="${escapeHtml(requirement.id)}">${state.lang === "it" ? "Aggiungi pezzo scelto" : "Add chosen piece"}</button>
       </div>`
     : `<p class="inv-alloc-warning">${state.lang === "it" ? "Nessun pezzo disponibile per questo prodotto." : "No available piece for this product."}</p>`;
 
@@ -19226,7 +19228,7 @@ function renderOrderInventoryAllocationPanel(order) {
     } else {
       banner = hasDraftEntries
         ? `<div class="inv-alloc-banner ready"><span>✓</span> ${state.lang === "it" ? `Bozza pronta: tutte le righe coperte, ${draftSummary?.selectedPieces || 0} pezzi non ancora impegnati.` : `Draft ready: all rows covered, ${draftSummary?.selectedPieces || 0} pieces not committed yet.`}</div>`
-        : `<div class="inv-alloc-banner pending"><span>⏳</span> ${state.lang === "it" ? "Bozza caricata: scegli almeno un pezzo da usare." : "Draft loaded: choose at least one piece to use."}</div>`;
+        : `<div class="inv-alloc-banner pending"><span>⏳</span> ${state.lang === "it" ? "Bozza caricata: scegli tu i pezzi da usare." : "Draft loaded: choose the pieces yourself."}</div>`;
     }
     primaryBtn = `<button class="inv-alloc-primary${pending ? " is-busy" : ""}" type="button" data-action="commit-manual-allocation" data-id="${escapeHtml(order.id)}" ${hasDraftEntries && !pending ? "" : "disabled"}>${state.lang === "it" ? "Registra impegno" : "Commit"}</button>`;
   } else {
@@ -30803,17 +30805,8 @@ async function loadInventoryRequirementsForOrder(orderId = "") {
       requirements: loadedRequirements,
       entries: {},
     });
-    // Pre-seleziona il primo pezzo disponibile per ogni riga (lo stesso già
-    // mostrato come default nel menu a tendina) così "Registra impegno" è
-    // subito cliccabile invece di restare bloccato senza un motivo visibile
-    // finché non si tocca ogni riga col picker — punto di attrito segnalato
-    // dall'utente il 13 ago 2026 per chi non conosce bene il flusso. Resta una
-    // bozza: ogni riga si può ancora cambiare o rimuovere prima di confermare,
-    // nulla viene impegnato finché non si preme "Registra impegno".
-    loadedRequirements.forEach((requirement) => {
-      const candidates = getManualAllocationCandidates(normalizedId, requirement);
-      if (candidates.length) addManualAllocationEntry(normalizedId, requirement.id, candidates[0].id);
-    });
+    // Carica solo il fabbisogno dell'ordine: la scelta dei pezzi resta sempre
+    // manuale e nessun rotolo viene proposto o preselezionato.
     renderInventoryAllocationContextNow();
   } catch (error) {
     console.error("inventory_requirements_failed", error);
@@ -33505,6 +33498,7 @@ function handleGlobalClick(event) {
     const picker = row?.querySelector(".inv-manual-picker");
     const sourcePieceId = picker?.value || "";
     if (requirementId && sourcePieceId) addManualAllocationEntry(id, requirementId, sourcePieceId);
+    else showToast(state.lang === "it" ? "Scegli un pezzo dal menu prima di aggiungerlo." : "Choose a piece from the menu before adding it.", "warning");
     return;
   }
   if (action === "remove-manual-allocation-entry") {
