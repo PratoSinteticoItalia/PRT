@@ -9491,6 +9491,44 @@ function getInventoryPieceType(item = {}) {
   return "intero";
 }
 
+function isStandardWholeRollLength(length = 0) {
+  const value = toNumber(length);
+  return [20, 25, 40].some((standard) => Math.abs(value - standard) <= 0.05);
+}
+
+function getInventoryPieceDisplayType(item = {}) {
+  const forced = String(item.displayPieceType || "").trim().toLowerCase();
+  if (["intero", "residuo", "taglio"].includes(forced)) return forced;
+  const normalized = getInventoryPieceType(item);
+  if (normalized !== "intero") return normalized;
+  const { length } = inferInventoryPieceDimensions(item);
+  if (length > 0 && !isStandardWholeRollLength(length)) {
+    return getInventoryPieceState(item) === "impegnato" ? "taglio" : "residuo";
+  }
+  return "intero";
+}
+
+function getInventoryPieceDisplayTone(item = {}) {
+  const type = typeof item === "string" ? item : getInventoryPieceDisplayType(item);
+  if (type === "residuo") return "res";
+  if (type === "taglio") return "cut";
+  return "roll";
+}
+
+function formatInventoryPieceDisplayTypeLabel(item = {}) {
+  const normalized = getInventoryPieceDisplayType(item);
+  if (normalized === "residuo") return state.lang === "it" ? "Residuo" : "Offcut";
+  if (normalized === "taglio") return state.lang === "it" ? "Taglio ordine" : "Order cut";
+  return state.lang === "it" ? "Rotolo intero" : "Full roll";
+}
+
+function formatInventoryPieceDisplayTypeShortLabel(item = {}) {
+  const normalized = getInventoryPieceDisplayType(item);
+  if (normalized === "residuo") return state.lang === "it" ? "Residuo" : "Offcut";
+  if (normalized === "taglio") return state.lang === "it" ? "Taglio" : "Cut";
+  return state.lang === "it" ? "Rotolo" : "Roll";
+}
+
 function getInventoryPieceStateLabel(pieceState = "") {
   const normalized = getInventoryPieceState({ pieceState });
   if (normalized === "impegnato") return state.lang === "it" ? "IMPEGNATO" : "COMMITTED";
@@ -10316,9 +10354,10 @@ function getNextOrderAction(order) {
 function getInboxRouteLabel(order) {
   const installSelected = isRoutedToInstallation(order);
   const mode = String(order.operations?.warehouse?.fulfillmentMode || "").trim();
-  if (installSelected) {
+  if (installSelected && isRoutedToWarehouse(order)) {
     return state.lang === "it" ? "Ufficio -> Magazzino/Spedizioni -> Posa" : "Office -> Warehouse/Logistics -> Installation";
   }
+  if (installSelected) return state.lang === "it" ? "Ufficio -> Posa" : "Office -> Installation";
   if (mode === "corriere") {
     return state.lang === "it" ? "Ufficio -> Magazzino -> Corriere" : "Office -> Warehouse -> Courier";
   }
@@ -10413,17 +10452,18 @@ function buildInventoryGroups() {
       demandOrders: [...(demandMap.get(key)?.demandOrders || [])],
     };
     const pieceState = getInventoryPieceState(item);
-    const pieceType = getInventoryPieceType(item);
     const pieceDimensions = inferInventoryPieceDimensions(item);
-    const normalizedPiece = { ...item, ...pieceDimensions, pieceState, pieceType };
+    const pieceType = getInventoryPieceType(item);
+    const displayPieceType = getInventoryPieceDisplayType({ ...item, ...pieceDimensions, pieceState, pieceType });
+    const normalizedPiece = { ...item, ...pieceDimensions, pieceState, pieceType, displayPieceType };
     existing.pieces.push(normalizedPiece);
     const units = Math.max(1, Number(item.units || 1));
     const sqm = toNumber(normalizedPiece.sqm);
     if (pieceState !== "evaso") {
       existing.totalSqm += sqm;
       existing.totalUnits += units;
-      if (pieceType === "residuo") existing.residualCount += units;
-      else existing.fullCount += units;
+      if (displayPieceType === "residuo") existing.residualCount += units;
+      else if (displayPieceType === "intero") existing.fullCount += units;
     } else {
       existing.fulfilledSqm += sqm;
       existing.fulfilledUnits += units;
@@ -10516,7 +10556,9 @@ function buildInventoryGroups() {
           const stateOrder = { disponibile: 0, impegnato: 1, evaso: 2 };
           const stateDelta = (stateOrder[getInventoryPieceState(a)] ?? 0) - (stateOrder[getInventoryPieceState(b)] ?? 0);
           if (stateDelta) return stateDelta;
-          if (getInventoryPieceType(a) !== getInventoryPieceType(b)) return getInventoryPieceType(a) === "intero" ? -1 : 1;
+          const typeOrder = { intero: 0, taglio: 1, residuo: 2 };
+          const typeDelta = (typeOrder[getInventoryPieceDisplayType(a)] ?? 0) - (typeOrder[getInventoryPieceDisplayType(b)] ?? 0);
+          if (typeDelta) return typeDelta;
           if (isMeasured) return (b.sqm || 0) - (a.sqm || 0);
           return String(a.variant || a.note || "").localeCompare(String(b.variant || b.note || ""), "it");
         }),
@@ -10676,10 +10718,10 @@ function filterOrdersForView(kind, { filterOverride } = {}) {
 function renderInboxFlowControls(order) {
   // "Da posare" è una scelta MANUALE (non più derivata dal tipo servizio): parte da No.
   const installSelected = isRoutedToInstallation(order);
-  // "In logistica" è manuale; se l'ordine è da posare resta comunque in logistica
-  // (il materiale va comunque preparato e caricato sul furgone).
+  // "In spedizione" è una scelta manuale indipendente da "Da posare": prima
+  // installSelected lo riaccendeva al render e il toggle sembrava rimbalzare.
   const shopifyFulfilled = isShopifyFulfillmentComplete(order);
-  const warehouseSelected = shopifyFulfilled || isRoutedToWarehouse(order) || installSelected;
+  const warehouseSelected = shopifyFulfilled || isRoutedToWarehouse(order);
   const warehouseStatus = shopifyFulfilled ? "ritirato" : (order.operations?.warehouse?.status || "da-preparare");
   const warehouseStatusLabel = getShipmentStateLabel(order);
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
@@ -18597,20 +18639,28 @@ async function removeSalesContentAttachment(contentId, attachmentIndex, attachme
 // per stato. Evita di elencare 40 rotoli uguali uno per uno (grandi giacenze).
 function groupInventoryPiecesForDisplay(pieces = []) {
   const map = new Map();
+  const sourceCutCounts = new Map();
   pieces.forEach((p) => {
     const state = getInventoryPieceState(p);
     if (state === "evaso") return; // non mostrare gli scaricati
-    const type = getInventoryPieceType(p); // "intero" | "residuo"
+    const type = getInventoryPieceDisplayType(p); // "intero" | "taglio" | "residuo"
     const w = Number(p.width || 0);
     const l = Number(p.length || 0);
     const key = `${type}|${w}|${l}`;
     const g = map.get(key) || {
       type, width: w, length: l, sqm: toNumber(p.sqm),
-      disp: 0, imp: 0, dispIds: [], impIds: [],
+      disp: 0, imp: 0, dispIds: [], impIds: [], sourceRootIds: new Set(),
     };
     const units = Math.max(1, Number(p.units || 1));
     if (state === "disponibile") { g.disp += units; g.dispIds.push(p.id); }
     else if (state === "impegnato") { g.imp += units; g.impIds.push(p.id); }
+    if (type === "taglio") {
+      const sourceRootId = String(p.parentPieceId || p.residueFromPieceId || p.id || "");
+      if (sourceRootId) {
+        g.sourceRootIds.add(sourceRootId);
+        sourceCutCounts.set(sourceRootId, toNumber(sourceCutCounts.get(sourceRootId) || 0) + units);
+      }
+    }
     map.set(key, g);
   });
   const all = [...map.values()];
@@ -18622,16 +18672,21 @@ function groupInventoryPiecesForDisplay(pieces = []) {
   // segnale che sono la stessa operazione — è il motivo per cui un taglio
   // sembra "far sparire" i metri invece di lasciare un resto utilizzabile.
   const residuoPieces = pieces.filter((p) => (
-    getInventoryPieceType(p) === "residuo" && getInventoryPieceState(p) !== "evaso"
+    getInventoryPieceDisplayType(p) === "residuo" && getInventoryPieceState(p) !== "evaso"
   ));
   all.forEach((g) => {
     if (g.type !== "taglio") return;
-    const sourceIds = new Set([...g.dispIds, ...g.impIds]);
-    const linked = residuoPieces.filter((r) => sourceIds.has(r.residueFromPieceId));
+    const sourceIds = new Set([...(g.sourceRootIds || []), ...g.dispIds, ...g.impIds]);
+    const linked = residuoPieces.filter((r) => {
+      const residueSourceIds = [r.residueFromPieceId, r.parentPieceId].map((id) => String(id || "")).filter(Boolean);
+      return residueSourceIds.some((id) => sourceIds.has(id));
+    });
     if (!linked.length) return;
     g.pairedResidueSqm = Number(linked.reduce((sum, r) => sum + toNumber(r.sqm || 0), 0).toFixed(2));
     g.pairedResidueAvailable = linked.filter((r) => getInventoryPieceState(r) === "disponibile").length;
     g.pairedResidueCount = linked.length;
+    g.pairedSourceCutCount = [...(g.sourceRootIds || [])]
+      .reduce((sum, id) => sum + toNumber(sourceCutCounts.get(id) || 0), 0);
   });
   return {
     rolls: all.filter((g) => g.type !== "residuo").sort((a, b) => b.sqm - a.sqm),
@@ -18756,9 +18811,16 @@ function renderInventoryCard(group) {
 
   const grouped = isMeasured ? groupInventoryPiecesForDisplay(group.pieces) : { rolls: [], residues: [] };
   const fmtDim = (g) => `${formatInventoryNumber(g.width)} × ${formatInventoryNumber(g.length)} m`;
+  const hasGroupedCuts = grouped.rolls.some((g) => g.type === "taglio");
+  const hasGroupedWholeRolls = grouped.rolls.some((g) => g.type === "intero");
+  const rollSectionLabel = hasGroupedCuts && hasGroupedWholeRolls
+    ? (state.lang === "it" ? "Rotoli e tagli" : "Rolls and cuts")
+    : hasGroupedCuts
+      ? (state.lang === "it" ? "Tagli impegnati" : "Committed cuts")
+      : (state.lang === "it" ? "Rotoli interi" : "Whole rolls");
 
   const rollsHtml = grouped.rolls.length
-    ? `<div class="inv-groups-label">${state.lang === "it" ? "Rotoli interi" : "Whole rolls"}</div>
+    ? `<div class="inv-groups-label">${rollSectionLabel}</div>
        ${grouped.rolls.map((g) => {
          const isCut = g.type === "taglio";
          // Un taglio che ha generato un residuo ancora disponibile: mostralo
@@ -18771,8 +18833,13 @@ function renderInventoryCard(group) {
          const availableTail = g.pairedResidueAvailable
            ? (state.lang === "it" ? " — disponibile qui sotto ↓" : " — available below ↓")
            : "";
+         const sharedCutCount = Math.round(toNumber(g.pairedSourceCutCount || 0));
          const linkLine = isCut && g.pairedResidueSqm
-           ? g.pairedResidueCount > 1
+           ? sharedCutCount > 1
+             ? `<div class="inv-pgroup-link">↳ ${state.lang === "it"
+                 ? `<strong>${sharedCutCount}</strong> tagli dello stesso rotolo hanno generato <strong>${formatInventoryNumber(g.pairedResidueSqm)} mq</strong> di residuo in totale`
+                 : `<strong>${sharedCutCount}</strong> cuts from the same roll generated <strong>${formatInventoryNumber(g.pairedResidueSqm)} mq</strong> of offcut in total`}${availableTail}</div>`
+             : g.pairedResidueCount > 1
              ? `<div class="inv-pgroup-link">↳ ${state.lang === "it"
                  ? `questi <strong>${g.pairedResidueCount}</strong> tagli hanno generato <strong>${formatInventoryNumber(g.pairedResidueSqm)} mq</strong> di residuo in totale`
                  : `these <strong>${g.pairedResidueCount}</strong> cuts generated <strong>${formatInventoryNumber(g.pairedResidueSqm)} mq</strong> of offcut in total`}${availableTail}</div>`
@@ -18809,7 +18876,8 @@ function renderInventoryCard(group) {
         <div class="inv-singles-list">
           ${singlePieces.map((item) => {
             const ps = getInventoryPieceState(item);
-            const pt = getInventoryPieceType(item);
+            const pt = getInventoryPieceDisplayType(item);
+            const tone = getInventoryPieceDisplayTone(pt);
             const canDel = ps === "disponibile";
             // Impegnato → chip cliccabile con l'ordine per cui è riservato il pezzo.
             const committed = ps === "impegnato" ? getPieceCommittedOrder(item) : null;
@@ -18832,8 +18900,8 @@ function renderInventoryCard(group) {
             const originLine = sourceCutPiece
               ? `<div class="inv-single-origin">↳ ${state.lang === "it" ? "residuo del taglio" : "offcut from the cut"} ${formatPieceLabel(sourceCutPiece)}${sourceOrder ? ` · ${sourceOrder.num ? `#${escapeHtml(sourceOrder.num)}` : ""}${sourceOrder.name ? ` ${escapeHtml(sourceOrder.name)}` : ""}` : ""}</div>`
               : "";
-            return `<div class="inv-single ${pt === "residuo" ? "res" : "roll"}">
-              <span class="inv-ptype ${pt === "residuo" ? "res" : "roll"}">${pt === "residuo" ? (state.lang === "it" ? "Residuo" : "Offcut") : (state.lang === "it" ? "Rotolo" : "Roll")}</span>
+            return `<div class="inv-single ${tone}">
+              <span class="inv-ptype ${tone}">${formatInventoryPieceDisplayTypeShortLabel({ ...item, displayPieceType: pt })}</span>
               <span class="inv-single-dim">${formatPieceLabel(item)} · ${formatInventoryNumber(item.sqm)} mq</span>
               ${stateCell}
               ${canDel ? `<button class="inv-single-del" type="button" data-action="delete-inventory-piece" data-id="${item.id}" title="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}" aria-label="${state.lang === "it" ? "Rimuovi pezzo" : "Remove piece"}">×</button>` : ""}
@@ -19056,7 +19124,7 @@ function renderManualRequirementRow(orderId, requirement, entries) {
   const entryRows = entries.map((entry) => {
     const piece = state.inventory.find((item) => item.id === entry.sourcePieceId);
     const pieceLabel = piece ? formatInventoryAllocationMeasure(piece) : "?";
-    const pieceTypeLabel = piece ? formatInventoryPieceTypeLabel(getInventoryPieceType(piece)) : "";
+    const pieceTypeLabel = piece ? formatInventoryPieceDisplayTypeLabel(piece) : "";
     const pieceCapacity = piece ? getManualAllocationPieceCapacity(piece, isMeasured) : 0;
     const totalUsedFromPiece = toNumber(usage.get(String(entry.sourcePieceId || "")) || 0);
     const residueAmount = Math.max(0, Number((pieceCapacity - totalUsedFromPiece).toFixed(2)));
@@ -19104,7 +19172,12 @@ function renderManualRequirementRow(orderId, requirement, entries) {
           <select class="text-input inv-manual-picker" data-requirement-id="${escapeHtml(requirement.id)}">
           <option value="" selected disabled>${escapeHtml(pickerPlaceholder)}</option>
           ${availablePieces.map((piece) => {
-            const typeLabel = getInventoryPieceType(piece) === "residuo" ? (state.lang === "it" ? "residuo" : "leftover") : (state.lang === "it" ? "intero" : "whole");
+            const pieceDisplayType = getInventoryPieceDisplayType(piece);
+            const typeLabel = pieceDisplayType === "residuo"
+              ? (state.lang === "it" ? "residuo" : "leftover")
+              : pieceDisplayType === "taglio"
+                ? (state.lang === "it" ? "taglio" : "cut")
+                : (state.lang === "it" ? "intero" : "whole");
             const availableAmount = Math.max(0, Number((getManualAllocationPieceCapacity(piece, isMeasured) - toNumber(usage.get(String(piece.id || "")) || 0)).toFixed(2)));
             return `<option value="${escapeHtml(piece.id)}">${escapeHtml(formatInventoryAllocationMeasure(piece))} · ${escapeHtml(typeLabel)} · ${state.lang === "it" ? "disp." : "available"} ${escapeHtml(formatManualAllocationAmount(availableAmount, isMeasured))}</option>`;
           }).join("")}
@@ -31302,9 +31375,11 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
   const nextStatus = hasStatusControl ? readGroup(statusInput, currentWarehouse.status || "da-preparare") : "";
   const installSelected = readToggle(installToggle);
   const warehouseManuallySelected = readToggle(warehouseToggle);
-  const warehouseSelected = warehouseManuallySelected || installSelected;
+  // Spedizioni e Posa sono instradamenti indipendenti: "Da posare" non deve
+  // riaccendere "In spedizione" dopo che l'utente lo ha spento.
+  const warehouseSelected = warehouseManuallySelected;
   const nextModeRaw = warehouseSelected ? readGroup(modeInput, "da-definire") : "da-definire";
-  const nextMode = installSelected && nextModeRaw === "da-definire" ? "furgone" : nextModeRaw;
+  const nextMode = warehouseSelected && installSelected && nextModeRaw === "da-definire" ? "furgone" : nextModeRaw;
   const nextDate = warehouseSelected ? (dateInput?.value || "") : "";
   const shouldRouteWarehouse = warehouseToggle && !warehouseSelected
     ? false

@@ -5558,11 +5558,12 @@ function orderIsVisibleToWarehouse(order = {}) {
   const wh = order.operations?.warehouse || {};
   const inst = order.operations?.installation || {};
   const notDraft = (order.operations?.officeStatus || "bozza") !== "bozza";
+  const warehouseStatus = String(wh.status || "").trim();
   const routedToLogistics = Boolean(
     wh.selected
     || (wh.fulfillmentMode && wh.fulfillmentMode !== "da-definire")
     || (wh.preparationDate && String(wh.preparationDate).trim())
-    || (wh.status && wh.status !== "da-preparare")
+    || (warehouseStatus && !["da-preparare", "da-definire"].includes(warehouseStatus))
     || wh.readyToShip || wh.carrierPassed || wh.shipped
     || (wh.trackingNumber && String(wh.trackingNumber).trim())
     || inst.required || inst.selected

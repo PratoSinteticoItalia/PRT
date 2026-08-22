@@ -74,6 +74,31 @@ test("ordine non instradato né in magazzino né in posa non richiede azione log
   assert.equal(orderNeedsShippingAction(order), false);
 });
 
+test("Inbox: default magazzino da-preparare senza spunte resta da verificare, non da preparare", () => {
+  const order = makeOrder({
+    operations: {
+      officeStatus: "confermato",
+      warehouse: { selected: false, status: "da-preparare", fulfillmentMode: "da-definire" },
+      installation: { selected: false, required: false },
+    },
+  });
+  assert.equal(isRoutedToWarehouse(order), false);
+  assert.equal(getUnifiedOrderStageKey(order).key, "office-review");
+  assert.equal(orderNeedsShippingAction(order), false);
+});
+
+test("Inbox: stato magazzino da-definire senza spunte non instrada l'ordine", () => {
+  const order = makeOrder({
+    operations: {
+      officeStatus: "confermato",
+      warehouse: { selected: false, status: "da-definire", fulfillmentMode: "da-definire" },
+      installation: { selected: false, required: false },
+    },
+  });
+  assert.equal(isRoutedToWarehouse(order), false);
+  assert.equal(getUnifiedOrderStageKey(order).key, "office-review");
+});
+
 test("invariante badge/bacheca: per qualunque ordine instradato al magazzino e non chiuso, orderNeedsShippingAction concorda sempre con getShippingStageLane !== 'done'", () => {
   // Nota: l'invariante è scoped a isRoutedToWarehouse, non più a
   // "instradato al magazzino O in posa" — vedi il test dedicato sotto
