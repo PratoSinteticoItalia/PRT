@@ -12151,6 +12151,64 @@ async function syncOrdersFromShopify(store, { fullHistory = false } = {}) {
   return normalized;
 }
 
+// Rete di sicurezza indipendente dal browser: i webhook Shopify coprono il
+// caso normale in tempo reale, e il client fa comunque polling ogni 5 min
+// (vedi SHOPIFY_AUTO_SYNC_INTERVAL_MS in app.js) — ma SOLO quando un utente
+// con ruolo "office" ha una scheda visibile e online (canAutoSyncShopify).
+// Se in quella finestra nessuno con ruolo ufficio ha il portale aperto (es.
+// solo magazzino/squadre attivi), un webhook perso resta invisibile finché
+// qualcuno non riapre il portale o clicca "Ricarica dati" — confermato dal
+// cliente come problema reale, anche se raro. Questo giro periodico lato
+// server chiude quel buco, indipendentemente da chi ha il browser aperto.
+async function runScheduledShopifySync() {
+  let store;
+  try {
+    store = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
+  } catch (error) {
+    console.warn("[shopify-scheduled-sync] impossibile leggere lo store:", error?.message || error);
+    return;
+  }
+  if (!store.shopifySettings?.storeDomain) return; // Shopify non configurato, nulla da fare
+
+  let orders;
+  try {
+    // Chiamata di rete FUORI dal lock, stesso motivo del sync manuale
+    // (/api/orders/sync-shopify): può durare diversi secondi e non deve
+    // bloccare le scritture concorrenti di altri utenti.
+    orders = await syncOrdersFromShopify(store, { fullHistory: false });
+  } catch (error) {
+    console.warn("[shopify-scheduled-sync] sync fallita:", error?.message || error);
+    try {
+      const errorStore = await readJson(STORE_PATH, { shopifySettings: {} });
+      errorStore.shopifySettings = errorStore.shopifySettings || {};
+      errorStore.shopifySettings.lastSyncAt = new Date().toISOString();
+      errorStore.shopifySettings.lastSyncStatus = "error";
+      errorStore.shopifySettings.lastSyncMessage = String(error?.message || "shopify_sync_failed").slice(0, 500);
+      await writeJson(STORE_PATH, errorStore);
+    } catch { /* riproveremo al prossimo giro comunque */ }
+    return;
+  }
+
+  try {
+    await withApiStateLock(async () => {
+      const upsertResults = orders.map((order) => upsertOrderRecord(store, order));
+      store.orders = sortOrdersByRecency(store.orders);
+      await writeJson(STORE_PATH, store);
+      for (const result of upsertResults) {
+        if (!result.changed) continue;
+        await upsertOrderToDb(result.order, "shopify-scheduled-sync").catch(() => {});
+      }
+      await reconcileSalesRequestShopifyPurchases({ dryRun: false, userId: "shopify-scheduled-sync" }).catch((err) => {
+        console.warn("[shopify-scheduled-sync] reconcile richieste vendita fallito:", err?.message || err);
+      });
+    }, { timeoutMs: 60_000, queue: true });
+  } catch (error) {
+    // state_lock_timeout: qualcun altro stava scrivendo, va bene — riproviamo
+    // al prossimo giro invece di insistere subito.
+    console.warn("[shopify-scheduled-sync] scrittura fallita:", error?.message || error);
+  }
+}
+
 async function getShopifyAccessToken(store) {
   const { storeDomain, clientId, clientSecret, adminAccessToken } = store.shopifySettings || {};
   if (!storeDomain) {
@@ -19506,6 +19564,12 @@ server.listen(PORT, HOST, () => {
       } catch { /* silently ignore: il prossimo keepalive riprova */ }
     }, 5_000);
   }
+  // Rete di sicurezza Shopify indipendente dal browser — vedi commento su
+  // runScheduledShopifySync. Primo giro ritardato di 2 minuti per non
+  // competere con l'inizializzazione dello store all'avvio del processo.
+  setTimeout(() => {
+    setInterval(() => { runScheduledShopifySync().catch(() => {}); }, SHOPIFY_AUTO_SYNC_INTERVAL_MS);
+  }, 2 * 60 * 1000);
   if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
     webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
     console.log("[push] VAPID initialized");
