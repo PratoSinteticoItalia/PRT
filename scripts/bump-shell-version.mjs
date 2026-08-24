@@ -7,9 +7,12 @@
  *
  * Genera la nuova versione come "YYYYMMDD-<slug>" (data odierna in TZ Europe/Rome).
  * Sostituisce TUTTE le occorrenze della versione corrente in:
- *   - app.js          (APP_SHELL_VERSION)
- *   - sw.js           (CACHE_NAME + APP_SHELL entries)
- *   - index.html      (preload, stylesheet, script app.js)
+ *   - app.js                 (APP_SHELL_VERSION)
+ *   - sw.js                  (CACHE_NAME + APP_SHELL entries)
+ *   - index.html             (preload, stylesheet, script app.js)
+ *   - garden-planner.html    (script garden-planner-page.js, sw.js)
+ *   - garden-planner-page.js (APP_SHELL_VERSION, deve combaciare con app.js
+ *     — vedi verify-shell-version.mjs, che lo valida esplicitamente)
  *
  * Esegue poi `npm run check` per validare allineamento.
  *
@@ -30,6 +33,8 @@ const FILES_TO_BUMP = [
   "app.js",
   "sw.js",
   "index.html",
+  "garden-planner.html",
+  "garden-planner-page.js",
 ];
 
 function todayStampRome() {

@@ -2851,13 +2851,6 @@ body.mobile-safe-mode .sidebar-section-head .sidebar-section-label {
   background: #e9f8f7;
 }
 
-.warehouse-list.compact-board,
-.warehouse-list {
-  max-height: 420px;
-  overflow: auto;
-  padding-right: 4px;
-}
-
 .attachment-item {
   position: relative;
   border: 1px solid var(--line);
@@ -3454,7 +3447,6 @@ body.mobile-safe-mode .sidebar-section-head .sidebar-section-label {
 
 .order-list-pro,
 .shipping-order-list,
-.warehouse-list,
 .installation-board {
   display: flex;
   flex-direction: column;
@@ -3953,17 +3945,6 @@ body.mobile-safe-mode .sidebar-section-head .sidebar-section-label {
 .wh-stat.soft { background: #f5f4ed; }
 .wh-stat.danger { background: #fdf0ef; }
 .wh-stat.neutral { background: #eaf7f7; }
-
-.warehouse-action-card {
-  cursor: pointer;
-}
-
-.warehouse-action-card .action-tail {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
-}
 
 .wh-stat-label {
   color: #8b9890;
@@ -5479,7 +5460,6 @@ body {
 
 .order-list-pro,
 .shipping-order-list,
-.warehouse-list,
 .installation-board {
   gap: 6px;
 }
@@ -6263,7 +6243,6 @@ body {
 }
 
 .detail-box,
-.warehouse-action-card .action-content,
 .order-row > div:first-child {
   min-width: 0;
 }
@@ -6351,16 +6330,6 @@ body {
   color: var(--text3, #687467);
   padding-top: 4px;
   border-top: 1px solid var(--line, rgba(35,49,33,0.08));
-}
-
-.warehouse-action-card {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-}
-
-.warehouse-action-card .action-tail {
-  flex-direction: column;
-  align-items: flex-end;
 }
 
 #warehouse .detail-panel .inline-form-grid,
@@ -6692,15 +6661,13 @@ body {
 
   .inbox-row,
   .shipping-row,
-  .accounting-row,
-  .warehouse-action-card {
+  .accounting-row {
     grid-template-columns: 1fr;
   }
 
   .inbox-row > :nth-child(3),
   .shipping-row > :nth-child(3),
-  .accounting-row > :nth-child(2),
-  .warehouse-action-card .action-tail {
+  .accounting-row > :nth-child(2) {
     justify-self: start;
   }
 
@@ -7287,7 +7254,6 @@ body {
 .inbox-row,
 .shipping-row,
 .accounting-row,
-.warehouse-action-card,
 .section-header,
 .detail-header,
 .subsection-head {
@@ -7298,7 +7264,6 @@ body {
 .inbox-row > *,
 .shipping-row > *,
 .accounting-row > *,
-.warehouse-action-card > *,
 .section-header > *,
 .detail-header > *,
 .subsection-head > * {
@@ -7673,15 +7638,13 @@ body {
   .inbox-row,
   .shipping-row,
   .accounting-row,
-  .warehouse-action-card,
   .action-card {
     grid-template-columns: 1fr;
   }
 
   .inbox-row > :nth-child(3),
   .shipping-row > :nth-child(3),
-  .accounting-row > :nth-child(2),
-  .warehouse-action-card .action-tail {
+  .accounting-row > :nth-child(2) {
     justify-self: start;
   }
 
@@ -8388,7 +8351,6 @@ body {
 }
 
 .order-row,
-.warehouse-action-card,
 .shipping-row,
 .accounting-row {
   padding: 14px 16px;
@@ -8549,7 +8511,6 @@ body {
   }
 
   .order-row,
-  .warehouse-action-card,
   .shipping-row,
   .accounting-row {
     padding: 12px;
