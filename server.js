@@ -3644,20 +3644,6 @@ async function listShiftsAll({ from, to, userId } = {}) {
   return rows.map(dbRowToTimeShift);
 }
 
-async function listEntriesForUser(userId, { from, to, limit = 200 } = {}) {
-  if (!USE_POSTGRES || !userId) return [];
-  await ensureRelationalSchema();
-  const pool = await getPgPool();
-  const params = [String(userId)];
-  let sql = `SELECT * FROM time_entries WHERE user_id = $1`;
-  if (from) { params.push(String(from)); sql += ` AND occurred_at >= $${params.length}`; }
-  if (to)   { params.push(String(to));   sql += ` AND occurred_at <= $${params.length}`; }
-  params.push(Number(limit) || 200);
-  sql += ` ORDER BY occurred_at DESC LIMIT $${params.length}`;
-  const { rows } = await pool.query(sql, params);
-  return rows.map(dbRowToTimeEntry);
-}
-
 /**
  * Calcola statistiche del mese per il dipendente (per "Le mie presenze").
  */
@@ -3737,7 +3723,6 @@ async function getCurrentStreakForUser(userId) {
 const REPAIR_WARRANTY_DAYS = Number(process.env.REPAIR_WARRANTY_DAYS) || 365;
 
 const REPAIR_CATEGORIES = new Set(["warranty", "goodwill", "paid_repair", "damage_client"]);
-const REPAIR_STATUSES = new Set(["reported", "scheduled", "in_progress", "completed", "cancelled"]);
 
 function dbRowToServiceRepair(row) {
   if (!row) return null;
@@ -6613,19 +6598,6 @@ function inventoryPiecesMatchRequirement(piece = {}, requirement = {}) {
   const pieceFamily = normalizeMaterialFamily(piece.product || "");
   const requirementFamily = normalizeMaterialFamily(requirement.product || "");
   return pieceFamily !== null && pieceFamily === requirementFamily;
-}
-
-function sortMeasuredInventoryCandidates(left = {}, right = {}, requiredLength = 0) {
-  const leftType = normalizeInventoryPieceType(left.pieceType || left.status);
-  const rightType = normalizeInventoryPieceType(right.pieceType || right.status);
-  if (leftType !== rightType) {
-    if (leftType === "residuo") return -1;
-    if (rightType === "residuo") return 1;
-  }
-  const leftWaste = Math.max(0, toNumber(left.length || 0) - requiredLength);
-  const rightWaste = Math.max(0, toNumber(right.length || 0) - requiredLength);
-  if (leftWaste !== rightWaste) return leftWaste - rightWaste;
-  return toNumber(left.length || 0) - toNumber(right.length || 0);
 }
 
 function formatInventoryDimensionLabel(width = 0, length = 0) {
@@ -11918,39 +11890,6 @@ function sortOrdersByRecency(items = []) {
     const rightTime = new Date(right.updatedAt || right.createdAt || 0).getTime();
     return rightTime - leftTime;
   });
-}
-
-function jobFromOrder(order) {
-  const derived = deriveOrderData(order);
-  const combinedNotes = [
-    order.note ? `Nota ordine: ${order.note}` : "",
-    order.financialStatus ? `Pagamento Shopify: ${order.financialStatus}` : "",
-    order.fulfillmentStatus ? `Fulfillment Shopify: ${order.fulfillmentStatus}` : "",
-  ].filter(Boolean).join(" · ");
-
-  return {
-    id: randomUUID(),
-    firstName: order.firstName,
-    lastName: order.lastName,
-    city: order.city,
-    phone: order.phone || "",
-    email: order.email || "",
-    address: order.address || "",
-    jobType: derived.jobType,
-    surface: derived.surface,
-    product: derived.mainProduct,
-    sqm: derived.sqm,
-    installDate: "",
-    installTime: "",
-    crew: "Alpha",
-    priority: "media",
-    warehouseStatus: "da-preparare",
-    installStatus: "da-pianificare",
-    materials: derived.materials.length ? derived.materials : Array.isArray(order.lineItems) ? order.lineItems.slice() : [],
-    notes: combinedNotes,
-    attachments: [],
-    sourceOrderId: order.id,
-  };
 }
 
 async function ensureStore() {

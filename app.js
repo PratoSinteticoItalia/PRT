@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260820-deadcode-cleanup";
+} from "./lib/order-money.js?v=20260824-timesheet-absence-fix";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260820-deadcode-cleanup";
+import { regionForCity } from "./lib/geo.js?v=20260824-timesheet-absence-fix";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260820-deadcode-cleanup";
+} from "./lib/shipping-eligibility.js?v=20260824-timesheet-absence-fix";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260820-deadcode-cleanup";
+} from "./lib/profit-split.js?v=20260824-timesheet-absence-fix";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260820-deadcode-cleanup";
+} from "./lib/preventivo-pricing.js?v=20260824-timesheet-absence-fix";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260820-deadcode-cleanup";
+} from "./lib/sales-assignment.js?v=20260824-timesheet-absence-fix";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260820-deadcode-cleanup";
+const APP_SHELL_VERSION = "20260824-timesheet-absence-fix";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1637,17 +1637,8 @@ const ui = {
   opsInstallationsValue: document.getElementById("ops-installations-value"),
   opsAccountingValue: document.getElementById("ops-accounting-value"),
   opsShippingValue: document.getElementById("ops-shipping-value"),
-  dashboardActions: document.getElementById("dashboard-actions"),
-  dashboardFollowup: document.getElementById("dashboard-followup"),
-  dashboardFollowupBadge: document.getElementById("dashboard-followup-badge"),
   dashboardWeekSummary: document.getElementById("dashboard-week-summary"),
-  dashboardHeroKpis: document.getElementById("dashboard-hero-kpis"),
   dashboardHeroKpisWarehouse: document.getElementById("dashboard-hero-kpis-warehouse"),
-  dashboardMetricsStrip: document.getElementById("dashboard-metrics-strip"),
-  dashboardNotifications: document.getElementById("dashboard-notifications"),
-  dashboardNotifBadge: document.getElementById("dashboard-notif-badge"),
-  dashboardTeamPerformance: document.getElementById("dashboard-team-performance"),
-  dashboardTeamMeta: document.getElementById("dashboard-team-meta"),
   dashboardCommandTitle: document.getElementById("dashboard-command-title"),
   dashboardCommandSubtitle: document.getElementById("dashboard-command-subtitle"),
   dashboardCommandNav: document.getElementById("dashboard-command-nav"),
@@ -4166,16 +4157,6 @@ function isSalesRequestWithinFirstContactWindow(now = new Date()) {
   return hour >= SALES_REQUEST_FIRST_CONTACT_START_HOUR && hour < SALES_REQUEST_FIRST_CONTACT_END_HOUR;
 }
 
-function getSalesRequestNextMorningAt(now = new Date()) {
-  const next = new Date(now);
-  const hour = Number(now.getHours());
-  if (hour >= SALES_REQUEST_FIRST_CONTACT_END_HOUR) {
-    next.setDate(next.getDate() + 1);
-  }
-  next.setHours(SALES_REQUEST_FIRST_CONTACT_START_HOUR, 0, 0, 0);
-  return next.toISOString();
-}
-
 function getSalesRequestOperatorFromCurrentUser() {
   const direct = normalizeSalesRequestAssignment(state.currentUser?.name || "");
   if (direct) return direct;
@@ -4234,53 +4215,6 @@ function buildSalesRequestPayloadFromRecord(record = {}, patch = {}) {
     sourceSheetName: String(merged.sourceSheetName || "").trim(),
     sourceRowNumber: Number(merged.sourceRowNumber || 0),
     createdAt: String(merged.createdAt || "").trim() || undefined,
-  };
-}
-
-function getSalesRequestFirstContactAutomationDecision({
-  existingRequest = null,
-  nextAssignment = "",
-  nextStatus = "",
-  canOpenWhatsAppNow = false,
-  now = new Date(),
-} = {}) {
-  const normalizedAssignment = normalizeSalesRequestAssignment(nextAssignment);
-  const previousAssignment = normalizeSalesRequestAssignment(existingRequest?.assignment || "");
-  const assignmentChanged = Boolean(normalizedAssignment && normalizedAssignment !== previousAssignment);
-  const currentOperator = getSalesRequestOperatorFromCurrentUser();
-  const canSendNow = Boolean(
-    assignmentChanged
-    && normalizedAssignment
-    && currentOperator
-    && normalizedAssignment === currentOperator
-    && isSalesRequestWithinFirstContactWindow(now)
-    && canOpenWhatsAppNow,
-  );
-  const queued = Boolean(assignmentChanged && normalizedAssignment && !canSendNow);
-  const queuedAt = queued
-    ? (isSalesRequestWithinFirstContactWindow(now) ? now.toISOString() : getSalesRequestNextMorningAt(now))
-    : "";
-  const nextState = canSendNow
-    ? "sent"
-    : queued
-      ? "queued"
-      : normalizeSalesRequestFirstContactState(existingRequest?.firstContactState || "");
-  const statusOverride = assignmentChanged && shouldPromoteSalesRequestToFirstContact(nextStatus)
-    ? (canSendNow ? SALES_REQUEST_FIRST_CONTACT_SENT_STATUS : SALES_REQUEST_FIRST_CONTACT_QUEUED_STATUS)
-    : String(nextStatus || "").trim();
-  return {
-    action: canSendNow ? "send-now" : queued ? "queued" : "none",
-    firstContactState: nextState,
-    firstContactScheduledAt: canSendNow
-      ? now.toISOString()
-      : queued
-        ? queuedAt
-        : normalizeIsoDateTime(existingRequest?.firstContactScheduledAt || ""),
-    firstContactSentAt: canSendNow
-      ? now.toISOString()
-      : normalizeIsoDateTime(existingRequest?.firstContactSentAt || ""),
-    firstContactBy: normalizedAssignment || normalizeSalesRequestAssignment(existingRequest?.firstContactBy || ""),
-    status: statusOverride || String(nextStatus || "").trim() || "new",
   };
 }
 
@@ -7631,11 +7565,6 @@ function getCoverageCoordinatesFromText(value) {
   return null;
 }
 
-async function geocodeCoverageCoordinates(value) {
-  const location = await geocodeCoverageLocation(value);
-  return location?.coords || null;
-}
-
 async function geocodeCoverageLocation(value) {
   const normalized = normalizeLooseString(value);
   if (!normalized) return null;
@@ -8371,26 +8300,10 @@ function removeAccountingPaymentRow(paymentId) {
 // getOpenBalance / getShopifyPaidAmount / isShopifyPaid / getInternalPaidAmount /
 // getCollectedAmount → importati da lib/order-money.js (vedi cima file).
 
-function getAccountingNote(order) {
-  if (isShopifyPaid(order) && !getInternalPaidAmount(order)) {
-    return t("shopifyPaymentCaptured");
-  }
-  return t("internalAccountingPending");
-}
-
 function getEffectivePaymentMethod(order) {
   return order.accounting?.paymentMethod
     || order.paymentMethod
     || (getShopifyPaidAmount(order) > 0 ? t("shopifyMethodFallback") : t("methodUnavailable"));
-}
-
-function getOrderLineSummary(order) {
-  const lines = order.lineDetails || [];
-  const totalPieces = lines.reduce((sum, item) => sum + Number(item.quantity || 1), 0);
-  return {
-    lines: lines.length,
-    pieces: totalPieces,
-  };
 }
 
 // getOrderGrossTotal / getOrderTaxTotal → importati da lib/order-money.js.
@@ -9259,98 +9172,6 @@ function setInstallationPane(pane = "summary") {
   updateInstallationPaneVisibility();
 }
 
-function buildDashboardActions() {
-  const raw = [...state.orders]
-    .map((order) => {
-      const ops = order.operations || {};
-      const missingAddress = !order.address || !order.city;
-      const stage = getUnifiedOrderStage(order);
-      const missingWarehouse = stage.key === "warehouse-work" && ["da-preparare", "bloccato", ""].includes(String(ops.warehouse?.status || "").trim());
-      const needsDate = ops.installation?.required && !ops.installation?.installDate;
-      const openBalance = getOpenBalance(order);
-      const needsAccounting = openBalance > 0 || (order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
-      const isCompleted = stage.key === "install-completed" || stage.key === "closed";
-      const materialMissing = ops.warehouse?.status === "bloccato";
-      let title = "Verifica ordine";
-      let reason = "Ordine operativo da completare";
-      let score = 10;
-      let kind = "generic";
-      let urgency = "info";
-      if (materialMissing) {
-        title = state.lang === "it" ? "Materiale mancante" : "Missing material";
-        reason = state.lang === "it"
-          ? `${composeClientName(order)} · ${getOrderNumber(order)} — magazzino bloccato`
-          : `${composeClientName(order)} · ${getOrderNumber(order)} — warehouse blocked`;
-        score = 110;
-        kind = "material";
-        urgency = "urgent";
-      } else if (missingAddress) {
-        title = state.lang === "it" ? "Completa indirizzo cliente" : "Complete customer address";
-        reason = state.lang === "it"
-          ? `${composeClientName(order)} · ${getOrderNumber(order)} ha indirizzo incompleto`
-          : `${composeClientName(order)} · ${getOrderNumber(order)} has incomplete address`;
-        score = 100;
-        kind = "address";
-        urgency = "warning";
-      } else if (isCompleted && openBalance <= 0) {
-        title = state.lang === "it" ? "Conferma chiusura" : "Confirm closure";
-        reason = state.lang === "it"
-          ? `${composeClientName(order)} · ${getOrderNumber(order)} — posa completata, pronto per chiusura`
-          : `${composeClientName(order)} · ${getOrderNumber(order)} — install completed, ready to close`;
-        score = 95;
-        kind = "completed";
-        urgency = "success";
-      } else if (missingWarehouse) {
-        title = state.lang === "it" ? "Sblocca magazzino" : "Unlock warehouse";
-        reason = state.lang === "it"
-          ? `${composeClientName(order)} · ${getOrderNumber(order)} non è pronto per preparazione/spedizione`
-          : `${composeClientName(order)} · ${getOrderNumber(order)} is not ready for prep/shipping`;
-        score = 90;
-        kind = "warehouse";
-        urgency = "warning";
-      } else if (needsDate) {
-        title = state.lang === "it" ? "Conferma data posa" : "Confirm install date";
-        reason = state.lang === "it"
-          ? `${composeClientName(order)} · ${getOrderNumber(order)} è pronto ma senza data`
-          : `${composeClientName(order)} · ${getOrderNumber(order)} is ready but has no date`;
-        score = 70;
-        kind = "installation";
-        urgency = "info";
-      } else if (needsAccounting) {
-        title = state.lang === "it" ? "Pagamento in attesa" : "Payment pending";
-        reason = state.lang === "it"
-          ? `${composeClientName(order)} · ${getOrderNumber(order)} — ${formatCurrency(openBalance)} da incassare`
-          : `${composeClientName(order)} · ${getOrderNumber(order)} — ${formatCurrency(openBalance)} to collect`;
-        score = 60;
-        kind = "accounting";
-        urgency = "warning";
-      }
-      return { order, title, reason, score, kind, urgency };
-    })
-    .filter(a => a.score > 10 && a.kind !== "address")
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6);
-
-  const grouped = {};
-  for (const action of raw) {
-    const gKey = action.kind + "_" + action.title;
-    if (!grouped[gKey]) {
-      grouped[gKey] = { ...action, orders: [action.order], count: 1 };
-    } else {
-      grouped[gKey].orders.push(action.order);
-      grouped[gKey].count++;
-      if (grouped[gKey].count <= 3) {
-        const names = grouped[gKey].orders.map(o => `${getOrderNumber(o)}`).join(", ");
-        grouped[gKey].reason = `${grouped[gKey].title} per ${grouped[gKey].count} ordini: ${names}`;
-      } else {
-        grouped[gKey].reason = `${grouped[gKey].count} ordini richiedono: ${grouped[gKey].title.toLowerCase()}`;
-      }
-    }
-  }
-
-  return raw;
-}
-
 function hasExplicitMeterDimension(value = "") {
   const normalized = String(value || "").replace(/,/g, ".");
   return /(\d+(?:\.\d+)?)\s*m\b\s*[x/]\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*[x/]\s*(\d+(?:\.\d+)?)\s*m\b/i.test(normalized);
@@ -9529,13 +9350,6 @@ function formatInventoryPieceDisplayTypeShortLabel(item = {}) {
   return state.lang === "it" ? "Rotolo" : "Roll";
 }
 
-function getInventoryPieceStateLabel(pieceState = "") {
-  const normalized = getInventoryPieceState({ pieceState });
-  if (normalized === "impegnato") return state.lang === "it" ? "IMPEGNATO" : "COMMITTED";
-  if (normalized === "evaso") return state.lang === "it" ? "EVASO" : "FULFILLED";
-  return state.lang === "it" ? "DISPONIBILE" : "AVAILABLE";
-}
-
 function getInventoryAllocationStatusLabel(status = "") {
   const normalized = getInventoryPieceState({ pieceState: status });
   if (normalized === "impegnato") return state.lang === "it" ? "Impegnato" : "Committed";
@@ -9555,13 +9369,6 @@ function formatInventoryNumber(value = 0) {
 function formatCountLabel(count, singularSuffix, pluralSuffix) {
   const n = Number(count) || 0;
   return n === 1 ? `1 ${singularSuffix}` : `${n} ${pluralSuffix}`;
-}
-
-function formatInventoryPieceTypeLabel(pieceType = "") {
-  const normalized = getInventoryPieceType({ pieceType });
-  if (normalized === "residuo") return state.lang === "it" ? "Residuo" : "Offcut";
-  if (normalized === "taglio") return state.lang === "it" ? "Taglio ordine" : "Order cut";
-  return state.lang === "it" ? "Rotolo intero" : "Full roll";
 }
 
 function getInventoryPieceDimensionSummary(pieces = [], limit = 4) {
@@ -9995,26 +9802,6 @@ function getShippingMaterialCardSummary(order) {
   };
 }
 
-function getShippingBuckets(orders) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(today);
-  weekEnd.setDate(today.getDate() + 7);
-  const buckets = { today: [], week: [], unscheduled: [] };
-  orders.forEach((order) => {
-    const target = getShippingTargetDate(order);
-    if (!target) {
-      buckets.unscheduled.push(order);
-      return;
-    }
-    const date = new Date(`${target}T00:00:00`);
-    if (date.getTime() <= today.getTime()) buckets.today.push(order);
-    else if (date.getTime() <= weekEnd.getTime()) buckets.week.push(order);
-    else buckets.unscheduled.push(order);
-  });
-  return buckets;
-}
-
 function getOrderType(order) {
   if (order.operations?.installation?.required) return { label: state.lang === "it" ? "Posa" : "Install", tone: "status-amber" };
   const mode = order.operations?.warehouse?.fulfillmentMode;
@@ -10043,59 +9830,11 @@ function getInboxCommercialType(order) {
   };
 }
 
-function getActionMeta(kind) {
-  if (kind === "material") return { icon: state.lang === "it" ? "Urgente" : "Urgent", tone: "status-red" };
-  if (kind === "address") return { icon: state.lang === "it" ? "Da completare" : "To complete", tone: "status-amber" };
-  if (kind === "warehouse") return { icon: state.lang === "it" ? "Magazzino" : "Warehouse", tone: "status-amber" };
-  if (kind === "installation") return { icon: state.lang === "it" ? "Pianifica" : "Plan", tone: "status-blue" };
-  if (kind === "accounting") return { icon: state.lang === "it" ? "Follow up" : "Follow up", tone: "status-amber" };
-  if (kind === "completed") return { icon: state.lang === "it" ? "Conferma" : "Confirm", tone: "status-green" };
-  return { icon: state.lang === "it" ? "Ordine" : "Order", tone: "status-slate" };
-}
-
-function getOrderProgress(order) {
-  const install = order.operations?.installation || {};
-  const warehouse = order.operations?.warehouse || {};
-  const accounting = order.accounting || {};
-  const openBalance = getOpenBalance(order);
-  const logisticsCompleted = isLogisticsOrderCompleted(order);
-  const closed = isOrderClosed(order);
-  const installCompleted = isInstallationOrderCompleted(order);
-  const warehouseReady = installCompleted || [
-    "in-preparazione",
-    "pronto",
-    "in-attesa-di-ritiro",
-    "da-ritirare",
-    "ritirato",
-  ].includes(warehouse.status);
-  return [
-    Boolean(order.address && order.city),
-    warehouseReady,
-    install.required ? Boolean(install.installDate) : true,
-    install.required ? install.status === "completata" : logisticsCompleted,
-    closed || (openBalance <= 0 && (!accounting.invoiceRequired || accounting.invoiceIssued)),
-  ];
-}
-
-function renderProgressDots(order) {
-  return `
-    <div class="progress-dots" aria-label="Stato avanzamento">
-      ${getOrderProgress(order)
-        .map((done) => `<span class="progress-dot ${done ? "is-done" : ""}"></span>`)
-        .join("")}
-    </div>
-  `;
-}
-
 function getPrimaryTurfLabel(order) {
   const explicit = order.operations?.product;
   if (explicit) return getCatalogLabel(explicit);
   const turfLine = getPhysicalOrderLines(order).find((item) => inferCatalogEntry(item.title)?.type === "turf");
   return turfLine ? getCatalogLabel(turfLine.title) : "";
-}
-
-function getPhysicalMaterialLines(order) {
-  return getPhysicalOrderLines(order).filter((line) => inferCatalogEntry(line.title)?.type === "material");
 }
 
 function orderNeedsWarehouseWork(order) {
@@ -10378,30 +10117,6 @@ function getInboxVisibilityLabel(order) {
   if (isRoutedToWarehouse(order)) targets.push(state.lang === "it" ? "Spedizioni" : "Logistics");
   if (isRoutedToInstallation(order)) targets.push(state.lang === "it" ? "Posa" : "Installation");
   return targets.length ? targets.join(" + ") : (state.lang === "it" ? "Solo ufficio" : "Office only");
-}
-
-function buildRouteColumns() {
-  const officeOrders = filterOrdersForView("order");
-  return [
-    {
-      route: "clear",
-      title: t("newFlow"),
-      copy: t("dragOrdersHere"),
-      orders: officeOrders.filter((order) => !isRoutedToWarehouse(order) && !isRoutedToInstallation(order)),
-    },
-    {
-      route: "warehouse",
-      title: t("warehouseFlow"),
-      copy: t("dragOrdersHere"),
-      orders: officeOrders.filter((order) => isRoutedToWarehouse(order) && !isRoutedToInstallation(order)),
-    },
-    {
-      route: "installation",
-      title: t("installationFlow"),
-      copy: t("dragOrdersHere"),
-      orders: officeOrders.filter((order) => isRoutedToInstallation(order)),
-    },
-  ];
 }
 
 // isRoutedToWarehouse / isRoutedToInstallation: vedi lib/shipping-eligibility.js.
@@ -11148,54 +10863,6 @@ function renderOps() {
   setText("ops-closed-label", state.lang === "it" ? "Chiusi" : "Closed");
 }
 
-function buildFollowupReminders(items = state.salesRequests || []) {
-  const THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  return (items || [])
-    .filter(item => {
-      if (getSalesRequestStatusCode(item.status || "") !== "quoted") return false;
-      const ref = item.quotedAt || item.updatedAt || "";
-      return ref && (now - new Date(ref).getTime()) >= THRESHOLD_MS;
-    })
-    .sort((a, b) => new Date(a.quotedAt || a.updatedAt) - new Date(b.quotedAt || b.updatedAt))
-    .slice(0, 8);
-}
-
-function getDashboardDateRangeMs(range = state.dashboardDateRange || "7d") {
-  const day = 86400000;
-  switch (range) {
-    case "today": return day;
-    case "7d":    return 7 * day;
-    case "30d":   return 30 * day;
-    case "90d":   return 90 * day;
-    case "all":   return Number.POSITIVE_INFINITY;
-    default:      return 7 * day;
-  }
-}
-
-function getDashboardDateRangeLabel(range = state.dashboardDateRange || "7d") {
-  switch (range) {
-    case "today": return state.lang === "it" ? "oggi" : "today";
-    case "7d":    return state.lang === "it" ? "ultimi 7 giorni" : "last 7 days";
-    case "30d":   return state.lang === "it" ? "ultimi 30 giorni" : "last 30 days";
-    case "90d":   return state.lang === "it" ? "ultimi 90 giorni" : "last 90 days";
-    case "all":   return state.lang === "it" ? "sempre" : "all time";
-    default:      return state.lang === "it" ? "ultimi 7 giorni" : "last 7 days";
-  }
-}
-
-function filterByDashboardDateRange(items = [], dateField = "createdAt") {
-  const ms = getDashboardDateRangeMs();
-  if (!Number.isFinite(ms)) return items;
-  const since = Date.now() - ms;
-  return items.filter((item) => {
-    const raw = item?.[dateField] || "";
-    if (!raw) return false;
-    const ts = new Date(raw).getTime();
-    return Number.isFinite(ts) && ts >= since;
-  });
-}
-
 function getActiveDashboardRole() {
   const role = normalizeUserRole(state.currentUser?.role || "office");
   return ["office", "warehouse", "crew", "rivenditore"].includes(role) ? role : "office";
@@ -11215,391 +10882,6 @@ function syncDashboardDateChips() {
   (ui.dashboardDateChips || []).forEach((chip) => {
     chip.classList.toggle("is-active", chip.dataset.dashboardRange === active);
   });
-}
-
-function getDashboardPeriodTrend({ items = [], dateField = "createdAt", windowMs = null } = {}) {
-  // Restituisce delta % tra il periodo corrente e quello precedente di pari durata
-  const ms = windowMs ?? getDashboardDateRangeMs();
-  if (!Number.isFinite(ms)) return { current: items.length, delta: null };
-  const now = Date.now();
-  const currentSince = now - ms;
-  const previousSince = currentSince - ms;
-  let current = 0, previous = 0;
-  items.forEach((item) => {
-    const raw = item?.[dateField] || "";
-    if (!raw) return;
-    const ts = new Date(raw).getTime();
-    if (!Number.isFinite(ts)) return;
-    if (ts >= currentSince) current += 1;
-    else if (ts >= previousSince) previous += 1;
-  });
-  if (previous === 0) return { current, delta: null };
-  const delta = Math.round(((current - previous) / previous) * 100);
-  return { current, previous, delta };
-}
-
-function renderTrendChip(delta) {
-  if (delta === null || delta === undefined) return "";
-  if (delta === 0) return `<span class="hero-kpi-trend flat">→ 0%</span>`;
-  const cls = delta > 0 ? "up" : "down";
-  const arrow = delta > 0 ? "↑" : "↓";
-  return `<span class="hero-kpi-trend ${cls}">${arrow} ${Math.abs(delta)}%</span>`;
-}
-
-function renderDashboardHeroKpis() {
-  if (!ui.dashboardHeroKpis) return;
-  const rangeLabel = getDashboardDateRangeLabel();
-
-  // Richieste da contattare — stesso filtro del badge sidebar (non assegnate, nuovo contatto)
-  const toContact = (state.salesRequests || []).filter(isSalesRequestNewContactUnassigned);
-  const reqTrend = getDashboardPeriodTrend({ items: state.salesRequests || [], dateField: "createdAt" });
-
-  // Ordini in lavorazione — stesso filtro del badge sidebar (Inbox Ordini)
-  const inProgress = (state.orders || []).filter(orderNeedsInboxAttention);
-  const orderTrend = getDashboardPeriodTrend({ items: state.orders || [], dateField: "createdAt" });
-
-  // Pose programmate nel range
-  const day = 86400000;
-  const rangeDays = Math.min(60, Math.round(getDashboardDateRangeMs() / day) || 7);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const horizon = now.getTime() + rangeDays * day;
-  const upcomingInstalls = (state.orders || []).filter((order) => {
-    const d = order.operations?.installation?.installDate;
-    if (!d) return false;
-    const ts = new Date(d).getTime();
-    return ts >= now.getTime() && ts <= horizon;
-  });
-
-  // Da incassare totale
-  const openBalance = (state.orders || []).reduce((sum, order) => sum + getOpenBalance(order), 0);
-
-  // Ordini nuovi nel range
-  const newOrders = filterByDashboardDateRange(state.orders || [], "createdAt").length;
-
-  const kpis = [
-    {
-      label: state.lang === "it" ? "Richieste da contattare" : "Requests to contact",
-      value: String(toContact.length),
-      sub: state.lang === "it" ? "Lead in attesa di primo contatto" : "Leads pending first contact",
-      icon: "📥",
-      tone: "blue",
-      view: "sales-requests",
-      trend: reqTrend.delta,
-    },
-    {
-      label: state.lang === "it" ? "Ordini in lavorazione" : "Orders in progress",
-      value: String(inProgress.length),
-      sub: state.lang === "it" ? "Da verificare, preparare o pianificare" : "To review, prepare or plan",
-      icon: "📦",
-      tone: "amber",
-      view: "orders",
-      trend: orderTrend.delta,
-    },
-    {
-      label: state.lang === "it" ? `Pose prossimi ${rangeDays} g` : `Installs next ${rangeDays} d`,
-      value: String(upcomingInstalls.length),
-      sub: state.lang === "it"
-        ? `${upcomingInstalls.reduce((s, o) => s + getSafeOrderSqm(o), 0).toFixed(0)} mq totali`
-        : `${upcomingInstalls.reduce((s, o) => s + getSafeOrderSqm(o), 0).toFixed(0)} sqm total`,
-      icon: "🔧",
-      tone: "green",
-      view: "installations",
-    },
-    {
-      label: state.lang === "it" ? "Da incassare" : "To collect",
-      value: formatCurrency(openBalance),
-      sub: state.lang === "it" ? `${newOrders} nuovi ordini ${rangeLabel}` : `${newOrders} new orders ${rangeLabel}`,
-      icon: "€",
-      tone: openBalance > 5000 ? "red" : "purple",
-      view: "accounting",
-    },
-  ];
-
-  ui.dashboardHeroKpis.innerHTML = kpis.map((kpi) => `
-    <article class="hero-kpi tone-${kpi.tone}" data-action="open-dashboard-view" data-view="${kpi.view}" role="button" tabindex="0">
-      <div class="hero-kpi-icon">${kpi.icon}</div>
-      <div class="hero-kpi-body">
-        <div class="hero-kpi-label">${escapeHtml(kpi.label)}</div>
-        <div class="hero-kpi-value">${escapeHtml(kpi.value)}</div>
-        <div class="hero-kpi-sub">${escapeHtml(kpi.sub)}</div>
-        ${renderTrendChip(kpi.trend)}
-      </div>
-    </article>
-  `).join("");
-}
-
-function renderDashboardMetricsStrip() {
-  if (!ui.dashboardMetricsStrip) return;
-  const ms = getDashboardDateRangeMs();
-  const since = Number.isFinite(ms) ? Date.now() - ms : 0;
-  const rangeLabel = getDashboardDateRangeLabel();
-
-  const ordersInRange = (state.orders || []).filter((o) => {
-    if (!since) return true;
-    const ts = new Date(o.createdAt || o.processedAt || 0).getTime();
-    return Number.isFinite(ts) && ts >= since;
-  });
-  const requestsInRange = (state.salesRequests || []).filter((r) => {
-    if (!since) return true;
-    const ts = new Date(r.createdAt || r.updatedAt || 0).getTime();
-    return Number.isFinite(ts) && ts >= since;
-  });
-
-  const newOrdersCount = ordersInRange.length;
-  const shopifyRevenue = ordersInRange.reduce((s, o) => s + getShopifyPaidAmount(o), 0);
-  const soldSqm = ordersInRange.reduce((s, o) => s + getSafeOrderSqm(o), 0);
-  const completedInstalls = ordersInRange.filter((o) => String(o.operations?.installation?.status || "").trim() === "completata").length;
-  const closedRequests = requestsInRange.filter((r) => getSalesRequestStatusCode(r.status || "") === "closed").length;
-  const convertedRequests = requestsInRange.filter((r) => Boolean(r.linkedOrderId)).length;
-  const conversionRate = requestsInRange.length > 0
-    ? Math.round(((convertedRequests + closedRequests) / requestsInRange.length) * 100)
-    : 0;
-
-  const metrics = [
-    {
-      label: state.lang === "it" ? "Nuovi ordini" : "New orders",
-      value: String(newOrdersCount),
-      sub: rangeLabel,
-    },
-    {
-      label: state.lang === "it" ? "Ricavi acquisiti" : "Revenue captured",
-      value: formatCurrency(shopifyRevenue),
-      sub: state.lang === "it" ? "incassi Shopify nel periodo" : "Shopify captures in period",
-    },
-    {
-      label: state.lang === "it" ? "Mq venduti" : "Sqm sold",
-      value: `${Math.round(soldSqm)} mq`,
-      sub: state.lang === "it" ? `da ${newOrdersCount} ordini` : `across ${newOrdersCount} orders`,
-    },
-    {
-      label: state.lang === "it" ? "Pose completate" : "Installs completed",
-      value: String(completedInstalls),
-      sub: state.lang === "it" ? "nel periodo" : "in period",
-    },
-    {
-      label: state.lang === "it" ? "Conversione richieste" : "Request conversion",
-      value: `${conversionRate}%`,
-      sub: state.lang === "it" ? `su ${requestsInRange.length} richieste` : `of ${requestsInRange.length} requests`,
-    },
-  ];
-
-  ui.dashboardMetricsStrip.innerHTML = metrics.map((m) => `
-    <div class="dash-metric">
-      <div class="dash-metric-label">${escapeHtml(m.label)}</div>
-      <div class="dash-metric-value">${escapeHtml(m.value)}</div>
-      <div class="dash-metric-sub">${escapeHtml(m.sub)}</div>
-    </div>
-  `).join("");
-}
-
-function buildDashboardNotifications() {
-  const notifs = [];
-
-  // Token Meta (Instagram/Facebook) scaduto o in scadenza — i post
-  // programmati falliscono in silenzio finché non lo rinnovi.
-  const tokenHealth = state.marketingTokenHealth;
-  const tokenTone = marketingTokenHealthTone(tokenHealth);
-  if (tokenTone) {
-    const expired = tokenHealth.error || tokenHealth.isValid === false;
-    notifs.push({
-      tone: tokenTone,
-      icon: "🔑",
-      title: expired
-        ? (state.lang === "it" ? "Token Meta scaduto" : "Meta token expired")
-        : (state.lang === "it" ? `Token Meta in scadenza tra ${tokenHealth.daysRemaining}g` : `Meta token expires in ${tokenHealth.daysRemaining}d`),
-      sub: state.lang === "it" ? "I post programmati su Instagram/Facebook rischiano di non pubblicarsi" : "Scheduled Instagram/Facebook posts may fail to publish",
-      view: "marketing",
-    });
-  }
-
-  // Stock in esaurimento
-  try {
-    const stockSnapshot = getDashboardInventorySnapshot();
-    if (stockSnapshot.uncovered > 0) {
-      notifs.push({
-        tone: "red",
-        icon: "⚠",
-        title: state.lang === "it" ? `${stockSnapshot.uncovered} prodotti sotto soglia` : `${stockSnapshot.uncovered} products under threshold`,
-        sub: state.lang === "it" ? "Il fabbisogno supera la disponibilità reale" : "Demand exceeds current availability",
-        view: "warehouse",
-      });
-    }
-  } catch {}
-
-  // Spedizioni in attesa — stessa idoneità del badge sidebar "Spedizioni"
-  const pendingShipping = (state.orders || []).filter(orderNeedsShippingAction);
-  if (pendingShipping.length) {
-    notifs.push({
-      tone: "amber",
-      icon: "🚚",
-      title: state.lang === "it" ? `${pendingShipping.length} spedizioni in attesa` : `${pendingShipping.length} shipments pending`,
-      sub: state.lang === "it" ? "Da preparare o pronte per uscita" : "To prepare or ready to dispatch",
-      view: "shipping",
-      count: pendingShipping.length,
-    });
-  }
-
-  // DDT da emettere
-  const ddtMissing = getDdtEligibleOrders().filter((o) => !ddtOrderHasNumber(o));
-  if (ddtMissing.length) {
-    notifs.push({
-      tone: "amber",
-      icon: "📄",
-      title: state.lang === "it" ? `${ddtMissing.length} DDT da emettere` : `${ddtMissing.length} DDT to issue`,
-      sub: state.lang === "it" ? "Documenti di trasporto mancanti" : "Missing transport documents",
-      view: "ddt",
-      count: ddtMissing.length,
-    });
-  }
-
-  // Ordini bloccati
-  const blocked = (state.orders || []).filter((o) => o.operations?.warehouse?.status === "bloccato");
-  if (blocked.length) {
-    notifs.push({
-      tone: "red",
-      icon: "🚫",
-      title: state.lang === "it" ? `${blocked.length} ordini bloccati` : `${blocked.length} blocked orders`,
-      sub: blocked.slice(0, 2).map((o) => composeClientName(o)).join(" · "),
-      view: "shipping",
-      count: blocked.length,
-    });
-  }
-
-  // Pose senza data — solo ordini ancora aperti che richiedono posa (non chiusi/completati)
-  const installsNoDate = (state.orders || []).filter((o) => {
-    if (isOrderFulfilledOrClosed(o)) return false;
-    const inst = o.operations?.installation || {};
-    if (!inst.required) return false;
-    if (inst.installDate) return false;
-    if (["completata", "annullata"].includes(String(inst.status || "").trim())) return false;
-    return true;
-  });
-  if (installsNoDate.length) {
-    notifs.push({
-      tone: "amber",
-      icon: "📅",
-      title: state.lang === "it" ? `${installsNoDate.length} pose senza data` : `${installsNoDate.length} installs without date`,
-      sub: state.lang === "it" ? "Pianifica la data per attivare la squadra" : "Schedule the date to activate the crew",
-      view: "installations",
-      count: installsNoDate.length,
-    });
-  }
-
-  // Pagamenti scaduti — residuo > 0, ordine non chiuso, vecchio di 45+ giorni e con importo > 50€
-  const overdue = (state.orders || []).filter((o) => {
-    if (isOrderFulfilledOrClosed(o)) return false;
-    const balance = getOpenBalance(o);
-    if (balance <= 50) return false;
-    const created = new Date(o.createdAt || o.processedAt || 0).getTime();
-    return Number.isFinite(created) && (Date.now() - created) > 45 * 86400000;
-  });
-  if (overdue.length) {
-    notifs.push({
-      tone: "red",
-      icon: "💰",
-      title: state.lang === "it" ? `${overdue.length} pagamenti scaduti` : `${overdue.length} overdue payments`,
-      sub: state.lang === "it"
-        ? `${formatCurrency(overdue.reduce((s, o) => s + getOpenBalance(o), 0))} da recuperare`
-        : `${formatCurrency(overdue.reduce((s, o) => s + getOpenBalance(o), 0))} to recover`,
-      view: "accounting",
-      count: overdue.length,
-    });
-  }
-
-  // Richieste in stallo — non assegnate, senza primo contatto, da 5-30 giorni (oltre i 30 sono storico)
-  const now = Date.now();
-  const stale = (state.salesRequests || []).filter((req) => {
-    if (!isSalesRequestNewContactUnassigned(req)) return false;
-    const created = new Date(req.createdAt || req.updatedAt || 0).getTime();
-    if (!Number.isFinite(created)) return false;
-    const ageDays = (now - created) / 86400000;
-    return ageDays >= 5 && ageDays <= 30;
-  });
-  if (stale.length) {
-    notifs.push({
-      tone: "amber",
-      icon: "⏰",
-      title: state.lang === "it" ? `${stale.length} richieste in stallo` : `${stale.length} stalled requests`,
-      sub: state.lang === "it" ? "Da 5+ giorni senza primo contatto" : "5+ days without first contact",
-      view: "sales-requests",
-      count: stale.length,
-    });
-  }
-
-  return notifs;
-}
-
-function renderDashboardNotifications() {
-  if (!ui.dashboardNotifications) return;
-  const notifs = buildDashboardNotifications();
-  if (ui.dashboardNotifBadge) ui.dashboardNotifBadge.textContent = String(notifs.length);
-  ui.dashboardNotifications.innerHTML = notifs.length
-    ? notifs.map((n) => `
-        <article class="dash-notif tone-${n.tone}" data-action="open-dashboard-view" data-view="${n.view}" role="button" tabindex="0">
-          <div class="dash-notif-icon">${n.icon}</div>
-          <div class="dash-notif-body">
-            <div class="dash-notif-title">${escapeHtml(n.title)}</div>
-            <div class="dash-notif-sub">${escapeHtml(n.sub || "")}</div>
-          </div>
-          ${n.count ? `<div class="dash-notif-count">${n.count}</div>` : ""}
-        </article>
-      `).join("")
-    : `<div class="dash-notif-empty">${state.lang === "it" ? "Tutto sotto controllo. Nessuna notifica al momento." : "All clear. Nothing pending right now."}</div>`;
-}
-
-function buildDashboardTeamPerformance() {
-  const rangeMs = getDashboardDateRangeMs();
-  const since = Number.isFinite(rangeMs) ? Date.now() - rangeMs : 0;
-  const counts = new Map();
-  (state.salesRequests || []).forEach((req) => {
-    const assignment = normalizeSalesRequestAssignment(req.assignment || req.assegnazione || req.firstContactBy || "");
-    if (!assignment) return;
-    const updated = new Date(req.updatedAt || req.createdAt || 0).getTime();
-    if (since && (!Number.isFinite(updated) || updated < since)) return;
-    if (!counts.has(assignment)) counts.set(assignment, { open: 0, closed: 0, total: 0 });
-    const row = counts.get(assignment);
-    row.total += 1;
-    if (getSalesRequestStatusCode(req.status || "") === "closed") row.closed += 1;
-    else row.open += 1;
-  });
-  const rows = Array.from(counts.entries())
-    .map(([name, data]) => ({ name, ...data }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 6);
-  return rows;
-}
-
-function renderDashboardTeamPerformance() {
-  if (!ui.dashboardTeamPerformance) return;
-  const rows = buildDashboardTeamPerformance();
-  const total = rows.reduce((s, r) => s + r.total, 0);
-  if (ui.dashboardTeamMeta) {
-    ui.dashboardTeamMeta.textContent = total
-      ? (state.lang === "it" ? `${total} richieste · ${getDashboardDateRangeLabel()}` : `${total} requests · ${getDashboardDateRangeLabel()}`)
-      : (state.lang === "it" ? "Nessuna attività nel periodo" : "No activity in period");
-  }
-  const max = rows.reduce((m, r) => Math.max(m, r.total), 1);
-  ui.dashboardTeamPerformance.innerHTML = rows.length
-    ? rows.map((r) => {
-        const pct = Math.round((r.total / max) * 100);
-        const initials = r.name.split(/\s+/).map((p) => p[0] || "").join("").slice(0, 2).toUpperCase();
-        const filterValue = normalizeLooseString(r.name);
-        return `
-          <article class="dash-team-row" data-action="filter-sales-requests-by-assignment" data-assignment="${escapeHtml(filterValue)}" role="button" tabindex="0">
-            <div class="dash-team-avatar">${escapeHtml(initials || "?")}</div>
-            <div class="dash-team-info">
-              <div class="dash-team-name">${escapeHtml(r.name)}</div>
-              <div class="dash-team-meta">${r.open} ${state.lang === "it" ? "aperte" : "open"} · ${r.closed} ${state.lang === "it" ? "chiuse" : "closed"}</div>
-            </div>
-            <div class="dash-team-bar">
-              <div class="dash-team-bar-track"><div class="dash-team-bar-fill" style="width:${pct}%"></div></div>
-              <div class="dash-team-bar-value">${r.total}</div>
-            </div>
-          </article>
-        `;
-      }).join("")
-    : `<div class="dash-notif-empty">${state.lang === "it" ? "Assegna richieste alla squadra per vedere il carico." : "Assign requests to the team to see the load."}</div>`;
 }
 
 // Presenze oggi: carica una volta le timbrature del giorno e mostra chi è in
@@ -11708,54 +10990,6 @@ function renderDashboardWeekSummary(target = ui.dashboardWeekSummary, ownerFilte
       </article>
     `;
   }).join("");
-}
-
-function renderDashboardActions() {
-  if (!ui.dashboardActions) return;
-  const actions = buildDashboardActions();
-  const badge = document.getElementById("dashboard-actions-badge");
-  if (badge) badge.textContent = String(actions.length);
-  ui.dashboardActions.innerHTML = actions.length
-    ? actions.slice(0, 8).map(({ order, title, reason, urgency }) => {
-        const tone = urgency === "urgent" ? "red" : urgency === "warning" ? "amber" : urgency === "success" ? "green" : "blue";
-        return `
-          <article class="dash-action-row" data-action="select-order" data-id="${order.id}" data-view="orders">
-            <div class="dash-action-dot tone-${tone}"></div>
-            <div class="dash-action-content">
-              <div class="dash-action-title">${escapeHtml(title)}</div>
-              <div class="dash-action-sub">${escapeHtml(reason || "")}</div>
-            </div>
-            <span class="dash-action-tag tone-${tone}">${urgency === "urgent" ? "!" : urgency === "warning" ? "⚠" : "→"}</span>
-          </article>
-        `;
-      }).join("")
-    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna priorità critica al momento." : "No critical priorities right now."}</div>`;
-}
-
-function renderDashboardFollowup() {
-  if (!ui.dashboardFollowup) return;
-  const reminders = buildFollowupReminders();
-  if (ui.dashboardFollowupBadge) ui.dashboardFollowupBadge.textContent = String(reminders.length);
-  ui.dashboardFollowup.innerHTML = reminders.length
-    ? reminders.slice(0, 8).map((item) => {
-        const refDate = item.quotedAt || item.updatedAt || "";
-        const daysAgo = refDate ? Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000) : 0;
-        const name = [item.name, item.surname].filter(Boolean).join(" ") || "—";
-        const city = item.city ? ` · ${item.city}` : "";
-        const sqm = item.sqm ? ` · ${item.sqm} mq` : "";
-        const tone = daysAgo > 14 ? "red" : "amber";
-        return `
-          <article class="dash-action-row" data-action="select-sales-request" data-id="${item.id}" data-view="sales-requests">
-            <div class="dash-action-dot tone-${tone}"></div>
-            <div class="dash-action-content">
-              <div class="dash-action-title">${escapeHtml(name + city)}</div>
-              <div class="dash-action-sub">${state.lang === "it" ? `Preventivo inviato ${daysAgo} giorni fa` : `Quote sent ${daysAgo} days ago`}${escapeHtml(sqm)}</div>
-            </div>
-            <span class="dash-action-tag tone-${tone}">${daysAgo}g</span>
-          </article>
-        `;
-      }).join("")
-    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun preventivo da seguire." : "No quotes to follow up."}</div>`;
 }
 
 function getDashboardCommandSeverityLabel(severity = "low") {
@@ -14137,34 +13371,6 @@ function renderOrderRow(order, view = "orders") {
   `;
 }
 
-function renderOrderCard(order) {
-  const [label, tone] = buildOrderTone(order);
-  const type = getOrderType(order);
-  const selected = order.id === state.selectedOrderId ? "is-selected" : "";
-  return `
-    <article class="order-card ${selected}" draggable="true" data-order-draggable="true" data-action="select-order" data-id="${order.id}" data-view="orders">
-      <div class="order-card-head">
-        <div>
-          <strong>${composeClientName(order)} · ${getOrderNumber(order)}</strong>
-          <div class="order-card-meta">${composeAddress(order) || addressIncompleteText()} · ${formatInventoryNumber(getSafeOrderSqm(order))} mq · ${order.operations?.product || undefinedText()}</div>
-        </div>
-        ${statusChip(label, tone)}
-      </div>
-      <div class="order-card-badges">
-        ${statusChip(type.label, type.tone.replace("status-", ""))}
-        ${renderProgressDots(order)}
-      </div>
-      <div class="order-card-meta">
-        ${getPaymentLabel(order.financialStatus)} · ${getFulfillmentLabel(order.fulfillmentStatus)} · ${order.source}
-      </div>
-      <div class="order-card-actions">
-        <button class="mini-action primary-mini" data-action="select-order" data-id="${order.id}" data-view="orders">${state.lang === "it" ? "Apri ordine" : "Open order"}</button>
-        <button class="mini-action" data-action="open-modal" data-id="${order.id}">${t("edit")}</button>
-      </div>
-    </article>
-  `;
-}
-
 function getInstallationStatusLabel(status = "", hasInstallDate = false) {
   const normalized = String(status || "").trim();
   if (normalized === "programmata") return t("scheduled");
@@ -15869,10 +15075,6 @@ function portfolioCover(slug) {
   return fallback ? (fallback.url || fallback.dataUrl) : "";
 }
 
-function portfolioPhotoCount(slug) {
-  return portfolioPhotoCountMeta(slug).total;
-}
-
 function portfolioPhotoCountMeta(slug) {
   const s = String(slug || "").trim();
   const manualCount = portfolioManualImages(getPortfolioRecord(s)).length;
@@ -16575,26 +15777,6 @@ const SUPPLIER_PRICE_UNITS = [
   ["rotolo", "rotolo"], ["metro", "metro"], ["confezione", "confezione"],
 ];
 
-function renderSupplierPriceRowHtml(entry) {
-  const att = entry.attachment;
-  const attHtml = att
-    ? `<a class="sp-att-link" href="/api/supplier-prices/${escapeAttr(entry.id)}/attachment/file" target="_blank" rel="noreferrer" title="${state.lang === "it" ? "Apri fattura" : "Open invoice"}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></a>`
-    : `<span class="sp-att-none">—</span>`;
-  return `
-    <div class="sp-row" data-id="${escapeAttr(entry.id)}">
-      <span class="sp-cell sp-cell-supplier">${escapeHtml(entry.supplierName || "—")}</span>
-      <span class="sp-cell sp-cell-material">${escapeHtml(entry.material || "—")}</span>
-      <span class="sp-cell sp-cell-price">${escapeHtml(formatCurrency(entry.unitPrice))}<small>/${escapeHtml(supplierPriceUnitLabel(entry.unit))}</small></span>
-      <span class="sp-cell sp-cell-date">${escapeHtml(formatDate(entry.invoiceDate))}</span>
-      <span class="sp-cell sp-cell-invoice">${escapeHtml(entry.invoiceNumber || "—")}</span>
-      <span class="sp-cell sp-cell-att">${attHtml}</span>
-      <span class="sp-cell sp-cell-actions">
-        <button type="button" class="ghost-button small-button" data-action="sp-edit" data-id="${escapeAttr(entry.id)}">${state.lang === "it" ? "Modifica" : "Edit"}</button>
-        <button type="button" class="ghost-button small-button sp-delete-btn" data-action="sp-delete" data-id="${escapeAttr(entry.id)}">${state.lang === "it" ? "Elimina" : "Delete"}</button>
-      </span>
-    </div>`;
-}
-
 function renderSupplierPriceFiltersHtml() {
   const f = state.supplierPricesFilter || {};
   return `
@@ -16603,26 +15785,6 @@ function renderSupplierPriceFiltersHtml() {
       <input type="search" class="sp-filter-input" data-field="material" placeholder="${state.lang === "it" ? "Cerca materiale" : "Search material"}" value="${escapeAttr(f.material || "")}" />
       <input type="date" class="sp-filter-input" data-field="from" value="${escapeAttr(f.from || "")}" />
       <input type="date" class="sp-filter-input" data-field="to" value="${escapeAttr(f.to || "")}" />
-    </div>`;
-}
-
-function renderSupplierPriceListHtml() {
-  const entries = getFilteredSupplierPriceEntries();
-  const rows = entries.length
-    ? entries.map(renderSupplierPriceRowHtml).join("")
-    : `<div class="info-card">${state.lang === "it" ? "Nessuna voce prezzo trovata." : "No price entries found."}</div>`;
-  return `
-    <div class="sp-table">
-      <div class="sp-row sp-row-head">
-        <span class="sp-cell">${state.lang === "it" ? "Fornitore" : "Supplier"}</span>
-        <span class="sp-cell">${state.lang === "it" ? "Materiale" : "Material"}</span>
-        <span class="sp-cell">${state.lang === "it" ? "Prezzo" : "Price"}</span>
-        <span class="sp-cell">${state.lang === "it" ? "Data fattura" : "Invoice date"}</span>
-        <span class="sp-cell">${state.lang === "it" ? "N. fattura" : "Invoice no."}</span>
-        <span class="sp-cell">${state.lang === "it" ? "Allegato" : "Attachment"}</span>
-        <span class="sp-cell"></span>
-      </div>
-      ${rows}
     </div>`;
 }
 
@@ -17810,13 +16972,6 @@ async function autoSaveSalesRequestPatch(id, patch) {
     console.warn("[auto-save] sales request patch failed:", err?.message);
     showSalesRequestAutoSaveStatus(state.lang === "it" ? "Salvataggio non riuscito" : "Save failed", "error", 4000);
   }
-}
-
-function debouncedAutoSaveSalesRequestNote(id, value) {
-  clearTimeout(_salesRequestAutoSaveTimer);
-  _salesRequestAutoSaveTimer = setTimeout(() => {
-    autoSaveSalesRequestPatch(id, { note: value });
-  }, 800);
 }
 
 function debouncedAutoSaveSalesRequestFull(id) {
@@ -24423,34 +23578,49 @@ function bindTimesheetOfficeEditors(root, context = {}) {
     }
   });
 
+  const saveAbsence = async (type) => {
+    const selection = state.timesheetOfficeSelection;
+    if (!selection?.userId || !selection?.date) return;
+    root.querySelectorAll("[data-ts-absence-type]").forEach((item) => { item.disabled = true; });
+    try {
+      const result = await apiFetch("/api/timesheet/absences", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: selection.userId,
+          date: selection.date,
+          type: type || "none",
+          startTime: root.querySelector("[data-ts-absence-start]")?.value || "",
+          endTime: root.querySelector("[data-ts-absence-end]")?.value || "",
+          note: root.querySelector("[data-ts-absence-note]")?.value || "",
+        }),
+      });
+      const key = `${selection.userId}:${selection.date}`;
+      if (result?.absence) context.absenceByUserDate?.set(key, result.absence);
+      else context.absenceByUserDate?.delete(key);
+      if (result?.request) context.requestByUserDate?.set(key, result.request);
+      showToast(type === "none" ? "Assenza rimossa." : "Assenza registrata.", "success");
+      refreshTimesheetOfficeDetail(root, context);
+    } catch (error) {
+      showToast(`Impossibile aggiornare l’assenza: ${error?.message || error}`, "error");
+      root.querySelectorAll("[data-ts-absence-type]").forEach((item) => { item.disabled = false; });
+    }
+  };
+
   root.querySelectorAll("[data-ts-absence-type]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const selection = state.timesheetOfficeSelection;
-      if (!selection?.userId || !selection?.date) return;
-      root.querySelectorAll("[data-ts-absence-type]").forEach((item) => { item.disabled = true; });
-      try {
-        const result = await apiFetch("/api/timesheet/absences", {
-          method: "POST",
-          body: JSON.stringify({
-            userId: selection.userId,
-            date: selection.date,
-            type: button.dataset.tsAbsenceType || "none",
-            startTime: root.querySelector("[data-ts-absence-start]")?.value || "",
-            endTime: root.querySelector("[data-ts-absence-end]")?.value || "",
-            note: root.querySelector("[data-ts-absence-note]")?.value || "",
-          }),
-        });
-        const key = `${selection.userId}:${selection.date}`;
-        if (result?.absence) context.absenceByUserDate?.set(key, result.absence);
-        else context.absenceByUserDate?.delete(key);
-        if (result?.request) context.requestByUserDate?.set(key, result.request);
-        showToast(button.dataset.tsAbsenceType === "none" ? "Assenza rimossa." : "Assenza registrata.", "success");
-        refreshTimesheetOfficeDetail(root, context);
-      } catch (error) {
-        showToast(`Impossibile aggiornare l’assenza: ${error?.message || error}`, "error");
-        root.querySelectorAll("[data-ts-absence-type]").forEach((item) => { item.disabled = false; });
-      }
-    });
+    button.addEventListener("click", () => saveAbsence(button.dataset.tsAbsenceType || "none"));
+  });
+
+  // Dalle/Alle/Nota non hanno un pulsante "Salva" proprio — prima venivano
+  // persistite SOLO come effetto collaterale di un click su un bottone tipo
+  // (Nessuna/Ferie/Permesso/Malattia). Se il tipo era già quello giusto (es.
+  // "Permesso" già attivo) non c'era alcun motivo per l'utente di ricliccarlo,
+  // quindi compilare questi campi e basta non salvava nulla — segnalato
+  // dall'utente il 24 ago 2026. Ora ogni campo salva al cambiamento, usando
+  // il tipo attualmente attivo (o "none" se nessuno lo è, caso che non
+  // dovrebbe verificarsi perché "Nessuna" è sempre attivo di default).
+  const getActiveAbsenceType = () => root.querySelector("[data-ts-absence-type].is-active")?.dataset.tsAbsenceType || "none";
+  root.querySelectorAll("[data-ts-absence-start], [data-ts-absence-end], [data-ts-absence-note]").forEach((field) => {
+    field.addEventListener("change", () => saveAbsence(getActiveAbsenceType()));
   });
 
   root.querySelectorAll("[data-ts-request-review]").forEach((button) => {
@@ -27408,18 +26578,6 @@ function showApp() {
   try { maybeShowOnboardingAfterLogin(); } catch {}
 }
 
-function getUsageEventLabel(type = "") {
-  const labels = {
-    portal_login: "Login",
-    quote_generator_opened: "Apertura generatore",
-    quote_prefill_applied: "Prefill richiesta",
-    quote_pdf_exported: "PDF generati",
-    quote_export_failed: "Errori export",
-    quote_whatsapp_opened: "WhatsApp",
-    quote_email_opened: "Email",
-  };
-  return labels[type] || type || "Evento";
-}
 
 function getDeviceLabel(device = "") {
   const labels = {
@@ -27664,17 +26822,6 @@ function getCommunicationTargetFallback() {
       status: user.status,
     }))
     .sort((a, b) => communicationUserLabel(a).localeCompare(communicationUserLabel(b), "it"));
-}
-
-function formatCommunicationTime(value = "") {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
 }
 
 // Orario compatto (solo ora:minuti) per la bolla — la data è nei separatori.
@@ -29875,17 +29022,6 @@ function updateMarketingLivePreview(form) {
   preview.innerHTML = renderMarketingPlatformPreview(getMarketingFormDraft(form));
 }
 
-function updateMarketingAssetPreview(src = "", label = "") {
-  const preview = document.getElementById("marketing-asset-preview");
-  if (!preview) return;
-  preview.innerHTML = src ? `
-    <div class="marketing-asset-preview-card">
-      <img src="${escapeHtml(src)}" alt="">
-      <span>${escapeHtml(label || "Anteprima immagine")}</span>
-    </div>
-  ` : "";
-}
-
 function marketingApiErrorMessage(reason = "") {
   const messages = {
     automation_disabled: "Automazione WhatsApp disattivata sul server.",
@@ -30704,36 +29840,6 @@ async function deleteSelectedOrder() {
   );
 }
 
-async function saveWarehouse(event) {
-  event.preventDefault();
-  const order = getSelectedOrder();
-  if (!order) return;
-  const form = new FormData(ui.warehouseForm);
-  const fulfillmentMode = String(form.get("fulfillmentMode") || "da-definire");
-  const payload = {
-    warehouse: {
-      status: form.get("status"),
-      fulfillmentMode,
-      carrier: form.get("carrier"),
-      pickupLabel: fulfillmentMode === "ritiro" ? form.get("pickupLabel") : "",
-      vanLoadLabel: fulfillmentMode === "furgone" ? form.get("pickupLabel") : "",
-      warehouseNote: form.get("warehouseNote"),
-    },
-  };
-  let saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  try {
-    saved = await syncInventoryFulfillmentForOrder(saved);
-  } catch (error) {
-    console.warn("inventory_fulfillment_after_warehouse_save_failed", error);
-  }
-  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  renderCurrentViewOnly(state.currentView);
-  trackUsageEvent("order_modified", { orderId: saved.id, area: "warehouse" });
-}
-
 async function saveInventory(event) {
   event.preventDefault();
   if (inventorySaveInFlight) return;
@@ -31341,12 +30447,6 @@ async function savePrepList() {
   renderCurrentViewOnly(state.currentView);
 }
 
-async function updateOrderRouting(patch) {
-  const order = getSelectedOrder();
-  if (!order) return;
-  return updateOrderRoutingById(order.id, patch);
-}
-
 async function updateOrderRoutingById(orderId, patch) {
   const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
     method: "POST",
@@ -31906,20 +31006,6 @@ function pushWrappedPdfText(pushText, {
     pushText(x, startY - (index * lineHeight), size, row);
   });
   return rows.length;
-}
-
-function buildPdfContent(lines) {
-  const content = ["BT", "/F1 12 Tf", "40 800 Td"];
-  lines.forEach((line, index) => {
-    if (index === 0) {
-      content.push(`(${escapePdfText(line)}) Tj`);
-    } else {
-      content.push("0 -18 Td");
-      content.push(`(${escapePdfText(line)}) Tj`);
-    }
-  });
-  content.push("ET");
-  return content.join("\n");
 }
 
 function encodeLatin1(str) {
@@ -34523,10 +33609,6 @@ function showGlobalSearchDialog() {
 
 window.__psiOpenGlobalSearch = showGlobalSearchDialog;
 
-function openGlobalSearch() {
-  showGlobalSearchDialog();
-}
-
 function closeGlobalSearch() {
   if (!ui.cmdKOverlay) return;
   ui.cmdKOverlay.classList.add("hidden");
@@ -36526,13 +35608,6 @@ function buildNativePreventivoPayload() {
   }
 }
 
-
-function parseEuroNumber(raw) {
-  if (raw == null) return 0;
-  const cleaned = String(raw).trim().replace(/€/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-  const n = parseFloat(cleaned);
-  return Number.isFinite(n) ? n : 0;
-}
 
 function formatItalianDateShort(iso) {
   if (!iso || typeof iso !== "string") return "";
