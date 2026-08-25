@@ -2460,6 +2460,7 @@ function applyMobileSafeMode() {
 // Soglia drill-down: sotto questo width attiviamo il pattern fullscreen
 // detail. Sopra resta il master-detail co-resident (lista + dettaglio insieme).
 const MOBILE_DRILL_BREAKPOINT = 768;
+const INVENTORY_ADD_DRILL_ID = "__inventory-add";
 
 // ──────────────────────────────────────────────────────────────────────────
 // MOBILE FILTER SHEET — bottom sheet con i filtri della view corrente.
@@ -2582,6 +2583,12 @@ function computeMobileDrillHeader(module, itemId) {
     return {
       title: fullName || (state.lang === "it" ? "Richiesta" : "Request"),
       subtitle: meta,
+    };
+  }
+  if (module === "warehouse" && (!itemId || itemId === INVENTORY_ADD_DRILL_ID)) {
+    return {
+      title: state.lang === "it" ? "Aggiungi giacenza" : "Add stock",
+      subtitle: state.lang === "it" ? "Carica rotoli, residui o accessori" : "Load rolls, offcuts or accessories",
     };
   }
   // orders / warehouse / installations / accounting condividono lo stesso item type (Order)
@@ -18602,6 +18609,25 @@ function updateInventoryFormUI() {
       if (ui.inventoryForm.length) ui.inventoryForm.length.value = "";
     }
   }
+}
+
+function focusInventoryEntryForm() {
+  if (!ui.inventoryForm) return;
+  const useMobileDrill = window.innerWidth <= MOBILE_DRILL_BREAKPOINT;
+  if (useMobileDrill) {
+    openMobileDrillDetail("warehouse", INVENTORY_ADD_DRILL_ID);
+  }
+  requestAnimationFrame(() => {
+    const detailPanel = document.querySelector("#warehouse .detail-panel");
+    if (useMobileDrill && detailPanel) detailPanel.scrollTop = 0;
+    ui.inventoryForm?.scrollIntoView({
+      behavior: useMobileDrill ? "auto" : "smooth",
+      block: "start",
+    });
+    requestAnimationFrame(() => {
+      ui.inventoryForm?.product?.focus();
+    });
+  });
 }
 
 function renderAccountingModels() {
@@ -35918,10 +35944,7 @@ if (ui.inventoryForm) {
   ui.inventoryForm.product?.addEventListener("input", updateInventoryFormUI);
   ui.inventoryForm.variant?.addEventListener("change", updateInventoryFormUI);
 }
-bindEvent(ui.inventoryJumpButton, "click", () => {
-  ui.inventoryForm?.scrollIntoView({ behavior: "smooth", block: "start" });
-  requestAnimationFrame(() => ui.inventoryForm?.product?.focus());
-});
+bindEvent(ui.inventoryJumpButton, "click", focusInventoryEntryForm);
 if (ui.shippingForm) {
   ui.shippingForm.addEventListener("submit", saveShipping);
 }
