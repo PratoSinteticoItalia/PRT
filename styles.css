@@ -18247,6 +18247,14 @@ body.mobile-safe-mode a.topbar-search:focus-visible {
 }
 .communications-send-btn:hover { background: #163726; }
 .communications-send-btn:active { transform: scale(0.94); }
+.communications-send-btn:disabled {
+  background: rgba(35, 49, 33, 0.2);
+  color: rgba(35, 49, 33, 0.55);
+  cursor: not-allowed;
+  transform: none;
+}
+.communications-send-btn:disabled:hover { background: rgba(35, 49, 33, 0.2); }
+.communications-send-btn:disabled:active { transform: none; }
 .communications-send-btn svg { position: relative; left: -1px; }
 .communications-empty,
 .communications-chat-placeholder {
@@ -20720,7 +20728,7 @@ body {
 
 .ts-calendar-dow {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
   font-size: 11px;
   font-weight: 700;
@@ -20728,14 +20736,16 @@ body {
   text-align: center;
   margin-bottom: 6px;
 }
+.ts-calendar-dow span { min-width: 0; }
 .ts-calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
 }
 .ts-day {
   aspect-ratio: 1.4 / 1;
   width: 100%;
+  min-width: 0;
   border: 1px solid transparent;
   border-radius: 6px;
   background: rgba(0,0,0,0.04);
@@ -21300,8 +21310,20 @@ body {
 @media (max-width: 620px) {
   .ts-calendar-card, .ts-day-detail, .ts-office-detail, .ts-request-panel { padding: var(--space-3); }
   .ts-detail-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ts-day { aspect-ratio: 1 / 1; padding: 4px; }
-  .ts-day-absence { font-size: 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .ts-calendar-dow, .ts-calendar-grid { gap: 3px; }
+  .ts-day { aspect-ratio: 1 / 1; padding: 4px 3px; }
+  .ts-day-num { font-size: 10px; }
+  .ts-day-hours,
+  .ts-day-request,
+  .ts-day-absence {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ts-day-hours,
+  .ts-day-request { font-size: 8px; }
+  .ts-day-absence { font-size: 8px; }
   .ts-request-fields, .ts-request-row { grid-template-columns: 1fr; }
   .ts-request-row .btn { justify-self: start; }
   .ts-office-request { align-items: flex-start; flex-direction: column; }

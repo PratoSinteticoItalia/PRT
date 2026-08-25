@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260824-css-deadcode-cleanup";
+} from "./lib/order-money.js?v=20260825-warehouse-mobile-audit";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260824-css-deadcode-cleanup";
+import { regionForCity } from "./lib/geo.js?v=20260825-warehouse-mobile-audit";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260824-css-deadcode-cleanup";
+} from "./lib/shipping-eligibility.js?v=20260825-warehouse-mobile-audit";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260824-css-deadcode-cleanup";
+} from "./lib/profit-split.js?v=20260825-warehouse-mobile-audit";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260824-css-deadcode-cleanup";
+} from "./lib/preventivo-pricing.js?v=20260825-warehouse-mobile-audit";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260824-css-deadcode-cleanup";
+} from "./lib/sales-assignment.js?v=20260825-warehouse-mobile-audit";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260824-css-deadcode-cleanup";
+const APP_SHELL_VERSION = "20260825-warehouse-mobile-audit";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -21255,11 +21255,19 @@ function keepElementAboveMobileBottomNav(element) {
 // così non possono più divergere dalla sidebar desktop. Le voci pinned (Impostazioni)
 // vengono accodate alla sezione Amministrazione.
 const MORE_SHEET_SECTIONS = NAV_SECTIONS.map((sec) => ({
-  label: t(sec.labelKey),
+  id: sec.id,
+  labelKey: sec.labelKey,
   views: sec.items
     .flatMap((it) => (it.group ? [it.view, ...it.group] : [it.view]))
     .concat(sec.id === "admin" ? NAV_PINNED : []),
 }));
+
+function mobileMoreSectionLabel(section, visibleViews = []) {
+  if (section.id === "admin" && visibleViews.length && visibleViews.every((view) => ["ddt", "settings"].includes(view))) {
+    return state.lang === "it" ? "Documenti" : "Documents";
+  }
+  return t(section.labelKey);
+}
 
 function openMoreSheet() {
   const sheet = document.getElementById("mobile-more-sheet");
@@ -21273,8 +21281,9 @@ function openMoreSheet() {
   for (const section of MORE_SHEET_SECTIONS) {
     const visible = section.views.filter((v) => allAllowed.has(v) && !exclude.has(v));
     if (!visible.length) continue;
+    const sectionLabel = mobileMoreSectionLabel(section, visible);
     html += `<div class="more-sheet-section">
-      <div class="more-sheet-section-label">${escapeHtml(section.label)}</div>
+      <div class="more-sheet-section-label">${escapeHtml(sectionLabel)}</div>
       <div class="more-sheet-grid">
         ${visible.map((view) => {
           const label = t(view) || view;
@@ -27119,12 +27128,25 @@ function bindCommunicationsRefreshAction(container = document) {
   });
 }
 
+function updateCommunicationsComposerState(form = document.getElementById("communications-message-form")) {
+  if (!form) return;
+  const button = form.querySelector("[data-action='communications-send-message']");
+  if (!button) return;
+  const textarea = form.querySelector("textarea[name='body']");
+  const hasBody = Boolean(String(textarea?.value || "").trim());
+  const hasPendingAttachment = Array.isArray(state.communicationsPendingAttachments) && state.communicationsPendingAttachments.length > 0;
+  const hasOrderRef = Boolean(state.communicationsPendingOrderRef);
+  const hasThread = Boolean(String(state.selectedCommunicationThreadId || "").trim());
+  button.disabled = !hasThread || (!hasBody && !hasPendingAttachment && !hasOrderRef);
+}
+
 function bindCommunicationsMessageForm(container = document) {
   const messageForm = container.querySelector("#communications-message-form");
   if (!messageForm) return;
   const textarea = messageForm.querySelector("textarea[name='body']");
   if (textarea && textarea.dataset.bound !== "true") {
     textarea.dataset.bound = "true";
+    textarea.addEventListener("input", () => updateCommunicationsComposerState(messageForm));
     textarea.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
       event.preventDefault();
@@ -27135,6 +27157,7 @@ function bindCommunicationsMessageForm(container = document) {
       }
     });
   }
+  updateCommunicationsComposerState(messageForm);
   if (messageForm.dataset.bound === "true") return;
   messageForm.dataset.bound = "true";
   messageForm.addEventListener("submit", async (event) => {
@@ -27201,6 +27224,7 @@ function renderCommunicationsPendingOrderRefHtml() {
 function updateCommunicationsPendingStrip() {
   const strip = document.getElementById("communications-pending");
   if (strip) strip.innerHTML = renderCommunicationsPendingAttachmentsHtml() + renderCommunicationsPendingOrderRefHtml();
+  updateCommunicationsComposerState();
 }
 
 // Ricerca ordini per il chip "collega ordine" (solo lettura): aggiorna SOLO
@@ -27384,6 +27408,7 @@ function bindCommunicationsQuickReplies() {
       textarea.value = textarea.value.trim() ? `${textarea.value.replace(/\s+$/, "")} ${text}` : text;
       textarea.focus();
       if (typeof autosizeTextarea === "function") autosizeTextarea(textarea);
+      updateCommunicationsComposerState(textarea.closest("#communications-message-form"));
       return;
     }
     const toggleNew = ev.target.closest?.("[data-action='communications-toggle-new']");
@@ -27861,7 +27886,7 @@ async function sendCommunicationMessage(form) {
     const reason = error?.payload?.error || error?.message || "";
     showToast(reason === "thread_not_found" ? "Chat non trovata. Riapri la conversazione." : reason === "unauthorized" ? "Sessione scaduta. Effettua di nuovo l'accesso." : "Messaggio non inviato. Riprova.", "warning");
   } finally {
-    if (button) button.disabled = false;
+    updateCommunicationsComposerState(form);
   }
 }
 
