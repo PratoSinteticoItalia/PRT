@@ -12418,41 +12418,40 @@ body.mobile-filter-sheet-open {
     animation: drillScrimIn 0.2s ease;
   }
   body[data-drill-module="warehouse"] #warehouse .detail-panel {
-    /* DRAWER laterale da destra (scorrevole), come gli ordini. */
+    /* Inventario: pannello mobile a tutta larghezza. Il drawer laterale 94vw
+       restava fragile su telefoni reali: il form si apriva come "slider" ma
+       il contenuto in basso diventava difficile o impossibile da raggiungere. */
     position: fixed !important;
     top: var(--mobile-back-bar-h) !important;
     right: 0 !important;
     bottom: 0 !important;
-    left: auto !important;
-    width: 94vw !important;
-    max-width: 460px !important;
-    /* BUG (30 lug 2026): con height:auto insieme a top+bottom, per spec CSS
-       height vince e bottom viene ignorato — il box cresce quanto il
-       contenuto (qui facilmente >2000px: lista "Ordini da preparare" +
-       dettaglio + pulsanti Impegna/Scarica merce) invece di fermarsi al
-       bordo inferiore dello schermo. Risultato: overflow-y:auto qui sotto
-       non aveva nulla da far scorrere (nessun overflow reale) e tutto ciò
-       che superava il primo schermo — inclusi i pulsanti dell'azione di
-       scarico — restava irraggiungibile, non essendo un elemento fixed
-       influenzato dallo scroll della pagina. Altezza esplicita come in
-       #orders: ora il box è alto quanto il viewport meno la back-bar e
-       overflow-y:auto scrolla davvero il contenuto in eccesso. */
+    left: 0 !important;
+    width: 100vw !important;
+    max-width: none !important;
     height: calc(100dvh - var(--mobile-back-bar-h)) !important;
     min-height: 0 !important;
     max-height: calc(100dvh - var(--mobile-back-bar-h)) !important;
     margin: 0 !important;
     z-index: 1086;
     overflow-y: auto !important;
+    overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     background: #fdfcfa !important;
     border: none !important;
-    border-radius: 16px 0 0 16px;
-    box-shadow: -14px 0 36px rgba(0, 0, 0, 0.28);
-    padding: 16px !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+    padding: 16px 16px calc(112px + env(safe-area-inset-bottom, 0px)) !important;
     transform: none !important;
     visibility: visible !important;
     transition: none !important;
-    animation: drillDrawerIn 0.26s ease;
+    animation: none !important;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  body[data-drill-module="warehouse"] #warehouse .detail-panel > * {
+    flex: 0 0 auto;
   }
   body[data-drill-module="warehouse"] #warehouse .detail-panel .detail-header {
     top: 0 !important;
