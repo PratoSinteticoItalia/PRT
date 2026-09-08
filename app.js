@@ -4432,6 +4432,16 @@ function getSalesContentAttachmentPendingKey(contentId = "", attachmentId = "", 
   return `${safeContentId}::${safeAttachmentId}`;
 }
 
+function getSalesContentAttachmentDownloadUrl(contentId = "", item = {}) {
+  const contentKey = String(contentId || "").trim();
+  const attachmentKey = String(item.id || "").trim();
+  const rawUrl = String(item.url || item.dataUrl || "").trim();
+  if (contentKey && attachmentKey && !/^https?:\/\//i.test(rawUrl)) {
+    return `/api/sales/content-items/${encodeURIComponent(contentKey)}/attachments/${encodeURIComponent(attachmentKey)}/file?download=1`;
+  }
+  return rawUrl;
+}
+
 function getSalesRequestDisplayName(item = {}) {
   const first = String(item.name || "").trim();
   const last = String(item.surname || "").trim();
@@ -14992,6 +15002,8 @@ function renderSalesContentAttachments(items = [], contentId = "") {
   return items.map((item, index) => {
     const pendingKey = getSalesContentAttachmentPendingKey(contentId, item.id || "", Number(item._attachmentIndex ?? index));
     const isDeleting = salesContentAttachmentDeleteInFlight.has(pendingKey);
+    const downloadUrl = getSalesContentAttachmentDownloadUrl(contentId, item);
+    const downloadName = String(item.name || "Attachment").trim() || "Attachment";
     return `
     <article class="attachment-item${isDeleting ? " is-pending" : ""}">
       <button
@@ -15021,7 +15033,11 @@ function renderSalesContentAttachments(items = [], contentId = "") {
               data-url="${escapeHtml(item.url)}"
               data-name="${escapeHtml(item.name || "")}"
             >${state.lang === "it" ? "Copia link" : "Copy link"}</button>
-            <a class="ghost-button small-button" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${state.lang === "it" ? "Apri file" : "Open file"}</a>`
+            <a
+              class="ghost-button small-button"
+              href="${escapeAttr(downloadUrl)}"
+              download="${escapeAttr(downloadName)}"
+            >${state.lang === "it" ? "Scarica file" : "Download file"}</a>`
           : ""}
       </div>
     </article>

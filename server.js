@@ -11082,8 +11082,17 @@ function scheduleAttachmentAssetRemoval(items = [], logLabel = "attachment_delet
   }, 0);
 }
 
-async function streamAttachmentAsset(res, attachment = {}, { cacheControl = "private, max-age=300" } = {}) {
+function getAttachmentContentDisposition(attachment = {}) {
+  const fallbackExtension = getMimeTypeExtension(attachment.type || "");
+  const fileName = sanitizeAttachmentName(attachment.name || "allegato", fallbackExtension).replace(/"/g, "_");
+  return `attachment; filename="${fileName}"`;
+}
+
+async function streamAttachmentAsset(res, attachment = {}, { cacheControl = "private, max-age=300", forceDownload = false } = {}) {
   const storageType = String(attachment.storage || "").trim();
+  const downloadHeaders = forceDownload
+    ? { "Content-Disposition": getAttachmentContentDisposition(attachment) }
+    : {};
   if (storageType === "file") {
     const absolutePath = resolveAttachmentLocalPath(attachment.localPath || "");
     if (!absolutePath || !existsSync(absolutePath)) {
@@ -11096,6 +11105,7 @@ async function streamAttachmentAsset(res, attachment = {}, { cacheControl = "pri
         "Cache-Control": cacheControl,
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "strict-origin-when-cross-origin",
+        ...downloadHeaders,
       });
       stream.on("error", () => {
         if (!res.headersSent) {
@@ -11121,6 +11131,7 @@ async function streamAttachmentAsset(res, attachment = {}, { cacheControl = "pri
       "Cache-Control": cacheControl,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "strict-origin-when-cross-origin",
+      ...downloadHeaders,
     });
     res.end(inlineData.buffer);
     return;
@@ -11140,6 +11151,7 @@ async function streamAttachmentAsset(res, attachment = {}, { cacheControl = "pri
     "Cache-Control": cacheControl,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
+    ...downloadHeaders,
   });
 
   const body = object.Body;
@@ -16982,7 +16994,8 @@ async function handleApi(req, res, url) {
     if (!allowed) return sendJson(res, 403, { error: "forbidden" });
     const attachment = (contentItem.attachments || []).find((item) => String(item.id || "") === attachmentId);
     if (!attachment) return sendJson(res, 404, { error: "attachment_not_found" });
-    return streamAttachmentAsset(res, attachment);
+    const forceDownload = ["1", "true", "yes"].includes(String(url.searchParams.get("download") || "").toLowerCase());
+    return streamAttachmentAsset(res, attachment, { forceDownload });
   }
 
   if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+\/attachments\/\d+$/) && req.method === "DELETE") {
