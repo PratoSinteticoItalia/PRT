@@ -4220,7 +4220,12 @@ async function readJson(path, fallback) {
     } else {
       payload = await readLocalJson(path, fallback);
     }
-    if (payload && typeof payload === "object") ensureStoreRevision(payload);
+    if (payload && typeof payload === "object") {
+      // This flag is process-local. Legacy documents may contain it, but it
+      // must never skip credential normalization after a restart.
+      delete payload.__memReconciled;
+      ensureStoreRevision(payload);
+    }
     storeMemCache = payload;
     return payload;
   }
@@ -13222,7 +13227,9 @@ async function handleApi(req, res, url) {
     if (storeChanged) {
       await writeJson(STORE_PATH, store);
     }
-    store.__memReconciled = true; // marca come già normalizzata nella cache in-memoria
+    Object.defineProperty(store, "__memReconciled", {
+      value: true, writable: true, configurable: true, enumerable: false,
+    });
   }
   const sessionContext = await getSessionContext(req, store);
   const currentUser = sessionContext.user;
@@ -13393,6 +13400,15 @@ async function handleApi(req, res, url) {
     }
 
     if (!user) {
+      const matchingUser = store.users.find((item) => item.email.toLowerCase() === email);
+      console.warn("[auth] login rejected", JSON.stringify({
+        accountFound: Boolean(matchingUser),
+        hasPasswordHash: Boolean(matchingUser?.passwordHash && matchingUser?.passwordSalt),
+        bootstrapConfigured: Boolean(BOOTSTRAP_OFFICE_PASSWORD),
+        bootstrapPolicyValid: !validatePasswordStrength(BOOTSTRAP_OFFICE_PASSWORD),
+        emailMatchesBootstrap: email === BOOTSTRAP_OFFICE_EMAIL,
+        passwordMatchesBootstrap: password === BOOTSTRAP_OFFICE_PASSWORD,
+      }));
       await recordFailedLoginAsync(req, email);
       pushSecurityEvent(store, "login_failed", email || "unknown", "Tentativo login fallito.", { ip: getClientIp(req) });
       await writeJson(STORE_PATH, store);
