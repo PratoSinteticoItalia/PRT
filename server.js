@@ -202,6 +202,7 @@ const STORE_BACKUP_MIN_INTERVAL_MS = 1000 * 60 * 2;
 const loginAttempts = new Map();
 let dbBootstrapPromise = null;
 let pgPool = null;
+let pgPoolPromise = null;
 let r2ClientPromise = null;
 let runtimeStoreRevision = "";
 let lastStoreBackupSnapshotAt = 0;
@@ -726,25 +727,33 @@ function queuePostgresMirrorWrite(path, value) {
 async function getPgPool() {
   if (!USE_POSTGRES) return null;
   if (pgPool) return pgPool;
-  const { Pool } = await import("pg");
-  pgPool = new Pool({
-    connectionString: DATABASE_URL,
-    max: 4,
-    // Render.com (and most managed PG hosts) kill idle TCP connections after
-    // ~20 s. If the pool holds a connection longer than that, the next use
-    // emits an unhandled 'error' on the Client and crashes Node.  Keep the
-    // idle timeout well below the host's kill window.
-    idleTimeoutMillis: 8_000,
-    connectionTimeoutMillis: 5_000,
-    statement_timeout: DB_OPERATION_TIMEOUT_MS,
-    query_timeout: DB_OPERATION_TIMEOUT_MS,
-  });
-  // Pool-level error handler: covers idle-client TCP resets so they don't
-  // bubble up as unhandled process exceptions.
-  pgPool.on("error", (err) => {
-    console.error("[pg-pool] client error (handled):", err?.message || err);
-  });
-  return pgPool;
+  if (pgPoolPromise) return pgPoolPromise;
+  pgPoolPromise = (async () => {
+    const { Pool } = await import("pg");
+    pgPool = new Pool({
+      connectionString: DATABASE_URL,
+      max: 4,
+      // Render.com (and most managed PG hosts) kill idle TCP connections after
+      // ~20 s. If the pool holds a connection longer than that, the next use
+      // emits an unhandled 'error' on the Client and crashes Node.  Keep the
+      // idle timeout well below the host's kill window.
+      idleTimeoutMillis: 8_000,
+      connectionTimeoutMillis: 5_000,
+      statement_timeout: DB_OPERATION_TIMEOUT_MS,
+      query_timeout: DB_OPERATION_TIMEOUT_MS,
+    });
+    // Pool-level error handler: covers idle-client TCP resets so they don't
+    // bubble up as unhandled process exceptions.
+    pgPool.on("error", (err) => {
+      console.error("[pg-pool] client error (handled):", err?.message || err);
+    });
+    return pgPool;
+  })();
+  try {
+    return await pgPoolPromise;
+  } finally {
+    pgPoolPromise = null;
+  }
 }
 
 function withOperationTimeout(promise, timeoutMs = DB_OPERATION_TIMEOUT_MS, label = "operation") {
@@ -4225,24 +4234,26 @@ async function writeJson(path, value) {
   const resolvedPath = resolve(path);
   const isStorePayload = resolvedPath === resolve(STORE_PATH);
   if (isStorePayload && value && typeof value === "object") {
-    rotateStoreRevision(value);
-    // Il dato che scriviamo è già normalizzato — mantieni il flag per saltare
-    // la prossima reconcileStoreData (evita O(N) su ogni request successiva)
+    value._storeRevision = buildStoreRevisionToken();
     if (storeMemCache?.__memReconciled) value.__memReconciled = true;
-    storeMemCache = value; // aggiorna cache in memoria
   }
-  if (USE_POSTGRES && isStorePayload) {
-    await writeDatabaseDocument(STORE_DOC_KEY, value);
-    queuePostgresMirrorWrite(path, value);
-    broadcastStoreRevision(getStoreRevision(value));
-    return;
+  try {
+    if (USE_POSTGRES && isStorePayload) {
+      await writeDatabaseDocument(STORE_DOC_KEY, value);
+      queuePostgresMirrorWrite(path, value);
+    } else if (USE_POSTGRES && resolvedPath === resolve(SESSION_PATH)) {
+      await writeDatabaseDocument(SESSION_DOC_KEY, value);
+    } else {
+      await writeLocalJson(path, value);
+    }
+  } catch (error) {
+    // Callers may have mutated the cached object in place. Never serve a
+    // failed write as committed state; the next read must reload storage.
+    if (isStorePayload) storeMemCache = null;
+    throw error;
   }
-  if (USE_POSTGRES && resolvedPath === resolve(SESSION_PATH)) {
-    await writeDatabaseDocument(SESSION_DOC_KEY, value);
-    return;
-  }
-  await writeLocalJson(path, value);
   if (isStorePayload) {
+    storeMemCache = value;
     broadcastStoreRevision(getStoreRevision(value));
   }
 }
@@ -5219,14 +5230,21 @@ async function withApiStateLock(task, { timeoutMs = API_STATE_LOCK_TIMEOUT_MS, q
         error.code = "state_lock_timeout";
         throw error;
       }
+      // LISTEN delivery is asynchronous: reload durable state after acquiring
+      // the cross-instance lock, even if its notification has not arrived yet.
+      storeMemCache = null;
       return await task();
     } finally {
+      let discardClient = false;
       if (locked) {
         try {
           await lockClient.query("SELECT pg_advisory_unlock($1)", [API_STATE_LOCK_KEY]);
-        } catch {}
+        } catch {
+          discardClient = true;
+        }
       }
-      lockClient.release();
+      // A pooled connection must never retain a session-level advisory lock.
+      lockClient.release(discardClient);
     }
   };
   if (queue || !USE_POSTGRES) {
@@ -12194,6 +12212,17 @@ async function syncOrdersFromShopify(store, { fullHistory = false } = {}) {
 // qualcuno non riapre il portale o clicca "Ricarica dati" — confermato dal
 // cliente come problema reale, anche se raro. Questo giro periodico lato
 // server chiude quel buco, indipendentemente da chi ha il browser aperto.
+async function readStoreAfterShopifySync(syncStore) {
+  const latest = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
+  latest.shopifySettings = { ...latest.shopifySettings };
+  for (const key of ["lastSyncAt", "lastSyncStatus", "lastSyncMessage", "lastFullSyncAt", "lastFullSyncOrderCount"]) {
+    if (Object.hasOwn(syncStore.shopifySettings || {}, key)) {
+      latest.shopifySettings[key] = syncStore.shopifySettings[key];
+    }
+  }
+  return latest;
+}
+
 async function runScheduledShopifySync() {
   let store;
   try {
@@ -12209,22 +12238,26 @@ async function runScheduledShopifySync() {
     // Chiamata di rete FUORI dal lock, stesso motivo del sync manuale
     // (/api/orders/sync-shopify): può durare diversi secondi e non deve
     // bloccare le scritture concorrenti di altri utenti.
+    store = { ...store, shopifySettings: { ...store.shopifySettings } };
     orders = await syncOrdersFromShopify(store, { fullHistory: false });
   } catch (error) {
     console.warn("[shopify-scheduled-sync] sync fallita:", error?.message || error);
     try {
-      const errorStore = await readJson(STORE_PATH, { shopifySettings: {} });
-      errorStore.shopifySettings = errorStore.shopifySettings || {};
-      errorStore.shopifySettings.lastSyncAt = new Date().toISOString();
-      errorStore.shopifySettings.lastSyncStatus = "error";
-      errorStore.shopifySettings.lastSyncMessage = String(error?.message || "shopify_sync_failed").slice(0, 500);
-      await writeJson(STORE_PATH, errorStore);
+      await withApiStateLock(async () => {
+        const errorStore = await readJson(STORE_PATH, { shopifySettings: {} });
+        errorStore.shopifySettings = errorStore.shopifySettings || {};
+        errorStore.shopifySettings.lastSyncAt = new Date().toISOString();
+        errorStore.shopifySettings.lastSyncStatus = "error";
+        errorStore.shopifySettings.lastSyncMessage = String(error?.message || "shopify_sync_failed").slice(0, 500);
+        await writeJson(STORE_PATH, errorStore);
+      });
     } catch { /* riproveremo al prossimo giro comunque */ }
     return;
   }
 
   try {
     await withApiStateLock(async () => {
+      store = await readStoreAfterShopifySync(store);
       const upsertResults = orders.map((order) => upsertOrderRecord(store, order));
       store.orders = sortOrdersByRecency(store.orders);
       await writeJson(STORE_PATH, store);
@@ -13053,8 +13086,14 @@ async function handleFastInventoryItemsPost(req, res) {
       sessionContext.sessionId ? { "Set-Cookie": buildSessionCookie(sessionContext.sessionId) } : {},
     );
   } catch (err) {
-    console.error("[inventory/fast-add] db error, falling back to slow path:", err?.message || err);
-    return false;
+    console.error("[inventory/fast-add] db error:", err?.message || err);
+    // The body has already been consumed. A fallback would hang or repeat
+    // a partially committed insertion; return an explicit failure instead.
+    storeMemCache = null;
+    return sendJson(res, 503, {
+      error: "inventory_write_failed",
+      message: "Salvataggio non confermato. Ricarica le giacenze prima di riprovare.",
+    });
   }
 }
 
@@ -13175,7 +13214,7 @@ async function handleApi(req, res, url) {
   }
 
   await ensureStore();
-  const store = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
+  let store = await readJson(STORE_PATH, { users: [], jobs: [], orders: [], shopifySettings: {} });
   // Salta la riconciliazione se la cache in memoria è già stata normalizzata
   // (reconcileStoreData chiama normalizeSalesRequestRecord x 8180 record — O(N) su ogni request)
   if (!store.__memReconciled) {
@@ -18818,10 +18857,12 @@ async function handleApi(req, res, url) {
       // dell'app (assegnazioni CRM, ordini, magazzino...) per tutta la sua
       // durata (vedi shouldLockState sopra, che esclude questa route dal
       // wrapper generico proprio per questo).
+      store = { ...store, shopifySettings: { ...store.shopifySettings } };
       orders = await syncOrdersFromShopify(store, { fullHistory });
     } catch (error) {
       try {
         await withApiStateLock(async () => {
+          store = await readJson(STORE_PATH, { shopifySettings: {} });
           store.shopifySettings.lastSyncAt = new Date().toISOString();
           store.shopifySettings.lastSyncStatus = "error";
           store.shopifySettings.lastSyncMessage = String(error.message || "shopify_sync_failed").slice(0, 500);
@@ -18835,6 +18876,7 @@ async function handleApi(req, res, url) {
       // centinaia di ordini, quindi un lock "normale" (stessa coda di ogni
       // altra scrittura) basta e avanza.
       return await withApiStateLock(async () => {
+        store = await readStoreAfterShopifySync(store);
         const upsertResults = orders.map((order) => upsertOrderRecord(store, order));
         store.orders = sortOrdersByRecency(store.orders);
         await writeJson(STORE_PATH, store);
@@ -18859,10 +18901,9 @@ async function handleApi(req, res, url) {
       if (error?.code === "state_lock_timeout") {
         return sendJson(res, 503, { error: "busy", message: "Aggiornamento in corso, riprova tra qualche secondo." });
       }
-      store.shopifySettings.lastSyncAt = new Date().toISOString();
-      store.shopifySettings.lastSyncStatus = "error";
-      store.shopifySettings.lastSyncMessage = String(error.message || "shopify_sync_failed").slice(0, 500);
-      await writeJson(STORE_PATH, store).catch(() => {});
+      // The failed write has already invalidated cache. Do not retry the
+      // stale full document outside the lock just to record an error.
+      console.error("[shopify-sync] persistence failed:", error?.message || error);
       return sendJson(res, 400, { error: error.message || "shopify_sync_failed" });
     }
   }
