@@ -787,9 +787,37 @@ function isDatabaseConnectivityError(err = null) {
 async function setupPgListener() {
   if (!USE_POSTGRES) return;
   const { Client } = await import("pg");
+  let reconnectTimer = null;
+  let connecting = false;
   const tryConnect = async () => {
+    if (connecting || pgListenerClient) return;
+    connecting = true;
+    const client = new Client({
+      connectionString: DATABASE_URL,
+      application_name: "psi-ops-listener",
+      connectionTimeoutMillis: 5_000,
+    });
+    let failed = false;
+    const reconnect = (delay) => {
+      if (failed) return;
+      failed = true;
+      if (pgListenerClient === client) pgListenerClient = null;
+      // Both error and end can fire for one disconnect. Close the old
+      // connection and schedule exactly one replacement.
+      Promise.resolve(client.end()).catch(() => {});
+      if (!reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          void tryConnect();
+        }, delay);
+      }
+    };
+    client.on("error", (err) => {
+      console.error("[pg-listen] error:", err?.message);
+      reconnect(5_000);
+    });
+    client.on("end", () => reconnect(5_000));
     try {
-      const client = new Client({ connectionString: DATABASE_URL, application_name: "psi-ops-listener" });
       await client.connect();
       await client.query("LISTEN psi_ops_store_changed");
       await client.query("LISTEN psi_ops_cache_invalidate");
@@ -818,23 +846,17 @@ async function setupPgListener() {
           console.log("[pg-listen] entity cache invalidated:", entity);
         }
       });
-      client.on("error", (err) => {
-        console.error("[pg-listen] error:", err?.message);
-        pgListenerClient = null;
-        setTimeout(tryConnect, 5_000);
-      });
-      client.on("end", () => {
-        pgListenerClient = null;
-        setTimeout(tryConnect, 5_000);
-      });
+      if (failed) return;
       pgListenerClient = client;
       console.log("[pg-listen] ready — listening on psi_ops_store_changed + psi_ops_cache_invalidate");
     } catch (err) {
       console.error("[pg-listen] connect failed:", err?.message);
-      setTimeout(tryConnect, 10_000);
+      reconnect(10_000);
+    } finally {
+      connecting = false;
     }
   };
-  tryConnect();
+  await tryConnect();
 }
 
 async function ensureDatabaseStorage() {
