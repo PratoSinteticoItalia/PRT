@@ -21,7 +21,7 @@ Già pubblicato prima di questa verifica: ec9ff6c elimina riconnessioni duplicat
 2. **P0 — Scritture asincrone di notifiche/push.** `sendPushToUser` e la persistenza `storeNotifications` riscrivono il documento completo senza passare sempre dal lock. Possono conservare riferimenti vecchi durante attese esterne. Occorre separare la persistenza delle notifiche e aggiornare solo la sezione necessaria, evitando lock annidati.
 3. **P1 — Attesa lock e pool piccolo.** Il pool ha massimo quattro connessioni; i chiamanti con `queue:false` possono occuparle aspettando un lock, mentre il titolare necessita di altre connessioni per completare. Da verificare con PostgreSQL e richieste concorrenti, poi rilasciare le connessioni tra i tentativi o dedicare un canale limitato ai lock.
 4. **P1 — Cache SQL e scritture in corso.** L'invalidazione prima della scrittura e letture concorrenti possono ripopolare la cache con risultati precedenti. Le notifiche aiutano ma non costituiscono una garanzia di ordinamento. Servono generazioni/versioni delle letture e test di concorrenza.
-5. **P1 — Logout su errore transitorio.** `keepSessionAlive` trasforma in null il fallimento della sessione di conferma e può mostrare il login senza che sia stata confermata una sessione scaduta.
+5. **P1 — Logout su errore transitorio: corretto localmente il 17 settembre.** La richiesta di conferma fallita non viene più convertita in sessione vuota. Cinque test distinguono errore di rete, scadenza confermata, recupero e propagazione dell’errore. Da distribuire e verificare nel browser.
 6. **P1 — Errore di aggiornamento dopo salvataggio riuscito.** `updateManagedAccount` include il successivo `reloadAll` nello stesso catch del salvataggio: un errore di refresh può apparire come mancato salvataggio. Separare esito persistito e refresh.
 7. **P1 — Risposte client fuori ordine.** Più percorsi applicano interi snapshot della sessione senza un controllo comune della sequenza delle richieste. Da riprodurre con rete ritardata e modifica utente tra richiesta e risposta.
 8. **P1 — Operazioni dal risultato incerto.** Un timeout dopo commit può indurre a reinserire inventario o altre entità. Servono chiavi di idempotenza e messaggi che distinguano errore certo da conferma non ricevuta.
@@ -41,3 +41,9 @@ Non sono disponibili in questa sessione un server PostgreSQL locale, Docker o un
 - Fallimento della seconda scrittura: rilevamento della divergenza tra documento e tabelle, recupero senza sovrascrivere dati recenti.
 - Rete lenta e risposte riordinate: nessun ritorno a stati precedenti, nessun logout per indisponibilità temporanea.
 - Desktop e mobile: login, ordini, inventario, pose, CRM, account, filtri, dettagli, refresh e stati vuoti.
+
+## Aggiornamento 17 settembre 2026
+
+Staging disponibile su https://prt-staging.onrender.com, con database separato configurato dall’utente. Accesso autenticato, apertura dashboard e inventario verificati nel browser. Inventario iniziale vuoto. Inserimento di prova 2×5 metri interrotto da una conferma sulle dimensioni del rotolo; controllo browser bloccato sul dialogo, nessuna persistenza ancora confermata.
+
+Correzione locale del logout su errore di rete con versione shell aggiornata per evitare asset obsoleti. I test simulati non sostituiscono il collaudo di concorrenza PostgreSQL né dimostrano che i problemi P0 siano risolti.
