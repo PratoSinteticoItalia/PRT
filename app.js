@@ -29686,7 +29686,15 @@ window.addEventListener("hashchange", () => {
   }
   const view = getHashViewForCurrentRole();
   if (!view) {
+    const attempted = normalizeLaunchView(window.location.hash);
     replaceInvalidHashWithCurrentView();
+    // Rotta inesistente o non permessa per il ruolo: prima l'URL veniva
+    // riscritto in silenzio e la pagina sembrava non rispondere. Diamo un
+    // feedback esplicito (solo per un tentativo reale: non hash vuoto, non
+    // la ricerca globale gestita sopra, non la vista già attiva).
+    if (attempted && attempted !== "global-search" && attempted !== state.currentView) {
+      showToast(state.lang === "it" ? "Sezione non disponibile" : "Section not available", "warning");
+    }
     return;
   }
   if (view === state.currentView) return;
