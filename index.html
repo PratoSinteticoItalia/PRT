@@ -2558,35 +2558,35 @@
             </label>
             <label class="field">
               <span>Nome</span>
-              <input class="text-input" name="firstName" required />
+              <input class="text-input" name="firstName" autocomplete="given-name" required />
             </label>
             <label class="field">
               <span>Cognome</span>
-              <input class="text-input" name="lastName" required />
+              <input class="text-input" name="lastName" autocomplete="family-name" required />
             </label>
             <label class="field">
               <span>Città</span>
-              <input class="text-input" name="city" />
+              <input class="text-input" name="city" autocomplete="address-level2" />
             </label>
             <label class="field">
               <span>Provincia</span>
-              <input class="text-input" name="provinceCode" maxlength="3" placeholder="CE" />
+              <input class="text-input" name="provinceCode" maxlength="3" placeholder="CE" autocomplete="address-level1" />
             </label>
             <label class="field">
               <span>CAP</span>
-              <input class="text-input" name="postalCode" placeholder="81025" />
+              <input class="text-input" name="postalCode" placeholder="81025" inputmode="numeric" autocomplete="postal-code" />
             </label>
             <label class="field">
               <span>Telefono</span>
-              <input class="text-input" name="phone" />
+              <input class="text-input" name="phone" type="tel" inputmode="tel" autocomplete="tel" />
             </label>
             <label class="field">
               <span>Email</span>
-              <input class="text-input" name="email" />
+              <input class="text-input" name="email" type="email" autocomplete="email" />
             </label>
             <label class="field field-full">
               <span>Indirizzo</span>
-              <input class="text-input" name="address" />
+              <input class="text-input" name="address" autocomplete="address-line1" />
             </label>
             <label class="field">
               <span>Prodotto</span>
@@ -2594,7 +2594,7 @@
             </label>
             <label class="field">
               <span>Metri quadri</span>
-              <input class="text-input" name="sqm" />
+              <input class="text-input" name="sqm" inputmode="decimal" />
             </label>
             <label class="field">
               <span>Superficie</span>
