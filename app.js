@@ -11642,7 +11642,7 @@ function buildDashboardCommandModel() {
       tasks: allTasks,
       metrics: [
         { label: state.lang === "it" ? "Azioni oggi" : "Actions today", value: String(allTasks.filter((task) => task.timeframe === "today" || task.severity === "high").length), note: state.lang === "it" ? "Vai alla coda di oggi" : "Open today's queue", tone: "sales", action: "set-dashboard-command-view", commandView: "dashboard", filter: "today" },
-        { label: state.lang === "it" ? "Materiali a rischio" : "Material risks", value: String(materialTasks.filter((task) => task.severity !== "low").length), note: state.lang === "it" ? "Apri Inventario sotto scorta" : "Open low-stock inventory", tone: "materials", action: "open-dashboard-view", view: "warehouse", warehouseFilter: "demand" },
+        { label: state.lang === "it" ? "Materiali a rischio" : "Material risks", value: String(materialTasks.filter((task) => task.severity !== "low").length), note: state.lang === "it" ? "Apri gli ordini a rischio" : "Open at-risk orders", tone: "materials", action: "set-dashboard-command-view", commandView: "materials", filter: "risk" },
         { label: state.lang === "it" ? "Pose prossime" : "Upcoming installs", value: String(upcomingWeek.length), note: state.lang === "it" ? "Apri Programmate" : "Open scheduled installs", tone: "installations", action: "open-dashboard-view", view: "installations-scheduled" },
         { label: state.lang === "it" ? "Soldi da chiudere" : "Money to close", value: String(moneyTasks.length), note: formatCurrency(openBalanceTotal), tone: "money", action: "open-dashboard-view", view: "accounting", accountingFilter: "open" },
       ],
