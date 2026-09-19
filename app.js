@@ -11264,7 +11264,7 @@ function buildDashboardCommandSalesTasks() {
       const name = getSalesRequestDashboardName(item);
       return makeDashboardCommandTask({
         id: `sales-contact-${item.id}`,
-        area: "Vendite",
+        area: state.lang === "it" ? "Vendite" : "Sales",
         title: `${state.lang === "it" ? "Chiama" : "Call"} ${name}`,
         subtitle: getSalesRequestDashboardMeta(item) || (state.lang === "it" ? "Nuova richiesta" : "New request"),
         due: ageDays > 0 ? `${ageDays}g` : (state.lang === "it" ? "Oggi" : "Today"),
@@ -11305,7 +11305,7 @@ function buildDashboardCommandSalesTasks() {
       const daysAgo = getDashboardCommandAgeDays(ref);
       return makeDashboardCommandTask({
         id: `sales-followup-${item.id}`,
-        area: "Vendite",
+        area: state.lang === "it" ? "Vendite" : "Sales",
         title: `${state.lang === "it" ? "Follow-up" : "Follow up"} ${name}`,
         subtitle: getSalesRequestDashboardMeta(item) || (state.lang === "it" ? "Preventivo inviato" : "Quote sent"),
         due: `${daysAgo}g`,
@@ -11353,7 +11353,7 @@ function buildDashboardCommandMaterialTasks() {
         : (state.lang === "it" ? "Impegna materiale" : "Commit material");
       return makeDashboardCommandTask({
         id: `materials-order-${order.id}`,
-        area: "Materiali",
+        area: state.lang === "it" ? "Materiali" : "Materials",
         title: `${title} ${getOrderNumber(order)}`,
         subtitle: `${composeClientName(order)} · ${getPrimaryTurfLabel(order) || order.operations?.product || "—"}`,
         due: order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : (state.lang === "it" ? "Prima preparazione" : "Before prep"),
@@ -11407,7 +11407,7 @@ function buildDashboardCommandMaterialTasks() {
         const unit = isMeasured ? "mq" : "u";
         return makeDashboardCommandTask({
           id: `materials-stock-${index}-${normalizeProductName(group.product || "")}`,
-          area: "Materiali",
+          area: state.lang === "it" ? "Materiali" : "Materials",
           title: `${state.lang === "it" ? "Verifica scorta" : "Check stock"} ${group.product || "—"}`,
           subtitle: state.lang === "it" ? "Disponibilita sotto soglia o domanda scoperta" : "Low availability or uncovered demand",
           due: state.lang === "it" ? "Questa settimana" : "This week",
@@ -11476,7 +11476,7 @@ function buildDashboardCommandInstallationTasks() {
       }
       return makeDashboardCommandTask({
         id: `install-${order.id}`,
-        area: "Pose",
+        area: state.lang === "it" ? "Pose" : "Installations",
         title: missingMaterials
           ? `${state.lang === "it" ? "Cantiere senza materiali" : "Job without materials"} ${getOrderNumber(order)}`
           : `${state.lang === "it" ? "Verifica posa" : "Check install"} ${composeClientName(order)}`,
@@ -11535,7 +11535,7 @@ function buildDashboardCommandMoneyTasks() {
       }
       return makeDashboardCommandTask({
         id: `money-order-${order.id}`,
-        area: "Soldi",
+        area: state.lang === "it" ? "Soldi" : "Money",
         title: balance > 0
           ? `${state.lang === "it" ? "Controlla saldo" : "Check balance"} ${getOrderNumber(order)}`
           : `${state.lang === "it" ? "Fattura da emettere" : "Invoice to issue"} ${getOrderNumber(order)}`,
@@ -11577,7 +11577,7 @@ function buildDashboardCommandMoneyTasks() {
     .slice(0, 4)
     .map((order) => makeDashboardCommandTask({
       id: `money-ddt-${order.id}`,
-      area: "Soldi",
+      area: state.lang === "it" ? "Soldi" : "Money",
       title: `${state.lang === "it" ? "DDT mancante" : "Missing DDT"} ${getOrderNumber(order)}`,
       subtitle: composeClientName(order),
       due: state.lang === "it" ? "Prima uscita merce" : "Before dispatch",
@@ -11642,13 +11642,13 @@ function buildDashboardCommandModel() {
       tasks: allTasks,
       metrics: [
         { label: state.lang === "it" ? "Azioni oggi" : "Actions today", value: String(allTasks.filter((task) => task.timeframe === "today" || task.severity === "high").length), note: state.lang === "it" ? "Vai alla coda di oggi" : "Open today's queue", tone: "sales", action: "set-dashboard-command-view", commandView: "dashboard", filter: "today" },
-        { label: state.lang === "it" ? "Materiali a rischio" : "Material risks", value: String(materialTasks.filter((task) => task.severity !== "low").length), note: state.lang === "it" ? "Apri Inventario sotto scorta" : "Open low-stock inventory", tone: "materials", action: "open-dashboard-view", view: "warehouse", warehouseFilter: "demand" },
+        { label: state.lang === "it" ? "Materiali a rischio" : "Material risks", value: String(materialTasks.filter((task) => task.severity !== "low").length), note: state.lang === "it" ? "Apri gli ordini a rischio" : "Open at-risk orders", tone: "materials", action: "set-dashboard-command-view", commandView: "materials", filter: "risk" },
         { label: state.lang === "it" ? "Pose prossime" : "Upcoming installs", value: String(upcomingWeek.length), note: state.lang === "it" ? "Apri Programmate" : "Open scheduled installs", tone: "installations", action: "open-dashboard-view", view: "installations-scheduled" },
         { label: state.lang === "it" ? "Soldi da chiudere" : "Money to close", value: String(moneyTasks.length), note: formatCurrency(openBalanceTotal), tone: "money", action: "open-dashboard-view", view: "accounting", accountingFilter: "open" },
       ],
     },
     sales: {
-      nav: "Vendite",
+      nav: state.lang === "it" ? "Vendite" : "Sales",
       icon: "VE",
       title: state.lang === "it" ? "Vendite da seguire" : "Sales to follow",
       subtitle: state.lang === "it" ? "Nuovi contatti entro 30 giorni e follow-up tra 7 e 45 giorni; lo storico resta in Richieste." : "New contacts within 30 days and follow-ups between 7 and 45 days; history stays in Requests.",
@@ -11682,7 +11682,7 @@ function buildDashboardCommandModel() {
       emptySecondaryView: salesStats.loading ? "" : "sales-generator",
     },
     materials: {
-      nav: "Materiali",
+      nav: state.lang === "it" ? "Materiali" : "Materials",
       icon: "MA",
       title: state.lang === "it" ? "Materiali a rischio" : "Material risks",
       subtitle: state.lang === "it" ? "Ordini e pose dove il previsto non e' ancora coperto da impegni di magazzino." : "Orders and jobs whose expected materials are not fully committed.",
@@ -11697,7 +11697,7 @@ function buildDashboardCommandModel() {
       ],
     },
     installations: {
-      nav: "Pose",
+      nav: state.lang === "it" ? "Pose" : "Installations",
       icon: "PO",
       title: state.lang === "it" ? "Pose prossime" : "Upcoming installs",
       subtitle: state.lang === "it" ? "Cantieri in arrivo con materiali, squadra, foto e criticita operative." : "Upcoming jobs with materials, crews, photos and critical points.",
@@ -11712,7 +11712,7 @@ function buildDashboardCommandModel() {
       ],
     },
     money: {
-      nav: "Soldi",
+      nav: state.lang === "it" ? "Soldi" : "Money",
       icon: "SO",
       title: state.lang === "it" ? "Soldi da chiudere" : "Money to close",
       subtitle: state.lang === "it" ? "Saldi, Shopify, fatture e DDT che bloccano la chiusura economica." : "Balances, Shopify, invoices and DDT blocking financial closure.",
@@ -11900,7 +11900,7 @@ function renderDashboardCommandModules(model) {
     {
       key: "sales",
       tone: "sales",
-      title: "Vendite",
+      title: state.lang === "it" ? "Vendite" : "Sales",
       summary: state.lang === "it" ? "Richieste e preventivi che possono diventare fatturato." : "Requests and quotes that can become revenue.",
       items: [
         `${model.sales.tasks.length} ${state.lang === "it" ? "azioni commerciali" : "sales actions"}`,
@@ -11916,7 +11916,7 @@ function renderDashboardCommandModules(model) {
     {
       key: "materials",
       tone: "materials",
-      title: "Materiali",
+      title: state.lang === "it" ? "Materiali" : "Materials",
       summary: state.lang === "it" ? "Ordini e pose senza copertura completa di magazzino." : "Orders and jobs without full warehouse coverage.",
       items: [
         `${model.materials.tasks.length} ${state.lang === "it" ? "segnali" : "signals"}`,
@@ -11931,7 +11931,7 @@ function renderDashboardCommandModules(model) {
     {
       key: "installations",
       tone: "installations",
-      title: "Pose",
+      title: state.lang === "it" ? "Pose" : "Installations",
       summary: state.lang === "it" ? "Cantieri prossimi con squadre, criticita e preparazione." : "Upcoming jobs with crews, critical points and preparation.",
       items: [
         `${model.installations.tasks.length} ${state.lang === "it" ? "cantieri" : "jobs"}`,
@@ -11947,7 +11947,7 @@ function renderDashboardCommandModules(model) {
     {
       key: "money",
       tone: "money",
-      title: "Soldi",
+      title: state.lang === "it" ? "Soldi" : "Money",
       summary: state.lang === "it" ? "Saldi, DDT e pagamenti da allineare." : "Balances, DDT and payments to align.",
       items: [
         `${model.money.tasks.length} ${state.lang === "it" ? "azioni" : "actions"}`,
@@ -29685,7 +29685,15 @@ window.addEventListener("hashchange", () => {
   }
   const view = getHashViewForCurrentRole();
   if (!view) {
+    const attempted = normalizeLaunchView(window.location.hash);
     replaceInvalidHashWithCurrentView();
+    // Rotta inesistente o non permessa per il ruolo: prima l'URL veniva
+    // riscritto in silenzio e la pagina sembrava non rispondere. Diamo un
+    // feedback esplicito (solo per un tentativo reale: non hash vuoto, non
+    // la ricerca globale gestita sopra, non la vista già attiva).
+    if (attempted && attempted !== "global-search" && attempted !== state.currentView) {
+      showToast(state.lang === "it" ? "Sezione non disponibile" : "Section not available", "warning");
+    }
     return;
   }
   if (view === state.currentView) return;
