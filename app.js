@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260920-prod-routing-labels-kpi";
+} from "./lib/order-money.js?v=20260921-tariffe-bancali-tdn";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260920-prod-routing-labels-kpi";
+import { regionForCity } from "./lib/geo.js?v=20260921-tariffe-bancali-tdn";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260920-prod-routing-labels-kpi";
+} from "./lib/shipping-eligibility.js?v=20260921-tariffe-bancali-tdn";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260920-prod-routing-labels-kpi";
+} from "./lib/profit-split.js?v=20260921-tariffe-bancali-tdn";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260920-prod-routing-labels-kpi";
+} from "./lib/preventivo-pricing.js?v=20260921-tariffe-bancali-tdn";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,7 +66,7 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260920-prod-routing-labels-kpi";
+} from "./lib/sales-assignment.js?v=20260921-tariffe-bancali-tdn";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -80,7 +80,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260920-prod-routing-labels-kpi";
+const APP_SHELL_VERSION = "20260921-tariffe-bancali-tdn";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -6473,10 +6473,6 @@ function getShippingRateMode() {
   return getShippingPricing().shippingRateMode === "manual-weight" ? "manual-weight" : "oneexpress-auto";
 }
 
-function getShippingTariffProfile() {
-  return getShippingPricing().shippingTariffProfile === "gold" ? "gold" : "silver";
-}
-
 function getAccountingFilterLabel(filter = state.filters.accounting) {
   if (filter === "open") return t("accountingOpen");
   if (filter === "invoice") return state.lang === "it" ? "Da fatturare" : "To invoice";
@@ -9439,7 +9435,6 @@ function getDefaultShippingPricing() {
   return {
     carrierName: "",
     shippingRateMode: "oneexpress-auto",
-    shippingTariffProfile: "silver",
     volumetricDivisor: 5000,
     rate80: 0,
     rate150: 0,
@@ -9456,7 +9451,6 @@ function getShippingPricing() {
   return {
     carrierName: String(source.carrierName || defaults.carrierName),
     shippingRateMode: source.shippingRateMode || defaults.shippingRateMode,
-    shippingTariffProfile: source.shippingTariffProfile || defaults.shippingTariffProfile,
     volumetricDivisor: toNumber(source.volumetricDivisor || defaults.volumetricDivisor) || defaults.volumetricDivisor,
     rate80: toNumber(source.rate80 || defaults.rate80),
     rate150: toNumber(source.rate150 || defaults.rate150),
@@ -9644,8 +9638,7 @@ function calculateOneExpressEstimate(order, ddt = {}) {
   const pricing = getShippingPricing();
   const destination = getShippingDestination(order);
   const pallet = classifyPallet(ddt);
-  const profile = getShippingTariffProfile();
-  const rateLine = destination.tariffRecord?.[profile] || null;
+  const rateLine = destination.tariffRecord || null;
   const baseRate = rateLine && pallet.baseClass ? Number(rateLine[pallet.baseClass] || 0) : 0;
   const appliedMultiplier = Math.max(1, pallet.dimensionMultiplier, pallet.weightMultiplier);
   const estimatedCost = baseRate > 0 ? Number((baseRate * appliedMultiplier).toFixed(2)) : 0;
@@ -9670,12 +9663,10 @@ function calculateOneExpressEstimate(order, ddt = {}) {
     realWeight: pallet.realWeight,
     volumetricWeight: 0,
     billableWeight: pallet.realWeight,
-    profile,
     provinceCode: destination.provinceCode,
     province: destination.province || destination.tariffRecord?.province || "",
     region: destination.region,
     postalCode: destination.postalCode,
-    resa: rateLine?.resa || "",
     palletClass: pallet.baseClass,
     baseRate,
     dimensionMultiplier: pallet.dimensionMultiplier,
@@ -10612,7 +10603,6 @@ function applyStaticTranslations() {
   setFieldLabel(ui.settingsForm, "locationName", state.lang === "it" ? "Deposito / location" : "Warehouse / location");
   setFieldLabel(ui.settingsForm, "carrierName", state.lang === "it" ? "Vettore di riferimento" : "Reference carrier");
   setFieldLabel(ui.settingsForm, "shippingRateMode", state.lang === "it" ? "Modalità tariffa spedizione" : "Shipping pricing mode");
-  setFieldLabel(ui.settingsForm, "shippingTariffProfile", state.lang === "it" ? "Profilo tariffario" : "Tariff profile");
   setFieldLabel(ui.settingsForm, "volumetricDivisor", state.lang === "it" ? "Divisore peso volumetrico" : "Volumetric divisor");
   setFieldLabel(ui.settingsForm, "rate80", state.lang === "it" ? "Nolo fino a 80 kg" : "Rate up to 80 kg");
   setFieldLabel(ui.settingsForm, "rate150", state.lang === "it" ? "Nolo fino a 150 kg" : "Rate up to 150 kg");
@@ -23991,13 +23981,12 @@ function buildShippingEstimate(order) {
     const destinationLabel = estimate.provinceCode
       ? `${estimate.provinceCode} · ${estimate.region || estimate.province || "Italia"}`
       : (state.lang === "it" ? "Provincia destinazione mancante" : "Missing destination province");
-    const profileLabel = estimate.profile === "silver" ? "Silver" : "Gold";
     const note = estimate.unsupported
       ? estimate.missingReason === "missing_destination"
         ? (state.lang === "it" ? "Inserisci o sincronizza la provincia di destinazione per attivare il listino automatico." : "Add or sync the destination province to enable the automatic tariff table.")
         : estimate.missingReason === "unsupported_pallet"
           ? (state.lang === "it" ? "Misure o peso fuori dai limiti automatici One Express (max 240x160x240 cm e 1800 kg)." : "Dimensions or weight exceed automatic One Express limits.")
-          : (state.lang === "it" ? "Tariffa non trovata per destinazione o profilo selezionato." : "No tariff found for the selected destination or profile.")
+          : (state.lang === "it" ? "Tariffa non trovata per la destinazione selezionata." : "No tariff found for the selected destination.")
       : estimate.finalMultiplier > 1
         ? `${state.lang === "it" ? "Riprezzamento applicato" : "Repricing applied"} · x${estimate.finalMultiplier.toFixed(2)}`
         : (state.lang === "it" ? "Tariffa standard senza maggiorazioni." : "Standard tariff without repricing.");
@@ -24013,10 +24002,6 @@ function buildShippingEstimate(order) {
             <span>${state.lang === "it" ? "Classe pallet" : "Pallet class"}</span>
             <strong>${estimate.palletClass || "—"}</strong>
           </div>
-          <div class="ship-calc-item">
-            <span>${state.lang === "it" ? "Profilo" : "Profile"}</span>
-            <strong>${profileLabel}</strong>
-          </div>
         </div>
         <div class="ship-calc-grid ship-calc-grid-secondary">
           <div class="ship-calc-item">
@@ -24027,15 +24012,11 @@ function buildShippingEstimate(order) {
             <span>${state.lang === "it" ? "Tariffa base" : "Base tariff"}</span>
             <strong>${estimate.baseRate ? formatCurrency(estimate.baseRate) : "—"}</strong>
           </div>
-          <div class="ship-calc-item">
-            <span>${state.lang === "it" ? "Tempi resa" : "Transit time"}</span>
-            <strong>${estimate.resa || "—"}</strong>
-          </div>
         </div>
         <div class="ship-calc-result">
           <div>
             <span class="label">${state.lang === "it" ? "Vettore" : "Carrier"}</span>
-            <strong>${carrier} · ${profileLabel}</strong>
+            <strong>${carrier}</strong>
             <small>${dimensions} · ${note}</small>
           </div>
           <div class="price">${estimate.configured ? formatCurrency(estimate.estimatedCost) : "—"}</div>
@@ -25482,7 +25463,6 @@ function renderSettings() {
   ui.settingsForm.locationName.value = state.settings.locationName || "";
   ui.settingsForm.carrierName.value = state.settings.carrierName || "";
   ui.settingsForm.shippingRateMode.value = state.settings.shippingRateMode || "oneexpress-auto";
-  ui.settingsForm.shippingTariffProfile.value = state.settings.shippingTariffProfile || "silver";
   ui.settingsForm.volumetricDivisor.value = state.settings.volumetricDivisor || "5000";
   ui.settingsForm.rate80.value = state.settings.rate80 || "";
   ui.settingsForm.rate150.value = state.settings.rate150 || "";
@@ -31553,7 +31533,6 @@ async function persistSettingsForm() {
       locationName: form.get("locationName"),
       carrierName: form.get("carrierName"),
       shippingRateMode: form.get("shippingRateMode") === "manual-weight" ? "manual-weight" : "oneexpress-auto",
-      shippingTariffProfile: form.get("shippingTariffProfile") === "gold" ? "gold" : "silver",
       volumetricDivisor: form.get("volumetricDivisor"),
       rate80: form.get("rate80"),
       rate150: form.get("rate150"),
