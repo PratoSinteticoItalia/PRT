@@ -38,21 +38,51 @@
       .layer.active { opacity: 1; z-index: 2; }
       .slide-inner { position: absolute; inset: 0; }
 
+      /* ---------- sfondo animato condiviso dalle slide "di passaggio" ---------- */
+      .mesh-bg {
+        position: absolute; inset: 0; background: var(--brand-dark); overflow: hidden;
+      }
+      .mesh-bg::before, .mesh-bg::after {
+        content: ""; position: absolute; border-radius: 50%; filter: blur(80px); opacity: .55;
+        animation: meshDrift 24s ease-in-out infinite;
+      }
+      .mesh-bg::before { width: 52vw; height: 52vw; background: var(--brand); top: -18%; left: -12%; }
+      .mesh-bg::after { width: 42vw; height: 42vw; background: #40916c; bottom: -20%; right: -10%; animation-duration: 19s; animation-delay: -8s; }
+      @keyframes meshDrift { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(5%, -4%) scale(1.1); } }
+      .ghost-icon {
+        position: absolute; right: -4%; bottom: -10%; width: 46vh; height: 46vh; opacity: .1;
+        color: #fff; pointer-events: none;
+      }
+      .ghost-icon svg { width: 100%; height: 100%; }
+      .particles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+      .particle {
+        position: absolute; bottom: -8%; width: 7px; height: 7px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(255,255,255,.9), rgba(255,255,255,0) 70%);
+        animation: floatUp linear infinite;
+      }
+      @keyframes floatUp {
+        0% { transform: translateY(0) scale(.7); opacity: 0; }
+        12% { opacity: .65; }
+        85% { opacity: .5; }
+        100% { transform: translateY(-108vh) scale(1.3); opacity: 0; }
+      }
+
       /* ---------- template: divisore categoria ---------- */
       .tpl-divider {
         position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        background: var(--brand); color: #fff; text-align: center; gap: .6rem;
+        color: #fff; text-align: center; gap: .6rem;
       }
-      .tpl-divider .eyebrow { font: 700 .85rem "DM Sans"; letter-spacing: .18em; text-transform: uppercase; opacity: .75; }
-      .tpl-divider .cat-name { font: 800 clamp(2.2rem, 5vw, 4rem)/1.05 "DM Sans"; letter-spacing: -.01em; }
+      .tpl-divider .content { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: .6rem; }
+      .tpl-divider .eyebrow { font: 700 .85rem "DM Sans"; letter-spacing: .18em; text-transform: uppercase; opacity: .8; }
+      .tpl-divider .cat-name { font: 600 clamp(2.4rem, 5.4vw, 4.4rem)/1.05 "Fraunces", serif; letter-spacing: -.01em; }
       .tpl-divider .cat-count { font: 500 1.1rem "DM Sans"; opacity: .85; }
 
       /* ---------- template: prodotto ---------- */
       .tpl-product { position: absolute; inset: 0; display: flex; background: var(--paper); }
       .product-immersive { position: relative; flex: 1 1 60%; overflow: hidden; background: #0c130f; }
       .product-immersive img {
-        position: absolute; top: 50%; left: 50%; width: 118%; height: 118%; object-fit: cover;
-        object-position: center; animation: kenBurnsSlow 9.5s ease-out both;
+        position: absolute; inset: -9%; width: 118%; height: 118%; object-fit: cover;
+        object-position: center; animation: kenBurnsSlow 9.5s ease-out both; transform-origin: center;
       }
       .product-immersive .fade-edge {
         position: absolute; inset: 0;
@@ -90,7 +120,7 @@
       @keyframes slideOutLeft { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-6%); } }
       @keyframes fadeUp { from { opacity: 0; transform: translateY(2.5%); } to { opacity: 1; transform: translateY(0); } }
       @keyframes zoomSoft { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: scale(1); } }
-      @keyframes kenBurnsSlow { from { transform: translate(-50%, -50%) scale(1); } to { transform: translate(-50%, -50%) scale(1.14); } }
+      @keyframes kenBurnsSlow { from { transform: scale(1); } to { transform: scale(1.12); } }
 
       /* ---------- template: realizzazione (sobria) ---------- */
       .tpl-realizzazione { position: absolute; inset: 0; overflow: hidden; background: #0c130f; }
@@ -107,27 +137,44 @@
       }
       .real-title { font: 600 1.4rem "DM Sans"; margin: 0; }
 
-      /* ---------- template: stat / quote (chiaro, coerente) ---------- */
+      /* ---------- template: stat ---------- */
       .tpl-stat {
         position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        background: var(--brand-xsoft); color: var(--brand-dark); text-align: center; gap: .3rem;
+        color: #fff; text-align: center; gap: .4rem;
       }
-      .tpl-stat .num { font: 800 clamp(4.5rem, 10vw, 8rem)/1 "DM Sans"; }
-      .tpl-stat .lbl { font: 600 clamp(1rem, 1.6vw, 1.4rem)/1.3 "DM Sans"; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+      .tpl-stat .content { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: .4rem; }
+      .stat-icon { width: 3.2rem; height: 3.2rem; margin-bottom: .6rem; opacity: .9; }
+      .tpl-stat .num { font: 700 clamp(5rem, 11vw, 9rem)/1 "DM Sans"; font-variant-numeric: tabular-nums; }
+      .tpl-stat .lbl { font: 600 clamp(1rem, 1.6vw, 1.4rem)/1.3 "DM Sans"; color: rgba(255,255,255,.78); text-transform: uppercase; letter-spacing: .05em; }
 
+      /* ---------- template: quote ---------- */
       .tpl-quote {
         position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-        background: var(--brand); color: #fff; padding: 0 10%; text-align: center;
+        color: #fff; padding: 0 10%; text-align: center;
       }
-      .tpl-quote blockquote { margin: 0; font: 600 clamp(1.6rem, 3.2vw, 2.6rem)/1.35 "DM Sans"; }
+      .tpl-quote .content { position: relative; z-index: 2; }
+      .quote-mark { font: 700 5rem/1 "Fraunces", serif; color: var(--brand-soft); opacity: .6; display: block; margin-bottom: -1rem; }
+      .tpl-quote blockquote { margin: 0; font: 500 clamp(1.7rem, 3.2vw, 2.7rem)/1.4 "Fraunces", serif; }
+
+      /* ---------- template: tip ---------- */
+      .tpl-tip {
+        position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        color: #fff; text-align: center; gap: 1rem; padding: 0 12%;
+      }
+      .tpl-tip .content { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 1rem; max-width: 46ch; }
+      .tip-icon { width: 3.4rem; height: 3.4rem; opacity: .95; }
+      .tip-eyebrow { font: 700 .8rem "DM Sans"; letter-spacing: .18em; text-transform: uppercase; color: var(--brand-soft); }
+      .tip-text { font: 500 clamp(1.4rem, 2.4vw, 2rem)/1.45 "Fraunces", serif; }
 
       /* ---------- template: bumper (logo) ---------- */
       .tpl-bumper {
         position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        background: var(--paper); color: var(--brand-dark); text-align: center; gap: 1.2rem;
+        color: #fff; text-align: center; gap: 1.2rem;
       }
-      .tpl-bumper img { width: clamp(110px, 13vw, 180px); }
-      .tpl-bumper .tagline { font: 600 clamp(1.1rem, 2vw, 1.6rem)/1.3 "DM Sans"; color: var(--muted); max-width: 22ch; }
+      .tpl-bumper .content { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 1.2rem; }
+      .tpl-bumper img { width: clamp(110px, 13vw, 180px); animation: logoPulse 3.2s ease-in-out infinite; filter: drop-shadow(0 0 30px rgba(216,243,220,.35)); }
+      .tpl-bumper .tagline { font: 500 clamp(1.2rem, 2.2vw, 1.8rem)/1.3 "Fraunces", serif; color: rgba(255,255,255,.85); max-width: 24ch; }
+      @keyframes logoPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
 
       /* ---------- barra di progresso ---------- */
       #progress { position: fixed; top: 0; left: 0; height: 3px; width: 0; background: var(--brand); z-index: 40; }
@@ -222,7 +269,7 @@
         { id: "drone", name: "Drone Zone · ambient profondo", url: "https://ice1.somafm.com/dronezone-128-mp3" },
         { id: "deepspace", name: "Deep Space One · ambient spazio", url: "https://ice1.somafm.com/deepspaceone-128-mp3" },
       ];
-      const DURATIONS = { divider: 3200, product: 7500, realizzazione: 8500, stat: 6000, quote: 6500, bumper: 4500 };
+      const DURATIONS = { divider: 3200, product: 7500, realizzazione: 8500, stat: 6000, quote: 6500, tip: 6500, bumper: 4500 };
       const CATEGORY_ORDER = ["Residenziale", "Uso intensivo", "Animali domestici", "Terrazzi & Balconi"];
 
       const layerEls = [document.getElementById("layerA"), document.getElementById("layerB")];
@@ -268,7 +315,7 @@
             : [...byCategory.keys()];
           orderedCats.forEach((cat) => {
             const items = byCategory.get(cat);
-            seq.push({ kind: "divider", data: { collection: coll.name, name: cat, count: items.length } });
+            seq.push({ kind: "divider", data: { collection: coll.name, collectionId: coll.id, name: cat, count: items.length } });
             items.forEach((p) => seq.push({ kind: "product", data: p, collection: coll }));
           });
         });
@@ -283,8 +330,47 @@
         return seq;
       }
 
+      const ICONS = {
+        leaf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c8-1 14-7 15-15-8 1-14 7-15 15Z"/><path d="M5 19c3-4 6-7 10-11"/></svg>',
+        droplet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s7 7.5 7 12a7 7 0 0 1-14 0c0-4.5 7-12 7-12Z"/></svg>',
+        sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="4.3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
+        shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z"/></svg>',
+        truck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2 7h11v9H2z"/><path d="M13 10h4l4 3v3h-8z"/><circle cx="6.2" cy="18" r="1.6" fill="currentColor" stroke="none"/><circle cx="17.2" cy="18" r="1.6" fill="currentColor" stroke="none"/></svg>',
+        star: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2.5l2.9 6.1 6.6.7-5 4.6 1.4 6.6-5.9-3.4-5.9 3.4 1.4-6.6-5-4.6 6.6-.7 2.9-6.1Z"/></svg>',
+        spark: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2c.6 4 3 6.4 7 7-4 .6-6.4 3-7 7-.6-4-3-6.4-7-7 4-.6 6.4-3 7-7Z"/></svg>',
+        wrench: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.8 2.8-2-2 2.8-2.8Z"/></svg>',
+        tree: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3 7 10h3l-4 6h4v5h4v-5h4l-4-6h3L12 3Z"/></svg>',
+        vase: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M9 3h6l1 4-2 2v9a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-9L8 7l1-4Z"/></svg>',
+      };
+      const COLLECTION_ICONS = { "prato-sintetico": "leaf", "accessori": "wrench", "verde-artificiale": "tree", "vasi-arredo": "vase" };
+      function icon(name) { return ICONS[name] || ICONS.spark; }
+
+      // Piccole particelle che salgono lentamente sullo sfondo delle slide di
+      // passaggio — posizioni/tempi randomizzati ad ogni render per varietà.
+      function particles(n) {
+        let html = '<div class="particles">';
+        for (let i = 0; i < n; i++) {
+          const left = Math.round(Math.random() * 94 + 2);
+          const delay = (Math.random() * -20).toFixed(1);
+          const dur = (14 + Math.random() * 10).toFixed(1);
+          html += `<span class="particle" style="left:${left}%; animation-delay:${delay}s; animation-duration:${dur}s;"></span>`;
+        }
+        return html + "</div>";
+      }
+
       function renderDivider(d) {
-        return `<div class="tpl-divider"><div class="eyebrow">${d.collection}</div><div class="cat-name">${d.name}</div><div class="cat-count">${d.count} modell${d.count === 1 ? "o" : "i"}</div></div>`;
+        const iconName = COLLECTION_ICONS[d.collectionId] || "leaf";
+        return `
+          <div class="tpl-divider">
+            <div class="mesh-bg"></div>
+            ${particles(10)}
+            <div class="ghost-icon">${icon(iconName)}</div>
+            <div class="content">
+              <div class="eyebrow">${d.collection}</div>
+              <div class="cat-name">${d.name}</div>
+              <div class="cat-count">${d.count} modell${d.count === 1 ? "o" : "i"}</div>
+            </div>
+          </div>`;
       }
 
       // Foto "reale" a destra: se l'item ha una lifestyle assegnata la usa,
@@ -335,13 +421,69 @@
       }
 
       function renderStat(d) {
-        return `<div class="tpl-stat"><div class="num">${d.value}</div><div class="lbl">${d.label}</div></div>`;
+        const m = String(d.value).match(/^(\d+)/);
+        const target = m ? m[1] : "0";
+        const suffix = m ? String(d.value).slice(m[1].length) : String(d.value);
+        return `
+          <div class="tpl-stat">
+            <div class="mesh-bg"></div>
+            ${particles(8)}
+            <div class="content">
+              <div class="stat-icon">${icon(d.icon)}</div>
+              <div class="num" data-target="${target}" data-suffix="${suffix}">0</div>
+              <div class="lbl">${d.label}</div>
+            </div>
+          </div>`;
       }
       function renderQuote(d) {
-        return `<div class="tpl-quote"><blockquote>${d.text}</blockquote></div>`;
+        return `
+          <div class="tpl-quote">
+            <div class="mesh-bg"></div>
+            ${particles(8)}
+            <div class="content">
+              <span class="quote-mark">"</span>
+              <blockquote>${d.text}</blockquote>
+            </div>
+          </div>`;
+      }
+      function renderTip(d) {
+        return `
+          <div class="tpl-tip">
+            <div class="mesh-bg"></div>
+            ${particles(10)}
+            <div class="content">
+              <div class="tip-icon">${icon(d.icon)}</div>
+              <div class="tip-eyebrow">Lo sapevi?</div>
+              <div class="tip-text">${d.text}</div>
+            </div>
+          </div>`;
       }
       function renderBumper(brand) {
-        return `<div class="tpl-bumper"><img src="${brand.logo}" alt="${brand.name || ""}" /><div class="tagline">${brand.tagline || ""}</div></div>`;
+        return `
+          <div class="tpl-bumper">
+            <div class="mesh-bg"></div>
+            ${particles(10)}
+            <div class="content">
+              <img src="${brand.logoWhite || brand.logo}" alt="${brand.name || ""}" />
+              <div class="tagline">${brand.tagline || ""}</div>
+            </div>
+          </div>`;
+      }
+
+      function animateStatCountUp(root) {
+        const el = root.querySelector(".num[data-target]");
+        if (!el) return;
+        const target = Number(el.dataset.target) || 0;
+        const suffix = el.dataset.suffix || "";
+        const duration = 1400;
+        const start = performance.now();
+        function tick(now) {
+          const p = Math.min(1, (now - start) / duration);
+          const eased = 1 - Math.pow(1 - p, 3);
+          el.textContent = Math.round(target * eased).toLocaleString("it-IT") + suffix;
+          if (p < 1) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
       }
 
       function renderSlide(item) {
@@ -351,14 +493,15 @@
           return { kind: "product", html: renderProduct(item.data, productItems.indexOf(item)), dark: false };
         }
         if (item.kind === "realizzazione") return { kind: "realizzazione", html: renderRealizzazione(item.data), dark: true };
-        if (item.kind === "stat") return { kind: "stat", html: renderStat(item.data), dark: false };
+        if (item.kind === "stat") return { kind: "stat", html: renderStat(item.data), dark: true };
         if (item.kind === "quote") return { kind: "quote", html: renderQuote(item.data), dark: true };
-        return { kind: "bumper", html: renderBumper(item.data), dark: false };
+        if (item.kind === "tip") return { kind: "tip", html: renderTip(item.data), dark: true };
+        return { kind: "bumper", html: renderBumper(item.data), dark: true };
       }
 
       const ENTER_BY_KIND = {
         product: "slideInRight", divider: "fadeUp", realizzazione: "zoomSoft",
-        stat: "fadeUp", quote: "fadeUp", bumper: "fadeUp",
+        stat: "fadeUp", quote: "fadeUp", tip: "fadeUp", bumper: "fadeUp",
       };
 
       function showSlide(item) {
@@ -367,6 +510,7 @@
         const nextEl = layerEls[nextIdx];
         const inner = nextEl.querySelector(".slide-inner");
         inner.innerHTML = rendered.html;
+        if (rendered.kind === "stat") animateStatCountUp(inner);
 
         const img = inner.querySelector("img");
         if (img) img.addEventListener("error", () => { if (playing) advance(); }, { once: true });
