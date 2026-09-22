@@ -15,6 +15,7 @@ const APP_SHELL = [
   "/lib/geo.js?v=20260921-tariffe-bancali-tdn",
   "/lib/comuni-regioni.js?v=20260921-tariffe-bancali-tdn",
   "/lib/sales-assignment.js?v=20260921-tariffe-bancali-tdn",
+  "/lib/surveys.js?v=20260921-tariffe-bancali-tdn",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",

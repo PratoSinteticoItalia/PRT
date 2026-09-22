@@ -18161,6 +18161,20 @@ body.mobile-safe-mode a.topbar-search:focus-visible {
 .communications-att-img { display: block; position: relative; }
 .communications-att-grid[data-count="1"] .communications-att-img img { max-height: 360px; width: 100%; object-fit: cover; }
 .communications-att-img img { display: block; width: 100%; height: 150px; object-fit: cover; }
+
+.survey-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+.survey-photo-thumb {
+  display: block;
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+}
+.survey-photo-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .communications-att-download {
   position: absolute;
   top: 6px;

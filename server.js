@@ -49,6 +49,12 @@ import {
   resolveChannels,
   upsertNotification,
 } from "./lib/notifications.js";
+import {
+  canAdvanceSurveyStatus,
+  describeSurveyForNotification,
+  initialSurveyStatus,
+  normalizeSurveyRecord,
+} from "./lib/surveys.js";
 import webPush from "web-push";
 
 const PORT = Number(process.env.PORT || 4178);
@@ -1307,6 +1313,39 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS work_completion_reports_crew_idx   ON work_completion_reports (crew_user_id);
       CREATE INDEX IF NOT EXISTS work_completion_reports_status_idx ON work_completion_reports (status);
       CREATE INDEX IF NOT EXISTS work_completion_reports_created_idx ON work_completion_reports (created_at DESC);
+
+      -- ─────────────────────────────────────────────────────────────────────
+      -- Sopralluoghi (site_surveys) — visita pre-vendita che l'ufficio delega
+      -- a una squadra interna (misure reali, stato terreno, fattibilità),
+      -- prima che esista un ordine. Volutamente NON legata a orders/jobs via
+      -- FK: sales_request_id è un riferimento libero, informativo (un
+      -- sopralluogo può nascere anche senza una richiesta CRM).
+      -- Status flow: da-assegnare → assegnato → in-corso (opzionale) →
+      -- completato. "annullato" è uno stato manuale riservato all'ufficio,
+      -- mai raggiunto per avanzamento automatico (vedi lib/surveys.js).
+      -- ─────────────────────────────────────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS site_surveys (
+        id TEXT PRIMARY KEY,                         -- es. "SL-2026-0001"
+        status TEXT NOT NULL DEFAULT 'da-assegnare',
+        customer_name TEXT NOT NULL,
+        phone TEXT, email TEXT,
+        address TEXT, city TEXT, province TEXT,
+        sales_request_id TEXT,                       -- riferimento libero, no FK
+        crew_name TEXT,
+        scheduled_date DATE, scheduled_time TEXT,
+        office_notes TEXT,
+        crew_notes TEXT, measured_sqm NUMERIC, ground_condition TEXT, feasible BOOLEAN,
+        photos JSONB NOT NULL DEFAULT '[]',          -- [{id,name,type,size,storage,objectKey,takenAt}, ...]
+        created_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        assigned_at TIMESTAMPTZ, started_at TIMESTAMPTZ, completed_at TIMESTAMPTZ,
+        cancelled_at TIMESTAMPTZ, cancel_reason TEXT
+      );
+      CREATE INDEX IF NOT EXISTS site_surveys_crew_idx      ON site_surveys (crew_name);
+      CREATE INDEX IF NOT EXISTS site_surveys_status_idx    ON site_surveys (status);
+      CREATE INDEX IF NOT EXISTS site_surveys_scheduled_idx ON site_surveys (scheduled_date);
+      CREATE INDEX IF NOT EXISTS site_surveys_created_idx   ON site_surveys (created_at DESC);
 
       -- ─────────────────────────────────────────────────────────────────────
       -- Sistema Presenze (timesheet) — dipendenti aziendali (warehouse,
@@ -3242,6 +3281,201 @@ async function archiveWorkReportInDb(id, { documentPdfR2Key, documentPdfSha256 }
     return await getWorkReportFromDb(id);
   } catch (err) {
     console.warn("[db] archiveWorkReportInDb:", err?.message);
+    if (opts && opts.rethrow) throw err;
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sopralluoghi (site_surveys)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function dbRowToSiteSurvey(row) {
+  if (!row) return null;
+  return normalizeSurveyRecord({
+    id: row.id,
+    status: row.status,
+    customerName: row.customer_name,
+    phone: row.phone,
+    email: row.email,
+    address: row.address,
+    city: row.city,
+    province: row.province,
+    salesRequestId: row.sales_request_id,
+    crewName: row.crew_name,
+    scheduledDate: row.scheduled_date ? new Date(row.scheduled_date).toISOString().slice(0, 10) : "",
+    scheduledTime: row.scheduled_time,
+    officeNotes: row.office_notes,
+    crewNotes: row.crew_notes,
+    measuredSqm: row.measured_sqm != null ? Number(row.measured_sqm) : null,
+    groundCondition: row.ground_condition,
+    feasible: row.feasible,
+    photos: Array.isArray(row.photos) ? row.photos : [],
+    createdBy: row.created_by,
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+    assignedAt: row.assigned_at ? new Date(row.assigned_at).toISOString() : null,
+    startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
+    completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null,
+    cancelledAt: row.cancelled_at ? new Date(row.cancelled_at).toISOString() : null,
+    cancelReason: row.cancel_reason,
+  });
+}
+
+/**
+ * Genera un ID progressivo per anno nel formato "SL-YYYY-NNNN", stesso stile
+ * non-transazionale di generateWorkReportId(): MVP, volume basso, eventuale
+ * conflitto respinto dal PRIMARY KEY.
+ */
+async function generateSurveyId() {
+  const year = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric" }).format(new Date());
+  if (!USE_POSTGRES) return `SL-${year}-0001`;
+  const pool = await getPgPool();
+  const prefix = `SL-${year}-`;
+  const { rows } = await pool.query(
+    `SELECT id FROM site_surveys WHERE id LIKE $1 ORDER BY id DESC LIMIT 1`,
+    [`${prefix}%`],
+  );
+  let next = 1;
+  if (rows[0]?.id) {
+    const tail = String(rows[0].id).slice(prefix.length);
+    const parsed = parseInt(tail, 10);
+    if (Number.isFinite(parsed)) next = parsed + 1;
+  }
+  return `${prefix}${String(next).padStart(4, "0")}`;
+}
+
+async function insertSiteSurvey(input = {}, opts = {}) {
+  if (!USE_POSTGRES) throw new Error("insertSiteSurvey: Postgres required");
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const id = input.id || await generateSurveyId();
+  const crewName = String(input.crewName || "").trim();
+  const status = initialSurveyStatus(crewName);
+  try {
+    await pool.query(
+      `INSERT INTO site_surveys (
+        id, status, customer_name, phone, email, address, city, province,
+        sales_request_id, crew_name, scheduled_date, scheduled_time,
+        office_notes, photos, created_by, assigned_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,NOW())`,
+      [
+        id,
+        status,
+        String(input.customerName || ""),
+        String(input.phone || "") || null,
+        String(input.email || "") || null,
+        String(input.address || "") || null,
+        String(input.city || "") || null,
+        String(input.province || "") || null,
+        String(input.salesRequestId || "") || null,
+        crewName || null,
+        String(input.scheduledDate || "") || null,
+        String(input.scheduledTime || "") || null,
+        String(input.officeNotes || ""),
+        JSON.stringify([]),
+        String(input.createdBy || "") || null,
+        status === "assegnato" ? new Date().toISOString() : null,
+      ],
+    );
+    return await getSiteSurveyFromDb(id);
+  } catch (err) {
+    console.warn("[db] insertSiteSurvey:", err?.message);
+    if (opts && opts.rethrow) throw err;
+    return null;
+  }
+}
+
+async function getSiteSurveyFromDb(id) {
+  if (!USE_POSTGRES || !id) return null;
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query(`SELECT * FROM site_surveys WHERE id = $1 LIMIT 1`, [String(id)]);
+    return dbRowToSiteSurvey(rows[0] || null);
+  } catch (err) {
+    console.warn("[db] getSiteSurveyFromDb:", err?.message);
+    return null;
+  }
+}
+
+/**
+ * Lista filtrata a livello SQL (indice su crew_name/status/scheduled_date):
+ * a differenza di un blob JSON riletto per intero, qui il filtro per squadra
+ * lato crew è un WHERE, non un .filter() in memoria su tutto lo store.
+ */
+async function listSiteSurveysFromDb({ crewName = null, status = null, q = null, limit = 500 } = {}) {
+  if (!USE_POSTGRES) return [];
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const where = [];
+    const params = [];
+    if (crewName) { params.push(String(crewName)); where.push(`crew_name = $${params.length}`); }
+    if (status) { params.push(String(status)); where.push(`status = $${params.length}`); }
+    if (q) { params.push(`%${String(q)}%`); where.push(`customer_name ILIKE $${params.length}`); }
+    params.push(Number(limit) || 500);
+    const sql = `SELECT * FROM site_surveys${where.length ? " WHERE " + where.join(" AND ") : ""}
+                 ORDER BY created_at DESC LIMIT $${params.length}`;
+    const { rows } = await pool.query(sql, params);
+    return rows.map(dbRowToSiteSurvey);
+  } catch (err) {
+    console.warn("[db] listSiteSurveysFromDb:", err?.message);
+    return [];
+  }
+}
+
+/**
+ * Aggiorna campi modificabili con whitelist esplicita. Nessun vincolo di
+ * rank qui: questa funzione è usata dal PATCH ufficio, che deve poter
+ * correggere/riassegnare liberamente anche a ritroso. Il vincolo avanza-solo
+ * per la squadra (canAdvanceSurveyStatus) è applicato PRIMA di chiamare
+ * questa funzione, nell'endpoint, non qui dentro.
+ */
+async function updateSiteSurveyInDb(id, patch = {}, opts = {}) {
+  if (!USE_POSTGRES || !id) return null;
+  const allowedFields = {
+    status:           { column: "status" },
+    customerName:     { column: "customer_name" },
+    phone:            { column: "phone" },
+    email:            { column: "email" },
+    address:          { column: "address" },
+    city:             { column: "city" },
+    province:         { column: "province" },
+    salesRequestId:   { column: "sales_request_id" },
+    crewName:         { column: "crew_name" },
+    scheduledDate:    { column: "scheduled_date" },
+    scheduledTime:    { column: "scheduled_time" },
+    officeNotes:      { column: "office_notes" },
+    crewNotes:        { column: "crew_notes" },
+    measuredSqm:      { column: "measured_sqm" },
+    groundCondition:  { column: "ground_condition" },
+    feasible:         { column: "feasible" },
+    photos:           { column: "photos", json: true },
+    cancelReason:     { column: "cancel_reason" },
+    assignedAt:       { column: "assigned_at", date: true },
+    startedAt:        { column: "started_at", date: true },
+    completedAt:      { column: "completed_at", date: true },
+    cancelledAt:      { column: "cancelled_at", date: true },
+  };
+  const sets = [];
+  const params = [];
+  for (const [key, def] of Object.entries(allowedFields)) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+    const value = patch[key];
+    params.push(def.json ? JSON.stringify(value || []) : def.date && value ? new Date(value).toISOString() : value);
+    sets.push(`${def.column} = $${params.length}${def.json ? "::jsonb" : ""}`);
+  }
+  if (!sets.length) return await getSiteSurveyFromDb(id);
+  sets.push("updated_at = NOW()");
+  params.push(String(id));
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    await pool.query(`UPDATE site_surveys SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
+    return await getSiteSurveyFromDb(id);
+  } catch (err) {
+    console.warn("[db] updateSiteSurveyInDb:", err?.message);
     if (opts && opts.rethrow) throw err;
     return null;
   }
@@ -10486,6 +10720,9 @@ function buildAttachmentProxyPath(ownerId, attachmentId, resource = "orders") {
   if (resource === "supplier-prices") {
     return `/api/supplier-prices/${encodeURIComponent(ownerId)}/attachment/file`;
   }
+  if (resource === "showroom") {
+    return `/api/showroom/photos/${encodeURIComponent(ownerId)}/file`;
+  }
   return `/api/orders/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
 }
 
@@ -10547,6 +10784,7 @@ function buildLocalAttachmentRecord(ownerId = "", attachment = {}, parsed = null
     : resource === "marketing-public" ? "marketing-public"
     : resource === "work-reports" ? "work-reports"
     : resource === "communications" ? "communications"
+    : resource === "showroom" ? "showroom"
     : "orders";
   const ownerSegment = String(ownerId || resource).replace(/[^\w.-]+/g, "_");
   const relativePath = normalizeAttachmentLocalPath(`${bucketPrefix}/${ownerSegment}/${attachmentId}-${safeName}`);
@@ -10634,6 +10872,29 @@ function normalizeSalesContentRecord(item = {}) {
 // Voce prezzo fornitore da fattura: inserimento MANUALE (nessun parsing AI),
 // un solo allegato per voce. Storage: array piatto nello store, stesso
 // pattern di salesRequests/salesContents — niente tabella SQL dedicata.
+function normalizeShowroomPhoto(item = {}) {
+  const now = new Date().toISOString();
+  const id = String(item.id || randomUUID());
+  return {
+    id,
+    category: item.category === "realizzazioni" ? "realizzazioni" : "catalogo",
+    title: String(item.title || "").trim(),
+    subtitle: String(item.subtitle || "").trim(),
+    attachment: item.attachment ? normalizeAttachmentRecord(item.attachment, id, "showroom") : null,
+    createdAt: String(item.createdAt || now),
+    updatedAt: String(item.updatedAt || now),
+    createdBy: String(item.createdBy || ""),
+  };
+}
+
+function serializeShowroomPhotoForClient(item = {}) {
+  const normalized = normalizeShowroomPhoto(item);
+  return {
+    ...normalized,
+    attachment: normalized.attachment ? serializeAttachmentForClient(normalized.attachment) : null,
+  };
+}
+
 function normalizeSupplierPriceEntry(item = {}) {
   const entryId = String(item.id || randomUUID());
   return {
@@ -11017,6 +11278,7 @@ async function storeAttachmentBuffer(ownerId, attachment = {}, buffer = Buffer.a
     : resource === "marketing-public" ? "marketing-public"
     : resource === "work-reports" ? "work-reports"
     : resource === "communications" ? "communications"
+    : resource === "showroom" ? "showroom"
     : "orders";
   const objectKey = `${bucketPrefix}/${String(ownerId || resource).replace(/[^\w.-]+/g, "_")}/${attachmentId}-${safeName}`;
 
@@ -13293,12 +13555,21 @@ async function handleApi(req, res, url) {
       return sessionJobs;
     })();
     const roleFilteredInventory = ["crew", "rivenditore"].includes(sessionRole) ? [] : (currentUser ? sessionInventory : []);
+    // Sopralluoghi: filtro già a livello SQL (site_surveys ha un indice su
+    // crew_name), non un .filter() in memoria come per orders/jobs — office
+    // vede tutto, crew solo la propria squadra, altri ruoli niente.
+    const sessionSurveys = currentUser && ["office", "crew"].includes(sessionRole)
+      ? await listSiteSurveysFromDb(
+          sessionRole === "crew" ? { crewName: sessionCrewNorm ? currentUser.crewName : "__none__" } : {},
+        )
+      : [];
     return sendJson(res, 200, {
       revision: getStoreRevision(store),
       user: sanitizeUser(currentUser),
       communicationsUnreadCount: sessionCommUnread,
       jobs: roleFilteredJobs,
       orders: roleFilteredOrders,
+      surveys: sessionSurveys,
       freeDdts: ["office", "warehouse"].includes(sessionRole) ? store.freeDdts : [],
       inventory: roleFilteredInventory,
       salesRequests: [], // deprecated: usa GET /api/sales/requests per dati CRM paginati
@@ -14966,6 +15237,220 @@ async function handleApi(req, res, url) {
       return streamAttachmentAsset(res, photo);
     } catch (err) {
       console.error("[work-reports] photo file failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "stream_failed") });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Sopralluoghi (site_surveys)
+  // office: crea/assegna/vede tutti, PATCH libero (deve poter correggere
+  //   anche a ritroso). crew: vede/aggiorna solo i propri, avanzamento di
+  //   stato solo in avanti via canAdvanceSurveyStatus.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // GET /api/surveys?status=&q= → lista (crew: forzata alla propria squadra)
+  if (url.pathname === "/api/surveys" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const status = url.searchParams.get("status") || null;
+      const q = url.searchParams.get("q") || null;
+      const crewName = currentUser.role === "crew"
+        ? (String(currentUser.crewName || "").trim() || "__none__")
+        : (url.searchParams.get("crewName") || null);
+      const surveys = await listSiteSurveysFromDb({ crewName, status, q });
+      return sendJson(res, 200, { surveys });
+    } catch (err) {
+      console.error("[surveys] list failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "list_failed") });
+    }
+  }
+
+  // POST /api/surveys → crea (solo office); se crewName è già indicata nasce assegnato
+  if (url.pathname === "/api/surveys" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    try {
+      const body = await readBody(req);
+      if (!String(body.customerName || "").trim()) return sendJson(res, 400, { error: "missing_customer_name" });
+      const created = await insertSiteSurvey({
+        customerName: body.customerName,
+        phone: body.phone,
+        email: body.email,
+        address: body.address,
+        city: body.city,
+        province: body.province,
+        salesRequestId: body.salesRequestId,
+        crewName: body.crewName,
+        scheduledDate: body.scheduledDate,
+        scheduledTime: body.scheduledTime,
+        officeNotes: body.officeNotes,
+        createdBy: currentUser.email || currentUser.id || "",
+      }, { rethrow: true });
+      if (!created) return sendJson(res, 500, { error: "create_failed" });
+      writeAuditLog("survey", created.id, "create", { crewName: created.crewName, customerName: created.customerName }, currentUser.email || null).catch(() => {});
+      if (created.crewName) {
+        notify(store, { crewName: created.crewName, exceptUserId: currentUser.id }, {
+          type: "survey_assigned",
+          title: "Nuovo sopralluogo assegnato",
+          body: `${describeSurveyForNotification(created)}${created.scheduledDate ? " — " + created.scheduledDate : ""}`,
+          data: { surveyId: created.id, view: "sopralluoghi" },
+        }).catch((err) => logError("notify:survey_assigned", err, { surveyId: created.id }));
+      }
+      return sendJson(res, 201, created);
+    } catch (err) {
+      console.error("[surveys] create failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "create_failed") });
+    }
+  }
+
+  // PATCH /api/surveys/:id → office: full edit; crew: whitelist + avanza-solo
+  if (url.pathname.startsWith("/api/surveys/") && req.method === "PATCH") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.slice("/api/surveys/".length));
+    if (!id) return sendJson(res, 400, { error: "missing_id" });
+    try {
+      const existing = await getSiteSurveyFromDb(id);
+      if (!existing) return sendJson(res, 404, { error: "not_found" });
+      const body = await readBody(req);
+      const patch = {};
+      let notifyOfficeCompleted = false;
+      if (currentUser.role === "office") {
+        const fields = ["status", "customerName", "phone", "email", "address", "city", "province",
+          "salesRequestId", "crewName", "scheduledDate", "scheduledTime", "officeNotes", "cancelReason"];
+        for (const key of fields) {
+          if (Object.prototype.hasOwnProperty.call(body, key)) patch[key] = body[key];
+        }
+        if (patch.status === "annullato" && existing.status !== "annullato") {
+          patch.cancelledAt = new Date().toISOString();
+        }
+        // Riassegnazione a una squadra nuova mentre era ancora "da-assegnare":
+        // promuovila come farebbe la creazione (stessa convenienza, niente
+        // secondo giro manuale per il caso comune).
+        if (patch.crewName !== undefined && String(patch.crewName || "").trim()
+            && normalizeCrewName(patch.crewName) !== normalizeCrewName(existing.crewName)
+            && existing.status === "da-assegnare" && patch.status === undefined) {
+          patch.status = "assegnato";
+          patch.assignedAt = new Date().toISOString();
+        }
+      } else {
+        if (!existing.crewName || !currentUser.crewName
+            || normalizeCrewName(existing.crewName) !== normalizeCrewName(currentUser.crewName)) {
+          return sendJson(res, 403, { error: "forbidden" });
+        }
+        const fields = ["crewNotes", "measuredSqm", "groundCondition", "feasible"];
+        for (const key of fields) {
+          if (Object.prototype.hasOwnProperty.call(body, key)) patch[key] = body[key];
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "status")) {
+          if (!canAdvanceSurveyStatus(existing.status, body.status)) {
+            return sendJson(res, 409, { error: "invalid_transition" });
+          }
+          patch.status = body.status;
+          if (body.status === "in-corso") patch.startedAt = new Date().toISOString();
+          if (body.status === "completato") {
+            patch.completedAt = new Date().toISOString();
+            notifyOfficeCompleted = true;
+          }
+        }
+      }
+      if (!Object.keys(patch).length) return sendJson(res, 400, { error: "no_fields" });
+      const updated = await updateSiteSurveyInDb(id, patch, { rethrow: true });
+      if (!updated) return sendJson(res, 500, { error: "update_failed" });
+      writeAuditLog("survey", id, "update", { fields: Object.keys(patch) }, currentUser.email || null).catch(() => {});
+      if (patch.crewName && normalizeCrewName(patch.crewName) !== normalizeCrewName(existing.crewName)) {
+        notify(store, { crewName: patch.crewName, exceptUserId: currentUser.id }, {
+          type: "survey_assigned",
+          title: "Nuovo sopralluogo assegnato",
+          body: `${describeSurveyForNotification(updated)}${updated.scheduledDate ? " — " + updated.scheduledDate : ""}`,
+          data: { surveyId: updated.id, view: "sopralluoghi" },
+        }).catch((err) => logError("notify:survey_assigned", err, { surveyId: updated.id }));
+      }
+      if (notifyOfficeCompleted) {
+        notify(store, { role: "office" }, {
+          type: "survey_completed",
+          title: "Sopralluogo completato",
+          body: describeSurveyForNotification(updated),
+          data: { surveyId: updated.id, view: "sopralluoghi" },
+        }).catch((err) => logError("notify:survey_completed", err, { surveyId: updated.id }));
+      }
+      return sendJson(res, 200, updated);
+    } catch (err) {
+      console.error("[surveys] patch failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "patch_failed") });
+    }
+  }
+
+  // POST /api/surveys/:id/photos → append foto (stesso storage dei verbali: R2 o fallback locale)
+  if (url.pathname.match(/^\/api\/surveys\/[^/]+\/photos$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.split("/")[3]);
+    try {
+      const existing = await getSiteSurveyFromDb(id);
+      if (!existing) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew" && (!existing.crewName || !currentUser.crewName
+          || normalizeCrewName(existing.crewName) !== normalizeCrewName(currentUser.crewName))) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+      const body = await readBody(req);
+      const incoming = Array.isArray(body.photos) ? body.photos : [];
+      if (!incoming.length) return sendJson(res, 400, { error: "no_photos" });
+      const MAX_PHOTOS = 10;
+      const currentCount = Array.isArray(existing.photos) ? existing.photos.length : 0;
+      if (currentCount + incoming.length > MAX_PHOTOS) {
+        return sendJson(res, 400, { error: "too_many_photos", limit: MAX_PHOTOS });
+      }
+      const saved = [];
+      for (const photo of incoming) {
+        if (!photo?.dataUrl) continue;
+        const attachment = await storeAttachmentAsset(id, {
+          id: photo.id || randomUUID(),
+          name: photo.name || `foto-${Date.now()}.jpg`,
+          type: photo.type || "image/jpeg",
+          dataUrl: photo.dataUrl,
+          size: photo.size,
+        }, "surveys");
+        saved.push({
+          id: attachment.id,
+          name: attachment.name,
+          type: attachment.type,
+          size: attachment.size,
+          storage: attachment.storage,
+          objectKey: attachment.objectKey || "",
+          takenAt: photo.takenAt || new Date().toISOString(),
+        });
+      }
+      const nextPhotos = [...(existing.photos || []), ...saved];
+      const updated = await updateSiteSurveyInDb(id, { photos: nextPhotos }, { rethrow: true });
+      writeAuditLog("survey", id, "photos_added", { count: saved.length }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, updated);
+    } catch (err) {
+      console.error("[surveys] photos upload failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "upload_failed") });
+    }
+  }
+
+  // GET /api/surveys/:id/photos/:photoId/file → stream foto
+  if (url.pathname.match(/^\/api\/surveys\/[^/]+\/photos\/[^/]+\/file$/) && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const parts = url.pathname.split("/");
+    const id = decodeURIComponent(parts[3]);
+    const photoId = decodeURIComponent(parts[5]);
+    try {
+      const survey = await getSiteSurveyFromDb(id);
+      if (!survey) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew" && (!survey.crewName || !currentUser.crewName
+          || normalizeCrewName(survey.crewName) !== normalizeCrewName(currentUser.crewName))) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+      const photo = (survey.photos || []).find((p) => String(p.id || "") === photoId);
+      if (!photo) return sendJson(res, 404, { error: "photo_not_found" });
+      return streamAttachmentAsset(res, photo);
+    } catch (err) {
+      console.error("[surveys] photo file failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "stream_failed") });
     }
   }
@@ -17170,6 +17655,64 @@ async function handleApi(req, res, url) {
     store.supplierPriceEntries = [entry, ...(store.supplierPriceEntries || [])];
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, serializeSupplierPriceEntryForClient(entry));
+  }
+
+  // Foto della vetrina TV showroom (catalogo/realizzazioni). GET è
+  // volutamente SENZA login: la pagina che gira sulla smart TV non ha modo
+  // di autenticarsi e mostra solo foto marketing, non dati sensibili.
+  // Caricamento/cancellazione restano office-only, sulla sessione già
+  // aperta del gestionale (nessun login separato sulla pagina di upload).
+  if (url.pathname === "/api/showroom/photos" && req.method === "GET") {
+    const items = (store.showroomPhotos || [])
+      .filter((item) => item?.attachment)
+      .map(serializeShowroomPhotoForClient)
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    return sendJson(res, 200, { items });
+  }
+
+  if (url.pathname === "/api/showroom/photos" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    if (!body.attachment?.dataUrl) return sendJson(res, 400, { error: "missing_photo" });
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    const attachment = await storeAttachmentAsset(id, body.attachment, "showroom");
+    const entry = normalizeShowroomPhoto({
+      id,
+      category: body.category,
+      title: body.title,
+      subtitle: body.subtitle,
+      attachment,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: currentUser.email || currentUser.id,
+    });
+    store.showroomPhotos = [...(store.showroomPhotos || []), entry];
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, serializeShowroomPhotoForClient(entry));
+  }
+
+  if (url.pathname.match(/^\/api\/showroom\/photos\/[^/]+$/) && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.split("/")[4]);
+    const index = (store.showroomPhotos || []).findIndex((item) => item.id === id);
+    if (index < 0) return sendJson(res, 404, { error: "not_found" });
+    const [removed] = store.showroomPhotos.splice(index, 1);
+    await writeJson(STORE_PATH, store);
+    if (removed?.attachment) scheduleAttachmentAssetRemoval([removed.attachment]);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  // Percorso file separato da .../photos/:id (stesso motivo dei verbali/
+  // allegati fornitori: un handler generico "GET .../:id" potrebbe
+  // intercettarlo). Nessun controllo currentUser: deve caricare senza login.
+  if (url.pathname.match(/^\/api\/showroom\/photos\/[^/]+\/file$/) && req.method === "GET") {
+    const id = decodeURIComponent(url.pathname.split("/")[4]);
+    const entry = (store.showroomPhotos || []).find((item) => item.id === id);
+    if (!entry || !entry.attachment) return sendJson(res, 404, { error: "attachment_not_found" });
+    return streamAttachmentAsset(res, entry.attachment, { cacheControl: "public, max-age=86400" });
   }
 
   // Ordini materiale rivenditore → ufficio (solo tracking interno, nessuna
