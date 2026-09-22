@@ -2,7 +2,7 @@
   "brand": {
     "name": "Prato Sintetico Italia",
     "tagline": "Il verde che non delude mai",
-    "logo": "/logo-prato.png"
+    "logo": "/showroom-content/logo.png"
   },
   "coolStuff": [
     { "type": "stat", "value": "15+", "label": "anni di esperienza nella posa" },

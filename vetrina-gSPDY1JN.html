@@ -224,7 +224,7 @@
     </div>
 
     <div id="start-overlay">
-      <img src="/logo-prato.png" alt="Prato Sintetico Italia" />
+      <img src="/showroom-content/logo.png" alt="Prato Sintetico Italia" />
       <h1>Vetrina Prato Sintetico Italia</h1>
       <p>Catalogo prodotti, realizzazioni e musica di sottofondo per lo showroom.</p>
       <button id="btn-start">Avvia la vetrina</button>
@@ -543,7 +543,7 @@
           const res = await fetch("/showroom-content/manifest.json", { cache: "no-store" });
           manifest = await res.json();
         } catch (_) {
-          manifest = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/logo-prato.png" }, coolStuff: [] };
+          manifest = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/showroom-content/logo.png" }, coolStuff: [] };
         }
         manifest.photos = await fetchPhotos();
         sequence = buildSequence(manifest);
