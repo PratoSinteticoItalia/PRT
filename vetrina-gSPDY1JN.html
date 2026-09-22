@@ -77,22 +77,24 @@
       .tpl-divider .cat-name { font: 600 clamp(2.4rem, 5.4vw, 4.4rem)/1.05 "Fraunces", serif; letter-spacing: -.01em; }
       .tpl-divider .cat-count { font: 500 1.1rem "DM Sans"; opacity: .85; }
 
-      /* ---------- template: prodotto (foto intera del prodotto, ben visibile) ---------- */
+      /* ---------- template: prodotto (foto ambientata a sinistra, campione grande a destra) ---------- */
       .tpl-product { position: absolute; inset: 0; display: flex; background: var(--paper); }
-      .product-photo-wrap {
-        flex: 1 1 58%; display: flex; align-items: center; justify-content: center;
-        padding: 4vh 3vw; background: var(--paper); overflow: hidden;
-      }
-      .product-photo-wrap img {
-        max-width: 92%; max-height: 82%; object-fit: contain;
-        filter: drop-shadow(0 26px 40px rgba(22,36,28,.16));
-        animation: kenBurnsSlow 9.5s ease-out both; transform-origin: center;
+      .product-immersive { position: relative; flex: 1 1 55%; overflow: hidden; background: #0c130f; }
+      .product-immersive img {
+        position: absolute; inset: -7%; width: 114%; height: 114%; object-fit: cover;
+        object-position: center; animation: kenBurnsSlow 9.5s ease-out both; transform-origin: center;
       }
       .product-panel {
-        position: relative; z-index: 2; flex: 0 0 42%; max-width: 42%;
-        display: flex; flex-direction: column; justify-content: center; gap: 1.1rem;
-        padding: 5vh 3.6vw 5vh 2vw; background: var(--paper); border-left: 1px solid var(--line);
+        position: relative; z-index: 2; flex: 0 0 45%; max-width: 45%;
+        display: flex; flex-direction: column; justify-content: center; gap: 1rem;
+        padding: 4vh 3.6vw 4vh 2.4vw; background: var(--paper); border-left: 1px solid var(--line);
       }
+      .swatch-frame {
+        width: 100%; aspect-ratio: 16 / 11; border-radius: 16px; overflow: hidden;
+        border: 1px solid var(--line); box-shadow: 0 20px 34px rgba(22,36,28,.16); background: #fff;
+        margin-bottom: .3rem;
+      }
+      .swatch-frame img { width: 100%; height: 100%; object-fit: cover; }
       .index-label { font: 600 .78rem "DM Sans"; letter-spacing: .1em; color: var(--muted); }
       .cat-pill {
         display: inline-flex; align-self: flex-start; align-items: center; gap: .5em;
@@ -221,9 +223,8 @@
 
       @media (max-width: 900px) {
         .tpl-product { flex-direction: column; }
-        .product-photo-wrap { flex: 1 1 40%; padding: 2vh 6vw; }
-        .product-photo-wrap img { max-height: 90%; }
-        .product-panel { flex: 1 1 60%; max-width: 100%; padding: 2vh 6vw; border-left: none; border-top: 1px solid var(--line); }
+        .product-immersive { flex: 1 1 38%; }
+        .product-panel { flex: 1 1 62%; max-width: 100%; padding: 2vh 6vw; border-left: none; border-top: 1px solid var(--line); }
       }
     </style>
   </head>
@@ -368,16 +369,28 @@
           </div>`;
       }
 
+      // Foto ambientata a sinistra: se l'item ha una lifestyle assegnata la
+      // usa, altrimenti pesca (in modo stabile, non a caso ad ogni render)
+      // una foto dalle realizzazioni caricate — così ogni prodotto è comunque
+      // affiancato da un cantiere vero finché non gli si assegna la sua foto.
+      function pickLifestyleImage(item, idx) {
+        if (item.lifestyle) return item.lifestyle;
+        if (!data.realizzazioni.length) return item.image;
+        return data.realizzazioni[idx % data.realizzazioni.length].attachment?.url;
+      }
+
       function renderProduct(p, idx) {
         const specs = p.specs || [];
         const num = String(idx + 1).padStart(2, "0");
         const total = sequence.filter((s) => s.kind === "product").length;
+        const lifestyle = pickLifestyleImage(p, idx);
         return `
           <div class="tpl-product">
-            <div class="product-photo-wrap">
-              <img src="${p.image}" alt="${p.name}" />
+            <div class="product-immersive">
+              <img src="${lifestyle}" alt="" />
             </div>
             <div class="product-panel">
+              <div class="swatch-frame"><img src="${p.image}" alt="${p.name}" /></div>
               <div class="index-label num">N. ${num} / ${total}</div>
               <span class="cat-pill">${p.category || ""}</span>
               <h2 class="product-name">${p.name}</h2>
