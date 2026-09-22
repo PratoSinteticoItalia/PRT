@@ -387,6 +387,15 @@
 
           <!-- CREW VIEW (placeholder, riempito nella prossima iterazione) -->
           <div class="dash-role-view" data-dashboard-role="crew" hidden>
+            <section class="dash-card">
+              <header class="dash-card-head">
+                <div>
+                  <span class="dash-card-eyebrow">Da fare</span>
+                  <h2 class="dash-card-title">Sopralluoghi</h2>
+                </div>
+              </header>
+              <div id="dashboard-crew-surveys" class="dash-action-list"></div>
+            </section>
             <section class="dash-card dash-card-week">
               <header class="dash-card-head">
                 <div>
@@ -1343,6 +1352,36 @@
             <div id="ddt-list" class="order-list ddt-order-list"></div>
             <section id="ddt-editor" class="detail-panel ddt-editor-panel">
               <div id="ddt-editor-body"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="sopralluoghi">
+          <div class="page-header">
+            <div>
+              <h1>Sopralluoghi</h1>
+              <div class="page-header-sub">Visite pre-vendita delegate alla squadra — misure reali, stato del terreno, fattibilità.</div>
+            </div>
+            <div class="detail-actions">
+              <button type="button" class="primary-button small-button" id="survey-new-button" data-action="survey-new">+ Nuovo sopralluogo</button>
+            </div>
+          </div>
+          <div class="view-toolbar">
+            <label class="field toolbar-input view-search-field">
+              <span class="hidden">Cerca sopralluogo</span>
+              <input id="survey-search" class="text-input view-search-input" placeholder="Cerca cliente, città..." />
+            </label>
+            <div class="filter-bar" id="survey-filters">
+              <button class="filter-btn survey-filter-tag is-active" data-action="set-survey-filter" data-survey-filter="all">Tutti</button>
+              <button class="filter-btn survey-filter-tag" data-action="set-survey-filter" data-survey-filter="da-assegnare">Da assegnare</button>
+              <button class="filter-btn survey-filter-tag" data-action="set-survey-filter" data-survey-filter="assegnato">Assegnati</button>
+              <button class="filter-btn survey-filter-tag" data-action="set-survey-filter" data-survey-filter="completato">Completati</button>
+            </div>
+          </div>
+          <div class="order-grid">
+            <div id="survey-list" class="order-list"></div>
+            <section id="survey-detail" class="detail-panel">
+              <div id="survey-detail-body"></div>
             </section>
           </div>
         </section>

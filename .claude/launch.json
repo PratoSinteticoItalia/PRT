@@ -5,7 +5,8 @@
       "name": "pose-system",
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
-      "port": 4180
+      "port": 4180,
+      "autoPort": true
     },
     {
       "name": "kanban-demo",

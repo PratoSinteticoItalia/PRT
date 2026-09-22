@@ -67,6 +67,12 @@ import {
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
 } from "./lib/sales-assignment.js?v=20260921-tariffe-bancali-tdn";
+import {
+  canAdvanceSurveyStatus,
+  describeSurveyForNotification,
+  normalizeSurveyRecord,
+  SURVEY_STATUS_RANK,
+} from "./lib/surveys.js?v=20260921-tariffe-bancali-tdn";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -456,9 +462,9 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sopralluoghi", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
-  crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "communications", "garden-planner"],
+  crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sopralluoghi", "sales-generator", "communications", "garden-planner"],
   // Il modulo ordini materiale rivenditore resta implementato ma in standby:
   // order-requests e reseller-orders non sono esposti nei rispettivi account.
   // "installations-live" (Cantieri Live) resta fuori: è il work-report con
@@ -515,6 +521,7 @@ const translations = {
     "installations-repairs": "Sistemazioni",
     "installations-live": "Cantieri Live",
     "installations-completed": "Completati",
+    sopralluoghi: "Sopralluoghi",
     office: "Ufficio",
     warehouseRole: "Inventario",
     crewRole: "Squadra",
@@ -778,6 +785,7 @@ const translations = {
     "installations-repairs": "Repairs",
     "installations-live": "Live sites",
     "installations-completed": "Completed",
+    sopralluoghi: "Site surveys",
     office: "Office",
     warehouseRole: "Inventory",
     crewRole: "Crew",
@@ -1263,6 +1271,9 @@ const state = {
   currentUser: null,
   orders: [],
   inventory: [],
+  surveys: [],
+  selectedSurveyId: "",
+  surveyFilter: "all",
   salesRequests: [],
   salesContents: [],
   salesRequestSourceConfig: null,
@@ -1349,6 +1360,7 @@ const state = {
     accounting: "",
     shipping: "",
     ddt: "",
+    survey: "",
     salesRequests: "",
     salesContent: "",
     resellerDirectory: "",
@@ -1872,6 +1884,11 @@ const ui = {
   shippingList: document.getElementById("shipping-list"),
   ddtList: document.getElementById("ddt-list"),
   ddtEditorBody: document.getElementById("ddt-editor-body"),
+  surveyList: document.getElementById("survey-list"),
+  surveyDetailBody: document.getElementById("survey-detail-body"),
+  surveyNewButton: document.getElementById("survey-new-button"),
+  surveySearch: document.getElementById("survey-search"),
+  surveyFilters: document.getElementById("survey-filters"),
   ddtSearch: document.getElementById("ddt-search"),
   ddtFilterTags: Array.from(document.querySelectorAll(".ddt-filter-tag")),
   ddtSendDailyButton: document.getElementById("ddt-send-daily-button"),
@@ -2582,6 +2599,17 @@ function computeMobileDrillHeader(module, itemId) {
     const meta = [req.city, sqm ? `${sqm} mq` : "", req.service || ""].filter(Boolean).join(" · ");
     return {
       title: fullName || (state.lang === "it" ? "Richiesta" : "Request"),
+      subtitle: meta,
+    };
+  }
+  if (module === "sopralluoghi") {
+    const survey = (state.surveys || []).find((s) => s.id === itemId);
+    if (!survey) {
+      return { title: state.lang === "it" ? "Nuovo sopralluogo" : "New site survey", subtitle: "" };
+    }
+    const meta = [survey.city, survey.crewName || (state.lang === "it" ? "Da assegnare" : "Unassigned")].filter(Boolean).join(" · ");
+    return {
+      title: survey.customerName || (state.lang === "it" ? "Sopralluogo" : "Site survey"),
       subtitle: meta,
     };
   }
@@ -10821,6 +10849,10 @@ function renderOps() {
   setNavCount("orders", inboxOrders);
   setNavCount("warehouse", inventory);
   setNavCount("installations", installations);
+  const surveysNeedingAction = state.surveys.filter((s) => (
+    state.currentUser?.role === "crew" ? ["assegnato", "in-corso"].includes(s.status) : s.status === "da-assegnare"
+  )).length;
+  setNavCount("sopralluoghi", surveysNeedingAction);
   setNavCount("accounting", accounting);
   setNavCount("shipping", shipping);
   setNavCount("sales-requests", salesRequests);
@@ -12268,12 +12300,35 @@ function renderDashboardCrewView() {
     const assignedCrew = String(order.operations?.installation?.assignedCrew || "").trim().toLowerCase();
     return !assignedCrew || assignedCrew === crewName;
   };
+  renderDashboardCrewSurveys();
   renderDashboardTodayInstalls("dashboard-crew-today", ownerFilter);
 
   const weekEl = document.getElementById("dashboard-crew-week");
   if (weekEl) renderDashboardWeekSummary(weekEl, ownerFilter);
 
   renderDashboardMessagesWidget("crew");
+}
+
+// Sopralluoghi assegnati alla squadra non ancora completati — il server ha
+// già filtrato state.surveys alla propria squadra (vedi GET /api/session).
+function renderDashboardCrewSurveys() {
+  const el = document.getElementById("dashboard-crew-surveys");
+  if (!el) return;
+  const pending = (state.surveys || [])
+    .filter((s) => ["assegnato", "in-corso"].includes(s.status))
+    .sort((a, b) => String(a.scheduledDate || "9999").localeCompare(String(b.scheduledDate || "9999")));
+  el.innerHTML = pending.length
+    ? pending.map((s) => `
+        <article class="dash-action-row" data-action="select-survey" data-id="${escapeAttr(s.id)}" data-view="sopralluoghi">
+          <div class="dash-action-dot tone-amber"></div>
+          <div class="dash-action-content">
+            <div class="dash-action-title">${escapeHtml(s.customerName)}</div>
+            <div class="dash-action-sub">${escapeHtml([s.city, s.address].filter(Boolean).join(" · ") || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))}</div>
+          </div>
+          <span class="dash-action-tag tone-amber">${s.scheduledDate ? escapeHtml(formatDate(s.scheduledDate)) : (state.lang === "it" ? "Da fissare" : "Unscheduled")}</span>
+        </article>
+      `).join("")
+    : `<div class="dash-action-empty">${state.lang === "it" ? "Nessun sopralluogo da fare." : "No site surveys pending."}</div>`;
 }
 
 // Stessa forma di renderDashboardCrewView, ma filtra per operations.reseller.id
@@ -21019,6 +21074,7 @@ const VIEW_ICONS = {
   "installations-scheduled": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="8 14 11 17 16 12"/></svg>',
   "installations-repairs": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
   "installations-completed": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+  sopralluoghi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
   communications: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
   "sales-requests": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
   "sales-generator": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15 8.5 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.5 12 2"/></svg>',
@@ -21055,6 +21111,7 @@ const NAV_SECTIONS = [
     { view: "warehouse" },
     { view: "shipping" },
     { view: "installations", group: ["installations-live", "installations-scheduled", "installations-repairs", "installations-completed"] },
+    { view: "sopralluoghi" },
   ] },
   { id: "sales", labelKey: "salesSection", defaultOpen: true, items: [
     { view: "sales-requests" },
@@ -25323,6 +25380,327 @@ function renderDdtIssuedArchive(entries = []) {
   }).join("")}</div>`;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Sopralluoghi
+// ═══════════════════════════════════════════════════════════════════════════
+
+function apiListSurveys(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.q) qs.set("q", params.q);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return apiFetch(`/api/surveys${suffix}`);
+}
+function apiCreateSurvey(payload) {
+  return apiFetch("/api/surveys", { method: "POST", body: JSON.stringify(payload) });
+}
+function apiPatchSurvey(id, patch) {
+  return apiFetch(`/api/surveys/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+function apiUploadSurveyPhotos(id, photos) {
+  return apiFetch(`/api/surveys/${encodeURIComponent(id)}/photos`, { method: "POST", body: JSON.stringify({ photos }) });
+}
+
+function getSurveyStatusMeta(status) {
+  const map = {
+    "da-assegnare": { label: state.lang === "it" ? "Da assegnare" : "Unassigned", tone: "prep" },
+    assegnato: { label: state.lang === "it" ? "Assegnato" : "Assigned", tone: "work" },
+    "in-corso": { label: state.lang === "it" ? "In corso" : "In progress", tone: "work" },
+    completato: { label: state.lang === "it" ? "Completato" : "Completed", tone: "ready" },
+    annullato: { label: state.lang === "it" ? "Annullato" : "Cancelled", tone: "block" },
+  };
+  return map[status] || map["da-assegnare"];
+}
+
+function getVisibleSurveys() {
+  const q = normalizeLooseString(state.search.survey || "");
+  return (state.surveys || []).filter((s) => {
+    if (state.surveyFilter !== "all" && s.status !== state.surveyFilter) return false;
+    if (!q) return true;
+    return normalizeLooseString(`${s.customerName} ${s.city}`).includes(q);
+  });
+}
+
+function renderSopralluoghi() {
+  const isOffice = state.currentUser?.role === "office";
+  if (ui.surveyNewButton) ui.surveyNewButton.classList.toggle("hidden", !isOffice);
+  if (ui.surveyFilters) {
+    ui.surveyFilters.querySelectorAll(".survey-filter-tag").forEach((btn) => {
+      btn.classList.toggle("is-active", (btn.dataset.surveyFilter || "all") === state.surveyFilter);
+    });
+  }
+  renderSurveyListHtml();
+  renderSurveyDetailPanel();
+}
+
+function renderSurveyCard(survey) {
+  const meta = getSurveyStatusMeta(survey.status);
+  const selected = survey.id === state.selectedSurveyId ? "selected" : "";
+  const metaLine = [
+    survey.city || "",
+    survey.crewName || (state.lang === "it" ? "Da assegnare" : "Unassigned"),
+    survey.scheduledDate ? formatDate(survey.scheduledDate) : "",
+  ].filter(Boolean).join(" · ");
+  return `
+    <article class="shp-row ${selected}" data-action="select-survey" data-id="${escapeAttr(survey.id)}">
+      <span class="shp-dot ${meta.tone}"></span>
+      <div class="shp-main">
+        <div class="shp-name-line"><span class="shp-name">${escapeHtml(survey.customerName)}</span></div>
+        <div class="shp-meta"><span>${escapeHtml(metaLine)}</span></div>
+      </div>
+      <div class="shp-aside"><span class="shp-badge ${meta.tone === "ready" ? "ok" : ""}">${escapeHtml(meta.label)}</span></div>
+    </article>`;
+}
+
+function renderSurveyListHtml() {
+  if (!ui.surveyList) return;
+  const visible = getVisibleSurveys();
+  if (!visible.length) {
+    ui.surveyList.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun sopralluogo." : "No site surveys."}</div>`;
+    return;
+  }
+  ui.surveyList.innerHTML = visible.map(renderSurveyCard).join("");
+}
+
+function renderSurveyDetailPanel() {
+  if (!ui.surveyDetailBody) return;
+  const isOffice = state.currentUser?.role === "office";
+  const survey = (state.surveys || []).find((s) => s.id === state.selectedSurveyId) || null;
+  if (!survey && isOffice) {
+    renderSurveyCreateForm();
+    return;
+  }
+  if (!survey) {
+    ui.surveyDetailBody.innerHTML = `<div class="info-card">${state.lang === "it" ? "Seleziona un sopralluogo dalla lista." : "Select a site survey from the list."}</div>`;
+    return;
+  }
+  renderSurveyDetailView(survey);
+}
+
+function renderSurveyCreateForm() {
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  ui.surveyDetailBody.innerHTML = `
+    <div class="panel-subsection">
+      <div class="subsection-head"><h4>${L("Nuovo sopralluogo", "New site survey")}</h4></div>
+      <form id="survey-create-form">
+        <label class="field field-full"><span>${L("Cliente", "Customer")} *</span><input class="text-input" name="customerName" required /></label>
+        <div class="ddt-head-grid">
+          <label class="field"><span>${L("Telefono", "Phone")}</span><input class="text-input" name="phone" /></label>
+          <label class="field"><span>Email</span><input class="text-input" type="email" name="email" /></label>
+        </div>
+        <label class="field field-full"><span>${L("Indirizzo", "Address")}</span><input class="text-input" name="address" /></label>
+        <div class="ddt-head-grid">
+          <label class="field"><span>${L("Città", "City")}</span><input class="text-input" name="city" /></label>
+          <label class="field"><span>${L("Provincia", "Province")}</span><input class="text-input" name="province" maxlength="2" /></label>
+        </div>
+        <div class="ddt-head-grid">
+          <label class="field"><span>${L("Squadra", "Crew")}</span>
+            <select class="text-input" name="crewName">
+              <option value="">${L("Da assegnare", "Unassigned")}</option>
+              ${crews.map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("")}
+            </select>
+          </label>
+          <label class="field"><span>${L("Data prevista", "Scheduled date")}</span><input class="text-input" type="date" name="scheduledDate" /></label>
+        </div>
+        <label class="field field-full"><span>${L("Note per la squadra", "Notes for the crew")}</span><textarea class="text-input" name="officeNotes" rows="3"></textarea></label>
+        <div class="inline-actions">
+          <button type="submit" class="primary-button small-button">${L("Crea sopralluogo", "Create site survey")}</button>
+        </div>
+        <div id="survey-create-status" class="panel-note hidden"></div>
+      </form>
+    </div>`;
+  document.getElementById("survey-create-form")?.addEventListener("submit", handleSurveyCreateSubmit);
+}
+
+async function handleSurveyCreateSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const statusEl = document.getElementById("survey-create-status");
+  const data = new FormData(form);
+  const customerName = String(data.get("customerName") || "").trim();
+  if (!customerName) {
+    if (statusEl) setStatus(statusEl, "error", state.lang === "it" ? "Il nome cliente è obbligatorio." : "Customer name is required.");
+    return;
+  }
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
+  try {
+    const created = await apiCreateSurvey({
+      customerName,
+      phone: data.get("phone"),
+      email: data.get("email"),
+      address: data.get("address"),
+      city: data.get("city"),
+      province: data.get("province"),
+      crewName: data.get("crewName"),
+      scheduledDate: data.get("scheduledDate"),
+      officeNotes: data.get("officeNotes"),
+    });
+    state.surveys = [created, ...(state.surveys || [])];
+    state.selectedSurveyId = created.id;
+    renderOps();
+    renderSopralluoghi();
+  } catch (err) {
+    if (statusEl) setStatus(statusEl, "error", state.lang === "it" ? "Impossibile creare il sopralluogo." : "Unable to create the site survey.");
+    if (submitButton) submitButton.disabled = false;
+  }
+}
+
+// Recap in sola lettura dell'esito squadra: mostrato all'ufficio sempre, e
+// alla squadra una volta che il sopralluogo non è più modificabile
+// (completato/annullato) — l'editing live vive in renderSurveyOutcomeEditor.
+function renderSurveyOutcomeRecap(survey, photosHtml) {
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  return `
+    <div class="panel-subsection">
+      <div class="subsection-head"><h4>${L("Esito sopralluogo", "Survey outcome")}</h4></div>
+      ${survey.crewNotes ? `<p>${escapeHtml(survey.crewNotes)}</p>` : `<p class="ddt-hint">${L("Nessuna nota ancora.", "No notes yet.")}</p>`}
+      ${survey.measuredSqm != null ? `<p><strong>${L("Mq misurati", "Measured sqm")}:</strong> ${escapeHtml(String(survey.measuredSqm))}</p>` : ""}
+      ${survey.groundCondition ? `<p><strong>${L("Stato terreno", "Ground condition")}:</strong> ${escapeHtml(survey.groundCondition)}</p>` : ""}
+      ${survey.feasible !== null ? `<p><strong>${L("Fattibile", "Feasible")}:</strong> ${survey.feasible ? L("Sì", "Yes") : L("No", "No")}</p>` : ""}
+      ${photosHtml}
+    </div>`;
+}
+
+function renderSurveyOutcomeEditor(survey, photosHtml) {
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  return `
+    <div class="panel-subsection">
+      <div class="subsection-head"><h4>${L("Esito sopralluogo", "Survey outcome")}</h4></div>
+      <label class="field field-full"><span>${L("Note", "Notes")}</span><textarea class="text-input" id="survey-crew-notes-input" rows="3">${escapeHtml(survey.crewNotes || "")}</textarea></label>
+      <div class="ddt-head-grid">
+        <label class="field"><span>${L("Mq misurati", "Measured sqm")}</span><input class="text-input" type="number" min="0" id="survey-sqm-input" value="${escapeAttr(survey.measuredSqm != null ? String(survey.measuredSqm) : "")}" /></label>
+        <label class="field"><span>${L("Stato terreno", "Ground condition")}</span><input class="text-input" id="survey-ground-input" value="${escapeAttr(survey.groundCondition || "")}" placeholder="${L("Es. terra, erba, pavimentazione...", "E.g. soil, grass, paving...")}" /></label>
+      </div>
+      <label class="field"><span>${L("Fattibile", "Feasible")}</span>
+        <select class="text-input" id="survey-feasible-select">
+          <option value="" ${survey.feasible === null ? "selected" : ""}>${L("Non ancora valutato", "Not yet assessed")}</option>
+          <option value="true" ${survey.feasible === true ? "selected" : ""}>${L("Sì", "Yes")}</option>
+          <option value="false" ${survey.feasible === false ? "selected" : ""}>${L("No", "No")}</option>
+        </select>
+      </label>
+      <label class="field field-full">
+        <span>${L("Foto", "Photos")} (${(survey.photos || []).length}/10)</span>
+        <input type="file" accept="image/*" multiple id="survey-photo-input" />
+      </label>
+      ${photosHtml}
+      <div class="inline-actions">
+        <button type="button" class="ghost-button small-button" data-action="survey-save-outcome" data-id="${escapeAttr(survey.id)}">${L("Salva note", "Save notes")}</button>
+        ${canAdvanceSurveyStatus(survey.status, "in-corso") ? `<button type="button" class="ghost-button small-button" data-action="survey-advance" data-id="${escapeAttr(survey.id)}" data-target-status="in-corso">${L("Inizia sopralluogo", "Start survey")}</button>` : ""}
+        <button type="button" class="primary-button small-button" data-action="survey-advance" data-id="${escapeAttr(survey.id)}" data-target-status="completato">${L("Segna completato", "Mark completed")}</button>
+      </div>
+      <div id="survey-crew-status" class="panel-note hidden"></div>
+    </div>`;
+}
+
+function renderSurveyDetailView(survey) {
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  const isOffice = state.currentUser?.role === "office";
+  const meta = getSurveyStatusMeta(survey.status);
+  const isOwnCrew = !isOffice && survey.crewName
+    && normalizeCrewName(survey.crewName) === normalizeCrewName(state.currentUser?.crewName || "");
+
+  const photosHtml = (survey.photos || []).length
+    ? `<div class="survey-photo-grid">${survey.photos.map((p) => `
+        <a href="/api/surveys/${encodeURIComponent(survey.id)}/photos/${encodeURIComponent(p.id)}/file" target="_blank" rel="noopener" class="survey-photo-thumb">
+          <img src="/api/surveys/${encodeURIComponent(survey.id)}/photos/${encodeURIComponent(p.id)}/file" alt="" loading="lazy" />
+        </a>`).join("")}</div>`
+    : `<p class="ddt-hint">${L("Nessuna foto ancora.", "No photos yet.")}</p>`;
+
+  const officeAssignBlock = isOffice ? `
+    <div class="ddt-head-grid">
+      <label class="field"><span>${L("Squadra", "Crew")}</span>
+        <select class="text-input" id="survey-crew-select">
+          <option value="">${L("Da assegnare", "Unassigned")}</option>
+          ${crews.map((c) => `<option value="${escapeAttr(c)}" ${survey.crewName === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
+        </select>
+      </label>
+      <label class="field"><span>${L("Data prevista", "Scheduled date")}</span><input class="text-input" type="date" id="survey-date-input" value="${escapeAttr(survey.scheduledDate || "")}" /></label>
+    </div>
+    <label class="field field-full"><span>${L("Note per la squadra", "Notes for the crew")}</span><textarea class="text-input" id="survey-office-notes-input" rows="3">${escapeHtml(survey.officeNotes || "")}</textarea></label>
+    <div class="inline-actions">
+      <button type="button" class="ghost-button small-button" data-action="survey-save-office" data-id="${escapeAttr(survey.id)}">${L("Salva", "Save")}</button>
+      ${survey.status !== "annullato" && survey.status !== "completato" ? `<button type="button" class="ghost-button small-button danger-button" data-action="survey-cancel" data-id="${escapeAttr(survey.id)}">${L("Annulla sopralluogo", "Cancel survey")}</button>` : ""}
+      ${survey.status === "completato" ? `<button type="button" class="primary-button small-button" data-action="survey-to-generator" data-id="${escapeAttr(survey.id)}">${L("Genera preventivo", "Generate quote")}</button>` : ""}
+    </div>
+    <div id="survey-office-status" class="panel-note hidden"></div>
+  ` : `
+    <p><strong>${L("Squadra", "Crew")}:</strong> ${escapeHtml(survey.crewName || L("Da assegnare", "Unassigned"))}</p>
+    ${survey.scheduledDate ? `<p><strong>${L("Data prevista", "Scheduled date")}:</strong> ${escapeHtml(formatDate(survey.scheduledDate))}</p>` : ""}
+    ${survey.officeNotes ? `<p><strong>${L("Note ufficio", "Office notes")}:</strong> ${escapeHtml(survey.officeNotes)}</p>` : ""}
+  `;
+
+  const outcomeEditable = isOwnCrew && survey.status !== "annullato" && survey.status !== "completato";
+  const outcomeBlock = outcomeEditable
+    ? renderSurveyOutcomeEditor(survey, photosHtml)
+    : renderSurveyOutcomeRecap(survey, photosHtml);
+
+  ui.surveyDetailBody.innerHTML = `
+    <div class="panel-subsection">
+      <div class="subsection-head"><h4>${escapeHtml(survey.customerName)}</h4><span class="shp-badge ${meta.tone === "ready" ? "ok" : ""}">${escapeHtml(meta.label)}</span></div>
+      ${survey.address || survey.city ? `<p>${escapeHtml([survey.address, survey.city, survey.province].filter(Boolean).join(", "))}</p>` : ""}
+      ${survey.phone ? `<p>📞 ${escapeHtml(survey.phone)}</p>` : ""}
+      ${survey.email ? `<p>✉️ ${escapeHtml(survey.email)}</p>` : ""}
+    </div>
+    <div class="panel-subsection">
+      <div class="subsection-head"><h4>${L("Assegnazione", "Assignment")}</h4></div>
+      ${officeAssignBlock}
+    </div>
+    ${outcomeBlock}
+  `;
+
+  const photoInput = document.getElementById("survey-photo-input");
+  if (photoInput) {
+    photoInput.addEventListener("change", (event) => {
+      handleSurveyPhotoFiles(survey.id, event.target.files);
+      event.target.value = "";
+    });
+  }
+}
+
+async function handleSurveyPhotoFiles(surveyId, fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  const statusEl = document.getElementById("survey-crew-status");
+  try {
+    const compressed = await Promise.all(files.map((file) => compressPhotoFile(file)));
+    const updated = await apiUploadSurveyPhotos(surveyId, compressed.map((p) => ({
+      id: p.id, name: p.name, type: p.type, dataUrl: p.dataUrl, size: p.size, takenAt: p.takenAt,
+    })));
+    state.surveys = state.surveys.map((s) => (s.id === updated.id ? updated : s));
+    renderSopralluoghi();
+  } catch (err) {
+    if (statusEl) setStatus(statusEl, "error", state.lang === "it" ? "Caricamento foto non riuscito." : "Photo upload failed.");
+  }
+}
+
+// Spinge i dati raccolti sul campo nel Generatore Preventivi nativo, stesso
+// aggancio già usato da CRM (buildSalesRequestPrefill) e Garden Planner.
+function pushSurveyToGenerator(survey) {
+  if (!survey) return;
+  const parts = String(survey.customerName || "").trim().split(/\s+/).filter(Boolean);
+  const payload = {
+    id: survey.id,
+    requestId: survey.salesRequestId || "",
+    nome: parts[0] || "",
+    cognome: parts.slice(1).join(" "),
+    citta: survey.city || "",
+    telefono: survey.phone || "",
+    email: survey.email || "",
+    mq: survey.measuredSqm || "",
+    fondo: survey.groundCondition || "",
+  };
+  try {
+    window.localStorage.setItem(SALES_PREFILL_STORAGE_KEY, JSON.stringify({
+      runId: Date.now(),
+      source: "survey",
+      payload,
+    }));
+  } catch {}
+  setView("sales-generator");
+  applyPrefillToNativeForm(payload);
+}
+
 function renderDdt() {
   renderDdtListView();
   const entries = getDdtFilteredEntries();
@@ -25996,6 +26374,7 @@ function applySessionPayload(session = {}) {
   state.sessionRevision = nextUser ? nextSessionRevision : "";
   const previousOrders = preserveEditingState ? state.orders : null;
   state.orders = session.orders || [];
+  state.surveys = Array.isArray(session.surveys) ? session.surveys.map(normalizeSurveyRecord).filter(Boolean) : [];
   if (orderPendingPatchIds.size && previousOrders) {
     const previousOrdersById = new Map(previousOrders.map((o) => [o.id, o]));
     state.orders = state.orders.map((o) => {
@@ -26089,6 +26468,8 @@ function applySessionPayload(session = {}) {
 	    state.selectedDdtKind = "order";
 	    state.selectedDdtOrderId = null;
 	    state.ddtDraft = null;
+	    state.selectedSurveyId = "";
+	    state.surveyFilter = "all";
 	    state.marketingTokenHealth = null;
     state.marketingTokenHealthLoadedAt = 0;
     state.preventivoCatalog = {};
@@ -28105,6 +28486,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "installations-repairs": _renderInstallationsRepairsFull(); break;
       case "installations-completed": renderInstallationsCompleted(); break;
       case "installations-live": renderInstallationsLive(); break;
+      case "sopralluoghi": renderSopralluoghi(); break;
       default: renderDashboard(); break;
     }
   };
@@ -32999,6 +33381,105 @@ function handleGlobalClick(event) {
     }
     return;
   }
+  if (action === "select-survey") {
+    state.selectedSurveyId = id || "";
+    if (button.dataset.view && button.dataset.view !== state.currentView) {
+      setView(button.dataset.view);
+    } else {
+      renderSopralluoghi();
+    }
+    if (window.innerWidth <= MOBILE_DRILL_BREAKPOINT && id) {
+      openMobileDrillDetail("sopralluoghi", id);
+    }
+    return;
+  }
+  if (action === "survey-new") {
+    state.selectedSurveyId = "";
+    renderSopralluoghi();
+    if (window.innerWidth <= MOBILE_DRILL_BREAKPOINT) {
+      openMobileDrillDetail("sopralluoghi", "");
+    }
+    return;
+  }
+  if (action === "set-survey-filter") {
+    state.surveyFilter = button.dataset.surveyFilter || "all";
+    renderSopralluoghi();
+    return;
+  }
+  if (action === "survey-save-office") {
+    const surveyId = id || "";
+    const crewSelect = document.getElementById("survey-crew-select");
+    const dateInput = document.getElementById("survey-date-input");
+    const notesInput = document.getElementById("survey-office-notes-input");
+    const statusEl = document.getElementById("survey-office-status");
+    button.disabled = true;
+    apiPatchSurvey(surveyId, {
+      crewName: crewSelect?.value || "",
+      scheduledDate: dateInput?.value || "",
+      officeNotes: notesInput?.value || "",
+    }).then((updated) => {
+      state.surveys = state.surveys.map((s) => (s.id === updated.id ? updated : s));
+      renderOps();
+      renderSopralluoghi();
+    }).catch(() => {
+      if (statusEl) setStatus(statusEl, "error", state.lang === "it" ? "Salvataggio non riuscito." : "Save failed.");
+      button.disabled = false;
+    });
+    return;
+  }
+  if (action === "survey-cancel") {
+    const surveyId = id || "";
+    if (!window.confirm(state.lang === "it" ? "Annullare questo sopralluogo?" : "Cancel this site survey?")) return;
+    apiPatchSurvey(surveyId, { status: "annullato" }).then((updated) => {
+      state.surveys = state.surveys.map((s) => (s.id === updated.id ? updated : s));
+      renderOps();
+      renderSopralluoghi();
+    }).catch(() => {});
+    return;
+  }
+  if (action === "survey-to-generator") {
+    const survey = state.surveys.find((s) => s.id === id);
+    if (survey) pushSurveyToGenerator(survey);
+    return;
+  }
+  if (action === "survey-save-outcome") {
+    const surveyId = id || "";
+    const notesInput = document.getElementById("survey-crew-notes-input");
+    const sqmInput = document.getElementById("survey-sqm-input");
+    const groundInput = document.getElementById("survey-ground-input");
+    const feasibleSelect = document.getElementById("survey-feasible-select");
+    const statusEl = document.getElementById("survey-crew-status");
+    const feasibleValue = feasibleSelect?.value === "" ? null : feasibleSelect?.value === "true";
+    button.disabled = true;
+    apiPatchSurvey(surveyId, {
+      crewNotes: notesInput?.value || "",
+      measuredSqm: sqmInput?.value ? Number(sqmInput.value) : null,
+      groundCondition: groundInput?.value || "",
+      feasible: feasibleValue,
+    }).then((updated) => {
+      state.surveys = state.surveys.map((s) => (s.id === updated.id ? updated : s));
+      renderSopralluoghi();
+    }).catch(() => {
+      if (statusEl) setStatus(statusEl, "error", state.lang === "it" ? "Salvataggio non riuscito." : "Save failed.");
+      button.disabled = false;
+    });
+    return;
+  }
+  if (action === "survey-advance") {
+    const surveyId = id || "";
+    const targetStatus = button.dataset.targetStatus || "";
+    const survey = state.surveys.find((s) => s.id === surveyId);
+    if (!survey || !canAdvanceSurveyStatus(survey.status, targetStatus)) return;
+    button.disabled = true;
+    apiPatchSurvey(surveyId, { status: targetStatus }).then((updated) => {
+      state.surveys = state.surveys.map((s) => (s.id === updated.id ? updated : s));
+      renderOps();
+      renderSopralluoghi();
+    }).catch(() => {
+      button.disabled = false;
+    });
+    return;
+  }
   if (action === "close-crm-detail") {
     // Se siamo in drill-down mobile, chiudi quello (riapre header+lista)
     if (state.mobileDrillDetail) {
@@ -35905,6 +36386,12 @@ if (ui.ddtSearch) {
   ui.ddtSearch.addEventListener("input", (event) => {
     state.search.ddt = event.target.value || "";
     renderDdtListView();
+  });
+}
+if (ui.surveySearch) {
+  ui.surveySearch.addEventListener("input", (event) => {
+    state.search.survey = event.target.value || "";
+    renderSurveyListHtml();
   });
 }
 bindEvent(ui.ddtSendDailyButton, "click", async () => {
