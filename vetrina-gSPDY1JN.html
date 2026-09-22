@@ -77,41 +77,39 @@
       .tpl-divider .cat-name { font: 600 clamp(2.4rem, 5.4vw, 4.4rem)/1.05 "Fraunces", serif; letter-spacing: -.01em; }
       .tpl-divider .cat-count { font: 500 1.1rem "DM Sans"; opacity: .85; }
 
-      /* ---------- template: prodotto (foto grande sopra, fascia info sotto) ---------- */
-      .tpl-product { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--paper); }
-      .product-immersive { position: relative; flex: 1 1 60%; width: 100%; overflow: hidden; background: #0c130f; }
-      .product-immersive img {
-        position: absolute; inset: -7%; width: 114%; height: 114%; object-fit: cover;
-        object-position: center; animation: kenBurnsSlow 9.5s ease-out both; transform-origin: center;
+      /* ---------- template: prodotto (foto intera del prodotto, ben visibile) ---------- */
+      .tpl-product { position: absolute; inset: 0; display: flex; background: var(--paper); }
+      .product-photo-wrap {
+        flex: 1 1 58%; display: flex; align-items: center; justify-content: center;
+        padding: 4vh 3vw; background: var(--paper); overflow: hidden;
+      }
+      .product-photo-wrap img {
+        max-width: 92%; max-height: 82%; object-fit: contain;
+        filter: drop-shadow(0 26px 40px rgba(22,36,28,.16));
+        animation: kenBurnsSlow 9.5s ease-out both; transform-origin: center;
       }
       .product-panel {
-        position: relative; z-index: 2; flex: 0 0 auto; width: 100%;
-        display: flex; align-items: center; gap: 2.6rem;
-        padding: 2.2rem 4vw; background: var(--paper); border-top: 1px solid var(--line);
+        position: relative; z-index: 2; flex: 0 0 42%; max-width: 42%;
+        display: flex; flex-direction: column; justify-content: center; gap: 1.1rem;
+        padding: 5vh 3.6vw 5vh 2vw; background: var(--paper); border-left: 1px solid var(--line);
       }
-      .swatch-frame {
-        flex: none; width: clamp(96px, 8vw, 136px); aspect-ratio: 1; border-radius: 14px; overflow: hidden;
-        border: 1px solid var(--line); box-shadow: 0 14px 24px rgba(22,36,28,.14); background: #fff;
-      }
-      .swatch-frame img { width: 100%; height: 100%; object-fit: cover; }
-      .product-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: .35rem; }
-      .index-label { font: 600 .74rem "DM Sans"; letter-spacing: .1em; color: var(--muted); }
+      .index-label { font: 600 .78rem "DM Sans"; letter-spacing: .1em; color: var(--muted); }
       .cat-pill {
         display: inline-flex; align-self: flex-start; align-items: center; gap: .5em;
-        color: var(--brand); font: 700 .72rem "DM Sans"; letter-spacing: .14em; text-transform: uppercase;
+        color: var(--brand); font: 700 .74rem "DM Sans"; letter-spacing: .14em; text-transform: uppercase;
       }
-      .cat-pill::before { content: ""; width: 1.2em; height: 1.5px; background: var(--brand); display: inline-block; }
+      .cat-pill::before { content: ""; width: 1.3em; height: 1.5px; background: var(--brand); display: inline-block; }
       .product-name {
-        font: 500 clamp(1.5rem, 2.2vw, 2.1rem)/1.1 "Fraunces", serif; color: var(--ink); margin: 0; letter-spacing: -.01em;
+        font: 500 clamp(2rem, 3vw, 2.7rem)/1.08 "Fraunces", serif; color: var(--ink); margin: 0; letter-spacing: -.01em;
       }
-      .product-desc { font: 400 .95rem/1.4 "DM Sans"; color: var(--muted); max-width: 42ch; margin: 0; }
-      .product-price { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 0; }
-      .product-price .amount { font: 700 clamp(1.7rem, 2.6vw, 2.3rem)/1 "DM Sans"; color: var(--brand); white-space: nowrap; }
-      .product-price .unit { font: 600 .78rem "DM Sans"; color: var(--muted); }
-      .spec-row { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: .5rem 1.5rem; padding-left: 2rem; border-left: 1px solid var(--line); }
-      .spec-item { display: flex; flex-direction: column; gap: .1rem; }
-      .spec-item .k { font: 700 .6rem "DM Sans"; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-      .spec-item .v { font: 600 .85rem "DM Sans"; color: var(--ink); white-space: nowrap; }
+      .product-desc { font: 400 1.05rem/1.5 "DM Sans"; color: var(--muted); max-width: 32ch; margin: 0; }
+      .product-price { display: flex; align-items: baseline; gap: .4em; }
+      .product-price .amount { font: 700 clamp(2rem, 3.4vw, 2.8rem)/1 "DM Sans"; color: var(--brand); }
+      .product-price .unit { font: 600 .9rem "DM Sans"; color: var(--muted); }
+      .spec-row { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+      .spec-item { display: flex; flex-direction: column; gap: .2rem; }
+      .spec-item .k { font: 700 .64rem "DM Sans"; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+      .spec-item .v { font: 600 .95rem "DM Sans"; color: var(--ink); }
 
       @keyframes slideInRight { from { opacity: 0; transform: translateX(6%); } to { opacity: 1; transform: translateX(0); } }
       @keyframes slideOutLeft { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-6%); } }
@@ -222,10 +220,10 @@
       #start-overlay.hidden { display: none; }
 
       @media (max-width: 900px) {
-        .product-panel { flex-wrap: wrap; padding: 2vh 6vw; gap: 1rem; }
-        .swatch-frame { display: none; }
-        .spec-row { border-left: none; padding-left: 0; grid-template-columns: 1fr 1fr; width: 100%; order: 3; }
-        .product-price { order: 2; align-items: flex-start; }
+        .tpl-product { flex-direction: column; }
+        .product-photo-wrap { flex: 1 1 40%; padding: 2vh 6vw; }
+        .product-photo-wrap img { max-height: 90%; }
+        .product-panel { flex: 1 1 60%; max-width: 100%; padding: 2vh 6vw; border-left: none; border-top: 1px solid var(--line); }
       }
     </style>
   </head>
@@ -370,34 +368,20 @@
           </div>`;
       }
 
-      // Foto "reale" a destra: se l'item ha una lifestyle assegnata la usa,
-      // altrimenti pesca (in modo stabile, non a caso ad ogni render) una
-      // foto dalle realizzazioni caricate — così ogni prodotto è comunque
-      // affiancato da un cantiere vero finché non gli si assegna la sua foto.
-      function pickLifestyleImage(item, idx) {
-        if (item.lifestyle) return item.lifestyle;
-        if (!data.realizzazioni.length) return item.image;
-        return data.realizzazioni[idx % data.realizzazioni.length].attachment?.url;
-      }
-
       function renderProduct(p, idx) {
         const specs = p.specs || [];
         const num = String(idx + 1).padStart(2, "0");
         const total = sequence.filter((s) => s.kind === "product").length;
-        const lifestyle = pickLifestyleImage(p, idx);
         return `
           <div class="tpl-product">
-            <div class="product-immersive">
-              <img src="${lifestyle}" alt="" />
+            <div class="product-photo-wrap">
+              <img src="${p.image}" alt="${p.name}" />
             </div>
             <div class="product-panel">
-              <div class="swatch-frame"><img src="${p.image}" alt="${p.name}" /></div>
-              <div class="product-copy">
-                <div class="index-label num">N. ${num} / ${total}</div>
-                <span class="cat-pill">${p.category || ""}</span>
-                <h2 class="product-name">${p.name}</h2>
-                <p class="product-desc">${p.description || ""}</p>
-              </div>
+              <div class="index-label num">N. ${num} / ${total}</div>
+              <span class="cat-pill">${p.category || ""}</span>
+              <h2 class="product-name">${p.name}</h2>
+              <p class="product-desc">${p.description || ""}</p>
               <div class="product-price"><span class="amount num">€${p.price}</span><span class="unit">${p.priceUnit || ""}</span></div>
               <div class="spec-row">
                 ${specs.map((s) => `<div class="spec-item"><span class="k">${s.k}</span><span class="v">${s.v}</span></div>`).join("")}
