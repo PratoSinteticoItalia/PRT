@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Vetrina — Prato Sintetico Italia</title>
+    <link rel="icon" href="/logo-prato.png" />
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=Fraunces:ital,wght@0,600;0,900;1,600;1,900&display=swap"
+    />
+    <style>
+      :root {
+        --brand: #2d6a4f;
+        --brand-dark: #1a2e23;
+        --brand-soft: #d8f3dc;
+        --amber: #d97706;
+        --amber-soft: #fef3c7;
+        --ink: #0e1712;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--ink);
+        overflow: hidden;
+        font-family: "DM Sans", sans-serif;
+        cursor: none;
+      }
+      body.show-cursor { cursor: default; }
+
+      /* ---------- palco: due layer sovrapposti per il crossfade ---------- */
+      #stage {
+        position: fixed;
+        inset: 0;
+        background: var(--ink);
+      }
+      .blobs {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        overflow: hidden;
+      }
+      .blob {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(60px);
+        opacity: 0.55;
+        animation: drift 22s ease-in-out infinite;
+      }
+      .blob.b1 { width: 46vw; height: 46vw; background: var(--brand); top: -10%; left: -8%; animation-duration: 26s; }
+      .blob.b2 { width: 38vw; height: 38vw; background: #40916c; bottom: -12%; right: -6%; animation-duration: 19s; animation-delay: -6s; }
+      .blob.b3 { width: 28vw; height: 28vw; background: var(--amber); bottom: 10%; left: 20%; opacity: 0.25; animation-duration: 30s; animation-delay: -12s; }
+      @keyframes drift {
+        0%, 100% { transform: translate(0, 0) scale(1); }
+        50% { transform: translate(4%, -3%) scale(1.08); }
+      }
+
+      /* rumore leggero sopra tutto, per una resa più "editoriale" */
+      #grain {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        pointer-events: none;
+        opacity: 0.05;
+        mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+      }
+
+      .layer {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        opacity: 0;
+        transition: opacity 0.9s ease;
+      }
+      .layer.active { opacity: 1; z-index: 2; }
+      .slide-inner { position: absolute; inset: 0; }
+
+      /* ---------- template: hero foto full-bleed ---------- */
+      .tpl-hero { position: absolute; inset: 0; overflow: hidden; background: #000; }
+      .tpl-hero img { position: absolute; inset: -3%; width: 106%; height: 106%; object-fit: cover; }
+      .tpl-hero .scrim {
+        position: absolute; inset: 0;
+        background: linear-gradient(0deg, rgba(0,0,0,.78) 0%, rgba(0,0,0,.28) 40%, transparent 65%);
+      }
+      .tpl-hero .copy { position: absolute; left: 5%; bottom: 8%; right: 5%; color: #fff; }
+
+      /* ---------- template: split diagonale ---------- */
+      .tpl-split { position: absolute; inset: 0; display: flex; background: var(--brand-dark); overflow: hidden; }
+      .tpl-split.rev { flex-direction: row-reverse; }
+      .tpl-split .panel {
+        width: 40%; flex: none; display: flex; flex-direction: column; justify-content: center;
+        padding: 6% 6%; color: #fff; position: relative; z-index: 2;
+      }
+      .tpl-split .photo { position: relative; flex: 1; overflow: hidden; }
+      .tpl-split .photo img { position: absolute; inset: -3%; width: 106%; height: 106%; object-fit: cover; }
+      .tpl-split .photo::before {
+        content: ""; position: absolute; inset: 0; z-index: 1;
+        background: linear-gradient(100deg, var(--brand-dark) 0%, var(--brand-dark) 8%, transparent 26%);
+      }
+      .tpl-split.rev .photo::before { background: linear-gradient(-100deg, var(--brand-dark) 0%, var(--brand-dark) 8%, transparent 26%); }
+
+      .pill {
+        display: inline-block; align-self: flex-start; padding: .35em .9em; border-radius: 999px;
+        font: 700 .78rem/1 "DM Sans", sans-serif; letter-spacing: .08em; text-transform: uppercase;
+        margin-bottom: 1.1em;
+      }
+      .pill.catalogo { background: var(--brand-soft); color: var(--brand-dark); }
+      .pill.realizzazione { background: var(--amber-soft); color: #7c2d12; }
+
+      .title-xl { font: 700 clamp(2.6rem, 5.4vw, 5.2rem)/1.02 "Fraunces", serif; font-style: italic; margin: 0 0 .18em; }
+      .subtitle-lg { font: 400 clamp(1.05rem, 1.7vw, 1.5rem)/1.35 "DM Sans", sans-serif; opacity: .85; max-width: 42ch; }
+
+      /* ---------- template: stat ---------- */
+      .tpl-stat {
+        position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        color: #fff; text-align: center; background: radial-gradient(circle at 50% 30%, rgba(255,255,255,.06), transparent 60%);
+      }
+      .tpl-stat .num { font: 900 clamp(6rem, 16vw, 14rem)/1 "Fraunces", serif; letter-spacing: -.02em; }
+      .tpl-stat .lbl { font: 600 clamp(1.1rem, 2vw, 1.8rem)/1.3 "DM Sans", sans-serif; text-transform: uppercase; letter-spacing: .06em; opacity: .85; margin-top: .4em; }
+
+      /* ---------- template: quote ---------- */
+      .tpl-quote {
+        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: var(--brand-dark); color: #fff; padding: 0 10%;
+      }
+      .tpl-quote blockquote {
+        margin: 0; text-align: center; font: 600 clamp(2rem, 4.4vw, 4.2rem)/1.2 "Fraunces", serif; font-style: italic;
+      }
+      .tpl-quote blockquote::before,
+      .tpl-quote blockquote::after { content: '"'; color: var(--brand-soft); opacity: .7; }
+
+      /* ---------- template: bumper (logo) ---------- */
+      .tpl-bumper {
+        position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: linear-gradient(135deg, var(--brand), #1b4332); color: #fff; text-align: center; gap: 1.4rem;
+      }
+      .tpl-bumper img { width: clamp(160px, 18vw, 260px); filter: drop-shadow(0 10px 30px rgba(0,0,0,.35)); }
+      .tpl-bumper .tagline { font: 600 clamp(1.3rem, 2.6vw, 2.2rem)/1.3 "Fraunces", serif; font-style: italic; max-width: 20ch; }
+
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes slideRight { from { opacity: 0; transform: translateX(4%); } to { opacity: 1; transform: translateX(0); } }
+      @keyframes slideUp { from { opacity: 0; transform: translateY(5%); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes zoomIn { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: scale(1); } }
+      @keyframes kb1 { from { transform: scale(1) translate(0,0); } to { transform: scale(1.13) translate(-2%,-1%); } }
+      @keyframes kb2 { from { transform: scale(1.1) translate(-2%,0); } to { transform: scale(1) translate(0,-1%); } }
+      @keyframes kb3 { from { transform: scale(1) translate(0,-1%); } to { transform: scale(1.12) translate(2%,1%); } }
+
+      /* ---------- barra di progresso ---------- */
+      #progress { position: fixed; top: 0; left: 0; height: 4px; width: 0; background: var(--brand-soft); z-index: 40; }
+
+      /* ---------- orologio ---------- */
+      #clock {
+        position: fixed; top: 22px; right: 28px; z-index: 45; color: rgba(255,255,255,.55);
+        font: 600 1rem/1 "DM Sans", sans-serif; letter-spacing: .04em; text-shadow: 0 1px 6px rgba(0,0,0,.5);
+      }
+
+      /* ---------- HUD ---------- */
+      #hud {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+        display: flex; align-items: center; justify-content: space-between; gap: 1.5rem;
+        padding: 1rem 1.8rem; background: linear-gradient(0deg, rgba(0,0,0,.72), transparent);
+        color: #fff; transform: translateY(100%); opacity: 0; transition: transform .35s ease, opacity .35s ease;
+        pointer-events: none;
+      }
+      #hud.visible { transform: translateY(0); opacity: 1; pointer-events: auto; }
+      #hud button {
+        background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); color: #fff;
+        width: 44px; height: 44px; border-radius: 50%; font-size: 1.1rem; cursor: pointer;
+      }
+      #hud button:hover { background: rgba(255,255,255,.24); }
+      #hud .cluster { display: flex; align-items: center; gap: .7rem; }
+      #hud select, #hud input[type="range"] { accent-color: var(--brand-soft); }
+      #hud select {
+        background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.25);
+        border-radius: 8px; padding: .5em .7em; font: 500 .85rem "DM Sans", sans-serif;
+      }
+      #hud .count { font: 600 .85rem "DM Sans", sans-serif; opacity: .75; min-width: 3.5em; text-align: center; }
+
+      /* ---------- overlay di avvio ---------- */
+      #start-overlay {
+        position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 1.6rem; text-align: center; color: #fff;
+        background: radial-gradient(circle at 50% 30%, #2d6a4f, #10251b 75%); cursor: default;
+      }
+      #start-overlay img { width: clamp(140px, 16vw, 220px); }
+      #start-overlay h1 { font: 700 clamp(1.8rem, 3.4vw, 3rem)/1.2 "Fraunces", serif; font-style: italic; margin: 0; }
+      #start-overlay p { font: 400 1.05rem "DM Sans", sans-serif; opacity: .8; margin: 0; max-width: 40ch; }
+      #start-overlay button {
+        margin-top: .6rem; padding: .95em 2.4em; border-radius: 999px; border: none; cursor: pointer;
+        background: #fff; color: var(--brand-dark); font: 700 1.05rem "DM Sans", sans-serif;
+        box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      }
+      #start-overlay.hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div class="blobs"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+      <div class="layer" id="layerA"><div class="slide-inner"></div></div>
+      <div class="layer" id="layerB"><div class="slide-inner"></div></div>
+    </div>
+    <div id="progress"></div>
+    <div id="clock"></div>
+    <div id="grain"></div>
+
+    <div id="hud">
+      <div class="cluster">
+        <button id="btn-prev" title="Precedente">&#10094;</button>
+        <button id="btn-play" title="Pausa/Riprendi">&#10074;&#10074;</button>
+        <button id="btn-next" title="Successiva">&#10095;</button>
+        <span class="count" id="hud-count">1/1</span>
+      </div>
+      <div class="cluster">
+        <button id="btn-mute" title="Muto">&#128266;</button>
+        <input id="vol" type="range" min="0" max="1" step="0.05" style="width:120px" />
+        <select id="station"></select>
+      </div>
+    </div>
+
+    <div id="start-overlay">
+      <img src="/logo-prato.png" alt="Prato Sintetico Italia" />
+      <h1>Vetrina Prato Sintetico Italia</h1>
+      <p>Catalogo prodotti, realizzazioni e musica di sottofondo per lo showroom.</p>
+      <button id="btn-start">Avvia la vetrina</button>
+    </div>
+
+    <audio id="audio" preload="none" crossorigin="anonymous"></audio>
+
+    <script>
+      const STATIONS = [
+        { id: "groove", name: "Groove Salad · chill ambient", url: "https://ice1.somafm.com/groovesalad-128-mp3" },
+        { id: "drone", name: "Drone Zone · ambient profondo", url: "https://ice1.somafm.com/dronezone-128-mp3" },
+        { id: "deepspace", name: "Deep Space One · ambient spazio", url: "https://ice1.somafm.com/deepspaceone-128-mp3" },
+      ];
+      const PHOTO_EVERY_COOL = 3; // ogni N foto, inserisce una slide "cosa figa" (stat/quote)
+      const PHOTO_EVERY_BUMPER = 6; // ogni N foto, inserisce lo stacchetto col logo
+      const DURATIONS = { hero: 9000, split: 9000, stat: 7000, quote: 8000, bumper: 5000 };
+      const ENTER_ANIMS = ["fadeIn", "slideRight", "slideUp", "zoomIn"];
+      const KB_ANIMS = ["kb1", "kb2", "kb3"];
+
+      const layerEls = [document.getElementById("layerA"), document.getElementById("layerB")];
+      let activeLayerIdx = 0;
+      let sequence = [];
+      let seqPos = -1;
+      let manifest = null;
+      let playing = true;
+      let advanceTimer = null;
+      let progressStart = 0;
+      let progressDuration = 0;
+      let wakeLock = null;
+
+      function shuffle(arr) {
+        const a = arr.slice();
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      }
+
+      function buildSequence(m) {
+        const photos = shuffle(m.photos || []);
+        const cool = m.coolStuff || [];
+        const seq = [];
+        let coolIdx = 0;
+        photos.forEach((p, i) => {
+          seq.push({ kind: "photo", data: p });
+          if (cool.length && (i + 1) % PHOTO_EVERY_COOL === 0) {
+            seq.push({ kind: cool[coolIdx % cool.length].type, data: cool[coolIdx % cool.length] });
+            coolIdx++;
+          }
+          if ((i + 1) % PHOTO_EVERY_BUMPER === 0) {
+            seq.push({ kind: "bumper", data: m.brand });
+          }
+        });
+        if (!seq.length) seq.push({ kind: "bumper", data: m.brand });
+        return seq;
+      }
+
+      function pill(category) {
+        if (!category) return "";
+        const cls = category === "realizzazioni" ? "realizzazione" : "catalogo";
+        const label = category === "realizzazioni" ? "Realizzazione" : "Catalogo";
+        return `<span class="pill ${cls}">${label}</span>`;
+      }
+
+      function renderPhoto(data, variant) {
+        const kb = KB_ANIMS[Math.floor(Math.random() * KB_ANIMS.length)];
+        const duration = (DURATIONS[variant] + 1500) / 1000 + "s";
+        if (variant === "hero") {
+          return {
+            kind: "hero",
+            html: `
+              <div class="tpl-hero">
+                <img src="${data.image}" style="animation:${kb} ${duration} ease-out both" />
+                <div class="scrim"></div>
+                <div class="copy">
+                  ${pill(data.category)}
+                  <div class="title-xl">${data.title || ""}</div>
+                  <div class="subtitle-lg">${data.subtitle || ""}</div>
+                </div>
+              </div>`,
+          };
+        }
+        const rev = Math.random() < 0.5;
+        return {
+          kind: "split",
+          html: `
+            <div class="tpl-split ${rev ? "rev" : ""}">
+              <div class="panel">
+                ${pill(data.category)}
+                <div class="title-xl">${data.title || ""}</div>
+                <div class="subtitle-lg">${data.subtitle || ""}</div>
+              </div>
+              <div class="photo"><img src="${data.image}" style="animation:${kb} ${duration} ease-out both" /></div>
+            </div>`,
+        };
+      }
+
+      function renderStat(data) {
+        return { kind: "stat", html: `<div class="tpl-stat"><div class="num">${data.value}</div><div class="lbl">${data.label}</div></div>` };
+      }
+      function renderQuote(data) {
+        return { kind: "quote", html: `<div class="tpl-quote"><blockquote>${data.text}</blockquote></div>` };
+      }
+      function renderBumper(brand) {
+        return {
+          kind: "bumper",
+          html: `<div class="tpl-bumper"><img src="${brand.logo}" alt="${brand.name}" /><div class="tagline">${brand.tagline || ""}</div></div>`,
+        };
+      }
+
+      function renderSlide(item) {
+        if (item.kind === "photo") return renderPhoto(item.data, Math.random() < 0.55 ? "hero" : "split");
+        if (item.kind === "stat") return renderStat(item.data);
+        if (item.kind === "quote") return renderQuote(item.data);
+        return renderBumper(item.data);
+      }
+
+      function showSlide(item) {
+        const rendered = renderSlide(item);
+        const nextIdx = (activeLayerIdx + 1) % 2;
+        const nextEl = layerEls[nextIdx];
+        const inner = nextEl.querySelector(".slide-inner");
+        inner.innerHTML = rendered.html;
+
+        // Se la foto non carica, salta subito alla slide successiva invece di
+        // tenere lo showroom fermo su un'immagine rotta per l'intera durata.
+        const img = inner.querySelector("img");
+        if (img) img.addEventListener("error", () => { if (playing) advance(); }, { once: true });
+
+        const anim = ENTER_ANIMS[Math.floor(Math.random() * ENTER_ANIMS.length)];
+        inner.style.animation = "none";
+        void inner.offsetWidth; // forza il reflow per far ripartire la keyframe
+        inner.style.animation = `${anim} 1s cubic-bezier(.22,.85,.3,1) both`;
+
+        layerEls[activeLayerIdx].classList.remove("active");
+        nextEl.classList.add("active");
+        activeLayerIdx = nextIdx;
+
+        const duration = DURATIONS[rendered.kind] || 8000;
+        runProgress(duration);
+        document.getElementById("hud-count").textContent = `${seqPos + 1}/${sequence.length}`;
+        return duration;
+      }
+
+      function runProgress(duration) {
+        const bar = document.getElementById("progress");
+        bar.style.transition = "none";
+        bar.style.width = "0";
+        void bar.offsetWidth;
+        bar.style.transition = `width ${duration}ms linear`;
+        bar.style.width = "100%";
+      }
+
+      function scheduleNext(duration) {
+        clearTimeout(advanceTimer);
+        if (!playing) return;
+        advanceTimer = setTimeout(advance, duration);
+      }
+
+      function advance() {
+        seqPos = (seqPos + 1) % sequence.length;
+        if (seqPos === 0) sequence = buildSequence(manifest); // rimescola ad ogni giro per non essere prevedibile
+        const duration = showSlide(sequence[seqPos]);
+        scheduleNext(duration);
+      }
+
+      function prev() {
+        seqPos = (seqPos - 2 + sequence.length) % sequence.length;
+        advance();
+      }
+
+      function togglePlay(force) {
+        playing = typeof force === "boolean" ? force : !playing;
+        document.getElementById("btn-play").innerHTML = playing ? "&#10074;&#10074;" : "&#9658;";
+        const bar = document.getElementById("progress");
+        if (playing) {
+          bar.style.animationPlayState = "running";
+          scheduleNext(remainingOrDefault());
+        } else {
+          clearTimeout(advanceTimer);
+          const cs = getComputedStyle(bar);
+          bar.style.width = cs.width; // congela la barra alla larghezza attuale
+          bar.style.transition = "none";
+        }
+      }
+      function remainingOrDefault() { return 4000; }
+
+      /* ---------- audio: stazioni ambient con fallback automatico ---------- */
+      const audioEl = document.getElementById("audio");
+      let stationIdx = Number(localStorage.getItem("showroom-station-idx")) || 0;
+      function loadStation(idx, autoplay) {
+        stationIdx = ((idx % STATIONS.length) + STATIONS.length) % STATIONS.length;
+        audioEl.src = STATIONS[stationIdx].url;
+        localStorage.setItem("showroom-station-idx", String(stationIdx));
+        document.getElementById("station").value = String(stationIdx);
+        if (autoplay) audioEl.play().catch(() => {});
+      }
+      // Backoff prima di riprovare: senza pausa, uno stream irraggiungibile
+      // (rete dello showroom giù, host bloccato) fa scattare "error" in loop
+      // a raffica invece di un tentativo ogni tot secondi.
+      let stationRetryTimer = null;
+      audioEl.addEventListener("error", () => {
+        clearTimeout(stationRetryTimer);
+        stationRetryTimer = setTimeout(() => loadStation(stationIdx + 1, true), 8000);
+      });
+
+      /* ---------- wake lock: evita che la TV vada in standby ---------- */
+      async function requestWakeLock() {
+        try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
+      }
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && !wakeLock) requestWakeLock();
+      });
+
+      /* ---------- orologio ---------- */
+      function tickClock() {
+        const d = new Date();
+        document.getElementById("clock").textContent = d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+      }
+      setInterval(tickClock, 15000);
+
+      /* ---------- HUD: mostra su input, nascondi dopo inattività ---------- */
+      let hudTimer = null;
+      function flashHud() {
+        const hud = document.getElementById("hud");
+        hud.classList.add("visible");
+        document.body.classList.add("show-cursor");
+        clearTimeout(hudTimer);
+        hudTimer = setTimeout(() => {
+          hud.classList.remove("visible");
+          document.body.classList.remove("show-cursor");
+        }, 4500);
+      }
+      ["mousemove", "keydown", "pointerdown"].forEach((ev) => window.addEventListener(ev, flashHud));
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowRight") advance();
+        else if (e.key === "ArrowLeft") prev();
+        else if (e.key === " " || e.key === "Enter") togglePlay();
+        else if (e.key === "m" || e.key === "M") toggleMute();
+      });
+
+      function toggleMute() {
+        audioEl.muted = !audioEl.muted;
+        document.getElementById("btn-mute").innerHTML = audioEl.muted ? "&#128263;" : "&#128266;";
+        localStorage.setItem("showroom-muted", audioEl.muted ? "1" : "0");
+      }
+
+      function wireHud() {
+        document.getElementById("btn-next").addEventListener("click", advance);
+        document.getElementById("btn-prev").addEventListener("click", prev);
+        document.getElementById("btn-play").addEventListener("click", () => togglePlay());
+        document.getElementById("btn-mute").addEventListener("click", toggleMute);
+
+        const select = document.getElementById("station");
+        STATIONS.forEach((s, i) => {
+          const opt = document.createElement("option");
+          opt.value = String(i);
+          opt.textContent = s.name;
+          select.appendChild(opt);
+        });
+        select.value = String(stationIdx);
+        select.addEventListener("change", () => loadStation(Number(select.value), true));
+
+        const vol = document.getElementById("vol");
+        const savedVol = localStorage.getItem("showroom-volume");
+        audioEl.volume = savedVol !== null ? Number(savedVol) : 0.5;
+        vol.value = String(audioEl.volume);
+        vol.addEventListener("input", () => {
+          audioEl.volume = Number(vol.value);
+          localStorage.setItem("showroom-volume", vol.value);
+        });
+
+        audioEl.muted = localStorage.getItem("showroom-muted") === "1";
+        document.getElementById("btn-mute").innerHTML = audioEl.muted ? "&#128263;" : "&#128266;";
+      }
+
+      function start() {
+        document.getElementById("start-overlay").classList.add("hidden");
+        // Il fullscreen non è awaited: su alcuni motori TV la promise resta
+        // pending a lungo (o non si risolve mai) e bloccherebbe l'avvio di
+        // audio/slideshow, che sono la parte che conta davvero.
+        const el = document.documentElement;
+        const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+        if (req) { try { Promise.resolve(req.call(el)).catch(() => {}); } catch (_) {} }
+        requestWakeLock();
+        loadStation(stationIdx, true);
+        tickClock();
+        advance();
+        flashHud();
+      }
+
+      // Le foto arrivano dalla pagina di caricamento (vetrina-gSPDY1JN-admin.html)
+      // tramite /api/showroom/photos, non più dal manifest statico.
+      async function fetchPhotos() {
+        try {
+          const res = await fetch("/api/showroom/photos", { cache: "no-store" });
+          const data = await res.json();
+          return (data.items || [])
+            .filter((item) => item.attachment?.url)
+            .map((item) => ({
+              category: item.category,
+              image: item.attachment.url,
+              title: item.title,
+              subtitle: item.subtitle,
+            }));
+        } catch (_) {
+          return [];
+        }
+      }
+
+      async function init() {
+        wireHud();
+        try {
+          const res = await fetch("/showroom-content/manifest.json", { cache: "no-store" });
+          manifest = await res.json();
+        } catch (_) {
+          manifest = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/logo-prato.png" }, coolStuff: [] };
+        }
+        manifest.photos = await fetchPhotos();
+        sequence = buildSequence(manifest);
+        document.getElementById("btn-start").addEventListener("click", start, { once: true });
+        // La vetrina resta accesa per ore senza mai ricaricare: senza un
+        // refresh periodico non vedrebbe mai le foto caricate nel frattempo
+        // dall'ufficio. buildSequence() viene richiamata da sola ad ogni
+        // giro (vedi advance()), quindi basta aggiornare l'array qui.
+        setInterval(async () => {
+          const fresh = await fetchPhotos();
+          if (fresh.length) manifest.photos = fresh;
+        }, 5 * 60 * 1000);
+      }
+      init();
+    </script>
+  </body>
+</html>

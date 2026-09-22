@@ -1,0 +1,13 @@
+{
+  "brand": {
+    "name": "Prato Sintetico Italia",
+    "tagline": "Il verde che non delude mai",
+    "logo": "/logo-prato.png"
+  },
+  "coolStuff": [
+    { "type": "stat", "value": "15+", "label": "anni di esperienza nella posa" },
+    { "type": "stat", "value": "500+", "label": "giardini trasformati in Italia" },
+    { "type": "quote", "text": "Un prato che sembra vero, perché è fatto per durare." },
+    { "type": "quote", "text": "Zero manutenzione. Massima resa, ogni stagione." }
+  ]
+}
