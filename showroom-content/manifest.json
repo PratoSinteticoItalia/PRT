@@ -2,12 +2,21 @@
   "brand": {
     "name": "Prato Sintetico Italia",
     "tagline": "Il verde che non delude mai",
-    "logo": "/showroom-content/logo.png"
+    "logo": "/showroom-content/logo.png",
+    "logoWhite": "/showroom-content/logo-white.png"
   },
   "coolStuff": [
-    { "type": "stat", "value": "15+", "label": "anni di esperienza nella posa" },
-    { "type": "stat", "value": "500+", "label": "giardini trasformati in Italia" },
+    { "type": "stat", "icon": "spark", "value": "15+", "label": "anni di esperienza nella posa" },
+    { "type": "stat", "icon": "leaf", "value": "500+", "label": "giardini trasformati in Italia" },
+    { "type": "stat", "icon": "star", "value": "4,8", "label": "★ su 137 recensioni Google" },
     { "type": "quote", "text": "Un prato che sembra vero, perché è fatto per durare." },
-    { "type": "quote", "text": "Zero manutenzione. Massima resa, ogni stagione." }
+    { "type": "quote", "text": "Zero manutenzione. Massima resa, ogni stagione." },
+    { "type": "quote", "text": "Progettiamo superfici, non semplici rotoli." },
+    { "type": "tip", "icon": "sun", "text": "Il filo è trattato per riflettere i raggi: una spruzzata d'acqua raffredda il prato in pochi secondi." },
+    { "type": "tip", "icon": "droplet", "text": "Drena fino a 40 litri al minuto per metro quadro, grazie a un fondo progettato su misura." },
+    { "type": "tip", "icon": "leaf", "text": "Zero irrigazione, zero taglio: più tempo per vivere il giardino, tutto l'anno." },
+    { "type": "tip", "icon": "shield", "text": "Durata stimata 12–15 anni: un investimento definito fin dal primo giorno." },
+    { "type": "tip", "icon": "truck", "text": "Ordini elaborati in 24–48 ore, spedizione in 3–5 giorni in tutta Italia." },
+    { "type": "tip", "icon": "star", "text": "Resa ordinata 365 giorni l'anno, scelto da chi ha bambini, animali e uso intenso." }
   ]
 }
