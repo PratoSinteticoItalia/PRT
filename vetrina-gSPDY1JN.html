@@ -51,8 +51,8 @@
       .tpl-product { position: absolute; inset: 0; display: flex; background: var(--paper); }
       .product-immersive { position: relative; flex: 1 1 60%; overflow: hidden; background: #0c130f; }
       .product-immersive img {
-        position: absolute; top: 50%; left: 50%; width: 130%; height: 130%; object-fit: cover;
-        object-position: 72% 18%; animation: kenBurnsSlow 9.5s ease-out both;
+        position: absolute; top: 50%; left: 50%; width: 118%; height: 118%; object-fit: cover;
+        object-position: center; animation: kenBurnsSlow 9.5s ease-out both;
       }
       .product-immersive .fade-edge {
         position: absolute; inset: 0;
@@ -229,7 +229,7 @@
       let activeLayerIdx = 0;
       let sequence = [];
       let seqPos = -1;
-      let data = { brand: {}, coolStuff: [], products: [], realizzazioni: [] };
+      let data = { brand: {}, coolStuff: [], collections: [], activeCollectionIds: null, realizzazioni: [] };
       let playing = true;
       let advanceTimer = null;
       let wakeLock = null;
@@ -243,25 +243,34 @@
         return a;
       }
 
-      // Il catalogo resta raggruppato per categoria (ordine fisso, sono dati
-      // strutturati) — solo le realizzazioni vengono rimescolate ad ogni giro,
-      // per dare varietà senza mai mischiare le due sezioni tra loro.
+      // Solo le collezioni attive (scelte dall'ufficio in Impostazioni, o
+      // tutte se non è mai stato configurato) entrano in sequenza. Dentro
+      // ogni collezione, gli item restano raggruppati per categoria (ordine
+      // fisso, sono dati strutturati) — solo le realizzazioni vengono
+      // rimescolate ad ogni giro, senza mai mischiare le due sezioni.
       function buildSequence(d) {
         const seq = [];
-        const byCategory = new Map();
-        (d.products || []).forEach((p) => {
-          const key = p.category || "Altro";
-          if (!byCategory.has(key)) byCategory.set(key, []);
-          byCategory.get(key).push(p);
-        });
-        const orderedCats = [
-          ...CATEGORY_ORDER.filter((c) => byCategory.has(c)),
-          ...[...byCategory.keys()].filter((c) => !CATEGORY_ORDER.includes(c)),
-        ];
-        orderedCats.forEach((cat) => {
-          const items = byCategory.get(cat);
-          seq.push({ kind: "divider", data: { name: cat, count: items.length } });
-          items.forEach((p) => seq.push({ kind: "product", data: p }));
+        const activeCollections = Array.isArray(d.activeCollectionIds)
+          ? d.collections.filter((c) => d.activeCollectionIds.includes(c.id))
+          : d.collections;
+        activeCollections.forEach((coll) => {
+          const byCategory = new Map();
+          (coll.items || []).forEach((p) => {
+            const key = p.category || "Altro";
+            if (!byCategory.has(key)) byCategory.set(key, []);
+            byCategory.get(key).push(p);
+          });
+          const orderedCats = coll.id === "prato-sintetico"
+            ? [
+                ...CATEGORY_ORDER.filter((c) => byCategory.has(c)),
+                ...[...byCategory.keys()].filter((c) => !CATEGORY_ORDER.includes(c)),
+              ]
+            : [...byCategory.keys()];
+          orderedCats.forEach((cat) => {
+            const items = byCategory.get(cat);
+            seq.push({ kind: "divider", data: { collection: coll.name, name: cat, count: items.length } });
+            items.forEach((p) => seq.push({ kind: "product", data: p, collection: coll }));
+          });
         });
         // Due elementi "cose fighe" scelti a caso ad ogni giro (non sempre
         // gli stessi due) come cuscinetto tra catalogo e realizzazioni.
@@ -275,18 +284,28 @@
       }
 
       function renderDivider(d) {
-        return `<div class="tpl-divider"><div class="eyebrow">Catalogo</div><div class="cat-name">${d.name}</div><div class="cat-count">${d.count} modell${d.count === 1 ? "o" : "i"}</div></div>`;
+        return `<div class="tpl-divider"><div class="eyebrow">${d.collection}</div><div class="cat-name">${d.name}</div><div class="cat-count">${d.count} modell${d.count === 1 ? "o" : "i"}</div></div>`;
       }
 
-      function renderProduct(p) {
-        const s = p.specs || {};
-        const idx = data.products.indexOf(p) + 1;
-        const total = data.products.length;
-        const num = String(idx).padStart(2, "0");
+      // Foto "reale" a destra: se l'item ha una lifestyle assegnata la usa,
+      // altrimenti pesca (in modo stabile, non a caso ad ogni render) una
+      // foto dalle realizzazioni caricate — così ogni prodotto è comunque
+      // affiancato da un cantiere vero finché non gli si assegna la sua foto.
+      function pickLifestyleImage(item, idx) {
+        if (item.lifestyle) return item.lifestyle;
+        if (!data.realizzazioni.length) return item.image;
+        return data.realizzazioni[idx % data.realizzazioni.length].attachment?.url;
+      }
+
+      function renderProduct(p, idx) {
+        const specs = p.specs || [];
+        const num = String(idx + 1).padStart(2, "0");
+        const total = sequence.filter((s) => s.kind === "product").length;
+        const lifestyle = pickLifestyleImage(p, idx);
         return `
           <div class="tpl-product">
             <div class="product-immersive">
-              <img src="${p.image}" alt="" />
+              <img src="${lifestyle}" alt="" />
               <div class="fade-edge"></div>
             </div>
             <div class="product-panel">
@@ -295,12 +314,9 @@
               <span class="cat-pill">${p.category || ""}</span>
               <h2 class="product-name">${p.name}</h2>
               <p class="product-desc">${p.description || ""}</p>
-              <div class="product-price"><span class="amount num">€${p.price}</span><span class="unit">/m² +IVA</span></div>
+              <div class="product-price"><span class="amount num">€${p.price}</span><span class="unit">${p.priceUnit || ""}</span></div>
               <div class="spec-row">
-                <div class="spec-item"><span class="k">Altezza</span><span class="v">${s.altezza || "—"}</span></div>
-                <div class="spec-item"><span class="k">Densità</span><span class="v">${s.densita || "—"}</span></div>
-                <div class="spec-item"><span class="k">Drenante</span><span class="v">${s.drenante || "—"}</span></div>
-                <div class="spec-item"><span class="k">Garanzia</span><span class="v">${s.garanzia || "—"}</span></div>
+                ${specs.map((s) => `<div class="spec-item"><span class="k">${s.k}</span><span class="v">${s.v}</span></div>`).join("")}
               </div>
             </div>
           </div>`;
@@ -330,7 +346,10 @@
 
       function renderSlide(item) {
         if (item.kind === "divider") return { kind: "divider", html: renderDivider(item.data), dark: true };
-        if (item.kind === "product") return { kind: "product", html: renderProduct(item.data), dark: false };
+        if (item.kind === "product") {
+          const productItems = sequence.filter((s) => s.kind === "product");
+          return { kind: "product", html: renderProduct(item.data, productItems.indexOf(item)), dark: false };
+        }
         if (item.kind === "realizzazione") return { kind: "realizzazione", html: renderRealizzazione(item.data), dark: true };
         if (item.kind === "stat") return { kind: "stat", html: renderStat(item.data), dark: false };
         if (item.kind === "quote") return { kind: "quote", html: renderQuote(item.data), dark: true };
@@ -518,15 +537,17 @@
       async function init() {
         wireHud();
         try {
-          const [manifest, products] = await Promise.all([
+          const [manifest, collections, settings] = await Promise.all([
             fetch("/showroom-content/manifest.json", { cache: "no-store" }).then((r) => r.json()),
-            fetch("/showroom-content/products.json", { cache: "no-store" }).then((r) => r.json()),
+            fetch("/showroom-content/catalog.json", { cache: "no-store" }).then((r) => r.json()),
+            fetch("/api/showroom/settings", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ activeCollections: null })),
           ]);
           data.brand = manifest.brand || {};
           data.coolStuff = manifest.coolStuff || [];
-          data.products = products;
+          data.collections = collections;
+          data.activeCollectionIds = settings.activeCollections || null;
         } catch (_) {
-          data = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/showroom-content/logo.png" }, coolStuff: [], products: [] };
+          data = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/showroom-content/logo.png" }, coolStuff: [], collections: [], activeCollectionIds: null, realizzazioni: [] };
         }
         data.realizzazioni = await fetchRealizzazioni();
         sequence = buildSequence(data);

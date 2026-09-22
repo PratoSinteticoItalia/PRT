@@ -69,6 +69,15 @@
       .segmented button.active.catalogo { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-dark); }
       .segmented button.active.realizzazioni { background: var(--amber-soft); border-color: var(--amber); color: #7c2d12; }
 
+      .coll-row {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        padding: 10px 0; border-bottom: 1px solid var(--line);
+      }
+      .coll-row:last-child { border-bottom: none; }
+      .coll-row .name { font-size: .92rem; font-weight: 600; }
+      .coll-row .count { font-size: .78rem; color: var(--muted); }
+      .coll-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--brand); }
+
       .btn-primary {
         margin-top: 18px; width: 100%; padding: 13px; border: none; border-radius: 10px;
         background: var(--brand); color: #fff; font: 700 1rem "DM Sans", sans-serif; cursor: pointer;
@@ -109,6 +118,14 @@
       <div class="banner" id="auth-banner">
         Per caricare foto devi essere loggato come ufficio sul gestionale.
         <a href="/index.html" target="_blank" rel="noopener">Apri il login in un'altra scheda</a>, poi ricarica questa pagina.
+      </div>
+
+      <div class="card">
+        <h2>Collezioni in vetrina</h2>
+        <p class="empty" style="margin-top:-8px">Scegli quali collezioni far girare sulla TV. Nessuna spuntata = tutte attive.</p>
+        <div id="collections-list"></div>
+        <button class="btn-primary" id="save-collections-btn" style="margin-top:14px">Salva collezioni</button>
+        <div class="status" id="collections-status"></div>
       </div>
 
       <div class="card">
@@ -287,6 +304,64 @@
         return div.innerHTML;
       }
 
+      async function loadCollections() {
+        const list = document.getElementById("collections-list");
+        try {
+          const [catalog, settings] = await Promise.all([
+            fetch("/showroom-content/catalog.json", { cache: "no-store" }).then((r) => r.json()),
+            fetch("/api/showroom/settings", { credentials: "same-origin" }).then((r) => r.json()),
+          ]);
+          const active = settings.activeCollections; // null = tutte attive
+          list.innerHTML = "";
+          catalog.forEach((coll) => {
+            const row = document.createElement("div");
+            row.className = "coll-row";
+            const checked = !active || active.includes(coll.id);
+            row.innerHTML = `
+              <label style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer">
+                <input type="checkbox" data-coll="${coll.id}" ${checked ? "checked" : ""} />
+                <span class="name">${coll.name}</span>
+              </label>
+              <span class="count">${(coll.items || []).length} articoli</span>`;
+            list.appendChild(row);
+          });
+        } catch (_) {
+          list.innerHTML = '<div class="empty">Impossibile caricare le collezioni.</div>';
+        }
+      }
+
+      document.getElementById("save-collections-btn").addEventListener("click", async () => {
+        const boxes = Array.from(document.querySelectorAll('#collections-list input[type="checkbox"]'));
+        const checked = boxes.filter((b) => b.checked).map((b) => b.dataset.coll);
+        // Tutte spuntate equivale a "nessun filtro" (null) — più semplice da
+        // ragionare per chi apre la pagina la prima volta.
+        const activeCollections = checked.length === boxes.length ? null : checked;
+        const statusEl = document.getElementById("collections-status");
+        statusEl.textContent = "Salvataggio…";
+        statusEl.className = "status";
+        try {
+          const res = await fetch("/api/showroom/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ activeCollections }),
+          });
+          if (res.status === 401 || res.status === 403) {
+            document.getElementById("auth-banner").classList.add("show");
+            statusEl.textContent = "Non sei loggato come ufficio.";
+            statusEl.className = "status err";
+            return;
+          }
+          if (!res.ok) throw new Error("save_failed");
+          statusEl.textContent = "Salvato! La vetrina lo vedrà al prossimo giro.";
+          statusEl.className = "status ok";
+        } catch (_) {
+          statusEl.textContent = "Salvataggio non riuscito, riprova.";
+          statusEl.className = "status err";
+        }
+      });
+
+      loadCollections();
       loadPhotos();
     </script>
   </body>
