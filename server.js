@@ -17715,6 +17715,24 @@ async function handleApi(req, res, url) {
     return streamAttachmentAsset(res, entry.attachment, { cacheControl: "public, max-age=86400" });
   }
 
+  // Quali collezioni del catalogo.json mostrare in vetrina (null/assente =
+  // tutte). GET pubblico (la TV non è loggata), POST office-only.
+  if (url.pathname === "/api/showroom/settings" && req.method === "GET") {
+    return sendJson(res, 200, store.showroomSettings || { activeCollections: null });
+  }
+
+  if (url.pathname === "/api/showroom/settings" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const activeCollections = Array.isArray(body.activeCollections)
+      ? body.activeCollections.map((v) => String(v)).filter(Boolean)
+      : null;
+    store.showroomSettings = { activeCollections, updatedAt: new Date().toISOString() };
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, store.showroomSettings);
+  }
+
   // Ordini materiale rivenditore → ufficio (solo tracking interno, nessuna
   // scrittura verso Shopify — vedi commento su normalizeResellerOrderRequest).
   if (url.pathname === "/api/reseller/order-requests" && req.method === "GET") {
