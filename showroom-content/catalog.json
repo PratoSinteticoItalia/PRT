@@ -4,134 +4,304 @@
     "name": "Prato Sintetico",
     "items": [
       {
-        "id": "palma-40mm", "name": "Palma 40mm", "price": "17,50", "priceUnit": "/m² +IVA",
+        "id": "palma-40mm",
+        "name": "Palma 40mm",
+        "price": "17,50",
+        "priceUnit": "/m² +IVA",
         "category": "Residenziale",
         "description": "Fitto e compatto, il più morbido al calpestio.",
         "specs": [
-          { "k": "Altezza", "v": "40 mm" },
-          { "k": "Densità", "v": "29.400 punti/m²" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "10 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "40 mm"
+          },
+          {
+            "k": "Densità",
+            "v": "29.400 punti/m²"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "10 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/palma-40mm.jpg"
+        "image": "/showroom-content/products/palma-40mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/palma-40-mm"
       },
       {
-        "id": "mogano-40mm", "name": "Mogano 40mm", "price": "16,90", "priceUnit": "/m² +IVA",
+        "id": "mogano-40mm",
+        "name": "Mogano 40mm",
+        "price": "16,90",
+        "priceUnit": "/m² +IVA",
         "category": "Residenziale",
         "description": "Volume e presenza scenografica, colore omogeneo da ogni angolazione.",
         "specs": [
-          { "k": "Altezza", "v": "40 mm" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "10 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "40 mm"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "10 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/mogano-40mm.jpg"
+        "image": "/showroom-content/products/mogano-40mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/mogano-40-mm-multidirezionale"
       },
       {
-        "id": "rovere-40mm", "name": "Rovere 40mm", "price": "14,50", "priceUnit": "/m² +IVA",
+        "id": "rovere-40mm",
+        "name": "Rovere 40mm",
+        "price": "14,50",
+        "priceUnit": "/m² +IVA",
         "category": "Residenziale",
         "description": "Impatto pieno e profondo, morbido sotto i piedi.",
         "specs": [
-          { "k": "Altezza", "v": "40 mm" },
-          { "k": "Densità", "v": "25.200 punti/m²" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "10 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "40 mm"
+          },
+          {
+            "k": "Densità",
+            "v": "25.200 punti/m²"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "10 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/rovere-40mm.jpg"
+        "image": "/showroom-content/products/rovere-40mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/rovere-40-mm"
       },
       {
-        "id": "cedro-30mm", "name": "Cedro 30mm", "price": "13,90", "priceUnit": "/m² +IVA",
+        "id": "cedro-30mm",
+        "name": "Cedro 30mm",
+        "price": "13,90",
+        "priceUnit": "/m² +IVA",
         "category": "Residenziale",
         "description": "L'equilibrio tra effetto naturale e gestione facile.",
         "specs": [
-          { "k": "Altezza", "v": "30 mm" },
-          { "k": "Densità", "v": "18.900 punti/m²" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "10 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "30 mm"
+          },
+          {
+            "k": "Densità",
+            "v": "18.900 punti/m²"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "10 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/cedro-30mm.jpg"
+        "image": "/showroom-content/products/cedro-30mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/cedro-30-mm"
       },
       {
-        "id": "betulla-30mm", "name": "Betulla 30mm", "price": "11,90", "priceUnit": "/m² +IVA",
+        "id": "betulla-30mm",
+        "name": "Betulla 30mm",
+        "price": "11,90",
+        "priceUnit": "/m² +IVA",
         "category": "Residenziale",
         "description": "Effetto naturale deciso, ordine quotidiano.",
         "specs": [
-          { "k": "Altezza", "v": "30 mm" },
-          { "k": "Densità", "v": "16.800 punti/m²" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "10 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "30 mm"
+          },
+          {
+            "k": "Densità",
+            "v": "16.800 punti/m²"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "10 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/betulla-30mm.jpg"
+        "image": "/showroom-content/products/betulla-30mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/betulla-30-mm"
       },
       {
-        "id": "mogano-50mm", "name": "Mogano 50mm", "price": "19,50", "priceUnit": "/m² +IVA",
+        "id": "mogano-50mm",
+        "name": "Mogano 50mm",
+        "price": "19,50",
+        "priceUnit": "/m² +IVA",
         "category": "Uso intensivo",
         "description": "Multifilato ultra-realistico, il più venduto per i giardini.",
         "specs": [
-          { "k": "Altezza", "v": "50 mm" },
-          { "k": "Densità", "v": "12.075 punti/m²" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "10 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "50 mm"
+          },
+          {
+            "k": "Densità",
+            "v": "12.075 punti/m²"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "10 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/mogano-50mm.jpg"
+        "image": "/showroom-content/products/mogano-50mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/mogano-50-mm-multidirezionale"
       },
       {
-        "id": "abete-45mm", "name": "Abete 45mm", "price": "18,90", "priceUnit": "/m² +IVA",
+        "id": "abete-45mm",
+        "name": "Abete 45mm",
+        "price": "18,90",
+        "priceUnit": "/m² +IVA",
         "category": "Uso intensivo",
         "description": "Multifilato ultra-realistico, il più venduto per i giardini.",
         "specs": [
-          { "k": "Altezza", "v": "45 mm" },
-          { "k": "Densità", "v": "14.700 punti/m²" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "10 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "45 mm"
+          },
+          {
+            "k": "Densità",
+            "v": "14.700 punti/m²"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "10 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/abete-45mm.jpg"
+        "image": "/showroom-content/products/abete-45mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/abete-45-mm-multidirezionale"
       },
       {
-        "id": "cipresso-40mm", "name": "Cipresso 40mm", "price": "16,90", "priceUnit": "/m² +IVA",
+        "id": "cipresso-40mm",
+        "name": "Cipresso 40mm",
+        "price": "16,90",
+        "priceUnit": "/m² +IVA",
         "category": "Animali domestici",
         "description": "Incredibile realismo, colore omogeneo da ogni angolazione.",
         "specs": [
-          { "k": "Altezza", "v": "40 mm" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "10 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "40 mm"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "10 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/cipresso-40mm.jpg"
+        "image": "/showroom-content/products/cipresso-40mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/cipresso-40-mm-multidirezionale"
       },
       {
-        "id": "tasso-12mm", "name": "Tasso 12mm", "price": "4,90", "priceUnit": "/m² +IVA",
+        "id": "tasso-12mm",
+        "name": "Tasso 12mm",
+        "price": "4,90",
+        "priceUnit": "/m² +IVA",
         "category": "Animali domestici",
         "description": "Filo basso e superficie regolare, pulizia immediata.",
         "specs": [
-          { "k": "Altezza", "v": "12 mm" },
-          { "k": "Densità", "v": "58.800 punti/m²" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "4 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "12 mm"
+          },
+          {
+            "k": "Densità",
+            "v": "58.800 punti/m²"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "4 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/tasso-12mm.jpg"
+        "image": "/showroom-content/products/tasso-12mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/tasso-12mm"
       },
       {
-        "id": "faggio-25mm", "name": "Faggio 25mm", "price": "10,90", "priceUnit": "/m² +IVA",
+        "id": "faggio-25mm",
+        "name": "Faggio 25mm",
+        "price": "10,90",
+        "priceUnit": "/m² +IVA",
         "category": "Terrazzi & Balconi",
         "description": "Morbido e denso, per spazi vissuti ogni giorno.",
         "specs": [
-          { "k": "Altezza", "v": "25 mm" },
-          { "k": "Densità", "v": "25.200 punti/m²" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "10 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "25 mm"
+          },
+          {
+            "k": "Densità",
+            "v": "25.200 punti/m²"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "10 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/faggio-25mm.jpg"
+        "image": "/showroom-content/products/faggio-25mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/faggio-25-mm"
       },
       {
-        "id": "bonsai-18mm", "name": "Bonsai 18mm", "price": "7,90", "priceUnit": "/m² +IVA",
+        "id": "bonsai-18mm",
+        "name": "Bonsai 18mm",
+        "price": "7,90",
+        "priceUnit": "/m² +IVA",
         "category": "Terrazzi & Balconi",
         "description": "Compatto e ordinato, perfetto per balconi e terrazzi.",
         "specs": [
-          { "k": "Altezza", "v": "18 mm" },
-          { "k": "Densità", "v": "26.250 punti/m²" },
-          { "k": "Drenante", "v": "60 l/min·m²" },
-          { "k": "Garanzia", "v": "4 anni · UV" }
+          {
+            "k": "Altezza",
+            "v": "18 mm"
+          },
+          {
+            "k": "Densità",
+            "v": "26.250 punti/m²"
+          },
+          {
+            "k": "Drenante",
+            "v": "60 l/min·m²"
+          },
+          {
+            "k": "Garanzia",
+            "v": "4 anni · UV"
+          }
         ],
-        "image": "/showroom-content/products/bonsai-18mm.jpg"
+        "image": "/showroom-content/products/bonsai-18mm.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/prato-sintetico/products/bonsai-18-mm"
       }
     ]
   },
@@ -140,25 +310,64 @@
     "name": "Accessori",
     "items": [
       {
-        "id": "colla-bicomponente", "name": "Colla bi-componente (A+B)", "price": "45,00", "priceUnit": "+IVA",
+        "id": "colla-bicomponente",
+        "name": "Colla bi-componente (A+B)",
+        "price": "45,00",
+        "priceUnit": "+IVA",
         "category": "Installazione",
         "description": "Fissaggio professionale per giunzioni stabili e invisibili.",
-        "specs": [ { "k": "Tipo", "v": "Bi-componente A+B" }, { "k": "Uso", "v": "Fissaggio giunzioni" } ],
-        "image": "/showroom-content/catalog/colla-bicomponente.jpg"
+        "specs": [
+          {
+            "k": "Tipo",
+            "v": "Bi-componente A+B"
+          },
+          {
+            "k": "Uso",
+            "v": "Fissaggio giunzioni"
+          }
+        ],
+        "image": "/showroom-content/catalog/colla-bicomponente.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/cura-del-prato"
       },
       {
-        "id": "bordura-corten", "name": "Bordura in acciaio COR-TEN®", "price": "21,00", "priceUnit": "+IVA",
+        "id": "bordura-corten",
+        "name": "Bordura in acciaio COR-TEN®",
+        "price": "21,00",
+        "priceUnit": "+IVA",
         "category": "Decorazione",
         "description": "Finitura di pregio per chiudere i lati e dare ordine alla superficie.",
-        "specs": [ { "k": "Materiale", "v": "Acciaio COR-TEN®" }, { "k": "Uso", "v": "Finitura bordo prato" } ],
-        "image": "/showroom-content/catalog/bordura-corten.jpg"
+        "specs": [
+          {
+            "k": "Materiale",
+            "v": "Acciaio COR-TEN®"
+          },
+          {
+            "k": "Uso",
+            "v": "Finitura bordo prato"
+          }
+        ],
+        "image": "/showroom-content/catalog/bordura-corten.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/cura-del-prato"
       },
       {
-        "id": "scopa-manuale", "name": "Scopa manuale 45cm", "price": "30,00", "priceUnit": "+IVA",
+        "id": "scopa-manuale",
+        "name": "Scopa manuale 45cm",
+        "price": "30,00",
+        "priceUnit": "+IVA",
         "category": "Manutenzione",
         "description": "Per mantenere il filo sempre dritto e ordinato nel tempo.",
-        "specs": [ { "k": "Larghezza", "v": "45 cm" }, { "k": "Uso", "v": "Manutenzione periodica" } ],
-        "image": "/showroom-content/catalog/scopa-manuale.jpg"
+        "specs": [
+          {
+            "k": "Larghezza",
+            "v": "45 cm"
+          },
+          {
+            "k": "Uso",
+            "v": "Manutenzione periodica"
+          }
+        ],
+        "image": "/showroom-content/catalog/scopa-manuale.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/cura-del-prato"
       }
     ]
   },
@@ -167,18 +376,44 @@
     "name": "Verde Artificiale",
     "items": [
       {
-        "id": "parete-botanic", "name": "Parete verde Botanic", "price": "50,00", "priceUnit": "/m² +IVA",
+        "id": "parete-botanic",
+        "name": "Parete verde Botanic",
+        "price": "50,00",
+        "priceUnit": "/m² +IVA",
         "category": "Pannelli",
         "description": "Pareti vegetali per recinzioni, terrazzi e locali commerciali, senza manutenzione.",
-        "specs": [ { "k": "Formato", "v": "100×100 cm" }, { "k": "Montaggio", "v": "Rete, ringhiera o muro" } ],
-        "image": "/showroom-content/catalog/parete-botanic.jpg"
+        "specs": [
+          {
+            "k": "Formato",
+            "v": "100×100 cm"
+          },
+          {
+            "k": "Montaggio",
+            "v": "Rete, ringhiera o muro"
+          }
+        ],
+        "image": "/showroom-content/catalog/parete-botanic.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/verde-artificiale"
       },
       {
-        "id": "ficus-benjamini", "name": "Ficus Benjamini 150cm", "price": "77,80", "priceUnit": "+IVA",
+        "id": "ficus-benjamini",
+        "name": "Ficus Benjamini 150cm",
+        "price": "77,80",
+        "priceUnit": "+IVA",
         "category": "Piante",
         "description": "Pianta artificiale d'impatto, colore stabile in ogni stagione.",
-        "specs": [ { "k": "Altezza", "v": "150 cm" }, { "k": "Manutenzione", "v": "Zero" } ],
-        "image": "/showroom-content/catalog/ficus-benjamini.jpg"
+        "specs": [
+          {
+            "k": "Altezza",
+            "v": "150 cm"
+          },
+          {
+            "k": "Manutenzione",
+            "v": "Zero"
+          }
+        ],
+        "image": "/showroom-content/catalog/ficus-benjamini.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/verde-artificiale"
       }
     ]
   },
@@ -187,25 +422,64 @@
     "name": "Vasi e Arredo",
     "items": [
       {
-        "id": "vaso-vertigo", "name": "Vaso Vertigo", "price": "45,00", "priceUnit": "+IVA",
+        "id": "vaso-vertigo",
+        "name": "Vaso Vertigo",
+        "price": "45,00",
+        "priceUnit": "+IVA",
         "category": "Vaso",
         "description": "Linee scanalate, resistente agli agenti atmosferici.",
-        "specs": [ { "k": "Materiale", "v": "Resina" }, { "k": "Resistenza", "v": "UV, pioggia, gelo" } ],
-        "image": "/showroom-content/catalog/vaso-vertigo.jpg"
+        "specs": [
+          {
+            "k": "Materiale",
+            "v": "Resina"
+          },
+          {
+            "k": "Resistenza",
+            "v": "UV, pioggia, gelo"
+          }
+        ],
+        "image": "/showroom-content/catalog/vaso-vertigo.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/vasi-da-esterno"
       },
       {
-        "id": "fioriera-matera", "name": "Fioriera Matera", "price": "94,50", "priceUnit": "+IVA",
+        "id": "fioriera-matera",
+        "name": "Fioriera Matera",
+        "price": "94,50",
+        "priceUnit": "+IVA",
         "category": "Fioriera",
         "description": "Fioriera da bordo prato, finitura materica.",
-        "specs": [ { "k": "Materiale", "v": "Resina" }, { "k": "Resistenza", "v": "UV, pioggia, gelo" } ],
-        "image": "/showroom-content/catalog/fioriera-matera.jpg"
+        "specs": [
+          {
+            "k": "Materiale",
+            "v": "Resina"
+          },
+          {
+            "k": "Resistenza",
+            "v": "UV, pioggia, gelo"
+          }
+        ],
+        "image": "/showroom-content/catalog/fioriera-matera.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/vasi-da-esterno"
       },
       {
-        "id": "comfy-square", "name": "Comfy Square", "price": "95,00", "priceUnit": "+IVA",
+        "id": "comfy-square",
+        "name": "Comfy Square",
+        "price": "95,00",
+        "priceUnit": "+IVA",
         "category": "Arredo",
         "description": "Seduta da esterno, pensata per stare accanto al verde.",
-        "specs": [ { "k": "Materiale", "v": "Resina intrecciata" }, { "k": "Uso", "v": "Seduta outdoor" } ],
-        "image": "/showroom-content/catalog/comfy-square.jpg"
+        "specs": [
+          {
+            "k": "Materiale",
+            "v": "Resina intrecciata"
+          },
+          {
+            "k": "Uso",
+            "v": "Seduta outdoor"
+          }
+        ],
+        "image": "/showroom-content/catalog/comfy-square.jpg",
+        "url": "https://pratosinteticoitalia.com/collections/vasi-da-esterno"
       }
     ]
   }
