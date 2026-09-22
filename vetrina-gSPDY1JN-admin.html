@@ -101,8 +101,8 @@
       <header>
         <img src="/showroom-content/logo.png" alt="" />
         <div>
-          <h1>Carica foto per la vetrina</h1>
-          <p>Aggiungi foto di catalogo o di lavori realizzati, compaiono subito in TV.</p>
+          <h1>Carica foto realizzazioni</h1>
+          <p>Il catalogo prodotti è gestito a parte (dati/prezzi dal sito). Qui aggiungi solo foto di lavori realizzati — compaiono subito in TV.</p>
         </div>
       </header>
 
@@ -119,14 +119,8 @@
         </div>
         <div class="preview" id="preview"><img id="preview-img" alt="" /></div>
 
-        <label>Categoria</label>
-        <div class="segmented">
-          <button type="button" class="active catalogo" data-cat="catalogo">Catalogo</button>
-          <button type="button" class="realizzazioni" data-cat="realizzazioni">Realizzazione</button>
-        </div>
-
         <label for="title">Titolo</label>
-        <input type="text" id="title" placeholder="Es. Abete 45mm oppure Villa privata — Milano" />
+        <input type="text" id="title" placeholder="Es. Villa privata — Milano" />
 
         <label for="subtitle">Sottotitolo (opzionale)</label>
         <input type="text" id="subtitle" placeholder="Es. Multidirezionale, resa naturale" />
@@ -149,16 +143,8 @@
       const uploadBtn = document.getElementById("upload-btn");
       const statusEl = document.getElementById("status");
       const authBanner = document.getElementById("auth-banner");
-      let selectedCategory = "catalogo";
+      const selectedCategory = "realizzazioni";
       let compressedDataUrl = null;
-
-      document.querySelectorAll(".segmented button").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          document.querySelectorAll(".segmented button").forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-          selectedCategory = btn.dataset.cat;
-        });
-      });
 
       dropzone.addEventListener("click", () => fileInput.click());
       ["dragover", "dragenter"].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add("drag"); }));

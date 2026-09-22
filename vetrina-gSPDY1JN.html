@@ -10,161 +10,136 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=Fraunces:ital,wght@0,600;0,900;1,600;1,900&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap"
     />
     <style>
       :root {
         --brand: #2d6a4f;
-        --brand-dark: #1a2e23;
+        --brand-dark: #1b4332;
         --brand-soft: #d8f3dc;
+        --brand-xsoft: #f1f8f3;
+        --ink: #16241c;
+        --muted: #64766c;
+        --line: #e3ece5;
+        --paper: #ffffff;
         --amber: #d97706;
         --amber-soft: #fef3c7;
-        --ink: #0e1712;
       }
       * { box-sizing: border-box; }
       html, body {
-        margin: 0;
-        width: 100%;
-        height: 100%;
-        background: var(--ink);
-        overflow: hidden;
-        font-family: "DM Sans", sans-serif;
-        cursor: none;
+        margin: 0; width: 100%; height: 100%; background: var(--paper);
+        overflow: hidden; font-family: "DM Sans", sans-serif; cursor: none;
       }
       body.show-cursor { cursor: default; }
+      .num { font-variant-numeric: tabular-nums; }
 
-      /* ---------- palco: due layer sovrapposti per il crossfade ---------- */
-      #stage {
-        position: fixed;
-        inset: 0;
-        background: var(--ink);
-      }
-      .blobs {
-        position: absolute;
-        inset: 0;
-        z-index: 0;
-        overflow: hidden;
-      }
-      .blob {
-        position: absolute;
-        border-radius: 50%;
-        filter: blur(60px);
-        opacity: 0.55;
-        animation: drift 22s ease-in-out infinite;
-      }
-      .blob.b1 { width: 46vw; height: 46vw; background: var(--brand); top: -10%; left: -8%; animation-duration: 26s; }
-      .blob.b2 { width: 38vw; height: 38vw; background: #40916c; bottom: -12%; right: -6%; animation-duration: 19s; animation-delay: -6s; }
-      .blob.b3 { width: 28vw; height: 28vw; background: var(--amber); bottom: 10%; left: 20%; opacity: 0.25; animation-duration: 30s; animation-delay: -12s; }
-      @keyframes drift {
-        0%, 100% { transform: translate(0, 0) scale(1); }
-        50% { transform: translate(4%, -3%) scale(1.08); }
-      }
-
-      /* rumore leggero sopra tutto, per una resa più "editoriale" */
-      #grain {
-        position: fixed;
-        inset: 0;
-        z-index: 50;
-        pointer-events: none;
-        opacity: 0.05;
-        mix-blend-mode: overlay;
-        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-      }
-
-      .layer {
-        position: absolute;
-        inset: 0;
-        z-index: 1;
-        opacity: 0;
-        transition: opacity 0.9s ease;
-      }
+      #stage { position: fixed; inset: 0; background: var(--paper); }
+      .layer { position: absolute; inset: 0; z-index: 1; opacity: 0; transition: opacity .5s ease; }
       .layer.active { opacity: 1; z-index: 2; }
       .slide-inner { position: absolute; inset: 0; }
 
-      /* ---------- template: hero foto full-bleed ---------- */
-      .tpl-hero { position: absolute; inset: 0; overflow: hidden; background: #000; }
-      .tpl-hero img { position: absolute; inset: -3%; width: 106%; height: 106%; object-fit: cover; }
-      .tpl-hero .scrim {
+      /* ---------- sfondo a pannelli verdi, sempre presente sotto il catalogo ---------- */
+      .catalog-bg { position: absolute; inset: 0; background: var(--paper); overflow: hidden; }
+      .catalog-bg::before, .catalog-bg::after {
+        content: ""; position: absolute; border-radius: 50%; filter: blur(70px); opacity: .5;
+      }
+      .catalog-bg::before { width: 46vw; height: 46vw; background: var(--brand-soft); top: -16%; right: -12%; }
+      .catalog-bg::after { width: 34vw; height: 34vw; background: var(--brand-xsoft); bottom: -14%; left: -8%; }
+
+      /* ---------- template: divisore categoria ---------- */
+      .tpl-divider {
+        position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: var(--brand); color: #fff; text-align: center; gap: .6rem;
+      }
+      .tpl-divider .eyebrow { font: 700 .85rem "DM Sans"; letter-spacing: .18em; text-transform: uppercase; opacity: .75; }
+      .tpl-divider .cat-name { font: 800 clamp(2.2rem, 5vw, 4rem)/1.05 "DM Sans"; letter-spacing: -.01em; }
+      .tpl-divider .cat-count { font: 500 1.1rem "DM Sans"; opacity: .85; }
+
+      /* ---------- template: prodotto ---------- */
+      .tpl-product { position: absolute; inset: 0; }
+      .product-grid {
+        position: relative; z-index: 2; width: 100%; height: 100%;
+        display: grid; grid-template-columns: 1.05fr 1fr; align-items: center; gap: 2vw;
+        padding: 4vh 5vw;
+      }
+      .product-photo-wrap { display: flex; align-items: center; justify-content: center; height: 100%; }
+      .product-photo-wrap img {
+        max-width: 100%; max-height: 62vh; object-fit: contain;
+        filter: drop-shadow(0 30px 40px rgba(27,67,50,.16));
+      }
+      .product-info { display: flex; flex-direction: column; gap: .9rem; }
+      .cat-pill {
+        display: inline-flex; align-self: flex-start; align-items: center; gap: .4em;
+        padding: .4em 1em; border-radius: 999px; border: 1.5px solid var(--brand);
+        color: var(--brand-dark); font: 700 .78rem "DM Sans"; letter-spacing: .06em; text-transform: uppercase;
+      }
+      .product-name { font: 800 clamp(2rem, 3.6vw, 3rem)/1.05 "DM Sans"; color: var(--ink); margin: 0; letter-spacing: -.01em; }
+      .product-desc { font: 400 1.15rem/1.5 "DM Sans"; color: var(--muted); max-width: 36ch; margin: 0; }
+      .product-price { display: flex; align-items: baseline; gap: .4em; }
+      .product-price .amount { font: 800 clamp(2.4rem, 4.4vw, 3.6rem)/1 "DM Sans"; color: var(--brand); }
+      .product-price .unit { font: 600 1rem "DM Sans"; color: var(--muted); }
+      .spec-row { display: flex; gap: 1.6rem; padding-top: 1rem; border-top: 1px solid var(--line); flex-wrap: wrap; }
+      .spec-item { display: flex; flex-direction: column; gap: .2rem; min-width: 6rem; }
+      .spec-item .k { font: 700 .68rem "DM Sans"; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+      .spec-item .v { font: 700 1rem "DM Sans"; color: var(--ink); }
+
+      @keyframes slideInRight { from { opacity: 0; transform: translateX(6%); } to { opacity: 1; transform: translateX(0); } }
+      @keyframes slideOutLeft { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-6%); } }
+      @keyframes fadeUp { from { opacity: 0; transform: translateY(2.5%); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes zoomSoft { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: scale(1); } }
+
+      /* ---------- template: realizzazione (sobria) ---------- */
+      .tpl-realizzazione { position: absolute; inset: 0; overflow: hidden; background: #0c130f; }
+      .tpl-realizzazione img { position: absolute; inset: -2%; width: 104%; height: 104%; object-fit: cover; }
+      .tpl-realizzazione .scrim {
         position: absolute; inset: 0;
-        background: linear-gradient(0deg, rgba(0,0,0,.78) 0%, rgba(0,0,0,.28) 40%, transparent 65%);
+        background: linear-gradient(0deg, rgba(10,20,14,.72) 0%, rgba(10,20,14,.15) 32%, transparent 55%);
       }
-      .tpl-hero .copy { position: absolute; left: 5%; bottom: 8%; right: 5%; color: #fff; }
-
-      /* ---------- template: split diagonale ---------- */
-      .tpl-split { position: absolute; inset: 0; display: flex; background: var(--brand-dark); overflow: hidden; }
-      .tpl-split.rev { flex-direction: row-reverse; }
-      .tpl-split .panel {
-        width: 40%; flex: none; display: flex; flex-direction: column; justify-content: center;
-        padding: 6% 6%; color: #fff; position: relative; z-index: 2;
+      .tpl-realizzazione .copy { position: absolute; left: 4.5%; bottom: 6%; right: 4.5%; color: #fff; display: flex; align-items: center; gap: .9rem; }
+      .real-pill {
+        display: inline-flex; align-items: center; padding: .38em 1em; border-radius: 999px;
+        background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.3); backdrop-filter: blur(6px);
+        font: 700 .72rem "DM Sans"; letter-spacing: .08em; text-transform: uppercase;
       }
-      .tpl-split .photo { position: relative; flex: 1; overflow: hidden; }
-      .tpl-split .photo img { position: absolute; inset: -3%; width: 106%; height: 106%; object-fit: cover; }
-      .tpl-split .photo::before {
-        content: ""; position: absolute; inset: 0; z-index: 1;
-        background: linear-gradient(100deg, var(--brand-dark) 0%, var(--brand-dark) 8%, transparent 26%);
-      }
-      .tpl-split.rev .photo::before { background: linear-gradient(-100deg, var(--brand-dark) 0%, var(--brand-dark) 8%, transparent 26%); }
+      .real-title { font: 600 1.4rem "DM Sans"; margin: 0; }
 
-      .pill {
-        display: inline-block; align-self: flex-start; padding: .35em .9em; border-radius: 999px;
-        font: 700 .78rem/1 "DM Sans", sans-serif; letter-spacing: .08em; text-transform: uppercase;
-        margin-bottom: 1.1em;
-      }
-      .pill.catalogo { background: var(--brand-soft); color: var(--brand-dark); }
-      .pill.realizzazione { background: var(--amber-soft); color: #7c2d12; }
-
-      .title-xl { font: 700 clamp(2.6rem, 5.4vw, 5.2rem)/1.02 "Fraunces", serif; font-style: italic; margin: 0 0 .18em; }
-      .subtitle-lg { font: 400 clamp(1.05rem, 1.7vw, 1.5rem)/1.35 "DM Sans", sans-serif; opacity: .85; max-width: 42ch; }
-
-      /* ---------- template: stat ---------- */
+      /* ---------- template: stat / quote (chiaro, coerente) ---------- */
       .tpl-stat {
         position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        color: #fff; text-align: center; background: radial-gradient(circle at 50% 30%, rgba(255,255,255,.06), transparent 60%);
+        background: var(--brand-xsoft); color: var(--brand-dark); text-align: center; gap: .3rem;
       }
-      .tpl-stat .num { font: 900 clamp(6rem, 16vw, 14rem)/1 "Fraunces", serif; letter-spacing: -.02em; }
-      .tpl-stat .lbl { font: 600 clamp(1.1rem, 2vw, 1.8rem)/1.3 "DM Sans", sans-serif; text-transform: uppercase; letter-spacing: .06em; opacity: .85; margin-top: .4em; }
+      .tpl-stat .num { font: 800 clamp(4.5rem, 10vw, 8rem)/1 "DM Sans"; }
+      .tpl-stat .lbl { font: 600 clamp(1rem, 1.6vw, 1.4rem)/1.3 "DM Sans"; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 
-      /* ---------- template: quote ---------- */
       .tpl-quote {
         position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-        background: var(--brand-dark); color: #fff; padding: 0 10%;
+        background: var(--brand); color: #fff; padding: 0 10%; text-align: center;
       }
-      .tpl-quote blockquote {
-        margin: 0; text-align: center; font: 600 clamp(2rem, 4.4vw, 4.2rem)/1.2 "Fraunces", serif; font-style: italic;
-      }
-      .tpl-quote blockquote::before,
-      .tpl-quote blockquote::after { content: '"'; color: var(--brand-soft); opacity: .7; }
+      .tpl-quote blockquote { margin: 0; font: 600 clamp(1.6rem, 3.2vw, 2.6rem)/1.35 "DM Sans"; }
 
       /* ---------- template: bumper (logo) ---------- */
       .tpl-bumper {
         position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        background: linear-gradient(135deg, var(--brand), #1b4332); color: #fff; text-align: center; gap: 1.4rem;
+        background: var(--paper); color: var(--brand-dark); text-align: center; gap: 1.2rem;
       }
-      .tpl-bumper img { width: clamp(160px, 18vw, 260px); filter: drop-shadow(0 10px 30px rgba(0,0,0,.35)); }
-      .tpl-bumper .tagline { font: 600 clamp(1.3rem, 2.6vw, 2.2rem)/1.3 "Fraunces", serif; font-style: italic; max-width: 20ch; }
-
-      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-      @keyframes slideRight { from { opacity: 0; transform: translateX(4%); } to { opacity: 1; transform: translateX(0); } }
-      @keyframes slideUp { from { opacity: 0; transform: translateY(5%); } to { opacity: 1; transform: translateY(0); } }
-      @keyframes zoomIn { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: scale(1); } }
-      @keyframes kb1 { from { transform: scale(1) translate(0,0); } to { transform: scale(1.13) translate(-2%,-1%); } }
-      @keyframes kb2 { from { transform: scale(1.1) translate(-2%,0); } to { transform: scale(1) translate(0,-1%); } }
-      @keyframes kb3 { from { transform: scale(1) translate(0,-1%); } to { transform: scale(1.12) translate(2%,1%); } }
+      .tpl-bumper img { width: clamp(110px, 13vw, 180px); }
+      .tpl-bumper .tagline { font: 600 clamp(1.1rem, 2vw, 1.6rem)/1.3 "DM Sans"; color: var(--muted); max-width: 22ch; }
 
       /* ---------- barra di progresso ---------- */
-      #progress { position: fixed; top: 0; left: 0; height: 4px; width: 0; background: var(--brand-soft); z-index: 40; }
+      #progress { position: fixed; top: 0; left: 0; height: 3px; width: 0; background: var(--brand); z-index: 40; }
 
       /* ---------- orologio ---------- */
       #clock {
-        position: fixed; top: 22px; right: 28px; z-index: 45; color: rgba(255,255,255,.55);
-        font: 600 1rem/1 "DM Sans", sans-serif; letter-spacing: .04em; text-shadow: 0 1px 6px rgba(0,0,0,.5);
+        position: fixed; top: 22px; right: 28px; z-index: 45; color: var(--muted);
+        font: 600 1rem/1 "DM Sans"; letter-spacing: .04em; mix-blend-mode: normal;
       }
+      .tpl-realizzazione ~ #clock, body.on-dark #clock { color: rgba(255,255,255,.7); }
 
       /* ---------- HUD ---------- */
       #hud {
         position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
         display: flex; align-items: center; justify-content: space-between; gap: 1.5rem;
-        padding: 1rem 1.8rem; background: linear-gradient(0deg, rgba(0,0,0,.72), transparent);
+        padding: 1rem 1.8rem; background: linear-gradient(0deg, rgba(10,20,14,.82), transparent);
         color: #fff; transform: translateY(100%); opacity: 0; transition: transform .35s ease, opacity .35s ease;
         pointer-events: none;
       }
@@ -185,29 +160,32 @@
       /* ---------- overlay di avvio ---------- */
       #start-overlay {
         position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
-        align-items: center; justify-content: center; gap: 1.6rem; text-align: center; color: #fff;
-        background: radial-gradient(circle at 50% 30%, #2d6a4f, #10251b 75%); cursor: default;
+        align-items: center; justify-content: center; gap: 1.6rem; text-align: center; color: var(--brand-dark);
+        background: var(--brand-xsoft); cursor: default;
       }
-      #start-overlay img { width: clamp(140px, 16vw, 220px); }
-      #start-overlay h1 { font: 700 clamp(1.8rem, 3.4vw, 3rem)/1.2 "Fraunces", serif; font-style: italic; margin: 0; }
-      #start-overlay p { font: 400 1.05rem "DM Sans", sans-serif; opacity: .8; margin: 0; max-width: 40ch; }
+      #start-overlay img { width: clamp(120px, 14vw, 200px); }
+      #start-overlay h1 { font: 800 clamp(1.6rem, 3vw, 2.6rem)/1.2 "DM Sans"; margin: 0; }
+      #start-overlay p { font: 400 1.05rem "DM Sans"; color: var(--muted); margin: 0; max-width: 40ch; }
       #start-overlay button {
         margin-top: .6rem; padding: .95em 2.4em; border-radius: 999px; border: none; cursor: pointer;
-        background: #fff; color: var(--brand-dark); font: 700 1.05rem "DM Sans", sans-serif;
-        box-shadow: 0 10px 30px rgba(0,0,0,.35);
+        background: var(--brand); color: #fff; font: 700 1.05rem "DM Sans";
+        box-shadow: 0 10px 30px rgba(45,106,79,.28);
       }
       #start-overlay.hidden { display: none; }
+
+      @media (max-width: 900px) {
+        .product-grid { grid-template-columns: 1fr; grid-template-rows: auto auto; padding: 3vh 6vw; }
+        .product-photo-wrap img { max-height: 34vh; }
+      }
     </style>
   </head>
   <body>
     <div id="stage">
-      <div class="blobs"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
       <div class="layer" id="layerA"><div class="slide-inner"></div></div>
       <div class="layer" id="layerB"><div class="slide-inner"></div></div>
     </div>
     <div id="progress"></div>
     <div id="clock"></div>
-    <div id="grain"></div>
 
     <div id="hud">
       <div class="cluster">
@@ -238,21 +216,16 @@
         { id: "drone", name: "Drone Zone · ambient profondo", url: "https://ice1.somafm.com/dronezone-128-mp3" },
         { id: "deepspace", name: "Deep Space One · ambient spazio", url: "https://ice1.somafm.com/deepspaceone-128-mp3" },
       ];
-      const PHOTO_EVERY_COOL = 3; // ogni N foto, inserisce una slide "cosa figa" (stat/quote)
-      const PHOTO_EVERY_BUMPER = 6; // ogni N foto, inserisce lo stacchetto col logo
-      const DURATIONS = { hero: 9000, split: 9000, stat: 7000, quote: 8000, bumper: 5000 };
-      const ENTER_ANIMS = ["fadeIn", "slideRight", "slideUp", "zoomIn"];
-      const KB_ANIMS = ["kb1", "kb2", "kb3"];
+      const DURATIONS = { divider: 3200, product: 7500, realizzazione: 8500, stat: 6000, quote: 6500, bumper: 4500 };
+      const CATEGORY_ORDER = ["Residenziale", "Uso intensivo", "Animali domestici", "Terrazzi & Balconi"];
 
       const layerEls = [document.getElementById("layerA"), document.getElementById("layerB")];
       let activeLayerIdx = 0;
       let sequence = [];
       let seqPos = -1;
-      let manifest = null;
+      let data = { brand: {}, coolStuff: [], products: [], realizzazioni: [] };
       let playing = true;
       let advanceTimer = null;
-      let progressStart = 0;
-      let progressDuration = 0;
       let wakeLock = null;
 
       function shuffle(arr) {
@@ -264,84 +237,99 @@
         return a;
       }
 
-      function buildSequence(m) {
-        const photos = shuffle(m.photos || []);
-        const cool = m.coolStuff || [];
+      // Il catalogo resta raggruppato per categoria (ordine fisso, sono dati
+      // strutturati) — solo le realizzazioni vengono rimescolate ad ogni giro,
+      // per dare varietà senza mai mischiare le due sezioni tra loro.
+      function buildSequence(d) {
         const seq = [];
-        let coolIdx = 0;
-        photos.forEach((p, i) => {
-          seq.push({ kind: "photo", data: p });
-          if (cool.length && (i + 1) % PHOTO_EVERY_COOL === 0) {
-            seq.push({ kind: cool[coolIdx % cool.length].type, data: cool[coolIdx % cool.length] });
-            coolIdx++;
-          }
-          if ((i + 1) % PHOTO_EVERY_BUMPER === 0) {
-            seq.push({ kind: "bumper", data: m.brand });
-          }
+        const byCategory = new Map();
+        (d.products || []).forEach((p) => {
+          const key = p.category || "Altro";
+          if (!byCategory.has(key)) byCategory.set(key, []);
+          byCategory.get(key).push(p);
         });
-        if (!seq.length) seq.push({ kind: "bumper", data: m.brand });
+        const orderedCats = [
+          ...CATEGORY_ORDER.filter((c) => byCategory.has(c)),
+          ...[...byCategory.keys()].filter((c) => !CATEGORY_ORDER.includes(c)),
+        ];
+        orderedCats.forEach((cat) => {
+          const items = byCategory.get(cat);
+          seq.push({ kind: "divider", data: { name: cat, count: items.length } });
+          items.forEach((p) => seq.push({ kind: "product", data: p }));
+        });
+        // Due elementi "cose fighe" scelti a caso ad ogni giro (non sempre
+        // gli stessi due) come cuscinetto tra catalogo e realizzazioni.
+        const cool = shuffle(d.coolStuff || []);
+        if (cool[0]) seq.push({ kind: cool[0].type, data: cool[0] });
+        seq.push({ kind: "bumper", data: d.brand });
+        shuffle(d.realizzazioni || []).forEach((r) => seq.push({ kind: "realizzazione", data: r }));
+        if (cool[1]) seq.push({ kind: cool[1].type, data: cool[1] });
+        if (!seq.length) seq.push({ kind: "bumper", data: d.brand });
         return seq;
       }
 
-      function pill(category) {
-        if (!category) return "";
-        const cls = category === "realizzazioni" ? "realizzazione" : "catalogo";
-        const label = category === "realizzazioni" ? "Realizzazione" : "Catalogo";
-        return `<span class="pill ${cls}">${label}</span>`;
+      function renderDivider(d) {
+        return `<div class="tpl-divider"><div class="eyebrow">Catalogo</div><div class="cat-name">${d.name}</div><div class="cat-count">${d.count} modell${d.count === 1 ? "o" : "i"}</div></div>`;
       }
 
-      function renderPhoto(data, variant) {
-        const kb = KB_ANIMS[Math.floor(Math.random() * KB_ANIMS.length)];
-        const duration = (DURATIONS[variant] + 1500) / 1000 + "s";
-        if (variant === "hero") {
-          return {
-            kind: "hero",
-            html: `
-              <div class="tpl-hero">
-                <img src="${data.image}" style="animation:${kb} ${duration} ease-out both" />
-                <div class="scrim"></div>
-                <div class="copy">
-                  ${pill(data.category)}
-                  <div class="title-xl">${data.title || ""}</div>
-                  <div class="subtitle-lg">${data.subtitle || ""}</div>
+      function renderProduct(p) {
+        const s = p.specs || {};
+        return `
+          <div class="tpl-product">
+            <div class="catalog-bg"></div>
+            <div class="product-grid">
+              <div class="product-photo-wrap"><img src="${p.image}" alt="${p.name}" /></div>
+              <div class="product-info">
+                <span class="cat-pill">${p.category || ""}</span>
+                <h2 class="product-name">${p.name}</h2>
+                <p class="product-desc">${p.description || ""}</p>
+                <div class="product-price"><span class="amount num">€${p.price}</span><span class="unit">/m² +IVA</span></div>
+                <div class="spec-row">
+                  <div class="spec-item"><span class="k">Altezza</span><span class="v">${s.altezza || "—"}</span></div>
+                  <div class="spec-item"><span class="k">Densità</span><span class="v">${s.densita || "—"}</span></div>
+                  <div class="spec-item"><span class="k">Drenante</span><span class="v">${s.drenante || "—"}</span></div>
+                  <div class="spec-item"><span class="k">Garanzia</span><span class="v">${s.garanzia || "—"}</span></div>
                 </div>
-              </div>`,
-          };
-        }
-        const rev = Math.random() < 0.5;
-        return {
-          kind: "split",
-          html: `
-            <div class="tpl-split ${rev ? "rev" : ""}">
-              <div class="panel">
-                ${pill(data.category)}
-                <div class="title-xl">${data.title || ""}</div>
-                <div class="subtitle-lg">${data.subtitle || ""}</div>
               </div>
-              <div class="photo"><img src="${data.image}" style="animation:${kb} ${duration} ease-out both" /></div>
-            </div>`,
-        };
+            </div>
+          </div>`;
       }
 
-      function renderStat(data) {
-        return { kind: "stat", html: `<div class="tpl-stat"><div class="num">${data.value}</div><div class="lbl">${data.label}</div></div>` };
+      function renderRealizzazione(r) {
+        return `
+          <div class="tpl-realizzazione">
+            <img src="${r.attachment?.url || r.image}" alt="${r.title || ""}" />
+            <div class="scrim"></div>
+            <div class="copy">
+              <span class="real-pill">Realizzazione</span>
+              <p class="real-title">${r.title || ""}</p>
+            </div>
+          </div>`;
       }
-      function renderQuote(data) {
-        return { kind: "quote", html: `<div class="tpl-quote"><blockquote>${data.text}</blockquote></div>` };
+
+      function renderStat(d) {
+        return `<div class="tpl-stat"><div class="num">${d.value}</div><div class="lbl">${d.label}</div></div>`;
+      }
+      function renderQuote(d) {
+        return `<div class="tpl-quote"><blockquote>${d.text}</blockquote></div>`;
       }
       function renderBumper(brand) {
-        return {
-          kind: "bumper",
-          html: `<div class="tpl-bumper"><img src="${brand.logo}" alt="${brand.name}" /><div class="tagline">${brand.tagline || ""}</div></div>`,
-        };
+        return `<div class="tpl-bumper"><img src="${brand.logo}" alt="${brand.name || ""}" /><div class="tagline">${brand.tagline || ""}</div></div>`;
       }
 
       function renderSlide(item) {
-        if (item.kind === "photo") return renderPhoto(item.data, Math.random() < 0.55 ? "hero" : "split");
-        if (item.kind === "stat") return renderStat(item.data);
-        if (item.kind === "quote") return renderQuote(item.data);
-        return renderBumper(item.data);
+        if (item.kind === "divider") return { kind: "divider", html: renderDivider(item.data), dark: true };
+        if (item.kind === "product") return { kind: "product", html: renderProduct(item.data), dark: false };
+        if (item.kind === "realizzazione") return { kind: "realizzazione", html: renderRealizzazione(item.data), dark: true };
+        if (item.kind === "stat") return { kind: "stat", html: renderStat(item.data), dark: false };
+        if (item.kind === "quote") return { kind: "quote", html: renderQuote(item.data), dark: true };
+        return { kind: "bumper", html: renderBumper(item.data), dark: false };
       }
+
+      const ENTER_BY_KIND = {
+        product: "slideInRight", divider: "fadeUp", realizzazione: "zoomSoft",
+        stat: "fadeUp", quote: "fadeUp", bumper: "fadeUp",
+      };
 
       function showSlide(item) {
         const rendered = renderSlide(item);
@@ -350,21 +338,20 @@
         const inner = nextEl.querySelector(".slide-inner");
         inner.innerHTML = rendered.html;
 
-        // Se la foto non carica, salta subito alla slide successiva invece di
-        // tenere lo showroom fermo su un'immagine rotta per l'intera durata.
         const img = inner.querySelector("img");
         if (img) img.addEventListener("error", () => { if (playing) advance(); }, { once: true });
 
-        const anim = ENTER_ANIMS[Math.floor(Math.random() * ENTER_ANIMS.length)];
+        const anim = ENTER_BY_KIND[rendered.kind] || "fadeUp";
         inner.style.animation = "none";
-        void inner.offsetWidth; // forza il reflow per far ripartire la keyframe
-        inner.style.animation = `${anim} 1s cubic-bezier(.22,.85,.3,1) both`;
+        void inner.offsetWidth;
+        inner.style.animation = `${anim} .85s cubic-bezier(.22,.85,.3,1) both`;
 
         layerEls[activeLayerIdx].classList.remove("active");
         nextEl.classList.add("active");
         activeLayerIdx = nextIdx;
+        document.body.classList.toggle("on-dark", rendered.dark);
 
-        const duration = DURATIONS[rendered.kind] || 8000;
+        const duration = DURATIONS[rendered.kind] || 7000;
         runProgress(duration);
         document.getElementById("hud-count").textContent = `${seqPos + 1}/${sequence.length}`;
         return duration;
@@ -387,7 +374,7 @@
 
       function advance() {
         seqPos = (seqPos + 1) % sequence.length;
-        if (seqPos === 0) sequence = buildSequence(manifest); // rimescola ad ogni giro per non essere prevedibile
+        if (seqPos === 0) sequence = buildSequence(data);
         const duration = showSlide(sequence[seqPos]);
         scheduleNext(duration);
       }
@@ -402,16 +389,14 @@
         document.getElementById("btn-play").innerHTML = playing ? "&#10074;&#10074;" : "&#9658;";
         const bar = document.getElementById("progress");
         if (playing) {
-          bar.style.animationPlayState = "running";
-          scheduleNext(remainingOrDefault());
+          scheduleNext(4000);
         } else {
           clearTimeout(advanceTimer);
           const cs = getComputedStyle(bar);
-          bar.style.width = cs.width; // congela la barra alla larghezza attuale
+          bar.style.width = cs.width;
           bar.style.transition = "none";
         }
       }
-      function remainingOrDefault() { return 4000; }
 
       /* ---------- audio: stazioni ambient con fallback automatico ---------- */
       const audioEl = document.getElementById("audio");
@@ -423,16 +408,12 @@
         document.getElementById("station").value = String(stationIdx);
         if (autoplay) audioEl.play().catch(() => {});
       }
-      // Backoff prima di riprovare: senza pausa, uno stream irraggiungibile
-      // (rete dello showroom giù, host bloccato) fa scattare "error" in loop
-      // a raffica invece di un tentativo ogni tot secondi.
       let stationRetryTimer = null;
       audioEl.addEventListener("error", () => {
         clearTimeout(stationRetryTimer);
         stationRetryTimer = setTimeout(() => loadStation(stationIdx + 1, true), 8000);
       });
 
-      /* ---------- wake lock: evita che la TV vada in standby ---------- */
       async function requestWakeLock() {
         try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
       }
@@ -440,14 +421,12 @@
         if (document.visibilityState === "visible" && !wakeLock) requestWakeLock();
       });
 
-      /* ---------- orologio ---------- */
       function tickClock() {
         const d = new Date();
         document.getElementById("clock").textContent = d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
       }
       setInterval(tickClock, 15000);
 
-      /* ---------- HUD: mostra su input, nascondi dopo inattività ---------- */
       let hudTimer = null;
       function flashHud() {
         const hud = document.getElementById("hud");
@@ -505,9 +484,6 @@
 
       function start() {
         document.getElementById("start-overlay").classList.add("hidden");
-        // Il fullscreen non è awaited: su alcuni motori TV la promise resta
-        // pending a lungo (o non si risolve mai) e bloccherebbe l'avvio di
-        // audio/slideshow, che sono la parte che conta davvero.
         const el = document.documentElement;
         const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
         if (req) { try { Promise.resolve(req.call(el)).catch(() => {}); } catch (_) {} }
@@ -518,20 +494,11 @@
         flashHud();
       }
 
-      // Le foto arrivano dalla pagina di caricamento (vetrina-gSPDY1JN-admin.html)
-      // tramite /api/showroom/photos, non più dal manifest statico.
-      async function fetchPhotos() {
+      async function fetchRealizzazioni() {
         try {
           const res = await fetch("/api/showroom/photos", { cache: "no-store" });
-          const data = await res.json();
-          return (data.items || [])
-            .filter((item) => item.attachment?.url)
-            .map((item) => ({
-              category: item.category,
-              image: item.attachment.url,
-              title: item.title,
-              subtitle: item.subtitle,
-            }));
+          const json = await res.json();
+          return (json.items || []).filter((item) => item.category === "realizzazioni" && item.attachment?.url);
         } catch (_) {
           return [];
         }
@@ -540,21 +507,22 @@
       async function init() {
         wireHud();
         try {
-          const res = await fetch("/showroom-content/manifest.json", { cache: "no-store" });
-          manifest = await res.json();
+          const [manifest, products] = await Promise.all([
+            fetch("/showroom-content/manifest.json", { cache: "no-store" }).then((r) => r.json()),
+            fetch("/showroom-content/products.json", { cache: "no-store" }).then((r) => r.json()),
+          ]);
+          data.brand = manifest.brand || {};
+          data.coolStuff = manifest.coolStuff || [];
+          data.products = products;
         } catch (_) {
-          manifest = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/showroom-content/logo.png" }, coolStuff: [] };
+          data = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/showroom-content/logo.png" }, coolStuff: [], products: [] };
         }
-        manifest.photos = await fetchPhotos();
-        sequence = buildSequence(manifest);
+        data.realizzazioni = await fetchRealizzazioni();
+        sequence = buildSequence(data);
         document.getElementById("btn-start").addEventListener("click", start, { once: true });
-        // La vetrina resta accesa per ore senza mai ricaricare: senza un
-        // refresh periodico non vedrebbe mai le foto caricate nel frattempo
-        // dall'ufficio. buildSequence() viene richiamata da sola ad ogni
-        // giro (vedi advance()), quindi basta aggiornare l'array qui.
         setInterval(async () => {
-          const fresh = await fetchPhotos();
-          if (fresh.length) manifest.photos = fresh;
+          const fresh = await fetchRealizzazioni();
+          if (fresh.length) data.realizzazioni = fresh;
         }, 5 * 60 * 1000);
       }
       init();
