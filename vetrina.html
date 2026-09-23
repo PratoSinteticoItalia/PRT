@@ -179,20 +179,22 @@
       .tip-eyebrow { font: 700 .8rem "DM Sans"; letter-spacing: .18em; text-transform: uppercase; color: var(--brand-soft); }
       .tip-text { font: 500 clamp(1.4rem, 2.4vw, 2rem)/1.45 "Fraunces", serif; }
 
-      /* ---------- template: video-moment (clip di intermezzo, non a pagina
-         intera — la maggior parte delle clip sono verticali stile reel) ---------- */
-      .tpl-video-moment {
-        position: absolute; inset: 0; display: flex; flex-direction: column;
-        align-items: center; justify-content: center; color: #fff; gap: 1.3rem;
+      /* ---------- template: video-moment (clip di intermezzo, a piena pagina
+         come le realizzazioni — deve essere protagonista, non un francobollo
+         isolato nel vuoto) ---------- */
+      .tpl-video-moment { position: absolute; inset: 0; overflow: hidden; background: #0c130f; }
+      .tpl-video-moment video { position: absolute; inset: -2%; width: 104%; height: 104%; object-fit: cover; }
+      .tpl-video-moment .scrim {
+        position: absolute; inset: 0;
+        background: linear-gradient(0deg, rgba(10,20,14,.78) 0%, rgba(10,20,14,.22) 32%, transparent 58%);
       }
-      .tpl-video-moment .content { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 1.3rem; }
-      .video-frame {
-        width: min(30vw, 420px); aspect-ratio: 9 / 16; max-height: 76vh;
-        border-radius: 22px; overflow: hidden; background: #000;
-        border: 1px solid rgba(255,255,255,.18); box-shadow: 0 30px 60px rgba(0,0,0,.45);
+      .tpl-video-moment .copy { position: absolute; left: 4.5%; bottom: 6%; right: 4.5%; color: #fff; display: flex; align-items: center; gap: .9rem; }
+      .video-pill {
+        display: inline-flex; align-items: center; padding: .38em 1em; border-radius: 999px;
+        background: rgba(216,243,220,.16); border: 1px solid rgba(216,243,220,.4); backdrop-filter: blur(6px);
+        font: 700 .72rem "DM Sans"; letter-spacing: .08em; text-transform: uppercase; color: var(--brand-soft);
       }
-      .video-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
-      .video-caption { font: 500 1.15rem/1.4 "DM Sans"; color: rgba(255,255,255,.88); max-width: 34ch; text-align: center; }
+      .video-title { font: 600 1.5rem "DM Sans"; margin: 0; }
 
       /* ---------- template: bumper (logo) ---------- */
       .tpl-bumper {
@@ -505,23 +507,20 @@
             </div>
           </div>`;
       }
-      // Clip di intermezzo (mute, in loop): cornice verticale che si adatta
-      // alla proporzione reale del video una volta note le sue dimensioni
-      // (la maggior parte dei filmati caricati sono reel/TikTok verticali,
-      // ma senza questa fetch la cornice fissa 9:16 taglierebbe un video
-      // orizzontale).
+      // Clip di intermezzo (mute, in loop): stesso trattamento a piena
+      // pagina delle realizzazioni — il video deve essere protagonista, non
+      // una miniatura isolata su uno sfondo scuro generico.
       function renderVideoMoment(v) {
-        const caption = v.title ? `<div class="video-caption">${v.title}</div>` : "";
+        const copy = v.title ? `
+          <div class="copy">
+            <span class="video-pill">Dal nostro mondo</span>
+            <p class="video-title">${v.title}</p>
+          </div>` : "";
         return `
           <div class="tpl-video-moment">
-            <div class="mesh-bg"></div>
-            ${particles(8)}
-            <div class="content">
-              <div class="video-frame">
-                <video src="${v.attachment?.url || ""}" muted autoplay loop playsinline preload="auto"></video>
-              </div>
-              ${caption}
-            </div>
+            <video src="${v.attachment?.url || ""}" muted autoplay loop playsinline preload="auto"></video>
+            <div class="scrim"></div>
+            ${copy}
           </div>`;
       }
 
@@ -588,7 +587,7 @@
 
       const ENTER_BY_KIND = {
         product: "slideInRight", divider: "fadeUp", realizzazione: "zoomSoft",
-        stat: "fadeUp", quote: "fadeUp", tip: "fadeUp", "video-moment": "fadeUp", bumper: "fadeUp",
+        stat: "fadeUp", quote: "fadeUp", tip: "fadeUp", "video-moment": "zoomSoft", bumper: "fadeUp",
       };
 
       function showSlide(item) {
@@ -605,7 +604,7 @@
 
         let video = null;
         if (rendered.kind === "video-moment") {
-          video = inner.querySelector(".video-frame video");
+          video = inner.querySelector(".tpl-video-moment video");
           if (video) {
             // L'attributo muted da solo non basta su tutti i motori quando il
             // <video> arriva via innerHTML dinamico (non un vero page load):
@@ -613,11 +612,6 @@
             // funzioni sempre.
             video.muted = true;
             video.defaultMuted = true;
-            video.addEventListener("loadedmetadata", () => {
-              if (video.videoWidth && video.videoHeight) {
-                video.closest(".video-frame").style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
-              }
-            }, { once: true });
             video.addEventListener("error", () => { if (playing) advance(); }, { once: true });
           }
         }
