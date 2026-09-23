@@ -17764,7 +17764,7 @@ async function handleApi(req, res, url) {
 
   // Foto assegnata a mano a un prodotto del catalogo vetrina (una per
   // productId, sovrascrive la scelta random tra le realizzazioni in
-  // vetrina-gSPDY1JN.html). GET pubblico come le altre risorse vetrina.
+  // vetrina.html). GET pubblico come le altre risorse vetrina.
   if (url.pathname === "/api/showroom/product-photos" && req.method === "GET") {
     const items = (store.showroomProductPhotos || [])
       .filter((item) => item?.attachment)

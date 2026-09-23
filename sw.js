@@ -111,10 +111,10 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
-  // La vetrina TV (pagine vetrina-*.html + showroom-content/*) è un mini-sito
+  // La vetrina TV (pagine vetrina*.html + showroom-content/*) è un mini-sito
   // a parte, sempre vivo: mai intercettarlo, altrimenti il service worker del
   // gestionale continua a servire dati/foto vecchie anche dopo un deploy.
-  if (url.pathname.startsWith("/vetrina-") || url.pathname.startsWith("/showroom-content/")) return;
+  if (url.pathname.startsWith("/vetrina") || url.pathname.startsWith("/showroom-content/")) return;
 
   const isShellRequest = request.mode === "navigate" || NETWORK_FIRST_PATHS.has(url.pathname);
   if (isShellRequest) {
