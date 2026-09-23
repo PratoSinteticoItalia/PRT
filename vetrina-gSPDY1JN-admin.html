@@ -103,6 +103,35 @@
         font-size: .78rem; cursor: pointer; padding: 4px 0;
       }
       .empty { color: var(--muted); font-size: .9rem; }
+
+      .pp-list { display: flex; flex-direction: column; gap: 8px; max-height: 560px; overflow-y: auto; padding-right: 2px; }
+      .pp-group-label {
+        font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+        color: var(--muted); margin: 12px 0 2px;
+      }
+      .pp-group-label:first-child { margin-top: 0; }
+      .pp-row {
+        display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--line);
+        border-radius: 10px; background: #fbfdfc;
+      }
+      .pp-thumb { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; background: #eee; flex-shrink: 0; }
+      .pp-info { flex: 1; min-width: 0; }
+      .pp-name { font-size: .87rem; font-weight: 700; margin: 0 0 3px; }
+      .pp-cat { font-size: .74rem; color: var(--muted); }
+      .pp-badge {
+        display: inline-block; font-size: .66rem; font-weight: 700; padding: .15em .55em;
+        border-radius: 999px; margin-top: 4px;
+      }
+      .pp-badge.on { background: var(--brand-soft); color: var(--brand-dark); }
+      .pp-badge.off { background: #eee; color: var(--muted); }
+      .pp-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex-shrink: 0; }
+      .pp-upload-btn {
+        font-size: .76rem; font-weight: 700; color: #fff; background: var(--brand); border-radius: 8px;
+        padding: 7px 10px; cursor: pointer; text-align: center; white-space: nowrap;
+      }
+      .pp-remove {
+        font-size: .74rem; color: var(--danger); background: none; border: none; cursor: pointer; padding: 2px;
+      }
     </style>
   </head>
   <body>
@@ -126,6 +155,12 @@
         <div id="collections-list"></div>
         <button class="btn-primary" id="save-collections-btn" style="margin-top:14px">Salva collezioni</button>
         <div class="status" id="collections-status"></div>
+      </div>
+
+      <div class="card">
+        <h2>Foto per prodotto</h2>
+        <p class="empty" style="margin-top:-8px">Assegna la foto grande (quella a sinistra in TV) a ogni prodotto del catalogo. Senza una foto assegnata, la vetrina ne sceglie una a caso tra le realizzazioni.</p>
+        <div class="pp-list" id="product-photos-list"><div class="empty">Caricamento…</div></div>
       </div>
 
       <div class="card">
@@ -178,31 +213,40 @@
       // Ridimensiona/comprime lato client: le foto da fotocamera/telefono
       // possono essere 4000px e diversi MB — inutile per una TV e lento da
       // caricare da rete mobile in showroom. Max 1920px sul lato lungo.
-      function handleFile(file) {
-        if (!file.type.startsWith("image/")) {
-          setStatus("Seleziona un file immagine (jpg, png…).", "err");
-          return;
-        }
-        const img = new Image();
-        const reader = new FileReader();
-        reader.onload = () => {
-          img.onload = () => {
-            const maxSide = 1920;
-            const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-            const canvas = document.createElement("canvas");
-            canvas.width = Math.round(img.width * scale);
-            canvas.height = Math.round(img.height * scale);
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            compressedDataUrl = canvas.toDataURL("image/jpeg", 0.85);
-            previewImg.src = compressedDataUrl;
-            preview.classList.add("show");
-            dropzone.querySelector("#dropzone-text").textContent = file.name;
-            uploadBtn.disabled = false;
+      // Condivisa tra upload realizzazioni e assegnazione foto-prodotto.
+      function compressImageFile(file, maxSide = 1920) {
+        return new Promise((resolve, reject) => {
+          if (!file.type.startsWith("image/")) { reject(new Error("not_image")); return; }
+          const img = new Image();
+          const reader = new FileReader();
+          reader.onload = () => {
+            img.onload = () => {
+              const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+              const canvas = document.createElement("canvas");
+              canvas.width = Math.round(img.width * scale);
+              canvas.height = Math.round(img.height * scale);
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              resolve(canvas.toDataURL("image/jpeg", 0.85));
+            };
+            img.onerror = () => reject(new Error("image_load_failed"));
+            img.src = reader.result;
           };
-          img.src = reader.result;
-        };
-        reader.readAsDataURL(file);
+          reader.onerror = () => reject(new Error("read_failed"));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function handleFile(file) {
+        compressImageFile(file).then((dataUrl) => {
+          compressedDataUrl = dataUrl;
+          previewImg.src = dataUrl;
+          preview.classList.add("show");
+          dropzone.querySelector("#dropzone-text").textContent = file.name;
+          uploadBtn.disabled = false;
+        }).catch(() => {
+          setStatus("Seleziona un file immagine (jpg, png…).", "err");
+        });
       }
 
       function setStatus(msg, kind) {
@@ -330,6 +374,92 @@
         }
       }
 
+      // Foto assegnata a mano per singolo prodotto (mostrata grande a
+      // sinistra in TV al posto di una realizzazione a caso).
+      async function loadProductPhotos() {
+        const list = document.getElementById("product-photos-list");
+        try {
+          const [catalog, assignedRes] = await Promise.all([
+            fetch("/showroom-content/catalog.json", { cache: "no-store" }).then((r) => r.json()),
+            fetch("/api/showroom/product-photos", { credentials: "same-origin" }).then((r) => r.json()),
+          ]);
+          const assignedMap = {};
+          (assignedRes.items || []).forEach((item) => { assignedMap[item.productId] = item; });
+          list.innerHTML = "";
+          catalog.forEach((coll) => {
+            const label = document.createElement("div");
+            label.className = "pp-group-label";
+            label.textContent = coll.name;
+            list.appendChild(label);
+            (coll.items || []).forEach((product) => {
+              list.appendChild(buildProductPhotoRow(product, assignedMap[product.id]));
+            });
+          });
+        } catch (_) {
+          list.innerHTML = '<div class="empty">Impossibile caricare i prodotti.</div>';
+        }
+      }
+
+      function buildProductPhotoRow(product, custom) {
+        const row = document.createElement("div");
+        row.className = "pp-row";
+        row.innerHTML = `
+          <img class="pp-thumb" src="${custom?.attachment?.url || product.image}" alt="" loading="lazy" />
+          <div class="pp-info">
+            <p class="pp-name">${escapeHtml(product.name)}</p>
+            <span class="pp-cat">${escapeHtml(product.category || "")}</span><br />
+            <span class="pp-badge ${custom ? "on" : "off"}">${custom ? "Foto assegnata" : "Foto non assegnata"}</span>
+          </div>
+          <div class="pp-actions">
+            <label class="pp-upload-btn">Cambia<input type="file" accept="image/*" data-role="file" hidden /></label>
+            ${custom ? '<button class="pp-remove" data-role="remove">Rimuovi</button>' : ""}
+          </div>`;
+
+        row.querySelector('[data-role="file"]').addEventListener("change", async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          try {
+            const dataUrl = await compressImageFile(file);
+            const res = await fetch("/api/showroom/product-photos", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({
+                productId: product.id,
+                attachment: { dataUrl, type: "image/jpeg", name: product.name },
+              }),
+            });
+            if (res.status === 401 || res.status === 403) {
+              document.getElementById("auth-banner").classList.add("show");
+              return;
+            }
+            if (!res.ok) throw new Error("upload_failed");
+            loadProductPhotos();
+          } catch (_) {
+            alert("Caricamento non riuscito, riprova.");
+          }
+        });
+
+        const removeBtn = row.querySelector('[data-role="remove"]');
+        if (removeBtn) {
+          removeBtn.addEventListener("click", async () => {
+            if (!confirm(`Rimuovere la foto assegnata a "${product.name}"?`)) return;
+            try {
+              const res = await fetch(`/api/showroom/product-photos/${encodeURIComponent(product.id)}`, {
+                method: "DELETE", credentials: "same-origin",
+              });
+              if (res.status === 401 || res.status === 403) {
+                document.getElementById("auth-banner").classList.add("show");
+                return;
+              }
+              loadProductPhotos();
+            } catch (_) {}
+          });
+        }
+
+        return row;
+      }
+
       document.getElementById("save-collections-btn").addEventListener("click", async () => {
         const boxes = Array.from(document.querySelectorAll('#collections-list input[type="checkbox"]'));
         const checked = boxes.filter((b) => b.checked).map((b) => b.dataset.coll);
@@ -362,6 +492,7 @@
       });
 
       loadCollections();
+      loadProductPhotos();
       loadPhotos();
     </script>
   </body>
