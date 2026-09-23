@@ -132,6 +132,19 @@
       .pp-remove {
         font-size: .74rem; color: var(--danger); background: none; border: none; cursor: pointer; padding: 2px;
       }
+
+      .preview video { width: 100%; max-height: 260px; border-radius: 10px; display: block; background: #000; }
+      .video-list { display: flex; flex-direction: column; gap: 10px; }
+      .video-item {
+        display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--line);
+        border-radius: 10px; background: #fff;
+      }
+      .video-item video { width: 90px; height: 90px; object-fit: cover; border-radius: 8px; background: #000; flex-shrink: 0; }
+      .video-item .meta { flex: 1; min-width: 0; }
+      .video-item .t { font-size: .85rem; font-weight: 600; margin: 0 0 6px; }
+      .video-item .del {
+        border: none; background: none; color: var(--danger); font-size: .78rem; cursor: pointer; padding: 2px 0;
+      }
     </style>
   </head>
   <body>
@@ -161,6 +174,27 @@
         <h2>Foto per prodotto</h2>
         <p class="empty" style="margin-top:-8px">Assegna la foto grande (quella a sinistra in TV) a ogni prodotto del catalogo. Senza una foto assegnata, la vetrina ne sceglie una a caso tra le realizzazioni.</p>
         <div class="pp-list" id="product-photos-list"><div class="empty">Caricamento…</div></div>
+      </div>
+
+      <div class="card">
+        <h2>Video negli intermezzi</h2>
+        <p class="empty" style="margin-top:-8px">Clip brevi, senza audio, che compaiono tra una sezione e l'altra del catalogo — in una cornice verticale, non a pagina intera. Vanno bene anche i video già usati per i social.</p>
+        <div class="dropzone" id="video-dropzone">
+          <span id="video-dropzone-text">Trascina un video qui, oppure tocca per scegliere un file</span>
+          <input type="file" id="video-file-input" accept="video/*" />
+        </div>
+        <div class="preview" id="video-preview"><video id="video-preview-el" muted controls></video></div>
+
+        <label for="video-title">Didascalia (opzionale)</label>
+        <input type="text" id="video-title" placeholder="Es. Posa completata a Bergamo" />
+
+        <button class="btn-primary" id="video-upload-btn" disabled>Carica in vetrina</button>
+        <div class="status" id="video-status"></div>
+      </div>
+
+      <div class="card">
+        <h2>Video già in vetrina</h2>
+        <div class="video-list" id="video-list"><div class="empty">Caricamento…</div></div>
       </div>
 
       <div class="card">
@@ -296,6 +330,138 @@
         document.getElementById("title").value = "";
         document.getElementById("subtitle").value = "";
         uploadBtn.disabled = true;
+      }
+
+      // Video di intermezzo: niente compressione lato client (richiederebbe
+      // ffmpeg/WebCodecs, fuori scopo) — il file va su così com'è tramite
+      // upload binario (vedi POST /api/showroom/photos/upload in server.js),
+      // molto più leggero di un video incapsulato in JSON base64.
+      const videoDropzone = document.getElementById("video-dropzone");
+      const videoFileInput = document.getElementById("video-file-input");
+      const videoPreview = document.getElementById("video-preview");
+      const videoPreviewEl = document.getElementById("video-preview-el");
+      const videoUploadBtn = document.getElementById("video-upload-btn");
+      const videoStatusEl = document.getElementById("video-status");
+      let selectedVideoFile = null;
+
+      videoDropzone.addEventListener("click", () => videoFileInput.click());
+      ["dragover", "dragenter"].forEach((ev) => videoDropzone.addEventListener(ev, (e) => { e.preventDefault(); videoDropzone.classList.add("drag"); }));
+      ["dragleave", "drop"].forEach((ev) => videoDropzone.addEventListener(ev, (e) => { e.preventDefault(); videoDropzone.classList.remove("drag"); }));
+      videoDropzone.addEventListener("drop", (e) => {
+        const file = e.dataTransfer.files?.[0];
+        if (file) handleVideoFile(file);
+      });
+      videoFileInput.addEventListener("change", () => {
+        const file = videoFileInput.files?.[0];
+        if (file) handleVideoFile(file);
+      });
+
+      function handleVideoFile(file) {
+        if (!file.type.startsWith("video/")) {
+          setVideoStatus("Seleziona un file video (mp4, mov…).", "err");
+          return;
+        }
+        selectedVideoFile = file;
+        videoPreviewEl.src = URL.createObjectURL(file);
+        videoPreview.classList.add("show");
+        videoDropzone.querySelector("#video-dropzone-text").textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+        videoUploadBtn.disabled = false;
+      }
+
+      function setVideoStatus(msg, kind) {
+        videoStatusEl.textContent = msg;
+        videoStatusEl.className = "status" + (kind ? " " + kind : "");
+      }
+
+      videoUploadBtn.addEventListener("click", () => {
+        if (!selectedVideoFile) return;
+        videoUploadBtn.disabled = true;
+        setVideoStatus("Caricamento in corso… 0%");
+        const title = document.getElementById("video-title").value.trim();
+        const params = new URLSearchParams({
+          category: "intermezzo",
+          title,
+          name: selectedVideoFile.name,
+          type: selectedVideoFile.type || "video/mp4",
+        });
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/showroom/photos/upload?" + params.toString());
+        xhr.withCredentials = true;
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) setVideoStatus(`Caricamento in corso… ${Math.round((e.loaded / e.total) * 100)}%`);
+        });
+        xhr.onload = () => {
+          if (xhr.status === 401 || xhr.status === 403) {
+            authBanner.classList.add("show");
+            setVideoStatus("Non sei loggato come ufficio: accedi e riprova.", "err");
+            videoUploadBtn.disabled = false;
+            return;
+          }
+          if (xhr.status < 200 || xhr.status >= 300) {
+            setVideoStatus("Caricamento non riuscito, riprova.", "err");
+            videoUploadBtn.disabled = false;
+            return;
+          }
+          setVideoStatus("Video caricato! È già visibile in vetrina.", "ok");
+          resetVideoForm();
+          loadVideoMoments();
+        };
+        xhr.onerror = () => {
+          setVideoStatus("Caricamento non riuscito, riprova.", "err");
+          videoUploadBtn.disabled = false;
+        };
+        xhr.send(selectedVideoFile);
+      });
+
+      function resetVideoForm() {
+        selectedVideoFile = null;
+        videoFileInput.value = "";
+        videoPreview.classList.remove("show");
+        videoDropzone.querySelector("#video-dropzone-text").textContent = "Trascina un video qui, oppure tocca per scegliere un file";
+        document.getElementById("video-title").value = "";
+        videoUploadBtn.disabled = true;
+      }
+
+      async function loadVideoMoments() {
+        const list = document.getElementById("video-list");
+        try {
+          const res = await fetch("/api/showroom/photos", { credentials: "same-origin" });
+          const data = await res.json();
+          const items = (data.items || []).filter((item) => item.category === "intermezzo" && item.mediaType === "video");
+          if (!items.length) {
+            list.innerHTML = '<div class="empty">Nessun video ancora caricato.</div>';
+            return;
+          }
+          list.innerHTML = "";
+          items.slice().reverse().forEach((item) => {
+            const el = document.createElement("div");
+            el.className = "video-item";
+            el.innerHTML = `
+              <video src="${item.attachment?.url || ""}" muted preload="metadata"></video>
+              <div class="meta">
+                <p class="t">${escapeHtml(item.title || "(senza didascalia)")}</p>
+                <button class="del" data-id="${item.id}">Elimina</button>
+              </div>`;
+            list.appendChild(el);
+          });
+          list.querySelectorAll(".del").forEach((btn) => {
+            btn.addEventListener("click", () => deleteVideoMoment(btn.dataset.id));
+          });
+        } catch (_) {
+          list.innerHTML = '<div class="empty">Impossibile caricare l\'elenco, riprova.</div>';
+        }
+      }
+
+      async function deleteVideoMoment(id) {
+        if (!confirm("Eliminare questo video dalla vetrina?")) return;
+        try {
+          const res = await fetch(`/api/showroom/photos/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "same-origin" });
+          if (res.status === 401 || res.status === 403) {
+            authBanner.classList.add("show");
+            return;
+          }
+          loadVideoMoments();
+        } catch (_) {}
       }
 
       async function loadPhotos() {
@@ -493,6 +659,7 @@
 
       loadCollections();
       loadProductPhotos();
+      loadVideoMoments();
       loadPhotos();
     </script>
   </body>

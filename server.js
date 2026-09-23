@@ -10879,9 +10879,13 @@ function normalizeSalesContentRecord(item = {}) {
 function normalizeShowroomPhoto(item = {}) {
   const now = new Date().toISOString();
   const id = String(item.id || randomUUID());
+  const category = ["realizzazioni", "intermezzo"].includes(item.category) ? item.category : "catalogo";
   return {
     id,
-    category: item.category === "realizzazioni" ? "realizzazioni" : "catalogo",
+    category,
+    // "video" per le clip di intermezzo tra le sezioni del catalogo (mute,
+    // in loop) — tutto il resto (realizzazioni, catalogo) resta "photo".
+    mediaType: item.mediaType === "video" ? "video" : "photo",
     title: String(item.title || "").trim(),
     subtitle: String(item.subtitle || "").trim(),
     attachment: item.attachment ? normalizeAttachmentRecord(item.attachment, id, "showroom") : null,
@@ -17712,6 +17716,36 @@ async function handleApi(req, res, url) {
       category: body.category,
       title: body.title,
       subtitle: body.subtitle,
+      attachment,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: currentUser.email || currentUser.id,
+    });
+    store.showroomPhotos = [...(store.showroomPhotos || []), entry];
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, serializeShowroomPhotoForClient(entry));
+  }
+
+  // Upload binario (non JSON/base64) per i video di intermezzo: un video di
+  // 20-30MB in base64 dentro un body JSON è inutilmente pesante da generare
+  // e parsare lato client — qui il file arriva raw, i metadati nella query.
+  if (url.pathname === "/api/showroom/photos/upload" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const fileBuffer = await readRawBody(req);
+    if (!fileBuffer?.length) return sendJson(res, 400, { error: "empty_attachment" });
+    const name = String(url.searchParams.get("name") || "video").trim() || "video";
+    const type = String(url.searchParams.get("type") || req.headers["content-type"] || "video/mp4").trim() || "video/mp4";
+    const category = url.searchParams.get("category") === "realizzazioni" ? "realizzazioni" : "intermezzo";
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    const attachment = await storeAttachmentBuffer(id, { name, type, size: fileBuffer.length }, fileBuffer, "showroom");
+    const entry = normalizeShowroomPhoto({
+      id,
+      category,
+      mediaType: type.startsWith("video/") ? "video" : "photo",
+      title: url.searchParams.get("title") || "",
+      subtitle: url.searchParams.get("subtitle") || "",
       attachment,
       createdAt: now,
       updatedAt: now,

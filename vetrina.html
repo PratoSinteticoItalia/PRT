@@ -179,6 +179,21 @@
       .tip-eyebrow { font: 700 .8rem "DM Sans"; letter-spacing: .18em; text-transform: uppercase; color: var(--brand-soft); }
       .tip-text { font: 500 clamp(1.4rem, 2.4vw, 2rem)/1.45 "Fraunces", serif; }
 
+      /* ---------- template: video-moment (clip di intermezzo, non a pagina
+         intera — la maggior parte delle clip sono verticali stile reel) ---------- */
+      .tpl-video-moment {
+        position: absolute; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; color: #fff; gap: 1.3rem;
+      }
+      .tpl-video-moment .content { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 1.3rem; }
+      .video-frame {
+        width: min(30vw, 420px); aspect-ratio: 9 / 16; max-height: 76vh;
+        border-radius: 22px; overflow: hidden; background: #000;
+        border: 1px solid rgba(255,255,255,.18); box-shadow: 0 30px 60px rgba(0,0,0,.45);
+      }
+      .video-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .video-caption { font: 500 1.15rem/1.4 "DM Sans"; color: rgba(255,255,255,.88); max-width: 34ch; text-align: center; }
+
       /* ---------- template: bumper (logo) ---------- */
       .tpl-bumper {
         position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -281,14 +296,14 @@
         { id: "handpan-2", name: "Healing Handpan", url: "/showroom-content/music/handpan-2.mp3" },
         { id: "handpan-3", name: "Flowing Rivers Handpan", url: "/showroom-content/music/handpan-3.mp3" },
       ];
-      const DURATIONS = { divider: 3200, product: 7500, realizzazione: 8500, stat: 6000, quote: 6500, tip: 6500, bumper: 4500 };
+      const DURATIONS = { divider: 3200, product: 7500, realizzazione: 8500, stat: 6000, quote: 6500, tip: 6500, "video-moment": 9000, bumper: 4500 };
       const CATEGORY_ORDER = ["Residenziale", "Uso intensivo", "Animali domestici", "Terrazzi & Balconi"];
 
       const layerEls = [document.getElementById("layerA"), document.getElementById("layerB")];
       let activeLayerIdx = 0;
       let sequence = [];
       let seqPos = -1;
-      let data = { brand: {}, coolStuff: [], collections: [], activeCollectionIds: null, realizzazioni: [], productPhotos: {} };
+      let data = { brand: {}, coolStuff: [], collections: [], activeCollectionIds: null, realizzazioni: [], productPhotos: {}, videoMoments: [] };
       let playing = true;
       let advanceTimer = null;
       let wakeLock = null;
@@ -312,6 +327,12 @@
         const activeCollections = Array.isArray(d.activeCollectionIds)
           ? d.collections.filter((c) => d.activeCollectionIds.includes(c.id))
           : d.collections;
+        // Le clip video caricate girano una alla volta dopo ogni divisore di
+        // categoria (round-robin, non a caso ad ogni giro come le
+        // realizzazioni) — così anche con poche clip caricate si vedono
+        // sparse per tutto il giro invece che ammassate in un punto solo.
+        const videoPool = shuffle(d.videoMoments || []);
+        let videoIdx = 0;
         activeCollections.forEach((coll) => {
           const byCategory = new Map();
           (coll.items || []).forEach((p) => {
@@ -328,6 +349,10 @@
           orderedCats.forEach((cat) => {
             const items = byCategory.get(cat);
             seq.push({ kind: "divider", data: { collection: coll.name, collectionId: coll.id, name: cat, count: items.length } });
+            if (videoPool.length) {
+              seq.push({ kind: "video-moment", data: videoPool[videoIdx % videoPool.length] });
+              videoIdx++;
+            }
             items.forEach((p) => seq.push({ kind: "product", data: p, collection: coll }));
           });
         });
@@ -480,6 +505,26 @@
             </div>
           </div>`;
       }
+      // Clip di intermezzo (mute, in loop): cornice verticale che si adatta
+      // alla proporzione reale del video una volta note le sue dimensioni
+      // (la maggior parte dei filmati caricati sono reel/TikTok verticali,
+      // ma senza questa fetch la cornice fissa 9:16 taglierebbe un video
+      // orizzontale).
+      function renderVideoMoment(v) {
+        const caption = v.title ? `<div class="video-caption">${v.title}</div>` : "";
+        return `
+          <div class="tpl-video-moment">
+            <div class="mesh-bg"></div>
+            ${particles(8)}
+            <div class="content">
+              <div class="video-frame">
+                <video src="${v.attachment?.url || ""}" muted autoplay loop playsinline preload="auto"></video>
+              </div>
+              ${caption}
+            </div>
+          </div>`;
+      }
+
       function renderBumper(brand) {
         return `
           <div class="tpl-bumper">
@@ -537,12 +582,13 @@
         if (item.kind === "stat") return { kind: "stat", html: renderStat(item.data), dark: true };
         if (item.kind === "quote") return { kind: "quote", html: renderQuote(item.data), dark: true };
         if (item.kind === "tip") return { kind: "tip", html: renderTip(item.data), dark: true };
+        if (item.kind === "video-moment") return { kind: "video-moment", html: renderVideoMoment(item.data), dark: true };
         return { kind: "bumper", html: renderBumper(item.data), dark: true };
       }
 
       const ENTER_BY_KIND = {
         product: "slideInRight", divider: "fadeUp", realizzazione: "zoomSoft",
-        stat: "fadeUp", quote: "fadeUp", tip: "fadeUp", bumper: "fadeUp",
+        stat: "fadeUp", quote: "fadeUp", tip: "fadeUp", "video-moment": "fadeUp", bumper: "fadeUp",
       };
 
       function showSlide(item) {
@@ -557,6 +603,25 @@
         const img = inner.querySelector("img");
         if (img) img.addEventListener("error", () => { if (playing) advance(); }, { once: true });
 
+        let video = null;
+        if (rendered.kind === "video-moment") {
+          video = inner.querySelector(".video-frame video");
+          if (video) {
+            // L'attributo muted da solo non basta su tutti i motori quando il
+            // <video> arriva via innerHTML dinamico (non un vero page load):
+            // la proprietà JS va forzata perché l'autoplay senza gesto utente
+            // funzioni sempre.
+            video.muted = true;
+            video.defaultMuted = true;
+            video.addEventListener("loadedmetadata", () => {
+              if (video.videoWidth && video.videoHeight) {
+                video.closest(".video-frame").style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+              }
+            }, { once: true });
+            video.addEventListener("error", () => { if (playing) advance(); }, { once: true });
+          }
+        }
+
         const anim = ENTER_BY_KIND[rendered.kind] || "fadeUp";
         inner.style.animation = "none";
         void inner.offsetWidth;
@@ -566,6 +631,11 @@
         nextEl.classList.add("active");
         activeLayerIdx = nextIdx;
         document.body.classList.toggle("on-dark", rendered.dark);
+        // .play() va chiamato SOLO dopo che il layer è "active" (opacity:1):
+        // chiamato prima, su un layer ancora nascosto, alcuni motori (i
+        // browser TV in primis) sospendono subito il video e non lo
+        // riprendono da soli quando poi diventa visibile.
+        if (video) video.play().catch(() => {});
 
         const duration = DURATIONS[rendered.kind] || 7000;
         runProgress(duration);
@@ -714,14 +784,28 @@
         flashHud();
       }
 
-      async function fetchRealizzazioni() {
+      // Realizzazioni e video di intermezzo vivono nella stessa collezione
+      // lato server (store.showroomPhotos) — una sola fetch, poi si separano
+      // per categoria/mediaType invece di interrogare due volte lo stesso
+      // endpoint.
+      async function fetchShowroomPhotoItems() {
         try {
           const res = await fetch("/api/showroom/photos", { cache: "no-store" });
           const json = await res.json();
-          return (json.items || []).filter((item) => item.category === "realizzazioni" && item.attachment?.url);
+          return json.items || [];
         } catch (_) {
           return [];
         }
+      }
+
+      async function refreshShowroomPhotos() {
+        const items = await fetchShowroomPhotoItems();
+        const realizzazioni = items.filter((item) => item.category === "realizzazioni" && item.attachment?.url);
+        const videoMoments = items.filter((item) => item.category === "intermezzo" && item.mediaType === "video" && item.attachment?.url);
+        // Se la fetch fallisce o torna vuota si tiene quello che c'era prima
+        // invece di svuotare la vetrina — stesso criterio già in uso altrove.
+        if (realizzazioni.length) data.realizzazioni = realizzazioni;
+        if (videoMoments.length) data.videoMoments = videoMoments;
       }
 
       async function fetchProductPhotos() {
@@ -751,15 +835,14 @@
           data.collections = collections;
           data.activeCollectionIds = settings.activeCollections || null;
         } catch (_) {
-          data = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/showroom-content/logo.png" }, coolStuff: [], collections: [], activeCollectionIds: null, realizzazioni: [], productPhotos: {} };
+          data = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/showroom-content/logo.png" }, coolStuff: [], collections: [], activeCollectionIds: null, realizzazioni: [], productPhotos: {}, videoMoments: [] };
         }
-        data.realizzazioni = await fetchRealizzazioni();
+        await refreshShowroomPhotos();
         data.productPhotos = await fetchProductPhotos();
         sequence = buildSequence(data);
         document.getElementById("btn-start").addEventListener("click", start, { once: true });
         setInterval(async () => {
-          const fresh = await fetchRealizzazioni();
-          if (fresh.length) data.realizzazioni = fresh;
+          await refreshShowroomPhotos();
           data.productPhotos = await fetchProductPhotos();
         }, 5 * 60 * 1000);
       }
