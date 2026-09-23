@@ -10723,6 +10723,9 @@ function buildAttachmentProxyPath(ownerId, attachmentId, resource = "orders") {
   if (resource === "showroom") {
     return `/api/showroom/photos/${encodeURIComponent(ownerId)}/file`;
   }
+  if (resource === "showroom-product") {
+    return `/api/showroom/product-photos/${encodeURIComponent(ownerId)}/file`;
+  }
   return `/api/orders/${encodeURIComponent(ownerId)}/attachments/${encodeURIComponent(attachmentId)}/file`;
 }
 
@@ -10785,6 +10788,7 @@ function buildLocalAttachmentRecord(ownerId = "", attachment = {}, parsed = null
     : resource === "work-reports" ? "work-reports"
     : resource === "communications" ? "communications"
     : resource === "showroom" ? "showroom"
+    : resource === "showroom-product" ? "showroom-product"
     : "orders";
   const ownerSegment = String(ownerId || resource).replace(/[^\w.-]+/g, "_");
   const relativePath = normalizeAttachmentLocalPath(`${bucketPrefix}/${ownerSegment}/${attachmentId}-${safeName}`);
@@ -10889,6 +10893,30 @@ function normalizeShowroomPhoto(item = {}) {
 
 function serializeShowroomPhotoForClient(item = {}) {
   const normalized = normalizeShowroomPhoto(item);
+  return {
+    ...normalized,
+    attachment: normalized.attachment ? serializeAttachmentForClient(normalized.attachment) : null,
+  };
+}
+
+// Foto assegnata manualmente a un prodotto specifico del catalogo (vetrina
+// TV), una per productId — sovrascrive la scelta semi-random tra le
+// realizzazioni. Indicizzato per productId, non un array libero: un secondo
+// upload sullo stesso prodotto sostituisce il precedente.
+function normalizeShowroomProductPhoto(item = {}) {
+  const now = new Date().toISOString();
+  const productId = String(item.productId || "").trim();
+  return {
+    productId,
+    attachment: item.attachment ? normalizeAttachmentRecord(item.attachment, productId, "showroom-product") : null,
+    createdAt: String(item.createdAt || now),
+    updatedAt: String(item.updatedAt || now),
+    createdBy: String(item.createdBy || ""),
+  };
+}
+
+function serializeShowroomProductPhotoForClient(item = {}) {
+  const normalized = normalizeShowroomProductPhoto(item);
   return {
     ...normalized,
     attachment: normalized.attachment ? serializeAttachmentForClient(normalized.attachment) : null,
@@ -11279,6 +11307,7 @@ async function storeAttachmentBuffer(ownerId, attachment = {}, buffer = Buffer.a
     : resource === "work-reports" ? "work-reports"
     : resource === "communications" ? "communications"
     : resource === "showroom" ? "showroom"
+    : resource === "showroom-product" ? "showroom-product"
     : "orders";
   const objectKey = `${bucketPrefix}/${String(ownerId || resource).replace(/[^\w.-]+/g, "_")}/${attachmentId}-${safeName}`;
 
@@ -17731,6 +17760,63 @@ async function handleApi(req, res, url) {
     store.showroomSettings = { activeCollections, updatedAt: new Date().toISOString() };
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, store.showroomSettings);
+  }
+
+  // Foto assegnata a mano a un prodotto del catalogo vetrina (una per
+  // productId, sovrascrive la scelta random tra le realizzazioni in
+  // vetrina-gSPDY1JN.html). GET pubblico come le altre risorse vetrina.
+  if (url.pathname === "/api/showroom/product-photos" && req.method === "GET") {
+    const items = (store.showroomProductPhotos || [])
+      .filter((item) => item?.attachment)
+      .map(serializeShowroomProductPhotoForClient);
+    return sendJson(res, 200, { items });
+  }
+
+  if (url.pathname === "/api/showroom/product-photos" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const productId = String(body.productId || "").trim();
+    if (!productId) return sendJson(res, 400, { error: "missing_product_id" });
+    if (!body.attachment?.dataUrl) return sendJson(res, 400, { error: "missing_photo" });
+    const now = new Date().toISOString();
+    const attachment = await storeAttachmentAsset(productId, body.attachment, "showroom-product");
+    const existing = (store.showroomProductPhotos || []).find((item) => item.productId === productId);
+    const entry = normalizeShowroomProductPhoto({
+      productId,
+      attachment,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+      createdBy: currentUser.email || currentUser.id,
+    });
+    const oldAttachment = existing?.attachment || null;
+    store.showroomProductPhotos = [
+      ...(store.showroomProductPhotos || []).filter((item) => item.productId !== productId),
+      entry,
+    ];
+    await writeJson(STORE_PATH, store);
+    if (oldAttachment) scheduleAttachmentAssetRemoval([oldAttachment]);
+    return sendJson(res, 200, serializeShowroomProductPhotoForClient(entry));
+  }
+
+  if (url.pathname.match(/^\/api\/showroom\/product-photos\/[^/]+$/) && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const productId = decodeURIComponent(url.pathname.split("/")[4]);
+    const index = (store.showroomProductPhotos || []).findIndex((item) => item.productId === productId);
+    if (index < 0) return sendJson(res, 404, { error: "not_found" });
+    const [removed] = store.showroomProductPhotos.splice(index, 1);
+    await writeJson(STORE_PATH, store);
+    if (removed?.attachment) scheduleAttachmentAssetRemoval([removed.attachment]);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  // Percorso file separato, nessun login: la TV lo carica senza sessione.
+  if (url.pathname.match(/^\/api\/showroom\/product-photos\/[^/]+\/file$/) && req.method === "GET") {
+    const productId = decodeURIComponent(url.pathname.split("/")[4]);
+    const entry = (store.showroomProductPhotos || []).find((item) => item.productId === productId);
+    if (!entry || !entry.attachment) return sendJson(res, 404, { error: "attachment_not_found" });
+    return streamAttachmentAsset(res, entry.attachment, { cacheControl: "public, max-age=86400" });
   }
 
   // Ordini materiale rivenditore → ufficio (solo tracking interno, nessuna

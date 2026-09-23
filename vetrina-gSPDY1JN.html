@@ -288,7 +288,7 @@
       let activeLayerIdx = 0;
       let sequence = [];
       let seqPos = -1;
-      let data = { brand: {}, coolStuff: [], collections: [], activeCollectionIds: null, realizzazioni: [] };
+      let data = { brand: {}, coolStuff: [], collections: [], activeCollectionIds: null, realizzazioni: [], productPhotos: {} };
       let playing = true;
       let advanceTimer = null;
       let wakeLock = null;
@@ -385,11 +385,13 @@
           </div>`;
       }
 
-      // Foto ambientata a sinistra: se l'item ha una lifestyle assegnata la
-      // usa, altrimenti pesca (in modo stabile, non a caso ad ogni render)
-      // una foto dalle realizzazioni caricate — così ogni prodotto è comunque
-      // affiancato da un cantiere vero finché non gli si assegna la sua foto.
+      // Foto ambientata a sinistra: priorità alla foto assegnata a mano dal
+      // prodotto (pagina di caricamento), altrimenti pesca (in modo stabile,
+      // non a caso ad ogni render) una foto dalle realizzazioni caricate —
+      // così ogni prodotto è comunque affiancato da un cantiere vero finché
+      // non gli si assegna la sua foto.
       function pickLifestyleImage(item, idx) {
+        if (data.productPhotos[item.id]) return data.productPhotos[item.id];
         if (item.lifestyle) return item.lifestyle;
         if (!data.realizzazioni.length) return item.image;
         return data.realizzazioni[idx % data.realizzazioni.length].attachment?.url;
@@ -722,6 +724,20 @@
         }
       }
 
+      async function fetchProductPhotos() {
+        try {
+          const res = await fetch("/api/showroom/product-photos", { cache: "no-store" });
+          const json = await res.json();
+          const map = {};
+          (json.items || []).forEach((item) => {
+            if (item.attachment?.url) map[item.productId] = item.attachment.url;
+          });
+          return map;
+        } catch (_) {
+          return {};
+        }
+      }
+
       async function init() {
         wireHud();
         try {
@@ -735,14 +751,16 @@
           data.collections = collections;
           data.activeCollectionIds = settings.activeCollections || null;
         } catch (_) {
-          data = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/showroom-content/logo.png" }, coolStuff: [], collections: [], activeCollectionIds: null, realizzazioni: [] };
+          data = { brand: { name: "Prato Sintetico Italia", tagline: "", logo: "/showroom-content/logo.png" }, coolStuff: [], collections: [], activeCollectionIds: null, realizzazioni: [], productPhotos: {} };
         }
         data.realizzazioni = await fetchRealizzazioni();
+        data.productPhotos = await fetchProductPhotos();
         sequence = buildSequence(data);
         document.getElementById("btn-start").addEventListener("click", start, { once: true });
         setInterval(async () => {
           const fresh = await fetchRealizzazioni();
           if (fresh.length) data.realizzazioni = fresh;
+          data.productPhotos = await fetchProductPhotos();
         }, 5 * 60 * 1000);
       }
       init();
