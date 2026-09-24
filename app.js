@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260921-tariffe-bancali-tdn";
+} from "./lib/order-money.js?v=20260924-sopralluoghi-v2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260921-tariffe-bancali-tdn";
+import { regionForCity } from "./lib/geo.js?v=20260924-sopralluoghi-v2";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260921-tariffe-bancali-tdn";
+} from "./lib/shipping-eligibility.js?v=20260924-sopralluoghi-v2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260921-tariffe-bancali-tdn";
+} from "./lib/profit-split.js?v=20260924-sopralluoghi-v2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260921-tariffe-bancali-tdn";
+} from "./lib/preventivo-pricing.js?v=20260924-sopralluoghi-v2";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,13 +66,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260921-tariffe-bancali-tdn";
+} from "./lib/sales-assignment.js?v=20260924-sopralluoghi-v2";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20260921-tariffe-bancali-tdn";
+} from "./lib/surveys.js?v=20260924-sopralluoghi-v2";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -86,7 +86,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260921-tariffe-bancali-tdn";
+const APP_SHELL_VERSION = "20260924-sopralluoghi-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1274,6 +1274,10 @@ const state = {
   surveys: [],
   selectedSurveyId: "",
   surveyFilter: "all",
+  // Picker "collega richiesta CRM" nel form sopralluogo — mirror di
+  // communicationsPendingOrderRef/communicationsOrderPickerOpen.
+  surveyPendingSalesRequestRef: null,
+  surveyOrderPickerOpen: false,
   salesRequests: [],
   salesContents: [],
   salesRequestSourceConfig: null,
@@ -25448,7 +25452,10 @@ function renderSurveyCard(survey) {
         <div class="shp-name-line"><span class="shp-name">${escapeHtml(survey.customerName)}</span></div>
         <div class="shp-meta"><span>${escapeHtml(metaLine)}</span></div>
       </div>
-      <div class="shp-aside"><span class="shp-badge ${meta.tone === "ready" ? "ok" : ""}">${escapeHtml(meta.label)}</span></div>
+      <div class="shp-aside">
+        ${survey.criticality && survey.criticality !== "nessuna" ? `<span class="shp-badge ${getSurveyCriticalityMeta(survey.criticality).tone ? "tone-" + getSurveyCriticalityMeta(survey.criticality).tone : ""}">${escapeHtml(getSurveyCriticalityMeta(survey.criticality).label)}</span>` : ""}
+        <span class="shp-badge ${meta.tone === "ready" ? "ok" : ""}">${escapeHtml(meta.label)}</span>
+      </div>
     </article>`;
 }
 
@@ -25477,6 +25484,86 @@ function renderSurveyDetailPanel() {
   renderSurveyDetailView(survey);
 }
 
+// Picker "collega richiesta CRM" — mirror del picker "Collega ordine" di
+// Comunicazioni (stessa CSS, stesso pattern ricerca-debounce), ma agganciato
+// al dispatcher globale invece che a un listener scoped, per coerenza con il
+// resto delle azioni Sopralluoghi.
+function renderSurveyRequestPickerHtml() {
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  return `
+    <div class="communications-order-picker ${state.surveyOrderPickerOpen ? "" : "hidden"}" id="survey-request-picker">
+      <input type="text" class="communications-order-picker-input" id="survey-request-picker-input" placeholder="${L("Cerca cliente per nome, città o telefono", "Search customer by name, city or phone")}" autocomplete="off" />
+      <div class="communications-order-picker-results" id="survey-request-picker-results"></div>
+    </div>`;
+}
+
+function renderSurveyPendingRequestRefHtml() {
+  const ref = state.surveyPendingSalesRequestRef;
+  if (!ref) return "";
+  return `
+    <div class="communications-pending-order">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      <span class="communications-pending-order-copy">
+        <strong>${escapeHtml(ref.name || "—")}</strong>
+        <small>${[ref.city, ref.phone].filter(Boolean).map((v) => escapeHtml(v)).join(" · ")}</small>
+      </span>
+      <button type="button" class="communications-pending-remove" data-action="survey-remove-request-ref" aria-label="${state.lang === "it" ? "Rimuovi" : "Remove"}">×</button>
+    </div>`;
+}
+
+// Blocco riusato identico nel form di creazione e nel dettaglio ufficio.
+// `existingId` è il salesRequestId già collegato a un sopralluogo esistente:
+// se presente mostriamo il riferimento invece del bottone "Collega", con un
+// bottone "Cambia" che riapre comunque il picker per sostituirlo.
+function renderSurveyRequestLinkBlockHtml(existingId = "") {
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  const toggleLabel = existingId ? L("Cambia richiesta collegata", "Change linked request") : L("Collega richiesta CRM", "Link CRM request");
+  return `
+    <label class="field field-full">
+      <span>${L("Richiesta CRM", "CRM request")}</span>
+      ${existingId ? `<div class="ddt-hint">${L("Collegata", "Linked")}: #${escapeHtml(existingId)}</div>` : ""}
+      <button type="button" class="ghost-button small-button" data-action="survey-toggle-request-picker">${toggleLabel}</button>
+    </label>
+    <div id="survey-request-pending">${renderSurveyPendingRequestRefHtml()}</div>
+    ${renderSurveyRequestPickerHtml()}`;
+}
+
+// Ricerca live con debounce (gestito dal chiamante) — aggiorna SOLO i
+// risultati, mai l'intero form, altrimenti l'input perderebbe il focus a ogni
+// carattere digitato (stesso bug visto e corretto in Comunicazioni/Fornitori).
+async function searchSurveySalesRequestLookup(query) {
+  const resultsEl = document.getElementById("survey-request-picker-results");
+  if (!resultsEl) return;
+  const q = String(query || "").trim();
+  if (!q) {
+    resultsEl.innerHTML = `<div class="communications-order-picker-hint">${state.lang === "it" ? "Scrivi per cercare un cliente." : "Type to search a customer."}</div>`;
+    return;
+  }
+  resultsEl.innerHTML = `<div class="communications-order-picker-hint">${state.lang === "it" ? "Cerco…" : "Searching…"}</div>`;
+  try {
+    const data = await apiFetch(`/api/sales/requests?q=${encodeURIComponent(q)}&limit=8&includeStats=0`);
+    const results = Array.isArray(data?.items) ? data.items : [];
+    if (!results.length) {
+      resultsEl.innerHTML = `<div class="communications-order-picker-hint">${state.lang === "it" ? "Nessuna richiesta trovata." : "No requests found."}</div>`;
+      return;
+    }
+    resultsEl.innerHTML = results.map((r) => {
+      const fullName = [r.name, r.surname].filter(Boolean).join(" ").trim() || "—";
+      return `
+      <button type="button" class="communications-order-picker-item" data-action="survey-select-request-ref"
+        data-id="${escapeAttr(r.id)}" data-name="${escapeAttr(fullName)}" data-city="${escapeAttr(r.city || "")}"
+        data-phone="${escapeAttr(r.phone || "")}" data-email="${escapeAttr(r.email || "")}"
+        data-address="${escapeAttr(r.address || "")}" data-province="${escapeAttr(r.provinceCode || "")}">
+        <strong>${escapeHtml(fullName)}</strong>
+        <small>${escapeHtml(r.city || "")}${r.phone ? " · " + escapeHtml(r.phone) : ""}</small>
+      </button>`;
+    }).join("");
+  } catch {
+    resultsEl.innerHTML = `<div class="communications-order-picker-hint">${state.lang === "it" ? "Ricerca non riuscita." : "Search failed."}</div>`;
+  }
+}
+let _surveyRequestSearchTimer = null;
+
 function renderSurveyCreateForm() {
   const L = (it, en) => (state.lang === "it" ? it : en);
   ui.surveyDetailBody.innerHTML = `
@@ -25484,6 +25571,7 @@ function renderSurveyCreateForm() {
       <div class="subsection-head"><h4>${L("Nuovo sopralluogo", "New site survey")}</h4></div>
       <form id="survey-create-form">
         <label class="field field-full"><span>${L("Cliente", "Customer")} *</span><input class="text-input" name="customerName" required /></label>
+        ${renderSurveyRequestLinkBlockHtml()}
         <div class="ddt-head-grid">
           <label class="field"><span>${L("Telefono", "Phone")}</span><input class="text-input" name="phone" /></label>
           <label class="field"><span>Email</span><input class="text-input" type="email" name="email" /></label>
@@ -25535,9 +25623,11 @@ async function handleSurveyCreateSubmit(event) {
       crewName: data.get("crewName"),
       scheduledDate: data.get("scheduledDate"),
       officeNotes: data.get("officeNotes"),
+      salesRequestId: state.surveyPendingSalesRequestRef?.id || "",
     });
     state.surveys = [created, ...(state.surveys || [])];
     state.selectedSurveyId = created.id;
+    state.surveyPendingSalesRequestRef = null;
     renderOps();
     renderSopralluoghi();
   } catch (err) {
@@ -25558,8 +25648,32 @@ function renderSurveyOutcomeRecap(survey, photosHtml) {
       ${survey.measuredSqm != null ? `<p><strong>${L("Mq misurati", "Measured sqm")}:</strong> ${escapeHtml(String(survey.measuredSqm))}</p>` : ""}
       ${survey.groundCondition ? `<p><strong>${L("Stato terreno", "Ground condition")}:</strong> ${escapeHtml(survey.groundCondition)}</p>` : ""}
       ${survey.feasible !== null ? `<p><strong>${L("Fattibile", "Feasible")}:</strong> ${survey.feasible ? L("Sì", "Yes") : L("No", "No")}</p>` : ""}
+      ${renderSurveyCriticalityHtml(survey)}
       ${photosHtml}
     </div>`;
+}
+
+// Badge criticità riusato in recap, editor e card lista.
+function getSurveyCriticalityMeta(criticality = "nessuna") {
+  const map = {
+    nessuna: { label: state.lang === "it" ? "Nessuna" : "None", tone: "" },
+    lieve: { label: state.lang === "it" ? "Lieve" : "Minor", tone: "amber" },
+    bloccante: { label: state.lang === "it" ? "Bloccante" : "Blocking", tone: "red" },
+  };
+  return map[criticality] || map.nessuna;
+}
+
+function renderSurveyCriticalityHtml(survey) {
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  const criticality = survey.criticality || "nessuna";
+  if (criticality === "nessuna" && !survey.criticalityNotes) return "";
+  const meta = getSurveyCriticalityMeta(criticality);
+  return `
+    <p>
+      <strong>${L("Criticità", "Criticality")}:</strong>
+      <span class="shp-badge ${meta.tone ? "tone-" + meta.tone : ""}">${escapeHtml(meta.label)}</span>
+      ${survey.criticalityNotes ? ` — ${escapeHtml(survey.criticalityNotes)}` : ""}
+    </p>`;
 }
 
 function renderSurveyOutcomeEditor(survey, photosHtml) {
@@ -25572,13 +25686,23 @@ function renderSurveyOutcomeEditor(survey, photosHtml) {
         <label class="field"><span>${L("Mq misurati", "Measured sqm")}</span><input class="text-input" type="number" min="0" id="survey-sqm-input" value="${escapeAttr(survey.measuredSqm != null ? String(survey.measuredSqm) : "")}" /></label>
         <label class="field"><span>${L("Stato terreno", "Ground condition")}</span><input class="text-input" id="survey-ground-input" value="${escapeAttr(survey.groundCondition || "")}" placeholder="${L("Es. terra, erba, pavimentazione...", "E.g. soil, grass, paving...")}" /></label>
       </div>
-      <label class="field"><span>${L("Fattibile", "Feasible")}</span>
-        <select class="text-input" id="survey-feasible-select">
-          <option value="" ${survey.feasible === null ? "selected" : ""}>${L("Non ancora valutato", "Not yet assessed")}</option>
-          <option value="true" ${survey.feasible === true ? "selected" : ""}>${L("Sì", "Yes")}</option>
-          <option value="false" ${survey.feasible === false ? "selected" : ""}>${L("No", "No")}</option>
-        </select>
-      </label>
+      <div class="ddt-head-grid">
+        <label class="field"><span>${L("Fattibile", "Feasible")}</span>
+          <select class="text-input" id="survey-feasible-select">
+            <option value="" ${survey.feasible === null ? "selected" : ""}>${L("Non ancora valutato", "Not yet assessed")}</option>
+            <option value="true" ${survey.feasible === true ? "selected" : ""}>${L("Sì", "Yes")}</option>
+            <option value="false" ${survey.feasible === false ? "selected" : ""}>${L("No", "No")}</option>
+          </select>
+        </label>
+        <label class="field"><span>${L("Criticità", "Criticality")}</span>
+          <select class="text-input" id="survey-criticality-select">
+            <option value="nessuna" ${(survey.criticality || "nessuna") === "nessuna" ? "selected" : ""}>${L("Nessuna", "None")}</option>
+            <option value="lieve" ${survey.criticality === "lieve" ? "selected" : ""}>${L("Lieve", "Minor")}</option>
+            <option value="bloccante" ${survey.criticality === "bloccante" ? "selected" : ""}>${L("Bloccante", "Blocking")}</option>
+          </select>
+        </label>
+      </div>
+      <label class="field field-full"><span>${L("Descrizione criticità (se presente)", "Criticality details (if any)")}</span><textarea class="text-input" id="survey-criticality-notes-input" rows="2">${escapeHtml(survey.criticalityNotes || "")}</textarea></label>
       <label class="field field-full">
         <span>${L("Foto", "Photos")} (${(survey.photos || []).length}/10)</span>
         <input type="file" accept="image/*" multiple id="survey-photo-input" />
@@ -25617,10 +25741,16 @@ function renderSurveyDetailView(survey) {
       </label>
       <label class="field"><span>${L("Data prevista", "Scheduled date")}</span><input class="text-input" type="date" id="survey-date-input" value="${escapeAttr(survey.scheduledDate || "")}" /></label>
     </div>
+    ${renderSurveyRequestLinkBlockHtml(survey.salesRequestId)}
     <label class="field field-full"><span>${L("Note per la squadra", "Notes for the crew")}</span><textarea class="text-input" id="survey-office-notes-input" rows="3">${escapeHtml(survey.officeNotes || "")}</textarea></label>
+    <label class="field field-full">
+      <span>${L("Allegati ufficio", "Office attachments")} (${(survey.photos || []).length}/10)</span>
+      <input type="file" accept="image/*" multiple id="survey-office-photo-input" />
+    </label>
     <div class="inline-actions">
       <button type="button" class="ghost-button small-button" data-action="survey-save-office" data-id="${escapeAttr(survey.id)}">${L("Salva", "Save")}</button>
       ${survey.status !== "annullato" && survey.status !== "completato" ? `<button type="button" class="ghost-button small-button danger-button" data-action="survey-cancel" data-id="${escapeAttr(survey.id)}">${L("Annulla sopralluogo", "Cancel survey")}</button>` : ""}
+      ${survey.status !== "da-assegnare" ? `<a class="ghost-button small-button" href="/api/surveys/${encodeURIComponent(survey.id)}/report-pdf" target="_blank" rel="noopener">${L("Scarica report", "Download report")}</a>` : ""}
       ${survey.status === "completato" ? `<button type="button" class="primary-button small-button" data-action="survey-to-generator" data-id="${escapeAttr(survey.id)}">${L("Genera preventivo", "Generate quote")}</button>` : ""}
     </div>
     <div id="survey-office-status" class="panel-note hidden"></div>
@@ -25656,12 +25786,19 @@ function renderSurveyDetailView(survey) {
       event.target.value = "";
     });
   }
+  const officePhotoInput = document.getElementById("survey-office-photo-input");
+  if (officePhotoInput) {
+    officePhotoInput.addEventListener("change", (event) => {
+      handleSurveyPhotoFiles(survey.id, event.target.files);
+      event.target.value = "";
+    });
+  }
 }
 
 async function handleSurveyPhotoFiles(surveyId, fileList) {
   const files = Array.from(fileList || []);
   if (!files.length) return;
-  const statusEl = document.getElementById("survey-crew-status");
+  const statusEl = document.getElementById("survey-crew-status") || document.getElementById("survey-office-status");
   try {
     const compressed = await Promise.all(files.map((file) => compressPhotoFile(file)));
     const updated = await apiUploadSurveyPhotos(surveyId, compressed.map((p) => ({
@@ -26470,6 +26607,8 @@ function applySessionPayload(session = {}) {
 	    state.ddtDraft = null;
 	    state.selectedSurveyId = "";
 	    state.surveyFilter = "all";
+	    state.surveyPendingSalesRequestRef = null;
+	    state.surveyOrderPickerOpen = false;
 	    state.marketingTokenHealth = null;
     state.marketingTokenHealthLoadedAt = 0;
     state.preventivoCatalog = {};
@@ -33383,6 +33522,8 @@ function handleGlobalClick(event) {
   }
   if (action === "select-survey") {
     state.selectedSurveyId = id || "";
+    state.surveyPendingSalesRequestRef = null;
+    state.surveyOrderPickerOpen = false;
     if (button.dataset.view && button.dataset.view !== state.currentView) {
       setView(button.dataset.view);
     } else {
@@ -33395,6 +33536,8 @@ function handleGlobalClick(event) {
   }
   if (action === "survey-new") {
     state.selectedSurveyId = "";
+    state.surveyPendingSalesRequestRef = null;
+    state.surveyOrderPickerOpen = false;
     renderSopralluoghi();
     if (window.innerWidth <= MOBILE_DRILL_BREAKPOINT) {
       openMobileDrillDetail("sopralluoghi", "");
@@ -33413,18 +33556,71 @@ function handleGlobalClick(event) {
     const notesInput = document.getElementById("survey-office-notes-input");
     const statusEl = document.getElementById("survey-office-status");
     button.disabled = true;
-    apiPatchSurvey(surveyId, {
+    const patch = {
       crewName: crewSelect?.value || "",
       scheduledDate: dateInput?.value || "",
       officeNotes: notesInput?.value || "",
-    }).then((updated) => {
+    };
+    // Solo se questa sessione ha selezionato una NUOVA richiesta dal picker —
+    // altrimenti non tocchiamo il collegamento già salvato sul sopralluogo.
+    if (state.surveyPendingSalesRequestRef?.id) {
+      patch.salesRequestId = state.surveyPendingSalesRequestRef.id;
+    }
+    apiPatchSurvey(surveyId, patch).then((updated) => {
       state.surveys = state.surveys.map((s) => (s.id === updated.id ? updated : s));
+      state.surveyPendingSalesRequestRef = null;
       renderOps();
       renderSopralluoghi();
     }).catch(() => {
       if (statusEl) setStatus(statusEl, "error", state.lang === "it" ? "Salvataggio non riuscito." : "Save failed.");
       button.disabled = false;
     });
+    return;
+  }
+  if (action === "survey-toggle-request-picker") {
+    state.surveyOrderPickerOpen = !state.surveyOrderPickerOpen;
+    const picker = document.getElementById("survey-request-picker");
+    if (picker) picker.classList.toggle("hidden", !state.surveyOrderPickerOpen);
+    if (state.surveyOrderPickerOpen) {
+      const input = document.getElementById("survey-request-picker-input");
+      input?.focus();
+      void searchSurveySalesRequestLookup(input?.value || "");
+    }
+    return;
+  }
+  if (action === "survey-select-request-ref") {
+    state.surveyPendingSalesRequestRef = {
+      id: button.dataset.id || "",
+      name: button.dataset.name || "",
+      city: button.dataset.city || "",
+      phone: button.dataset.phone || "",
+      email: button.dataset.email || "",
+      address: button.dataset.address || "",
+      province: button.dataset.province || "",
+    };
+    state.surveyOrderPickerOpen = false;
+    // Nel form di creazione (nessun sopralluogo ancora salvato) prefilliamo
+    // subito i campi anagrafici lasciati vuoti — non sovrascriviamo quelli
+    // già compilati a mano dall'ufficio.
+    const createForm = document.getElementById("survey-create-form");
+    if (createForm) {
+      const ref = state.surveyPendingSalesRequestRef;
+      if (createForm.customerName && !createForm.customerName.value) createForm.customerName.value = ref.name;
+      if (createForm.city && !createForm.city.value) createForm.city.value = ref.city;
+      if (createForm.phone && !createForm.phone.value) createForm.phone.value = ref.phone;
+      if (createForm.email && !createForm.email.value) createForm.email.value = ref.email;
+      if (createForm.address && !createForm.address.value) createForm.address.value = ref.address;
+      if (createForm.province && !createForm.province.value) createForm.province.value = ref.province;
+    }
+    const pendingSlot = document.getElementById("survey-request-pending");
+    if (pendingSlot) pendingSlot.innerHTML = renderSurveyPendingRequestRefHtml();
+    document.getElementById("survey-request-picker")?.classList.add("hidden");
+    return;
+  }
+  if (action === "survey-remove-request-ref") {
+    state.surveyPendingSalesRequestRef = null;
+    const pendingSlot = document.getElementById("survey-request-pending");
+    if (pendingSlot) pendingSlot.innerHTML = "";
     return;
   }
   if (action === "survey-cancel") {
@@ -33448,6 +33644,8 @@ function handleGlobalClick(event) {
     const sqmInput = document.getElementById("survey-sqm-input");
     const groundInput = document.getElementById("survey-ground-input");
     const feasibleSelect = document.getElementById("survey-feasible-select");
+    const criticalitySelect = document.getElementById("survey-criticality-select");
+    const criticalityNotesInput = document.getElementById("survey-criticality-notes-input");
     const statusEl = document.getElementById("survey-crew-status");
     const feasibleValue = feasibleSelect?.value === "" ? null : feasibleSelect?.value === "true";
     button.disabled = true;
@@ -33456,6 +33654,8 @@ function handleGlobalClick(event) {
       measuredSqm: sqmInput?.value ? Number(sqmInput.value) : null,
       groundCondition: groundInput?.value || "",
       feasible: feasibleValue,
+      criticality: criticalitySelect?.value || "nessuna",
+      criticalityNotes: criticalityNotesInput?.value || "",
     }).then((updated) => {
       state.surveys = state.surveys.map((s) => (s.id === updated.id ? updated : s));
       renderSopralluoghi();
@@ -36392,6 +36592,19 @@ if (ui.surveySearch) {
   ui.surveySearch.addEventListener("input", (event) => {
     state.search.survey = event.target.value || "";
     renderSurveyListHtml();
+  });
+}
+// Il picker "collega richiesta CRM" vive dentro ui.surveyDetailBody, il cui
+// innerHTML viene sostituito ad ogni render — un listener su un elemento
+// interno andrebbe perso. Delego sul contenitore stabile (stesso pattern del
+// picker "Collega ordine" in Comunicazioni, che delega su `host`).
+if (ui.surveyDetailBody) {
+  ui.surveyDetailBody.addEventListener("input", (event) => {
+    const pickerInput = event.target.closest?.("#survey-request-picker-input");
+    if (!pickerInput) return;
+    clearTimeout(_surveyRequestSearchTimer);
+    const value = pickerInput.value;
+    _surveyRequestSearchTimer = setTimeout(() => { void searchSurveySalesRequestLookup(value); }, 250);
   });
 }
 bindEvent(ui.ddtSendDailyButton, "click", async () => {

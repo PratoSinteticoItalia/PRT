@@ -24954,6 +24954,9 @@ body {
 .shp-mode-tag.shp-crew-tag { background: #eef1ee; color: #3a4b40; text-transform: none; letter-spacing: 0; display: inline-flex; align-items: center; }
 .shp-badge { padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; background: #f0f0ef; color: #6b7280; }
 .shp-badge.ok { background: #d1fae5; color: #065f46; }
+/* Criticità sopralluogo: stessa palette amber/red già usata per dash-action-*. */
+.shp-badge.tone-amber { background: #fef3c7; color: #78350f; }
+.shp-badge.tone-red { background: #fee2e2; color: #7f1d1d; }
 /* Segnala a colpo d'occhio un ordine con foto allegata (es. difetto
    materiale, prova di consegna) senza dover aprire la card. */
 .shp-badge.shp-photo-badge { padding: 1px 6px; font-size: 12px; line-height: 1; }

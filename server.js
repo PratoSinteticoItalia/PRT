@@ -11,6 +11,7 @@ import { generateWorkReportPdf } from "./lib/work-report-pdf.js";
 import { generateDdtPdf } from "./lib/ddt-pdf.js";
 import { generateProfitSplitContoPdf, generateProfitSplitStatementPdf } from "./lib/profit-split-pdf.js";
 import { generateSiteSheetPdf } from "./lib/site-sheet-pdf.js";
+import { generateSiteSurveyReportPdf } from "./lib/site-survey-report-pdf.js";
 import { computeProfitSplitScenario } from "./lib/profit-split.js";
 import {
   PRODUCTS as RESELLER_ORDER_PRODUCTS,
@@ -1335,6 +1336,8 @@ async function ensureRelationalSchema() {
         scheduled_date DATE, scheduled_time TEXT,
         office_notes TEXT,
         crew_notes TEXT, measured_sqm NUMERIC, ground_condition TEXT, feasible BOOLEAN,
+        criticality TEXT NOT NULL DEFAULT 'nessuna',  -- 'nessuna'|'lieve'|'bloccante', distinta da ground_condition
+        criticality_notes TEXT,
         photos JSONB NOT NULL DEFAULT '[]',          -- [{id,name,type,size,storage,objectKey,takenAt}, ...]
         created_by TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1342,6 +1345,10 @@ async function ensureRelationalSchema() {
         assigned_at TIMESTAMPTZ, started_at TIMESTAMPTZ, completed_at TIMESTAMPTZ,
         cancelled_at TIMESTAMPTZ, cancel_reason TEXT
       );
+      -- Colonne aggiunte dopo il primo deploy di site_surveys: ALTER esplicito
+      -- perché CREATE TABLE IF NOT EXISTS non tocca una tabella già esistente.
+      ALTER TABLE site_surveys ADD COLUMN IF NOT EXISTS criticality TEXT NOT NULL DEFAULT 'nessuna';
+      ALTER TABLE site_surveys ADD COLUMN IF NOT EXISTS criticality_notes TEXT;
       CREATE INDEX IF NOT EXISTS site_surveys_crew_idx      ON site_surveys (crew_name);
       CREATE INDEX IF NOT EXISTS site_surveys_status_idx    ON site_surveys (status);
       CREATE INDEX IF NOT EXISTS site_surveys_scheduled_idx ON site_surveys (scheduled_date);
@@ -3310,6 +3317,8 @@ function dbRowToSiteSurvey(row) {
     measuredSqm: row.measured_sqm != null ? Number(row.measured_sqm) : null,
     groundCondition: row.ground_condition,
     feasible: row.feasible,
+    criticality: row.criticality,
+    criticalityNotes: row.criticality_notes,
     photos: Array.isArray(row.photos) ? row.photos : [],
     createdBy: row.created_by,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
@@ -3451,6 +3460,8 @@ async function updateSiteSurveyInDb(id, patch = {}, opts = {}) {
     measuredSqm:      { column: "measured_sqm" },
     groundCondition:  { column: "ground_condition" },
     feasible:         { column: "feasible" },
+    criticality:      { column: "criticality" },
+    criticalityNotes: { column: "criticality_notes" },
     photos:           { column: "photos", json: true },
     cancelReason:     { column: "cancel_reason" },
     assignedAt:       { column: "assigned_at", date: true },
@@ -15385,7 +15396,8 @@ async function handleApi(req, res, url) {
       let notifyOfficeCompleted = false;
       if (currentUser.role === "office") {
         const fields = ["status", "customerName", "phone", "email", "address", "city", "province",
-          "salesRequestId", "crewName", "scheduledDate", "scheduledTime", "officeNotes", "cancelReason"];
+          "salesRequestId", "crewName", "scheduledDate", "scheduledTime", "officeNotes", "cancelReason",
+          "criticality", "criticalityNotes"];
         for (const key of fields) {
           if (Object.prototype.hasOwnProperty.call(body, key)) patch[key] = body[key];
         }
@@ -15406,7 +15418,7 @@ async function handleApi(req, res, url) {
             || normalizeCrewName(existing.crewName) !== normalizeCrewName(currentUser.crewName)) {
           return sendJson(res, 403, { error: "forbidden" });
         }
-        const fields = ["crewNotes", "measuredSqm", "groundCondition", "feasible"];
+        const fields = ["crewNotes", "measuredSqm", "groundCondition", "feasible", "criticality", "criticalityNotes"];
         for (const key of fields) {
           if (Object.prototype.hasOwnProperty.call(body, key)) patch[key] = body[key];
         }
@@ -15520,6 +15532,35 @@ async function handleApi(req, res, url) {
       console.error("[surveys] photo file failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "stream_failed") });
     }
+  }
+
+  // GET /api/surveys/:id/report-pdf → report sopralluogo, generato al volo
+  // (mai persistito — stesso schema di GET /api/orders/:id/site-sheet-pdf).
+  if (url.pathname.match(/^\/api\/surveys\/[^/]+\/report-pdf$/) && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const id = decodeURIComponent(url.pathname.split("/")[3]);
+    try {
+      const survey = await getSiteSurveyFromDb(id);
+      if (!survey) return sendJson(res, 404, { error: "not_found" });
+      if (currentUser.role === "crew" && (!survey.crewName || !currentUser.crewName
+          || normalizeCrewName(survey.crewName) !== normalizeCrewName(currentUser.crewName))) {
+        return sendJson(res, 403, { error: "forbidden" });
+      }
+      const logoBuffer = await getCachedLogoBuffer();
+      const pdf = await generateSiteSurveyReportPdf(survey, { logoBuffer });
+      const safe = String(survey.id || id).replace(/[^\w#-]+/g, "-");
+      res.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Length": String(pdf.length),
+        "Content-Disposition": `attachment; filename="report-sopralluogo-${safe}.pdf"`,
+      });
+      res.end(pdf);
+    } catch (err) {
+      console.error("[surveys] report pdf failed:", err?.message || err);
+      return sendJson(res, 500, { error: "pdf_failed" });
+    }
+    return;
   }
 
   // GET /api/work-reports/:id/pdf → scarica il PDF archiviato (stream da R2)
