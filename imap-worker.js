@@ -22,6 +22,8 @@
  * telefono, mq, prodotto) richiede campioni email reali → Fase 1B.
  */
 
+import { repairMojibakeText } from "./lib/mojibake.js";
+
 // Auto-promote: importato lazy per evitare dipendenze al boot del worker
 let leadFingerprintLib = null;
 async function loadLeadFingerprint() {
@@ -98,14 +100,19 @@ const PSI_LEAD_PATTERNS = {
 };
 
 // Sanitizza valori di tipo testo: rimuove caratteri di escape spuri (\) che
-// alcuni form PHP inseriscono ai bordi dei campi, normalizza spazi, trim.
+// alcuni form PHP inseriscono ai bordi dei campi, ripara eventuale mojibake
+// (il form PHP del sito a volte manda UTF-8 dichiarato/letto come
+// Windows-1252, es. "dâ€™Alpinolo" invece di "d'Alpinolo"), normalizza
+// spazi, trim.
 function cleanText(raw) {
   if (raw == null) return "";
-  return String(raw)
-    .replace(/\\+$/g, "")        // rimuove backslash finali (es. "GIUSEPPE CRINO\")
-    .replace(/^\\+/g, "")        // rimuove backslash iniziali
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  return repairMojibakeText(
+    String(raw)
+      .replace(/\\+$/g, "")        // rimuove backslash finali (es. "GIUSEPPE CRINO\")
+      .replace(/^\\+/g, "")        // rimuove backslash iniziali
+      .replace(/\s{2,}/g, " ")
+      .trim(),
+  );
 }
 
 // Strip HTML basico: rimuove tag, normalizza entità HTML comuni, mantiene il
