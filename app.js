@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260924-sopralluoghi-v2";
+} from "./lib/order-money.js?v=20260924-sopralluoghi-redesign";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260924-sopralluoghi-v2";
+import { regionForCity } from "./lib/geo.js?v=20260924-sopralluoghi-redesign";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260924-sopralluoghi-v2";
+} from "./lib/shipping-eligibility.js?v=20260924-sopralluoghi-redesign";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260924-sopralluoghi-v2";
+} from "./lib/profit-split.js?v=20260924-sopralluoghi-redesign";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260924-sopralluoghi-v2";
+} from "./lib/preventivo-pricing.js?v=20260924-sopralluoghi-redesign";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,13 +66,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260924-sopralluoghi-v2";
+} from "./lib/sales-assignment.js?v=20260924-sopralluoghi-redesign";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20260924-sopralluoghi-v2";
+} from "./lib/surveys.js?v=20260924-sopralluoghi-redesign";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -86,7 +86,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260924-sopralluoghi-v2";
+const APP_SHELL_VERSION = "20260924-sopralluoghi-redesign";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -25585,7 +25585,7 @@ function renderSurveyCreateForm() {
           <label class="field"><span>${L("Squadra", "Crew")}</span>
             <select class="text-input" name="crewName">
               <option value="">${L("Da assegnare", "Unassigned")}</option>
-              ${crews.map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("")}
+              ${getInstallationCrewNames().map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("")}
             </select>
           </label>
           <label class="field"><span>${L("Data prevista", "Scheduled date")}</span><input class="text-input" type="date" name="scheduledDate" /></label>
@@ -25643,7 +25643,7 @@ function renderSurveyOutcomeRecap(survey, photosHtml) {
   const L = (it, en) => (state.lang === "it" ? it : en);
   return `
     <div class="panel-subsection">
-      <div class="subsection-head"><h4>${L("Esito sopralluogo", "Survey outcome")}</h4></div>
+      <div class="survey-section-label">${L("Esito sopralluogo", "Survey outcome")}</div>
       ${survey.crewNotes ? `<p>${escapeHtml(survey.crewNotes)}</p>` : `<p class="ddt-hint">${L("Nessuna nota ancora.", "No notes yet.")}</p>`}
       ${survey.measuredSqm != null ? `<p><strong>${L("Mq misurati", "Measured sqm")}:</strong> ${escapeHtml(String(survey.measuredSqm))}</p>` : ""}
       ${survey.groundCondition ? `<p><strong>${L("Stato terreno", "Ground condition")}:</strong> ${escapeHtml(survey.groundCondition)}</p>` : ""}
@@ -25680,7 +25680,7 @@ function renderSurveyOutcomeEditor(survey, photosHtml) {
   const L = (it, en) => (state.lang === "it" ? it : en);
   return `
     <div class="panel-subsection">
-      <div class="subsection-head"><h4>${L("Esito sopralluogo", "Survey outcome")}</h4></div>
+      <div class="survey-section-label">${L("Esito sopralluogo", "Survey outcome")}</div>
       <label class="field field-full"><span>${L("Note", "Notes")}</span><textarea class="text-input" id="survey-crew-notes-input" rows="3">${escapeHtml(survey.crewNotes || "")}</textarea></label>
       <div class="ddt-head-grid">
         <label class="field"><span>${L("Mq misurati", "Measured sqm")}</span><input class="text-input" type="number" min="0" id="survey-sqm-input" value="${escapeAttr(survey.measuredSqm != null ? String(survey.measuredSqm) : "")}" /></label>
@@ -25717,6 +25717,29 @@ function renderSurveyOutcomeEditor(survey, photosHtml) {
     </div>`;
 }
 
+// Icone inline (stesso stile Feather/outline 24x24 già usato nel resto
+// dell'app, es. VIEW_ICONS) per la scheda sopralluogo ridisegnata.
+const SURVEY_ICONS = {
+  phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  quote: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  check: '<polyline points="20,6 9,17 4,12"/>',
+};
+function surveyIcon(name, size = 16) {
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SURVEY_ICONS[name] || ""}</svg>`;
+}
+function getSurveyInitials(name = "") {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
+}
+
 function renderSurveyDetailView(survey) {
   const L = (it, en) => (state.lang === "it" ? it : en);
   const isOffice = state.currentUser?.role === "office";
@@ -25732,26 +25755,48 @@ function renderSurveyDetailView(survey) {
     : `<p class="ddt-hint">${L("Nessuna foto ancora.", "No photos yet.")}</p>`;
 
   const officeAssignBlock = isOffice ? `
-    <div class="ddt-head-grid">
-      <label class="field"><span>${L("Squadra", "Crew")}</span>
-        <select class="text-input" id="survey-crew-select">
+    <div class="survey-meta-strip">
+      <label class="survey-meta-field" title="${L("Squadra", "Crew")}">${surveyIcon("users", 13)}
+        <select id="survey-crew-select">
           <option value="">${L("Da assegnare", "Unassigned")}</option>
-          ${crews.map((c) => `<option value="${escapeAttr(c)}" ${survey.crewName === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
+          ${getInstallationCrewNames().map((c) => `<option value="${escapeAttr(c)}" ${survey.crewName === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
         </select>
       </label>
-      <label class="field"><span>${L("Data prevista", "Scheduled date")}</span><input class="text-input" type="date" id="survey-date-input" value="${escapeAttr(survey.scheduledDate || "")}" /></label>
+      <label class="survey-meta-field" title="${L("Data prevista", "Scheduled date")}">${surveyIcon("calendar", 13)}
+        <input type="date" id="survey-date-input" value="${escapeAttr(survey.scheduledDate || "")}" />
+      </label>
+      <button type="button" class="survey-meta-field" data-action="survey-toggle-request-picker">
+        ${surveyIcon("link", 13)}<span>${survey.salesRequestId ? "#" + escapeHtml(survey.salesRequestId) : L("Collega CRM", "Link CRM")}</span>
+      </button>
     </div>
-    ${renderSurveyRequestLinkBlockHtml(survey.salesRequestId)}
-    <label class="field field-full"><span>${L("Note per la squadra", "Notes for the crew")}</span><textarea class="text-input" id="survey-office-notes-input" rows="3">${escapeHtml(survey.officeNotes || "")}</textarea></label>
-    <label class="field field-full">
+    <div id="survey-request-pending">${renderSurveyPendingRequestRefHtml()}</div>
+    ${renderSurveyRequestPickerHtml()}
+
+    <div class="survey-section-label">${L("Dati cliente", "Customer details")}</div>
+    <div class="ddt-head-grid">
+      <label class="field"><span>${L("Telefono", "Phone")}</span><input class="text-input" id="survey-phone-input" value="${escapeAttr(survey.phone || "")}" /></label>
+      <label class="field"><span>Email</span><input class="text-input" type="email" id="survey-email-input" value="${escapeAttr(survey.email || "")}" /></label>
+    </div>
+    <label class="field field-full"><span>${L("Indirizzo", "Address")}</span><input class="text-input" id="survey-address-input" value="${escapeAttr(survey.address || "")}" /></label>
+    <div class="ddt-head-grid">
+      <label class="field"><span>${L("Città", "City")}</span><input class="text-input" id="survey-city-input" value="${escapeAttr(survey.city || "")}" /></label>
+      <label class="field"><span>${L("Provincia", "Province")}</span><input class="text-input" id="survey-province-input" maxlength="2" value="${escapeAttr(survey.province || "")}" /></label>
+    </div>
+
+    <div class="survey-section-label">${L("Note per la squadra", "Notes for the crew")}</div>
+    <textarea class="survey-note-block" id="survey-office-notes-input" placeholder="${L("Nessuna nota — aggiungine una per la squadra.", "No notes yet — add one for the crew.")}">${escapeHtml(survey.officeNotes || "")}</textarea>
+
+    <div class="survey-file-row">
+      ${surveyIcon("camera", 14)}
       <span>${L("Allegati ufficio", "Office attachments")} (${(survey.photos || []).length}/10)</span>
       <input type="file" accept="image/*" multiple id="survey-office-photo-input" />
-    </label>
-    <div class="inline-actions">
-      <button type="button" class="ghost-button small-button" data-action="survey-save-office" data-id="${escapeAttr(survey.id)}">${L("Salva", "Save")}</button>
-      ${survey.status !== "annullato" && survey.status !== "completato" ? `<button type="button" class="ghost-button small-button danger-button" data-action="survey-cancel" data-id="${escapeAttr(survey.id)}">${L("Annulla sopralluogo", "Cancel survey")}</button>` : ""}
-      ${survey.status !== "da-assegnare" ? `<a class="ghost-button small-button" href="/api/surveys/${encodeURIComponent(survey.id)}/report-pdf" target="_blank" rel="noopener">${L("Scarica report", "Download report")}</a>` : ""}
-      ${survey.status === "completato" ? `<button type="button" class="primary-button small-button" data-action="survey-to-generator" data-id="${escapeAttr(survey.id)}">${L("Genera preventivo", "Generate quote")}</button>` : ""}
+    </div>
+
+    <div class="survey-action-bar">
+      <button type="button" class="survey-icon-button primary" data-action="survey-save-office" data-id="${escapeAttr(survey.id)}">${surveyIcon("check", 14)}${L("Salva", "Save")}</button>
+      ${survey.status !== "da-assegnare" ? `<a class="survey-icon-button" href="/api/surveys/${encodeURIComponent(survey.id)}/report-pdf" target="_blank" rel="noopener">${surveyIcon("download", 14)}${L("Report", "Report")}</a>` : ""}
+      ${survey.status === "completato" ? `<button type="button" class="survey-icon-button" data-action="survey-to-generator" data-id="${escapeAttr(survey.id)}">${surveyIcon("quote", 14)}${L("Preventivo", "Quote")}</button>` : ""}
+      ${survey.status !== "annullato" && survey.status !== "completato" ? `<button type="button" class="survey-icon-button danger" data-action="survey-cancel" data-id="${escapeAttr(survey.id)}">${surveyIcon("x", 14)}${L("Annulla", "Cancel")}</button>` : ""}
     </div>
     <div id="survey-office-status" class="panel-note hidden"></div>
   ` : `
@@ -25766,14 +25811,21 @@ function renderSurveyDetailView(survey) {
     : renderSurveyOutcomeRecap(survey, photosHtml);
 
   ui.surveyDetailBody.innerHTML = `
-    <div class="panel-subsection">
-      <div class="subsection-head"><h4>${escapeHtml(survey.customerName)}</h4><span class="shp-badge ${meta.tone === "ready" ? "ok" : ""}">${escapeHtml(meta.label)}</span></div>
-      ${survey.address || survey.city ? `<p>${escapeHtml([survey.address, survey.city, survey.province].filter(Boolean).join(", "))}</p>` : ""}
-      ${survey.phone ? `<p>📞 ${escapeHtml(survey.phone)}</p>` : ""}
-      ${survey.email ? `<p>✉️ ${escapeHtml(survey.email)}</p>` : ""}
+    <div class="panel-subsection survey-header">
+      <div class="survey-header-top">
+        <div class="survey-avatar">${escapeHtml(getSurveyInitials(survey.customerName))}</div>
+        <div class="survey-header-id">
+          <h4>${escapeHtml(survey.customerName)}</h4>
+          <span class="survey-header-sub">${escapeHtml([survey.city, survey.province].filter(Boolean).join(", ")) || L("Città da definire", "City pending")}</span>
+        </div>
+        <span class="shp-badge survey-status-pill ${meta.tone === "ready" ? "ok" : ""}">${escapeHtml(meta.label)}</span>
+      </div>
+      ${survey.phone || survey.email ? `<div class="survey-contact-row">
+        ${survey.phone ? `<span>${surveyIcon("phone", 13)}${escapeHtml(survey.phone)}</span>` : ""}
+        ${survey.email ? `<span>${surveyIcon("mail", 13)}${escapeHtml(survey.email)}</span>` : ""}
+      </div>` : ""}
     </div>
     <div class="panel-subsection">
-      <div class="subsection-head"><h4>${L("Assegnazione", "Assignment")}</h4></div>
       ${officeAssignBlock}
     </div>
     ${outcomeBlock}
@@ -33554,12 +33606,22 @@ function handleGlobalClick(event) {
     const crewSelect = document.getElementById("survey-crew-select");
     const dateInput = document.getElementById("survey-date-input");
     const notesInput = document.getElementById("survey-office-notes-input");
+    const phoneInput = document.getElementById("survey-phone-input");
+    const emailInput = document.getElementById("survey-email-input");
+    const addressInput = document.getElementById("survey-address-input");
+    const cityInput = document.getElementById("survey-city-input");
+    const provinceInput = document.getElementById("survey-province-input");
     const statusEl = document.getElementById("survey-office-status");
     button.disabled = true;
     const patch = {
       crewName: crewSelect?.value || "",
       scheduledDate: dateInput?.value || "",
       officeNotes: notesInput?.value || "",
+      phone: phoneInput?.value || "",
+      email: emailInput?.value || "",
+      address: addressInput?.value || "",
+      city: cityInput?.value || "",
+      province: provinceInput?.value || "",
     };
     // Solo se questa sessione ha selezionato una NUOVA richiesta dal picker —
     // altrimenti non tocchiamo il collegamento già salvato sul sopralluogo.

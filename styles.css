@@ -15821,7 +15821,7 @@ body.mobile-safe-mode .mobile-pill-link.is-active {
   border-radius: 8px;
   background: transparent;
   border: 1px solid var(--line, #e2e5e9);
-  color: var(--muted, #6b7280);
+  color: var(--muted);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
@@ -18175,6 +18175,60 @@ body.mobile-safe-mode a.topbar-search:focus-visible {
   aspect-ratio: 1 / 1;
 }
 .survey-photo-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* Header dettaglio sopralluogo: avatar + nome + stato, meno "form", più identità. */
+.survey-header-top { display: flex; align-items: center; gap: 12px; }
+.survey-avatar {
+  width: 44px; height: 44px; border-radius: 50%; background: #40916c; color: #fff;
+  display: grid; place-items: center; font-size: 14px; font-weight: 700; flex-shrink: 0;
+}
+.survey-header-id { flex: 1; min-width: 0; }
+.survey-header-id h4 { margin: 0; }
+.survey-header-sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.survey-status-pill { font-size: 11px; padding: 3px 10px; white-space: nowrap; }
+.survey-contact-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+.survey-contact-row span { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); }
+.survey-contact-row svg { flex-shrink: 0; opacity: 0.7; }
+
+/* Campi "invisibili finché non servono": bordo solo su hover/focus, per non
+   far sembrare ogni select/data un modulo da compilare. */
+.survey-meta-strip { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+.survey-meta-field {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+  border: 1px solid transparent; border-radius: 8px; padding: 5px 8px 5px 6px;
+  background: transparent; color: inherit;
+}
+.survey-meta-field:hover, .survey-meta-field:focus-within { border-color: var(--line); background: #fff; }
+.survey-meta-field svg { flex-shrink: 0; opacity: 0.55; }
+.survey-meta-field select, .survey-meta-field input {
+  border: none; background: transparent; padding: 0; font-size: 12.5px; height: auto; color: inherit; min-width: 0;
+}
+.survey-meta-field select:focus, .survey-meta-field input:focus { outline: none; box-shadow: none; }
+
+.survey-section-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 18px 0 8px; font-weight: 600; }
+.survey-section-label:first-child { margin-top: 0; }
+
+.survey-note-block {
+  font-size: 13px; color: var(--text); background: #f7f7f5; border-radius: 8px;
+  padding: 8px 10px; border: none; width: 100%; resize: vertical; min-height: 44px; font-family: inherit;
+}
+.survey-note-block::placeholder { font-style: italic; color: var(--muted); }
+
+/* Barra azioni a icone: sostituisce i bottoni di testo impilati. */
+.survey-action-bar { display: flex; gap: 6px; margin-top: 14px; align-items: center; }
+.survey-icon-button {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: #fff; font-size: 12.5px; color: inherit;
+  text-decoration: none; cursor: pointer;
+}
+.survey-icon-button:hover { background: #f7f7f5; }
+.survey-icon-button.primary { background: #1f4637; border-color: #1f4637; color: #fff; }
+.survey-icon-button.primary:hover { background: #163527; }
+.survey-icon-button.danger { color: #b91c1c; border-color: #f3d0d0; margin-left: auto; }
+.survey-icon-button.danger:hover { background: #fef2f2; }
+.survey-icon-button.icon-only { padding: 7px; }
+
+.survey-file-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin: 4px 0 0; }
 .communications-att-download {
   position: absolute;
   top: 6px;
@@ -22194,7 +22248,7 @@ body {
 }
 .crm-stats-label {
   font-size: 11px;
-  color: var(--muted, #6b7280);
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: .04em;
 }
@@ -22365,7 +22419,7 @@ body {
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--surface, #f3f4f6);
-  color: var(--muted, #6b7280);
+  color: var(--muted);
   margin-bottom: 5px;
   max-width: 100%;
   overflow: hidden;
