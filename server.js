@@ -23,6 +23,7 @@ import {
 } from "./lib/preventivo-pricing.js";
 import { createWriteGuard } from "./lib/safe-write.js";
 import { mergeSheetSalesRequestRecord } from "./lib/sales-merge.js";
+import { repairMojibakeText } from "./lib/mojibake.js";
 import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
@@ -1043,6 +1044,55 @@ async function backfillSalesRequestCreatedAtToDb() {
     _createdAtBackfillDone = true;
   } catch (err) {
     console.warn("[db] backfillSalesRequestCreatedAtToDb:", err?.message);
+  }
+}
+
+// Backfill one-shot: ripara il mojibake (UTF-8 letto come Windows-1252, es.
+// "dâ€™Alpinolo" invece di "d'Alpinolo") già salvato nei campi testo di
+// sales_requests — bug segnalato dall'utente su un cliente collegato a un
+// sopralluogo. cleanText() in imap-worker.js ripara già i lead futuri in
+// ingresso: questo backfill sistema una tantum quelli già in tabella.
+// Marcatore persistito su Postgres, stesso pattern del backfill created_at
+// sopra (mai solo in memoria, altrimenti riparte ad ogni deploy).
+const SALES_REQUEST_MOJIBAKE_BACKFILL_DOC_KEY = "sales_request_mojibake_backfill_v1_done";
+const MOJIBAKE_TEXT_COLUMNS = ["first_name", "last_name", "city", "address", "company", "note", "province"];
+let _mojibakeBackfillDone = false;
+async function backfillSalesRequestMojibakeToDb() {
+  if (_mojibakeBackfillDone || !USE_POSTGRES) return;
+  try {
+    const alreadyDone = await readDatabaseDocument(SALES_REQUEST_MOJIBAKE_BACKFILL_DOC_KEY, false);
+    if (alreadyDone) {
+      _mojibakeBackfillDone = true;
+      return;
+    }
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query(
+      `SELECT id, ${MOJIBAKE_TEXT_COLUMNS.join(", ")} FROM sales_requests`,
+    );
+    let count = 0;
+    for (const row of rows) {
+      const patch = {};
+      for (const col of MOJIBAKE_TEXT_COLUMNS) {
+        const original = row[col];
+        if (typeof original !== "string" || !original) continue;
+        const repaired = repairMojibakeText(original);
+        if (repaired !== original) patch[col] = repaired;
+      }
+      const cols = Object.keys(patch);
+      if (!cols.length) continue;
+      const setClause = cols.map((col, i) => `${col} = $${i + 2}`).join(", ");
+      await pool.query(`UPDATE sales_requests SET ${setClause} WHERE id = $1`, [row.id, ...cols.map((c) => patch[c])]);
+      count++;
+    }
+    if (count) {
+      invalidateSalesRequestsDbCache();
+      console.log(`[db] backfill mojibake: ${count} record corretti`);
+    }
+    await writeDatabaseDocument(SALES_REQUEST_MOJIBAKE_BACKFILL_DOC_KEY, true);
+    _mojibakeBackfillDone = true;
+  } catch (err) {
+    console.warn("[db] backfillSalesRequestMojibakeToDb:", err?.message);
   }
 }
 
@@ -13548,6 +13598,8 @@ async function handleApi(req, res, url) {
     backfillSalesRequestHeightToDb().catch(() => {});
     // Backfill created_at: corregge date di import errate (eseguito una sola volta)
     backfillSalesRequestCreatedAtToDb().catch(() => {});
+    // Backfill mojibake: ripara caratteri corrotti già salvati (eseguito una sola volta)
+    backfillSalesRequestMojibakeToDb().catch(() => {});
     // backfillInventoryRelationalFields() NON va più chiamata qui: girava ad
     // ogni GET /api/session finché il marcatore era solo in memoria (vedi
     // commento sulla funzione). Ora è lanciata una volta sola all'avvio del
