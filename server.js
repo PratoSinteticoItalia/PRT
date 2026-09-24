@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
-import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, dirname, join, resolve, sep } from "node:path";
 import { createHash, createHmac, createSign, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -11404,20 +11404,45 @@ function getAttachmentContentDisposition(attachment = {}) {
   return `attachment; filename="${fileName}"`;
 }
 
-async function streamAttachmentAsset(res, attachment = {}, { cacheControl = "private, max-age=300", forceDownload = false } = {}) {
+// bytes=START-END (END/START opzionali) → {start,end} inclusivi, o null se
+// l'header manca/non è parsabile/è fuori range: in quel caso si risponde
+// con l'intero file (200), mai con un errore.
+function parseRangeHeader(rangeHeader, size) {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(String(rangeHeader || "").trim());
+  if (!match || (!match[1] && !match[2])) return null;
+  let start = match[1] ? parseInt(match[1], 10) : size - parseInt(match[2], 10);
+  let end = match[1] && match[2] ? parseInt(match[2], 10) : size - 1;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  start = Math.max(0, start);
+  end = Math.min(size - 1, end);
+  if (start > end) return null;
+  return { start, end };
+}
+
+// req (opzionale) serve solo per leggere l'header Range: molti player video
+// embedded — smart TV comprese — lo richiedono per iniziare la riproduzione,
+// anche in progressive download, e senza Accept-Ranges/206 alcuni si
+// rifiutano proprio di avviare il video invece di scaricarlo per intero.
+async function streamAttachmentAsset(req, res, attachment = {}, { cacheControl = "private, max-age=300", forceDownload = false } = {}) {
   const storageType = String(attachment.storage || "").trim();
   const downloadHeaders = forceDownload
     ? { "Content-Disposition": getAttachmentContentDisposition(attachment) }
     : {};
+  const rangeHeader = req?.headers?.range;
   if (storageType === "file") {
     const absolutePath = resolveAttachmentLocalPath(attachment.localPath || "");
     if (!absolutePath || !existsSync(absolutePath)) {
       return sendJson(res, 404, { error: "attachment_not_found" });
     }
     try {
-      const stream = createReadStream(absolutePath);
-      res.writeHead(200, {
+      const size = statSync(absolutePath).size;
+      const range = parseRangeHeader(rangeHeader, size);
+      const stream = createReadStream(absolutePath, range ? { start: range.start, end: range.end } : undefined);
+      res.writeHead(range ? 206 : 200, {
         "Content-Type": attachment.type || "application/octet-stream",
+        "Content-Length": range ? range.end - range.start + 1 : size,
+        "Accept-Ranges": "bytes",
+        ...(range ? { "Content-Range": `bytes ${range.start}-${range.end}/${size}` } : {}),
         "Cache-Control": cacheControl,
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -11441,15 +11466,19 @@ async function streamAttachmentAsset(res, attachment = {}, { cacheControl = "pri
     if (!inlineData?.buffer?.length) {
       return sendJson(res, 404, { error: "attachment_not_found" });
     }
-    res.writeHead(200, {
+    const size = inlineData.buffer.length;
+    const range = parseRangeHeader(rangeHeader, size);
+    res.writeHead(range ? 206 : 200, {
       "Content-Type": attachment.type || inlineData.contentType || "application/octet-stream",
-      "Content-Length": inlineData.buffer.length,
+      "Content-Length": range ? range.end - range.start + 1 : size,
+      "Accept-Ranges": "bytes",
+      ...(range ? { "Content-Range": `bytes ${range.start}-${range.end}/${size}` } : {}),
       "Cache-Control": cacheControl,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "strict-origin-when-cross-origin",
       ...downloadHeaders,
     });
-    res.end(inlineData.buffer);
+    res.end(range ? inlineData.buffer.subarray(range.start, range.end + 1) : inlineData.buffer);
     return;
   }
   if (!String(attachment.objectKey || "").trim()) {
@@ -11460,10 +11489,15 @@ async function streamAttachmentAsset(res, attachment = {}, { cacheControl = "pri
   const object = await client.send(new sdk.GetObjectCommand({
     Bucket: R2_BUCKET_NAME,
     Key: String(attachment.objectKey).trim(),
+    ...(rangeHeader ? { Range: rangeHeader } : {}),
   }));
+  const isPartial = Boolean(object.ContentRange);
 
-  res.writeHead(200, {
+  res.writeHead(isPartial ? 206 : 200, {
     "Content-Type": object.ContentType || attachment.type || "application/octet-stream",
+    "Accept-Ranges": "bytes",
+    ...(object.ContentLength != null ? { "Content-Length": object.ContentLength } : {}),
+    ...(isPartial ? { "Content-Range": object.ContentRange } : {}),
     "Cache-Control": cacheControl,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -13397,7 +13431,7 @@ async function handleApi(req, res, url) {
     if (!asset?.attachment) {
       return sendJson(res, 404, { error: "asset_not_found" });
     }
-    return streamAttachmentAsset(res, asset.attachment, { cacheControl: "public, max-age=86400" });
+    return streamAttachmentAsset(req, res, asset.attachment, { cacheControl: "public, max-age=86400" });
   }
 
   if (url.pathname === "/api/events" && req.method === "GET") {
@@ -14280,7 +14314,7 @@ async function handleApi(req, res, url) {
     }
     const att = (message.attachments || []).find((a) => a.id === attId);
     if (!att) return sendJson(res, 404, { error: "attachment_not_found" });
-    return streamAttachmentAsset(res, att, { cacheControl: "private, max-age=3600" });
+    return streamAttachmentAsset(req, res, att, { cacheControl: "private, max-age=3600" });
   }
 
   const readMatch = url.pathname.match(/^\/api\/communications\/threads\/([^/]+)\/read$/);
@@ -15267,7 +15301,7 @@ async function handleApi(req, res, url) {
           },
         });
       }
-      return streamAttachmentAsset(res, photo);
+      return streamAttachmentAsset(req, res, photo);
     } catch (err) {
       console.error("[work-reports] photo file failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "stream_failed") });
@@ -15481,7 +15515,7 @@ async function handleApi(req, res, url) {
       }
       const photo = (survey.photos || []).find((p) => String(p.id || "") === photoId);
       if (!photo) return sendJson(res, 404, { error: "photo_not_found" });
-      return streamAttachmentAsset(res, photo);
+      return streamAttachmentAsset(req, res, photo);
     } catch (err) {
       console.error("[surveys] photo file failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "stream_failed") });
@@ -15506,7 +15540,7 @@ async function handleApi(req, res, url) {
           message: report.status === "draft" ? "Verbale ancora in bozza." : "PDF in generazione, riprova tra qualche secondo.",
         });
       }
-      return streamAttachmentAsset(res, {
+      return streamAttachmentAsset(req, res, {
         objectKey: report.documentPdfR2Key,
         type: "application/pdf",
         name: `verbale-${id}.pdf`,
@@ -17534,7 +17568,7 @@ async function handleApi(req, res, url) {
     const attachment = (contentItem.attachments || []).find((item) => String(item.id || "") === attachmentId);
     if (!attachment) return sendJson(res, 404, { error: "attachment_not_found" });
     const forceDownload = ["1", "true", "yes"].includes(String(url.searchParams.get("download") || "").toLowerCase());
-    return streamAttachmentAsset(res, attachment, { forceDownload });
+    return streamAttachmentAsset(req, res, attachment, { forceDownload });
   }
 
   if (url.pathname.match(/^\/api\/sales\/content-items\/[^/]+\/attachments\/\d+$/) && req.method === "DELETE") {
@@ -17775,7 +17809,7 @@ async function handleApi(req, res, url) {
     const id = decodeURIComponent(url.pathname.split("/")[4]);
     const entry = (store.showroomPhotos || []).find((item) => item.id === id);
     if (!entry || !entry.attachment) return sendJson(res, 404, { error: "attachment_not_found" });
-    return streamAttachmentAsset(res, entry.attachment, { cacheControl: "public, max-age=86400" });
+    return streamAttachmentAsset(req, res, entry.attachment, { cacheControl: "public, max-age=86400" });
   }
 
   // Quali collezioni del catalogo.json mostrare in vetrina (null/assente =
@@ -17850,7 +17884,7 @@ async function handleApi(req, res, url) {
     const productId = decodeURIComponent(url.pathname.split("/")[4]);
     const entry = (store.showroomProductPhotos || []).find((item) => item.productId === productId);
     if (!entry || !entry.attachment) return sendJson(res, 404, { error: "attachment_not_found" });
-    return streamAttachmentAsset(res, entry.attachment, { cacheControl: "public, max-age=86400" });
+    return streamAttachmentAsset(req, res, entry.attachment, { cacheControl: "public, max-age=86400" });
   }
 
   // Ordini materiale rivenditore → ufficio (solo tracking interno, nessuna
@@ -18050,7 +18084,7 @@ async function handleApi(req, res, url) {
     const id = decodeURIComponent(url.pathname.split("/")[3]);
     const entry = (store.supplierPriceEntries || []).find((e) => e.id === id);
     if (!entry || !entry.attachment) return sendJson(res, 404, { error: "attachment_not_found" });
-    return streamAttachmentAsset(res, entry.attachment, { cacheControl: "private, max-age=3600" });
+    return streamAttachmentAsset(req, res, entry.attachment, { cacheControl: "private, max-age=3600" });
   }
 
   if (url.pathname === "/api/account/password" && req.method === "POST") {
@@ -19082,7 +19116,7 @@ async function handleApi(req, res, url) {
     if (!order) return sendJson(res, 404, { error: "order_not_found" });
     const attachment = (order.attachments || []).find((item) => String(item.id || "") === attachmentId);
     if (!attachment) return sendJson(res, 404, { error: "attachment_not_found" });
-    return streamAttachmentAsset(res, attachment);
+    return streamAttachmentAsset(req, res, attachment);
   }
 
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/attachments\/\d+$/) && req.method === "DELETE") {
