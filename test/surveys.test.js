@@ -5,6 +5,7 @@ import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   initialSurveyStatus,
+  isKnownSurveyCriticality,
   isKnownSurveyStatus,
   normalizeSurveyRecord,
 } from "../lib/surveys.js";
@@ -74,4 +75,25 @@ test("describeSurveyForNotification: nome + città, fallback su 'Cliente' se man
   assert.equal(describeSurveyForNotification({ customerName: "Mario Rossi", city: "Marcianise" }), "Mario Rossi · Marcianise");
   assert.equal(describeSurveyForNotification({ customerName: "Mario Rossi" }), "Mario Rossi");
   assert.equal(describeSurveyForNotification({}), "Cliente");
+});
+
+test("sopralluoghi: criticità mancante o sconosciuta ricade su 'nessuna'", () => {
+  const record = normalizeSurveyRecord({ id: "s1", customerName: "Mario Rossi" });
+  assert.equal(record.criticality, "nessuna");
+  const record2 = normalizeSurveyRecord({ id: "s2", customerName: "Mario Rossi", criticality: "boh" });
+  assert.equal(record2.criticality, "nessuna");
+});
+
+test("sopralluoghi: criticità valida viene preservata insieme alla nota", () => {
+  const record = normalizeSurveyRecord({
+    id: "s1", customerName: "Mario Rossi", criticality: "bloccante", criticalityNotes: "Accesso carrabile assente",
+  });
+  assert.equal(record.criticality, "bloccante");
+  assert.equal(record.criticalityNotes, "Accesso carrabile assente");
+});
+
+test("isKnownSurveyCriticality: riconosce solo i livelli canonici", () => {
+  assert.equal(isKnownSurveyCriticality("lieve"), true);
+  assert.equal(isKnownSurveyCriticality("grave"), false);
+  assert.equal(isKnownSurveyCriticality(""), false);
 });
