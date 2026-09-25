@@ -16,8 +16,8 @@ const baseSurvey = {
   measuredSqm: 62,
   groundCondition: "Terra, leggera pendenza",
   feasible: true,
-  criticality: "lieve",
-  criticalityNotes: "Presenza di una radice da rimuovere lato recinzione.",
+  criticalities: ["Presenza di una radice da rimuovere lato recinzione."],
+  turfPreferences: ["cedro", "faggio"],
   crewNotes: "Accesso da retro, cancello sul lato sinistro.",
   photos: [{ id: "p1" }, { id: "p2" }],
 };
@@ -36,11 +36,16 @@ test("generateSiteSurveyReportPdf: non esplode con un sopralluogo minimale senza
   assert.equal(buffer.subarray(0, 5).toString("latin1"), "%PDF-");
 });
 
-test("generateSiteSurveyReportPdf: criticità 'bloccante' non fa esplodere il rendering", async () => {
-  const survey = { ...baseSurvey, criticality: "bloccante", criticalityNotes: "Nessun accesso carrabile." };
-  const buffer = await generateSiteSurveyReportPdf(survey);
+test("generateSiteSurveyReportPdf: più criticità ed elenco vuoto non fanno esplodere il rendering", async () => {
+  const withMany = { ...baseSurvey, criticalities: ["Nessun accesso carrabile.", "Presenza di un pozzetto scoperto.", "Cancello troppo stretto per il mezzo."] };
+  const buffer = await generateSiteSurveyReportPdf(withMany);
   assert.ok(Buffer.isBuffer(buffer));
   assert.equal(buffer.subarray(0, 5).toString("latin1"), "%PDF-");
+
+  const withNone = { ...baseSurvey, criticalities: [] };
+  const buffer2 = await generateSiteSurveyReportPdf(withNone);
+  assert.ok(Buffer.isBuffer(buffer2));
+  assert.equal(buffer2.subarray(0, 5).toString("latin1"), "%PDF-");
 });
 
 test("generateSiteSurveyReportPdf: throws se manca il sopralluogo", async () => {

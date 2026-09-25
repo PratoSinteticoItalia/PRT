@@ -1371,9 +1371,9 @@ async function ensureRelationalSchema() {
       -- prima che esista un ordine. Volutamente NON legata a orders/jobs via
       -- FK: sales_request_id è un riferimento libero, informativo (un
       -- sopralluogo può nascere anche senza una richiesta CRM).
-      -- Status flow: da-assegnare → assegnato → in-corso (opzionale) →
-      -- completato. "annullato" è uno stato manuale riservato all'ufficio,
-      -- mai raggiunto per avanzamento automatico (vedi lib/surveys.js).
+      -- Status flow: da-assegnare → assegnato → concordato (opzionale) →
+      -- in-corso → completato. "spostato" e "annullato" sono stati laterali
+      -- fuori da questa progressione (vedi lib/surveys.js).
       -- ─────────────────────────────────────────────────────────────────────
       CREATE TABLE IF NOT EXISTS site_surveys (
         id TEXT PRIMARY KEY,                         -- es. "SL-2026-0001"
@@ -1386,8 +1386,8 @@ async function ensureRelationalSchema() {
         scheduled_date DATE, scheduled_time TEXT,
         office_notes TEXT,
         crew_notes TEXT, measured_sqm NUMERIC, ground_condition TEXT, feasible BOOLEAN,
-        criticality TEXT NOT NULL DEFAULT 'nessuna',  -- 'nessuna'|'lieve'|'bloccante', distinta da ground_condition
-        criticality_notes TEXT,
+        criticality TEXT NOT NULL DEFAULT 'nessuna',  -- deprecato dal 25 set 2026, vedi criticalities sotto
+        criticality_notes TEXT,                       -- deprecato dal 25 set 2026, vedi criticalities sotto
         photos JSONB NOT NULL DEFAULT '[]',          -- [{id,name,type,size,storage,objectKey,takenAt}, ...]
         created_by TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1399,6 +1399,16 @@ async function ensureRelationalSchema() {
       -- perché CREATE TABLE IF NOT EXISTS non tocca una tabella già esistente.
       ALTER TABLE site_surveys ADD COLUMN IF NOT EXISTS criticality TEXT NOT NULL DEFAULT 'nessuna';
       ALTER TABLE site_surveys ADD COLUMN IF NOT EXISTS criticality_notes TEXT;
+      -- 25 set 2026: criticality/criticality_notes (un livello fisso + una nota)
+      -- sostituiti da un elenco libero ripetibile — il posatore scrive quante
+      -- criticità vuole, senza scegliere da un menu a tendina. Le colonne vecchie
+      -- restano (mai droppate: nessun record le aveva ancora valorizzate, il bug
+      -- del 25 set impediva a qualunque squadra di aprire il dettaglio), ma il
+      -- codice applicativo non le legge/scrive più da qui in avanti.
+      ALTER TABLE site_surveys ADD COLUMN IF NOT EXISTS criticalities JSONB NOT NULL DEFAULT '[]';
+      -- Fino a 3 id di modelli prato (lib/preventivo-pricing.js) che il cliente
+      -- ha mostrato di preferire durante il sopralluogo.
+      ALTER TABLE site_surveys ADD COLUMN IF NOT EXISTS turf_preferences JSONB NOT NULL DEFAULT '[]';
       CREATE INDEX IF NOT EXISTS site_surveys_crew_idx      ON site_surveys (crew_name);
       CREATE INDEX IF NOT EXISTS site_surveys_status_idx    ON site_surveys (status);
       CREATE INDEX IF NOT EXISTS site_surveys_scheduled_idx ON site_surveys (scheduled_date);
@@ -3367,8 +3377,8 @@ function dbRowToSiteSurvey(row) {
     measuredSqm: row.measured_sqm != null ? Number(row.measured_sqm) : null,
     groundCondition: row.ground_condition,
     feasible: row.feasible,
-    criticality: row.criticality,
-    criticalityNotes: row.criticality_notes,
+    criticalities: Array.isArray(row.criticalities) ? row.criticalities : [],
+    turfPreferences: Array.isArray(row.turf_preferences) ? row.turf_preferences : [],
     photos: Array.isArray(row.photos) ? row.photos : [],
     createdBy: row.created_by,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
@@ -3510,8 +3520,8 @@ async function updateSiteSurveyInDb(id, patch = {}, opts = {}) {
     measuredSqm:      { column: "measured_sqm" },
     groundCondition:  { column: "ground_condition" },
     feasible:         { column: "feasible" },
-    criticality:      { column: "criticality" },
-    criticalityNotes: { column: "criticality_notes" },
+    criticalities:    { column: "criticalities", json: true },
+    turfPreferences:  { column: "turf_preferences", json: true },
     photos:           { column: "photos", json: true },
     cancelReason:     { column: "cancel_reason" },
     assignedAt:       { column: "assigned_at", date: true },
@@ -15449,7 +15459,7 @@ async function handleApi(req, res, url) {
       if (currentUser.role === "office") {
         const fields = ["status", "customerName", "phone", "email", "address", "city", "province",
           "salesRequestId", "crewName", "scheduledDate", "scheduledTime", "officeNotes", "cancelReason",
-          "criticality", "criticalityNotes"];
+          "criticalities"];
         for (const key of fields) {
           if (Object.prototype.hasOwnProperty.call(body, key)) patch[key] = body[key];
         }
@@ -15470,7 +15480,7 @@ async function handleApi(req, res, url) {
             || normalizeCrewName(existing.crewName) !== normalizeCrewName(currentUser.crewName)) {
           return sendJson(res, 403, { error: "forbidden" });
         }
-        const fields = ["crewNotes", "measuredSqm", "groundCondition", "feasible", "criticality", "criticalityNotes"];
+        const fields = ["crewNotes", "measuredSqm", "groundCondition", "feasible", "criticalities", "turfPreferences"];
         for (const key of fields) {
           if (Object.prototype.hasOwnProperty.call(body, key)) patch[key] = body[key];
         }
