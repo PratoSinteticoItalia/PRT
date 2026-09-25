@@ -12457,6 +12457,61 @@ body.mobile-filter-sheet-open {
     top: 0 !important;
   }
 
+  /* SOPRALLUOGHI — stesso pattern di warehouse sopra: il JS (openMobileDrillDetail,
+     già agganciato su "select-survey"/"survey-new") esisteva da prima, mancava
+     solo questo blocco CSS: fino al 25 set 2026 la vista restava a due colonne
+     desktop anche su telefono, illeggibile. */
+  body[data-drill-module="sopralluoghi"] #sopralluoghi {
+    contain: none;
+  }
+  body[data-drill-module="sopralluoghi"] #sopralluoghi > *:not(:has(.detail-panel)) {
+    display: none !important;
+  }
+  body[data-drill-module="sopralluoghi"] #sopralluoghi #survey-list {
+    display: none !important;
+  }
+  body[data-drill-module="sopralluoghi"] #sopralluoghi::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 26, 20, 0.44);
+    z-index: 1082;
+    animation: drillScrimIn 0.2s ease;
+  }
+  body[data-drill-module="sopralluoghi"] #sopralluoghi .detail-panel {
+    position: fixed !important;
+    top: var(--mobile-back-bar-h) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    max-width: none !important;
+    height: calc(100dvh - var(--mobile-back-bar-h)) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - var(--mobile-back-bar-h)) !important;
+    margin: 0 !important;
+    z-index: 1086;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    background: #fdfcfa !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+    padding: 16px 16px calc(112px + env(safe-area-inset-bottom, 0px)) !important;
+    transform: none !important;
+    visibility: visible !important;
+    transition: none !important;
+    animation: none !important;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  body[data-drill-module="sopralluoghi"] #sopralluoghi .detail-panel > * {
+    flex: 0 0 auto;
+  }
+
   /* INSTALLATIONS (Pose) — dettaglio a TUTTA PAGINA, NON drawer laterale (il
      drawer aveva un bug di scroll e non era navigabile). Scorre come una pagina
      normale. Nasconde board/calendario/toolbar, mostra solo il dettaglio. */
@@ -18229,6 +18284,23 @@ body.mobile-safe-mode a.topbar-search:focus-visible {
 .survey-icon-button.icon-only { padding: 7px; }
 
 .survey-file-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin: 4px 0 0; }
+
+/* Elenco criticità libero: una riga di testo per problema segnalato, niente
+   menu a tendina — la squadra scrive quello che vede, quante voci vuole. */
+.survey-criticality-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.survey-criticality-row .survey-criticality-input { flex: 1; min-width: 0; }
+.survey-criticality-recap ul { margin: 4px 0 0; padding-left: 18px; }
+.survey-criticality-recap li { font-size: 13px; margin-bottom: 2px; }
+
+/* Chip tappabili per la preferenza prato: meglio di un <select multiple> su
+   mobile, dove il primo funziona a un dito e il secondo è quasi inutilizzabile. */
+.survey-turf-chip-grid { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
+.survey-turf-chip {
+  font-size: 12.5px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line);
+  background: #fff; color: inherit; cursor: pointer;
+}
+.survey-turf-chip.is-selected { background: #1f4637; border-color: #1f4637; color: #fff; }
+.survey-turf-chip:disabled { opacity: 0.4; cursor: not-allowed; }
 .communications-att-download {
   position: absolute;
   top: 6px;

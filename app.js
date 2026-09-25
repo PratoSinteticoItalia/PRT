@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260925-sopralluoghi-crew-fix";
+} from "./lib/order-money.js?v=20260925-sopralluoghi-v3";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260925-sopralluoghi-crew-fix";
+import { regionForCity } from "./lib/geo.js?v=20260925-sopralluoghi-v3";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260925-sopralluoghi-crew-fix";
+} from "./lib/shipping-eligibility.js?v=20260925-sopralluoghi-v3";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260925-sopralluoghi-crew-fix";
+} from "./lib/profit-split.js?v=20260925-sopralluoghi-v3";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260925-sopralluoghi-crew-fix";
+} from "./lib/preventivo-pricing.js?v=20260925-sopralluoghi-v3";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,13 +66,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260925-sopralluoghi-crew-fix";
+} from "./lib/sales-assignment.js?v=20260925-sopralluoghi-v3";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20260925-sopralluoghi-crew-fix";
+} from "./lib/surveys.js?v=20260925-sopralluoghi-v3";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -86,7 +86,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260925-sopralluoghi-crew-fix";
+const APP_SHELL_VERSION = "20260925-sopralluoghi-v3";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1278,6 +1278,12 @@ const state = {
   // communicationsPendingOrderRef/communicationsOrderPickerOpen.
   surveyPendingSalesRequestRef: null,
   surveyOrderPickerOpen: false,
+  // Draft locali dell'editor esito squadra (elenco criticità libero + fino a
+  // 3 modelli prato preferiti): vivono qui, non nel record, perché si
+  // costruiscono riga per riga prima del "Salva note" — reinizializzati da
+  // survey.criticalities/turfPreferences a ogni render del dettaglio.
+  surveyCriticalityDraft: [],
+  surveyTurfDraft: [],
   salesRequests: [],
   salesContents: [],
   salesRequestSourceConfig: null,
@@ -25409,6 +25415,8 @@ function getSurveyStatusMeta(status) {
   const map = {
     "da-assegnare": { label: state.lang === "it" ? "Da assegnare" : "Unassigned", tone: "prep" },
     assegnato: { label: state.lang === "it" ? "Assegnato" : "Assigned", tone: "work" },
+    concordato: { label: state.lang === "it" ? "Concordato" : "Agreed", tone: "work" },
+    spostato: { label: state.lang === "it" ? "Spostato" : "Postponed", tone: "block" },
     "in-corso": { label: state.lang === "it" ? "In corso" : "In progress", tone: "work" },
     completato: { label: state.lang === "it" ? "Completato" : "Completed", tone: "ready" },
     annullato: { label: state.lang === "it" ? "Annullato" : "Cancelled", tone: "block" },
@@ -25453,7 +25461,7 @@ function renderSurveyCard(survey) {
         <div class="shp-meta"><span>${escapeHtml(metaLine)}</span></div>
       </div>
       <div class="shp-aside">
-        ${survey.criticality && survey.criticality !== "nessuna" ? `<span class="shp-badge ${getSurveyCriticalityMeta(survey.criticality).tone ? "tone-" + getSurveyCriticalityMeta(survey.criticality).tone : ""}">${escapeHtml(getSurveyCriticalityMeta(survey.criticality).label)}</span>` : ""}
+        ${(survey.criticalities || []).length ? `<span class="shp-badge tone-red">${(survey.criticalities || []).length === 1 ? (state.lang === "it" ? "1 criticità" : "1 issue") : `${survey.criticalities.length} ${state.lang === "it" ? "criticità" : "issues"}`}</span>` : ""}
         <span class="shp-badge ${meta.tone === "ready" ? "ok" : ""}">${escapeHtml(meta.label)}</span>
       </div>
     </article>`;
@@ -25649,35 +25657,66 @@ function renderSurveyOutcomeRecap(survey, photosHtml) {
       ${survey.groundCondition ? `<p><strong>${L("Stato terreno", "Ground condition")}:</strong> ${escapeHtml(survey.groundCondition)}</p>` : ""}
       ${survey.feasible !== null ? `<p><strong>${L("Fattibile", "Feasible")}:</strong> ${survey.feasible ? L("Sì", "Yes") : L("No", "No")}</p>` : ""}
       ${renderSurveyCriticalityHtml(survey)}
+      ${renderSurveyTurfPreferenceHtml(survey)}
       ${photosHtml}
     </div>`;
 }
 
-// Badge criticità riusato in recap, editor e card lista.
-function getSurveyCriticalityMeta(criticality = "nessuna") {
-  const map = {
-    nessuna: { label: state.lang === "it" ? "Nessuna" : "None", tone: "" },
-    lieve: { label: state.lang === "it" ? "Lieve" : "Minor", tone: "amber" },
-    bloccante: { label: state.lang === "it" ? "Bloccante" : "Blocking", tone: "red" },
-  };
-  return map[criticality] || map.nessuna;
-}
-
+// Elenco libero di criticità in sola lettura — recap ufficio/squadra a
+// sopralluogo concluso. Nessuna severità/enum: ogni voce è una riga scritta
+// dalla squadra sul posto.
 function renderSurveyCriticalityHtml(survey) {
   const L = (it, en) => (state.lang === "it" ? it : en);
-  const criticality = survey.criticality || "nessuna";
-  if (criticality === "nessuna" && !survey.criticalityNotes) return "";
-  const meta = getSurveyCriticalityMeta(criticality);
+  const items = survey.criticalities || [];
+  if (!items.length) return "";
   return `
-    <p>
-      <strong>${L("Criticità", "Criticality")}:</strong>
-      <span class="shp-badge ${meta.tone ? "tone-" + meta.tone : ""}">${escapeHtml(meta.label)}</span>
-      ${survey.criticalityNotes ? ` — ${escapeHtml(survey.criticalityNotes)}` : ""}
-    </p>`;
+    <div class="survey-criticality-recap">
+      <strong>${L("Criticità rilevate", "Issues found")}:</strong>
+      <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </div>`;
+}
+
+function renderSurveyTurfPreferenceHtml(survey) {
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  const ids = survey.turfPreferences || [];
+  if (!ids.length) return "";
+  const names = ids.map((id) => getEffectivePreventivoProducts().find((p) => p.id === id)?.name || id);
+  return `<p><strong>${L("Preferenza prato", "Turf preference")}:</strong> ${escapeHtml(names.join(", "))}</p>`;
+}
+
+// Righe dell'elenco criticità libero — ririnderizzate da sole (container
+// #survey-criticality-list) quando si aggiunge/rimuove una riga, senza
+// ridisegnare tutto l'editor e perdere il focus sugli altri campi.
+function renderSurveyCriticalityRowsHtml() {
+  const L = (it, en) => (state.lang === "it" ? it : en);
+  const draft = state.surveyCriticalityDraft || [];
+  if (!draft.length) {
+    return `<p class="ddt-hint">${L("Nessuna criticità aggiunta.", "No issues added yet.")}</p>`;
+  }
+  return draft.map((value, index) => `
+    <div class="survey-criticality-row">
+      <input type="text" class="text-input survey-criticality-input" data-index="${index}" value="${escapeAttr(value)}" placeholder="${L("Es. accesso stretto, terreno in pendenza...", "E.g. narrow access, sloped ground...")}" />
+      <button type="button" class="ghost-button small-button icon-only" data-action="survey-criticality-remove" data-index="${index}" aria-label="${L("Rimuovi", "Remove")}">${surveyIcon("x", 14)}</button>
+    </div>`).join("");
+}
+
+// Chip tappabili per la preferenza prato (max 3) — niente <select multiple>,
+// pessimo su mobile: qui il tocco basta, il catalogo risolto (con eventuali
+// override/modelli custom da Impostazioni) viene da getEffectivePreventivoProducts().
+function renderSurveyTurfChipsHtml() {
+  const draft = state.surveyTurfDraft || [];
+  const atLimit = draft.length >= 3;
+  return getEffectivePreventivoProducts().map((product) => {
+    const selected = draft.includes(product.id);
+    const disabled = !selected && atLimit;
+    return `<button type="button" class="survey-turf-chip ${selected ? "is-selected" : ""}" ${disabled ? "disabled" : ""} data-action="survey-turf-toggle" data-id="${escapeAttr(product.id)}">${escapeHtml(product.name)}</button>`;
+  }).join("");
 }
 
 function renderSurveyOutcomeEditor(survey, photosHtml) {
   const L = (it, en) => (state.lang === "it" ? it : en);
+  state.surveyCriticalityDraft = [...(survey.criticalities || [])];
+  state.surveyTurfDraft = [...(survey.turfPreferences || [])];
   return `
     <div class="panel-subsection">
       <div class="survey-section-label">${L("Esito sopralluogo", "Survey outcome")}</div>
@@ -25686,32 +25725,32 @@ function renderSurveyOutcomeEditor(survey, photosHtml) {
         <label class="field"><span>${L("Mq misurati", "Measured sqm")}</span><input class="text-input" type="number" min="0" id="survey-sqm-input" value="${escapeAttr(survey.measuredSqm != null ? String(survey.measuredSqm) : "")}" /></label>
         <label class="field"><span>${L("Stato terreno", "Ground condition")}</span><input class="text-input" id="survey-ground-input" value="${escapeAttr(survey.groundCondition || "")}" placeholder="${L("Es. terra, erba, pavimentazione...", "E.g. soil, grass, paving...")}" /></label>
       </div>
-      <div class="ddt-head-grid">
-        <label class="field"><span>${L("Fattibile", "Feasible")}</span>
-          <select class="text-input" id="survey-feasible-select">
-            <option value="" ${survey.feasible === null ? "selected" : ""}>${L("Non ancora valutato", "Not yet assessed")}</option>
-            <option value="true" ${survey.feasible === true ? "selected" : ""}>${L("Sì", "Yes")}</option>
-            <option value="false" ${survey.feasible === false ? "selected" : ""}>${L("No", "No")}</option>
-          </select>
-        </label>
-        <label class="field"><span>${L("Criticità", "Criticality")}</span>
-          <select class="text-input" id="survey-criticality-select">
-            <option value="nessuna" ${(survey.criticality || "nessuna") === "nessuna" ? "selected" : ""}>${L("Nessuna", "None")}</option>
-            <option value="lieve" ${survey.criticality === "lieve" ? "selected" : ""}>${L("Lieve", "Minor")}</option>
-            <option value="bloccante" ${survey.criticality === "bloccante" ? "selected" : ""}>${L("Bloccante", "Blocking")}</option>
-          </select>
-        </label>
-      </div>
-      <label class="field field-full"><span>${L("Descrizione criticità (se presente)", "Criticality details (if any)")}</span><textarea class="text-input" id="survey-criticality-notes-input" rows="2">${escapeHtml(survey.criticalityNotes || "")}</textarea></label>
+      <label class="field"><span>${L("Fattibile", "Feasible")}</span>
+        <select class="text-input" id="survey-feasible-select">
+          <option value="" ${survey.feasible === null ? "selected" : ""}>${L("Non ancora valutato", "Not yet assessed")}</option>
+          <option value="true" ${survey.feasible === true ? "selected" : ""}>${L("Sì", "Yes")}</option>
+          <option value="false" ${survey.feasible === false ? "selected" : ""}>${L("No", "No")}</option>
+        </select>
+      </label>
+
+      <div class="survey-section-label">${L("Criticità rilevate", "Issues found")}</div>
+      <div id="survey-criticality-list">${renderSurveyCriticalityRowsHtml()}</div>
+      <button type="button" class="ghost-button small-button" data-action="survey-criticality-add">+ ${L("Aggiungi criticità", "Add issue")}</button>
+
+      <div class="survey-section-label">${L("Preferenza prato (fino a 3 modelli)", "Turf preference (up to 3 models)")}</div>
+      <div id="survey-turf-chips" class="survey-turf-chip-grid">${renderSurveyTurfChipsHtml()}</div>
+
       <label class="field field-full">
         <span>${L("Foto", "Photos")} (${(survey.photos || []).length}/10)</span>
-        <input type="file" accept="image/*" multiple id="survey-photo-input" />
+        <input type="file" accept="image/*" capture="environment" multiple id="survey-photo-input" />
       </label>
       ${photosHtml}
       <div class="inline-actions">
         <button type="button" class="ghost-button small-button" data-action="survey-save-outcome" data-id="${escapeAttr(survey.id)}">${L("Salva note", "Save notes")}</button>
+        ${canAdvanceSurveyStatus(survey.status, "concordato") ? `<button type="button" class="ghost-button small-button" data-action="survey-advance" data-id="${escapeAttr(survey.id)}" data-target-status="concordato">${L("Concordato con cliente", "Agreed with customer")}</button>` : ""}
         ${canAdvanceSurveyStatus(survey.status, "in-corso") ? `<button type="button" class="ghost-button small-button" data-action="survey-advance" data-id="${escapeAttr(survey.id)}" data-target-status="in-corso">${L("Inizia sopralluogo", "Start survey")}</button>` : ""}
-        <button type="button" class="primary-button small-button" data-action="survey-advance" data-id="${escapeAttr(survey.id)}" data-target-status="completato">${L("Segna completato", "Mark completed")}</button>
+        ${canAdvanceSurveyStatus(survey.status, "completato") ? `<button type="button" class="primary-button small-button" data-action="survey-advance" data-id="${escapeAttr(survey.id)}" data-target-status="completato">${L("Segna completato", "Mark completed")}</button>` : ""}
+        ${canAdvanceSurveyStatus(survey.status, "spostato") ? `<button type="button" class="ghost-button small-button" data-action="survey-advance" data-id="${escapeAttr(survey.id)}" data-target-status="spostato">${L("Cliente ha rimandato", "Customer postponed")}</button>` : ""}
       </div>
       <div id="survey-crew-status" class="panel-note hidden"></div>
     </div>`;
@@ -25789,7 +25828,7 @@ function renderSurveyDetailView(survey) {
     <div class="survey-file-row">
       ${surveyIcon("camera", 14)}
       <span>${L("Allegati ufficio", "Office attachments")} (${(survey.photos || []).length}/10)</span>
-      <input type="file" accept="image/*" multiple id="survey-office-photo-input" />
+      <input type="file" accept="image/*" capture="environment" multiple id="survey-office-photo-input" />
     </div>
 
     <div class="survey-action-bar">
@@ -26661,6 +26700,8 @@ function applySessionPayload(session = {}) {
 	    state.surveyFilter = "all";
 	    state.surveyPendingSalesRequestRef = null;
 	    state.surveyOrderPickerOpen = false;
+	    state.surveyCriticalityDraft = [];
+	    state.surveyTurfDraft = [];
 	    state.marketingTokenHealth = null;
     state.marketingTokenHealthLoadedAt = 0;
     state.preventivoCatalog = {};
@@ -33700,14 +33741,42 @@ function handleGlobalClick(event) {
     if (survey) pushSurveyToGenerator(survey);
     return;
   }
+  if (action === "survey-criticality-add") {
+    state.surveyCriticalityDraft = [...(state.surveyCriticalityDraft || []), ""];
+    const list = document.getElementById("survey-criticality-list");
+    if (list) {
+      list.innerHTML = renderSurveyCriticalityRowsHtml();
+      list.querySelector(".survey-criticality-input:last-of-type")?.focus();
+    }
+    return;
+  }
+  if (action === "survey-criticality-remove") {
+    const index = Number(button.dataset.index);
+    if (Number.isInteger(index) && state.surveyCriticalityDraft) {
+      state.surveyCriticalityDraft = state.surveyCriticalityDraft.filter((_, i) => i !== index);
+    }
+    const list = document.getElementById("survey-criticality-list");
+    if (list) list.innerHTML = renderSurveyCriticalityRowsHtml();
+    return;
+  }
+  if (action === "survey-turf-toggle") {
+    const productId = button.dataset.id || "";
+    const draft = state.surveyTurfDraft || [];
+    if (draft.includes(productId)) {
+      state.surveyTurfDraft = draft.filter((v) => v !== productId);
+    } else if (draft.length < 3) {
+      state.surveyTurfDraft = [...draft, productId];
+    }
+    const chips = document.getElementById("survey-turf-chips");
+    if (chips) chips.innerHTML = renderSurveyTurfChipsHtml();
+    return;
+  }
   if (action === "survey-save-outcome") {
     const surveyId = id || "";
     const notesInput = document.getElementById("survey-crew-notes-input");
     const sqmInput = document.getElementById("survey-sqm-input");
     const groundInput = document.getElementById("survey-ground-input");
     const feasibleSelect = document.getElementById("survey-feasible-select");
-    const criticalitySelect = document.getElementById("survey-criticality-select");
-    const criticalityNotesInput = document.getElementById("survey-criticality-notes-input");
     const statusEl = document.getElementById("survey-crew-status");
     const feasibleValue = feasibleSelect?.value === "" ? null : feasibleSelect?.value === "true";
     button.disabled = true;
@@ -33716,8 +33785,8 @@ function handleGlobalClick(event) {
       measuredSqm: sqmInput?.value ? Number(sqmInput.value) : null,
       groundCondition: groundInput?.value || "",
       feasible: feasibleValue,
-      criticality: criticalitySelect?.value || "nessuna",
-      criticalityNotes: criticalityNotesInput?.value || "",
+      criticalities: (state.surveyCriticalityDraft || []).map((v) => String(v || "").trim()).filter(Boolean),
+      turfPreferences: state.surveyTurfDraft || [],
     }).then((updated) => {
       state.surveys = state.surveys.map((s) => (s.id === updated.id ? updated : s));
       renderSopralluoghi();
@@ -36663,10 +36732,21 @@ if (ui.surveySearch) {
 if (ui.surveyDetailBody) {
   ui.surveyDetailBody.addEventListener("input", (event) => {
     const pickerInput = event.target.closest?.("#survey-request-picker-input");
-    if (!pickerInput) return;
-    clearTimeout(_surveyRequestSearchTimer);
-    const value = pickerInput.value;
-    _surveyRequestSearchTimer = setTimeout(() => { void searchSurveySalesRequestLookup(value); }, 250);
+    if (pickerInput) {
+      clearTimeout(_surveyRequestSearchTimer);
+      const value = pickerInput.value;
+      _surveyRequestSearchTimer = setTimeout(() => { void searchSurveySalesRequestLookup(value); }, 250);
+      return;
+    }
+    // Righe criticità: aggiorna solo il draft in memoria, mai un re-render —
+    // altrimenti l'input perderebbe il focus a ogni carattere digitato.
+    const criticalityInput = event.target.closest?.(".survey-criticality-input");
+    if (criticalityInput) {
+      const index = Number(criticalityInput.dataset.index);
+      if (Number.isInteger(index) && state.surveyCriticalityDraft) {
+        state.surveyCriticalityDraft[index] = criticalityInput.value;
+      }
+    }
   });
 }
 bindEvent(ui.ddtSendDailyButton, "click", async () => {
