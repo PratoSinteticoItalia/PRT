@@ -1132,13 +1132,14 @@ function registerOccupiedCircle(occupied = [], centerX = 0, centerY = 0, radius 
   });
 }
 
-function estimateInstallationNeeds(area, perimeter, manualRolls = []) {
+function estimateInstallationNeeds(area, perimeter, manualRolls = [], rollUsage = null) {
   const safeArea = Math.max(0, Number(area) || 0);
   const safePerimeter = Math.max(0, Number(perimeter) || 0);
   const geo = safeArea * INSTALLATION_RULES.geoCoverageFactor;
   const layoutMetrics = estimateRollLayoutMetrics(manualRolls);
-  const rollMaterialArea = layoutMetrics.coverageArea;
-  const layoutCoverageRatio = safeArea > 0 ? layoutMetrics.coverageArea / safeArea : 0;
+  const rollMaterialArea = rollUsage?.material ?? layoutMetrics.coverageArea;
+  const coveredArea = rollUsage?.covered ?? layoutMetrics.coverageArea;
+  const layoutCoverageRatio = safeArea > 0 ? coveredArea / safeArea : 0;
   const useLayoutDrivenPose = layoutMetrics.rollCount > 0 && layoutCoverageRatio >= INSTALLATION_RULES.layoutCoverageMin;
   const fallbackGlueKg = safeArea * INSTALLATION_RULES.glueKgPerSqm;
   const fallbackJointMeters = safeArea * INSTALLATION_RULES.jointMetersPerSqm;
@@ -1157,9 +1158,9 @@ function estimateInstallationNeeds(area, perimeter, manualRolls = []) {
     pins: Math.ceil(safePerimeter * INSTALLATION_RULES.pinsPerLinearMeter),
     calcMode: useLayoutDrivenPose ? "layout" : "area",
     layoutCoverageRatio,
-    layoutCoverageArea: layoutMetrics.coverageArea,
+    layoutCoverageArea: coveredArea,
     rollMaterialArea,
-    rollWasteArea: Math.max(0, rollMaterialArea - safeArea),
+    rollWasteArea: rollUsage?.unused ?? Math.max(0, rollMaterialArea - safeArea),
     layoutJointMeters: layoutMetrics.jointMeters,
     sideJointMeters: layoutMetrics.sideJointMeters,
     endJointMeters: layoutMetrics.endJointMeters,
@@ -1200,10 +1201,88 @@ const BASE_PX = 36;
 // kind: "turf" (default, prato — rotoli+bordura) | "paving" (mattonelle ad
 // incastro WPC — nessun rotolo, conta pezzi da tileSize). tileSize/layout
 // sono ignorati per le aree "turf", usati solo quando kind === "paving".
+// Exact area of a union minus another union for simple straight-sided polygons.
+// Vertex and edge-intersection x coordinates partition the plane into slabs;
+// within each slab the union cross-section length is linear (no raster rounding).
+function plannerNetArea(included = [], excluded = []) {
+  const valid = polygons => polygons.filter(p => Array.isArray(p) && p.length >= 3 && p.every(v => Number.isFinite(v.x) && Number.isFinite(v.y)));
+  const ins = valid(included), outs = valid(excluded);
+  if (!ins.length) return 0;
+  const polygons = [...ins, ...outs];
+  const edges = polygons.flatMap(p => p.map((a, i) => [a, p[(i + 1) % p.length]]));
+  const xs = polygons.flatMap(p => p.map(v => v.x));
+  for (let i = 0; i < edges.length; i++) for (let j = i + 1; j < edges.length; j++) {
+    const [a, b] = edges[i], [c, d] = edges[j];
+    const rx = b.x - a.x, ry = b.y - a.y, sx = d.x - c.x, sy = d.y - c.y;
+    const det = rx * sy - ry * sx;
+    if (Math.abs(det) < 1e-12) continue;
+    const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / det;
+    const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / det;
+    if (t > 0 && t < 1 && u > 0 && u < 1) xs.push(a.x + t * rx);
+  }
+  const cuts = [...new Set(xs)].sort((a, b) => a - b);
+  const intervals = (polys, x) => {
+    const spans = polys.flatMap(p => {
+      const ys = [];
+      for (let i = 0; i < p.length; i++) {
+        const a = p[i], b = p[(i + 1) % p.length];
+        if ((a.x <= x && b.x > x) || (b.x <= x && a.x > x)) ys.push(a.y + (x - a.x) * (b.y - a.y) / (b.x - a.x));
+      }
+      ys.sort((a, b) => a - b);
+      const pairs = [];
+      for (let i = 0; i + 1 < ys.length; i += 2) pairs.push([ys[i], ys[i + 1]]);
+      return pairs;
+    }).sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const span of spans) {
+      const last = merged[merged.length - 1];
+      if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1]);
+      else merged.push([...span]);
+    }
+    return merged;
+  };
+  let total = 0;
+  for (let i = 1; i < cuts.length; i++) {
+    const width = cuts[i] - cuts[i - 1];
+    if (width < 1e-10) continue;
+    const x = (cuts[i] + cuts[i - 1]) / 2;
+    const holes = intervals(outs, x);
+    let height = 0;
+    for (const [a, b] of intervals(ins, x)) {
+      height += b - a;
+      for (const [c, d] of holes) height -= Math.max(0, Math.min(b, d) - Math.max(a, c));
+    }
+    total += width * Math.max(0, height);
+  }
+  return Math.max(0, total);
+}
+
+// Roll footprint is intersected with net lawn: material outside the lawn or
+// over an obstacle never counts towards coverage. Duplicate rolls count as
+// purchased material but do not cover the lawn twice.
+function plannerRollUsage(areas = [], rolls = []) {
+  const complete = areas.filter(a => a.closed !== false && Array.isArray(a.points) && a.points.length >= 3);
+  const turf = complete.filter(a => !a.kind || a.kind === "turf").map(a => a.points);
+  const excluded = complete.filter(a => a.kind === "paving" || a.kind === "exclusion").map(a => a.points);
+  const validRolls = rolls.filter(r => Number(r.length) > 0 && (r.width == null || Number(r.width) > 0));
+  const footprints = validRolls.map(getRollCorners);
+  const netArea = plannerNetArea(turf, excluded);
+  const uncovered = plannerNetArea(turf, [...excluded, ...footprints]);
+  const covered = Math.max(0, netArea - uncovered);
+  const material = validRolls.reduce((sum, r) => sum + Number(r.length) * (Number(r.width) || MANUAL_ROLL_WIDTH_M), 0);
+  const union = plannerNetArea(footprints);
+  const overlap = Math.max(0, material - union);
+  const offcut = Math.max(0, union - covered);
+  return { netArea, uncovered, covered, material, overlap, offcut,
+    unused: Math.max(0, material - covered),
+    wastePercent: material > 0 ? Math.max(0, material - covered) / material * 100 : 0 };
+}
+
 function createPlannerArea(kind = "turf") {
   return {
     id: `area-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    kind: kind === "paving" ? "paving" : "turf",
+    kind: ["paving", "exclusion"].includes(kind) ? kind : "turf",
+    label: kind === "exclusion" ? "Casa / ostacolo" : "",
     points: [],
     closed: false,
     rolls: [],
@@ -1225,7 +1304,8 @@ function getPlannerPolygons(customAreas = [], customPts = [], customClosed = fal
         points: Array.isArray(area.points) ? area.points : [],
         closed: Boolean(area.closed),
         rolls: Array.isArray(area.rolls) ? area.rolls : [],
-        kind: area.kind === "paving" ? "paving" : "turf",
+        kind: ["paving", "exclusion"].includes(area.kind) ? area.kind : "turf",
+        label: area.label || "",
       }))
       .filter((area) => area.closed && area.points.length >= 3);
   }
@@ -1243,12 +1323,12 @@ function getPlannerPolygons(customAreas = [], customPts = [], customClosed = fal
 
 function getPlannerShapeLabel(shape, dims, customPts, customClosed, customAreas = []) {
   const polygons = getPlannerPolygons(customAreas, customPts, customClosed);
-  if (polygons.length > 1) return `${polygons.length} aree separate`;
+  if (polygons.length > 1) return `${polygons.length} elementi disegnati`;
   return getShapeLabel(shape, dims, customPts, customClosed);
 }
 
 function getPlannerBorderEdges(customAreas = [], shape = "custom", dims = {}) {
-  const polygons = getPlannerPolygons(customAreas);
+  const polygons = getPlannerPolygons(customAreas).filter(a => a.kind !== "exclusion");
   if (!polygons.length) return [];
   return polygons.flatMap((area, areaIndex) => {
     const baseEdges = getShapeEdges(shape, dims, area.points, true);
@@ -1299,7 +1379,7 @@ function FreeDrawCanvas({
   const [rollStart, setRollStart] = useState(null);
   const [canvasMessage, setCanvasMessage] = useState("");
   const [gridStep, setGridStep] = useState(DEFAULT_GRID_STEP);
-  const canvasH = 420;
+  const [canvasH, setCanvasH] = useState(600);
   const PX = BASE_PX * zoom;
   const GRID = gridStep;
 
@@ -1314,7 +1394,7 @@ function FreeDrawCanvas({
   const inactiveAreas = areaEntries.filter((area) => area.id !== activeAreaId && Array.isArray(area.points) && area.points.length);
   const activeAreaIndex = Math.max(0, areaEntries.findIndex((area) => area.id === activeAreaId));
   const activeAreaEntry = areaEntries[activeAreaIndex] || null;
-  const activeAreaKind = activeAreaEntry?.kind === "paving" ? "paving" : "turf";
+  const activeAreaKind = activeAreaEntry?.kind || "turf";
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1322,13 +1402,15 @@ function FreeDrawCanvas({
     const updateCanvasW = () => {
       const w = Math.max(280, Math.floor(containerRef.current?.offsetWidth || 0));
       if (w > 0) setCanvasW(w);
+      setCanvasH(Math.max(380, Math.floor(window.innerHeight * 0.68)));
     };
 
     updateCanvasW();
     if (typeof ResizeObserver !== "undefined") {
       const observer = new ResizeObserver(updateCanvasW);
       observer.observe(containerRef.current);
-      return () => observer.disconnect();
+      window.addEventListener("resize", updateCanvasW);
+      return () => { observer.disconnect(); window.removeEventListener("resize", updateCanvasW); };
     }
 
     window.addEventListener("resize", updateCanvasW);
@@ -1344,7 +1426,7 @@ function FreeDrawCanvas({
   }, [closed, drawMode]);
 
   useEffect(() => {
-    if (activeAreaKind === "paving" && drawMode === "roll") {
+    if (activeAreaKind !== "turf" && drawMode === "roll") {
       setDrawMode("shape");
       setRollStart(null);
     }
@@ -1585,12 +1667,13 @@ function FreeDrawCanvas({
     for (let m = 1; m * PX < canvasW; m++) ctx.fillText(m + "m", m * PX + 2, 11);
     for (let m = 1; m * PX < canvasH; m++) ctx.fillText(m + "m", 3, m * PX - 3);
 
-    // Rounded label helper (for all labels)
     const drawLabelPill = (text, cx, cy, opts = {}) => {
       const { font = "bold 10px sans-serif", textColor = "#1a3d24", bg = "rgba(255,255,255,0.93)", r = 5, px: px2 = 6, py: py2 = 4 } = opts;
       ctx.font = font;
       const tw = ctx.measureText(text).width;
       const bw = tw + px2 * 2, bh = 14 + py2;
+      cx = Math.max(bw / 2 + 2, Math.min(canvasW - bw / 2 - 2, cx));
+      cy = Math.max(bh / 2 + 2, Math.min(canvasH - bh / 2 - 2, cy));
       const bx = cx - bw / 2, by = cy - bh / 2;
       ctx.beginPath();
       if (ctx.roundRect) { ctx.roundRect(bx, by, bw, bh, r); }
@@ -1610,6 +1693,7 @@ function FreeDrawCanvas({
       const areaPoints = Array.isArray(area.points) ? area.points : [];
       if (!areaPoints.length) return;
       const areaIsPaving = area.kind === "paving";
+      if (area.kind === "exclusion") return;
       ctx.beginPath();
       ctx.moveTo(toPx(areaPoints[0].x), toPx(areaPoints[0].y));
       for (let i = 1; i < areaPoints.length; i++) ctx.lineTo(toPx(areaPoints[i].x), toPx(areaPoints[i].y));
@@ -1636,12 +1720,12 @@ function FreeDrawCanvas({
       ctx.moveTo(toPx(points[0].x), toPx(points[0].y));
       for (let i = 1; i < points.length; i++) ctx.lineTo(toPx(points[i].x), toPx(points[i].y));
       if (!closed && hoverPt) ctx.lineTo(toPx(hoverPt.x), toPx(hoverPt.y));
-      if (closed) { ctx.closePath(); ctx.fillStyle = activeAreaKind === "paving" ? "rgba(138,109,59,0.26)" : "rgba(34,120,55,0.26)"; ctx.fill(); }
-      ctx.strokeStyle = activeAreaKind === "paving" ? "#8a6d3b" : "#1a5e2f"; ctx.lineWidth = 2.5; ctx.stroke();
+      if (closed) { ctx.closePath(); ctx.fillStyle = activeAreaKind === "exclusion" ? "#e2e6eb" : activeAreaKind === "paving" ? "rgba(138,109,59,0.26)" : "rgba(34,120,55,0.26)"; ctx.fill(); }
+      ctx.strokeStyle = activeAreaKind === "exclusion" ? "#526175" : activeAreaKind === "paving" ? "#8a6d3b" : "#1a5e2f"; ctx.lineWidth = 2.5; ctx.stroke();
 
       // Anteprima materiali: hatch leggero sul riempimento (verde=prato,
       // legno=pavimentazione), stesso stile delle textures usate nel report.
-      if (closed && previewMode) {
+      if (closed && previewMode && activeAreaKind !== "exclusion") {
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(toPx(points[0].x), toPx(points[0].y));
@@ -1792,6 +1876,17 @@ function FreeDrawCanvas({
       });
     }
 
+    // Obstacles remain visible above turf and roll previews, regardless of selection.
+    [...inactiveAreas, { ...activeAreaEntry, points, closed }].filter(a => a.kind === "exclusion" && a.closed && a.points.length >= 3).forEach(a => {
+      ctx.beginPath();
+      a.points.forEach((p, i) => i ? ctx.lineTo(toPx(p.x), toPx(p.y)) : ctx.moveTo(toPx(p.x), toPx(p.y)));
+      ctx.closePath(); ctx.fillStyle = "#e2e6eb"; ctx.fill();
+      ctx.strokeStyle = "#526175"; ctx.lineWidth = 2; ctx.setLineDash([6, 3]); ctx.stroke(); ctx.setLineDash([]);
+      const center = polyCenter(a.points);
+      drawLabelPill(a.label || "Esclusione", toPx(center.x), toPx(center.y), { textColor: "#344154" });
+      if (a.id === activeAreaId) a.points.forEach(p => { ctx.beginPath(); ctx.arc(toPx(p.x), toPx(p.y), 5, 0, Math.PI * 2); ctx.fillStyle = "#526175"; ctx.fill(); });
+    });
+
     if (points.length === 0) {
       // Empty state hint
       const cx = canvasW / 2, cy = canvasH / 2;
@@ -1808,12 +1903,12 @@ function FreeDrawCanvas({
       ctx.fillText(`Griglia = ${fmt(GRID, 2)} m  ·  Chiudi l'area sul punto 1`, cx, cy + 14);
       ctx.textAlign = "start";
     }
-  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices, previewMode, activeAreaKind, inactiveAreas, borderEdges, selectedBorderEdges, showBorderOverlay, activeAreaId]);
+  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices, previewMode, activeAreaKind, inactiveAreas, borderEdges, selectedBorderEdges, showBorderOverlay, activeAreaId, activeAreaEntry]);
 
   return (
     <div ref={containerRef}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 12, color: closed ? B.primary : B.textMuted, fontWeight: 500, lineHeight: 1.35 }}>
+        <div style={{ width: "100%", minHeight: 34, fontSize: 12, color: closed ? B.primary : B.textMuted, fontWeight: 500, lineHeight: 1.35 }}>
           {drawMode === "roll"
             ? `Modalità rotoli: click inizio + click fine. Larghezza fissa ${MANUAL_ROLL_WIDTH_M}m, lunghezza max ${MANUAL_ROLL_MAX_LENGTH_M}m.`
             : closed
@@ -2280,7 +2375,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
     const assignedRolls = rollPaths.filter((roll) => roll.areaId === polygon.id);
     return {
       id: polygon.id,
-      label: `A${polygonIndex + 1}`,
+      label: polygon.kind === "exclusion" ? `A${polygonIndex + 1} · ${polygon.label || "Esclusione"}` : `A${polygonIndex + 1} · superficie lorda`,
       area: polyArea(polygon.points),
       perimeter: polyPerimeter(polygon.points),
       edgeLengths,
@@ -2329,7 +2424,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
         {polygonSketches.map((polygon, pi) => {
           const fillOpacity = isClientVariant ? (pi % 2 === 0 ? 0.34 : 0.26) : 1;
           const isPaving = polygon.kind === "paving";
-          const fillColor = previewMode
+          const fillColor = polygon.kind === "exclusion" ? "#e2e6eb" : previewMode
             ? `url(#${isPaving ? wpcPatternId : turfPatternId})`
             : (isClientVariant ? `rgba(42,115,58,${fillOpacity})` : (B.primary + "1c"));
           const labelText = `A${polygon.index}`;
@@ -2378,6 +2473,12 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
           </g>
         ))}
 
+        {polygonSketches.filter(p => p.kind === "exclusion").map(p => (
+          <g key={`obstacle-${p.id}`}>
+            <path d={p.d} fill="#e2e6eb" stroke="#526175" strokeWidth="1.5" strokeDasharray="4 2" />
+            <text x={p.center.x} y={p.center.y} textAnchor="middle" fontSize="8" fill="#344154">{p.label || "Esclusione"}</text>
+          </g>
+        ))}
         {/* Edge measurement labels */}
         {edges.map((edge, index) => (
           <g key={index}>
@@ -2425,7 +2526,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
       </svg>
       <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
         <div style={{ fontSize: 11, color: B.textMuted }}>
-          Ingombro massimo: <strong style={{ color: B.dark }}>{fmt(bb.w, 2)} m × {fmt(bb.h, 2)} m</strong> · Vertici: <strong style={{ color: B.dark }}>{polygonPoints.length}</strong>{polygonSketches.length > 1 ? ` · Aree: ` : ""}
+          Ingombro massimo: <strong style={{ color: B.dark }}>{fmt(bb.w, 2)} m × {fmt(bb.h, 2)} m</strong> · Vertici: <strong style={{ color: B.dark }}>{polygonPoints.length}</strong>{polygonSketches.length > 1 ? ` · Elementi: ` : ""}
           {polygonSketches.length > 1 ? <strong style={{ color: B.dark }}>{polygonSketches.length}</strong> : null}
         </div>
         {rollPaths.length > 0 ? (
@@ -2555,12 +2656,25 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
   );
 }
 
-function InstallationNeedsPanel({ area, perimeter, borderType, borderMeters, manualRolls }) {
+function RollUsageSummary({ usage }) {
+  if (!usage) return null;
+  return <section aria-label="Utilizzo dei rotoli" style={{ padding: 12, border: "1px solid " + B.border, borderRadius: 10, background: B.white, marginBottom: 12 }}>
+    <strong style={{ fontSize: 13 }}>Utilizzo dei rotoli da 2 m</strong>
+    <dl style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "6px 12px", fontSize: 12 }}>
+      {[["Materiale tracciato", usage.material], ["Prato coperto", usage.covered], ["Prato ancora scoperto", usage.uncovered], ["Ritagli fuori prato / su ostacoli", usage.offcut], ["Sovrapposizioni tra rotoli", usage.overlap]].map(([label, value]) => <React.Fragment key={label}><dt>{label}</dt><dd style={{ margin: 0, fontWeight: 700 }}>{fmt(value, 2)} m²</dd></React.Fragment>)}
+    </dl>
+    <div style={{ fontSize: 13, fontWeight: 700 }}>Materiale non utilizzato: {fmt(usage.unused, 2)} m² ({fmt(usage.wastePercent, 1)}%)</div>
+    <p style={{ fontSize: 11, color: B.textMuted, marginBottom: 0 }}>Percentuale sul materiale tracciato. I ritagli sono potenzialmente recuperabili: forma e verso del filo vanno verificati prima del riutilizzo.</p>
+  </section>;
+}
+
+function InstallationNeedsPanel({ area, perimeter, borderType, borderMeters, manualRolls, rollUsage }) {
   if (area <= 0) return null;
   const border = BORDER_TYPES.find(item => item.id === borderType);
-  const needs = estimateInstallationNeeds(area, perimeter, manualRolls);
+  const needs = estimateInstallationNeeds(area, perimeter, manualRolls, rollUsage);
   return (
     <div style={{ display: "grid", gap: 10 }}>
+      <RollUsageSummary usage={rollUsage} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
         <MetricCard label="TNT da ordinare" value={`${fmt(needs.geo)} m²`} />
         <MetricCard
@@ -2601,6 +2715,7 @@ function PavingNeedsPanel({ pavingNeedsByArea, pavingTilesTotal }) {
   return (
     <div style={{ display: "grid", gap: 10, marginTop: 14, paddingTop: 14, borderTop: "1px dashed " + B.borderLight }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: B.dark }}>Pavimentazione WPC</div>
+      <RollUsageSummary usage={rollUsage} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
         {pavingNeedsByArea.map((p, i) => (
           <MetricCard
@@ -2673,7 +2788,9 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
 
   // turfArea/turfPerimeter esclude le aree "paving" (pavimentazione WPC) —
   // fallback su area/perimeter (totale) se non passati, per compatibilità.
-  const installNeeds = estimateInstallationNeeds(turfArea ?? area, turfPerimeter ?? perimeter, manualRolls);
+  const reportAreas = shape === "custom" ? getPlannerPolygons(customAreas, customPts, customClosed) : [{ points: getShapePolygon(shape, dims), kind: "turf" }];
+  const rollUsage = plannerRollUsage(reportAreas, manualRolls || []);
+  const installNeeds = estimateInstallationNeeds(turfArea ?? area, turfPerimeter ?? perimeter, manualRolls, rollUsage);
   const isClientVariant = reportVariant === "client";
   const {
     canViewMaterialCosts,
@@ -2704,7 +2821,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
     ? manualRolls.reduce((sum, roll) => sum + (Number(roll.length) || 0), 0)
     : 0;
   const rollMaterialArea = installNeeds.rollMaterialArea || (rollLinearMeters * MANUAL_ROLL_WIDTH_M);
-  const rollWasteArea = installNeeds.rollWasteArea || Math.max(0, rollMaterialArea - (turfArea ?? area));
+  const rollWasteArea = installNeeds.rollWasteArea;
   const rollPolygons = shape === "custom"
     ? getPlannerPolygons(customAreas, customPts, customClosed)
     : [{ points: getShapePolygon(shape, dims) }].filter((item) => item.points.length >= 3);
@@ -2716,6 +2833,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
 
   return (
     <div>
+      {!isClientVariant && <RollUsageSummary usage={rollUsage} />}
       {(projectInfo.client || projectInfo.address) && (
         <div className="print-no-break" style={{ marginBottom: 12, padding: "8px 12px", background: B.gray, borderRadius: 8, fontSize: 11.5, display: "flex", gap: 18, flexWrap: "wrap" }}>
           {projectInfo.client && <span><strong>Cliente:</strong> {projectInfo.client}</span>}
@@ -2755,7 +2873,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
               <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{rollCount} rotoli</div>
               <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>{fmt(rollLinearMeters, 2)} m lineari · {fmt(rollMaterialArea, 1)} m² da ordinare</div>
               <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>
-                Scarto stimato: <strong style={{ color: B.dark }}>{fmt(rollWasteArea, 1)} m²</strong>
+                Materiale non utilizzato: <strong style={{ color: B.dark }}>{fmt(rollWasteArea, 1)} m²</strong>
                 {outsideRollCount > 0 ? ` · ${outsideRollCount} rotol${outsideRollCount > 1 ? "i" : "o"} oltre bordo` : ""}
               </div>
               <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>
@@ -2859,7 +2977,14 @@ const fieldInp = { width: "100%", padding: "10px 14px", border: "1.5px solid " +
 function GpChromeStyles() {
   return (
     <style>{`
-      .gp-shell { display: flex; flex-direction: column; gap: 14px; }
+      .gp-shell { display: flex; flex-direction: column; gap: 12px; padding: 16px; margin: 0 auto; max-width: 1920px; }
+      .gp-shell.is-focused { max-width: none; }
+      .gp-shell.is-focused .gp-dock { display: none; }
+      .gp-workspace-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+      .gp-workspace-controls button { border: 1px solid #ccd8d0; background: #fff; color: #244033; padding: 10px 14px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 12px; }
+      .gp-workspace-controls button[aria-pressed="true"] { background: #244033; color: white; }
+      .gp-shell button:focus-visible, .gp-shell select:focus-visible { outline: 3px solid #278b57; outline-offset: 3px; }
+      .gp-canvas-col { width: 100%; }
       .gp-topbar {
         display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
         background: ${B.white}; border: 1px solid ${B.borderLight}; border-radius: 12px;
@@ -2914,7 +3039,7 @@ function GpChromeStyles() {
       .gp-area-add:disabled { opacity: 0.4; cursor: not-allowed; }
 
       .gp-inspector {
-        flex: 0 0 320px; background: ${B.white}; border: 1px solid ${B.borderLight}; border-radius: 12px;
+        flex: 0 0 280px; background: ${B.white}; border: 1px solid ${B.borderLight}; border-radius: 12px;
         overflow: hidden; position: sticky; top: 12px;
       }
       .gp-inspector-tabs { display: flex; border-bottom: 1px solid ${B.borderLight}; }
@@ -3003,7 +3128,7 @@ function GpAreaStrip({ areas = [], activeAreaId, onSelectArea, onAddArea, onRemo
             className={`gp-area-chip ${isPaving ? "tone-paving" : ""} ${active ? "is-active" : ""}`}
             onClick={() => onSelectArea(areaItem.id)}
           >
-            {isPaving ? "▦" : "🌱"} Area {index + 1}{closed ? ` · ${fmt(sqm, 1)} m²` : " · aperta"}
+            {areaItem.kind === "exclusion" ? `▧ ${areaItem.label || "Esclusione"}` : `${isPaving ? "▦" : "🌱"} Area ${index + 1}`}{closed ? ` · ${fmt(sqm, 1)} m²` : " · aperta"}
             {active && areas.length > 1 ? (
               <span className="x" onClick={(e) => { e.stopPropagation(); onRemoveArea(); }} title="Rimuovi area">×</span>
             ) : null}
@@ -3013,6 +3138,7 @@ function GpAreaStrip({ areas = [], activeAreaId, onSelectArea, onAddArea, onRemo
       <button type="button" className="gp-area-add" onClick={onAddArea} disabled={!canAddArea} title={canAddArea ? "" : "Chiudi il perimetro attivo prima di aggiungerne un altro"}>
         ＋ Nuova area
       </button>
+      <button type="button" className="gp-area-add" onClick={() => onAddArea("exclusion")} disabled={!canAddArea}>＋ Area da escludere</button>
     </div>
   );
 }
@@ -3032,8 +3158,8 @@ function GpToolRail({ inspectorFocus, onSelectDraw, onSelectRoll, onSelectBorder
         type="button"
         className={`gp-rail-btn ${inspectorFocus === "roll" ? "is-active" : ""}`}
         onClick={onSelectRoll}
-        disabled={!closed || activeAreaKind === "paving"}
-        title={activeAreaKind === "paving" ? "Non si posano rotoli su un'area di pavimentazione" : "Aggiungi rotolo"}
+        disabled={!closed || activeAreaKind !== "turf"}
+        title={activeAreaKind !== "turf" ? "I rotoli si posano solo sulle aree prato" : "Aggiungi rotolo"}
       >
         <span className="ico">▤</span>Rotolo
       </button>
@@ -3176,12 +3302,15 @@ function GardenPlanner() {
   const customPts = activeArea?.points || [];
   const customClosed = Boolean(activeArea?.closed);
   const manualRolls = activeArea?.rolls || [];
-  const activeAreaKind = activeArea?.kind === "paving" ? "paving" : "turf";
+  const activeAreaKind = activeArea?.kind || "turf";
   const activeTileSize = activeArea?.tileSize || { w: 30, h: 30 };
   const activeTileLayout = activeArea?.tileLayout === "offset" ? "offset" : "straight";
   const [drawMode, setDrawMode] = useState("shape");
   const [inspectorFocus, setInspectorFocus] = useState("draw");
   const [inspectorTab, setInspectorTab] = useState("element");
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [focusWorkspace, setFocusWorkspace] = useState(false);
+  const inspectorBeforeFocus = useRef(true);
   const [previewMode, setPreviewMode] = useState(false);
   const [activeDockTab, setActiveDockTab] = useState("dati");
   const layoutKey = useMemo(
@@ -3192,14 +3321,10 @@ function GardenPlanner() {
     () => plannerAreas.filter((area) => area.closed && Array.isArray(area.points) && area.points.length >= 3),
     [plannerAreas],
   );
-  // Le aree "paving" (pavimentazione WPC) non sono prato: niente rotoli, niente
-  // telo/banda/colla/picchetti/intaso — vanno escluse dal fabbisogno prato,
-  // altrimenti quei mq verrebbero conteggiati due volte (come prato E come
-  // pavimentazione). Restano incluse nel totale area/perimeter "grezzo" più
-  // sotto: la preparazione del fondo (scavo/drenante/sabbia) serve sotto
-  // ENTRAMBE le coperture.
+  // Turf, new paving and existing obstacles have distinct material rules.
+  // Boolean area calculations below remove intersections without double counting.
   const completedTurfAreas = useMemo(
-    () => completedAreas.filter((areaItem) => areaItem.kind !== "paving"),
+    () => completedAreas.filter((areaItem) => !areaItem.kind || areaItem.kind === "turf"),
     [completedAreas],
   );
   const completedPavingAreas = useMemo(
@@ -3210,20 +3335,19 @@ function GardenPlanner() {
     () => completedTurfAreas.flatMap((areaItem) => (Array.isArray(areaItem.rolls) ? areaItem.rolls : [])),
     [completedTurfAreas],
   );
-  // Totale grezzo (prato + pavimentazione insieme) — usato per la
-  // preparazione del fondo e per l'ingombro nel disegno tecnico.
-  const area = useMemo(
-    () => completedAreas.reduce((sum, areaItem) => sum + polyArea(areaItem.points), 0),
-    [completedAreas],
-  );
+  const surfaceMetrics = useMemo(() => {
+    const turf = completedTurfAreas.map(a => a.points);
+    const paving = completedPavingAreas.map(a => a.points);
+    const holes = completedAreas.filter(a => a.kind === "exclusion").map(a => a.points);
+    const grossTurf = plannerNetArea(turf);
+    const netTurf = plannerNetArea(turf, [...paving, ...holes]);
+    return { grossTurf, netTurf, excluded: grossTurf - netTurf, prepared: plannerNetArea([...turf, ...paving], holes) };
+  }, [completedAreas, completedTurfAreas, completedPavingAreas]);
+  const area = surfaceMetrics.prepared;
+  const turfArea = surfaceMetrics.netTurf;
   const perimeter = useMemo(
-    () => completedAreas.reduce((sum, areaItem) => sum + polyPerimeter(areaItem.points), 0),
+    () => completedAreas.filter(a => a.kind !== "exclusion").reduce((sum, a) => sum + polyPerimeter(a.points), 0),
     [completedAreas],
-  );
-  // Solo prato — usato per il fabbisogno posa (telo/banda/colla/picchetti).
-  const turfArea = useMemo(
-    () => completedTurfAreas.reduce((sum, areaItem) => sum + polyArea(areaItem.points), 0),
-    [completedTurfAreas],
   );
   const turfPerimeter = useMemo(
     () => completedTurfAreas.reduce((sum, areaItem) => sum + polyPerimeter(areaItem.points), 0),
@@ -3231,11 +3355,13 @@ function GardenPlanner() {
   );
   const pavingNeedsByArea = useMemo(
     () => completedPavingAreas.map((areaItem) => {
-      const areaM2 = polyArea(areaItem.points);
+      const earlier = completedPavingAreas.slice(0, completedPavingAreas.indexOf(areaItem));
+      const areaM2 = plannerNetArea([areaItem.points], [...completedAreas.filter(a => a.kind === "exclusion"), ...earlier].map(a => a.points));
       return { areaId: areaItem.id, areaM2, ...estimatePavingNeeds(areaM2, areaItem.tileSize, areaItem.tileLayout) };
     }),
-    [completedPavingAreas],
+    [completedPavingAreas, completedAreas],
   );
+  const rollUsage = useMemo(() => plannerRollUsage(completedAreas, allManualRolls), [completedAreas, allManualRolls]);
   const pavingTilesTotal = useMemo(
     () => pavingNeedsByArea.reduce((sum, p) => sum + p.tilesNeeded, 0),
     [pavingNeedsByArea],
@@ -3281,11 +3407,14 @@ function GardenPlanner() {
     }));
   }, [updateActiveArea]);
 
-  const addPlannerArea = useCallback(() => {
+  const addPlannerArea = useCallback((kind = "turf") => {
     if (!activeArea?.closed) return;
-    const nextArea = createPlannerArea();
+    const nextArea = createPlannerArea(typeof kind === "string" ? kind : "turf");
     setPlannerAreas((prev) => [...prev, nextArea]);
     setActiveAreaId(nextArea.id);
+    setDrawMode("shape");
+    setInspectorFocus("draw");
+    setInspectorOpen(true);
   }, [activeArea]);
 
   const removeActivePlannerArea = useCallback(() => {
@@ -3310,7 +3439,7 @@ function GardenPlanner() {
     setInspectorTab("element");
   }, []);
   const handleSelectRollTool = useCallback(() => {
-    if (!customClosed || activeAreaKind === "paving") return;
+    if (!customClosed || activeAreaKind !== "turf") return;
     setDrawMode("roll");
     setInspectorFocus("roll");
     setInspectorTab("element");
@@ -3460,7 +3589,7 @@ function GardenPlanner() {
   const handleOpenQuoteGenerator = () => {
     const technicalNode = document.getElementById("garden-planner-print-content");
     const clientNode = document.getElementById("garden-planner-client-print-content");
-    const installNeeds = estimateInstallationNeeds(turfArea, turfPerimeter, allManualRolls);
+    const installNeeds = estimateInstallationNeeds(turfArea, turfPerimeter, allManualRolls, rollUsage);
     const plannerBridge = buildPlannerQuotePrefill({
       projectInfo,
       area,
@@ -3601,7 +3730,7 @@ function GardenPlanner() {
     <div style={{ fontFamily: "'Manrope', 'Segoe UI', sans-serif", minHeight: "100vh", background: "transparent" }}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
       <GpChromeStyles />
-      <div className="gp-shell" style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 16px" }}>
+      <div className={`gp-shell ${focusWorkspace ? "is-focused" : ""}`}>
         <GpTopBar
           client={projectInfo.client}
           address={projectInfo.address}
@@ -3612,6 +3741,18 @@ function GardenPlanner() {
           canOpenGenerator={area > 0}
         />
 
+        <div className="gp-workspace-controls" aria-label="Spazio di lavoro">
+          <button type="button" aria-pressed={focusWorkspace} onClick={() => {
+            if (focusWorkspace) setInspectorOpen(inspectorBeforeFocus.current);
+            else { inspectorBeforeFocus.current = inspectorOpen; setInspectorOpen(false); }
+            setFocusWorkspace(v => !v);
+          }}>
+            {focusWorkspace ? "Esci dalla modalità disegno" : "Amplia area di disegno"}
+          </button>
+          <button type="button" aria-expanded={inspectorOpen} aria-controls="gp-inspector" onClick={() => setInspectorOpen(v => !v)}>
+            {inspectorOpen ? "Nascondi proprietà e materiali" : "Mostra proprietà e materiali"}
+          </button>
+        </div>
         <div className="gp-workspace">
           <GpToolRail
             inspectorFocus={inspectorFocus}
@@ -3650,10 +3791,13 @@ function GardenPlanner() {
             />
             {area > 0 && (
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <MetricCard label="Superficie" value={fmt(area) + " m\u00B2"} accent />
-                <MetricCard label="Perimetro" value={fmt(perimeter) + " m"} />
+                <MetricCard label="Prato netto" value={fmt(turfArea) + " m²"} accent />
+                <MetricCard label="Prato lordo" value={fmt(surfaceMetrics.grossTurf) + " m²"} />
+                <MetricCard label="Escluso dal prato" value={fmt(surfaceMetrics.excluded) + " m²"} sub="Ostacoli e pavimentazioni, senza sovrapposizioni" />
+                <MetricCard label="Fondo da preparare" value={fmt(area) + " m²"} />
+                <MetricCard label="Perimetro esterno lordo" value={fmt(perimeter) + " m"} />
                 {shape === "custom" && completedAreas.length
-                  ? <MetricCard label="Aree separate" value={`${completedAreas.length}`} sub={`${completedAreas.reduce((sum, areaItem) => sum + areaItem.points.length, 0)} vertici complessivi`} />
+                  ? <MetricCard label="Elementi disegnati" value={`${completedAreas.length}`} sub={`${completedAreas.reduce((sum, areaItem) => sum + areaItem.points.length, 0)} vertici complessivi`} />
                   : null}
                 <MetricCard label="Lati rilevati" value={`${borderEdges.length}`} sub="Perimetro disponibile" />
               </div>
@@ -3694,7 +3838,7 @@ function GardenPlanner() {
             </GpBottomDock>
           </div>
 
-          <div className="gp-inspector">
+          <div id="gp-inspector" className="gp-inspector" style={{ display: inspectorOpen ? undefined : "none" }}>
             <div className="gp-inspector-tabs">
               <button type="button" className={inspectorTab === "element" ? "is-active" : ""} onClick={() => setInspectorTab("element")}>Elemento</button>
               <button type="button" className={inspectorTab === "summary" ? "is-active" : ""} onClick={() => setInspectorTab("summary")}>Riepilogo</button>
@@ -3702,6 +3846,13 @@ function GardenPlanner() {
             <div className="gp-inspector-body">
               {inspectorTab === "element" ? (
                 <>
+                  {activeAreaKind === "exclusion" && <div style={{ marginBottom: 12 }}>
+                    <label style={lbl} htmlFor="gp-exclusion-label">Elemento escluso dal prato</label>
+                    <select id="gp-exclusion-label" value={activeArea.label || "Casa / ostacolo"} onChange={e => updateActiveArea(a => ({ ...a, label: e.target.value }))} style={fieldInp}>
+                      {["Casa / ostacolo", "Casetta", "Patio esistente", "Piscina", "Aiuola"].map(label => <option key={label}>{label}</option>)}
+                    </select>
+                    <p style={{ fontSize: 12 }}>Disegna il contorno dell'elemento. Solo la parte che interseca il giardino viene sottratta; qui non si conteggiano prato, pavimentazione o fondo.</p>
+                  </div>}
                   {inspectorFocus === "border" ? borderPanel : null}
                   {inspectorFocus === "paving" ? (
                     <GpPavingPicker
@@ -3716,7 +3867,7 @@ function GardenPlanner() {
                       Area attiva: <strong style={{ color: B.dark }}>{customClosed ? `${fmt(polyArea(customPts))} m\u00B2` : "perimetro aperto"}</strong>{activeAreaKind === "paving" ? " · pavimentazione" : ""}
                     </div>
                   ) : null}
-                  <InstallationNeedsPanel area={turfArea} perimeter={turfPerimeter} borderType={borderType} borderMeters={selectedBorderMeters} manualRolls={allManualRolls} />
+                  <InstallationNeedsPanel area={turfArea} perimeter={turfPerimeter} borderType={borderType} borderMeters={selectedBorderMeters} manualRolls={allManualRolls} rollUsage={rollUsage} />
                   {completedPavingAreas.length > 0 ? (
                     <PavingNeedsPanel pavingNeedsByArea={pavingNeedsByArea} pavingTilesTotal={pavingTilesTotal} />
                   ) : null}
