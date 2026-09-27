@@ -95,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260927-client-report-v2";
+const APP_SHELL_VERSION = "20260927-circle-tool";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -1360,6 +1360,18 @@ function plannerRectangle(a, b) {
   const x=Math.min(a.x,b.x), y=Math.min(a.y,b.y), w=Math.abs(b.x-a.x), h=Math.abs(b.y-a.y);
   return w>0 && h>0 ? [{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}] : [];
 }
+// Cerchio (alberi, aiuole rotonde...): approssimato con un poligono a molti
+// lati, non un vero arco — riusa TUTTA la pipeline esistente basata su
+// point-array (area, esclusione dal prato, rendering, sfrido) senza toccarla.
+// a = centro (punto di down), b = punto trascinato → definisce il raggio.
+function plannerCircle(a, b, sides = 32) {
+  const r = Math.hypot(b.x - a.x, b.y - a.y);
+  if (r <= 0) return [];
+  return Array.from({ length: sides }, (_, i) => {
+    const angle = (i / sides) * Math.PI * 2;
+    return { x: a.x + r * Math.cos(angle), y: a.y + r * Math.sin(angle) };
+  });
+}
 function plannerMoveObject(areas, target, dx, dy) {
   return areas.map(area => {
     if(area.id!==target.areaId) return area;
@@ -1591,7 +1603,7 @@ function FreeDrawCanvas({
     if (pointerState.start && Math.hypot(mx - pointerState.start.x, my - pointerState.start.y) > 0.08) {
       pointerState.moved = true;
     }
-    if(['object','rectangle'].includes(pointerState.mode)) {
+    if(['object','rectangle','circle'].includes(pointerState.mode)) {
       setGesture({...pointerState,end:{x:mx,y:my}});return;
     }
     if (pointerState.mode === "drag" && dragging !== null && closed) {
@@ -1607,11 +1619,11 @@ function FreeDrawCanvas({
     if (typeof e.button === "number" && e.button !== 0) return;
     const { mx, my } = getPos(e);
     setHoverPt({ x: mx, y: my });
-    if(!pendingOffcut && ['select','rectangle'].includes(drawMode)) {
+    if(!pendingOffcut && ['select','rectangle','circle'].includes(drawMode)) {
       const target=drawMode==='select'?hitObject({x:mx,y:my}):null;
       setSelection(target);
       if(target) editor.onSelectArea?.(target.areaId);
-      const state={pointerId:e.pointerId,mode:drawMode==='rectangle'?'rectangle':'object',target,start:{x:mx,y:my},end:{x:mx,y:my},moved:false};
+      const state={pointerId:e.pointerId,mode:(drawMode==='rectangle'||drawMode==='circle')?drawMode:'object',target,start:{x:mx,y:my},end:{x:mx,y:my},moved:false};
       pointerStateRef.current=state;setGesture(state);canvasRef.current?.setPointerCapture?.(e.pointerId);e.preventDefault();return;
     }
     if (!pendingOffcut && drawMode === "shape" && closed) {
@@ -1635,6 +1647,9 @@ function FreeDrawCanvas({
       editor.onMove?.(pointerState.target,mx-pointerState.start.x,my-pointerState.start.y);
     } else if(pointerState.mode==='rectangle') {
       const pts=plannerRectangle(pointerState.start,{x:mx,y:my});
+      if(pts.length) {editor.onRectangle?.(pts,rectangleType);setDrawMode('select');}
+    } else if(pointerState.mode==='circle') {
+      const pts=plannerCircle(pointerState.start,{x:mx,y:my});
       if(pts.length) {editor.onRectangle?.(pts,rectangleType);setDrawMode('select');}
     }
     setGesture(null);
@@ -2088,9 +2103,9 @@ function FreeDrawCanvas({
       ctx.strokeStyle = "rgba(40,90,50,0.15)"; ctx.lineWidth = 1; ctx.stroke();
       ctx.restore();
       ctx.fillStyle = "#1a3d24"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText(drawMode === "rectangle" ? "Trascina per disegnare il rettangolo" : drawMode === "border" ? "Clicca A, poi B per tracciare una bordura" : "Clicca per posizionare i vertici del giardino", cx, cy - 8);
+      ctx.fillText(drawMode === "rectangle" ? "Trascina per disegnare il rettangolo" : drawMode === "circle" ? "Clicca al centro e trascina per il raggio" : drawMode === "border" ? "Clicca A, poi B per tracciare una bordura" : "Clicca per posizionare i vertici del giardino", cx, cy - 8);
       ctx.fillStyle = "#5a7a5a"; ctx.font = "11px sans-serif";
-      ctx.fillText(`Griglia = ${fmt(GRID, 2)} m · ${drawMode === "rectangle" ? "Misure in tempo reale" : drawMode === "border" ? "Lunghezza in metri" : "Chiudi l’area sul punto 1"}`, cx, cy + 14);
+      ctx.fillText(`Griglia = ${fmt(GRID, 2)} m · ${drawMode === "rectangle" || drawMode === "circle" ? "Misure in tempo reale" : drawMode === "border" ? "Lunghezza in metri" : "Chiudi l’area sul punto 1"}`, cx, cy + 14);
       ctx.textAlign = "start";
     }
     if(pendingOffcut) {
@@ -2117,6 +2132,11 @@ function FreeDrawCanvas({
       outline(plannerRectangle(gesture.start,gesture.end));
       drawLabelPill(`${rectangleType} · ${fmt(Math.abs(gesture.end.x-gesture.start.x),2)} × ${fmt(Math.abs(gesture.end.y-gesture.start.y),2)} m`,toPx(gesture.end.x),toPx(gesture.end.y)-22);
     }
+    if(gesture?.mode==='circle'){
+      outline(plannerCircle(gesture.start,gesture.end));
+      const radius=Math.hypot(gesture.end.x-gesture.start.x,gesture.end.y-gesture.start.y);
+      drawLabelPill(`${rectangleType} · Ø ${fmt(radius*2,2)} m`,toPx(gesture.end.x),toPx(gesture.end.y)-22);
+    }
     const drawBorder=(a,b,label)=>{ctx.beginPath();ctx.moveTo(toPx(a.x),toPx(a.y));ctx.lineTo(toPx(b.x),toPx(b.y));ctx.strokeStyle='#c2410c';ctx.lineWidth=4;ctx.stroke();
       for(const p of [a,b]){ctx.beginPath();ctx.arc(toPx(p.x),toPx(p.y),4,0,Math.PI*2);ctx.fillStyle='#c2410c';ctx.fill();}
       drawLabelPill(label,toPx((a.x+b.x)/2),toPx((a.y+b.y)/2)-12,{textColor:'#9a3412'});
@@ -2133,8 +2153,9 @@ function FreeDrawCanvas({
         <button type="button" aria-pressed={drawMode==='select'&&!panMode} onClick={()=>chooseTool('select')}>Seleziona e sposta</button>
         <button type="button" aria-pressed={drawMode==='shape'&&!panMode} onClick={()=>chooseTool('shape')}>Poligono / vertici</button>
         <button type="button" aria-pressed={drawMode==='rectangle'&&!panMode} onClick={()=>chooseTool('rectangle')}>Rettangolo</button>
-        <select aria-label="Tipo rettangolo" value={rectangleType} onChange={e=>{setRectangleType(e.target.value);chooseTool('rectangle');}}>
-          {['Prato','Casetta','Abitazione','Piscina','Patio esistente','Aiuola','Pavimentazione'].map(t=><option key={t}>{t}</option>)}
+        <button type="button" aria-pressed={drawMode==='circle'&&!panMode} onClick={()=>chooseTool('circle')}>Cerchio</button>
+        <select aria-label="Tipo elemento" value={rectangleType} onChange={e=>{setRectangleType(e.target.value);chooseTool(drawMode==='circle'?'circle':'rectangle');}}>
+          {['Prato','Casetta','Abitazione','Piscina','Patio esistente','Aiuola','Albero','Pavimentazione'].map(t=><option key={t}>{t}</option>)}
         </select>
         <button type="button" aria-pressed={drawMode==='border'&&!panMode} onClick={()=>chooseTool('border')}>Bordura A–B</button>
       </div>
@@ -2155,6 +2176,7 @@ function FreeDrawCanvas({
         <div className="gp-canvas-hint" style={{ width: "100%", minHeight: 18, fontSize: 11, color: closed ? B.primary : B.textMuted, fontWeight: 500, lineHeight: 1.35 }}>
           {pendingOffcut ? "RECUPERO SFRIDO · Sposta il puntatore sul prato e clicca per posare. Esc per annullare." : drawMode==='select' ? 'Tocca un elemento e trascinalo. Il contorno blu indica la nuova posizione; rilascia per confermare. Esc annulla.'
           : drawMode==='rectangle' ? 'Premi e trascina da un angolo all’altro: le misure sono in metri. Le casette e gli ostacoli sono esclusi dal prato.'
+          : drawMode==='circle' ? 'Premi al centro e trascina per il raggio: utile per alberi, aiuole rotonde e simili. Le misure sono in metri.'
           : drawMode==='border' ? 'Clicca il punto A, poi il punto B. Puoi tracciare anche porzioni di un lato. Esc annulla.'
           : drawMode === "roll"
             ? `Modalità rotoli: click inizio + click fine. Larghezza fissa ${MANUAL_ROLL_WIDTH_M}m, lunghezza max ${MANUAL_ROLL_MAX_LENGTH_M}m.`
@@ -2278,7 +2300,7 @@ function FreeDrawCanvas({
           height: canvasH,
           borderRadius: 10,
           border: "1.5px solid " + (closed ? B.primary : B.border),
-          cursor: panMode ? "grab" : drawMode === "select" ? "move" : ["rectangle","border"].includes(drawMode) ? "crosshair" : pendingOffcut ? "crosshair" : panMode ? "grab" : drawMode === "roll" && closed ? "crosshair" : closed ? (dragging !== null ? "grabbing" : "default") : "crosshair",
+          cursor: panMode ? "grab" : drawMode === "select" ? "move" : ["rectangle","circle","border"].includes(drawMode) ? "crosshair" : pendingOffcut ? "crosshair" : panMode ? "grab" : drawMode === "roll" && closed ? "crosshair" : closed ? (dragging !== null ? "grabbing" : "default") : "crosshair",
           display: "block",
           touchAction: "none",
         }}
@@ -2288,6 +2310,7 @@ function FreeDrawCanvas({
         <div style={{ marginTop: 10, padding: "10px 12px", border: "1px solid " + B.borderLight, borderRadius: 8, background: B.white, fontSize: 12, color: B.textMuted }}>
           {drawMode==='select' ? 'Selezione diretta: trascina il rotolo o l’elemento da spostare. Il verso del pelo e le dimensioni restano invariati.'
             : drawMode==='rectangle' ? 'Trascina per disegnare un rettangolo. Le misure seguono l’aggancio alla griglia.'
+            : drawMode==='circle' ? 'Trascina dal centro per definire il raggio. Utile per alberi, aiuole rotonde e simili.'
             : drawMode==='border' ? 'Bordure indipendenti: un clic per l’inizio e un clic per la fine di ogni tratto.'
             : drawMode === "roll" && closed
             ? `${rolls.length} rotoli inseriti (${fmt(totalRollMeters, 2)} m lineari). ${canvasMessage || "I rotoli possono uscire dal perimetro per stimare lo scarto reale."}`
@@ -3317,7 +3340,7 @@ function GpPrecisionPanel({ area, areas, onUpdate, onAdd }) {
     <p>Usa Rettangolo sulla tavola e trascina. Per spostare gli elementi scegli Seleziona e sposta.</p>
     <details><summary>Inserimento numerico (opzionale)</summary>
     <label>Elemento<select value={rect.kind+":"+rect.label} onChange={e=>{ const [kind,label]=e.target.value.split(":"); setRect(r=>({...r,kind,label})); }}>
-      {["turf:Prato","exclusion:Abitazione","exclusion:Casetta","exclusion:Patio esistente","exclusion:Piscina","exclusion:Aiuola","paving:Pavimentazione"].map(v=><option key={v} value={v}>{v.split(":")[1]}</option>)}
+      {["turf:Prato","exclusion:Abitazione","exclusion:Casetta","exclusion:Patio esistente","exclusion:Piscina","exclusion:Aiuola","exclusion:Albero","paving:Pavimentazione"].map(v=><option key={v} value={v}>{v.split(":")[1]}</option>)}
     </select></label>
     <div className="gp-number-grid">{numeric("w","Larghezza m")}{numeric("h","Profondità m")}{numeric("x","Origine X m")}{numeric("y","Origine Y m")}{numeric("angle","Rotazione °")}</div>
     <button type="button" onClick={()=>{
@@ -4358,7 +4381,7 @@ function GardenPlanner() {
                   {activeAreaKind === "exclusion" && <div style={{ marginBottom: 12 }}>
                     <label style={lbl} htmlFor="gp-exclusion-label">Elemento escluso dal prato</label>
                     <select id="gp-exclusion-label" value={activeArea.label || "Casa / ostacolo"} onChange={e => updateActiveArea(a => ({ ...a, label: e.target.value }))} style={fieldInp}>
-                      {["Casa / ostacolo", "Abitazione", "Casetta", "Patio esistente", "Piscina", "Aiuola"].map(label => <option key={label}>{label}</option>)}
+                      {["Casa / ostacolo", "Abitazione", "Casetta", "Patio esistente", "Piscina", "Aiuola", "Albero"].map(label => <option key={label}>{label}</option>)}
                     </select>
                     <p style={{ fontSize: 12 }}>Disegna il contorno dell'elemento. Solo la parte che interseca il giardino viene sottratta; qui non si conteggiano prato, pavimentazione o fondo.</p>
                   </div>}

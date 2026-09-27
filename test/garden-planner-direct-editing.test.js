@@ -4,12 +4,21 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../garden-planner-page.js',import.meta.url),'utf8');
 const slice=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b,source.indexOf(a)));
-const {plannerRectangle:rect,plannerMoveObject:move,plannerBorderLength:border}=vm.runInNewContext(slice('function plannerRectangle(','function FreeDrawCanvas(')+'\n({plannerRectangle,plannerMoveObject,plannerBorderLength})');
+const {plannerRectangle:rect,plannerCircle:circle,plannerMoveObject:move,plannerBorderLength:border}=vm.runInNewContext(slice('function plannerRectangle(','function FreeDrawCanvas(')+'\n({plannerRectangle,plannerCircle,plannerMoveObject,plannerBorderLength})');
 const net=vm.runInNewContext(slice('function plannerNetArea(','function createPlannerArea(')+'\nplannerNetArea');
 const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-7,`${a} != ${b}`);
 test('direct rectangle: drawing in all four directions has the same area; zero edges rejected',()=>{
  for(const end of [{x:8,y:6},{x:-8,y:6},{x:8,y:-6},{x:-8,y:-6}])near(net([rect({x:0,y:0},end)]),48);
  assert.equal(rect({x:0,y:0},{x:0,y:6}).length,0);
+});
+test('direct circle: 32-sided regular-polygon area, zero radius rejected, direction-independent',()=>{
+ const sides=32,r=4;
+ const c=circle({x:0,y:0},{x:r,y:0});
+ assert.equal(c.length,sides);
+ near(net([c]),(sides/2)*r*r*Math.sin(2*Math.PI/sides)); // exact area of the approximating n-gon, close to but not π·r²
+ assert.equal(circle({x:2,y:2},{x:2,y:2}).length,0);
+ // Radius only depends on the distance dragged, not the direction.
+ near(net([circle({x:5,y:5},{x:5,y:8})]),net([circle({x:5,y:5},{x:8,y:5})]));
 });
 test('moving obstacle changes net turf, preserving geometry and source snapshot',()=>{
  const lawn={id:'lawn',points:rect({x:0,y:0},{x:10,y:10}),rolls:[]};
