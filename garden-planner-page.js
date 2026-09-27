@@ -95,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260927-circle-tool";
+const APP_SHELL_VERSION = "20260927-sketch-hero-redesign";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2679,7 +2679,16 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
   const scaleBarPx = scaleBarMeters * scale;
 
   return (
-    <div style={{ border: "1px solid " + (isClientVariant ? "#b8d4b4" : B.borderLight), borderRadius: 12, background: B.white, padding: 10 }}>
+    <div style={{
+      border: "1px solid " + (isClientVariant ? CB.line : B.borderLight), borderRadius: 12, background: B.white,
+      padding: isClientVariant ? "12px 12px 10px" : 10,
+      boxShadow: isClientVariant ? "0 4px 16px rgba(28,66,41,0.1)" : "none",
+    }}>
+      {isClientVariant && (
+        <div style={{ fontSize: 11, color: CB.mid, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 8 }}>
+          Pianta del giardino
+        </div>
+      )}
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
         <defs>
           <pattern id={turfPatternId} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
@@ -2692,18 +2701,26 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
           </pattern>
         </defs>
 
-        {/* Background */}
+        {/* Background: neutro caldo per il cliente, non verdino — così il
+            prato in verde pieno risalta per contrasto invece di confondersi
+            con lo sfondo. */}
         <rect x="1" y="1" width={W - 2} height={H - 2} rx="10"
-          fill={isClientVariant ? "#f2f5f0" : B.cream}
-          stroke={isClientVariant ? "#b8d4b4" : B.borderLight} />
+          fill={isClientVariant ? "#faf9f4" : B.cream}
+          stroke={isClientVariant ? CB.line : B.borderLight} />
 
         {/* Polygons */}
         {polygonSketches.map((polygon, pi) => {
-          const fillOpacity = isClientVariant ? (pi % 2 === 0 ? 0.34 : 0.26) : 1;
+          const fillOpacity = isClientVariant ? (pi % 2 === 0 ? 0.5 : 0.4) : 1;
           const isPaving = polygon.kind === "paving";
-          const fillColor = polygon.kind === "exclusion" ? "#e2e6eb" : previewMode
-            ? `url(#${isPaving ? wpcPatternId : turfPatternId})`
-            : (isClientVariant ? `rgba(42,115,58,${fillOpacity})` : (B.primary + "1c"));
+          // Nel report cliente il prato è sempre un verde pieno, mai la
+          // texture a trama sottile: a piccola scala/stampa la texture legge
+          // come grigio spento, non "colorata" — richiesto dall'utente il
+          // 27 set ("rendiamo il disegno maggiormente protagonista, con
+          // colori"). Il report tecnico interno mantiene la texture realistica.
+          const fillColor = polygon.kind === "exclusion" ? (isClientVariant ? "#e7ded0" : "#e2e6eb")
+            : isClientVariant ? `rgba(29,107,53,${fillOpacity})`
+            : previewMode ? `url(#${isPaving ? wpcPatternId : turfPatternId})`
+            : (B.primary + "1c");
           const labelText = `A${polygon.index}`;
           const lw = labelText.length * 6.2 + 14;
           const lx = clamp(polygon.center.x - lw / 2, 4, W - lw - 4);
@@ -2809,28 +2826,43 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
         </div>
         {rollPaths.length > 0 ? (
           <div style={{ fontSize: 11, color: B.textMuted }}>
-            Rotoli posizionati nel layout: <strong style={{ color: B.dark }}>{rollPaths.length}</strong>
+            Rotoli posizionati nel layout: <strong style={{ color: isClientVariant ? CB.dark : B.dark }}>{rollPaths.length}</strong>
+            {isClientVariant ? " · larghezza 2 m ciascuno" : ""}
           </div>
         ) : null}
         {rollPaths.length > 0 && !hasMultipleAreas ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 6 }}>
-            {rollPaths.map((roll) => (
-              <span
-                key={`roll-chip-${roll.id}`}
-                style={{
-                  fontSize: 10,
-                  padding: "4px 7px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(21,101,192,0.28)",
-                  background: "#eff6ff",
-                  color: "#0b4f8a",
-                  fontWeight: 700,
-                }}
-              >
-                R{roll.rollIndex}: 2.00 × {fmt(roll.length, 2)} m
-              </span>
-            ))}
-          </div>
+          isClientVariant ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", padding: "8px 2px 2px", borderTop: "1px solid " + CB.line }}>
+              {rollPaths.map((roll) => (
+                <span key={`roll-chip-${roll.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                  <span style={{
+                    width: 17, height: 17, borderRadius: "50%", background: CB.pale, border: "1px solid " + CB.paleBorder,
+                    color: CB.dark, fontSize: 9, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                  }}>{roll.rollIndex}</span>
+                  <span style={{ color: B.text, fontWeight: 600 }}>{fmt(roll.length, 2)} m</span>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 6 }}>
+              {rollPaths.map((roll) => (
+                <span
+                  key={`roll-chip-${roll.id}`}
+                  style={{
+                    fontSize: 10,
+                    padding: "4px 7px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(21,101,192,0.28)",
+                    background: "#eff6ff",
+                    color: "#0b4f8a",
+                    fontWeight: 700,
+                  }}
+                >
+                  R{roll.rollIndex}: 2.00 × {fmt(roll.length, 2)} m
+                </span>
+              ))}
+            </div>
+          )
         ) : null}
         {hasMultipleAreas ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
@@ -3131,7 +3163,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
         </div>
       )}
 
-      <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10, marginBottom: 12 }}>
+      <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: isClientVariant ? "3fr 2fr" : "repeat(auto-fit, minmax(250px, 1fr))", gap: 10, marginBottom: 12 }}>
         <TechnicalSketch borderSegments={borderSegments} shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} customAreas={customAreas} manualRolls={manualRolls} isClientVariant={isClientVariant} previewMode={previewMode} />
         <div style={{ border: "1px solid " + (isClientVariant ? CB.line : B.borderLight), borderRadius: 12, background: B.white, padding: "10px 12px", display: "grid", gap: 7, boxShadow: isClientVariant ? "0 2px 10px rgba(28,66,41,0.08)" : "none" }}>
           <div style={{ fontSize: 11, color: isClientVariant ? CB.mid : B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>{isClientVariant ? "Layout giardino" : "Tavola tecnica 2D"}</div>
