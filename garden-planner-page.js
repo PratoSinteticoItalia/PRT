@@ -12,6 +12,11 @@ const B = {
   info: "#1565c0", infoBg: "#eff6ff",
   warn: "#e65100", warnBg: "#fff8e1",
 };
+// Stessa palette del preventivo nativo (preventivo-v2.html, --gd/--gm/--gp/--br)
+// — usata solo nel report CLIENTE del Garden Planner, così i due documenti
+// allegati insieme (preventivo + progetto giardino) sembrano della stessa
+// famiglia grafica. Il report tecnico interno resta sui colori B esistenti.
+const CB = { dark: "#1c4229", mid: "#245c35", pale: "#e8f5ec", paleBorder: "#c2e8cc", line: "#d8e4da" };
 
 const BORDER_TYPES = [
   { id: "pvc", name: "Bordura PVC", price: 4.5, unit: "m" },
@@ -90,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260927-client-report-redesign";
+const APP_SHELL_VERSION = "20260927-client-report-v2";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -3081,7 +3086,11 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
     ? (manualRolls || []).reduce((count, roll) => (isRollInsideAnyPolygon(roll, rollPolygons) ? count : count + 1), 0)
     : 0;
   const shapeLabel = getPlannerShapeLabel(shape, dims, customPts, customClosed, customAreas);
-  const visibleSections = isClientVariant ? sections.filter((section) => section.key !== "travel") : sections;
+  // Il cliente vede solo il layout (rotoli/bordura, già nelle card sopra), mai
+  // le quantità di approvvigionamento (fondo/materiali posa/intaso): sono
+  // informazioni operative per l'ufficio/squadra, non per chi legge il
+  // preventivo (richiesto dall'utente il 27 set).
+  const visibleSections = isClientVariant ? [] : sections;
 
   return (
     <div>
@@ -3101,13 +3110,13 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
 
       <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10, marginBottom: 12 }}>
         <TechnicalSketch borderSegments={borderSegments} shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} customAreas={customAreas} manualRolls={manualRolls} isClientVariant={isClientVariant} previewMode={previewMode} />
-        <div style={{ border: "1px solid " + (isClientVariant ? "#d8e8d4" : B.borderLight), borderRadius: 12, background: isClientVariant ? B.white : B.white, padding: "10px 12px", display: "grid", gap: 7, boxShadow: isClientVariant ? "0 2px 10px rgba(15,42,24,0.06)" : "none" }}>
-          <div style={{ fontSize: 11, color: B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>{isClientVariant ? "Layout giardino" : "Tavola tecnica 2D"}</div>
+        <div style={{ border: "1px solid " + (isClientVariant ? CB.line : B.borderLight), borderRadius: 12, background: B.white, padding: "10px 12px", display: "grid", gap: 7, boxShadow: isClientVariant ? "0 2px 10px rgba(28,66,41,0.08)" : "none" }}>
+          <div style={{ fontSize: 11, color: isClientVariant ? CB.mid : B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>{isClientVariant ? "Layout giardino" : "Tavola tecnica 2D"}</div>
           {isClientVariant ? (
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "10px 14px", borderRadius: 10, background: `linear-gradient(135deg, ${B.light}, ${B.cream})` }}>
-              <GpStatIcon name="area" color={B.primary} size={22} />
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "10px 14px", borderRadius: 10, background: `linear-gradient(135deg, ${CB.pale}, #fff)` }}>
+              <GpStatIcon name="area" color={CB.mid} size={22} />
               <div>
-                <span style={{ fontSize: 26, fontWeight: 800, color: B.dark }}>{fmt(area)}</span>
+                <span style={{ fontSize: 26, fontWeight: 800, color: CB.dark }}>{fmt(area)}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: B.textMuted, marginLeft: 4 }}>m² di prato</span>
               </div>
             </div>
@@ -3120,22 +3129,22 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
               </div>
             )}
             <div style={isClientVariant ? statCardClient : statCardTech}>
-              {isClientVariant && <GpStatIcon name="perimeter" color={B.primary} size={15} />}
+              {isClientVariant && <GpStatIcon name="perimeter" color={CB.mid} size={15} />}
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Perimetro</div>
               <div style={{ fontSize: 17, fontWeight: 800, color: B.dark }}>{fmt(perimeter)} m</div>
             </div>
             <div style={isClientVariant ? statCardClient : statCardTech}>
-              {isClientVariant && <GpStatIcon name="border" color={B.primary} size={15} />}
+              {isClientVariant && <GpStatIcon name="border" color={CB.mid} size={15} />}
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Bordura</div>
               <div style={{ fontSize: 17, fontWeight: 800, color: B.dark }}>{borderType === "nessuna" ? "No" : `${fmt(borderMeters)} m`}</div>
             </div>
             <div style={isClientVariant ? statCardClient : statCardTech}>
-              {isClientVariant && <GpStatIcon name="shape" color={B.primary} size={15} />}
+              {isClientVariant && <GpStatIcon name="shape" color={CB.mid} size={15} />}
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Forma</div>
               <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{shapeLabel}</div>
             </div>
             <div style={isClientVariant ? statCardClient : statCardTech}>
-              {isClientVariant && <GpStatIcon name="rolls" color={B.primary} size={15} />}
+              {isClientVariant && <GpStatIcon name="rolls" color={CB.mid} size={15} />}
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Layout rotoli</div>
               <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{rollCount} rotoli</div>
               <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>{fmt(rollLinearMeters, 2)} m lineari · {fmt(rollMaterialArea, 1)} m² inseriti</div>
@@ -3148,12 +3157,15 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
               </div>
             </div>
           </div>
-          <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
-            Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm{!isClientVariant ? ` · Posa ${installNeeds.calcMode === "layout" ? "calcolata da layout rotoli" : `in fallback da m² finché il layout non copre il ${fmt(INSTALLATION_RULES.layoutCoverageMin * 100, 0)}% dell'area`}` : "."}
-          </div>
+          {!isClientVariant && (
+            <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
+              Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm · Posa {installNeeds.calcMode === "layout" ? "calcolata da layout rotoli" : `in fallback da m² finché il layout non copre il ${fmt(INSTALLATION_RULES.layoutCoverageMin * 100, 0)}% dell'area`}
+            </div>
+          )}
         </div>
       </div>
 
+      {!isClientVariant && (
       <div className="print-no-break" style={{ border: "1px solid " + B.border, borderRadius: 10, overflow: "hidden" }}>
         {visibleSections.map((sec, si) => (
           <div key={si}>
@@ -3179,12 +3191,13 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
           </div>
         ) : null}
       </div>
+      )}
       {isClientVariant && (
         <div className="print-no-break" style={{
           marginTop: 16, padding: "18px 22px", borderRadius: 14, textAlign: "center",
-          background: `linear-gradient(135deg, ${B.light}, ${B.cream})`, border: "1px solid " + B.borderLight,
+          background: `linear-gradient(135deg, ${CB.pale}, #fff)`, border: "1px solid " + CB.line,
         }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: B.dark, marginBottom: 4 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: CB.dark, marginBottom: 4 }}>
             Grazie per aver scelto Prato Sintetico Italia
           </div>
           <div style={{ fontSize: 11.5, color: B.textMuted, lineHeight: 1.6 }}>
@@ -3204,11 +3217,11 @@ function ReportShell({ id, variant = "technical", area, perimeter, turfArea, tur
         <div className="print-no-break" style={{
           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14,
           marginBottom: 14, padding: "16px 20px", borderRadius: 14,
-          background: `linear-gradient(135deg, ${B.dark}, ${B.primary})`,
+          background: `linear-gradient(135deg, ${CB.dark}, ${CB.mid})`,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
             <div style={{ width: 42, height: 42, borderRadius: 10, background: "#fff", display: "grid", placeItems: "center", flexShrink: 0, boxShadow: "0 2px 6px rgba(0,0,0,0.18)" }}>
-              <img src="./logo-prato.png" alt="" style={{ width: 27, height: 27, objectFit: "contain" }} />
+              <img src="./logo-prato.png" alt="" width={27} height={27} style={{ width: 27, height: 27, objectFit: "contain" }} />
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(255,255,255,0.75)", letterSpacing: "0.6px", textTransform: "uppercase" }}>Prato Sintetico Italia</div>
@@ -3282,7 +3295,7 @@ function GpStatIcon({ name, color = "currentColor", size = 16 }) {
   return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 const statCardTech = { padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight };
-const statCardClient = { padding: "9px 10px 8px", borderRadius: 8, background: B.white, border: "1px solid #e2ece0", display: "grid", gap: 3 };
+const statCardClient = { padding: "9px 10px 8px", borderRadius: 8, background: B.white, border: "1px solid " + CB.line, display: "grid", gap: 3 };
 const btnPrim = { padding: "8px 16px", borderRadius: 8, border: "none", background: B.primary, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" };
 const lbl = { display: "block", fontSize: 11, color: B.textMuted, marginBottom: 4, fontWeight: 500 };
 const fieldInp = { width: "100%", padding: "10px 14px", border: "1.5px solid " + B.border, borderRadius: 10, fontSize: 13, boxSizing: "border-box", outline: "none", color: B.dark };
@@ -4084,9 +4097,32 @@ function GardenPlanner() {
     body.classList.add("garden-print-report");
     window.addEventListener("afterprint", cleanup);
     fallbackTimer = window.setTimeout(cleanup, 7000);
-    window.requestAnimationFrame(() => {
+
+    // Il clone ricrea gli <img> da zero (il logo header, versione cliente):
+    // se window.print() parte prima che siano decodificati, alcuni motori di
+    // stampa/PDF del browser li omettono in silenzio (segnalato dall'utente
+    // il 27 set: "manca il logo"). Aspettiamo il caricamento di ognuno, con
+    // un timeout breve di sicurezza per non restare bloccati se una
+    // immagine non arriva mai.
+    const images = Array.from(printableClone.querySelectorAll("img"));
+    const waitForImage = (img) => (img.complete && img.naturalWidth > 0)
+      ? Promise.resolve()
+      : new Promise((resolve) => {
+        img.addEventListener("load", resolve, { once: true });
+        img.addEventListener("error", resolve, { once: true });
+      });
+    const imagesReady = images.length
+      ? Promise.race([
+        Promise.all(images.map(waitForImage)),
+        new Promise((resolve) => window.setTimeout(resolve, 1500)),
+      ])
+      : Promise.resolve();
+
+    imagesReady.then(() => {
       window.requestAnimationFrame(() => {
-        window.print();
+        window.requestAnimationFrame(() => {
+          window.print();
+        });
       });
     });
   };
