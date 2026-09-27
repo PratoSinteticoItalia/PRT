@@ -114,6 +114,18 @@ test('guided recovery: automatically finds safe end strip, validates placement a
   assert.equal(guided.place([area,{kind:'exclusion',closed:true,points:rect(0,2,2,2)}],c,1,3).valid,false);
   assert.equal(guided.place([{...area,rolls:[{...area.rolls[0]}]}],c,1,3).valid,false); // stale source
 });
+test('guided recovery: a piece may overhang the lawn edge, like a normal roll — only needs some usable overlap',()=>{
+  const area=recoveryArea();
+  const c=guided.find([area])[0];
+  // Lawn is rect(0,0,8,6); this 2x2 piece centered at (7.5,3) spans x:[6.5,8.5] —
+  // half inside, half past the edge. Before the fix this was rejected outright
+  // (100% coverage required); now it's valid, same as a regular roll that
+  // merely touches the lawn (doesRollTouchPolygon).
+  const straddling=guided.place([area],c,7.5,3);
+  assert.equal(straddling.valid,true);
+  // Fully outside still rejected: zero usable overlap, not just partial.
+  assert.equal(guided.place([area],c,-5,3).valid,false);
+});
 test('guided recovery: side strip, reversed orientation and exclusion holes',()=>{
   const a=recoveryArea();a.rolls=[{id:'r',cx:4,cy:0,length:8,width:2,angle:Math.PI}];
   const side=guided.find([a]).find(c=>c.axis==='width');assert.ok(side);near(side.size,1);

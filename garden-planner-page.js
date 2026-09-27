@@ -90,7 +90,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260927-roll-labels-dense-fix";
+const APP_SHELL_VERSION = "20260927-offcut-boundary-fix";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -3308,7 +3308,12 @@ function plannerOffcutPlacement(areas, candidate, x, y) {
   if(plannerPieceLawnArea(candidate.piece,areas)>1e-8) return {valid:false,reason:"Il progetto è cambiato: questo taglio ora coprirebbe il prato."};
   const piece={...candidate.piece,cx:x,cy:y};
   const surface=piece.length*(piece.width||2);
-  if(!Number.isFinite(x)||!Number.isFinite(y)||plannerPieceLawnArea(piece,areas)<surface-1e-6) return {valid:false,reason:"Sposta il ritaglio interamente sul prato, fuori dagli ostacoli."};
+  // Basta che il pezzo tocchi prato utile, non che ci stia per intero: come i
+  // rotoli normali (doesRollTouchPolygon), vicino a un bordo obliquo o
+  // irregolare è normale che sporga — in cantiere si rifila l'eccedenza dopo
+  // la posa. Richiedere copertura al 100% rendeva il recupero sfrido
+  // inutilizzabile proprio dove serve di più (segnalato dall'utente il 27 set).
+  if(!Number.isFinite(x)||!Number.isFinite(y)||plannerPieceLawnArea(piece,areas)<1e-6) return {valid:false,reason:"Sposta il ritaglio sul prato, fuori dagli ostacoli."};
   const other=areas.flatMap(a=>(a.rolls||[]).map((r,i)=>getRollCorners(a.id===owner.id && i===candidate.index?candidate.retained:r)));
   if(plannerNetArea([getRollCorners(piece)],other)<surface-1e-6) return {valid:false,reason:"Qui c’è già materiale: sposta il ritaglio su una zona scoperta."};
   return {valid:true,reason:"Posizione valida · clicca per confermare",piece};
