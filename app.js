@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260927-garden-planner-guided-recovery";
+} from "./lib/order-money.js?v=20260927-sidebar-collapse";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260927-garden-planner-guided-recovery";
+import { regionForCity } from "./lib/geo.js?v=20260927-sidebar-collapse";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260927-garden-planner-guided-recovery";
+} from "./lib/shipping-eligibility.js?v=20260927-sidebar-collapse";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -43,7 +43,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260927-garden-planner-guided-recovery";
+} from "./lib/profit-split.js?v=20260927-sidebar-collapse";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +58,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260927-garden-planner-guided-recovery";
+} from "./lib/preventivo-pricing.js?v=20260927-sidebar-collapse";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,13 +66,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260927-garden-planner-guided-recovery";
+} from "./lib/sales-assignment.js?v=20260927-sidebar-collapse";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20260927-garden-planner-guided-recovery";
+} from "./lib/surveys.js?v=20260927-sidebar-collapse";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -86,7 +86,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260927-garden-planner-guided-recovery";
+const APP_SHELL_VERSION = "20260927-sidebar-collapse";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1631,6 +1631,7 @@ const ui = {
   mobilePillReloadButton: document.getElementById("mobile-pill-reload-button"),
   mobilePillLogoutButton: document.getElementById("mobile-pill-logout-button"),
   mobileMenuButton: document.getElementById("mobile-menu-button"),
+  sidebarCollapseToggle: document.getElementById("sidebar-collapse-toggle"),
   mobileMenuClose: document.getElementById("mobile-menu-close"),
   mobileLogoutButton: document.getElementById("mobile-logout-button"),
   mobileLogoutInlineButton: document.getElementById("mobile-logout-inline-button"),
@@ -21226,6 +21227,31 @@ document.addEventListener("click", (ev) => {
 
 renderSidebarSections();
 applySectionCollapseState();
+
+// ── Sidebar comprimibile (desktop) — utile su strumenti che vogliono tutta
+// la larghezza (es. Garden Planner). Preferenza per-dispositivo, non per
+// account: niente reset al cambio utente, resta anche dopo logout/login.
+const SIDEBAR_COLLAPSED_LS_KEY = "psi-sidebar-collapsed";
+function isSidebarCollapsed() {
+  try { return window.localStorage.getItem(SIDEBAR_COLLAPSED_LS_KEY) === "1"; } catch { return false; }
+}
+function applySidebarCollapsedState(collapsed) {
+  ui.appShell?.classList.toggle("sidebar-collapsed", collapsed);
+  if (ui.sidebarCollapseToggle) {
+    ui.sidebarCollapseToggle.setAttribute("aria-pressed", collapsed ? "true" : "false");
+    const label = collapsed
+      ? (state.lang === "it" ? "Espandi menu laterale" : "Expand sidebar")
+      : (state.lang === "it" ? "Comprimi menu laterale" : "Collapse sidebar");
+    ui.sidebarCollapseToggle.title = label;
+    ui.sidebarCollapseToggle.setAttribute("aria-label", label);
+  }
+}
+bindEvent(ui.sidebarCollapseToggle, "click", () => {
+  const collapsed = !isSidebarCollapsed();
+  try { window.localStorage.setItem(SIDEBAR_COLLAPSED_LS_KEY, collapsed ? "1" : "0"); } catch {}
+  applySidebarCollapsedState(collapsed);
+});
+applySidebarCollapsedState(isSidebarCollapsed());
 
 function renderMobileBottomNav() {
   const nav = document.getElementById("mobile-bottom-nav");
