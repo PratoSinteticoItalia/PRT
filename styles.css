@@ -282,10 +282,22 @@ body.shell-loading .shell-launch {
   display: none;
 }
 
-.sidebar-collapse-btn {
+/* Selettore composto (non solo .sidebar-collapse-btn) per battere in
+   specificità le tante regole ".topbar-btn { padding/min-height... }"
+   sparse più giù nel file (13+ ridefinizioni non in media query, l'ultima
+   delle quali vince per ordine sennò, azzerando questi override). */
+.topbar-btn.sidebar-collapse-btn {
   padding: 0;
   width: 32px;
+  min-height: 32px;
   justify-content: center;
+  flex-shrink: 0;
+}
+/* Le icone SVG come flex item possono collassare a width:0 se la loro
+   dimensione viene dal solo attributo HTML: qui serve esplicita in CSS. */
+.sidebar-collapse-btn svg {
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
 }
 
