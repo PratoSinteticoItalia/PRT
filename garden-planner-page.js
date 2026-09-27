@@ -1367,6 +1367,7 @@ function FreeDrawCanvas({
   borderEdges = [],
   selectedBorderEdges = [],
   showBorderOverlay = false,
+  pendingOffcut = null, onPlaceOffcut = () => {}, onCancelOffcut = () => {},
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -1380,6 +1381,17 @@ function FreeDrawCanvas({
   const [canvasMessage, setCanvasMessage] = useState("");
   const [gridStep, setGridStep] = useState(DEFAULT_GRID_STEP);
   const [canvasH, setCanvasH] = useState(600);
+  const [view, setView] = useState({ x: 48, y: 48 });
+  const [panMode, setPanMode] = useState(false);
+  const [showDimensions, setShowDimensions] = useState(true);
+  const fitDrawing = () => {
+    const pts = areas.flatMap(a => [...(a.points || []), ...(a.rolls || []).flatMap(getRollCorners)]);
+    if (!pts.length) return;
+    const bb = polyBBox(pts);
+    const scale = Math.min((canvasW - 140) / Math.max(bb.w, 1), (canvasH - 140) / Math.max(bb.h, 1));
+    const z = Math.max(0.1, Math.min(5, scale / BASE_PX));
+    setZoom(z); setView({ x: (canvasW - bb.w * BASE_PX * z) / 2 - bb.minX * BASE_PX * z, y: (canvasH - bb.h * BASE_PX * z) / 2 - bb.minY * BASE_PX * z });
+  };
   const PX = BASE_PX * zoom;
   const GRID = gridStep;
 
@@ -1402,7 +1414,7 @@ function FreeDrawCanvas({
     const updateCanvasW = () => {
       const w = Math.max(280, Math.floor(containerRef.current?.offsetWidth || 0));
       if (w > 0) setCanvasW(w);
-      setCanvasH(Math.max(380, Math.floor(window.innerHeight * 0.68)));
+      setCanvasH(Math.max(360, Math.floor(window.innerHeight - (canvasRef.current?.getBoundingClientRect().top || 240) - 24)));
     };
 
     updateCanvasW();
@@ -1432,9 +1444,19 @@ function FreeDrawCanvas({
     }
   }, [activeAreaKind, drawMode]);
 
+  useEffect(() => {
+    if(pendingOffcut) {setPanMode(false);setRollStart(null);setCanvasMessage("");}
+  },[pendingOffcut]);
+  useEffect(() => {
+    const cancel=e=>{if(e.key==="Escape" && pendingOffcut) onCancelOffcut();};
+    window.addEventListener("keydown",cancel);return()=>window.removeEventListener("keydown",cancel);
+  },[pendingOffcut,onCancelOffcut]);
   const getPos = e => {
-    const r = canvasRef.current.getBoundingClientRect();
-    return { mx: toM(e.clientX - r.left), my: toM(e.clientY - r.top) };
+    const c = canvasRef.current;
+    const r = c.getBoundingClientRect();
+    const x = (e.clientX - r.left - c.clientLeft) * c.width / c.clientWidth;
+    const y = (e.clientY - r.top - c.clientTop) * c.height / c.clientHeight;
+    return { mx: toM(x - view.x), my: toM(y - view.y) };
   };
 
   const resetPointerState = () => {
@@ -1442,6 +1464,12 @@ function FreeDrawCanvas({
   };
 
   const handleCanvasTap = ({ x: mx, y: my }) => {
+    if(pendingOffcut) {
+      const check=plannerOffcutPlacement(areas,pendingOffcut,mx,my);
+      setCanvasMessage(check.reason);
+      if(check.valid) onPlaceOffcut(mx,my);
+      return;
+    }
     if (drawMode === "roll" && closed) {
       if (!rollStart) {
         setRollStart({ x: mx, y: my });
@@ -1476,6 +1504,11 @@ function FreeDrawCanvas({
   };
 
   const handlePointerMove = e => {
+    const state = pointerStateRef.current;
+    if (state.mode === "pan" && state.pointerId === e.pointerId) {
+      setView({ x: state.view.x + (e.clientX - state.screen.x) * canvasW / canvasRef.current.clientWidth, y: state.view.y + (e.clientY - state.screen.y) * canvasH / canvasRef.current.clientHeight });
+      return;
+    }
     const { mx, my } = getPos(e);
     setHoverPt({ x: mx, y: my });
     const pointerState = pointerStateRef.current;
@@ -1489,10 +1522,14 @@ function FreeDrawCanvas({
   };
 
   const handlePointerDown = e => {
+    if (panMode || e.button === 1) {
+      pointerStateRef.current = { pointerId: e.pointerId, mode: "pan", view, screen: { x: e.clientX, y: e.clientY } };
+      canvasRef.current?.setPointerCapture?.(e.pointerId); e.preventDefault(); return;
+    }
     if (typeof e.button === "number" && e.button !== 0) return;
     const { mx, my } = getPos(e);
     setHoverPt({ x: mx, y: my });
-    if (drawMode === "shape" && closed) {
+    if (!pendingOffcut && drawMode === "shape" && closed) {
       const idx = points.findIndex(p => Math.hypot(p.x - mx, p.y - my) < 0.6);
       if (idx >= 0) {
         pointerStateRef.current = { pointerId: e.pointerId, mode: "drag", start: { x: mx, y: my }, moved: false };
@@ -1652,28 +1689,41 @@ function FreeDrawCanvas({
     if (!c) return;
     const ctx = c.getContext("2d");
     ctx.clearRect(0, 0, canvasW, canvasH);
-    ctx.fillStyle = "#f2f5f1"; ctx.fillRect(0, 0, canvasW, canvasH);
-
-    // Sub-grid
-    ctx.strokeStyle = "rgba(180,195,178,0.45)"; ctx.lineWidth = 0.5;
-    for (let x = 0; x < canvasW; x += GRID * PX) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); ctx.stroke(); }
-    for (let y = 0; y < canvasH; y += GRID * PX) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasW, y); ctx.stroke(); }
-    // Meter grid
-    ctx.strokeStyle = "rgba(140,165,138,0.55)"; ctx.lineWidth = 1;
-    for (let x = 0; x < canvasW; x += PX) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); ctx.stroke(); }
-    for (let y = 0; y < canvasH; y += PX) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasW, y); ctx.stroke(); }
-    // Labels
-    ctx.fillStyle = "rgba(80,100,80,0.7)"; ctx.font = "10px sans-serif";
-    for (let m = 1; m * PX < canvasW; m++) ctx.fillText(m + "m", m * PX + 2, 11);
-    for (let m = 1; m * PX < canvasH; m++) ctx.fillText(m + "m", 3, m * PX - 3);
-
-    const drawLabelPill = (text, cx, cy, opts = {}) => {
+    ctx.fillStyle = "#fcfdff"; ctx.fillRect(0, 0, canvasW, canvasH);
+    // The visible mesh stays legible independently from the snap increment.
+    let visibleStep = GRID;
+    while (visibleStep * PX < 18) visibleStep *= 2;
+    const mesh = visibleStep * PX;
+    ctx.strokeStyle = "#dce4ed"; ctx.lineWidth = 1;
+    for (let x = ((view.x % mesh) + mesh) % mesh; x < canvasW; x += mesh) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); ctx.stroke(); }
+    for (let y = ((view.y % mesh) + mesh) % mesh; y < canvasH; y += mesh) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasW, y); ctx.stroke(); }
+    const major = mesh * 5;
+    ctx.fillStyle = "#53667c"; ctx.font = "10px monospace";
+    ctx.strokeStyle = "#b9c8d8";
+    for (let x = ((view.x % major) + major) % major; x < canvasW; x += major) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); ctx.stroke(); ctx.fillText(((x-view.x)/PX).toFixed(1), x+3, 12); }
+    for (let y = ((view.y % major) + major) % major; y < canvasH; y += major) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasW, y); ctx.stroke(); ctx.fillText(((y-view.y)/PX).toFixed(1), 3, y-3); }
+    ctx.save(); ctx.translate(view.x, view.y);
+    const occupied = [];
+    const labelQueue = [];
+    const drawLabelPill = (...args) => labelQueue.push(args);
+    const renderLabelPill = (text, cx, cy, opts = {}) => {
       const { font = "bold 10px sans-serif", textColor = "#1a3d24", bg = "rgba(255,255,255,0.93)", r = 5, px: px2 = 6, py: py2 = 4 } = opts;
       ctx.font = font;
       const tw = ctx.measureText(text).width;
       const bw = tw + px2 * 2, bh = 14 + py2;
-      cx = Math.max(bw / 2 + 2, Math.min(canvasW - bw / 2 - 2, cx));
-      cy = Math.max(bh / 2 + 2, Math.min(canvasH - bh / 2 - 2, cy));
+      cx = Math.max(bw / 2 + 4 - view.x, Math.min(canvasW - view.x - bw / 2 - 4, cx));
+      cy = Math.max(bh / 2 + 18 - view.y, Math.min(canvasH - view.y - bh / 2 - 4, cy));
+      const originalY = cy;
+      let placed = false;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const candidateY = originalY + (attempt % 2 ? 1 : -1) * Math.ceil(attempt / 2) * (bh + 5);
+        if (candidateY < 18 - view.y + bh/2 || candidateY > canvasH - view.y - bh/2 - 4) continue;
+        if (!occupied.some(o => Math.abs(o.x-cx) < (o.w+bw)/2+4 && Math.abs(o.y-candidateY) < (o.h+bh)/2+4)) {
+          cy = candidateY; placed = true; break;
+        }
+      }
+      if (!placed) return;
+      occupied.push({x:cx, y:cy, w:bw, h:bh});
       const bx = cx - bw / 2, by = cy - bh / 2;
       ctx.beginPath();
       if (ctx.roundRect) { ctx.roundRect(bx, by, bw, bh, r); }
@@ -1752,9 +1802,17 @@ function FreeDrawCanvas({
       for (let i = 0; i < all.length - 1; i++) {
         const ax = toPx(all[i].x), ay = toPx(all[i].y), bx = toPx(all[i + 1].x), by = toPx(all[i + 1].y);
         const len = Math.hypot(all[i + 1].x - all[i].x, all[i + 1].y - all[i].y);
-        if (len < 0.3) continue;
+        if (len < 0.01 || !showDimensions) continue;
         const mx2 = (ax + bx) / 2, my2 = (ay + by) / 2;
-        drawLabelPill(fmt(len, 2) + "m", mx2, my2, { font: "bold 10px sans-serif", px: 5, py: 3 });
+        const center = polyCenter(points);
+        let nx = -(by-ay) / (len*PX), ny = (bx-ax) / (len*PX);
+        if (nx*(mx2-toPx(center.x))+ny*(my2-toPx(center.y)) < 0) { nx=-nx; ny=-ny; }
+        const dx=nx*28, dy=ny*28;
+        ctx.strokeStyle="#64748b"; ctx.lineWidth=0.8;
+        ctx.beginPath(); ctx.moveTo(ax+dx,ay+dy); ctx.lineTo(bx+dx,by+dy);
+        ctx.moveTo(ax,ay);ctx.lineTo(ax+dx*1.25,ay+dy*1.25);
+        ctx.moveTo(bx,by);ctx.lineTo(bx+dx*1.25,by+dy*1.25);ctx.stroke();
+        drawLabelPill(fmt(len, 2) + " m", mx2+dx, my2+dy, { font: "11px monospace", px: 5, py: 3 });
       }
 
       // Overlay bordura: quando lo strumento "Bordura" è attivo, mostra su
@@ -1823,7 +1881,7 @@ function FreeDrawCanvas({
 
         const labelText = options.preview
           ? `Preview ${fmt(roll.length, 2)}m`
-          : `R${index + 1} · 2×${fmt(roll.length, 2)}m`;
+          : `R${index + 1}${roll.sourceRollId ? " recuperato" : ""} · ${fmt(roll.width || 2, 2)}×${fmt(roll.length, 2)}m`;
         drawLabelPill(labelText, toPx(roll.cx), toPx(roll.cy), {
           textColor: valid ? "#0d47a1" : B.danger,
           bg: valid ? "rgba(235,244,255,0.96)" : "rgba(255,235,235,0.96)",
@@ -1876,6 +1934,13 @@ function FreeDrawCanvas({
       });
     }
 
+    // Preserve roll visibility when a different object is selected.
+    inactiveAreas.forEach((a, ai) => (a.rolls || []).forEach((roll, ri) => {
+      const corners=getRollCorners(roll);
+      ctx.beginPath(); corners.forEach((p,i)=>i?ctx.lineTo(toPx(p.x),toPx(p.y)):ctx.moveTo(toPx(p.x),toPx(p.y)));ctx.closePath();
+      ctx.fillStyle="rgba(21,101,192,.12)";ctx.fill();ctx.strokeStyle="#3978ae";ctx.lineWidth=1.5;ctx.stroke();
+      drawLabelPill(`${a.label || "Area "+(ai+1)} · R${ri+1}${roll.sourceRollId ? " recuperato" : ""}`,toPx(roll.cx),toPx(roll.cy),{textColor:"#17466e"});
+    }));
     // Obstacles remain visible above turf and roll previews, regardless of selection.
     [...inactiveAreas, { ...activeAreaEntry, points, closed }].filter(a => a.kind === "exclusion" && a.closed && a.points.length >= 3).forEach(a => {
       ctx.beginPath();
@@ -1889,7 +1954,7 @@ function FreeDrawCanvas({
 
     if (points.length === 0) {
       // Empty state hint
-      const cx = canvasW / 2, cy = canvasH / 2;
+      const cx = canvasW / 2 - view.x, cy = canvasH / 2 - view.y;
       ctx.save();
       ctx.beginPath();
       if (ctx.roundRect) ctx.roundRect(cx - 170, cy - 30, 340, 56, 10);
@@ -1903,13 +1968,38 @@ function FreeDrawCanvas({
       ctx.fillText(`Griglia = ${fmt(GRID, 2)} m  ·  Chiudi l'area sul punto 1`, cx, cy + 14);
       ctx.textAlign = "start";
     }
-  }, [points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices, previewMode, activeAreaKind, inactiveAreas, borderEdges, selectedBorderEdges, showBorderOverlay, activeAreaId, activeAreaEntry]);
+    if(pendingOffcut) {
+      const sourceCorners=getRollCorners(pendingOffcut.piece);
+      ctx.beginPath();sourceCorners.forEach((p,i)=>i?ctx.lineTo(toPx(p.x),toPx(p.y)):ctx.moveTo(toPx(p.x),toPx(p.y)));ctx.closePath();
+      ctx.fillStyle="rgba(245,158,11,.35)";ctx.fill();ctx.strokeStyle="#b45309";ctx.setLineDash([5,4]);ctx.stroke();ctx.setLineDash([]);
+      if(hoverPt) {
+        const check=plannerOffcutPlacement(areas,pendingOffcut,hoverPt.x,hoverPt.y);
+        const corners=getRollCorners({...pendingOffcut.piece,cx:hoverPt.x,cy:hoverPt.y});
+        ctx.beginPath();corners.forEach((p,i)=>i?ctx.lineTo(toPx(p.x),toPx(p.y)):ctx.moveTo(toPx(p.x),toPx(p.y)));ctx.closePath();
+        ctx.fillStyle=check.valid?"rgba(16,185,129,.35)":"rgba(239,68,68,.25)";ctx.fill();ctx.strokeStyle=check.valid?"#047857":"#dc2626";ctx.lineWidth=3;ctx.stroke();
+        drawLabelPill(check.valid?"Clicca per posare":"Zona non disponibile",toPx(hoverPt.x),toPx(hoverPt.y),{textColor:check.valid?"#047857":"#b91c1c"});
+      }
+    }
+    labelQueue.forEach(args => renderLabelPill(...args));
+    ctx.restore();
+  }, [pendingOffcut, areas, view, showDimensions, points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices, previewMode, activeAreaKind, inactiveAreas, borderEdges, selectedBorderEdges, showBorderOverlay, activeAreaId, activeAreaEntry]);
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} className="gp-drawing-board">
+      <div className="gp-view-tools">
+        <strong>TAVOLA 01 · PIANTA</strong>
+        {pendingOffcut && <button type="button" onClick={onCancelOffcut}>Annulla recupero</button>}
+        <button type="button" onClick={fitDrawing}>Inquadra tutto</button>
+        <button type="button" aria-pressed={panMode} onClick={() => setPanMode(v=>!v)}>{panMode ? "Mano attiva" : "Sposta vista"}</button>
+        <button type="button" aria-pressed={showDimensions} onClick={() => setShowDimensions(v=>!v)}>Quote {showDimensions ? "visibili" : "nascoste"}</button>
+        <button type="button" aria-label="Riduci zoom" onClick={()=>setZoom(z=>Math.max(.1,z/1.25))}>−</button>
+        <span>{Math.round(zoom*100)}%</span>
+        <button type="button" aria-label="Aumenta zoom" onClick={()=>setZoom(z=>Math.min(5,z*1.25))}>＋</button>
+        <span>Metri · snap {gridStep} m</span>
+      </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
-        <div style={{ width: "100%", minHeight: 34, fontSize: 12, color: closed ? B.primary : B.textMuted, fontWeight: 500, lineHeight: 1.35 }}>
-          {drawMode === "roll"
+        <div className="gp-canvas-hint" style={{ width: "100%", minHeight: 18, fontSize: 11, color: closed ? B.primary : B.textMuted, fontWeight: 500, lineHeight: 1.35 }}>
+          {pendingOffcut ? "RECUPERO SFRIDO · Sposta il puntatore sul prato e clicca per posare. Esc per annullare." : drawMode === "roll"
             ? `Modalità rotoli: click inizio + click fine. Larghezza fissa ${MANUAL_ROLL_WIDTH_M}m, lunghezza max ${MANUAL_ROLL_MAX_LENGTH_M}m.`
             : closed
               ? (selectedVertices.size > 0
@@ -2005,11 +2095,11 @@ function FreeDrawCanvas({
           <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: B.textMuted }}>
             Zoom
             <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))} style={{ padding: "3px 4px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11, color: B.text }}>
-              {[0.6, 0.8, 1, 1.3, 1.6].map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
+              {[...new Set([0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, zoom])].sort((a,b)=>a-b).map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
             </select>
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: B.textMuted }}>
-            Griglia
+            Aggancio
             <select value={gridStep} onChange={(e) => setGridStep(Number(e.target.value))} style={{ padding: "3px 4px", borderRadius: 4, border: "1px solid " + B.border, background: B.white, fontSize: 11, color: B.text }}>
               {GRID_STEPS.map((s) => <option key={s} value={s}>{s.toFixed(2)}m</option>)}
             </select>
@@ -2029,7 +2119,7 @@ function FreeDrawCanvas({
           height: canvasH,
           borderRadius: 10,
           border: "1.5px solid " + (closed ? B.primary : B.border),
-          cursor: drawMode === "roll" && closed ? "crosshair" : closed ? (dragging !== null ? "grabbing" : "default") : "crosshair",
+          cursor: pendingOffcut ? "crosshair" : panMode ? "grab" : drawMode === "roll" && closed ? "crosshair" : closed ? (dragging !== null ? "grabbing" : "default") : "crosshair",
           display: "block",
           touchAction: "none",
         }}
@@ -2235,12 +2325,11 @@ function ShapeInput({
   borderEdges = [],
   selectedBorderEdges = [],
   showBorderOverlay = false,
+  pendingOffcut = null, onPlaceOffcut = () => {}, onCancelOffcut = () => {},
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
-        Definisci uno o più perimetri cliccando i vertici e chiudendo ogni area sul punto iniziale. Poi usa <strong style={{ color: B.dark }}>Aggiungi rotolo</strong> sull'area attiva per simulare la posa reale e gli scarti.
-      </div>
+
       <FreeDrawCanvas
         points={customPts}
         setPoints={setCustomPts}
@@ -2256,6 +2345,7 @@ function ShapeInput({
         borderEdges={borderEdges}
         selectedBorderEdges={selectedBorderEdges}
         showBorderOverlay={showBorderOverlay}
+        pendingOffcut={pendingOffcut} onPlaceOffcut={onPlaceOffcut} onCancelOffcut={onCancelOffcut}
       />
     </div>
   );
@@ -2658,13 +2748,17 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
 
 function RollUsageSummary({ usage }) {
   if (!usage) return null;
-  return <section aria-label="Utilizzo dei rotoli" style={{ padding: 12, border: "1px solid " + B.border, borderRadius: 10, background: B.white, marginBottom: 12 }}>
-    <strong style={{ fontSize: 13 }}>Utilizzo dei rotoli da 2 m</strong>
-    <dl style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "6px 12px", fontSize: 12 }}>
-      {[["Materiale tracciato", usage.material], ["Prato coperto", usage.covered], ["Prato ancora scoperto", usage.uncovered], ["Ritagli fuori prato / su ostacoli", usage.offcut], ["Sovrapposizioni tra rotoli", usage.overlap]].map(([label, value]) => <React.Fragment key={label}><dt>{label}</dt><dd style={{ margin: 0, fontWeight: 700 }}>{fmt(value, 2)} m²</dd></React.Fragment>)}
-    </dl>
-    <div style={{ fontSize: 13, fontWeight: 700 }}>Materiale non utilizzato: {fmt(usage.unused, 2)} m² ({fmt(usage.wastePercent, 1)}%)</div>
-    <p style={{ fontSize: 11, color: B.textMuted, marginBottom: 0 }}>Percentuale sul materiale tracciato. I ritagli sono potenzialmente recuperabili: forma e verso del filo vanno verificati prima del riutilizzo.</p>
+  const percent=usage.netArea>0?Math.min(100,usage.covered/usage.netArea*100):0;
+  return <section className="gp-usage" aria-label="Utilizzo dei rotoli">
+    <strong>Il progetto in numeri</strong>
+    <div className="gp-usage-main"><b>{fmt(usage.netArea,1)} m²</b><span>prato da realizzare</span></div>
+    <div className="gp-progress" role="progressbar" aria-label="Prato coperto" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}><span style={{width:percent+"%"}}/></div>
+    <p><b>{fmt(percent,0)}% coperto</b> · {usage.uncovered<.01?"Posa completata":`${fmt(usage.uncovered,2)} m² ancora da coprire`}</p>
+    <dl>{[["Materiale inserito",usage.material],["Prato coperto",usage.covered],["Sfrido e sovrapposizioni",usage.unused]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{fmt(value,2)} m²</dd></div>)}</dl>
+    <details><summary>Come si compone lo sfrido · {fmt(usage.wastePercent,1)}%</summary>
+      <p>{fmt(usage.offcut,2)} m² fuori dal prato o sugli ostacoli.<br/>{fmt(usage.overlap,2)} m² sovrapposti ad altro materiale.</p>
+      <p>Una parte può essere recuperata. Le proposte disponibili sono nel pannello Recupera sfrido. Il materiale inserito indica i pezzi disegnati, non un ordine d’acquisto completo.</p>
+    </details>
   </section>;
 }
 
@@ -2674,7 +2768,6 @@ function InstallationNeedsPanel({ area, perimeter, borderType, borderMeters, man
   const needs = estimateInstallationNeeds(area, perimeter, manualRolls, rollUsage);
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      <RollUsageSummary usage={rollUsage} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
         <MetricCard label="TNT da ordinare" value={`${fmt(needs.geo)} m²`} />
         <MetricCard
@@ -2715,7 +2808,6 @@ function PavingNeedsPanel({ pavingNeedsByArea, pavingTilesTotal }) {
   return (
     <div style={{ display: "grid", gap: 10, marginTop: 14, paddingTop: 14, borderTop: "1px dashed " + B.borderLight }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: B.dark }}>Pavimentazione WPC</div>
-      <RollUsageSummary usage={rollUsage} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
         {pavingNeedsByArea.map((p, i) => (
           <MetricCard
@@ -2974,6 +3066,115 @@ const fieldInp = { width: "100%", padding: "10px 14px", border: "1.5px solid " +
    canvas restano inline — qui solo l'ossatura: topbar/rail/area-strip/
    inspector/dock). Stessi colori di B, solo portati in variabili CSS.
    ═══════════════════════════════════════════ */
+function GpPrecisionPanel({ area, areas, onUpdate, onAdd }) {
+  const [rect, setRect] = useState({ x: 1, y: 1, w: 8, h: 6, angle:0, kind: "turf", label: "Prato" });
+  const [error, setError] = useState("");
+  const [rollForm, setRollForm] = useState({cx:5,cy:2,length:10,angle:0});
+  const numeric = (key, title) => <label>{title}<input type="number" step="0.01" value={rect[key]} onChange={e=>setRect(r=>({...r,[key]:e.target.value}))}/></label>;
+  return <div className="gp-precision">
+    <div className="gp-section-title">Costruzione precisa</div>
+    <label>Elemento<select value={rect.kind+":"+rect.label} onChange={e=>{ const [kind,label]=e.target.value.split(":"); setRect(r=>({...r,kind,label})); }}>
+      {["turf:Prato","exclusion:Abitazione","exclusion:Casetta","exclusion:Patio esistente","exclusion:Piscina","exclusion:Aiuola","paving:Pavimentazione"].map(v=><option key={v} value={v}>{v.split(":")[1]}</option>)}
+    </select></label>
+    <div className="gp-number-grid">{numeric("w","Larghezza m")}{numeric("h","Profondità m")}{numeric("x","Origine X m")}{numeric("y","Origine Y m")}{numeric("angle","Rotazione °")}</div>
+    <button type="button" onClick={()=>{
+      const {x,y,w,h}=Object.fromEntries(["x","y","w","h"].map(k=>[k,Number(rect[k])]));
+      if (![x,y,w,h].every(Number.isFinite) || w<=0 || h<=0) { setError("Inserisci dimensioni maggiori di zero."); return; }
+      const angle=Number(rect.angle)*Math.PI/180;
+      if (!Number.isFinite(angle)) {setError("Inserisci un angolo valido.");return;}
+      onAdd({...createPlannerArea(rect.kind), label:rect.label, closed:true, points:[[0,0],[w,0],[w,h],[0,h]].map(([dx,dy])=>({x:x+dx*Math.cos(angle)-dy*Math.sin(angle),y:y+dx*Math.sin(angle)+dy*Math.cos(angle)}))}); setError("");
+    }}>＋ Inserisci rettangolo</button>
+    {area.points.length>0 && <details><summary>Coordinate dei vertici · {area.points.length}</summary>
+      <div className="gp-vertices">{area.points.map((p,i)=><div key={i}><span>P{i+1}</span>{["x","y"].map(axis=><input key={axis} aria-label={`P${i+1} ${axis} metri`} type="number" step="0.01" value={p[axis]} onChange={e=>{if(e.target.value!=="" && Number.isFinite(Number(e.target.value))) onUpdate(a=>({...a,points:a.points.map((v,j)=>j===i?{...v,[axis]:Number(e.target.value)}:v)}));}}/>)}</div>)}</div>
+    </details>}
+    {area.closed && area.kind==="turf" && <details><summary>Inserisci rotolo con misure</summary>
+      <p>Larghezza 2 m. Posizione del centro e direzione di posa.</p>
+      <div className="gp-number-grid">{[["length","Lunghezza m"],["angle","Direzione °"],["cx","Centro X m"],["cy","Centro Y m"]].map(([k,label])=><label key={k}>{label}<input type="number" step="0.01" value={rollForm[k]} onChange={e=>setRollForm(r=>({...r,[k]:e.target.value}))}/></label>)}</div>
+      <button type="button" onClick={()=>{
+        const r=Object.fromEntries(Object.entries(rollForm).map(([k,v])=>[k,Number(v)]));
+        if (!Object.values(r).every(Number.isFinite)||r.length<1||r.length>25) {setError("Lunghezza rotolo da 1 a 25 metri.");return;}
+        onUpdate(a=>({...a,rolls:[...a.rolls,{...r,angle:r.angle*Math.PI/180,width:2,id:"roll-"+Date.now()}]}));setError("");
+      }}>＋ Inserisci rotolo da 2 m</button>
+    </details>}
+    {error && <p role="alert" style={{color:"#b42318"}}>{error}</p>}
+  </div>;
+}
+
+function splitPlannerOffcut(area, index, length, x, y, areas = [area]) {
+  const roll = area.rolls[index];
+  if (!roll || ![length,x,y].every(Number.isFinite) || length<=0 || length>=roll.length) throw new Error("Il taglio deve essere positivo e più corto del rotolo.");
+  const ux=Math.cos(roll.angle||0), uy=Math.sin(roll.angle||0);
+  const piece={...roll,id:"cut-"+Date.now(),sourceRollId:roll.id,length,cx:roll.cx+ux*(roll.length-length)/2,cy:roll.cy+uy*(roll.length-length)/2};
+  if (plannerNetArea([getRollCorners(piece)], areas.filter(a=>a.closed && (!a.kind || a.kind==="turf")).map(a=>a.points)) < length*(roll.width||2)-0.00001) throw new Error("La porzione scelta copre il prato: scegli un taglio terminale più corto.");
+  const retained={...roll,length:roll.length-length,cx:roll.cx-ux*length/2,cy:roll.cy-uy*length/2};
+  return area.rolls.map((r,i)=>i===index?retained:r).concat({...piece,cx:x,cy:y});
+}
+
+// Recover only rectangular strips whose complete footprint is unused.
+// Quantization is conservative (5 cm); residual triangular waste is not offered.
+function plannerCutStrip(roll, size, axis = "length", side = 1) {
+  const dimension = Number(roll[axis]) || (axis === "width" ? 2 : 0);
+  const angle = Number(roll.angle) || 0;
+  const ux = axis === "length" ? Math.cos(angle) : -Math.sin(angle);
+  const uy = axis === "length" ? Math.sin(angle) : Math.cos(angle);
+  const piece = {...roll, [axis]:size, cx:roll.cx+side*ux*(dimension-size)/2, cy:roll.cy+side*uy*(dimension-size)/2};
+  const retained = {...roll, [axis]:dimension-size, cx:roll.cx-side*ux*size/2, cy:roll.cy-side*uy*size/2};
+  return {piece, retained};
+}
+function plannerPieceLawnArea(piece, areas) {
+  const turf=areas.filter(a=>a.closed && (!a.kind || a.kind==="turf")).map(a=>a.points);
+  const exclusions=areas.filter(a=>a.closed && ["exclusion","paving"].includes(a.kind)).map(a=>a.points);
+  const polygon=getRollCorners(piece);
+  return Math.max(0,plannerNetArea([polygon],exclusions)-plannerNetArea([polygon],[...exclusions,...turf]));
+}
+function plannerRecoverableStrips(areas) {
+  const result=[];
+  areas.forEach((area,areaIndex)=>{
+    if (!area.closed || (area.kind && area.kind!=="turf")) return;
+    (area.rolls||[]).forEach((roll,index)=>{
+      for (const axis of ["length","width"]) for (const side of [-1,1]) {
+        const dimension=Number(roll[axis]) || (axis==="width"?2:0);
+        let lo=0,hi=Math.max(0,Math.floor((dimension-0.1+1e-8)/0.05));
+        while(lo<hi) {
+          const mid=Math.ceil((lo+hi)/2);
+          if(plannerPieceLawnArea(plannerCutStrip(roll,mid*0.05,axis,side).piece,areas)<1e-8) lo=mid; else hi=mid-1;
+        }
+        const size=lo*0.05;
+        if(size<0.1) continue;
+        const {piece,retained}=plannerCutStrip(roll,size,axis,side);
+        result.push({key:`${area.id}:${index}:${axis}:${side}`,areaId:area.id,index,source:roll,axis,side,size,piece,retained,
+          label:`Area ${areaIndex+1} · R${index+1}`,surface:piece.length*(piece.width||2)});
+      }
+    });
+  });
+  return result.sort((a,b)=>b.surface-a.surface);
+}
+function plannerOffcutPlacement(areas, candidate, x, y) {
+  const owner=areas.find(a=>a.id===candidate?.areaId);
+  if(!owner || owner.rolls[candidate.index]!==candidate.source) return {valid:false,reason:"Il rotolo è cambiato: seleziona nuovamente il ritaglio."};
+  if(plannerPieceLawnArea(candidate.piece,areas)>1e-8) return {valid:false,reason:"Il progetto è cambiato: questo taglio ora coprirebbe il prato."};
+  const piece={...candidate.piece,cx:x,cy:y};
+  const surface=piece.length*(piece.width||2);
+  if(!Number.isFinite(x)||!Number.isFinite(y)||plannerPieceLawnArea(piece,areas)<surface-1e-6) return {valid:false,reason:"Sposta il ritaglio interamente sul prato, fuori dagli ostacoli."};
+  const other=areas.flatMap(a=>(a.rolls||[]).map((r,i)=>getRollCorners(a.id===owner.id && i===candidate.index?candidate.retained:r)));
+  if(plannerNetArea([getRollCorners(piece)],other)<surface-1e-6) return {valid:false,reason:"Qui c’è già materiale: sposta il ritaglio su una zona scoperta."};
+  return {valid:true,reason:"Posizione valida · clicca per confermare",piece};
+}
+function GpOffcutTray({ candidates, pending, onChoose, onCancel, onUndo, canUndo }) {
+  return <section className="gp-offcut-tray" aria-label="Recupera sfrido">
+    <div className="gp-section-title">Recupera sfrido</div>
+    <p>1. Scegli un ritaglio · 2. Spostalo sulla tavola · 3. Clicca per posarlo.</p>
+    {pending ? <div role="status"><strong>{pending.label} · {fmt(pending.piece.length,2)} × {fmt(pending.piece.width||2,2)} m</strong><p>Il pezzo segue il puntatore. Verde: puoi posarlo. Rosso: cambia posizione. Il rotolo originale verrà tagliato solo alla conferma.</p><button type="button" onClick={onCancel}>Annulla posizionamento</button></div> : <>
+      <p>{candidates.length ? "Tagli rettangolari disponibili, dal più grande. Le proposte sono alternative e si aggiornano dopo ogni utilizzo." : "Nessuna striscia rettangolare recuperabile. I ritagli triangolari o irregolari non sono ancora gestiti: lo sfrido totale resta visibile nel riepilogo."}</p>
+      <div className="gp-offcut-list">{candidates.map(c=><button type="button" key={c.key} onClick={()=>onChoose(c)}>
+        <span className="gp-piece-icon" aria-hidden="true">▱</span><span><strong>{c.label}</strong><small>{fmt(c.piece.length,2)} × {fmt(c.piece.width||2,2)} m · {c.axis==="length"?"testata":"fascia laterale"}</small></span><b>{fmt(c.surface,2)} m² →</b>
+      </button>)}</div>
+    </>}
+    {canUndo && <button type="button" onClick={onUndo}>Annulla ultimo recupero</button>}
+    <small>Verso del pelo conservato. Nessuna coordinata da inserire.</small>
+  </section>;
+}
+
 function GpChromeStyles() {
   return (
     <style>{`
@@ -3048,7 +3249,7 @@ function GpChromeStyles() {
         background: ${B.white}; border: none; border-bottom: 2px solid transparent; cursor: pointer;
       }
       .gp-inspector-tabs button.is-active { color: ${B.primary}; border-bottom-color: ${B.primary}; background: ${B.light}; }
-      .gp-inspector-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; max-height: 640px; overflow-y: auto; }
+      .gp-inspector-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; max-height: 52vh; overflow-y: auto; }
 
       .gp-dock { background: ${B.white}; border: 1px solid ${B.borderLight}; border-radius: 12px; overflow: hidden; }
       .gp-dock-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid ${B.borderLight}; }
@@ -3070,8 +3271,54 @@ function GpChromeStyles() {
       }
       .gp-preview-toggle button.is-active { background: ${B.primary}; color: #fff; }
 
+      .gp-shell { max-width:none; padding:12px; gap:8px; background:#e8edf3; }
+      .gp-topbar { background:#172738; color:white; border:0; border-radius:6px; padding:12px 18px; }
+      .gp-topbar-id strong { color:white; font-size:17px; }
+      .gp-topbar-id span { color:#b9cadb; }
+      .gp-workspace { gap:10px; }
+      .gp-rail { border-radius:6px; padding:6px; flex-basis:62px; background:#f8fafc; }
+      .gp-rail-btn { border-radius:4px; }
+      .gp-area-strip,.gp-inspector,.gp-dock { border-radius:6px; border-color:#ccd6e2; }
+      .gp-inspector { flex-basis:290px; max-height:calc(100vh - 110px); overflow:auto; }
+      .gp-drawing-board { background:white; padding:10px; border:1px solid #ccd6e2; border-radius:6px; }
+      .gp-view-tools { display:flex; gap:6px; align-items:center; flex-wrap:wrap; border-bottom:1px solid #dce4ed; padding-bottom:10px; margin-bottom:10px; }
+      .gp-view-tools strong { font:700 11px monospace; letter-spacing:1px; margin-right:auto; color:#31465c; }
+      .gp-view-tools span { font:11px monospace; color:#52657a; }
+      .gp-view-tools button,.gp-precision button { background:#edf3f9; border:1px solid #b9c8d8; border-radius:4px; padding:7px 10px; color:#213b54; cursor:pointer; }
+      .gp-view-tools button[aria-pressed=true] { background:#203b56; color:white; }
+      .gp-precision { padding:14px; background:#f8fafc; border-bottom:1px solid #ccd6e2; display:flex; flex-direction:column; gap:10px; }
+      .gp-offcut-tray { padding:14px; background:#eff8f5; border-bottom:1px solid #b4d6c8; }
+      .gp-offcut-tray p { font-size:12px; line-height:1.5; color:#35534a; }
+      .gp-offcut-tray small { display:block; font-size:11px; color:#48645a; margin-top:6px; }
+      .gp-offcut-tray button { cursor:pointer; border:1px solid #a2c9b9; border-radius:6px; background:white; padding:9px; color:#174b37; }
+      .gp-offcut-list { max-height:230px; overflow:auto; display:grid; gap:6px; }
+      .gp-offcut-list button { display:flex; align-items:center; gap:8px; text-align:left; }
+      .gp-offcut-list button b { margin-left:auto; white-space:nowrap; font-size:11px; }
+      .gp-piece-icon { font-size:24px; }
+      .gp-usage { padding:14px; background:white; border:1px solid #d6e1dc; border-radius:8px; }
+      .gp-usage-main { display:flex; align-items:baseline; gap:8px; margin:12px 0; }
+      .gp-usage-main b { font-size:24px; color:#184e39; }
+      .gp-usage-main span,.gp-usage p,.gp-usage summary { font-size:12px; line-height:1.5; }
+      .gp-progress { height:8px; border-radius:4px; background:#e5ece8; overflow:hidden; }
+      .gp-progress>span { display:block; height:100%; background:#228463; }
+      .gp-usage dl { display:grid; gap:10px; font-size:12px; }
+      .gp-usage dl>div { display:flex; justify-content:space-between; gap:10px; }
+      .gp-usage dd { margin:0; font-weight:700; white-space:nowrap; }
+      .gp-usage summary { cursor:pointer; color:#315849; }
+      .gp-section-title { color:#233c55; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:1px; }
+      .gp-precision label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:#52657a; }
+      .gp-precision input,.gp-precision select { box-sizing:border-box; width:100%; min-width:0; border:1px solid #bdcad8; background:white; border-radius:4px; padding:7px; font:12px monospace; color:#20364c; }
+      .gp-number-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+      .gp-precision summary { cursor:pointer; font-size:12px; padding:8px 0; font-weight:600; }
+      .gp-precision p { font-size:11px; line-height:1.5; }
+      .gp-vertices { max-height:220px; overflow:auto; }
+      .gp-vertices>div { display:grid; grid-template-columns:28px 1fr 1fr; align-items:center; gap:4px; margin:4px 0; font-size:11px; }
       @media (max-width: 900px) {
         .gp-workspace { flex-direction: column; }
+        .gp-inspector { max-height:none; }
+        .gp-topbar { padding:8px 12px; gap:8px; }
+        .gp-rail-btn { flex-direction:row; padding:6px; }
+        .gp-rail { padding:4px; }
         .gp-rail { flex-direction: row; position: static; flex: 0 0 auto; overflow-x: auto; }
         .gp-inspector { flex: 1 1 auto; position: static; width: 100%; }
       }
@@ -3093,8 +3340,8 @@ function GpTopBar({ client, address, area, previewMode, onSetPreviewMode, onOpen
       </div>
       <div className="gp-topbar-spacer" />
       <div className="gp-preview-toggle">
-        <button type="button" className={previewMode ? "" : "is-active"} onClick={() => onSetPreviewMode(false)}>✎ Schema</button>
-        <button type="button" className={previewMode ? "is-active" : ""} onClick={() => onSetPreviewMode(true)}>🌿 Anteprima</button>
+        <button type="button" className={previewMode ? "" : "is-active"} onClick={() => onSetPreviewMode(false)}>Pianta tecnica</button>
+        <button type="button" className={previewMode ? "is-active" : ""} onClick={() => onSetPreviewMode(true)}>Materiali</button>
       </div>
       <button
         type="button"
@@ -3289,6 +3536,18 @@ function GardenPlanner() {
   const shape = "custom";
   const [plannerAreas, setPlannerAreas] = useState(() => [initialArea]);
   const [activeAreaId, setActiveAreaId] = useState(() => initialArea.id);
+  const [pendingOffcut,setPendingOffcut]=useState(null);
+  const [cutHistory,setCutHistory]=useState(null);
+  const recoverableStrips=useMemo(()=>plannerRecoverableStrips(plannerAreas),[plannerAreas]);
+  const placeOffcut=(x,y)=>{
+    const check=plannerOffcutPlacement(plannerAreas,pendingOffcut,x,y);
+    if(!check.valid) return;
+    const candidate=pendingOffcut;
+    const piece={...check.piece,id:`reused-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,sourceRollId:candidate.source.id || candidate.key};
+    const after=plannerAreas.map(a=>a.id===candidate.areaId?{...a,rolls:a.rolls.map((r,i)=>i===candidate.index?candidate.retained:r).concat(piece)}:a);
+    setCutHistory({before:plannerAreas,after});setPlannerAreas(after);setPendingOffcut(null);
+  };
+
   const [borderType, setBorderType] = useState("pvc");
   const [selectedBorderEdges, setSelectedBorderEdges] = useState([]);
   const [substrate, setSubstrate] = useState({ scavoCm: 10, drenateCm: 5, sabbiaCm: 3 });
@@ -3787,6 +4046,7 @@ function GardenPlanner() {
               previewMode={previewMode}
               borderEdges={borderEdges}
               selectedBorderEdges={selectedBorderEdges}
+              pendingOffcut={pendingOffcut} onPlaceOffcut={placeOffcut} onCancelOffcut={()=>setPendingOffcut(null)}
               showBorderOverlay={inspectorFocus === "border"}
             />
             {area > 0 && (
@@ -3839,6 +4099,15 @@ function GardenPlanner() {
           </div>
 
           <div id="gp-inspector" className="gp-inspector" style={{ display: inspectorOpen ? undefined : "none" }}>
+            {turfArea>0 && <RollUsageSummary usage={rollUsage}/> }
+            {allManualRolls.length>0 && <GpOffcutTray candidates={recoverableStrips} pending={pendingOffcut}
+              onChoose={c=>{setPendingOffcut(c);setActiveAreaId(c.areaId);setDrawMode("shape");}}
+              onCancel={()=>setPendingOffcut(null)} canUndo={cutHistory?.after===plannerAreas}
+              onUndo={()=>{setPlannerAreas(cutHistory.before);setCutHistory(null);setPendingOffcut(null);}}/>}
+            <GpPrecisionPanel area={activeArea} areas={plannerAreas} onUpdate={updateActiveArea} onAdd={next=>{
+              setPlannerAreas(prev=>prev.length===1 && !prev[0].points.length ? [next] : [...prev,next]);
+              setActiveAreaId(next.id); setDrawMode("shape"); setInspectorFocus("draw");
+            }}/>
             <div className="gp-inspector-tabs">
               <button type="button" className={inspectorTab === "element" ? "is-active" : ""} onClick={() => setInspectorTab("element")}>Elemento</button>
               <button type="button" className={inspectorTab === "summary" ? "is-active" : ""} onClick={() => setInspectorTab("summary")}>Riepilogo</button>
@@ -3849,7 +4118,7 @@ function GardenPlanner() {
                   {activeAreaKind === "exclusion" && <div style={{ marginBottom: 12 }}>
                     <label style={lbl} htmlFor="gp-exclusion-label">Elemento escluso dal prato</label>
                     <select id="gp-exclusion-label" value={activeArea.label || "Casa / ostacolo"} onChange={e => updateActiveArea(a => ({ ...a, label: e.target.value }))} style={fieldInp}>
-                      {["Casa / ostacolo", "Casetta", "Patio esistente", "Piscina", "Aiuola"].map(label => <option key={label}>{label}</option>)}
+                      {["Casa / ostacolo", "Abitazione", "Casetta", "Patio esistente", "Piscina", "Aiuola"].map(label => <option key={label}>{label}</option>)}
                     </select>
                     <p style={{ fontSize: 12 }}>Disegna il contorno dell'elemento. Solo la parte che interseca il giardino viene sottratta; qui non si conteggiano prato, pavimentazione o fondo.</p>
                   </div>}

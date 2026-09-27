@@ -69,3 +69,62 @@ test('planner: a large roll outside lawn cannot enable layout-based glue calcula
   const result = estimateNeeds(70,34,[],{material:100,covered:0,unused:100});
   assert.equal(result.calcMode,'area'); near(result.glueKg,21); near(result.layoutCoverageRatio,0); near(result.rollWasteArea,100);
 });
+
+const splitStart = source.indexOf('function splitPlannerOffcut(');
+const splitEnd = source.indexOf('// Recover only rectangular strips', splitStart);
+const split = vm.runInNewContext('const MANUAL_ROLL_WIDTH_M=2;\n'+source.slice(cornersStart,cornersEnd)+source.slice(start,end)+source.slice(splitStart,splitEnd)+'\nsplitPlannerOffcut;');
+test('planner offcut: preserves material and grain, increases coverage after reuse', () => {
+  const area={kind:'turf',closed:true,points:rect(0,0,8,6),rolls:[{id:'r1',cx:5,cy:1,length:10,width:2,angle:0}]};
+  const next=split(area,0,2,1,3);
+  near(next.reduce((n,r)=>n+r.length*r.width,0),20);
+  near(next[0].cx,4); near(next[0].length,8);
+  near(next[1].angle,0); assert.equal(next[1].sourceRollId,'r1');
+  near(usage([area],area.rolls).covered,16);
+  near(usage([area],next).covered,20);
+  near(usage([area],next).unused,0);
+  assert.equal(area.rolls[0].length,10);
+});
+test('planner offcut: rejects cuts on lawn, other lawn areas, invalid lengths', () => {
+  const area={kind:'turf',closed:true,points:rect(0,0,8,6),rolls:[{cx:5,cy:1,length:10,width:2,angle:0}]};
+  assert.throws(()=>split(area,0,3,1,3),/copre il prato/);
+  assert.throws(()=>split(area,0,2,1,3,[area,{kind:'turf',closed:true,points:rect(8,0,2,2)}]),/copre il prato/);
+  for (const length of [0,-1,10,NaN]) assert.throws(()=>split(area,0,length,1,3));
+});
+test('planner offcut: rotated cuts preserve the retained footprint', () => {
+  const area={kind:'turf',closed:true,points:rect(0,0,2,8),rolls:[{cx:1,cy:5,length:10,width:2,angle:Math.PI/2}]};
+  const next=split(area,0,2,1,3);
+  near(next[0].cx,1);near(next[0].cy,4);near(next[0].angle,Math.PI/2);
+  near(next[1].angle,Math.PI/2);near(next[1].length,2);
+});
+
+const recoverStart=source.indexOf('function plannerCutStrip(');
+const recoverEnd=source.indexOf('function GpOffcutTray(',recoverStart);
+const guided=vm.runInNewContext('const MANUAL_ROLL_WIDTH_M=2;\n'+source.slice(cornersStart,cornersEnd)+source.slice(start,end)+source.slice(recoverStart,recoverEnd)+'\n({find:plannerRecoverableStrips,place:plannerOffcutPlacement});');
+const recoveryArea=()=>({id:'a',kind:'turf',closed:true,points:rect(0,0,8,6),rolls:[{id:'r',cx:5,cy:1,length:10,width:2,angle:0}]});
+test('guided recovery: automatically finds safe end strip, validates placement and preserves material',()=>{
+  const area=recoveryArea();
+  const candidates=guided.find([area]);
+  assert.equal(candidates.length,1);
+  const c=candidates[0];near(c.size,2);near(c.surface,4);
+  const result=guided.place([area],c,1,3);assert.equal(result.valid,true);
+  const rolls=[c.retained,result.piece];
+  near(usage([area],rolls).material,20);near(usage([area],rolls).covered,20);
+  assert.equal(guided.place([area],c,1,1).valid,false); // existing roll
+  assert.equal(guided.place([area],c,-1,3).valid,false); // outside
+  assert.equal(guided.place([area,{kind:'exclusion',closed:true,points:rect(0,2,2,2)}],c,1,3).valid,false);
+  assert.equal(guided.place([{...area,rolls:[{...area.rolls[0]}]}],c,1,3).valid,false); // stale source
+});
+test('guided recovery: side strip, reversed orientation and exclusion holes',()=>{
+  const a=recoveryArea();a.rolls=[{id:'r',cx:4,cy:0,length:8,width:2,angle:Math.PI}];
+  const side=guided.find([a]).find(c=>c.axis==='width');assert.ok(side);near(side.size,1);
+  near(side.piece.length*side.piece.width+side.retained.length*side.retained.width,16);
+  const b=recoveryArea();b.points=rect(0,0,10,6);
+  assert.equal(guided.find([b]).length,0);
+  const withHole=guided.find([b,{kind:'exclusion',closed:true,points:rect(8,0,2,2)}]);
+  assert.ok(withHole.some(c=>Math.abs(c.size-2)<1e-8));
+});
+test('guided recovery: never offers triangular waste as a full rectangle',()=>{
+  const a=recoveryArea();a.points=[{x:0,y:0},{x:10,y:0},{x:0,y:10}];
+  a.rolls=[{id:'r',cx:5,cy:1,length:10,width:2,angle:0}];
+  assert.equal(guided.find([a]).length,0);
+});
