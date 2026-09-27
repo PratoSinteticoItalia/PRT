@@ -90,7 +90,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260927-sidebar-icon-fix";
+const APP_SHELL_VERSION = "20260927-garden-direct-editing";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -184,10 +184,8 @@ function sanitizeQuoteBridgeReportHtml(value) {
 // singola voce su un rettangolo stretto). Le key (telo/bande/colla/picchetti)
 // combaciano apposta con quelle del motore prezzi, così l'interfaccia
 // "Materiali automatici" del Generatore le mostra senza bisogno di sapere da
-// dove vengono. Gemella di getMaterialBreakdown — questo file non può fare
-// `import` da lib/ (caricato via Babel Standalone, non un modulo ES), quindi
-// i prezzi restano duplicati in MATERIAL_COSTS: se cambiano lì, cambiarli
-// anche qui.
+// dove vengono. Il planner trasferisce solo quantità: unitPrice e total
+// sono zero per compatibilità con il formato del Generatore.
 function buildPlannerMaterialItems(installNeeds = {}, borderType = "nessuna", borderMeters = 0, pavingNeedsByArea = [], substrate = null, area = 0, regionalPricing = null) {
   const geo = Number(installNeeds.geo) || 0;
   const tapeRolls = Number(installNeeds.tapeRolls) || 0;
@@ -204,37 +202,35 @@ function buildPlannerMaterialItems(installNeeds = {}, borderType = "nessuna", bo
   if (drenateCm > 0 && safeArea > 0) {
     const drenateM3 = (safeArea * drenateCm) / 100;
     const drenateTon = (drenateM3 * 1600) / 1000;
-    const stabilizedPerTon = Number(regionalPricing?.stabilizedPerTon) || Number(MATERIAL_COSTS.stabilizedPerTonFallback);
-    items.push({ key: "pietrisco", label: "Pietrisco (stabilizzato drenante)", qty: drenateTon, unit: "ton", unitPrice: stabilizedPerTon, total: drenateTon * stabilizedPerTon });
+    items.push({ key: "pietrisco", label: "Pietrisco (stabilizzato drenante)", qty: drenateTon, unit: "ton", unitPrice: 0, total: 0 });
   }
   items.push(
-    { key: "telo", label: "Telo isolante", qty: geo, unit: "mq", unitPrice: MATERIAL_COSTS.geoPerSqm, total: geo * MATERIAL_COSTS.geoPerSqm },
-    { key: "bande", label: "Bande di giunzione", qty: tapeRolls, unit: "pz", unitPrice: MATERIAL_COSTS.tapeRoll, total: tapeRolls * MATERIAL_COSTS.tapeRoll },
-    { key: "colla", label: "Colla bicomponente", qty: glueBuckets, unit: "secchi", unitPrice: MATERIAL_COSTS.glueBucket, total: glueBuckets * MATERIAL_COSTS.glueBucket },
-    { key: "picchetti", label: "Picchetti a U", qty: pins, unit: "pz", unitPrice: MATERIAL_COSTS.pinPerUnit, total: pins * MATERIAL_COSTS.pinPerUnit },
+    { key: "telo", label: "Telo isolante", qty: geo, unit: "mq", unitPrice: 0, total: 0 },
+    { key: "bande", label: "Bande di giunzione", qty: tapeRolls, unit: "pz", unitPrice: 0, total: 0 },
+    { key: "colla", label: "Colla bicomponente", qty: glueBuckets, unit: "secchi", unitPrice: 0, total: 0 },
+    { key: "picchetti", label: "Picchetti a U", qty: pins, unit: "pz", unitPrice: 0, total: 0 },
   );
   const safeBorderMeters = Number(borderMeters) || 0;
   if (borderType && borderType !== "nessuna" && safeBorderMeters > 0) {
     const border = BORDER_TYPES.find((entry) => entry.id === borderType);
-    const unitPrice = Number(border?.price || 0);
+    const unitPrice = 0;
     items.push({ key: "bordura", label: border?.name || "Bordura", qty: safeBorderMeters, unit: "m", unitPrice, total: safeBorderMeters * unitPrice });
   }
-  // Mattonelle WPC: una riga per zona pavimentata (formati diversi = righe
-  // distinte). Prezzo a 0 finché non è confermato — arriva comunque nel
-  // Generatore, editabile, invece di sparire dalla distinta.
+  // Distinta quantitativa: una riga per formato WPC. I campi prezzo restano
+  // a zero esclusivamente per compatibilità con il contratto del Generatore.
   (pavingNeedsByArea || []).forEach((p, i) => {
     if (!p || !(p.tilesNeeded > 0)) return;
     const sizeLabel = `${p.tileSizeCm?.w || 30}×${p.tileSizeCm?.h || 30} cm`;
     items.push({
       key: pavingNeedsByArea.length > 1 ? `pavimentazione_${i + 1}` : "pavimentazione",
-      label: pavingNeedsByArea.length > 1 ? `Mattonelle WPC zona ${i + 1} (${sizeLabel}, prezzo da definire)` : `Mattonelle WPC (${sizeLabel}, prezzo da definire)`,
+      label: pavingNeedsByArea.length > 1 ? `Mattonelle WPC zona ${i + 1} (${sizeLabel})` : `Mattonelle WPC (${sizeLabel})`,
       qty: p.tilesNeeded,
       unit: "pz",
       unitPrice: 0,
       total: 0,
     });
   });
-  return items;
+  return items.map(({unitPrice,total,...item})=>({...item,unitPrice:0,total:0}));
 }
 
 function buildPlannerMaterialReferenceModel({
@@ -254,9 +250,9 @@ function buildPlannerMaterialReferenceModel({
   const safeTotalArea = Math.max(0, Number(area) || 0);
   const safeTurfArea = Math.max(0, Number(turfArea) || 0);
   const isClientVariant = reportVariant === "client";
-  const canViewMaterialCosts = String(viewerRole || "").trim().toLowerCase() === "office" && !isClientVariant;
-  const stabilizedPerTon = Number(regionalPricing?.stabilizedPerTon) || Number(MATERIAL_COSTS.stabilizedPerTonFallback);
-  const sandPerTon = Number(regionalPricing?.sandPerTon) || Number(MATERIAL_COSTS.sandPerTonFallback);
+  const canViewMaterialCosts = false; // Planner is a quantity takeoff tool for every role.
+  const stabilizedPerTon = 0;
+  const sandPerTon = 0;
   const pricingRegionLabel = regionalPricing?.region || "Lazio (fallback)";
   const scavoM3 = (safeTotalArea * substrate.scavoCm) / 100;
   const drenateM3 = (safeTotalArea * substrate.drenateCm) / 100;
@@ -267,25 +263,16 @@ function buildPlannerMaterialReferenceModel({
   const border = BORDER_TYPES.find((entry) => entry.id === borderType);
   const infillKg = safeTurfArea * INFILL_FO30.kgPerSqm;
   const infillBags = Math.ceil(infillKg / INFILL_FO30.bagKg);
-  const substrateCost = (scavoM3 * MATERIAL_COSTS.scavoPerM3)
-    + (drenateTon * stabilizedPerTon)
-    + (sabbiaTon * sandPerTon);
-  const poseMaterialCost = (installNeeds.geo * MATERIAL_COSTS.geoPerSqm)
-    + (installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket)
-    + (installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll)
-    + (installNeeds.pins * MATERIAL_COSTS.pinPerUnit)
-    + (borderType !== "nessuna" ? borderMeters * Number(border?.price || 0) : 0);
-  const infillCost = (infillKg / 1000) * INFILL_FO30.pricePerTon;
   const decoLines = Object.entries(decoItems || {})
     .filter(([, qty]) => Number(qty) > 0)
     .map(([id, qty]) => {
       const item = DECO_CATALOG.find((entry) => entry.id === id);
       return item
-        ? { name: item.name, qty: `${qty} ${item.unit}`, cost: Number(qty) * Number(item.pricePerUnit || 0) }
+        ? { name: item.name, qty: `${qty} ${item.unit}`, cost: 0}
         : null;
     })
     .filter(Boolean);
-  const decoCost = decoLines.reduce((sum, item) => sum + Number(item.cost || 0), 0);
+
   const travelSummary = getTravelSummary(travel);
   const travelCost = travelSummary.totalCost;
 
@@ -293,50 +280,50 @@ function buildPlannerMaterialReferenceModel({
     {
       key: "substrate",
       cat: "PREPARAZIONE FONDO",
-      meta: canViewMaterialCosts ? fmtE(substrateCost) : "Quantità da approvvigionare",
+      meta: "Quantità da approvvigionare",
       showCosts: canViewMaterialCosts,
       items: [
-        substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + " kg", cost: scavoM3 * MATERIAL_COSTS.scavoPerM3 } : null,
-        substrate.drenateCm > 0 ? { name: "Stabilizzato drenante (" + substrate.drenateCm + "cm)", qty: canViewMaterialCosts ? `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t (${fmt(stabilizedPerTon, 1)} €/t)` : `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t`, cost: drenateTon * stabilizedPerTon } : null,
-        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento 0/4 (" + substrate.sabbiaCm + "cm)", qty: canViewMaterialCosts ? `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t (${fmt(sandPerTon, 1)} €/t)` : `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t`, cost: sabbiaTon * sandPerTon } : null,
+        substrate.scavoCm > 0 ? { name: "Scavo e smaltimento (" + substrate.scavoCm + "cm)", qty: fmt(scavoM3, 2) + " m\u00B3 \u2248 " + Math.round(scavoM3 * 1400) + " kg", cost: 0} : null,
+        substrate.drenateCm > 0 ? { name: "Stabilizzato drenante (" + substrate.drenateCm + "cm)", qty: `${fmt(drenateM3, 2)} m\u00B3 · ${fmt(drenateTon, 2)} t`, cost: 0} : null,
+        substrate.sabbiaCm > 0 ? { name: "Sabbia livellamento 0/4 (" + substrate.sabbiaCm + "cm)", qty: `${Math.round(sabbiaKg)} kg · ${fmt(sabbiaTon, 2)} t`, cost: 0} : null,
       ].filter(Boolean),
-      sub: substrateCost,
+      sub: 0,
     },
     {
       key: "pose-materials",
       cat: "MATERIALI POSA",
-      meta: canViewMaterialCosts ? fmtE(poseMaterialCost) : "Quantità da ordinare",
+      meta: "Quantità da ordinare",
       showCosts: canViewMaterialCosts,
       items: [
-        { name: "Tessuto non tessuto", qty: fmt(installNeeds.geo) + " m\u00B2", cost: installNeeds.geo * MATERIAL_COSTS.geoPerSqm },
+        { name: "Tessuto non tessuto", qty: fmt(installNeeds.geo) + " m\u00B2", cost: 0},
         {
           name: "Colla bicomponente",
           qty: installNeeds.calcMode === "layout"
             ? `${installNeeds.glueBuckets} secch${installNeeds.glueBuckets === 1 ? "io" : "i"} da ${GLUE_BUCKET_KG} kg · 1 secchio per rotolo banda`
             : `${fmt(installNeeds.glueKg, 1)} kg${installNeeds.glueBuckets > 0 ? ` · ${installNeeds.glueBuckets} secch${installNeeds.glueBuckets > 1 ? "i" : "io"} da ${GLUE_BUCKET_KG} kg` : ""} (${fmt(INSTALLATION_RULES.glueKgPerSqm, 1)} kg/m²)`,
-          cost: installNeeds.glueBuckets * MATERIAL_COSTS.glueBucket,
+          cost: 0,
         },
         installNeeds.jointMeters > 0 ? {
           name: "Nastro giunzione",
           qty: installNeeds.calcMode === "layout"
             ? `${fmt(installNeeds.jointMeters, 1)} m reali${installNeeds.tapeRolls > 0 ? ` · ${installNeeds.tapeRolls} rotol${installNeeds.tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`
             : `${Math.round(installNeeds.jointMeters)} m stimati${installNeeds.tapeRolls > 0 ? ` · ${installNeeds.tapeRolls} rotol${installNeeds.tapeRolls > 1 ? "i" : "o"} da ${TAPE_ROLL_M} m` : ""}`,
-          cost: installNeeds.tapeRolls * MATERIAL_COSTS.tapeRoll,
+          cost: 0,
         } : null,
-        { name: "Chiodi a U", qty: installNeeds.pins + " pz", cost: installNeeds.pins * MATERIAL_COSTS.pinPerUnit },
-        borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m", cost: borderMeters * Number(border?.price || 0) } : null,
+        { name: "Chiodi a U", qty: installNeeds.pins + " pz", cost: 0},
+        borderType !== "nessuna" && borderMeters > 0 ? { name: border?.name || "Bordura", qty: fmt(borderMeters) + " m", cost: 0} : null,
       ].filter(Boolean),
-      sub: poseMaterialCost,
+      sub: 0,
     },
     {
       key: "infill",
       cat: "INTASO",
-      meta: canViewMaterialCosts ? fmtE(infillCost) : "Quantità da ordinare",
+      meta: "Quantità da ordinare",
       showCosts: canViewMaterialCosts,
       items: [
-        { name: INFILL_FO30.name, qty: `${Math.round(infillKg)} kg · ${infillBags} sacchi da ${INFILL_FO30.bagKg} kg`, cost: infillCost },
+        { name: INFILL_FO30.name, qty: `${Math.round(infillKg)} kg · ${infillBags} sacchi da ${INFILL_FO30.bagKg} kg`, cost: 0},
       ],
-      sub: infillCost,
+      sub: 0,
     },
   ];
 
@@ -344,10 +331,10 @@ function buildPlannerMaterialReferenceModel({
     sections.push({
       key: "extras",
       cat: "MATERIALI AGGIUNTIVI",
-      meta: canViewMaterialCosts ? fmtE(decoCost) : "Extra selezionati",
+      meta: "Extra selezionati",
       showCosts: canViewMaterialCosts,
       items: decoLines,
-      sub: decoCost,
+      sub: 0,
     });
   }
 
@@ -355,7 +342,7 @@ function buildPlannerMaterialReferenceModel({
     sections.push({
       key: "paving",
       cat: "PAVIMENTAZIONE WPC",
-      meta: "Prezzo al pezzo da definire",
+      meta: "Quantità da approvvigionare",
       showCosts: false,
       items: pavingNeedsByArea
         .filter((p) => p?.tilesNeeded > 0)
@@ -392,7 +379,8 @@ function buildPlannerMaterialReferenceModel({
   }
 
   const materialSections = sections.filter((section) => section.key !== "travel");
-  const materialCostTotal = materialSections.reduce((sum, section) => sum + (Number(section.sub) || 0), 0);
+  for(const section of materialSections){section.sub=0;section.items=section.items.map(({cost,...item})=>item);}
+  const materialCostTotal = 0;
 
   return {
     canViewMaterialCosts,
@@ -1352,6 +1340,54 @@ function doesRollTouchPolygon(roll, polygon = []) {
   return pointInPolygon({ x: roll.cx, y: roll.cy }, polygon) || corners.some(point => pointInPolygon(point, polygon));
 }
 
+// Direct manipulation uses immutable gesture snapshots: no cumulative drift.
+function plannerRectangle(a, b) {
+  const x=Math.min(a.x,b.x), y=Math.min(a.y,b.y), w=Math.abs(b.x-a.x), h=Math.abs(b.y-a.y);
+  return w>0 && h>0 ? [{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}] : [];
+}
+function plannerMoveObject(areas, target, dx, dy) {
+  return areas.map(area => {
+    if(area.id!==target.areaId) return area;
+    if(target.type==='roll') return {...area,rolls:area.rolls.map((r,i)=>i===target.index?{...target.original,cx:target.original.cx+dx,cy:target.original.cy+dy}:r)};
+    return {...area,points:target.original.points.map(p=>({x:p.x+dx,y:p.y+dy})),rolls:(target.original.rolls||[]).map(r=>({...r,cx:r.cx+dx,cy:r.cy+dy}))};
+  });
+}
+function plannerBorderLength(segments) {
+  // Merge collinear overlapping intervals so retracing a border never doubles it.
+  const groups=[];
+  for(const {a,b} of segments) {
+    let dx=b.x-a.x,dy=b.y-a.y, len=Math.hypot(dx,dy); if(len<1e-8) continue;
+    dx/=len;dy/=len;if(dx<-1e-8 || (Math.abs(dx)<1e-8 && dy<0)){dx=-dx;dy=-dy;}
+    const offset=-dy*a.x+dx*a.y;
+    let g=groups.find(g=>Math.abs(g.dx-dx)<1e-8&&Math.abs(g.dy-dy)<1e-8&&Math.abs(g.offset-offset)<1e-7);
+    if(!g){g={dx,dy,offset,ranges:[]};groups.push(g);}
+    const t=a.x*dx+a.y*dy,u=b.x*dx+b.y*dy;g.ranges.push([Math.min(t,u),Math.max(t,u)]);
+  }
+  return groups.reduce((sum,g)=>{g.ranges.sort((a,b)=>a[0]-b[0]);let start=g.ranges[0][0],end=g.ranges[0][1],total=0;
+    for(const [a,b] of g.ranges.slice(1)){if(a>end){total+=end-start;start=a;}end=Math.max(end,b);}return sum+total+end-start;},0);
+}
+
+// Keep callouts outside small pieces, including at the viewport edges.
+function plannerLabelPosition(cx, cy, w, h, bounds, occupied, protectedBoxes, outside = null) {
+  const clampX=x=>Math.max(bounds.left+w/2,Math.min(bounds.right-w/2,x));
+  const clampY=y=>Math.max(bounds.top+h/2,Math.min(bounds.bottom-h/2,y));
+  const overlaps=(a,b)=>Math.abs(a.x-b.x)<(a.w+b.w)/2+4 && Math.abs(a.y-b.y)<(a.h+b.h)/2+4;
+  const origins=outside ? [
+    {x:cx,y:outside.y-(outside.h+h)/2-12},
+    {x:cx,y:outside.y+(outside.h+h)/2+12},
+    {x:outside.x+(outside.w+w)/2+12,y:cy},
+    {x:outside.x-(outside.w+w)/2-12,y:cy},
+  ] : [{x:cx,y:cy}];
+  for(let step=0;step<30;step++) for(const origin of origins){
+    const offset=(step%2?1:-1)*Math.ceil(step/2)*(h+5);
+    const box={x:clampX(origin.x),y:clampY(origin.y+offset),w,h};
+    if(box.w>bounds.right-bounds.left || box.h>bounds.bottom-bounds.top)continue;
+    if([...occupied,...protectedBoxes,...(outside?[outside]:[])].some(b=>overlaps(box,b)))continue;
+    return box;
+  }
+  return null;
+}
+
 function FreeDrawCanvas({
   points,
   setPoints,
@@ -1367,12 +1403,26 @@ function FreeDrawCanvas({
   borderEdges = [],
   selectedBorderEdges = [],
   showBorderOverlay = false,
+  editor = {},
   pendingOffcut = null, onPlaceOffcut = () => {}, onCancelOffcut = () => {},
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const pointerStateRef = useRef({ pointerId: null, mode: "", start: null, moved: false });
   const [hoverPt, setHoverPt] = useState(null);
+  const [selection,setSelection]=useState(null);
+  const [gesture,setGesture]=useState(null);
+  const [rectangleType,setRectangleType]=useState('Prato');
+  const [borderStart,setBorderStart]=useState(null);
+  useEffect(()=>{setPanMode(false);setGesture(null);setSelection(null);setBorderStart(null);setRollStart(null);},[drawMode]);
+  const chooseTool=mode=>{onCancelOffcut();setPanMode(false);setDrawMode(mode);editor.onToolChange?.(mode);setCanvasMessage('');};
+  const hitObject=p=>{
+    const ordered=[...areas].reverse();
+    for(const a of ordered.filter(a=>a.kind==='exclusion'||a.kind==='paving')) if(a.closed&&pointInPolygon(p,a.points)) return {type:'area',areaId:a.id,original:a};
+    for(const a of ordered) for(let i=(a.rolls||[]).length-1;i>=0;i--) if(pointInPolygon(p,getRollCorners(a.rolls[i]))) return {type:'roll',areaId:a.id,index:i,original:a.rolls[i]};
+    for(const a of ordered) if(a.closed&&pointInPolygon(p,a.points)) return {type:'area',areaId:a.id,original:a};
+    return null;
+  };
   const [dragging, setDragging] = useState(null);
   const [selectedVertices, setSelectedVertices] = useState(new Set());
   const [canvasW, setCanvasW] = useState(760);
@@ -1385,7 +1435,7 @@ function FreeDrawCanvas({
   const [panMode, setPanMode] = useState(false);
   const [showDimensions, setShowDimensions] = useState(true);
   const fitDrawing = () => {
-    const pts = areas.flatMap(a => [...(a.points || []), ...(a.rolls || []).flatMap(getRollCorners)]);
+    const pts = [...areas.flatMap(a => [...(a.points || []), ...(a.rolls || []).flatMap(getRollCorners)]), ...(editor.borderSegments||[]).flatMap(s=>[s.a,s.b])];
     if (!pts.length) return;
     const bb = polyBBox(pts);
     const scale = Math.min((canvasW - 140) / Math.max(bb.w, 1), (canvasH - 140) / Math.max(bb.h, 1));
@@ -1448,7 +1498,10 @@ function FreeDrawCanvas({
     if(pendingOffcut) {setPanMode(false);setRollStart(null);setCanvasMessage("");}
   },[pendingOffcut]);
   useEffect(() => {
-    const cancel=e=>{if(e.key==="Escape" && pendingOffcut) onCancelOffcut();};
+    const cancel=e=>{if(e.key!=="Escape")return;
+      if(pendingOffcut)onCancelOffcut();
+      setGesture(null);setBorderStart(null);setRollStart(null);setCanvasMessage('Operazione annullata');resetPointerState();
+    };
     window.addEventListener("keydown",cancel);return()=>window.removeEventListener("keydown",cancel);
   },[pendingOffcut,onCancelOffcut]);
   const getPos = e => {
@@ -1469,6 +1522,12 @@ function FreeDrawCanvas({
       setCanvasMessage(check.reason);
       if(check.valid) onPlaceOffcut(mx,my);
       return;
+    }
+    if(drawMode==='select'||drawMode==='rectangle') return;
+    if(drawMode==='border') {
+      if(!borderStart){setBorderStart({x:mx,y:my});return;}
+      if(Math.hypot(mx-borderStart.x,my-borderStart.y)>0) editor.onAddBorder?.(borderStart,{x:mx,y:my});
+      setBorderStart(null);return;
     }
     if (drawMode === "roll" && closed) {
       if (!rollStart) {
@@ -1516,6 +1575,9 @@ function FreeDrawCanvas({
     if (pointerState.start && Math.hypot(mx - pointerState.start.x, my - pointerState.start.y) > 0.08) {
       pointerState.moved = true;
     }
+    if(['object','rectangle'].includes(pointerState.mode)) {
+      setGesture({...pointerState,end:{x:mx,y:my}});return;
+    }
     if (pointerState.mode === "drag" && dragging !== null && closed) {
       setPoints(prev => prev.map((p, i) => i === dragging ? { x: mx, y: my } : p));
     }
@@ -1529,6 +1591,13 @@ function FreeDrawCanvas({
     if (typeof e.button === "number" && e.button !== 0) return;
     const { mx, my } = getPos(e);
     setHoverPt({ x: mx, y: my });
+    if(!pendingOffcut && ['select','rectangle'].includes(drawMode)) {
+      const target=drawMode==='select'?hitObject({x:mx,y:my}):null;
+      setSelection(target);
+      if(target) editor.onSelectArea?.(target.areaId);
+      const state={pointerId:e.pointerId,mode:drawMode==='rectangle'?'rectangle':'object',target,start:{x:mx,y:my},end:{x:mx,y:my},moved:false};
+      pointerStateRef.current=state;setGesture(state);canvasRef.current?.setPointerCapture?.(e.pointerId);e.preventDefault();return;
+    }
     if (!pendingOffcut && drawMode === "shape" && closed) {
       const idx = points.findIndex(p => Math.hypot(p.x - mx, p.y - my) < 0.6);
       if (idx >= 0) {
@@ -1546,6 +1615,13 @@ function FreeDrawCanvas({
     const pointerState = pointerStateRef.current;
     if (pointerState.pointerId !== e.pointerId) return;
     const { mx, my } = getPos(e);
+    if(pointerState.mode==='object' && pointerState.target && pointerState.moved) {
+      editor.onMove?.(pointerState.target,mx-pointerState.start.x,my-pointerState.start.y);
+    } else if(pointerState.mode==='rectangle') {
+      const pts=plannerRectangle(pointerState.start,{x:mx,y:my});
+      if(pts.length) {editor.onRectangle?.(pts,rectangleType);setDrawMode('select');}
+    }
+    setGesture(null);
     if (pointerState.mode === "drag" && !pointerState.moved && closed && drawMode === "shape") {
       const idx = points.findIndex(p => Math.hypot(p.x - mx, p.y - my) < 0.6);
       if (idx >= 0) {
@@ -1564,6 +1640,7 @@ function FreeDrawCanvas({
   };
 
   const handlePointerCancel = e => {
+    setGesture(null);
     if (pointerStateRef.current.pointerId === e.pointerId) {
       canvasRef.current?.releasePointerCapture?.(e.pointerId);
       resetPointerState();
@@ -1705,25 +1782,39 @@ function FreeDrawCanvas({
     ctx.save(); ctx.translate(view.x, view.y);
     const occupied = [];
     const labelQueue = [];
+    const rollBox=roll=>{
+      const pts=getRollCorners(roll),xs=pts.map(p=>toPx(p.x)),ys=pts.map(p=>toPx(p.y));
+      const left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...ys),bottom=Math.max(...ys);
+      return {x:(left+right)/2,y:(top+bottom)/2,w:right-left,h:bottom-top};
+    };
+    // Reserve the footprint for every label, not just the piece's own caption.
+    const protectedPieces=areas.flatMap(a=>a.rolls||[])
+      .filter(r=>r.sourceRollId || Math.min(r.width||2,r.length)*PX<28).map(rollBox);
     const drawLabelPill = (...args) => labelQueue.push(args);
     const renderLabelPill = (text, cx, cy, opts = {}) => {
       const { font = "bold 10px sans-serif", textColor = "#1a3d24", bg = "rgba(255,255,255,0.93)", r = 5, px: px2 = 6, py: py2 = 4 } = opts;
       ctx.font = font;
       const tw = ctx.measureText(text).width;
       const bw = tw + px2 * 2, bh = 14 + py2;
-      cx = Math.max(bw / 2 + 4 - view.x, Math.min(canvasW - view.x - bw / 2 - 4, cx));
-      cy = Math.max(bh / 2 + 18 - view.y, Math.min(canvasH - view.y - bh / 2 - 4, cy));
-      const originalY = cy;
-      let placed = false;
-      for (let attempt = 0; attempt < 30; attempt++) {
-        const candidateY = originalY + (attempt % 2 ? 1 : -1) * Math.ceil(attempt / 2) * (bh + 5);
-        if (candidateY < 18 - view.y + bh/2 || candidateY > canvasH - view.y - bh/2 - 4) continue;
-        if (!occupied.some(o => Math.abs(o.x-cx) < (o.w+bw)/2+4 && Math.abs(o.y-candidateY) < (o.h+bh)/2+4)) {
-          cy = candidateY; placed = true; break;
-        }
+      const anchor={x:cx,y:cy};
+      const roll=opts.roll;
+      const angle=roll?.angle||0;
+      const fits=roll && bw*Math.abs(Math.cos(angle))+bh*Math.abs(Math.sin(angle))+8<=roll.length*PX
+        && bw*Math.abs(Math.sin(angle))+bh*Math.abs(Math.cos(angle))+8<=(roll.width||2)*PX;
+      const outside=roll && (roll.sourceRollId || !fits)?rollBox(roll):null;
+      const position=plannerLabelPosition(cx,cy,bw,bh,
+        {left:4-view.x,right:canvasW-view.x-4,top:18-view.y,bottom:canvasH-view.y-4},
+        occupied,protectedPieces,outside);
+      if(!position)return;
+      cx=position.x;cy=position.y;occupied.push(position);
+      if(outside){
+        // The leader ends at the caption edge, leaving the small piece uncovered.
+        const endX=Math.max(cx-bw/2,Math.min(cx+bw/2,anchor.x));
+        const endY=Math.max(cy-bh/2,Math.min(cy+bh/2,anchor.y));
+        ctx.beginPath();ctx.moveTo(anchor.x,anchor.y);ctx.lineTo(endX,endY);
+        ctx.strokeStyle=textColor;ctx.lineWidth=1;ctx.stroke();
+        ctx.beginPath();ctx.arc(anchor.x,anchor.y,2,0,Math.PI*2);ctx.fillStyle=textColor;ctx.fill();
       }
-      if (!placed) return;
-      occupied.push({x:cx, y:cy, w:bw, h:bh});
       const bx = cx - bw / 2, by = cy - bh / 2;
       ctx.beginPath();
       if (ctx.roundRect) { ctx.roundRect(bx, by, bw, bh, r); }
@@ -1883,6 +1974,7 @@ function FreeDrawCanvas({
           ? `Preview ${fmt(roll.length, 2)}m`
           : `R${index + 1}${roll.sourceRollId ? " recuperato" : ""} · ${fmt(roll.width || 2, 2)}×${fmt(roll.length, 2)}m`;
         drawLabelPill(labelText, toPx(roll.cx), toPx(roll.cy), {
+          roll,
           textColor: valid ? "#0d47a1" : B.danger,
           bg: valid ? "rgba(235,244,255,0.96)" : "rgba(255,235,235,0.96)",
         });
@@ -1939,7 +2031,7 @@ function FreeDrawCanvas({
       const corners=getRollCorners(roll);
       ctx.beginPath(); corners.forEach((p,i)=>i?ctx.lineTo(toPx(p.x),toPx(p.y)):ctx.moveTo(toPx(p.x),toPx(p.y)));ctx.closePath();
       ctx.fillStyle="rgba(21,101,192,.12)";ctx.fill();ctx.strokeStyle="#3978ae";ctx.lineWidth=1.5;ctx.stroke();
-      drawLabelPill(`${a.label || "Area "+(ai+1)} · R${ri+1}${roll.sourceRollId ? " recuperato" : ""}`,toPx(roll.cx),toPx(roll.cy),{textColor:"#17466e"});
+      drawLabelPill(`${a.label || "Area "+(ai+1)} · R${ri+1}${roll.sourceRollId ? " recuperato" : ""}`,toPx(roll.cx),toPx(roll.cy),{roll,textColor:"#17466e"});
     }));
     // Obstacles remain visible above turf and roll previews, regardless of selection.
     [...inactiveAreas, { ...activeAreaEntry, points, closed }].filter(a => a.kind === "exclusion" && a.closed && a.points.length >= 3).forEach(a => {
@@ -1963,9 +2055,9 @@ function FreeDrawCanvas({
       ctx.strokeStyle = "rgba(40,90,50,0.15)"; ctx.lineWidth = 1; ctx.stroke();
       ctx.restore();
       ctx.fillStyle = "#1a3d24"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText("Clicca per posizionare i vertici del giardino", cx, cy - 8);
+      ctx.fillText(drawMode === "rectangle" ? "Trascina per disegnare il rettangolo" : drawMode === "border" ? "Clicca A, poi B per tracciare una bordura" : "Clicca per posizionare i vertici del giardino", cx, cy - 8);
       ctx.fillStyle = "#5a7a5a"; ctx.font = "11px sans-serif";
-      ctx.fillText(`Griglia = ${fmt(GRID, 2)} m  ·  Chiudi l'area sul punto 1`, cx, cy + 14);
+      ctx.fillText(`Griglia = ${fmt(GRID, 2)} m · ${drawMode === "rectangle" ? "Misure in tempo reale" : drawMode === "border" ? "Lunghezza in metri" : "Chiudi l’area sul punto 1"}`, cx, cy + 14);
       ctx.textAlign = "start";
     }
     if(pendingOffcut) {
@@ -1980,15 +2072,43 @@ function FreeDrawCanvas({
         drawLabelPill(check.valid?"Clicca per posare":"Zona non disponibile",toPx(hoverPt.x),toPx(hoverPt.y),{textColor:check.valid?"#047857":"#b91c1c"});
       }
     }
+    const outline=(pts,color='#2563eb')=>{
+      if(!pts.length)return;ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(toPx(p.x),toPx(p.y)):ctx.moveTo(toPx(p.x),toPx(p.y)));ctx.closePath();ctx.fillStyle='rgba(59,130,246,.15)';ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash([6,3]);ctx.stroke();ctx.setLineDash([]);
+    };
+    if(selection && !gesture){const a=areas.find(a=>a.id===selection.areaId);if(a)outline(selection.type==='roll'&&a.rolls[selection.index]?getRollCorners(a.rolls[selection.index]):a.points);}
+    if(gesture?.mode==='object'&&gesture.target){const t=gesture.target,dx=gesture.end.x-gesture.start.x,dy=gesture.end.y-gesture.start.y;
+      outline((t.type==='roll'?getRollCorners(t.original):t.original.points).map(p=>({x:p.x+dx,y:p.y+dy})));
+      drawLabelPill(`Sposta · Δ ${fmt(dx,2)} / ${fmt(dy,2)} m`,toPx(gesture.end.x),toPx(gesture.end.y)-22);
+    }
+    if(gesture?.mode==='rectangle'){
+      outline(plannerRectangle(gesture.start,gesture.end));
+      drawLabelPill(`${rectangleType} · ${fmt(Math.abs(gesture.end.x-gesture.start.x),2)} × ${fmt(Math.abs(gesture.end.y-gesture.start.y),2)} m`,toPx(gesture.end.x),toPx(gesture.end.y)-22);
+    }
+    const drawBorder=(a,b,label)=>{ctx.beginPath();ctx.moveTo(toPx(a.x),toPx(a.y));ctx.lineTo(toPx(b.x),toPx(b.y));ctx.strokeStyle='#c2410c';ctx.lineWidth=4;ctx.stroke();
+      for(const p of [a,b]){ctx.beginPath();ctx.arc(toPx(p.x),toPx(p.y),4,0,Math.PI*2);ctx.fillStyle='#c2410c';ctx.fill();}
+      drawLabelPill(label,toPx((a.x+b.x)/2),toPx((a.y+b.y)/2)-12,{textColor:'#9a3412'});
+    };
+    (editor.borderSegments||[]).forEach((s,i)=>drawBorder(s.a,s.b,`B${i+1} · ${fmt(Math.hypot(s.b.x-s.a.x,s.b.y-s.a.y),2)} m`));
+    if(borderStart&&hoverPt)drawBorder(borderStart,hoverPt,`${fmt(Math.hypot(hoverPt.x-borderStart.x,hoverPt.y-borderStart.y),2)} m`);
     labelQueue.forEach(args => renderLabelPill(...args));
     ctx.restore();
-  }, [pendingOffcut, areas, view, showDimensions, points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices, previewMode, activeAreaKind, inactiveAreas, borderEdges, selectedBorderEdges, showBorderOverlay, activeAreaId, activeAreaEntry]);
+  }, [selection, gesture, rectangleType, borderStart, editor.borderSegments, pendingOffcut, areas, view, showDimensions, points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices, previewMode, activeAreaKind, inactiveAreas, borderEdges, selectedBorderEdges, showBorderOverlay, activeAreaId, activeAreaEntry]);
 
   return (
     <div ref={containerRef} className="gp-drawing-board">
+      <div className="gp-view-tools" role="toolbar" aria-label="Strumenti di disegno">
+        <button type="button" aria-pressed={drawMode==='select'&&!panMode} onClick={()=>chooseTool('select')}>Seleziona e sposta</button>
+        <button type="button" aria-pressed={drawMode==='shape'&&!panMode} onClick={()=>chooseTool('shape')}>Poligono / vertici</button>
+        <button type="button" aria-pressed={drawMode==='rectangle'&&!panMode} onClick={()=>chooseTool('rectangle')}>Rettangolo</button>
+        <select aria-label="Tipo rettangolo" value={rectangleType} onChange={e=>{setRectangleType(e.target.value);chooseTool('rectangle');}}>
+          {['Prato','Casetta','Abitazione','Piscina','Patio esistente','Aiuola','Pavimentazione'].map(t=><option key={t}>{t}</option>)}
+        </select>
+        <button type="button" aria-pressed={drawMode==='border'&&!panMode} onClick={()=>chooseTool('border')}>Bordura A–B</button>
+      </div>
       <div className="gp-view-tools">
         <strong>TAVOLA 01 · PIANTA</strong>
         {pendingOffcut && <button type="button" onClick={onCancelOffcut}>Annulla recupero</button>}
+        {editor.canUndoMove && <button type="button" onClick={editor.undoMove}>Annulla spostamento</button>}
         <button type="button" onClick={fitDrawing}>Inquadra tutto</button>
         <button type="button" aria-pressed={panMode} onClick={() => setPanMode(v=>!v)}>{panMode ? "Mano attiva" : "Sposta vista"}</button>
         <button type="button" aria-pressed={showDimensions} onClick={() => setShowDimensions(v=>!v)}>Quote {showDimensions ? "visibili" : "nascoste"}</button>
@@ -1999,7 +2119,10 @@ function FreeDrawCanvas({
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
         <div className="gp-canvas-hint" style={{ width: "100%", minHeight: 18, fontSize: 11, color: closed ? B.primary : B.textMuted, fontWeight: 500, lineHeight: 1.35 }}>
-          {pendingOffcut ? "RECUPERO SFRIDO · Sposta il puntatore sul prato e clicca per posare. Esc per annullare." : drawMode === "roll"
+          {pendingOffcut ? "RECUPERO SFRIDO · Sposta il puntatore sul prato e clicca per posare. Esc per annullare." : drawMode==='select' ? 'Tocca un elemento e trascinalo. Il contorno blu indica la nuova posizione; rilascia per confermare. Esc annulla.'
+          : drawMode==='rectangle' ? 'Premi e trascina da un angolo all’altro: le misure sono in metri. Le casette e gli ostacoli sono esclusi dal prato.'
+          : drawMode==='border' ? 'Clicca il punto A, poi il punto B. Puoi tracciare anche porzioni di un lato. Esc annulla.'
+          : drawMode === "roll"
             ? `Modalità rotoli: click inizio + click fine. Larghezza fissa ${MANUAL_ROLL_WIDTH_M}m, lunghezza max ${MANUAL_ROLL_MAX_LENGTH_M}m.`
             : closed
               ? (selectedVertices.size > 0
@@ -2015,6 +2138,7 @@ function FreeDrawCanvas({
               controlli e restare semplici per chi non è pratico dello
               strumento. Formato/tipo area e picker mattonella sono
               nell'inspector (strumento "Pavimentazione" nel rail). */}
+          {drawMode === "shape" && <>
           <button
             type="button"
             onClick={closed ? reopenShape : undoLastPoint}
@@ -2053,7 +2177,8 @@ function FreeDrawCanvas({
           >
             {selectedVertices.size > 0 ? `Smussa ${selectedVertices.size} punti` : "Smussa angoli"}
           </button>
-          {(drawMode === "roll" || rolls.length > 0) && (
+          </>}
+          {drawMode === "roll" && (
             <>
               <button
                 type="button"
@@ -2113,13 +2238,13 @@ function FreeDrawCanvas({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
-        onPointerLeave={handlePointerCancel}
+        onPointerLeave={e=>{if(pointerStateRef.current.pointerId===null)setHoverPt(null);}}
         style={{
           width: "100%",
           height: canvasH,
           borderRadius: 10,
           border: "1.5px solid " + (closed ? B.primary : B.border),
-          cursor: pendingOffcut ? "crosshair" : panMode ? "grab" : drawMode === "roll" && closed ? "crosshair" : closed ? (dragging !== null ? "grabbing" : "default") : "crosshair",
+          cursor: panMode ? "grab" : drawMode === "select" ? "move" : ["rectangle","border"].includes(drawMode) ? "crosshair" : pendingOffcut ? "crosshair" : panMode ? "grab" : drawMode === "roll" && closed ? "crosshair" : closed ? (dragging !== null ? "grabbing" : "default") : "crosshair",
           display: "block",
           touchAction: "none",
         }}
@@ -2127,7 +2252,10 @@ function FreeDrawCanvas({
 
       {points.length > 0 && (
         <div style={{ marginTop: 10, padding: "10px 12px", border: "1px solid " + B.borderLight, borderRadius: 8, background: B.white, fontSize: 12, color: B.textMuted }}>
-          {drawMode === "roll" && closed
+          {drawMode==='select' ? 'Selezione diretta: trascina il rotolo o l’elemento da spostare. Il verso del pelo e le dimensioni restano invariati.'
+            : drawMode==='rectangle' ? 'Trascina per disegnare un rettangolo. Le misure seguono l’aggancio alla griglia.'
+            : drawMode==='border' ? 'Bordure indipendenti: un clic per l’inizio e un clic per la fine di ogni tratto.'
+            : drawMode === "roll" && closed
             ? `${rolls.length} rotoli inseriti (${fmt(totalRollMeters, 2)} m lineari). ${canvasMessage || "I rotoli possono uscire dal perimetro per stimare lo scarto reale."}`
             : closed
               ? `${points.length} vertici definiti per Area ${activeAreaIndex + 1}. Per modificare il perimetro trascina i punti direttamente sul disegno.`
@@ -2325,6 +2453,7 @@ function ShapeInput({
   borderEdges = [],
   selectedBorderEdges = [],
   showBorderOverlay = false,
+  editor = {},
   pendingOffcut = null, onPlaceOffcut = () => {}, onCancelOffcut = () => {},
 }) {
   return (
@@ -2345,13 +2474,14 @@ function ShapeInput({
         borderEdges={borderEdges}
         selectedBorderEdges={selectedBorderEdges}
         showBorderOverlay={showBorderOverlay}
+        editor={editor}
         pendingOffcut={pendingOffcut} onPlaceOffcut={onPlaceOffcut} onCancelOffcut={onCancelOffcut}
       />
     </div>
   );
 }
 
-function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [], manualRolls = [], isClientVariant = false, previewMode = false }) {
+function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [], borderSegments = [], manualRolls = [], isClientVariant = false, previewMode = false }) {
   const polygons = shape === "custom"
     ? getPlannerPolygons(customAreas, customPts, customClosed)
     : [{ id: "shape-default", index: 1, points: getShapePolygon(shape, dims), closed: true, rolls: [], kind: "turf" }].filter((item) => item.points.length);
@@ -2364,7 +2494,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
   }
   const rollCornerPoints = (manualRolls || []).flatMap((roll) => getRollCorners(roll));
   const polygonPoints = polygons.flatMap((polygon) => polygon.points);
-  const drawingPoints = rollCornerPoints.length ? [...polygonPoints, ...rollCornerPoints] : polygonPoints;
+  const drawingPoints = [...polygonPoints,...rollCornerPoints,...borderSegments.flatMap(s=>[s.a,s.b])];
   const bb = polyBBox(drawingPoints);
   const W = 328;
   const H = 214;
@@ -2613,6 +2743,7 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
           <line x1={scaleBarPx} y1="-3" x2={scaleBarPx} y2="3" stroke={isClientVariant ? "#1a5e2f" : B.dark} strokeWidth="1.4" />
           <text x={scaleBarPx / 2} y="-5.5" fontSize="7" textAnchor="middle" fill={isClientVariant ? "#1a3d24" : B.textMuted} fontWeight="700">{scaleBarMeters >= 1 ? `${scaleBarMeters} m` : `${scaleBarMeters * 100} cm`}</text>
         </g>
+      {borderSegments.map(s=><line key={s.id} x1={s.a.x*scale+ox} y1={s.a.y*scale+oy} x2={s.b.x*scale+ox} y2={s.b.y*scale+oy} stroke="#c2410c" strokeWidth="2" />)}
       </svg>
       <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
         <div style={{ fontSize: 11, color: B.textMuted }}>
@@ -2786,7 +2917,7 @@ function InstallationNeedsPanel({ area, perimeter, borderType, borderMeters, man
         />
         <MetricCard label="Picchetti a U" value={`${needs.pins} pz`} />
         {borderType !== "nessuna" && borderMeters > 0 ? (
-          <MetricCard label={border?.name || "Bordura"} value={`${fmt(borderMeters, 1)} m`} sub="Lati selezionati" accent />
+          <MetricCard label={border?.name || "Bordura"} value={`${fmt(borderMeters, 1)} m`} sub="Tratti disegnati" accent />
         ) : null}
       </div>
       <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid " + B.borderLight, background: needs.calcMode === "layout" ? B.infoBg : B.cream, fontSize: 12, color: needs.calcMode === "layout" ? B.info : B.textMuted, lineHeight: 1.45 }}>
@@ -2822,7 +2953,7 @@ function PavingNeedsPanel({ pavingNeedsByArea, pavingTilesTotal }) {
         ) : null}
       </div>
       <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid " + B.borderLight, background: B.warnBg, fontSize: 12, color: "#8a5a00", lineHeight: 1.45 }}>
-        Prezzo al pezzo non impostato — la riga arriva nel Generatore con quantità corretta e prezzo a 0€, da compilare lì prima di inviare il preventivo.
+        Quantità comprensiva dello scarto di taglio, da verificare con il formato scelto.
       </div>
     </div>
   );
@@ -2875,7 +3006,7 @@ function DecoSection({ decoItems, setDecoItems }) {
   );
 }
 
-function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [], reportVariant = "technical", previewMode = false }) {
+function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderSegments = [], borderType, borderMeters, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [], reportVariant = "technical", previewMode = false }) {
   if (area <= 0) return <div style={{ color: B.textMuted, fontSize: 13, padding: 16, textAlign: "center" }}>Inserisci le dimensioni per vedere il riepilogo.</div>;
 
   // turfArea/turfPerimeter esclude le aree "paving" (pavimentazione WPC) —
@@ -2935,12 +3066,12 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
           {!isClientVariant && travel?.departureBase && <span><strong>Partenza:</strong> {travel.departureBase}</span>}
           {!isClientVariant && travelSummary.totalKm > 0 && <span><strong>Viaggio:</strong> {travelSummary.modeLabel}</span>}
           {!isClientVariant && travelSummary.extraKm > 0 && <span><strong>Km extra:</strong> {fmt(travelSummary.extraKm, 1)} km</span>}
-          {!isClientVariant && <span><strong>Listino regionale:</strong> {pricingRegionLabel}</span>}
+
         </div>
       )}
 
       <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10, marginBottom: 12 }}>
-        <TechnicalSketch shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} customAreas={customAreas} manualRolls={manualRolls} isClientVariant={isClientVariant} previewMode={previewMode} />
+        <TechnicalSketch borderSegments={borderSegments} shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} customAreas={customAreas} manualRolls={manualRolls} isClientVariant={isClientVariant} previewMode={previewMode} />
         <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: "10px 12px", display: "grid", gap: 7 }}>
           <div style={{ fontSize: 11, color: B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>{isClientVariant ? "Layout giardino" : "Tavola tecnica 2D"}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
@@ -2963,7 +3094,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
             <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Layout rotoli</div>
               <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{rollCount} rotoli</div>
-              <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>{fmt(rollLinearMeters, 2)} m lineari · {fmt(rollMaterialArea, 1)} m² da ordinare</div>
+              <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>{fmt(rollLinearMeters, 2)} m lineari · {fmt(rollMaterialArea, 1)} m² inseriti</div>
               <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>
                 Materiale non utilizzato: <strong style={{ color: B.dark }}>{fmt(rollWasteArea, 1)} m²</strong>
                 {outsideRollCount > 0 ? ` · ${outsideRollCount} rotol${outsideRollCount > 1 ? "i" : "o"} oltre bordo` : ""}
@@ -2974,7 +3105,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
             </div>
           </div>
           <div style={{ fontSize: 12, color: B.textMuted, lineHeight: 1.45 }}>
-            Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm{!isClientVariant ? ` · Posa ${installNeeds.calcMode === "layout" ? "calcolata da layout rotoli" : `in fallback da m² finché il layout non copre il ${fmt(INSTALLATION_RULES.layoutCoverageMin * 100, 0)}% dell'area`}` : "."}{!isClientVariant ? ` · Listino ${pricingRegionLabel}: stabilizzato ${fmt(stabilizedPerTon, 1)} €/t, sabbia ${fmt(sandPerTon, 1)} €/t.` : ""}
+            Specifiche tecniche: scavo {substrate.scavoCm} cm, drenante {substrate.drenateCm} cm, sabbia {substrate.sabbiaCm} cm{!isClientVariant ? ` · Posa ${installNeeds.calcMode === "layout" ? "calcolata da layout rotoli" : `in fallback da m² finché il layout non copre il ${fmt(INSTALLATION_RULES.layoutCoverageMin * 100, 0)}% dell'area`}` : "."}
           </div>
         </div>
       </div>
@@ -2999,8 +3130,8 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
         ))}
         {!isClientVariant ? (
           <div style={{ display: "flex", justifyContent: "space-between", padding: "12px", background: B.dark, color: "#fff", fontWeight: 700, fontSize: 15 }}>
-            <span>{canViewMaterialCosts ? "TOTALE COSTI OPERATIVI (NO PRATO)" : "STIMA COSTI TRASFERTA"}</span>
-            <span style={{ color: B.accent, fontSize: 17 }}>{fmtE(canViewMaterialCosts ? operationalCostTotal : travelCost)}</span>
+            <span>STIMA COSTI TRASFERTA</span>
+            <span style={{ color: B.accent, fontSize: 17 }}>{fmtE(travelCost)}</span>
           </div>
         ) : null}
       </div>
@@ -3008,7 +3139,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
   );
 }
 
-function ReportShell({ id, variant = "technical", area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [], previewMode = false }) {
+function ReportShell({ id, variant = "technical", area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderSegments = [], borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [], previewMode = false }) {
   const isClientVariant = variant === "client";
   return (
     <div id={id}>
@@ -3035,6 +3166,7 @@ function ReportShell({ id, variant = "technical", area, perimeter, turfArea, tur
         customPts={customPts}
         customClosed={customClosed}
         customAreas={customAreas}
+        borderSegments={borderSegments}
         borderMeters={borderMeters}
         borderType={borderType}
         substrate={substrate}
@@ -3072,7 +3204,9 @@ function GpPrecisionPanel({ area, areas, onUpdate, onAdd }) {
   const [rollForm, setRollForm] = useState({cx:5,cy:2,length:10,angle:0});
   const numeric = (key, title) => <label>{title}<input type="number" step="0.01" value={rect[key]} onChange={e=>setRect(r=>({...r,[key]:e.target.value}))}/></label>;
   return <div className="gp-precision">
-    <div className="gp-section-title">Costruzione precisa</div>
+    <div className="gp-section-title">Disegno e misure</div>
+    <p>Usa Rettangolo sulla tavola e trascina. Per spostare gli elementi scegli Seleziona e sposta.</p>
+    <details><summary>Inserimento numerico (opzionale)</summary>
     <label>Elemento<select value={rect.kind+":"+rect.label} onChange={e=>{ const [kind,label]=e.target.value.split(":"); setRect(r=>({...r,kind,label})); }}>
       {["turf:Prato","exclusion:Abitazione","exclusion:Casetta","exclusion:Patio esistente","exclusion:Piscina","exclusion:Aiuola","paving:Pavimentazione"].map(v=><option key={v} value={v}>{v.split(":")[1]}</option>)}
     </select></label>
@@ -3083,7 +3217,7 @@ function GpPrecisionPanel({ area, areas, onUpdate, onAdd }) {
       const angle=Number(rect.angle)*Math.PI/180;
       if (!Number.isFinite(angle)) {setError("Inserisci un angolo valido.");return;}
       onAdd({...createPlannerArea(rect.kind), label:rect.label, closed:true, points:[[0,0],[w,0],[w,h],[0,h]].map(([dx,dy])=>({x:x+dx*Math.cos(angle)-dy*Math.sin(angle),y:y+dx*Math.sin(angle)+dy*Math.cos(angle)}))}); setError("");
-    }}>＋ Inserisci rettangolo</button>
+    }}>＋ Inserisci rettangolo</button></details>
     {area.points.length>0 && <details><summary>Coordinate dei vertici · {area.points.length}</summary>
       <div className="gp-vertices">{area.points.map((p,i)=><div key={i}><span>P{i+1}</span>{["x","y"].map(axis=><input key={axis} aria-label={`P${i+1} ${axis} metri`} type="number" step="0.01" value={p[axis]} onChange={e=>{if(e.target.value!=="" && Number.isFinite(Number(e.target.value))) onUpdate(a=>({...a,points:a.points.map((v,j)=>j===i?{...v,[axis]:Number(e.target.value)}:v)}));}}/>)}</div>)}</div>
     </details>}
@@ -3538,6 +3672,7 @@ function GardenPlanner() {
   const [activeAreaId, setActiveAreaId] = useState(() => initialArea.id);
   const [pendingOffcut,setPendingOffcut]=useState(null);
   const [cutHistory,setCutHistory]=useState(null);
+  const [moveHistory,setMoveHistory]=useState(null);
   const recoverableStrips=useMemo(()=>plannerRecoverableStrips(plannerAreas),[plannerAreas]);
   const placeOffcut=(x,y)=>{
     const check=plannerOffcutPlacement(plannerAreas,pendingOffcut,x,y);
@@ -3548,8 +3683,9 @@ function GardenPlanner() {
     setCutHistory({before:plannerAreas,after});setPlannerAreas(after);setPendingOffcut(null);
   };
 
+  const [borderSegments,setBorderSegments]=useState([]);
   const [borderType, setBorderType] = useState("pvc");
-  const [selectedBorderEdges, setSelectedBorderEdges] = useState([]);
+  const selectedBorderEdges = [];
   const [substrate, setSubstrate] = useState({ scavoCm: 10, drenateCm: 5, sabbiaCm: 3 });
   const [decoItems, setDecoItems] = useState({});
   const [regionalPricing, setRegionalPricing] = useState(() => getRegionalMaterialPricing(""));
@@ -3626,11 +3762,21 @@ function GardenPlanner() {
     [pavingNeedsByArea],
   );
   const borderEdges = useMemo(() => getPlannerBorderEdges(completedAreas, shape, safeDims), [completedAreas, shape, safeDims]);
-  const selectedBorderMeters = useMemo(() => (
-    borderEdges
-      .filter(edge => selectedBorderEdges.includes(edge.id))
-      .reduce((sum, edge) => sum + edge.length, 0)
-  ), [borderEdges, selectedBorderEdges]);
+  const selectedBorderMeters = useMemo(() => borderType==='nessuna'?0:plannerBorderLength(borderSegments),[borderSegments,borderType]);
+  const editor={
+    borderSegments:borderType==='nessuna'?[]:borderSegments,
+    onSelectArea:setActiveAreaId,
+    onToolChange:mode=>{setInspectorFocus(mode==='border'?'border':'draw');setInspectorTab('element');},
+    onMove:(target,dx,dy)=>{const after=plannerMoveObject(plannerAreas,target,dx,dy);setMoveHistory({before:plannerAreas,after});setPendingOffcut(null);setCutHistory(null);setPlannerAreas(after);},
+    canUndoMove:moveHistory?.after===plannerAreas,
+    undoMove:()=>{if(moveHistory?.after===plannerAreas){setPlannerAreas(moveHistory.before);setMoveHistory(null);}},
+    onRectangle:(points,label)=>{
+      const kind=label==='Prato'?'turf':label==='Pavimentazione'?'paving':'exclusion';
+      const a={...createPlannerArea(kind),label,points,closed:true};
+      setPlannerAreas(prev=>[...prev.filter(p=>p.points.length||p.closed),a]);setActiveAreaId(a.id);setInspectorFocus('draw');
+    },
+    onAddBorder:(a,b)=>{setBorderType(t=>t==='nessuna'?'pvc':t);setBorderSegments(prev=>[...prev,{id:`border-${Date.now()}-${Math.random()}`,a,b}]);setInspectorFocus('border');}
+  };
 
   useEffect(() => {
     if (!plannerAreas.some((areaItem) => areaItem.id === activeAreaId)) {
@@ -3704,6 +3850,7 @@ function GardenPlanner() {
     setInspectorTab("element");
   }, [customClosed, activeAreaKind]);
   const handleSelectBorderTool = useCallback(() => {
+    setDrawMode("border");
     setInspectorFocus("border");
     setInspectorTab("element");
   }, []);
@@ -3713,9 +3860,7 @@ function GardenPlanner() {
     setInspectorTab("element");
   }, [updateActiveArea]);
 
-  useEffect(() => {
-    setSelectedBorderEdges(borderEdges.map(edge => edge.id));
-  }, [layoutKey, borderEdges]);
+
 
   useEffect(() => {
     const origin = String(travel.departureBase || "").trim();
@@ -3905,54 +4050,13 @@ function GardenPlanner() {
           }}>{bt.name}</button>
         ))}
       </div>
-      {borderType === "pvc" && borderEdges.length > 0 && (
-        <div>
-          <label style={lbl}>Seleziona i lati dove posare la bordura</label>
-          <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => setSelectedBorderEdges(borderEdges.map(edge => edge.id))}
-              style={{ padding: "5px 10px", borderRadius: 999, border: "1px solid " + B.border, background: B.white, color: B.text, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-            >
-              Seleziona tutti i lati
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedBorderEdges([])}
-              style={{ padding: "5px 10px", borderRadius: 999, border: "1px solid " + B.border, background: B.white, color: B.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-            >
-              Deseleziona tutto
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {borderEdges.map(edge => {
-              const active = selectedBorderEdges.includes(edge.id);
-              return (
-                <button
-                  key={edge.id}
-                  type="button"
-                  onClick={() => setSelectedBorderEdges(prev => prev.includes(edge.id) ? prev.filter(id => id !== edge.id) : [...prev, edge.id])}
-                  style={{
-                    padding: "7px 12px",
-                    borderRadius: 999,
-                    border: active ? "2px solid " + B.primary : "1px solid " + B.border,
-                    background: active ? B.light : B.white,
-                    color: active ? B.primary : B.text,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  {edge.label} · {fmt(edge.length)} m
-                </button>
-              );
-            })}
-          </div>
-          <div style={{ marginTop: 8, fontSize: 12, color: B.textMuted }}>
-            Bordura selezionata: <strong style={{ color: B.dark }}>{fmt(selectedBorderMeters)} m</strong> · {selectedBorderEdges.length}/{borderEdges.length} lati
-          </div>
-        </div>
-      )}
+      <p>Clicca A e B sulla tavola per ogni tratto. Le sovrapposizioni sullo stesso segmento vengono contate una sola volta.</p>
+      <button type="button" style={btnPrim} onClick={()=>setDrawMode('border')}>Traccia bordura A–B</button>
+      <p><strong>Totale bordura: {fmt(selectedBorderMeters,2)} m</strong></p>
+      {borderSegments.map((s,i)=><div key={s.id} style={{display:'flex',justifyContent:'space-between',gap:8,marginBottom:8}}>
+        <span>B{i+1} · {fmt(Math.hypot(s.b.x-s.a.x,s.b.y-s.a.y),2)} m</span>
+        <button type="button" aria-label={`Elimina bordura B${i+1}`} onClick={()=>setBorderSegments(prev=>prev.filter(b=>b.id!==s.id))}>Elimina</button>
+      </div>)}
     </div>
   );
 
@@ -3969,7 +4073,7 @@ function GardenPlanner() {
         customPts={customPts}
         customClosed={customClosed}
         customAreas={completedAreas}
-        borderMeters={selectedBorderMeters}
+        borderSegments={borderType==='nessuna'?[]:borderSegments} borderMeters={selectedBorderMeters}
         borderType={borderType}
         substrate={substrate}
         decoItems={decoItems}
@@ -4033,6 +4137,7 @@ function GardenPlanner() {
               canAddArea={Boolean(activeArea?.closed)}
             />
             <ShapeInput
+              editor={editor}
               customPts={customPts}
               setCustomPts={setCustomPts}
               customClosed={customClosed}
@@ -4088,9 +4193,7 @@ function GardenPlanner() {
                     {substrate.sabbiaCm > 0 && <MetricCard label="Sabbia livellamento" value={Math.round(area * substrate.sabbiaCm / 100 * 1500) + " kg"} sub={fmt((area * substrate.sabbiaCm) / 100, 2) + " m³"} />}
                   </div>
                 )}
-                <div style={{ fontSize: 12, color: B.textMuted, padding: "8px 10px", background: B.cream, borderRadius: 8, border: "1px solid " + B.borderLight }}>
-                  Listino regionale attivo: <strong style={{ color: B.dark }}>{regionalPricing.region}</strong> · Stabilizzato <strong style={{ color: B.dark }}>{fmt(regionalPricing.stabilizedPerTon, 1)} €/t</strong> · Sabbia 0/4 <strong style={{ color: B.dark }}>{fmt(regionalPricing.sandPerTon, 1)} €/t</strong>
-                </div>
+
               </div>
               <div className={`gp-dock-panel ${activeDockTab === "extra" ? "is-active" : ""}`}>
                 <DecoSection decoItems={decoItems} setDecoItems={setDecoItems} />
@@ -4136,7 +4239,7 @@ function GardenPlanner() {
                       Area attiva: <strong style={{ color: B.dark }}>{customClosed ? `${fmt(polyArea(customPts))} m\u00B2` : "perimetro aperto"}</strong>{activeAreaKind === "paving" ? " · pavimentazione" : ""}
                     </div>
                   ) : null}
-                  <InstallationNeedsPanel area={turfArea} perimeter={turfPerimeter} borderType={borderType} borderMeters={selectedBorderMeters} manualRolls={allManualRolls} rollUsage={rollUsage} />
+                  <InstallationNeedsPanel area={turfArea} perimeter={turfPerimeter} borderType={borderType} borderSegments={borderType==='nessuna'?[]:borderSegments} borderMeters={selectedBorderMeters} manualRolls={allManualRolls} rollUsage={rollUsage} />
                   {completedPavingAreas.length > 0 ? (
                     <PavingNeedsPanel pavingNeedsByArea={pavingNeedsByArea} pavingTilesTotal={pavingTilesTotal} />
                   ) : null}
@@ -4164,7 +4267,7 @@ function GardenPlanner() {
                       customPts={customPts}
                       customClosed={customClosed}
                       customAreas={completedAreas}
-                      borderMeters={selectedBorderMeters}
+                      borderSegments={borderType==='nessuna'?[]:borderSegments} borderMeters={selectedBorderMeters}
                       borderType={borderType}
                       substrate={substrate}
                       decoItems={decoItems}

@@ -46,3 +46,13 @@ Replaced the manual cut-length/X/Y workflow with automatically detected rectangu
 The inspector now starts with net lawn area, coverage progress, area remaining, inserted material and unused material. Waste breakdown is expandable; quantities are not presented as a completed purchase order. Pointer coordinates now account for CSS canvas scaling and borders.
 
 Validation: 166 tests passed, including automatic end/side detection, reversed grain, holes, overlap/outside rejection, stale source and triangular waste. UI: 20m² roll, 16m² coverage, automatic 4m² proposal, click-to-place →20m² coverage/0 waste; undo restores16m²/4m². Separate preview tab used to preserve the user's existing drawing.
+
+
+## Direct manipulation and quantity-only takeoff
+
+- Added Select and move for full areas/obstacles and individual rolls, with snapped preview, pointer capture, Escape cancellation and one-step move undo. Moving a lawn also translates its owned rolls; grain, dimensions and offcut provenance remain unchanged.
+- Added drag-to-draw rectangles with live metric dimensions and selectable lawn, paving or exclusion type. Manual coordinate entry is now optional.
+- Replaced automatically selected perimeter sides with independent A–B border segments. Collinear overlaps are counted once; segments can be removed individually and appear in the technical drawing.
+- Material reports and generator prefill contain quantities only. Legacy price fields in the bridge are zero; travel estimates remain.
+- Verified drawing and dragging an obstacle, roll movement with unchanged material quantity, partial border totals and report contents in a separate local browser tab. Added six regression tests; full check passes 172 tests.
+- Borders remain independently positioned when an area moves. Placement updates the coverage and waste calculation; it does not automatically optimize roll layout.
