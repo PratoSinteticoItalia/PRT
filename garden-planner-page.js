@@ -90,7 +90,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260927-offcut-boundary-fix";
+const APP_SHELL_VERSION = "20260927-client-report-redesign";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -109,6 +109,16 @@ const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 const getLocalISODate = () => {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+// "2026-09-27" → "27 settembre 2026", per il report cliente — più
+// presentabile della data ISO nuda usata nel report tecnico.
+const IT_MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+const formatItDate = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+  if (!m) return "";
+  const monthName = IT_MONTHS[Number(m[2]) - 1];
+  return monthName ? `${Number(m[3])} ${monthName} ${m[1]}` : "";
 };
 
 function shouldUseSalesRequestPrefill() {
@@ -3091,26 +3101,41 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
 
       <div className="print-no-break" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10, marginBottom: 12 }}>
         <TechnicalSketch borderSegments={borderSegments} shape={shape} dims={dims} customPts={customPts} customClosed={customClosed} customAreas={customAreas} manualRolls={manualRolls} isClientVariant={isClientVariant} previewMode={previewMode} />
-        <div style={{ border: "1px solid " + B.borderLight, borderRadius: 12, background: B.white, padding: "10px 12px", display: "grid", gap: 7 }}>
+        <div style={{ border: "1px solid " + (isClientVariant ? "#d8e8d4" : B.borderLight), borderRadius: 12, background: isClientVariant ? B.white : B.white, padding: "10px 12px", display: "grid", gap: 7, boxShadow: isClientVariant ? "0 2px 10px rgba(15,42,24,0.06)" : "none" }}>
           <div style={{ fontSize: 11, color: B.primary, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px" }}>{isClientVariant ? "Layout giardino" : "Tavola tecnica 2D"}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
-            <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
-              <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Superficie</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: B.dark }}>{fmt(area)} m²</div>
+          {isClientVariant ? (
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "10px 14px", borderRadius: 10, background: `linear-gradient(135deg, ${B.light}, ${B.cream})` }}>
+              <GpStatIcon name="area" color={B.primary} size={22} />
+              <div>
+                <span style={{ fontSize: 26, fontWeight: 800, color: B.dark }}>{fmt(area)}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: B.textMuted, marginLeft: 4 }}>m² di prato</span>
+              </div>
             </div>
-            <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
+          ) : null}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+            {!isClientVariant && (
+              <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
+                <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Superficie</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: B.dark }}>{fmt(area)} m²</div>
+              </div>
+            )}
+            <div style={isClientVariant ? statCardClient : statCardTech}>
+              {isClientVariant && <GpStatIcon name="perimeter" color={B.primary} size={15} />}
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Perimetro</div>
               <div style={{ fontSize: 17, fontWeight: 800, color: B.dark }}>{fmt(perimeter)} m</div>
             </div>
-            <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
+            <div style={isClientVariant ? statCardClient : statCardTech}>
+              {isClientVariant && <GpStatIcon name="border" color={B.primary} size={15} />}
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Bordura</div>
               <div style={{ fontSize: 17, fontWeight: 800, color: B.dark }}>{borderType === "nessuna" ? "No" : `${fmt(borderMeters)} m`}</div>
             </div>
-            <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
+            <div style={isClientVariant ? statCardClient : statCardTech}>
+              {isClientVariant && <GpStatIcon name="shape" color={B.primary} size={15} />}
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Forma</div>
               <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{shapeLabel}</div>
             </div>
-            <div style={{ padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight }}>
+            <div style={isClientVariant ? statCardClient : statCardTech}>
+              {isClientVariant && <GpStatIcon name="rolls" color={B.primary} size={15} />}
               <div style={{ fontSize: 10, color: B.textMuted, textTransform: "uppercase" }}>Layout rotoli</div>
               <div style={{ fontSize: 14, fontWeight: 800, color: B.dark }}>{rollCount} rotoli</div>
               <div style={{ fontSize: 11, color: B.textMuted, marginTop: 2 }}>{fmt(rollLinearMeters, 2)} m lineari · {fmt(rollMaterialArea, 1)} m² inseriti</div>
@@ -3154,6 +3179,19 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
           </div>
         ) : null}
       </div>
+      {isClientVariant && (
+        <div className="print-no-break" style={{
+          marginTop: 16, padding: "18px 22px", borderRadius: 14, textAlign: "center",
+          background: `linear-gradient(135deg, ${B.light}, ${B.cream})`, border: "1px solid " + B.borderLight,
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: B.dark, marginBottom: 4 }}>
+            Grazie per aver scelto Prato Sintetico Italia
+          </div>
+          <div style={{ fontSize: 11.5, color: B.textMuted, lineHeight: 1.6 }}>
+            Vertex Srls · Via Ottorino Respighi 57, 81025 Marcianise (CE) · www.pratosinteticoitalia.com
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3162,19 +3200,43 @@ function ReportShell({ id, variant = "technical", area, perimeter, turfArea, tur
   const isClientVariant = variant === "client";
   return (
     <div id={id}>
+      {isClientVariant ? (
+        <div className="print-no-break" style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14,
+          marginBottom: 14, padding: "16px 20px", borderRadius: 14,
+          background: `linear-gradient(135deg, ${B.dark}, ${B.primary})`,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 10, background: "#fff", display: "grid", placeItems: "center", flexShrink: 0, boxShadow: "0 2px 6px rgba(0,0,0,0.18)" }}>
+              <img src="./logo-prato.png" alt="" style={{ width: 27, height: 27, objectFit: "contain" }} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(255,255,255,0.75)", letterSpacing: "0.6px", textTransform: "uppercase" }}>Prato Sintetico Italia</div>
+              <div style={{ fontSize: 19, fontWeight: 800, color: "#fff", lineHeight: 1.2, overflowWrap: "anywhere" }}>
+                Progetto giardino{projectInfo.client ? ` — ${projectInfo.client}` : ""}
+              </div>
+            </div>
+          </div>
+          <div style={{ textAlign: "right", fontSize: 11, color: "rgba(255,255,255,0.8)", flexShrink: 0 }}>
+            <div>{formatItDate(projectInfo.date) || formatItDate(getLocalISODate())}</div>
+            {projectInfo.address ? <div style={{ color: "#fff", fontWeight: 600, maxWidth: 220, overflowWrap: "anywhere" }}>{projectInfo.address}</div> : null}
+          </div>
+        </div>
+      ) : (
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10, padding: "8px 2px 10px", borderBottom: "1px solid " + B.borderLight }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 800, color: B.primary, letterSpacing: "0.4px", textTransform: "uppercase" }}>Prato Sintetico Italia</div>
           <div style={{ fontSize: 18, fontWeight: 800, color: B.dark, lineHeight: 1.15 }}>
-            {isClientVariant ? "Report materiali Garden Planner" : "Report tecnico Garden Planner"}
+            Report tecnico Garden Planner
           </div>
         </div>
         <div style={{ textAlign: "right", fontSize: 11, color: B.textMuted }}>
           <div><strong style={{ color: B.dark }}>Data report:</strong> {projectInfo.date || getLocalISODate()}</div>
           {projectInfo.client ? <div><strong style={{ color: B.dark }}>Cliente:</strong> {projectInfo.client}</div> : null}
-          <div><strong style={{ color: B.dark }}>Versione:</strong> {isClientVariant ? "Cliente" : "Tecnica"}</div>
+          <div><strong style={{ color: B.dark }}>Versione:</strong> Tecnica</div>
         </div>
       </div>
+      )}
       <MaterialsReport
         area={area}
         perimeter={perimeter}
@@ -3206,6 +3268,21 @@ function ReportShell({ id, variant = "technical", area, perimeter, turfArea, tur
 /* ═══════════════════════════════════════════
    STYLES
    ═══════════════════════════════════════════ */
+// Icone minimali per le card statistiche del report cliente (stroke
+// outline, stesso stile usato altrove nell'app) — solo lì, il report
+// tecnico resta denso di dati senza fronzoli grafici.
+function GpStatIcon({ name, color = "currentColor", size = 16 }) {
+  const paths = {
+    area: <rect x="4" y="4" width="16" height="16" rx="2.5" />,
+    perimeter: <rect x="3.5" y="3.5" width="17" height="17" rx="2" strokeDasharray="3 2.2" />,
+    border: <><path d="M4 20 20 4" /><path d="M4 20v-5M4 20h5" /></>,
+    shape: <path d="M12 3l8 5-2 11H6L4 8z" />,
+    rolls: <><rect x="3" y="9" width="18" height="6" rx="3" /><circle cx="7.5" cy="12" r="1.1" fill={color} /></>,
+  };
+  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+}
+const statCardTech = { padding: "8px 10px", borderRadius: 8, background: B.cream, border: "1px solid " + B.borderLight };
+const statCardClient = { padding: "9px 10px 8px", borderRadius: 8, background: B.white, border: "1px solid #e2ece0", display: "grid", gap: 3 };
 const btnPrim = { padding: "8px 16px", borderRadius: 8, border: "none", background: B.primary, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" };
 const lbl = { display: "block", fontSize: 11, color: B.textMuted, marginBottom: 4, fontWeight: 500 };
 const fieldInp = { width: "100%", padding: "10px 14px", border: "1.5px solid " + B.border, borderRadius: 10, fontSize: 13, boxSizing: "border-box", outline: "none", color: B.dark };
