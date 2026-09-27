@@ -90,7 +90,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260927-garden-direct-editing";
+const APP_SHELL_VERSION = "20260927-roll-labels-toggle";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -1434,6 +1434,7 @@ function FreeDrawCanvas({
   const [view, setView] = useState({ x: 48, y: 48 });
   const [panMode, setPanMode] = useState(false);
   const [showDimensions, setShowDimensions] = useState(true);
+  const [showRollLabels, setShowRollLabels] = useState(true);
   const fitDrawing = () => {
     const pts = [...areas.flatMap(a => [...(a.points || []), ...(a.rolls || []).flatMap(getRollCorners)]), ...(editor.borderSegments||[]).flatMap(s=>[s.a,s.b])];
     if (!pts.length) return;
@@ -1970,14 +1971,16 @@ function FreeDrawCanvas({
         ctx.lineWidth = options.preview ? 1.8 : 2;
         ctx.stroke(); ctx.setLineDash([]);
 
-        const labelText = options.preview
-          ? `Preview ${fmt(roll.length, 2)}m`
-          : `R${index + 1}${roll.sourceRollId ? " recuperato" : ""} · ${fmt(roll.width || 2, 2)}×${fmt(roll.length, 2)}m`;
-        drawLabelPill(labelText, toPx(roll.cx), toPx(roll.cy), {
-          roll,
-          textColor: valid ? "#0d47a1" : B.danger,
-          bg: valid ? "rgba(235,244,255,0.96)" : "rgba(255,235,235,0.96)",
-        });
+        if (options.preview || showRollLabels) {
+          const labelText = options.preview
+            ? `Preview ${fmt(roll.length, 2)}m`
+            : `R${index + 1}${roll.sourceRollId ? " recuperato" : ""} · ${fmt(roll.width || 2, 2)}×${fmt(roll.length, 2)}m`;
+          drawLabelPill(labelText, toPx(roll.cx), toPx(roll.cy), {
+            roll,
+            textColor: valid ? "#0d47a1" : B.danger,
+            bg: valid ? "rgba(235,244,255,0.96)" : "rgba(255,235,235,0.96)",
+          });
+        }
       };
 
       (rolls || []).forEach((roll, index) => drawRoll(roll, index));
@@ -2031,7 +2034,7 @@ function FreeDrawCanvas({
       const corners=getRollCorners(roll);
       ctx.beginPath(); corners.forEach((p,i)=>i?ctx.lineTo(toPx(p.x),toPx(p.y)):ctx.moveTo(toPx(p.x),toPx(p.y)));ctx.closePath();
       ctx.fillStyle="rgba(21,101,192,.12)";ctx.fill();ctx.strokeStyle="#3978ae";ctx.lineWidth=1.5;ctx.stroke();
-      drawLabelPill(`${a.label || "Area "+(ai+1)} · R${ri+1}${roll.sourceRollId ? " recuperato" : ""}`,toPx(roll.cx),toPx(roll.cy),{roll,textColor:"#17466e"});
+      if (showRollLabels) drawLabelPill(`${a.label || "Area "+(ai+1)} · R${ri+1}${roll.sourceRollId ? " recuperato" : ""}`,toPx(roll.cx),toPx(roll.cy),{roll,textColor:"#17466e"});
     }));
     // Obstacles remain visible above turf and roll previews, regardless of selection.
     [...inactiveAreas, { ...activeAreaEntry, points, closed }].filter(a => a.kind === "exclusion" && a.closed && a.points.length >= 3).forEach(a => {
@@ -2092,7 +2095,7 @@ function FreeDrawCanvas({
     if(borderStart&&hoverPt)drawBorder(borderStart,hoverPt,`${fmt(Math.hypot(hoverPt.x-borderStart.x,hoverPt.y-borderStart.y),2)} m`);
     labelQueue.forEach(args => renderLabelPill(...args));
     ctx.restore();
-  }, [selection, gesture, rectangleType, borderStart, editor.borderSegments, pendingOffcut, areas, view, showDimensions, points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices, previewMode, activeAreaKind, inactiveAreas, borderEdges, selectedBorderEdges, showBorderOverlay, activeAreaId, activeAreaEntry]);
+  }, [selection, gesture, rectangleType, borderStart, editor.borderSegments, pendingOffcut, areas, view, showDimensions, showRollLabels, points, hoverPt, closed, canvasW, canvasH, PX, zoom, rolls, drawMode, rollStart, gridStep, selectedVertices, previewMode, activeAreaKind, inactiveAreas, borderEdges, selectedBorderEdges, showBorderOverlay, activeAreaId, activeAreaEntry]);
 
   return (
     <div ref={containerRef} className="gp-drawing-board">
@@ -2112,6 +2115,7 @@ function FreeDrawCanvas({
         <button type="button" onClick={fitDrawing}>Inquadra tutto</button>
         <button type="button" aria-pressed={panMode} onClick={() => setPanMode(v=>!v)}>{panMode ? "Mano attiva" : "Sposta vista"}</button>
         <button type="button" aria-pressed={showDimensions} onClick={() => setShowDimensions(v=>!v)}>Quote {showDimensions ? "visibili" : "nascoste"}</button>
+        <button type="button" aria-pressed={showRollLabels} onClick={() => setShowRollLabels(v=>!v)}>Misure rotoli {showRollLabels ? "visibili" : "nascoste"}</button>
         <button type="button" aria-label="Riduci zoom" onClick={()=>setZoom(z=>Math.max(.1,z/1.25))}>−</button>
         <span>{Math.round(zoom*100)}%</span>
         <button type="button" aria-label="Aumenta zoom" onClick={()=>setZoom(z=>Math.min(5,z*1.25))}>＋</button>
