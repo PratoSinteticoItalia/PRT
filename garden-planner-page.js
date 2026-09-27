@@ -90,7 +90,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260927-roll-labels-toggle";
+const APP_SHELL_VERSION = "20260927-roll-labels-dense-fix";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -1793,15 +1793,29 @@ function FreeDrawCanvas({
       .filter(r=>r.sourceRollId || Math.min(r.width||2,r.length)*PX<28).map(rollBox);
     const drawLabelPill = (...args) => labelQueue.push(args);
     const renderLabelPill = (text, cx, cy, opts = {}) => {
-      const { font = "bold 10px sans-serif", textColor = "#1a3d24", bg = "rgba(255,255,255,0.93)", r = 5, px: px2 = 6, py: py2 = 4 } = opts;
+      const { font = "bold 10px sans-serif", textColor = "#1a3d24", bg = "rgba(255,255,255,0.93)", r = 5, px: px2 = 6, py: py2 = 4, shortText = null } = opts;
       ctx.font = font;
-      const tw = ctx.measureText(text).width;
-      const bw = tw + px2 * 2, bh = 14 + py2;
       const anchor={x:cx,y:cy};
       const roll=opts.roll;
       const angle=roll?.angle||0;
-      const fits=roll && bw*Math.abs(Math.cos(angle))+bh*Math.abs(Math.sin(angle))+8<=roll.length*PX
-        && bw*Math.abs(Math.sin(angle))+bh*Math.abs(Math.cos(angle))+8<=(roll.width||2)*PX;
+      const measure=(t)=>{
+        const tw=ctx.measureText(t).width;
+        const w2=tw+px2*2, h2=14+py2;
+        const ok=roll && w2*Math.abs(Math.cos(angle))+h2*Math.abs(Math.sin(angle))+8<=roll.length*PX
+          && w2*Math.abs(Math.sin(angle))+h2*Math.abs(Math.cos(angle))+8<=(roll.width||2)*PX;
+        return {w:w2,h:h2,fits:ok};
+      };
+      let m=measure(text);
+      // Rotolo troppo stretto per l'etichetta completa (numero + misure): prova
+      // solo "R{n}" prima di spostare l'etichetta fuori dal rotolo con una linea
+      // guida — su piani densi (20+ rotoli) le linee guida si accavallano e non
+      // si capisce più a quale rotolo corrisponda quale misura (segnalato
+      // dall'utente il 27 set). Le misure complete restano nel riepilogo laterale.
+      if(roll && !roll.sourceRollId && !m.fits && shortText){
+        const shortM=measure(shortText);
+        if(shortM.fits){text=shortText;m=shortM;}
+      }
+      const {w:bw,h:bh,fits}=m;
       const outside=roll && (roll.sourceRollId || !fits)?rollBox(roll):null;
       const position=plannerLabelPosition(cx,cy,bw,bh,
         {left:4-view.x,right:canvasW-view.x-4,top:18-view.y,bottom:canvasH-view.y-4},
@@ -1977,6 +1991,7 @@ function FreeDrawCanvas({
             : `R${index + 1}${roll.sourceRollId ? " recuperato" : ""} · ${fmt(roll.width || 2, 2)}×${fmt(roll.length, 2)}m`;
           drawLabelPill(labelText, toPx(roll.cx), toPx(roll.cy), {
             roll,
+            shortText: options.preview ? null : `R${index + 1}`,
             textColor: valid ? "#0d47a1" : B.danger,
             bg: valid ? "rgba(235,244,255,0.96)" : "rgba(255,235,235,0.96)",
           });
