@@ -282,6 +282,13 @@ body.shell-loading .shell-launch {
   display: none;
 }
 
+.sidebar-collapse-btn {
+  padding: 0;
+  width: 32px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .shell-pending {
   opacity: 0;
   pointer-events: none;
@@ -647,6 +654,26 @@ button.is-feedback,
   display: grid;
   grid-template-columns: 240px 1fr;
   grid-template-rows: 56px 1fr;
+  transition: grid-template-columns 0.18s ease;
+}
+
+/* Sidebar comprimibile (desktop): utile su strumenti che vogliono tutta la
+   larghezza, es. Garden Planner. Preferenza per-dispositivo in localStorage,
+   non nello state condiviso — non ha senso sincronizzarla tra account.
+   Chiusa dentro min-width: sotto i 980px la sidebar ha già il suo layout
+   mobile (vedi @media max-width:980px più sotto) — .sidebar-collapsed non
+   deve poter competere in specificità con quelle regole e romperlo se la
+   preferenza resta salvata attraversando un resize/breakpoint. */
+@media (min-width: 981px) {
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 0px 1fr;
+  }
+  .app-shell.sidebar-collapsed .sidebar {
+    overflow: hidden;
+    padding-left: 0;
+    padding-right: 0;
+    border-right: none;
+  }
 }
 
 .topbar {
@@ -7437,6 +7464,12 @@ body {
     min-width: 42px;
     padding-inline: 0;
     font-size: 18px;
+  }
+
+  /* Sotto i 980px la sidebar ha già il suo meccanismo mobile (drawer aperto
+     dal bottone ☰): il toggle "comprimi" è un concetto solo desktop. */
+  .sidebar-collapse-btn {
+    display: none !important;
   }
 
   .main-content {
