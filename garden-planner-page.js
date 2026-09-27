@@ -95,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260927-sketch-hero-redesign";
+const APP_SHELL_VERSION = "20260928-sketch-density-fix";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2601,7 +2601,18 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
       polygon.vertexPoints.forEach((point) => registerOccupiedCircle(occupiedLabels, point.x, point.y, 6));
     }
   });
-  rollPaths.forEach((roll) => registerOccupiedCircle(occupiedLabels, roll.cx, roll.cy, 8.5));
+  // Oltre una certa densità, un'etichetta "R{n}" per rotolo (26 unità di
+  // larghezza) si sovrappone alle altre — molte strisce sono più strette del
+  // box stesso (es. tagli di rifinitura da 0.10-0.30m) — e "mangia" tutto lo
+  // spazio disponibile, lasciando le quote del perimetro senza un posto dove
+  // stare (segnalato dall'utente il 28 set su un layout da 29 rotoli). Sopra
+  // la soglia, lato cliente, i rotoli restano visibili come linee di giunzione
+  // ma senza etichetta numerica sopra: i numeri restano nella legenda sotto.
+  const ROLL_LABEL_DENSITY_LIMIT = 9;
+  const showRollLabelsOnSketch = !isClientVariant || rollPaths.length <= ROLL_LABEL_DENSITY_LIMIT;
+  if (showRollLabelsOnSketch) {
+    rollPaths.forEach((roll) => registerOccupiedCircle(occupiedLabels, roll.cx, roll.cy, 8.5));
+  }
   const edges = !hasMultipleAreas ? polygonSketches.flatMap((polygon, polygonIndex) => polygon.points.map((point, index) => {
     const next = polygon.points[(index + 1) % polygon.points.length];
     const edgeNormal = getEdgeOutwardNormal(point, next, polygon.points);
@@ -2623,6 +2634,8 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
       areaIndex: polygonIndex + 1,
       edgeIndex: index + 1,
       length: Math.hypot(next.x - point.x, next.y - point.y),
+      midX: edgeNormal.midpoint.x * scale + ox,
+      midY: edgeNormal.midpoint.y * scale + oy,
       txt,
       chipW,
       chipH,
@@ -2749,12 +2762,19 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
         {rollPaths.map(roll => (
           <g key={roll.id}>
             {isClientVariant ? (
-              /* Client: dashed seam lines only, no filled box */
+              /* Client: dashed seam lines, con etichetta numerata solo se lo
+                 spazio lo permette (vedi showRollLabelsOnSketch sopra) —
+                 altrimenti solo la linea di giunzione, il numero resta nella
+                 legenda sotto la pianta. */
               <>
                 <path d={roll.path} fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.4" strokeDasharray="5 3" />
-                <rect x={roll.cx - 13} y={roll.cy - 6.5} width="26" height="13" rx="3.5"
-                  fill="rgba(255,255,255,0.82)" stroke="rgba(26,94,47,0.28)" strokeWidth="0.7" />
-                <text x={roll.cx} y={roll.cy + 4} fontSize="7.4" textAnchor="middle" fill="#1a3d24" fontWeight="700">{`R${roll.rollIndex}`}</text>
+                {showRollLabelsOnSketch && (
+                  <>
+                    <rect x={roll.cx - 13} y={roll.cy - 6.5} width="26" height="13" rx="3.5"
+                      fill="rgba(255,255,255,0.82)" stroke="rgba(26,94,47,0.28)" strokeWidth="0.7" />
+                    <text x={roll.cx} y={roll.cy + 4} fontSize="7.4" textAnchor="middle" fill="#1a3d24" fontWeight="700">{`R${roll.rollIndex}`}</text>
+                  </>
+                )}
               </>
             ) : (
               /* Technical: filled box with numbered center dot */
@@ -2773,19 +2793,31 @@ function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [
             <text x={p.center.x} y={p.center.y} textAnchor="middle" fontSize="8" fill="#344154">{p.label || "Esclusione"}</text>
           </g>
         ))}
-        {/* Edge measurement labels */}
-        {edges.map((edge, index) => (
-          <g key={index}>
-            <rect x={edge.labelRect.x} y={edge.labelRect.y} width={edge.chipW} height={edge.chipH} rx={isClientVariant ? 4 : 6}
-              fill={isClientVariant ? "rgba(255,255,255,0.94)" : "rgba(255,255,255,0.96)"}
-              stroke={isClientVariant ? "rgba(26,94,47,0.2)" : B.borderLight}
-              strokeWidth={isClientVariant ? "0.8" : "1"} />
-            <text x={edge.labelRect.x + edge.chipW / 2} y={edge.labelRect.y + 10.6} fontSize="8.4" textAnchor="middle"
-              fill={isClientVariant ? "#1a3d24" : B.dark} fontWeight="700" letterSpacing={isClientVariant ? "0.2" : "0"}>
-              {edge.txt}
-            </text>
-          </g>
-        ))}
+        {/* Edge measurement labels — lato cliente con un piccolo richiamo
+            dal bordo all'etichetta (linea tratteggiata + puntino sul
+            bordo), come in un disegno tecnico vero, non un'etichetta che
+            galleggia scollegata dal lato che misura. */}
+        {edges.map((edge, index) => {
+          const labelCx = edge.labelRect.x + edge.chipW / 2;
+          const labelCy = edge.labelRect.y + edge.chipH / 2;
+          const leaderLen = Math.hypot(labelCx - edge.midX, labelCy - edge.midY);
+          return (
+            <g key={index}>
+              {isClientVariant && leaderLen > 7 && (
+                <line x1={edge.midX} y1={edge.midY} x2={labelCx} y2={labelCy} stroke="rgba(26,94,47,0.4)" strokeWidth="0.7" strokeDasharray="1.5 1.8" />
+              )}
+              {isClientVariant && <circle cx={edge.midX} cy={edge.midY} r="1.5" fill="#1a5e2f" />}
+              <rect x={edge.labelRect.x} y={edge.labelRect.y} width={edge.chipW} height={edge.chipH} rx={isClientVariant ? 4 : 6}
+                fill={isClientVariant ? "rgba(255,255,255,0.94)" : "rgba(255,255,255,0.96)"}
+                stroke={isClientVariant ? "rgba(26,94,47,0.2)" : B.borderLight}
+                strokeWidth={isClientVariant ? "0.8" : "1"} />
+              <text x={labelCx} y={edge.labelRect.y + 10.6} fontSize="8.4" textAnchor="middle"
+                fill={isClientVariant ? "#1a3d24" : B.dark} fontWeight="700" letterSpacing={isClientVariant ? "0.2" : "0"}>
+                {edge.txt}
+              </text>
+            </g>
+          );
+        })}
 
         {/* Vertex labels — technical only */}
         {!isClientVariant && vertexLabels.map((item, index) => (
