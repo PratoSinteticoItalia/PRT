@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260928-crm-invoice-pdf-drafts";
+} from "./lib/order-money.js?v=20260928-supplier-name-fuzzy-match";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260928-crm-invoice-pdf-drafts";
+import { regionForCity } from "./lib/geo.js?v=20260928-supplier-name-fuzzy-match";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260928-crm-invoice-pdf-drafts";
+} from "./lib/shipping-eligibility.js?v=20260928-supplier-name-fuzzy-match";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -44,7 +44,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260928-crm-invoice-pdf-drafts";
+} from "./lib/profit-split.js?v=20260928-supplier-name-fuzzy-match";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -59,7 +59,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260928-crm-invoice-pdf-drafts";
+} from "./lib/preventivo-pricing.js?v=20260928-supplier-name-fuzzy-match";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -67,13 +67,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260928-crm-invoice-pdf-drafts";
+} from "./lib/sales-assignment.js?v=20260928-supplier-name-fuzzy-match";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20260928-crm-invoice-pdf-drafts";
+} from "./lib/surveys.js?v=20260928-supplier-name-fuzzy-match";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -87,7 +87,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260928-crm-invoice-pdf-drafts";
+const APP_SHELL_VERSION = "20260928-supplier-name-fuzzy-match";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15373,6 +15373,51 @@ function normalizeSupplierPriceKey(s) {
   return String(s || "").trim().toLowerCase();
 }
 
+// "È lo stesso fornitore?" per il riempimento automatico da PDF — deve
+// tollerare le differenze reali tra il nome in anagrafica e la ragione
+// sociale scritta in fattura (es. anagrafica "WMg grass", PDF "Jiangsu
+// WMgrass Co., Ltd": stesso fornitore, forma diversa). Un confronto esatto
+// (normalizeSupplierPriceKey, usato invece per raggruppare gli storici
+// prezzi senza fondere per sbaglio fornitori diversi) blocca il
+// riempimento quasi sempre nella pratica, vanificando l'estrazione —
+// segnalato dall'utente il 28 set su una fattura reale.
+//
+// Approccio: rimuove le forme societarie più comuni, poi confronta per
+// similarità a bigrammi di carattere (indice di Dice) invece che per
+// uguaglianza esatta. Una soglia troppo permissiva è un rischio accettabile
+// qui: il salvataggio resta comunque dietro alla spunta esplicita "Ho
+// verificato i dati" nella bozza — un falso positivo costa un controllo in
+// più, non un dato sbagliato salvato in silenzio.
+const SUPPLIER_NAME_LEGAL_SUFFIX_RE = /\b(s\.?\s?r\.?\s?l\.?s?|s\.?\s?p\.?\s?a\.?|s\.?\s?a\.?\s?s\.?|s\.?\s?n\.?\s?c\.?|s\.?\s?s\.?|ltd|llc|inc|co|company|corp|gmbh|group|plc)\b\.?/gi;
+function stripSupplierLegalSuffix(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(SUPPLIER_NAME_LEGAL_SUFFIX_RE, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+function supplierNameBigrams(value) {
+  const chars = String(value || "").replace(/\s+/g, "");
+  const bigrams = new Set();
+  for (let i = 0; i < chars.length - 1; i++) bigrams.add(chars.slice(i, i + 2));
+  return bigrams;
+}
+const SUPPLIER_NAME_MATCH_THRESHOLD = 0.45;
+function isSameSupplierName(a, b) {
+  const na = stripSupplierLegalSuffix(a);
+  const nb = stripSupplierLegalSuffix(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  const ba = supplierNameBigrams(na);
+  const bb = supplierNameBigrams(nb);
+  if (!ba.size || !bb.size) return false;
+  let common = 0;
+  ba.forEach((gram) => { if (bb.has(gram)) common++; });
+  const similarity = (2 * common) / (ba.size + bb.size);
+  return similarity >= SUPPLIER_NAME_MATCH_THRESHOLD;
+}
+
 function getSupplierPriceEntries() {
   return Array.isArray(state.supplierPriceEntries) ? state.supplierPriceEntries : [];
 }
@@ -16192,7 +16237,7 @@ async function submitSupplierProfileForm(form) {
 function applySupplierInvoiceDraft(form, draft) {
   const messages = [];
   const supplier = form.elements.namedItem("supplierName");
-  if (supplier?.value && draft.supplierName && normalizeSupplierPriceKey(supplier.value) !== normalizeSupplierPriceKey(draft.supplierName)) {
+  if (supplier?.value && draft.supplierName && !isSameSupplierName(supplier.value, draft.supplierName)) {
     messages.push(`Il PDF indica “${draft.supplierName}”, ma il modulo è aperto su “${supplier.value}”. Nessun campo compilato: verifica il fornitore.`);
     return messages;
   }
