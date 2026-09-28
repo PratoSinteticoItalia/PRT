@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260928-supplier-name-fuzzy-match";
+} from "./lib/order-money.js?v=20260928-supplier-pdf-layouts";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260928-supplier-name-fuzzy-match";
+import { regionForCity } from "./lib/geo.js?v=20260928-supplier-pdf-layouts";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +33,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260928-supplier-name-fuzzy-match";
+} from "./lib/shipping-eligibility.js?v=20260928-supplier-pdf-layouts";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -44,7 +44,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260928-supplier-name-fuzzy-match";
+} from "./lib/profit-split.js?v=20260928-supplier-pdf-layouts";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -59,7 +59,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260928-supplier-name-fuzzy-match";
+} from "./lib/preventivo-pricing.js?v=20260928-supplier-pdf-layouts";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -67,13 +67,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260928-supplier-name-fuzzy-match";
+} from "./lib/sales-assignment.js?v=20260928-supplier-pdf-layouts";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20260928-supplier-name-fuzzy-match";
+} from "./lib/surveys.js?v=20260928-supplier-pdf-layouts";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -87,7 +87,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260928-supplier-name-fuzzy-match";
+const APP_SHELL_VERSION = "20260928-supplier-pdf-layouts";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15991,7 +15991,7 @@ function renderSupplierPriceLineRowHtml(line, idx) {
   return `
     <div class="sp-line" data-line-index="${idx}">
       <input type="text" class="sp-line-field" data-line-field="material" list="sp-materials-list" placeholder="${state.lang === "it" ? "Materiale" : "Material"}" value="${escapeAttr(l.material || "")}" />
-      <input type="number" step="0.01" min="0" class="sp-line-field" data-line-field="unitPrice" placeholder="${state.lang === "it" ? "Prezzo €" : "Price €"}" value="${escapeAttr(l.unitPrice != null ? String(l.unitPrice) : "")}" />
+      <input type="number" step="any" min="0" class="sp-line-field" data-line-field="unitPrice" placeholder="${state.lang === "it" ? "Prezzo €" : "Price €"}" value="${escapeAttr(l.unitPrice != null ? String(l.unitPrice) : "")}" />
       <select class="sp-line-field" data-line-field="unit">
         <option value="" ${!l.unit ? "selected" : ""}>${state.lang === "it" ? "Scegli unità" : "Choose unit"}</option>
         ${SUPPLIER_PRICE_UNITS.map(([v, label]) => `<option value="${v}" ${l.unit === v ? "selected" : ""}>${label}</option>`).join("")}
@@ -16042,7 +16042,7 @@ function renderSupplierPriceEditFormHtml(editing, lockSupplier = false) {
       </div>
       <div class="field">
         <label>${state.lang === "it" ? "Prezzo unitario (€)" : "Unit price (€)"}</label>
-        <input type="number" step="0.01" min="0" name="unitPrice" required value="${escapeAttr(d.unitPrice != null ? String(d.unitPrice) : "")}" />
+        <input type="number" step="any" min="0" name="unitPrice" required value="${escapeAttr(d.unitPrice != null ? String(d.unitPrice) : "")}" />
       </div>
       <div class="field">
         <label>${state.lang === "it" ? "Unità" : "Unit"}</label>

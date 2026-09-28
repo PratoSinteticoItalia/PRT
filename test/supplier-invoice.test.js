@@ -86,3 +86,39 @@ test('proforma rejects inconsistent amounts and never treats address snc as supp
   assert.equal(invoiceNumber('33.643,20'),33643.2);
   assert.equal(invoiceDate('February 30, 2026'),'');
 });
+
+test('ERP centred headings, separate document header and four decimal prices',()=>{
+ const rows=[cell('Example SRL',20,800),cell('Fattura ProForma',20,780),cell('Numero Del Pag.',20,760),cell('25/00123 09/09/2025 1',20,740)];
+ ['Articolo','Descrizione','UM',"Q.ta'",'Val.Unit.','%Sc.','Imponibile','IVA'].forEach((str,i)=>rows.push(cell(str,[38,163,296,335,389,448,490,556][i],700,[33,52,16,21,38,23,46,16][i])));
+ ['CODE1','Colla A KG. 4,5','KG.','324,00','2,1511','0','696,96','22'].forEach((str,i)=>rows.push(cell(str,[21,89,296,341,413,457,519,559][i],680,[51,125,14,29,29,4,29,9][i])));
+ rows.push(cell('IVA Descrizione Imponibile IVA',20,650),cell('22 IVA al 22% 696,96 153,33',20,630));
+ const r=parseSupplierInvoice([rows]);
+ assert.equal(r.invoiceDate,'2025-09-09');assert.equal(r.invoiceNumber,'25/00123');
+ assert.deepEqual(r.lines,[{material:'Colla A KG. 4,5',quantity:324,unitPrice:2.1511,unit:'kg',page:1}]);
+});
+
+test('purchase order preserves package quantity and piece note without inventing invoice metadata',()=>{
+ const rows=[cell('Example SRL',20,800),cell('Ordine da Cliente N° 123 del 22/07/2026',20,780,300)];
+ ['Codice','Descrizione','U.M.','Q.tà','Prezzo','Totale','C.I.'].forEach((str,i)=>rows.push(cell(str,[20,100,300,350,410,490,540][i],700,35)));
+ ['ABC','PICCHETTI ZINCATI','conf','150,00','6,3800','957,00','22'].forEach((str,i)=>rows.push(cell(str,[20,100,300,350,410,490,540][i],680,35)));
+ rows.push(cell('Totale pz = 15.000',100,660,150),cell('Totale documento: 1.167,54 €',300,600,200));
+ const result=parseSupplierInvoice([rows]);
+ assert.equal(result.invoiceNumber,'');assert.equal(result.invoiceDate,'');
+ assert.deepEqual(result.lines,[{material:'PICCHETTI ZINCATI — Totale pz = 15.000',quantity:150,unitPrice:6.38,unit:'confezione',page:1}]);
+ assert.ok(result.warnings.some(w=>w.includes('ordine cliente n. 123')));
+});
+
+test('goods tables preserve page continuations and calculate sequential discounts',()=>{
+ const p=arr=>arr.map((str,i)=>cell(str,20,800-i*20,400));
+ const header='CODICE DESCRIZIONE DEI BENI U.M. QUANTITÀ PREZZO SCONTO EXTRA IMPORTO C. IVA';
+ const r=parseSupplierInvoice([p(['Example SRL','TIPO ORDINE',header,'UN. SCONTO','A1 VASO H PZ 9 85,00 50%+20% 25,0 229,50 22%','SCADENZE VALORE NETTO']),p([header,'UN. SCONTO','70 cm.','A2 VASO BLU PZ 2 30,00 60,00 22%','A3 OMAGGIO PZ 1 0,00 0,00 22%','NOTA PAGAMENTO:','test'])]);
+ assert.equal(r.lines.length,2);
+ assert.equal(r.lines[0].material,'VASO H 70 cm.');
+ assert.equal(r.lines[0].unitPrice,25.5);
+ assert.equal(r.lines[1].unitPrice,30);
+ assert.ok(r.warnings.some(w=>w.includes('Omaggio')));
+ assert.equal(r.invoiceNumber,'');
+ const bad=parseSupplierInvoice([p([header,'A1 VASO PZ 9 85,00 50%+20% 25,0 100,00 22%'])]);
+ assert.equal(bad.lines.length,0);
+ assert.ok(bad.warnings.some(w=>w.includes('non coerenti')));
+});
