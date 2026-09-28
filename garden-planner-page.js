@@ -95,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260928-sketch-density-fix";
+const APP_SHELL_VERSION = "20260928-garden-client-technical-sheet";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2538,6 +2538,95 @@ function ShapeInput({
   );
 }
 
+// Shared by the client drawing and the dimension schedule, including exclusions.
+function plannerClientDimensions(polygons) {
+  return polygons.flatMap((area,ai)=>(area.points||[]).map((a,i)=>{
+    const b=area.points[(i+1)%area.points.length];
+    return {id:`A${ai+1}.${i+1}`,areaId:area.id,a,b,length:Math.hypot(b.x-a.x,b.y-a.y),...getEdgeOutwardNormal(a,b,area.points)};
+  }).filter(e=>e.length>0.001));
+}
+
+function ClientPlanDrawing({polygons,rolls=[],borders=[]}) {
+  const W=1000,H=660,pad=110;
+  const pts=[...polygons.flatMap(a=>a.points),...rolls.flatMap(getRollCorners),...borders.flatMap(b=>[b.a,b.b])];
+  const bb=polyBBox(pts),scale=Math.min((W-pad*2)/Math.max(bb.w,1),(H-pad*2)/Math.max(bb.h,1));
+  const ox=(W-bb.w*scale)/2-bb.minX*scale,oy=(H-bb.h*scale)/2-bb.minY*scale;
+  const screen=p=>({x:p.x*scale+ox,y:p.y*scale+oy});
+  const path=points=>points.map((p,i)=>`${i?'L':'M'}${screen(p).x},${screen(p).y}`).join(' ')+' Z';
+  const occupied=[];
+  const dimensions=plannerClientDimensions(polygons).map(e=>{
+    const a=screen(e.a),b=screen(e.b),m=screen(e.midpoint),w=76,h=22;
+    let label=null,offset=30;
+    for(const d of [30,54,78]){
+      const p={x:m.x+e.normal.x*d,y:m.y+e.normal.y*d,w,h};
+      if(p.x-w/2<12||p.x+w/2>W-12||p.y-h/2<24||p.y+h/2>H-46)continue;
+      if(occupied.some(o=>Math.abs(o.x-p.x)<(o.w+w)/2+5&&Math.abs(o.y-p.y)<(o.h+h)/2+5))continue;
+      label=p;offset=d;occupied.push(p);break;
+    }
+    return {...e,a,b,label,offset};
+  });
+  const bar=[.5,1,2,5,10,20,50].reduce((best,v)=>Math.abs(v*scale-110)<Math.abs(best*scale-110)?v:best,.5);
+  return <svg role="img" aria-label="Planimetria quotata del progetto, misure in metri" width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:'block',fontFamily:'Arial, Helvetica, sans-serif',background:'#fff'}}>
+    <defs>
+      <pattern id="client-plan-grid" width={scale} height={scale} patternUnits="userSpaceOnUse" x={ox} y={oy}><path d={`M ${scale} 0 H 0 V ${scale}`} fill="none" stroke="#e9eef2" strokeWidth=".65"/></pattern>
+      <pattern id="client-plan-turf" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#edf4ec"/><path d="M0 8L8 0" stroke="#c4d9c5" strokeWidth=".6"/></pattern>
+      <pattern id="client-plan-paving" width="16" height="10" patternUnits="userSpaceOnUse"><rect width="16" height="10" fill="#f3eee5"/><path d="M0 0H16V10H0Z" fill="none" stroke="#c7bda9" strokeWidth=".6"/></pattern>
+    </defs>
+    <rect x="1" y="1" width={W-2} height={H-2} fill="url(#client-plan-grid)" stroke="#cbd5df"/>
+    <text x="20" y="26" fontSize="12" letterSpacing="1.5" fill="#536171">PIANTA DI PROGETTO / UNITÀ: METRI</text>
+    {polygons.filter(p=>p.kind!=='exclusion').map(p=><path key={p.id} d={path(p.points)} fill={`url(#client-plan-${p.kind==='paving'?'paving':'turf'})`} stroke="#284b36" strokeWidth="2"/>)}
+    {rolls.map((r,i)=><g key={r.id||i}>
+      <path d={path(getRollCorners(r))} fill="rgba(52,107,150,.04)" stroke="#467a9e" strokeWidth="1" strokeDasharray={r.sourceRollId?'3 2':undefined}/>
+      {Math.min(r.width||2,r.length)*scale>28 && <text x={screen({x:r.cx,y:r.cy}).x} y={screen({x:r.cx,y:r.cy}).y+4} textAnchor="middle" fontSize="12" fill="#315f80">R{i+1}</text>}
+    </g>)}
+    {polygons.filter(p=>p.kind==='exclusion').map((p,i)=>{const c=screen(polyCenter(p.points));return <g key={p.id}><path d={path(p.points)} fill="#e7ebef" stroke="#526175" strokeWidth="1.6"/><text x={c.x} y={c.y} fontSize="13" textAnchor="middle" fill="#344154">{p.label||`Esclusione ${i+1}`}</text></g>;})}
+    {borders.map((b,i)=><path key={b.id||i} d={`M${screen(b.a).x},${screen(b.a).y} L${screen(b.b).x},${screen(b.b).y}`} stroke="#b46527" strokeWidth="3" fill="none"/>)}
+    {dimensions.filter(e=>e.label).map(e=>{
+      const n=e.normal,d=e.offset,a={x:e.a.x+n.x*d,y:e.a.y+n.y*d},b={x:e.b.x+n.x*d,y:e.b.y+n.y*d};
+      return <g key={e.id} stroke="#536171" strokeWidth=".8">
+        <path d={`M${e.a.x+n.x*5},${e.a.y+n.y*5} L${a.x+n.x*6},${a.y+n.y*6} M${e.b.x+n.x*5},${e.b.y+n.y*5} L${b.x+n.x*6},${b.y+n.y*6} M${a.x},${a.y} L${b.x},${b.y}`} fill="none"/>
+        {[a,b].map((p,i)=><line key={i} x1={p.x-4} y1={p.y+4} x2={p.x+4} y2={p.y-4} strokeWidth="1.4"/>)}
+        <rect x={e.label.x-38} y={e.label.y-11} width="76" height="22" fill="#fff" stroke="none"/>
+        <text x={e.label.x} y={e.label.y+5} fontSize="15" fontWeight="600" fill="#243547" stroke="none" textAnchor="middle">{fmt(e.length,2)} m</text>
+      </g>;
+    })}
+    <g transform={`translate(24,${H-25})`} fill="#344154" stroke="#344154">
+      <path d={`M0 -5V5 M0 0H${bar*scale} M${bar*scale} -5V5`} fill="none" strokeWidth="1.5"/>
+      <text x="0" y="-10" fontSize="11" stroke="none">0</text><text x={bar*scale} y="-10" textAnchor="end" fontSize="11" stroke="none">{bar} m</text>
+    </g>
+    <text x={W-20} y={H-20} textAnchor="end" fontSize="11" fill="#536171">Scala grafica · Griglia 1 m · Orientamento non georeferenziato</text>
+  </svg>;
+}
+
+function ClientProjectSheet({polygons,rolls,borders,usage,borderMeters}) {
+  const dimensions=plannerClientDimensions(polygons);
+  const cell={padding:'10px 12px',borderRight:'1px solid #d3dce3'};
+  return <div style={{color:'#243547',fontFamily:'Arial, Helvetica, sans-serif'}}>
+    <div className="print-no-break" style={{border:'1px solid #b8c5d0'}}>
+      <div style={{display:'flex',justifyContent:'space-between',padding:'9px 12px',borderBottom:'1px solid #b8c5d0',fontSize:11,fontWeight:700,letterSpacing:1}}><span>TAVOLA 01 · PLANIMETRIA QUOTATA</span><span>PROGETTO DI POSA</span></div>
+      <ClientPlanDrawing polygons={polygons} rolls={rolls} borders={borders}/>
+      <div style={{display:'flex',gap:20,padding:'10px 12px',fontSize:10,borderTop:'1px solid #d3dce3',flexWrap:'wrap'}}>
+        <span><b style={{color:'#284b36'}}>▧</b> Prato sintetico</span><span><b style={{color:'#467a9e'}}>─</b> Tagli e rotoli</span><span><b style={{color:'#526175'}}>■</b> Elementi esclusi</span><span><b style={{color:'#b46527'}}>━</b> Bordura</span>
+      </div>
+    </div>
+    <div className="print-no-break" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',border:'1px solid #b8c5d0',marginTop:12}}>
+      {[["PRATO NETTO",`${fmt(usage.netArea,1)} m²`],["MATERIALE INSERITO",`${fmt(usage.material,1)} m²`],["DA COPRIRE",`${fmt(usage.uncovered,1)} m²`],["BORDURA",`${fmt(borderMeters,2)} m`]].map(([label,value])=><div key={label} style={cell}><div style={{fontSize:9,letterSpacing:.6,color:'#536171'}}>{label}</div><div style={{fontSize:20,fontWeight:600,marginTop:5}}>{value}</div></div>)}
+    </div>
+    <div style={{marginTop:12,borderTop:'2px solid #344154',paddingTop:8}}>
+      <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,marginBottom:7}}>ABACO DELLE QUOTE · METRI</div>
+      {polygons.map((p,i)=><div key={p.id} className="print-no-break" style={{display:'flex',gap:12,padding:'6px 0',borderBottom:'1px solid #e1e6eb',fontSize:10,lineHeight:1.6}}>
+        <strong style={{minWidth:125}}>A{i+1} · {p.label || (p.kind==='paving'?'Pavimentazione':p.kind==='exclusion'?'Esclusione':'Prato')}</strong>
+        <span>{dimensions.filter(e=>e.areaId===p.id).map((e,j)=>`L${j+1}: ${fmt(e.length,2)} m`).join(' · ')}</span>
+      </div>)}
+    </div>
+    <div className="print-no-break" style={{fontSize:10,lineHeight:1.6,marginTop:10,color:'#536171'}}>
+      Superfici calcolate al netto delle esclusioni. Le quote si riferiscono alla geometria inserita; verificare le misure in cantiere prima del taglio. I lati sono elencati nell’ordine dei vertici di ciascuna area.
+      {usage.uncovered>0.01 && <strong> Layout di posa parziale: {fmt(usage.uncovered,1)} m² ancora da coprire.</strong>}
+    </div>
+    <div style={{marginTop:14,paddingTop:8,borderTop:'1px solid #b8c5d0',display:'flex',justifyContent:'space-between',fontSize:9,color:'#536171'}}><span>VERTEX SRLS · PRATO SINTETICO ITALIA</span><span>ELABORATO DI PROGETTO · UNITÀ m / m²</span></div>
+  </div>;
+}
+
 function TechnicalSketch({ shape, dims, customPts, customClosed, customAreas = [], borderSegments = [], manualRolls = [], isClientVariant = false, previewMode = false }) {
   const polygons = shape === "custom"
     ? getPlannerPolygons(customAreas, customPts, customClosed)
@@ -3178,6 +3267,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
   // informazioni operative per l'ufficio/squadra, non per chi legge il
   // preventivo (richiesto dall'utente il 27 set).
   const visibleSections = isClientVariant ? [] : sections;
+  if(isClientVariant) return <ClientProjectSheet polygons={reportAreas} rolls={manualRolls||[]} borders={borderSegments} usage={rollUsage} borderMeters={borderType==='nessuna'?0:borderMeters}/>;
 
   return (
     <div>
@@ -3299,27 +3389,17 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
 function ReportShell({ id, variant = "technical", area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderSegments = [], borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [], previewMode = false }) {
   const isClientVariant = variant === "client";
   return (
-    <div id={id}>
+    <div id={id} style={{fontFamily:"Arial, Helvetica, sans-serif"}}>
       {isClientVariant ? (
-        <div className="print-no-break" style={{
-          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14,
-          marginBottom: 14, padding: "16px 20px", borderRadius: 14,
-          background: `linear-gradient(135deg, ${CB.dark}, ${CB.mid})`,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-            <div style={{ width: 42, height: 42, borderRadius: 10, background: "#fff", display: "grid", placeItems: "center", flexShrink: 0, boxShadow: "0 2px 6px rgba(0,0,0,0.18)" }}>
-              <img src="./logo-prato.png" alt="" width={27} height={27} style={{ width: 27, height: 27, objectFit: "contain" }} />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(255,255,255,0.75)", letterSpacing: "0.6px", textTransform: "uppercase" }}>Prato Sintetico Italia</div>
-              <div style={{ fontSize: 19, fontWeight: 800, color: "#fff", lineHeight: 1.2, overflowWrap: "anywhere" }}>
-                Progetto giardino{projectInfo.client ? ` — ${projectInfo.client}` : ""}
-              </div>
-            </div>
+        <div className="print-no-break" style={{display:'flex',justifyContent:'space-between',gap:20,alignItems:'center',borderTop:'3px solid #284b36',borderBottom:'1px solid #b8c5d0',padding:'14px 0',marginBottom:14,fontFamily:'Arial, Helvetica, sans-serif',color:'#243547'}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <img src="./logo-prato.png" alt="Prato Sintetico Italia" width="38" height="38" style={{objectFit:'contain'}}/>
+            <div><div style={{fontSize:10,letterSpacing:1.2,fontWeight:700}}>PRATO SINTETICO ITALIA</div><div style={{fontSize:23,fontWeight:600,marginTop:4}}>Progetto del giardino</div></div>
           </div>
-          <div style={{ textAlign: "right", fontSize: 11, color: "rgba(255,255,255,0.8)", flexShrink: 0 }}>
-            <div>{formatItDate(projectInfo.date) || formatItDate(getLocalISODate())}</div>
-            {projectInfo.address ? <div style={{ color: "#fff", fontWeight: 600, maxWidth: 220, overflowWrap: "anywhere" }}>{projectInfo.address}</div> : null}
+          <div style={{fontSize:10,lineHeight:1.6,textAlign:'right',maxWidth:'45%',overflowWrap:'anywhere'}}>
+            <div><strong>{projectInfo.client||'Progetto giardino'}</strong></div>
+            {projectInfo.address&&<div>{projectInfo.address}</div>}
+            <div>{formatItDate(projectInfo.date)||formatItDate(getLocalISODate())} · TAV. 01</div>
           </div>
         </div>
       ) : (
@@ -4160,7 +4240,7 @@ function GardenPlanner() {
     body.appendChild(measureSheet);
     const targetPrintHeightPx = Math.round((281 / 25.4) * 96);
     const measuredHeight = Number(measureClone.scrollHeight || 0);
-    const printScale = measuredHeight > 0 ? Math.min(1, targetPrintHeightPx / measuredHeight) : 1;
+    const printScale = variant === "client" ? 1 : measuredHeight > 0 ? Math.min(1, targetPrintHeightPx / measuredHeight) : 1;
     body.removeChild(measureSheet);
 
     printSheet.innerHTML = "";
