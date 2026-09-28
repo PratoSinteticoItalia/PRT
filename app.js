@@ -12,9 +12,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260928-garden-client-technical-sheet";
+} from "./lib/order-money.js?v=20260928-crm-invoice-pdf-drafts";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260928-garden-client-technical-sheet";
+import { regionForCity } from "./lib/geo.js?v=20260928-crm-invoice-pdf-drafts";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,17 +33,18 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260928-garden-client-technical-sheet";
+} from "./lib/shipping-eligibility.js?v=20260928-crm-invoice-pdf-drafts";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
+  syncInstallationExpenses,
   getDefaultProfitSplitExpenseLine,
   getProfitSplitLegacyExpenseLines,
   normalizeProfitSplitExpenseLines,
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260928-garden-client-technical-sheet";
+} from "./lib/profit-split.js?v=20260928-crm-invoice-pdf-drafts";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -58,7 +59,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260928-garden-client-technical-sheet";
+} from "./lib/preventivo-pricing.js?v=20260928-crm-invoice-pdf-drafts";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -66,13 +67,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260928-garden-client-technical-sheet";
+} from "./lib/sales-assignment.js?v=20260928-crm-invoice-pdf-drafts";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20260928-garden-client-technical-sheet";
+} from "./lib/surveys.js?v=20260928-crm-invoice-pdf-drafts";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -86,7 +87,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260928-garden-client-technical-sheet";
+const APP_SHELL_VERSION = "20260928-crm-invoice-pdf-drafts";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3203,7 +3204,7 @@ function getStoredProfitSplitForOrder(order) {
   const raw = order?.operations?.installation?.profitSplit;
   if (!raw || typeof raw !== "object") return null;
   return normalizeProfitSplitDraft({
-    ...raw,
+    ...syncInstallationExpenses(raw, order.id, getTravelExpensesForOrder(order)),
     linkedOrderId: order.id,
   });
 }
@@ -3212,14 +3213,14 @@ function buildProfitSplitDraftForOrder(order, { preferStored = true } = {}) {
   const stored = preferStored ? getStoredProfitSplitForOrder(order) : null;
   if (stored) return stored;
   const localDefaults = normalizeProfitSplitDraft(state.profitSplitLocalDraft);
-  return normalizeProfitSplitDraft({
+  return normalizeProfitSplitDraft(syncInstallationExpenses({
     linkedOrderId: order?.id || "",
     jobLabel: buildProfitSplitOrderLabel(order),
     partnerName: String(order?.operations?.installation?.crew || "").trim(),
     partnerDailyFixed: localDefaults.partnerDailyFixed,
     partnerSharePct: localDefaults.partnerSharePct,
     partnerDays: localDefaults.partnerDays,
-  });
+  }, order?.id || "", getTravelExpensesForOrder(order)));
 }
 
 function persistProfitSplitDraftLocally(draft = state.profitSplitDraft) {
@@ -3272,6 +3273,8 @@ function getProfitSplitComparablePayload(draft = {}) {
       label: String(line.label || ""),
       amount: String(line.amount || ""),
       payer: String(line.payer || "owner"),
+      sourceExpenseId: line.sourceExpenseId,
+      sourceOrderId: line.sourceOrderId,
     })),
     ownerRecovery: normalized.ownerRecovery,
     partnerRecovery: normalized.partnerRecovery,
@@ -3295,7 +3298,7 @@ function computeProfitSplitScenario(draft = {}) {
 
 function renderProfitSplitExpenseRows(lines = []) {
   return normalizeProfitSplitExpenseLines(lines).map((line, index) => `
-    <div class="profit-split-expense-row" data-profit-split-expense-row data-expense-id="${escapeHtml(line.id)}">
+    <div class="profit-split-expense-row" data-profit-split-expense-row data-expense-id="${escapeHtml(line.id)}" data-source-expense-id="${escapeHtml(line.sourceExpenseId)}" data-source-order-id="${escapeHtml(line.sourceOrderId)}">
       <div class="profit-split-expense-row-index">${index + 1}</div>
       <input
         class="text-input"
@@ -3303,6 +3306,7 @@ function renderProfitSplitExpenseRows(lines = []) {
         list="profit-split-expense-label-options"
         placeholder="${escapeHtml(state.lang === "it" ? "Es. benzina, caselli, vitto, dipendenti..." : "Fuel, tolls, meals, wages...")}"
         value="${escapeHtml(line.label)}"
+        ${line.sourceExpenseId ? 'readonly title="Spesa collegata: modifica importo e descrizione dalla scheda posa"' : ""}
       />
       <input
         class="text-input"
@@ -3311,13 +3315,14 @@ function renderProfitSplitExpenseRows(lines = []) {
         inputmode="decimal"
         placeholder="0,00"
         value="${escapeHtml(line.amount)}"
+        ${line.sourceExpenseId ? "readonly" : ""}
       />
       <select class="text-input" data-expense-field="payer">
         <option value="owner" ${line.payer === "owner" ? "selected" : ""}>${escapeHtml(state.lang === "it" ? "Pagata da te" : "Paid by you")}</option>
         <option value="partner" ${line.payer === "partner" ? "selected" : ""}>${escapeHtml(state.lang === "it" ? "Pagata dal collaboratore" : "Paid by partner")}</option>
         <option value="shared" ${line.payer === "shared" ? "selected" : ""}>${escapeHtml(state.lang === "it" ? "Costo condiviso" : "Shared cost")}</option>
       </select>
-      <button type="button" class="ghost-button small-button" data-profit-split-remove-expense="${escapeHtml(line.id)}">${escapeHtml(state.lang === "it" ? "Rimuovi" : "Remove")}</button>
+      ${line.sourceExpenseId ? `<small>${state.lang === "it" ? "Collegata alla posa" : "Linked to installation"}</small>` : `<button type="button" class="ghost-button small-button" data-profit-split-remove-expense="${escapeHtml(line.id)}">${escapeHtml(state.lang === "it" ? "Rimuovi" : "Remove")}</button>`}
     </div>
   `).join("");
 }
@@ -3342,6 +3347,8 @@ function readProfitSplitDraftFromForm() {
   const currentDraft = normalizeProfitSplitDraft(state.profitSplitDraft);
   const expenseLines = Array.from(form.querySelectorAll("[data-profit-split-expense-row]")).map((row) => ({
     id: row.getAttribute("data-expense-id") || crypto.randomUUID(),
+    sourceExpenseId: row.getAttribute("data-source-expense-id") || "",
+    sourceOrderId: row.getAttribute("data-source-order-id") || "",
     label: row.querySelector('[data-expense-field="label"]')?.value || "",
     amount: row.querySelector('[data-expense-field="amount"]')?.value || "",
     payer: row.querySelector('[data-expense-field="payer"]')?.value || "owner",
@@ -3402,6 +3409,7 @@ function renderProfitSplitContextCard() {
       <strong>${state.lang === "it" ? "Commessa collegata" : "Linked job"}</strong>
       <p>${escapeHtml(orderLabel || (state.lang === "it" ? "Ordine selezionato" : "Selected order"))}</p>
       <small>${escapeHtml(savedLabel)}</small>
+      <p>${state.lang === "it" ? "Le spese della scheda posa sono collegate automaticamente e si modificano dalla posa. Sono attribuite alla squadra: verifica chi le ha anticipate. Le voci già inserite a mano restano separate: rimuovi eventuali doppioni." : "Installation expenses sync automatically and are edited in Installations. They default to the crew: verify the payer. Existing manual rows remain separate: remove any duplicates."}</p>
     `
     : selectedOrder
       ? `
@@ -3460,7 +3468,7 @@ async function saveProfitSplitToLinkedOrder() {
   const baselineDraft = storedDraft || buildProfitSplitDraftForOrder(order, { preferStored: false });
   const onlyPrefillValues = !storedDraft
     && getProfitSplitComparablePayload(nextDraft) === getProfitSplitComparablePayload(baselineDraft);
-  if (onlyPrefillValues) {
+  if (onlyPrefillValues && !nextDraft.expenseLines.some(line => line.sourceExpenseId)) {
     if (ui.profitSplitContextStatus) {
       setStatus(
         ui.profitSplitContextStatus,
@@ -3574,6 +3582,8 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
     }
   }
 
+  const expenseOrder = getProfitSplitContextOrder();
+  if (expenseOrder) state.profitSplitDraft = syncInstallationExpenses(state.profitSplitDraft, expenseOrder.id, getTravelExpensesForOrder(expenseOrder));
   if (syncForm) syncProfitSplitDraftFromState();
   renderProfitSplitContextCard();
   renderProfitSplitPartnerBalances();
@@ -15912,8 +15922,17 @@ function renderSupplierPriceAttachmentAreaHtml() {
   return `
     <label>${state.lang === "it" ? "Allegato fattura (opzionale)" : "Invoice attachment (optional)"}</label>
     <input type="file" id="sp-attachment-input" accept="application/pdf,image/*" hidden />
-    <button type="button" class="ghost-button small-button" data-action="sp-attach-click">${state.lang === "it" ? "📎 Allega fattura" : "📎 Attach invoice"}</button>
-    ${attachmentPreviewHtml}`;
+    <button type="button" class="ghost-button small-button" data-action="sp-attach-click">${editing ? (state.lang === "it" ? "Allega fattura" : "Attach invoice") : (state.lang === "it" ? "Carica PDF e compila" : "Upload PDF and fill")}</button>
+    ${attachmentPreviewHtml}
+    ${pending?.reading ? `<p role="status">${state.lang === "it" ? "Lettura PDF in corso…" : "Reading PDF…"}</p>` : ""}
+    ${pending?.readError ? `<p role="alert">${escapeHtml(pending.readError)}</p>` : ""}
+    ${pending?.extraction ? `<div class="info-card" role="status">
+      <strong>${state.lang === "it" ? "Bozza da PDF — verifica prima di salvare" : "PDF draft — review before saving"}</strong>
+      <ul>${pending.extraction.warnings.map(w=>`<li>${escapeHtml(w)}</li>`).join("")}</ul>
+      <button type="button" class="ghost-button small-button" data-action="sp-preview-pdf">${state.lang === "it" ? "Apri PDF per confronto" : "Open PDF to compare"}</button>
+      <label><input type="checkbox" id="sp-pdf-reviewed" required /> ${state.lang === "it" ? "Ho verificato i dati confrontandoli con la fattura" : "I checked the data against the invoice"}</label>
+      <details><summary>${state.lang === "it" ? "Testo letto dal PDF" : "Extracted PDF text"}</summary><pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${escapeHtml(pending.extraction.textPreview)}</pre></details>
+    </div>` : ""}`;
 }
 
 function updateSupplierPriceAttachmentAreaDom() {
@@ -15929,6 +15948,7 @@ function renderSupplierPriceLineRowHtml(line, idx) {
       <input type="text" class="sp-line-field" data-line-field="material" list="sp-materials-list" placeholder="${state.lang === "it" ? "Materiale" : "Material"}" value="${escapeAttr(l.material || "")}" />
       <input type="number" step="0.01" min="0" class="sp-line-field" data-line-field="unitPrice" placeholder="${state.lang === "it" ? "Prezzo €" : "Price €"}" value="${escapeAttr(l.unitPrice != null ? String(l.unitPrice) : "")}" />
       <select class="sp-line-field" data-line-field="unit">
+        <option value="" ${!l.unit ? "selected" : ""}>${state.lang === "it" ? "Scegli unità" : "Choose unit"}</option>
         ${SUPPLIER_PRICE_UNITS.map(([v, label]) => `<option value="${v}" ${l.unit === v ? "selected" : ""}>${label}</option>`).join("")}
       </select>
       <input type="number" step="0.01" min="0" class="sp-line-field" data-line-field="quantity" placeholder="${state.lang === "it" ? "Qtà" : "Qty"}" value="${escapeAttr(l.quantity != null ? String(l.quantity) : "")}" />
@@ -16014,6 +16034,11 @@ function renderSupplierPriceEditFormHtml(editing, lockSupplier = false) {
 function renderSupplierPriceNewFormHtml(defaultSupplierName = "", lockSupplier = false) {
   return `
     <form id="sp-entry-form" data-editing-id="">
+      <div class="inline-form-grid">
+        <div class="field field-full" id="sp-attachment-area">
+          ${renderSupplierPriceAttachmentAreaHtml()}
+        </div>
+      </div>
       <div class="inline-form-grid sp-header-grid">
         <div class="field">
           <label>${state.lang === "it" ? "Fornitore" : "Supplier"}</label>
@@ -16045,9 +16070,7 @@ function renderSupplierPriceNewFormHtml(defaultSupplierName = "", lockSupplier =
           <label>${state.lang === "it" ? "Nota (opzionale)" : "Note (optional)"}</label>
           <textarea name="note"></textarea>
         </div>
-        <div class="field field-full" id="sp-attachment-area">
-          ${renderSupplierPriceAttachmentAreaHtml()}
-        </div>
+
         <div class="field field-full field-actions">
           <button type="button" class="ghost-button" data-action="sp-cancel-form">${state.lang === "it" ? "Annulla" : "Cancel"}</button>
           <button type="submit" class="primary-button">${state.lang === "it" ? "Salva fattura" : "Save invoice"}</button>
@@ -16166,20 +16189,69 @@ async function submitSupplierProfileForm(form) {
   }
 }
 
+function applySupplierInvoiceDraft(form, draft) {
+  const messages = [];
+  const supplier = form.elements.namedItem("supplierName");
+  if (supplier?.value && draft.supplierName && normalizeSupplierPriceKey(supplier.value) !== normalizeSupplierPriceKey(draft.supplierName)) {
+    messages.push(`Il PDF indica “${draft.supplierName}”, ma il modulo è aperto su “${supplier.value}”. Nessun campo compilato: verifica il fornitore.`);
+    return messages;
+  }
+  for (const key of ["supplierName", "invoiceDate", "invoiceNumber"]) {
+    const field = form.elements.namedItem(key);
+    if (field && !field.value && !field.readOnly && draft[key]) field.value = draft[key];
+  }
+  syncSupplierPriceLinesFromDom();
+  const hasLines = (state.supplierPriceFormLines || []).some(line => line.material || line.unitPrice || line.quantity);
+  if (!hasLines && draft.lines.length) {
+    state.supplierPriceFormLines = draft.lines.map(({material,unitPrice,quantity,unit}) => ({material,unitPrice,quantity,unit}));
+    updateSupplierPriceLinesDom();
+  } else if (hasLines) messages.push("Le righe già compilate sono state mantenute: nessuna riga del PDF è stata aggiunta automaticamente.");
+  return messages;
+}
+
 async function stageSupplierPriceAttachment(file) {
   if (!file) return;
   if (file.size > 8_000_000) {
     showToast(state.lang === "it" ? `"${file.name}" supera 8MB e non è stato allegato.` : `"${file.name}" exceeds 8MB.`, "warning");
     return;
   }
+  const form = document.getElementById("sp-entry-form");
+  // Capture identity before reading, so closing/reopening never writes to another draft.
+  const token = {};
+  state.supplierInvoiceReadToken = token;
   try {
     const dataUrl = await readFileAsDataUrl(file);
-    state.supplierPricePendingAttachment = { name: file.name, type: file.type || "application/octet-stream", size: file.size, dataUrl };
+    if (state.supplierInvoiceReadToken !== token || !form?.isConnected) return;
+    const pending = { name: file.name, type: file.type || "application/octet-stream", size: file.size, dataUrl };
+    state.supplierPricePendingAttachment = pending;
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    if (!isPdf || form.dataset.editingId) { updateSupplierPriceAttachmentAreaDom(); return; }
+    pending.reading = true;
     updateSupplierPriceAttachmentAreaDom();
-  } catch { /* file non leggibile, ignora */ }
+    try {
+      const draft = await apiFetch("/api/supplier-prices/extract-pdf", { method: "POST", body: JSON.stringify({dataUrl}) });
+      if (state.supplierPricePendingAttachment !== pending || state.supplierInvoiceReadToken !== token || !form.isConnected) return;
+      draft.warnings = [...draft.warnings, ...applySupplierInvoiceDraft(form, draft)];
+      pending.extraction = draft;
+    } catch (error) {
+      const messages = {pdf_password:"PDF protetto da password: carica una copia non protetta.",too_many_pages:"Il PDF supera 20 pagine: carica una fattura alla volta.",pdf_timeout:"Lettura troppo lenta: riprova con un PDF più semplice.",pdf_busy:"Lettore occupato: attendi e ricarica il PDF."};
+      pending.readError = messages[error.message] || "PDF non leggibile. Il documento resta allegato: puoi compilare i campi manualmente.";
+    } finally {
+      pending.reading = false;
+      if (state.supplierPricePendingAttachment === pending && form.isConnected) updateSupplierPriceAttachmentAreaDom();
+    }
+  } catch {
+    showToast(state.lang === "it" ? "File non leggibile. Riprova." : "Cannot read file. Try again.", "warning");
+  }
 }
 
 async function submitSupplierPriceForm(form) {
+  if (state.supplierPricePendingAttachment?.reading) {
+    showToast("Attendi la lettura del PDF prima di salvare.", "warning"); return;
+  }
+  if (state.supplierPricePendingAttachment?.extraction && !form.querySelector("#sp-pdf-reviewed")?.checked) {
+    showToast("Verifica la bozza e conferma il controllo della fattura prima di salvare.", "warning"); return;
+  }
   const fd = new FormData(form);
   const editingId = form.dataset.editingId || "";
   const pending = state.supplierPricePendingAttachment;
@@ -16226,11 +16298,15 @@ async function submitSupplierPriceForm(form) {
 
   // Nuova fattura: intestazione condivisa + N righe materiale → N voci.
   syncSupplierPriceLinesFromDom();
-  const lines = (state.supplierPriceFormLines || [])
+  const filledLines = (state.supplierPriceFormLines || []).filter(line => line.material || line.unitPrice || line.quantity);
+  if (filledLines.some(line => !String(line.material || "").trim() || !(Number(line.unitPrice)>0) || !line.unit || (line.quantity !== "" && line.quantity != null && !(Number(line.quantity)>0)))) {
+    showToast("Completa descrizione, prezzo positivo e unità di ogni riga. La quantità, se indicata, deve essere positiva.", "warning"); return;
+  }
+  const lines = filledLines
     .map((l) => ({
       material: String(l.material || "").trim(),
       unitPrice: Number(l.unitPrice) || 0,
-      unit: String(l.unit || "").trim() || "kg",
+      unit: String(l.unit || "").trim(),
       quantity: l.quantity !== "" && l.quantity != null ? Number(l.quantity) : null,
     }))
     .filter((l) => l.material && l.unitPrice > 0);
@@ -16257,7 +16333,7 @@ async function submitSupplierPriceForm(form) {
     showToast(state.lang === "it" ? `${created.length} ${created.length === 1 ? "voce salvata" : "voci salvate"}.` : `${created.length} ${created.length === 1 ? "entry" : "entries"} saved.`, "success");
     renderSupplierPrices();
   } catch (err) {
-    showToast(state.lang === "it" ? "Salvataggio non riuscito. Riprova." : "Save failed. Try again.", "warning");
+    showToast(err.message === "duplicate_invoice" ? "Questa fattura è già presente per fornitore, numero e data. Apri la fattura esistente per modificarla." : (state.lang === "it" ? "Salvataggio non riuscito. Riprova." : "Save failed. Try again."), "warning");
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
@@ -16280,6 +16356,18 @@ function bindSupplierPricesEvents() {
   if (!host || host.dataset.spBound === "true") return;
   host.dataset.spBound = "true";
   host.addEventListener("click", (ev) => {
+    if (ev.target.closest?.("[data-action='sp-preview-pdf']")) {
+      ev.preventDefault();
+      const dataUrl = state.supplierPricePendingAttachment?.dataUrl;
+      if (dataUrl) {
+        const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), c => c.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], {type:"application/pdf"}));
+        window.open(url, "_blank", "noopener");
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      }
+      return;
+    }
+
     const newSupplier = ev.target.closest?.("[data-action='sp-new-supplier']");
     if (newSupplier) {
       ev.preventDefault();
