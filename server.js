@@ -1,3 +1,4 @@
+import { extractSupplierInvoice } from "./lib/supplier-invoice-extract.js";
 import { createServer } from "node:http";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { createReadStream, existsSync, mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
@@ -12,7 +13,7 @@ import { generateDdtPdf } from "./lib/ddt-pdf.js";
 import { generateProfitSplitContoPdf, generateProfitSplitStatementPdf } from "./lib/profit-split-pdf.js";
 import { generateSiteSheetPdf } from "./lib/site-sheet-pdf.js";
 import { generateSiteSurveyReportPdf } from "./lib/site-survey-report-pdf.js";
-import { computeProfitSplitScenario } from "./lib/profit-split.js";
+import { computeProfitSplitScenario, syncInstallationExpenses } from "./lib/profit-split.js";
 import {
   PRODUCTS as RESELLER_ORDER_PRODUCTS,
   ACCESSORIES as RESELLER_ORDER_ACCESSORIES,
@@ -193,6 +194,8 @@ const SHOPIFY_FULL_SYNC_ORDER_COUNT_THRESHOLD = Math.max(0, readIntegerEnv("SHOP
 // 50MB di default: post marketing con fino a 8 foto a 4MB l'una (limite lato
 // client in readMarketingAssetFile) arrivano a ~43MB una volta codificate in
 // base64 (+33% overhead) dentro il body JSON — 25MB non bastava più.
+let activeInvoiceExtractions = 0;
+const pendingSupplierInvoiceKeys = new Set();
 const CONFIGURED_MAX_JSON_BODY_BYTES = Number(process.env.MAX_JSON_BODY_BYTES || 50 * 1024 * 1024);
 const MAX_JSON_BODY_BYTES = Number.isFinite(CONFIGURED_MAX_JSON_BODY_BYTES)
   ? Math.max(1024 * 1024, CONFIGURED_MAX_JSON_BODY_BYTES)
@@ -8247,7 +8250,7 @@ function normalizeTravelExpenses(items = [], fallbackCrew = "") {
         category,
         amount,
         date: String(item?.date || "").slice(0, 10),
-        note: String(item?.note || "").trim(),
+        note: String(item?.note || item?.description || "").trim(),
         crew: String(item?.crew || fallbackCrew || "").trim(),
         createdAt: String(item?.createdAt || new Date().toISOString()),
         createdBy: String(item?.createdBy || "").trim(),
@@ -8268,6 +8271,8 @@ function normalizeProfitSplitExpenseLines(items = []) {
         label: String(item?.label || "").trim(),
         amount: String(item?.amount ?? "").trim(),
         payer,
+        sourceExpenseId: String(item?.sourceExpenseId || ""),
+        sourceOrderId: String(item?.sourceOrderId || ""),
       };
     })
     .filter((item) => item.label || Math.abs(toNumber(item.amount || 0)) > 0);
@@ -11707,6 +11712,8 @@ function reconcileOperationsConsistency(ops, order = {}) {
 function normalizeOperations(order, linkedJob = null) {
   const defaults = buildDefaultOperations(order, linkedJob);
   const current = order.operations || {};
+  const sourceExpenses = normalizeTravelExpenses(current.installation?.travelExpenses, current.installation?.crew || defaults.installation.crew);
+  const savedSplit = normalizeProfitSplitRecord(current.installation?.profitSplit);
   const currentProduct = String(current.product || "").trim();
   const shouldUseDefaultProduct = !currentProduct || /^da definire$/i.test(currentProduct);
   const currentSqm = Number(current.sqm || 0);
@@ -11786,11 +11793,8 @@ function normalizeOperations(order, linkedJob = null) {
       clientConfirmed: Boolean(current.installation?.clientConfirmed ?? defaults.installation.clientConfirmed),
       status: current.installation?.status || defaults.installation.status,
       reportNote: current.installation?.reportNote || defaults.installation.reportNote,
-      travelExpenses: normalizeTravelExpenses(
-        current.installation?.travelExpenses,
-        current.installation?.crew || defaults.installation.crew,
-      ),
-      profitSplit: normalizeProfitSplitRecord(current.installation?.profitSplit),
+      travelExpenses: sourceExpenses,
+      profitSplit: savedSplit ? syncInstallationExpenses(savedSplit, order.id, sourceExpenses) : null,
     },
     // Rivenditore a cui è assegnato l'ordine (assente = nessuno, es. tutti gli
     // ordini storici pre-esistenti a questa feature) — sibling di installation,
@@ -17789,7 +17793,28 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ...updated, derived: false });
   }
 
-  // Inserimento manuale prezzi (nessun parsing AI dell'allegato).
+  // Extraction returns a draft only; supplier data is persisted by the normal save route.
+  if (url.pathname === "/api/supplier-prices/extract-pdf" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (activeInvoiceExtractions >= 2) return sendJson(res, 429, { error: "pdf_busy" });
+    activeInvoiceExtractions++;
+    try {
+      const body = await readBody(req, { maxBytes: 11_000_000 });
+      const data = String(body.dataUrl || "");
+      if (!/^data:[^;,]*;base64,[A-Za-z0-9+/=]+$/.test(data)) return sendJson(res, 400, { error: "invalid_pdf" });
+      const bytes = Buffer.from(data.slice(data.indexOf(',') + 1), "base64");
+      const suppliers = buildSupplierDirectory(store).map(supplier => supplier.name).slice(0, 1000);
+      const draft = await extractSupplierInvoice(bytes, suppliers);
+      return sendJson(res, 200, draft);
+    } catch (error) {
+      const code = ["pdf_too_large", "pdf_password", "too_many_pages", "pdf_too_complex", "pdf_timeout", "invalid_pdf", "payload_too_large"].includes(error?.message) ? error.message : "invalid_pdf";
+      return sendJson(res, 422, { error: code });
+    } finally { activeInvoiceExtractions--; }
+  }
+
+  // Supplier invoice drafts are reviewed before this write path.
+
   if (url.pathname === "/api/supplier-prices" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
@@ -18108,7 +18133,21 @@ async function handleApi(req, res, url) {
       return sendJson(res, 400, { error: "missing_fields" });
     }
     if (!Array.isArray(store.supplierPriceEntries)) store.supplierPriceEntries = [];
+    const allowedUnits = new Set(["kg", "pz", "mq", "mc", "litro", "rotolo", "metro", "confezione"]);
+    if (lines.length !== rawLines.length || lines.some(line => !Number.isFinite(Number(line.unitPrice)) || !allowedUnits.has(line.unit)
+      || (line.quantity != null && line.quantity !== "" && (!Number.isFinite(Number(line.quantity)) || Number(line.quantity) <= 0)))) {
+      return sendJson(res, 400, { error: "invalid_invoice_lines" });
+    }
     const now = new Date().toISOString();
+    const invoiceNumber = String(body.invoiceNumber || "").trim();
+    const duplicate = invoiceNumber && store.supplierPriceEntries.some(entry =>
+      supplierProfileKey(entry.supplierName) === supplierProfileKey(supplierName)
+      && String(entry.invoiceNumber || "").trim().toLowerCase() === invoiceNumber.toLowerCase()
+      && String(entry.invoiceDate || "").slice(0, 10) === invoiceDate.slice(0, 10));
+    const invoiceKey = invoiceNumber ? JSON.stringify([supplierProfileKey(supplierName), invoiceNumber.toLowerCase(), invoiceDate.slice(0,10)]) : "";
+    if (duplicate || (invoiceKey && pendingSupplierInvoiceKeys.has(invoiceKey))) return sendJson(res, 409, { error: "duplicate_invoice" });
+    if (invoiceKey) pendingSupplierInvoiceKeys.add(invoiceKey);
+    try {
     const invoiceId = randomUUID();
     // Allegato archiviato una volta sola (owner = invoiceId); ogni voce ne
     // riceve una copia del record con url azzerato, così normalizeSupplierPriceEntry
@@ -18141,6 +18180,7 @@ async function handleApi(req, res, url) {
     }
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, { entries: created.map(serializeSupplierPriceEntryForClient) });
+    } finally { if (invoiceKey) pendingSupplierInvoiceKeys.delete(invoiceKey); }
   }
 
   if (url.pathname.match(/^\/api\/supplier-prices\/[^/]+$/) && req.method === "PATCH") {
@@ -19254,7 +19294,9 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     try {
       const logoBuffer = await getCachedLogoBuffer();
-      const pdf = await generateProfitSplitContoPdf(body || {}, { logoBuffer });
+      const linkedOrder = store.orders.find(order => order.id === body?.linkedOrderId);
+      const draft = linkedOrder ? syncInstallationExpenses(body, linkedOrder.id, linkedOrder.operations?.installation?.travelExpenses || []) : body;
+      const pdf = await generateProfitSplitContoPdf(draft || {}, { logoBuffer });
       const safe = String(body?.orderNumber || "conto").replace(/[^\w#-]+/g, "-");
       res.writeHead(200, {
         "Content-Type": "application/pdf",
@@ -19279,7 +19321,9 @@ async function handleApi(req, res, url) {
       const partnerName = String(body?.partnerName || "").trim();
       const conti = Array.isArray(body?.conti) ? body.conti : [];
       const entries = conti.map((c) => {
-        const r = computeProfitSplitScenario(c || {});
+        const linkedOrder = store.orders.find(order => order.id === c?.linkedOrderId);
+        const draft = linkedOrder ? syncInstallationExpenses(c, linkedOrder.id, linkedOrder.operations?.installation?.travelExpenses || []) : c;
+        const r = computeProfitSplitScenario(draft || {});
         return {
           jobLabel: String(c?.jobLabel || c?.orderNumber || "").trim(),
           orderNumber: c?.orderNumber || "",
