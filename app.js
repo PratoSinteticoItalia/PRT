@@ -1,3 +1,4 @@
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -12,9 +13,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260928-supplier-pdf-layouts";
+} from "./lib/order-money.js?v=20260929-preventivo-generatore-completo";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260928-supplier-pdf-layouts";
+import { regionForCity } from "./lib/geo.js?v=20260929-preventivo-generatore-completo";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -33,7 +34,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260928-supplier-pdf-layouts";
+} from "./lib/shipping-eligibility.js?v=20260929-preventivo-generatore-completo";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -44,7 +45,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260928-supplier-pdf-layouts";
+} from "./lib/profit-split.js?v=20260929-preventivo-generatore-completo";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -59,7 +60,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260928-supplier-pdf-layouts";
+} from "./lib/preventivo-pricing.js?v=20260929-preventivo-generatore-completo";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -67,13 +68,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260928-supplier-pdf-layouts";
+} from "./lib/sales-assignment.js?v=20260929-preventivo-generatore-completo";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20260928-supplier-pdf-layouts";
+} from "./lib/surveys.js?v=20260929-preventivo-generatore-completo";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -87,7 +88,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260928-supplier-pdf-layouts";
+const APP_SHELL_VERSION = "20260929-preventivo-generatore-completo";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1153,6 +1154,7 @@ function normalizeGardenPlannerQuoteBridge(input = {}) {
   return {
     runId: Number(input.runId || Date.now()),
     createdAt: normalizeString(input.createdAt),
+    sourceRequestId: normalizeString(input.sourceRequestId),
     client: normalizeString(input.client || payload.nome),
     address: normalizeString(input.address),
     city: normalizeString(input.city || payload.citta),
@@ -14912,6 +14914,7 @@ function renderSalesGenerator() {
   const selected = restoreSalesGeneratorLinkedRequest() || ensureSelectedSalesRequest({ keepMissingSelection: true });
   const plannerBridge = !generatorOnlyMode ? getGardenPlannerQuoteBridge() : null;
   const plannerMode = !generatorOnlyMode && state.salesGeneratorPlannerMode && Boolean(plannerBridge?.payload);
+  updateGardenPlannerToggleAvailability();
   const freeMode = !generatorOnlyMode && state.salesGeneratorFreeMode && !plannerMode;
   const plannerMaterialsHtml = plannerMode ? renderSalesGeneratorPlannerMaterials(plannerBridge?.materialsReference) : "";
   const contextEyebrow = document.getElementById("sales-generator-context-eyebrow");
@@ -15364,6 +15367,10 @@ async function loadPortfolioJobPhotos(slug, { render = true } = {}) {
 }
 
 // ─── FORNITORI — prezzi da fatture (elenco + confronto per materiale) ───────
+function formatSupplierUnitPrice(value) {
+  return new Intl.NumberFormat(state.lang === "it" ? "it-IT" : "en-GB", {style:"currency",currency:"EUR",minimumFractionDigits:2,maximumFractionDigits:6}).format(Number(value)||0);
+}
+
 // Voce = { id, supplierName, material, unitPrice, unit, quantity, invoiceDate,
 // invoiceNumber, note, attachment, createdAt, updatedAt }. Storage: array
 // piatto nello store (come salesRequests/salesContents), niente tabella SQL
@@ -15558,12 +15565,12 @@ function renderSupplierMaterialSummaryHtml(profile) {
           </span>
           <span class="sp-material-price">
             <small class="sp-material-mobile-label">${state.lang === "it" ? "Ultimo prezzo" : "Last price"}</small>
-            <strong>${escapeHtml(formatCurrency(item.lastPrice))}</strong>
+            <strong>${escapeHtml(formatSupplierUnitPrice(item.lastPrice))}</strong>
             <small>/${escapeHtml(supplierPriceUnitLabel(item.unit))}</small>
           </span>
           <span class="sp-material-price">
             <small class="sp-material-mobile-label">${state.lang === "it" ? "Prezzo medio" : "Average price"}</small>
-            <strong>${escapeHtml(formatCurrency(item.averagePrice))}</strong>
+            <strong>${escapeHtml(formatSupplierUnitPrice(item.averagePrice))}</strong>
             <small>/${escapeHtml(supplierPriceUnitLabel(item.unit))}</small>
           </span>
           <span class="sp-material-count">${item.purchases}</span>
@@ -15604,7 +15611,7 @@ function renderSupplierInvoicesHtml(profile) {
                     <strong>${escapeHtml(entry.material || "—")}</strong>
                     <small>${entry.quantity != null ? `${escapeHtml(String(entry.quantity))} ${escapeHtml(supplierPriceUnitLabel(entry.unit))}` : (state.lang === "it" ? "Quantità non indicata" : "Quantity not provided")}</small>
                   </span>
-                  <span class="sp-invoice-line-price">${escapeHtml(formatCurrency(entry.unitPrice))}<small>/${escapeHtml(supplierPriceUnitLabel(entry.unit))}</small></span>
+                  <span class="sp-invoice-line-price">${escapeHtml(formatSupplierUnitPrice(entry.unitPrice))}<small>/${escapeHtml(supplierPriceUnitLabel(entry.unit))}</small></span>
                   <span class="sp-invoice-line-actions">
                     <button type="button" class="ghost-button small-button" data-action="sp-edit" data-id="${escapeAttr(entry.id)}">${state.lang === "it" ? "Modifica" : "Edit"}</button>
                     <button type="button" class="ghost-button small-button sp-delete-btn" data-action="sp-delete" data-id="${escapeAttr(entry.id)}">${state.lang === "it" ? "Elimina" : "Delete"}</button>
@@ -15939,10 +15946,10 @@ function renderSupplierPriceCompareHtml() {
               <small>${sup.count} ${state.lang === "it" ? "voci" : "entries"}</small>
             </div>
             <div class="sp-compare-figures">
-              <div><span class="sp-compare-figure-label">${state.lang === "it" ? "Media" : "Average"}</span><span class="sp-compare-figure-value">${escapeHtml(formatCurrency(sup.avg))}/${escapeHtml(supplierPriceUnitLabel(sup.unit))}</span></div>
-              <div><span class="sp-compare-figure-label">${state.lang === "it" ? "Ultimo prezzo" : "Last price"}</span><span class="sp-compare-figure-value">${escapeHtml(formatCurrency(sup.lastPrice))} <small>(${escapeHtml(formatDate(sup.lastDate))})</small></span></div>
+              <div><span class="sp-compare-figure-label">${state.lang === "it" ? "Media" : "Average"}</span><span class="sp-compare-figure-value">${escapeHtml(formatSupplierUnitPrice(sup.avg))}/${escapeHtml(supplierPriceUnitLabel(sup.unit))}</span></div>
+              <div><span class="sp-compare-figure-label">${state.lang === "it" ? "Ultimo prezzo" : "Last price"}</span><span class="sp-compare-figure-value">${escapeHtml(formatSupplierUnitPrice(sup.lastPrice))} <small>(${escapeHtml(formatDate(sup.lastDate))})</small></span></div>
             </div>
-            ${sup.yearAverages.length > 1 ? `<div class="sp-compare-years">${sup.yearAverages.map((y) => `<span class="sp-year-chip">${escapeHtml(y.year)}: ${escapeHtml(formatCurrency(y.avg))}</span>`).join("")}</div>` : ""}
+            ${sup.yearAverages.length > 1 ? `<div class="sp-compare-years">${sup.yearAverages.map((y) => `<span class="sp-year-chip">${escapeHtml(y.year)}: ${escapeHtml(formatSupplierUnitPrice(y.avg))}</span>`).join("")}</div>` : ""}
           </div>
         `).join("")}
       </div>
@@ -16236,19 +16243,18 @@ async function submitSupplierProfileForm(form) {
 
 function applySupplierInvoiceDraft(form, draft) {
   const messages = [];
-  const supplier = form.elements.namedItem("supplierName");
-  if (supplier?.value && draft.supplierName && !isSameSupplierName(supplier.value, draft.supplierName)) {
-    messages.push(`Il PDF indica “${draft.supplierName}”, ma il modulo è aperto su “${supplier.value}”. Nessun campo compilato: verifica il fornitore.`);
-    return messages;
-  }
-  for (const key of ["supplierName", "invoiceDate", "invoiceNumber"]) {
-    const field = form.elements.namedItem(key);
-    if (field && !field.value && !field.readOnly && draft[key]) field.value = draft[key];
-  }
+  // The selected supplier and manually entered document fields are authoritative.
   syncSupplierPriceLinesFromDom();
   const hasLines = (state.supplierPriceFormLines || []).some(line => line.material || line.unitPrice || line.quantity);
   if (!hasLines && draft.lines.length) {
-    state.supplierPriceFormLines = draft.lines.map(({material,unitPrice,quantity,unit}) => ({material,unitPrice,quantity,unit}));
+    state.supplierPriceFormLines = draft.lines.map(source => {
+      const converted=normalizeSupplierProduct(source);
+      if(converted.message)messages.push(converted.message);
+      const {material,unitPrice,quantity,unit}=converted.line;
+      return {material,unitPrice,quantity,unit};
+    });
+    const note = form.elements.namedItem("note");
+    if (note && messages.length) note.value=[note.value, "Conversioni proposte dal PDF (da verificare):", ...messages].filter(Boolean).join("\n");
     updateSupplierPriceLinesDom();
   } else if (hasLines) messages.push("Le righe già compilate sono state mantenute: nessuna riga del PDF è stata aggiunta automaticamente.");
   return messages;
@@ -16276,7 +16282,7 @@ async function stageSupplierPriceAttachment(file) {
     try {
       const draft = await apiFetch("/api/supplier-prices/extract-pdf", { method: "POST", body: JSON.stringify({dataUrl}) });
       if (state.supplierPricePendingAttachment !== pending || state.supplierInvoiceReadToken !== token || !form.isConnected) return;
-      draft.warnings = [...draft.warnings, ...applySupplierInvoiceDraft(form, draft)];
+      draft.warnings = [...draft.warnings.filter(w=>!/fornitore|data fattura|numero fattura|documento.*ordine|documento proforma|bozza estratta/i.test(w)), "Fornitore e dati documento rimangono quelli della scheda. Controllare prodotti, prezzi e conversioni.", ...applySupplierInvoiceDraft(form, draft)];
       pending.extraction = draft;
     } catch (error) {
       const messages = {pdf_password:"PDF protetto da password: carica una copia non protetta.",too_many_pages:"Il PDF supera 20 pagine: carica una fattura alla volta.",pdf_timeout:"Lettura troppo lenta: riprova con un PDF più semplice.",pdf_busy:"Lettore occupato: attendi e ricarica il PDF."};
@@ -36574,6 +36580,41 @@ function buildNativePreventivoPayload() {
       .map((w) => ({ description: String(w.description || "").trim(), cost: Number(w.cost) || 0, applyIva: w.applyIva !== false }))
       .filter((w) => w.cost > 0 || w.description);
 
+    const shippingLabel = shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita";
+    const materialsList = materialsText
+      ? materialsText.split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
+          const mm = item.match(/^([^:]+):\s*([^×x]+(?:[×x].+)?)/);
+          return mm ? { name: mm[1].trim(), qty: mm[2].trim() } : { name: item, qty: "" };
+        })
+      : [];
+    // Trasporto come riga in più nella stessa distinta: stesso importo già
+    // incluso nei totali (shippingNet in lib/preventivo-pricing.js), qui solo
+    // mostrato a parte come richiesto ("cosa si paga realmente" a pagina 2).
+    materialsList.push({ name: "Trasporto", qty: shippingLabel });
+
+    // "Incluso / Escluso" — pagina 2, dati 2 entrambi reali: cosa è davvero
+    // nei totali (mai un servizio o una garanzia inventata) ed eventuali
+    // esclusioni SOLO se già dichiarate altrove nello stesso documento (la
+    // frase sullo smaltimento terreno, identica a quella nei passi di posa).
+    const inclusionParts = [
+      isPosa ? "prato sintetico, materiali di posa e installazione professionale" : "prato sintetico e materiali forniti in rotoli pronti alla posa",
+      accessories.length ? "accessori extra selezionati" : "",
+      extraServices.length ? "lavorazioni extra concordate" : "",
+      `spedizione ${shippingLabel.toLowerCase()}`,
+    ].filter(Boolean).join(", ");
+    const installStepsForExclusion = isPosa
+      ? (isPavimentazione ? PREVENTIVO_STATIC_DEFAULTS.installationWorkPavimentazione : PREVENTIVO_STATIC_DEFAULTS.installationWork).steps
+      : [];
+    const smaltimentoNote = installStepsForExclusion
+      .map((s) => s.text || "")
+      .join(" ")
+      .match(/[^.]*smaltimento[^.]*\./i)?.[0]?.trim() || "";
+    const conditionsWithInclExcl = [
+      ...PREVENTIVO_STATIC_DEFAULTS.conditions,
+      { label: "Incluso", text: `${inclusionParts.charAt(0).toUpperCase()}${inclusionParts.slice(1)}.` },
+      ...(smaltimentoNote ? [{ label: "Escluso", text: smaltimentoNote }] : []),
+    ];
+
     return {
       quoteNumber: f.quoteNumber || "F-0000-00",
       customer: {
@@ -36596,12 +36637,7 @@ function buildNativePreventivoPayload() {
           : customTexts.materialsDescFornitura,
         discount: Number(f.materialsDiscountPct) || 0,
         det: materialsText,
-        list: materialsText
-          ? materialsText.split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
-              const mm = item.match(/^([^:]+):\s*([^×x]+(?:[×x].+)?)/);
-              return mm ? { name: mm[1].trim(), qty: mm[2].trim() } : { name: item, qty: "" };
-            })
-          : [],
+        list: materialsList,
         accessories,
         extraServices,
       },
@@ -36617,7 +36653,7 @@ function buildNativePreventivoPayload() {
       payment: { main: customTexts.paymentMain, heylight: customTexts.paymentHeyLight },
       page2Footer: { info: customTexts.footerInfo, firmaAzienda: "Firma e timbro VERTEX SRLS" },
       certifications: PREVENTIVO_STATIC_DEFAULTS.certifications,
-      conditions: PREVENTIVO_STATIC_DEFAULTS.conditions,
+      conditions: conditionsWithInclExcl,
       installationWork: isPosa
         ? (isPavimentazione ? PREVENTIVO_STATIC_DEFAULTS.installationWorkPavimentazione : PREVENTIVO_STATIC_DEFAULTS.installationWork)
         : null,
@@ -36628,6 +36664,18 @@ function buildNativePreventivoPayload() {
         } catch {}
         return null;
       })(),
+      // Trasporto come voce esplicita per la pagina "cosa si paga realmente"
+      // (pagina 2) — stesso importo già incluso nei totali di ogni opzione
+      // (shippingNet in lib/preventivo-pricing.js), solo mostrato a parte.
+      shipping: {
+        cost: shipping,
+        applyIva: f.shippingIva !== false,
+        label: shippingLabel,
+      },
+      // Tavola Garden Planner: presente solo se un progetto esiste nel bridge
+      // locale; "associated" solo se verificabilmente collegato alla
+      // richiesta selezionata (vedi buildGardenPlannerAttachment).
+      gardenPlanner: buildGardenPlannerAttachment(),
     };
   } catch (err) {
     console.warn("[preventivo-v2] build nativo fallito:", err?.message);
@@ -36661,6 +36709,61 @@ function getIncludeP2() {
   return cb ? cb.checked : true;
 }
 
+// Allegato Garden Planner: opt-in esplicito (default spento), mai attivo di
+// default — l'associazione richiesta↔progetto va sempre verificata prima di
+// allegare (vedi buildGardenPlannerAttachment).
+function getIncludeGardenPlanner() {
+  const cb = document.getElementById("quote-include-planner");
+  return cb ? cb.checked : false;
+}
+
+// Aggiorna la spunta "Progetto Garden Planner" nella toolbar del generatore:
+// se non esiste alcun progetto salvato nel bridge (mai aperto/mai portato
+// fino in fondo nel planner), la disabilita invece di lasciarla spuntabile a
+// vuoto — evita la falsa impressione che "attivarla" faccia comparire un
+// disegno che semplicemente non esiste.
+function updateGardenPlannerToggleAvailability() {
+  const cb = document.getElementById("quote-include-planner");
+  const wrap = cb?.closest(".quote-p2-toggle");
+  if (!cb) return;
+  const bridge = getGardenPlannerQuoteBridge();
+  const hasProject = !!(bridge && (bridge.reportHtml?.client || bridge.reportHtml?.technical));
+  cb.disabled = !hasProject;
+  if (!hasProject) cb.checked = false;
+  if (wrap) {
+    wrap.title = hasProject
+      ? "Allega il progetto Garden Planner (verrà mostrato lo stato di associazione alla richiesta)"
+      : "Nessun progetto Garden Planner disponibile: aprine uno dal pulsante \"Apri nel Garden Planner\" sulla richiesta";
+    wrap.classList.toggle("is-disabled", !hasProject);
+  }
+}
+
+// Stato reale dell'allegato Garden Planner per il payload del preventivo:
+// "associated" solo se il progetto è stato aperto da QUESTA stessa richiesta
+// CRM selezionata (sourceRequestId combacia) — mai per default sull'ultimo
+// disegno aperto nel browser. "available" segnala che un disegno esiste ma
+// non è verificabilmente collegato: il template mostra uno stato esplicito
+// invece di allegarlo in silenzio (richiesto dall'utente il 29 set).
+function buildGardenPlannerAttachment() {
+  const bridge = getGardenPlannerQuoteBridge();
+  const reportHtml = String(bridge?.reportHtml?.client || bridge?.reportHtml?.technical || "").trim();
+  if (!bridge || !reportHtml) return { available: false, associated: false };
+  const requestId = String(state.selectedSalesRequestId || "").trim();
+  const sourceRequestId = String(bridge.sourceRequestId || "").trim();
+  const associated = !!(requestId && sourceRequestId && requestId === sourceRequestId);
+  return {
+    available: true,
+    associated,
+    isTechnicalOnly: !bridge.reportHtml?.client && !!bridge.reportHtml?.technical,
+    reportHtml,
+    client: bridge.client || "",
+    address: bridge.address || "",
+    sqmLabel: bridge.sqmLabel || "",
+    materialHighlights: bridge.materialHighlights || [],
+    updatedAt: bridge.createdAt || "",
+  };
+}
+
 // Selettore "Consigliato" lato ufficio: imposta quale prodotto è suggerito
 // (suggestedSlug) nel preventivo v2. Persistito in memoria finché si lavora.
 let previewSuggestedSlug = "";
@@ -36689,6 +36792,7 @@ function showPreventivoPreview() {
     else window.localStorage.removeItem("psi:preventivo-v2:data");
   } catch {}
   const p2 = getIncludeP2() ? "1" : "0";
+  const planner = getIncludeGardenPlanner() ? "1" : "0";
   previewIframe.style.height = "600px"; // altezza provvisoria durante il caricamento
   previewIframe.onload = () => {
     try {
@@ -36696,7 +36800,7 @@ function showPreventivoPreview() {
       if (h > 100) previewIframe.style.height = h + "px";
     } catch {}
   };
-  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&v=${APP_SHELL_VERSION}`;
+  previewIframe.src = `./preventivo-v2.html?embedded=1&p2=${p2}&planner=${planner}&v=${APP_SHELL_VERSION}`;
   // Nasconde la form nativa mentre si mostra l'anteprima.
   const nativeFormEl = document.getElementById("sales-generator-native-form");
   if (nativeFormEl) nativeFormEl.style.setProperty("display", "none", "important");
@@ -36754,6 +36858,14 @@ document.addEventListener("change", (e) => {
     previewSuggestedSlug = e.target.value || "";
     showPreventivoPreview();
   }
+});
+// Toggle "Schede tecniche" / "Progetto Garden Planner": se l'anteprima è già
+// aperta, la rigenera subito (numerazione pagine dinamica) invece di
+// richiedere di premere di nuovo "Genera preventivo".
+document.addEventListener("change", (e) => {
+  if (!e.target || (e.target.id !== "quote-include-p2" && e.target.id !== "quote-include-planner")) return;
+  const previewSection = document.getElementById("psi-preview-section");
+  if (previewSection && !previewSection.hidden) showPreventivoPreview();
 });
 
 bindEvent(ui.usageReportRefreshButton, "click", () => loadUsageReport());
