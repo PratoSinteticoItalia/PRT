@@ -13,9 +13,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260929-fix-quote-respiro-e-quote-complete";
+} from "./lib/order-money.js?v=20260929-foto-prodotti-reali";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260929-fix-quote-respiro-e-quote-complete";
+import { regionForCity } from "./lib/geo.js?v=20260929-foto-prodotti-reali";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -34,7 +34,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260929-fix-quote-respiro-e-quote-complete";
+} from "./lib/shipping-eligibility.js?v=20260929-foto-prodotti-reali";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -45,7 +45,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260929-fix-quote-respiro-e-quote-complete";
+} from "./lib/profit-split.js?v=20260929-foto-prodotti-reali";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -60,7 +60,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260929-fix-quote-respiro-e-quote-complete";
+} from "./lib/preventivo-pricing.js?v=20260929-foto-prodotti-reali";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -68,13 +68,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260929-fix-quote-respiro-e-quote-complete";
+} from "./lib/sales-assignment.js?v=20260929-foto-prodotti-reali";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20260929-fix-quote-respiro-e-quote-complete";
+} from "./lib/surveys.js?v=20260929-foto-prodotti-reali";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -88,7 +88,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260929-fix-quote-respiro-e-quote-complete";
+const APP_SHELL_VERSION = "20260929-foto-prodotti-reali";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -35681,6 +35681,24 @@ const PREVENTIVO_PRODUCT_DEFAULTS = Object.freeze([
 
 const PREVENTIVO_PRODUCT_FIELDS = ["name", "desc", "code", "struttura", "densita", "dtex", "drenaggio", "peso", "note", "priceCliente", "priceRivenditore"];
 
+// Modelli con un file statico in product-images/<slug>.jpg già nel repo —
+// unica fonte foto disponibile OLTRE all'upload manuale (imageDataUrl in
+// state.preventivoCatalog). Elenco fisso perché verificare l'esistenza di
+// ogni file al volo richiederebbe un probe async per tutti i 15 modelli
+// solo per popolare la tendina; va aggiornato se si aggiungono altri file
+// in product-images/. Segnalato dall'utente il 29 set: "molti prodotti
+// compaiono senza" foto nel preventivo — 9 foto reali aggiunte lo stesso
+// giorno (fornite dall'utente), 5 modelli restano ancora senza foto:
+// gelso-30mm, frassino-35mm, ginepro-35mm, sequoia-40mm, ginepro-45mm.
+const PRODUCT_IMAGE_STATIC_SLUGS = new Set([
+  "tasso-12mm", "bonsai-18mm", "faggio-25mm", "betulla-30mm", "cedro-30mm",
+  "rovere-40mm", "palma-40mm", "cipresso-40mm", "abete-45mm", "mogano-50mm",
+]);
+
+function preventivoProductHasPhoto(slug) {
+  return PRODUCT_IMAGE_STATIC_SLUGS.has(slug) || !!String(state.preventivoCatalog?.[slug]?.imageDataUrl || "").trim();
+}
+
 async function loadPreventivoCatalog() {
   try {
     const items = await apiFetch("/api/catalog/preventivo_products");
@@ -35720,8 +35738,13 @@ function populatePreventivoProductSelect() {
   sel.innerHTML = selectable.map((p) => {
     const saved = state.preventivoCatalog?.[p.slug];
     const marker = saved && saved.code ? " ✓" : "";
+    // Segnala anche l'assenza di foto direttamente in tendina (non solo i
+    // dati tecnici "✓"): un modello può essere configurato e comparire
+    // comunque senza foto nel preventivo, il gap che l'ufficio deve vedere
+    // subito per sapere quali caricare.
+    const photoMarker = preventivoProductHasPhoto(p.slug) ? "" : " 📷✕";
     const label = String(saved?.name || p.label).trim(); // nome effettivo se rinominato
-    return `<option value="${escapeAttr(p.slug)}">${escapeHtml(label)}${marker}</option>`;
+    return `<option value="${escapeAttr(p.slug)}">${escapeHtml(label)}${marker}${photoMarker}</option>`;
   }).join("") + `<option value="__new__">${state.lang === "it" ? "+ Nuovo modello…" : "+ New model…"}</option>`;
   sel.value = current;
   fillPreventivoProductForm();
@@ -35732,7 +35755,12 @@ function updatePreventivoProductSavedList() {
   if (!ui.preventivoProductSavedList) return;
   const savedCount = Object.values(state.preventivoCatalog || {}).filter((v) => v && v.code).length;
   const total = PREVENTIVO_PRODUCT_DEFAULTS.length;
-  ui.preventivoProductSavedList.textContent = `${savedCount}/${total} ${state.lang === "it" ? "modelli configurati" : "models configured"}`;
+  const photoCount = PREVENTIVO_PRODUCT_DEFAULTS.filter((p) => preventivoProductHasPhoto(p.slug)).length;
+  const photoLabel = state.lang === "it" ? "con foto" : "with photo";
+  ui.preventivoProductSavedList.textContent = `${savedCount}/${total} ${state.lang === "it" ? "modelli configurati" : "models configured"} · ${photoCount}/${total} ${photoLabel}`;
+  // Sotto metà dei modelli con foto → segnalarlo visivamente, non solo nel
+  // numero: è la causa diretta delle card senza immagine nel preventivo.
+  ui.preventivoProductSavedList.classList.toggle("warning", photoCount < total / 2);
 }
 
 function fillPreventivoProductForm() {
@@ -35847,18 +35875,30 @@ async function savePreventivoProduct(event) {
 function buildProductTechFromCatalog(modelName = "") {
   const slug = slugifyModelName(modelName);
   const saved = state.preventivoCatalog?.[slug];
-  if (!saved || !saved.code) return null;
+  if (!saved) return null;
+  // La foto era legata alla presenza del "Codice prodotto" (return null
+  // qui sopra copriva anche saved.imageDataUrl) — un modello con SOLO la
+  // foto caricata (codice ancora vuoto) spariva in silenzio dal
+  // preventivo: la foto restava visibile nell'anteprima di Impostazioni
+  // (che legge saved.imageDataUrl direttamente, senza questo gate) dando
+  // l'impressione che fosse salvata correttamente. Segnalato dall'utente
+  // il 29 set ("molti prodotti compaiono senza" foto). Codice e dati
+  // tecnici restano opzionali con fallback sensato lato chiamante (vedi
+  // buildNativePreventivoPayload: code||fallbackCode, tech||defaultProductTech);
+  // qui basta non fabbricare una scheda tecnica tutta vuota che li
+  // sovrascriverebbe silenziosamente.
+  const hasTechData = !!(saved.struttura || saved.densita || saved.dtex || saved.drenaggio || saved.peso || saved.note);
   return {
-    code: saved.code,
+    code: saved.code || "",
     imageDataUrl: saved.imageDataUrl || "",
-    tech: {
+    tech: hasTechData ? {
       struttura: saved.struttura || "",
       densita: saved.densita || "",
       dtex: saved.dtex || "",
       drenaggio: saved.drenaggio || "",
       peso: saved.peso || "",
       note: saved.note || "",
-    },
+    } : null,
   };
 }
 

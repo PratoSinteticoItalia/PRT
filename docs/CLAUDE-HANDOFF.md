@@ -90,4 +90,30 @@ L'utente ha rigenerato lo stesso preventivo (stessa pianta Garden Planner a 8 la
 
 **Non verificato di nuovo**: un vero download PDF end-to-end tramite il pulsante reale (stesso motivo della tornata precedente — evitato il rischio di un altro blocco della scheda). La pianta a 8 lati REALE dell'utente non è stata riprodotta esattamente (non ho le coordinate/angoli esatti, solo le 8 lunghezze dei lati) — il fixture di test usa una forma diversa ma con la stessa caratteristica (molti lati ravvicinati) che si è dimostrata capace di riprodurre la stessa proporzione di quote mancanti.
 
+Pubblicato (commit `0b2129d` su prod-promote, `ebf93e7` su main) dopo autorizzazione esplicita dell'utente.
+
+## Foto prodotto mancanti — 29 settembre (quinta sessione)
+L'utente ha segnalato che "molti prodotti compaiono senza" foto nel preventivo. Trovate due cause distinte, entrambe reali:
+
+**Causa 1 — dati mancanti**: solo 3 dei 15 modelli a catalogo hanno un file statico in `product-images/` (abete-45mm, cedro-30mm, faggio-25mm); gli altri 12 hanno una foto SOLO se l'ufficio l'ha caricata da Impostazioni → Dati tecnici prodotti. Non ho foto reali dei prodotti da aggiungere — richiede caricamento manuale dall'ufficio. Per renderlo visibile invece di scoperto per caso: la tendina "Modello" ora segna `📷✕` accanto a ogni modello senza foto (statica o caricata), e il contatore sotto il form mostra "N/15 con foto" (in rosso/amber se sotto la metà) accanto a quello già esistente per i dati tecnici.
+
+**Causa 2 — bug reale, più subdolo**: `buildProductTechFromCatalog` (app.js) restituiva `null` — quindi NESSUN dato, foto compresa — ogni volta che il campo "Codice prodotto" era vuoto. Un modello con SOLO la foto caricata (senza aver ancora compilato il codice) spariva in silenzio dal preventivo generato, mentre l'anteprima in Impostazioni (che legge `imageDataUrl` direttamente, senza questo controllo) continuava a mostrarla — dando l'impressione che fosse salvata correttamente. Corretto: la foto ora è sempre presente se caricata, indipendentemente dal codice; i dati tecnici mancanti continuano a usare il fallback di default (`defaultProductTech`) invece di una scheda vuota.
+
+**Test**: 3 nuovi in `test/preventivo-product-photo.test.js` (foto senza codice, codice+tech+foto insieme, modello mai toccato → default). `npm run check` verde, 217 test totali. Verificato dal vivo nel browser: tendina con i marcatori corretti (Faggio/Cedro/Abete senza `📷✕`, gli altri 12 con), contatore "0/15 modelli configurati · 3/15 con foto" con classe `warning` applicata.
+
+Pubblicato dopo autorizzazione esplicita dell'utente.
+
+## Foto prodotto reali — 29 settembre (sesta sessione)
+L'utente ha fornito 11 foto reali da `~/Desktop/Foto prati/`, verificate una per una (Read) prima di usarle. 9 mappate con certezza sul nome file → modello a catalogo, convertite da webp a jpg (sfondo bianco per eventuale trasparenza, max lato 1200px come i 3 file statici già presenti, JPEG qualità 90) e salvate in `product-images/<slug>.jpg`:
+
+tasso-12mm, bonsai-18mm, betulla-30mm, rovere-40mm, palma-40mm, cipresso-40mm, mogano-50mm (tutti nuovi) + cedro-30mm, faggio-25mm (sostituiscono i file precedenti, stessa qualità superiore).
+
+**2 file non usati, ambiguità segnalata all'utente invece di indovinare**: `Faro_45_mm_intero_*.webp` (nessun modello "Faro" a catalogo: c'è solo Ginepro 45mm e Abete 45mm) e `Mogano40mmfronte.webp` (a catalogo esiste solo Mogano 50mm, sembra un doppione della stessa foto).
+
+`PRODUCT_IMAGE_STATIC_SLUGS` (app.js) aggiornato da 3 a 10 slug. Restano senza foto: gelso-30mm, frassino-35mm, ginepro-35mm, sequoia-40mm, ginepro-45mm.
+
+**Verificato dal vivo, flusso reale end-to-end**: generato un preventivo con Tasso 12mm + Rovere 40mm + Mogano 50mm (tutti e tre prima senza foto) attraverso la form nativa — tutte e tre le foto reali compaiono correttamente nell'anteprima. Contatore Impostazioni ora "10/15 con foto". `npm run check` verde, 217 test (nessun nuovo test automatico per questo passaggio: è inserimento di asset reali via script una tantum, non logica applicativa — coperto dal test già scritto in precedenza su `buildProductTechFromCatalog`/`preventivoProductHasPhoto`).
+
+Nota tecnica per sessioni future: durante questo lavoro il tool Bash ha avuto un'interruzione transitoria lato classificatore di sicurezza (nessun verdetto, non un blocco) durata alcuni minuti — niente di applicativo, solo da tenere presente se ricapita.
+
 Modifiche locali, non pubblicate: richiede autorizzazione esplicita per commit/push.
