@@ -89,3 +89,15 @@ test("Garden Planner prefill mantiene il comportamento precedente se turfArea no
   assert.equal(prefill.payload.mq, "25.0");
   assert.equal(prefill.sqmLabel, "25.0 m²");
 });
+
+// L'allegato al preventivo deve poter verificare che il progetto sia stato
+// aperto da QUESTA richiesta CRM (mai allegare l'ultimo disegno aperto nel
+// browser per default) — vedi buildGardenPlannerAttachment in app.js.
+test("Garden Planner prefill porta con sé l'id della richiesta di origine, se presente", async () => {
+  const { buildPlannerQuotePrefill } = await loadBuildPlannerQuotePrefill();
+  const withId = buildPlannerQuotePrefill(basePrefillInput({ sourceRequestId: "req-42" }));
+  assert.equal(withId.sourceRequestId, "req-42");
+
+  const withoutId = buildPlannerQuotePrefill(basePrefillInput());
+  assert.equal(withoutId.sourceRequestId, "");
+});

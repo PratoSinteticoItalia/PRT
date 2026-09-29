@@ -616,31 +616,32 @@
   .offer-v3 .cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:18px;align-items:stretch}
   .offer-v3 .card{border:1px solid var(--v3-line);border-radius:14px;background:#fff;padding:0 0 11px;display:flex;flex-direction:column;overflow:hidden;position:relative}
   .offer-v3 .card.reco{border:2px solid var(--v3-gold);box-shadow:0 10px 26px rgba(176,137,74,.16);margin-top:-6px}
-  .offer-v3 .card .ph{height:68px;position:relative;overflow:hidden;background:#e9ece7}
-  .offer-v3 .card .ph img{width:100%;height:100%;object-fit:cover;object-position:center 38%;display:block}
-  /* Card multiple (>1): la foto in una fascia bassa non rende → card testuali
-     pulite. La foto resta solo nel prodotto singolo (count=1, sotto) dove c'è
-     spazio per mostrarla per intero. Le foto multiple vanno in pagina 2. */
-  /* Niente foto sulle card di pagina 1 (le foto prodotto stanno in pagina 2):
-     in cima a OGNI card una barra-nome verde, stile scheda tecnica. */
-  .offer-v3 .card .ph{display:none}
+  /* Riquadro foto a proporzioni costanti (16:10 su 2/3 prodotti): object-fit
+     contain mostra il prodotto per intero, mai stirato o ritagliato. Lo
+     sfondo tenue fa da passe-partout quando la foto non riempie il riquadro
+     per intero (es. scatto verticale). Placeholder .ph-ph mostrato SOLO se
+     l'immagine manca o non carica (classe is-missing, vedi onerror in
+     renderOptionsTable) — mai un riquadro vuoto silenzioso. */
+  .offer-v3 .card .ph{aspect-ratio:16/10;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--v3-sand),#eef1e9)}
+  .offer-v3 .card .ph img{width:100%;height:100%;object-fit:contain;object-position:center;display:block}
+  .offer-v3 .card .ph .ph-ph{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--v3-green-l);opacity:.5}
+  .offer-v3 .card .ph.is-missing img{display:none}
+  .offer-v3 .card .ph.is-missing .ph-ph{display:flex}
   .offer-v3 .card .cbody{padding-top:12px}
   .offer-v3 .card .cardbar{display:flex;flex-direction:column;align-items:center;gap:1px;background:var(--v3-green-d);color:#fff;padding:9px 12px;text-align:center;font-size:14px;font-weight:800;letter-spacing:.2px;line-height:1.2}
   .offer-v3 .card.reco .cardbar{background:var(--v3-gold)}
   .offer-v3 .card .cardbar .reco-eyebrow{font-size:8.5px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;opacity:.92}
-  .offer-v3 .card .pname{display:none}
-  .offer-v3 .card .ph .grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,40,30,0) 45%,rgba(20,40,30,.28))}
-  .offer-v3 .card .badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--v3-gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;padding:5px 13px;border-radius:999px;white-space:nowrap;box-shadow:0 3px 10px rgba(20,30,25,.45);z-index:2}
   .offer-v3 .card .cbody{padding:11px 16px 0;text-align:center}
   .offer-v3 .card .pname{font-size:16px;font-weight:800;color:var(--v3-green-d)}
   .offer-v3 .card .pdesc{font-size:11px;color:var(--v3-muted);margin-top:2px}
   .offer-v3 .card .price{margin-top:8px}
-  .offer-v3 .card .price .big{font-size:27px;font-weight:800;color:var(--v3-green-d);letter-spacing:-.02em}
+  .offer-v3 .card .price .big{font-size:27px;white-space:nowrap;font-weight:800;color:var(--v3-green-d);letter-spacing:-.02em}
   .offer-v3 .card.reco .price .big{color:var(--v3-gold);font-size:30px}
   .offer-v3 .card .price .u{font-size:12px;color:var(--v3-muted);font-weight:600}
   .offer-v3 .card .price .sub{font-size:10.5px;color:var(--v3-faint);margin-top:1px}
   .offer-v3 .card .tot{margin-top:7px;padding-top:7px;border-top:1px dashed var(--v3-line);font-size:12.5px}
-  .offer-v3 .card .tot .tv{font-weight:800;color:var(--v3-ink);font-size:15px}
+  .offer-v3 .card .tot .tv{font-weight:600;color:var(--v3-muted);font-size:12px}
+  .offer-v3 .card .unit-detail{font-size:10px;color:var(--v3-faint);margin-top:3px}
   .offer-v3 .card .brk{margin:8px 16px 0;padding-top:7px;border-top:1px solid var(--v3-line);display:flex;flex-direction:column;gap:3px}
   .offer-v3 .card .brk .br{display:flex;justify-content:space-between;font-size:10.5px;color:var(--v3-muted)}
   .offer-v3 .card .brk .br b{color:var(--v3-ink);font-weight:700}
@@ -648,17 +649,19 @@
   .offer-v3 .card .incl .li{font-size:10px;color:var(--v3-muted);display:flex;gap:6px;align-items:center}
   .offer-v3 .card .incl .li svg{flex:0 0 auto;color:var(--v3-ok)}
   .offer-v3 .card .incl .disc{color:var(--v3-gold);font-weight:700}
-  /* Prodotto singolo: stessa veste delle card multiple (barra-nome verde, niente
-     foto), ma corpo su 2 colonne (prezzo a sx · dettagli a dx) per riempire lo
-     spazio. Allineata a sinistra. */
-  .offer-v3 .cards[data-count="1"]{grid-template-columns:1fr;max-width:560px;margin-left:0;margin-right:auto}
-  .offer-v3 .cards[data-count="1"] .card{display:grid;grid-template-columns:1fr 1fr;grid-template-areas:"bar bar" "body brk" "body incl";align-items:start;padding:0 0 14px}
+  /* Prodotto singolo: spazio ben sfruttato — immagine e proposta affiancate
+     (barra-nome full width sopra, poi foto a sinistra / prezzo+dettagli a
+     destra, così la larghezza intera della pagina viene usata). */
+  .offer-v3 .cards[data-count="1"]{grid-template-columns:1fr;max-width:100%}
+  .offer-v3 .cards[data-count="1"] .card{display:grid;grid-template-columns:1fr 1.2fr;grid-template-areas:"bar bar" "photo proposal";align-items:stretch;padding:0 0 14px}
   .offer-v3 .cards[data-count="1"] .cardbar{grid-area:bar}
-  .offer-v3 .cards[data-count="1"] .cbody{grid-area:body;text-align:center;padding:16px 18px 0;align-self:center}
-  .offer-v3 .cards[data-count="1"] .price{margin-top:8px}
+  .offer-v3 .cards[data-count="1"] .ph{grid-area:photo;aspect-ratio:auto;min-height:240px;border-right:1px solid var(--v3-line)}
+  .offer-v3 .cards[data-count="1"] .proposal{grid-area:proposal;display:flex;flex-direction:column;justify-content:center;padding:6px 22px}
+  .offer-v3 .cards[data-count="1"] .cbody{padding:0;text-align:left}
+  .offer-v3 .cards[data-count="1"] .price{margin-top:6px}
   .offer-v3 .cards[data-count="1"] .tot{margin-top:9px;padding-top:9px}
-  .offer-v3 .cards[data-count="1"] .brk{grid-area:brk;margin:16px 18px 0;border-top:0;padding-top:0}
-  .offer-v3 .cards[data-count="1"] .incl{grid-area:incl;margin:10px 18px 0;padding-top:10px;border-top:1px solid var(--v3-line)}
+  .offer-v3 .cards[data-count="1"] .brk{margin:16px 0 0;padding-top:10px}
+  .offer-v3 .cards[data-count="1"] .incl{margin:10px 0 0;padding-top:10px}
   /* Sezioni */
   .offer-v3 .sect{margin-top:9px}
   .offer-v3 .sect-h{display:flex;align-items:center;gap:10px;margin-bottom:7px}
@@ -690,6 +693,29 @@
   .offer-v3 .finance .fr .lbl{font-size:11px;color:rgba(255,255,255,.82);margin-top:5px}
   .offer-v3 .finance .fr .zero{display:inline-block;margin-top:9px;background:var(--v3-gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:4px 11px;border-radius:999px}
   .offer-v3 .ivanote{text-align:center;font-size:10px;color:var(--v3-faint);margin-top:9px;letter-spacing:.04em}
+  /* "Cosa comprende" / "Da sapere" — sintesi condivisa sotto le card, il
+     dettaglio con quantità reali sta in pagina 2 (o non c'è, se esclusa). */
+  .offer-v3 .p1summary{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:16px;padding-top:13px;border-top:1px solid var(--v3-line)}
+  .offer-v3 .p1summary .p1-list{list-style:none;display:flex;flex-direction:column;gap:5px;margin-top:2px}
+  .offer-v3 .p1summary .p1-list li{font-size:10.5px;color:var(--v3-ink);display:flex;gap:7px;align-items:baseline}
+  .offer-v3 .p1summary .p1-list li svg{flex:0 0 auto;color:var(--v3-ok);position:relative;top:1px}
+  .offer-v3 .p1summary .p1-list.plain li{color:var(--v3-muted)}
+  .offer-v3 .p1summary .p1-list.plain li::before{content:"–";flex:0 0 auto;color:var(--v3-faint)}
+  .offer-v3 .p1wayfinding{text-align:center;font-size:9.5px;color:var(--v3-faint);margin-top:10px;letter-spacing:.02em}
+  /* Pagina 3 — stato esplicito quando il progetto Garden Planner non è
+     verificabilmente associato alla richiesta (mai un allegato automatico
+     sul disegno sbagliato). */
+  .offer-v3 .gp-state-notice{border:1px solid var(--v3-gold);background:var(--v3-gold-soft);border-radius:14px;padding:18px 22px;margin-top:20px}
+  .offer-v3 .gp-state-notice .gp-state-t{font-size:13px;font-weight:800;color:var(--v3-green-d);margin-bottom:6px}
+  .offer-v3 .gp-state-notice .gp-state-x{font-size:11px;color:var(--v3-ink);line-height:1.55}
+  /* Tavola Garden Planner: il report reale del planner (SVG quotato,
+     legenda, superfici nette/escluse) viene iniettato as-is dentro
+     .gp-scale-inner. .gp-scale-wrap ha altezza fissa (il resto della pagina
+     A4 sotto l'header) e il JS applica uno zoom uniforme all'inner se il
+     contenuto naturale è più alto, cosí la tavola resta sempre su un unico
+     foglio leggibile invece di essere tagliata in fase di esportazione. */
+  .offer-v3 .gp-scale-wrap{margin-top:14px;overflow:hidden}
+  .offer-v3 .gp-scale-inner{transform-origin:top left}
   /* Export PDF (html2pdf): forza il layout A4 e nasconde la toolbar in cattura */
   html.pdf-exporting .toolbar { display: none !important; }
   html.pdf-exporting body { background: #fff; }
@@ -755,39 +781,9 @@
   <!-- PRODUCT CARDS -->
   <div class="cards" data-field="optionsTable"></div>
 
-  <!-- MATERIALI INCLUSI -->
-  <div class="sect" data-field="materialsBox">
-    <div class="sect-h"><span class="eyebrow">Materiali e lavorazioni incluse</span><span class="rule"></span></div>
-    <div class="matwrap">
-      <div class="desc" data-field="materialsDesc">—</div>
-      <div class="matgrid" data-field="materialsList"></div>
-      <div class="matnote" data-field="materialsDiscountRow" style="display:none">
-        <span>Sconto materiali già applicato ai totali</span>
-        <span class="pill" data-field="materialsDiscountValue">—</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ACCESSORI E PRODOTTI EXTRA -->
-  <div class="acc-box" id="accessories-section" style="display:none;">
-    <div class="acc-hdr">Accessori e Prodotti Extra</div>
-    <div class="acc-note">Queste voci sono già incluse nei totali complessivi delle proposte sopra.</div>
-    <table class="acc-table">
-      <thead><tr>
-        <th>Prodotto</th><th>Prezzo</th><th>Sconto</th><th>Qtà</th><th>Netto</th>
-      </tr></thead>
-      <tbody id="accessories-body"></tbody>
-    </table>
-  </div>
-
-  <!-- LAVORI EXTRA (solo posa) -->
-  <div class="acc-box lav-box" id="extra-services-section" style="display:none;">
-    <div class="acc-hdr lav-hdr">Lavori Extra</div>
-    <table class="acc-table">
-      <thead><tr><th>Descrizione</th><th>Costo netto</th></tr></thead>
-      <tbody id="extra-services-body"></tbody>
-    </table>
-  </div>
+  <!-- COSA COMPRENDE / DA SAPERE — sintesi, il dettaglio (materiali con
+       quantità, accessori, lavori extra) sta nella pagina successiva. -->
+  <div class="p1summary" data-field="p1Summary"></div>
 
   <!-- TRUST -->
   <div class="trust" data-field="badges"></div>
@@ -796,6 +792,7 @@
   <div class="finance" data-field="hlBlock"></div>
 
   <div class="ivanote" data-field="ivaNote">Tutti i prezzi sono IVA inclusa · Offerta valida nel periodo indicato</div>
+  <div class="p1wayfinding" data-field="p1Wayfinding"></div>
 
   <!-- FIRMA + LOGOS -->
   <div class="firma-row">
@@ -814,8 +811,8 @@
   </div>
 </div>
 
-<!-- ═══════════════════ PAGINA 2 — Allegato tecnico ═══════════════════ -->
-<div class="page" id="page-2" data-field="page2">
+<!-- ═══════════════════ PAGINA 2 — Allegato tecnico (facoltativa) ═══════════════════ -->
+<div class="page offer-v3" id="page-2" data-field="page2">
   <!-- Header compatto -->
   <div class="page2-head">
     <div class="hdr-left">
@@ -823,7 +820,7 @@
       <div>
         <div class="hdr-brand" style="font-size:16px;">PRATO SINTETICO</div>
         <div class="hdr-sub" style="font-size:11px;">ITALIA</div>
-        <div class="hdr-tag" style="font-size:9px;">Allegato tecnico · Pag. 2 di 2</div>
+        <div class="hdr-tag" data-field="page2Tag" style="font-size:9px;">Allegato tecnico</div>
       </div>
     </div>
     <div class="hdr-crew" id="hdr-crew-section-2" hidden>
@@ -845,6 +842,19 @@
   <!-- Certificazioni -->
   <div class="certs" data-field="certsRow"></div>
 
+  <!-- Materiali e quantità reali -->
+  <div class="sect" data-field="materialsBox">
+    <div class="sect-h"><span class="eyebrow">Materiali e quantità</span><span class="rule"></span></div>
+    <div class="matwrap">
+      <div class="desc" data-field="materialsDesc">—</div>
+      <div class="matgrid" data-field="materialsList"></div>
+      <div class="matnote" data-field="materialsDiscountRow" style="display:none">
+        <span>Sconto materiali già applicato ai totali</span>
+        <span class="pill" data-field="materialsDiscountValue">—</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Cosa include il servizio di posa (solo se mode = fornitura+posa) -->
   <div class="install-work" data-field="installWorkBox" style="display:none;">
     <div class="install-work-head">
@@ -855,7 +865,28 @@
     <div class="install-work-note" data-field="installWorkNote">—</div>
   </div>
 
-  <!-- Condizioni generali di vendita -->
+  <!-- Accessori e prodotti extra -->
+  <div class="acc-box" id="accessories-section" style="display:none;">
+    <div class="acc-hdr">Accessori e Prodotti Extra</div>
+    <div class="acc-note">Queste voci sono già incluse nei totali complessivi delle proposte a pagina 1.</div>
+    <table class="acc-table">
+      <thead><tr>
+        <th>Prodotto</th><th>Prezzo</th><th>Sconto</th><th>Qtà</th><th>Netto</th>
+      </tr></thead>
+      <tbody id="accessories-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Lavori extra (solo posa) -->
+  <div class="acc-box lav-box" id="extra-services-section" style="display:none;">
+    <div class="acc-hdr lav-hdr">Lavori Extra</div>
+    <table class="acc-table">
+      <thead><tr><th>Descrizione</th><th>Costo netto</th></tr></thead>
+      <tbody id="extra-services-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Condizioni generali di vendita (incl. inclusioni/esclusioni) -->
   <div class="conds">
     <div class="conds-t">Condizioni generali di vendita</div>
     <div class="conds-grid" data-field="condsGrid"></div>
@@ -876,7 +907,46 @@
   <!-- Footer pagina 2 -->
   <div class="p2-footer">
     <div class="p2-footer-info" data-field="p2FooterInfo">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
-    <div class="p2-footer-page">Pag. 2 / 2</div>
+    <div class="p2-footer-page" data-field="page2FooterPage">Pag. 2 / 2</div>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGINA 3 — Progetto Garden Planner (facoltativa) ═══════════════════ -->
+<div class="page offer-v3" id="page-3" data-field="page3">
+  <div class="page2-head">
+    <div class="hdr-left">
+      <div class="hdr-logo" style="width:54px;height:46px;"><img src="./logo-prato.png" alt="Prato Sintetico Italia" onerror="this.style.display='none';"></div>
+      <div>
+        <div class="hdr-brand" style="font-size:16px;">PRATO SINTETICO</div>
+        <div class="hdr-sub" style="font-size:11px;">ITALIA</div>
+        <div class="hdr-tag" data-field="page3Tag" style="font-size:9px;">Progetto Garden Planner</div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <div class="hdr-lbl">Preventivo Nr.</div>
+      <div class="hdr-num" data-field="quoteNumber">F-0000-00</div>
+      <div class="page2-summary" data-field="summaryLine">—</div>
+    </div>
+  </div>
+
+  <!-- Stato esplicito: nessun progetto associato con certezza a questa
+       richiesta → NON si allega automaticamente l'ultimo disegno aperto nel
+       browser (richiesto dall'utente). Mostrato al posto della tavola. -->
+  <div class="gp-state-notice" data-field="gpStateNotice" style="display:none;"></div>
+
+  <!-- Tavola: il report client del Garden Planner (già quotato, con legenda
+       e superfici nette/escluse) viene iniettato qui as-is — stesso motore
+       di rendering testato del planner, non un allegato duplicato. Il
+       wrapper .gp-scale-wrap viene ridotto (zoom) se il contenuto supera
+       un foglio A4, per restare sempre su un'unica pagina leggibile. -->
+  <div class="gp-scale-wrap" data-field="gpAttachmentWrap" style="display:none;">
+    <div class="gp-scale-inner" data-field="gpAttachment"></div>
+  </div>
+
+  <!-- Footer pagina 3 -->
+  <div class="p2-footer">
+    <div class="p2-footer-info" data-field="p2FooterInfo">VERTEX SRLS · P.IVA 04863610616 · Via Ottorino Respighi 57, Marcianise (CE) · vertexsrls@pec.it · www.pratosinteticoitalia.com</div>
+    <div class="p2-footer-page" data-field="page3FooterPage">Pag. 3 / 3</div>
   </div>
 </div>
 
@@ -1049,8 +1119,29 @@
     return { isPosa, vat: data.vat };
   }
 
-  // Redesign v3: 3 card prodotto (foto, prezzo al m², scomposizione leggera,
+  // Icona segnaposto per foto mancante/non caricata — mai un riquadro vuoto
+  // silenzioso, sempre uno stato visibile (mostrata solo se l'onerror scatta
+  // o se il prodotto non ha alcuna immagine associata).
+  const PHOTO_PLACEHOLDER_SVG = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5.5-5.5a2 2 0 0 0-2.8 0L3 20"/></svg>';
+
+  // Riquadro foto: proporzioni costanti via CSS (aspect-ratio), immagine
+  // intera con object-fit:contain (niente stretch/crop). Se manca l'URL o il
+  // caricamento fallisce (404, dataURL corrotta) → placeholder esplicito
+  // invece di un riquadro vuoto.
+  function photoFrameHtml(opt) {
+    const imgSrc = String(opt.imageDataUrl || "").trim() || `./product-images/${opt.slug || ""}.jpg`;
+    const missingNow = !opt.imageDataUrl && !opt.slug; // nessuna sorgente possibile
+    return `
+      <div class="ph${missingNow ? " is-missing" : ""}">
+        <img src="${escHtml(imgSrc)}" alt="${escHtml(opt.name)}" onerror="this.parentElement.classList.add('is-missing')">
+        <div class="ph-ph" aria-hidden="true">${PHOTO_PLACEHOLDER_SVG}</div>
+      </div>`;
+  }
+
+  // Proposta cliente: totale della soluzione protagonista, unitario di riferimento,
   // "Consigliato" pilotato da data.suggestedSlug — scelto a mano dall'ufficio).
+  // Layout adattivo: 1 prodotto → foto e proposta affiancate (spazio pieno
+  // sfruttato); 2-3 prodotti → schede/colonne con foto in riquadro in cima.
   function renderOptionsTable(data) {
     const wrap = document.querySelector('[data-field="optionsTable"]');
     if (!wrap) return;
@@ -1067,7 +1158,6 @@
       const sub = opt.discount > 0
         ? `prezzo listino ${noSym(opt.pricePerSqm)} €/m² · sconto ${opt.discount}% incluso`
         : `prezzo materiale ${noSym(opt.pricePerSqm)} €/m²`;
-      const imgSrc = String(opt.imageDataUrl || "").trim() || `./product-images/${opt.slug}.jpg`;
       const incl = [
         `<div class="li">${CHECK} ${isPosa ? "Posa professionale inclusa" : "Materiale certificato"}</div>`,
         `<div class="li">${CHECK} Spedizione ${escHtml(String(opt.shippingLabel || "inclusa").toLowerCase())}</div>`,
@@ -1081,24 +1171,21 @@
         </div>`;
       return `
         <div class="card${reco ? " reco" : ""}">
+          ${photoFrameHtml(opt)}
           <div class="cardbar">${reco ? '<span class="reco-eyebrow">★ Consigliato</span>' : ''}<span>${escHtml(opt.name)}</span></div>
-          <div class="ph">
-            <img src="${escHtml(imgSrc)}" alt="${escHtml(opt.name)}" onerror="this.style.display='none'">
-            <div class="grad"></div>
-            ${reco ? '<div class="badge">★ Consigliato</div>' : ""}
-          </div>
-          <div class="cbody">
-            <div class="pname">${escHtml(opt.name)}</div>
-            <div class="pdesc">${escHtml(opt.tagline || "")}</div>
-            <div class="price">
-              <div><span class="big">${fmtEur(opt.finalSqmPrice)}</span></div>
-              <div class="u">al m² finale</div>
-              <div class="sub">${sub}</div>
+          <div class="proposal">
+            <div class="cbody">
+              <div class="pdesc">${escHtml(opt.tagline || "")}</div>
+              <div class="price">
+                <div class="u">${isPosa ? "Totale chiavi in mano" : "Totale fornitura"}</div>
+                <div><span class="big">${fmtEur(opt.total)}</span></div>
+                <div class="sub">${data.ivaStatus === "esclusa" ? "IVA esclusa" : data.ivaStatus === "mista" ? "IVA applicata secondo dettaglio" : "IVA inclusa"} · ${escHtml(String(data.sqm || 0))} m²</div>
+              </div>
+              <div class="tot"><span class="t">Equivalente al m² </span><span class="tv">${fmtEur(opt.finalSqmPrice)}/m²</span><div class="unit-detail">${sub}</div></div>
             </div>
-            <div class="tot"><span class="t">Totale chiavi in mano </span><span class="tv">${fmtEur(opt.total)}</span></div>
+            ${brk}
+            <div class="incl">${incl}</div>
           </div>
-          ${brk}
-          <div class="incl">${incl}</div>
         </div>`;
     }).join("");
   }
@@ -1345,6 +1432,162 @@
     setField("firmaAzienda", data.page2Footer?.firmaAzienda || "Firma e timbro azienda");
   }
 
+  // "Cosa comprende" / "Da sapere" — sintesi condivisa sotto le card di
+  // pagina 1. Costruita SOLO da dati reali già presenti nel payload (mai
+  // servizi o garanzie inventate): modalità, accessori/lavori extra
+  // effettivamente presenti, spedizione, validità e l'eventuale esclusione
+  // già dichiarata altrove nello stesso documento (vedi buildNativePreventivoPayload).
+  function renderPage1Summary(data) {
+    const el = document.querySelector('[data-field="p1Summary"]');
+    if (!el) return;
+    const isPosa = String(data.mode || "").includes("posa");
+    const CHECK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    const hasAccessories = (data.materials?.accessories || []).length > 0;
+    const hasExtra = (data.materials?.extraServices || []).length > 0;
+    const includes = [
+      isPosa ? "Materiali di posa e installazione professionale inclusi" : "Materiale fornito in rotoli pronti alla posa",
+      `Spedizione ${String(data.shipping?.label || "inclusa").toLowerCase()}`,
+      hasAccessories ? "Accessori extra selezionati inclusi nel totale" : "",
+      hasExtra ? "Lavorazioni extra incluse nel totale" : "",
+    ].filter(Boolean);
+    const conds = data.conditions || [];
+    const findCond = (label) => conds.find((c) => String(c.label || "").trim().toLowerCase() === label)?.text || "";
+    const notes = [findCond("validità") || findCond("validita"), findCond("escluso")].filter(Boolean);
+    el.innerHTML = `
+      <div>
+        <div class="sect-h"><span class="eyebrow">Cosa comprende</span><span class="rule"></span></div>
+        <ul class="p1-list">${includes.map((t) => `<li>${CHECK}<span>${escHtml(t)}</span></li>`).join("")}</ul>
+      </div>
+      <div>
+        <div class="sect-h"><span class="eyebrow">Da sapere</span><span class="rule"></span></div>
+        <ul class="p1-list plain">${notes.map((t) => `<li><span>${escHtml(t)}</span></li>`).join("")}</ul>
+      </div>`;
+  }
+
+  // Riduce .zoom di `inner` (mai transform, coerente con la tecnica già in
+  // produzione per il report Garden Planner) finché la sua altezza naturale
+  // non rientra in maxHeight — così un contenuto più alto di un foglio A4
+  // resta leggibile su un'unica pagina invece di essere tagliato in
+  // esportazione (vedi window.psiDownloadPdf).
+  function fitElementHeightWithin(inner, maxHeight) {
+    if (!inner) return;
+    inner.style.zoom = "";
+    const naturalHeight = inner.scrollHeight;
+    if (naturalHeight <= 0 || naturalHeight <= maxHeight) return;
+    inner.style.zoom = String(Math.max(0.4, maxHeight / naturalHeight));
+  }
+
+  // Tavola Garden Planner: mostra lo stato esplicito "non associato" oppure
+  // inietta il report client reale (già quotato: SVG del disegno, legenda,
+  // superfici nette/escluse) prodotto dallo stesso motore del planner — mai
+  // un allegato ricostruito da zero qui. Vedi buildGardenPlannerAttachment
+  // in app.js per come "associated" viene verificato.
+  function renderGardenPlannerAttachment(data) {
+    const gp = data.gardenPlanner || {};
+    const notice = document.querySelector('[data-field="gpStateNotice"]');
+    const wrap = document.querySelector('[data-field="gpAttachmentWrap"]');
+    const inner = document.querySelector('[data-field="gpAttachment"]');
+    if (!notice || !wrap || !inner) return;
+    if (!gp.available) {
+      notice.style.display = "none";
+      wrap.style.display = "none";
+      inner.innerHTML = "";
+      return;
+    }
+    if (!gp.associated) {
+      wrap.style.display = "none";
+      inner.innerHTML = "";
+      notice.style.display = "";
+      const who = [gp.client, gp.sqmLabel].filter(Boolean).join(" · ") || "senza cliente indicato";
+      notice.innerHTML = `
+        <div class="gp-state-t">Progetto Garden Planner non associato a questa richiesta</div>
+        <div class="gp-state-x">È stato trovato un disegno Garden Planner (${escHtml(who)}), ma non risulta aperto da questa richiesta: non viene allegato automaticamente, per evitare di inviare la pianta sbagliata al cliente. Apri il Garden Planner dalla scheda di questa richiesta per generarne uno associato, poi rigenera il preventivo.</div>`;
+      return;
+    }
+    notice.style.display = "none";
+    wrap.style.display = "";
+    inner.innerHTML = gp.reportHtml || "";
+    fitGardenPlannerAttachment();
+    // Le immagini nel report (logo) possono ancora caricare: rimisura dopo,
+    // altrimenti lo zoom calcolato sull'altezza "senza immagini" è sbagliato.
+    inner.querySelectorAll("img").forEach((img) => {
+      if (img.complete) return;
+      img.addEventListener("load", fitGardenPlannerAttachment, { once: true });
+      img.addEventListener("error", fitGardenPlannerAttachment, { once: true });
+    });
+  }
+
+  // Sincrona di proposito: scrollHeight/getBoundingClientRect forzano un
+  // reflow "on demand" già oggi (non serve aspettare un paint). Un wrapper
+  // requestAnimationFrame qui era fragile: nei pannelli/iframe non visibili
+  // (nascosti in una scheda in background, o durante la cattura headless per
+  // il PDF) i browser Chromium sospendono i rAF, quindi il fit non scattava
+  // mai — verificato durante il collaudo di questa funzione.
+  function fitGardenPlannerAttachment() {
+    const page = document.getElementById("page-3");
+    const wrap = document.querySelector('[data-field="gpAttachmentWrap"]');
+    const inner = document.querySelector('[data-field="gpAttachment"]');
+    if (!page || !wrap || !inner || wrap.style.display === "none") return;
+    const rect = page.getBoundingClientRect();
+    if (!rect.width) return;
+    const cs = getComputedStyle(page);
+    const padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const header = page.querySelector(".page2-head");
+    const footer = page.querySelector(".p2-footer");
+    const headerH = header ? header.getBoundingClientRect().height : 0;
+    const footerH = footer ? footer.getBoundingClientRect().height : 0;
+    const targetPageHeight = rect.width * (297 / 210);
+    const available = targetPageHeight - padV - headerH - footerH - 26;
+    fitElementHeightWithin(inner, Math.max(220, available));
+  }
+
+  function getUrlFlag(name, defaultValue) {
+    try {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has(name)) return defaultValue;
+      const v = url.searchParams.get(name);
+      return v !== "0" && v !== "false";
+    } catch {
+      return defaultValue;
+    }
+  }
+
+  // Due scelte indipendenti (schede tecniche / progetto Garden Planner) →
+  // numerazione dinamica delle pagine, nessun foglio bianco: la pagina 3
+  // esiste solo se richiesta E se un progetto è davvero disponibile
+  // (altrimenti la spunta stessa è disabilitata lato app, vedi
+  // updateGardenPlannerToggleAvailability in app.js).
+  function applyPageLayout(data) {
+    const hasP2 = getUrlFlag("p2", true);
+    const plannerRequested = getUrlFlag("planner", false);
+    const gp = data.gardenPlanner || {};
+    const hasPlanner = plannerRequested && !!gp.available;
+    const page2El = document.getElementById("page-2");
+    const page3El = document.getElementById("page-3");
+    if (page2El) page2El.style.display = hasP2 ? "" : "none";
+    if (page3El) page3El.style.display = hasPlanner ? "" : "none";
+    const total = 1 + (hasP2 ? 1 : 0) + (hasPlanner ? 1 : 0);
+    const p2Num = hasP2 ? 2 : null;
+    const plannerNum = hasPlanner ? (hasP2 ? 3 : 2) : null;
+    const wf = document.querySelector('[data-field="p1Wayfinding"]');
+    if (wf) {
+      const parts = [];
+      if (hasP2) parts.push(`Dettagli tecnici a pagina ${p2Num}`);
+      if (hasPlanner) parts.push(`Progetto del giardino a pagina ${plannerNum}`);
+      wf.textContent = parts.join(" · ");
+      wf.style.display = parts.length ? "" : "none";
+    }
+    if (hasP2) {
+      setField("page2Tag", `Allegato tecnico · Pag. ${p2Num} di ${total}`);
+      setField("page2FooterPage", `Pag. ${p2Num} / ${total}`);
+    }
+    if (hasPlanner) {
+      setField("page3Tag", `Progetto Garden Planner · Pag. ${plannerNum} di ${total}`);
+      setField("page3FooterPage", `Pag. ${plannerNum} / ${total}`);
+      renderGardenPlannerAttachment(data);
+    }
+  }
+
   function renderPreventivo(data) {
     setField("quoteNumber", data.quoteNumber || "—");
     setField("quoteNumber2", data.quoteNumber || "—");
@@ -1403,6 +1646,7 @@
     const modeLabel = String(data.mode || "").includes("posa") ? "Fornitura + posa" : "Solo fornitura";
     setField("summaryLine", `${data.customer?.name || "—"} · ${data.sqm || 0} mq · ${modeLabel}`);
     renderOptionsTable(data);
+    renderPage1Summary(data);
     renderMaterialsBox(data);
     renderAccessories(data);
     renderExtraServices(data);
@@ -1413,6 +1657,7 @@
     renderInstallationWork(data);
     renderConditions(data);
     renderPage2Footer(data);
+    applyPageLayout(data);
   }
 
   // ─── Caricamento dati ───
@@ -1442,18 +1687,10 @@
     }
   }
 
-  // ?p2=0 → nasconde pagina 2 (schede tecniche). Default: visibile.
-  function applyP2Visibility() {
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("p2") === "0") {
-      const page2 = document.getElementById("page-2");
-      if (page2) page2.style.display = "none";
-    }
-  }
-
   // Download diretto del PDF (1 click, niente dialogo di stampa) via html2pdf.
   // Forza il layout A4 durante la cattura; nasconde la toolbar; salto pagina
-  // prima della pagina 2. Se html2pdf manca o fallisce → fallback a window.print().
+  // prima di ogni pagina successiva. Se html2pdf manca o fallisce → fallback
+  // a window.print().
   window.psiDownloadPdf = async function psiDownloadPdf() {
     if (typeof window.html2pdf === "undefined") { window.print(); return; }
     const root = document.documentElement;
@@ -1468,10 +1705,36 @@
       ? `${cleanName} Preventivo nr ${safeNum}.pdf`
       : `Preventivo-${num}.pdf`;
     root.classList.add("pdf-exporting");
+    const zoomedPages = [];
     try {
       // Cattura OGNI pagina come foglio A4 separato → esattamente N pagine,
       // niente fogli bianchi da slicing automatico del canvas unico.
       const pages = [...document.querySelectorAll(".page")].filter((p) => getComputedStyle(p).display !== "none");
+      // Ogni pagina deve stare su UN foglio A4: se il contenuto naturale supera
+      // l'altezza disponibile applichiamo uno zoom uniforme (stessa tecnica già
+      // in produzione per il report Garden Planner) PRIMA di catturare, invece
+      // di tagliare in silenzio il contenuto in eccesso — bug noto della
+      // versione precedente (il clamp Math.min(H, …) sotto tagliava senza
+      // avvisare). Il layout di pagina 1/2 è pensato per stare in un foglio;
+      // questo resta una rete di sicurezza per i casi limite (3 prodotti con
+      // condizioni/accessori/lavori extra molto lunghi).
+      pages.forEach((p) => {
+        p.style.zoom = "";
+        const naturalW = p.scrollWidth;
+        const naturalH = p.scrollHeight;
+        if (!naturalW || !naturalH) return;
+        const targetH = naturalW * (297 / 210);
+        if (naturalH > targetH + 2) {
+          p.style.zoom = String(Math.max(0.55, targetH / naturalH));
+          zoomedPages.push(p);
+        }
+      });
+      // Una breve pausa perché il reflow dello zoom sia applicato prima che
+      // html2canvas catturi. setTimeout invece di requestAnimationFrame: i
+      // rAF vengono sospesi dal motore quando il pannello/iframe non è
+      // effettivamente a video (verificato durante il collaudo), setTimeout
+      // no.
+      await new Promise((resolve) => setTimeout(resolve, 60));
       const c = { scale: 2, useCORS: true, backgroundColor: "#ffffff" };
       // Pagina 1: pipeline completa → ottengo l'istanza jsPDF
       const pdf = await window.html2pdf().set({ margin: 0, image: { type: "jpeg", quality: 0.98 }, html2canvas: c, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" } }).from(pages[0]).toPdf().get("pdf");
@@ -1490,15 +1753,16 @@
       window.print();
     } finally {
       root.classList.remove("pdf-exporting");
+      zoomedPages.forEach((p) => { p.style.zoom = ""; });
     }
   };
 
   document.addEventListener("DOMContentLoaded", () => {
     applyEmbeddedMode();
-    applyP2Visibility();
     renderPreventivo(loadData());
     // Segnala al parent che siamo pronti per ricevere dati live
     try { window.parent?.postMessage({ type: "psi:preventivo-v2:ready" }, "*"); } catch {}
+    window.addEventListener("resize", () => fitGardenPlannerAttachment());
   });
 })();
 </script>

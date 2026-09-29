@@ -19704,7 +19704,8 @@ body.mobile-safe-mode a.topbar-search:focus-visible {
 .sales-generator-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   gap: 10px;
   padding: 12px 14px;
   margin-bottom: 12px;
@@ -19712,7 +19713,7 @@ body.mobile-safe-mode a.topbar-search:focus-visible {
   border-radius: 10px;
   background: rgba(248, 250, 247, 0.6);
 }
-/* Toggle "Schede tecniche" (includi pagina 2 nel preventivo) */
+/* Toggle "Schede tecniche" / "Progetto Garden Planner" (pagine opzionali del preventivo) */
 .quote-p2-toggle {
   display: inline-flex;
   align-items: center;
@@ -19738,6 +19739,16 @@ body.mobile-safe-mode a.topbar-search:focus-visible {
   height: 15px;
   cursor: pointer;
   flex-shrink: 0;
+}
+/* Nessun progetto Garden Planner disponibile nel bridge locale: la spunta
+   resta visibile ma non azionabile, invece di far credere che ci sia
+   qualcosa da allegare (vedi updateGardenPlannerToggleAvailability). */
+.quote-p2-toggle.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.quote-p2-toggle.is-disabled input[type="checkbox"] {
+  cursor: not-allowed;
 }
 .sales-generator-toolbar-hint {
   margin: 6px 4px 0;

@@ -6111,6 +6111,7 @@ const USAGE_EVENT_TYPES = new Set([
   "portal_login",
   "quote_generator_opened",
   "quote_prefill_applied",
+  "quote_template_generate",
   "quote_pdf_exported",
   "quote_export_failed",
   "quote_whatsapp_opened",

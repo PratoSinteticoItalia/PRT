@@ -95,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260928-supplier-pdf-layouts";
+const APP_SHELL_VERSION = "20260929-preventivo-generatore-completo";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -411,7 +411,7 @@ function buildPlannerMaterialReferenceModel({
   };
 }
 
-function buildPlannerQuotePrefill({ projectInfo, area, turfArea = area, substrate, travel, installNeeds, borderType, borderMeters, decoItems, regionalPricing, viewerRole = "crew", pavingNeedsByArea = [] }) {
+function buildPlannerQuotePrefill({ projectInfo, area, turfArea = area, substrate, travel, installNeeds, borderType, borderMeters, decoItems, regionalPricing, viewerRole = "crew", pavingNeedsByArea = [], sourceRequestId = "" }) {
   const safeTotalArea = Math.max(0, Number(area) || 0);
   const safeTurfArea = Math.max(0, Number(turfArea) || 0);
   const clientName = String(projectInfo.client || "").trim();
@@ -449,6 +449,10 @@ function buildPlannerQuotePrefill({ projectInfo, area, turfArea = area, substrat
   return {
     runId: Date.now(),
     createdAt: new Date().toISOString(),
+    // Vuoto se il planner non è stato aperto da una richiesta CRM (disegno
+    // libero): il generatore lo tratta come "nessuna associazione certa",
+    // mai come "associato per default".
+    sourceRequestId: String(sourceRequestId || "").trim(),
     client: clientName,
     address,
     city,
@@ -3946,6 +3950,15 @@ function GpPavingPicker({ activeAreaKind, activeTileSize, activeTileLayout, onUp
 function GardenPlanner() {
   const [viewerRole, setViewerRole] = useState("crew");
   const [projectInfo, setProjectInfo] = useState(getInitialProjectInfo);
+  // Id della richiesta CRM che ha aperto questo Garden Planner (se aperto da
+  // "Apri nel Garden Planner" su una richiesta) — letto una sola volta al
+  // mount, come projectInfo. Usato SOLO per verificare l'associazione reale
+  // richiesta↔progetto quando si allega la tavola al preventivo: il
+  // generatore confronta questo id con la richiesta attualmente selezionata
+  // e, se non combaciano (o se è vuoto: disegno libero, mai aperto da una
+  // richiesta), mostra uno stato esplicito invece di allegare in automatico
+  // l'ultimo disegno aperto nel browser (richiesto dall'utente il 29 set).
+  const [sourceRequestId] = useState(() => String(readGardenPlannerRequestPrefill()?.requestId || "").trim());
   const [travel, setTravel] = useState(DEFAULT_TRAVEL_SETTINGS);
   const initialArea = useMemo(() => createPlannerArea(), []);
   const shape = "custom";
@@ -4311,6 +4324,7 @@ function GardenPlanner() {
       regionalPricing,
       viewerRole,
       pavingNeedsByArea,
+      sourceRequestId,
     });
     plannerBridge.reportHtml = {
       technical: sanitizeQuoteBridgeReportHtml(technicalNode ? technicalNode.innerHTML : ""),

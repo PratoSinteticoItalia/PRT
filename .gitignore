@@ -13,3 +13,7 @@ kanban-demo.html
 # Eccezione: librerie vendor pre-minificate (signature_pad, ecc.) vanno committate
 !vendor/*.min.js
 !vendor/*.min.css
+# Scratch/riferimenti di design generati durante il lavoro (mockup PDF,
+# render PNG di anteprima) — mai artefatti di produzione, non da committare.
+/output/
+/tmp/
