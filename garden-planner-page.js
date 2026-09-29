@@ -95,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260929-preventivo-generatore-completo";
+const APP_SHELL_VERSION = "20260929-fix-planner-frame-e-respiro-p2";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2558,12 +2558,27 @@ function ClientPlanDrawing({polygons,rolls=[],borders=[]}) {
   const screen=p=>({x:p.x*scale+ox,y:p.y*scale+oy});
   const path=points=>points.map((p,i)=>`${i?'L':'M'}${screen(p).x},${screen(p).y}`).join(' ')+' Z';
   const occupied=[];
+  // Il riquadro dell'etichetta veniva verificato contro i bordi del foglio,
+  // ma non i due estremi della linea di quota (spostati dallo stesso offset
+  // a partire dai VERTICI dell'lato, non dal suo punto medio): su un lato
+  // obliquo o vicino a un vertice concavo i due punti finiscono più lontani
+  // dal bordo di quanto lo sia l'etichetta, ed escono dal foglio — segnalato
+  // dall'utente il 29 set su una pianta reale (tavola "non inquadrata").
+  // Ora si verificano anche i due estremi, e si prova pure un offset più
+  // vicino: se nessuno rientra, l'etichetta resta null e il lato non viene
+  // quotato invece di sforare (stesso comportamento di sicurezza già in uso
+  // per le etichette sovrapposte).
   const dimensions=plannerClientDimensions(polygons).map(e=>{
     const a=screen(e.a),b=screen(e.b),m=screen(e.midpoint),w=76,h=22;
     let label=null,offset=30;
-    for(const d of [30,54,78]){
+    const lineMargin=14;
+    for(const d of [30,54,78,16]){
       const p={x:m.x+e.normal.x*d,y:m.y+e.normal.y*d,w,h};
       if(p.x-w/2<12||p.x+w/2>W-12||p.y-h/2<24||p.y+h/2>H-46)continue;
+      const la={x:a.x+e.normal.x*d,y:a.y+e.normal.y*d};
+      const lb={x:b.x+e.normal.x*d,y:b.y+e.normal.y*d};
+      if(la.x<lineMargin||la.x>W-lineMargin||la.y<lineMargin||la.y>H-lineMargin)continue;
+      if(lb.x<lineMargin||lb.x>W-lineMargin||lb.y<lineMargin||lb.y>H-lineMargin)continue;
       if(occupied.some(o=>Math.abs(o.x-p.x)<(o.w+w)/2+5&&Math.abs(o.y-p.y)<(o.h+h)/2+5))continue;
       label=p;offset=d;occupied.push(p);break;
     }

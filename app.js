@@ -13,9 +13,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20260929-preventivo-generatore-completo";
+} from "./lib/order-money.js?v=20260929-fix-planner-frame-e-respiro-p2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20260929-preventivo-generatore-completo";
+import { regionForCity } from "./lib/geo.js?v=20260929-fix-planner-frame-e-respiro-p2";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -34,7 +34,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20260929-preventivo-generatore-completo";
+} from "./lib/shipping-eligibility.js?v=20260929-fix-planner-frame-e-respiro-p2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -45,7 +45,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20260929-preventivo-generatore-completo";
+} from "./lib/profit-split.js?v=20260929-fix-planner-frame-e-respiro-p2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -60,7 +60,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20260929-preventivo-generatore-completo";
+} from "./lib/preventivo-pricing.js?v=20260929-fix-planner-frame-e-respiro-p2";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -68,13 +68,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20260929-preventivo-generatore-completo";
+} from "./lib/sales-assignment.js?v=20260929-fix-planner-frame-e-respiro-p2";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20260929-preventivo-generatore-completo";
+} from "./lib/surveys.js?v=20260929-fix-planner-frame-e-respiro-p2";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -88,7 +88,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20260929-preventivo-generatore-completo";
+const APP_SHELL_VERSION = "20260929-fix-planner-frame-e-respiro-p2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -36157,8 +36157,21 @@ function nfMaterialsText(breakdown) {
   const num = (n, dec) => Number(n).toFixed(dec).replace(".", ",");
   return breakdown.items.filter((it) => !it.excluded).map((it) => {
     const price = num(it.unitPrice, 2);
-    if (it.key === "colla") return `${it.label}: ${it.qty} secchi (${it.glueKg} kg) × ${price} €/ secchi`;
-    if (it.key === "telo") return `${it.label}: ${num(it.qty, 2)} × ${price} €/ ${it.unit}`;
+    // it.glueKg manca quando la riga arriva dal Garden Planner
+    // (buildPlannerMaterialItems non calcola il peso, solo i secchi):
+    // senza questo controllo si stampava "undefined kg" nel preventivo
+    // reale (segnalato dall'utente il 29 set).
+    if (it.key === "colla") {
+      const kgSuffix = Number.isFinite(Number(it.glueKg)) ? ` (${it.glueKg} kg)` : "";
+      return `${it.label}: ${it.qty} secchi${kgSuffix} × ${price} €/ secchi`;
+    }
+    // telo/pietrisco hanno quantità frazionarie (mq / m³ o t calcolati) e vanno
+    // arrotondati come il prezzo; bande/colla/picchetti restano interi as-is
+    // (arrotondarli aggiungerebbe ",00" superfluo a un conteggio pezzi/secchi).
+    // Il pietrisco senza arrotondamento stampava cifre grezze in virgola
+    // mobile tipo "3.3075000000000006" nel preventivo reale (visto insieme
+    // al bug "undefined kg" segnalato dall'utente il 29 set).
+    if (it.key === "telo" || it.key === "pietrisco") return `${it.label}: ${num(it.qty, 2)} × ${price} €/ ${it.unit}`;
     return `${it.label}: ${it.qty} × ${price} €/ ${it.unit}`;
   }).join("; ");
 }
