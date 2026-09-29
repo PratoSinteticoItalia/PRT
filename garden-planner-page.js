@@ -95,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260929-fix-planner-frame-e-respiro-p2";
+const APP_SHELL_VERSION = "20260929-fix-quote-respiro-e-quote-complete";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2564,14 +2564,19 @@ function ClientPlanDrawing({polygons,rolls=[],borders=[]}) {
   // obliquo o vicino a un vertice concavo i due punti finiscono più lontani
   // dal bordo di quanto lo sia l'etichetta, ed escono dal foglio — segnalato
   // dall'utente il 29 set su una pianta reale (tavola "non inquadrata").
-  // Ora si verificano anche i due estremi, e si prova pure un offset più
-  // vicino: se nessuno rientra, l'etichetta resta null e il lato non viene
-  // quotato invece di sforare (stesso comportamento di sicurezza già in uso
-  // per le etichette sovrapposte).
+  // Restare nel foglio è un vincolo rigido, mai negoziabile. La sovrapposizione
+  // con un'altra etichetta invece no: scartare la quota quando nessun offset
+  // è privo di sovrapposizioni (comportamento precedente) lascia lati SENZA
+  // alcuna misura su forme con molti lati/vertici ravvicinati — segnalato di
+  // nuovo dall'utente su una pianta reale a 8 lati, con solo 3 quote su 8
+  // visibili: un disegno con metà dei lati non quotati sembra incompleto,
+  // più di quanto lo sia una quota leggermente sovrapposta a un'altra. Ora si
+  // prova sempre a piazzare l'etichetta nella posizione meno sovrapposta tra
+  // quelle sicure per il foglio, invece di ometterla.
   const dimensions=plannerClientDimensions(polygons).map(e=>{
     const a=screen(e.a),b=screen(e.b),m=screen(e.midpoint),w=76,h=22;
-    let label=null,offset=30;
     const lineMargin=14;
+    let best=null,bestScore=Infinity,bestOffset=30;
     for(const d of [30,54,78,16]){
       const p={x:m.x+e.normal.x*d,y:m.y+e.normal.y*d,w,h};
       if(p.x-w/2<12||p.x+w/2>W-12||p.y-h/2<24||p.y+h/2>H-46)continue;
@@ -2579,10 +2584,11 @@ function ClientPlanDrawing({polygons,rolls=[],borders=[]}) {
       const lb={x:b.x+e.normal.x*d,y:b.y+e.normal.y*d};
       if(la.x<lineMargin||la.x>W-lineMargin||la.y<lineMargin||la.y>H-lineMargin)continue;
       if(lb.x<lineMargin||lb.x>W-lineMargin||lb.y<lineMargin||lb.y>H-lineMargin)continue;
-      if(occupied.some(o=>Math.abs(o.x-p.x)<(o.w+w)/2+5&&Math.abs(o.y-p.y)<(o.h+h)/2+5))continue;
-      label=p;offset=d;occupied.push(p);break;
+      const overlapScore=occupied.reduce((sum,o)=>sum+(Math.abs(o.x-p.x)<(o.w+w)/2+5&&Math.abs(o.y-p.y)<(o.h+h)/2+5?1:0),0);
+      if(overlapScore<bestScore){ best=p; bestScore=overlapScore; bestOffset=d; if(overlapScore===0) break; }
     }
-    return {...e,a,b,label,offset};
+    if(best) occupied.push(best);
+    return {...e,a,b,label:best,offset:bestOffset};
   });
   const bar=[.5,1,2,5,10,20,50].reduce((best,v)=>Math.abs(v*scale-110)<Math.abs(best*scale-110)?v:best,.5);
   return <svg role="img" aria-label="Planimetria quotata del progetto, misure in metri" width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:'block',fontFamily:'Arial, Helvetica, sans-serif',background:'#fff'}}>
