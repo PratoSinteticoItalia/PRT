@@ -511,7 +511,7 @@
     /* Condizioni vendita */
     .conds {
       border: 1px solid var(--br); border-radius: 7px;
-      overflow: hidden; margin-bottom: 20px;
+      overflow: hidden; margin-top: 20px; margin-bottom: 20px;
     }
     .conds-t {
       background: var(--off); padding: 9px 15px;
@@ -537,6 +537,13 @@
     .install-work {
       border: 1.5px solid var(--ga);
       border-radius: 9px;
+      /* margin-top, non solo margin-bottom: senza, il box materiali (che
+         non ha margin-bottom proprio) e questo restano attaccati bordo a
+         bordo — segnalato dall'utente il 29 set su un preventivo reale
+         fornitura+posa ("non c'è respiro tra tabella materiali e cosa
+         prevede il lavoro"), non riprodotto nel collaudo perché fatto in
+         sola fornitura (senza questo box, quindi il salto non c'era). */
+      margin-top: 20px;
       margin-bottom: 20px;
       overflow: hidden;
       background: linear-gradient(180deg, #fdfffd, #f6faf6);
