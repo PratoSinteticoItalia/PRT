@@ -634,7 +634,7 @@
      la regola comune. */
   .offer-v3 .cards{display:flex;flex-direction:column;gap:8px;margin-top:12px}
   .offer-v3 .cards[data-count="3"]{gap:6px}
-  .offer-v3 .card{border:1px solid var(--v3-line);border-radius:14px;background:#fff;overflow:hidden;position:relative;display:grid;grid-template-columns:1fr 1.2fr;grid-template-areas:"bar bar" "photo proposal";align-items:stretch}
+  .offer-v3 .card{border:1px solid var(--v3-line);border-radius:14px;background:#fff;overflow:hidden;position:relative;display:grid;grid-template-columns:150px 1fr;grid-template-areas:"bar bar" "photo proposal";align-items:center}
   .offer-v3 .card.reco{border:2px solid var(--v3-gold);box-shadow:0 10px 26px rgba(176,137,74,.16)}
   .offer-v3 .card .cardbar{grid-area:bar;display:flex;flex-direction:column;align-items:center;gap:1px;background:var(--v3-green-d);color:#fff;padding:7px 12px;text-align:center;font-size:14px;font-weight:800;letter-spacing:.2px;line-height:1.2}
   .offer-v3 .card.reco .cardbar{background:var(--v3-gold)}
@@ -662,8 +662,17 @@
         sinistra — verificato catturando la pagina reale con la stessa
         pipeline di html2pdf(). height in px è vecchio quanto il box
         model, nessuna sorpresa in cattura. */
-  .offer-v3 .card .ph{grid-area:photo;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--v3-sand),#eef1e9);height:170px;border-right:1px solid var(--v3-line)}
-  .offer-v3 .cards[data-count="1"] .ph{height:230px}
+  /* Riquadro foto: le foto prodotto reali sono sempre quadrate (1200×1200,
+     verificato su tutti i file in product-images/) — un riquadro largo e
+     basso le rimpicciolisce con object-fit:contain e lascia grandi margini
+     vuoti ai lati ("le foto vengono stretchate" + "spazio inutilizzato",
+     segnalato dall'utente su un export reale confrontato con la reference
+     concordata). Riquadro quadrato a dimensione fissa (via margin, non
+     width+margin insieme: andrebbero in conflitto con la colonna grid) =
+     nessuno spazio sprecato, indipendente dall'altezza del testo accanto. */
+  .offer-v3 .card .ph{grid-area:photo;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--v3-sand),#eef1e9);margin:14px;height:122px;border-radius:10px}
+  .offer-v3 .cards[data-count="1"] .card{grid-template-columns:230px 1fr}
+  .offer-v3 .cards[data-count="1"] .ph{height:202px}
   /* Con 3 prodotti impilati, il dettaglio riga-per-riga (breakdown
      materiale/posa/spedizione + checklist inclusioni) diventa rumore più
      che aiuto — è già ricapitolato una volta sola in "Cosa comprende" sotto
@@ -673,7 +682,8 @@
      vuota + barra totale tagliata a metà, segnalato dall'utente il 30 set
      su un export reale). A parità di leggibilità, con 3 prodotti si mostra
      solo l'essenziale per confrontare: nome, prezzo totale, equivalente al m². */
-  .offer-v3 .cards[data-count="3"] .ph{height:98px}
+  .offer-v3 .cards[data-count="3"] .card{grid-template-columns:110px 1fr}
+  .offer-v3 .cards[data-count="3"] .ph{margin:10px;height:90px}
   .offer-v3 .cards[data-count="3"] .brk,
   .offer-v3 .cards[data-count="3"] .incl{display:none}
   .offer-v3 .cards[data-count="3"] .proposal{padding:5px 18px}
