@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Preventivo — Prato Sintetico Italia</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
@@ -108,7 +108,7 @@
        perché hanno la stessa specificità CSS. Garantisci che hidden vinca sempre. */
     .hdr-crew[hidden], [hidden].hdr-crew { display: none !important; }
     .hdr-lbl { font-size: 9px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--gl); }
-    .hdr-num { font-size: 24px; font-weight: 900; color: var(--gd); letter-spacing: -1px; line-height: 1.05; }
+    .hdr-num { font-family: 'Fraunces', serif; font-size: 24px; font-weight: 500; color: var(--gd); letter-spacing: -1px; line-height: 1.05; }
     .hdr-co  { font-size: 9px; color: var(--gx); margin-top: 4px; letter-spacing: .2px; }
 
     /* ── INFO ROW: Cliente + Validità ── */
@@ -504,7 +504,7 @@
     .cert {
       background: #fff; padding: 15px 10px; text-align: center;
     }
-    .cert-icon { color: #b0894a; margin-bottom: 4px; line-height: 0; }
+    .cert-icon { color: var(--gd); margin-bottom: 4px; line-height: 0; }
     .cert-icon svg { vertical-align: middle; }
     .cert-name { font-size: 8.5px; font-weight: 800; color: var(--gd); letter-spacing: .3px; }
     .cert-sub { font-size: 7.5px; color: var(--gl); margin-top: 3px; }
@@ -602,7 +602,12 @@
     .p2-footer-page { font-size: 8.5px; color: rgba(255,255,255,.55); white-space: nowrap; }
   /* ═══════════════ Redesign pagina 1 (premium sobrio) — scopato in .offer-v3 ═══════════════ */
   .offer-v3{ --v3-green:#1f4d3d; --v3-green-d:#15362a; --v3-green-l:#3c6b58; --v3-ink:#1b2a23;
-    --v3-muted:#6f7e74; --v3-faint:#9aa79e; --v3-sand:#f6f3ec; --v3-line:#e7e1d4; --v3-gold:#b0894a; --v3-gold-soft:#f3ead6; --v3-ok:#2f7d5b; }
+    --v3-muted:#6f7e74; --v3-faint:#9aa79e; --v3-sand:#f6f3ec; --v3-line:#e7e1d4; --v3-gold:#b0894a; --v3-gold-soft:#f3ead6; --v3-ok:#2f7d5b;
+    /* Accento secondario (redesign tipografico, richiesto dall'utente il 30 set:
+       palette "monotematica" + sezione materiali "fuori contesto") — l'oro resta
+       ma torna un accento raro (sconto/consigliato), il terracotta dà identità
+       propria alla sezione materiali/tecnica senza introdurre un terzo verde. */
+    --v3-clay:#a15c3e; --v3-clay-soft:#f1e3da; --v3-clay-ink:#8a4a30; }
   .offer-v3 .eyebrow{font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--v3-faint);font-weight:700}
   /* Meta cliente/validità */
   .offer-v3 .meta{display:flex;justify-content:space-between;gap:30px;margin:12px 2px 5px}
@@ -619,72 +624,78 @@
   .offer-v3 .v3hero h1{font-size:24px;font-weight:800;letter-spacing:-.01em;color:var(--v3-green-d)}
   .offer-v3 .v3hero h1 b{color:var(--v3-gold)}
   .offer-v3 .v3hero p{font-size:12px;color:var(--v3-muted);margin-top:3px;max-width:78%}
-  /* Cards */
-  .offer-v3 .cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:18px;align-items:stretch}
-  .offer-v3 .card{border:1px solid var(--v3-line);border-radius:14px;background:#fff;padding:0 0 11px;display:flex;flex-direction:column;overflow:hidden;position:relative}
-  .offer-v3 .card.reco{border:2px solid var(--v3-gold);box-shadow:0 10px 26px rgba(176,137,74,.16);margin-top:-6px}
-  /* Riquadro foto a proporzioni costanti (16:10 su 2/3 prodotti): object-fit
-     contain mostra il prodotto per intero, mai stirato o ritagliato. Lo
-     sfondo tenue fa da passe-partout quando la foto non riempie il riquadro
-     per intero (es. scatto verticale). Placeholder .ph-ph mostrato SOLO se
-     l'immagine manca o non carica (classe is-missing, vedi onerror in
-     renderOptionsTable) — mai un riquadro vuoto silenzioso. */
-  .offer-v3 .card .ph{aspect-ratio:16/10;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--v3-sand),#eef1e9)}
+  /* Cards — impilate in verticale invece che affiancate, con lo stesso
+     layout "foto + proposta" affiancati per riga già usato con 1 solo
+     prodotto (redesign tipografico, richiesto dall'utente il 30 set:
+     "magari le 3 card funzionerebbero meglio disposte verticalmente
+     anzichè orizzontalmente" — con un solo prodotto restava pulito, con
+     2-3 in colonna diventava stretto). Stessa struttura HTML per 1/2/3
+     prodotti: prima era .cards[data-count="1"] a fare da eccezione, ora è
+     la regola comune. */
+  .offer-v3 .cards{display:flex;flex-direction:column;gap:14px;margin-top:18px}
+  .offer-v3 .card{border:1px solid var(--v3-line);border-radius:14px;background:#fff;overflow:hidden;position:relative;display:grid;grid-template-columns:1fr 1.2fr;grid-template-areas:"bar bar" "photo proposal";align-items:stretch}
+  .offer-v3 .card.reco{border:2px solid var(--v3-gold);box-shadow:0 10px 26px rgba(176,137,74,.16)}
+  .offer-v3 .card .cardbar{grid-area:bar;display:flex;flex-direction:column;align-items:center;gap:1px;background:var(--v3-green-d);color:#fff;padding:9px 12px;text-align:center;font-size:14px;font-weight:800;letter-spacing:.2px;line-height:1.2}
+  .offer-v3 .card.reco .cardbar{background:var(--v3-gold)}
+  .offer-v3 .card .cardbar .reco-eyebrow{font-size:8.5px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;opacity:.92}
+  .offer-v3 .card .cardbar .cbname{font-family:'Fraunces',serif;font-weight:500;letter-spacing:0}
+  /* Riquadro foto: object-fit contain mostra il prodotto per intero, mai
+     stirato o ritagliato. Lo sfondo tenue fa da passe-partout quando la
+     foto non riempie il riquadro per intero (es. scatto verticale).
+     Placeholder .ph-ph mostrato SOLO se l'immagine manca o non carica
+     (classe is-missing, vedi onerror in renderOptionsTable) — mai un
+     riquadro vuoto silenzioso. min-height maggiore con 1 solo prodotto: più
+     spazio disponibile, più respiro alla foto. */
+  .offer-v3 .card .ph{grid-area:photo;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--v3-sand),#eef1e9);min-height:190px;border-right:1px solid var(--v3-line)}
+  .offer-v3 .cards[data-count="1"] .ph{min-height:260px}
   .offer-v3 .card .ph img{width:100%;height:100%;object-fit:contain;object-position:center;display:block}
   .offer-v3 .card .ph .ph-ph{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--v3-green-l);opacity:.5}
   .offer-v3 .card .ph.is-missing img{display:none}
   .offer-v3 .card .ph.is-missing .ph-ph{display:flex}
-  .offer-v3 .card .cbody{padding-top:12px}
-  .offer-v3 .card .cardbar{display:flex;flex-direction:column;align-items:center;gap:1px;background:var(--v3-green-d);color:#fff;padding:9px 12px;text-align:center;font-size:14px;font-weight:800;letter-spacing:.2px;line-height:1.2}
-  .offer-v3 .card.reco .cardbar{background:var(--v3-gold)}
-  .offer-v3 .card .cardbar .reco-eyebrow{font-size:8.5px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;opacity:.92}
-  .offer-v3 .card .cbody{padding:11px 16px 0;text-align:center}
+  .offer-v3 .card .proposal{grid-area:proposal;display:flex;flex-direction:column;justify-content:center;padding:6px 22px}
+  .offer-v3 .card .cbody{padding:0;text-align:left}
   .offer-v3 .card .pname{font-size:16px;font-weight:800;color:var(--v3-green-d)}
   .offer-v3 .card .pdesc{font-size:11px;color:var(--v3-muted);margin-top:2px}
-  .offer-v3 .card .price{margin-top:8px}
-  .offer-v3 .card .price .big{font-size:27px;white-space:nowrap;font-weight:800;color:var(--v3-green-d);letter-spacing:-.02em}
+  .offer-v3 .card .price{margin-top:6px}
+  .offer-v3 .card .price .big{font-family:'Fraunces',serif;font-weight:500;font-size:27px;white-space:nowrap;color:var(--v3-green-d);letter-spacing:-.01em}
   .offer-v3 .card.reco .price .big{color:var(--v3-gold);font-size:30px}
   .offer-v3 .card .price .u{font-size:12px;color:var(--v3-muted);font-weight:600}
   .offer-v3 .card .price .sub{font-size:10.5px;color:var(--v3-faint);margin-top:1px}
-  .offer-v3 .card .tot{margin-top:7px;padding-top:7px;border-top:1px dashed var(--v3-line);font-size:12.5px}
+  .offer-v3 .card .tot{margin-top:9px;padding-top:9px;border-top:1px dashed var(--v3-line);font-size:12.5px}
   .offer-v3 .card .tot .tv{font-weight:600;color:var(--v3-muted);font-size:12px}
   .offer-v3 .card .unit-detail{font-size:10px;color:var(--v3-faint);margin-top:3px}
-  .offer-v3 .card .brk{margin:8px 16px 0;padding-top:7px;border-top:1px solid var(--v3-line);display:flex;flex-direction:column;gap:3px}
+  .offer-v3 .card .brk{margin:16px 0 0;padding-top:10px;border-top:1px solid var(--v3-line);display:flex;flex-direction:column;gap:3px}
   .offer-v3 .card .brk .br{display:flex;justify-content:space-between;font-size:10.5px;color:var(--v3-muted)}
   .offer-v3 .card .brk .br b{color:var(--v3-ink);font-weight:700}
-  .offer-v3 .card .incl{margin:8px 14px 0;padding-top:7px;border-top:1px solid var(--v3-line);text-align:left;display:flex;flex-direction:column;gap:4px}
+  .offer-v3 .card .incl{margin:10px 0 0;padding-top:10px;border-top:1px solid var(--v3-line);text-align:left;display:flex;flex-direction:column;gap:4px}
   .offer-v3 .card .incl .li{font-size:10px;color:var(--v3-muted);display:flex;gap:6px;align-items:center}
   .offer-v3 .card .incl .li svg{flex:0 0 auto;color:var(--v3-ok)}
   .offer-v3 .card .incl .disc{color:var(--v3-gold);font-weight:700}
-  /* Prodotto singolo: spazio ben sfruttato — immagine e proposta affiancate
-     (barra-nome full width sopra, poi foto a sinistra / prezzo+dettagli a
-     destra, così la larghezza intera della pagina viene usata). */
-  .offer-v3 .cards[data-count="1"]{grid-template-columns:1fr;max-width:100%}
-  .offer-v3 .cards[data-count="1"] .card{display:grid;grid-template-columns:1fr 1.2fr;grid-template-areas:"bar bar" "photo proposal";align-items:stretch;padding:0 0 14px}
-  .offer-v3 .cards[data-count="1"] .cardbar{grid-area:bar}
-  .offer-v3 .cards[data-count="1"] .ph{grid-area:photo;aspect-ratio:auto;min-height:240px;border-right:1px solid var(--v3-line)}
-  .offer-v3 .cards[data-count="1"] .proposal{grid-area:proposal;display:flex;flex-direction:column;justify-content:center;padding:6px 22px}
-  .offer-v3 .cards[data-count="1"] .cbody{padding:0;text-align:left}
-  .offer-v3 .cards[data-count="1"] .price{margin-top:6px}
-  .offer-v3 .cards[data-count="1"] .tot{margin-top:9px;padding-top:9px}
-  .offer-v3 .cards[data-count="1"] .brk{margin:16px 0 0;padding-top:10px}
-  .offer-v3 .cards[data-count="1"] .incl{margin:10px 0 0;padding-top:10px}
   /* Sezioni */
   .offer-v3 .sect{margin-top:22px}
   .offer-v3 .sect-h{display:flex;align-items:center;gap:10px;margin-bottom:7px}
   .offer-v3 .sect-h .eyebrow{color:var(--v3-green-l)}
   .offer-v3 .sect-h .rule{flex:1;height:1px;background:var(--v3-line)}
-  .offer-v3 .matwrap{background:var(--v3-sand);border:1px solid var(--v3-line);border-radius:14px;padding:20px 24px 22px}
+  /* Sezione materiali: identità propria (terracotta) invece dello stesso
+     box sabbia usato ovunque nella pagina — "fuori contesto" segnalato
+     dall'utente il 30 set era proprio questo: si confondeva con il resto
+     invece di leggersi come una scheda tecnica a parte. Sfondo bianco +
+     filo in testa, come una scheda a sé; lo sconto è un dato nel foglio
+     (colore terracotta), non un badge oro appiccicato sopra — l'oro resta
+     per "Consigliato"/garanzia altrove. */
+  .offer-v3 .matwrap{background:#fff;border:1px solid var(--v3-line);border-top:3px solid var(--v3-clay);border-radius:4px 4px 14px 14px;padding:20px 24px 22px}
   .offer-v3 .matwrap .desc{font-size:11.5px;color:var(--v3-ink);line-height:1.55;max-width:100%}
+  [data-field="materialsBox"] .sect-h .eyebrow{color:var(--v3-clay)}
   /* Respiro: etichetta sopra/valore sotto con una riga sottile, come una
      scheda tecnica vera — non una tabella compressa (richiesto dall'utente
      il 29 set: "la lista dei materiali non ha respiro"). */
   .offer-v3 .matgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px 44px;margin-top:18px}
-  .offer-v3 .matgrid .m{display:flex;flex-direction:column;gap:4px;padding-bottom:11px;border-bottom:1px solid var(--v3-line)}
+  .offer-v3 .matgrid .m{display:flex;flex-direction:column;gap:4px;padding-bottom:11px;border-bottom:1px solid var(--v3-clay-soft)}
   .offer-v3 .matgrid .m .mk{color:var(--v3-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
-  .offer-v3 .matgrid .m .mv{font-weight:700;color:var(--v3-ink);font-size:15px}
-  .offer-v3 .matnote{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:11px;color:var(--v3-muted)}
+  .offer-v3 .matgrid .m .mv{font-family:'Fraunces',serif;font-weight:500;color:var(--v3-ink);font-size:16px}
+  .offer-v3 .matnote{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--v3-clay-soft);font-size:11px;color:var(--v3-muted)}
   .offer-v3 .pill{background:var(--v3-gold-soft);color:var(--v3-gold);font-weight:800;font-size:11px;padding:4px 11px;border-radius:999px}
+  .offer-v3 .matnote .pill{background:none;color:var(--v3-clay);padding:0;font-weight:700;font-size:12px}
   /* Trust */
   .offer-v3 .trust{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:8px}
   .offer-v3 .trust .b{border:1px solid var(--v3-line);border-radius:12px;padding:7px 10px;text-align:center}
@@ -698,7 +709,7 @@
   .offer-v3 .finance .fl .ft{font-size:15px;font-weight:800;margin-top:3px;letter-spacing:-.01em}
   .offer-v3 .finance .fl .fx{font-size:11px;color:rgba(255,255,255,.82);margin-top:3px;line-height:1.45;max-width:96%}
   .offer-v3 .finance .fr{flex:0 0 auto;text-align:right;padding-left:24px;border-left:1px solid rgba(255,255,255,.22)}
-  .offer-v3 .finance .fr .amt{font-size:28px;font-weight:800;line-height:1;letter-spacing:-.02em}
+  .offer-v3 .finance .fr .amt{font-family:'Fraunces',serif;font-size:28px;font-weight:500;line-height:1;letter-spacing:-.01em}
   .offer-v3 .finance .fr .amt small{font-size:15px;font-weight:700;opacity:.85}
   .offer-v3 .finance .fr .lbl{font-size:11px;color:rgba(255,255,255,.82);margin-top:5px}
   .offer-v3 .finance .fr .zero{display:inline-block;margin-top:9px;background:var(--v3-gold);color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:4px 11px;border-radius:999px}
@@ -1161,9 +1172,10 @@
     const suggestedSlug = data.suggestedSlug || "";
     const CHECK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
     const opts = (data.options || []).slice(0, 3);
+    // data-count resta solo per il min-height della foto (più alta con 1
+    // prodotto solo) — il layout è sempre una colonna verticale, vedi CSS
+    // .offer-v3 .cards (redesign tipografico, card impilate).
     wrap.setAttribute("data-count", String(opts.length));
-    if (opts.length > 1) wrap.style.gridTemplateColumns = `repeat(${opts.length}, 1fr)`;
-    else wrap.style.removeProperty("grid-template-columns"); // count=1 → gestito da CSS
     const noSym = (n) => fmtEur(n).replace(" €", "");
     wrap.innerHTML = opts.map((opt) => {
       const reco = opt.slug && opt.slug === suggestedSlug;
@@ -1184,7 +1196,7 @@
       return `
         <div class="card${reco ? " reco" : ""}">
           ${photoFrameHtml(opt)}
-          <div class="cardbar">${reco ? '<span class="reco-eyebrow">★ Consigliato</span>' : ''}<span>${escHtml(opt.name)}</span></div>
+          <div class="cardbar">${reco ? '<span class="reco-eyebrow">★ Consigliato</span>' : ''}<span class="cbname">${escHtml(opt.name)}</span></div>
           <div class="proposal">
             <div class="cbody">
               <div class="pdesc">${escHtml(opt.tagline || "")}</div>
@@ -1713,6 +1725,41 @@
     }
   }
 
+  // Le SVG iniettate as-is (es. la tavola Garden Planner: width="100%",
+  // nessun height esplicito, dimensione reale data dal viewBox) vengono
+  // dimensionate in modo inaffidabile da html2canvas in cattura: il canvas
+  // risultante mostra il disegno vicino alla sua dimensione NATIVA (le unità
+  // del viewBox trattate come px), molto più grande del contenitore, tagliato
+  // dall'overflow:hidden invece di scalato — non lo stesso disegno "rimpicciolito",
+  // ma quello STESSO disegno molto più GRANDE e quindi tagliato (segnalato
+  // dall'utente il 29-30 set come tavola "non inquadrata" anche dopo i fix
+  // precedenti sulle linee di quota; isolato con un confronto pixel diretto
+  // fuori da questo file: stessa SVG con/senza width="100%" catturata con
+  // html2pdf().toCanvas(), il bordo del riquadro finisce esattamente dove
+  // l'SVG sarebbe se renderizzata alle sue dimensioni native, non alla
+  // larghezza del contenitore). Fix: prima della cattura fissiamo width/height
+  // espliciti in px pari alla dimensione REALMENTE renderizzata a schermo in
+  // quel momento (comprende un eventuale transform:scale già applicato da
+  // fitGardenPlannerAttachment e la larghezza A4 imposta da .pdf-exporting);
+  // li ripristiniamo dopo, per restare responsive nella vista live/embedded.
+  function pinResponsiveSvgSizes() {
+    const pins = [];
+    document.querySelectorAll('svg[width="100%"]').forEach((svg) => {
+      const rect = svg.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      pins.push({ svg, width: svg.getAttribute("width"), height: svg.getAttribute("height") });
+      svg.setAttribute("width", String(Math.round(rect.width)));
+      svg.setAttribute("height", String(Math.round(rect.height)));
+    });
+    return pins;
+  }
+  function unpinResponsiveSvgSizes(pins) {
+    pins.forEach(({ svg, width, height }) => {
+      if (width == null) svg.removeAttribute("width"); else svg.setAttribute("width", width);
+      if (height == null) svg.removeAttribute("height"); else svg.setAttribute("height", height);
+    });
+  }
+
   // Download diretto del PDF (1 click, niente dialogo di stampa) via html2pdf.
   // Forza il layout A4 durante la cattura; nasconde la toolbar; salto pagina
   // prima di ogni pagina successiva. Se html2pdf manca o fallisce → fallback
@@ -1731,6 +1778,9 @@
       ? `${cleanName} Preventivo nr ${safeNum}.pdf`
       : `Preventivo-${num}.pdf`;
     root.classList.add("pdf-exporting");
+    // Dopo aver forzato il layout A4 (sopra), le SVG responsive hanno già le
+    // dimensioni finali di stampa: le fissiamo ORA, non prima.
+    const svgPins = pinResponsiveSvgSizes();
     try {
       // Cattura OGNI pagina come foglio A4 separato → esattamente N pagine,
       // niente fogli bianchi da slicing automatico del canvas unico.
@@ -1766,6 +1816,7 @@
     } catch (e) {
       window.print();
     } finally {
+      unpinResponsiveSvgSizes(svgPins);
       root.classList.remove("pdf-exporting");
     }
   };

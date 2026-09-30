@@ -95,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20260929-foto-prodotti-reali";
+const APP_SHELL_VERSION = "20260930-redesign-tipografico-preventivo";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2608,7 +2608,10 @@ function ClientPlanDrawing({polygons,rolls=[],borders=[]}) {
     {borders.map((b,i)=><path key={b.id||i} d={`M${screen(b.a).x},${screen(b.a).y} L${screen(b.b).x},${screen(b.b).y}`} stroke="#b46527" strokeWidth="3" fill="none"/>)}
     {dimensions.filter(e=>e.label).map(e=>{
       const n=e.normal,d=e.offset,a={x:e.a.x+n.x*d,y:e.a.y+n.y*d},b={x:e.b.x+n.x*d,y:e.b.y+n.y*d};
-      return <g key={e.id} stroke="#536171" strokeWidth=".8">
+      // Colore quote allineato al redesign tipografico del preventivo (30 set):
+      // terracotta invece del grigio/blu neutro, coerente con --v3-clay usato
+      // per la sezione materiali/tecnica in preventivo-v2.html.
+      return <g key={e.id} stroke="#a15c3e" strokeWidth=".8">
         <path d={`M${e.a.x+n.x*5},${e.a.y+n.y*5} L${a.x+n.x*6},${a.y+n.y*6} M${e.b.x+n.x*5},${e.b.y+n.y*5} L${b.x+n.x*6},${b.y+n.y*6} M${a.x},${a.y} L${b.x},${b.y}`} fill="none"/>
         {[a,b].map((p,i)=><line key={i} x1={p.x-4} y1={p.y+4} x2={p.x+4} y2={p.y-4} strokeWidth="1.4"/>)}
         <rect x={e.label.x-38} y={e.label.y-11} width="76" height="22" fill="#fff" stroke="none"/>
