@@ -456,9 +456,9 @@
     .tech-grid[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
     .tech-grid[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
     .tech-card {
-      border: 1px solid var(--br); border-radius: 12px; overflow: hidden; background: #fff;
+      border: 1px solid var(--br); border-top: 3px solid var(--gd); border-radius: 4px 4px 12px 12px; overflow: hidden; background: #fff;
     }
-    .tech-card.suggested { border: 1.5px solid #b0894a; box-shadow: 0 8px 20px rgba(176,137,74,.14); }
+    .tech-card.suggested { border: 1.5px solid #b0894a; border-top: 3px solid #b0894a; box-shadow: 0 8px 20px rgba(176,137,74,.14); }
     /* Foto prodotto come ICONA (thumbnail) accanto al nome, non banner di sfondo */
     .tech-card-head { display: flex; align-items: center; gap: 10px; padding: 13px 15px 9px; background: #fff; }
     .tech-card-thumb {
@@ -615,6 +615,11 @@
   .offer-v3 .kv{display:flex;gap:8px;font-size:12.5px;margin-bottom:2px}
   .offer-v3 .kv .k{color:var(--v3-muted);min-width:46px}
   .offer-v3 .kv .v{font-weight:600;color:var(--v3-ink)}
+  /* Il nome cliente pesa di più delle altre righe (città/tel/email) — un
+     nome, non un altro campo dell'anagrafica (allineamento alla reference
+     concordata, richiesto dall'utente il 1 ott). */
+  .offer-v3 .kv-name{margin-bottom:5px}
+  .offer-v3 .kv-name .v{font-size:18px;font-weight:800;color:var(--v3-green-d)}
   .offer-v3 .valid{text-align:right}
   .offer-v3 .valid .range{font-size:13px;font-weight:700;color:var(--v3-green-d)}
   .offer-v3 .valid .range span{color:var(--v3-muted);font-weight:500}
@@ -825,7 +830,7 @@
   <div class="meta">
     <div class="col">
       <div class="eyebrow">Cliente</div>
-      <div class="kv"><span class="k">Nome</span><span class="v" data-field="customerName">—</span></div>
+      <div class="kv kv-name"><span class="v" data-field="customerName">—</span></div>
       <div class="kv"><span class="k">Città</span><span class="v" data-field="customerCity">—</span></div>
       <div class="kv"><span class="k">Tel</span><span class="v" data-field="customerPhone">—</span></div>
       <div class="kv"><span class="k">Email</span><span class="v" data-field="customerEmail">—</span></div>
