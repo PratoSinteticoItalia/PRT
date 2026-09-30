@@ -679,6 +679,19 @@
   .offer-v3 .card .ph{grid-area:photo;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--v3-sand),#eef1e9);margin:14px;height:122px;border-radius:10px}
   .offer-v3 .cards[data-count="1"] .card{grid-template-columns:230px 1fr}
   .offer-v3 .cards[data-count="1"] .ph{height:202px}
+  /* Con 2 prodotti in fornitura+posa (breakdown con riga posa in più,
+     checklist con "posa inclusa" in più) le card a dettaglio pieno
+     arrivavano a superare un foglio A4 — stesso bug della tavola a 3
+     prodotti, non coperto dal fix precedente perché scattava solo su
+     [data-count="3"] (segnalato dall'utente il 1 ott: "con solo due
+     prodotti persiste la pagina vuota"). Qui basta togliere la checklist
+     inclusioni (ripetuta in "Cosa comprende" sotto le card) e stringere un
+     po' i margini — il breakdown prezzo/m² resta, c'è più spazio che col
+     caso a 3. */
+  .offer-v3 .cards[data-count="2"] .incl{display:none}
+  .offer-v3 .cards[data-count="2"] .brk{margin-top:10px;padding-top:7px}
+  .offer-v3 .cards[data-count="2"] .tot{margin-top:6px;padding-top:6px}
+  .offer-v3 .cards[data-count="2"] .proposal{padding:6px 20px}
   /* Con 3 prodotti impilati, il dettaglio riga-per-riga (breakdown
      materiale/posa/spedizione + checklist inclusioni) diventa rumore più
      che aiuto — è già ricapitolato una volta sola in "Cosa comprende" sotto
