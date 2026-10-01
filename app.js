@@ -13,9 +13,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261001-distinta-materiali-dati-reali";
+} from "./lib/order-money.js?v=20261001-pill-dati-tecnici";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261001-distinta-materiali-dati-reali";
+import { regionForCity } from "./lib/geo.js?v=20261001-pill-dati-tecnici";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -34,7 +34,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261001-distinta-materiali-dati-reali";
+} from "./lib/shipping-eligibility.js?v=20261001-pill-dati-tecnici";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -45,7 +45,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261001-distinta-materiali-dati-reali";
+} from "./lib/profit-split.js?v=20261001-pill-dati-tecnici";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -60,7 +60,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261001-distinta-materiali-dati-reali";
+} from "./lib/preventivo-pricing.js?v=20261001-pill-dati-tecnici";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -68,13 +68,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261001-distinta-materiali-dati-reali";
+} from "./lib/sales-assignment.js?v=20261001-pill-dati-tecnici";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261001-distinta-materiali-dati-reali";
+} from "./lib/surveys.js?v=20261001-pill-dati-tecnici";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -88,7 +88,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261001-distinta-materiali-dati-reali";
+const APP_SHELL_VERSION = "20261001-pill-dati-tecnici";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -35416,6 +35416,32 @@ function defaultProductTech(modelName = "") {
   };
 }
 
+// Pill della card prodotto (pagina 1) derivate dai dati tecnici già
+// esistenti — mai un claim inventato (niente "pet friendly"/"antibatterico"
+// senza un dato reale dietro): drenaggio→"Drenante" (binario, se una
+// portata è specificata il prodotto drena), struttura mostrata com'è
+// (Uni/Bidirezionale), altezza filo dal nome→"Filo corto"/"Effetto
+// naturale" alle due estremità (range centrale 21-34mm senza pill, nessun
+// giudizio), densità alta→"Alta densità" solo sopra una soglia. Richiesto
+// dall'utente il 1 ott dopo aver approvato la card con pill/descrizione
+// nell'Artifact: "derivale dai dati tecnici esistenti" invece di un nuovo
+// campo editabile in Impostazioni.
+function buildProductPillsFromTech(tech, modelName = "") {
+  const pills = [];
+  if (tech?.drenaggio && /[1-9]/.test(String(tech.drenaggio))) pills.push("Drenante");
+  const struttura = String(tech?.struttura || "").trim();
+  if (struttura && struttura !== "—") pills.push(struttura);
+  const heightMatch = String(modelName || "").match(/(\d+)\s*mm/i);
+  const height = heightMatch ? Number(heightMatch[1]) : null;
+  if (height != null) {
+    if (height <= 20) pills.push("Filo corto");
+    else if (height >= 35) pills.push("Effetto naturale");
+  }
+  const densNum = parseFloat(String(tech?.densita || "").replace(/\./g, "").replace(",", "."));
+  if (Number.isFinite(densNum) && densNum >= 13500) pills.push("Alta densità");
+  return pills.slice(0, 3);
+}
+
 const PREVENTIVO_TEXTS_DEFAULTS = Object.freeze({
   brandLogoDataUrl: "",
   brandTagline: "Dal 2016 · Fornitura e Posa Professionale",
@@ -36612,6 +36638,7 @@ function buildNativePreventivoPayload() {
       const catalogData = isCustom ? null : buildProductTechFromCatalog(name);
       const heightMatch = name.match(/(\d+)\s*mm/i);
       const fallbackCode = isCustom ? "—" : `${name.split(/\s+/)[0].substring(0, 3).toUpperCase()}-${heightMatch ? heightMatch[1].padStart(3, "0") : "000"}`;
+      const optTech = catalogData?.tech || defaultProductTech(name);
       options.push({
         slug: isCustom ? slugifyModelName(name) : o.slug,
         name,
@@ -36628,7 +36655,8 @@ function buildNativePreventivoPayload() {
         total: cqOpt.grandGross,
         finalSqmPrice: sqm > 0 ? cqOpt.grandGross / sqm : 0,
         heylightInstallment: cqOpt.grandGross > 0 ? cqOpt.grandGross / 5 : 0,
-        tech: catalogData?.tech || defaultProductTech(name),
+        tech: optTech,
+        pills: buildProductPillsFromTech(optTech, name),
         imageDataUrl: catalogData?.imageDataUrl || "",
       });
     });

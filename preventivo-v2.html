@@ -684,12 +684,14 @@
      arrivavano a superare un foglio A4 — stesso bug della tavola a 3
      prodotti, non coperto dal fix precedente perché scattava solo su
      [data-count="3"] (segnalato dall'utente il 1 ott: "con solo due
-     prodotti persiste la pagina vuota"). Qui basta togliere la checklist
-     inclusioni (ripetuta in "Cosa comprende" sotto le card) e stringere un
-     po' i margini — il breakdown prezzo/m² resta, c'è più spazio che col
-     caso a 3. */
-  .offer-v3 .cards[data-count="2"] .incl{display:none}
-  .offer-v3 .cards[data-count="2"] .brk{margin-top:10px;padding-top:7px}
+     prodotti persiste la pagina vuota"). Tolto il box tecnico
+     (breakdown+checklist, già ripetuto/in dettaglio altrove) e messe le
+     pill derivate dai dati tecnici al suo posto — stesso ingombro
+     verticale circa (pill: una riga; box tecnico: 3-4 righe+bordi), più
+     leggibile (richiesto dall'utente dopo aver visto il mockup
+     nell'Artifact: "i pill, il prezzo in alto, è bello"). */
+  .offer-v3 .cards[data-count="2"] .incl,
+  .offer-v3 .cards[data-count="2"] .brk{display:none}
   .offer-v3 .cards[data-count="2"] .tot{margin-top:6px;padding-top:6px}
   .offer-v3 .cards[data-count="2"] .proposal{padding:6px 20px}
   /* Con 3 prodotti impilati, il dettaglio riga-per-riga (breakdown
@@ -704,7 +706,8 @@
   .offer-v3 .cards[data-count="3"] .card{grid-template-columns:110px 1fr}
   .offer-v3 .cards[data-count="3"] .ph{margin:10px;height:90px}
   .offer-v3 .cards[data-count="3"] .brk,
-  .offer-v3 .cards[data-count="3"] .incl{display:none}
+  .offer-v3 .cards[data-count="3"] .incl,
+  .offer-v3 .cards[data-count="3"] .pillrow{display:none}
   .offer-v3 .cards[data-count="3"] .proposal{padding:5px 18px}
   .offer-v3 .cards[data-count="3"] .pdesc{margin-top:1px}
   .offer-v3 .cards[data-count="3"] .price{margin-top:2px}
@@ -734,6 +737,8 @@
   .offer-v3 .card .incl .li{font-size:10px;color:var(--v3-muted);display:flex;gap:6px;align-items:center}
   .offer-v3 .card .incl .li svg{flex:0 0 auto;color:var(--v3-ok)}
   .offer-v3 .card .incl .disc{color:var(--v3-gold);font-weight:700}
+  .offer-v3 .card .pillrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .offer-v3 .card .pillrow .pill2{font-size:9.5px;font-weight:700;color:var(--v3-green-l);background:#eef2ee;padding:3px 10px;border-radius:999px;white-space:nowrap}
   /* Sezioni */
   .offer-v3 .sect{margin-top:22px}
   .offer-v3 .sect-h{display:flex;align-items:center;gap:10px;margin-bottom:7px}
@@ -1080,6 +1085,7 @@
         finalSqmPrice: 54.17,
         heylightInstallment: 162.50,
         tech: { struttura: "Unidirezionale", densita: "11.000 m²", dtex: "9.500", drenaggio: "40 L/min/m²", peso: "2.800 g/m²", note: "REACH · EN71-3 · ASTM-D2616" },
+        pills: ["Drenante", "Unidirezionale"],
       },
       {
         slug: "cedro-30mm",
@@ -1096,6 +1102,7 @@
         finalSqmPrice: 56.98,
         heylightInstallment: 170.94,
         tech: { struttura: "Unidirezionale", densita: "13.500 m²", dtex: "10.800", drenaggio: "40 L/min/m²", peso: "3.200 g/m²", note: "REACH · EN71-3 · ASTM-D2616" },
+        pills: ["Drenante", "Unidirezionale", "Alta densità"],
       },
       {
         slug: "rovere-40mm",
@@ -1112,6 +1119,7 @@
         finalSqmPrice: 56.98,
         heylightInstallment: 170.94,
         tech: { struttura: "Unidirezionale", densita: "14.700 m²", dtex: "11.500", drenaggio: "40 L/min/m²", peso: "3.500 g/m²", note: "REACH · EN71-3 · ASTM-D2616 · Classe fuoco E-fl-S2" },
+        pills: ["Drenante", "Unidirezionale", "Effetto naturale"],
       },
     ],
     certifications: [
@@ -1267,6 +1275,13 @@
           ${isPosa ? `<div class="br"><span>Posa professionale</span><b>${noSym(opt.installation)} €/m²</b></div>` : ""}
           <div class="br"><span>Spedizione</span><b>${escHtml(opt.shippingLabel || "—")}</b></div>
         </div>`;
+      // Pill derivate dai dati tecnici (vedi buildProductPillsFromTech in
+      // app.js) — mai mostrate con 3 prodotti impilati, lo spazio lì non
+      // basta nemmeno per una riga in più (verificato più volte in questa
+      // sessione); con 2 sostituiscono il box tecnico "brk" invece di
+      // sommarcisi (stesso ingombro verticale circa, vedi CSS).
+      const pills = Array.isArray(opt.pills) ? opt.pills.filter(Boolean) : [];
+      const pillrow = pills.length ? `<div class="pillrow">${pills.map((p) => `<span class="pill2">${escHtml(p)}</span>`).join("")}</div>` : "";
       return `
         <div class="card${reco ? " reco" : ""}">
           ${photoFrameHtml(opt)}
@@ -1283,6 +1298,7 @@
             </div>
             ${brk}
             <div class="incl">${incl}</div>
+            ${pillrow}
           </div>
         </div>`;
     }).join("");
