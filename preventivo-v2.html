@@ -746,16 +746,24 @@
      filo in testa, come una scheda a sé; lo sconto è un dato nel foglio
      (colore terracotta), non un badge oro appiccicato sopra — l'oro resta
      per "Consigliato"/garanzia altrove. */
-  .offer-v3 .matwrap{background:#fff;border:1px solid var(--v3-line);border-top:3px solid var(--v3-clay);border-radius:4px 4px 14px 14px;padding:20px 24px 22px}
+  .offer-v3 .matwrap{background:#fff;border:1px solid var(--v3-line);border-top:3px solid var(--v3-clay);border-radius:4px 4px 14px 14px;padding:18px 22px 20px}
   .offer-v3 .matwrap .desc{font-size:11.5px;color:var(--v3-ink);line-height:1.55;max-width:100%}
   [data-field="materialsBox"] .sect-h .eyebrow{color:var(--v3-clay)}
-  /* Respiro: etichetta sopra/valore sotto con una riga sottile, come una
-     scheda tecnica vera — non una tabella compressa (richiesto dall'utente
-     il 29 set: "la lista dei materiali non ha respiro"). */
-  .offer-v3 .matgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px 44px;margin-top:18px}
-  .offer-v3 .matgrid .m{display:flex;flex-direction:column;gap:4px;padding-bottom:11px;border-bottom:1px solid var(--v3-clay-soft)}
-  .offer-v3 .matgrid .m .mk{color:var(--v3-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
-  .offer-v3 .matgrid .m .mv{font-family:'Source Serif 4',serif;font-weight:600;color:var(--v3-ink);font-size:16px}
+  /* Distinta (non più la griglia etichetta/valore): un totale di riga vero
+     invece di quantità/prezzo lasciati da calcolare a mente — confrontata
+     dal vivo contro una versione "a chip" con dati reali di lunghezza
+     variabile (richiesto dall'utente il 1 ott, non convinto dalla versione
+     precedente): la distinta resta compatta e allineata anche con 6-7
+     voci, la versione a chip con lo stesso contenuto lasciava un elemento
+     orfano sull'ultima riga e occupava più spazio verticale. */
+  .offer-v3 .matledger-h{display:flex;justify-content:space-between;align-items:baseline;margin-top:16px;padding-bottom:9px;border-bottom:2px solid var(--v3-ink)}
+  .offer-v3 .matledger-h .mlt{font-family:'Source Serif 4',serif;font-weight:600;font-size:13.5px;color:var(--v3-green-d)}
+  .offer-v3 .matledger-h .mlc{font-size:10px;color:var(--v3-faint)}
+  .offer-v3 .matledger .mrow{display:flex;align-items:baseline;gap:12px;padding:8px 0;border-bottom:1px solid var(--v3-line);font-size:11.5px}
+  .offer-v3 .matledger .mrow .mname{flex:1;color:var(--v3-ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .offer-v3 .matledger .mrow .mqty{color:var(--v3-faint);flex:0 0 auto;white-space:nowrap}
+  .offer-v3 .matledger .mrow .munit{color:var(--v3-muted);flex:0 0 auto;width:82px;text-align:right;white-space:nowrap}
+  .offer-v3 .matledger .mrow .mtot{flex:0 0 auto;width:82px;text-align:right;font-family:'Source Serif 4',serif;font-weight:600;color:var(--v3-ink)}
   .offer-v3 .matnote{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--v3-clay-soft);font-size:11px;color:var(--v3-muted)}
   .offer-v3 .pill{background:var(--v3-gold-soft);color:var(--v3-gold);font-weight:800;font-size:11px;padding:4px 11px;border-radius:999px}
   .offer-v3 .matnote .pill{background:none;color:var(--v3-clay);padding:0;font-weight:700;font-size:12px}
@@ -932,7 +940,8 @@
     <div class="sect-h"><span class="eyebrow">Materiali e quantità</span><span class="rule"></span></div>
     <div class="matwrap">
       <div class="desc" data-field="materialsDesc">—</div>
-      <div class="matgrid" data-field="materialsList"></div>
+      <div class="matledger-h"><span class="mlt">Distinta materiali</span><span class="mlc" data-field="materialsCtx">—</span></div>
+      <div class="matledger" data-field="materialsList"></div>
       <div class="matnote" data-field="materialsDiscountRow" style="display:none">
         <span>Sconto materiali già applicato ai totali</span>
         <span class="pill" data-field="materialsDiscountValue">—</span>
@@ -1125,13 +1134,15 @@
     },
     materials: {
       desc: "La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm, telo separatore, giunte, fissaggi e finiture perimetrali. Il materiale è quantificato in base ai metri quadri inseriti.",
+      ctx: "Posa su terra",
       discount: 10, // % sconto applicato sui materiali (0 = non mostrato)
       list: [
-        { name: "Pietrisco", qty: "0,45" },
-        { name: "Telo isolante", qty: "15,00" },
-        { name: "Bande di giunzione", qty: "1" },
-        { name: "Colla bicomponente", qty: "1 secchi (6 kg)" },
-        { name: "Picchetti a U", qty: "50" },
+        { label: "Pietrisco", qty: "0,45 mc", unitLabel: "50,00 €/mc", total: 22.5 },
+        { label: "Telo isolante", qty: "15,00 mq", unitLabel: "1,00 €/mq", total: 15 },
+        { label: "Bande di giunzione", qty: "1 pz", unitLabel: "30,00 €/pz", total: 30 },
+        { label: "Colla bicomponente", qty: "1 secchi (6 kg)", unitLabel: "45,00 €/secchi", total: 45 },
+        { label: "Picchetti a U", qty: "50 pz", unitLabel: "0,30 €/pz", total: 15 },
+        { label: "Trasporto", qty: "—", unitLabel: "—", total: null, totalLabel: "Gratuita" },
       ],
       det: "Pietrisco: 0,45 × 50,00 €/ mc; Telo isolante: 15,00 × 1,00 €/ mq; Bande di giunzione: 1 × 30,00 €/ pz; Colla bicomponente: 1 secchi (6 kg) × 45,00 €/ secchi; Picchetti a U: 50 × 0,30 €/ pz",
     },
@@ -1286,11 +1297,22 @@
     }
     if (box) box.style.display = "";
     setField("materialsDesc", mat.desc || "");
+    setField("materialsCtx", [mat.ctx, data.sqm ? `${escHtml(String(data.sqm))} m²` : ""].filter(Boolean).join(" · ") || "—");
     const grid = document.querySelector('[data-field="materialsList"]');
     if (grid) {
-      grid.innerHTML = (mat.list || []).map((it) => `
-        <div class="m"><span class="mk">${escHtml(it.name)}</span><span class="mv">${escHtml(it.qty)}</span></div>
-      `).join("");
+      // Distinta: un totale di riga vero (it.total) quando c'è, altrimenti
+      // un'etichetta libera (it.totalLabel, es. "Gratuita" per il trasporto) —
+      // mai un trattino silenzioso al posto di un prezzo reale.
+      grid.innerHTML = (mat.list || []).map((it) => {
+        const totalText = Number.isFinite(it.total) ? fmtEur(it.total) : escHtml(it.totalLabel || "—");
+        return `
+        <div class="mrow">
+          <span class="mname">${escHtml(it.label || it.name || "")}</span>
+          <span class="mqty">${escHtml(it.qty || "")}</span>
+          <span class="munit">${escHtml(it.unitLabel || "")}</span>
+          <span class="mtot">${totalText}</span>
+        </div>`;
+      }).join("");
     }
     // Sconto materiali — pill mostrata solo se > 0
     const discountRow = document.querySelector('[data-field="materialsDiscountRow"]');
