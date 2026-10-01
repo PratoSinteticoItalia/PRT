@@ -13,9 +13,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261001-codice-prodotto-card-margini";
+} from "./lib/order-money.js?v=20261001-distinta-materiali-dati-reali";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261001-codice-prodotto-card-margini";
+import { regionForCity } from "./lib/geo.js?v=20261001-distinta-materiali-dati-reali";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -34,7 +34,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261001-codice-prodotto-card-margini";
+} from "./lib/shipping-eligibility.js?v=20261001-distinta-materiali-dati-reali";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -45,7 +45,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261001-codice-prodotto-card-margini";
+} from "./lib/profit-split.js?v=20261001-distinta-materiali-dati-reali";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -60,7 +60,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261001-codice-prodotto-card-margini";
+} from "./lib/preventivo-pricing.js?v=20261001-distinta-materiali-dati-reali";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -68,13 +68,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261001-codice-prodotto-card-margini";
+} from "./lib/sales-assignment.js?v=20261001-distinta-materiali-dati-reali";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261001-codice-prodotto-card-margini";
+} from "./lib/surveys.js?v=20261001-distinta-materiali-dati-reali";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -88,7 +88,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261001-codice-prodotto-card-margini";
+const APP_SHELL_VERSION = "20261001-distinta-materiali-dati-reali";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -36216,6 +36216,28 @@ function nfMaterialsText(breakdown) {
   }).join("; ");
 }
 
+// Stessa distinta di nfMaterialsText (stesse regole di arrotondamento/suffisso
+// per chiave — colla col peso in kg, telo/pietrisco a 2 decimali) ma come dati
+// strutturati invece di una stringa unica: serve per la tavola "distinta" di
+// pagina 2 (riga per materiale con totale di riga), che altrimenti dovrebbe
+// ri-parsare la stringa di nfMaterialsText con una regex — fragile e già
+// lossy (perde unitPrice/total per riga). Stessa fonte dati (getMaterialBreakdown),
+// nessuna seconda verità.
+function nfMaterialsLineItems(breakdown) {
+  const num = (n, dec) => Number(n).toFixed(dec).replace(".", ",");
+  return breakdown.items.filter((it) => !it.excluded).map((it) => {
+    const price = num(it.unitPrice, 2);
+    if (it.key === "colla") {
+      const kgSuffix = Number.isFinite(Number(it.glueKg)) ? ` (${it.glueKg} kg)` : "";
+      return { label: it.label, qty: `${it.qty} secchi${kgSuffix}`, unitLabel: `${price} €/secchi`, total: it.total };
+    }
+    if (it.key === "telo" || it.key === "pietrisco") {
+      return { label: it.label, qty: `${num(it.qty, 2)} ${it.unit}`, unitLabel: `${price} €/${it.unit}`, total: it.total };
+    }
+    return { label: it.label, qty: `${it.qty} ${it.unit}`, unitLabel: `${price} €/${it.unit}`, total: it.total };
+  });
+}
+
 // Applica un prefill (richiesta commerciale o Garden Planner) alla form nativa.
 // Il payload è quello di buildSalesRequestPrefill: { nome, cognome, citta,
 // telefono, email, mq, altezza, servizio ("fornitura"|"posa"), fondo
@@ -36571,7 +36593,8 @@ function buildNativePreventivoPayload() {
 
     const input = nfComputeInput();
     const cq = computeQuotePure(input);
-    const materialsText = nfMaterialsText(nfEffectiveMaterials());
+    const materialsBreakdown = nfEffectiveMaterials();
+    const materialsText = nfMaterialsText(materialsBreakdown);
     const materialsAfterDisc = cq.materials.net;
 
     const shipping = Number(f.shippingCost) || 0;
@@ -36634,16 +36657,17 @@ function buildNativePreventivoPayload() {
       .filter((w) => w.cost > 0 || w.description);
 
     const shippingLabel = shipping > 0 ? `${shipping.toFixed(2).replace(".", ",")} €` : "Gratuita";
-    const materialsList = materialsText
-      ? materialsText.split(";").map((s) => s.trim()).filter(Boolean).map((item) => {
-          const mm = item.match(/^([^:]+):\s*([^×x]+(?:[×x].+)?)/);
-          return mm ? { name: mm[1].trim(), qty: mm[2].trim() } : { name: item, qty: "" };
-        })
-      : [];
+    // Dati strutturati dalla stessa distinta (getMaterialBreakdown), non più
+    // ri-parsati dalla stringa di materialsText con una regex — quella perdeva
+    // unitPrice/totale di riga, serviva solo per il vecchio riquadro
+    // etichetta/valore. La tavola "distinta" di pagina 2 mostra un totale per
+    // riga vero (richiesto dall'utente il 1 ott, non convinto dal riquadro
+    // precedente).
+    const materialsList = nfMaterialsLineItems(materialsBreakdown);
     // Trasporto come riga in più nella stessa distinta: stesso importo già
     // incluso nei totali (shippingNet in lib/preventivo-pricing.js), qui solo
     // mostrato a parte come richiesto ("cosa si paga realmente" a pagina 2).
-    materialsList.push({ name: "Trasporto", qty: shippingLabel });
+    materialsList.push({ label: "Trasporto", qty: "—", unitLabel: "—", total: null, totalLabel: shippingLabel });
 
     // "Incluso / Escluso" — pagina 2, dati 2 entrambi reali: cosa è davvero
     // nei totali (mai un servizio o una garanzia inventata) ed eventuali
@@ -36688,6 +36712,7 @@ function buildNativePreventivoPayload() {
         desc: isPosa
           ? (isPavimentazione ? customTexts.materialsDescPosaPavimentazione : customTexts.materialsDescPosa)
           : customTexts.materialsDescFornitura,
+        ctx: isPosa ? (isPavimentazione ? "Posa su pavimentazione" : "Posa su terra") : "Solo fornitura",
         discount: Number(f.materialsDiscountPct) || 0,
         det: materialsText,
         list: materialsList,
